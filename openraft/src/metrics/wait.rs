@@ -3,6 +3,7 @@ use std::collections::BTreeSet;
 
 use futures_util::FutureExt;
 
+use crate::LogIdOptionExt;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::async_runtime::watch::WatchReceiver;
@@ -221,6 +222,30 @@ where C: RaftTypeConfig
         msg: impl ToString,
     ) -> Result<RaftMetrics<C>, WaitError> {
         self.eq(Metric::Snapshot(Some(snapshot_last_log_id)), msg).await
+    }
+
+    /// Block until the committed index becomes exactly `index` or timeout.
+    #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
+    pub async fn committed_index(&self, index: Option<u64>, msg: impl ToString) -> Result<RaftMetrics<C>, WaitError> {
+        self.metrics(
+            |m| m.committed.index() == index,
+            &format!("{} .committed_index == {:?}", msg.to_string(), index),
+        )
+        .await
+    }
+
+    /// Block until the committed index becomes at least `index` (inclusive) or timeout.
+    #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
+    pub async fn committed_index_at_least(
+        &self,
+        index: Option<u64>,
+        msg: impl ToString,
+    ) -> Result<RaftMetrics<C>, WaitError> {
+        self.metrics(
+            |m| m.committed.index() >= index,
+            &format!("{} .committed_index >= {:?}", msg.to_string(), index),
+        )
+        .await
     }
 
     /// Wait for `purged` to become `want` or timeout.

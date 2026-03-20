@@ -21,6 +21,8 @@ where C: RaftTypeConfig
     Vote(VoteOf<C>),
     /// The index of the last log entry.
     LastLogIndex(Option<u64>),
+    /// The last committed log ID (accepted by a quorum).
+    Committed(Option<LogIdOf<C>>),
     /// The last applied log ID.
     Applied(Option<LogIdOf<C>>),
     /// The index of the last applied log entry.
@@ -39,6 +41,7 @@ where C: RaftTypeConfig
             Metric::Term(_) => "term",
             Metric::Vote(_) => "vote",
             Metric::LastLogIndex(_) => "last_log_index",
+            Metric::Committed(_) => "committed",
             Metric::Applied(_) => "applied",
             Metric::AppliedIndex(_) => "applied_index",
             Metric::Snapshot(_) => "snapshot",
@@ -60,6 +63,7 @@ where C: RaftTypeConfig
             Metric::Term(v) => self.current_term == *v,
             Metric::Vote(v) => &self.vote == v,
             Metric::LastLogIndex(v) => self.last_log_index == *v,
+            Metric::Committed(v) => &self.committed == v,
             Metric::Applied(v) => &self.last_applied == v,
             Metric::AppliedIndex(v) => self.last_applied.index() == *v,
             Metric::Snapshot(v) => &self.snapshot == v,
@@ -77,10 +81,61 @@ where C: RaftTypeConfig
             Metric::Term(v) => Some(self.current_term.cmp(v)),
             Metric::Vote(v) => self.vote.as_ref_vote().partial_cmp(&v.as_ref_vote()),
             Metric::LastLogIndex(v) => Some(self.last_log_index.cmp(v)),
+            Metric::Committed(v) => Some(self.committed.cmp(v)),
             Metric::Applied(v) => Some(self.last_applied.cmp(v)),
             Metric::AppliedIndex(v) => Some(self.last_applied.index().cmp(v)),
             Metric::Snapshot(v) => Some(self.snapshot.cmp(v)),
             Metric::Purged(v) => Some(self.purged.cmp(v)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cmp::Ordering;
+
+    use crate::RaftMetrics;
+    use crate::engine::testing::UTConfig;
+    use crate::engine::testing::log_id;
+    use crate::metrics::Metric;
+
+    fn init_metrics() -> RaftMetrics<UTConfig> {
+        let mut m = RaftMetrics::new_initial(0);
+        m.committed = Some(log_id(1, 0, 5));
+        m
+    }
+
+    #[test]
+    fn test_metric_committed_name() {
+        let m: Metric<UTConfig> = Metric::Committed(None);
+        assert_eq!(m.name(), "committed");
+    }
+
+    #[test]
+    fn test_metric_committed_partial_eq() {
+        let m = init_metrics();
+
+        assert_eq!(m, Metric::Committed(Some(log_id(1, 0, 5))));
+        assert_ne!(m, Metric::Committed(Some(log_id(1, 0, 4))));
+        assert_ne!(m, Metric::Committed(None));
+    }
+
+    #[test]
+    fn test_metric_committed_partial_ord() {
+        let m = init_metrics();
+
+        assert_eq!(
+            m.partial_cmp(&Metric::Committed(Some(log_id(1, 0, 5)))),
+            Some(Ordering::Equal)
+        );
+        assert_eq!(
+            m.partial_cmp(&Metric::Committed(Some(log_id(1, 0, 3)))),
+            Some(Ordering::Greater)
+        );
+        assert_eq!(
+            m.partial_cmp(&Metric::Committed(Some(log_id(2, 0, 6)))),
+            Some(Ordering::Less)
+        );
+        assert_eq!(m.partial_cmp(&Metric::Committed(None)), Some(Ordering::Greater));
     }
 }

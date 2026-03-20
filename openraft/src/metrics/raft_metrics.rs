@@ -88,6 +88,16 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     /// The last log index has been appended to this Raft node's log.
     pub last_log_index: Option<u64>,
 
+    /// The last log ID known to this node as committed, i.e., safe to apply to the local state
+    /// machine.
+    ///
+    /// This is the **local committed** value, which may lag behind the **cluster-committed** value
+    /// (the actual quorum-acknowledged frontier) due to network delays or out-of-order RPC
+    /// delivery. See [`commit`] for the full explanation of the distinction.
+    ///
+    /// [`commit`]: crate::docs::protocol::commit
+    pub committed: Option<LogIdOf<C>>,
+
     /// The last log index has been applied to this Raft node's state machine.
     pub last_applied: Option<LogIdOf<C>>,
 
@@ -172,12 +182,13 @@ where C: RaftTypeConfig
 
         write!(
             f,
-            "id:{}, {:?}, term:{}, vote:{}, last_log:{}, last_applied:{}, leader:{}",
+            "id:{}, {:?}, term:{}, vote:{}, last_log:{}, committed:{}, last_applied:{}, leader:{}",
             self.id,
             self.state,
             self.current_term,
             self.vote,
             DisplayOption(&self.last_log_index),
+            DisplayOption(&self.committed),
             DisplayOption(&self.last_applied),
             DisplayOption(&self.current_leader),
         )?;
@@ -223,6 +234,7 @@ where C: RaftTypeConfig
             current_term: Default::default(),
             vote,
             last_log_index: None,
+            committed: None,
             last_applied: None,
             snapshot: None,
             purged: None,
@@ -244,6 +256,13 @@ where C: RaftTypeConfig
 pub struct RaftDataMetrics<C: RaftTypeConfig> {
     /// The last log id.
     pub last_log: Option<LogIdOf<C>>,
+    /// The last log ID known to this node as committed.
+    ///
+    /// This is the **local committed** value. See [`commit`] for the distinction from
+    /// cluster-committed.
+    ///
+    /// [`commit`]: crate::docs::protocol::commit
+    pub committed: Option<LogIdOf<C>>,
     /// The last applied log id.
     pub last_applied: Option<LogIdOf<C>>,
     /// The last log id in the last snapshot.
@@ -303,8 +322,9 @@ where C: RaftTypeConfig
 
         write!(
             f,
-            "last_log:{}, last_applied:{}, snapshot:{}, purged:{}",
+            "last_log:{}, committed:{}, last_applied:{}, snapshot:{}, purged:{}",
             DisplayOption(&self.last_log),
+            DisplayOption(&self.committed),
             DisplayOption(&self.last_applied),
             DisplayOption(&self.snapshot),
             DisplayOption(&self.purged),

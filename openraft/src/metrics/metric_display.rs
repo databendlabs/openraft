@@ -20,6 +20,7 @@ where C: RaftTypeConfig
             Metric::Term(v) => write!(f, "{}", v),
             Metric::Vote(v) => write!(f, "{}", v),
             Metric::LastLogIndex(v) => write!(f, "{}", DisplayOption(v)),
+            Metric::Committed(v) => write!(f, "{}", DisplayOption(v)),
             Metric::Applied(v) => write!(f, "{}", DisplayOption(v)),
             Metric::AppliedIndex(v) => write!(f, "{}", DisplayOption(v)),
             Metric::Snapshot(v) => write!(f, "{}", DisplayOption(v)),
