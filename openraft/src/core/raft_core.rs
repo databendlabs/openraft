@@ -899,6 +899,19 @@ where
         }
     }
 
+    /// Return the current leader node ID based on the committed vote.
+    ///
+    /// In OpenRaft, a leader does not have to be a voter — it can be a learner
+    /// or even a node outside the membership. Leadership is determined solely by
+    /// a committed vote (i.e., a vote granted by a quorum), following Paxos
+    /// semantics. Therefore, this method does not check voter or membership
+    /// status.
+    ///
+    /// Currently, this situation arises when a membership change removes the
+    /// leader from the voter set (or from the membership entirely). The leader
+    /// continues to operate and commit logs until it steps down or a new leader
+    /// is elected. In the future, OpenRaft will also allow a node that was never
+    /// in the membership to become a leader.
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn current_leader(&self) -> Option<C::NodeId> {
         tracing::debug!(
@@ -913,16 +926,7 @@ where
             return None;
         }
 
-        let id = vote.to_leader_id().node_id().clone();
-
-        // TODO: `is_voter()` is slow, maybe cache `current_leader`,
-        //       e.g., only update it when membership or vote changes
-        if self.engine.state.membership_state.effective().is_voter(&id) {
-            Some(id)
-        } else {
-            tracing::debug!("id={} is not a voter", id);
-            None
-        }
+        Some(vote.to_leader_id().node_id().clone())
     }
 
     /// Retrieves the most recent timestamp that is acknowledged by a quorum.

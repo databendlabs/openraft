@@ -336,7 +336,11 @@ async fn check_learner_after_leader_transferred() -> Result<()> {
 
     tracing::info!(log_index, "--- check learner in new cluster can receive new log");
     {
-        let new_leader = router.leader().expect("expected the cluster to have a new leader");
+        // Find the leader from a node in the new cluster {1,3,4}.
+        // Node 0 is no longer in the membership and may still hold a stale
+        // committed vote pointing to itself, so we must not rely on it.
+        let metrics = router.wait(&1, timeout()).metrics(|m| m.current_leader.is_some(), "wait for new leader").await?;
+        let new_leader = metrics.current_leader.unwrap();
         router.client_request_many(new_leader, "0", 1).await?;
         log_index += 1;
 
