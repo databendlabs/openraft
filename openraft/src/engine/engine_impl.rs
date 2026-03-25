@@ -660,8 +660,16 @@ where C: RaftTypeConfig
         // Before sending any log, update the vote.
         // This could not fail because `internal_server_state` will be cleared
         // once `state.vote` is changed to a value of other node.
-        let _res = self.vote_handler().update_vote(&vote.clone().into_vote());
-        debug_assert!(_res.is_ok(), "commit vote cannot fail but: {:?}", _res);
+        let res = self.vote_handler().update_vote(&vote.clone().into_vote());
+        if let Err(e) = &res {
+            tracing::error!(
+                "establish_leader: update_vote failed: {}, leader.vote: {}, state.vote: {}",
+                e,
+                vote,
+                self.state.vote_ref()
+            );
+        }
+        debug_assert!(res.is_ok(), "commit vote cannot fail but: {:?}", res);
 
         self.state.accept_log_io(IOId::new_log_io(vote, last_log_id));
 
