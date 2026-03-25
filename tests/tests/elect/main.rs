@@ -9,3 +9,4 @@ mod fixtures;
 
 mod t10_elect_compare_last_log;
 mod t11_elect_seize_leadership;
+mod t12_bug5_update_vote_debug_assert;
