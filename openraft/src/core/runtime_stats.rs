@@ -1,4 +1,5 @@
 use std::fmt;
+use std::marker::PhantomData;
 
 #[cfg(feature = "runtime-stats")]
 use tabled::builder::Builder;
@@ -9,11 +10,21 @@ use tabled::settings::Style;
 #[cfg(feature = "runtime-stats")]
 use tabled::settings::object::Columns;
 
+use crate::Config;
+use crate::RaftTypeConfig;
 use crate::base::histogram::Histogram;
 use crate::base::histogram::PercentileStats;
 use crate::core::NotificationName;
+#[cfg(feature = "runtime-stats")]
+use crate::core::log_stage::LogStageHistograms;
+#[cfg(feature = "runtime-stats")]
+use crate::core::log_stage::LogStages;
 use crate::core::raft_msg::RaftMsgName;
+use crate::core::stage::Stage;
 use crate::engine::CommandName;
+#[cfg(feature = "runtime-stats")]
+use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::InstantOf;
 
 /// Display mode for [`RuntimeStatsDisplay`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -32,7 +43,9 @@ pub enum DisplayMode {
 /// This is a volatile structure that is not persisted. It accumulates
 /// statistics from the time the Raft node starts.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RuntimeStats {
+pub struct RuntimeStats<C>
+where C: RaftTypeConfig
+{
     /// Histogram tracking the distribution of log entry counts in Apply commands.
     ///
     /// This tracks how many log entries are included in each apply command sent
@@ -108,16 +121,29 @@ pub struct RuntimeStats {
     /// useful for understanding internal message patterns and debugging.
     /// Indexed by `NotificationName::index()`.
     pub notification_counts: Vec<u64>,
+
+    #[cfg(feature = "runtime-stats")]
+    pub log_stage: LogStages<InstantOf<C>>,
+
+    #[cfg(feature = "runtime-stats")]
+    pub log_stage_histograms: LogStageHistograms,
+
+    _phantom: PhantomData<C>,
 }
 
-impl Default for RuntimeStats {
+impl<C> Default for RuntimeStats<C>
+where C: RaftTypeConfig
+{
     fn default() -> Self {
-        Self::new()
+        Self::new(&Config::default())
     }
 }
 
-impl RuntimeStats {
-    pub(crate) fn new() -> Self {
+impl<C> RuntimeStats<C>
+where C: RaftTypeConfig
+{
+    pub(crate) fn new(config: &Config) -> Self {
+        let _ = config;
         Self {
             apply_batch: Histogram::<()>::new(),
             append_batch: Histogram::<()>::new(),
@@ -131,6 +157,11 @@ impl RuntimeStats {
             command_counts: vec![0; CommandName::COUNT],
             raft_msg_counts: vec![0; RaftMsgName::COUNT],
             notification_counts: vec![0; NotificationName::COUNT],
+            #[cfg(feature = "runtime-stats")]
+            log_stage: LogStages::new(config.log_stage_capacity(), 0),
+            #[cfg(feature = "runtime-stats")]
+            log_stage_histograms: LogStageHistograms::new(),
+            _phantom: PhantomData,
         }
     }
 
@@ -147,6 +178,35 @@ impl RuntimeStats {
     /// Record the receipt of a Notification.
     pub fn record_notification(&mut self, name: NotificationName) {
         self.notification_counts[name.index()] += 1;
+    }
+
+    pub fn record_log_stage_now(&mut self, stage: Stage, index: u64) {
+        #[cfg(feature = "runtime-stats")]
+        self.record_log_stage(stage, index, C::now());
+
+        #[cfg(not(feature = "runtime-stats"))]
+        {
+            let _ = (stage, index);
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn record_log_stage(&mut self, stage: Stage, index: u64, now: InstantOf<C>) {
+        #[cfg(feature = "runtime-stats")]
+        self.log_stage.record_stage(stage, index, now);
+
+        #[cfg(not(feature = "runtime-stats"))]
+        {
+            let _ = (stage, index, now);
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn build_log_stage_histograms(&mut self) {
+        #[cfg(feature = "runtime-stats")]
+        {
+            self.log_stage_histograms = self.log_stage.compute_histograms();
+        }
     }
 
     /// Returns a displayable representation of the runtime statistics.
@@ -479,7 +539,7 @@ impl RuntimeStatsDisplay {
         self.fmt_multiline(f)
     }
 
-    /// Format count with thousand separators for readability.
+    /// Format count with a thousand separators for readability.
     #[cfg(feature = "runtime-stats")]
     fn format_count(n: u64) -> String {
         let s = n.to_string();
