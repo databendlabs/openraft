@@ -13,10 +13,13 @@
 
 pub use crate::base::histogram::Histogram;
 pub use crate::base::histogram::PercentileStats;
+pub use crate::base::range_values::RangeValues;
 pub use crate::core::NotificationName;
-pub use crate::core::RuntimeStats;
-pub use crate::core::RuntimeStatsDisplay;
 pub use crate::core::raft_msg::ExternalCommandName;
 pub use crate::core::raft_msg::RaftMsgName;
+pub use crate::core::runtime_stats::RuntimeStats;
+pub use crate::core::runtime_stats::RuntimeStatsDisplay;
+pub use crate::core::runtime_stats::log_stage::LogStageHistograms;
+pub use crate::core::runtime_stats::log_stage::LogStages;
 pub use crate::engine::CommandName;
 pub use crate::engine::SMCommandName;

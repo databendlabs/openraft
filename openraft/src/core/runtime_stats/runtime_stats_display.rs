@@ -9,171 +9,13 @@ use tabled::settings::Style;
 #[cfg(feature = "runtime-stats")]
 use tabled::settings::object::Columns;
 
-use crate::base::histogram::Histogram;
-use crate::base::histogram::PercentileStats;
 use crate::core::NotificationName;
 use crate::core::raft_msg::RaftMsgName;
+#[cfg(doc)]
+use crate::core::runtime_stats::RuntimeStats;
+use crate::core::runtime_stats::display_mode::DisplayMode;
 use crate::engine::CommandName;
-
-/// Display mode for [`RuntimeStatsDisplay`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum DisplayMode {
-    /// Compact single-line format (default).
-    #[default]
-    Compact,
-    /// Multiline format with one piece of information per line.
-    Multiline,
-    /// Human-readable format with better formatting and spacing.
-    HumanReadable,
-}
-
-/// Runtime statistics for Raft operations.
-///
-/// This is a volatile structure that is not persisted. It accumulates
-/// statistics from the time the Raft node starts.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RuntimeStats {
-    /// Histogram tracking the distribution of log entry counts in Apply commands.
-    ///
-    /// This tracks how many log entries are included in each apply command sent
-    /// to the state machine, helping identify batch size patterns and I/O efficiency.
-    pub apply_batch: Histogram,
-
-    /// Histogram tracking the distribution of log entry counts when appending to storage.
-    ///
-    /// This tracks how many log entries are included in each AppendEntries command
-    /// submitted to the storage layer, helping identify write batch patterns and storage I/O
-    /// efficiency.
-    pub append_batch: Histogram,
-
-    /// Histogram tracking the distribution of log entry counts in replication RPCs.
-    ///
-    /// This tracks how many log entries are included in each AppendEntries RPC
-    /// sent to followers during replication, helping identify replication batch patterns.
-    pub replicate_batch: Histogram,
-
-    /// Histogram tracking the distribution of RaftMsg counts processed in a batch.
-    ///
-    /// This tracks how many RaftMsg are processed together before calling
-    /// `run_engine_commands()`, helping identify message batching efficiency.
-    pub raft_msg_per_run: Histogram,
-
-    /// Histogram tracking the distribution of client write entries merged per batch.
-    ///
-    /// This tracks how many client write entries are merged together in each
-    /// `RaftMsg::ClientWrite` after batching, helping identify batching efficiency.
-    pub write_batch: Histogram,
-
-    /// Histogram tracking the budget for RaftMsg processing.
-    ///
-    /// This tracks the maximum number of RaftMsg allowed to process in each
-    /// `process_raft_msg()` call, helping understand load balancing behavior.
-    pub raft_msg_budget: Histogram,
-
-    /// Histogram tracking the budget for Notification processing.
-    ///
-    /// This tracks the maximum number of Notifications allowed to process in each
-    /// `process_notification()` call, helping understand load balancing behavior.
-    pub notification_budget: Histogram,
-
-    /// Histogram tracking RaftMsg budget utilization in permille (0-1000).
-    ///
-    /// This tracks `processed * 1000 / budget` for each `process_raft_msg()` call,
-    /// where 1000 means 100% utilization. Helps identify if the budget is well-tuned.
-    pub raft_msg_usage_permille: Histogram,
-
-    /// Histogram tracking Notification budget utilization in permille (0-1000).
-    ///
-    /// This tracks `processed * 1000 / budget` for each `process_notification()` call,
-    /// where 1000 means 100% utilization. Helps identify if the budget is well-tuned.
-    pub notification_usage_permille: Histogram,
-
-    /// Count of each command type executed.
-    ///
-    /// This tracks how many times each command type has been executed,
-    /// useful for understanding workload patterns and debugging.
-    /// Indexed by `CommandName::index()`.
-    pub command_counts: Vec<u64>,
-
-    /// Count of each RaftMsg type received.
-    ///
-    /// This tracks how many times each RaftMsg type has been received,
-    /// useful for understanding API usage patterns and debugging.
-    /// Indexed by `RaftMsgName::index()`.
-    pub raft_msg_counts: Vec<u64>,
-
-    /// Count of each Notification type received.
-    ///
-    /// This tracks how many times each Notification type has been received,
-    /// useful for understanding internal message patterns and debugging.
-    /// Indexed by `NotificationName::index()`.
-    pub notification_counts: Vec<u64>,
-}
-
-impl Default for RuntimeStats {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl RuntimeStats {
-    pub(crate) fn new() -> Self {
-        Self {
-            apply_batch: Histogram::<()>::new(),
-            append_batch: Histogram::<()>::new(),
-            replicate_batch: Histogram::<()>::new(),
-            raft_msg_per_run: Histogram::<()>::new(),
-            write_batch: Histogram::<()>::new(),
-            raft_msg_budget: Histogram::<()>::new(),
-            notification_budget: Histogram::<()>::new(),
-            raft_msg_usage_permille: Histogram::<()>::new(),
-            notification_usage_permille: Histogram::<()>::new(),
-            command_counts: vec![0; CommandName::COUNT],
-            raft_msg_counts: vec![0; RaftMsgName::COUNT],
-            notification_counts: vec![0; NotificationName::COUNT],
-        }
-    }
-
-    /// Record the execution of a command.
-    pub fn record_command(&mut self, name: CommandName) {
-        self.command_counts[name.index()] += 1;
-    }
-
-    /// Record the receipt of a RaftMsg.
-    pub fn record_raft_msg(&mut self, name: RaftMsgName) {
-        self.raft_msg_counts[name.index()] += 1;
-    }
-
-    /// Record the receipt of a Notification.
-    pub fn record_notification(&mut self, name: NotificationName) {
-        self.notification_counts[name.index()] += 1;
-    }
-
-    /// Returns a displayable representation of the runtime statistics.
-    ///
-    /// All values are precomputed when calling this method, so the returned
-    /// `RuntimeStatsDisplay` can be cheaply formatted multiple times.
-    ///
-    /// Use builder methods like `.human_readable()` to change the display mode.
-    #[allow(dead_code)]
-    pub fn display(&self) -> RuntimeStatsDisplay {
-        RuntimeStatsDisplay {
-            mode: DisplayMode::default(),
-            apply_batch: self.apply_batch.percentile_stats(),
-            append_batch: self.append_batch.percentile_stats(),
-            replicate_batch: self.replicate_batch.percentile_stats(),
-            raft_msg_per_run: self.raft_msg_per_run.percentile_stats(),
-            write_batch: self.write_batch.percentile_stats(),
-            raft_msg_budget: self.raft_msg_budget.percentile_stats(),
-            notification_budget: self.notification_budget.percentile_stats(),
-            raft_msg_usage_permille: self.raft_msg_usage_permille.percentile_stats(),
-            notification_usage_permille: self.notification_usage_permille.percentile_stats(),
-            command_counts: self.command_counts.clone(),
-            raft_msg_counts: self.raft_msg_counts.clone(),
-            notification_counts: self.notification_counts.clone(),
-        }
-    }
-}
+use crate::raft_state::PercentileStats;
 
 /// Precomputed display data for [`RuntimeStats`].
 ///
@@ -181,19 +23,19 @@ impl RuntimeStats {
 /// Use [`DisplayMode`] to control the output format.
 #[allow(dead_code)]
 pub struct RuntimeStatsDisplay {
-    mode: DisplayMode,
-    apply_batch: PercentileStats,
-    append_batch: PercentileStats,
-    replicate_batch: PercentileStats,
-    raft_msg_per_run: PercentileStats,
-    write_batch: PercentileStats,
-    raft_msg_budget: PercentileStats,
-    notification_budget: PercentileStats,
-    raft_msg_usage_permille: PercentileStats,
-    notification_usage_permille: PercentileStats,
-    command_counts: Vec<u64>,
-    raft_msg_counts: Vec<u64>,
-    notification_counts: Vec<u64>,
+    pub(crate) mode: DisplayMode,
+    pub(crate) apply_batch: PercentileStats,
+    pub(crate) append_batch: PercentileStats,
+    pub(crate) replicate_batch: PercentileStats,
+    pub(crate) raft_msg_per_run: PercentileStats,
+    pub(crate) write_batch: PercentileStats,
+    pub(crate) raft_msg_budget: PercentileStats,
+    pub(crate) notification_budget: PercentileStats,
+    pub(crate) raft_msg_usage_permille: PercentileStats,
+    pub(crate) notification_usage_permille: PercentileStats,
+    pub(crate) command_counts: Vec<u64>,
+    pub(crate) raft_msg_counts: Vec<u64>,
+    pub(crate) notification_counts: Vec<u64>,
 }
 
 #[allow(dead_code)]
@@ -479,7 +321,7 @@ impl RuntimeStatsDisplay {
         self.fmt_multiline(f)
     }
 
-    /// Format count with thousand separators for readability.
+    /// Format count with a thousand separators for readability.
     #[cfg(feature = "runtime-stats")]
     fn format_count(n: u64) -> String {
         let s = n.to_string();

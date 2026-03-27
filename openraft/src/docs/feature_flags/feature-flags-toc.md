@@ -5,6 +5,7 @@
 - [feature-flag `loosen-follower-log-revert` (removed)](#feature-flag-loosen-follower-log-revert-removed)
 - [feature-flag `metrics-logids`](#feature-flag-metrics-logids)
 - [feature-flag `runtime-stats`](#feature-flag-runtime-stats)
+- [feature-flag `runtime-stats`](#feature-flag-runtime-stats-1)
 - [feature-flag `serde`](#feature-flag-serde)
 - [feature-flag `singlethreaded` (removed)](#feature-flag-singlethreaded-removed)
 - [feature-flag `single-term-leader` (removed)](#feature-flag-single-term-leader-removed)
