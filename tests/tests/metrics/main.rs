@@ -20,3 +20,5 @@ mod t50_commit_progress_api;
 mod t50_log_progress_api;
 mod t50_snapshot_progress_api;
 mod t50_watch_leader_api;
+#[cfg(feature = "runtime-stats")]
+mod t60_runtime_stats;

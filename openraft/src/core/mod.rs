@@ -24,20 +24,22 @@
 //! details.
 
 pub(crate) mod balancer;
-mod client_responder_queue;
 pub(crate) mod core_state;
 pub(crate) mod heartbeat;
 pub(crate) mod io_flush_tracking;
 pub(crate) mod merged_raft_msg_receiver;
 pub(crate) mod notification;
+pub(crate) mod raft_msg;
+pub(crate) mod runtime_stats;
+pub(crate) mod sm;
+pub(crate) mod stage;
+
+mod client_responder_queue;
 mod notification_name;
 mod raft_core;
-pub(crate) mod raft_msg;
 mod replication_state;
-mod runtime_stats;
 mod server_state;
 mod shared_replicate_batch;
-pub(crate) mod sm;
 mod tick;
 
 pub(crate) use client_responder_queue::ClientResponderQueue;
@@ -45,9 +47,6 @@ pub use notification_name::NotificationName;
 pub(crate) use raft_core::ApplyResult;
 pub use raft_core::RaftCore;
 pub(crate) use replication_state::replication_lag;
-pub use runtime_stats::RuntimeStats;
-#[allow(unused_imports)]
-pub use runtime_stats::RuntimeStatsDisplay;
 pub use server_state::ServerState;
 pub(crate) use shared_replicate_batch::SharedReplicateBatch;
 pub(crate) use tick::Tick;
