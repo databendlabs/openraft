@@ -20,6 +20,8 @@ use crate::raft::raft_inner::RaftInner;
 use crate::raft::responder::core_responder::CoreResponder;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::EntryPayloadOf;
+#[cfg(feature = "runtime-stats")]
+use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::WriteResponderOf;
 
 /// Provides application-facing APIs for interacting with the Raft system.
@@ -96,6 +98,8 @@ where C: RaftTypeConfig
                 payloads,
                 responders,
                 expected_leader: None,
+                #[cfg(feature = "runtime-stats")]
+                proposed_at: propose_at_now::<C>(),
             })
             .await?;
 
@@ -139,4 +143,9 @@ where C: RaftTypeConfig
 
         Ok(Box::pin(stream))
     }
+}
+
+#[cfg(feature = "runtime-stats")]
+pub(crate) fn propose_at_now<C: RaftTypeConfig>() -> InstantOf<C> {
+    C::now()
 }

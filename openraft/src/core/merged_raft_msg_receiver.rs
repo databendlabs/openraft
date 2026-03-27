@@ -151,6 +151,7 @@ where C: RaftTypeConfig
                 payloads,
                 responders,
                 expected_leader,
+                ..
             } => (payloads, responders, expected_leader),
             _ => return Ok(()),
         };
@@ -165,26 +166,25 @@ where C: RaftTypeConfig
                 break;
             };
 
-            let RaftMsg::ClientWrite {
-                payloads,
-                responders,
-                expected_leader,
-            } = next
-            else {
+            // Can only merge ClientWrite with same expected_leader
+            let mergeable = matches!(
+                &next,
+                RaftMsg::ClientWrite { expected_leader, .. } if expected_leader == batch_leader
+            );
+
+            if !mergeable {
                 self.buffered = Some(next);
                 break;
-            };
+            }
 
-            if &expected_leader == batch_leader {
-                batch_payloads.extend(payloads);
-                batch_responders.extend(responders);
-            } else {
-                self.buffered = Some(RaftMsg::ClientWrite {
-                    payloads,
-                    responders,
-                    expected_leader,
-                });
-                break;
+            match next {
+                RaftMsg::ClientWrite {
+                    payloads, responders, ..
+                } => {
+                    batch_payloads.extend(payloads);
+                    batch_responders.extend(responders);
+                }
+                _ => unreachable!(),
             }
         }
 
@@ -215,6 +215,8 @@ mod tests {
             payloads: Batch::Single(EntryPayload::Normal(data)),
             responders: Batch::Single(None),
             expected_leader: leader,
+            #[cfg(feature = "runtime-stats")]
+            proposed_at: C::now(),
         }
     }
 

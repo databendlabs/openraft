@@ -3,6 +3,7 @@
 - [feature-flag `bt`](#feature-flag-bt)
 - [feature-flag `compat`](#feature-flag-compat)
 - [feature-flag `loosen-follower-log-revert` (removed)](#feature-flag-loosen-follower-log-revert-removed)
+- [feature-flag `runtime-stats`](#feature-flag-runtime-stats)
 - [feature-flag `metrics-logids`](#feature-flag-metrics-logids)
 - [feature-flag `runtime-stats`](#feature-flag-runtime-stats)
 - [feature-flag `serde`](#feature-flag-serde)
