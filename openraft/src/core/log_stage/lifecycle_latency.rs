@@ -1,0 +1,109 @@
+use super::LogStageHistograms;
+use crate::Instant;
+use crate::base::multi_range_map::MultiRangeMap;
+use crate::base::multi_range_map::SegmentIter;
+use crate::core::stage::Stage;
+
+/// Tracks timestamps at 6 lifecycle stages of log entries.
+///
+/// Each stage uses a [`RangeMap`] that maps `(log_index, instant)` per batch.
+/// The gap between stages reveals where latency accumulates
+/// (channel queue, storage, replication, state machine apply, etc.).
+///
+/// Stages (in order): Proposed, Received, Appended, Persisted, Committed, Applied.
+/// Access by name via [`Stage`] variants or the convenience methods.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LogStages<I>
+where I: Instant
+{
+    begin: u64,
+    inner: MultiRangeMap<u64, I, { Stage::COUNT }>,
+}
+
+/// Stage-specific convenience methods for [`LogStages`].
+#[allow(dead_code)]
+impl<I> LogStages<I>
+where I: Instant
+{
+    pub(crate) fn new(capacity: usize, begin: u64) -> Self {
+        Self {
+            begin,
+            inner: MultiRangeMap::new(capacity),
+        }
+    }
+
+    pub(crate) fn proposed(&mut self, right: u64, value: I) {
+        self.record_stage(Stage::Proposed, right, value);
+    }
+
+    pub(crate) fn received(&mut self, right: u64, value: I) {
+        self.record_stage(Stage::Received, right, value);
+    }
+
+    pub(crate) fn appended(&mut self, right: u64, value: I) {
+        self.record_stage(Stage::Appended, right, value);
+    }
+
+    pub(crate) fn persisted(&mut self, right: u64, value: I) {
+        self.record_stage(Stage::Persisted, right, value);
+    }
+
+    pub(crate) fn committed(&mut self, right: u64, value: I) {
+        self.record_stage(Stage::Committed, right, value);
+    }
+
+    pub(crate) fn applied(&mut self, right: u64, value: I) {
+        self.record_stage(Stage::Applied, right, value);
+    }
+
+    pub(crate) fn record_stage(&mut self, stage: Stage, right: u64, value: I) {
+        if let Some(evicted) = self.inner.get_mut(stage.index()).record(right, value) {
+            self.begin = self.begin.max(evicted);
+        }
+    }
+
+    /// Iterate segments within the intersection range where all stages have data.
+    #[allow(dead_code)]
+    pub fn segments(&self) -> SegmentIter<'_, u64, I, { Stage::COUNT }> {
+        self.inner.segments(self.begin)
+    }
+
+    /// Compute stage-to-stage duration histograms from all segments.
+    #[allow(dead_code)]
+    pub fn compute_histograms(&self) -> LogStageHistograms {
+        use Stage::*;
+
+        let mut h = LogStageHistograms::new();
+
+        for seg in self.inner.segments(self.begin) {
+            let n = seg.range.end - seg.range.start;
+            let v = &seg.values;
+            h.proposed_to_received.record_n(
+                v[Received.index()].saturating_duration_since(v[Proposed.index()]).as_micros() as u64,
+                n,
+            );
+            h.received_to_appended.record_n(
+                v[Appended.index()].saturating_duration_since(v[Received.index()]).as_micros() as u64,
+                n,
+            );
+            h.appended_to_persisted.record_n(
+                v[Persisted.index()].saturating_duration_since(v[Appended.index()]).as_micros() as u64,
+                n,
+            );
+            h.persisted_to_committed.record_n(
+                v[Committed.index()].saturating_duration_since(v[Persisted.index()]).as_micros() as u64,
+                n,
+            );
+            h.committed_to_applied.record_n(
+                v[Applied.index()].saturating_duration_since(v[Committed.index()]).as_micros() as u64,
+                n,
+            );
+            h.proposed_to_applied.record_n(
+                v[Applied.index()].saturating_duration_since(v[Proposed.index()]).as_micros() as u64,
+                n,
+            );
+        }
+
+        h
+    }
+}

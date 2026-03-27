@@ -248,6 +248,16 @@ pub struct Config {
     #[clap(long, default_value = "1024")]
     pub state_machine_channel_size: Option<u64>,
 
+    /// The capacity of the ring buffer used to track lifecycle latency per stage.
+    ///
+    /// Each of the 6 lifecycle stages (proposed, received, appended, persisted,
+    /// committed, applied) maintains a fixed-capacity ring buffer of this size.
+    /// Only used when the `runtime-stats` feature is enabled.
+    ///
+    /// Defaults to 1024 if not specified.
+    #[clap(long)]
+    pub log_stage_capacity: Option<u64>,
+
     /// Enable or disable tick.
     ///
     /// If ticking is disabled, timeout-based events are all disabled:
@@ -404,6 +414,14 @@ impl Config {
     /// Defaults to 1024 if not specified.
     pub(crate) fn state_machine_channel_size(&self) -> usize {
         self.state_machine_channel_size.unwrap_or(1024) as usize
+    }
+
+    /// Get the lifecycle latency ring buffer capacity per stage.
+    ///
+    /// Defaults to 1024 if not specified.
+    #[allow(dead_code)]
+    pub(crate) fn log_stage_capacity(&self) -> usize {
+        self.log_stage_capacity.unwrap_or(1024) as usize
     }
 
     /// Get the maximum number of log entries per append I/O operation.
