@@ -244,3 +244,27 @@ fn test_config_notification_channel_size() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_config_lifecycle_latency_capacity() -> anyhow::Result<()> {
+    // Default: None (no clap default_value)
+    let config = Config::build(&["foo"])?;
+    assert_eq!(None, config.log_stage_capacity);
+    assert_eq!(1024, config.log_stage_capacity());
+
+    // Custom value via CLI
+    let config = Config::build(&["foo", "--log-stage-capacity=512"])?;
+    assert_eq!(Some(512), config.log_stage_capacity);
+    assert_eq!(512, config.log_stage_capacity());
+
+    // Method with None returns default
+    let mut config = Config::build(&["foo"])?;
+    config.log_stage_capacity = None;
+    assert_eq!(1024, config.log_stage_capacity());
+
+    // Method with Some returns the value
+    config.log_stage_capacity = Some(2048);
+    assert_eq!(2048, config.log_stage_capacity());
+
+    Ok(())
+}

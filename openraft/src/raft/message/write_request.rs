@@ -8,6 +8,8 @@ use crate::base::BoxFuture;
 use crate::core::raft_msg::RaftMsg;
 use crate::entry::EntryPayload;
 use crate::errors::Fatal;
+#[cfg(feature = "runtime-stats")]
+use crate::raft::api::app::propose_at_now;
 use crate::raft::raft_inner::RaftInner;
 use crate::raft::responder::core_responder::CoreResponder;
 use crate::type_config::alias::CommittedLeaderIdOf;
@@ -141,6 +143,8 @@ where C: RaftTypeConfig
                     payloads: Batch::from(EntryPayload::Normal(self.app_data)),
                     responders: Batch::from(self.responder),
                     expected_leader: self.expected_leader,
+                    #[cfg(feature = "runtime-stats")]
+                    proposed_at: propose_at_now::<C>(),
                 })
                 .await
         })
