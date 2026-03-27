@@ -56,6 +56,31 @@ to avoid overhead in production builds.
 
 **Unstable**: This feature is experimental and the API may change in future versions.
 
+Tracks per-entry latency across 6 lifecycle stages on the leader node:
+
+- **proposed**: when the application called `client_write()`
+- **received**: when `RaftCore` dequeued the request from the API channel
+- **submitted**: when the entry was submitted to Raft-Log storage
+- **persisted**: when storage confirmed persistence (append callback returned)
+- **committed**: when this node locally marked the entry as committed (local
+  commit timestamp, not the cluster-wide quorum time)
+- **applied**: when the state machine finished applying the entry and reported
+  the result back to `RaftCore`
+
+Each stage records timestamps in a fixed-capacity ring buffer (configurable via
+`Config::log_stage_capacity`), enabling stage-to-stage duration histograms
+that reveal where latency accumulates (channel queueing, storage I/O, replication,
+and state machine apply time).
+
+When combined with `runtime-stats`, the `RuntimeStats::lifecycle_latency` field
+contains computed `LifecycleLatencyHistograms` with percentile distributions for
+each stage transition.
+
+
+## feature-flag `runtime-stats`
+
+**Unstable**: This feature is experimental and the API may change in future versions.
+
 Exposes the `stats` module and adds the `Raft::runtime_stats()` method
 for accessing runtime statistics.
 
