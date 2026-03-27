@@ -30,6 +30,9 @@
 pub(crate) mod batch;
 pub(crate) mod finalized;
 pub(crate) mod histogram;
+pub(crate) mod multi_range_map;
+pub(crate) mod range_map;
+pub(crate) mod range_values;
 pub(crate) mod shared_id_generator;
 
 pub(crate) use batch::Batch;

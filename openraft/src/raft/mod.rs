@@ -79,7 +79,6 @@ use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::ClientResponderQueue;
 use crate::core::RaftCore;
-use crate::core::RuntimeStats;
 use crate::core::SharedReplicateBatch;
 use crate::core::Tick;
 use crate::core::heartbeat::handle::HeartbeatWorkersHandle;
@@ -94,6 +93,7 @@ use crate::core::merged_raft_msg_receiver::BatchRaftMsgReceiver;
 use crate::core::notification::Notification;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::external_command::ExternalCommand;
+use crate::core::runtime_stats::RuntimeStats;
 use crate::core::sm;
 use crate::core::sm::worker;
 use crate::engine::Engine;
@@ -535,7 +535,7 @@ where
             tx_server_metrics,
             tx_progress,
 
-            runtime_stats: RuntimeStats::new(),
+            runtime_stats: RuntimeStats::new(&config),
             shared_replicate_batch,
 
             metrics_recorder: None,
@@ -639,7 +639,7 @@ where C: RaftTypeConfig
     /// Sends a message to RaftCore to retrieve the current runtime statistics.
     /// This returns a snapshot of the stats at the time of the call.
     #[cfg(feature = "runtime-stats")]
-    pub async fn runtime_stats(&self) -> Result<RuntimeStats, Fatal<C>> {
+    pub async fn runtime_stats(&self) -> Result<RuntimeStats<C>, Fatal<C>> {
         let (tx, rx) = C::oneshot();
         self.inner.call_core(RaftMsg::GetRuntimeStats { tx }, rx).await
     }

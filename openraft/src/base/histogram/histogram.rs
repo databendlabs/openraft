@@ -127,9 +127,14 @@ impl<T> Histogram<T> {
 
     /// Records a value to the current (last) slot.
     pub fn record(&mut self, value: u64) {
+        self.record_n(value, 1);
+    }
+
+    /// Record a value `count` times.
+    pub fn record_n(&mut self, value: u64, count: u64) {
         let bucket_index = self.log_scale.calculate_bucket(value);
-        self.slots.back_mut().unwrap().buckets[bucket_index] += 1;
-        self.aggregate_buckets[bucket_index] += 1;
+        self.slots.back_mut().unwrap().buckets[bucket_index] += count;
+        self.aggregate_buckets[bucket_index] += count;
     }
 
     /// Advances to a new slot, evicting the oldest if at capacity.
@@ -306,6 +311,33 @@ mod tests {
 
         assert_eq!(hist.total(), 3);
         assert_eq!(hist.get_bucket(8), 3);
+    }
+
+    #[test]
+    fn test_record_n() {
+        let mut hist: Histogram = Histogram::new();
+
+        hist.record_n(10, 5);
+        hist.record_n(100, 3);
+
+        assert_eq!(hist.total(), 8);
+        assert_eq!(hist.get_bucket(LogScale3::calculate_bucket_uncached(10)), 5);
+        assert_eq!(hist.get_bucket(LogScale3::calculate_bucket_uncached(100)), 3);
+    }
+
+    #[test]
+    fn test_record_n_equivalent_to_record() {
+        let mut hist_n: Histogram = Histogram::new();
+        let mut hist_single: Histogram = Histogram::new();
+
+        hist_n.record_n(42, 4);
+        for _ in 0..4 {
+            hist_single.record(42);
+        }
+
+        assert_eq!(hist_n.total(), hist_single.total());
+        let bucket = LogScale3::calculate_bucket_uncached(42);
+        assert_eq!(hist_n.get_bucket(bucket), hist_single.get_bucket(bucket));
     }
 
     #[test]
