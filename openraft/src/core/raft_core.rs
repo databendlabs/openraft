@@ -26,7 +26,6 @@ use crate::async_runtime::watch::WatchSender;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::ClientResponderQueue;
-use crate::core::RuntimeStats;
 use crate::core::ServerState;
 use crate::core::SharedReplicateBatch;
 use crate::core::balancer::Balancer;
@@ -42,7 +41,9 @@ use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::ResultSender;
 use crate::core::raft_msg::VoteTx;
 use crate::core::raft_msg::external_command::ExternalCommand;
+use crate::core::runtime_stats::RuntimeStats;
 use crate::core::sm;
+use crate::core::stage::Stage;
 use crate::display_ext::DisplayInstantExt;
 use crate::display_ext::DisplayOptionExt;
 use crate::engine::Command;
@@ -235,7 +236,7 @@ where
     ///
     /// Owned directly by RaftCore for lock-free access to most stats.
     /// Only `replicate_batch` is shared with replication tasks via `shared_replicate_batch`.
-    pub(crate) runtime_stats: RuntimeStats,
+    pub(crate) runtime_stats: RuntimeStats<C>,
 
     /// Shared histogram for replication batch sizes.
     ///
@@ -550,9 +551,12 @@ where
             }
         };
 
-        self.write_entries([EntryPayload::Membership(new_membership)], [Some(
-            CoreResponder::Progress(tx),
-        )]);
+        self.write_entries(
+            [EntryPayload::Membership(new_membership)],
+            [Some(CoreResponder::Progress(tx))],
+            #[cfg(feature = "runtime-stats")]
+            C::now(),
+        );
     }
 
     /// Ensure this node is a writable leader and return a leader handler.
@@ -587,7 +591,12 @@ where
     /// application-defined entries like user data, the latter is for membership configuration
     /// changes.
     #[tracing::instrument(level = "debug", skip_all, fields(id = display(&self.id)))]
-    pub fn write_entries<I, R>(&mut self, payloads: I, responders: R) -> Option<LeaderLogIds<CommittedLeaderIdOf<C>>>
+    pub fn write_entries<I, R>(
+        &mut self,
+        payloads: I,
+        responders: R,
+        #[cfg(feature = "runtime-stats")] proposed_at: InstantOf<C>,
+    ) -> Option<LeaderLogIds<CommittedLeaderIdOf<C>>>
     where
         I: IntoIterator<Item = EntryPayloadOf<C>>,
         I::IntoIter: ExactSizeIterator,
@@ -620,6 +629,13 @@ where
         //       caller.
         let entry_count = payloads.len() as u64;
         let log_ids = lh.leader_append_entries(payloads)?;
+
+        #[cfg(feature = "runtime-stats")]
+        {
+            let right = log_ids.last_ref().index() + 1;
+            self.runtime_stats.record_log_stage(Stage::Proposed, right, proposed_at);
+            self.runtime_stats.record_log_stage_now(Stage::Received, right);
+        }
 
         // Record write batch size to external metrics recorder
         if let Some(r) = &self.metrics_recorder {
@@ -1539,6 +1555,8 @@ where
                 payloads,
                 responders,
                 expected_leader,
+                #[cfg(feature = "runtime-stats")]
+                proposed_at,
             } => {
                 // Check if expected leader matches current leader
                 if let Some(expected) = expected_leader {
@@ -1557,7 +1575,12 @@ where
                     }
                 }
                 self.runtime_stats.write_batch.record(payloads.len() as u64);
-                self.write_entries(payloads, responders);
+                self.write_entries(
+                    payloads,
+                    responders,
+                    #[cfg(feature = "runtime-stats")]
+                    proposed_at,
+                );
             }
             RaftMsg::Initialize { members, tx } => {
                 tracing::info!("received RaftMsg::Initialize: {}, members: {:?}", func_name!(), members);
@@ -1645,6 +1668,9 @@ where
                 // Copy runtime_stats and sync the shared replicate_batch
                 let mut stats = self.runtime_stats.clone();
                 stats.replicate_batch = self.shared_replicate_batch.snapshot();
+
+                stats.build_log_stage_histograms();
+
                 tx.send(stats).ok();
             }
         };
@@ -1734,7 +1760,7 @@ where
                 // ---
                 //
                 // Stepping down only when the response of the second change-membership is sent.
-                // Otherwise the Sender to the caller will be dropped before sending back the
+                // Otherwise, the Sender to the caller will be dropped before sending back the
                 // response.
 
                 // TODO: temp solution: Manually wait until the second membership log being applied to state
@@ -1757,6 +1783,10 @@ where
 
                 match io_id {
                     IOId::Log(log_io_id) => {
+                        if let Some(ref log_id) = log_io_id.log_id {
+                            self.runtime_stats.record_log_stage_now(Stage::Persisted, log_id.index() + 1);
+                        }
+
                         // No need to check against membership change,
                         // because not like removing-then-adding a remote node,
                         // local log wont revert when membership changes.
@@ -1825,6 +1855,7 @@ where
                         }
                     }
                     sm::Response::Apply(res) => {
+                        self.runtime_stats.record_log_stage_now(Stage::Applied, res.last_applied.index() + 1);
                         self.engine.state.apply_progress_mut().try_flush(res.last_applied);
                     }
                 }
@@ -2063,6 +2094,7 @@ where
                 entries,
             } => {
                 let last_log_id = entries.last().unwrap().log_id();
+                let last_log_index = last_log_id.index();
                 tracing::debug!("AppendEntries: {}", entries.display_n(10));
 
                 let entry_count = entries.len() as u64;
@@ -2090,6 +2122,8 @@ where
                 // The `submit` state must be updated before calling `append()`,
                 // because `append()` may call the callback before returning.
                 self.engine.state.log_progress_mut().submit(io_id.clone());
+
+                self.runtime_stats.record_log_stage_now(Stage::Submitted, last_log_index + 1);
 
                 // Submit IO request, do not wait for the response.
                 self.log_store.append(entries, callback).await.sto_write_logs()?;
@@ -2157,6 +2191,8 @@ where
                 already_applied: already_committed,
                 upto,
             } => {
+                self.runtime_stats.record_log_stage_now(Stage::Committed, upto.index() + 1);
+
                 self.engine.state.apply_progress_mut().submit(upto.clone());
 
                 self.log_store.save_committed(Some(upto.clone())).await.sto_write()?;

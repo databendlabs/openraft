@@ -39,4 +39,5 @@ tracing-subscriber = { workspace = true }
 [features]
 
 bt = ["openraft/bt"]
+runtime-stats = ["openraft/runtime-stats"]
 single-term-leader = ["openraft-memstore/single-term-leader"]

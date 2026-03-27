@@ -1,14 +1,14 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-#[cfg(feature = "runtime-stats")]
-use super::RuntimeStats;
 use crate::ChangeMembers;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::base::Batch;
 use crate::base::BoxOnce;
 use crate::core::raft_msg::external_command::ExternalCommand;
+#[cfg(feature = "runtime-stats")]
+use crate::core::runtime_stats::RuntimeStats;
 use crate::display_ext::DisplayBTreeMapDebugValueExt;
 use crate::errors::Infallible;
 use crate::errors::InitializeError;
@@ -25,6 +25,8 @@ use crate::raft::responder::core_responder::CoreResponder;
 use crate::raft::stream_append::StreamAppendResult;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::EntryPayloadOf;
+#[cfg(feature = "runtime-stats")]
+use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::SnapshotOf;
@@ -84,6 +86,8 @@ where C: RaftTypeConfig
         payloads: Batch<EntryPayloadOf<C>>,
         responders: Batch<Option<CoreResponder<C>>>,
         expected_leader: Option<CommittedLeaderIdOf<C>>,
+        #[cfg(feature = "runtime-stats")]
+        proposed_at: InstantOf<C>,
     },
 
     GetLinearizer {
@@ -130,7 +134,7 @@ where C: RaftTypeConfig
     /// Returns a copy of the current runtime stats.
     #[cfg(feature = "runtime-stats")]
     GetRuntimeStats {
-        tx: OneshotSenderOf<C, RuntimeStats>,
+        tx: OneshotSenderOf<C, RuntimeStats<C>>,
     },
 }
 
