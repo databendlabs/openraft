@@ -6,7 +6,6 @@
 /// moves through the Raft pipeline.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(usize)]
-#[allow(dead_code)]
 pub enum Stage {
     /// When the application called `client_write()`.
     Proposed = 0,
