@@ -18,7 +18,6 @@ pub struct LogStageHistograms {
 }
 
 impl LogStageHistograms {
-    #[allow(dead_code)]
     pub(crate) fn new() -> Self {
         Self {
             proposed_to_received: Histogram::new(),

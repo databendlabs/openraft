@@ -10,9 +10,9 @@ use tabled::settings::Style;
 use tabled::settings::object::Columns;
 
 use crate::core::NotificationName;
-#[cfg(doc)]
-use crate::core::RuntimeStats;
 use crate::core::raft_msg::RaftMsgName;
+#[cfg(doc)]
+use crate::core::runtime_stats::RuntimeStats;
 use crate::core::runtime_stats::display_mode::DisplayMode;
 use crate::engine::CommandName;
 use crate::raft_state::PercentileStats;

@@ -5,6 +5,8 @@ use super::LogStageHistograms;
 use crate::Instant;
 use crate::base::multi_range_map::MultiRangeMap;
 use crate::base::multi_range_map::SegmentIter;
+#[cfg(doc)]
+use crate::base::range_map::RangeMap;
 use crate::core::stage::Stage;
 use crate::display_ext::DisplayInstantExt;
 
