@@ -4,4 +4,4 @@ mod lifecycle_latency;
 mod lifecycle_latency_test;
 
 pub use self::histograms::LogStageHistograms;
-pub(crate) use self::lifecycle_latency::LogStages;
+pub use self::lifecycle_latency::LogStages;

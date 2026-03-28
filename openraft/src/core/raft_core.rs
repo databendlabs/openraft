@@ -26,7 +26,6 @@ use crate::async_runtime::watch::WatchSender;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::ClientResponderQueue;
-use crate::core::RuntimeStats;
 use crate::core::ServerState;
 use crate::core::SharedReplicateBatch;
 use crate::core::balancer::Balancer;
@@ -42,6 +41,7 @@ use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::ResultSender;
 use crate::core::raft_msg::VoteTx;
 use crate::core::raft_msg::external_command::ExternalCommand;
+use crate::core::runtime_stats::RuntimeStats;
 use crate::core::sm;
 use crate::core::stage::Stage;
 use crate::display_ext::DisplayInstantExt;
@@ -1760,7 +1760,7 @@ where
                 // ---
                 //
                 // Stepping down only when the response of the second change-membership is sent.
-                // Otherwise the Sender to the caller will be dropped before sending back the
+                // Otherwise, the Sender to the caller will be dropped before sending back the
                 // response.
 
                 // TODO: temp solution: Manually wait until the second membership log being applied to state

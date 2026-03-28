@@ -1,14 +1,14 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-#[cfg(feature = "runtime-stats")]
-use super::RuntimeStats;
 use crate::ChangeMembers;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::base::Batch;
 use crate::base::BoxOnce;
 use crate::core::raft_msg::external_command::ExternalCommand;
+#[cfg(feature = "runtime-stats")]
+use crate::core::runtime_stats::RuntimeStats;
 use crate::display_ext::DisplayBTreeMapDebugValueExt;
 use crate::errors::Infallible;
 use crate::errors::InitializeError;

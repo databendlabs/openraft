@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::core::log_stage::lifecycle_latency::LogStages;
+use crate::core::runtime_stats::log_stage::LogStages;
 use crate::core::stage::Stage;
 use crate::engine::testing::UTConfig;
 use crate::type_config::TypeConfigExt;

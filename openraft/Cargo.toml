@@ -26,7 +26,7 @@ chrono          = { workspace = true }
 clap            = { workspace = true }
 derive_more     = { workspace = true }
 futures-util    = { workspace = true }
-itertools       = { workspace = true, optional = true }
+itertools       = { workspace = true }
 maplit          = { workspace = true }
 rand            = { workspace = true }
 serde           = { workspace = true, optional = true }
@@ -116,7 +116,7 @@ tracing-log = [ "tracing/log" ]
 # and add `Raft::runtime_stats()` method for accessing runtime statistics.
 # Also tracks per-entry latency across log stages (proposed, received, appended,
 # persisted, committed, applied).
-runtime-stats = ["dep:tabled", "dep:itertools"]
+runtime-stats = ["dep:tabled"]
 
 # Include `LogIdList` in `RaftMetrics` and `RaftDataMetrics`.
 # This is primarily used for deterministic testing.
