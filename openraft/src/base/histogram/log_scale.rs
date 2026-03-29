@@ -66,22 +66,34 @@ impl<const WIDTH: usize> LogScale<WIDTH> {
     ///    - Extract offset within that group using the bits after MSB
     ///    - Bucket index = base of this group + offset within group
     pub fn calculate_bucket_uncached(value: u64) -> usize {
-        if value < LogScaleConfig::<WIDTH>::GROUP_SIZE as u64 {
+        let g_size = LogScaleConfig::<WIDTH>::GROUP_SIZE;
+
+        if value < g_size as u64 {
             return value as usize;
         }
+        // 000...00 1xxxx 0000...0000
+        //          ----- -----------
+        //          Group group_index
+        //          -----------------
+        //          bits_upto_msb
+        //
+        // xxxx: offset_in_group
         let bits_upto_msb = (u64::BITS - value.leading_zeros()) as usize;
         let group_index = bits_upto_msb - LogScaleConfig::<WIDTH>::WIDTH;
         let offset_in_group = ((value >> group_index) & LogScaleConfig::<WIDTH>::MASK) as usize;
-        LogScaleConfig::<WIDTH>::GROUP_SIZE + group_index * LogScaleConfig::<WIDTH>::GROUP_SIZE + offset_in_group
+
+        g_size + group_index * g_size + offset_in_group
     }
 
     /// Computes the minimum value for a bucket index.
     fn compute_bucket_min_value(bucket: usize) -> u64 {
-        if bucket < LogScaleConfig::<WIDTH>::GROUP_SIZE {
+        let g_size = LogScaleConfig::<WIDTH>::GROUP_SIZE;
+
+        if bucket < g_size {
             return bucket as u64;
         }
-        let group_index = (bucket - LogScaleConfig::<WIDTH>::GROUP_SIZE) / LogScaleConfig::<WIDTH>::GROUP_SIZE;
-        let offset_in_group = (bucket - LogScaleConfig::<WIDTH>::GROUP_SIZE) % LogScaleConfig::<WIDTH>::GROUP_SIZE;
+        let group_index = (bucket - g_size) / g_size;
+        let offset_in_group = (bucket - g_size) % g_size;
         ((offset_in_group | LogScaleConfig::<WIDTH>::GROUP_MSB_BIT) << group_index) as u64
     }
 }
