@@ -1,9 +1,8 @@
-use std::collections::VecDeque;
-
 use super::log_scale::LOG_SCALE;
 use super::log_scale::LogScale3;
 use super::percentile_stats::PercentileStats;
 use super::slot::Slot;
+use super::slot_queue::SlotQueue;
 
 /// A histogram for tracking the distribution of u64 values using logarithmic bucketing.
 ///
@@ -63,10 +62,10 @@ pub struct Histogram<T = ()> {
     /// Log scale for value-to-bucket mapping.
     log_scale: &'static LogScale3,
 
-    /// Slots containing bucket counts and metadata. Uses VecDeque for O(1) front removal.
+    /// Slots containing bucket counts and metadata.
     /// All slots in the deque are active. First slot (index 0) is oldest, last is current.
-    /// The VecDeque's capacity determines the maximum number of slots.
-    slots: VecDeque<Slot<T>>,
+    /// The logical slot capacity is tracked separately from the VecDeque allocation size.
+    slots: SlotQueue<T>,
 
     /// Aggregate bucket counts across all active slots.
     /// Maintained incrementally: +1 on record(), -slot on eviction.
@@ -115,12 +114,9 @@ impl<T> Histogram<T> {
 
         let num_buckets = log_scale.num_buckets();
 
-        let mut slots = VecDeque::with_capacity(capacity);
-        slots.push_back(Slot::new(num_buckets));
-
         Self {
             log_scale,
-            slots,
+            slots: SlotQueue::new(capacity, num_buckets),
             aggregate_buckets: vec![0; num_buckets],
         }
     }
@@ -539,6 +535,23 @@ mod tests {
         assert_eq!(hist.slot(0).unwrap().data, Some(7));
         assert_eq!(hist.slot(1).unwrap().data, Some(8));
         assert_eq!(hist.slot(2).unwrap().data, Some(9));
+    }
+
+    #[test]
+    fn test_advance_uses_logical_capacity_instead_of_vecdeque_capacity() {
+        let mut hist: Histogram<u64> = Histogram::with_slots(2);
+
+        hist.slots.reserve(16);
+
+        assert!(std::ops::Deref::deref(&hist.slots).capacity() > hist.capacity());
+
+        hist.advance(1);
+        assert_eq!(hist.active_slot_count(), 2);
+
+        hist.advance(2);
+        assert_eq!(hist.active_slot_count(), 2);
+        assert_eq!(hist.slot(0).unwrap().data, Some(1));
+        assert_eq!(hist.current_slot().data, Some(2));
     }
 
     #[test]
