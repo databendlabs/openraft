@@ -1,9 +1,9 @@
 use std::fmt;
 
+use display_more::DisplayOptionExt;
 use openraft_macros::since;
 
 use crate::Membership;
-use crate::display_ext::DisplayOption;
 use crate::log_id::LogId;
 use crate::node::Node;
 use crate::node::NodeId;
@@ -92,6 +92,6 @@ where
     N: Node,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{{log_id:{}, {}}}", DisplayOption(&self.log_id), self.membership)
+        write!(f, "{{log_id:{}, {}}}", self.log_id.display(), self.membership)
     }
 }

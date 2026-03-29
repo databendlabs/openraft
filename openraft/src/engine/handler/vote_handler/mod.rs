@@ -1,10 +1,11 @@
 use std::fmt::Debug;
 use std::time::Duration;
 
+use display_more::DisplayOptionExt;
+
 use crate::OptionalSend;
 use crate::RaftState;
 use crate::RaftTypeConfig;
-use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::display_instant::DisplayInstantExt;
 use crate::engine::Command;
 use crate::engine::Condition;

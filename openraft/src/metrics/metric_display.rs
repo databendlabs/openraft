@@ -1,8 +1,9 @@
 use std::fmt;
 use std::fmt::Formatter;
 
+use display_more::DisplayOptionExt;
+
 use crate::RaftTypeConfig;
-use crate::display_ext::DisplayOption;
 use crate::metrics::Metric;
 
 /// Display the value of a metric.
@@ -19,12 +20,12 @@ where C: RaftTypeConfig
         match self.metric {
             Metric::Term(v) => write!(f, "{}", v),
             Metric::Vote(v) => write!(f, "{}", v),
-            Metric::LastLogIndex(v) => write!(f, "{}", DisplayOption(v)),
-            Metric::Committed(v) => write!(f, "{}", DisplayOption(v)),
-            Metric::Applied(v) => write!(f, "{}", DisplayOption(v)),
-            Metric::AppliedIndex(v) => write!(f, "{}", DisplayOption(v)),
-            Metric::Snapshot(v) => write!(f, "{}", DisplayOption(v)),
-            Metric::Purged(v) => write!(f, "{}", DisplayOption(v)),
+            Metric::LastLogIndex(v) => write!(f, "{}", v.display()),
+            Metric::Committed(v) => write!(f, "{}", v.display()),
+            Metric::Applied(v) => write!(f, "{}", v.display()),
+            Metric::AppliedIndex(v) => write!(f, "{}", v.display()),
+            Metric::Snapshot(v) => write!(f, "{}", v.display()),
+            Metric::Purged(v) => write!(f, "{}", v.display()),
         }
     }
 }

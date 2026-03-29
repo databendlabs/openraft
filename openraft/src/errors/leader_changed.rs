@@ -1,8 +1,9 @@
 use std::fmt;
 use std::fmt::Formatter;
 
+use display_more::DisplayOptionExt;
+
 use crate::RaftTypeConfig;
-use crate::display_ext::DisplayOptionExt;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::VoteOf;
 

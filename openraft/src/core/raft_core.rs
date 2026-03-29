@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
+use display_more::DisplayOptionExt;
 use futures_util::FutureExt;
 use futures_util::StreamExt;
 use futures_util::TryFutureExt;
@@ -45,7 +46,6 @@ use crate::core::runtime_stats::RuntimeStats;
 use crate::core::sm;
 use crate::core::stage::Stage;
 use crate::display_ext::DisplayInstantExt;
-use crate::display_ext::DisplayOptionExt;
 use crate::engine::Command;
 use crate::engine::Condition;
 use crate::engine::Engine;

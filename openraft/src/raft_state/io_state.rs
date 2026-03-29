@@ -1,12 +1,12 @@
 use std::error::Error;
 use std::fmt;
 
+use display_more::DisplayOptionExt;
 use validit::Valid;
 use validit::Validate;
 use validit::less_equal;
 
 use crate::RaftTypeConfig;
-use crate::display_ext::DisplayOptionExt;
 use crate::raft_state::IOId;
 use crate::raft_state::io_state::io_progress::IOProgress;
 use crate::raft_state::io_state::log_io_id::LogIOId;

@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use display_more::DisplayOptionExt;
 use futures_util::FutureExt;
 
 use crate::RaftNetworkFactory;
@@ -9,7 +10,6 @@ use crate::async_runtime::MpscSender;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::core::notification::Notification;
 use crate::core::sm::handle::SnapshotReader;
-use crate::display_ext::DisplayOptionExt;
 use crate::errors::HigherVote;
 use crate::errors::RPCError;
 use crate::errors::ReplicationClosed;

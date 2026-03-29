@@ -1,11 +1,12 @@
 use std::fmt;
 use std::sync::Arc;
 
+use display_more::DisplayOptionExt;
+
 use crate::Instant;
 use crate::RaftTypeConfig;
 use crate::core::ServerState;
 use crate::display_ext::DisplayBTreeMapOptValue;
-use crate::display_ext::DisplayOption;
 use crate::errors::Fatal;
 use crate::metrics::HeartbeatMetrics;
 use crate::metrics::ReplicationMetrics;
@@ -196,10 +197,10 @@ where C: RaftTypeConfig
             self.state,
             self.current_term,
             self.vote,
-            DisplayOption(&self.last_log_index),
-            DisplayOption(&self.committed),
-            DisplayOption(&self.last_applied),
-            DisplayOption(&self.current_leader),
+            self.last_log_index.display(),
+            self.committed.display(),
+            self.last_applied.display(),
+            self.current_leader.display(),
         )?;
 
         if let Some(quorum_acked) = &self.last_quorum_acked {
@@ -218,10 +219,10 @@ where C: RaftTypeConfig
             f,
             "membership:{}, snapshot:{}, purged:{}, replication:{{{}}}, heartbeat:{{{}}}",
             self.membership_config,
-            DisplayOption(&self.snapshot),
-            DisplayOption(&self.purged),
-            DisplayOption(&self.replication.as_ref().map(DisplayBTreeMapOptValue)),
-            DisplayOption(&self.heartbeat.as_ref().map(DisplayBTreeMapOptValue)),
+            self.snapshot.display(),
+            self.purged.display(),
+            self.replication.as_ref().map(DisplayBTreeMapOptValue).display(),
+            self.heartbeat.as_ref().map(DisplayBTreeMapOptValue).display(),
         )?;
 
         write!(f, "}}")?;
@@ -342,11 +343,11 @@ where C: RaftTypeConfig
         write!(
             f,
             "last_log:{}, committed:{}, last_applied:{}, snapshot:{}, purged:{}",
-            DisplayOption(&self.last_log),
-            DisplayOption(&self.committed),
-            DisplayOption(&self.last_applied),
-            DisplayOption(&self.snapshot),
-            DisplayOption(&self.purged),
+            self.last_log.display(),
+            self.committed.display(),
+            self.last_applied.display(),
+            self.snapshot.display(),
+            self.purged.display(),
         )?;
 
         if let Some(quorum_acked) = &self.last_quorum_acked {
@@ -363,8 +364,8 @@ where C: RaftTypeConfig
         write!(
             f,
             ", replication:{{{}}}, heartbeat:{{{}}}",
-            DisplayOption(&self.replication.as_ref().map(DisplayBTreeMapOptValue)),
-            DisplayOption(&self.heartbeat.as_ref().map(DisplayBTreeMapOptValue)),
+            self.replication.as_ref().map(DisplayBTreeMapOptValue).display(),
+            self.heartbeat.as_ref().map(DisplayBTreeMapOptValue).display(),
         )?;
 
         write!(f, "}}")?;
@@ -401,7 +402,7 @@ where C: RaftTypeConfig
             self.id,
             self.state,
             self.vote,
-            DisplayOption(&self.current_leader),
+            self.current_leader.display(),
             self.membership_config,
         )?;
 

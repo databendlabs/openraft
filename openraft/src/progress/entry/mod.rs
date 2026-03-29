@@ -6,12 +6,12 @@ use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
 
+use display_more::DisplayOptionExt;
 use validit::Validate;
 
 use crate::LogIdOptionExt;
 use crate::RaftState;
 use crate::RaftTypeConfig;
-use crate::display_ext::DisplayOptionExt;
 use crate::engine::EngineConfig;
 use crate::progress::entry::update::Updater;
 use crate::progress::inflight::Inflight;

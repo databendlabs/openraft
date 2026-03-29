@@ -1,9 +1,10 @@
 use std::fmt;
 
+use display_more::DisplayOptionExt;
+
 use crate::RaftTypeConfig;
 use crate::base::shared_id_generator::SharedIdGenerator;
 use crate::display_ext::DisplayInstantExt;
-use crate::display_ext::DisplayOptionExt;
 use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::progress::Progress;
 use crate::progress::VecProgress;

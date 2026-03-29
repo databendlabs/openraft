@@ -1,7 +1,8 @@
 use std::fmt;
 
+use display_more::DisplayOptionExt;
+
 use crate::RaftTypeConfig;
-use crate::display_ext::DisplayOptionExt;
 use crate::raft::StreamAppendError;
 use crate::raft::stream_append::StreamAppendResult;
 use crate::type_config::alias::LogIdOf;

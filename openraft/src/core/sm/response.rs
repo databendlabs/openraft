@@ -1,11 +1,12 @@
 use std::fmt;
 use std::fmt::Formatter;
 
+use display_more::DisplayOptionExt;
+use display_more::DisplayResultExt;
+
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::core::ApplyResult;
-use crate::display_ext::DisplayOptionExt;
-use crate::display_ext::display_result::DisplayResultExt;
 use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::type_config::alias::SnapshotMetaOf;
 

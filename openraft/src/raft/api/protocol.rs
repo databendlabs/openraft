@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use display_more::DisplayOptionExt;
 use futures_util::Stream;
 use openraft_macros::since;
 
@@ -11,7 +12,6 @@ use crate::RaftMetrics;
 use crate::RaftTypeConfig;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::external_command::ExternalCommand;
-use crate::display_ext::DisplayOptionExt;
 use crate::errors::Fatal;
 #[cfg(doc)]
 use crate::errors::into_raft_result::IntoRaftResult;

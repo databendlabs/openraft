@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use display_more::DisplayOptionExt;
 use validit::Valid;
 
 use crate::LogIdOptionExt;
@@ -8,7 +9,6 @@ use crate::RaftTypeConfig;
 use crate::core::ServerState;
 use crate::core::raft_msg::AppendEntriesTx;
 use crate::core::sm;
-use crate::display_ext::DisplayOptionExt;
 use crate::engine::Command;
 use crate::engine::Condition;
 use crate::engine::EngineOutput;

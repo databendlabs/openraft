@@ -1,10 +1,10 @@
 use std::fmt;
 
+use display_more::DisplayOptionExt;
 use openraft_macros::since;
 
 use crate::SnapshotId;
 use crate::StoredMembership;
-use crate::display_ext::DisplayOption;
 use crate::log_id::LogId;
 use crate::node::Node;
 use crate::node::NodeId;
@@ -66,7 +66,7 @@ where
             f,
             "{{snapshot_id: {}, last_log:{}, last_membership: {}}}",
             self.snapshot_id,
-            DisplayOption(&self.last_log_id),
+            self.last_log_id.display(),
             self.last_membership
         )
     }

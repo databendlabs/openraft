@@ -2,6 +2,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
 
+use display_more::DisplayOptionExt;
 use openraft_macros::since;
 use validit::Valid;
 
@@ -12,7 +13,6 @@ use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::base::shared_id_generator::SharedIdGenerator;
-use crate::display_ext::DisplayOptionExt;
 use crate::engine::LogIdList;
 use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;

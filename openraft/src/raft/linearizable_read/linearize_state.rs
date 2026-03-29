@@ -1,9 +1,9 @@
 use std::fmt;
 
+use display_more::DisplayOptionExt;
 use openraft_macros::since;
 
 use crate::RaftTypeConfig;
-use crate::display_ext::DisplayOptionExt;
 use crate::type_config::alias::LogIdOf;
 
 /// Represents the state after awaiting the applied log entries for a linearizable read.

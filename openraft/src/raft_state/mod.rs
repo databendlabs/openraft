@@ -32,12 +32,12 @@ mod tests {
     mod validate_test;
 }
 
+use display_more::DisplayOptionExt;
 pub(crate) use log_state_reader::LogStateReader;
 pub use membership_state::MembershipState;
 pub(crate) use vote_state_reader::VoteStateReader;
 
 use crate::base::shared_id_generator::SharedIdGenerator;
-use crate::display_ext::DisplayOptionExt;
 use crate::entry::RaftEntry;
 use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::progress::inflight_id::InflightId;

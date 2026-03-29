@@ -1,7 +1,8 @@
 use std::fmt;
 
+use display_more::DisplayOptionExt;
+
 use crate::RaftTypeConfig;
-use crate::display_ext::DisplayOptionExt;
 use crate::log_id_range::LogIdRange;
 use crate::progress::inflight_id::InflightId;
 use crate::replication::payload::Payload;
