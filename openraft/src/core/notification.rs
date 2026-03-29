@@ -1,11 +1,12 @@
 use std::fmt;
 
+use display_more::DisplayOptionExt;
+
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::core::NotificationName;
 use crate::core::sm;
 use crate::display_ext::DisplayInstantExt;
-use crate::display_ext::display_option::DisplayOptionExt;
 use crate::progress::inflight_id::InflightId;
 use crate::progress::stream_id::StreamId;
 use crate::raft::VoteResponse;

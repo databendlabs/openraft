@@ -6,8 +6,9 @@ use std::fmt;
 use std::ops::Deref;
 use std::ops::DerefMut;
 
+use display_more::DisplayOptionExt;
+
 use crate::NodeId;
-use crate::display_ext::DisplayOptionExt;
 use crate::vote::LeaderIdCompare;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftTerm;

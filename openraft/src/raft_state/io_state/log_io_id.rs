@@ -1,7 +1,8 @@
 use std::fmt;
 
+use display_more::DisplayOptionExt;
+
 use crate::RaftTypeConfig;
-use crate::display_ext::DisplayOptionExt;
 use crate::raft_state::io_state::IOId;
 use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::LeaderIdOf;

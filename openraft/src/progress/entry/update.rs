@@ -1,6 +1,7 @@
+use display_more::DisplayOptionExt;
+
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
-use crate::display_ext::DisplayOptionExt;
 use crate::engine::EngineConfig;
 use crate::progress::Inflight;
 use crate::progress::entry::ProgressEntry;

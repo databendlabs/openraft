@@ -1,7 +1,8 @@
+use display_more::DisplayOptionExt;
+
 use crate::LogIdOptionExt;
 use crate::RaftState;
 use crate::RaftTypeConfig;
-use crate::display_ext::DisplayOptionExt;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;

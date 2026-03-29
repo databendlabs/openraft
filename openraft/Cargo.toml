@@ -26,6 +26,7 @@ byte-unit       = { workspace = true }
 chrono          = { workspace = true }
 clap            = { workspace = true }
 derive_more     = { workspace = true }
+display-more    = { workspace = true }
 futures-util    = { workspace = true }
 itertools       = { workspace = true }
 maplit          = { workspace = true }

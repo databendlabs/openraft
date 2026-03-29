@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use super::DisplayOption;
+use display_more::DisplayOptionExt;
 
 /// Implement `Display` for `BTreeMap<K, Option<V>>` if `K` and `V` are `Display`.
 ///
@@ -15,7 +15,7 @@ impl<K: fmt::Display, V: fmt::Display> fmt::Display for DisplayBTreeMapOptValue<
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let len = self.0.len();
         for (idx, (key, value)) in self.0.iter().enumerate() {
-            write!(f, "{}:{}", key, DisplayOption(value))?;
+            write!(f, "{}:{}", key, value.display())?;
             if idx + 1 != len {
                 write!(f, ",")?;
             }

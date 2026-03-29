@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
+use display_more::DisplayOptionExt;
+use display_more::DisplaySliceExt;
+
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::core::sm;
-use crate::display_ext::DisplayOption;
-use crate::display_ext::DisplayOptionExt;
-use crate::display_ext::DisplaySliceExt;
 use crate::engine::Command;
 use crate::engine::Condition;
 use crate::engine::EngineConfig;
@@ -121,7 +121,7 @@ where C: RaftTypeConfig
             && !self.state.has_log_id(prev)
         {
             let local = self.state.get_log_id(prev.index());
-            tracing::debug!("prev_log_id mismatch, local: {}", DisplayOption(&local));
+            tracing::debug!("prev_log_id mismatch, local: {}", local.display());
 
             self.truncate_logs(prev.index());
             return Err(RejectAppendEntries::ConflictingLogId(ConflictingLogId {

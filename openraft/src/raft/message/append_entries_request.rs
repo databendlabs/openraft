@@ -1,8 +1,9 @@
 use std::fmt;
 
+use display_more::DisplayOptionExt;
+use display_more::DisplaySliceExt;
+
 use crate::RaftTypeConfig;
-use crate::display_ext::DisplayOptionExt;
-use crate::display_ext::DisplaySlice;
 use crate::entry::RaftEntry;
 use crate::log_id_range::LogIdRange;
 use crate::type_config::alias::LogIdOf;
@@ -55,10 +56,7 @@ where C: RaftTypeConfig
             self.vote,
             self.prev_log_id.display(),
             self.leader_commit.display(),
-            DisplaySlice {
-                slice: self.entries.as_slice(),
-                max: 5
-            }
+            self.entries.as_slice().display()
         )
     }
 }

@@ -1,8 +1,9 @@
 use std::fmt;
 
+use display_more::DisplayOptionExt;
+
 use crate::RaftTypeConfig;
 use crate::Vote;
-use crate::display_ext::display_option::DisplayOptionExt;
 use crate::type_config::alias::LogIdOf;
 
 /// State of the most recently flushed log I/O operation.

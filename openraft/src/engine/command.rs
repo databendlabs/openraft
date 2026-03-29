@@ -1,14 +1,15 @@
 use std::fmt;
 use std::fmt::Debug;
 
+use display_more::DisplayOptionExt;
+use display_more::DisplayResultExt;
+use display_more::DisplaySliceExt;
+
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::async_runtime::OneshotSender;
 use crate::base::batch::Batch;
 use crate::core::sm;
-use crate::display_ext::DisplayOptionExt;
-use crate::display_ext::DisplayResultExt;
-use crate::display_ext::DisplaySliceExt;
 use crate::engine::CommandKind;
 use crate::engine::CommandName;
 use crate::engine::replication_progress::TargetProgress;

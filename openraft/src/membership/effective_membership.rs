@@ -3,11 +3,11 @@ use std::fmt;
 use std::fmt::Debug;
 use std::sync::Arc;
 
+use display_more::DisplayOptionExt;
 use openraft_macros::since;
 
 use crate::Membership;
 use crate::StoredMembership;
-use crate::display_ext::DisplayOptionExt;
 use crate::log_id::LogId;
 use crate::log_id::raft_log_id::RaftLogId;
 use crate::log_id::raft_log_id_ext::RaftLogIdExt;

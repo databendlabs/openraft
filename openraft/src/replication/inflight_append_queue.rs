@@ -2,8 +2,9 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use display_more::DisplayOptionExt;
+
 use crate::RaftTypeConfig;
-use crate::display_ext::DisplayOptionExt;
 use crate::replication::inflight_append::InflightAppend;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;

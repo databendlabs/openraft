@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 
+use display_more::DisplayResultExt;
 use maplit::btreemap;
 use openraft_macros::since;
 
@@ -10,8 +11,6 @@ use crate::RaftMetrics;
 use crate::RaftTypeConfig;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::replication_lag;
-use crate::display_ext::DisplayResult;
-use crate::display_ext::DisplayResultExt;
 use crate::errors::Fatal;
 use crate::errors::InitializeError;
 use crate::impls::ProgressResponder;
@@ -182,7 +181,7 @@ where C: RaftTypeConfig
 
         tracing::info!(
             "waiting for replication to new learner: wait_res: {}",
-            DisplayResult(&wait_res)
+            wait_res.display()
         );
 
         Ok(Ok(resp))

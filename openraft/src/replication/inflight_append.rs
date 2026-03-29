@@ -1,7 +1,8 @@
 use std::fmt;
 
+use display_more::DisplayOptionExt;
+
 use crate::RaftTypeConfig;
-use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::display_instant::DisplayInstantExt;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::InstantOf;

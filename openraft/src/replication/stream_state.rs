@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 
+use display_more::DisplayOptionExt;
 use futures_util::FutureExt;
 
 use crate::LogIdOptionExt;
@@ -11,7 +12,6 @@ use crate::StorageError;
 use crate::async_runtime::MpscSender;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::core::notification::Notification;
-use crate::display_ext::display_option::DisplayOptionExt;
 use crate::entry::RaftEntry;
 use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::errors::StorageIOResult;

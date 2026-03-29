@@ -1,11 +1,11 @@
 use std::fmt;
 use std::fmt::Debug;
 
+use display_more::DisplayOptionExt;
 use openraft_macros::since;
 
 use crate::Membership;
 use crate::RaftTypeConfig;
-use crate::display_ext::DisplayOptionExt;
 use crate::errors::ClientWriteError;
 use crate::type_config::alias::LogIdOf;
 

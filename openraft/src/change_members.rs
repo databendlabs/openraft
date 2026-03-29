@@ -7,11 +7,11 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fmt;
 
+use display_more::DisplaySliceExt;
 use openraft_macros::since;
 
 use crate::display_ext::DisplayBTreeMapDebugValueExt;
 use crate::display_ext::DisplayBTreeSetExt;
-use crate::display_ext::DisplaySlice;
 use crate::node::Node;
 use crate::node::NodeId;
 
@@ -127,10 +127,7 @@ where
                 write!(f, "ReplaceAllNodes({})", nodes.display())
             }
             ChangeMembers::Batch(changes) => {
-                write!(f, "Batch({})", DisplaySlice {
-                    slice: changes.as_slice(),
-                    max: 1024
-                })
+                write!(f, "Batch({})", changes.as_slice().display_n(1024))
             }
         }
     }

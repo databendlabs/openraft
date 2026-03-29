@@ -1,10 +1,9 @@
 use std::error::Error;
 use std::fmt;
 
+use display_more::DisplayOptionExt;
 use validit::Validate;
 use validit::less_equal;
-
-use crate::display_ext::DisplayOptionExt;
 
 /// Tracks the progress of I/O operations through three stages: accepted, submitted, and flushed.
 ///

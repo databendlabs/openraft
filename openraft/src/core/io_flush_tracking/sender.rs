@@ -1,8 +1,9 @@
+use display_more::DisplayOptionExt;
+
 use crate::RaftTypeConfig;
 use crate::Vote;
 use crate::async_runtime::watch::WatchSender;
 use crate::core::io_flush_tracking::FlushPoint;
-use crate::display_ext::display_option::DisplayOptionExt;
 use crate::raft_state::IOId;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::WatchSenderOf;

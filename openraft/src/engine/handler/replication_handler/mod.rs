@@ -1,11 +1,12 @@
+use display_more::DisplayOptionExt;
+use display_more::DisplayResultExt;
+
 use crate::LogIdOptionExt;
 use crate::Membership;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::ServerState;
 use crate::display_ext::DisplayInstantExt;
-use crate::display_ext::DisplayOptionExt;
-use crate::display_ext::DisplayResultExt;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;

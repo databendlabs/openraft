@@ -19,6 +19,7 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
+use display_more::DisplayOptionExt;
 use futures_util::FutureExt;
 use futures_util::StreamExt;
 use payload::Payload;
@@ -35,7 +36,6 @@ use crate::async_runtime::Mutex;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::base::BoxStream;
 use crate::core::notification::Notification;
-use crate::display_ext::DisplayOptionExt;
 use crate::display_ext::display_instant::DisplayInstantExt;
 use crate::errors::RPCError;
 use crate::errors::ReplicationClosed;
