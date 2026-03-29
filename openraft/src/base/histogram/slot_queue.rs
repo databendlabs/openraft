@@ -10,21 +10,21 @@ use super::slot::Slot;
 /// allocation capacity, which may grow beyond the requested value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SlotQueue<T> {
-    capacity: usize,
+    slot_limit: usize,
     slots: VecDeque<Slot<T>>,
 }
 
 impl<T> SlotQueue<T> {
-    pub(crate) fn new(capacity: usize, num_buckets: usize) -> Self {
-        let mut slots = VecDeque::with_capacity(capacity);
+    pub(crate) fn new(slot_limit: usize, num_buckets: usize) -> Self {
+        let mut slots = VecDeque::with_capacity(slot_limit);
         slots.push_back(Slot::new(num_buckets));
 
-        Self { capacity, slots }
+        Self { slot_limit, slots }
     }
 
     #[inline]
-    pub(crate) fn capacity(&self) -> usize {
-        self.capacity
+    pub(crate) fn slot_limit(&self) -> usize {
+        self.slot_limit
     }
 }
 
@@ -49,14 +49,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_capacity_is_stable_when_vecdeque_reserves_more() {
+    fn test_slot_limit_is_stable_when_vecdeque_reserves_more() {
         let mut slots: SlotQueue<()> = SlotQueue::new(3, 4);
 
-        assert_eq!(slots.capacity(), 3);
+        assert_eq!(slots.slot_limit(), 3);
 
         slots.reserve(16);
 
-        assert!(Deref::deref(&slots).capacity() > slots.capacity());
-        assert_eq!(slots.capacity(), 3);
+        assert!(Deref::deref(&slots).capacity() > slots.slot_limit());
+        assert_eq!(slots.slot_limit(), 3);
     }
 }

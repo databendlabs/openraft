@@ -64,7 +64,7 @@ pub struct Histogram<T = ()> {
 
     /// Slots containing bucket counts and metadata.
     /// All slots in the deque are active. First slot (index 0) is oldest, last is current.
-    /// The logical slot capacity is tracked separately from the VecDeque allocation size.
+    /// The logical slot limit is tracked separately from the VecDeque allocation size.
     slots: SlotQueue<T>,
 
     /// Aggregate bucket counts across all active slots.
@@ -86,37 +86,37 @@ impl<T> Histogram<T> {
         Self::with_slots(1)
     }
 
-    /// Creates a new histogram with the specified slot capacity.
+    /// Creates a new histogram with the specified slot limit.
     ///
     /// # Arguments
     ///
-    /// * `capacity` - Maximum number of slots.
+    /// * `slot_limit` - Maximum number of active slots.
     ///
     /// # Panics
     ///
-    /// Panics if `capacity` is 0.
-    pub fn with_slots(capacity: usize) -> Self {
-        Self::with_log_scale(&LOG_SCALE, capacity)
+    /// Panics if `slot_limit` is 0.
+    pub fn with_slots(slot_limit: usize) -> Self {
+        Self::with_log_scale(&LOG_SCALE, slot_limit)
     }
 
-    /// Creates a new histogram with custom log scale and slot capacity.
+    /// Creates a new histogram with custom log scale and slot limit.
     ///
     /// # Arguments
     ///
     /// * `log_scale` - Log scale for value-to-bucket mapping.
-    /// * `capacity` - Maximum number of slots.
+    /// * `slot_limit` - Maximum number of active slots.
     ///
     /// # Panics
     ///
-    /// Panics if `capacity` is 0.
-    pub fn with_log_scale(log_scale: &'static LogScale3, capacity: usize) -> Self {
-        assert!(capacity > 0, "capacity must be at least 1");
+    /// Panics if `slot_limit` is 0.
+    pub fn with_log_scale(log_scale: &'static LogScale3, slot_limit: usize) -> Self {
+        assert!(slot_limit > 0, "slot_limit must be at least 1");
 
         let num_buckets = log_scale.num_buckets();
 
         Self {
             log_scale,
-            slots: SlotQueue::new(capacity, num_buckets),
+            slots: SlotQueue::new(slot_limit, num_buckets),
             aggregate_buckets: vec![0; num_buckets],
         }
     }
@@ -133,16 +133,16 @@ impl<T> Histogram<T> {
         self.aggregate_buckets[bucket_index] += count;
     }
 
-    /// Advances to a new slot, evicting the oldest if at capacity.
+    /// Advances to a new slot, evicting the oldest if the slot limit is reached.
     ///
     /// Returns the number of active slots after advancing.
     ///
     /// Logic:
-    /// 1. If at capacity, remove the oldest slot (front)
+    /// 1. If the slot limit is reached, remove the oldest slot (front)
     /// 2. Push a new slot to the back with the given data
     #[allow(dead_code)]
     pub fn advance(&mut self, data: T) -> usize {
-        if self.slots.len() == self.slots.capacity() {
+        if self.slots.len() == self.slots.slot_limit() {
             // Subtract evicted slot from aggregate
             let evicted = self.slots.pop_front().unwrap();
             for (i, &count) in evicted.buckets.iter().enumerate() {
@@ -164,11 +164,11 @@ impl<T> Histogram<T> {
         self.slots.len()
     }
 
-    /// Returns the slot capacity.
+    /// Returns the maximum number of active slots.
     #[allow(dead_code)]
     #[inline]
-    pub fn capacity(&self) -> usize {
-        self.slots.capacity()
+    pub fn slot_limit(&self) -> usize {
+        self.slots.slot_limit()
     }
 
     /// Returns a reference to the slot at the given index.
@@ -276,7 +276,7 @@ mod tests {
     #[test]
     fn test_histogram_default() {
         let hist: Histogram = Histogram::default();
-        assert_eq!(hist.capacity(), 1);
+        assert_eq!(hist.slot_limit(), 1);
         assert_eq!(hist.active_slot_count(), 1);
         assert_eq!(hist.total(), 0);
     }
@@ -448,9 +448,9 @@ mod tests {
     // Multi-slot tests
 
     #[test]
-    fn test_with_slots_creates_correct_capacity() {
+    fn test_with_slots_creates_correct_slot_limit() {
         let hist: Histogram<u64> = Histogram::with_slots(4);
-        assert_eq!(hist.capacity(), 4);
+        assert_eq!(hist.slot_limit(), 4);
         assert_eq!(hist.active_slot_count(), 1);
     }
 
@@ -514,20 +514,20 @@ mod tests {
     }
 
     #[test]
-    fn test_advance_capacity_stays_constant() {
+    fn test_advance_slot_limit_stays_constant() {
         let mut hist: Histogram<u64> = Histogram::with_slots(3);
-        assert_eq!(hist.capacity(), 3);
+        assert_eq!(hist.slot_limit(), 3);
 
         // Fill to capacity
         hist.advance(1);
         hist.advance(2);
         assert_eq!(hist.active_slot_count(), 3);
-        assert_eq!(hist.capacity(), 3);
+        assert_eq!(hist.slot_limit(), 3);
 
-        // Advance multiple times past capacity - capacity must not grow
+        // Advance multiple times past the slot limit; the limit must not grow.
         for i in 3..10 {
             hist.advance(i);
-            assert_eq!(hist.capacity(), 3, "capacity grew unexpectedly at iteration {}", i);
+            assert_eq!(hist.slot_limit(), 3, "slot limit grew unexpectedly at iteration {}", i);
             assert_eq!(hist.active_slot_count(), 3);
         }
 
@@ -538,12 +538,12 @@ mod tests {
     }
 
     #[test]
-    fn test_advance_uses_logical_capacity_instead_of_vecdeque_capacity() {
+    fn test_advance_uses_slot_limit_instead_of_vecdeque_capacity() {
         let mut hist: Histogram<u64> = Histogram::with_slots(2);
 
         hist.slots.reserve(16);
 
-        assert!(std::ops::Deref::deref(&hist.slots).capacity() > hist.capacity());
+        assert!(std::ops::Deref::deref(&hist.slots).capacity() > hist.slot_limit());
 
         hist.advance(1);
         assert_eq!(hist.active_slot_count(), 2);
@@ -596,7 +596,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "capacity must be at least 1")]
+    #[should_panic(expected = "slot_limit must be at least 1")]
     fn test_with_slots_zero_panics() {
         let _: Histogram = Histogram::with_slots(0);
     }
