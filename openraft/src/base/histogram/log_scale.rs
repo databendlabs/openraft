@@ -24,10 +24,16 @@ impl<const WIDTH: usize> LogScale<WIDTH> {
         let bucket_min_values: Vec<u64> =
             (0..LogScaleConfig::<WIDTH>::BUCKETS).map(Self::compute_bucket_min_value).collect();
 
-        // Build small_value_buckets cache
-        let small_value_buckets: Vec<u8> = (0..LogScaleConfig::<WIDTH>::SMALL_VALUE_CACHE_SIZE)
-            .map(|v| Self::calculate_bucket_uncached(v as u64) as u8)
-            .collect();
+        // Build small_value_buckets cache.
+        // Stop when the bucket index no longer fits in u8 to avoid truncation.
+        let mut small_value_buckets = Vec::with_capacity(LogScaleConfig::<WIDTH>::SMALL_VALUE_CACHE_SIZE);
+        for v in 0..LogScaleConfig::<WIDTH>::SMALL_VALUE_CACHE_SIZE {
+            let bucket = Self::calculate_bucket_uncached(v as u64);
+            let Ok(bucket) = u8::try_from(bucket) else {
+                break;
+            };
+            small_value_buckets.push(bucket);
+        }
 
         Self {
             bucket_min_values,
@@ -237,5 +243,20 @@ mod tests {
                 v
             );
         }
+    }
+
+    #[test]
+    fn test_new_reduces_small_value_cache_when_bucket_exceeds_u8() {
+        let log_scale = LogScale::<7>::new();
+
+        assert_eq!(log_scale.small_value_buckets.len(), 512);
+        assert_eq!(
+            log_scale.calculate_bucket(511),
+            LogScale::<7>::calculate_bucket_uncached(511)
+        );
+        assert_eq!(
+            log_scale.calculate_bucket(512),
+            LogScale::<7>::calculate_bucket_uncached(512)
+        );
     }
 }
