@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use crate::base::histogram::Histogram;
+use base2histogram::Histogram;
 
 /// A shared histogram for tracking replication batch sizes.
 ///

@@ -11,8 +11,9 @@
 //! println!("{}", stats.display());
 //! ```
 
-pub use crate::base::histogram::Histogram;
-pub use crate::base::histogram::PercentileStats;
+pub use base2histogram::Histogram;
+pub use base2histogram::PercentileStats;
+
 pub use crate::base::range_values::RangeValues;
 pub use crate::core::NotificationName;
 pub use crate::core::raft_msg::ExternalCommandName;

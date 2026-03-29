@@ -1,8 +1,9 @@
 use std::marker::PhantomData;
 
+use base2histogram::Histogram;
+
 use crate::Config;
 use crate::RaftTypeConfig;
-use crate::base::histogram::Histogram;
 use crate::core::NotificationName;
 use crate::core::raft_msg::RaftMsgName;
 use crate::core::runtime_stats::DisplayMode;

@@ -15,7 +15,7 @@ use crate::core::raft_msg::RaftMsgName;
 use crate::core::runtime_stats::RuntimeStats;
 use crate::core::runtime_stats::display_mode::DisplayMode;
 use crate::engine::CommandName;
-use crate::raft_state::PercentileStats;
+use base2histogram::PercentileStats;
 
 /// Precomputed display data for [`RuntimeStats`].
 ///

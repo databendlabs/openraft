@@ -23,9 +23,6 @@ pub(crate) use io_state::IOState;
 #[allow(unused)]
 pub(crate) use io_state::io_id::IOId;
 
-#[allow(unused)]
-pub(crate) use crate::base::histogram::PercentileStats;
-
 #[cfg(test)]
 mod tests {
     mod forward_to_leader_test;
