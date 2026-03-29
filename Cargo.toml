@@ -26,6 +26,7 @@ itertools          = { version = "0.14" }
 futures            = { version = "0.3" }
 futures-channel    = { version = "0.3" }
 futures-util       = { version = "0.3" }
+base2histogram     = { version = "0.1.1" }
 lazy_static        = { version = "1.4.0" }
 maplit             = { version = "1.0.2" }
 peel-off           = { version = "0.1.0" }

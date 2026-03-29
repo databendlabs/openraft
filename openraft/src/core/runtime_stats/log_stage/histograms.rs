@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::base::histogram::Histogram;
+use base2histogram::Histogram;
 
 /// Stage-to-stage duration histograms in microseconds.
 ///
