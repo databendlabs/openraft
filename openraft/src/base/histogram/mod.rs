@@ -4,6 +4,7 @@ mod log_scale;
 mod log_scale_config;
 mod percentile_stats;
 mod slot;
+mod slot_queue;
 
 pub use histogram::Histogram;
 #[allow(unused_imports)]
