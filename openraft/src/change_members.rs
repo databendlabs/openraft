@@ -7,11 +7,11 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fmt;
 
+use display_more::DisplayBTreeSetExt;
 use display_more::DisplaySliceExt;
 use openraft_macros::since;
 
 use crate::display_ext::DisplayBTreeMapDebugValueExt;
-use crate::display_ext::DisplayBTreeSetExt;
 use crate::node::Node;
 use crate::node::NodeId;
 
