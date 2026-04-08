@@ -39,7 +39,6 @@ use openraft::StorageError;
 use openraft::StorageIOError;
 use openraft::StoredMembership;
 use openraft::Vote;
-use rand::Rng;
 use rocksdb::ColumnFamily;
 use rocksdb::ColumnFamilyDescriptor;
 use rocksdb::Direction;
@@ -275,7 +274,7 @@ impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
         let last_membership = self.sm.last_membership.clone();
 
         // Generate a random snapshot index.
-        let snapshot_idx: u64 = rand::thread_rng().gen_range(0..1000);
+        let snapshot_idx: u64 = rand::random_range(0..1000);
 
         let snapshot_id = if let Some(last) = last_applied_log {
             format!("{}-{}-{}", last.leader_id, last.index, snapshot_idx)
