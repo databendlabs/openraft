@@ -1446,6 +1446,10 @@ where
         }
 
         if self.engine.state.membership_state.effective().voter_ids().count() == 1 {
+            if self.engine.candidate_ref().is_some() {
+                tracing::debug!("skip election, single voter already has an active election in progress");
+                return;
+            }
             tracing::debug!("this is the only voter, do election at once");
         } else {
             tracing::debug!("there are multiple voter, check election timeout");
