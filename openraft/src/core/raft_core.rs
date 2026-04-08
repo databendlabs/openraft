@@ -1888,6 +1888,10 @@ where
         }
 
         if self.engine.state.membership_state.effective().voter_ids().count() == 1 {
+            if self.engine.state.is_leading(&self.id) {
+                tracing::debug!("skip election, single voter already leading, election in progress");
+                return;
+            }
             tracing::debug!("single voter, elect immediately");
         } else {
             tracing::debug!("multiple voters, check election timeout");
