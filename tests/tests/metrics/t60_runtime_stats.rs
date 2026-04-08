@@ -127,5 +127,7 @@ async fn runtime_stats_log_stage_counts_batched_entries_per_entry() -> Result<()
     assert_eq!(after[4], log_stage_histograms.committed_to_applied.total());
     assert_eq!(after[5], log_stage_histograms.proposed_to_applied.total());
 
+    println!("{}", runtime_stats.display());
+
     Ok(())
 }

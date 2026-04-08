@@ -36,6 +36,7 @@ pub struct RuntimeStatsDisplay {
     pub(crate) command_counts: Vec<u64>,
     pub(crate) raft_msg_counts: Vec<u64>,
     pub(crate) notification_counts: Vec<u64>,
+    pub(crate) log_stage_percentiles: [(&'static str, PercentileStats); 6],
 }
 
 #[allow(dead_code)]
@@ -128,6 +129,19 @@ impl RuntimeStatsDisplay {
             }
         }
 
+        write!(f, "}}, log_stages(us): {{")?;
+
+        let mut first = true;
+        for (name, stats) in &self.log_stage_percentiles {
+            if stats.samples > 0 {
+                if !first {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{}: {}", name, stats)?;
+                first = false;
+            }
+        }
+
         write!(f, "}} }}")
     }
 
@@ -164,6 +178,17 @@ impl RuntimeStatsDisplay {
             let count = self.notification_counts[i];
             if count > 0 {
                 writeln!(f, "    {}: {}", name, count)?;
+            }
+        }
+
+        writeln!(f, "  log_stages(us):")?;
+        for (name, stats) in &self.log_stage_percentiles {
+            if stats.samples > 0 {
+                writeln!(
+                    f,
+                    "    {:>22}: n={} p50={} p90={} p99={} p99.9={}",
+                    name, stats.samples, stats.p50, stats.p90, stats.p99, stats.p99_9,
+                )?;
             }
         }
 
@@ -291,6 +316,34 @@ impl RuntimeStatsDisplay {
             let mut table = builder.build();
             table.with(Style::rounded());
             table.modify(Columns::last(), Alignment::right());
+            writeln!(f, "{}", table)?;
+        }
+
+        // Log stage latencies table (microseconds)
+        let mut builder = Builder::default();
+        builder.push_record(["", "#Samples", "P0.1", "P1", "P5", "P10", "P50", "P90", "P99", "P99.9"]);
+        for (name, stats) in &self.log_stage_percentiles {
+            if stats.samples > 0 {
+                builder.push_record([
+                    name.to_string(),
+                    Self::format_count(stats.samples),
+                    stats.p0_1.to_string(),
+                    stats.p1.to_string(),
+                    stats.p5.to_string(),
+                    stats.p10.to_string(),
+                    stats.p50.to_string(),
+                    stats.p90.to_string(),
+                    stats.p99.to_string(),
+                    stats.p99_9.to_string(),
+                ]);
+            }
+        }
+        if builder.count_records() > 1 {
+            writeln!(f, "Log Stage Latencies (us):")?;
+            let mut table = builder.build();
+            table.with(Style::rounded());
+            table.with(Alignment::right());
+            table.modify(Columns::first(), Alignment::left());
             write!(f, "{}", table)?;
         }
 
