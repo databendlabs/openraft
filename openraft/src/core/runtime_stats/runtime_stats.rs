@@ -214,6 +214,7 @@ where C: RaftTypeConfig
             command_counts: self.command_counts.clone(),
             raft_msg_counts: self.raft_msg_counts.clone(),
             notification_counts: self.notification_counts.clone(),
+            log_stage_percentiles: self.log_stage_histograms.percentile_stats_array(),
         }
     }
 }
