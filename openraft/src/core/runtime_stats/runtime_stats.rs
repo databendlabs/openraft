@@ -215,6 +215,8 @@ where C: RaftTypeConfig
             raft_msg_counts: self.raft_msg_counts.clone(),
             notification_counts: self.notification_counts.clone(),
             log_stage_percentiles: self.log_stage_histograms.percentile_stats_array(),
+            log_stage_histograms: self.log_stage_histograms.clone(),
+            log_stages_display: format!("{}", self.log_stage),
         }
     }
 }
