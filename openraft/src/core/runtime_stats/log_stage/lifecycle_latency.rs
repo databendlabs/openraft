@@ -30,49 +30,14 @@ impl<I> fmt::Display for LogStages<I>
 where I: Instant
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut prev_proposed = None;
-
-        for (i, seg) in self.segments().enumerate() {
-            if i > 0 {
+        let mut first = true;
+        for line in self.display_lines() {
+            if !first {
                 writeln!(f)?;
             }
-
-            let proposed = seg.values[Stage::Proposed.index()];
-            let delta = prev_proposed.map(|prev| proposed.saturating_duration_since(prev)).unwrap_or_default();
-            let stages = [
-                ("proposed", seg.values[Stage::Proposed.index()]),
-                ("received", seg.values[Stage::Received.index()]),
-                ("submitted", seg.values[Stage::Submitted.index()]),
-                ("persisted", seg.values[Stage::Persisted.index()]),
-                ("committed", seg.values[Stage::Committed.index()]),
-                ("applied", seg.values[Stage::Applied.index()]),
-            ];
-
-            write!(
-                f,
-                "[{},{}): {} +{:.2?}; ",
-                seg.range.start,
-                seg.range.end,
-                proposed.display(),
-                delta,
-            )?;
-
-            let mut prev = proposed;
-            let mut cumulative = Duration::default();
-            for (j, (name, at)) in stages.into_iter().enumerate() {
-                if j > 0 {
-                    write!(f, ", ")?;
-                }
-
-                let step = at.saturating_duration_since(prev);
-                cumulative += step;
-                write!(f, "{} +{:.2?} ({:.2?})", name, step, cumulative)?;
-                prev = at;
-            }
-
-            prev_proposed = Some(proposed);
+            write!(f, "{}", line)?;
+            first = false;
         }
-
         Ok(())
     }
 }
@@ -122,6 +87,49 @@ where I: Instant
     /// Iterate segments within the intersection range where all stages have data.
     pub fn segments(&self) -> SegmentIter<'_, u64, I, { Stage::COUNT }> {
         self.inner.segments(self.begin)
+    }
+
+    /// Returns an iterator of formatted lines, one per segment.
+    ///
+    /// Each line shows the log index range, the proposed timestamp, the
+    /// inter-batch gap, and per-stage step/cumulative durations.
+    pub fn display_lines(&self) -> impl Iterator<Item = String> + '_ {
+        use std::fmt::Write;
+
+        let mut prev_proposed: Option<I> = None;
+
+        self.segments().map(move |seg| {
+            let proposed = seg.values[Stage::Proposed.index()];
+            let delta = prev_proposed.map(|p| proposed.saturating_duration_since(p)).unwrap_or_default();
+
+            let mut line = String::new();
+            write!(line, "[{},{}): {} +{:.2?}; ", seg.range.start, seg.range.end, proposed.display(), delta).unwrap();
+
+            let mut prev = proposed;
+            let mut cumulative = Duration::default();
+            for (j, (name, at)) in [
+                ("proposed", seg.values[Stage::Proposed.index()]),
+                ("received", seg.values[Stage::Received.index()]),
+                ("submitted", seg.values[Stage::Submitted.index()]),
+                ("persisted", seg.values[Stage::Persisted.index()]),
+                ("committed", seg.values[Stage::Committed.index()]),
+                ("applied", seg.values[Stage::Applied.index()]),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                if j > 0 {
+                    write!(line, ", ").unwrap();
+                }
+                let step = at.saturating_duration_since(prev);
+                cumulative += step;
+                write!(line, "{} +{:.2?} ({:.2?})", name, step, cumulative).unwrap();
+                prev = at;
+            }
+
+            prev_proposed = Some(proposed);
+            line
+        })
     }
 
     /// Compute stage-to-stage duration histograms from all segments.

@@ -1,7 +1,4 @@
-#[cfg(doc)]
-use crate::core::runtime_stats::RuntimeStatsDisplay;
-
-/// Display mode for [`RuntimeStatsDisplay`].
+/// Display mode for [`RuntimeStatsDisplay`](super::RuntimeStatsDisplay).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DisplayMode {
     /// Compact single-line format (default).

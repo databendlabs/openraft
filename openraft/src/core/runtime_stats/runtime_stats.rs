@@ -199,7 +199,7 @@ where C: RaftTypeConfig
     ///
     /// Use builder methods like `.human_readable()` to change the display mode.
     #[allow(dead_code)]
-    pub fn display(&self) -> RuntimeStatsDisplay {
+    pub fn display(&self) -> RuntimeStatsDisplay<C> {
         RuntimeStatsDisplay {
             mode: DisplayMode::default(),
             apply_batch: self.apply_batch.percentile_stats(),
@@ -215,6 +215,8 @@ where C: RaftTypeConfig
             raft_msg_counts: self.raft_msg_counts.clone(),
             notification_counts: self.notification_counts.clone(),
             log_stage_percentiles: self.log_stage_histograms.percentile_stats_array(),
+            log_stage_histograms: self.log_stage_histograms.clone(),
+            log_stages: self.log_stage.clone(),
         }
     }
 }
