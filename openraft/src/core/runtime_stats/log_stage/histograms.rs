@@ -1,5 +1,6 @@
 use std::fmt;
 
+use base2histogram::AsciiChart;
 use base2histogram::Histogram;
 use base2histogram::PercentileStats;
 
@@ -41,6 +42,17 @@ impl LogStageHistograms {
             ("5:committed→applied", self.committed_to_applied.percentile_stats()),
             ("1~5:proposed→applied", self.proposed_to_applied.percentile_stats()),
         ]
+    }
+
+    /// Build a stacked ASCII chart of all stage-to-stage latency histograms.
+    #[allow(dead_code)]
+    pub(crate) fn ascii_chart(&self) -> AsciiChart {
+        AsciiChart::new()
+            .add("1:proposed→received", self.proposed_to_received.clone())
+            .add("2:received→submitted", self.received_to_submitted.clone())
+            .add("3:submitted→persisted", self.submitted_to_persisted.clone())
+            .add("4:persisted→committed", self.persisted_to_committed.clone())
+            .add("5:committed→applied", self.committed_to_applied.clone())
     }
 }
 
