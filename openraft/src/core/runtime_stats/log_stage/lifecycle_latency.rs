@@ -79,7 +79,24 @@ where I: Instant
     }
 
     pub(crate) fn record_stage(&mut self, stage: Stage, right: u64, value: I) {
-        if let Some(evicted) = self.inner.get_mut(stage.index()).record(right, value) {
+        let range_map = self.inner.get_mut(stage.index());
+
+        // Defensive check: in low-latency environments, the same stage for the same
+        // log index may be recorded multiple times in quick succession.
+        // Skip recording if there's no new progress (right boundary not increasing).
+        if let Some(prev_end) = range_map.end() {
+            if right <= prev_end {
+                tracing::debug!(
+                    "LogStages::record_stage: skipping non-increasing boundary, stage={:?}, right={}, prev_end={}",
+                    stage,
+                    right,
+                    prev_end
+                );
+                return;
+            }
+        }
+
+        if let Some(evicted) = range_map.record(right, value) {
             self.begin = self.begin.max(evicted);
         }
     }
