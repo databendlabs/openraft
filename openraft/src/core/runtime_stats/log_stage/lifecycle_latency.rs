@@ -84,16 +84,16 @@ where I: Instant
         // Defensive check: in low-latency environments, the same stage for the same
         // log index may be recorded multiple times in quick succession.
         // Skip recording if there's no new progress (right boundary not increasing).
-        if let Some(prev_end) = range_map.end() {
-            if right <= prev_end {
-                tracing::debug!(
-                    "LogStages::record_stage: skipping non-increasing boundary, stage={:?}, right={}, prev_end={}",
-                    stage,
-                    right,
-                    prev_end
-                );
-                return;
-            }
+        if let Some(prev_end) = range_map.end()
+            && right <= prev_end
+        {
+            tracing::debug!(
+                "LogStages::record_stage: skipping non-increasing boundary, stage={:?}, right={}, prev_end={}",
+                stage,
+                right,
+                prev_end
+            );
+            return;
         }
 
         if let Some(evicted) = range_map.record(right, value) {
