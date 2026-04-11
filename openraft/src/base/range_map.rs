@@ -12,11 +12,12 @@ impl<T> RangeMapValue for T where T: Copy + fmt::Debug {}
 
 /// A fixed-capacity range map backed by a ring buffer.
 ///
-/// Each entry `(k, v)` represents the range `[prev_entry.k, k)` with value `v`,
-/// where the first entry uses an externally tracked `begin` as its left boundary.
+/// Each entry `(k, v)` represents the range `[prev_entry.k, k)` with value `v`;
+/// the first entry uses an externally tracked `begin` as its left boundary.
 ///
-/// Pre-allocates exactly `capacity` slots and never reallocates.
-/// When full, the oldest entry is evicted on append and its boundary is returned.
+/// Pre-allocates `capacity` slots. When full, the oldest entry is evicted on
+/// append and its boundary is returned. A non-monotonic right boundary
+/// rewrites the tail in place — see [`RangeMap::record`].
 ///
 /// Lookup is O(log n) via binary search.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,17 +61,27 @@ where
 
     /// Record a new range ending at `right_boundary` (exclusive) with `value`.
     ///
-    /// Returns the evicted entry's key if the buffer was at capacity, `None` otherwise.
-    /// The caller is responsible for advancing its tracked `begin` accordingly.
+    /// If `right_boundary` is strictly greater than the current last boundary,
+    /// the range is appended. Otherwise, trailing entries with boundary
+    /// `>= right_boundary` are popped first, then the new range is pushed —
+    /// rewriting the tail so the latest recording wins on the overlapping
+    /// suffix. This supports a range space that can be revised downwards, e.g.
+    /// a Raft log index re-appended under a new term after truncation.
+    ///
+    /// Returns the front entry's key if this insertion evicted the oldest
+    /// entry, `None` otherwise. Entries popped from the back by tail rewriting
+    /// are **not** evictions and are never returned — the caller's `begin`
+    /// should only advance on front eviction.
     pub(crate) fn record(&mut self, right_boundary: Bound, value: V) -> Option<Bound> {
-        #[cfg(debug_assertions)]
-        if let Some(&(prev, _)) = self.entries.back() {
-            debug_assert!(
-                right_boundary > prev,
-                "RangeMap::record: right_boundary {:?} must be > previous {:?}",
-                right_boundary,
-                prev
-            );
+        // Rewrite the tail: drop trailing entries whose right boundary is not
+        // strictly less than the new one.
+        while let Some(&(prev, _)) = self.entries.back() {
+            if right_boundary > prev {
+                break;
+            }
+            #[cfg(debug_assertions)]
+            tracing::info!("RangeMap::record: drop tail {prev}, new right_boundary {right_boundary} <= it");
+            self.entries.pop_back();
         }
 
         let evicted = if self.entries.len() == self.entries.capacity() {
@@ -231,12 +242,127 @@ mod tests {
         assert_eq!(format!("{}", rm), "{(20, 200), (30, 300)}");
     }
 
+    // --- Tail rewriting ------------------------------------------------
+
     #[test]
-    #[should_panic(expected = "must be >")]
-    fn test_non_monotonic_panics() {
+    fn test_record_override_same_boundary_replaces_value() {
+        // Recording with the same right boundary drops the previous entry
+        // and installs the new one.
         let mut rm = RangeMap::new(5);
-        rm.record(20, 100);
-        rm.record(15, 200);
+        rm.record(10, 100);
+        assert_eq!(rm.record(10, 200), None);
+
+        let e: Vec<_> = rm.entries().copied().collect();
+        assert_eq!(e, vec![(10, 200)]);
+
+        // Lookups reflect the new value only.
+        assert_eq!(rm.lookup(&0), Some(&200));
+        assert_eq!(rm.lookup(&9), Some(&200));
+        assert_eq!(rm.lookup(&10), None);
+    }
+
+    #[test]
+    fn test_record_override_smaller_boundary_pops_multiple() {
+        // entries: [(10, 100), (20, 200), (30, 300)]
+        // Recording (15, 400) must pop both (20, 200) and (30, 300), then push (15, 400).
+        let mut rm = make_buffer();
+        assert_eq!(rm.record(15, 400), None);
+
+        let e: Vec<_> = rm.entries().copied().collect();
+        assert_eq!(e, vec![(10, 100), (15, 400)]);
+
+        // Untouched lower range keeps its original value.
+        assert_eq!(rm.lookup(&9), Some(&100));
+        // Rewritten range uses the new value.
+        assert_eq!(rm.lookup(&10), Some(&400));
+        assert_eq!(rm.lookup(&14), Some(&400));
+        assert_eq!(rm.lookup(&15), None);
+    }
+
+    #[test]
+    fn test_record_override_preserves_smaller_entries() {
+        // entries: [(10, 100), (20, 200), (30, 300)]
+        // Recording (21, 400) pops only (30, 300); the earlier entries are untouched.
+        let mut rm = make_buffer();
+        assert_eq!(rm.record(21, 400), None);
+
+        let e: Vec<_> = rm.entries().copied().collect();
+        assert_eq!(e, vec![(10, 100), (20, 200), (21, 400)]);
+
+        assert_eq!(rm.lookup(&5), Some(&100));
+        assert_eq!(rm.lookup(&15), Some(&200));
+        assert_eq!(rm.lookup(&20), Some(&400));
+        assert_eq!(rm.lookup(&21), None);
+    }
+
+    #[test]
+    fn test_record_override_empties_buffer() {
+        // A right boundary smaller than every existing one drops them all.
+        let mut rm = make_buffer();
+        assert_eq!(rm.record(5, 400), None);
+
+        let e: Vec<_> = rm.entries().copied().collect();
+        assert_eq!(e, vec![(5, 400)]);
+        assert_eq!(rm.lookup(&4), Some(&400));
+        assert_eq!(rm.lookup(&5), None);
+    }
+
+    #[test]
+    fn test_record_override_does_not_evict_front() {
+        // Tail rewriting is not a front eviction: even when the buffer is
+        // full, popping from the back must not return an evicted front key.
+        let mut rm = RangeMap::new(2);
+        rm.record(10, 100);
+        rm.record(20, 200);
+        // Buffer is full (len == capacity == 2).
+        assert_eq!(rm.record(20, 300), None);
+
+        let e: Vec<_> = rm.entries().copied().collect();
+        assert_eq!(e, vec![(10, 100), (20, 300)]);
+    }
+
+    #[test]
+    fn test_record_override_after_front_eviction() {
+        // Tail rewriting works correctly after `begin` has been advanced
+        // by a prior front eviction.
+        let mut rm = RangeMap::new(2);
+        let mut begin = 0u64;
+
+        rm.record(10, 100);
+        rm.record(20, 200);
+        // Evicts (10, 100); caller advances begin to 10.
+        assert_eq!(rm.record(30, 300), Some(10));
+        begin = begin.max(10);
+
+        // Rewrite the back entry in place. No further eviction must happen.
+        assert_eq!(rm.record(30, 400), None);
+        assert_eq!(begin, 10);
+
+        let e: Vec<_> = rm.entries().copied().collect();
+        assert_eq!(e, vec![(20, 200), (30, 400)]);
+        // The rewritten range resolves to the new value.
+        assert_eq!(rm.lookup(&25), Some(&400));
+    }
+
+    #[test]
+    fn test_record_append_after_override() {
+        // After a tail rewrite, normal monotonic appends continue to work.
+        let mut rm = make_buffer();
+        rm.record(15, 400); // entries: [(10, 100), (15, 400)]
+        rm.record(25, 500);
+
+        let e: Vec<_> = rm.entries().copied().collect();
+        assert_eq!(e, vec![(10, 100), (15, 400), (25, 500)]);
+        assert_eq!(rm.end(), Some(25));
+    }
+
+    #[test]
+    fn test_record_override_on_empty_buffer() {
+        // Rewriting on an empty buffer is a no-op loop; the entry is simply pushed.
+        let mut rm: RangeMap<u64, u64> = RangeMap::new(5);
+        assert_eq!(rm.record(10, 100), None);
+        let e: Vec<_> = rm.entries().copied().collect();
+        assert_eq!(e, vec![(10, 100)]);
     }
 
     #[test]

@@ -131,6 +131,98 @@ fn test_segment_iter_different_begin() {
 }
 
 #[test]
+fn test_record_stage_backfills_earlier_stages() {
+    // Simulate a follower: only stages from Submitted onward are recorded
+    // locally. Earlier stages (Proposed, Received) must be back-filled so
+    // the segment intersection still produces a segment.
+    let base = C::now();
+    let mut latency = LS::new(10, 0);
+
+    let t_submitted = instant_at(base, 2);
+    let t_persisted = instant_at(base, 5);
+    let t_committed = instant_at(base, 7);
+    let t_applied = instant_at(base, 10);
+
+    latency.submitted(11, t_submitted);
+    latency.persisted(11, t_persisted);
+    latency.committed(11, t_committed);
+    latency.applied(11, t_applied);
+
+    let segments: Vec<_> = latency.segments().collect();
+    assert_eq!(segments.len(), 1);
+    assert_eq!(segments[0].range, 0..11);
+
+    // Proposed and Received are back-filled with the first recorded value
+    // (Submitted's timestamp), so the step duration from Proposed to
+    // Received and from Received to Submitted are both zero.
+    assert_eq!(segments[0].values[Stage::Proposed.index()], t_submitted);
+    assert_eq!(segments[0].values[Stage::Received.index()], t_submitted);
+    assert_eq!(segments[0].values[Stage::Submitted.index()], t_submitted);
+    assert_eq!(segments[0].values[Stage::Persisted.index()], t_persisted);
+    assert_eq!(segments[0].values[Stage::Committed.index()], t_committed);
+    assert_eq!(segments[0].values[Stage::Applied.index()], t_applied);
+}
+
+#[test]
+fn test_record_stage_backfill_skips_stages_already_covered() {
+    // If earlier stages already cover `right`, back-fill must not
+    // overwrite them (the leader path: all stages recorded in order
+    // at the same right boundary).
+    let base = C::now();
+    let mut latency = LS::new(10, 0);
+
+    let t_proposed = instant_at(base, 1);
+    let t_received = instant_at(base, 2);
+    let t_submitted = instant_at(base, 3);
+
+    latency.proposed(11, t_proposed);
+    latency.received(11, t_received);
+    latency.submitted(11, t_submitted);
+
+    // Submitted's back-fill should not touch Proposed or Received
+    // because both already end at 11.
+    latency.persisted(11, instant_at(base, 4));
+    latency.committed(11, instant_at(base, 5));
+    latency.applied(11, instant_at(base, 6));
+
+    let segments: Vec<_> = latency.segments().collect();
+    assert_eq!(segments.len(), 1);
+    assert_eq!(segments[0].values[Stage::Proposed.index()], t_proposed);
+    assert_eq!(segments[0].values[Stage::Received.index()], t_received);
+    assert_eq!(segments[0].values[Stage::Submitted.index()], t_submitted);
+}
+
+#[test]
+fn test_record_stage_backfill_extends_lagging_stage() {
+    // A later stage advancing to a new right boundary must back-fill any
+    // earlier stage that is still behind, even if that earlier stage has
+    // some data.
+    let base = C::now();
+    let mut latency = LS::new(10, 0);
+
+    let t1 = instant_at(base, 1);
+    let t2 = instant_at(base, 10);
+
+    // First batch: all stages at right=10.
+    record_all(&mut latency, 10, [t1; 6]);
+
+    // Second batch: only Submitted onward recorded at right=20. Proposed
+    // and Received end at 10 and must be back-filled to 20.
+    latency.submitted(20, t2);
+    latency.persisted(20, t2);
+    latency.committed(20, t2);
+    latency.applied(20, t2);
+
+    let segments: Vec<_> = latency.segments().collect();
+    assert_eq!(segments.len(), 2);
+    assert_eq!(segments[0].range, 0..10);
+    assert_eq!(segments[1].range, 10..20);
+    assert_eq!(segments[1].values[Stage::Proposed.index()], t2);
+    assert_eq!(segments[1].values[Stage::Received.index()], t2);
+    assert_eq!(segments[1].values[Stage::Submitted.index()], t2);
+}
+
+#[test]
 fn test_display_empty() {
     let latency = LS::new(10, 0);
     assert_eq!("", format!("{}", latency));
