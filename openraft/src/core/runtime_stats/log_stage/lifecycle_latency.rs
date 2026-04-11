@@ -88,10 +88,8 @@ where I: Instant
             && right <= prev_end
         {
             tracing::debug!(
-                "LogStages::record_stage: skipping non-increasing boundary, stage={:?}, right={}, prev_end={}",
-                stage,
-                right,
-                prev_end
+                "LogStages::record_stage: skipping non-increasing boundary, \
+                stage={stage:?}, right={right}, prev_end={prev_end}"
             );
             return;
         }
