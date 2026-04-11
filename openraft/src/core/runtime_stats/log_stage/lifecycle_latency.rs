@@ -79,7 +79,26 @@ where I: Instant
     }
 
     pub(crate) fn record_stage(&mut self, stage: Stage, right: u64, value: I) {
-        if let Some(evicted) = self.inner.get_mut(stage.index()).record(right, value) {
+        // Back-fill earlier stages so the segment intersection stays non-empty.
+        //
+        // `segments()` only yields where every stage has a value, and on a
+        // follower `Proposed` and `Received` are never recorded — those events
+        // only happen on the proposing leader. Without back-fill, every
+        // follower's log-stage histogram would stay empty.
+        for i in (0..stage.index()).rev() {
+            if self.inner.get_mut(i).end().is_some_and(|e| e >= right) {
+                break;
+            }
+            self.record_at(i, right, value);
+        }
+
+        self.record_at(stage.index(), right, value);
+    }
+
+    /// Record `(right, value)` into the range map at `index`, advancing
+    /// `begin` if the insertion evicted the oldest entry.
+    fn record_at(&mut self, index: usize, right: u64, value: I) {
+        if let Some(evicted) = self.inner.get_mut(index).record(right, value) {
             self.begin = self.begin.max(evicted);
         }
     }
