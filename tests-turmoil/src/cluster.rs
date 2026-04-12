@@ -86,9 +86,9 @@ impl Default for ClusterState {
 /// Register a node's storage in the shared state BEFORE starting it.
 pub fn register_node_storage(node_id: NodeId, cluster_state: &Arc<std::sync::Mutex<ClusterState>>) {
     let mut state = cluster_state.lock().unwrap();
-    if !state.log_stores.contains_key(&node_id) {
+    if let std::collections::btree_map::Entry::Vacant(e) = state.log_stores.entry(node_id) {
         let (log_store, state_machine) = new_store();
-        state.log_stores.insert(node_id, log_store);
+        e.insert(log_store);
         state.state_machines.insert(node_id, state_machine);
     }
 }
@@ -134,11 +134,8 @@ pub fn spawn_host(
                     // Node 1 initializes if needed
                     if node_id == 1 {
                         use openraft::storage::RaftLogStorage;
-                        let is_initialized = {
-                            let mut state = cluster_state.lock().unwrap();
-                            let log_store = state.log_stores.get_mut(&node_id).unwrap();
-                            log_store.get_log_state().await.unwrap().last_log_id.is_some()
-                        };
+                        let mut log_store = cluster_state.lock().unwrap().log_stores.get(&node_id).unwrap().clone();
+                        let is_initialized = log_store.get_log_state().await.unwrap().last_log_id.is_some();
 
                         if !is_initialized {
                             tokio::time::sleep(std::time::Duration::from_millis(100)).await;

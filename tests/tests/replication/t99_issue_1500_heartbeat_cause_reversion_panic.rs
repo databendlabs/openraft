@@ -50,13 +50,7 @@ async fn t99_issue_1500_heartbeat_cause_reversion_panic() -> anyhow::Result<()> 
             let sleep_ms = if target == 2 {
                 tracing::debug!("Post-hook for target {}: {}", target, req);
                 match req {
-                    RpcRequest::AppendEntries(append) => {
-                        if append.entries.is_empty() {
-                            10
-                        } else {
-                            0
-                        }
-                    }
+                    RpcRequest::AppendEntries(append) if append.entries.is_empty() => 10,
                     _ => 0,
                 }
             } else {

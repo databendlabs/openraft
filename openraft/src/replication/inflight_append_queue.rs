@@ -55,8 +55,7 @@ where C: RaftTypeConfig
         );
 
         let mut last = None;
-        loop {
-            let Some(first) = q.front() else { break };
+        while let Some(first) = q.front() {
             if matching >= &first.last_log_id {
                 last = Some(first.sending_time)
             } else {

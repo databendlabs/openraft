@@ -209,16 +209,16 @@ fn check_log_consistency(
         let lid_a = s_a.raft.log_id_list.get(idx).map(|id: LogId| *id.committed_leader_id());
         let lid_b = s_b.raft.log_id_list.get(idx).map(|id: LogId| *id.committed_leader_id());
 
-        if let (Some(la), Some(lb)) = (lid_a, lid_b) {
-            if la != lb {
-                violations.push(InvariantViolation::LogMismatch {
-                    index: idx,
-                    node_a: *id_a,
-                    node_b: *id_b,
-                    term_a: la.term,
-                    term_b: lb.term,
-                });
-            }
+        if let (Some(la), Some(lb)) = (lid_a, lid_b)
+            && la != lb
+        {
+            violations.push(InvariantViolation::LogMismatch {
+                index: idx,
+                node_a: *id_a,
+                node_b: *id_b,
+                term_a: la.term,
+                term_b: lb.term,
+            });
         }
     }
 }

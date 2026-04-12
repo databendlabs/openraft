@@ -185,15 +185,12 @@ pub async fn handle_rpc(raft: Arc<Raft>, mut stream: TcpStream) -> io::Result<()
             let req: ClientWriteRequest = deser(&payload)?;
             let resp = match raft.client_write(req.request).await {
                 Ok(client_resp) => ClientWriteResponse::Success(client_resp.response().clone()),
-                Err(e) => {
-                    if let Some(forward) = e.forward_to_leader() {
-                        ClientWriteResponse::NotLeader {
-                            leader_id: forward.leader_id,
-                        }
-                    } else {
-                        ClientWriteResponse::Error(e.to_string())
-                    }
-                }
+                Err(e) => match e.forward_to_leader() {
+                    Some(forward) => ClientWriteResponse::NotLeader {
+                        leader_id: forward.leader_id,
+                    },
+                    None => ClientWriteResponse::Error(e.to_string()),
+                },
             };
             ser(&resp)?
         }

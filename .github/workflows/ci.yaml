@@ -356,7 +356,7 @@ jobs:
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: 'nightly'
+          toolchain: 'nightly-2026-03-01'
 
       - name: Run deterministic simulation
         run: cd tests-turmoil && cargo run --bin fuzz -- --iterations 5 --max-steps 10000
@@ -372,6 +372,7 @@ jobs:
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
+          toolchain: 'nightly-2026-03-01'
           components: rustfmt, clippy
 
       - name: Format
