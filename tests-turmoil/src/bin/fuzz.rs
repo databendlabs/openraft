@@ -310,9 +310,11 @@ async fn membership_agent_loop(
                 println!("MEMBERSHIP-AGENT: executing change to {new_set:?}");
                 let _ = raft.change_membership(new_set, false).await;
             } else {
-                let mut guard = next_membership.lock().unwrap();
-                if guard.is_none() {
-                    *guard = Some(new_set);
+                {
+                    let mut guard = next_membership.lock().unwrap();
+                    if guard.is_none() {
+                        *guard = Some(new_set);
+                    }
                 }
                 tokio::time::sleep(Duration::from_millis(500)).await;
             }
@@ -429,7 +431,7 @@ fn run_single_iteration(
 
     while running.load(Ordering::Relaxed) && steps < max_steps {
         // Membership changes
-        if steps > 0 && steps % derived.membership_interval == 0 {
+        if steps > 0 && steps.is_multiple_of(derived.membership_interval) {
             let add = active_voters.len() < 3 || (active_voters.len() < 7 && member_rng.gen_bool(0.7));
             if add {
                 if next_node_id <= derived.max_potential_nodes {
@@ -447,7 +449,7 @@ fn run_single_iteration(
         }
 
         // Crash restarts
-        if steps > 0 && steps % derived.chaos_interval == 0 && chaos_rng.gen_bool(derived.restart_chance) {
+        if steps > 0 && steps.is_multiple_of(derived.chaos_interval) && chaos_rng.gen_bool(derived.restart_chance) {
             let voters: Vec<_> = active_voters.iter().collect();
             if !voters.is_empty() {
                 let victim = **voters.get(chaos_rng.gen_range(0..voters.len())).unwrap();
@@ -483,7 +485,7 @@ fn run_single_iteration(
         }
 
         // Progress report
-        if steps % 5000 == 0 {
+        if steps.is_multiple_of(5000) {
             let metrics = cluster_state.lock().unwrap().get_all_metrics();
             let leaders: Vec<_> = metrics.iter().filter(|(_, m)| m.state.is_leader()).map(|(id, _)| *id).collect();
             let max_term = metrics.iter().map(|(_, m)| m.vote.leader_id().term).max().unwrap_or(0);
