@@ -601,21 +601,7 @@ where C: RaftTypeConfig
 
         // Generate Apply command
 
-        if log_progress.submitted().map(|x| x.as_ref_vote()) == log_progress.accepted().map(|x| x.as_ref_vote()) {
-            // Only apply committed entries when submitted and accepted logs are from the same leader.
-            //
-            // This ensures submitted logs won't be overridden by pending commands in the queue.
-            //
-            // If leaders differ, queued commands may override submitted logs. Example:
-            // - submitted: append-entries(leader=L1, entry=E2)
-            // - queued: truncate(E2), save-vote(L2), append-entries(leader=L2, entry=E2')
-            // Here E2 will be overridden by E2' when the queue executes.
-            //
-            // When both have the same leader:
-            // - A leader never truncates its own written entries
-            // - Committed entries are visible to all future leaders
-            // - The submitted logs are guaranteed to be the actual committed entries
-
+        if self.state.io_state.can_safely_apply() {
             let apply_submitted = apply_progress.submitted();
             let apply_accepted = apply_progress.accepted();
 

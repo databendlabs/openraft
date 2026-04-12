@@ -55,12 +55,28 @@ use crate::vote::RaftVote;
 use crate::vote::raft_vote::RaftVoteExt;
 
 /// A struct used to represent the raft state which a Raft node needs.
+///
+/// ## RaftState (Logical) vs IOState (Physical)
+///
+/// `RaftState` is the Engine's in-memory shadow of what the system *should* look like
+/// after all queued I/O completes. The actual on-disk state lives in [`IOState`], which
+/// tracks what has been submitted and flushed to storage.
+///
+/// This separation enables pipelined I/O: the Engine can accept multiple operations and
+/// queue them as [`Command`]s without waiting for each one to persist. Client responses
+/// are deferred via [`Condition::IOFlushed`] until the relevant I/O completes.
+///
+/// [`Command`]: crate::engine::Command
+/// [`Condition::IOFlushed`]: crate::engine::Condition::IOFlushed
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
 pub struct RaftState<C>
 where C: RaftTypeConfig
 {
     /// The vote state of this node.
+    ///
+    /// Monotonically increasing in term. When `vote.is_committed() == true`,
+    /// this node is an established leader (granted by a quorum).
     pub(crate) vote: Leased<VoteOf<C>, InstantOf<C>>,
 
     /// All log ids this node has.
@@ -75,11 +91,16 @@ where C: RaftTypeConfig
     // --
     // -- volatile fields: they are not persisted.
     // --
+    /// Monotonically increasing counter for assigning unique IDs to in-flight client requests.
     pub(crate) last_inflight_id: u64,
 
     /// The state of a Raft node, such as Leader or Follower.
     pub server_state: ServerState,
 
+    /// The physical I/O progress — what has actually been submitted and flushed to storage.
+    ///
+    /// May lag behind the logical state represented by other fields in this struct.
+    /// See [`IOState`] for the three-stage progress model and safety invariants.
     pub(crate) io_state: Valid<IOState<C>>,
 
     /// The log id up to which the next time it purges.
@@ -88,6 +109,7 @@ where C: RaftTypeConfig
     /// field.
     pub(crate) purge_upto: Option<LogIdOf<C>>,
 
+    /// Shared ID generator for tracking replication and leader progress across subsystems.
     pub(crate) progress_id_gen: SharedIdGenerator,
 }
 

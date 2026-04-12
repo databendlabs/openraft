@@ -22,8 +22,27 @@ pub(crate) mod monotonic;
 /// Tracks the state of completed I/O operations: log flushing, applying to state machine, and
 /// snapshot building.
 ///
-/// These states update only when I/O completes and may lag behind
-/// [`RaftState`](`crate::RaftState`).
+/// ## RaftState vs IOState
+///
+/// [`RaftState`] represents the Engine's logical view — what the system *should* look like after
+/// all queued I/O completes. [`IOState`] represents the Runtime's physical view — what has
+/// actually been persisted and applied. Between them lies an I/O pipeline:
+///
+/// ```text
+///  Engine            Command Queue            Runtime / Storage
+///  ──────            ─────────────            ─────────────────
+///  RaftState  ────>  AppendEntries,   ────>  IOState
+///  (logical)        SaveVote,                (physical)
+///                   PurgeLog, ...
+///
+///  vote: L2         queued: SaveVote(L2)     log_progress.accepted: L2
+///  log_ids: [1..5]  queued: Append([3..5])   log_progress.flushed:   [1..2]
+///                                            (entries 3..5 not yet on disk)
+/// ```
+///
+/// This gap means [`IOState`] may lag behind [`RaftState`]. Commands like
+/// [`Command::Respond`] use [`Condition::IOFlushed`] to delay client responses until the
+/// relevant I/O completes, ensuring linearizability.
 ///
 /// ## Progress Tracking
 ///
@@ -278,6 +297,23 @@ where C: RaftTypeConfig
         } else {
             None
         }
+    }
+
+    /// Checks whether committed log entries can be safely applied to the state machine.
+    ///
+    /// This is the **leader safety invariant**: submitted and accepted I/O must originate from
+    /// the same leader. When this holds, the submitted entries are guaranteed not to be
+    /// truncated by any queued command, because a leader never truncates its own entries.
+    ///
+    /// If leaders differ, queued commands may override submitted logs:
+    ///
+    /// - submitted: append-entries(leader=L1, entry=E2)
+    /// - queued: truncate(E2), save-vote(L2), append-entries(leader=L2, entry=E2')
+    ///
+    /// E2 will be overridden by E2' when the queue executes.
+    pub(crate) fn can_safely_apply(&self) -> bool {
+        let log_progress = &self.log_progress;
+        log_progress.submitted().map(|x| x.as_ref_vote()) == log_progress.accepted().map(|x| x.as_ref_vote())
     }
 }
 
