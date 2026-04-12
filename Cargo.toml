@@ -79,6 +79,7 @@ members = [
 exclude = [
     "benchmarks/minimal",
     "metrics-otel",
+    "tests-turmoil",
 
     "examples/client-http",
     "examples/network-v1-http",
