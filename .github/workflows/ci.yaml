@@ -347,6 +347,23 @@ jobs:
           path: |
             tests/_log/
 
+  # Deterministic simulation test with turmoil.
+  detsim:
+    name: Deterministic simulation test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: 'nightly'
+
+      - name: Run deterministic simulation
+        run: cd tests-turmoil && cargo run --bin fuzz -- --iterations 5 --max-steps 10000
+        env:
+          RUST_LOG: info
+          RUST_BACKTRACE: full
+
   lint:
     name: lint
     runs-on: ubuntu-latest
@@ -360,12 +377,18 @@ jobs:
       - name: Format
         run: cargo fmt --all -- --check
 
+      - name: Format tests-turmoil
+        run: cargo fmt --manifest-path tests-turmoil/Cargo.toml -- --check
+
       - name: clippy
         shell: bash
         run: |
           cargo clippy --no-deps --workspace --all-targets                -- -D warnings
           cargo clippy --no-deps --workspace --all-targets --features "bt,serde,bench,compat" -- -D warnings
           cargo clippy --no-deps --workspace --all-targets --features "metrics-logids,serde" -- -D warnings
+
+      - name: clippy tests-turmoil
+        run: cargo clippy --no-deps --manifest-path tests-turmoil/Cargo.toml --all-targets -- -D warnings
 
       - name: Build-doc
         run: cargo doc --all --no-deps
