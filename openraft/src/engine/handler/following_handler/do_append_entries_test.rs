@@ -7,6 +7,7 @@ use crate::EntryPayload;
 use crate::Membership;
 use crate::MembershipState;
 use crate::Vote;
+use crate::batch::Batch;
 use crate::core::ServerState;
 use crate::engine::Command;
 use crate::engine::Engine;
@@ -88,7 +89,7 @@ fn test_follower_do_append_entries_no_membership_entries() -> anyhow::Result<()>
             //
             Command::AppendEntries {
                 committed_vote: Vote::new(1, 1).into_committed(),
-                entries: [blank_ent::<UTConfig>(3, 1, 4)].into()
+                entries: Batch::of([blank_ent::<UTConfig>(3, 1, 4)])
             },
         ],
         eng.output.take_commands()
@@ -137,15 +138,14 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
     assert_eq!(
         vec![Command::AppendEntries {
             committed_vote: Vote::new(1, 1).into_committed(),
-            entries: vec![
+            entries: Batch::of([
                 //
                 blank_ent::<UTConfig>(3, 1, 4),
                 EntryOf::<UTConfig> {
                     log_id: log_id(3, 1, 5),
                     payload: EntryPayload::<u64, u64, ()>::Membership(m34()),
                 },
-            ]
-            .into()
+            ])
         },],
         eng.output.take_commands()
     );
@@ -197,13 +197,12 @@ fn test_follower_do_append_entries_three_membership_entries() -> anyhow::Result<
     assert_eq!(
         vec![Command::AppendEntries {
             committed_vote: Vote::new(1, 1).into_committed(),
-            entries: vec![
+            entries: Batch::of([
                 blank_ent::<UTConfig>(3, 1, 4),
                 EntryOf::<UTConfig>::new_membership(log_id(3, 1, 5), m01()),
                 EntryOf::<UTConfig>::new_membership(log_id(4, 1, 6), m34()),
                 EntryOf::<UTConfig>::new_membership(log_id(4, 1, 7), m45()),
-            ]
-            .into()
+            ])
         },],
         eng.output.take_commands()
     );

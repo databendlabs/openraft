@@ -51,6 +51,9 @@ where N: Node + Ord
     type Responder<T>
         = crate::impls::OneshotResponder<Self, T>
     where T: OptionalSend + 'static;
+    type Batch<T>
+        = crate::impls::InlineBatch<T>
+    where T: OptionalSend + 'static;
     type ErrorSource = anyerror::AnyError;
 }
 

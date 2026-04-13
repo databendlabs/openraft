@@ -7,6 +7,7 @@ use pretty_assertions::assert_eq;
 use crate::Membership;
 use crate::MembershipState;
 use crate::Vote;
+use crate::batch::Batch;
 use crate::engine::Command;
 use crate::engine::Condition;
 use crate::engine::Engine;
@@ -79,7 +80,7 @@ fn test_follower_append_entries_update_accepted() -> anyhow::Result<()> {
         //
         Command::AppendEntries {
             committed_vote: Vote::new(2, 1).into_committed(),
-            entries: [blank_ent::<UTConfig>(3, 1, 4), blank_ent::<UTConfig>(3, 1, 5),].into(),
+            entries: Batch::of([blank_ent::<UTConfig>(3, 1, 4), blank_ent::<UTConfig>(3, 1, 5)]),
         }
     ]);
 

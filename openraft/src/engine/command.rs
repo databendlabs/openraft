@@ -8,7 +8,6 @@ use display_more::DisplaySliceExt;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::async_runtime::OneshotSender;
-use crate::base::batch::Batch;
 use crate::core::sm;
 use crate::engine::CommandKind;
 use crate::engine::CommandName;
@@ -26,6 +25,7 @@ use crate::raft_state::IOId;
 use crate::raft_state::IOState;
 use crate::replication::ReplicationSessionId;
 use crate::replication::replicate::Replicate;
+use crate::type_config::alias::BatchOf;
 use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
@@ -64,7 +64,7 @@ where C: RaftTypeConfig
         /// [`LogIOId`]: crate::raft_state::io_state::io_id::IOId
         committed_vote: CommittedVoteOf<C>,
 
-        entries: Batch<C::Entry>,
+        entries: BatchOf<C, C::Entry>,
     },
 
     /// Replicate the committed log id to other nodes
@@ -175,7 +175,12 @@ where C: RaftTypeConfig
                 committed_vote: vote,
                 entries,
             } => {
-                write!(f, "AppendEntries: vote: {}, entries: {}", vote, entries.display())
+                write!(
+                    f,
+                    "AppendEntries: vote: {}, entries: {}",
+                    vote,
+                    entries.as_ref().display()
+                )
             }
             Command::ReplicateCommitted { committed } => {
                 write!(f, "ReplicateCommitted: {}", committed.display())
@@ -239,6 +244,7 @@ impl<C, SM> PartialEq for Command<C, SM>
 where
     C: RaftTypeConfig,
     C::Entry: PartialEq,
+    BatchOf<C, C::Entry>: PartialEq,
 {
     #[rustfmt::skip]
     fn eq(&self, other: &Self) -> bool {

@@ -1,4 +1,5 @@
 use crate::RaftTypeConfig;
+use crate::batch::Batch;
 use crate::config::Config;
 use crate::engine::Command;
 use crate::engine::engine_output::EngineOutput;
@@ -83,6 +84,7 @@ where C: RaftTypeConfig
 #[cfg(test)]
 mod tests {
     use super::CommandScheduler;
+    use crate::batch::Batch;
     use crate::config::Config;
     use crate::engine::Command;
     use crate::engine::engine_output::EngineOutput;
@@ -120,7 +122,7 @@ mod tests {
         let mut output: EngineOutput<C> = EngineOutput::new(8);
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(1, 0),
-            entries: [blank_ent::<UTConfig>(1, 0, 1)].into(),
+            entries: Batch::of([blank_ent::<UTConfig>(1, 0, 1)]),
         });
         let mut scheduler = CommandScheduler::new(&config, &mut output);
         scheduler.merge_front_append_entries();
@@ -134,7 +136,7 @@ mod tests {
         output.push_command(Command::SaveVote { vote: Vote::new(1, 0) });
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(1, 0),
-            entries: [blank_ent::<UTConfig>(1, 0, 1)].into(),
+            entries: Batch::of([blank_ent::<UTConfig>(1, 0, 1)]),
         });
         let mut scheduler = CommandScheduler::new(&config, &mut output);
         scheduler.merge_front_append_entries();
@@ -147,15 +149,15 @@ mod tests {
         let mut output: EngineOutput<C> = EngineOutput::new(8);
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(1, 0),
-            entries: [blank_ent::<UTConfig>(1, 0, 1)].into(),
+            entries: Batch::of([blank_ent::<UTConfig>(1, 0, 1)]),
         });
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(1, 0),
-            entries: [blank_ent::<UTConfig>(1, 0, 2)].into(),
+            entries: Batch::of([blank_ent::<UTConfig>(1, 0, 2)]),
         });
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(1, 0),
-            entries: [blank_ent::<UTConfig>(1, 0, 3)].into(),
+            entries: Batch::of([blank_ent::<UTConfig>(1, 0, 3)]),
         });
 
         let mut scheduler = CommandScheduler::new(&config, &mut output);
@@ -175,11 +177,11 @@ mod tests {
         let mut output: EngineOutput<C> = EngineOutput::new(8);
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(1, 0),
-            entries: [blank_ent::<UTConfig>(1, 0, 1)].into(),
+            entries: Batch::of([blank_ent::<UTConfig>(1, 0, 1)]),
         });
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(2, 0), // Different vote
-            entries: [blank_ent::<UTConfig>(2, 0, 2)].into(),
+            entries: Batch::of([blank_ent::<UTConfig>(2, 0, 2)]),
         });
 
         let mut scheduler = CommandScheduler::new(&config, &mut output);
@@ -194,16 +196,16 @@ mod tests {
         let mut output: EngineOutput<C> = EngineOutput::new(8);
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(1, 0),
-            entries: [blank_ent::<UTConfig>(1, 0, 1)].into(),
+            entries: Batch::of([blank_ent::<UTConfig>(1, 0, 1)]),
         });
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(1, 0),
-            entries: [blank_ent::<UTConfig>(1, 0, 2)].into(),
+            entries: Batch::of([blank_ent::<UTConfig>(1, 0, 2)]),
         });
         output.push_command(Command::SaveVote { vote: Vote::new(1, 0) });
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(1, 0),
-            entries: [blank_ent::<UTConfig>(1, 0, 3)].into(),
+            entries: Batch::of([blank_ent::<UTConfig>(1, 0, 3)]),
         });
 
         let mut scheduler = CommandScheduler::new(&config, &mut output);
@@ -225,15 +227,15 @@ mod tests {
         let mut output: EngineOutput<C> = EngineOutput::new(8);
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(1, 0),
-            entries: [blank_ent::<UTConfig>(1, 0, 1), blank_ent::<UTConfig>(1, 0, 2)].into(),
+            entries: Batch::of([blank_ent::<UTConfig>(1, 0, 1), blank_ent::<UTConfig>(1, 0, 2)]),
         });
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(1, 0),
-            entries: [blank_ent::<UTConfig>(1, 0, 3)].into(),
+            entries: Batch::of([blank_ent::<UTConfig>(1, 0, 3)]),
         });
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(1, 0),
-            entries: [blank_ent::<UTConfig>(1, 0, 4)].into(),
+            entries: Batch::of([blank_ent::<UTConfig>(1, 0, 4)]),
         });
 
         let mut scheduler = CommandScheduler::new(&config, &mut output);

@@ -7,6 +7,7 @@ use pretty_assertions::assert_eq;
 use crate::Membership;
 use crate::MembershipState;
 use crate::Vote;
+use crate::batch::Batch;
 use crate::core::ServerState;
 use crate::engine::Command;
 use crate::engine::Condition;
@@ -233,7 +234,7 @@ fn test_append_entries_prev_log_id_is_committed() -> anyhow::Result<()> {
             },
             Command::AppendEntries {
                 committed_vote: Vote::new(2, 1).into_committed(),
-                entries: [blank_ent::<UTConfig>(2, 1, 2)].into()
+                entries: Batch::of([blank_ent::<UTConfig>(2, 1, 2)])
             },
         ],
         eng.output.take_commands()
@@ -341,7 +342,7 @@ fn test_append_entries_conflict() -> anyhow::Result<()> {
             },
             Command::AppendEntries {
                 committed_vote: Vote::new(2, 1).into_committed(),
-                entries: [EntryOf::<UTConfig>::new_membership(log_id(3, 1, 3), m34())].into()
+                entries: Batch::of([EntryOf::<UTConfig>::new_membership(log_id(3, 1, 3), m34())])
             },
         ],
         eng.output.take_commands()
