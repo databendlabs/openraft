@@ -14,19 +14,9 @@ use crate::cluster::FullNodeSnapshot;
 use crate::typ::*;
 
 /// Result of invariant checking.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct InvariantCheckResult {
-    pub passed: bool,
     pub violations: Vec<InvariantViolation>,
-}
-
-impl InvariantCheckResult {
-    pub fn with_violations(violations: Vec<InvariantViolation>) -> Self {
-        Self {
-            passed: violations.is_empty(),
-            violations,
-        }
-    }
 }
 
 /// Types of invariant violations.
@@ -104,7 +94,7 @@ pub fn check_state_invariants(snapshots: &[(NodeId, FullNodeSnapshot)]) -> Invar
         }
     }
 
-    InvariantCheckResult::with_violations(violations)
+    InvariantCheckResult { violations }
 }
 
 /// Election Safety: at most one leader per term.
