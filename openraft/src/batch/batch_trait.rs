@@ -19,6 +19,11 @@ pub trait Batch<T>:
         self.as_ref().len()
     }
 
+    /// Returns `true` if the batch contains no elements.
+    fn is_empty(&self) -> bool {
+        self.as_ref().is_empty()
+    }
+
     /// Returns a reference to the last element, or `None` if empty.
     fn last(&self) -> Option<&T> {
         self.as_ref().last()
