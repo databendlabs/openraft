@@ -27,14 +27,12 @@
 //! Applications rarely need to use these types directly - they're used internally
 //! to make Openraft flexible across different environments.
 
-pub(crate) mod batch;
 pub(crate) mod finalized;
 pub(crate) mod multi_range_map;
 pub(crate) mod range_map;
 pub(crate) mod range_values;
 pub(crate) mod shared_id_generator;
 
-pub(crate) use batch::Batch;
 pub use openraft_rt::BoxAny;
 pub use openraft_rt::BoxAsyncOnceMut;
 pub use openraft_rt::BoxFuture;

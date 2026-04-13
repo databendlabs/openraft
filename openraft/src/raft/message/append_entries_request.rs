@@ -56,7 +56,7 @@ where C: RaftTypeConfig
             self.vote,
             self.prev_log_id.display(),
             self.leader_commit.display(),
-            self.entries.as_slice().display()
+            self.entries.display()
         )
     }
 }

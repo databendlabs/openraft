@@ -5,6 +5,7 @@ use pretty_assertions::assert_eq;
 
 use crate::Membership;
 use crate::Vote;
+use crate::batch::Batch;
 use crate::core::ServerState;
 use crate::engine::Command;
 use crate::engine::Engine;
@@ -56,7 +57,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
                 //
                 Command::AppendEntries {
                     committed_vote: Vote::new_with_default_term(1).into_committed(),
-                    entries: [EntryOf::<UTConfig>::new_membership(log_id(0, 1, 0), m1())].into(),
+                    entries: Batch::of([EntryOf::<UTConfig>::new_membership(log_id(0, 1, 0), m1())]),
                 },
             ],
             eng.output.take_commands()
@@ -100,7 +101,7 @@ fn test_initialize() -> anyhow::Result<()> {
                 //
                 Command::AppendEntries {
                     committed_vote: Vote::new_with_default_term(1).into_committed(),
-                    entries: [EntryOf::<UTConfig>::new_membership(log_id(0, 1, 0), m12())].into(),
+                    entries: Batch::of([EntryOf::<UTConfig>::new_membership(log_id(0, 1, 0), m12())]),
                 },
             ],
             eng.output.take_commands()

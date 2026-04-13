@@ -5,6 +5,7 @@ use display_more::DisplaySliceExt;
 
 use crate::RaftState;
 use crate::RaftTypeConfig;
+use crate::batch::Batch;
 use crate::core::sm;
 use crate::engine::Command;
 use crate::engine::Condition;
@@ -154,7 +155,7 @@ where C: RaftTypeConfig
         self.output.push_command(Command::AppendEntries {
             // A follower should always use the node's vote.
             committed_vote: self.leader_vote.clone(),
-            entries: entries.into(),
+            entries: Batch::of(entries),
         });
     }
 

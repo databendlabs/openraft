@@ -7,6 +7,7 @@ use pretty_assertions::assert_eq;
 use crate::Membership;
 use crate::ServerState;
 use crate::Vote;
+use crate::batch::Batch;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
@@ -94,7 +95,7 @@ fn test_startup_as_leader_without_logs() -> anyhow::Result<()> {
             },
             Command::AppendEntries {
                 committed_vote: Vote::new(2, 2).into_committed(),
-                entries: [EntryOf::<UTConfig>::new_blank(log_id(2, 2, 4))].into(),
+                entries: Batch::of([EntryOf::<UTConfig>::new_blank(log_id(2, 2, 4))]),
             },
             Command::Replicate {
                 target: 3,
