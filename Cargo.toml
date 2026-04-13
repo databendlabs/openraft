@@ -34,7 +34,7 @@ peel-off           = { version = "0.1.0" }
 pretty_assertions  = { version = "1.0.0" }
 proc-macro2        = { version = "1.0" }
 quote              = { version = "1.0" }
-rand               = { version = "0.9" }
+rand               = { version = "0.10" }
 semver             = { version = "1.0.14" }
 serde              = { version = "1.0.114", features = ["derive", "rc"] }
 serde_json         = { version = "1.0.57" }
