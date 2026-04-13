@@ -1,10 +1,13 @@
 use std::collections::BTreeMap;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use openraft::async_runtime::WatchReceiver;
+use openraft::errors::decompose::DecomposeResult;
 use tonic::Request;
 use tonic::Response;
 use tonic::Status;
+use tonic::metadata::MetadataValue;
 use tracing::debug;
 
 use crate::pb;
@@ -15,30 +18,33 @@ use crate::protobuf::app_service_server::AppService;
 use crate::store::StateMachineStore;
 use crate::typ::*;
 
-/// External API service implementation providing key-value store operations.
-/// This service handles client requests for getting and setting values in the distributed store.
+/// gRPC metadata header used to communicate the leader's endpoint to clients.
 ///
-/// # Responsibilities
-/// - Handle key-value get operations
-/// - Handle key-value set operations
-/// - Ensure consistency through Raft consensus
-///
-/// # Protocol Safety
-/// This service implements the client-facing API and should validate all inputs
-/// before processing them through the Raft consensus protocol.
+/// When a non-leader node receives a write request, it returns `Status::unavailable`
+/// with this header set to the leader's address, so clients can retry against the leader.
+pub const LEADER_ENDPOINT_HEADER: &str = "x-openraft-leader-endpoint";
+
+/// Build a `Status::unavailable` with the leader's endpoint in gRPC metadata,
+/// so the client knows where to retry.
+fn status_forward_to_leader(forward: &ForwardToLeader) -> Status {
+    let mut status = Status::unavailable(format!("{}", forward));
+
+    if let Some(ref node) = forward.leader_node
+        && let Ok(v) = MetadataValue::from_str(&node.rpc_addr)
+    {
+        status.metadata_mut().insert(LEADER_ENDPOINT_HEADER, v);
+    }
+
+    status
+}
+
+/// External API service providing key-value store operations over gRPC.
 pub struct AppServiceImpl {
-    /// The Raft node instance for consensus operations
     raft_node: Raft,
-    /// The state machine store for direct reads
     state_machine_store: Arc<StateMachineStore>,
 }
 
 impl AppServiceImpl {
-    /// Creates a new instance of the API service
-    ///
-    /// # Arguments
-    /// * `raft_node` - The Raft node instance this service will use
-    /// * `state_machine_store` - The state machine store for reading data
     pub fn new(raft_node: Raft, state_machine_store: Arc<StateMachineStore>) -> Self {
         AppServiceImpl {
             raft_node,
@@ -49,142 +55,79 @@ impl AppServiceImpl {
 
 #[tonic::async_trait]
 impl AppService for AppServiceImpl {
-    /// Sets a value for a given key in the distributed store
-    ///
-    /// # Arguments
-    /// * `request` - Contains the key and value to set
-    ///
-    /// # Returns
-    /// * `Ok(Response)` - Success response after the value is set
-    /// * `Err(Status)` - Error status if the set operation fails
     async fn set(&self, request: Request<SetRequest>) -> Result<Response<PbResponse>, Status> {
         let req = request.into_inner();
-        debug!("Processing set request for key: {}", req.key.clone());
+        debug!("Processing set request for key: {}", req.key);
 
-        let res = self
-            .raft_node
-            .client_write(req.clone())
-            .await
-            .map_err(|e| Status::internal(format!("Failed to write to store: {}", e)))?;
+        let res = self.raft_node.client_write(req.clone()).await;
 
-        debug!("Successfully set value for key: {}", req.key);
-        Ok(Response::new(res.data))
+        match res.decompose() {
+            Ok(Ok(resp)) => Ok(Response::new(resp.data)),
+            Ok(Err(ClientWriteError::ForwardToLeader(forward))) => Err(status_forward_to_leader(&forward)),
+            Ok(Err(e)) => Err(Status::internal(e.to_string())),
+            Err(fatal) => Err(Status::internal(fatal.to_string())),
+        }
     }
 
-    /// Gets a value for a given key from the distributed store
-    ///
-    /// # Arguments
-    /// * `request` - Contains the key to retrieve
-    ///
-    /// # Returns
-    /// * `Ok(Response)` - Success response containing the value
-    /// * `Err(Status)` - Error status if the get operation fails
     async fn get(&self, request: Request<GetRequest>) -> Result<Response<PbResponse>, Status> {
         let req = request.into_inner();
         debug!("Processing get request for key: {}", req.key);
 
         let sm = self.state_machine_store.state_machine.lock().await;
-        let value = sm
-            .data
-            .get(&req.key)
-            .ok_or_else(|| Status::internal(format!("Key not found: {}", req.key)))?
-            .to_string();
+        let value = sm.data.get(&req.key).map(|v| v.to_string());
 
-        debug!("Successfully retrieved value for key: {}", req.key);
-        Ok(Response::new(PbResponse { value: Some(value) }))
+        Ok(Response::new(PbResponse { value }))
     }
 
-    /// Initializes a new Raft cluster with the specified nodes
-    ///
-    /// # Arguments
-    /// * `request` - Contains the initial set of nodes for the cluster
-    ///
-    /// # Returns
-    /// * Success response with initialization details
-    /// * Error if initialization fails
     async fn init(&self, request: Request<pb::InitRequest>) -> Result<Response<()>, Status> {
-        debug!("Initializing Raft cluster");
         let req = request.into_inner();
 
-        // Convert nodes into required format
         let nodes_map: BTreeMap<u64, pb::Node> = req.nodes.into_iter().map(|node| (node.node_id, node)).collect();
 
-        // Initialize the cluster
-        let result = self
-            .raft_node
-            .initialize(nodes_map)
-            .await
-            .map_err(|e| Status::internal(format!("Failed to initialize cluster: {}", e)))?;
+        self.raft_node.initialize(nodes_map).await.map_err(|e| Status::internal(e.to_string()))?;
 
-        debug!("Cluster initialization successful");
-        Ok(Response::new(result))
+        Ok(Response::new(()))
     }
 
-    /// Adds a learner node to the Raft cluster
-    ///
-    /// # Arguments
-    /// * `request` - Contains the node information and blocking preference
-    ///
-    /// # Returns
-    /// * Success response with learner addition details
-    /// * Error if the operation fails
     async fn add_learner(
         &self,
         request: Request<pb::AddLearnerRequest>,
     ) -> Result<Response<pb::ClientWriteResponse>, Status> {
         let req = request.into_inner();
-
-        let node = req.node.ok_or_else(|| Status::internal("Node information is required"))?;
-
-        debug!("Adding learner node {}", node.node_id);
+        let node = req.node.ok_or_else(|| Status::invalid_argument("Node information is required"))?;
 
         let raft_node = Node {
             rpc_addr: node.rpc_addr.clone(),
             node_id: node.node_id,
         };
 
-        let result = self
-            .raft_node
-            .add_learner(node.node_id, raft_node, true)
-            .await
-            .map_err(|e| Status::internal(format!("Failed to add learner node: {}", e)))?;
+        let res = self.raft_node.add_learner(node.node_id, raft_node, true).await;
 
-        debug!("Successfully added learner node {}", node.node_id);
-        Ok(Response::new(result.into()))
+        match res.decompose() {
+            Ok(Ok(resp)) => Ok(Response::new(resp.into())),
+            Ok(Err(ClientWriteError::ForwardToLeader(forward))) => Err(status_forward_to_leader(&forward)),
+            Ok(Err(e)) => Err(Status::internal(e.to_string())),
+            Err(fatal) => Err(Status::internal(fatal.to_string())),
+        }
     }
 
-    /// Changes the membership of the Raft cluster
-    ///
-    /// # Arguments
-    /// * `request` - Contains the new member set and retention policy
-    ///
-    /// # Returns
-    /// * Success response with membership change details
-    /// * Error if the operation fails
     async fn change_membership(
         &self,
         request: Request<pb::ChangeMembershipRequest>,
     ) -> Result<Response<pb::ClientWriteResponse>, Status> {
         let req = request.into_inner();
 
-        debug!(
-            "Changing membership. Members: {:?}, Retain: {}",
-            req.members, req.retain
-        );
+        let res = self.raft_node.change_membership(req.members, req.retain).await;
 
-        let result = self
-            .raft_node
-            .change_membership(req.members, req.retain)
-            .await
-            .map_err(|e| Status::internal(format!("Failed to change membership: {}", e)))?;
-
-        debug!("Successfully changed cluster membership");
-        Ok(Response::new(result.into()))
+        match res.decompose() {
+            Ok(Ok(resp)) => Ok(Response::new(resp.into())),
+            Ok(Err(ClientWriteError::ForwardToLeader(forward))) => Err(status_forward_to_leader(&forward)),
+            Ok(Err(e)) => Err(Status::internal(e.to_string())),
+            Err(fatal) => Err(Status::internal(fatal.to_string())),
+        }
     }
 
-    /// Retrieves metrics about the Raft node
     async fn metrics(&self, _request: Request<()>) -> Result<Response<pb::MetricsResponse>, Status> {
-        debug!("Collecting metrics");
         let metrics = self.raft_node.metrics().borrow_watched().clone();
         let resp = pb::MetricsResponse {
             membership: Some(metrics.membership_config.membership().clone().into()),

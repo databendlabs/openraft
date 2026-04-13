@@ -1,6 +1,8 @@
 #![allow(clippy::uninlined_format_args)]
 use std::backtrace::Backtrace;
 use std::panic::PanicHookInfo;
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 
@@ -10,8 +12,10 @@ use openraft::type_config::TypeConfigExt;
 use openraft::type_config::alias::AsyncRuntimeOf;
 use raft_kv_memstore_grpc::TypeConfig;
 use raft_kv_memstore_grpc::app::start_raft_app;
+use raft_kv_memstore_grpc::grpc::app_service::LEADER_ENDPOINT_HEADER;
 use raft_kv_memstore_grpc::protobuf as pb;
 use raft_kv_memstore_grpc::protobuf::app_service_client::AppServiceClient;
+use tonic::Code;
 use tonic::transport::Channel;
 use tracing_subscriber::EnvFilter;
 
@@ -36,8 +40,109 @@ pub fn log_panic(panic: &PanicHookInfo) {
     eprintln!("{}", backtrace);
 }
 
+// --- Forwarding gRPC Client ---
+
+/// A gRPC client that automatically forwards requests to the Raft leader.
+///
+/// When a non-leader node returns `Status::Unavailable` with the
+/// `x-openraft-leader-endpoint` metadata header, this client extracts
+/// the leader address, reconnects, and retries.
+struct GrpcClient {
+    /// Current leader address, shared so it can be updated on forwarding.
+    leader: Arc<Mutex<String>>,
+    inner: AppServiceClient<Channel>,
+}
+
+impl GrpcClient {
+    async fn new(addr: String) -> anyhow::Result<Self> {
+        let inner = connect(&addr).await?;
+        Ok(Self {
+            leader: Arc::new(Mutex::new(addr)),
+            inner,
+        })
+    }
+
+    /// Send a `Set` request, retrying up to 3 times on leader forwarding.
+    async fn set(&mut self, req: pb::SetRequest) -> anyhow::Result<pb::Response> {
+        self.with_forwarding(|c| {
+            let r = req.clone();
+            Box::pin(async move { c.set(r).await })
+        })
+        .await
+    }
+
+    /// Send an `AddLearner` request with forwarding.
+    async fn add_learner(&mut self, req: pb::AddLearnerRequest) -> anyhow::Result<pb::ClientWriteResponse> {
+        self.with_forwarding(|c| {
+            let r = req.clone();
+            Box::pin(async move { c.add_learner(r).await })
+        })
+        .await
+    }
+
+    /// Send a `ChangeMembership` request with forwarding.
+    async fn change_membership(&mut self, req: pb::ChangeMembershipRequest) -> anyhow::Result<pb::ClientWriteResponse> {
+        self.with_forwarding(|c| {
+            let r = req.clone();
+            Box::pin(async move { c.change_membership(r).await })
+        })
+        .await
+    }
+
+    /// Generic retry loop: on `Unavailable` with leader metadata, switch endpoint and retry.
+    async fn with_forwarding<T, F>(&mut self, make_rpc: F) -> anyhow::Result<T>
+    where F: Fn(
+            &mut AppServiceClient<Channel>,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<tonic::Response<T>, tonic::Status>> + Send + '_>,
+        > {
+        let max_retries = 3;
+
+        for _attempt in 0..=max_retries {
+            let result = make_rpc(&mut self.inner).await;
+
+            match result {
+                Ok(resp) => return Ok(resp.into_inner()),
+                Err(status) if status.code() == Code::Unavailable => {
+                    // Extract leader endpoint from gRPC metadata
+                    let leader_addr = status
+                        .metadata()
+                        .get(LEADER_ENDPOINT_HEADER)
+                        .and_then(|v| v.to_str().ok())
+                        .map(|s| s.to_string());
+
+                    if let Some(addr) = leader_addr {
+                        println!(">>> forwarding to leader at {}", addr);
+                        *self.leader.lock().unwrap() = addr.clone();
+                        self.inner = connect(&addr).await?;
+                        continue;
+                    }
+
+                    return Err(anyhow::anyhow!(
+                        "Unavailable but no leader endpoint in metadata: {}",
+                        status
+                    ));
+                }
+                Err(status) => {
+                    return Err(anyhow::anyhow!("RPC failed: {}", status));
+                }
+            }
+        }
+
+        Err(anyhow::anyhow!("max retries exceeded"))
+    }
+}
+
+async fn connect(addr: &str) -> Result<AppServiceClient<Channel>, tonic::transport::Error> {
+    let channel = Channel::builder(format!("https://{}", addr).parse().unwrap()).connect().await?;
+    Ok(AppServiceClient::new(channel))
+}
+
+// --- Test ---
+
 /// Set up a cluster of 3 nodes.
-/// Write to it and read from it.
+/// Write to it and read from it, including writes to non-leader nodes
+/// to demonstrate automatic leader forwarding.
 #[test]
 fn test_cluster() {
     TypeConfig::run(test_cluster_inner()).unwrap();
@@ -79,19 +184,23 @@ async fn test_cluster_inner() -> anyhow::Result<()> {
     // Wait for server to start up.
     TypeConfig::sleep(Duration::from_millis(200)).await;
 
-    let mut client1 = new_client(get_addr(1)).await?;
+    // Use the forwarding client that automatically retries on leader redirection.
+    let mut client1 = GrpcClient::new(get_addr(1)).await?;
 
     // --- Initialize the target node as a cluster of only one node.
     //     After init(), the single node cluster will be fully functional.
     println!("=== init single node cluster");
     {
+        // init() does not go through the forwarding client because it's only
+        // called on the node that will become the initial leader.
         client1
+            .inner
             .init(pb::InitRequest {
                 nodes: vec![new_node(1)],
             })
             .await?;
 
-        let metrics = client1.metrics(()).await?.into_inner();
+        let metrics = client1.inner.metrics(()).await?.into_inner();
         println!("=== metrics after init: {:?}", metrics);
     }
 
@@ -113,7 +222,7 @@ async fn test_cluster_inner() -> anyhow::Result<()> {
             })
             .await?;
 
-        let metrics = client1.metrics(()).await?.into_inner();
+        let metrics = client1.inner.metrics(()).await?.into_inner();
         println!("=== metrics after add-learner: {:?}", metrics);
         assert_eq!(
             vec![pb::NodeIdSet {
@@ -143,7 +252,7 @@ async fn test_cluster_inner() -> anyhow::Result<()> {
             })
             .await?;
 
-        let metrics = client1.metrics(()).await?.into_inner();
+        let metrics = client1.inner.metrics(()).await?.into_inner();
         println!("=== metrics after change-member: {:?}", metrics);
         assert_eq!(
             vec![pb::NodeIdSet {
@@ -153,7 +262,9 @@ async fn test_cluster_inner() -> anyhow::Result<()> {
         );
     }
 
-    println!("=== write `foo=bar`");
+    // --- Write via the leader (node 1).
+
+    println!("=== write `foo=bar` on leader (node 1)");
     {
         client1
             .set(pb::SetRequest {
@@ -162,30 +273,40 @@ async fn test_cluster_inner() -> anyhow::Result<()> {
             })
             .await?;
 
-        // --- Wait for a while to let the replication get done.
-        TypeConfig::sleep(Duration::from_millis(1_000)).await;
+        TypeConfig::sleep(Duration::from_millis(500)).await;
     }
 
-    println!("=== read `foo` on every node");
+    // --- Write via a non-leader node (node 2).
+    //     This demonstrates leader forwarding: node 2 returns `Unavailable`
+    //     with the leader's endpoint in metadata, and the client retries
+    //     against the leader automatically.
+
+    println!("=== write `qux=quux` on non-leader (node 2), expect auto-forwarding to leader");
     {
-        println!("=== read `foo` on node 1");
-        {
-            let got = client1.get(pb::GetRequest { key: "foo".to_string() }).await?;
-            assert_eq!(Some("bar".to_string()), got.into_inner().value);
-        }
+        let mut client2 = GrpcClient::new(get_addr(2)).await?;
+        client2
+            .set(pb::SetRequest {
+                key: "qux".to_string(),
+                value: "quux".to_string(),
+            })
+            .await?;
 
-        println!("=== read `foo` on node 2");
-        {
-            let mut client2 = new_client(get_addr(2)).await?;
-            let got = client2.get(pb::GetRequest { key: "foo".to_string() }).await?;
-            assert_eq!(Some("bar".to_string()), got.into_inner().value);
-        }
+        TypeConfig::sleep(Duration::from_millis(500)).await;
+    }
 
-        println!("=== read `foo` on node 3");
-        {
-            let mut client3 = new_client(get_addr(3)).await?;
-            let got = client3.get(pb::GetRequest { key: "foo".to_string() }).await?;
-            assert_eq!(Some("bar".to_string()), got.into_inner().value);
+    // --- Read from every node to verify replication.
+
+    println!("=== read `foo` and `qux` on every node");
+    {
+        for node_id in [1, 2, 3] {
+            println!("=== read on node {}", node_id);
+            let mut client = connect(&get_addr(node_id)).await?;
+
+            let got_foo = client.get(pb::GetRequest { key: "foo".to_string() }).await?;
+            assert_eq!(Some("bar".to_string()), got_foo.into_inner().value);
+
+            let got_qux = client.get(pb::GetRequest { key: "qux".to_string() }).await?;
+            assert_eq!(Some("quux".to_string()), got_qux.into_inner().value);
         }
     }
 
@@ -200,7 +321,7 @@ async fn test_cluster_inner() -> anyhow::Result<()> {
 
         TypeConfig::sleep(Duration::from_millis(2_000)).await;
 
-        let metrics = client1.metrics(()).await?.into_inner();
+        let metrics = client1.inner.metrics(()).await?.into_inner();
         println!("=== metrics after change-membership to {{3}}: {:?}", metrics);
         assert_eq!(
             vec![pb::NodeIdSet {
@@ -211,12 +332,6 @@ async fn test_cluster_inner() -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-async fn new_client(addr: String) -> Result<AppServiceClient<Channel>, tonic::transport::Error> {
-    let channel = Channel::builder(format!("https://{}", addr).parse().unwrap()).connect().await?;
-    let client = AppServiceClient::new(channel);
-    Ok(client)
 }
 
 fn new_node(node_id: u64) -> pb::Node {
