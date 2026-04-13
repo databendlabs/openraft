@@ -5,6 +5,7 @@ use std::future::Future;
 use std::io::SeekFrom;
 use std::time::Duration;
 
+use anyerror::AnyError;
 use futures::FutureExt;
 use openraft_macros::add_async_trait;
 use tokio::io::AsyncReadExt;
@@ -13,8 +14,10 @@ use tokio::io::AsyncWriteExt;
 
 use crate::error::Fatal;
 use crate::error::InstallSnapshotError;
+use crate::error::NetworkError;
 use crate::error::RPCError;
 use crate::error::RaftError;
+use crate::error::RemoteError;
 use crate::error::ReplicationClosed;
 use crate::error::StreamingError;
 use crate::network::RPCOption;
@@ -170,14 +173,29 @@ where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io:
                         tracing::warn!(error=%err, "error sending InstallSnapshot RPC to target");
 
                         match err {
-                            RPCError::Timeout(_) => {}
-                            RPCError::Unreachable(_) => {}
+                            RPCError::Timeout(timeout) => {
+                                // Return to replication core so the next retry re-reads the
+                                // latest snapshot instead of keeping the old snapshot forever.
+                                return Err(timeout.into());
+                            }
+                            RPCError::Unreachable(unreachable) => {
+                                return Err(unreachable.into());
+                            }
                             RPCError::PayloadTooLarge(_) => {}
-                            RPCError::Network(_) => {}
+                            RPCError::Network(network) => {
+                                return Err(network.into());
+                            }
                             RPCError::RemoteError(remote_err) => {
                                 //
                                 match remote_err.source {
-                                    RaftError::Fatal(_) => {}
+                                    RaftError::Fatal(fatal) => {
+                                        let err = RemoteError {
+                                            target: remote_err.target,
+                                            target_node: remote_err.target_node,
+                                            source: fatal,
+                                        };
+                                        return Err(err.into());
+                                    }
                                     RaftError::APIError(snapshot_err) => {
                                         //
                                         match snapshot_err {
@@ -199,7 +217,8 @@ where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io:
                 },
                 Err(err) => {
                     tracing::warn!(error=%err, "timeout while sending InstallSnapshot RPC to target");
-                    continue;
+                    let any_err = AnyError::error(format!("timeout while sending InstallSnapshot RPC: {err}"));
+                    return Err(NetworkError::new(&any_err).into());
                 }
             };
 
