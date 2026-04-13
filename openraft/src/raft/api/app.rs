@@ -4,8 +4,8 @@ use openraft_macros::since;
 
 use crate::RaftTypeConfig;
 use crate::ReadPolicy;
-use crate::base::Batch;
 use crate::base::BoxStream;
+use crate::batch::Batch;
 use crate::core::raft_msg::RaftMsg;
 use crate::errors::ClientWriteError;
 use crate::errors::Fatal;
@@ -19,6 +19,7 @@ use crate::raft::message::into_write_result;
 use crate::raft::raft_inner::RaftInner;
 use crate::raft::responder::core_responder::CoreResponder;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::BatchOf;
 use crate::type_config::alias::EntryPayloadOf;
 #[cfg(feature = "runtime-stats")]
 use crate::type_config::alias::InstantOf;
@@ -62,8 +63,8 @@ where C: RaftTypeConfig
         let (responder, _commit_rx, complete_rx) = ProgressResponder::new();
 
         self.do_client_write_ff(
-            Batch::from(payload),
-            Batch::from(Some(CoreResponder::Progress(responder))),
+            Batch::of([payload]),
+            Batch::of([Some(CoreResponder::Progress(responder))]),
         )
         .await?;
 
@@ -80,8 +81,8 @@ where C: RaftTypeConfig
         responder: Option<WriteResponderOf<C>>,
     ) -> Result<(), Fatal<C>> {
         self.do_client_write_ff(
-            Batch::from(payload),
-            Batch::from(responder.map(|r| CoreResponder::UserDefined(r))),
+            Batch::of([payload]),
+            Batch::of([responder.map(|r| CoreResponder::UserDefined(r))]),
         )
         .await
     }
@@ -90,8 +91,8 @@ where C: RaftTypeConfig
     #[since(version = "0.10.0")]
     async fn do_client_write_ff(
         &self,
-        payloads: Batch<EntryPayloadOf<C>>,
-        responders: Batch<Option<CoreResponder<C>>>,
+        payloads: BatchOf<C, EntryPayloadOf<C>>,
+        responders: BatchOf<C, Option<CoreResponder<C>>>,
     ) -> Result<(), Fatal<C>> {
         self.inner
             .send_msg(RaftMsg::ClientWrite {
@@ -130,7 +131,7 @@ where C: RaftTypeConfig
             receivers.push(complete_rx);
         }
 
-        self.do_client_write_ff(Batch::from(payloads), Batch::from(responders)).await?;
+        self.do_client_write_ff(Batch::of(payloads), Batch::of(responders)).await?;
 
         let stream = futures_util::stream::unfold(Some(receivers.into_iter()), |opt_iter| async move {
             let mut iter = opt_iter?;

@@ -3,8 +3,8 @@ use std::future::IntoFuture;
 use openraft_macros::since;
 
 use crate::RaftTypeConfig;
-use crate::base::Batch;
 use crate::base::BoxFuture;
+use crate::batch::Batch;
 use crate::core::raft_msg::RaftMsg;
 use crate::entry::EntryPayload;
 use crate::errors::Fatal;
@@ -140,8 +140,8 @@ where C: RaftTypeConfig
         Box::pin(async move {
             self.inner
                 .send_msg(RaftMsg::ClientWrite {
-                    payloads: Batch::from(EntryPayload::Normal(self.app_data)),
-                    responders: Batch::from(self.responder),
+                    payloads: Batch::of([EntryPayload::Normal(self.app_data)]),
+                    responders: Batch::of([self.responder]),
                     expected_leader: self.expected_leader,
                     #[cfg(feature = "runtime-stats")]
                     proposed_at: propose_at_now::<C>(),

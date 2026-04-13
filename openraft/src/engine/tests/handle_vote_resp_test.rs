@@ -7,6 +7,7 @@ use pretty_assertions::assert_eq;
 
 use crate::Membership;
 use crate::Vote;
+use crate::batch::Batch;
 use crate::core::ServerState;
 use crate::engine::Command;
 use crate::engine::Engine;
@@ -227,7 +228,7 @@ fn test_handle_vote_resp_equal_vote() -> anyhow::Result<()> {
                 },
                 Command::AppendEntries {
                     committed_vote: Vote::new(2, 1).into_committed(),
-                    entries: [EntryOf::<UTConfig>::new_blank(log_id(2, 1, 1))].into(),
+                    entries: Batch::of([EntryOf::<UTConfig>::new_blank(log_id(2, 1, 1))]),
                 },
                 Command::Replicate {
                     target: 2,

@@ -6,6 +6,7 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use display_more::DisplayOptionExt;
+use display_more::DisplaySliceExt;
 use futures_util::FutureExt;
 use futures_util::StreamExt;
 use futures_util::TryFutureExt;
@@ -24,6 +25,7 @@ use crate::async_runtime::MpscReceiver;
 use crate::async_runtime::OneshotSender;
 use crate::async_runtime::TryRecvError;
 use crate::async_runtime::watch::WatchSender;
+use crate::batch::Batch;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::ClientResponderQueue;
@@ -110,6 +112,7 @@ use crate::runtime::RaftRuntime;
 use crate::storage::IOFlushed;
 use crate::storage::RaftLogStorage;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::BatchOf;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::EntryPayloadOf;
@@ -552,8 +555,8 @@ where
         };
 
         self.write_entries(
-            [EntryPayload::Membership(new_membership)],
-            [Some(CoreResponder::Progress(tx))],
+            Batch::of([EntryPayload::Membership(new_membership)]),
+            Batch::of([Some(CoreResponder::Progress(tx))]),
             #[cfg(feature = "runtime-stats")]
             C::now(),
         );
@@ -591,21 +594,12 @@ where
     /// application-defined entries like user data, the latter is for membership configuration
     /// changes.
     #[tracing::instrument(level = "debug", skip_all, fields(id = display(&self.id)))]
-    pub fn write_entries<I, R>(
+    pub fn write_entries(
         &mut self,
-        payloads: I,
-        responders: R,
+        payloads: BatchOf<C, EntryPayloadOf<C>>,
+        responders: BatchOf<C, Option<CoreResponder<C>>>,
         #[cfg(feature = "runtime-stats")] proposed_at: InstantOf<C>,
-    ) -> Option<LeaderLogIds<CommittedLeaderIdOf<C>>>
-    where
-        I: IntoIterator<Item = EntryPayloadOf<C>>,
-        I::IntoIter: ExactSizeIterator,
-        R: IntoIterator<Item = Option<CoreResponder<C>>>,
-        R::IntoIter: ExactSizeIterator,
-    {
-        let payloads = payloads.into_iter();
-        let responders = responders.into_iter();
-
+    ) -> Option<LeaderLogIds<CommittedLeaderIdOf<C>>> {
         debug_assert_eq!(
             payloads.len(),
             responders.len(),
@@ -618,7 +612,7 @@ where
             Ok(lh) => lh,
             Err(forward_err) => {
                 let err = ClientWriteError::ForwardToLeader(forward_err);
-                for tx in responders.flatten() {
+                for tx in responders.into_iter().flatten() {
                     tx.on_complete(Err(err.clone()))
                 }
                 return None;
@@ -2101,7 +2095,7 @@ where
             } => {
                 let last_log_id = entries.last().unwrap().log_id();
                 let last_log_index = last_log_id.index();
-                tracing::debug!("AppendEntries: {}", entries.display_n(10));
+                tracing::debug!("AppendEntries: {}", entries.as_ref().display_n(10));
 
                 let entry_count = entries.len() as u64;
 

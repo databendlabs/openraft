@@ -196,11 +196,12 @@ where C: RaftTypeConfig
 mod tests {
     use super::*;
     use crate::async_runtime::MpscSender;
-    use crate::base::Batch;
+    use crate::batch::Batch;
     use crate::engine::testing::UTConfig;
     use crate::engine::testing::log_id;
     use crate::entry::EntryPayload;
     use crate::type_config::TypeConfigExt;
+    use crate::type_config::alias::BatchOf;
     use crate::type_config::alias::CommittedLeaderIdOf;
     use crate::type_config::alias::EntryPayloadOf;
 
@@ -212,17 +213,17 @@ mod tests {
 
     fn client_write(data: u64, leader: Option<CommittedLeaderIdOf<C>>) -> RaftMsg<C> {
         RaftMsg::ClientWrite {
-            payloads: Batch::Single(EntryPayload::Normal(data)),
-            responders: Batch::Single(None),
+            payloads: Batch::of([EntryPayload::Normal(data)]),
+            responders: Batch::of([None]),
             expected_leader: leader,
             #[cfg(feature = "runtime-stats")]
             proposed_at: C::now(),
         }
     }
 
-    fn extract_payload_data(payloads: &Batch<EntryPayloadOf<C>>) -> Vec<u64> {
+    fn extract_payload_data(payloads: &BatchOf<C, EntryPayloadOf<C>>) -> Vec<u64> {
         payloads
-            .as_slice()
+            .as_ref()
             .iter()
             .map(|p| match p {
                 EntryPayload::Normal(d) => *d,
