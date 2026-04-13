@@ -70,10 +70,7 @@ impl ClusterState {
 
     /// Find a Raft node that is currently the leader.
     pub fn find_leader(&self) -> Option<Arc<Raft>> {
-        self.rafts
-            .iter()
-            .find(|(_, raft)| raft.metrics().borrow_watched().state.is_leader())
-            .map(|(_, raft)| raft.clone())
+        self.rafts.values().find(|raft| raft.metrics().borrow_watched().state.is_leader()).cloned()
     }
 }
 

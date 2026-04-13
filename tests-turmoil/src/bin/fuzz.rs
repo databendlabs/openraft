@@ -303,21 +303,19 @@ async fn membership_agent_loop(
 ) -> Result<(), Box<dyn std::error::Error>> {
     loop {
         tokio::time::sleep(Duration::from_millis(100)).await;
-        let target_set = next_membership.lock().unwrap().take();
-        if let Some(new_set) = target_set {
-            let leader = cluster_state.lock().unwrap().find_leader();
-            if let Some(raft) = leader {
-                println!("MEMBERSHIP-AGENT: executing change to {new_set:?}");
-                let _ = raft.change_membership(new_set, false).await;
-            } else {
-                {
-                    let mut guard = next_membership.lock().unwrap();
-                    if guard.is_none() {
-                        *guard = Some(new_set);
-                    }
-                }
-                tokio::time::sleep(Duration::from_millis(500)).await;
-            }
+
+        let Some(new_set) = next_membership.lock().unwrap().take() else {
+            continue;
+        };
+
+        let leader = cluster_state.lock().unwrap().find_leader();
+        if let Some(raft) = leader {
+            println!("MEMBERSHIP-AGENT: executing change to {new_set:?}");
+            let _ = raft.change_membership(new_set, false).await;
+        } else {
+            // No leader found; put the membership change back for retry.
+            next_membership.lock().unwrap().get_or_insert(new_set);
+            tokio::time::sleep(Duration::from_millis(500)).await;
         }
     }
 }
@@ -471,7 +469,7 @@ fn run_single_iteration(
         let snapshots = cluster_state.lock().unwrap().get_all_full_snapshots();
         invariant_checks += 1;
         let result = check_state_invariants(&snapshots);
-        if !result.passed {
+        if !result.violations.is_empty() {
             for v in &result.violations {
                 let msg = format!("Step {steps}: {v:?}");
                 println!("VIOLATION: {msg}");
