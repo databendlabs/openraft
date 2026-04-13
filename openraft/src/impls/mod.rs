@@ -47,6 +47,7 @@ pub mod leader_id_std {
     pub use crate::vote::leader_id::leader_id_std::LeaderId;
 }
 
+pub use crate::batch::InlineBatch;
 /// Default implementation of a raft log identity.
 pub use crate::log_id::LogId;
 /// Default [`RaftVote`] implementation for both standard Raft mode and multi-leader-per-term mode.

@@ -164,6 +164,7 @@ impl std::fmt::Display for CommandName {
 mod tests {
     use super::CommandName;
     use super::SMCommandName;
+    use crate::batch::Batch;
     use crate::core::sm;
     use crate::engine::Command;
     use crate::engine::TargetProgress;
@@ -202,7 +203,7 @@ mod tests {
         // AppendEntries
         let cmd: Command<C> = Command::AppendEntries {
             committed_vote: cv.clone(),
-            entries: [].into(),
+            entries: Batch::of([]),
         };
         assert_eq!(cmd.name(), CommandName::AppendEntries);
 

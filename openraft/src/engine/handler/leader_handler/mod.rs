@@ -1,6 +1,5 @@
 use crate::RaftState;
 use crate::RaftTypeConfig;
-use crate::base::batch::Batch;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
@@ -13,6 +12,7 @@ use crate::proposer::LeaderQuorumSet;
 use crate::raft::message::TransferLeaderRequest;
 use crate::raft_state::IOId;
 use crate::replication::ReplicationSessionId;
+use crate::type_config::alias::BatchOf;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::EntryPayloadOf;
 use crate::type_config::alias::LogIdOf;
@@ -54,26 +54,28 @@ where C: RaftTypeConfig
     /// TODO(xp): if vote indicates this node is not the leader, refuse append
     #[tracing::instrument(level = "debug", skip(self, payloads))]
     pub(crate) fn leader_append_entries<I>(&mut self, payloads: I) -> Option<LeaderLogIds<CommittedLeaderIdOf<C>>>
-    where I: IntoIterator<Item = EntryPayloadOf<C>, IntoIter: ExactSizeIterator> {
-        let payloads = payloads.into_iter();
-
-        let log_ids = self.leader.assign_log_ids(payloads.len())?;
+    where I: IntoIterator<Item = EntryPayloadOf<C>> + AsRef<[EntryPayloadOf<C>]> {
+        let log_ids = self.leader.assign_log_ids(payloads.as_ref().len())?;
 
         self.state.extend_log_ids_from_same_leader(log_ids.clone());
 
         let mut membership_entry = None;
-        let entries = Batch::from_iter(payloads.zip(log_ids.clone()).map(|(payload, log_id)| {
-            tracing::debug!("assign log id: {}", log_id);
-            let entry = C::Entry::new(log_id, payload);
-            if let Some(m) = entry.get_membership() {
-                debug_assert!(
-                    membership_entry.is_none(),
-                    "only one membership entry is allowed in a batch"
-                );
-                membership_entry = Some((entry.log_id(), m));
-            }
-            entry
-        }));
+        let entries: BatchOf<C, _> = payloads
+            .into_iter()
+            .zip(log_ids.clone())
+            .map(|(payload, log_id)| {
+                tracing::debug!("assign log id: {}", log_id);
+                let entry = C::Entry::new(log_id, payload);
+                if let Some(m) = entry.get_membership() {
+                    debug_assert!(
+                        membership_entry.is_none(),
+                        "only one membership entry is allowed in a batch"
+                    );
+                    membership_entry = Some((entry.log_id(), m));
+                }
+                entry
+            })
+            .collect();
 
         self.state.accept_log_io(IOId::new_log_io(
             self.leader.committed_vote.clone(),

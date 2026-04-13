@@ -6,6 +6,7 @@ use pretty_assertions::assert_eq;
 
 use crate::Membership;
 use crate::Vote;
+use crate::batch::Batch;
 use crate::core::ServerState;
 use crate::engine::Command;
 use crate::engine::Engine;
@@ -77,7 +78,7 @@ fn test_become_leader() -> anyhow::Result<()> {
         },
         Command::AppendEntries {
             committed_vote: Vote::new(2, 1).into_committed(),
-            entries: [EntryOf::<UTConfig>::new_blank(log_id(2, 1, 0)),].into()
+            entries: Batch::of([EntryOf::<UTConfig>::new_blank(log_id(2, 1, 0))])
         },
         // Pipeline mode: ProgressEntry::empty(0) has matching.next_index()=0 == searching_end=0
         Command::Replicate {
