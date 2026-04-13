@@ -12,6 +12,7 @@ use pretty_assertions::assert_str_eq;
 use crate::Membership;
 use crate::MembershipState;
 use crate::Vote;
+use crate::batch::Batch;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::TargetProgress;
@@ -156,12 +157,11 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
         vec![
             Command::AppendEntries {
                 committed_vote: Vote::new(3, 1).into_committed(),
-                entries: vec![
+                entries: Batch::of([
                     blank_ent::<UTConfig>(3, 1, 4), //
                     blank_ent::<UTConfig>(3, 1, 5),
                     blank_ent::<UTConfig>(3, 1, 6),
-                ]
-                .into()
+                ])
             },
             Command::Replicate {
                 target: 2,
@@ -229,12 +229,11 @@ fn test_leader_append_entries_single_node_leader() -> anyhow::Result<()> {
     assert_eq!(
         vec![Command::AppendEntries {
             committed_vote: Vote::new(3, 1).into_committed(),
-            entries: vec![
+            entries: Batch::of([
                 blank_ent::<UTConfig>(3, 1, 4), //
                 blank_ent::<UTConfig>(3, 1, 5),
                 blank_ent::<UTConfig>(3, 1, 6),
-            ]
-            .into()
+            ])
         },],
         eng.output.take_commands()
     );
@@ -294,12 +293,11 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
         vec![
             Command::AppendEntries {
                 committed_vote: Vote::new(3, 1).into_committed(),
-                entries: vec![
+                entries: Batch::of([
                     blank_ent::<UTConfig>(3, 1, 4), //
                     EntryOf::<UTConfig>::new_membership(log_id(3, 1, 5), m1_2()),
                     blank_ent::<UTConfig>(3, 1, 6),
-                ]
-                .into()
+                ])
             },
             Command::RebuildReplicationStreams {
                 leader_vote: Vote::new(3, 1).into_committed(),

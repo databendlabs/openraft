@@ -78,6 +78,7 @@ pub mod vote;
 #[deprecated(since = "0.10.0", note = "use `errors` instead")]
 pub use errors as error;
 
+pub(crate) mod batch;
 #[cfg(test)]
 mod feature_serde_test;
 

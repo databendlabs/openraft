@@ -4,7 +4,6 @@ use std::fmt;
 use crate::ChangeMembers;
 use crate::RaftState;
 use crate::RaftTypeConfig;
-use crate::base::Batch;
 use crate::base::BoxOnce;
 use crate::core::raft_msg::external_command::ExternalCommand;
 #[cfg(feature = "runtime-stats")]
@@ -23,6 +22,7 @@ use crate::raft::VoteResponse;
 use crate::raft::linearizable_read::Linearizer;
 use crate::raft::responder::core_responder::CoreResponder;
 use crate::raft::stream_append::StreamAppendResult;
+use crate::type_config::alias::BatchOf;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::EntryPayloadOf;
 #[cfg(feature = "runtime-stats")]
@@ -83,8 +83,8 @@ where C: RaftTypeConfig
     },
 
     ClientWrite {
-        payloads: Batch<EntryPayloadOf<C>>,
-        responders: Batch<Option<CoreResponder<C>>>,
+        payloads: BatchOf<C, EntryPayloadOf<C>>,
+        responders: BatchOf<C, Option<CoreResponder<C>>>,
         expected_leader: Option<CommittedLeaderIdOf<C>>,
         #[cfg(feature = "runtime-stats")]
         proposed_at: InstantOf<C>,
