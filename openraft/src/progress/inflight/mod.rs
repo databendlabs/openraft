@@ -181,7 +181,17 @@ impl<NID: NodeId> Inflight<NID> {
                 }
             }
             Inflight::Snapshot { id: _, last_log_id } => {
-                debug_assert_eq!(&upto, last_log_id);
+                // The shipped snapshot may be newer than the one selected at `next_send` time:
+                // the state machine can build a fresher snapshot between boundary selection and
+                // `get_snapshot()`. Accepting `upto >= last_log_id` avoids a panic in that benign
+                // race while still catching an actual regression (a snapshot older than expected
+                // would roll `matching` backward on the follower).
+                debug_assert!(
+                    &upto >= last_log_id,
+                    "snapshot ack must not regress: upto={:?}, expected last_log_id={:?}",
+                    upto,
+                    last_log_id
+                );
                 *self = Inflight::None;
             }
         }
