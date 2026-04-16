@@ -8,7 +8,7 @@ use std::time::Duration;
 use anyerror::AnyError;
 use clap::Parser;
 use openraft_macros::since;
-use rand::Rng;
+use rand::RngExt;
 
 use crate::AsyncRuntime;
 use crate::LogId;

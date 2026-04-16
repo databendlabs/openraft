@@ -19,7 +19,7 @@ compio           = { version = ">=0.14.0", features = ["runtime", "time"] }
 flume            = { version = "0.11.1", default-features = false, features = ["async"] }
 futures          = { version = "0.3" }
 pin-project-lite = { version = "0.2.16" }
-rand             = { version = "0.9" }
+rand             = { version = "0.10" }
 see              = { version = "0.1.1" }
 
 [dev-dependencies]

@@ -103,7 +103,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
 
     /// Test `thread_rng()` returns a working random number generator.
     pub async fn test_thread_rng() {
-        use rand::Rng;
+        use rand::RngExt;
 
         let mut rng = Rt::thread_rng();
 
@@ -1185,7 +1185,7 @@ impl<Rt: AsyncRuntime> DetsimSuite<Rt> {
 
     /// Same seed produces the same RNG sequence; different seed differs.
     fn test_thread_rng_determinism() {
-        use rand::Rng;
+        use rand::RngExt;
 
         let collect = |seed: u64| -> Vec<u64> {
             Self::new_runtime(seed)
@@ -1202,7 +1202,7 @@ impl<Rt: AsyncRuntime> DetsimSuite<Rt> {
 
     /// Consecutive `thread_rng()` calls produce different values.
     fn test_thread_rng_sequence_advances() {
-        use rand::Rng;
+        use rand::RngExt;
 
         Self::new_runtime(42).block_on(async {
             let v1: u64 = Det::<Rt>::thread_rng().random();
@@ -1213,7 +1213,7 @@ impl<Rt: AsyncRuntime> DetsimSuite<Rt> {
 
     /// A spawned task's RNG differs from the parent's.
     fn test_spawn_seed_differs_from_parent() {
-        use rand::Rng;
+        use rand::RngExt;
 
         Self::new_runtime(42).block_on(async {
             let (tx, rx) = <Det<Rt> as AsyncRuntime>::Oneshot::channel::<u64>();
@@ -1235,7 +1235,7 @@ impl<Rt: AsyncRuntime> DetsimSuite<Rt> {
 
     /// Two separately spawned tasks get different RNG values.
     fn test_two_spawned_tasks_differ() {
-        use rand::Rng;
+        use rand::RngExt;
 
         Self::new_runtime(42).block_on(async {
             let (tx1, rx1) = <Det<Rt> as AsyncRuntime>::Oneshot::channel::<u64>();
@@ -1260,7 +1260,7 @@ impl<Rt: AsyncRuntime> DetsimSuite<Rt> {
 
     /// `scope()` sets the seed for an async future without `block_on`.
     fn test_scope() {
-        use rand::Rng;
+        use rand::RngExt;
 
         Self::new_runtime(0).block_on(async {
             // Same seed produces same value
