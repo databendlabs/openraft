@@ -32,8 +32,8 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
 
 - 💡 **Example Applications**:
 
-    - [Examples with OpenRaft 0.9](https://github.com/databendlabs/openraft/tree/release-0.9/examples) require OpenRaft 0.9 on [crate.io/openraft](https://crates.io/crates/openraft)
-    - [Examples with OpenRaft 0.10](https://github.com/databendlabs/openraft/tree/release-0.10/examples) require OpenRaft 0.10, which is not yet published on crate.io;
+    - [Examples with OpenRaft 0.10](https://github.com/databendlabs/openraft/tree/release-0.10/examples) require OpenRaft `0.10.0-alpha.18` (alpha) on [crates.io/openraft](https://crates.io/crates/openraft);
+    - [Examples with OpenRaft 0.9](https://github.com/databendlabs/openraft/tree/release-0.9/examples) require OpenRaft 0.9 on [crates.io/openraft](https://crates.io/crates/openraft).
 
 - 🙌 **Questions**?
     - Why not take a peek at our [FAQ](https://docs.rs/openraft/latest/openraft/docs/faq/index.html)? You might find just what you need.
@@ -69,6 +69,8 @@ Whatever your style, we're here to support you. 🚀 Let's make something awesom
 
 - **Branch main** has been under active development.
     The main branch is for the [release-0.10](https://github.com/databendlabs/openraft/tree/release-0.10).
+    Latest alpha on crates.io: [v0.10.0-alpha.18](https://crates.io/crates/openraft/0.10.0-alpha.18).
+    The `0.10` line is in **alpha** — the API may still change before the final `0.10.0` release.
 
 - **Branch [release-0.9](https://github.com/databendlabs/openraft/tree/release-0.9)**:
   Latest: ( [v0.9.0](https://github.com/databendlabs/openraft/tree/v0.9.0) | [Change log](https://github.com/databendlabs/openraft/blob/release-0.9/change-log.md#v090) );
