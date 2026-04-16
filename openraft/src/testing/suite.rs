@@ -5,7 +5,6 @@ use std::marker::PhantomData;
 use std::time::Duration;
 
 use anyerror::AnyError;
-use maplit::btreeset;
 
 use crate::entry::RaftEntry;
 use crate::log_id::RaftLogId;

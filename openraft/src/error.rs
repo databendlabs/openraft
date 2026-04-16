@@ -32,6 +32,7 @@ use crate::Vote;
 /// error, or an API error `E`.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[allow(clippy::large_enum_variant)]
 pub enum RaftError<NID, E = Infallible>
 where NID: NodeId
 {
@@ -128,6 +129,7 @@ where NID: NodeId
 /// Fatal is unrecoverable and shuts down raft at once.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[allow(clippy::large_enum_variant)]
 pub enum Fatal<NID>
 where NID: NodeId
 {

@@ -2,6 +2,7 @@
 #![doc = include_str!("docs/docs.md")]
 #![cfg_attr(feature = "bt", feature(error_generic_member_access))]
 #![cfg_attr(feature = "bench", feature(test))]
+#![cfg_attr(feature = "bench", allow(unused_features))]
 // TODO: `clippy::result-large-err`: StorageError is 136 bytes, try to reduce the size.
 #![allow(clippy::bool_assert_comparison, clippy::type_complexity, clippy::result_large_err)]
 #![deny(unused_qualifications)]

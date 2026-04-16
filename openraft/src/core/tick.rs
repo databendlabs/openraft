@@ -78,14 +78,14 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) async fn tick_loop(self, mut cancel_rx: oneshot::Receiver<()>) {
+    pub(crate) async fn tick_loop(self, cancel_rx: oneshot::Receiver<()>) {
         let mut i = 0;
 
         let mut cancel = std::pin::pin!(cancel_rx);
 
         loop {
             let at = C::now() + self.interval;
-            let mut sleep_fut = C::sleep_until(at);
+            let sleep_fut = C::sleep_until(at);
             let sleep_fut = std::pin::pin!(sleep_fut);
             let cancel_fut = cancel.as_mut();
 

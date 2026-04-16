@@ -86,12 +86,12 @@ where
     }
 
     /// Get a write lock of the underlying storage.
-    pub async fn storage_mut(&self) -> RwLockWriteGuard<S> {
+    pub async fn storage_mut(&self) -> RwLockWriteGuard<'_, S> {
         self.storage.write().await
     }
 
     /// Get a read lock of the underlying storage.
-    pub async fn storage(&self) -> RwLockReadGuard<S> {
+    pub async fn storage(&self) -> RwLockReadGuard<'_, S> {
         self.storage.read().await
     }
 }

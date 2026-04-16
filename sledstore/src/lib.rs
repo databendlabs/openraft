@@ -1,5 +1,6 @@
 #![deny(unused_crate_dependencies)]
 #![deny(unused_qualifications)]
+#![allow(clippy::result_large_err)]
 
 #[cfg(test)]
 mod test;

@@ -223,7 +223,7 @@ where
         &self.effective
     }
 
-    pub(crate) fn change_handler(&self) -> ChangeHandler<NID, N> {
+    pub(crate) fn change_handler(&self) -> ChangeHandler<'_, NID, N> {
         ChangeHandler { state: self }
     }
 }

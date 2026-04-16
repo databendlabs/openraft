@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use proc_macro2::Ident;
 use quote::quote;
 use quote::ToTokens;
+use syn::__private::TokenStream2;
 use syn::parenthesized;
 use syn::parse::Parse;
 use syn::parse::ParseStream;
@@ -11,7 +12,6 @@ use syn::Expr;
 use syn::ExprTuple;
 use syn::Token;
 use syn::Type;
-use syn::__private::TokenStream2;
 
 /// A type or an expression which is used as an argument in the `expand` macro.
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]

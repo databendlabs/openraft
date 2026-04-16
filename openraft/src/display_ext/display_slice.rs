@@ -45,7 +45,7 @@ pub(crate) trait DisplaySliceExt<'a, T: fmt::Display> {
 impl<T> DisplaySliceExt<'_, T> for [T]
 where T: fmt::Display
 {
-    fn display(&self) -> DisplaySlice<T> {
+    fn display(&self) -> DisplaySlice<'_, T> {
         DisplaySlice(self)
     }
 }

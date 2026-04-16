@@ -4,6 +4,7 @@ use crate::type_config::alias::LogIdOf;
 
 /// A replication request sent by RaftCore leader state to replication stream.
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum Replicate<C>
 where C: RaftTypeConfig
 {
@@ -68,6 +69,7 @@ use crate::SnapshotMeta;
 /// It defines what data to send to a follower/learner and an id to identify who is sending this
 /// data.
 /// Thd data is either a series of logs or a snapshot.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum Data<C>
 where C: RaftTypeConfig
 {

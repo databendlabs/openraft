@@ -182,7 +182,7 @@ To use arbitrary snapshot data, the application needs to:
 [`AsyncRuntime`]:                     `crate::AsyncRuntime`
 [`RPCOption`]:                        `crate::network::RPCOption`
 [`Chunked`]:                          `crate::network::snapshot_transport::Chunked`
-[`Chunked::receive_snapshot`]:        `crate::network::snapshot_transport::Chunked::receive_snapshot`
+[`Chunked::receive_snapshot`]:        `crate::network::snapshot_transport::SnapshotTransport::receive_snapshot`
 [`Streaming`]:                        `crate::network::snapshot_transport::Streaming`
 
 [`PayloadTooLarge`]:                  `crate::error::PayloadTooLarge`

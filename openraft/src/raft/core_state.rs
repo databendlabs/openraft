@@ -4,6 +4,7 @@ use crate::AsyncRuntime;
 use crate::NodeId;
 
 /// The running state of RaftCore
+#[allow(clippy::large_enum_variant)]
 pub(in crate::raft) enum CoreState<NID, A>
 where
     NID: NodeId,

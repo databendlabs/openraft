@@ -6,11 +6,11 @@ the append-entry process, it removes conflicting logs, before installing a
 snapshot:
 
 - (1) If the snapshot's logs match the logs already stored on a
-    Follower/Learner, no action is taken before installing snapshot.
+  Follower/Learner, no action is taken before installing snapshot.
 
 - (2) If the snapshot's logs conflict with the local logs, **ALL** non-committed
-    logs will be removed before installing snapshot. Additionally, the
-    membership roll must be rolled back to a previous, non-conflicting state.
+  logs will be removed before installing snapshot. Additionally, the
+  membership roll must be rolled back to a previous, non-conflicting state.
 
 After truncating conflicting logs, the snapshot is installed.
 The final step is to purge logs the snapshot contains. 

@@ -24,7 +24,7 @@ pub(crate) trait DisplayOptionExt<'a, T: fmt::Display> {
 impl<T> DisplayOptionExt<'_, T> for Option<T>
 where T: fmt::Display
 {
-    fn display(&self) -> DisplayOption<T> {
+    fn display(&self) -> DisplayOption<'_, T> {
         DisplayOption(self)
     }
 }

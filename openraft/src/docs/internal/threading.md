@@ -107,18 +107,18 @@ User
   task sends a message to `RaftCore` via `Notify` containing the snapshot information.
 
 [`Raft`]:              `crate::raft::Raft`
-[`ReplicationHandle`]: `crate::replication::ReplicationHandle`
-[`ReplicationCore`]:   `crate::replication::ReplicationCore`
 [`client_write`]:      `crate::raft::Raft::client_write`
 [`RaftStorage`]:       `crate::storage::RaftStorage`
 [`RaftLogStorage`]:    `crate::storage::RaftLogStorage`
 [`RaftStateMachine`]:  `crate::storage::RaftStateMachine`
-[`Adapter`]:           `crate::storage::Adapter`
+[`Adapter`]:           `crate::storage::Adaptor`
 [`RaftNetwork`]:       `crate::network::RaftNetwork`
-[`append_entries`]:    `crate::network::Network::append_entries`
+[`append_entries`]:    `crate::network::RaftNetwork::append_entries`
 [`VoteRequest`]:       `crate::raft::VoteRequest`
 
 [//]: # (private items)
+[//]: # ([`ReplicationHandle`]: `crate::replication::ReplicationHandle`)
+[//]: # ([`ReplicationCore`]:   `crate::replication::ReplicationCore`)
 [//]: # ([`RaftCore`]:          `crate::core::RaftCore`)
 [//]: # ([`RaftMsg`]:           `crate::raft::RaftMsg`)
 [//]: # ([`Notify`]:            `crate::core::notify::Notify`)

@@ -29,27 +29,27 @@ The [`RaftStateMachine`] encapsulates several critical responsibilities:
 ## State Management in Raft State Machines
 
 - **State Reversion and Recovery**:
-    The state machine in the Raft application is typically an in-memory component.
-    Upon startup, the state machine may revert to a previous state. This setup is
-    generally acceptable because the combination of a persistent snapshot and the
-    Raft logs provides sufficient information to reconstruct the state. This process
-    involves first rebuilding the state machine from the snapshot and then
-    reapplying any logs that are not included in the snapshot.
+  The state machine in the Raft application is typically an in-memory component.
+  Upon startup, the state machine may revert to a previous state. This setup is
+  generally acceptable because the combination of a persistent snapshot and the
+  Raft logs provides sufficient information to reconstruct the state. This process
+  involves first rebuilding the state machine from the snapshot and then
+  reapplying any logs that are not included in the snapshot.
 
-    Afterwards, Raft log entries are applied to update the state machine to its
-    current state.
+  Afterwards, Raft log entries are applied to update the state machine to its
+  current state.
 
 - **Distinct Management of Membership and Normal Logs**:
-    Within the state machine, the state of membership configuration logs and the
-    state of normal logs are managed separately, though they are stored together.
-    These can be thought of as two distinct sections.
+  Within the state machine, the state of membership configuration logs and the
+  state of normal logs are managed separately, though they are stored together.
+  These can be thought of as two distinct sections.
 
 - **Membership Config State Beyond the Last Applied**:
-   It is acceptable for the membership to return with a log ID greater than the
-   last applied log ID, provided that the corresponding Raft logs have not been
-   purged and can thus be reapplied to the state machine. Upon startup, the most
-   recent membership configuration is loaded by scanning the logs starting from the
-   `last-applied-log-id`.
+  It is acceptable for the membership to return with a log ID greater than the
+  last applied log ID, provided that the corresponding Raft logs have not been
+  purged and can thus be reapplied to the state machine. Upon startup, the most
+  recent membership configuration is loaded by scanning the logs starting from the
+  `last-applied-log-id`.
 
 
 [`RaftStateMachine`]:         `crate::storage::RaftStateMachine`

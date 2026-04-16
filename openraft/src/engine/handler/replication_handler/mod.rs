@@ -467,7 +467,7 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn log_handler(&mut self) -> LogHandler<C> {
+    pub(crate) fn log_handler(&mut self) -> LogHandler<'_, C> {
         LogHandler {
             config: self.config,
             state: self.state,
@@ -475,7 +475,7 @@ where C: RaftTypeConfig
         }
     }
 
-    fn snapshot_handler(&mut self) -> SnapshotHandler<C> {
+    fn snapshot_handler(&mut self) -> SnapshotHandler<'_, '_, C> {
         SnapshotHandler {
             state: self.state,
             output: self.output,

@@ -356,15 +356,13 @@ Additionally, two test scripts for setting up a cluster are available:
 [`EmptyNode`]:                          `crate::EmptyNode`
 [`BasicNode`]:                          `crate::BasicNode`
 [`Entry`]:                              `crate::entry::Entry`
-[`docs::Vote`]:                         `crate::docs::data::Vote`
+[`docs::Vote`]:                         `crate::docs::data::vote`
 [`Vote`]:                               `crate::vote::Vote`
 [`LogState`]:                           `crate::storage::LogState` 
 
 [`RaftLogReader`]:                      `crate::storage::RaftLogReader`
 [`try_get_log_entries()`]:              `crate::storage::RaftLogReader::try_get_log_entries`
 
-
-[`RaftLogStorage::SnapshotBuilder`]:    `crate::storage::RaftLogStorage::SnapshotBuilder`
 
 [`RaftLogStorage`]:                     `crate::storage::RaftLogStorage`
 [`RaftLogStorage::LogReader`]:          `crate::storage::RaftLogStorage::LogReader`

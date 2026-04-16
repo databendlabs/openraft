@@ -333,7 +333,7 @@ where C: RaftTypeConfig
     /// let raft = Raft::new(...).await?;
     /// raft.runtime_config().heartbeat(true);
     /// ```
-    pub fn runtime_config(&self) -> RuntimeConfigHandle<C> {
+    pub fn runtime_config(&self) -> RuntimeConfigHandle<'_, C> {
         RuntimeConfigHandle::new(self.inner.as_ref())
     }
 
@@ -365,7 +365,7 @@ where C: RaftTypeConfig
     /// let raft = Raft::new(...).await?;
     /// raft.trigger().elect().await?;
     /// ```
-    pub fn trigger(&self) -> Trigger<C> {
+    pub fn trigger(&self) -> Trigger<'_, C> {
         Trigger::new(self.inner.as_ref())
     }
 

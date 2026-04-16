@@ -81,7 +81,7 @@ pub(crate) trait DisplayInstantExt<'a, T> {
 impl<T> DisplayInstantExt<'_, T> for T
 where T: Instant
 {
-    fn display(&self) -> DisplayInstant<T, true> {
+    fn display(&self) -> DisplayInstant<'_, T, true> {
         DisplayInstant(self)
     }
 }

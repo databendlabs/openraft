@@ -119,7 +119,7 @@ where C: RaftTypeConfig
         std::cmp::max(self.leader.noop_log_id.clone(), committed)
     }
 
-    pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<C> {
+    pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<'_, C> {
         ReplicationHandler {
             config: self.config,
             leader: self.leader,

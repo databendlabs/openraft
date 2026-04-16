@@ -206,7 +206,7 @@ where C: RaftTypeConfig
         self.server_state_handler().update_server_state_if_changed();
     }
 
-    pub(crate) fn server_state_handler(&mut self) -> ServerStateHandler<C> {
+    pub(crate) fn server_state_handler(&mut self) -> ServerStateHandler<'_, C> {
         ServerStateHandler {
             config: self.config,
             state: self.state,
@@ -214,7 +214,7 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<C> {
+    pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<'_, C> {
         let leader = self.leader.as_mut().unwrap();
 
         ReplicationHandler {
@@ -225,7 +225,7 @@ where C: RaftTypeConfig
         }
     }
 
-    pub(crate) fn leader_handler(&mut self) -> LeaderHandler<C> {
+    pub(crate) fn leader_handler(&mut self) -> LeaderHandler<'_, C> {
         let leader = self.leader.as_mut().unwrap();
 
         LeaderHandler {
