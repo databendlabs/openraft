@@ -30,6 +30,7 @@ use crate::core::sm::handle::SnapshotReader;
 use crate::display_ext::DisplayOptionExt;
 use crate::error::decompose::DecomposeResult;
 use crate::error::HigherVote;
+use crate::error::NetworkError;
 use crate::error::PayloadTooLarge;
 use crate::error::RPCError;
 use crate::error::ReplicationClosed;
@@ -707,6 +708,7 @@ where
         snapshot_req: DataWithId<Option<LogIdOf<C>>>,
     ) -> Result<Option<Data<C>>, ReplicationError<C::NodeId, C::Node>> {
         let request_id = snapshot_req.request_id();
+        let expected_last_log_id = snapshot_req.into_data();
 
         tracing::info!(request_id = display(request_id), "{}", func_name!());
 
@@ -729,6 +731,8 @@ where
             }
             Some(x) => x,
         };
+
+        ensure_snapshot_selection_matches_request(request_id, &expected_last_log_id, &snapshot)?;
 
         let mut option = RPCOption::new(self.config.install_snapshot_timeout());
         option.snapshot_chunk_size = Some(self.config.snapshot_max_chunk_size as usize);
@@ -880,5 +884,96 @@ where
             matching.index().display(),
             to_send.prev.index().display()
         );
+    }
+}
+
+fn ensure_snapshot_selection_matches_request<C>(
+    request_id: RequestId,
+    expected_last_log_id: &Option<LogIdOf<C>>,
+    snapshot: &Snapshot<C>,
+) -> Result<(), ReplicationError<C::NodeId, C::Node>>
+where
+    C: RaftTypeConfig,
+{
+    if snapshot.meta.last_log_id == *expected_last_log_id {
+        return Ok(());
+    }
+
+    tracing::info!(
+        request_id = display(request_id),
+        expected_snapshot = display(expected_last_log_id.display()),
+        actual_snapshot = display(snapshot.meta.last_log_id.display()),
+        actual_snapshot_id = display(&snapshot.meta.snapshot_id),
+        "skip stale snapshot request and reschedule with current snapshot"
+    );
+
+    let stale_selection = AnyError::error(format!(
+        "snapshot request {} expected {}, but current snapshot is {} ({})",
+        request_id,
+        expected_last_log_id.display(),
+        snapshot.meta.last_log_id.display(),
+        snapshot.meta.snapshot_id
+    ));
+
+    Err(ReplicationError::RPCError(RPCError::Network(NetworkError::new(&stale_selection))))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+
+    use crate::engine::testing::UTConfig;
+    use crate::storage::SnapshotMeta;
+    use crate::testing::log_id;
+    use crate::StoredMembership;
+
+    use super::*;
+
+    #[test]
+    fn test_ensure_snapshot_selection_matches_request_accepts_matching_snapshot() {
+        let snapshot = Snapshot::<UTConfig>::new(
+            SnapshotMeta {
+                last_log_id: Some(log_id(1, 0, 100)),
+                last_membership: StoredMembership::default(),
+                snapshot_id: "snapshot-100".to_string(),
+            },
+            Box::new(Cursor::new(vec![1, 2, 3])),
+        );
+
+        let res = ensure_snapshot_selection_matches_request(
+            RequestId::new_snapshot(7),
+            &Some(log_id(1, 0, 100)),
+            &snapshot,
+        );
+
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn test_ensure_snapshot_selection_matches_request_rejects_stale_selection() {
+        let snapshot = Snapshot::<UTConfig>::new(
+            SnapshotMeta {
+                last_log_id: Some(log_id(1, 0, 200)),
+                last_membership: StoredMembership::default(),
+                snapshot_id: "snapshot-200".to_string(),
+            },
+            Box::new(Cursor::new(vec![1, 2, 3])),
+        );
+
+        let res = ensure_snapshot_selection_matches_request(
+            RequestId::new_snapshot(9),
+            &Some(log_id(1, 0, 100)),
+            &snapshot,
+        );
+
+        let err = res.expect_err("newer snapshot should force reschedule");
+
+        match err {
+            ReplicationError::RPCError(RPCError::Network(err)) => {
+                assert!(err.to_string().contains("expected"));
+                assert!(err.to_string().contains("snapshot-200"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
     }
 }
