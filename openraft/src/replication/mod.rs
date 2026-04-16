@@ -1,5 +1,7 @@
 //! Replication stream.
 
+mod backoff_consumer;
+pub(crate) mod backoff_state;
 pub(crate) mod event_watcher;
 pub(crate) mod inflight_append;
 pub(crate) mod inflight_append_queue;
@@ -40,7 +42,6 @@ use crate::display_ext::display_instant::DisplayInstantExt;
 use crate::errors::RPCError;
 use crate::errors::ReplicationClosed;
 use crate::log_id_range::LogIdRange;
-use crate::network::Backoff;
 use crate::network::NetBackoff;
 use crate::network::NetStreamAppend;
 use crate::network::RPCOption;
@@ -49,6 +50,7 @@ use crate::raft::AppendEntriesRequest;
 use crate::raft::StreamAppendError;
 use crate::raft::StreamAppendResult;
 use crate::raft_state::IOId;
+use crate::replication::backoff_state::BackoffState;
 use crate::replication::event_watcher::EventWatcher;
 use crate::replication::inflight_append_queue::InflightAppendQueue;
 use crate::replication::replication_context::ReplicationContext;
@@ -93,10 +95,14 @@ where
     /// The log replication state tracking progress and matching logs for the follower.
     replication_progress: ReplicationProgress<C>,
 
-    backoff_rank: u64,
-
-    /// Shared backoff state for rate-limiting retries on persistent errors.
-    backoff: Arc<std::sync::Mutex<Option<Backoff>>>,
+    /// Backoff state for rate-limiting retries on persistent errors.
+    ///
+    /// Encapsulates both the accumulated error rank and the shared backoff iterator
+    /// handed to [`StreamState`] via
+    /// [`BackoffState::consumer`](crate::replication::backoff_state::BackoffState::consumer).
+    /// See [issue #1723](https://github.com/databendlabs/openraft/issues/1723) for the
+    /// invariant these two pieces must maintain together.
+    backoff_state: BackoffState,
 }
 
 impl<C, N, LS> ReplicationCore<C, N, LS>
@@ -126,7 +132,7 @@ where
             progress.remote_matched.display()
         );
 
-        let backoff = Arc::new(std::sync::Mutex::new(None));
+        let backoff_state = BackoffState::new();
 
         let this = Self {
             replication_context: replication_context.clone(),
@@ -137,14 +143,13 @@ where
                 payload: None,
                 inflight_id: None,
                 leader_committed: None,
-                backoff: backoff.clone(),
+                backoff_consumer: backoff_state.consumer(),
             })),
             inflight_id: None,
             event_watcher,
             network: Some(network),
             replication_progress: progress,
-            backoff_rank: 0,
-            backoff: backoff.clone(),
+            backoff_state,
             next_action: None,
         };
 
@@ -206,11 +211,9 @@ where
                 return Err(ReplicationClosed::new("Leader changed"));
             }
 
-            if self.backoff_rank > 20 {
-                self.enable_backoff(&mut network);
-            } else {
-                self.disable_backoff();
-            }
+            // Kept separate from `on_error` because only this scope holds a reference
+            // to `network`, which is needed to construct the `Backoff` iterator.
+            self.backoff_state.reconcile(|| network.backoff());
 
             if self.next_action.is_none() {
                 self.drain_events().await?;
@@ -256,7 +259,7 @@ where
             let resp_strm = match resp_strm_res {
                 Ok(resp_strm) => resp_strm,
                 Err(rpc_err) => {
-                    self.backoff_rank += rpc_err.backoff_rank();
+                    self.backoff_state.on_error(rpc_err.backoff_rank());
                     self.send_progress_error(rpc_err, "initiate-stream-replication").await;
 
                     continue;
@@ -289,15 +292,11 @@ where
         while let Some(rpc_res) = resp_strm.next().await {
             tracing::debug!("AppendEntries RPC response: {:?}", rpc_res);
 
+            self.backoff_state.observe(&rpc_res);
             let append_res = match rpc_res {
-                Ok(stream_append_res) => {
-                    self.backoff_rank = 0;
-                    stream_append_res
-                }
+                Ok(stream_append_res) => stream_append_res,
                 Err(rpc_err) => {
-                    self.backoff_rank += rpc_err.backoff_rank();
                     self.send_progress_error(rpc_err, "stream-replication").await;
-
                     return Err("RPCError");
                 }
             };
@@ -337,20 +336,6 @@ where
             }
         }
         Ok(())
-    }
-
-    /// Enables backoff for retries when errors persist.
-    fn enable_backoff(&self, network: &mut N::Network) {
-        let mut backoff = self.backoff.lock().unwrap();
-        if backoff.is_none() {
-            *backoff = Some(network.backoff());
-        }
-    }
-
-    /// Disables backoff after successful communication.
-    fn disable_backoff(&self) {
-        let mut backoff = self.backoff.lock().unwrap();
-        *backoff = None;
     }
 
     /// Send the error result to RaftCore.
