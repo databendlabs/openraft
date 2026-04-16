@@ -101,6 +101,16 @@ async fn snapshot_retry_uses_latest_snapshot() -> Result<()> {
 
     wait_for_snapshot_ids(&seen_snapshot_ids, 1).await?;
 
+    let rpc_count_before = install_snapshot_rpc_count(&router);
+    sleep(Duration::from_millis(250)).await;
+    let rpc_count_after = install_snapshot_rpc_count(&router);
+    assert!(
+        rpc_count_after - rpc_count_before <= 12,
+        "install_snapshot retries should back off instead of tight-looping: before={}, after={}",
+        rpc_count_before,
+        rpc_count_after
+    );
+
     tracing::info!(
         log_index,
         "--- build the 2nd snapshot while the 1st snapshot keeps retrying"
@@ -159,4 +169,9 @@ async fn wait_for_snapshot_ids(snapshot_ids: &Arc<Mutex<BTreeSet<String>>>, want
 
 fn timeout() -> Option<Duration> {
     Some(Duration::from_millis(2_000))
+}
+
+fn install_snapshot_rpc_count(router: &RaftRouter) -> u64 {
+    let counts = router.get_rpc_count();
+    *counts.get(&RPCTypes::InstallSnapshot).unwrap_or(&0)
 }
