@@ -20,6 +20,7 @@ use crate::error::RaftError;
 use crate::error::RemoteError;
 use crate::error::ReplicationClosed;
 use crate::error::StreamingError;
+use crate::network::Backoff;
 use crate::network::RPCOption;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft::SnapshotResponse;
@@ -97,6 +98,18 @@ pub trait SnapshotTransport<C: RaftTypeConfig> {
 /// Send and Receive snapshot by chunks.
 pub struct Chunked {}
 
+const SNAPSHOT_CHUNK_MAX_RETRIES: u64 = 5;
+const SNAPSHOT_CHUNK_RETRY_BASE_MILLIS: u64 = 10;
+const SNAPSHOT_CHUNK_RETRY_MAX_MILLIS: u64 = 200;
+
+fn snapshot_chunk_retry_delay(consecutive_failures: u64) -> Duration {
+    debug_assert!(consecutive_failures > 0);
+
+    let shift = consecutive_failures.saturating_sub(1).min(4) as u32;
+    let millis = SNAPSHOT_CHUNK_RETRY_BASE_MILLIS.saturating_mul(1u64 << shift);
+    Duration::from_millis(millis.min(SNAPSHOT_CHUNK_RETRY_MAX_MILLIS))
+}
+
 /// This chunk based implementation requires `SnapshotData` to be `AsyncRead + AsyncSeek`.
 impl<C: RaftTypeConfig> SnapshotTransport<C> for Chunked
 where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin
@@ -115,6 +128,8 @@ where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io:
 
         let mut offset = 0;
         let end = snapshot.snapshot.seek(SeekFrom::End(0)).await.sto_res(subject_verb)?;
+        let mut consecutive_failures = 0;
+        let mut unreachable_backoff = None::<Backoff>;
 
         let mut c = std::pin::pin!(cancel);
         loop {
@@ -166,7 +181,11 @@ where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io:
 
             let resp = match res {
                 Ok(outer_res) => match outer_res {
-                    Ok(res) => res,
+                    Ok(res) => {
+                        consecutive_failures = 0;
+                        unreachable_backoff = None;
+                        res
+                    }
                     Err(err) => {
                         let err: RPCError<C::NodeId, C::Node, RaftError<C::NodeId, InstallSnapshotError>> = err;
 
@@ -174,16 +193,58 @@ where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io:
 
                         match err {
                             RPCError::Timeout(timeout) => {
-                                // Return to replication core so the next retry re-reads the
-                                // latest snapshot instead of keeping the old snapshot forever.
-                                return Err(timeout.into());
+                                consecutive_failures += 1;
+                                if consecutive_failures >= SNAPSHOT_CHUNK_MAX_RETRIES {
+                                    return Err(timeout.into());
+                                }
+
+                                let delay = snapshot_chunk_retry_delay(consecutive_failures);
+                                tracing::warn!(
+                                    attempt = consecutive_failures,
+                                    ?delay,
+                                    "timeout sending snapshot chunk, retry from current offset"
+                                );
+                                C::sleep(delay).await;
+                                continue;
                             }
                             RPCError::Unreachable(unreachable) => {
-                                return Err(unreachable.into());
+                                consecutive_failures += 1;
+                                if consecutive_failures >= SNAPSHOT_CHUNK_MAX_RETRIES {
+                                    return Err(unreachable.into());
+                                }
+
+                                let delay = unreachable_backoff
+                                    .get_or_insert_with(|| net.backoff())
+                                    .next()
+                                    .unwrap_or_else(|| Duration::from_millis(500));
+                                tracing::warn!(
+                                    attempt = consecutive_failures,
+                                    ?delay,
+                                    "snapshot target unreachable, retry from current offset"
+                                );
+                                C::sleep(delay).await;
+                                continue;
                             }
-                            RPCError::PayloadTooLarge(_) => {}
+                            RPCError::PayloadTooLarge(_) => {
+                                // TODO: shrink snapshot chunk size and retry from the current
+                                // offset. Retrying the same chunk with the same size will not
+                                // make progress, and the append-entries `PayloadTooLarge` path in
+                                // `ReplicationCore` is not reusable for snapshot replication.
+                            }
                             RPCError::Network(network) => {
-                                return Err(network.into());
+                                consecutive_failures += 1;
+                                if consecutive_failures >= SNAPSHOT_CHUNK_MAX_RETRIES {
+                                    return Err(network.into());
+                                }
+
+                                let delay = snapshot_chunk_retry_delay(consecutive_failures);
+                                tracing::warn!(
+                                    attempt = consecutive_failures,
+                                    ?delay,
+                                    "network error sending snapshot chunk, retry from current offset"
+                                );
+                                C::sleep(delay).await;
+                                continue;
                             }
                             RPCError::RemoteError(remote_err) => {
                                 //
@@ -206,6 +267,8 @@ where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io:
                                                     "snapshot mismatch, reset offset and retry"
                                                 );
                                                 offset = 0;
+                                                consecutive_failures = 0;
+                                                unreachable_backoff = None;
                                             }
                                         }
                                     }
@@ -374,9 +437,13 @@ mod tests {
     use std::io::Cursor;
     use std::time::Duration;
 
+    use anyerror::AnyError;
+    use super::SNAPSHOT_CHUNK_MAX_RETRIES;
+    use tokio::time::sleep;
     use crate::engine::testing::UTConfig;
     use crate::error::Fatal;
     use crate::error::InstallSnapshotError;
+    use crate::error::NetworkError;
     use crate::error::RPCError;
     use crate::error::RaftError;
     use crate::error::ReplicationClosed;
@@ -501,5 +568,210 @@ mod tests {
         .unwrap();
 
         assert_eq!(net.received_offset, vec![0, 1, 2, 0, 1, 2]);
+    }
+
+    struct RetryNetwork {
+        received_offset: Vec<u64>,
+        fail_offset: u64,
+        remaining_network_failures: u64,
+    }
+
+    impl<C> RaftNetwork<C> for RetryNetwork
+    where C: RaftTypeConfig<NodeId = u64>
+    {
+        async fn append_entries(
+            &mut self,
+            _rpc: AppendEntriesRequest<C>,
+            _option: RPCOption,
+        ) -> Result<AppendEntriesResponse<C::NodeId>, RPCError<C::NodeId, C::Node, RaftError<C::NodeId>>> {
+            unimplemented!()
+        }
+
+        async fn vote(
+            &mut self,
+            _rpc: VoteRequest<C::NodeId>,
+            _option: RPCOption,
+        ) -> Result<VoteResponse<C::NodeId>, RPCError<C::NodeId, C::Node, RaftError<C::NodeId>>> {
+            unimplemented!()
+        }
+
+        async fn full_snapshot(
+            &mut self,
+            _vote: Vote<C::NodeId>,
+            _snapshot: Snapshot<C>,
+            _cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
+            _option: RPCOption,
+        ) -> Result<SnapshotResponse<C::NodeId>, StreamingError<C, Fatal<C::NodeId>>> {
+            unimplemented!()
+        }
+
+        async fn install_snapshot(
+            &mut self,
+            rpc: InstallSnapshotRequest<C>,
+            _option: RPCOption,
+        ) -> Result<
+            InstallSnapshotResponse<C::NodeId>,
+            RPCError<C::NodeId, C::Node, RaftError<C::NodeId, InstallSnapshotError>>,
+        > {
+            self.received_offset.push(rpc.offset);
+
+            if rpc.offset == self.fail_offset && self.remaining_network_failures > 0 {
+                self.remaining_network_failures -= 1;
+                let any_err = AnyError::error("inject snapshot chunk network error");
+                return Err(RPCError::Network(NetworkError::new(&any_err)));
+            }
+
+            Ok(InstallSnapshotResponse { vote: rpc.vote })
+        }
+    }
+
+    #[tokio::test]
+    async fn test_chunked_retry_resumes_from_current_offset_after_network_error() {
+        let mut net = RetryNetwork {
+            received_offset: vec![],
+            fail_offset: 1,
+            remaining_network_failures: 1,
+        };
+
+        let mut opt = RPCOption::new(Duration::from_millis(100));
+        opt.snapshot_chunk_size = Some(1);
+        let cancel = futures::future::pending();
+
+        Chunked::send_snapshot(
+            &mut net,
+            Vote::new(1, 0),
+            Snapshot::<UTConfig>::new(
+                SnapshotMeta {
+                    last_log_id: None,
+                    last_membership: StoredMembership::default(),
+                    snapshot_id: "1-1-1-2".to_string(),
+                },
+                Box::new(Cursor::new(vec![1, 2, 3])),
+            ),
+            cancel,
+            opt,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(net.received_offset, vec![0, 1, 1, 2]);
+    }
+
+    #[tokio::test]
+    async fn test_chunked_retry_budget_bails_out_after_consecutive_network_errors() {
+        let mut net = RetryNetwork {
+            received_offset: vec![],
+            fail_offset: 1,
+            remaining_network_failures: u64::MAX,
+        };
+
+        let mut opt = RPCOption::new(Duration::from_millis(100));
+        opt.snapshot_chunk_size = Some(1);
+        let cancel = futures::future::pending();
+
+        let err = Chunked::send_snapshot(
+            &mut net,
+            Vote::new(1, 0),
+            Snapshot::<UTConfig>::new(
+                SnapshotMeta {
+                    last_log_id: None,
+                    last_membership: StoredMembership::default(),
+                    snapshot_id: "1-1-1-3".to_string(),
+                },
+                Box::new(Cursor::new(vec![1, 2, 3])),
+            ),
+            cancel,
+            opt,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(err, StreamingError::Network(_)));
+        let mut expected = vec![0];
+        expected.extend(std::iter::repeat(1).take(SNAPSHOT_CHUNK_MAX_RETRIES as usize));
+        assert_eq!(
+            net.received_offset,
+            expected
+        );
+    }
+
+    struct SlowNetwork {
+        received_offset: Vec<u64>,
+        delay: Duration,
+    }
+
+    impl<C> RaftNetwork<C> for SlowNetwork
+    where C: RaftTypeConfig<NodeId = u64>
+    {
+        async fn append_entries(
+            &mut self,
+            _rpc: AppendEntriesRequest<C>,
+            _option: RPCOption,
+        ) -> Result<AppendEntriesResponse<C::NodeId>, RPCError<C::NodeId, C::Node, RaftError<C::NodeId>>> {
+            unimplemented!()
+        }
+
+        async fn vote(
+            &mut self,
+            _rpc: VoteRequest<C::NodeId>,
+            _option: RPCOption,
+        ) -> Result<VoteResponse<C::NodeId>, RPCError<C::NodeId, C::Node, RaftError<C::NodeId>>> {
+            unimplemented!()
+        }
+
+        async fn full_snapshot(
+            &mut self,
+            _vote: Vote<C::NodeId>,
+            _snapshot: Snapshot<C>,
+            _cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
+            _option: RPCOption,
+        ) -> Result<SnapshotResponse<C::NodeId>, StreamingError<C, Fatal<C::NodeId>>> {
+            unimplemented!()
+        }
+
+        async fn install_snapshot(
+            &mut self,
+            rpc: InstallSnapshotRequest<C>,
+            _option: RPCOption,
+        ) -> Result<
+            InstallSnapshotResponse<C::NodeId>,
+            RPCError<C::NodeId, C::Node, RaftError<C::NodeId, InstallSnapshotError>>,
+        > {
+            self.received_offset.push(rpc.offset);
+            sleep(self.delay).await;
+            Ok(InstallSnapshotResponse { vote: rpc.vote })
+        }
+    }
+
+    #[tokio::test]
+    async fn test_chunked_outer_timeout_does_not_retry() {
+        let mut net = SlowNetwork {
+            received_offset: vec![],
+            delay: Duration::from_millis(20),
+        };
+
+        let mut opt = RPCOption::new(Duration::from_millis(1));
+        opt.snapshot_chunk_size = Some(1);
+        let cancel = futures::future::pending();
+
+        let err = Chunked::send_snapshot(
+            &mut net,
+            Vote::new(1, 0),
+            Snapshot::<UTConfig>::new(
+                SnapshotMeta {
+                    last_log_id: None,
+                    last_membership: StoredMembership::default(),
+                    snapshot_id: "1-1-1-4".to_string(),
+                },
+                Box::new(Cursor::new(vec![1, 2, 3])),
+            ),
+            cancel,
+            opt,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(err, StreamingError::Network(_)));
+        assert_eq!(net.received_offset, vec![0]);
     }
 }
