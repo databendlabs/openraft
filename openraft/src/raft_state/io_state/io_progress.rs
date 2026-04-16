@@ -9,12 +9,52 @@ use validit::less_equal;
 ///
 /// `T`: A totally ordered type representing the I/O operation identifier (e.g., [`LogIOId`]).
 ///
-/// Invariant: `flushed <= submitted <= accepted`
+/// # Three-Stage Progress Model
 ///
-/// For a comprehensive explanation of the three-stage tracking and examples, see:
-/// [Log I/O Progress](crate::docs::data::log_io_progress).
+/// Every I/O operation in Raft progresses through three stages:
+///
+/// ```text
+///                    Engine              Runtime            Storage
+///                    ───────             ───────            ───────
+///  accept()  ────>  accepted            (queued)           (queued)
+///                    │
+///  submit()  ────>  │                   submitted          (in flight)
+///                    │                      │
+///  flush()   ────>  │                      │                flushed
+///                    │                      │                   │
+///                    ▼                      ▼                   ▼
+///                 Next IO              Storage write       Durable on
+///                 can be               submitted to        disk;
+///                 accepted             storage             safe to apply
+/// ```
+///
+/// - **accepted**: The Engine has logically accepted this I/O operation. The next operation can be
+///   accepted immediately; the Engine does not wait for prior operations to complete.
+/// - **submitted**: The Runtime has submitted this I/O to the storage layer. Entries at or before
+///   this point are readable by [`RaftLogReader`] even if not yet flushed.
+/// - **flushed**: The storage layer has confirmed durable persistence. Only after flushing can
+///   committed entries be safely applied to the state machine or responded to clients.
+///
+/// # Monotonicity Invariant
+///
+/// At all times: `accepted >= submitted >= flushed` (in `T`'s partial order).
+///
+/// This is enforced by:
+/// - Debug-mode assertions in [`accept`](Self::accept), [`submit`](Self::submit), and
+///   [`flush`](Self::flush).
+/// - The [`Validate`] implementation, which checks this invariant on every validation pass.
+///
+/// # Leader Safety Invariant
+///
+/// When `submitted` and `accepted` originate from the **same leader** (same vote),
+/// the submitted entries are guaranteed not to be truncated by any queued command,
+/// because a leader never truncates its own entries. This is the precondition for
+/// safely applying committed logs to the state machine.
+///
+/// See also: [Log I/O Progress](crate::docs::data::log_io_progress).
 ///
 /// [`LogIOId`]: crate::raft_state::io_state::log_io_id::LogIOId
+/// [`RaftLogReader`]: crate::storage::RaftLogReader
 #[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
 pub(crate) struct IOProgress<T>
@@ -203,8 +243,6 @@ where
         self.accepted.as_ref()
     }
 
-    // Not used until Command reorder is implemented.
-    #[allow(dead_code)]
     pub(crate) fn submitted(&self) -> Option<&T> {
         self.submitted.as_ref()
     }
