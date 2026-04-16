@@ -1,5 +1,3 @@
-use std::sync::Arc;
-use std::sync::Mutex;
 use std::time::Duration;
 
 use display_more::DisplayOptionExt;
@@ -16,10 +14,10 @@ use crate::entry::RaftEntry;
 use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::errors::StorageIOResult;
 use crate::log_id_range::LogIdRange;
-use crate::network::Backoff;
 use crate::progress::inflight_id::InflightId;
 use crate::raft::AppendEntriesRequest;
 use crate::raft_state::IOId;
+use crate::replication::backoff_consumer::BackoffConsumer;
 use crate::replication::event_watcher::EventWatcher;
 use crate::replication::payload::Payload;
 use crate::replication::replication_context::ReplicationContext;
@@ -56,9 +54,11 @@ where
     /// The leader's committed log id to send in AppendEntries requests.
     pub(crate) leader_committed: Option<LogIdOf<C>>,
 
-    /// The backoff policy if an [`Unreachable`](`crate::error::Unreachable`) error is returned.
-    /// It will be reset to `None` when a successful response is received.
-    pub(crate) backoff: Arc<Mutex<Option<Backoff>>>,
+    /// Read-only handle to the shared backoff state, sampled before each request.
+    ///
+    /// The consumer can only query the next delay; only `ReplicationCore` (via its
+    /// owned `BackoffState`) enables or clears the backoff.
+    pub(crate) backoff_consumer: BackoffConsumer,
 }
 
 impl<C, LS> StreamState<C, LS>
@@ -184,11 +184,8 @@ where
 
     /// Waits for the backoff duration if backoff is enabled, or returns immediately.
     async fn backoff_if_enabled(&mut self) {
-        let sleep_duration = {
-            let mut backoff = self.backoff.lock().unwrap();
-            let Some(backoff) = &mut *backoff else { return };
-
-            backoff.next().unwrap_or_else(|| Duration::from_millis(500))
+        let Some(sleep_duration) = self.backoff_consumer.next_delay() else {
+            return;
         };
 
         let sleep = C::sleep(sleep_duration);
