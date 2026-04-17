@@ -31,7 +31,9 @@ async fn snapshot_retry_uses_latest_snapshot() -> Result<()> {
         Config {
             max_in_snapshot_log_to_keep: 0,
             purge_batch_size: 1,
-            snapshot_max_chunk_size: 1,
+            // Keep the snapshot multi-chunk so retries happen after offset 0, but avoid turning
+            // the test into a transport-throughput benchmark under CI's injected send delay.
+            snapshot_max_chunk_size: 32,
             enable_heartbeat: false,
             ..Default::default()
         }
