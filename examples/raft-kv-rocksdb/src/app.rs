@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use openraft::Config;
+use tokio::runtime::Handle;
 use tokio::sync::RwLock;
 
 use crate::ExampleRaft;
@@ -13,6 +14,7 @@ pub struct App {
     pub id: NodeId,
     pub api_addr: String,
     pub rpc_addr: String,
+    pub tokio_handle: Handle,
     pub raft: ExampleRaft,
     pub key_values: Arc<RwLock<BTreeMap<String, String>>>,
     pub config: Arc<Config>,
