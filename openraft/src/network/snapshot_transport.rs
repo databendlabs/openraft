@@ -99,15 +99,17 @@ pub trait SnapshotTransport<C: RaftTypeConfig> {
 pub struct Chunked {}
 
 const SNAPSHOT_CHUNK_MAX_RETRIES: u64 = 5;
-const SNAPSHOT_CHUNK_RETRY_BASE_MILLIS: u64 = 10;
-const SNAPSHOT_CHUNK_RETRY_MAX_MILLIS: u64 = 200;
+const SNAPSHOT_CHUNK_RETRY_BASE: Duration = Duration::from_millis(10);
+const SNAPSHOT_CHUNK_RETRY_MAX: Duration = Duration::from_millis(200);
 
 fn snapshot_chunk_retry_delay(consecutive_failures: u64) -> Duration {
     debug_assert!(consecutive_failures > 0);
 
     let shift = consecutive_failures.saturating_sub(1).min(4) as u32;
-    let millis = SNAPSHOT_CHUNK_RETRY_BASE_MILLIS.saturating_mul(1u64 << shift);
-    Duration::from_millis(millis.min(SNAPSHOT_CHUNK_RETRY_MAX_MILLIS))
+    let multiplier = 2u32.saturating_pow(shift);
+    SNAPSHOT_CHUNK_RETRY_BASE
+        .saturating_mul(multiplier)
+        .min(SNAPSHOT_CHUNK_RETRY_MAX)
 }
 
 /// This chunk based implementation requires `SnapshotData` to be `AsyncRead + AsyncSeek`.
