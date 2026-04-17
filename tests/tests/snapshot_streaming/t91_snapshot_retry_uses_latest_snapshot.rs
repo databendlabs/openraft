@@ -1,3 +1,5 @@
+#![allow(clippy::result_large_err)]
+
 use std::collections::BTreeSet;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;

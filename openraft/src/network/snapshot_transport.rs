@@ -107,9 +107,7 @@ fn snapshot_chunk_retry_delay(consecutive_failures: u64) -> Duration {
 
     let shift = consecutive_failures.saturating_sub(1).min(4) as u32;
     let multiplier = 2u32.saturating_pow(shift);
-    SNAPSHOT_CHUNK_RETRY_BASE
-        .saturating_mul(multiplier)
-        .min(SNAPSHOT_CHUNK_RETRY_MAX)
+    SNAPSHOT_CHUNK_RETRY_BASE.saturating_mul(multiplier).min(SNAPSHOT_CHUNK_RETRY_MAX)
 }
 
 /// This chunk based implementation requires `SnapshotData` to be `AsyncRead + AsyncSeek`.
@@ -440,8 +438,9 @@ mod tests {
     use std::time::Duration;
 
     use anyerror::AnyError;
-    use super::SNAPSHOT_CHUNK_MAX_RETRIES;
     use tokio::time::sleep;
+
+    use super::SNAPSHOT_CHUNK_MAX_RETRIES;
     use crate::engine::testing::UTConfig;
     use crate::error::Fatal;
     use crate::error::InstallSnapshotError;
@@ -691,10 +690,7 @@ mod tests {
         assert!(matches!(err, StreamingError::Network(_)));
         let mut expected = vec![0];
         expected.extend(std::iter::repeat(1).take(SNAPSHOT_CHUNK_MAX_RETRIES as usize));
-        assert_eq!(
-            net.received_offset,
-            expected
-        );
+        assert_eq!(net.received_offset, expected);
     }
 
     struct SlowNetwork {
