@@ -29,7 +29,12 @@ pub fn rest(app: &mut Server) {
  */
 async fn write(mut req: Request<Arc<App>>) -> tide::Result {
     let body = req.body_json().await?;
-    let res = req.state().raft.client_write(body).await;
+    let tokio_handle = req.state().tokio_handle.clone();
+    let raft = req.state().raft.clone();
+    let res = tokio_handle
+        .spawn(async move { raft.client_write(body).await })
+        .await
+        .map_err(|e| tide::Error::from_str(StatusCode::InternalServerError, e.to_string()))?;
     Ok(Response::builder(StatusCode::Ok).body(Body::from_json(&res)?).build())
 }
 
@@ -43,12 +48,18 @@ async fn read(mut req: Request<Arc<App>>) -> tide::Result {
 }
 
 async fn consistent_read(mut req: Request<Arc<App>>) -> tide::Result {
-    let ret = req.state().raft.ensure_linearizable().await;
+    let app = req.state().clone();
+    let tokio_handle = app.tokio_handle.clone();
+    let raft = app.raft.clone();
+    let ret = tokio_handle
+        .spawn(async move { raft.ensure_linearizable().await })
+        .await
+        .map_err(|e| tide::Error::from_str(StatusCode::InternalServerError, e.to_string()))?;
 
     match ret {
         Ok(_) => {
             let key: String = req.body_json().await?;
-            let kvs = req.state().key_values.read().await;
+            let kvs = app.key_values.read().await;
 
             let value = kvs.get(&key);
 
