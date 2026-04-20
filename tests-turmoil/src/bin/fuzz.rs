@@ -24,7 +24,7 @@ use tests_turmoil::cluster::host_name;
 use tests_turmoil::cluster::register_node_storage;
 use tests_turmoil::cluster::restart_node;
 use tests_turmoil::cluster::spawn_host;
-use tests_turmoil::invariants::check_state_invariants;
+use tests_turmoil::invariants::InvariantChecker;
 use tests_turmoil::typ::*;
 
 #[derive(Debug, Clone, Serialize)]
@@ -424,6 +424,7 @@ fn run_single_iteration(
     let mut member_rng = StdRng::seed_from_u64(iteration_seed.wrapping_add(5000));
     let mut active_voters: HashSet<NodeId> = (1..=derived.num_initial_nodes as u64).collect();
     let mut next_node_id = (derived.num_initial_nodes as u64) + 1;
+    let mut invariants = InvariantChecker::default();
 
     println!("Starting simulation...");
 
@@ -468,7 +469,7 @@ fn run_single_iteration(
         // Check invariants
         let snapshots = cluster_state.lock().unwrap().get_all_full_snapshots();
         invariant_checks += 1;
-        let result = check_state_invariants(&snapshots);
+        let result = invariants.check(&snapshots);
         if !result.violations.is_empty() {
             for v in &result.violations {
                 let msg = format!("Step {steps}: {v:?}");

@@ -14,6 +14,32 @@ The fuzzer operates in a strict loop:
 
 This "stop-the-world" approach ensures that even transient invariant violations—which might be missed in a concurrent environment—are captured the moment they occur.
 
+## Invariants Checked
+
+The checker lives in `src/invariants/`, with one file per property. Each property is tagged with its authoritative source (Ongaro's paper/dissertation or Vanlightly's [TLA+ spec](https://github.com/Vanlightly/raft-tlaplus/blob/main/specifications/standard-raft/Raft.tla)).
+
+| Property                | Paper §  | TLA+ invariant                  | What it checks                                                                       |
+|-------------------------|----------|---------------------------------|--------------------------------------------------------------------------------------|
+| Election Safety         | §3.6.3   | (implicit)                      | At most one leader per `CommittedLeaderId`                                           |
+| Log Matching            | §3.5     | `NoLogDivergence`               | Same index ⇒ same committed-leader id on any two committed logs                      |
+| Leader Completeness     | §3.6.3   | `LeaderHasAllAckedValues`       | A later leader must have every entry committed by any earlier leader                 |
+| State Machine Safety    | §3.6.3   | (implicit)                      | Same applied log id ⇒ identical state machine data                                   |
+| Committed On Quorum     | —        | `CommittedEntriesReachMajority` | A leader's own just-committed index is present on a voter quorum                     |
+| Committed Immutable     | derived  | (history-based)                 | Once an index is reported committed, its leader id never changes across ticks        |
+| State Ordering          | —        | (implementation sanity)         | `purged ≤ snapshot ≤ applied ≤ committed ≤ last_log` on every node                   |
+| Monotonic Term          | §3.3     | `MonotonicTerm`                 | A node's `current_term` never decreases across ticks                                 |
+| Monotonic Commit Index  | §3.4     | `MonotonicCommitIndex`          | A node's `committed.index` never decreases across ticks                              |
+| Monotonic Applied Index | derived  | —                               | A node's `last_applied.index` never decreases across ticks                           |
+| Monotonic Vote          | §3.3     | `MonotonicVote`                 | A node's persisted vote (ordered by `(term, leader_id, committed)`) never regresses  |
+
+All identity comparisons use `CommittedLeaderId` (not just `term`), so the same checks are correct under both openraft modes:
+- `leader_id_std`: `CommittedLeaderId == term`, so Election Safety reduces to "one leader per term".
+- `leader_id_adv` (the default, used here): `CommittedLeaderId == (term, node_id)`, so two nodes legitimately leading with different `node_id`s in the same term are not flagged.
+
+The checker is **stateful**: `InvariantChecker` retains per-index committed history (for Committed Immutable) and per-node last-seen state (for the Monotonic family) across ticks, so cross-time invariants can be caught. `Leader Append-Only` (paper §3.6.3) is not checked directly; its safety content for committed entries is already covered by Log Matching + Committed Immutable + Leader Completeness.
+
+Unit tests under `src/invariants/tests.rs` exercise each check with synthetic snapshots — run with `cargo test --lib invariants`.
+
 ## State Access via RaftMetrics
 
 The fuzzer reads node state through `Raft::metrics()`, the existing watch channel that `RaftCore` updates on every state change. Two fields were added to `RaftMetrics` to support invariant checking:
@@ -40,8 +66,8 @@ Turmoil depends on `rand 0.8`, while the main OpenRaft project uses `rand 0.9`. 
 * **`rand` (0.8)**: Used for the Turmoil simulation engine and network chaos logic.
 * **`rand_09` (0.9)**: Used for OpenRaft's internal logic and the deterministic RNG shim.
 
-### 4. Committed-State Invariants
-To avoid "False Positives" in log consistency checks, the fuzzer only validates log entries that have been **committed** by both nodes. This recognizes that uncommitted entries can naturally diverge and be overwritten during standard Raft leader transitions.
+### 4. Committed-State Focus
+To avoid false positives, log-consistency invariants only compare entries both sides have committed. Uncommitted entries can legitimately diverge during leader transitions and only stabilize once committed. See [Invariants Checked](#invariants-checked) for the full list of properties.
 
 ### 5. High-Frequency RPC Handling (Caveat)
 OpenRaft's network implementation in this fuzzer opens a new TCP connection for nearly every RPC (heartbeats, votes, append entries). In high-chaos scenarios, this can flood the simulated network faster than nodes can `accept()` them. 
@@ -77,7 +103,7 @@ Steps completed: 13619
 Unique states explored: 154
 
 Violations:
-  - (state) Log mismatch at index 4: node 1 has term 1, node 5 has term 2
+  - LogMatching: index=4 differs: n1@T1 vs n5@T2
 
 Reproduce with: cargo run --bin fuzz -- --seed 1770183381681145371 --iterations 1
 ```
