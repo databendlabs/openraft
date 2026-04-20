@@ -32,14 +32,24 @@ pub fn rest(app: &mut Server) {
 async fn add_learner(mut req: Request<Arc<App>>) -> tide::Result {
     let (node_id, api_addr, rpc_addr): (NodeId, String, String) = req.body_json().await?;
     let node = Node { rpc_addr, api_addr };
-    let res = req.state().raft.add_learner(node_id, node, true).await;
+    let tokio_handle = req.state().tokio_handle.clone();
+    let raft = req.state().raft.clone();
+    let res = tokio_handle
+        .spawn(async move { raft.add_learner(node_id, node, true).await })
+        .await
+        .map_err(|e| tide::Error::from_str(StatusCode::InternalServerError, e.to_string()))?;
     Ok(Response::builder(StatusCode::Ok).body(Body::from_json(&res)?).build())
 }
 
 /// Changes specified learners to members, or remove members.
 async fn change_membership(mut req: Request<Arc<App>>) -> tide::Result {
     let body: BTreeSet<NodeId> = req.body_json().await?;
-    let res = req.state().raft.change_membership(body, false).await;
+    let tokio_handle = req.state().tokio_handle.clone();
+    let raft = req.state().raft.clone();
+    let res = tokio_handle
+        .spawn(async move { raft.change_membership(body, false).await })
+        .await
+        .map_err(|e| tide::Error::from_str(StatusCode::InternalServerError, e.to_string()))?;
     Ok(Response::builder(StatusCode::Ok).body(Body::from_json(&res)?).build())
 }
 
@@ -52,7 +62,12 @@ async fn init(req: Request<Arc<App>>) -> tide::Result {
     };
 
     nodes.insert(req.state().id, node);
-    let res = req.state().raft.initialize(nodes).await;
+    let tokio_handle = req.state().tokio_handle.clone();
+    let raft = req.state().raft.clone();
+    let res = tokio_handle
+        .spawn(async move { raft.initialize(nodes).await })
+        .await
+        .map_err(|e| tide::Error::from_str(StatusCode::InternalServerError, e.to_string()))?;
     Ok(Response::builder(StatusCode::Ok).body(Body::from_json(&res)?).build())
 }
 

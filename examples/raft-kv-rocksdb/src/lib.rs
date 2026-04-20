@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use openraft::Config;
 use tokio::net::TcpListener;
+use tokio::runtime::Handle;
 use tokio::task;
 
 use crate::app::App;
@@ -104,6 +105,7 @@ where
         id: node_id,
         api_addr: http_addr.clone(),
         rpc_addr: rpc_addr.clone(),
+        tokio_handle: Handle::current(),
         raft,
         key_values: kvs,
         config,
