@@ -545,8 +545,16 @@ where C: RaftTypeConfig
     /// This is all right because:
     /// - Engine only keeps the snapshot meta with the greatest last-log-id;
     /// - and a snapshot smaller than last-committed is not allowed to be installed.
+    ///
+    /// Returns `true` if the engine's snapshot state was actually advanced by `meta`.
+    /// Returns `false` when `meta` is not newer than the current snapshot (a duplicate
+    /// `Raft::trigger().snapshot()` at the same `last_applied` can produce this), in which
+    /// case the caller must not propagate `meta.last_log_id` to dependent state (e.g.
+    /// `IOState::snapshot`), since that cursor must advance strictly monotonically.
+    #[must_use = "caller must branch on whether the snapshot advanced before propagating \
+                  `meta.last_log_id` to dependent state such as `IOState::snapshot`"]
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn finish_building_snapshot(&mut self, meta: SnapshotMeta<C::NodeId, C::Node>) {
+    pub(crate) fn finish_building_snapshot(&mut self, meta: SnapshotMeta<C::NodeId, C::Node>) -> bool {
         tracing::info!(snapshot_meta = display(&meta), "{}", func_name!());
 
         self.state.io_state_mut().set_building_snapshot(false);
@@ -555,11 +563,12 @@ where C: RaftTypeConfig
 
         let updated = h.update_snapshot(meta);
         if !updated {
-            return;
+            return false;
         }
 
         self.log_handler().schedule_policy_based_purge();
         self.try_purge_log();
+        true
     }
 
     /// Try to purge logs up to the expected position.
