@@ -98,12 +98,21 @@ impl<NID: NodeId> IOState<NID> {
     pub(crate) fn update_snapshot(&mut self, log_id: Option<LogId<NID>>) {
         tracing::debug!(snapshot = display(DisplayOption(&log_id)), "{}", func_name!());
 
-        debug_assert!(
-            log_id > self.snapshot,
-            "snapshot log id should be monotonically increasing: current: {:?}, update: {:?}",
-            self.snapshot,
-            log_id
-        );
+        // Two back-to-back `Raft::trigger().snapshot()` calls without any new log entry being
+        // applied in between can legitimately reach this point with `log_id == self.snapshot`:
+        // the first BuildSnapshot completes and clears `building_snapshot`, the second trigger
+        // queues another build at the same `last_applied`, and when it finishes we get here
+        // with an equal log id. `SnapshotHandler::update_snapshot` already returns early in
+        // that case, so the io_state update is a no-op; only a strict regression is a real
+        // invariant violation worth panicking on in debug.
+        if log_id <= self.snapshot {
+            debug_assert_eq!(
+                log_id, self.snapshot,
+                "snapshot log id must not regress: current: {:?}, update: {:?}",
+                self.snapshot, log_id
+            );
+            return;
+        }
 
         self.snapshot = log_id;
     }
@@ -126,5 +135,51 @@ impl<NID: NodeId> IOState<NID> {
 
     pub(crate) fn purged(&self) -> Option<&LogId<NID>> {
         self.purged.as_ref()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::IOState;
+    use crate::testing::log_id;
+
+    #[test]
+    fn update_snapshot_accepts_equal_log_id() {
+        // Two `Raft::trigger().snapshot()` calls with no new log entry applied in between
+        // can legitimately cause `update_snapshot` to be invoked twice with the same log id.
+        // This must not panic.
+        let mut io_state = IOState::<u64>::default();
+
+        io_state.update_snapshot(Some(log_id(1, 1, 5)));
+        assert_eq!(Some(&log_id(1, 1, 5)), io_state.snapshot());
+
+        // Second update with the same log id is a no-op, not a panic.
+        io_state.update_snapshot(Some(log_id(1, 1, 5)));
+        assert_eq!(Some(&log_id(1, 1, 5)), io_state.snapshot());
+    }
+
+    #[test]
+    fn update_snapshot_advances_monotonically() {
+        let mut io_state = IOState::<u64>::default();
+
+        io_state.update_snapshot(Some(log_id(1, 1, 1)));
+        assert_eq!(Some(&log_id(1, 1, 1)), io_state.snapshot());
+
+        io_state.update_snapshot(Some(log_id(1, 1, 5)));
+        assert_eq!(Some(&log_id(1, 1, 5)), io_state.snapshot());
+
+        io_state.update_snapshot(Some(log_id(2, 1, 7)));
+        assert_eq!(Some(&log_id(2, 1, 7)), io_state.snapshot());
+    }
+
+    #[test]
+    #[should_panic(expected = "snapshot log id must not regress")]
+    #[cfg(debug_assertions)]
+    fn update_snapshot_rejects_regressing_log_id() {
+        let mut io_state = IOState::<u64>::default();
+
+        io_state.update_snapshot(Some(log_id(1, 1, 10)));
+        // Going backward is a real invariant violation.
+        io_state.update_snapshot(Some(log_id(1, 1, 5)));
     }
 }
