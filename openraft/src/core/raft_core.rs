@@ -1393,10 +1393,10 @@ where
                         // In-memory state should always be ahead or equal to the io state.
 
                         let last_log_id = meta.last_log_id.clone();
-                        self.engine.finish_building_snapshot(meta);
-
-                        let st = self.engine.state.io_state_mut();
-                        st.update_snapshot(last_log_id);
+                        if self.engine.finish_building_snapshot(meta) {
+                            let st = self.engine.state.io_state_mut();
+                            st.update_snapshot(last_log_id);
+                        }
                     }
                     sm::Response::InstallSnapshot(meta) => {
                         tracing::info!(
