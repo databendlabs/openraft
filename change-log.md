@@ -1,3 +1,104 @@
+## v0.9.23
+
+Summary:
+
+- Fixed:
+    -   [cc6a2cfa](https://github.com/datafuselabs/openraft/commit/cc6a2cfa7142aab93f12b05fc9463b2690f6b4be) allow newer snapshot in `Inflight::Snapshot` ack.
+    -   [cffb1a99](https://github.com/datafuselabs/openraft/commit/cffb1a9973c526eb4d9e0c4d30e3d1f325119730) run raft-kv-rocksdb example APIs on Tokio runtime.
+    -   [29941565](https://github.com/datafuselabs/openraft/commit/29941565a7e7b369396223436dc97e81a726f3cc) bound snapshot chunk retries and propagate stale-snapshot errors.
+
+Detail:
+
+### Fixed:
+
+-   Fixed: [cc6a2cfa](https://github.com/datafuselabs/openraft/commit/cc6a2cfa7142aab93f12b05fc9463b2690f6b4be) allow newer snapshot in `Inflight::Snapshot` ack; by Zhang Yanpo; 2026-04-17
+
+    A replication snapshot boundary is chosen at `next_send` time from the
+    engine's cached `snapshot_last_log_id()`, but the state machine can build
+    a fresher snapshot before `ReplicationCore::stream_snapshot` calls
+    `get_snapshot()`. When the callback reports the shipped snapshot's actual
+    `last_log_id`, the old `debug_assert_eq!(&upto, last_log_id)` in
+    `Inflight::ack` would panic in debug builds, even though the follower
+    received strictly more data than requested and `matching` advances safely.
+
+    Relax the check to `upto >= last_log_id`. This still catches a real
+    regression — shipping an older snapshot than expected would roll
+    `matching` backward on the follower — but accepts the benign TOCTOU race.
+
+-   Fixed: [cffb1a99](https://github.com/datafuselabs/openraft/commit/cffb1a9973c526eb4d9e0c4d30e3d1f325119730) run raft-kv-rocksdb example APIs on Tokio runtime; by Zhang Yanpo; 2026-04-20
+
+    The raft-kv-rocksdb example serves its HTTP API with `tide`, which
+    runs on `async-std`. Internally, `Raft` methods like `add_learner`,
+    `change_membership`, and `initialize` await `tokio::time::sleep` via
+    `Wait::metrics`. Polling `sleep` with no Tokio runtime installed on
+    the current thread panics with "there is no reactor running" —
+    breaking the cluster test on newer nightly toolchains.
+
+    Capture `tokio::runtime::Handle::current()` at app startup (while
+    still inside `#[tokio::main]`) and stash it on `App`. In each tide
+    handler that invokes raft, `tokio_handle.spawn(...)` the call so it
+    runs on the Tokio runtime, then `.await` the `JoinHandle` from the
+    async-std task. Read handlers that only touch the in-memory KV map
+    need no wrapping.
+
+    Changes:
+    - Add `tokio_handle: Handle` field to `App`
+    - Map `JoinHandle` errors to `tide::Error` with
+      `StatusCode::InternalServerError` rather than propagating a panic
+
+    Cherry-picked from upstream commit 83c8176e.
+
+-   Fixed: [29941565](https://github.com/datafuselabs/openraft/commit/29941565a7e7b369396223436dc97e81a726f3cc) bound snapshot chunk retries and propagate stale-snapshot errors; by cliff0412; 2026-04-14
+
+    `Chunked::send_snapshot` used to swallow every transient `RPCError`
+    variant — `Timeout`, `Unreachable`, `Network`, and even remote `Fatal`
+    — then `continue` the loop without changing `offset`. A flaky target
+    therefore streamed the same snapshot forever, even after the leader
+    had built a newer one. The outer `C::timeout(hard_ttl, ...)` expiring
+    also just `continue`d, making a tight loop bounded only by a 1 ms
+    per-iteration sleep.
+
+    Retry policy:
+
+    - `Timeout` / `Network`: module-local exponential backoff
+      (`SNAPSHOT_CHUNK_RETRY_BASE` = 10 ms doubling to
+      `SNAPSHOT_CHUNK_RETRY_MAX` = 200 ms). These errors typically clear
+      within a packet-loss burst — a tight curve rides it out without
+      involving the caller.
+    - `Unreachable`: caller's `RaftNetwork::backoff()` iterator, cached
+      per outage and dropped on the next successful chunk. An unreachable
+      target usually stays so for seconds to minutes, a cadence the
+      application should pick.
+    - `PayloadTooLarge`: fail fast. Retrying the same chunk at the same
+      size cannot make progress, and the append-entries shrink path in
+      `ReplicationCore` is not reusable here yet.
+    - `RemoteError::Fatal`: propagate verbatim.
+    - `SnapshotMismatch`: reset offset + retry state and continue.
+
+    Bail out on `SNAPSHOT_CHUNK_MAX_RETRIES` (5) consecutive transient
+    failures and surface the underlying error. The replication layer then
+    unwinds and drives the next attempt with a fresh snapshot — exactly
+    what the new integration test
+    `t91_snapshot_retry_uses_latest_snapshot` verifies end-to-end.
+
+    The outer `hard_ttl` timeout also returns `NetworkError` immediately
+    rather than looping: stacking in-flight RPCs under the same deadline
+    cannot make progress, and the replication layer drives the next
+    attempt on its own timer.
+
+    Changes:
+
+    - Add `SNAPSHOT_CHUNK_MAX_RETRIES`, `SNAPSHOT_CHUNK_RETRY_BASE`,
+      `SNAPSHOT_CHUNK_RETRY_MAX`, `SNAPSHOT_CHUNK_UNREACHABLE_FALLBACK`
+      constants, and `snapshot_chunk_retry_delay()`
+    - Track `consecutive_failures` and a cached `unreachable_backoff`
+      across retries; reset both on success or mismatch
+    - Propagate remote `Fatal` by re-wrapping the `RemoteError`
+    - Unit tests covering retry-resume, budget exhaustion, outer-timeout
+      fast-fail, `PayloadTooLarge` fast-fail, and mismatch reset
+    - Integration test `t91_snapshot_retry_uses_latest_snapshot`
+      exercising the replication layer's re-drive path
+
 ## v0.9.22
 
 Summary:
