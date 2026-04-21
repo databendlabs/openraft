@@ -1,3 +1,34 @@
+## v0.9.24
+
+Summary:
+
+- Fixed:
+    -   [7b3f2df1](https://github.com/datafuselabs/openraft/commit/7b3f2df145d81bf6df017e0fd2205bc994a31c6f) gate io-state snapshot update on engine snapshot advancement.
+
+Detail:
+
+### Fixed:
+
+-   Fixed: [7b3f2df1](https://github.com/datafuselabs/openraft/commit/7b3f2df145d81bf6df017e0fd2205bc994a31c6f) gate io-state snapshot update on engine snapshot advancement; by Youichi Uda; 2026-04-20
+
+    Two back-to-back `Raft::trigger().snapshot()` calls at the same
+    `last_applied` tripped `debug_assert!(log_id > self.snapshot)` in
+    `IOState::update_snapshot`. The duplicate build completes,
+    `SnapshotHandler::update_snapshot` returns `false` (no advancement),
+    but `raft_core` was calling `IOState::update_snapshot` unconditionally
+    with the equal log id.
+
+    Propagate the existing `bool` from `SnapshotHandler::update_snapshot`
+    out of `Engine::finish_building_snapshot` and only update the io-state
+    snapshot cursor when the engine actually advanced. The strict `>`
+    invariant in `IOState::update_snapshot` is preserved — the caller now
+    honors the information the handler already returns.
+
+    Changes:
+    - `Engine::finish_building_snapshot` returns `bool` (was `()`).
+    - `raft_core.rs` BuildSnapshot handler gates `io_state.update_snapshot`
+      on the returned bool.
+
 ## v0.9.23
 
 Summary:
