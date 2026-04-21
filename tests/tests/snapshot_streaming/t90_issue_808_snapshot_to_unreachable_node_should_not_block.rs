@@ -19,6 +19,10 @@ async fn snapshot_to_unreachable_node_should_not_block() -> Result<()> {
             max_in_snapshot_log_to_keep: 0,
             enable_heartbeat: false,
             enable_elect: false,
+            // Constant 10ms backoff: with two equal anchors the fit is `k · aˣ` with `a = 1`,
+            // so the sequence is `10ms, 10ms, …`. The default grows to a 1s cap, which is too
+            // slow for this test's 2s budget on loaded CI.
+            backoff: "10ms, 10ms".to_string(),
             ..Default::default()
         }
         .validate()?,
