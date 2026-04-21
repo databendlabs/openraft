@@ -15,6 +15,7 @@ mod t13_begin_receiving_snapshot;
 mod t13_get_snapshot;
 mod t13_install_full_snapshot;
 mod t13_trigger_snapshot;
+mod t13_trigger_snapshot_twice;
 mod t14_transfer_leader;
 mod t15_client_write_with_twoshot;
 mod t16_with_raft_state;
