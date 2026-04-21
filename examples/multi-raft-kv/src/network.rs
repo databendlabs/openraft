@@ -71,8 +71,8 @@ impl GroupRouter<TypeConfig, GroupId> for Router {
         self.send(target, &group_id, "/raft/transfer_leader", req).await.map_err(RPCError::Unreachable)
     }
 
-    fn backoff(&self) -> Backoff {
-        Backoff::new(std::iter::repeat(std::time::Duration::from_millis(500)))
+    fn backoff(&self) -> Option<Backoff> {
+        Some(Backoff::new(std::iter::repeat(std::time::Duration::from_millis(500))))
     }
 }
 

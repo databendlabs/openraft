@@ -213,7 +213,9 @@ where
 
             // Kept separate from `on_error` because only this scope holds a reference
             // to `network`, which is needed to construct the `Backoff` iterator.
-            self.backoff_state.reconcile(|| network.backoff());
+            // If the network returns None, fall back to the policy configured in `Config::backoff`.
+            let config = self.replication_context.config.clone();
+            self.backoff_state.reconcile(|| network.backoff().unwrap_or_else(|| config.build_backoff()));
 
             if self.next_action.is_none() {
                 self.drain_events().await?;
