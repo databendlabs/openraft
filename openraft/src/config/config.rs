@@ -6,6 +6,7 @@ use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
 use anyerror::AnyError;
+use backoff_series::BackoffSeries;
 use clap::Parser;
 use openraft_macros::since;
 use rand::RngExt;
@@ -14,6 +15,7 @@ use crate::AsyncRuntime;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::config::error::ConfigError;
+use crate::network::Backoff;
 use crate::raft_state::LogStateReader;
 use crate::vote::RaftCommittedLeaderId;
 
@@ -319,6 +321,62 @@ pub struct Config {
     )]
     pub enable_elect: bool,
 
+    /// Default backoff policy used when
+    /// [`RaftNetworkV2::backoff`](crate::network::RaftNetworkV2::backoff) returns `None`.
+    ///
+    /// The string lists the first few retry delays explicitly. After those, the sequence
+    /// continues automatically — smoothly extended from **at most the last three explicit
+    /// delays** by either an exponential `k · aˣ + t` or linear `k · x + t` form, whichever
+    /// fits the tail. A trailing `..<max>` or `...<max>` caps every extrapolated delay at
+    /// `<max>` (defaults to `1000ms`).
+    ///
+    /// # Syntax
+    ///
+    /// `<dur>` values separated by `,` or whitespace; an optional `..` or `...` before the
+    /// last value marks it as the **max cap**. `<dur>` is a number with a unit suffix:
+    /// `ns`, `us`, `ms`, `s`, `m`, `h`.
+    ///
+    /// # Examples
+    ///
+    /// **Doubling from a single anchor** — this is the default, `"200ms"`:
+    ///
+    /// ```text
+    /// 200  400  800  1000  1000  1000  …    (ms; cap = 1000)
+    /// ```
+    ///
+    /// **Exponential growth**, `"100ms 200ms 400ms ...5s"`:
+    ///
+    /// ```text
+    /// 100  200  400  800  1600  3200  5000  5000  …    (ms; cap = 5000)
+    /// ```
+    ///
+    /// **Linear growth**, `"1ms 2ms 3ms ...1500ms"` — the tail has constant difference, so the
+    /// sequence continues that line until it hits the cap:
+    ///
+    /// ```text
+    /// 1  2  3  4  5  6  …  1499  1500  1500  1500  …    (ms; cap = 1500)
+    /// ```
+    ///
+    /// **Constant delay**, `"500ms 500ms 500ms"` — a flat tail stays flat:
+    ///
+    /// ```text
+    /// 500  500  500  500  …    (ms)
+    /// ```
+    ///
+    /// **Short warm-up, then extrapolate**, `"10ms 20ms ...2s"` — two anchors imply a doubling
+    /// rate, extended automatically:
+    ///
+    /// ```text
+    /// 10  20  40  80  160  320  640  1280  2000  2000  …    (ms; cap = 2000)
+    /// ```
+    ///
+    /// Because only the last few explicit delays shape what follows, you can prepend any
+    /// number of custom warm-up values without changing the long-run behavior.
+    ///
+    /// Since: 0.10.0
+    #[clap(long, default_value = "200ms")]
+    pub backoff: String,
+
     /// Whether to allow to reset the replication progress to `None`, when the
     /// follower's log is found reverted to an early state. **Do not enable this in production**
     /// unless you know what you are doing.
@@ -475,6 +533,19 @@ impl Config {
             return Err(ConfigError::MaxPayloadIs0);
         }
 
+        // Validate the backoff policy string up-front so build_backoff() can assume it parses.
+        BackoffSeries::parse(&self.backoff)?;
+
         Ok(self)
+    }
+
+    /// Build a [`Backoff`] iterator from the [`backoff`](Self::backoff) policy string.
+    ///
+    /// Panics if the policy is invalid — callers should obtain `Config` through [`Config::build`]
+    /// or [`Config::validate`], which reject invalid policies up-front.
+    #[since(version = "0.10.0")]
+    pub fn build_backoff(&self) -> Backoff {
+        let series = BackoffSeries::parse(&self.backoff).expect("backoff policy must be validated by Config::validate");
+        Backoff::new(series.build())
     }
 }

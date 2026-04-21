@@ -1,5 +1,7 @@
 //! Defines the [`NetBackoff`] trait for network backoff behavior.
 
+use openraft_macros::since;
+
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftTypeConfig;
@@ -26,5 +28,12 @@ where C: RaftTypeConfig
     ///
     /// The backoff is an infinite iterator that returns the ith sleep interval before the ith
     /// retry. The returned instance will be dropped if a successful RPC is made.
-    fn backoff(&self) -> Backoff;
+    ///
+    /// Return `None` to use the default backoff configured in
+    /// [`Config::backoff`](crate::Config::backoff).
+    #[since(
+        version = "0.10.0",
+        change = "changed return type to Option<Backoff>; None delegates to Config::backoff"
+    )]
+    fn backoff(&self) -> Option<Backoff>;
 }

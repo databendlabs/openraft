@@ -108,7 +108,7 @@ where
         Sender::<C>::send_snapshot(&mut self.network, vote, snapshot, cancel, option).await
     }
 
-    fn backoff(&self) -> Backoff {
-        RaftNetwork::<C>::backoff(&self.network)
+    fn backoff(&self) -> Option<Backoff> {
+        Some(RaftNetwork::<C>::backoff(&self.network))
     }
 }

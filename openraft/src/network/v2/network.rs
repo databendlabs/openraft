@@ -1,5 +1,4 @@
 use std::future::Future;
-use std::time::Duration;
 
 use anyerror::AnyError;
 use futures_util::Stream;
@@ -159,9 +158,14 @@ where C: RaftTypeConfig
     /// The backoff is an infinite iterator that returns the ith sleep interval before the ith
     /// retry. The returned instance will be dropped if a successful RPC is made.
     ///
-    /// By default, it returns a constant backoff of 500 ms.
-    fn backoff(&self) -> Backoff {
-        Backoff::new(std::iter::repeat(Duration::from_millis(200)))
+    /// Return `None` (the default) to use the backoff configured in
+    /// [`Config::backoff`](crate::Config::backoff).
+    #[since(
+        version = "0.10.0",
+        change = "changed return type to Option<Backoff>; None delegates to Config::backoff"
+    )]
+    fn backoff(&self) -> Option<Backoff> {
+        None
     }
 }
 
@@ -199,7 +203,7 @@ where
     C: RaftTypeConfig,
     T: RaftNetworkV2<C> + ?Sized,
 {
-    fn backoff(&self) -> Backoff {
+    fn backoff(&self) -> Option<Backoff> {
         RaftNetworkV2::backoff(self)
     }
 }
