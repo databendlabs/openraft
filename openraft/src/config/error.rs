@@ -1,4 +1,5 @@
 use anyerror::AnyError;
+use backoff_series::ParseError as BackoffParseError;
 
 /// Error variants related to configuration.
 #[derive(Debug, thiserror::Error)]
@@ -52,4 +53,12 @@ pub enum ConfigError {
         /// The reason for the parse failure.
         reason: String,
     },
+
+    /// Invalid backoff policy string.
+    ///
+    /// See [`backoff_series::BackoffSeries::parse`] for the expected format.
+    ///
+    /// Since: 0.10.0
+    #[error(transparent)]
+    InvalidBackoff(#[from] BackoffParseError),
 }

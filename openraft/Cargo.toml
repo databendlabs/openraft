@@ -21,6 +21,7 @@ openraft-macros = { path = "../macros", version = "0.10.0-alpha.18" }
 
 anyerror        = { workspace = true }
 anyhow          = { workspace = true, optional = true }
+backoff-series  = { workspace = true }
 base2histogram  = { workspace = true }
 byte-unit       = { workspace = true }
 chrono          = { workspace = true }

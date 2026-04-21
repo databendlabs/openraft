@@ -8,7 +8,6 @@
 //! See `examples/multi-raft-kv` for usage.
 
 use std::future::Future;
-use std::time::Duration;
 
 use openraft::OptionalSend;
 use openraft::OptionalSync;
@@ -81,9 +80,10 @@ where C: RaftTypeConfig
         }
     }
 
-    /// Backoff strategy for retries. Default: 500ms constant.
-    fn backoff(&self) -> Backoff {
-        Backoff::new(std::iter::repeat(Duration::from_millis(500)))
+    /// Backoff strategy for retries. Default: `None`, delegating to
+    /// [`Config::backoff`](openraft::Config::backoff).
+    fn backoff(&self) -> Option<Backoff> {
+        None
     }
 }
 
@@ -183,7 +183,7 @@ where
         self.router.transfer_leader(self.target.clone(), self.group_id.clone(), req, option).await
     }
 
-    fn backoff(&self) -> Backoff {
+    fn backoff(&self) -> Option<Backoff> {
         self.router.backoff()
     }
 }

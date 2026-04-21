@@ -141,7 +141,11 @@ where
                             // period of time. Backoff will be reset if there is a
                             // successful RPC is sent.
                             if self.backoff.is_none() {
-                                self.backoff = Some(self.network.backoff());
+                                self.backoff = Some(
+                                    self.network
+                                        .backoff()
+                                        .unwrap_or_else(|| self.replication_context.config.build_backoff()),
+                                );
                             }
                         }
                         RPCError::Timeout(_) | RPCError::Network(_) | RPCError::RemoteError(_) => {

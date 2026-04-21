@@ -206,8 +206,8 @@ impl NetSnapshot<TypeConfig> for NetworkConnection {
 }
 
 impl NetBackoff<TypeConfig> for NetworkConnection {
-    fn backoff(&self) -> Backoff {
-        Backoff::new(std::iter::repeat(Duration::from_millis(200)))
+    fn backoff(&self) -> Option<Backoff> {
+        Some(Backoff::new(std::iter::repeat(Duration::from_millis(200))))
     }
 }
 
