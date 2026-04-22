@@ -340,18 +340,22 @@ async fn workload_loop(cluster_state: Arc<Mutex<ClusterState>>, seed: u64) -> Re
     }
 }
 
-fn step_until_quiescent(sim: &mut turmoil::Sim) -> Result<(), String> {
-    loop {
-        match sim.step() {
-            Ok(true) => continue,
-            Ok(false) => return Ok(()),
-            Err(e) => {
-                let msg = e.to_string();
-                return if msg.contains("duration") || msg.contains("without completing") {
-                    Err("Simulation duration reached".to_string())
-                } else {
-                    Err(format!("Simulation error: {e}"))
-                };
+/// Advance the simulation by one tick.
+///
+/// `Sim::step()` returns `Ok(true)` when all client hosts have exited. Our
+/// fuzz clients (`workload`, `membership-agent`, `chaos-agent`) run forever,
+/// so that case should be impossible; if it ever happens, the fuzz harness
+/// has lost its drivers and we must abort rather than keep spinning.
+fn step_tick(sim: &mut turmoil::Sim) -> Result<(), String> {
+    match sim.step() {
+        Ok(false) => Ok(()),
+        Ok(true) => Err("All fuzz clients exited unexpectedly".to_string()),
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("duration") || msg.contains("without completing") {
+                Err("Simulation duration reached".to_string())
+            } else {
+                Err(format!("Simulation error: {e}"))
             }
         }
     }
@@ -456,7 +460,7 @@ fn run_single_iteration(
             }
         }
 
-        if let Err(msg) = step_until_quiescent(&mut sim) {
+        if let Err(msg) = step_tick(&mut sim) {
             println!("{msg} at step {steps}");
             return FuzzResult {
                 steps_completed: steps,
