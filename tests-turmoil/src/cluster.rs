@@ -97,12 +97,12 @@ pub fn spawn_host(
     raft_config: Arc<openraft::Config>,
     cluster_state: Arc<std::sync::Mutex<ClusterState>>,
     seed: u64,
-    all_nodes: BTreeMap<NodeId, Node>,
+    initial_nodes: BTreeMap<NodeId, Node>,
 ) {
     let host_name = host_name(node_id);
     sim.host(host_name, move || {
         let raft_config = raft_config.clone();
-        let all_nodes = all_nodes.clone();
+        let initial_nodes = initial_nodes.clone();
         let cluster_state = cluster_state.clone();
         let node_seed = seed.wrapping_add(node_id);
 
@@ -137,7 +137,7 @@ pub fn spawn_host(
                         if !is_initialized {
                             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                             tracing::info!("Initializing cluster on node {}", node_id);
-                            raft.initialize(all_nodes.clone()).await.expect("Failed to initialize");
+                            raft.initialize(initial_nodes.clone()).await.expect("Failed to initialize");
                         }
                     }
 
