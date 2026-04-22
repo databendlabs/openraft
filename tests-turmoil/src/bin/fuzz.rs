@@ -40,6 +40,15 @@ struct DerivedConfig {
     restart_chance: f64,
     chaos_interval: u64,
     membership_interval: u64,
+    /// Take a snapshot after this many new committed logs.
+    snapshot_logs_threshold: u64,
+    /// Keep at most this many applied logs around after a snapshot.
+    /// Smaller = more aggressive purging = snapshot install is more likely
+    /// when a lagging follower returns.
+    max_in_snapshot_log_to_keep: u64,
+    /// Switch a follower from log-shipping to snapshot install when it
+    /// falls this far behind the leader. Must exceed `snapshot_logs_threshold`.
+    replication_lag_threshold: u64,
 }
 
 impl DerivedConfig {
@@ -47,6 +56,7 @@ impl DerivedConfig {
         let mut rng = StdRng::seed_from_u64(seed);
         let heartbeat_interval = 50 + rng.gen_range(0..100);
         let election_timeout_min = heartbeat_interval * rng.gen_range(2..4);
+        let snapshot_logs_threshold = rng.gen_range(100..=250);
         Self {
             num_initial_nodes: 3 + rng.gen_range(0..3), // 3-5
             max_potential_nodes: 10,
@@ -58,6 +68,9 @@ impl DerivedConfig {
             restart_chance: rng.gen_range(0.01..0.05), // 1-5%
             chaos_interval: rng.gen_range(2000..5000),
             membership_interval: rng.gen_range(10000..25000),
+            snapshot_logs_threshold,
+            max_in_snapshot_log_to_keep: rng.gen_range(30..=80),
+            replication_lag_threshold: snapshot_logs_threshold * 2,
         }
     }
 }
@@ -74,7 +87,10 @@ impl std::fmt::Display for DerivedConfig {
         writeln!(f, "  enable_chaos: {}", self.enable_chaos)?;
         writeln!(f, "  restart_chance: {:.4}", self.restart_chance)?;
         writeln!(f, "  chaos_interval: {}", self.chaos_interval)?;
-        write!(f, "  membership_interval: {}", self.membership_interval)
+        writeln!(f, "  membership_interval: {}", self.membership_interval)?;
+        writeln!(f, "  snapshot_logs_threshold: {}", self.snapshot_logs_threshold)?;
+        writeln!(f, "  max_in_snapshot_log_to_keep: {}", self.max_in_snapshot_log_to_keep)?;
+        write!(f, "  replication_lag_threshold: {}", self.replication_lag_threshold)
     }
 }
 
@@ -392,6 +408,9 @@ fn run_single_iteration(
         heartbeat_interval: derived.heartbeat_interval,
         election_timeout_min: derived.election_timeout_min,
         election_timeout_max: derived.election_timeout_max,
+        snapshot_policy: openraft::SnapshotPolicy::LogsSinceLast(derived.snapshot_logs_threshold),
+        max_in_snapshot_log_to_keep: derived.max_in_snapshot_log_to_keep,
+        replication_lag_threshold: derived.replication_lag_threshold,
         ..Default::default()
     });
 
