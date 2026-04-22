@@ -18,6 +18,7 @@ use rand::Rng;
 use rand::SeedableRng;
 use rand::rngs::SmallRng;
 use rand::rngs::StdRng;
+use rand::seq::SliceRandom;
 use serde::Serialize;
 use tests_turmoil::cluster::ClusterState;
 use tests_turmoil::cluster::bounce_node;
@@ -286,12 +287,18 @@ fn run_fuzz_loop(base_seed: u64, max_steps: u64, iterations: u64, crash_file: Op
     println!("Status: PASSED");
 }
 
-async fn chaos_agent_loop(seed: u64, max_nodes: u64) -> Result<(), Box<dyn std::error::Error>> {
+async fn chaos_agent_loop(
+    seed: u64,
+    max_nodes: u64,
+    cluster_state: Arc<Mutex<ClusterState>>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut rng = StdRng::seed_from_u64(seed);
     loop {
         tokio::time::sleep(Duration::from_millis(rng.gen_range(1000..5000))).await;
-        match rng.gen_range(0..5) {
+        match rng.gen_range(0..6) {
             0 => {
+                // Single-node isolation: one node unreachable from all others.
+                // Does not threaten quorum in 3+ clusters on its own.
                 let victim = rng.gen_range(1..=max_nodes);
                 for i in 1..=max_nodes {
                     if i != victim {
@@ -300,6 +307,7 @@ async fn chaos_agent_loop(seed: u64, max_nodes: u64) -> Result<(), Box<dyn std::
                 }
             }
             1 => {
+                // Global repair: undo all partitions.
                 for i in 1..=max_nodes {
                     for j in (i + 1)..=max_nodes {
                         turmoil::repair(host_name(i), host_name(j));
@@ -307,6 +315,7 @@ async fn chaos_agent_loop(seed: u64, max_nodes: u64) -> Result<(), Box<dyn std::
                 }
             }
             2 => {
+                // One-way hold on a single pair (delivers later).
                 let a = rng.gen_range(1..=max_nodes);
                 let mut b = rng.gen_range(1..=max_nodes);
                 while b == a {
@@ -315,6 +324,7 @@ async fn chaos_agent_loop(seed: u64, max_nodes: u64) -> Result<(), Box<dyn std::
                 turmoil::hold(host_name(a), host_name(b));
             }
             3 => {
+                // Global release: flush all held messages.
                 for i in 1..=max_nodes {
                     for j in 1..=max_nodes {
                         if i != j {
@@ -323,7 +333,51 @@ async fn chaos_agent_loop(seed: u64, max_nodes: u64) -> Result<(), Box<dyn std::
                     }
                 }
             }
-            _ => {} // no-op: let system stabilize
+            4 => {
+                // Minority partition: split the cluster into a minority side
+                // (size 1..=max_nodes/2) vs the rest. The majority side
+                // retains quorum; the minority cannot commit until repaired.
+                let minority_size = rng.gen_range(1..=max_nodes / 2);
+                let mut all: Vec<u64> = (1..=max_nodes).collect();
+                all.shuffle(&mut rng);
+                let minority: std::collections::HashSet<u64> = all.into_iter().take(minority_size as usize).collect();
+                for &a in &minority {
+                    for b in 1..=max_nodes {
+                        if !minority.contains(&b) {
+                            turmoil::partition(host_name(a), host_name(b));
+                        }
+                    }
+                }
+            }
+            5 => {
+                // Leader-in-minority partition: isolate the current leader
+                // together with a random subset of peers on the minority side,
+                // forcing the majority to re-elect while the old leader may
+                // still believe it leads — this is where stale-leader bugs
+                // and dueling-term scenarios live.
+                let Some(leader_id) = cluster_state.lock().unwrap().find_leader_id() else {
+                    continue;
+                };
+                let majority_needed = (max_nodes / 2) + 1;
+                // Leader plus 0..=(max_nodes - majority_needed) peers → minority.
+                let extra = if max_nodes > majority_needed {
+                    rng.gen_range(0..=(max_nodes - majority_needed))
+                } else {
+                    0
+                };
+                let mut others: Vec<u64> = (1..=max_nodes).filter(|n| *n != leader_id).collect();
+                others.shuffle(&mut rng);
+                let mut minority: std::collections::HashSet<u64> = others.into_iter().take(extra as usize).collect();
+                minority.insert(leader_id);
+                for &a in &minority {
+                    for b in 1..=max_nodes {
+                        if !minority.contains(&b) {
+                            turmoil::partition(host_name(a), host_name(b));
+                        }
+                    }
+                }
+            }
+            _ => unreachable!(),
         }
     }
 }
@@ -466,7 +520,11 @@ fn run_single_iteration(
     if derived.enable_chaos {
         sim.client(
             "chaos-agent",
-            chaos_agent_loop(iteration_seed.wrapping_add(1000), derived.max_potential_nodes),
+            chaos_agent_loop(
+                iteration_seed.wrapping_add(1000),
+                derived.max_potential_nodes,
+                cluster_state.clone(),
+            ),
         );
     }
     sim.client(
