@@ -78,6 +78,11 @@ impl ClusterState {
         self.rafts.values().find(|raft| raft.metrics().borrow_watched().state.is_leader()).cloned()
     }
 
+    /// Return the node id of the current leader, if any.
+    pub fn find_leader_id(&self) -> Option<NodeId> {
+        self.rafts.iter().find(|(_, raft)| raft.metrics().borrow_watched().state.is_leader()).map(|(id, _)| *id)
+    }
+
     /// Register a freshly started Raft instance as live.
     pub fn register_raft(&mut self, node_id: NodeId, raft: Arc<Raft>) {
         self.rafts.insert(node_id, raft);
