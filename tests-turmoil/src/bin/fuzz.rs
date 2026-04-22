@@ -300,6 +300,7 @@ async fn chaos_agent_loop(seed: u64, max_nodes: u64) -> Result<(), Box<dyn std::
 async fn membership_agent_loop(
     cluster_state: Arc<Mutex<ClusterState>>,
     next_membership: Arc<Mutex<Option<HashSet<NodeId>>>>,
+    potential_nodes: BTreeMap<NodeId, Node>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     loop {
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -309,14 +310,25 @@ async fn membership_agent_loop(
         };
 
         let leader = cluster_state.lock().unwrap().find_leader();
-        if let Some(raft) = leader {
-            println!("MEMBERSHIP-AGENT: executing change to {new_set:?}");
-            let _ = raft.change_membership(new_set, false).await;
-        } else {
+        let Some(raft) = leader else {
             // No leader found; put the membership change back for retry.
             next_membership.lock().unwrap().get_or_insert(new_set);
             tokio::time::sleep(Duration::from_millis(500)).await;
+            continue;
+        };
+
+        // openraft requires a node to be a learner before promotion to voter.
+        // Add each target as learner; ignore "already known" errors — we do
+        // not track membership here and prefer idempotent retries.
+        for id in &new_set {
+            let Some(node) = potential_nodes.get(id).cloned() else {
+                continue;
+            };
+            let _ = raft.add_learner(*id, node, true).await;
         }
+
+        println!("MEMBERSHIP-AGENT: executing change to {new_set:?}");
+        let _ = raft.change_membership(new_set, false).await;
     }
 }
 
@@ -385,12 +397,24 @@ fn run_single_iteration(
     let cluster_state = Arc::new(Mutex::new(ClusterState::new()));
     let next_membership = Arc::new(Mutex::new(None::<HashSet<NodeId>>));
 
-    let all_nodes: BTreeMap<_, _> = (1..=derived.max_potential_nodes)
+    // Potential cluster members: every host we spawn has an entry here so the
+    // membership agent can construct a `Node` when adding a new learner.
+    let potential_nodes: BTreeMap<NodeId, Node> = (1..=derived.max_potential_nodes)
         .map(|id| {
             (id, Node {
                 addr: format!("{}:9000", host_name(id)),
             })
         })
+        .collect();
+
+    // Initial cluster members: only these are passed to `raft.initialize()` so
+    // the bootstrap membership matches `num_initial_nodes`. Non-initial hosts
+    // still come up, run uninitialized, and join later via add_learner +
+    // change_membership.
+    let initial_nodes: BTreeMap<NodeId, Node> = potential_nodes
+        .iter()
+        .take(derived.num_initial_nodes)
+        .map(|(id, node)| (*id, node.clone()))
         .collect();
 
     for id in 1..=derived.max_potential_nodes {
@@ -401,7 +425,7 @@ fn run_single_iteration(
             raft_config.clone(),
             cluster_state.clone(),
             iteration_seed,
-            all_nodes.clone(),
+            initial_nodes.clone(),
         );
     }
 
@@ -413,7 +437,7 @@ fn run_single_iteration(
     }
     sim.client(
         "membership-agent",
-        membership_agent_loop(cluster_state.clone(), next_membership.clone()),
+        membership_agent_loop(cluster_state.clone(), next_membership.clone(), potential_nodes.clone()),
     );
     sim.client(
         "workload",
