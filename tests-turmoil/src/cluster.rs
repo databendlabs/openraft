@@ -22,7 +22,12 @@ pub fn host_name(id: NodeId) -> String {
 
 /// Shared state for observing nodes from outside the simulation.
 pub struct ClusterState {
-    /// Raft instances for each node (keyed by node ID).
+    /// Live Raft instances for each node (keyed by node ID).
+    ///
+    /// A crashed host's handle is removed from this map so external observers
+    /// and simulated clients do not keep treating its last metrics snapshot as
+    /// live state. When the host is bounced, `spawn_host()` recreates the Raft
+    /// instance and re-inserts it.
     pub rafts: BTreeMap<NodeId, Arc<Raft>>,
     /// Log stores for each node.
     pub log_stores: BTreeMap<NodeId, Arc<LogStore>>,
@@ -71,6 +76,16 @@ impl ClusterState {
     /// Find a Raft node that is currently the leader.
     pub fn find_leader(&self) -> Option<Arc<Raft>> {
         self.rafts.values().find(|raft| raft.metrics().borrow_watched().state.is_leader()).cloned()
+    }
+
+    /// Register a freshly started Raft instance as live.
+    pub fn register_raft(&mut self, node_id: NodeId, raft: Arc<Raft>) {
+        self.rafts.insert(node_id, raft);
+    }
+
+    /// Drop the live handle for a crashed node.
+    pub fn unregister_raft(&mut self, node_id: NodeId) {
+        self.rafts.remove(&node_id);
     }
 }
 
@@ -126,7 +141,7 @@ pub fn spawn_host(
 
                     let raft = Arc::new(raft);
 
-                    cluster_state.lock().unwrap().rafts.insert(node_id, raft.clone());
+                    cluster_state.lock().unwrap().register_raft(node_id, raft.clone());
 
                     // Node 1 initializes if needed
                     if node_id == 1 {
@@ -169,10 +184,11 @@ pub fn spawn_host(
 /// — `sim.bounce()` alone is an instant restart that only exercises the
 /// software-restart / persistence-recovery path, not the "node unreachable
 /// long enough to lose quorum" case.
-pub fn crash_node(sim: &mut Sim, node_id: NodeId) {
+pub fn crash_node(sim: &mut Sim, node_id: NodeId, cluster_state: &Arc<std::sync::Mutex<ClusterState>>) {
     let host_name = host_name(node_id);
     tracing::info!("CRASH: {}", host_name);
     sim.crash(host_name);
+    cluster_state.lock().unwrap().unregister_raft(node_id);
 }
 
 /// Restart a previously crashed node's software.

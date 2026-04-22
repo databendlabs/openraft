@@ -503,7 +503,7 @@ fn run_single_iteration(
                 let min_downtime = derived.election_timeout_max / 2;
                 let max_downtime = derived.election_timeout_max * 2;
                 let downtime = chaos_rng.gen_range(min_downtime..=max_downtime);
-                crash_node(&mut sim, victim);
+                crash_node(&mut sim, victim, &cluster_state);
                 pending_bounces.push((victim, steps + downtime));
                 println!(
                     "CRASH: node {victim} for {downtime} ticks (bounce at step {})",
