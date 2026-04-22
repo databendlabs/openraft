@@ -86,6 +86,7 @@ where C: RaftTypeConfig
 impl<C> RuntimeStatsDisplay<C>
 where C: RaftTypeConfig
 {
+    #[allow(dead_code)]
     fn fmt_compact(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -157,6 +158,7 @@ where C: RaftTypeConfig
         write!(f, "}} }}")
     }
 
+    #[allow(dead_code)]
     fn fmt_multiline(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "RuntimeStats:")?;
         writeln!(f, "  apply_batch: {}", self.apply_batch)?;
@@ -215,6 +217,7 @@ where C: RaftTypeConfig
         Ok(())
     }
 
+    #[allow(dead_code)]
     #[cfg(feature = "runtime-stats")]
     fn fmt_human_readable(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Batch sizes table
@@ -393,6 +396,7 @@ where C: RaftTypeConfig
     }
 
     /// Fallback when tabled is not available.
+    #[allow(dead_code)]
     #[cfg(not(feature = "runtime-stats"))]
     fn fmt_human_readable(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.fmt_multiline(f)

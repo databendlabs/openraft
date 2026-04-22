@@ -20,9 +20,10 @@ use rand::rngs::SmallRng;
 use rand::rngs::StdRng;
 use serde::Serialize;
 use tests_turmoil::cluster::ClusterState;
+use tests_turmoil::cluster::bounce_node;
+use tests_turmoil::cluster::crash_node;
 use tests_turmoil::cluster::host_name;
 use tests_turmoil::cluster::register_node_storage;
-use tests_turmoil::cluster::restart_node;
 use tests_turmoil::cluster::spawn_host;
 use tests_turmoil::invariants::InvariantChecker;
 use tests_turmoil::typ::*;
@@ -454,6 +455,11 @@ fn run_single_iteration(
     let mut next_node_id = (derived.num_initial_nodes as u64) + 1;
     let mut invariants = InvariantChecker::default();
 
+    // Pending bounces: (node_id, step_at_which_to_bounce). When a crash is
+    // triggered, we push an entry here and later bounce the node when the
+    // simulation reaches the scheduled step.
+    let mut pending_bounces: Vec<(NodeId, u64)> = Vec::new();
+
     println!("Starting simulation...");
 
     while running.load(Ordering::Relaxed) && steps < max_steps {
@@ -475,12 +481,34 @@ fn run_single_iteration(
             }
         }
 
-        // Crash restarts
+        // Bounce any nodes whose crash window has expired.
+        pending_bounces.retain(|(id, bounce_at)| {
+            if steps >= *bounce_at {
+                bounce_node(&mut sim, *id);
+                false
+            } else {
+                true
+            }
+        });
+
+        // Crash a random voter for a bounded downtime, then schedule its
+        // bounce. We pick the window to straddle `election_timeout_max` so
+        // the fuzz mixes "short outage, no re-election" with "long outage,
+        // leader churn / quorum loss".
         if steps > 0 && steps.is_multiple_of(derived.chaos_interval) && chaos_rng.gen_bool(derived.restart_chance) {
-            let voters: Vec<_> = active_voters.iter().collect();
-            if !voters.is_empty() {
-                let victim = **voters.get(chaos_rng.gen_range(0..voters.len())).unwrap();
-                restart_node(&mut sim, victim);
+            let crashable: Vec<_> =
+                active_voters.iter().copied().filter(|id| !pending_bounces.iter().any(|(p, _)| p == id)).collect();
+            if !crashable.is_empty() {
+                let victim = crashable[chaos_rng.gen_range(0..crashable.len())];
+                let min_downtime = derived.election_timeout_max / 2;
+                let max_downtime = derived.election_timeout_max * 2;
+                let downtime = chaos_rng.gen_range(min_downtime..=max_downtime);
+                crash_node(&mut sim, victim);
+                pending_bounces.push((victim, steps + downtime));
+                println!(
+                    "CRASH: node {victim} for {downtime} ticks (bounce at step {})",
+                    steps + downtime
+                );
             }
         }
 

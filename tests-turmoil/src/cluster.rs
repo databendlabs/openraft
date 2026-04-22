@@ -163,9 +163,21 @@ pub fn spawn_host(
     });
 }
 
-/// Restart a node by bouncing it.
-pub fn restart_node(sim: &mut Sim, node_id: NodeId) {
+/// Crash a node's software; it will stay down until `bounce_node` is called.
+///
+/// Use this together with a delayed `bounce_node` to model a downtime window
+/// — `sim.bounce()` alone is an instant restart that only exercises the
+/// software-restart / persistence-recovery path, not the "node unreachable
+/// long enough to lose quorum" case.
+pub fn crash_node(sim: &mut Sim, node_id: NodeId) {
     let host_name = host_name(node_id);
-    tracing::info!("RESTART: bouncing {}", host_name);
+    tracing::info!("CRASH: {}", host_name);
+    sim.crash(host_name);
+}
+
+/// Restart a previously crashed node's software.
+pub fn bounce_node(sim: &mut Sim, node_id: NodeId) {
+    let host_name = host_name(node_id);
+    tracing::info!("BOUNCE: {}", host_name);
     sim.bounce(host_name);
 }
