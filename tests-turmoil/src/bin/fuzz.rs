@@ -49,6 +49,14 @@ struct DerivedConfig {
     /// Switch a follower from log-shipping to snapshot install when it
     /// falls this far behind the leader. Must exceed `snapshot_logs_threshold`.
     replication_lag_threshold: u64,
+    /// Probability a crash becomes a long outage instead of a short bounce.
+    /// Long outages let the follower fall far enough behind to require
+    /// snapshot install when it rejoins.
+    long_outage_chance: f64,
+    /// Minimum downtime (in ticks) for a long outage.
+    long_outage_min_ticks: u64,
+    /// Maximum downtime (in ticks) for a long outage.
+    long_outage_max_ticks: u64,
 }
 
 impl DerivedConfig {
@@ -71,6 +79,9 @@ impl DerivedConfig {
             snapshot_logs_threshold,
             max_in_snapshot_log_to_keep: rng.gen_range(30..=80),
             replication_lag_threshold: snapshot_logs_threshold * 2,
+            long_outage_chance: rng.gen_range(0.1..=0.3), // 10-30% of crashes
+            long_outage_min_ticks: 5000,
+            long_outage_max_ticks: 15000,
         }
     }
 }
@@ -90,7 +101,10 @@ impl std::fmt::Display for DerivedConfig {
         writeln!(f, "  membership_interval: {}", self.membership_interval)?;
         writeln!(f, "  snapshot_logs_threshold: {}", self.snapshot_logs_threshold)?;
         writeln!(f, "  max_in_snapshot_log_to_keep: {}", self.max_in_snapshot_log_to_keep)?;
-        write!(f, "  replication_lag_threshold: {}", self.replication_lag_threshold)
+        writeln!(f, "  replication_lag_threshold: {}", self.replication_lag_threshold)?;
+        writeln!(f, "  long_outage_chance: {:.4}", self.long_outage_chance)?;
+        writeln!(f, "  long_outage_min_ticks: {}", self.long_outage_min_ticks)?;
+        write!(f, "  long_outage_max_ticks: {}", self.long_outage_max_ticks)
     }
 }
 
@@ -510,24 +524,33 @@ fn run_single_iteration(
             }
         });
 
-        // Crash a random voter for a bounded downtime, then schedule its
-        // bounce. We pick the window to straddle `election_timeout_max` so
-        // the fuzz mixes "short outage, no re-election" with "long outage,
-        // leader churn / quorum loss".
+        // Crash a random voter and schedule its bounce after a downtime
+        // window. Two flavors:
+        //
+        // - Short outage (majority case): window straddles
+        //   `election_timeout_max`, mixing "no re-election" with "leader
+        //   churn / quorum loss" on restart.
+        // - Long outage (rare, `long_outage_chance`): 5k-15k ticks, so
+        //   the crashed node falls behind by more than
+        //   `replication_lag_threshold` and must receive a snapshot
+        //   install instead of log shipping when it rejoins.
         if steps > 0 && steps.is_multiple_of(derived.chaos_interval) && chaos_rng.gen_bool(derived.restart_chance) {
             let crashable: Vec<_> =
                 active_voters.iter().copied().filter(|id| !pending_bounces.iter().any(|(p, _)| p == id)).collect();
             if !crashable.is_empty() {
                 let victim = crashable[chaos_rng.gen_range(0..crashable.len())];
-                let min_downtime = derived.election_timeout_max / 2;
-                let max_downtime = derived.election_timeout_max * 2;
-                let downtime = chaos_rng.gen_range(min_downtime..=max_downtime);
+                let is_long_outage = chaos_rng.gen_bool(derived.long_outage_chance);
+                let downtime = if is_long_outage {
+                    chaos_rng.gen_range(derived.long_outage_min_ticks..=derived.long_outage_max_ticks)
+                } else {
+                    let min_downtime = derived.election_timeout_max / 2;
+                    let max_downtime = derived.election_timeout_max * 2;
+                    chaos_rng.gen_range(min_downtime..=max_downtime)
+                };
                 crash_node(&mut sim, victim, &cluster_state);
                 pending_bounces.push((victim, steps + downtime));
-                println!(
-                    "CRASH: node {victim} for {downtime} ticks (bounce at step {})",
-                    steps + downtime
-                );
+                let kind = if is_long_outage { "CRASH(long)" } else { "CRASH" };
+                println!("{kind}: node {victim} for {downtime} ticks (bounce at step {})", steps + downtime);
             }
         }
 
