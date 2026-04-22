@@ -83,6 +83,7 @@ where C: RaftTypeConfig
     }
 }
 
+#[allow(dead_code)]
 impl<C> RuntimeStatsDisplay<C>
 where C: RaftTypeConfig
 {
