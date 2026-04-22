@@ -94,6 +94,7 @@ impl RaftMsgName {
     /// All variants in canonical order.
     ///
     /// ExternalCommand variants are expanded to include all ExternalCommandName variants.
+    #[allow(dead_code)]
     pub const ALL: &'static [RaftMsgName] = &[
         RaftMsgName::AppendEntries,
         RaftMsgName::RequestVote,

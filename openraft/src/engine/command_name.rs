@@ -84,6 +84,7 @@ impl CommandName {
     /// All variants in canonical order.
     ///
     /// StateMachine variants are expanded to include all SMCommandName variants.
+    #[allow(dead_code)]
     pub const ALL: &'static [CommandName] = &[
         CommandName::UpdateIOProgress,
         CommandName::AppendEntries,
