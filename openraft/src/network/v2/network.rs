@@ -35,9 +35,37 @@ use crate::type_config::alias::VoteOf;
 /// (`append_entries`, `vote`, `full_snapshot`) and the sub-traits ([`NetAppend`], [`NetVote`],
 /// [`NetSnapshot`], etc.) will be automatically derived via blanket implementations.
 ///
-/// For advanced use cases requiring fine-grained control, applications may implement
-/// the individual sub-traits directly instead of this trait. See [`NetStreamAppend`] for
-/// an example where direct implementation enables native gRPC bidirectional streaming.
+/// # Design: unary RPCs with streaming compatibility
+///
+/// `RaftNetworkV2` is designed around **request-response (unary) RPCs** — `append_entries`,
+/// `vote`, and `full_snapshot` each send one request and produce one response. When this
+/// trait was introduced, it was not designed for stream-oriented AppendEntries.
+///
+/// It remains **compatible** with the stream-oriented API, however: if an application only
+/// implements the unary `append_entries`, Openraft adapts it into a stream by calling it
+/// sequentially via the default [`stream_append`](Self::stream_append) implementation
+/// (see [`stream_append_sequential`](crate::network::stream_append_sequential)). This is
+/// convenient but not optimal for throughput.
+///
+/// For true streaming performance while keeping the unified interface, an application can
+/// **override the default [`stream_append`](Self::stream_append)** on `RaftNetworkV2` itself
+/// with a custom implementation (e.g. native gRPC bidirectional streaming or pipelined
+/// AppendEntries) — without giving up the convenience of `RaftNetworkV2` for the other RPCs.
+///
+/// # Implementing sub-traits directly for optimal performance
+///
+/// For best performance — for example, native gRPC bidirectional streaming for
+/// AppendEntries — implement the individual sub-traits directly instead of `RaftNetworkV2`.
+/// These are the exact bounds required by [`RaftNetworkFactory::Network`], so any
+/// combination of direct impls satisfies the factory:
+///
+/// - [`NetAppend`] — unary AppendEntries
+/// - [`NetVote`] — RequestVote
+/// - [`NetSnapshot`] — full snapshot transfer
+/// - [`NetStreamAppend`] — stream-oriented AppendEntries (implement directly for native gRPC bidi
+///   streaming or pipelining)
+/// - [`NetTransferLeader`] — TransferLeader notification
+/// - [`NetBackoff`] — backoff strategy on `Unreachable`
 ///
 /// See the [network chapter of the guide](crate::docs::getting_started#4-implement-raftnetwork)
 /// for details and discussion on this trait and how to implement it.
@@ -55,6 +83,9 @@ use crate::type_config::alias::VoteOf;
 /// [`NetVote`]: crate::network::NetVote
 /// [`NetSnapshot`]: crate::network::NetSnapshot
 /// [`NetStreamAppend`]: crate::network::NetStreamAppend
+/// [`NetTransferLeader`]: crate::network::NetTransferLeader
+/// [`NetBackoff`]: crate::network::NetBackoff
+/// [`RaftNetworkFactory::Network`]: crate::network::RaftNetworkFactory::Network
 /// [correct-node]: `crate::docs::cluster_control::dynamic_membership#ensure-connection-to-the-correct-node`
 #[since(version = "0.10.0")]
 #[add_async_trait]
