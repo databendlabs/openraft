@@ -5,7 +5,7 @@
 //!   Reproduce mode: fuzz --reproduce <ITERATION_SEED> --max-steps <N> [--crash-file <PATH>]
 
 use std::collections::BTreeMap;
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::fs;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -340,7 +340,7 @@ async fn chaos_agent_loop(
                 let minority_size = rng.gen_range(1..=max_nodes / 2);
                 let mut all: Vec<u64> = (1..=max_nodes).collect();
                 all.shuffle(&mut rng);
-                let minority: std::collections::HashSet<u64> = all.into_iter().take(minority_size as usize).collect();
+                let minority: BTreeSet<u64> = all.into_iter().take(minority_size as usize).collect();
                 for &a in &minority {
                     for b in 1..=max_nodes {
                         if !minority.contains(&b) {
@@ -367,7 +367,7 @@ async fn chaos_agent_loop(
                 };
                 let mut others: Vec<u64> = (1..=max_nodes).filter(|n| *n != leader_id).collect();
                 others.shuffle(&mut rng);
-                let mut minority: std::collections::HashSet<u64> = others.into_iter().take(extra as usize).collect();
+                let mut minority: BTreeSet<u64> = others.into_iter().take(extra as usize).collect();
                 minority.insert(leader_id);
                 for &a in &minority {
                     for b in 1..=max_nodes {
@@ -384,7 +384,7 @@ async fn chaos_agent_loop(
 
 async fn membership_agent_loop(
     cluster_state: Arc<Mutex<ClusterState>>,
-    next_membership: Arc<Mutex<Option<HashSet<NodeId>>>>,
+    next_membership: Arc<Mutex<Option<BTreeSet<NodeId>>>>,
     potential_nodes: BTreeMap<NodeId, Node>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     loop {
@@ -483,7 +483,7 @@ fn run_single_iteration(
     });
 
     let cluster_state = Arc::new(Mutex::new(ClusterState::new()));
-    let next_membership = Arc::new(Mutex::new(None::<HashSet<NodeId>>));
+    let next_membership = Arc::new(Mutex::new(None::<BTreeSet<NodeId>>));
 
     // Potential cluster members: every host we spawn has an entry here so the
     // membership agent can construct a `Node` when adding a new learner.
@@ -542,7 +542,7 @@ fn run_single_iteration(
     let mut violations: Vec<String> = Vec::new();
     let mut chaos_rng = StdRng::seed_from_u64(iteration_seed.wrapping_add(3000));
     let mut member_rng = StdRng::seed_from_u64(iteration_seed.wrapping_add(5000));
-    let mut active_voters: HashSet<NodeId> = (1..=derived.num_initial_nodes as u64).collect();
+    let mut active_voters: BTreeSet<NodeId> = (1..=derived.num_initial_nodes as u64).collect();
     let mut next_node_id = (derived.num_initial_nodes as u64) + 1;
     let mut invariants = InvariantChecker::default();
 
@@ -565,7 +565,8 @@ fn run_single_iteration(
                     *next_membership.lock().unwrap() = Some(active_voters.clone());
                 }
             } else if active_voters.len() > 3 {
-                let victim = *active_voters.iter().next().unwrap();
+                let voters: Vec<NodeId> = active_voters.iter().copied().collect();
+                let victim = voters[member_rng.gen_range(0..voters.len())];
                 println!("MEMBERSHIP: Requesting remove node {victim}...");
                 active_voters.remove(&victim);
                 *next_membership.lock().unwrap() = Some(active_voters.clone());
@@ -585,13 +586,11 @@ fn run_single_iteration(
         // Crash a random voter and schedule its bounce after a downtime
         // window. Two flavors:
         //
-        // - Short outage (majority case): window straddles
-        //   `election_timeout_max`, mixing "no re-election" with "leader
-        //   churn / quorum loss" on restart.
-        // - Long outage (rare, `long_outage_chance`): 5k-15k ticks, so
-        //   the crashed node falls behind by more than
-        //   `replication_lag_threshold` and must receive a snapshot
-        //   install instead of log shipping when it rejoins.
+        // - Short outage (majority case): window straddles `election_timeout_max`, mixing "no re-election"
+        //   with "leader churn / quorum loss" on restart.
+        // - Long outage (rare, `long_outage_chance`): 5k-15k ticks, so the crashed node falls behind by
+        //   more than `replication_lag_threshold` and must receive a snapshot install instead of log
+        //   shipping when it rejoins.
         if steps > 0 && steps.is_multiple_of(derived.chaos_interval) && chaos_rng.gen_bool(derived.restart_chance) {
             let crashable: Vec<_> =
                 active_voters.iter().copied().filter(|id| !pending_bounces.iter().any(|(p, _)| p == id)).collect();
@@ -608,7 +607,10 @@ fn run_single_iteration(
                 crash_node(&mut sim, victim, &cluster_state);
                 pending_bounces.push((victim, steps + downtime));
                 let kind = if is_long_outage { "CRASH(long)" } else { "CRASH" };
-                println!("{kind}: node {victim} for {downtime} ticks (bounce at step {})", steps + downtime);
+                println!(
+                    "{kind}: node {victim} for {downtime} ticks (bounce at step {})",
+                    steps + downtime
+                );
             }
         }
 
