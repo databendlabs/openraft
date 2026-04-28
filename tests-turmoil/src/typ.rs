@@ -49,6 +49,7 @@ openraft::declare_raft_types!(
         D = Request,
         R = Response,
         Node = Node,
+        AsyncRuntime = openraft_rt::deterministic_rng::DeterministicRng<openraft_rt_tokio::TokioRuntime>,
 );
 
 pub type Raft = openraft::Raft<TypeConfig, std::sync::Arc<crate::store::StateMachine>>;
