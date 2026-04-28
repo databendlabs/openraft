@@ -80,7 +80,10 @@ impl ClusterState {
 
     /// Return the node id of the current leader, if any.
     pub fn find_leader_id(&self) -> Option<NodeId> {
-        self.rafts.iter().find(|(_, raft)| raft.metrics().borrow_watched().state.is_leader()).map(|(id, _)| *id)
+        self.rafts
+            .iter()
+            .find(|(_, raft)| raft.metrics().borrow_watched().state.is_leader())
+            .map(|(id, _)| *id)
     }
 
     /// Register a freshly started Raft instance as live.
