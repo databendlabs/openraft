@@ -20,6 +20,6 @@ single-threaded = ["openraft-macros/single-threaded"]
 [dependencies]
 futures-channel = { workspace = true }
 futures-util    = { workspace = true }
-openraft-macros    = { version = "0.10.0-alpha.19", path = "../macros" }
+openraft-macros    = { version = "0.10.0-alpha.20", path = "../macros" }
 pin-project-lite   = { version = "0.2" }
 rand               = { workspace = true }
