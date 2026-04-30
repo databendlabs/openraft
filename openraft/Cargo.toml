@@ -23,9 +23,9 @@ anyerror        = { workspace = true }
 anyhow          = { workspace = true, optional = true }
 backoff-series  = { workspace = true }
 base2histogram  = { workspace = true }
-byte-unit       = { workspace = true }
+byte-unit       = { workspace = true, optional = true }
 chrono          = { workspace = true }
-clap            = { workspace = true }
+clap            = { workspace = true, optional = true }
 derive_more     = { workspace = true }
 display-more    = { workspace = true }
 futures-util    = { workspace = true }
@@ -50,10 +50,17 @@ serde_json        = { workspace = true }
 
 
 [features]
-default = ["tokio-rt"]
+default = ["tokio-rt", "clap"]
 
 # Enable the default Tokio runtime
 tokio-rt = ["dep:openraft-rt-tokio"]
+
+# Enable building `Config` from command-line arguments via `Config::build`.
+#
+# When disabled, openraft no longer depends on `clap` or `byte-unit`, and
+# `Config` must be constructed programmatically (via `Config::default()` or
+# struct literal syntax).
+clap = ["dep:clap", "dep:byte-unit"]
 
 # Enables benchmarks in unittest.
 #

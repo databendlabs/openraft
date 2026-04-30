@@ -1,12 +1,15 @@
 //! Raft runtime configuration.
 
 use std::ops::Deref;
+#[cfg(feature = "clap")]
 use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
+#[cfg(feature = "clap")]
 use anyerror::AnyError;
 use backoff_series::BackoffSeries;
+#[cfg(feature = "clap")]
 use clap::Parser;
 use openraft_macros::since;
 use rand::RngExt;
@@ -18,6 +21,56 @@ use crate::config::error::ConfigError;
 use crate::network::Backoff;
 use crate::raft_state::LogStateReader;
 use crate::vote::RaftCommittedLeaderId;
+
+/// Default values for [`Config`] fields.
+///
+/// Shared between the [`Default`] impl and (when enabled) the clap
+/// `default_value_t` / `default_value` attributes, so the two stay in sync.
+pub(crate) struct Defaults {
+    pub cluster_name: &'static str,
+    pub election_timeout_min: u64,
+    pub election_timeout_max: u64,
+    pub heartbeat_interval: u64,
+    pub install_snapshot_timeout: u64,
+    pub send_snapshot_timeout: u64,
+    pub max_payload_entries: u64,
+    pub max_append_entries: u64,
+    pub replication_lag_threshold: u64,
+    pub snapshot_policy: SnapshotPolicy,
+    pub snapshot_max_chunk_size: u64,
+    pub max_in_snapshot_log_to_keep: u64,
+    pub purge_batch_size: u64,
+    pub api_channel_size: u64,
+    pub notification_channel_size: u64,
+    pub state_machine_channel_size: u64,
+    pub backoff: &'static str,
+    pub enable_tick: bool,
+    pub enable_heartbeat: bool,
+    pub enable_elect: bool,
+}
+
+pub(crate) const DEFAULTS: Defaults = Defaults {
+    cluster_name: "foo",
+    election_timeout_min: 150,
+    election_timeout_max: 300,
+    heartbeat_interval: 50,
+    install_snapshot_timeout: 200,
+    send_snapshot_timeout: 0,
+    max_payload_entries: 300,
+    max_append_entries: 4096,
+    replication_lag_threshold: 5000,
+    snapshot_policy: SnapshotPolicy::LogsSinceLast(5000),
+    snapshot_max_chunk_size: 3 * 1024 * 1024,
+    max_in_snapshot_log_to_keep: 1000,
+    purge_batch_size: 1,
+    api_channel_size: 65536,
+    notification_channel_size: 65536,
+    state_machine_channel_size: 1024,
+    backoff: "200ms",
+    enable_tick: true,
+    enable_heartbeat: true,
+    enable_elect: true,
+};
 
 /// Log compaction and snapshot policy.
 ///
@@ -66,6 +119,7 @@ impl SnapshotPolicy {
 }
 
 /// Parse number with unit such as 5.3 KB
+#[cfg(feature = "clap")]
 fn parse_bytes_with_unit(src: &str) -> Result<u64, ConfigError> {
     let res = byte_unit::Byte::from_str(src).map_err(|e| ConfigError::InvalidNumber {
         invalid: src.to_string(),
@@ -75,6 +129,7 @@ fn parse_bytes_with_unit(src: &str) -> Result<u64, ConfigError> {
     Ok(res.as_u64())
 }
 
+#[cfg(feature = "clap")]
 fn parse_snapshot_policy(src: &str) -> Result<SnapshotPolicy, ConfigError> {
     if src == "never" {
         return Ok(SnapshotPolicy::Never);
@@ -140,29 +195,30 @@ fn parse_snapshot_policy(src: &str) -> Result<SnapshotPolicy, ConfigError> {
 /// - [`SnapshotPolicy`] for snapshot triggering strategies
 ///
 /// [`Raft::new`]: crate::Raft::new
-#[derive(Clone, Debug, Parser)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "clap", derive(Parser))]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct Config {
     /// The application-specific name of this Raft cluster
-    #[clap(long, default_value = "foo")]
+    #[cfg_attr(feature = "clap", clap(long, default_value = DEFAULTS.cluster_name))]
     pub cluster_name: String,
 
     /// The minimum election timeout in milliseconds
-    #[clap(long, default_value = "150")]
+    #[cfg_attr(feature = "clap", clap(long, default_value_t = DEFAULTS.election_timeout_min))]
     pub election_timeout_min: u64,
 
     /// The maximum election timeout in milliseconds
-    #[clap(long, default_value = "300")]
+    #[cfg_attr(feature = "clap", clap(long, default_value_t = DEFAULTS.election_timeout_max))]
     pub election_timeout_max: u64,
 
     /// The heartbeat interval in milliseconds at which leaders will send heartbeats to followers
-    #[clap(long, default_value = "50")]
+    #[cfg_attr(feature = "clap", clap(long, default_value_t = DEFAULTS.heartbeat_interval))]
     pub heartbeat_interval: u64,
 
     /// The timeout for sending then installing the last snapshot segment,
     /// in millisecond. It is also used as the timeout for sending a non-last segment if
     /// `send_snapshot_timeout` is 0.
-    #[clap(long, default_value = "200")]
+    #[cfg_attr(feature = "clap", clap(long, default_value_t = DEFAULTS.install_snapshot_timeout))]
     pub install_snapshot_timeout: u64,
 
     /// The timeout for sending a **non-last** snapshot segment, in milliseconds.
@@ -173,14 +229,14 @@ pub struct Config {
         since = "0.9.0",
         note = "Sending snapshot by chunks is deprecated; Use `install_snapshot_timeout` instead"
     )]
-    #[clap(long, default_value = "0")]
+    #[cfg_attr(feature = "clap", clap(long, default_value_t = DEFAULTS.send_snapshot_timeout))]
     pub send_snapshot_timeout: u64,
 
     /// The maximum number of entries per payload allowed to be transmitted during replication
     ///
     /// If this is too low, it will take longer for the nodes to be brought up to
     /// consistency with the rest of the cluster.
-    #[clap(long, default_value = "300")]
+    #[cfg_attr(feature = "clap", clap(long, default_value_t = DEFAULTS.max_payload_entries))]
     pub max_payload_entries: u64,
 
     /// The maximum number of log entries per append I/O operation.
@@ -193,7 +249,7 @@ pub struct Config {
     /// Storage typically has higher throughput than network, so this value can be larger.
     ///
     /// Defaults to 4096.
-    #[clap(long, default_value = "4096")]
+    #[cfg_attr(feature = "clap", clap(long, default_value = "4096"))]
     pub max_append_entries: Option<u64>,
 
     /// The distance behind in log replication a follower must fall before it is considered lagging
@@ -203,43 +259,43 @@ pub struct Config {
     ///
     /// This value should be greater than snapshot_policy.SnapshotPolicy.LogsSinceLast, otherwise
     /// transmitting a snapshot may not fix the lagging.
-    #[clap(long, default_value = "5000")]
+    #[cfg_attr(feature = "clap", clap(long, default_value_t = DEFAULTS.replication_lag_threshold))]
     pub replication_lag_threshold: u64,
 
     /// The snapshot policy to use for a Raft node.
-    #[clap(
+    #[cfg_attr(feature = "clap", clap(
         long,
         default_value = "since_last:5000",
         value_parser=parse_snapshot_policy
-    )]
+    ))]
     pub snapshot_policy: SnapshotPolicy,
 
     /// The maximum snapshot chunk size allowed when transmitting snapshots (in bytes)
-    #[clap(long, default_value = "3MiB", value_parser=parse_bytes_with_unit)]
+    #[cfg_attr(feature = "clap", clap(long, default_value = "3MiB", value_parser=parse_bytes_with_unit))]
     pub snapshot_max_chunk_size: u64,
 
     /// The maximum number of logs to keep that are already included in **snapshot**.
     ///
     /// Logs that are not in a snapshot will never be purged.
-    #[clap(long, default_value = "1000")]
+    #[cfg_attr(feature = "clap", clap(long, default_value_t = DEFAULTS.max_in_snapshot_log_to_keep))]
     pub max_in_snapshot_log_to_keep: u64,
 
     /// The minimal number of applied logs to purge in a batch.
-    #[clap(long, default_value = "1")]
+    #[cfg_attr(feature = "clap", clap(long, default_value_t = DEFAULTS.purge_batch_size))]
     pub purge_batch_size: u64,
 
     /// The size of the bounded API channel for sending messages to RaftCore.
     ///
     /// This controls backpressure for client requests. When the channel is full,
     /// new API calls will block until space becomes available.
-    #[clap(long, default_value = "65536")]
+    #[cfg_attr(feature = "clap", clap(long, default_value = "65536"))]
     pub api_channel_size: Option<u64>,
 
     /// The size of the bounded notification channel for internal events.
     ///
     /// This channel carries internal notifications like IO completion, replication progress,
     /// and tick events. When full, internal components will block until space is available.
-    #[clap(long, default_value = "65536")]
+    #[cfg_attr(feature = "clap", clap(long, default_value = "65536"))]
     pub notification_channel_size: Option<u64>,
 
     /// The size of the bounded channel for sending commands to the state machine worker.
@@ -247,7 +303,7 @@ pub struct Config {
     /// This channel carries commands like Apply, BuildSnapshot, and InstallSnapshot.
     /// When full, RaftCore will block until space becomes available, providing backpressure
     /// when the state machine is slow.
-    #[clap(long, default_value = "1024")]
+    #[cfg_attr(feature = "clap", clap(long, default_value = "1024"))]
     pub state_machine_channel_size: Option<u64>,
 
     /// The capacity of the ring buffer used to track lifecycle latency per stage.
@@ -257,7 +313,7 @@ pub struct Config {
     /// Only used when the `runtime-stats` feature is enabled.
     ///
     /// Defaults to 1024 if not specified.
-    #[clap(long)]
+    #[cfg_attr(feature = "clap", clap(long))]
     pub log_stage_capacity: Option<u64>,
 
     /// Enable or disable tick.
@@ -279,23 +335,23 @@ pub struct Config {
     /// - `--enable-tick=false`: false
     // clap 4 requires `num_args = 0..=1`, or it complains about missing arg error
     // https://github.com/clap-rs/clap/discussions/4374
-    #[clap(long,
+    #[cfg_attr(feature = "clap", clap(long,
            default_value_t = true,
            action = clap::ArgAction::Set,
            num_args = 0..=1,
            default_missing_value = "true"
-    )]
+    ))]
     pub enable_tick: bool,
 
     /// Whether a leader sends heartbeat logs to following nodes, i.e., followers and learners.
     // clap 4 requires `num_args = 0..=1`, or it complains about missing arg error
     // https://github.com/clap-rs/clap/discussions/4374
-    #[clap(long,
+    #[cfg_attr(feature = "clap", clap(long,
            default_value_t = true,
            action = clap::ArgAction::Set,
            num_args = 0..=1,
            default_missing_value = "true"
-    )]
+    ))]
     pub enable_heartbeat: bool,
 
     /// Whether a follower will enter candidate state if it does not receive any messages from the
@@ -313,12 +369,12 @@ pub struct Config {
     /// time-based events to detect leader absence.
     // clap 4 requires `num_args = 0..=1`, or it complains about missing arg error
     // https://github.com/clap-rs/clap/discussions/4374
-    #[clap(long,
+    #[cfg_attr(feature = "clap", clap(long,
            default_value_t = true,
            action = clap::ArgAction::Set,
            num_args = 0..=1,
            default_missing_value = "true"
-    )]
+    ))]
     pub enable_elect: bool,
 
     /// Default backoff policy used when
@@ -374,7 +430,7 @@ pub struct Config {
     /// number of custom warm-up values without changing the long-run behavior.
     ///
     /// Since: 0.10.0
-    #[clap(long, default_value = "200ms")]
+    #[cfg_attr(feature = "clap", clap(long, default_value = DEFAULTS.backoff))]
     pub backoff: String,
 
     /// Whether to allow to reset the replication progress to `None`, when the
@@ -390,11 +446,11 @@ pub struct Config {
     /// [`Raft::trigger().allow_next_revert()`](crate::raft::trigger::Trigger::allow_next_revert).
     ///
     /// Since: 0.10.0
-    #[clap(long,
+    #[cfg_attr(feature = "clap", clap(long,
            action = clap::ArgAction::Set,
            num_args = 0..=1,
            default_missing_value = "true"
-    )]
+    ))]
     pub allow_log_reversion: Option<bool>,
 }
 
@@ -414,8 +470,32 @@ impl RuntimeConfig {
 }
 
 impl Default for Config {
+    #[allow(deprecated)]
     fn default() -> Self {
-        <Self as Parser>::parse_from(Vec::<&'static str>::new())
+        Self {
+            cluster_name: DEFAULTS.cluster_name.to_string(),
+            election_timeout_min: DEFAULTS.election_timeout_min,
+            election_timeout_max: DEFAULTS.election_timeout_max,
+            heartbeat_interval: DEFAULTS.heartbeat_interval,
+            install_snapshot_timeout: DEFAULTS.install_snapshot_timeout,
+            send_snapshot_timeout: DEFAULTS.send_snapshot_timeout,
+            max_payload_entries: DEFAULTS.max_payload_entries,
+            max_append_entries: Some(DEFAULTS.max_append_entries),
+            replication_lag_threshold: DEFAULTS.replication_lag_threshold,
+            snapshot_policy: DEFAULTS.snapshot_policy.clone(),
+            snapshot_max_chunk_size: DEFAULTS.snapshot_max_chunk_size,
+            max_in_snapshot_log_to_keep: DEFAULTS.max_in_snapshot_log_to_keep,
+            purge_batch_size: DEFAULTS.purge_batch_size,
+            api_channel_size: Some(DEFAULTS.api_channel_size),
+            notification_channel_size: Some(DEFAULTS.notification_channel_size),
+            state_machine_channel_size: Some(DEFAULTS.state_machine_channel_size),
+            log_stage_capacity: None,
+            enable_tick: DEFAULTS.enable_tick,
+            enable_heartbeat: DEFAULTS.enable_heartbeat,
+            enable_elect: DEFAULTS.enable_elect,
+            backoff: DEFAULTS.backoff.to_string(),
+            allow_log_reversion: None,
+        }
     }
 }
 
@@ -493,6 +573,8 @@ impl Config {
     ///
     /// The first element in `args` must be the application name.
     ///
+    /// Only available when the `clap` feature is enabled (default).
+    ///
     /// # Examples
     ///
     /// ```
@@ -505,6 +587,7 @@ impl Config {
     /// ])?;
     /// # Ok::<(), openraft::ConfigError>(())
     /// ```
+    #[cfg(feature = "clap")]
     pub fn build(args: &[&str]) -> Result<Config, ConfigError> {
         let config = <Self as Parser>::try_parse_from(args).map_err(|e| ConfigError::ParseError {
             source: AnyError::from(&e),
