@@ -42,6 +42,9 @@ mod error;
 #[cfg(test)]
 mod config_test;
 
+#[cfg(all(test, feature = "clap"))]
+mod config_clap_test;
+
 pub use config::Config;
 pub(crate) use config::RuntimeConfig;
 pub use config::SnapshotPolicy;

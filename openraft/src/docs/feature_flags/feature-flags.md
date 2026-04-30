@@ -1,5 +1,5 @@
 
-By default openraft enables `["tokio-rt"]`.
+By default openraft enables `["tokio-rt", "clap"]`.
 
 
 ## feature-flag `adapt-network-v1` (removed)
@@ -23,6 +23,33 @@ toolchain, the unstable features have to be enabled explicitly with environment 
 
 attaches backtrace to generated errors.
 This feature requires nightly Rust on older toolchains due to the `error_generic_member_access` feature, which has been stabilized in recent nightly versions.
+
+
+## feature-flag `clap`
+
+Enables building [`Config`] from command-line arguments via
+[`Config::build`], and derives [`clap::Parser`] on `Config`.
+Pulls in `clap` and `byte-unit` (the latter only used to parse byte
+sizes like `3MiB` for `Config::snapshot_max_chunk_size`).
+
+Enabled by default. When disabled, `Config` must be constructed
+programmatically using [`Config::default`] and struct-update syntax:
+
+```rust,ignore
+use openraft::Config;
+
+let config = Config {
+    cluster_name: "my-cluster".into(),
+    election_timeout_min: 200,
+    ..Default::default()
+};
+```
+
+[`Config`]: crate::Config
+[`Config::build`]: crate::Config::build
+[`Config::default`]: crate::Config::default
+[`clap::Parser`]: https://docs.rs/clap/latest/clap/trait.Parser.html
+
 
 ## feature-flag `compat`
 

@@ -266,21 +266,32 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # No feature flags are enabled
+          # Default feature set (includes "tokio-rt" and "clap")
           - toolchain: 'nightly'
+            extra_args: ''
             features: ''
+
+          # Without "clap": drops clap and byte-unit deps; tokio-rt added
+          # back so the runtime is still wired up
+          - toolchain: 'nightly'
+            extra_args: '--no-default-features'
+            features: 'tokio-rt'
 
           # Enable "serde"
           - toolchain: 'nightly'
+            extra_args: ''
             features: 'serde'
 
           - toolchain: 'nightly'
+            extra_args: ''
             features: 'serde,single-threaded'
 
           - toolchain: 'nightly'
+            extra_args: ''
             features: 'metrics-logids'
 
           - toolchain: 'nightly'
+            extra_args: ''
             features: 'metrics-logids,serde'
 
     steps:
@@ -293,7 +304,7 @@ jobs:
           toolchain: '${{ matrix.toolchain }}'
 
       - name: Test crate `openraft/`
-        run: cargo test --features "${{ matrix.features }}" --manifest-path openraft/Cargo.toml
+        run: cargo test ${{ matrix.extra_args }} --features "${{ matrix.features }}" --manifest-path openraft/Cargo.toml
         env:
           # Parallel tests block each other and result in timeout.
           RUST_TEST_THREADS: 2
