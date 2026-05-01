@@ -38,6 +38,9 @@
 #[allow(clippy::module_inception)]
 mod config;
 mod error;
+#[cfg(feature = "clap")]
+mod parser;
+mod runtime_config;
 
 #[cfg(test)]
 mod config_test;
@@ -46,6 +49,6 @@ mod config_test;
 mod config_clap_test;
 
 pub use config::Config;
-pub(crate) use config::RuntimeConfig;
 pub use config::SnapshotPolicy;
 pub use error::ConfigError;
+pub(crate) use runtime_config::RuntimeConfig;
