@@ -62,6 +62,28 @@ raft.change_membership(btreeset!{1,2,3}, false).await?;
 
 See [cluster example](https://github.com/databendlabs/openraft/blob/d041202a9f30b704116c324a6adc4f2ec28029fa/examples/raft-kv-memstore/tests/cluster/test_cluster.rs#L75-L103) for complete code.
 
+### Removing a retained learner
+
+`change_membership(..., retain=true)` only demotes a voter to a learner; the
+demoted node stays in the membership and continues to receive log replication.
+To fully evict it, follow up with [`ChangeMembers::RemoveNodes`] once you no
+longer need the node hot.
+
+**Example:**
+```ignore
+// Step 1: demote voter 1 to learner; cluster is now {voters:{2,3}, learners:{1}}
+raft.change_membership(btreeset!{2,3}, true).await?;
+
+// Step 2: fully evict learner 1; cluster is now {voters:{2,3}, learners:{}}
+raft.change_membership(ChangeMembers::RemoveNodes(btreeset!{1}), false).await?;
+```
+
+Use the two-step sequence when you want a graceful drain — the demoted node
+keeps replicating logs, so it stays warm and can be re-promoted quickly if you
+need to roll back. For permanent removal in a single call, prefer
+`change_membership(new_voters, false)` directly, which drops the removed voter
+from the cluster without an intermediate learner state.
+
 
 ## Updating Node Metadata
 
@@ -120,6 +142,7 @@ Exercise additional care when:
 [`Raft::add_learner()`]: `crate::Raft::add_learner`
 [`Raft::change_membership()`]: `crate::Raft::change_membership`
 [`ChangeMembers::SetNodes`]: `crate::change_members::ChangeMembers::SetNodes`
+[`ChangeMembers::RemoveNodes`]: `crate::change_members::ChangeMembers::RemoveNodes`
 [`RaftNetworkFactory`]: `crate::network::RaftNetworkFactory`
 [`RaftNetworkV2`]: `crate::network::RaftNetworkV2`
 [`joint_consensus`]: `crate::docs::cluster_control::joint_consensus`
