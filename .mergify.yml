@@ -1,6 +1,6 @@
 queue_rules:
   - name: feature_queue
-    conditions:
+    merge_conditions:
       # - '#check-pending=0'
       - '#check-success>=2'
       - check-success=check-subject
