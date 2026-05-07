@@ -327,8 +327,7 @@ where
         // Setup sentinel values to track when we've received majority confirmation of leadership.
 
         let resp = {
-            let l = self.engine.try_leader_handler();
-            let lh = match l {
+            let lh = match self.ensure_writable_leader_handler() {
                 Ok(leading_handler) => leading_handler,
                 Err(forward) => {
                     tx.send(Err(forward.into())).ok();
