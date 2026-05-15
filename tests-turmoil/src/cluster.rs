@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use openraft::alias::LogIdListOf;
 use openraft::async_runtime::WatchReceiver;
 use openraft_rt::deterministic_rng::DeterministicRng;
 use openraft_rt_tokio::TokioRuntime;
@@ -71,6 +72,10 @@ impl ClusterState {
                 (id, FullNodeSnapshot { raft, sm })
             })
             .collect()
+    }
+
+    pub fn get_all_durable_log_ids(&self) -> BTreeMap<NodeId, LogIdListOf<TypeConfig>> {
+        self.log_stores.iter().map(|(&id, log_store)| (id, log_store.log_id_list())).collect()
     }
 
     /// Find a Raft node that is currently the leader.

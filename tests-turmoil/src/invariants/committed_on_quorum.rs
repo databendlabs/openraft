@@ -12,19 +12,23 @@
 //! this leader's own id, we check only the entries this leader itself
 //! committed — for which the quorum must reside in the current membership.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
+use openraft::alias::LogIdListOf;
 use openraft::vote::RaftLeaderId;
 
 use super::violation::InvariantViolation;
 use crate::cluster::FullNodeSnapshot;
 use crate::typ::NodeId;
+use crate::typ::TypeConfig;
 
 /// On every current leader, if the newest committed entry is the leader's own,
-/// verify a quorum of voters have that entry in their log.
-pub fn check(snapshots: &[(NodeId, FullNodeSnapshot)], violations: &mut Vec<InvariantViolation>) {
-    let by_id: HashMap<NodeId, &FullNodeSnapshot> = snapshots.iter().map(|(id, s)| (*id, s)).collect();
-
+/// verify a quorum of voters have that entry in durable log storage.
+pub fn check(
+    snapshots: &[(NodeId, FullNodeSnapshot)],
+    durable_logs: &BTreeMap<NodeId, LogIdListOf<TypeConfig>>,
+    violations: &mut Vec<InvariantViolation>,
+) {
     for (leader_id, s) in snapshots {
         if !s.raft.state.is_leader() {
             continue;
@@ -40,8 +44,10 @@ pub fn check(snapshots: &[(NodeId, FullNodeSnapshot)], violations: &mut Vec<Inva
 
         let idx = committed.index();
         let has_entry = |v: &NodeId| -> bool {
-            let Some(vs) = by_id.get(v) else { return false };
-            vs.raft.log_id_list.get(idx).is_some_and(|lid| lid.committed_leader_id() == expected)
+            durable_logs
+                .get(v)
+                .and_then(|logs| logs.get(idx))
+                .is_some_and(|lid| lid.committed_leader_id() == expected)
         };
 
         for voter_set in s.raft.membership_config.membership().get_joint_config() {

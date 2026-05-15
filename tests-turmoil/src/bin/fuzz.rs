@@ -625,9 +625,12 @@ fn run_single_iteration(
         steps += 1;
 
         // Check invariants
-        let snapshots = cluster_state.lock().unwrap().get_all_full_snapshots();
+        let (snapshots, durable_logs) = {
+            let state = cluster_state.lock().unwrap();
+            (state.get_all_full_snapshots(), state.get_all_durable_log_ids())
+        };
         invariant_checks += 1;
-        let result = invariants.check(&snapshots);
+        let result = invariants.check_with_durable_logs(&snapshots, &durable_logs);
         if !result.violations.is_empty() {
             for v in &result.violations {
                 let msg = format!("Step {steps}: {v:?}");
