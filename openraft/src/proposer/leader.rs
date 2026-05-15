@@ -199,7 +199,7 @@ where
     /// The acknowledgement by remote nodes are updated when AppendEntries reply is received.
     /// But if the time of the leader itself is not updated.
     ///
-    /// Therefore everytime to retrieve the quorum acked timestamp, it should update with the
+    /// Therefore, every time to retrieve the quorum acked timestamp, it should update with the
     /// leader's time first.
     /// It does not matter if the leader is not a voter, the QuorumSet will just ignore it.
     ///

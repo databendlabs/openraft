@@ -145,7 +145,7 @@ echo
 rpc 21003/read  '"foo"'
 
 
-echo "Changing membership from [1,2,3, 4, 5] to [3]"
+echo "Changing membership from [1, 2, 3, 4, 5] to [3]"
 echo
 rpc 21001/change-membership '[3]'
 sleep 1

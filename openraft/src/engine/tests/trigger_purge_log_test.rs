@@ -126,7 +126,7 @@ fn test_trigger_purge_log_in_used_wont_be_delete() -> anyhow::Result<()> {
         "delete only in snapshot logs"
     );
 
-    assert_eq!(0, eng.output.take_commands().len(), "in used log wont be deleted");
+    assert_eq!(0, eng.output.take_commands().len(), "in used log won't be deleted");
 
     Ok(())
 }

@@ -81,7 +81,7 @@ fn test_leader_append_membership_for_leader() -> anyhow::Result<()> {
     assert_eq!(
         ServerState::Leader,
         eng.state.server_state,
-        "Leader wont be affected by membership change"
+        "Leader won't be affected by membership change"
     );
 
     assert_eq!(
