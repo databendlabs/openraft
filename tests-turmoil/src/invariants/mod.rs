@@ -42,6 +42,8 @@
 //! just `term` — so the same check is correct under both modes: advanced
 //! mode's "different node_ids in the same term" case simply is not flagged.
 
+use std::collections::BTreeMap;
+
 pub mod committed_immutable;
 pub mod committed_on_quorum;
 pub mod election_safety;
@@ -55,10 +57,12 @@ pub mod violation;
 #[cfg(test)]
 mod tests;
 
+use openraft::alias::LogIdListOf;
 pub use violation::InvariantViolation;
 
 use crate::cluster::FullNodeSnapshot;
 use crate::typ::NodeId;
+use crate::typ::TypeConfig;
 
 /// The committed leader id type for this test config.
 ///
@@ -70,6 +74,8 @@ use crate::typ::NodeId;
 /// different `node_id`s to lead in the same `term`, so equality must include
 /// `node_id`.
 pub type CLeaderId = openraft::type_config::alias::CommittedLeaderIdOf<crate::typ::TypeConfig>;
+
+pub type DurableLogIds = BTreeMap<NodeId, LogIdListOf<TypeConfig>>;
 
 /// Result of one invariant check pass.
 #[derive(Debug, Default)]
@@ -91,6 +97,16 @@ pub struct InvariantChecker {
 impl InvariantChecker {
     /// Check every invariant against `snapshots`, updating temporal state.
     pub fn check(&mut self, snapshots: &[(NodeId, FullNodeSnapshot)]) -> InvariantCheckResult {
+        let durable_logs: DurableLogIds = snapshots.iter().map(|(id, s)| (*id, s.raft.log_id_list.clone())).collect();
+
+        self.check_with_durable_logs(snapshots, &durable_logs)
+    }
+
+    pub fn check_with_durable_logs(
+        &mut self,
+        snapshots: &[(NodeId, FullNodeSnapshot)],
+        durable_logs: &DurableLogIds,
+    ) -> InvariantCheckResult {
         let mut violations = Vec::new();
 
         // --- Single-tick per-node checks ---
@@ -101,7 +117,7 @@ impl InvariantChecker {
         // --- Single-tick cross-node checks ---
         election_safety::check(snapshots, &mut violations);
         leader_completeness::check(snapshots, &mut violations);
-        committed_on_quorum::check(snapshots, &mut violations);
+        committed_on_quorum::check(snapshots, durable_logs, &mut violations);
 
         // --- Pairwise cross-node checks ---
         for i in 0..snapshots.len() {

@@ -12,6 +12,7 @@ use std::sync::Mutex;
 use futures::Stream;
 use openraft::EntryPayload;
 use openraft::OptionalSend;
+use openraft::alias::LogIdListOf;
 use openraft::storage::EntryResponder;
 use openraft::storage::IOFlushed;
 use openraft::storage::LogState;
@@ -56,6 +57,13 @@ impl LogStore {
             log: Mutex::new(BTreeMap::new()),
         }
     }
+
+    pub fn log_id_list(&self) -> LogIdListOf<TypeConfig> {
+        let last_purged = *self.last_purged.lock().unwrap();
+        let log = self.log.lock().unwrap();
+
+        LogIdListOf::<TypeConfig>::new(last_purged, log.values().map(|entry| entry.log_id))
+    }
 }
 
 impl RaftLogReader<TypeConfig> for Arc<LogStore> {
@@ -81,9 +89,9 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
     type LogReader = Self;
 
     async fn get_log_state(&mut self) -> Result<LogState<TypeConfig>, io::Error> {
+        let last_purged = *self.last_purged.lock().unwrap();
         let log = self.log.lock().unwrap();
         let last = log.iter().next_back().map(|(_, e)| e.log_id);
-        let last_purged = *self.last_purged.lock().unwrap();
 
         Ok(LogState {
             last_purged_log_id: last_purged,

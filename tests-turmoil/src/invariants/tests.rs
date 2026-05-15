@@ -13,6 +13,7 @@ use openraft::metrics::RaftMetrics;
 use openraft::vote::RaftLeaderId;
 
 use super::CLeaderId;
+use super::DurableLogIds;
 use super::InvariantChecker;
 use super::InvariantViolation;
 use crate::cluster::FullNodeSnapshot;
@@ -158,6 +159,17 @@ impl SnapshotBuilder {
 
 fn check(snapshots: &[(NodeId, FullNodeSnapshot)]) -> Vec<InvariantViolation> {
     InvariantChecker::default().check(snapshots).violations
+}
+
+fn durable_logs(snapshots: &[(NodeId, FullNodeSnapshot)]) -> DurableLogIds {
+    snapshots.iter().map(|(id, s)| (*id, s.raft.log_id_list.clone())).collect()
+}
+
+fn check_with_durable_logs(
+    snapshots: &[(NodeId, FullNodeSnapshot)],
+    durable_logs: &DurableLogIds,
+) -> Vec<InvariantViolation> {
+    InvariantChecker::default().check_with_durable_logs(snapshots, durable_logs).violations
 }
 
 // --- Helpers for assertions --------------------------------------------
@@ -388,6 +400,31 @@ fn committed_on_quorum_exact_majority_ok() {
     assert!(
         !violations.iter().any(|v| matches!(v, InvariantViolation::CommittedNotOnQuorum { .. })),
         "2-of-3 is a majority and must not be flagged: {violations:?}"
+    );
+}
+
+#[test]
+fn committed_on_quorum_counts_crashed_voter_durable_log() {
+    let entry = log_id(1, 1, 7);
+    let snaps = vec![
+        SnapshotBuilder::new(1)
+            .term(1)
+            .leader(1, 1, true)
+            .state(openraft::ServerState::Leader)
+            .log_entries([entry])
+            .committed(entry)
+            .membership_voters(vec![vec![1, 2, 3, 4]])
+            .build(),
+        SnapshotBuilder::new(3).build(),
+        SnapshotBuilder::new(4).log_entries([entry]).build(),
+    ];
+    let mut logs = durable_logs(&snaps);
+    logs.insert(2, LogIdListOf::<TypeConfig>::new(None, [entry]));
+
+    let violations = check_with_durable_logs(&snaps, &logs);
+    assert!(
+        !violations.iter().any(|v| matches!(v, InvariantViolation::CommittedNotOnQuorum { .. })),
+        "durable log on crashed voter must count toward quorum: {violations:?}"
     );
 }
 
