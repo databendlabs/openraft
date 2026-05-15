@@ -97,6 +97,12 @@ impl<C: RaftTypeConfig> StateMachineStore<C> {
     pub fn inner(&self) -> &Arc<Mutex<StateMachineStoreInner<C>>> {
         &self.0
     }
+
+    /// Get a value from the state machine by key, locking the state machine.
+    pub async fn get(&self, key: &str) -> Option<String> {
+        let inner = self.0.lock().await;
+        inner.state_machine.data.get(key).cloned()
+    }
 }
 
 impl<C> RaftSnapshotBuilder<C> for StateMachineStore<C>

@@ -31,9 +31,8 @@ pub async fn write(app: Data<App>, req: Json<types_kv::Request>) -> actix_web::R
 
 #[post("/read")]
 pub async fn read(app: Data<App>, req: Json<String>) -> actix_web::Result<impl Responder> {
-    let inner = app.state_machine_store.inner().lock().await;
     let key = req.0;
-    let value = inner.state_machine.data.get(&key).cloned();
+    let value = app.state_machine_store.get(&key).await;
 
     let res: Result<String, Infallible> = Ok(value.unwrap_or_default());
     Ok(Json(res))
