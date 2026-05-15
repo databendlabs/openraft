@@ -45,10 +45,8 @@ pub async fn linearizable_read(app: Data<App>, req: Json<String>) -> actix_web::
     match ret {
         Ok(linearizer) => {
             linearizer.await_ready(&app.raft).await.unwrap();
-
-            let inner = app.state_machine_store.inner().lock().await;
             let key = req.0;
-            let value = inner.state_machine.data.get(&key).cloned();
+            let value = app.state_machine_store.get(&key).await;
 
             let res: Result<String, LinearizableReadError<TypeConfig>> = Ok(value.unwrap_or_default());
             Ok(Json(res))
@@ -136,9 +134,8 @@ pub async fn follower_read(app: Data<App>, req: Json<String>) -> actix_web::Resu
     }
 
     // 5. Read from local state machine
-    let inner = app.state_machine_store.inner().lock().await;
     let key = req.0;
-    let value = inner.state_machine.data.get(&key).cloned();
+    let value = app.state_machine_store.get(&key).await;
 
     Ok(Json(Ok(value.unwrap_or_default())))
 }

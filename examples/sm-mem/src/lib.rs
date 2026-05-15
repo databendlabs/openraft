@@ -76,9 +76,9 @@ impl<C: RaftTypeConfig> StateMachineStoreInner<C> {
 
 /// Defines a state machine for the Raft cluster.
 ///
-/// This is a newtype wrapper around `Arc<Mutex<StateMachineStoreInner<C>>>` to satisfy
+/// This is a new type wrapper around `Arc<Mutex<StateMachineStoreInner<C>>>` to satisfy
 /// Rust's orphan rules when implementing foreign traits.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct StateMachineStore<C: RaftTypeConfig>(Arc<Mutex<StateMachineStoreInner<C>>>);
 
 impl<C: RaftTypeConfig> Default for StateMachineStore<C> {
@@ -87,17 +87,7 @@ impl<C: RaftTypeConfig> Default for StateMachineStore<C> {
     }
 }
 
-impl<C: RaftTypeConfig> Clone for StateMachineStore<C> {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-}
-
 impl<C: RaftTypeConfig> StateMachineStore<C> {
-    pub fn inner(&self) -> &Arc<Mutex<StateMachineStoreInner<C>>> {
-        &self.0
-    }
-
     /// Get a value from the state machine by key, locking the state machine.
     pub async fn get(&self, key: &str) -> Option<String> {
         let inner = self.0.lock().await;
