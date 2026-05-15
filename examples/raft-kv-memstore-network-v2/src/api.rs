@@ -27,9 +27,7 @@ pub async fn read(app: &mut App, req: String) -> String {
     let res = match ret {
         Ok(linearizer) => {
             linearizer.await_ready(&app.raft).await.unwrap();
-
-            let inner = app.state_machine.inner().lock().await;
-            let value = inner.state_machine.data.get(&key).cloned();
+            let value = app.state_machine.get(&key).await;
 
             let res: Result<String, RaftError<LinearizableReadError>> = Ok(value.unwrap_or_default());
             res
