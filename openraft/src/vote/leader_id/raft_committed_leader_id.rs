@@ -29,7 +29,7 @@ use crate::base::OptionalFeatures;
 /// For a total order [`RaftLeaderId`], the [`RaftCommittedLeaderId`] is the same.
 ///
 /// For a partial order [`RaftLeaderId`], we know that all the granted leader-id must be a total
-/// order set. Therefor once it is granted by a quorum, it only keeps the information that makes
+/// order set. Therefore, once it is granted by a quorum, it only keeps the information that makes
 /// leader-ids a correct total order set
 ///
 /// For example, in standard Raft:

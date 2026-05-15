@@ -53,7 +53,7 @@ fn test_membership_state_update_committed() -> anyhow::Result<()> {
         )
     };
 
-    // Smaller new committed wont take effect.
+    // Smaller new committed won't take effect.
     {
         let mut x = new();
         let res = x.update_committed(Arc::new(EffectiveMembershipOf::<UTConfig>::new(

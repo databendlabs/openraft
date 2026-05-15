@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# Appearence order is disabled
+# Appearance order is disabled
 # RUSTDOCFLAGS='-Z unstable-options --sort-modules-by-appearance' cargo watch -x 'doc --document-private-items --all --no-deps'
 
 if [ ".$1" = ".-p" ]; then
