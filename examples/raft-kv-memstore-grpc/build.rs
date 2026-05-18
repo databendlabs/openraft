@@ -6,16 +6,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // TODO: remove serde
 
-    tonic_build::configure()
-        .btree_map(["."])
-        .type_attribute("openraftpb.Node", "#[derive(Eq)]")
-        .type_attribute("openraftpb.SetRequest", "#[derive(Eq)]")
-        .type_attribute("openraftpb.Response", "#[derive(Eq)]")
-        .type_attribute("openraftpb.LeaderId", "#[derive(Eq)]")
-        .type_attribute("openraftpb.Vote", "#[derive(Eq)]")
+    tonic_prost_build::configure()
+        .btree_map(".")
         .type_attribute("openraftpb.NodeIdSet", "#[derive(Eq)]")
         .type_attribute("openraftpb.Membership", "#[derive(Eq)]")
         .type_attribute("openraftpb.Entry", "#[derive(Eq)]")
-        .compile_protos_with_config(config, &proto_files, &["proto"])?;
+        .compile_with_config(config, &proto_files, &["proto"])?;
     Ok(())
 }

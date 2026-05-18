@@ -22,12 +22,13 @@ path = "src/bin/main.rs"
 log-mem  = { path = "../log-mem", features = [] }
 openraft = { path = "../../openraft", features = ["type-alias"] }
 
-clap               = { version = "4.1.11", features = ["derive", "env"] }
-futures            = { version = "0.3.31" }
-prost              = { version = "0.13.4" }
-tonic              = { version = "0.12.3" }
-tracing            = { version = "0.1.29" }
-tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }
+clap               = { version = "4.6.1", features = ["derive", "env"] }
+futures            = { version = "0.3.32" }
+prost              = { version = "0.14.3" }
+tonic              = { version = "0.14.6" }
+tonic-prost        = { version = "0.14.6" }
+tracing            = { version = "0.1.44" }
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 
 [dev-dependencies]
 anyhow = { version = "1.0.63" }
@@ -36,8 +37,8 @@ maplit = { version = "1.0.2" }
 [features]
 
 [build-dependencies]
-prost-build = { version = "0.13.4" }
-tonic-build = { version = "0.12.3" }
+prost-build = { version = "0.14.3" }
+tonic-prost-build = { version = "0.14.6" }
 
 [package.metadata.docs.rs]
 all-features = true
