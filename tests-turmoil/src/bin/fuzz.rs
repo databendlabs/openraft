@@ -6,10 +6,12 @@
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::collections::VecDeque;
 use std::fs;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
@@ -66,14 +68,18 @@ impl DerivedConfig {
         let heartbeat_interval = 50 + rng.gen_range(0..100);
         let election_timeout_min = heartbeat_interval * rng.gen_range(2..4);
         let snapshot_logs_threshold = rng.gen_range(100..=250);
+        let num_initial_nodes = 3 + rng.gen_range(0..3);
+        let fail_rate = rng.gen_range(0.0..0.002);
+        let election_timeout_max = election_timeout_min + rng.gen_range(100..500);
+        let enable_chaos = rng.gen_bool(0.8);
         Self {
-            num_initial_nodes: 3 + rng.gen_range(0..3), // 3-5
+            num_initial_nodes,
             max_potential_nodes: 10,
-            fail_rate: rng.gen_range(0.0..0.08), // 0-8%
+            fail_rate: if enable_chaos { fail_rate } else { 0.0 },
             heartbeat_interval,
             election_timeout_min,
-            election_timeout_max: election_timeout_min + rng.gen_range(100..500),
-            enable_chaos: rng.gen_bool(0.8),           // 80% chance
+            election_timeout_max,
+            enable_chaos,                              // 80% chance
             restart_chance: rng.gen_range(0.01..0.05), // 1-5%
             chaos_interval: rng.gen_range(2000..5000),
             membership_interval: rng.gen_range(10000..25000),
@@ -287,162 +293,270 @@ fn run_fuzz_loop(base_seed: u64, max_steps: u64, iterations: u64, crash_file: Op
     println!("Status: PASSED");
 }
 
-async fn chaos_agent_loop(
-    seed: u64,
-    max_nodes: u64,
-    cluster_state: Arc<Mutex<ClusterState>>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut rng = StdRng::seed_from_u64(seed);
-    loop {
-        tokio::time::sleep(Duration::from_millis(rng.gen_range(1000..5000))).await;
-        match rng.gen_range(0..6) {
-            0 => {
-                // Single-node isolation: one node unreachable from all others.
-                // Does not threaten quorum in 3+ clusters on its own.
-                let victim = rng.gen_range(1..=max_nodes);
-                for i in 1..=max_nodes {
-                    if i != victim {
-                        turmoil::partition(host_name(victim), host_name(i));
-                    }
-                }
-            }
-            1 => {
-                // Global repair: undo all partitions.
-                for i in 1..=max_nodes {
-                    for j in (i + 1)..=max_nodes {
-                        turmoil::repair(host_name(i), host_name(j));
-                    }
-                }
-            }
-            2 => {
-                // One-way hold on a single pair (delivers later).
-                let a = rng.gen_range(1..=max_nodes);
-                let mut b = rng.gen_range(1..=max_nodes);
-                while b == a {
-                    b = rng.gen_range(1..=max_nodes);
-                }
-                turmoil::hold(host_name(a), host_name(b));
-            }
-            3 => {
-                // Global release: flush all held messages.
-                for i in 1..=max_nodes {
-                    for j in 1..=max_nodes {
-                        if i != j {
-                            turmoil::release(host_name(i), host_name(j));
-                        }
-                    }
-                }
-            }
-            4 => {
-                // Minority partition: split the cluster into a minority side
-                // (size 1..=max_nodes/2) vs the rest. The majority side
-                // retains quorum; the minority cannot commit until repaired.
-                let minority_size = rng.gen_range(1..=max_nodes / 2);
-                let mut all: Vec<u64> = (1..=max_nodes).collect();
-                all.shuffle(&mut rng);
-                let minority: BTreeSet<u64> = all.into_iter().take(minority_size as usize).collect();
-                for &a in &minority {
-                    for b in 1..=max_nodes {
-                        if !minority.contains(&b) {
-                            turmoil::partition(host_name(a), host_name(b));
-                        }
-                    }
-                }
-            }
-            5 => {
-                // Leader-in-minority partition: isolate the current leader
-                // together with a random subset of peers on the minority side,
-                // forcing the majority to re-elect while the old leader may
-                // still believe it leads — this is where stale-leader bugs
-                // and dueling-term scenarios live.
-                let Some(leader_id) = cluster_state.lock().unwrap().find_leader_id() else {
-                    continue;
-                };
-                let majority_needed = (max_nodes / 2) + 1;
-                // Leader plus 0..=(max_nodes - majority_needed) peers → minority.
-                let extra = if max_nodes > majority_needed {
-                    rng.gen_range(0..=(max_nodes - majority_needed))
-                } else {
-                    0
-                };
-                let mut others: Vec<u64> = (1..=max_nodes).filter(|n| *n != leader_id).collect();
-                others.shuffle(&mut rng);
-                let mut minority: BTreeSet<u64> = others.into_iter().take(extra as usize).collect();
-                minority.insert(leader_id);
-                for &a in &minority {
-                    for b in 1..=max_nodes {
-                        if !minority.contains(&b) {
-                            turmoil::partition(host_name(a), host_name(b));
-                        }
-                    }
-                }
-            }
-            _ => unreachable!(),
+struct NetworkChaos {
+    rng: StdRng,
+    next_step: u64,
+}
+
+impl NetworkChaos {
+    fn new(seed: u64) -> Self {
+        let mut rng = StdRng::seed_from_u64(seed);
+        let next_step = rng.gen_range(1000..5000);
+        Self { rng, next_step }
+    }
+
+    fn maybe_apply(
+        &mut self,
+        steps: u64,
+        sim: &turmoil::Sim,
+        max_nodes: u64,
+        cluster_state: &Arc<Mutex<ClusterState>>,
+    ) {
+        if steps < self.next_step {
+            return;
         }
+
+        apply_network_chaos(sim, &mut self.rng, max_nodes, cluster_state);
+        self.next_step = steps + self.rng.gen_range(1000..5000);
     }
 }
 
-async fn membership_agent_loop(
-    cluster_state: Arc<Mutex<ClusterState>>,
-    next_membership: Arc<Mutex<Option<BTreeSet<NodeId>>>>,
-    potential_nodes: BTreeMap<NodeId, Node>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    loop {
-        tokio::time::sleep(Duration::from_millis(100)).await;
-
-        let Some(new_set) = next_membership.lock().unwrap().take() else {
-            continue;
-        };
-
-        let leader = cluster_state.lock().unwrap().find_leader();
-        let Some(raft) = leader else {
-            // No leader found; put the membership change back for retry.
-            next_membership.lock().unwrap().get_or_insert(new_set);
-            tokio::time::sleep(Duration::from_millis(500)).await;
-            continue;
-        };
-
-        // openraft requires a node to be a learner before promotion to voter.
-        // Add each target as learner; ignore "already known" errors — we do
-        // not track membership here and prefer idempotent retries.
-        for id in &new_set {
-            let Some(node) = potential_nodes.get(id).cloned() else {
-                continue;
-            };
-            let _ = raft.add_learner(*id, node, true).await;
-        }
-
-        println!("MEMBERSHIP-AGENT: executing change to {new_set:?}");
-        let _ = raft.change_membership(new_set, false).await;
-    }
+struct WorkloadSchedule {
+    rng: StdRng,
+    next_step: u64,
+    next_serial: u64,
+    attempts: Arc<AtomicU64>,
 }
 
-async fn workload_loop(cluster_state: Arc<Mutex<ClusterState>>, seed: u64) -> Result<(), Box<dyn std::error::Error>> {
-    let mut rng = StdRng::seed_from_u64(seed);
-    let mut write_count = 0u64;
-    loop {
-        tokio::time::sleep(Duration::from_millis(rng.gen_range(10..50))).await;
-        let leader = cluster_state.lock().unwrap().find_leader();
-        if let Some(raft) = leader {
+type WorkloadQueue = Arc<Mutex<VecDeque<(Arc<Raft>, Request)>>>;
+
+struct MembershipTask {
+    done: Arc<AtomicBool>,
+    success: Arc<AtomicBool>,
+}
+
+struct MembershipInflight {
+    task: MembershipTask,
+    new_voters: BTreeSet<NodeId>,
+    added_node: Option<NodeId>,
+}
+
+impl WorkloadSchedule {
+    fn new(seed: u64, attempts: Arc<AtomicU64>) -> Self {
+        let mut rng = StdRng::seed_from_u64(seed);
+        let next_step = rng.gen_range(10..50);
+        Self {
+            rng,
+            next_step,
+            next_serial: 0,
+            attempts,
+        }
+    }
+
+    fn maybe_enqueue(
+        &mut self,
+        steps: u64,
+        queue: &WorkloadQueue,
+        cluster_state: &Arc<Mutex<ClusterState>>,
+        paused: &Arc<AtomicBool>,
+    ) {
+        if paused.load(Ordering::SeqCst) || steps < self.next_step {
+            return;
+        }
+
+        if let Some(raft) = cluster_state.lock().unwrap().find_leader() {
+            let serial = self.next_serial;
             let req = Request {
                 client_id: "workload".to_string(),
-                serial: write_count,
-                key: format!("key-{}", write_count % 1000),
-                value: format!("value-{}-{}", write_count, rng.r#gen::<u32>()),
+                serial,
+                key: format!("key-{}", serial % 1000),
+                value: format!("value-{}-{}", serial, self.rng.r#gen::<u32>()),
             };
-            if raft.client_write(req).await.is_ok() {
-                write_count += 1;
+
+            queue.lock().unwrap().push_back((raft, req));
+            self.next_serial += 1;
+            self.attempts.store(self.next_serial, Ordering::SeqCst);
+        }
+
+        self.next_step = steps + self.rng.gen_range(10..50);
+    }
+}
+
+fn apply_network_chaos(sim: &turmoil::Sim, rng: &mut StdRng, max_nodes: u64, cluster_state: &Arc<Mutex<ClusterState>>) {
+    match rng.gen_range(0..6) {
+        0 => {
+            // Single-node isolation: one node unreachable from all others.
+            // Does not threaten quorum in 3+ clusters on its own.
+            let victim = rng.gen_range(1..=max_nodes);
+            for i in 1..=max_nodes {
+                if i != victim {
+                    sim.partition(host_name(victim), host_name(i));
+                }
             }
         }
+        1 => {
+            // Global repair: undo all partitions.
+            for i in 1..=max_nodes {
+                for j in (i + 1)..=max_nodes {
+                    sim.repair(host_name(i), host_name(j));
+                }
+            }
+        }
+        2 => {
+            // One-way hold on a single pair (delivers later).
+            let a = rng.gen_range(1..=max_nodes);
+            let mut b = rng.gen_range(1..=max_nodes);
+            while b == a {
+                b = rng.gen_range(1..=max_nodes);
+            }
+            sim.hold(host_name(a), host_name(b));
+        }
+        3 => {
+            // Global release: flush all held messages.
+            for i in 1..=max_nodes {
+                for j in 1..=max_nodes {
+                    if i != j {
+                        sim.release(host_name(i), host_name(j));
+                    }
+                }
+            }
+        }
+        4 => {
+            // Minority partition: split the cluster into a minority side
+            // (size 1..=max_nodes/2) vs the rest. The majority side
+            // retains quorum; the minority cannot commit until repaired.
+            let minority_size = rng.gen_range(1..=max_nodes / 2);
+            let mut all: Vec<u64> = (1..=max_nodes).collect();
+            all.shuffle(rng);
+            let minority: BTreeSet<u64> = all.into_iter().take(minority_size as usize).collect();
+            for &a in &minority {
+                for b in 1..=max_nodes {
+                    if !minority.contains(&b) {
+                        sim.partition(host_name(a), host_name(b));
+                    }
+                }
+            }
+        }
+        5 => {
+            // Leader-in-minority partition: isolate the current leader
+            // together with a random subset of peers on the minority side,
+            // forcing the majority to re-elect while the old leader may
+            // still believe it leads. This is where stale-leader bugs
+            // and dueling-term scenarios live.
+            let Some(leader_id) = cluster_state.lock().unwrap().find_leader_id() else {
+                return;
+            };
+            let majority_needed = (max_nodes / 2) + 1;
+            let extra = if max_nodes > majority_needed {
+                rng.gen_range(0..=(max_nodes - majority_needed))
+            } else {
+                0
+            };
+            let mut others: Vec<u64> = (1..=max_nodes).filter(|n| *n != leader_id).collect();
+            others.shuffle(rng);
+            let mut minority: BTreeSet<u64> = others.into_iter().take(extra as usize).collect();
+            minority.insert(leader_id);
+            for &a in &minority {
+                for b in 1..=max_nodes {
+                    if !minority.contains(&b) {
+                        sim.partition(host_name(a), host_name(b));
+                    }
+                }
+            }
+        }
+        _ => unreachable!(),
+    }
+}
+
+async fn membership_change_once(
+    raft: Arc<Raft>,
+    learners_to_add: Vec<(NodeId, Node)>,
+    new_set: BTreeSet<NodeId>,
+    workload_paused: Arc<AtomicBool>,
+    done: Arc<AtomicBool>,
+    success: Arc<AtomicBool>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // openraft requires a node to be a learner before promotion to voter.
+    for (id, node) in learners_to_add {
+        let result = tokio::time::timeout(Duration::from_millis(1000), raft.add_learner(id, node, true)).await;
+        if result.is_err() {
+            println!("MEMBERSHIP-CLIENT: add_learner timed out for node {id}");
+        }
+    }
+
+    println!("MEMBERSHIP-CLIENT: executing change to {new_set:?}");
+    match tokio::time::timeout(
+        Duration::from_millis(5000),
+        raft.change_membership(new_set.clone(), false),
+    )
+    .await
+    {
+        Ok(Ok(_)) => {
+            success.store(true, Ordering::SeqCst);
+        }
+        Ok(Err(e)) => {
+            println!("MEMBERSHIP-CLIENT: change_membership failed: {e}");
+        }
+        Err(_) => {
+            println!("MEMBERSHIP-CLIENT: change_membership timed out");
+        }
+    }
+
+    workload_paused.store(false, Ordering::SeqCst);
+    done.store(true, Ordering::SeqCst);
+    Ok(())
+}
+
+fn schedule_membership_change(
+    sim: &mut turmoil::Sim,
+    steps: u64,
+    cluster_state: Arc<Mutex<ClusterState>>,
+    learners_to_add: Vec<(NodeId, Node)>,
+    new_set: BTreeSet<NodeId>,
+    workload_paused: Arc<AtomicBool>,
+) -> Option<MembershipTask> {
+    let Some(raft) = cluster_state.lock().unwrap().find_leader() else {
+        println!("MEMBERSHIP: No leader at step {steps}; skipping scheduled change");
+        return None;
+    };
+
+    workload_paused.store(true, Ordering::SeqCst);
+
+    let done = Arc::new(AtomicBool::new(false));
+    let success = Arc::new(AtomicBool::new(false));
+    sim.client(
+        format!("membership-{steps}"),
+        membership_change_once(
+            raft,
+            learners_to_add,
+            new_set,
+            workload_paused,
+            done.clone(),
+            success.clone(),
+        ),
+    );
+    Some(MembershipTask { done, success })
+}
+
+async fn workload_driver_loop(queue: WorkloadQueue) -> Result<(), Box<dyn std::error::Error>> {
+    loop {
+        let requests: Vec<_> = queue.lock().unwrap().drain(..).collect();
+        for (raft, req) in requests {
+            tokio::spawn(async move {
+                let _ = raft.client_write(req).await;
+            });
+        }
+
+        tokio::time::sleep(Duration::from_millis(1)).await;
     }
 }
 
 /// Advance the simulation by one tick.
 ///
-/// `Sim::step()` returns `Ok(true)` when all client hosts have exited. Our
-/// fuzz clients (`workload`, `membership-agent`, `chaos-agent`) run forever,
-/// so that case should be impossible; if it ever happens, the fuzz harness
-/// has lost its drivers and we must abort rather than keep spinning.
+/// `Sim::step()` returns `Ok(true)` when all client hosts have exited. The
+/// workload client runs forever, so that case should be impossible; if it ever
+/// happens, the fuzz harness has lost its driver and must abort rather than
+/// keep spinning.
 fn step_tick(sim: &mut turmoil::Sim) -> Result<(), String> {
     match sim.step() {
         Ok(false) => Ok(()),
@@ -483,10 +597,12 @@ fn run_single_iteration(
     });
 
     let cluster_state = Arc::new(Mutex::new(ClusterState::new()));
-    let next_membership = Arc::new(Mutex::new(None::<BTreeSet<NodeId>>));
+    let workload_paused = Arc::new(AtomicBool::new(false));
+    let workload_attempts = Arc::new(AtomicU64::new(0));
+    let workload_queue: WorkloadQueue = Arc::new(Mutex::new(VecDeque::new()));
 
     // Potential cluster members: every host we spawn has an entry here so the
-    // membership agent can construct a `Node` when adding a new learner.
+    // membership client can construct a `Node` when adding a new learner.
     let potential_nodes: BTreeMap<NodeId, Node> = (1..=derived.max_potential_nodes)
         .map(|id| {
             (id, Node {
@@ -517,24 +633,9 @@ fn run_single_iteration(
         );
     }
 
-    if derived.enable_chaos {
-        sim.client(
-            "chaos-agent",
-            chaos_agent_loop(
-                iteration_seed.wrapping_add(1000),
-                derived.max_potential_nodes,
-                cluster_state.clone(),
-            ),
-        );
-    }
-    sim.client(
-        "membership-agent",
-        membership_agent_loop(cluster_state.clone(), next_membership.clone(), potential_nodes.clone()),
-    );
-    sim.client(
-        "workload",
-        workload_loop(cluster_state.clone(), iteration_seed.wrapping_add(2000)),
-    );
+    let mut network_chaos = derived.enable_chaos.then(|| NetworkChaos::new(iteration_seed.wrapping_add(1000)));
+
+    sim.client("workload-driver", workload_driver_loop(workload_queue.clone()));
 
     // Main simulation loop
     let mut steps: u64 = 0;
@@ -542,9 +643,11 @@ fn run_single_iteration(
     let mut violations: Vec<String> = Vec::new();
     let mut chaos_rng = StdRng::seed_from_u64(iteration_seed.wrapping_add(3000));
     let mut member_rng = StdRng::seed_from_u64(iteration_seed.wrapping_add(5000));
+    let mut workload_schedule = WorkloadSchedule::new(iteration_seed.wrapping_add(2000), workload_attempts.clone());
     let mut active_voters: BTreeSet<NodeId> = (1..=derived.num_initial_nodes as u64).collect();
     let mut next_node_id = (derived.num_initial_nodes as u64) + 1;
     let mut invariants = InvariantChecker::default();
+    let mut membership_inflight: Option<MembershipInflight> = None;
 
     // Pending bounces: (node_id, step_at_which_to_bounce). When a crash is
     // triggered, we push an entry here and later bounce the node when the
@@ -554,22 +657,74 @@ fn run_single_iteration(
     println!("Starting simulation...");
 
     while running.load(Ordering::Relaxed) && steps < max_steps {
+        if membership_inflight.as_ref().is_some_and(|inflight| inflight.task.done.load(Ordering::SeqCst)) {
+            let inflight = membership_inflight.take().expect("membership inflight must exist");
+            if inflight.task.success.load(Ordering::SeqCst) {
+                active_voters = inflight.new_voters;
+                if let Some(added_node) = inflight.added_node {
+                    next_node_id = next_node_id.max(added_node + 1);
+                }
+                println!("MEMBERSHIP: Applied change, voters={active_voters:?}");
+            } else {
+                println!("MEMBERSHIP: Change failed; keeping voters={active_voters:?}");
+            }
+        }
+
+        if let Some(network_chaos) = &mut network_chaos {
+            network_chaos.maybe_apply(steps, &sim, derived.max_potential_nodes, &cluster_state);
+        }
+
         // Membership changes
         if steps > 0 && steps.is_multiple_of(derived.membership_interval) {
-            let add = active_voters.len() < 3 || (active_voters.len() < 7 && member_rng.gen_bool(0.7));
-            if add {
-                if next_node_id <= derived.max_potential_nodes {
-                    println!("MEMBERSHIP: Requesting add node {next_node_id}...");
-                    active_voters.insert(next_node_id);
-                    next_node_id += 1;
-                    *next_membership.lock().unwrap() = Some(active_voters.clone());
+            if membership_inflight.is_some() {
+                println!("MEMBERSHIP: Previous change still in flight at step {steps}; skipping");
+            } else {
+                let add = active_voters.len() < 3 || (active_voters.len() < 7 && member_rng.gen_bool(0.7));
+                if add {
+                    if next_node_id <= derived.max_potential_nodes {
+                        println!("MEMBERSHIP: Requesting add node {next_node_id}...");
+                        let mut next_voters = active_voters.clone();
+                        next_voters.insert(next_node_id);
+                        if let Some(done) = schedule_membership_change(
+                            &mut sim,
+                            steps,
+                            cluster_state.clone(),
+                            potential_nodes
+                                .get(&next_node_id)
+                                .cloned()
+                                .map(|node| vec![(next_node_id, node)])
+                                .unwrap_or_default(),
+                            next_voters.clone(),
+                            workload_paused.clone(),
+                        ) {
+                            membership_inflight = Some(MembershipInflight {
+                                task: done,
+                                new_voters: next_voters,
+                                added_node: Some(next_node_id),
+                            });
+                        }
+                    }
+                } else if active_voters.len() > 3 {
+                    let voters: Vec<NodeId> = active_voters.iter().copied().collect();
+                    let victim = voters[member_rng.gen_range(0..voters.len())];
+                    println!("MEMBERSHIP: Requesting remove node {victim}...");
+                    let mut next_voters = active_voters.clone();
+                    next_voters.remove(&victim);
+                    if let Some(done) = schedule_membership_change(
+                        &mut sim,
+                        steps,
+                        cluster_state.clone(),
+                        Vec::new(),
+                        next_voters.clone(),
+                        workload_paused.clone(),
+                    ) {
+                        membership_inflight = Some(MembershipInflight {
+                            task: done,
+                            new_voters: next_voters,
+                            added_node: None,
+                        });
+                    }
                 }
-            } else if active_voters.len() > 3 {
-                let voters: Vec<NodeId> = active_voters.iter().copied().collect();
-                let victim = voters[member_rng.gen_range(0..voters.len())];
-                println!("MEMBERSHIP: Requesting remove node {victim}...");
-                active_voters.remove(&victim);
-                *next_membership.lock().unwrap() = Some(active_voters.clone());
             }
         }
 
@@ -614,6 +769,8 @@ fn run_single_iteration(
             }
         }
 
+        workload_schedule.maybe_enqueue(steps, &workload_queue, &cluster_state, &workload_paused);
+
         if let Err(msg) = step_tick(&mut sim) {
             println!("{msg} at step {steps}");
             return FuzzResult {
@@ -649,9 +806,12 @@ fn run_single_iteration(
             let metrics = cluster_state.lock().unwrap().get_all_metrics();
             let leaders: Vec<_> = metrics.iter().filter(|(_, m)| m.state.is_leader()).map(|(id, _)| *id).collect();
             let max_term = metrics.iter().map(|(_, m)| m.vote.leader_id().term).max().unwrap_or(0);
+            let max_committed = metrics.iter().filter_map(|(_, m)| m.committed).max_by_key(|id| id.index());
             println!(
                 "[Step {steps}] leaders={leaders:?}, term={max_term}, \
-                 voters={active_voters:?}, checks={invariant_checks}"
+                 voters={active_voters:?}, checks={invariant_checks}, \
+                 workload_attempts={}, max_committed={max_committed:?}",
+                workload_attempts.load(Ordering::SeqCst),
             );
         }
     }
@@ -661,6 +821,16 @@ fn run_single_iteration(
     } else {
         println!("Reached max steps: {max_steps}");
     }
+
+    let metrics = cluster_state.lock().unwrap().get_all_metrics();
+    let leaders: Vec<_> = metrics.iter().filter(|(_, m)| m.state.is_leader()).map(|(id, _)| *id).collect();
+    let max_term = metrics.iter().map(|(_, m)| m.vote.leader_id().term).max().unwrap_or(0);
+    let max_committed = metrics.iter().filter_map(|(_, m)| m.committed).max_by_key(|id| id.index());
+    println!(
+        "Final summary: leaders={leaders:?}, term={max_term}, voters={active_voters:?}, \
+         workload_attempts={}, max_committed={max_committed:?}",
+        workload_attempts.load(Ordering::SeqCst),
+    );
 
     FuzzResult {
         steps_completed: steps,
