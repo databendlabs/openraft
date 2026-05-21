@@ -3,6 +3,7 @@
 use std::future::Future;
 use std::io;
 use std::io::Cursor;
+use std::io::ErrorKind;
 use std::sync::Arc;
 
 use openraft::error::RPCError;
@@ -51,6 +52,7 @@ impl RaftNetworkFactory<TypeConfig> for TurmoilNetwork {
     async fn new_client(&mut self, _target: NodeId, node: &Node) -> Self::Network {
         TurmoilConnection {
             addr: node.addr.clone(),
+            stream: None,
         }
     }
 }
@@ -58,22 +60,46 @@ impl RaftNetworkFactory<TypeConfig> for TurmoilNetwork {
 /// A single connection to a target node using turmoil's simulated TCP.
 pub struct TurmoilConnection {
     addr: String,
+    stream: Option<TcpStream>,
 }
 
 impl TurmoilConnection {
     /// Send an RPC and receive a response.
-    async fn send_rpc<Req, Resp>(&self, rpc_type: RpcType, req: &Req) -> Result<Resp, RPCError<TypeConfig>>
+    async fn send_rpc<Req, Resp>(&mut self, rpc_type: RpcType, req: &Req) -> Result<Resp, RPCError<TypeConfig>>
     where
         Req: Serialize,
         Resp: for<'de> Deserialize<'de>,
     {
-        let mut stream = TcpStream::connect(&self.addr).await.map_err(|e| to_unreachable(&e))?;
-
         let payload = bincode::serialize(req).map_err(|e| to_unreachable(&*e))?;
 
+        let was_connected = self.stream.is_some();
+        match self.send_payload(rpc_type, &payload).await {
+            Ok(resp) => Ok(resp),
+            Err(_) if was_connected => {
+                self.stream = None;
+                let result = self.send_payload(rpc_type, &payload).await;
+                if result.is_err() {
+                    self.stream = None;
+                }
+                result
+            }
+            Err(e) => {
+                self.stream = None;
+                Err(e)
+            }
+        }
+    }
+
+    async fn send_payload<Resp>(&mut self, rpc_type: RpcType, payload: &[u8]) -> Result<Resp, RPCError<TypeConfig>>
+    where Resp: for<'de> Deserialize<'de> {
+        if self.stream.is_none() {
+            self.stream = Some(TcpStream::connect(&self.addr).await.map_err(|e| to_unreachable(&e))?);
+        }
+
+        let stream = self.stream.as_mut().expect("stream must be initialized");
         stream.write_u8(rpc_type as u8).await.map_err(|e| to_unreachable(&e))?;
         stream.write_u32(payload.len() as u32).await.map_err(|e| to_unreachable(&e))?;
-        stream.write_all(&payload).await.map_err(|e| to_unreachable(&e))?;
+        stream.write_all(payload).await.map_err(|e| to_unreachable(&e))?;
 
         let resp_len = stream.read_u32().await.map_err(|e| to_unreachable(&e))?;
         let mut resp_buf = vec![0u8; resp_len as usize];
@@ -130,39 +156,45 @@ where T: Serialize {
 
 /// Handle incoming RPCs on a node.
 pub async fn handle_rpc(raft: Arc<Raft>, mut stream: TcpStream) -> io::Result<()> {
-    let rpc_type = stream.read_u8().await?;
+    loop {
+        let rpc_type = match stream.read_u8().await {
+            Ok(rpc_type) => rpc_type,
+            Err(e) if e.kind() == ErrorKind::UnexpectedEof || e.kind() == ErrorKind::ConnectionReset => {
+                return Ok(());
+            }
+            Err(e) => return Err(e),
+        };
 
-    let len = stream.read_u32().await?;
-    let mut payload = vec![0u8; len as usize];
-    stream.read_exact(&mut payload).await?;
+        let len = stream.read_u32().await?;
+        let mut payload = vec![0u8; len as usize];
+        stream.read_exact(&mut payload).await?;
 
-    let response: Vec<u8> = match rpc_type {
-        x if x == RpcType::AppendEntries as u8 => {
-            let req: AppendEntriesRequest = deser(&payload)?;
-            ser(&raft.append_entries(req).await.map_err(io::Error::other)?)?
-        }
-        x if x == RpcType::Vote as u8 => {
-            let req: VoteRequest = deser(&payload)?;
-            ser(&raft.vote(req).await.map_err(io::Error::other)?)?
-        }
-        x if x == RpcType::InstallSnapshot as u8 => {
-            let req: SnapshotRequest = deser(&payload)?;
-            let snapshot = Snapshot {
-                meta: req.meta,
-                snapshot: Cursor::new(req.data),
-            };
-            ser(&raft.install_full_snapshot(req.vote, snapshot).await.map_err(io::Error::other)?)?
-        }
-        _ => {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("Unknown RPC type: {rpc_type}"),
-            ));
-        }
-    };
+        let response: Vec<u8> = match rpc_type {
+            x if x == RpcType::AppendEntries as u8 => {
+                let req: AppendEntriesRequest = deser(&payload)?;
+                ser(&raft.append_entries(req).await.map_err(io::Error::other)?)?
+            }
+            x if x == RpcType::Vote as u8 => {
+                let req: VoteRequest = deser(&payload)?;
+                ser(&raft.vote(req).await.map_err(io::Error::other)?)?
+            }
+            x if x == RpcType::InstallSnapshot as u8 => {
+                let req: SnapshotRequest = deser(&payload)?;
+                let snapshot = Snapshot {
+                    meta: req.meta,
+                    snapshot: Cursor::new(req.data),
+                };
+                ser(&raft.install_full_snapshot(req.vote, snapshot).await.map_err(io::Error::other)?)?
+            }
+            _ => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("Unknown RPC type: {rpc_type}"),
+                ));
+            }
+        };
 
-    stream.write_u32(response.len() as u32).await?;
-    stream.write_all(&response).await?;
-
-    Ok(())
+        stream.write_u32(response.len() as u32).await?;
+        stream.write_all(&response).await?;
+    }
 }
