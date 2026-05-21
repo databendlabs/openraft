@@ -48,6 +48,7 @@ struct SnapshotBuilder {
     snapshot: Option<LogId>,
     purged: Option<LogId>,
     log_entries: Vec<LogId>,
+    membership_log_id: Option<LogId>,
     membership: Vec<Vec<NodeId>>,
     sm_last_applied: Option<LogId>,
     sm_data: std::collections::HashMap<String, String>,
@@ -67,6 +68,7 @@ impl SnapshotBuilder {
             snapshot: None,
             purged: None,
             log_entries: Vec::new(),
+            membership_log_id: None,
             membership: Vec::new(),
             sm_last_applied: None,
             sm_data: std::collections::HashMap::new(),
@@ -101,6 +103,12 @@ impl SnapshotBuilder {
         self
     }
 
+    fn snapshot(mut self, lid: LogId) -> Self {
+        self.snapshot = Some(lid);
+        self.last_log_index = Some(lid.index().max(self.last_log_index.unwrap_or(0)));
+        self
+    }
+
     fn purged(mut self, lid: LogId) -> Self {
         self.purged = Some(lid);
         self
@@ -116,6 +124,11 @@ impl SnapshotBuilder {
 
     fn membership_voters(mut self, voter_sets: Vec<Vec<NodeId>>) -> Self {
         self.membership = voter_sets;
+        self
+    }
+
+    fn membership_log_id(mut self, lid: LogId) -> Self {
+        self.membership_log_id = Some(lid);
         self
     }
 
@@ -144,7 +157,7 @@ impl SnapshotBuilder {
             let sets: Vec<std::collections::BTreeSet<NodeId>> =
                 self.membership.into_iter().map(|v| v.into_iter().collect()).collect();
             let mem = openraft::Membership::new_with_defaults(sets, std::iter::empty::<NodeId>());
-            raft.membership_config = Arc::new(StoredMembership::new(None, mem));
+            raft.membership_config = Arc::new(StoredMembership::new(self.membership_log_id, mem));
         }
 
         let sm = StateMachineData {
@@ -307,6 +320,27 @@ fn log_matching_checks_at_purged_boundary() {
 }
 
 #[test]
+fn log_matching_ignores_unwitnessed_snapshot_prefix() {
+    let compacted = log_id(1, 1, 10);
+    let snaps = vec![
+        SnapshotBuilder::new(1)
+            .term(2)
+            .snapshot(compacted)
+            .purged(compacted)
+            .committed(compacted)
+            .applied(compacted)
+            .build(),
+        SnapshotBuilder::new(2).log_entries([log_id(2, 2, 5), compacted]).committed(compacted).build(),
+    ];
+
+    let violations = check(&snaps);
+    assert!(
+        !violations.iter().any(|v| matches!(v, InvariantViolation::LogDivergence { .. })),
+        "unwitnessed snapshot prefix must not be treated as comparable log evidence: {violations:?}"
+    );
+}
+
+#[test]
 fn leader_completeness_violation_missing_committed() {
     // Node 1 was elected with leader_id = (1,1) and committed idx 1.
     // Node 2 is now elected with leader_id = (2,2) but is missing idx 1.
@@ -330,6 +364,34 @@ fn leader_completeness_violation_missing_committed() {
         missing_index: 1,
         ..
     });
+}
+
+#[test]
+fn leader_completeness_accepts_snapshot_covered_prefix() {
+    let compacted = log_id(2, 2, 10);
+    let snaps = vec![
+        SnapshotBuilder::new(1)
+            .term(1)
+            .leader(1, 1, true)
+            .log_entries([log_id(1, 1, 5)])
+            .committed(log_id(1, 1, 5))
+            .build(),
+        SnapshotBuilder::new(2)
+            .term(2)
+            .leader(2, 2, true)
+            .state(openraft::ServerState::Leader)
+            .snapshot(compacted)
+            .purged(compacted)
+            .committed(compacted)
+            .applied(compacted)
+            .build(),
+    ];
+
+    let violations = check(&snaps);
+    assert!(
+        !violations.iter().any(|v| matches!(v, InvariantViolation::LeaderMissingCommitted { .. })),
+        "leader snapshot-covered prefix must satisfy LeaderCompleteness: {violations:?}"
+    );
 }
 
 #[test]
@@ -404,6 +466,59 @@ fn committed_on_quorum_exact_majority_ok() {
 }
 
 #[test]
+fn committed_on_quorum_counts_snapshot_applied_prefix() {
+    let compacted = log_id(3, 2, 10);
+    let snaps = vec![
+        SnapshotBuilder::new(1)
+            .term(2)
+            .leader(2, 1, true)
+            .state(openraft::ServerState::Leader)
+            .log_entries([log_id(1, 1, 1), log_id(2, 1, 2)])
+            .committed(log_id(2, 1, 2))
+            .membership_voters(vec![vec![1, 2, 3]])
+            .build(),
+        SnapshotBuilder::new(2)
+            .term(3)
+            .snapshot(compacted)
+            .purged(compacted)
+            .committed(compacted)
+            .applied(compacted)
+            .build(),
+        SnapshotBuilder::new(3).build(),
+    ];
+
+    let violations = check(&snaps);
+    assert!(
+        !violations.iter().any(|v| matches!(v, InvariantViolation::CommittedNotOnQuorum { .. })),
+        "snapshot-applied voter must count toward CommittedOnQuorum: {violations:?}"
+    );
+}
+
+#[test]
+fn committed_on_quorum_uses_old_config_before_joint_membership_log() {
+    let snaps = vec![
+        SnapshotBuilder::new(1)
+            .term(1)
+            .leader(1, 1, true)
+            .state(openraft::ServerState::Leader)
+            .log_entries([log_id(1, 1, 1), log_id(1, 1, 2), log_id(1, 1, 3)])
+            .committed(log_id(1, 1, 2))
+            .membership_voters(vec![vec![1, 2, 3], vec![1, 2, 3, 4]])
+            .membership_log_id(log_id(1, 1, 3))
+            .build(),
+        SnapshotBuilder::new(2).log_entries([log_id(1, 1, 1), log_id(1, 1, 2)]).build(),
+        SnapshotBuilder::new(3).build(),
+        SnapshotBuilder::new(4).build(),
+    ];
+
+    let violations = check(&snaps);
+    assert!(
+        !violations.iter().any(|v| matches!(v, InvariantViolation::CommittedNotOnQuorum { .. })),
+        "pre-membership entry must be checked against the old config only: {violations:?}"
+    );
+}
+
+#[test]
 fn committed_on_quorum_counts_crashed_voter_durable_log() {
     let entry = log_id(1, 1, 7);
     let snaps = vec![
@@ -459,6 +574,29 @@ fn committed_immutable_catches_cross_tick_leader_id_change() {
     let tick2 = vec![SnapshotBuilder::new(2).term(2).log_entries([log_id(2, 2, 1)]).committed(log_id(2, 2, 1)).build()];
     let r2 = checker.check(&tick2);
     assert_variant!(r2.violations, InvariantViolation::CommittedChanged { index: 1, .. });
+}
+
+#[test]
+fn committed_immutable_ignores_unwitnessed_snapshot_prefix() {
+    let mut checker = InvariantChecker::default();
+
+    let tick1 = vec![SnapshotBuilder::new(1).term(1).log_entries([log_id(1, 1, 5)]).committed(log_id(1, 1, 5)).build()];
+    let r1 = checker.check(&tick1);
+    assert_no_violations!(r1.violations);
+
+    let compacted = log_id(2, 2, 10);
+    let tick2 = vec![
+        SnapshotBuilder::new(1)
+            .term(2)
+            .snapshot(compacted)
+            .purged(compacted)
+            .committed(compacted)
+            .applied(compacted)
+            .build(),
+    ];
+
+    let r2 = checker.check(&tick2);
+    assert_no_violations!(r2.violations);
 }
 
 #[test]

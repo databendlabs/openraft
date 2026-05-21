@@ -29,6 +29,8 @@ pub fn check(
     durable_logs: &BTreeMap<NodeId, LogIdListOf<TypeConfig>>,
     violations: &mut Vec<InvariantViolation>,
 ) {
+    let by_id: BTreeMap<NodeId, &FullNodeSnapshot> = snapshots.iter().map(|(id, s)| (*id, s)).collect();
+
     for (leader_id, s) in snapshots {
         if !s.raft.state.is_leader() {
             continue;
@@ -44,14 +46,29 @@ pub fn check(
 
         let idx = committed.index();
         let has_entry = |v: &NodeId| -> bool {
-            durable_logs
-                .get(v)
-                .and_then(|logs| logs.get(idx))
-                .is_some_and(|lid| lid.committed_leader_id() == expected)
+            match durable_logs.get(v).and_then(|logs| logs.get(idx)) {
+                Some(lid) => lid.committed_leader_id() == expected,
+                None => by_id.get(v).is_some_and(|vs| vs.sm.last_applied.is_some_and(|lid| lid.index() >= idx)),
+            }
         };
 
-        for voter_set in s.raft.membership_config.membership().get_joint_config() {
-            let voters: Vec<NodeId> = voter_set.iter().copied().collect();
+        let membership = s.raft.membership_config.as_ref();
+        let joint_config = membership.membership().get_joint_config();
+        let membership_log_index = membership.log_id().map(|id| id.index());
+
+        let voter_sets: Vec<Vec<NodeId>> = if membership_log_index.is_some_and(|i| idx < i) {
+            let Some(old_config) = joint_config.first() else {
+                continue;
+            };
+            if joint_config.len() == 1 {
+                continue;
+            }
+            vec![old_config.iter().copied().collect()]
+        } else {
+            joint_config.iter().map(|voter_set| voter_set.iter().copied().collect()).collect()
+        };
+
+        for voters in voter_sets {
             let matching: Vec<NodeId> = voters.iter().copied().filter(has_entry).collect();
 
             // Strict-majority check: `matching` must be > half of `voters`.
