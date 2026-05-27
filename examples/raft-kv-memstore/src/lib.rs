@@ -12,7 +12,6 @@ use openraft::Config;
 use crate::app::App;
 use crate::network::api;
 use crate::network::management;
-use crate::network::raft;
 
 pub mod app;
 pub mod network;
@@ -69,6 +68,7 @@ pub async fn start_example_raft_node(node_id: NodeId, http_addr: String) -> std:
 
     // Create an application that will store all the instances created above, this will
     // later be used on the actix-web services.
+    let raft_data = Data::new(raft.clone());
     let app_data = Data::new(App {
         id: node_id,
         addr: http_addr.clone(),
@@ -83,10 +83,9 @@ pub async fn start_example_raft_node(node_id: NodeId, http_addr: String) -> std:
             .wrap(Logger::new("%a %{User-Agent}i"))
             .wrap(middleware::Compress::default())
             .app_data(app_data.clone())
+            .app_data(raft_data.clone())
             // raft internal RPC
-            .service(raft::append)
-            .service(raft::snapshot)
-            .service(raft::vote)
+            .configure(network_v1_http::actix::configure::<TypeConfig, StateMachineStore>)
             // admin API
             .service(management::init)
             .service(management::add_learner)

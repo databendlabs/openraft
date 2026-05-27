@@ -17,9 +17,9 @@ Includes:
   - Application APIs to write a value by key or read a value by key.
   - Linearizable read implementations including follower reads.
 
-- Client and `RaftNetwork`([rpc](./src/network/raft_network_impl)) are built upon [reqwest](https://docs.rs/reqwest).
+- Client HTTP helpers are built upon [reqwest](https://docs.rs/reqwest). Raft node-to-node HTTP is provided by [`network-v1-http`](../network-v1-http/).
 
-  [ExampleClient](./src/client.rs) is a minimal raft client in rust to talk to a raft cluster.
+  [ExampleClient](../client-http/src/lib.rs) is a minimal raft client in rust to talk to a raft cluster.
   - It includes application API `write()`, `read()`, `linearizable_read()`, `follower_read()`, and administrative API `init()`, `add_learner()`, `change_membership()`, `metrics()`.
   - This client tracks the last known leader id, a write operation(such as `write()` or `change_membership()`) will be redirected to the leader on client side.
 
@@ -113,10 +113,10 @@ POST - 127.0.0.1:21002/follower_read  "foo"
 
 ## How it's structured.
 
-The application is separated in 4 modules:
+The application is separated into these parts:
 
  - `bin`: You can find the `main()` function in [main](./src/bin/main.rs) the file where the setup for the server happens.
- - `network`: You can find the [api](./src/network/api.rs) that implements the endpoints used by the public API and [rpc](./src/network/raft_network_impl) where all the raft communication from the node happens. [management](./src/network/management.rs) is where all the administration endpoints are present, those are used to add orremove nodes, promote and more. [raft](./src/network/raft.rs) is where all the communication are received from other nodes.
+ - `network`: You can find the [api](./src/network/api.rs) that implements the endpoints used by the public API. [management](./src/network/management.rs) is where all the administration endpoints are present, those are used to add or remove nodes, promote and more. Raft node-to-node HTTP communication is provided by [`network-v1-http`](../network-v1-http/).
  - `store`: You can find the file [store](./src/store/mod.rs) where all the key-value implementation is done. Here is where your data application will be managed.
 
 ## Where is my data?
