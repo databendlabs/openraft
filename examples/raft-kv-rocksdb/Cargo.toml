@@ -22,7 +22,7 @@ path = "src/bin/main.rs"
 
 [dependencies]
 client-http         = { path = "../client-http" }
-network-v1-http     = { path = "../network-v1-http" }
+network-v1-http     = { path = "../network-v1-http", features = ["actix"] }
 openraft            = { path = "../../openraft", features = ["serde", "type-alias"] }
 openraft-legacy = { path = "../../legacy" }
 openraft-rocksstore = { path = "../rocksstore" }

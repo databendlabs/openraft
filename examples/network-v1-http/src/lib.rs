@@ -25,6 +25,81 @@ use tokio::io::AsyncRead;
 use tokio::io::AsyncSeek;
 use tokio::io::AsyncWrite;
 
+#[cfg(feature = "actix")]
+pub mod actix {
+    use actix_web::web;
+    use actix_web::web::Data;
+    use actix_web::web::Json;
+    use openraft::Raft;
+    use openraft::RaftTypeConfig;
+    use openraft::errors::Infallible;
+    use openraft::errors::InstallSnapshotError;
+    use openraft::errors::decompose::DecomposeResult;
+    use openraft::raft::AppendEntriesRequest;
+    use openraft::raft::AppendEntriesResponse;
+    use openraft::raft::InstallSnapshotRequest;
+    use openraft::raft::InstallSnapshotResponse;
+    use openraft::raft::VoteRequest;
+    use openraft::raft::VoteResponse;
+    use openraft_legacy::prelude::ChunkedSnapshotReceiver;
+    use serde::Serialize;
+    use serde::de::DeserializeOwned;
+    use tokio::io::AsyncRead;
+    use tokio::io::AsyncSeek;
+    use tokio::io::AsyncWrite;
+
+    pub fn configure<C, SM>(cfg: &mut web::ServiceConfig)
+    where
+        C: RaftTypeConfig + 'static,
+        SM: 'static,
+        C::SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Unpin,
+        VoteRequest<C>: DeserializeOwned,
+        AppendEntriesRequest<C>: DeserializeOwned,
+        InstallSnapshotRequest<C>: DeserializeOwned,
+        Result<VoteResponse<C>, Infallible>: Serialize,
+        Result<AppendEntriesResponse<C>, Infallible>: Serialize,
+        Result<InstallSnapshotResponse<C>, InstallSnapshotError>: Serialize,
+    {
+        cfg.route("/append", web::post().to(append::<C, SM>))
+            .route("/snapshot", web::post().to(snapshot::<C, SM>))
+            .route("/vote", web::post().to(vote::<C, SM>));
+    }
+
+    pub async fn append<C, SM>(
+        raft: Data<Raft<C, SM>>,
+        req: Json<AppendEntriesRequest<C>>,
+    ) -> actix_web::Result<Json<Result<AppendEntriesResponse<C>, Infallible>>>
+    where
+        C: RaftTypeConfig,
+    {
+        let res = raft.append_entries(req.0).await.decompose().unwrap();
+        Ok(Json(res))
+    }
+
+    pub async fn vote<C, SM>(
+        raft: Data<Raft<C, SM>>,
+        req: Json<VoteRequest<C>>,
+    ) -> actix_web::Result<Json<Result<VoteResponse<C>, Infallible>>>
+    where
+        C: RaftTypeConfig,
+    {
+        let res = raft.vote(req.0).await.decompose().unwrap();
+        Ok(Json(res))
+    }
+
+    pub async fn snapshot<C, SM>(
+        raft: Data<Raft<C, SM>>,
+        req: Json<InstallSnapshotRequest<C>>,
+    ) -> actix_web::Result<Json<Result<InstallSnapshotResponse<C>, InstallSnapshotError>>>
+    where
+        C: RaftTypeConfig,
+        C::SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Unpin,
+    {
+        let res = raft.install_snapshot(req.0).await.decompose().unwrap();
+        Ok(Json(res))
+    }
+}
+
 pub struct NetworkFactory {}
 
 impl<C> RaftNetworkFactory<C> for NetworkFactory

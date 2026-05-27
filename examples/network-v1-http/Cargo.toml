@@ -18,6 +18,7 @@ repository = "https://github.com/databendlabs/openraft"
 openraft = { path = "../../openraft", features = ["serde", "type-alias"] }
 openraft-legacy = { path = "../../legacy" }
 
+actix-web = { version = "4.0.0-rc.2", optional = true }
 reqwest    = { version = "0.12.5", features = ["json"] }
 serde      = { version = "1.0.114", features = ["derive"] }
 tokio      = { version = "1.35.1", features = ["full"] }
@@ -25,6 +26,7 @@ tracing    = { version = "0.1.40" }
 
 [features]
 default = []
+actix = ["dep:actix-web"]
 
 [package.metadata.docs.rs]
 all-features = true
