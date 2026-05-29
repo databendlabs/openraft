@@ -183,18 +183,20 @@ clean:
 	cargo clean --manifest-path rt-tokio/Cargo.toml
 	cargo clean --manifest-path metrics-otel/Cargo.toml
 	cargo clean --manifest-path benchmarks/minimal/Cargo.toml
+	cargo clean --manifest-path tests-turmoil/Cargo.toml
 	cargo clean --manifest-path examples/client-http/Cargo.toml
 	cargo clean --manifest-path examples/network-v1-http/Cargo.toml
 	cargo clean --manifest-path examples/log-mem/Cargo.toml
 	cargo clean --manifest-path examples/sm-mem/Cargo.toml
 	cargo clean --manifest-path examples/rocksstore/Cargo.toml
+	cargo clean --manifest-path examples/types-kv/Cargo.toml
 	cargo clean --manifest-path examples/raft-kv-memstore-grpc/Cargo.toml
 	cargo clean --manifest-path examples/raft-kv-memstore-network-v2/Cargo.toml
 	cargo clean --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml
 	cargo clean --manifest-path examples/raft-kv-memstore-single-threaded/Cargo.toml
 	cargo clean --manifest-path examples/raft-kv-memstore/Cargo.toml
 	cargo clean --manifest-path examples/raft-kv-rocksdb/Cargo.toml
-	cargo clean --manifest-path examples/rocksstore/Cargo.toml
 	cargo clean --manifest-path examples/multi-raft-kv/Cargo.toml
+	rm -rf tests/_log
 
 .PHONY: test fmt lint clean doc guide detsim
