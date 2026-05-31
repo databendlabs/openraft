@@ -3,7 +3,6 @@ use std::collections::BTreeMap;
 use std::panic::PanicHookInfo;
 use std::time::Duration;
 
-use openraft::BasicNode;
 use openraft::ServerState;
 use openraft::async_runtime::WatchReceiver;
 use openraft::type_config::TypeConfigExt;
@@ -58,21 +57,25 @@ fn test_cluster() {
 
         let router = Router::default();
 
-        let (raft1, app1) = new_raft(1, router.clone()).await;
-        let (raft2, app2) = new_raft(2, router.clone()).await;
+        let (raft1, app1) = new_raft(1, router.clone(), raft_addr(1)).await;
+        let (raft2, app2) = new_raft(2, router.clone(), raft_addr(2)).await;
 
         let rafts = [raft1, raft2];
 
+        TypeConfig::spawn(network_v2_http::Server::new(rafts[0].clone()).run(raft_addr(1)));
+        TypeConfig::spawn(network_v2_http::Server::new(rafts[1].clone()).run(raft_addr(2)));
         TypeConfig::spawn(app1.run());
         TypeConfig::spawn(app2.run());
 
-        run_test(&rafts, router).await;
+        run_test(&rafts).await;
     });
 }
 
-async fn run_test(rafts: &[Raft], router: Router) {
-    let _ = router;
+fn raft_addr(node_id: u64) -> String {
+    format!("127.0.0.1:23{:03}", node_id)
+}
 
+async fn run_test(rafts: &[Raft]) {
     // Wait for server to start up.
     TypeConfig::sleep(Duration::from_millis(200)).await;
 
@@ -82,7 +85,7 @@ async fn run_test(rafts: &[Raft], router: Router) {
     println!("=== init single node cluster");
     {
         let mut nodes = BTreeMap::new();
-        nodes.insert(1, BasicNode { addr: "".to_string() });
+        nodes.insert(1, openraft::NodeInfo::new(raft_addr(1), ""));
         raft1.initialize(nodes).await.unwrap();
         raft1.wait(None).state(ServerState::Leader, "wait node 1 to become leader").await.unwrap();
     }
@@ -113,7 +116,7 @@ async fn run_test(rafts: &[Raft], router: Router) {
 
     println!("=== add-learner node-2");
     {
-        let node = BasicNode { addr: "".to_string() };
+        let node = openraft::NodeInfo::new(raft_addr(2), "");
         let resp = raft1.add_learner(2, node, true).await.unwrap();
         println!("add-learner node-2 resp: {:#?}", resp);
     }

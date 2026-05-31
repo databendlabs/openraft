@@ -7,11 +7,12 @@ use std::time::Duration;
 use client_http::ExampleClient;
 use maplit::btreemap;
 use maplit::btreeset;
-use openraft::BasicNode;
+use openraft::NodeInfo as Node;
 use openraft::async_runtime::AsyncRuntime;
 use openraft::type_config::TypeConfigExt;
 use openraft::type_config::alias::AsyncRuntimeOf;
 use raft_kv_memstore::TypeConfig;
+use raft_kv_memstore::network::management::AddLearnerRequest;
 use raft_kv_memstore::start_example_raft_node;
 use tracing_subscriber::EnvFilter;
 
@@ -72,11 +73,22 @@ async fn test_cluster_inner() -> anyhow::Result<()> {
         .with_env_filter(EnvFilter::from_default_env())
         .init();
 
-    let get_addr = |node_id| {
+    let get_api_addr = |node_id| {
         let addr = match node_id {
             1 => "127.0.0.1:21001".to_string(),
             2 => "127.0.0.1:21002".to_string(),
             3 => "127.0.0.1:21003".to_string(),
+            _ => {
+                return Err(anyhow::anyhow!("node {} not found", node_id));
+            }
+        };
+        Ok(addr)
+    };
+    let get_raft_addr = |node_id| {
+        let addr = match node_id {
+            1 => "127.0.0.1:22001".to_string(),
+            2 => "127.0.0.1:22002".to_string(),
+            3 => "127.0.0.1:22003".to_string(),
             _ => {
                 return Err(anyhow::anyhow!("node {} not found", node_id));
             }
@@ -88,19 +100,31 @@ async fn test_cluster_inner() -> anyhow::Result<()> {
 
     let _h1 = thread::spawn(|| {
         let mut rt = AsyncRuntimeOf::<TypeConfig>::new(1);
-        let x = rt.block_on(start_example_raft_node(1, "127.0.0.1:21001".to_string()));
+        let x = rt.block_on(start_example_raft_node(
+            1,
+            "127.0.0.1:21001".to_string(),
+            "127.0.0.1:22001".to_string(),
+        ));
         println!("x: {:?}", x);
     });
 
     let _h2 = thread::spawn(|| {
         let mut rt = AsyncRuntimeOf::<TypeConfig>::new(1);
-        let x = rt.block_on(start_example_raft_node(2, "127.0.0.1:21002".to_string()));
+        let x = rt.block_on(start_example_raft_node(
+            2,
+            "127.0.0.1:21002".to_string(),
+            "127.0.0.1:22002".to_string(),
+        ));
         println!("x: {:?}", x);
     });
 
     let _h3 = thread::spawn(|| {
         let mut rt = AsyncRuntimeOf::<TypeConfig>::new(1);
-        let x = rt.block_on(start_example_raft_node(3, "127.0.0.1:21003".to_string()));
+        let x = rt.block_on(start_example_raft_node(
+            3,
+            "127.0.0.1:21003".to_string(),
+            "127.0.0.1:22003".to_string(),
+        ));
         println!("x: {:?}", x);
     });
 
@@ -109,7 +133,7 @@ async fn test_cluster_inner() -> anyhow::Result<()> {
 
     // --- Create a client to the first node, as a control handle to the cluster.
 
-    let client = ExampleClient::<TypeConfig>::new(1, get_addr(1)?);
+    let client = ExampleClient::<TypeConfig>::new(1, get_api_addr(1)?);
 
     // --- 1. Initialize the target node as a cluster of only one node.
     //        After init(), the single node cluster will be fully functional.
@@ -127,10 +151,22 @@ async fn test_cluster_inner() -> anyhow::Result<()> {
     // from the        leader.
 
     println!("=== add-learner 2");
-    client.add_learner((2, get_addr(2)?)).await??;
+    client
+        .add_learner(&AddLearnerRequest {
+            node_id: 2,
+            api_addr: get_api_addr(2)?,
+            raft_addr: get_raft_addr(2)?,
+        })
+        .await??;
 
     println!("=== add-learner 3");
-    client.add_learner((3, get_addr(3)?)).await??;
+    client
+        .add_learner(&AddLearnerRequest {
+            node_id: 3,
+            api_addr: get_api_addr(3)?,
+            raft_addr: get_raft_addr(3)?,
+        })
+        .await??;
 
     println!("=== metrics after add-learner");
     let x = client.metrics().await?;
@@ -141,9 +177,9 @@ async fn test_cluster_inner() -> anyhow::Result<()> {
         x.membership_config.nodes().map(|(nid, node)| (*nid, node.clone())).collect::<BTreeMap<_, _>>();
     assert_eq!(
         btreemap! {
-            1 => BasicNode::new("127.0.0.1:21001"),
-            2 => BasicNode::new("127.0.0.1:21002"),
-            3 => BasicNode::new("127.0.0.1:21003"),
+            1 => Node::new("127.0.0.1:22001", "127.0.0.1:21001"),
+            2 => Node::new("127.0.0.1:22002", "127.0.0.1:21002"),
+            3 => Node::new("127.0.0.1:22003", "127.0.0.1:21003"),
         },
         nodes_in_cluster
     );
@@ -196,19 +232,17 @@ async fn test_cluster_inner() -> anyhow::Result<()> {
     assert_eq!("bar", x);
 
     println!("=== read `foo` on node 2");
-    let client2 = ExampleClient::<TypeConfig>::new(2, get_addr(2)?);
+    let client2 = ExampleClient::<TypeConfig>::new(2, get_api_addr(2)?);
     let x = client2.read(&("foo".to_string())).await?;
     assert_eq!("bar", x);
 
     println!("=== read `foo` on node 3");
-    let client3 = ExampleClient::<TypeConfig>::new(3, get_addr(3)?);
+    let client3 = ExampleClient::<TypeConfig>::new(3, get_api_addr(3)?);
     let x = client3.read(&("foo".to_string())).await?;
     assert_eq!("bar", x);
 
-    // --- A write to non-leader will be automatically forwarded to a known leader
-
-    println!("=== read `foo` on node 2");
-    client2
+    println!("=== write `foo=wow` on leader");
+    client
         .write(&types_kv::Request::Set {
             key: "foo".to_string(),
             value: "wow".to_string(),
@@ -224,12 +258,12 @@ async fn test_cluster_inner() -> anyhow::Result<()> {
     assert_eq!("wow", x);
 
     println!("=== read `foo` on node 2");
-    let client2 = ExampleClient::<TypeConfig>::new(2, get_addr(2)?);
+    let client2 = ExampleClient::<TypeConfig>::new(2, get_api_addr(2)?);
     let x = client2.read(&("foo".to_string())).await?;
     assert_eq!("wow", x);
 
     println!("=== read `foo` on node 3");
-    let client3 = ExampleClient::<TypeConfig>::new(3, get_addr(3)?);
+    let client3 = ExampleClient::<TypeConfig>::new(3, get_api_addr(3)?);
     let x = client3.read(&("foo".to_string())).await?;
     assert_eq!("wow", x);
 
@@ -243,7 +277,7 @@ async fn test_cluster_inner() -> anyhow::Result<()> {
         Err(e) => {
             let s = e.to_string();
             let expect_err: String =
-                "has to forward request to: Some(1), Some(BasicNode { addr: \"127.0.0.1:21001\" })".to_string();
+                "has to forward request to: Some(1), Some(NodeInfo { raft_addr: \"127.0.0.1:22001\", data: \"127.0.0.1:21001\" })".to_string();
 
             assert_eq!(s, expect_err);
         }

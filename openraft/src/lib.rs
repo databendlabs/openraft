@@ -140,6 +140,7 @@ pub use crate::node::BasicNode;
 pub use crate::node::EmptyNode;
 pub use crate::node::Node;
 pub use crate::node::NodeId;
+pub use crate::node::NodeInfo;
 pub use crate::raft::Raft;
 pub use crate::raft::ReadPolicy;
 pub use crate::raft::WatchChangeHandle;

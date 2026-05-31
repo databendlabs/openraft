@@ -4,24 +4,22 @@ It is an example of how to build a real-world key-value store with `openraft`.
 Includes:
 - An in-memory `RaftLogStorage` and `RaftStateMachine` implementation [store](./src/store/store.rs).
 
-- A server is based on [actix-web](https://docs.rs/actix-web/4.0.0-rc.2).
-  All service endpoints accept a `Json<I>` input argument,
+- The application/admin routes are plain async functions hosted by this example's local HTTP server.
+  All service endpoints accept a JSON request body,
   and return a JSON-encoded `Result<T, E>` response,
   where `T` and `E` are API-specific types.
   For example, the `/write` endpoint accepts a user-defined `Request`
   and returns a `Result<WriteResponse, ClientWriteError>`.
 
   Includes:
-  - raft-internal network APIs for replication and voting.
   - Admin APIs to add nodes, change-membership etc.
   - Application APIs to write a value by key or read a value by key.
-  - Linearizable read implementations including follower reads.
+  - Linearizable read on the leader.
 
-- Client HTTP helpers are built upon [reqwest](https://docs.rs/reqwest). Raft node-to-node HTTP is provided by [`network-v1-http`](../network-v1-http/).
+- Client HTTP helpers are built upon [reqwest](https://docs.rs/reqwest). Raft node-to-node HTTP is provided by [`network-v2-http`](../network-v2-http/) on a separate internal address.
 
   [ExampleClient](../client-http/src/lib.rs) is a minimal raft client in rust to talk to a raft cluster.
-  - It includes application API `write()`, `read()`, `linearizable_read()`, `follower_read()`, and administrative API `init()`, `add_learner()`, `change_membership()`, `metrics()`.
-  - This client tracks the last known leader id, a write operation(such as `write()` or `change_membership()`) will be redirected to the leader on client side.
+  - It includes application API `write()`, `read()`, `linearizable_read()`, and administrative API `init()`, `add_learner()`, `change_membership()`, `metrics()`.
 
 ## Run it
 
@@ -55,7 +53,7 @@ this project in production yet.)
 To run it, get the binary `raft-key-value` inside `target/debug` and run:
 
 ```shell
-./raft-key-value --id 1 --http-addr 127.0.0.1:21001
+./raft-key-value --id 1 --api-addr 127.0.0.1:21001 --raft-addr 127.0.0.1:22001
 ```
 
 It will start a node.
@@ -63,10 +61,10 @@ It will start a node.
 To start the following nodes:
 
 ```shell
-./raft-key-value --id 2 --http-addr 127.0.0.1:21002
+./raft-key-value --id 2 --api-addr 127.0.0.1:21002 --raft-addr 127.0.0.1:22002
 ```
 
-You can continue replicating the nodes by changing the `id` and `http-addr`.
+You can continue replicating the nodes by changing the `id`, `api-addr`, and `raft-addr`.
 
 After that, call the first node created:
 
@@ -79,8 +77,8 @@ It will define the first node created as the leader.
 Then you need to inform to the leader that these nodes are learners:
 
 ```
-POST - 127.0.0.1:21001/add-learner '[2, "127.0.0.1:21002"]'
-POST - 127.0.0.1:21001/add-learner '[3, "127.0.0.1:21003"]'
+POST - 127.0.0.1:21001/add-learner '{"node_id":2,"api_addr":"127.0.0.1:21002","raft_addr":"127.0.0.1:22002"}'
+POST - 127.0.0.1:21001/add-learner '{"node_id":3,"api_addr":"127.0.0.1:21003","raft_addr":"127.0.0.1:22003"}'
 ```
 
 Now you need to tell the leader to add all learners as members of the cluster:
@@ -89,7 +87,7 @@ Now you need to tell the leader to add all learners as members of the cluster:
 POST - 127.0.0.1:21001/change-membership  "[1, 2, 3]"
 ```
 
-Write some data in any of the nodes:
+Write some data through the leader:
 
 ```
 POST - 127.0.0.1:21001/write  "{"Set":{"key":"foo","value":"bar"}}"
@@ -103,11 +101,10 @@ POST - 127.0.0.1:21002/read  "foo"
 
 You should be able to read that on the another instance even if you did not sync any data!
 
-For linearizable reads, use the `/linearizable_read` endpoint on the leader, or `/follower_read` on any node to distribute read load:
+For linearizable reads, use the `/linearizable_read` endpoint on the leader:
 
 ```
 POST - 127.0.0.1:21001/linearizable_read  "foo"
-POST - 127.0.0.1:21002/follower_read  "foo"
 ```
 
 
@@ -116,7 +113,7 @@ POST - 127.0.0.1:21002/follower_read  "foo"
 The application is separated into these parts:
 
  - `bin`: You can find the `main()` function in [main](./src/bin/main.rs) the file where the setup for the server happens.
- - `network`: You can find the [api](./src/network/api.rs) that implements the endpoints used by the public API. [management](./src/network/management.rs) is where all the administration endpoints are present, those are used to add or remove nodes, promote and more. Raft node-to-node HTTP communication is provided by [`network-v1-http`](../network-v1-http/).
+ - `network`: You can find the [api](./src/network/api.rs) that implements the endpoints used by the public API. [management](./src/network/management.rs) is where all the administration endpoints are present, those are used to add or remove nodes, promote and more. Raft node-to-node HTTP communication is provided by [`network-v2-http`](../network-v2-http/).
  - `store`: You can find the file [store](./src/store/mod.rs) where all the key-value implementation is done. Here is where your data application will be managed.
 
 ## Where is my data?
@@ -127,13 +124,13 @@ the struct [ExampleStateMachine](./src/store/mod.rs)
 
 ## Cluster management
 
-The raft itself does not store node addresses.
-But in a real-world application, the implementation of `RaftNetwork` needs to know the addresses.
+OpenRaft stores the node metadata supplied by the application.
+The Raft network uses `raft_addr` to contact other raft nodes.
 
 Thus, in this example application:
 
-- The storage layer has to store nodes' information.
-- The network layer keeps a reference to the store so that it is able to get the address of a target node to send RPC to.
+- OpenRaft node metadata is `NodeInfo`, whose `raft_addr` is the Raft RPC address and `data` stores the application API address.
+- The local application server has a separate `api_addr` for public/admin/application APIs.
 
 To add a node to a cluster, it includes 3 steps:
 

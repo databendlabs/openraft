@@ -4,11 +4,8 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use actix_web::HttpServer;
-use actix_web::middleware;
-use actix_web::middleware::Logger;
-use actix_web::web::Data;
 use openraft::Config;
+use openraft::NodeInfo as Node;
 
 use crate::app::App;
 use crate::network::api;
@@ -25,6 +22,7 @@ openraft::declare_raft_types!(
     pub TypeConfig:
         D = types_kv::Request,
         R = types_kv::Response,
+        Node = Node,
 );
 
 pub type LogStore = openraft_rocksstore::log_store::RocksLogStore<TypeConfig>;
@@ -34,8 +32,15 @@ pub type Raft = openraft::Raft<TypeConfig, StateMachineStore>;
 #[path = "../../utils/declare_types.rs"]
 pub mod typ;
 
-pub async fn start_example_raft_node<P>(node_id: NodeId, dir: P, addr: String) -> std::io::Result<()>
-where P: AsRef<Path> {
+pub async fn start_example_raft_node<P>(
+    node_id: NodeId,
+    dir: P,
+    api_addr: String,
+    raft_addr: String,
+) -> std::io::Result<()>
+where
+    P: AsRef<Path>,
+{
     // Create a configuration for the raft instance.
     let config = Config {
         heartbeat_interval: 250,
@@ -49,45 +54,31 @@ where P: AsRef<Path> {
 
     let kvs = state_machine_store.data.kvs.clone();
 
-    // Create the network layer using network-v1 crate
-    let network = network_v1_http::NetworkFactory {};
+    let network = network_v2_http::NetworkFactory::new();
 
     // Create a local raft instance.
     let raft = openraft::Raft::new(node_id, config.clone(), network, log_store, state_machine_store).await.unwrap();
 
-    // Create an application that will store all the instances created above, this will
-    // later be used on the actix-web services.
-    let raft_data = Data::new(raft.clone());
-    let app_data = Data::new(App {
+    let app = Arc::new(App {
         id: node_id,
-        addr: addr.clone(),
+        api_addr: api_addr.clone(),
+        raft_addr: raft_addr.clone(),
         raft,
         key_values: kvs,
         config,
     });
 
-    // Start the actix-web server.
-    let server = HttpServer::new(move || {
-        actix_web::App::new()
-            .wrap(Logger::default())
-            .wrap(Logger::new("%a %{User-Agent}i"))
-            .wrap(middleware::Compress::default())
-            .app_data(app_data.clone())
-            .app_data(raft_data.clone())
-            // raft internal RPC
-            .configure(network_v1_http::actix::configure::<TypeConfig, StateMachineStore>)
-            // admin API
-            .service(management::init)
-            .service(management::add_learner)
-            .service(management::change_membership)
-            .service(management::metrics)
-            // application API
-            .service(api::write)
-            .service(api::read)
-            .service(api::linearizable_read)
-    });
+    let raft_server = network_v2_http::Server::new(app.raft.clone()).run(raft_addr);
+    let app_server = network::Server::new()
+        .post("/init", app.clone(), management::init)
+        .post("/add-learner", app.clone(), management::add_learner)
+        .post("/change-membership", app.clone(), management::change_membership)
+        .get("/metrics", app.clone(), management::metrics)
+        .post("/write", app.clone(), api::write)
+        .post("/read", app.clone(), api::read)
+        .post("/linearizable_read", app, api::linearizable_read)
+        .run(api_addr);
 
-    let x = server.bind(addr)?;
-
-    x.run().await
+    tokio::try_join!(raft_server, app_server)?;
+    Ok(())
 }

@@ -11,14 +11,14 @@ This directory contains example applications demonstrating different implementat
 - **RaftNetwork Impl**: Transport protocol and client library used
 - **RaftNetwork**: Interface version (RaftNetwork vs RaftNetworkV2)
 - **Client**: HTTP/gRPC client library for application requests
-- **Server**: Web framework for handling incoming requests
+- **Server**: HTTP server implementation for handling incoming requests
 - **Special Features**: Unique characteristics of each example
 
 | Example | Log | State Machine | RaftNetwork Impl | RaftNetwork | Client | Server | Special Features |
 |---------|-----|---------------|------------------|-------------|--------|--------|------------------|
-| [raft-kv-memstore] | [log-mem] | [sm-mem] | HTTP/reqwest | RaftNetwork | reqwest | actix-web | Basic example |
-| [raft-kv-rocksdb] | [rocksstore] | [rocksstore] | HTTP/reqwest([network-v1]) | RaftNetwork | reqwest | actix-web | Persistent storage |
-| [raft-kv-memstore-network-v2] | [log-mem] | [sm-mem] | HTTP/reqwest | RaftNetworkV2 | reqwest | actix-web | Network V2 interface |
+| [raft-kv-memstore] | [log-mem] | [sm-mem] | HTTP/reqwest([network-v2]) | RaftNetworkV2 | reqwest | local HTTP | Basic example |
+| [raft-kv-rocksdb] | [rocksstore] | [rocksstore] | HTTP/reqwest([network-v2]) | RaftNetworkV2 | reqwest | local HTTP | Persistent storage |
+| [raft-kv-memstore-network-v2] | [log-mem] | [sm-mem] | HTTP/reqwest([network-v2]) | RaftNetworkV2 | channel | local HTTP | Snapshot replication |
 | [multi-raft-kv] | [log-mem] | [sm-mem] | HTTP/channel | GroupRouter | channel | in-memory | Multi-Raft groups |
 | [raft-kv-memstore-grpc] | [log-mem] | in-memory | gRPC/tonic | RaftNetwork | tonic | tonic | gRPC transport |
 | [raft-kv-memstore-single-threaded] | [log-mem] | in-memory | HTTP/reqwest | RaftNetwork | reqwest | actix-web | Single-threaded runtime |
@@ -40,6 +40,7 @@ The following symbolic links are provided for backward compatibility:
 - **memstore** → mem-log → [log-mem] (renamed in 0.9)
 
 ### Network Implementations
+- **[network-v2]** - HTTP-based RaftNetworkV2 interface using `reqwest` crate
 - **[network-v1]** - HTTP-based RaftNetwork interface V1 using `reqwest` crate
 
 ### Utilities
@@ -57,6 +58,7 @@ The following symbolic links are provided for backward compatibility:
 [log-mem]: log-mem/
 [sm-mem]: sm-mem/
 [rocksstore]: rocksstore/
+[network-v2]: network-v2-http/
 [network-v1]: network-v1-http/
 [types-kv]: types-kv/
 [utils]: utils/

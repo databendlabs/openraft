@@ -1,47 +1,34 @@
-use actix_web::Responder;
-use actix_web::post;
-use actix_web::web;
-use actix_web::web::Data;
+use std::sync::Arc;
+
 use openraft::ReadPolicy;
-use openraft::errors::Infallible;
-use openraft::errors::LinearizableReadError;
 use openraft::errors::decompose::DecomposeResult;
-use web::Json;
 
-use crate::TypeConfig;
 use crate::app::App;
+use crate::typ::*;
 
-#[post("/write")]
-pub async fn write(app: Data<App>, req: Json<types_kv::Request>) -> actix_web::Result<impl Responder> {
-    let response = app.raft.client_write(req.0).await.decompose().unwrap();
-    Ok(Json(response))
+pub async fn write(app: Arc<App>, req: types_kv::Request) -> Result<ClientWriteResponse, ClientWriteError> {
+    app.raft.client_write(req).await.decompose().unwrap()
 }
 
-#[post("/read")]
-pub async fn read(app: Data<App>, req: Json<String>) -> actix_web::Result<impl Responder> {
-    let key = req.0;
+pub async fn read(app: Arc<App>, key: String) -> Result<String, Infallible> {
     let kvs = app.key_values.lock().await;
     let value = kvs.get(&key);
 
-    let res: Result<String, Infallible> = Ok(value.cloned().unwrap_or_default());
-    Ok(Json(res))
+    Ok(value.cloned().unwrap_or_default())
 }
 
-#[post("/linearizable_read")]
-pub async fn linearizable_read(app: Data<App>, req: Json<String>) -> actix_web::Result<impl Responder> {
+pub async fn linearizable_read(app: Arc<App>, key: String) -> Result<String, LinearizableReadError> {
     let ret = app.raft.get_read_linearizer(ReadPolicy::ReadIndex).await.decompose().unwrap();
 
     match ret {
         Ok(linearizer) => {
             linearizer.await_ready(&app.raft).await.unwrap();
 
-            let key = req.0;
             let kvs = app.key_values.lock().await;
             let value = kvs.get(&key);
 
-            let res: Result<String, LinearizableReadError<TypeConfig>> = Ok(value.cloned().unwrap_or_default());
-            Ok(Json(res))
+            Ok(value.cloned().unwrap_or_default())
         }
-        Err(e) => Ok(Json(Err(e))),
+        Err(e) => Err(e),
     }
 }

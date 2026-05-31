@@ -52,25 +52,25 @@ sleep 1
 
 echo "Start 5 uninitialized raft-key-value servers..."
 
-nohup ./target/debug/raft-key-value  --id 1 --http-addr 127.0.0.1:21001 > n1.log &
+nohup ./target/debug/raft-key-value  --id 1 --api-addr 127.0.0.1:21001 --raft-addr 127.0.0.1:22001 > n1.log &
 sleep 1
 echo "Server 1 started"
 
-nohup ./target/debug/raft-key-value  --id 2 --http-addr 127.0.0.1:21002 > n2.log &
+nohup ./target/debug/raft-key-value  --id 2 --api-addr 127.0.0.1:21002 --raft-addr 127.0.0.1:22002 > n2.log &
 sleep 1
 echo "Server 2 started"
 
-nohup ./target/debug/raft-key-value  --id 3 --http-addr 127.0.0.1:21003 > n3.log &
+nohup ./target/debug/raft-key-value  --id 3 --api-addr 127.0.0.1:21003 --raft-addr 127.0.0.1:22003 > n3.log &
 sleep 1
 echo "Server 3 started"
 sleep 1
 
-nohup ./target/debug/raft-key-value  --id 4 --http-addr 127.0.0.1:21004 > n4.log &
+nohup ./target/debug/raft-key-value  --id 4 --api-addr 127.0.0.1:21004 --raft-addr 127.0.0.1:22004 > n4.log &
 sleep 1
 echo "Server 4 started"
 sleep 1
 
-nohup ./target/debug/raft-key-value  --id 5 --http-addr 127.0.0.1:21005 > n5.log &
+nohup ./target/debug/raft-key-value  --id 5 --api-addr 127.0.0.1:21005 --raft-addr 127.0.0.1:22005 > n5.log &
 sleep 1
 echo "Server 5 started"
 sleep 1
@@ -79,8 +79,8 @@ echo "Initialize servers 1,2,3 as a 3-nodes cluster"
 sleep 2
 echo
 
-rpc 21001/init '[[1, "127.0.0.1:21001"], [2, "127.0.0.1:21002"], [3, "127.0.0.1:21003"]]'
-# if you want to initialize server 1 as a single cluster, use `rpc 21001/init '[]'` or `rpc 21001/init '[[1, "127.0.0.1:21001"]]'`
+rpc 21001/init '[[1, {"raft_addr": "127.0.0.1:22001", "data": "127.0.0.1:21001"}], [2, {"raft_addr": "127.0.0.1:22002", "data": "127.0.0.1:21002"}], [3, {"raft_addr": "127.0.0.1:22003", "data": "127.0.0.1:21003"}]]'
+# if you want to initialize server 1 as a single cluster, use `rpc 21001/init '[]'`
 
 echo "Server 1 is a leader now"
 
@@ -97,11 +97,11 @@ echo "Adding node 4 and node 5 as learners, to receive log from leader node 1"
 
 sleep 1
 echo
-rpc 21001/add-learner       '[4, "127.0.0.1:21004"]'
+rpc 21001/add-learner       '{"node_id": 4, "api_addr": "127.0.0.1:21004", "raft_addr": "127.0.0.1:22004"}'
 echo "Node 4 added as learner"
 sleep 1
 echo
-rpc 21001/add-learner       '[5, "127.0.0.1:21005"]'
+rpc 21001/add-learner       '{"node_id": 5, "api_addr": "127.0.0.1:21005", "raft_addr": "127.0.0.1:22005"}'
 echo "Node 5 added as learner"
 sleep 1
 

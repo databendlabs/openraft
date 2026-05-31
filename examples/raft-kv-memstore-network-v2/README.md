@@ -1,37 +1,27 @@
-# RaftNetworkV2 Example
+# RaftNetworkV2 Snapshot Example
 
-Demonstrates using `RaftNetworkV2` for flexible snapshot data handling without file-like constraints.
+This example shows snapshot replication with OpenRaft's `RaftNetworkV2` API.
+It reuses [`network-v2-http`](../network-v2-http/) for node-to-node Raft RPCs,
+instead of defining another network implementation in the application crate.
 
-## Key Features Demonstrated
+The application code only keeps the pieces specific to the example:
 
-- **`RaftNetworkV2` API**: Full snapshot transmission in single RPC
-- **Flexible snapshot types**: Use any data type, not limited to `AsyncSeek + AsyncRead + AsyncWrite`
-- **Custom snapshot data**: Send structured data directly without file format conversion
-- **Minimal example**: Focuses on V2 network interface, other aspects simplified
+- in-memory log storage
+- in-memory state machine storage
+- a small in-process router for test application and management calls
+- a cluster test that forces snapshot replication to a learner
 
-## Overview
+## Network Layer
 
-`RaftNetworkV2` provides an alternative to the chunked snapshot transmission in `RaftNetwork`:
+Raft RPC traffic is handled by `network-v2-http`:
 
-**RaftNetwork (V1)**:
-- Sends snapshots in chunks
-- Requires file-like types (`AsyncSeek + AsyncRead + AsyncWrite + Unpin`)
-- More complex implementation
+- `NetworkFactory` creates outbound Raft RPC clients.
+- `Server` receives inbound `/append`, `/vote`, `/snapshot`, and
+  `/transfer-leader` requests.
 
-**RaftNetworkV2**:
-- Sends full snapshot in one RPC call
-- Accepts any `SnapshotData` type
-- Simpler implementation for in-memory snapshots
-
-## Key Implementation Points
-
-**Sending snapshots**: See `RaftNetworkV2::full_snapshot()` implementation
-- Transmits complete snapshot data in single call
-- No chunking or streaming required
-
-**Receiving snapshots**: See `api::snapshot()` implementation
-- Receives and installs full snapshot
-- Handles snapshot data as single unit
+The example application does not implement `RaftNetworkV2` directly. This keeps
+the snapshot test focused on how OpenRaft uses the network, not on another copy
+of HTTP client and server code.
 
 ## Running
 
@@ -39,11 +29,16 @@ Demonstrates using `RaftNetworkV2` for flexible snapshot data handling without f
 cargo test -- --nocapture
 ```
 
-## Comparison
+## What The Test Covers
 
-| Feature | RaftNetworkV2 | RaftNetwork |
-|---------|---------------|-------------|
-| Snapshot transmission | Full (1 RPC) | Chunked (N RPCs) |
-| Data type constraints | None | File-like traits |
-| Implementation complexity | Simpler | More complex |
-| Best for | In-memory snapshots | Large/streaming snapshots |
+The cluster test:
+
+1. Starts two Raft nodes.
+2. Runs a standalone Raft RPC server for each node.
+3. Initializes node 1 as a single-node cluster.
+4. Writes data and triggers a snapshot on node 1.
+5. Adds node 2 as a learner.
+6. Verifies that node 2 receives the snapshot.
+
+For the reusable network implementation, see
+[`network-v2-http`](../network-v2-http/).

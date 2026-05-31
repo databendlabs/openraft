@@ -11,7 +11,8 @@ use crate::Raft;
 // instances of raft, store and more.
 pub struct App {
     pub id: NodeId,
-    pub addr: String,
+    pub api_addr: String,
+    pub raft_addr: String,
     pub raft: Raft,
     pub key_values: Arc<Mutex<BTreeMap<String, String>>>,
     pub config: Arc<Config>,

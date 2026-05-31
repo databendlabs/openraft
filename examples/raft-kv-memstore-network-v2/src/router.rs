@@ -13,7 +13,7 @@ use crate::decode;
 use crate::encode;
 use crate::typ::RaftError;
 
-/// Simulate a network router.
+/// Simulate application and management requests in tests.
 #[derive(Clone, Default)]
 pub struct Router {
     pub targets: Arc<Mutex<BTreeMap<NodeId, RequestTx>>>,

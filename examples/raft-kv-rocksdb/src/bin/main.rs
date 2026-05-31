@@ -9,10 +9,13 @@ pub struct Opt {
     pub id: u64,
 
     #[clap(long)]
-    pub addr: String,
+    pub api_addr: String,
+
+    #[clap(long)]
+    pub raft_addr: String,
 }
 
-#[actix_web::main]
+#[tokio::main]
 async fn main() -> std::io::Result<()> {
     // Setup the logger
     tracing_subscriber::fmt()
@@ -26,5 +29,11 @@ async fn main() -> std::io::Result<()> {
     // Parse the parameters passed by arguments.
     let options = Opt::parse();
 
-    start_example_raft_node(options.id, format!("{}.db", options.addr), options.addr).await
+    start_example_raft_node(
+        options.id,
+        format!("{}.db", options.api_addr),
+        options.api_addr,
+        options.raft_addr,
+    )
+    .await
 }
