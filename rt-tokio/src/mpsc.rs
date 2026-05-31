@@ -1,6 +1,10 @@
 use std::future::Future;
+use std::time::Duration;
 
+use futures_util::FutureExt;
 use futures_util::TryFutureExt;
+use futures_util::future;
+use futures_util::future::Either;
 use openraft_rt::Mpsc;
 use openraft_rt::MpscReceiver;
 use openraft_rt::MpscSender;
@@ -66,6 +70,15 @@ where T: OptionalSend
     #[inline]
     fn recv(&mut self) -> impl Future<Output = Option<T>> + OptionalSend {
         self.0.recv()
+    }
+
+    #[inline]
+    fn recv_timeout(&mut self, timeout: Duration) -> impl Future<Output = Option<T>> + OptionalSend {
+        if timeout.is_zero() {
+            Either::Left(future::ready(self.0.try_recv().ok()))
+        } else {
+            Either::Right(tokio::time::timeout(timeout, self.0.recv()).map(|res| res.ok().flatten()))
+        }
     }
 
     #[inline]

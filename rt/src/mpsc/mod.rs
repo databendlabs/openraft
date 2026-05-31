@@ -4,6 +4,7 @@ mod send_error;
 mod try_recv_error;
 
 use std::future::Future;
+use std::time::Duration;
 
 pub use send_error::SendError;
 pub use try_recv_error::TryRecvError;
@@ -55,6 +56,13 @@ pub trait MpscReceiver<T>: OptionalSend + OptionalSync {
     /// no remaining messages in the channel's buffer.
     #[track_caller]
     fn recv(&mut self) -> impl Future<Output = Option<T>> + OptionalSend;
+
+    /// Receives the next value from this receiver.
+    ///
+    /// Returns `None` if:
+    /// - the channel is closed and there are no messages left in the buffer, or
+    /// - the timeout has been reached.
+    fn recv_timeout(&mut self, timeout: Duration) -> impl Future<Output = Option<T>> + OptionalSend;
 
     /// Tries to receive the next value for this receiver.
     ///

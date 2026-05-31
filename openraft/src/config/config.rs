@@ -40,6 +40,8 @@ pub(crate) struct Defaults {
     pub max_in_snapshot_log_to_keep: u64,
     pub purge_batch_size: u64,
     pub api_channel_size: u64,
+    pub api_batch_capacity: u64,
+    pub api_batch_linger_ms: u64,
     pub notification_channel_size: u64,
     pub state_machine_channel_size: u64,
     pub backoff: &'static str,
@@ -63,6 +65,8 @@ pub(crate) const DEFAULTS: Defaults = Defaults {
     max_in_snapshot_log_to_keep: 1000,
     purge_batch_size: 1,
     api_channel_size: 65536,
+    api_batch_capacity: 4096,
+    api_batch_linger_ms: 0,
     notification_channel_size: 65536,
     state_machine_channel_size: 1024,
     backoff: "200ms",
@@ -251,6 +255,15 @@ pub struct Config {
     #[cfg_attr(feature = "clap", clap(long, default_value = "65536"))]
     pub api_channel_size: Option<u64>,
 
+    /// Maximum number of client requests that may be coalesced into a single
+    /// `RaftMsg::ClientWrite` batch before it is forwarded.
+    #[cfg_attr(feature = "clap", clap(long, default_value = "4096"))]
+    pub api_batch_capacity: u64,
+
+    /// Maximum amount of milliseconds to wait for additional client requests before
+    /// flushing a partially filled batch.
+    #[cfg_attr(feature = "clap", clap(long, default_value = "0"))]
+    pub api_batch_linger_ms: u64,
     /// The size of the bounded notification channel for internal events.
     ///
     /// This channel carries internal notifications like IO completion, replication progress,
@@ -432,6 +445,8 @@ impl Default for Config {
             max_in_snapshot_log_to_keep: DEFAULTS.max_in_snapshot_log_to_keep,
             purge_batch_size: DEFAULTS.purge_batch_size,
             api_channel_size: Some(DEFAULTS.api_channel_size),
+            api_batch_capacity: DEFAULTS.api_batch_capacity,
+            api_batch_linger_ms: DEFAULTS.api_batch_linger_ms,
             notification_channel_size: Some(DEFAULTS.notification_channel_size),
             state_machine_channel_size: Some(DEFAULTS.state_machine_channel_size),
             log_stage_capacity: None,
