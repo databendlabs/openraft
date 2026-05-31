@@ -18,8 +18,9 @@ pub type RequestRx = mpsc::Receiver<(Path, Payload, ResponseTx)>;
 pub struct App {
     pub id: NodeId,
     pub raft: Raft,
+    pub raft_addr: String,
 
-    /// Receive application requests, Raft protocol request or management requests.
+    /// Receive application and management requests from the test router.
     pub rx: RequestRx,
     pub router: Router,
 
@@ -27,7 +28,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(id: NodeId, raft: Raft, router: Router, state_machine: StateMachineStore) -> Self {
+    pub fn new(id: NodeId, raft: Raft, router: Router, state_machine: StateMachineStore, raft_addr: String) -> Self {
         let (tx, rx) = mpsc::channel(1024);
 
         {
@@ -38,6 +39,7 @@ impl App {
         Self {
             id,
             raft,
+            raft_addr,
             rx,
             router,
             state_machine,
@@ -52,11 +54,6 @@ impl App {
                 // Application API
                 "/app/write" => api::write(&mut self, payload).await,
                 "/app/read" => api::read(&mut self, payload).await,
-
-                // Raft API
-                "/raft/append" => api::append(&mut self, payload).await,
-                "/raft/snapshot" => api::snapshot(&mut self, payload).await,
-                "/raft/vote" => api::vote(&mut self, payload).await,
 
                 // Management API
                 "/mng/add-learner" => api::add_learner(&mut self, payload).await,

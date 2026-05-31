@@ -22,18 +22,21 @@ path = "src/bin/main.rs"
 
 [dependencies]
 client-http         = { path = "../client-http" }
-network-v1-http     = { path = "../network-v1-http", features = ["actix"] }
+network-v2-http     = { path = "../network-v2-http" }
 openraft            = { path = "../../openraft", features = ["serde", "type-alias"] }
-openraft-legacy = { path = "../../legacy" }
 openraft-rocksstore = { path = "../rocksstore" }
 types-kv            = { path = "../types-kv" }
 
-actix-web          = { version = "4.0.0-rc.2" }
 clap               = { version = "4.1.11", features = ["derive", "env"] }
+bytes              = { version = "1.0" }
 futures            = { version = "0.3" }
+http-body-util     = { version = "0.1" }
+hyper              = { version = "1.0", features = ["http1", "server"] }
+hyper-util         = { version = "0.1", features = ["tokio"] }
 rocksdb            = { version = "0.22.0" }
 serde              = { version = "1.0.114", features = ["derive"] }
 serde_json         = { version = "1.0.57" }
+tokio              = { version = "1.35.1", features = ["full"] }
 tracing            = { version = "0.1.40" }
 tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }
 

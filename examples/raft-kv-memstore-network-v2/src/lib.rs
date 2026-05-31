@@ -5,6 +5,7 @@ use std::io::Cursor;
 use std::sync::Arc;
 
 use openraft::Config;
+use openraft::NodeInfo;
 
 use crate::app::App;
 use crate::router::Router;
@@ -13,7 +14,6 @@ pub mod router;
 
 pub mod api;
 pub mod app;
-pub mod network;
 pub mod store;
 
 pub type NodeId = u64;
@@ -23,6 +23,7 @@ openraft::declare_raft_types!(
     pub TypeConfig:
         D = types_kv::Request,
         R = types_kv::Response,
+        Node = NodeInfo,
         SnapshotData = Cursor<Vec<u8>>,
 );
 
@@ -41,7 +42,7 @@ pub fn decode<T: serde::de::DeserializeOwned>(s: &str) -> T {
     serde_json::from_str(s).unwrap()
 }
 
-pub async fn new_raft(node_id: NodeId, router: Router) -> (Raft, App) {
+pub async fn new_raft(node_id: NodeId, router: Router, raft_addr: String) -> (Raft, App) {
     // Create a configuration for the raft instance.
     let config = Config {
         heartbeat_interval: 500,
@@ -62,11 +63,11 @@ pub async fn new_raft(node_id: NodeId, router: Router) -> (Raft, App) {
     let state_machine_store = StateMachineStore::default();
 
     // Create a local raft instance.
-    let raft = openraft::Raft::new(node_id, config, router.clone(), log_store, state_machine_store.clone())
-        .await
-        .unwrap();
+    let network = network_v2_http::NetworkFactory::new();
 
-    let app = App::new(node_id, raft.clone(), router, state_machine_store);
+    let raft = openraft::Raft::new(node_id, config, network, log_store, state_machine_store.clone()).await.unwrap();
+
+    let app = App::new(node_id, raft.clone(), router, state_machine_store, raft_addr);
 
     (raft, app)
 }

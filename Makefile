@@ -162,6 +162,7 @@ check:
 	RUSTFLAGS="-D warnings" cargo check --manifest-path benchmarks/minimal/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/client-http/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/network-v1-http/Cargo.toml
+	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/network-v2-http/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/log-mem/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/sm-mem/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/rocksstore/Cargo.toml
@@ -186,6 +187,7 @@ clean:
 	cargo clean --manifest-path tests-turmoil/Cargo.toml
 	cargo clean --manifest-path examples/client-http/Cargo.toml
 	cargo clean --manifest-path examples/network-v1-http/Cargo.toml
+	cargo clean --manifest-path examples/network-v2-http/Cargo.toml
 	cargo clean --manifest-path examples/log-mem/Cargo.toml
 	cargo clean --manifest-path examples/sm-mem/Cargo.toml
 	cargo clean --manifest-path examples/rocksstore/Cargo.toml

@@ -10,6 +10,7 @@
 //! ## Implementations
 //!
 //! - [`BasicNode`] - Node with network address string
+//! - [`NodeInfo`] - Node with a Raft address and user-defined data
 //! - [`EmptyNode`] - Minimal node with no metadata
 //!
 //! ## Overview
@@ -112,6 +113,46 @@ impl BasicNode {
 impl Display for BasicNode {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.addr)
+    }
+}
+
+/// An implementation of the [`Node`] trait that contains a Raft address and user-defined data.
+///
+/// It is useful when an application wants OpenRaft to store one address for
+/// [`RaftNetworkV2`](crate::RaftNetworkV2) and also carry a small piece of application-defined
+/// metadata, such as a public API address.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+pub struct NodeInfo {
+    /// Address used by [`RaftNetworkV2`](crate::RaftNetworkV2) to contact the target node.
+    pub raft_addr: String,
+
+    /// User-defined data interpreted by the application.
+    pub data: String,
+}
+
+impl Default for NodeInfo {
+    fn default() -> Self {
+        Self {
+            raft_addr: "localhost".to_string(),
+            data: "".to_string(),
+        }
+    }
+}
+
+impl NodeInfo {
+    /// Creates a [`NodeInfo`].
+    pub fn new(raft_addr: impl ToString, data: impl ToString) -> Self {
+        Self {
+            raft_addr: raft_addr.to_string(),
+            data: data.to_string(),
+        }
+    }
+}
+
+impl Display for NodeInfo {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "raft_addr: {}, data: {}", self.raft_addr, self.data)
     }
 }
 

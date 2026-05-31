@@ -58,16 +58,16 @@ fi
 
 echo "Start 3 uninitialized raft-key-value-rocks servers..."
 
-${bin} --id 1 --addr 127.0.0.1:21001 2>&1 > n1.log &
+${bin} --id 1 --api-addr 127.0.0.1:21001 --raft-addr 127.0.0.1:22001 2>&1 > n1.log &
 PID1=$!
 sleep 1
 echo "Server 1 started"
 
-nohup ${bin} --id 2 --addr 127.0.0.1:21002  > n2.log &
+nohup ${bin} --id 2 --api-addr 127.0.0.1:21002 --raft-addr 127.0.0.1:22002  > n2.log &
 sleep 1
 echo "Server 2 started"
 
-nohup ${bin} --id 3 --addr 127.0.0.1:21003  > n3.log &
+nohup ${bin} --id 3 --api-addr 127.0.0.1:21003 --raft-addr 127.0.0.1:22003  > n3.log &
 sleep 1
 echo "Server 3 started"
 sleep 1
@@ -92,11 +92,11 @@ echo "Adding node 2 and node 3 as learners, to receive log from leader node 1"
 
 sleep 1
 echo
-rpc 21001/add-learner       '[2, "127.0.0.1:21002"]'
+rpc 21001/add-learner       '{"node_id": 2, "api_addr": "127.0.0.1:21002", "raft_addr": "127.0.0.1:22002"}'
 echo "Node 2 added as leaner"
 sleep 1
 echo
-rpc 21001/add-learner       '[3, "127.0.0.1:21003"]'
+rpc 21001/add-learner       '{"node_id": 3, "api_addr": "127.0.0.1:21003", "raft_addr": "127.0.0.1:22003"}'
 echo "Node 3 added as leaner"
 sleep 1
 
@@ -188,7 +188,7 @@ sleep 1
 echo "Restart node 1"
 echo
 
-${bin} --id 1 --addr 127.0.0.1:21001  2>&1 >> n1.log &
+${bin} --id 1 --api-addr 127.0.0.1:21001 --raft-addr 127.0.0.1:22001  2>&1 >> n1.log &
 sleep 1
 echo "Server 1 started"
 

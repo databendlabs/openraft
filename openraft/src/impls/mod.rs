@@ -9,6 +9,7 @@
 //! - [`LogId`] - Default log identifier
 //! - [`Vote`] - Default vote implementation
 //! - [`BasicNode`] - Simple node information with address
+//! - [`NodeInfo`] - Simple node information with Raft address and user-defined data
 //! - [`EmptyNode`] - Minimal node representation (no metadata)
 //! - [`OneshotResponder`] - Single-use response channel
 //! - [`BoxedErrorSource`] - Boxed error wrapper for smaller error types
@@ -34,6 +35,7 @@ pub use openraft_rt_tokio::TokioRuntime;
 pub use crate::entry::Entry;
 pub use crate::node::BasicNode;
 pub use crate::node::EmptyNode;
+pub use crate::node::NodeInfo;
 pub use crate::raft::responder::impls::OneshotResponder;
 pub use crate::raft::responder::impls::ProgressResponder;
 

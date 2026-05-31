@@ -3,7 +3,7 @@ use std::fmt;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use openraft::BasicNode;
+use openraft::NodeInfo;
 use openraft::RaftMetrics;
 use openraft::RaftTypeConfig;
 use openraft::TryAsRef;
@@ -45,7 +45,7 @@ where C: RaftTypeConfig
 }
 
 impl<C> ExampleClient<C>
-where C: RaftTypeConfig<Node = BasicNode>
+where C: RaftTypeConfig<Node = NodeInfo>
 {
     /// Create a client with a leader node id and a node manager to get node address by node id.
     pub fn new(leader_id: C::NodeId, leader_addr: String) -> Self {
@@ -119,11 +119,14 @@ where C: RaftTypeConfig<Node = BasicNode>
     /// Add a node as learner.
     ///
     /// The node to add has to exist, i.e., being added with `write(ExampleRequest::AddNode{})`
-    pub async fn add_learner(
+    pub async fn add_learner<Req>(
         &self,
-        req: (C::NodeId, String),
-    ) -> Result<Result<ClientWriteResponse<C>, ClientWriteError<C>>, RPCError<C>> {
-        self.send_with_forwarding("add-learner", Some(&req), 0).await
+        req: &Req,
+    ) -> Result<Result<ClientWriteResponse<C>, ClientWriteError<C>>, RPCError<C>>
+    where
+        Req: Serialize + fmt::Debug + 'static,
+    {
+        self.send_with_forwarding("add-learner", Some(req), 0).await
     }
 
     /// Change membership to the specified set of nodes.
@@ -239,7 +242,7 @@ where C: RaftTypeConfig<Node = BasicNode>
                 // Update target to the new leader.
                 {
                     let mut t = self.leader.lock().unwrap();
-                    let api_addr = leader_node.addr.clone();
+                    let api_addr = leader_node.data.clone();
                     *t = (leader_id.clone(), api_addr);
                 }
 
