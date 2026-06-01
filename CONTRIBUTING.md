@@ -27,6 +27,19 @@ mdbook watch
 - Do **NOT** **rebase** after publishing PR. Only merge.
 
 
+## AI-assisted contributions
+
+AI tools are welcome as a drafting aid, but **you own every line you submit**.
+
+- **Understand** each change well enough to defend it in review, as if you had written it by hand.
+
+- **Simplify** generated output: drop redundant wrappers, needless abstractions, and comments that restate the code or describe behavior it does not have.
+
+- **Match** the surrounding style and the rest of this guide.
+
+PRs that read as unreviewed AI output will be sent back for a cleanup pass before review.
+
+
 ## Release checklist
 
 - `make`: pass the unit test, format and clippy check.
