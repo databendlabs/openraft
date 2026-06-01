@@ -5,8 +5,8 @@
 //! same `expected_leader` into a single message, improving throughput by reducing
 //! per-message overhead.
 
+use std::ops::Add;
 use std::time::Duration;
-use std::time::Instant;
 
 use rt::AsyncRuntime;
 
@@ -15,6 +15,7 @@ use crate::async_runtime::MpscReceiver;
 use crate::async_runtime::TryRecvError;
 use crate::core::raft_msg::RaftMsg;
 use crate::errors::Fatal;
+use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::MpscReceiverOf;
 
 /// A receiver wrapper that batches consecutive `RaftMsg::ClientWrite` messages.
@@ -102,7 +103,7 @@ where C: RaftTypeConfig
     /// If the first available message is a `ClientWrite`, this method attempts to
     /// merge additional `ClientWrite` messages with the same `expected_leader`.
     pub(crate) async fn try_recv(&mut self) -> Result<Option<RaftMsg<C>>, Fatal<C>> {
-        let msg = self.buffered_try_recv().await?;
+        let msg = self.buffered_try_recv()?;
 
         let Some(mut msg) = msg else {
             return Ok(None);
@@ -114,12 +115,12 @@ where C: RaftTypeConfig
     }
 
     /// Returns a buffered message if available, otherwise tries the inner receiver.
-    async fn buffered_try_recv(&mut self) -> Result<Option<RaftMsg<C>>, Fatal<C>> {
+    fn buffered_try_recv(&mut self) -> Result<Option<RaftMsg<C>>, Fatal<C>> {
         if let Some(msg) = self.buffered.take() {
             return Ok(Some(msg));
         }
 
-        self.inner_try_recv(Duration::ZERO).await
+        self.inner_try_recv()
     }
 
     /// Waits for a message from the inner receiver.
@@ -135,12 +136,15 @@ where C: RaftTypeConfig
     /// Receives the next value from this receiver, if available.
     ///
     /// Returns `None` if:
-    /// - the timeout is reached before a value is received
+    /// - the deadline is reached before a value is received
     ///
     /// Returns `Err(Fatal::Stopped)` if:
     /// - the channel is disconnected
-    async fn inner_try_recv(&mut self, timeout: Duration) -> Result<Option<RaftMsg<C>>, Fatal<C>> {
-        match C::AsyncRuntime::mpsc_recv_timeout(&mut self.inner, timeout).await {
+    async fn inner_recv_timeout_at(
+        &mut self,
+        deadline: <C::AsyncRuntime as AsyncRuntime>::Instant,
+    ) -> Result<Option<RaftMsg<C>>, Fatal<C>> {
+        match C::AsyncRuntime::mpsc_recv_timeout_at(&mut self.inner, deadline).await {
             Ok(value) => Ok(Some(value)),
             Err(TryRecvError::Empty) => {
                 tracing::debug!("all RaftMsg are processed, wait for more");
@@ -150,6 +154,25 @@ where C: RaftTypeConfig
                 tracing::debug!("rx_api is disconnected, quit");
                 Err(Fatal::Stopped)
             }
+        }
+    }
+
+    /// Non-blocking receive from the inner receiver.
+    fn inner_try_recv(&mut self) -> Result<Option<RaftMsg<C>>, Fatal<C>> {
+        let res = self.inner.try_recv();
+
+        match res {
+            Ok(msg) => Ok(Some(msg)),
+            Err(e) => match e {
+                TryRecvError::Empty => {
+                    tracing::debug!("all RaftMsg are processed, wait for more");
+                    Ok(None)
+                }
+                TryRecvError::Disconnected => {
+                    tracing::debug!("rx_api is disconnected, quit");
+                    Err(Fatal::Stopped)
+                }
+            },
         }
     }
 
@@ -175,35 +198,33 @@ where C: RaftTypeConfig
             _ => return Ok(()),
         };
 
-        let now = Instant::now();
+        let deadline = C::now().add(self.linger);
         for _ in 1..self.capacity {
-            let timeout = self.linger.saturating_sub(now.elapsed());
-            match self.inner_try_recv(timeout).await? {
-                Some(next) => {
-                    // Can only merge ClientWrite with same expected_leader
-                    let mergeable = matches!(
-                        &next,
-                        RaftMsg::ClientWrite { expected_leader, .. } if expected_leader == batch_leader
-                    );
+            let next = self.inner_recv_timeout_at(deadline).await?;
 
-                    if !mergeable {
-                        self.buffered = Some(next);
-                        break;
-                    }
+            let Some(next) = next else {
+                break;
+            };
 
-                    match next {
-                        RaftMsg::ClientWrite {
-                            payloads, responders, ..
-                        } => {
-                            batch_payloads.extend(payloads);
-                            batch_responders.extend(responders);
-                        }
-                        _ => unreachable!(),
-                    }
+            // Can only merge ClientWrite with same expected_leader
+            let mergeable = matches!(
+                &next,
+                RaftMsg::ClientWrite { expected_leader, .. } if expected_leader == batch_leader
+            );
+
+            if !mergeable {
+                self.buffered = Some(next);
+                break;
+            }
+
+            match next {
+                RaftMsg::ClientWrite {
+                    payloads, responders, ..
+                } => {
+                    batch_payloads.extend(payloads);
+                    batch_responders.extend(responders);
                 }
-                None => {
-                    break;
-                }
+                _ => unreachable!(),
             }
         }
 
@@ -213,6 +234,8 @@ where C: RaftTypeConfig
 
 #[cfg(test)]
 mod tests {
+    use rt::Instant;
+
     use super::*;
     use crate::async_runtime::MpscSender;
     use crate::batch::Batch;
@@ -455,13 +478,13 @@ mod tests {
     #[test]
     fn test_try_recv_flush_batch_after_linger() {
         const BATCH_CAPACITY: u64 = 100;
-        const LINGER: Duration = Duration::from_secs(2);
+        const LINGER: Duration = Duration::from_secs(1);
 
         C::run(async {
             let (tx, rx) = C::mpsc(BATCH_CAPACITY as usize);
             let mut receiver: BatchRaftMsgReceiver<C> = BatchRaftMsgReceiver::new(rx, BATCH_CAPACITY, LINGER);
 
-            let now = Instant::now();
+            let now = C::now();
 
             let leader = Some(committed_leader_id(1, 1));
             tx.send(client_write(0, leader)).await.unwrap();
