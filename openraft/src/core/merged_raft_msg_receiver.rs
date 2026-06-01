@@ -8,16 +8,13 @@
 use std::time::Duration;
 use std::time::Instant;
 
-use futures_util::FutureExt;
-use futures_util::future;
-use futures_util::future::Either;
+use rt::AsyncRuntime;
 
 use crate::RaftTypeConfig;
 use crate::async_runtime::MpscReceiver;
 use crate::async_runtime::TryRecvError;
 use crate::core::raft_msg::RaftMsg;
 use crate::errors::Fatal;
-use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::MpscReceiverOf;
 
 /// A receiver wrapper that batches consecutive `RaftMsg::ClientWrite` messages.
@@ -142,34 +139,17 @@ where C: RaftTypeConfig
     ///
     /// Returns `Err(Fatal::Stopped)` if:
     /// - the channel is disconnected
-    fn inner_try_recv(&mut self, timeout: Duration) -> impl Future<Output = Result<Option<RaftMsg<C>>, Fatal<C>>> {
-        if timeout.is_zero() {
-            let res = match self.inner.try_recv() {
-                Ok(msg) => Ok(Some(msg)),
-                Err(e) => match e {
-                    TryRecvError::Empty => {
-                        tracing::debug!("all RaftMsg are processed, wait for more");
-                        Ok(None)
-                    }
-                    TryRecvError::Disconnected => {
-                        tracing::debug!("rx_api is disconnected, quit");
-                        Err(Fatal::Stopped)
-                    }
-                },
-            };
-            Either::Left(future::ready(res))
-        } else {
-            Either::Right(C::timeout(timeout, self.inner.recv()).map(|result| match result {
-                Ok(Some(value)) => Ok(Some(value)),
-                Ok(None) => {
-                    tracing::debug!("rx_api is disconnected, quit");
-                    Err(Fatal::Stopped)
-                }
-                Err(_) => {
-                    tracing::debug!("all RaftMsg are processed, wait for more");
-                    Ok(None)
-                }
-            }))
+    async fn inner_try_recv(&mut self, timeout: Duration) -> Result<Option<RaftMsg<C>>, Fatal<C>> {
+        match C::AsyncRuntime::mpsc_recv_timeout(&mut self.inner, timeout).await {
+            Ok(value) => Ok(Some(value)),
+            Err(TryRecvError::Empty) => {
+                tracing::debug!("all RaftMsg are processed, wait for more");
+                Ok(None)
+            }
+            Err(TryRecvError::Disconnected) => {
+                tracing::debug!("rx_api is disconnected, quit");
+                Err(Fatal::Stopped)
+            }
         }
     }
 
