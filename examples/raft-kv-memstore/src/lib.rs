@@ -8,7 +8,6 @@ use openraft::NodeInfo as Node;
 
 use crate::app::App;
 use crate::network::api;
-use crate::network::management;
 
 pub mod app;
 pub mod network;
@@ -69,20 +68,14 @@ pub async fn start_example_raft_node(node_id: NodeId, api_addr: String, raft_add
         api_addr: api_addr.clone(),
         raft_addr: raft_addr.clone(),
         raft,
-        state_machine_store,
+        data: state_machine_store,
     });
 
     let raft_server = network_v2_http::Server::new(app.raft.clone()).run(raft_addr);
-    let app_server = network::Server::new()
-        .post("/init", app.clone(), management::init)
-        .post("/add-learner", app.clone(), management::add_learner)
-        .post("/change-membership", app.clone(), management::change_membership)
-        .get("/metrics", app.clone(), management::metrics)
-        .get("/get_linearizer", app.clone(), management::get_linearizer)
-        .post("/write", app.clone(), api::write)
-        .post("/read", app.clone(), api::read)
-        .post("/linearizable_read", app.clone(), api::linearizable_read)
-        .post("/follower_read", app, api::follower_read)
+    let app_server = app_http::Server::new(app)
+        .post("/read", api::read)
+        .post("/linearizable_read", api::linearizable_read)
+        .post("/follower_read", api::follower_read)
         .run(api_addr);
 
     tokio::try_join!(raft_server, app_server)?;

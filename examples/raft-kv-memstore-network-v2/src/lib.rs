@@ -8,9 +8,6 @@ use openraft::Config;
 use openraft::NodeInfo;
 
 use crate::app::App;
-use crate::router::Router;
-
-pub mod router;
 
 pub mod api;
 pub mod app;
@@ -34,15 +31,7 @@ pub type Raft = openraft::Raft<TypeConfig, StateMachineStore>;
 #[path = "../../utils/declare_types.rs"]
 pub mod typ;
 
-pub fn encode<T: serde::Serialize>(t: T) -> String {
-    serde_json::to_string(&t).unwrap()
-}
-
-pub fn decode<T: serde::de::DeserializeOwned>(s: &str) -> T {
-    serde_json::from_str(s).unwrap()
-}
-
-pub async fn new_raft(node_id: NodeId, router: Router, raft_addr: String) -> (Raft, App) {
+pub async fn new_raft_node(node_id: NodeId, api_addr: String, raft_addr: String) -> Arc<App> {
     // Create a configuration for the raft instance.
     let config = Config {
         heartbeat_interval: 500,
@@ -67,7 +56,26 @@ pub async fn new_raft(node_id: NodeId, router: Router, raft_addr: String) -> (Ra
 
     let raft = openraft::Raft::new(node_id, config, network, log_store, state_machine_store.clone()).await.unwrap();
 
-    let app = App::new(node_id, raft.clone(), router, state_machine_store, raft_addr);
+    Arc::new(App {
+        id: node_id,
+        api_addr,
+        raft_addr,
+        raft,
+        data: state_machine_store,
+    })
+}
 
-    (raft, app)
+pub async fn run_raft_node(app: Arc<App>) -> std::io::Result<()> {
+    let api_addr = app.api_addr.clone();
+    let raft_addr = app.raft_addr.clone();
+    let raft = app.raft.clone();
+
+    let raft_server = network_v2_http::Server::new(raft).run(raft_addr);
+    let app_server = app_http::Server::new(app)
+        .post("/read", api::read)
+        .post("/linearizable_read", api::linearizable_read)
+        .run(api_addr);
+
+    tokio::try_join!(raft_server, app_server)?;
+    Ok(())
 }

@@ -2,18 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use futures::lock::Mutex;
-use openraft::Config;
 
-use crate::NodeId;
-use crate::Raft;
+pub type KeyValues = Arc<Mutex<BTreeMap<String, String>>>;
 
-// Representation of an application state. This struct can be shared around to share
-// instances of raft, store and more.
-pub struct App {
-    pub id: NodeId,
-    pub api_addr: String,
-    pub raft_addr: String,
-    pub raft: Raft,
-    pub key_values: Arc<Mutex<BTreeMap<String, String>>>,
-    pub config: Arc<Config>,
-}
+pub type App = app_http::App<crate::TypeConfig, crate::StateMachineStore, KeyValues>;

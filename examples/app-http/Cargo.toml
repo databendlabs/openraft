@@ -1,0 +1,34 @@
+[package]
+name = "app-http"
+version = "0.1.0"
+readme = "README.md"
+
+edition = "2024"
+authors = [
+  "drdr xp <drdr.xp@gmail.com>",
+]
+categories = ["algorithms", "asynchronous", "data-structures"]
+description = "An example application HTTP client and server built upon `openraft`."
+homepage = "https://github.com/databendlabs/openraft"
+keywords = ["raft", "consensus", "network"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/databendlabs/openraft"
+
+[dependencies]
+openraft = { path = "../../openraft", features = ["serde", "type-alias"] }
+
+bytes          = { version = "1.0" }
+http-body-util = { version = "0.1" }
+hyper          = { version = "1.0", features = ["http1", "server"] }
+hyper-util     = { version = "0.1", features = ["tokio"] }
+log            = { version = "0.4" }
+reqwest        = { version = "0.12.5", features = ["json"] }
+serde          = { version = "1.0.114", features = ["derive"] }
+serde_json     = { version = "1.0.57" }
+tokio          = { version = "1.35.1", features = ["full"] }
+
+[features]
+default = []
+
+[package.metadata.docs.rs]
+all-features = true

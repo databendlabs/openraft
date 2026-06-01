@@ -83,7 +83,7 @@ exclude = [
     "metrics-otel",
     "tests-turmoil",
 
-    "examples/client-http",
+    "examples/app-http",
     "examples/network-v1-http",
     "examples/network-v2-http",
 

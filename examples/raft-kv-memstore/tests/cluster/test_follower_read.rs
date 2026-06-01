@@ -1,10 +1,10 @@
 use std::time::Duration;
 
-use client_http::ExampleClient;
+use app_http::AddLearnerRequest;
+use app_http::Client;
 use maplit::btreeset;
 use openraft::type_config::TypeConfigExt;
 use raft_kv_memstore::TypeConfig;
-use raft_kv_memstore::network::management::AddLearnerRequest;
 use raft_kv_memstore::start_example_raft_node;
 
 #[test]
@@ -27,7 +27,7 @@ async fn test_follower_read_inner() -> anyhow::Result<()> {
 
     TypeConfig::sleep(Duration::from_millis(1000)).await;
 
-    let leader = ExampleClient::<TypeConfig>::new(1, api_addr(1));
+    let leader = Client::<TypeConfig>::new(1, api_addr(1));
 
     println!("=== init single node cluster");
     leader.init().await??;
@@ -71,12 +71,12 @@ async fn test_follower_read_inner() -> anyhow::Result<()> {
     TypeConfig::sleep(Duration::from_millis(500)).await;
 
     println!("=== follower_read on node 2");
-    let client2 = ExampleClient::<TypeConfig>::new(2, api_addr(2));
+    let client2 = Client::<TypeConfig>::new(2, api_addr(2));
     let value = client2.follower_read(&"test_key".to_string()).await??;
     assert_eq!("test_value", value);
 
     println!("=== follower_read on node 3");
-    let client3 = ExampleClient::<TypeConfig>::new(3, api_addr(3));
+    let client3 = Client::<TypeConfig>::new(3, api_addr(3));
     let value = client3.follower_read(&"test_key".to_string()).await??;
     assert_eq!("test_value", value);
 

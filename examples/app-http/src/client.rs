@@ -16,9 +16,11 @@ use openraft::errors::NetworkError;
 use openraft::errors::RPCError;
 use openraft::errors::Unreachable;
 use openraft::raft::ClientWriteResponse;
-use reqwest::Client;
+use reqwest::Client as HttpClient;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
+
+use crate::LinearizerData;
 
 #[derive(Debug, Clone, Serialize, serde::Deserialize)]
 pub struct FollowerReadError {
@@ -33,7 +35,7 @@ impl fmt::Display for FollowerReadError {
 
 impl std::error::Error for FollowerReadError {}
 
-pub struct ExampleClient<C>
+pub struct Client<C>
 where C: RaftTypeConfig
 {
     /// The leader node to send request to.
@@ -41,17 +43,17 @@ where C: RaftTypeConfig
     /// All traffic should be sent to the leader in a cluster.
     pub leader: Arc<Mutex<(C::NodeId, String)>>,
 
-    pub inner: Client,
+    pub inner: HttpClient,
 }
 
-impl<C> ExampleClient<C>
+impl<C> Client<C>
 where C: RaftTypeConfig<Node = NodeInfo>
 {
     /// Create a client with a leader node id and a node manager to get node address by node id.
     pub fn new(leader_id: C::NodeId, leader_addr: String) -> Self {
         Self {
             leader: Arc::new(Mutex::new((leader_id, leader_addr))),
-            inner: Client::builder().no_proxy().build().unwrap(),
+            inner: HttpClient::builder().no_proxy().build().unwrap(),
         }
     }
 
@@ -102,6 +104,10 @@ where C: RaftTypeConfig<Node = NodeInfo>
     /// Returns the value if successful, or an error from the follower.
     pub async fn follower_read(&self, req: &String) -> Result<Result<String, FollowerReadError>, RPCError<C>> {
         self.send("follower_read", Some(req)).await
+    }
+
+    pub async fn get_linearizer(&self) -> Result<Result<LinearizerData<C>, LinearizableReadError<C>>, RPCError<C>> {
+        self.send("get_linearizer", None::<&()>).await
     }
 
     // --- Cluster management API
@@ -162,7 +168,7 @@ where C: RaftTypeConfig<Node = NodeInfo>
         Resp: Serialize + DeserializeOwned,
         Err: std::error::Error + Serialize + DeserializeOwned,
     {
-        tracing::debug!("client-http: start, send to {}; request: {:?}", uri, req);
+        log::debug!("app-http client: start, send to {}; request: {:?}", uri, req);
 
         let (_leader_id, url) = {
             let t = self.leader.lock().unwrap();
@@ -176,7 +182,7 @@ where C: RaftTypeConfig<Node = NodeInfo>
                 url,
                 serde_json::to_string_pretty(&r).unwrap()
             );
-            tracing::debug!(
+            log::debug!(
                 ">>> client send request to {}: {}",
                 url,
                 serde_json::to_string_pretty(&r).unwrap()
@@ -184,7 +190,7 @@ where C: RaftTypeConfig<Node = NodeInfo>
             self.inner.post(url.clone()).json(r)
         } else {
             println!(">>> client send request to {}", url,);
-            tracing::debug!(">>> client send request to {}", url,);
+            log::debug!(">>> client send request to {}", url,);
             self.inner.get(url.clone())
         }
         .send()
