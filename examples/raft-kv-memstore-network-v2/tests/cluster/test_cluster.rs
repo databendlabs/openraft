@@ -1,15 +1,15 @@
 use std::backtrace::Backtrace;
-use std::collections::BTreeMap;
 use std::panic::PanicHookInfo;
 use std::time::Duration;
 
+use app_http::AddLearnerRequest;
+use app_http::Client;
 use openraft::ServerState;
-use openraft::async_runtime::WatchReceiver;
 use openraft::type_config::TypeConfigExt;
 use raft_kv_memstore_network_v2::Raft;
 use raft_kv_memstore_network_v2::TypeConfig;
-use raft_kv_memstore_network_v2::new_raft;
-use raft_kv_memstore_network_v2::router::Router;
+use raft_kv_memstore_network_v2::new_raft_node;
+use raft_kv_memstore_network_v2::run_raft_node;
 use tracing_subscriber::EnvFilter;
 
 pub fn log_panic(panic: &PanicHookInfo) {
@@ -55,20 +55,21 @@ fn test_cluster() {
             .with_env_filter(EnvFilter::from_default_env())
             .init();
 
-        let router = Router::default();
+        let app1 = new_raft_node(1, api_addr(1), raft_addr(1)).await;
+        let app2 = new_raft_node(2, api_addr(2), raft_addr(2)).await;
 
-        let (raft1, app1) = new_raft(1, router.clone(), raft_addr(1)).await;
-        let (raft2, app2) = new_raft(2, router.clone(), raft_addr(2)).await;
+        let rafts = [app1.raft.clone(), app2.raft.clone()];
 
-        let rafts = [raft1, raft2];
-
-        TypeConfig::spawn(network_v2_http::Server::new(rafts[0].clone()).run(raft_addr(1)));
-        TypeConfig::spawn(network_v2_http::Server::new(rafts[1].clone()).run(raft_addr(2)));
-        TypeConfig::spawn(app1.run());
-        TypeConfig::spawn(app2.run());
+        for app in [app1, app2] {
+            TypeConfig::spawn(run_raft_node(app));
+        }
 
         run_test(&rafts).await;
     });
+}
+
+fn api_addr(node_id: u64) -> String {
+    format!("127.0.0.1:21{:03}", node_id)
 }
 
 fn raft_addr(node_id: u64) -> String {
@@ -81,20 +82,19 @@ async fn run_test(rafts: &[Raft]) {
 
     let raft1 = &rafts[0];
     let raft2 = &rafts[1];
+    let client = Client::<TypeConfig>::new(1, api_addr(1));
 
     println!("=== init single node cluster");
     {
-        let mut nodes = BTreeMap::new();
-        nodes.insert(1, openraft::NodeInfo::new(raft_addr(1), ""));
-        raft1.initialize(nodes).await.unwrap();
+        client.init().await.unwrap().unwrap();
         raft1.wait(None).state(ServerState::Leader, "wait node 1 to become leader").await.unwrap();
     }
 
     println!("=== write 2 logs");
     {
-        let resp = raft1.client_write(types_kv::Request::set("foo1", "bar1")).await.unwrap();
+        let resp = client.write(&types_kv::Request::set("foo1", "bar1")).await.unwrap().unwrap();
         println!("write resp: {:#?}", resp);
-        let resp = raft1.client_write(types_kv::Request::set("foo2", "bar2")).await.unwrap();
+        let resp = client.write(&types_kv::Request::set("foo2", "bar2")).await.unwrap().unwrap();
         println!("write resp: {:#?}", resp);
     }
 
@@ -108,7 +108,7 @@ async fn run_test(rafts: &[Raft]) {
 
     println!("=== metrics after building snapshot");
     {
-        let metrics = raft1.metrics().borrow_watched().clone();
+        let metrics = client.metrics().await.unwrap();
         println!("node 1 metrics: {:#?}", metrics);
         assert_eq!(Some(3), metrics.snapshot.map(|x| x.index));
         assert_eq!(Some(3), metrics.purged.map(|x| x.index));
@@ -116,8 +116,15 @@ async fn run_test(rafts: &[Raft]) {
 
     println!("=== add-learner node-2");
     {
-        let node = openraft::NodeInfo::new(raft_addr(2), "");
-        let resp = raft1.add_learner(2, node, true).await.unwrap();
+        let resp = client
+            .add_learner(&AddLearnerRequest {
+                node_id: 2,
+                api_addr: api_addr(2),
+                raft_addr: raft_addr(2),
+            })
+            .await
+            .unwrap()
+            .unwrap();
         println!("add-learner node-2 resp: {:#?}", resp);
     }
 
@@ -126,7 +133,8 @@ async fn run_test(rafts: &[Raft]) {
 
     println!("=== metrics of node 2 that received snapshot");
     {
-        let metrics = raft2.metrics().borrow_watched().clone();
+        let client2 = Client::<TypeConfig>::new(2, api_addr(2));
+        let metrics = client2.metrics().await.unwrap();
         println!("node 2 metrics: {:#?}", metrics);
         assert_eq!(Some(3), metrics.snapshot.map(|x| x.index));
         assert_eq!(Some(3), metrics.purged.map(|x| x.index));

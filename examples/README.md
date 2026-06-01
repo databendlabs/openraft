@@ -16,9 +16,9 @@ This directory contains example applications demonstrating different implementat
 
 | Example | Log | State Machine | RaftNetwork Impl | RaftNetwork | Client | Server | Special Features |
 |---------|-----|---------------|------------------|-------------|--------|--------|------------------|
-| [raft-kv-memstore] | [log-mem] | [sm-mem] | HTTP/reqwest([network-v2]) | RaftNetworkV2 | reqwest | local HTTP | Basic example |
-| [raft-kv-rocksdb] | [rocksstore] | [rocksstore] | HTTP/reqwest([network-v2]) | RaftNetworkV2 | reqwest | local HTTP | Persistent storage |
-| [raft-kv-memstore-network-v2] | [log-mem] | [sm-mem] | HTTP/reqwest([network-v2]) | RaftNetworkV2 | channel | local HTTP | Snapshot replication |
+| [raft-kv-memstore] | [log-mem] | [sm-mem] | HTTP/reqwest([network-v2]) | RaftNetworkV2 | [app-http] | [app-http] | Basic example |
+| [raft-kv-rocksdb] | [rocksstore] | [rocksstore] | HTTP/reqwest([network-v2]) | RaftNetworkV2 | [app-http] | [app-http] | Persistent storage |
+| [raft-kv-memstore-network-v2] | [log-mem] | [sm-mem] | HTTP/reqwest([network-v2]) | RaftNetworkV2 | [app-http] | [app-http] | Snapshot replication |
 | [multi-raft-kv] | [log-mem] | [sm-mem] | HTTP/channel | GroupRouter | channel | in-memory | Multi-Raft groups |
 | [raft-kv-memstore-grpc] | [log-mem] | in-memory | gRPC/tonic | RaftNetwork | tonic | tonic | gRPC transport |
 | [raft-kv-memstore-single-threaded] | [log-mem] | in-memory | HTTP/reqwest | RaftNetwork | reqwest | actix-web | Single-threaded runtime |
@@ -43,6 +43,9 @@ The following symbolic links are provided for backward compatibility:
 - **[network-v2]** - HTTP-based RaftNetworkV2 interface using `reqwest` crate
 - **[network-v1]** - HTTP-based RaftNetwork interface V1 using `reqwest` crate
 
+### Application HTTP
+- **[app-http]** - JSON HTTP client and server used by the KV examples
+
 ### Utilities
 - **[types-kv]** - Shared KV request/response types for example crates
 - **[utils]** - Shared type declarations and utilities
@@ -60,6 +63,7 @@ The following symbolic links are provided for backward compatibility:
 [rocksstore]: rocksstore/
 [network-v2]: network-v2-http/
 [network-v1]: network-v1-http/
+[app-http]: app-http/
 [types-kv]: types-kv/
 [utils]: utils/
 

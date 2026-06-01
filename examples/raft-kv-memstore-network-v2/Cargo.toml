@@ -16,20 +16,18 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/databendlabs/openraft"
 
 [dependencies]
+app-http        = { path = "../app-http" }
 log-mem         = { path = "../log-mem", features = [] }
 network-v2-http = { path = "../network-v2-http" }
 openraft        = { path = "../../openraft", features = ["serde", "type-alias"] }
 sm-mem          = { path = "../sm-mem" }
 types-kv        = { path = "../types-kv" }
 
-futures            = { version = "0.3" }
-serde              = { version = "1.0.114", features = ["derive"] }
-serde_json         = { version = "1.0.57" }
-tracing            = { version = "0.1.29" }
-tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }
+tokio              = { version = "1.35.1", features = ["full"] }
 
 [dev-dependencies]
-maplit = { version = "1.0.2" }
+tracing            = { version = "0.1.29" }
+tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }
 
 [features]
 

@@ -4,7 +4,8 @@ use std::panic::PanicHookInfo;
 use std::thread;
 use std::time::Duration;
 
-use client_http::ExampleClient;
+use app_http::AddLearnerRequest;
+use app_http::Client;
 use maplit::btreemap;
 use maplit::btreeset;
 use openraft::NodeInfo as Node;
@@ -12,7 +13,6 @@ use openraft::async_runtime::AsyncRuntime;
 use openraft::type_config::TypeConfigExt;
 use openraft::type_config::alias::AsyncRuntimeOf;
 use raft_kv_rocksdb::TypeConfig;
-use raft_kv_rocksdb::network::management::AddLearnerRequest;
 use raft_kv_rocksdb::start_example_raft_node;
 use tracing_subscriber::EnvFilter;
 
@@ -107,7 +107,7 @@ async fn test_cluster_inner() -> Result<(), Box<dyn std::error::Error + Send + S
 
     // --- Create a client to the first node, as a control handle to the cluster.
 
-    let leader = ExampleClient::<TypeConfig>::new(1, get_api_addr(1));
+    let leader = Client::<TypeConfig>::new(1, get_api_addr(1));
 
     // --- 1. Initialize the target node as a cluster of only one node.
     //        After init(), the single node cluster will be fully functional.
@@ -209,12 +209,12 @@ async fn test_cluster_inner() -> Result<(), Box<dyn std::error::Error + Send + S
     assert_eq!("bar", x);
 
     println!("=== read `foo=bar` on node 2");
-    let client2 = ExampleClient::<TypeConfig>::new(2, get_api_addr(2));
+    let client2 = Client::<TypeConfig>::new(2, get_api_addr(2));
     let x = client2.read(&("foo".to_string())).await?;
     assert_eq!("bar", x);
 
     println!("=== read `foo=bar` on node 3");
-    let client3 = ExampleClient::<TypeConfig>::new(3, get_api_addr(3));
+    let client3 = Client::<TypeConfig>::new(3, get_api_addr(3));
     let x = client3.read(&("foo".to_string())).await?;
     assert_eq!("bar", x);
 
@@ -235,12 +235,12 @@ async fn test_cluster_inner() -> Result<(), Box<dyn std::error::Error + Send + S
     assert_eq!("wow", x);
 
     println!("=== read `foo=wow` on node 2");
-    let client2 = ExampleClient::<TypeConfig>::new(2, get_api_addr(2));
+    let client2 = Client::<TypeConfig>::new(2, get_api_addr(2));
     let x = client2.read(&("foo".to_string())).await?;
     assert_eq!("wow", x);
 
     println!("=== read `foo=wow` on node 3");
-    let client3 = ExampleClient::<TypeConfig>::new(3, get_api_addr(3));
+    let client3 = Client::<TypeConfig>::new(3, get_api_addr(3));
     let x = client3.read(&("foo".to_string())).await?;
     assert_eq!("wow", x);
 

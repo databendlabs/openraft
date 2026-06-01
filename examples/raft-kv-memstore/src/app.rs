@@ -1,13 +1,1 @@
-use crate::NodeId;
-use crate::Raft;
-use crate::StateMachineStore;
-
-// Representation of an application state. This struct can be shared around to share
-// instances of raft, store and more.
-pub struct App {
-    pub id: NodeId,
-    pub api_addr: String,
-    pub raft_addr: String,
-    pub raft: Raft,
-    pub state_machine_store: StateMachineStore,
-}
+pub type App = app_http::App<crate::TypeConfig, crate::StateMachineStore, crate::StateMachineStore>;

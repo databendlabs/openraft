@@ -4,7 +4,7 @@ It is an example of how to build a real-world key-value store with `openraft`.
 Includes:
 - An in-memory `RaftLogStorage` and `RaftStateMachine` implementation [store](./src/store/store.rs).
 
-- The application/admin routes are plain async functions hosted by this example's local HTTP server.
+- The application/admin routes are plain async functions hosted by this example's HTTP server.
   All service endpoints accept a JSON request body,
   and return a JSON-encoded `Result<T, E>` response,
   where `T` and `E` are API-specific types.
@@ -12,13 +12,13 @@ Includes:
   and returns a `Result<WriteResponse, ClientWriteError>`.
 
   Includes:
-  - Admin APIs to add nodes, change-membership etc.
+  - Admin APIs to add nodes, change membership etc.
   - Application APIs to write a value by key or read a value by key.
   - Linearizable read on the leader.
 
-- Client HTTP helpers are built upon [reqwest](https://docs.rs/reqwest). Raft node-to-node HTTP is provided by [`network-v2-http`](../network-v2-http/) on a separate internal address.
+- Application HTTP client/server helpers are provided by [`app-http`](../app-http/). Raft node-to-node HTTP is provided by [`network-v2-http`](../network-v2-http/) on a separate internal address.
 
-  [ExampleClient](../client-http/src/lib.rs) is a minimal raft client in rust to talk to a raft cluster.
+  [`app_http::Client`](../app-http/src/client.rs) is a minimal client in Rust to talk to a raft cluster.
   - It includes application API `write()`, `read()`, `linearizable_read()`, and administrative API `init()`, `add_learner()`, `change_membership()`, `metrics()`.
 
 ## Run it
@@ -33,8 +33,8 @@ There is a example in bash script and an example in rust:
   ./test-cluster.sh
   ```
 
-- [test_cluster.rs](./tests/cluster/test_cluster.rs) does almost the same as `test-cluster.sh` but in rust
-  with the `ExampleClient`.
+- [test_cluster.rs](./tests/cluster/test_cluster.rs) does almost the same as `test-cluster.sh` but in Rust
+  with `app_http::Client`.
 
   Run it with `cargo test`.
 
@@ -113,7 +113,7 @@ POST - 127.0.0.1:21001/linearizable_read  "foo"
 The application is separated into these parts:
 
  - `bin`: You can find the `main()` function in [main](./src/bin/main.rs) the file where the setup for the server happens.
- - `network`: You can find the [api](./src/network/api.rs) that implements the endpoints used by the public API. [management](./src/network/management.rs) is where all the administration endpoints are present, those are used to add or remove nodes, promote and more. Raft node-to-node HTTP communication is provided by [`network-v2-http`](../network-v2-http/).
+ - `network`: You can find the [api](./src/network/api.rs) that implements the read endpoints. Application HTTP client/server helpers and common management/write handlers are provided by [`app-http`](../app-http/). Raft node-to-node HTTP communication is provided by [`network-v2-http`](../network-v2-http/).
  - `store`: You can find the file [store](./src/store/mod.rs) where all the key-value implementation is done. Here is where your data application will be managed.
 
 ## Where is my data?

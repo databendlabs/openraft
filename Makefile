@@ -98,6 +98,7 @@ lint:
 	cargo fmt --manifest-path rt-compio/Cargo.toml
 	cargo fmt --manifest-path rt-monoio/Cargo.toml
 	cargo fmt --manifest-path rt-tokio/Cargo.toml
+	cargo fmt --manifest-path examples/app-http/Cargo.toml
 	cargo fmt --manifest-path examples/log-mem/Cargo.toml
 	cargo fmt --manifest-path examples/sm-mem/Cargo.toml
 	cargo fmt --manifest-path examples/rocksstore/Cargo.toml
@@ -114,6 +115,7 @@ lint:
 	cargo clippy --no-deps --manifest-path rt-compio/Cargo.toml                                       --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path rt-monoio/Cargo.toml                                       --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path rt-tokio/Cargo.toml                                        --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path examples/app-http/Cargo.toml                               --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/log-mem/Cargo.toml                                --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/sm-mem/Cargo.toml                                --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/rocksstore/Cargo.toml                                --all-targets -- -D warnings
@@ -133,6 +135,7 @@ lint:
 
 unused_dep:
 	cargo machete
+	cargo machete examples/app-http
 	cargo machete examples/raft-kv-memstore
 	cargo machete examples/raft-kv-rocksdb
 	cargo machete examples/raft-kv-memstore-grpc
@@ -160,7 +163,7 @@ check:
 	RUSTFLAGS="-D warnings" cargo check --manifest-path rt-tokio/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path metrics-otel/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path benchmarks/minimal/Cargo.toml
-	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/client-http/Cargo.toml
+	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/app-http/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/network-v1-http/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/network-v2-http/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/log-mem/Cargo.toml
@@ -185,7 +188,7 @@ clean:
 	cargo clean --manifest-path metrics-otel/Cargo.toml
 	cargo clean --manifest-path benchmarks/minimal/Cargo.toml
 	cargo clean --manifest-path tests-turmoil/Cargo.toml
-	cargo clean --manifest-path examples/client-http/Cargo.toml
+	cargo clean --manifest-path examples/app-http/Cargo.toml
 	cargo clean --manifest-path examples/network-v1-http/Cargo.toml
 	cargo clean --manifest-path examples/network-v2-http/Cargo.toml
 	cargo clean --manifest-path examples/log-mem/Cargo.toml

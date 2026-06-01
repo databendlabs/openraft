@@ -439,7 +439,7 @@ Additionally, two test scripts for setting up a cluster are available:
   cluster. It demonstrates the plain HTTP messages being sent and received.
 
 - [test_cluster.rs](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/tests/cluster/test_cluster.rs)
-  uses the `ExampleClient` to set up a cluster, write data, and read it back.
+  uses `app_http::Client` to set up a cluster, write data, and read it back.
 
 
 [`declare_raft_types!`]:                `crate::declare_raft_types`
