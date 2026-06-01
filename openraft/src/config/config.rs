@@ -255,8 +255,8 @@ pub struct Config {
     #[cfg_attr(feature = "clap", clap(long, default_value = "65536"))]
     pub api_channel_size: Option<u64>,
 
-    /// Maximum number of client requests that may be coalesced into a single
-    /// `RaftMsg::ClientWrite` batch before it is forwarded.
+    /// `RaftMsg::ClientWrite` batch before it is processed.
+    /// Then the batched `ClientWrite` requests will be submitted to `RaftStorage` in one shot.
     #[cfg_attr(feature = "clap", clap(long, default_value = "4096"))]
     pub api_batch_capacity: u64,
 

@@ -8,11 +8,16 @@
 use std::time::Duration;
 use std::time::Instant;
 
+use futures_util::FutureExt;
+use futures_util::future;
+use futures_util::future::Either;
+
 use crate::RaftTypeConfig;
 use crate::async_runtime::MpscReceiver;
 use crate::async_runtime::TryRecvError;
 use crate::core::raft_msg::RaftMsg;
 use crate::errors::Fatal;
+use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::MpscReceiverOf;
 
 /// A receiver wrapper that batches consecutive `RaftMsg::ClientWrite` messages.
@@ -100,7 +105,7 @@ where C: RaftTypeConfig
     /// If the first available message is a `ClientWrite`, this method attempts to
     /// merge additional `ClientWrite` messages with the same `expected_leader`.
     pub(crate) async fn try_recv(&mut self) -> Result<Option<RaftMsg<C>>, Fatal<C>> {
-        let msg = self.buffered_try_recv()?;
+        let msg = self.buffered_try_recv().await?;
 
         let Some(mut msg) = msg else {
             return Ok(None);
@@ -112,12 +117,12 @@ where C: RaftTypeConfig
     }
 
     /// Returns a buffered message if available, otherwise tries the inner receiver.
-    fn buffered_try_recv(&mut self) -> Result<Option<RaftMsg<C>>, Fatal<C>> {
+    async fn buffered_try_recv(&mut self) -> Result<Option<RaftMsg<C>>, Fatal<C>> {
         if let Some(msg) = self.buffered.take() {
             return Ok(Some(msg));
         }
 
-        self.inner_try_recv()
+        self.inner_try_recv(Duration::ZERO).await
     }
 
     /// Waits for a message from the inner receiver.
@@ -130,22 +135,41 @@ where C: RaftTypeConfig
         Ok(msg)
     }
 
-    /// Non-blocking receive from the inner receiver.
-    fn inner_try_recv(&mut self) -> Result<Option<RaftMsg<C>>, Fatal<C>> {
-        let res = self.inner.try_recv();
-
-        match res {
-            Ok(msg) => Ok(Some(msg)),
-            Err(e) => match e {
-                TryRecvError::Empty => {
-                    tracing::debug!("all RaftMsg are processed, wait for more");
-                    Ok(None)
-                }
-                TryRecvError::Disconnected => {
+    /// Receives the next value from this receiver, if available.
+    ///
+    /// Returns `None` if:
+    /// - the timeout is reached before a value is received
+    ///
+    /// Returns `Err(Fatal::Stopped)` if:
+    /// - the channel is disconnected
+    fn inner_try_recv(&mut self, timeout: Duration) -> impl Future<Output = Result<Option<RaftMsg<C>>, Fatal<C>>> {
+        if timeout.is_zero() {
+            let res = match self.inner.try_recv() {
+                Ok(msg) => Ok(Some(msg)),
+                Err(e) => match e {
+                    TryRecvError::Empty => {
+                        tracing::debug!("all RaftMsg are processed, wait for more");
+                        Ok(None)
+                    }
+                    TryRecvError::Disconnected => {
+                        tracing::debug!("rx_api is disconnected, quit");
+                        Err(Fatal::Stopped)
+                    }
+                },
+            };
+            Either::Left(future::ready(res))
+        } else {
+            Either::Right(C::timeout(timeout, self.inner.recv()).map(|result| match result {
+                Ok(Some(value)) => Ok(Some(value)),
+                Ok(None) => {
                     tracing::debug!("rx_api is disconnected, quit");
                     Err(Fatal::Stopped)
                 }
-            },
+                Err(_) => {
+                    tracing::debug!("all RaftMsg are processed, wait for more");
+                    Ok(None)
+                }
+            }))
         }
     }
 
@@ -174,7 +198,7 @@ where C: RaftTypeConfig
         let now = Instant::now();
         for _ in 1..self.capacity {
             let timeout = self.linger.saturating_sub(now.elapsed());
-            match self.inner.recv_timeout(timeout).await {
+            match self.inner_try_recv(timeout).await? {
                 Some(next) => {
                     // Can only merge ClientWrite with same expected_leader
                     let mergeable = matches!(
