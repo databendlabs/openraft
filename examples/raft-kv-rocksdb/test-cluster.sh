@@ -213,4 +213,4 @@ echo "Killing all nodes in 1s..."
 sleep 1
 kill_all
 
-rm -r 127.0.0.1:*.db
+rm -r 127.0.0.1:*.db || echo "no db to clean"
