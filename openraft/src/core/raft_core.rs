@@ -2159,6 +2159,21 @@ where
             }
             Command::PurgeLog { upto } => {
                 self.log_store.purge(upto.clone()).await.sto_write_logs()?;
+
+                // A responder may still be pending for a log covered by this purge, e.g. a former
+                // leader's uncommitted log superseded by a snapshot install. That log is gone, so
+                // fail the responder with `ForwardToLeader` instead of leaving it stranded below the
+                // purge boundary (which would later panic in `apply_to_state_machine`).
+                let leader_id = self.current_leader();
+                let leader_node = self.get_leader_node(leader_id.clone());
+                for (log_index, tx) in self.client_responders.drain_upto(upto.index()) {
+                    tx.on_complete(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
+                        leader_id: leader_id.clone(),
+                        leader_node: leader_node.clone(),
+                    })));
+                    tracing::debug!("sent ForwardToLeader for purged log_index: {}", log_index);
+                }
+
                 self.engine.state.io_state_mut().update_purged(Some(upto));
             }
             Command::TruncateLog { after } => {
