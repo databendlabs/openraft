@@ -124,16 +124,19 @@ the struct [ExampleStateMachine](./src/store/mod.rs)
 
 ## Cluster management
 
-OpenRaft stores the node metadata supplied by the application.
-The Raft network uses `raft_addr` to contact other raft nodes.
+To bring a node into the cluster you hand OpenRaft that node's `NodeInfo`, which
+carries the two addresses needed to reach it:
 
-Thus, in this example application:
+- `raft_addr` — the address OpenRaft dials for Raft RPCs. OpenRaft holds each
+  node's `NodeInfo` and passes `raft_addr` to the network factory when it needs to
+  contact the node, so your code never resolves Raft addresses itself.
+- `data` — the node's `api_addr`, the application API address clients use to read
+  and write. It travels with the node through Raft membership, so every node knows
+  where each peer's API lives.
 
-- OpenRaft node metadata is `NodeInfo`, whose `raft_addr` is the Raft RPC address and `data` stores the application API address.
-- The local application server has a separate `api_addr` for public/admin/application APIs.
+Forming and growing the cluster is three calls (see [test-cluster.sh](./test-cluster.sh)):
 
-To add a node to a cluster, it includes 3 steps:
-
-- Write a `node` through raft protocol to the storage.
-- Add the node as a `Learner` to let it start receiving replication data from the leader.
-- Invoke `change-membership` to change the learner node to a member.
+- `init` creates the initial cluster from a set of `(node_id, NodeInfo)` entries.
+- `add-learner` registers a new node's `NodeInfo` and starts streaming log entries
+  to it as a non-voting learner.
+- `change-membership` promotes those learners into voting members.
