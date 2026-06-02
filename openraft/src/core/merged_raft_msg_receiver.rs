@@ -5,11 +5,17 @@
 //! same `expected_leader` into a single message, improving throughput by reducing
 //! per-message overhead.
 
+use std::ops::Add;
+use std::time::Duration;
+
+use rt::AsyncRuntime;
+
 use crate::RaftTypeConfig;
 use crate::async_runtime::MpscReceiver;
 use crate::async_runtime::TryRecvError;
 use crate::core::raft_msg::RaftMsg;
 use crate::errors::Fatal;
+use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::MpscReceiverOf;
 
 /// A receiver wrapper that batches consecutive `RaftMsg::ClientWrite` messages.
@@ -46,6 +52,12 @@ where C: RaftTypeConfig
     /// - A `ClientWrite` with different `expected_leader` is encountered
     buffered: Option<RaftMsg<C>>,
 
+    /// Maximum items allowed to be merged before return the batch.
+    capacity: u64,
+
+    /// Maximum time allowed to wait until max capacity target is reached.
+    linger: Duration,
+
     /// The underlying mpsc receiver.
     inner: MpscReceiverOf<C, RaftMsg<C>>,
 }
@@ -53,10 +65,15 @@ where C: RaftTypeConfig
 impl<C> BatchRaftMsgReceiver<C>
 where C: RaftTypeConfig
 {
-    /// Creates a new batching receiver wrapping the given mpsc receiver.
-    pub(crate) fn new(receiver: MpscReceiverOf<C, RaftMsg<C>>) -> Self {
+    /// Creates a new batching receiver given:
+    /// - mpsc receiver channel
+    /// - capacity
+    /// - linger
+    pub(crate) fn new(receiver: MpscReceiverOf<C, RaftMsg<C>>, capacity: u64, linger: Duration) -> Self {
         Self {
             buffered: None,
+            capacity,
+            linger,
             inner: receiver,
         }
     }
@@ -85,14 +102,14 @@ where C: RaftTypeConfig
     ///
     /// If the first available message is a `ClientWrite`, this method attempts to
     /// merge additional `ClientWrite` messages with the same `expected_leader`.
-    pub(crate) fn try_recv(&mut self) -> Result<Option<RaftMsg<C>>, Fatal<C>> {
+    pub(crate) async fn try_recv(&mut self) -> Result<Option<RaftMsg<C>>, Fatal<C>> {
         let msg = self.buffered_try_recv()?;
 
         let Some(mut msg) = msg else {
             return Ok(None);
         };
 
-        self.merge_client_writes(&mut msg)?;
+        self.merge_client_writes(&mut msg).await?;
 
         Ok(Some(msg))
     }
@@ -114,6 +131,30 @@ where C: RaftTypeConfig
         };
 
         Ok(msg)
+    }
+
+    /// Receives the next value from this receiver, if available.
+    ///
+    /// Returns `None` if:
+    /// - the deadline is reached before a value is received
+    ///
+    /// Returns `Err(Fatal::Stopped)` if:
+    /// - the channel is disconnected
+    async fn inner_recv_timeout_at(
+        &mut self,
+        deadline: <C::AsyncRuntime as AsyncRuntime>::Instant,
+    ) -> Result<Option<RaftMsg<C>>, Fatal<C>> {
+        match C::AsyncRuntime::mpsc_recv_timeout_at(&mut self.inner, deadline).await {
+            Ok(value) => Ok(Some(value)),
+            Err(TryRecvError::Empty) => {
+                tracing::debug!("all RaftMsg are processed, wait for more");
+                Ok(None)
+            }
+            Err(TryRecvError::Disconnected) => {
+                tracing::debug!("rx_api is disconnected, quit");
+                Err(Fatal::Stopped)
+            }
+        }
     }
 
     /// Non-blocking receive from the inner receiver.
@@ -141,9 +182,10 @@ where C: RaftTypeConfig
     /// if they are `ClientWrite` with matching `expected_leader`. Stops merging when:
     /// - A non-`ClientWrite` message is encountered (buffered for next recv)
     /// - A `ClientWrite` with different `expected_leader` is found (buffered for next recv)
-    /// - Maximum batch size (4096) is reached
+    /// - Maximum batch size is reached
     /// - No more messages are available
-    fn merge_client_writes(&mut self, msg: &mut RaftMsg<C>) -> Result<(), Fatal<C>> {
+    /// - Linger timeout expires before the batch is filled
+    async fn merge_client_writes(&mut self, msg: &mut RaftMsg<C>) -> Result<(), Fatal<C>> {
         debug_assert!(self.buffered.is_none());
 
         let (batch_payloads, batch_responders, batch_leader) = match msg {
@@ -156,11 +198,9 @@ where C: RaftTypeConfig
             _ => return Ok(()),
         };
 
-        // TODO: make it configurable
-        let max_batch_size = 4096;
-
-        for _i in 0..max_batch_size {
-            let next = self.inner_try_recv()?;
+        let deadline = C::now().add(self.linger);
+        for _ in 1..self.capacity {
+            let next = self.inner_recv_timeout_at(deadline).await?;
 
             let Some(next) = next else {
                 break;
@@ -194,6 +234,8 @@ where C: RaftTypeConfig
 
 #[cfg(test)]
 mod tests {
+    use rt::Instant;
+
     use super::*;
     use crate::async_runtime::MpscSender;
     use crate::batch::Batch;
@@ -209,6 +251,10 @@ mod tests {
 
     fn committed_leader_id(term: u64, node_id: u64) -> CommittedLeaderIdOf<C> {
         *log_id(term, node_id, 0).committed_leader_id()
+    }
+
+    fn default_msg_receiver(receiver: MpscReceiverOf<C, RaftMsg<C>>) -> BatchRaftMsgReceiver<C> {
+        BatchRaftMsgReceiver::new(receiver, 4096, Duration::ZERO)
     }
 
     fn client_write(data: u64, leader: Option<CommittedLeaderIdOf<C>>) -> RaftMsg<C> {
@@ -236,7 +282,7 @@ mod tests {
     fn test_merge_consecutive_client_writes_with_same_leader() {
         C::run(async {
             let (tx, rx) = C::mpsc(100);
-            let mut receiver: BatchRaftMsgReceiver<C> = BatchRaftMsgReceiver::new(rx);
+            let mut receiver: BatchRaftMsgReceiver<C> = default_msg_receiver(rx);
 
             let leader = Some(committed_leader_id(1, 1));
             tx.send(client_write(1, leader)).await.unwrap();
@@ -244,7 +290,7 @@ mod tests {
             tx.send(client_write(3, leader)).await.unwrap();
 
             receiver.ensure_buffered().await.unwrap();
-            let msg = receiver.try_recv().unwrap().unwrap();
+            let msg = receiver.try_recv().await.unwrap().unwrap();
 
             let RaftMsg::ClientWrite {
                 payloads, responders, ..
@@ -261,7 +307,7 @@ mod tests {
     fn test_no_merge_when_expected_leader_differs() {
         C::run(async {
             let (tx, rx) = C::mpsc(100);
-            let mut receiver: BatchRaftMsgReceiver<C> = BatchRaftMsgReceiver::new(rx);
+            let mut receiver: BatchRaftMsgReceiver<C> = default_msg_receiver(rx);
 
             let leader1 = Some(committed_leader_id(1, 1));
             let leader2 = Some(committed_leader_id(2, 1));
@@ -271,7 +317,7 @@ mod tests {
             receiver.ensure_buffered().await.unwrap();
 
             // First message should not be merged with second
-            let msg1 = receiver.try_recv().unwrap().unwrap();
+            let msg1 = receiver.try_recv().await.unwrap().unwrap();
             let RaftMsg::ClientWrite {
                 payloads, responders, ..
             } = msg1
@@ -282,7 +328,7 @@ mod tests {
             assert_eq!(responders.len(), payloads.len());
 
             // Second message should be buffered and returned separately
-            let msg2 = receiver.try_recv().unwrap().unwrap();
+            let msg2 = receiver.try_recv().await.unwrap().unwrap();
             let RaftMsg::ClientWrite {
                 payloads, responders, ..
             } = msg2
@@ -298,7 +344,7 @@ mod tests {
     fn test_non_client_write_stops_merging() {
         C::run(async {
             let (tx, rx) = C::mpsc(100);
-            let mut receiver: BatchRaftMsgReceiver<C> = BatchRaftMsgReceiver::new(rx);
+            let mut receiver: BatchRaftMsgReceiver<C> = default_msg_receiver(rx);
 
             let leader = Some(committed_leader_id(1, 1));
             tx.send(client_write(1, leader)).await.unwrap();
@@ -308,7 +354,7 @@ mod tests {
             receiver.ensure_buffered().await.unwrap();
 
             // First ClientWrite should not merge past the WithRaftState
-            let msg1 = receiver.try_recv().unwrap().unwrap();
+            let msg1 = receiver.try_recv().await.unwrap().unwrap();
             let RaftMsg::ClientWrite {
                 payloads, responders, ..
             } = msg1
@@ -319,11 +365,11 @@ mod tests {
             assert_eq!(responders.len(), payloads.len());
 
             // WithRaftState should be returned next
-            let msg2 = receiver.try_recv().unwrap().unwrap();
+            let msg2 = receiver.try_recv().await.unwrap().unwrap();
             assert!(matches!(msg2, RaftMsg::WithRaftState { .. }));
 
             // Last ClientWrite should be returned
-            let msg3 = receiver.try_recv().unwrap().unwrap();
+            let msg3 = receiver.try_recv().await.unwrap().unwrap();
             let RaftMsg::ClientWrite {
                 payloads, responders, ..
             } = msg3
@@ -339,9 +385,9 @@ mod tests {
     fn test_try_recv_returns_none_when_empty() {
         C::run(async {
             let (_tx, rx) = C::mpsc::<RaftMsg<C>>(100);
-            let mut receiver: BatchRaftMsgReceiver<C> = BatchRaftMsgReceiver::new(rx);
+            let mut receiver: BatchRaftMsgReceiver<C> = default_msg_receiver(rx);
 
-            let result = receiver.try_recv().unwrap();
+            let result = receiver.try_recv().await.unwrap();
             assert!(result.is_none());
         });
     }
@@ -350,14 +396,14 @@ mod tests {
     fn test_ensure_buffered_waits_for_message() {
         C::run(async {
             let (tx, rx) = C::mpsc(100);
-            let mut receiver: BatchRaftMsgReceiver<C> = BatchRaftMsgReceiver::new(rx);
+            let mut receiver: BatchRaftMsgReceiver<C> = default_msg_receiver(rx);
 
             tx.send(client_write(42, None)).await.unwrap();
 
             receiver.ensure_buffered().await.unwrap();
 
             // Message should be in buffer, try_recv should return it
-            let msg = receiver.try_recv().unwrap().unwrap();
+            let msg = receiver.try_recv().await.unwrap().unwrap();
             let RaftMsg::ClientWrite {
                 payloads, responders, ..
             } = msg
@@ -373,7 +419,7 @@ mod tests {
     fn test_ensure_buffered_returns_immediately_if_already_buffered() {
         C::run(async {
             let (tx, rx) = C::mpsc(100);
-            let mut receiver: BatchRaftMsgReceiver<C> = BatchRaftMsgReceiver::new(rx);
+            let mut receiver: BatchRaftMsgReceiver<C> = default_msg_receiver(rx);
 
             let leader = Some(committed_leader_id(1, 1));
             tx.send(client_write(1, None)).await.unwrap();
@@ -381,12 +427,12 @@ mod tests {
 
             receiver.ensure_buffered().await.unwrap();
             // try_recv will buffer the second message (different leader)
-            let _msg1 = receiver.try_recv().unwrap().unwrap();
+            let _msg1 = receiver.try_recv().await.unwrap().unwrap();
 
             // ensure_buffered should return immediately since msg2 is buffered
             receiver.ensure_buffered().await.unwrap();
 
-            let msg2 = receiver.try_recv().unwrap().unwrap();
+            let msg2 = receiver.try_recv().await.unwrap().unwrap();
             let RaftMsg::ClientWrite {
                 payloads, responders, ..
             } = msg2
@@ -395,6 +441,65 @@ mod tests {
             };
             assert_eq!(extract_payload_data(&payloads), vec![2]);
             assert_eq!(responders.len(), payloads.len());
+        });
+    }
+
+    #[test]
+    fn test_try_recv_batch_up_to_max_capacity() {
+        const BATCH_CAPACITY: u64 = 64;
+        const NUM_BATCHES: u64 = 2;
+        const NUM_CLIENT_WRITES: u64 = BATCH_CAPACITY * NUM_BATCHES;
+
+        C::run(async {
+            let (tx, rx) = C::mpsc(NUM_CLIENT_WRITES as usize);
+            let mut receiver: BatchRaftMsgReceiver<C> = BatchRaftMsgReceiver::new(rx, BATCH_CAPACITY, Duration::ZERO);
+
+            let leader = Some(committed_leader_id(1, 1));
+            for index in 0..NUM_CLIENT_WRITES {
+                tx.send(client_write(index, leader)).await.unwrap();
+            }
+
+            receiver.ensure_buffered().await.unwrap();
+
+            for _ in 0..NUM_BATCHES {
+                let msg = receiver.try_recv().await.unwrap().unwrap();
+                let RaftMsg::ClientWrite {
+                    payloads, responders, ..
+                } = msg
+                else {
+                    panic!("expected ClientWrite");
+                };
+                assert_eq!(payloads.len(), BATCH_CAPACITY as usize);
+                assert_eq!(responders.len(), BATCH_CAPACITY as usize);
+            }
+        });
+    }
+
+    #[test]
+    fn test_try_recv_flush_batch_after_linger() {
+        const BATCH_CAPACITY: u64 = 100;
+        const LINGER: Duration = Duration::from_secs(1);
+
+        C::run(async {
+            let (tx, rx) = C::mpsc(BATCH_CAPACITY as usize);
+            let mut receiver: BatchRaftMsgReceiver<C> = BatchRaftMsgReceiver::new(rx, BATCH_CAPACITY, LINGER);
+
+            let now = C::now();
+
+            let leader = Some(committed_leader_id(1, 1));
+            tx.send(client_write(0, leader)).await.unwrap();
+
+            let msg = receiver.try_recv().await.unwrap().unwrap();
+            let RaftMsg::ClientWrite {
+                payloads, responders, ..
+            } = msg
+            else {
+                panic!("expected ClientWrite");
+            };
+
+            assert_eq!(1, payloads.len());
+            assert_eq!(1, responders.len());
+            assert_eq!(Duration::ZERO, LINGER.saturating_sub(now.elapsed()))
         });
     }
 }

@@ -519,7 +519,11 @@ where
 
             heartbeat_handle: HeartbeatWorkersHandle::new(id.clone(), config.clone()),
             tx_api: tx_api.clone(),
-            rx_api: BatchRaftMsgReceiver::new(rx_api),
+            rx_api: BatchRaftMsgReceiver::new(
+                rx_api,
+                config.api_batch_capacity,
+                Duration::from_millis(config.api_batch_linger_ms),
+            ),
 
             tx_notification: tx_notify,
             rx_notification: rx_notify,

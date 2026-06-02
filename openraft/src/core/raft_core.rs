@@ -1273,7 +1273,7 @@ where
         let mut last_log_index = 0;
 
         for _i in 0..at_most {
-            let res = self.rx_api.try_recv()?;
+            let res = self.rx_api.try_recv().await?;
             let Some(msg) = res else {
                 break;
             };
