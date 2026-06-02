@@ -2,7 +2,7 @@
 
 It is an example of how to build a real-world key-value store with `openraft`.
 Includes:
-- An in-memory `RaftLogStorage` and `RaftStateMachine` implementation [store](./src/store/store.rs).
+- An in-memory `RaftLogStorage` ([`log-mem`](../log-mem/)) and `RaftStateMachine` ([`sm-mem`](../sm-mem/)) implementation.
 
 - The application/admin routes are plain async functions hosted by this example's HTTP server.
   All service endpoints accept a JSON request body,
@@ -110,17 +110,41 @@ POST - 127.0.0.1:21001/linearizable_read  "foo"
 
 ## How it's structured.
 
-The application is separated into these parts:
+This `raft-kv-memstore` crate only wires the pieces together. The reusable
+building blocks — storage, network, and request types — live in sibling helper
+crates, keeping the split between what OpenRaft needs and what the application
+provides visible.
 
- - `bin`: You can find the `main()` function in [main](./src/bin/main.rs) the file where the setup for the server happens.
- - `network`: You can find the [api](./src/network/api.rs) that implements the read endpoints. Application HTTP client/server helpers and common management/write handlers are provided by [`app-http`](../app-http/). Raft node-to-node HTTP communication is provided by [`network-v2-http`](../network-v2-http/).
- - `store`: You can find the file [store](./src/store/mod.rs) where all the key-value implementation is done. Here is where your data application will be managed.
+In this crate:
+
+ - [`src/lib.rs`](./src/lib.rs): `start_example_raft_node()` builds the `TypeConfig`,
+   log store, state machine, and network factory, calls `Raft::new()`, then registers
+   the HTTP routes and starts both servers.
+ - [`src/bin/main.rs`](./src/bin/main.rs): CLI entry point.
+ - [`src/network/api.rs`](./src/network/api.rs): the application read endpoints
+   (`/read`, `/linearizable_read`, `/follower_read`).
+ - [`src/store/mod.rs`](./src/store/mod.rs): re-exports the log and state-machine
+   stores from the helper crates below — no storage logic lives here.
+
+Helper crates (reused across the examples):
+
+ - [`log-mem`](../log-mem/src/log_store.rs): the in-memory `RaftLogStorage`.
+ - [`sm-mem`](../sm-mem/src/lib.rs): the in-memory `RaftStateMachine` and snapshot
+   handling; the key-value data lives here.
+ - [`types-kv`](../types-kv/src/lib.rs): the application request/response types
+   (`D` and `R` in `TypeConfig`).
+ - [`network-v2-http`](../network-v2-http/): node-to-node Raft RPC —
+   [`client.rs`](../network-v2-http/src/client.rs) is the outbound `RaftNetworkV2`
+   (the network factory), [`server.rs`](../network-v2-http/src/server.rs) serves
+   the inbound RPCs.
+ - [`app-http`](../app-http/): the application HTTP server and client, plus the
+   shared admin/write routes added by `add_openraft_routes()`.
 
 ## Where is my data?
 
 The data is store inside state machines, each state machine represents a point of data and
 raft enforces that all nodes have the same data in synchronization. You can have a look of
-the struct [ExampleStateMachine](./src/store/mod.rs)
+the [`StateMachineStore`](../sm-mem/src/lib.rs) struct.
 
 ## Cluster management
 
