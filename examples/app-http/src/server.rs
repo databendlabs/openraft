@@ -96,8 +96,7 @@ where
     App<C, SM, Data>: Send + Sync + 'static,
 {
     pub fn add_openraft_routes(self) -> Self {
-        self
-            .post("/init", App::<C, SM, Data>::init)
+        self.post("/init", App::<C, SM, Data>::init)
             .post("/add-learner", App::<C, SM, Data>::add_learner)
             .post("/change-membership", App::<C, SM, Data>::change_membership)
             .get("/metrics", App::<C, SM, Data>::metrics)
