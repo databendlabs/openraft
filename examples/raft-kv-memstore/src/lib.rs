@@ -7,10 +7,9 @@ use openraft::Config;
 use openraft::NodeInfo as Node;
 
 use crate::app::App;
-use crate::network::api;
 
 pub mod app;
-pub mod network;
+pub mod http_api;
 pub mod store;
 #[cfg(test)]
 mod test;
@@ -74,9 +73,9 @@ pub async fn start_example_raft_node(node_id: NodeId, api_addr: String, raft_add
     let raft_server = network_v2_http::Server::new(app.raft.clone()).run(raft_addr);
     let app_server = app_http::Server::new(app)
         .add_openraft_routes()
-        .post("/read", api::read)
-        .post("/linearizable_read", api::linearizable_read)
-        .post("/follower_read", api::follower_read)
+        .post("/read", http_api::read)
+        .post("/linearizable_read", http_api::linearizable_read)
+        .post("/follower_read", http_api::follower_read)
         .run(api_addr);
 
     tokio::try_join!(raft_server, app_server)?;
