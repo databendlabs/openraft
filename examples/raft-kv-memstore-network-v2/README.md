@@ -19,9 +19,9 @@ Raft RPC traffic is handled by `network-v2-http`:
 - `Server` receives inbound `/append`, `/vote`, `/snapshot`, and
   `/transfer-leader` requests.
 
-Application traffic is handled by [`app-http`](../app-http/). It installs the
-common OpenRaft application endpoints, while this example only adds its read
-endpoints.
+Application traffic is handled by [`app-http`](../app-http/). This example
+calls `add_openraft_routes()` for the common OpenRaft application endpoints,
+then adds its read endpoints.
 
 The example application does not implement `RaftNetworkV2` directly. This keeps
 the snapshot test focused on how OpenRaft uses the network, not on another copy

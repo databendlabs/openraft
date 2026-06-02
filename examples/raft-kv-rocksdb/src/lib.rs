@@ -68,6 +68,7 @@ where
 
     let raft_server = network_v2_http::Server::new(app.raft.clone()).run(raft_addr);
     let app_server = app_http::Server::new(app)
+        .add_openraft_routes()
         .post("/read", api::read)
         .post("/linearizable_read", api::linearizable_read)
         .run(api_addr);

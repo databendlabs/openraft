@@ -19,8 +19,9 @@ Application HTTP components:
   handlers: `init`, `add_learner`, `change_membership`, `metrics`,
   `get_linearizer`, and `write`.
 - `app_http::Server<D>` is a small JSON-over-HTTP server. `Server::new(app)`
-  installs the common endpoints from `app_http::App`; examples then add their
-  own read endpoints because reading depends on the state machine.
+  starts with no routes. Examples call `add_openraft_routes()` for the common
+  endpoints from `app_http::App`, then add their own read endpoints because
+  reading depends on the state machine.
 - `app_http::Client<C>` is a test/demo client for the application API. It sends
   requests to the application server and updates its target when OpenRaft
   returns `ForwardToLeader` with a known leader.
@@ -85,14 +86,14 @@ Node 1: leader                                             Node 2: follower
 
 ```rust
 let app_server = app_http::Server::new(app)
+    .add_openraft_routes()
     .post("/read", api::read)
     .run(api_addr);
 ```
 
-`Server::new()` installs `/init`, `/add-learner`, `/change-membership`,
-`/metrics`, `/get_linearizer`, and `/write`.
-
-Use `Server::empty(app)` if you only need the generic JSON route framework.
+`add_openraft_routes()` installs `/init`, `/add-learner`,
+`/change-membership`, `/metrics`, `/get_linearizer`, and `/write`.
+`Server::new(app)` by itself is only the generic JSON route framework.
 
 ## Client
 

@@ -64,7 +64,7 @@ impl<T> Future for CompioJoinHandle<T> {
         let task = this.0.as_mut().expect("Task has been cancelled");
         match task.poll_unpin(cx) {
             Poll::Ready(Ok(v)) => Poll::Ready(Ok(v)),
-            Poll::Ready(Err(e)) => Poll::Ready(Err(CompioJoinError(e))),
+            Poll::Ready(Err(e)) => Poll::Ready(Err(CompioJoinError(Box::new(e)))),
             Poll::Pending => Poll::Pending,
         }
     }
