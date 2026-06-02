@@ -121,7 +121,7 @@ In this crate:
    log store, state machine, and network factory, calls `Raft::new()`, then registers
    the HTTP routes and starts both servers.
  - [`src/bin/main.rs`](./src/bin/main.rs): CLI entry point.
- - [`src/network/api.rs`](./src/network/api.rs): the application read endpoints
+ - [`src/http_api.rs`](./src/http_api.rs): the application read endpoints
    (`/read`, `/linearizable_read`, `/follower_read`).
  - [`src/store/mod.rs`](./src/store/mod.rs): re-exports the log and state-machine
    stores from the helper crates below — no storage logic lives here.
