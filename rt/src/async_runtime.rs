@@ -11,10 +11,12 @@ use std::time::Duration;
 
 use crate::Instant;
 use crate::Mpsc;
+use crate::MpscReceiver;
 use crate::Mutex;
 use crate::Oneshot;
 use crate::OptionalSend;
 use crate::OptionalSync;
+use crate::TryRecvError;
 use crate::Watch;
 
 /// A trait defining interfaces with an asynchronous runtime.
@@ -153,5 +155,29 @@ pub trait AsyncRuntime: Debug + OptionalSend + OptionalSync + 'static {
             tx.send(f()).ok();
         });
         async { rx.await.map_err(|_| io::Error::other("spawn_blocking task cancelled")) }
+    }
+
+    /// Try to poll a value from the channel within the given deadline.
+    ///
+    /// By default, this first checks synchronously if a value is already available.
+    /// If not, it uses the AsyncRuntime timeout mechanism to wait until:
+    /// - a new element arrives
+    /// - the deadline is reached
+    fn mpsc_recv_timeout_at<T: OptionalSend>(
+        receiver: &mut <Self::Mpsc as Mpsc>::Receiver<T>,
+        deadline: Self::Instant,
+    ) -> impl Future<Output = Result<T, TryRecvError>> + OptionalSend {
+        async move {
+            match receiver.try_recv() {
+                Ok(value) => Ok(value),
+                Err(TryRecvError::Disconnected) => Err(TryRecvError::Disconnected),
+                Err(TryRecvError::Empty) if <Self::Instant as Instant>::now() >= deadline => Err(TryRecvError::Empty),
+                Err(TryRecvError::Empty) => match Self::timeout_at(deadline, receiver.recv()).await {
+                    Ok(None) => Err(TryRecvError::Disconnected),
+                    Ok(Some(value)) => Ok(value),
+                    Err(_) => Err(TryRecvError::Empty),
+                },
+            }
+        }
     }
 }
