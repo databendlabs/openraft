@@ -29,7 +29,7 @@ rpc() {
 	time $cmd
     } | {
         if type jq > /dev/null 2>&1; then
-            jq 'if has("data") then .data |= fromjson else . end'
+            jq 'if has("data") and (.data | type == "string") then .data |= fromjson else . end'
         else
             cat
         fi
