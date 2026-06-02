@@ -72,6 +72,7 @@ pub async fn run_raft_node(app: Arc<App>) -> std::io::Result<()> {
 
     let raft_server = network_v2_http::Server::new(raft).run(raft_addr);
     let app_server = app_http::Server::new(app)
+        .add_openraft_routes()
         .post("/read", api::read)
         .post("/linearizable_read", api::linearizable_read)
         .run(api_addr);

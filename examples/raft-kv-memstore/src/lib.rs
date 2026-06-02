@@ -73,6 +73,7 @@ pub async fn start_example_raft_node(node_id: NodeId, api_addr: String, raft_add
 
     let raft_server = network_v2_http::Server::new(app.raft.clone()).run(raft_addr);
     let app_server = app_http::Server::new(app)
+        .add_openraft_routes()
         .post("/read", api::read)
         .post("/linearizable_read", api::linearizable_read)
         .post("/follower_read", api::follower_read)

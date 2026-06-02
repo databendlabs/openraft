@@ -40,7 +40,7 @@ where D: Send + Sync + 'static
 impl<D> Server<D>
 where D: Send + Sync + 'static
 {
-    pub fn empty(app: Arc<D>) -> Self {
+    pub fn new(app: Arc<D>) -> Self {
         Self {
             app,
             routes: Arc::new(HashMap::new()),
@@ -95,8 +95,8 @@ where
     C: RaftTypeConfig<Node = NodeInfo>,
     App<C, SM, Data>: Send + Sync + 'static,
 {
-    pub fn new(app: Arc<App<C, SM, Data>>) -> Self {
-        Self::empty(app)
+    pub fn add_openraft_routes(self) -> Self {
+        self
             .post("/init", App::<C, SM, Data>::init)
             .post("/add-learner", App::<C, SM, Data>::add_learner)
             .post("/change-membership", App::<C, SM, Data>::change_membership)
