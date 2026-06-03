@@ -368,6 +368,10 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: 'nightly-2026-03-01'
+          # tests-turmoil is excluded from the root workspace, so the default
+          # cache misses its target dir and the fuzz binary recompiles cold
+          # every run. Cache this workspace so warm runs skip the compile.
+          cache-workspaces: tests-turmoil
 
       - name: Run deterministic simulation
         run: cd tests-turmoil && cargo run --bin fuzz -- --iterations 5 --max-steps 10000
