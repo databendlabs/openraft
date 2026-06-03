@@ -68,6 +68,26 @@ quorum, and once the entry is committed calls
 `Set { key, value }` to the in-memory map. `client_write()` returns only after
 the entry is applied, so the client sees committed state.
 
+## How a read flows
+
+A read does not have to go through the log. The example offers three read
+endpoints, trading latency for consistency:
+
+- **`/read`** reads this node's local state machine and returns immediately.
+  Fast, but possibly stale: a follower can lag the leader, so the value may
+  predate the latest committed write. ([`read()`](./src/http_api.rs))
+
+- **`/linearizable_read`** runs on the leader. It first calls
+  [`ensure_linearizable()`](../app-http/src/app.rs) — confirming leadership and
+  waiting until the leader's commit index is applied — then reads locally, so it
+  returns the latest committed value.
+
+- **`/follower_read`** lets a follower serve a linearizable read. Via
+  [`ensure_follower_read_ready()`](../app-http/src/app.rs) it asks the leader for
+  a read marker (the committed log id), waits until its own state machine has
+  applied up to that marker, then reads locally — consistent reads without
+  routing every read to the leader.
+
 ## Run it
 
 There is a example in bash script and an example in rust:
