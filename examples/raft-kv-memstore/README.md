@@ -46,6 +46,25 @@ piece lives:
 
 Steps 1–5 build the OpenRaft node; steps 6–7 are how peers and clients reach it.
 
+## What OpenRaft requires vs. what the example adds
+
+OpenRaft defines a few traits you must implement; everything else here — the HTTP
+transport, the application API, the demo — is this example's choice and would be
+replaced in a real deployment.
+
+| Concern | OpenRaft's contract | Example's implementation (replace for production) |
+|---------|---------------------|---------------------------------------------------|
+| Type configuration | `RaftTypeConfig` | `TypeConfig`, [`types-kv`](../types-kv/) request/response types |
+| Log storage | `RaftLogStorage` | [`log-mem`](../log-mem/src/log_store.rs) (in-memory) |
+| State machine | `RaftStateMachine` | [`sm-mem`](../sm-mem/src/lib.rs) (in-memory; holds the KV data) |
+| Outbound network | `RaftNetworkFactory` | [`network-v2-http`](../network-v2-http/src/client.rs) client (HTTP) |
+| Inbound RPC server | — *you route RPCs into `Raft`* | [`network_v2_http::Server`](../network-v2-http/src/server.rs) on `raft_addr` |
+| Client & admin API | — *not OpenRaft's concern* | [`app-http`](../app-http/) server/client on `api_addr` |
+| Bootstrap & demo | — | [`test-cluster.sh`](./test-cluster.sh), integration tests |
+
+The left column is the part you cannot avoid; the right column is what makes this
+a runnable demo rather than a library.
+
 ## Two servers per node
 
 Each node runs two HTTP listeners at once —
