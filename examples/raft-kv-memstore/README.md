@@ -4,22 +4,16 @@ It is an example of how to build a real-world key-value store with `openraft`.
 Includes:
 - An in-memory `RaftLogStorage` ([`log-mem`](../log-mem/)) and `RaftStateMachine` ([`sm-mem`](../sm-mem/)) implementation.
 
-- The application/admin routes are plain async functions hosted by this example's HTTP server.
-  All service endpoints accept a JSON request body,
-  and return a JSON-encoded `Result<T, E>` response,
-  where `T` and `E` are API-specific types.
-  For example, the `/write` endpoint accepts a user-defined `Request`
-  and returns a `Result<WriteResponse, ClientWriteError>`.
-
-  Includes:
+- The application/admin routes are plain async functions, each taking and
+  returning JSON. Includes:
   - Admin APIs to add nodes, change membership etc.
   - Application APIs to write a value by key or read a value by key.
   - Linearizable read on the leader.
 
-- Application HTTP client/server helpers are provided by [`app-http`](../app-http/). Raft node-to-node HTTP is provided by [`network-v2-http`](../network-v2-http/) on a separate internal address.
-
-  [`app_http::Client`](../app-http/src/client.rs) is a minimal client in Rust to talk to a raft cluster.
-  - It includes application API `write()`, `read()`, `linearizable_read()`, and administrative API `init()`, `add_learner()`, `change_membership()`, `metrics()`.
+- Application HTTP client/server helpers are provided by [`app-http`](../app-http/);
+  node-to-node Raft RPC by [`network-v2-http`](../network-v2-http/) on a separate
+  internal address. [`app_http::Client`](../app-http/src/client.rs) is a minimal
+  Rust client covering all of the calls above.
 
 ## Build an OpenRaft application
 
@@ -158,7 +152,7 @@ start each node with the binary, and POST to its API address:
 See [`test-cluster.sh`](./test-cluster.sh) for the exact request bodies, and
 [Cluster management](#cluster-management) for what the admin calls do.
 
-## How it's structured.
+## How it's structured
 
 This `raft-kv-memstore` crate only wires the pieces together. The reusable
 building blocks — storage, network, and request types — live in sibling helper
@@ -192,9 +186,10 @@ Helper crates (reused across the examples):
 
 ## Where is my data?
 
-The data is store inside state machines, each state machine represents a point of data and
-raft enforces that all nodes have the same data in synchronization. You can have a look of
-the [`StateMachineStore`](../sm-mem/src/lib.rs) struct.
+Your data lives in the state machine: each node keeps its own copy, and Raft
+keeps those copies identical by applying the same committed log entries in the
+same order on every node. See the [`StateMachineStore`](../sm-mem/src/lib.rs)
+struct.
 
 ## Cluster management
 
