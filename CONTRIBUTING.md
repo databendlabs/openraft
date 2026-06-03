@@ -1,31 +1,26 @@
-# CONTRIBUTING
+# Contributing to OpenRaft
 
-This is a Rust project, so [rustup](https://rustup.rs/) is the best place to start.
+## Code style
 
-## The guide
+Beyond `rustfmt`, OpenRaft follows a few conventions. The authoritative list lives in [`CLAUDE.md`](CLAUDE.md); the essentials:
 
-The guide for this project is built using [mdBook](https://rust-lang-nursery.github.io/mdBook/index.html).
-Review their guide for more details on how to work with mdBook. Here are a few of the pertinents:
+- **Trait bounds** always use `where` clauses, never inline bounds — `fn f<T>() where T: RaftLeaderId`, not `fn f<T: RaftLeaderId>()`. This applies to functions, structs, enums, impls, and traits.
 
-```
-# Install the CLI.
-cargo install mdbook
+- **One main type per file.** Each file holds a single main trait or type with its `impl`s. Don't reorganize existing files unless asked.
 
-# Build the guide.
-mdbook build
+- **Public API changes** carry a `#[since(version = "...", change = "...")]` attribute describing the change.
 
-# Watch the FS for changes & rebuild.
-mdbook watch
-```
+## Documentation
+
+The docs are rustdoc comments under `openraft/src/docs/`, published at [docs.rs/openraft](https://docs.rs/openraft/latest/openraft/docs/index.html).
 
 ## Working with git
 
-- **Write the commit message like writing an email to your friends**. There is a great [git commit format guide](https://cbea.ms/git-commit/).
+- **Write the commit message like an email to your friends.** This [git commit format guide](https://cbea.ms/git-commit/) is a great reference.
 
-- Do **rebase** and **squash** the branch onto the latest `main` branch before publishing a PR.
+- **Rebase and squash** your branch onto the latest `main`, into one or two logical commits, before publishing a PR.
 
-- Do **NOT** **rebase** after publishing PR. Only merge.
-
+- Do **not** rebase a PR after publishing it; merge `main` in instead.
 
 ## AI-assisted contributions
 
@@ -39,13 +34,10 @@ AI tools are welcome as a drafting aid, but **you own every line you submit**.
 
 PRs that read as unreviewed AI output will be sent back for a cleanup pass before review.
 
-
 ## Release checklist
 
-- `make`: pass the unit test, format and clippy check.
+- `make basic_check` passes: unit tests, format, and clippy.
 
-- Any documentation updates should also be reflected in the guide.
+- The workspace version is bumped: the `[workspace.package]` version in the root `Cargo.toml` plus every sibling `path` dependency that pins it. See a previous `chore: bump version` commit for the full set.
 
-- Ensure the Cargo.toml version for openraft or memstore has been updated, depending on which is being released.
-
-- Once the release CI has been finished, navigate to the release page, update the release info and publish the release.
+- After the release CI finishes, open the release page, update the release notes, and publish.
