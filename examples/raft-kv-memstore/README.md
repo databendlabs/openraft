@@ -46,6 +46,22 @@ piece lives:
 
 Steps 1–5 build the OpenRaft node; steps 6–7 are how peers and clients reach it.
 
+## Two servers per node
+
+Each node runs two HTTP listeners at once —
+[`start_example_raft_node()`](./src/lib.rs) starts both with `tokio::try_join!` —
+on two separate addresses:
+
+| Server | Address | Handles |
+|--------|---------|---------|
+| [`network_v2_http::Server`](../network-v2-http/src/server.rs) | `raft_addr` | Raft protocol RPCs between nodes: `/append`, `/vote`, `/snapshot`, `/transfer-leader` |
+| [`app_http::Server`](../app-http/src/server.rs) | `api_addr` | client and admin APIs: `/init`, `/add-learner`, `/write`, `/read`, … |
+
+The split keeps internal replication traffic and external client traffic on
+different ports: peers only ever reach the Raft server, clients only ever reach
+the app server. The write and read flows below enter on the app server;
+replication between nodes rides the Raft server.
+
 ## How a write flows
 
 A `/write` request travels from the client, through the application server, into

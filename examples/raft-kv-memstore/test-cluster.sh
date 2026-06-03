@@ -50,7 +50,7 @@ kill
 
 sleep 1
 
-echo "Start 5 uninitialized raft-key-value servers..."
+echo "Start 3 uninitialized raft-key-value servers..."
 
 nohup ./target/debug/raft-key-value  --id 1 --api-addr 127.0.0.1:21001 --raft-addr 127.0.0.1:22001 > n1.log &
 sleep 1
@@ -65,24 +65,13 @@ sleep 1
 echo "Server 3 started"
 sleep 1
 
-nohup ./target/debug/raft-key-value  --id 4 --api-addr 127.0.0.1:21004 --raft-addr 127.0.0.1:22004 > n4.log &
-sleep 1
-echo "Server 4 started"
-sleep 1
-
-nohup ./target/debug/raft-key-value  --id 5 --api-addr 127.0.0.1:21005 --raft-addr 127.0.0.1:22005 > n5.log &
-sleep 1
-echo "Server 5 started"
-sleep 1
-
-echo "Initialize servers 1,2,3 as a 3-nodes cluster"
+echo "Initialize node 1 as a single-node cluster"
 sleep 2
 echo
 
-rpc 21001/init '[[1, {"raft_addr": "127.0.0.1:22001", "data": "127.0.0.1:21001"}], [2, {"raft_addr": "127.0.0.1:22002", "data": "127.0.0.1:21002"}], [3, {"raft_addr": "127.0.0.1:22003", "data": "127.0.0.1:21003"}]]'
-# if you want to initialize server 1 as a single cluster, use `rpc 21001/init '[]'`
+rpc 21001/init '[]'
 
-echo "Server 1 is a leader now"
+echo "Node 1 is the leader now"
 
 sleep 2
 
@@ -93,29 +82,23 @@ rpc 21001/metrics
 sleep 1
 
 
-echo "Adding node 4 and node 5 as learners, to receive log from leader node 1"
+echo "Adding node 2 and node 3 as learners, to receive log from leader node 1"
 
 sleep 1
 echo
-rpc 21001/add-learner       '{"node_id": 4, "api_addr": "127.0.0.1:21004", "raft_addr": "127.0.0.1:22004"}'
-echo "Node 4 added as learner"
+rpc 21001/add-learner       '{"node_id": 2, "api_addr": "127.0.0.1:21002", "raft_addr": "127.0.0.1:22002"}'
+echo "Node 2 added as learner"
 sleep 1
 echo
-rpc 21001/add-learner       '{"node_id": 5, "api_addr": "127.0.0.1:21005", "raft_addr": "127.0.0.1:22005"}'
-echo "Node 5 added as learner"
+rpc 21001/add-learner       '{"node_id": 3, "api_addr": "127.0.0.1:21003", "raft_addr": "127.0.0.1:22003"}'
+echo "Node 3 added as learner"
 sleep 1
 
-echo "Get metrics from the leader, after adding 2 learners"
-sleep 2
+echo "Changing membership to a 3-node cluster: [1, 2, 3]"
 echo
-rpc 21001/metrics
+rpc 21001/change-membership '[1, 2, 3]'
 sleep 1
-
-echo "Changing membership from [1, 2, 3] to 5 nodes cluster: [1, 2, 3, 4, 5]"
-echo
-rpc 21001/change-membership '[1, 2, 3, 4, 5]'
-sleep 1
-echo 'Membership changed to [1, 2, 3, 4, 5]'
+echo 'Membership changed to [1, 2, 3]'
 sleep 1
 
 echo "Get metrics from the leader again"
@@ -143,36 +126,6 @@ rpc 21002/read  '"foo"'
 echo "Read from node 3"
 echo
 rpc 21003/read  '"foo"'
-
-
-echo "Changing membership from [1, 2, 3, 4, 5] to [3]"
-echo
-rpc 21001/change-membership '[3]'
-sleep 1
-echo 'Membership changed to [3]'
-sleep 1
-
-echo "Get metrics from the node-3"
-sleep 1
-echo
-rpc 21003/metrics
-sleep 1
-
-
-echo "Write foo=zoo on node-3"
-sleep 1
-echo
-rpc 21003/write '{"Set":{"key":"foo","value":"zoo"}}'
-sleep 1
-echo "Data written"
-sleep 1
-
-echo "Read foo=zoo from node-3"
-sleep 1
-echo "Read from node 3"
-echo
-rpc 21003/read  '"foo"'
-echo
 
 
 echo "Killing all nodes..."

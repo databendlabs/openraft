@@ -48,19 +48,7 @@ pub fn log_panic(panic: &PanicHookInfo) {
     eprintln!("{}", backtrace);
 }
 
-/// Setup a cluster of 3 nodes.
-/// Write to it and read from it.
-#[test]
-fn test_cluster() {
-    TypeConfig::run(test_cluster_inner()).unwrap();
-}
-
-async fn test_cluster_inner() -> anyhow::Result<()> {
-    // --- The client itself does not store addresses for all nodes, but just node id.
-    //     Thus we need a supporting component to provide mapping from node id to node address.
-    //     This is only used by the client. A raft node in this example stores node addresses in its
-    // store.
-
+fn init_observability() {
     std::panic::set_hook(Box::new(|panic| {
         log_panic(panic);
     }));
@@ -72,59 +60,45 @@ async fn test_cluster_inner() -> anyhow::Result<()> {
         .with_ansi(false)
         .with_env_filter(EnvFilter::from_default_env())
         .init();
+}
 
-    let get_api_addr = |node_id| {
-        let addr = match node_id {
-            1 => "127.0.0.1:21001".to_string(),
-            2 => "127.0.0.1:21002".to_string(),
-            3 => "127.0.0.1:21003".to_string(),
-            _ => {
-                return Err(anyhow::anyhow!("node {} not found", node_id));
-            }
-        };
-        Ok(addr)
-    };
-    let get_raft_addr = |node_id| {
-        let addr = match node_id {
-            1 => "127.0.0.1:22001".to_string(),
-            2 => "127.0.0.1:22002".to_string(),
-            3 => "127.0.0.1:22003".to_string(),
-            _ => {
-                return Err(anyhow::anyhow!("node {} not found", node_id));
-            }
-        };
-        Ok(addr)
-    };
+/// The client only knows node ids, so the test maps each id to its address.
+/// A raft node, by contrast, stores peer addresses in its own store.
+fn api_addr(node_id: u64) -> String {
+    format!("127.0.0.1:2100{}", node_id)
+}
+
+fn raft_addr(node_id: u64) -> String {
+    format!("127.0.0.1:2200{}", node_id)
+}
+
+/// Setup a cluster of 3 nodes.
+/// Write to it and read from it.
+#[test]
+fn test_cluster() {
+    TypeConfig::run(test_cluster_inner()).unwrap();
+}
+
+async fn test_cluster_inner() -> anyhow::Result<()> {
+    init_observability();
 
     // --- Start 3 raft node in 3 threads.
 
     let _h1 = thread::spawn(|| {
         let mut rt = AsyncRuntimeOf::<TypeConfig>::new(1);
-        let x = rt.block_on(start_example_raft_node(
-            1,
-            "127.0.0.1:21001".to_string(),
-            "127.0.0.1:22001".to_string(),
-        ));
+        let x = rt.block_on(start_example_raft_node(1, api_addr(1), raft_addr(1)));
         println!("x: {:?}", x);
     });
 
     let _h2 = thread::spawn(|| {
         let mut rt = AsyncRuntimeOf::<TypeConfig>::new(1);
-        let x = rt.block_on(start_example_raft_node(
-            2,
-            "127.0.0.1:21002".to_string(),
-            "127.0.0.1:22002".to_string(),
-        ));
+        let x = rt.block_on(start_example_raft_node(2, api_addr(2), raft_addr(2)));
         println!("x: {:?}", x);
     });
 
     let _h3 = thread::spawn(|| {
         let mut rt = AsyncRuntimeOf::<TypeConfig>::new(1);
-        let x = rt.block_on(start_example_raft_node(
-            3,
-            "127.0.0.1:21003".to_string(),
-            "127.0.0.1:22003".to_string(),
-        ));
+        let x = rt.block_on(start_example_raft_node(3, api_addr(3), raft_addr(3)));
         println!("x: {:?}", x);
     });
 
@@ -133,7 +107,7 @@ async fn test_cluster_inner() -> anyhow::Result<()> {
 
     // --- Create a client to the first node, as a control handle to the cluster.
 
-    let client = Client::<TypeConfig>::new(1, get_api_addr(1)?);
+    let client = Client::<TypeConfig>::new(1, api_addr(1));
 
     // --- 1. Initialize the target node as a cluster of only one node.
     //        After init(), the single node cluster will be fully functional.
@@ -154,8 +128,8 @@ async fn test_cluster_inner() -> anyhow::Result<()> {
     client
         .add_learner(&AddLearnerRequest {
             node_id: 2,
-            api_addr: get_api_addr(2)?,
-            raft_addr: get_raft_addr(2)?,
+            api_addr: api_addr(2),
+            raft_addr: raft_addr(2),
         })
         .await??;
 
@@ -163,8 +137,8 @@ async fn test_cluster_inner() -> anyhow::Result<()> {
     client
         .add_learner(&AddLearnerRequest {
             node_id: 3,
-            api_addr: get_api_addr(3)?,
-            raft_addr: get_raft_addr(3)?,
+            api_addr: api_addr(3),
+            raft_addr: raft_addr(3),
         })
         .await??;
 
@@ -232,12 +206,12 @@ async fn test_cluster_inner() -> anyhow::Result<()> {
     assert_eq!("bar", x);
 
     println!("=== read `foo` on node 2");
-    let client2 = Client::<TypeConfig>::new(2, get_api_addr(2)?);
+    let client2 = Client::<TypeConfig>::new(2, api_addr(2));
     let x = client2.read(&("foo".to_string())).await?;
     assert_eq!("bar", x);
 
     println!("=== read `foo` on node 3");
-    let client3 = Client::<TypeConfig>::new(3, get_api_addr(3)?);
+    let client3 = Client::<TypeConfig>::new(3, api_addr(3));
     let x = client3.read(&("foo".to_string())).await?;
     assert_eq!("bar", x);
 
@@ -258,12 +232,12 @@ async fn test_cluster_inner() -> anyhow::Result<()> {
     assert_eq!("wow", x);
 
     println!("=== read `foo` on node 2");
-    let client2 = Client::<TypeConfig>::new(2, get_api_addr(2)?);
+    let client2 = Client::<TypeConfig>::new(2, api_addr(2));
     let x = client2.read(&("foo".to_string())).await?;
     assert_eq!("wow", x);
 
     println!("=== read `foo` on node 3");
-    let client3 = Client::<TypeConfig>::new(3, get_api_addr(3)?);
+    let client3 = Client::<TypeConfig>::new(3, api_addr(3));
     let x = client3.read(&("foo".to_string())).await?;
     assert_eq!("wow", x);
 
