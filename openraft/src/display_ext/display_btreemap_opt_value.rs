@@ -8,7 +8,7 @@ use display_more::DisplayOptionExt;
 /// It formats a key-value pair in a string like "{key}:{opt_value}" and
 /// concatenates the key-value pairs with comma.
 ///
-/// For how to format the `opt_value`, see [`DisplayOption`].
+/// For how to format the `opt_value`, see [`DisplayOptionExt`].
 pub(crate) struct DisplayBTreeMapOptValue<'a, K: fmt::Display, V: fmt::Display>(pub &'a BTreeMap<K, Option<V>>);
 
 impl<K: fmt::Display, V: fmt::Display> fmt::Display for DisplayBTreeMapOptValue<'_, K, V> {

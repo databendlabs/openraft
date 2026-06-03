@@ -147,6 +147,21 @@ fn add_send_bounds(item: TokenStream) -> TokenStream {
 /// /// Since: 1.0.0
 /// fn foo() {}
 /// ```
+///
+/// ### Fields and variants
+///
+/// Rust forbids attribute macros directly on struct fields, so annotate the enclosing `struct` /
+/// `enum` with `#[since]` (with or without its own `version`) to enable `#[since(...)]` markers on
+/// its fields or variants:
+///
+/// ```rust,ignore
+/// #[since]
+/// struct Config {
+///     /// The batch capacity.
+///     #[since(version = "1.0.0")]
+///     capacity: u64,
+/// }
+/// ```
 #[proc_macro_attribute]
 pub fn since(args: TokenStream, item: TokenStream) -> TokenStream {
     let tokens = do_since(args, item.clone());
@@ -157,6 +172,12 @@ pub fn since(args: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 fn do_since(args: TokenStream, item: TokenStream) -> Result<TokenStream, syn::Error> {
+    // `#[since]` on a struct/enum also rewrites `#[since(...)]` markers on its fields/variants,
+    // the only way to attach `Since:` docs to fields (attribute macros cannot sit on fields).
+    if let Some(tokens) = since::try_expand_container(args.clone(), item.clone())? {
+        return Ok(tokens);
+    }
+
     let since = Since::new(args)?;
     let tokens = since.append_since_doc(item)?;
     Ok(tokens)

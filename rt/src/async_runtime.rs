@@ -9,6 +9,8 @@ use std::future::Future;
 use std::io;
 use std::time::Duration;
 
+use openraft_macros::since;
+
 use crate::Instant;
 use crate::Mpsc;
 use crate::MpscReceiver;
@@ -163,6 +165,7 @@ pub trait AsyncRuntime: Debug + OptionalSend + OptionalSync + 'static {
     /// If not, it uses the AsyncRuntime timeout mechanism to wait until:
     /// - a new element arrives
     /// - the deadline is reached
+    #[since(version = "0.10.0")]
     fn mpsc_recv_timeout_at<T: OptionalSend>(
         receiver: &mut <Self::Mpsc as Mpsc>::Receiver<T>,
         deadline: Self::Instant,

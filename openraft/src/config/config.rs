@@ -159,6 +159,7 @@ impl SnapshotPolicy {
 /// - [`SnapshotPolicy`] for snapshot triggering strategies
 ///
 /// [`Raft::new`]: crate::Raft::new
+#[since]
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "clap", derive(Parser))]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -257,11 +258,13 @@ pub struct Config {
 
     /// `RaftMsg::ClientWrite` batch before it is processed.
     /// Then the batched `ClientWrite` requests will be submitted to `RaftStorage` in one shot.
+    #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long, default_value = "4096"))]
     pub api_batch_capacity: u64,
 
     /// Maximum amount of milliseconds to wait for additional client requests before
     /// flushing a partially filled batch.
+    #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long, default_value = "0"))]
     pub api_batch_linger_ms: u64,
     /// The size of the bounded notification channel for internal events.
