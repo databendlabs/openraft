@@ -420,14 +420,14 @@ jobs:
 
   examples:
     runs-on: ubuntu-latest
-    # RocksDB-backed examples (raft-kv-rocksdb, rocksstore) compile RocksDB's
-    # bundled C++ from source — the slowest step in CI. Route that C/C++ build
-    # through sccache (object-level cache, shared across jobs) so a cold target
-    # rebuild reuses the .o files. `cc` recognizes sccache as a known wrapper.
+    # RocksDB-backed examples (raft-kv-rocksdb, rocksstore) were the slowest CI
+    # jobs because librocksdb-sys compiles bundled RocksDB (8.10) C++ from
+    # source. Link the system librocksdb instead so it is not compiled at all;
+    # ROCKSDB_INCLUDE_DIR points bindgen at the system headers so the generated
+    # bindings match the installed lib version (no ABI skew).
     env:
-      SCCACHE_GHA_ENABLED: 'true'
-      CC: 'sccache cc'
-      CXX: 'sccache c++'
+      ROCKSDB_LIB_DIR: /usr/lib/x86_64-linux-gnu
+      ROCKSDB_INCLUDE_DIR: /usr/include
     strategy:
       fail-fast: false
       matrix:
@@ -453,12 +453,13 @@ jobs:
           toolchain: '${{ matrix.toolchain }}'
           components: rustfmt, clippy
           # Examples are separate workspaces; the default cache only covers the
-          # repo-root target, so examples/*/target (incl. the built RocksDB lib)
-          # was never cached. Point the cache at this example's own workspace.
+          # repo-root target, so examples/*/target was never cached. Point the
+          # cache at this example's own workspace.
           cache-workspaces: examples/${{ matrix.example }}
 
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.10
+      - name: Install system RocksDB
+        if: matrix.example == 'raft-kv-rocksdb' || matrix.example == 'rocksstore'
+        run: sudo apt-get update && sudo apt-get install -y librocksdb-dev
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
