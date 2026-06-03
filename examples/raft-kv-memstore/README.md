@@ -46,6 +46,28 @@ piece lives:
 
 Steps 1–5 build the OpenRaft node; steps 6–7 are how peers and clients reach it.
 
+## How a write flows
+
+A `/write` request travels from the client, through the application server, into
+OpenRaft, and out to each node's state machine:
+
+```text
+client
+  -> app_http::Server /write
+  -> app_http::App::write()
+  -> Raft::client_write()
+  -> Raft log replication
+  -> StateMachineStore::apply()
+  -> key-value data update
+```
+
+[`App::write()`](../app-http/src/app.rs) only forwards the request to
+`Raft::client_write()`. OpenRaft appends it to the log, replicates it to a
+quorum, and once the entry is committed calls
+[`StateMachineStore::apply()`](../sm-mem/src/lib.rs), which applies
+`Set { key, value }` to the in-memory map. `client_write()` returns only after
+the entry is applied, so the client sees committed state.
+
 ## Run it
 
 There is a example in bash script and an example in rust:
