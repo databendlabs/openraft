@@ -144,7 +144,7 @@ where C: RaftTypeConfig
         &mut self,
         deadline: <C::AsyncRuntime as AsyncRuntime>::Instant,
     ) -> Result<Option<RaftMsg<C>>, Fatal<C>> {
-        match C::AsyncRuntime::mpsc_recv_timeout_at(&mut self.inner, deadline).await {
+        match C::AsyncRuntime::mpsc_recv_deadline(&mut self.inner, deadline).await {
             Ok(value) => Ok(Some(value)),
             Err(TryRecvError::Empty) => {
                 tracing::debug!("all RaftMsg are processed, wait for more");
