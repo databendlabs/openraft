@@ -214,6 +214,7 @@ pub struct Config {
     /// Storage typically has higher throughput than network, so this value can be larger.
     ///
     /// Defaults to 4096.
+    #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long, default_value = "4096"))]
     pub max_append_entries: Option<u64>,
 
@@ -253,6 +254,7 @@ pub struct Config {
     ///
     /// This controls backpressure for client requests. When the channel is full,
     /// new API calls will block until space becomes available.
+    #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long, default_value = "65536"))]
     pub api_channel_size: Option<u64>,
 
@@ -271,6 +273,7 @@ pub struct Config {
     ///
     /// This channel carries internal notifications like IO completion, replication progress,
     /// and tick events. When full, internal components will block until space is available.
+    #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long, default_value = "65536"))]
     pub notification_channel_size: Option<u64>,
 
@@ -279,6 +282,7 @@ pub struct Config {
     /// This channel carries commands like Apply, BuildSnapshot, and InstallSnapshot.
     /// When full, RaftCore will block until space becomes available, providing backpressure
     /// when the state machine is slow.
+    #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long, default_value = "1024"))]
     pub state_machine_channel_size: Option<u64>,
 
@@ -289,6 +293,7 @@ pub struct Config {
     /// Only used when the `runtime-stats` feature is enabled.
     ///
     /// Defaults to 1024 if not specified.
+    #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long))]
     pub log_stage_capacity: Option<u64>,
 
@@ -404,8 +409,7 @@ pub struct Config {
     ///
     /// Because only the last few explicit delays shape what follows, you can prepend any
     /// number of custom warm-up values without changing the long-run behavior.
-    ///
-    /// Since: 0.10.0
+    #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long, default_value = DEFAULTS.backoff))]
     pub backoff: String,
 
@@ -420,8 +424,7 @@ pub struct Config {
     ///
     /// For one-shot log reversion, use
     /// [`Raft::trigger().allow_next_revert()`](crate::raft::trigger::Trigger::allow_next_revert).
-    ///
-    /// Since: 0.10.0
+    #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long,
            action = clap::ArgAction::Set,
            num_args = 0..=1,

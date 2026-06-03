@@ -1,5 +1,7 @@
 use std::cmp::Ordering;
 
+use openraft_macros::since;
+
 use crate::LogIdOptionExt;
 use crate::RaftMetrics;
 use crate::RaftTypeConfig;
@@ -11,6 +13,7 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// A metric entry of a Raft node.
 ///
 /// This is used to specify which metric to observe.
+#[since]
 #[derive(Debug)]
 pub enum Metric<C>
 where C: RaftTypeConfig
@@ -22,6 +25,7 @@ where C: RaftTypeConfig
     /// The index of the last log entry.
     LastLogIndex(Option<u64>),
     /// The last committed log ID (accepted by a quorum).
+    #[since(version = "0.10.0")]
     Committed(Option<LogIdOf<C>>),
     /// The last applied log ID.
     Applied(Option<LogIdOf<C>>),

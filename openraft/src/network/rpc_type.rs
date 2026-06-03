@@ -1,6 +1,9 @@
 use std::fmt;
 
+use openraft_macros::since;
+
 /// Types of RPC requests in the Raft protocol.
+#[since]
 #[derive(Debug, Clone, Copy)]
 #[derive(PartialEq, Eq)]
 #[derive(Hash)]
@@ -13,6 +16,7 @@ pub enum RPCTypes {
     /// InstallSnapshot request RPC.
     InstallSnapshot,
     /// TransferLeader request RPC.
+    #[since(version = "0.10.0")]
     TransferLeader,
 }
 

@@ -1,7 +1,9 @@
 use anyerror::AnyError;
 use backoff_series::ParseError as BackoffParseError;
+use openraft_macros::since;
 
 /// Error variants related to configuration.
+#[since]
 #[derive(Debug, thiserror::Error)]
 #[derive(PartialEq, Eq)]
 pub enum ConfigError {
@@ -57,8 +59,7 @@ pub enum ConfigError {
     /// Invalid backoff policy string.
     ///
     /// See [`backoff_series::BackoffSeries::parse`] for the expected format.
-    ///
-    /// Since: 0.10.0
+    #[since(version = "0.10.0")]
     #[error(transparent)]
     InvalidBackoff(#[from] BackoffParseError),
 }
