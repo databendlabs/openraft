@@ -2,6 +2,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use display_more::DisplayOptionExt;
+use openraft_macros::since;
 
 use crate::Instant;
 use crate::RaftTypeConfig;
@@ -70,6 +71,7 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// - [`RaftServerMetrics`] for server operational metrics
 ///
 /// [`Raft::metrics`]: crate::Raft::metrics
+#[since]
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct RaftMetrics<C: RaftTypeConfig> {
@@ -99,6 +101,7 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     /// delivery. See [`commit`] for the full explanation of the distinction.
     ///
     /// [`commit`]: crate::docs::protocol::commit
+    #[since(version = "0.10.0")]
     pub committed: Option<LogIdOf<C>>,
 
     /// The last log index has been applied to this Raft node's state machine.
@@ -117,6 +120,7 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     /// The list of log IDs, one per leader, tracking the last log entry from each leader.
     ///
     /// Only available when the `metrics-logids` feature is enabled.
+    #[since(version = "0.10.0")]
     #[cfg(feature = "metrics-logids")]
     #[cfg_attr(feature = "serde", serde(skip))]
     pub log_id_list: LogIdListOf<C>,
@@ -162,6 +166,7 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     /// lost synchronization with the cluster.
     /// An older value may suggest a higher probability of the leader being partitioned from the
     /// cluster.
+    #[since(version = "0.10.0")]
     pub last_quorum_acked: Option<SerdeInstantOf<C>>,
 
     /// The current membership config of the cluster.
@@ -175,6 +180,7 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     /// This duration since the recorded time can be used by applications to
     /// guess if a follower/learner node is offline, longer duration suggests
     /// a higher possibility of that.
+    #[since(version = "0.10.0")]
     pub heartbeat: Option<HeartbeatMetrics<C>>,
 
     // ---
@@ -264,6 +270,7 @@ where C: RaftTypeConfig
 }
 
 /// Subset of RaftMetrics, only include data-related metrics
+#[since]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct RaftDataMetrics<C: RaftTypeConfig> {
@@ -275,6 +282,7 @@ pub struct RaftDataMetrics<C: RaftTypeConfig> {
     /// cluster-committed.
     ///
     /// [`commit`]: crate::docs::protocol::commit
+    #[since(version = "0.10.0")]
     pub committed: Option<LogIdOf<C>>,
     /// The last applied log id.
     pub last_applied: Option<LogIdOf<C>>,
@@ -286,6 +294,7 @@ pub struct RaftDataMetrics<C: RaftTypeConfig> {
     /// The list of log IDs, one per leader, tracking the last log entry from each leader.
     ///
     /// Only available when the `metrics-logids` feature is enabled.
+    #[since(version = "0.10.0")]
     #[cfg(feature = "metrics-logids")]
     #[cfg_attr(feature = "serde", serde(skip))]
     pub log_id_list: LogIdListOf<C>,
@@ -318,6 +327,7 @@ pub struct RaftDataMetrics<C: RaftTypeConfig> {
     /// lost synchronization with the cluster.
     /// An older value may suggest a higher probability of the leader being partitioned from the
     /// cluster.
+    #[since(version = "0.10.0")]
     pub last_quorum_acked: Option<SerdeInstant<InstantOf<C>>>,
 
     /// Replication metrics for each node, available only on the leader.
@@ -331,6 +341,7 @@ pub struct RaftDataMetrics<C: RaftTypeConfig> {
     /// This duration since the recorded time can be used by applications to
     /// guess if a follower/learner node is offline, longer duration suggests
     /// a higher possibility of that.
+    #[since(version = "0.10.0")]
     pub heartbeat: Option<HeartbeatMetrics<C>>,
 }
 

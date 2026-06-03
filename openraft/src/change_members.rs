@@ -79,6 +79,7 @@ where
     ///
     /// The changes are applied in the order they are given.
     /// And it still finishes in a two-step joint config change.
+    #[since(version = "0.10.0")]
     Batch(Vec<ChangeMembers<NID, N>>),
 }
 
