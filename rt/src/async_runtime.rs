@@ -166,7 +166,7 @@ pub trait AsyncRuntime: Debug + OptionalSend + OptionalSync + 'static {
     /// - a new element arrives
     /// - the deadline is reached
     #[since(version = "0.10.0")]
-    fn mpsc_recv_timeout_at<T: OptionalSend>(
+    fn mpsc_recv_deadline<T: OptionalSend>(
         receiver: &mut <Self::Mpsc as Mpsc>::Receiver<T>,
         deadline: Self::Instant,
     ) -> impl Future<Output = Result<T, TryRecvError>> + OptionalSend {
