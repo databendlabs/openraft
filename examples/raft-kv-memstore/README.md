@@ -125,90 +125,38 @@ endpoints, trading latency for consistency:
 
 ## Run it
 
-There is a example in bash script and an example in rust:
+Two runnable demos drive the same 3-node happy path:
 
-- [test-cluster.sh](./test-cluster.sh) shows a simulation of 3 nodes running and sharing data,
-  It only uses `curl` and shows the communication between a client and the cluster in plain HTTP messages.
-  You can run the cluster demo with:
+- [`test-cluster.sh`](./test-cluster.sh) starts three nodes and drives them with
+  `curl`, so you can watch the raw HTTP exchange:
 
   ```shell
   ./test-cluster.sh
   ```
 
-- [test_cluster.rs](./tests/cluster/test_cluster.rs) does almost the same as `test-cluster.sh` but in Rust
-  with `app_http::Client`.
+- The [integration tests](./tests/cluster/) do the same in Rust through
+  [`app_http::Client`](../app-http/src/client.rs):
 
-  Run it with `cargo test`.
+  ```shell
+  cargo test
+  ```
 
-
-if you want to compile the application, run:
-
-```shell
-cargo build
-```
-
-(If you append `--release` to make it compile in production, but we don't recommend to use
-this project in production yet.)
-
-## What the test script does
-
-To run it, get the binary `raft-key-value` inside `target/debug` and run:
+Both follow the same six steps. To drive it by hand, build with `cargo build`,
+start each node with the binary, and POST to its API address:
 
 ```shell
-./raft-key-value --id 1 --api-addr 127.0.0.1:21001 --raft-addr 127.0.0.1:22001
+./target/debug/raft-key-value --id 1 --api-addr 127.0.0.1:21001 --raft-addr 127.0.0.1:22001
 ```
 
-It will start a node.
+1. Start three nodes (ids 1–3, each with its own `--api-addr` and `--raft-addr`).
+2. `POST /init` on node 1 — it becomes the leader of a single-node cluster.
+3. `POST /add-learner` for nodes 2 and 3 — they begin receiving log replication.
+4. `POST /change-membership [1, 2, 3]` — the learners become voters.
+5. `POST /write` a key on the leader.
+6. `POST /read` it from any node.
 
-To start the following nodes:
-
-```shell
-./raft-key-value --id 2 --api-addr 127.0.0.1:21002 --raft-addr 127.0.0.1:22002
-```
-
-You can continue replicating the nodes by changing the `id`, `api-addr`, and `raft-addr`.
-
-After that, call the first node created:
-
-```
-POST - 127.0.0.1:21001/init
-```
-
-It will define the first node created as the leader.
-
-Then you need to inform to the leader that these nodes are learners:
-
-```
-POST - 127.0.0.1:21001/add-learner '{"node_id":2,"api_addr":"127.0.0.1:21002","raft_addr":"127.0.0.1:22002"}'
-POST - 127.0.0.1:21001/add-learner '{"node_id":3,"api_addr":"127.0.0.1:21003","raft_addr":"127.0.0.1:22003"}'
-```
-
-Now you need to tell the leader to add all learners as members of the cluster:
-
-```
-POST - 127.0.0.1:21001/change-membership  "[1, 2, 3]"
-```
-
-Write some data through the leader:
-
-```
-POST - 127.0.0.1:21001/write  "{"Set":{"key":"foo","value":"bar"}}"
-```
-
-Read the data from any node:
-
-```
-POST - 127.0.0.1:21002/read  "foo"
-```
-
-You should be able to read that on the another instance even if you did not sync any data!
-
-For linearizable reads, use the `/linearizable_read` endpoint on the leader:
-
-```
-POST - 127.0.0.1:21001/linearizable_read  "foo"
-```
-
+See [`test-cluster.sh`](./test-cluster.sh) for the exact request bodies, and
+[Cluster management](#cluster-management) for what the admin calls do.
 
 ## How it's structured.
 
