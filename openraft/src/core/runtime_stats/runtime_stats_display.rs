@@ -19,7 +19,7 @@ use crate::core::runtime_stats::log_stage::LogStages;
 use crate::engine::CommandName;
 use crate::type_config::alias::InstantOf;
 
-/// Precomputed display data for [`RuntimeStats`].
+/// Precomputed display data for [`RuntimeStats`](super::RuntimeStats).
 ///
 /// All values are computed upfront so `Display::fmt()` is cheap.
 /// Use [`DisplayMode`] to control the output format.

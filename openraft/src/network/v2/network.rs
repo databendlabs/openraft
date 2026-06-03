@@ -44,7 +44,7 @@ use crate::type_config::alias::VoteOf;
 /// It remains **compatible** with the stream-oriented API, however: if an application only
 /// implements the unary `append_entries`, Openraft adapts it into a stream by calling it
 /// sequentially via the default [`stream_append`](Self::stream_append) implementation
-/// (see [`stream_append_sequential`](crate::network::stream_append_sequential)). This is
+/// (see [`stream_append_sequential`]). This is
 /// convenient but not optimal for throughput.
 ///
 /// For true streaming performance while keeping the unified interface, an application can

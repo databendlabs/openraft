@@ -18,6 +18,14 @@ pub struct Since {
 impl Since {
     /// Build a `Since` struct from the given attribute arguments.
     pub(crate) fn new(args: TokenStream) -> Result<Since, syn::Error> {
+        Self::from_tokens(args.into())
+    }
+
+    /// Build a `Since` struct from `proc_macro2` attribute arguments.
+    ///
+    /// Shared by the attribute-macro entry point and by `#[since(...)]` markers found on struct
+    /// fields or enum variants.
+    pub(crate) fn from_tokens(args: proc_macro2::TokenStream) -> Result<Since, syn::Error> {
         let mut since = Since {
             version: None,
             date: None,
@@ -26,7 +34,7 @@ impl Since {
 
         type AttributeArgs = syn::punctuated::Punctuated<syn::Meta, syn::Token![,]>;
 
-        let parsed_args = AttributeArgs::parse_terminated.parse(args.clone())?;
+        let parsed_args = AttributeArgs::parse_terminated.parse2(args.clone())?;
 
         for arg in parsed_args {
             match arg {
@@ -67,10 +75,7 @@ impl Since {
         }
 
         if since.version.is_none() {
-            return Err(syn::Error::new_spanned(
-                proc_macro2::TokenStream::from(args),
-                "Missing `version` attribute",
-            ));
+            return Err(syn::Error::new_spanned(args, "Missing `version` attribute"));
         }
 
         Ok(since)
@@ -126,6 +131,30 @@ impl Since {
             #other
         };
         Ok(tokens.into())
+    }
+
+    /// Build a `Since` from a `#[since(...)]` attribute marker.
+    fn from_attr(attr: &syn::Attribute) -> Result<Since, syn::Error> {
+        Self::from_tokens(attr.meta.require_list()?.tokens.clone())
+    }
+
+    /// Insert the `Since:` doc line(s) into an attribute list, after any leading doc attrs.
+    ///
+    /// The attribute-list counterpart of [`Self::append_since_doc`], used by the syn-based
+    /// struct / enum field path.
+    fn append_since_doc_attrs(&self, attrs: &mut Vec<syn::Attribute>) {
+        let lead_docs = attrs.iter().take_while(|a| a.path().is_ident("doc")).count();
+
+        // If there are already docs, insert a blank line before the `Since:` line.
+        let blank = if lead_docs > 0 { quote!(#[doc = ""]) } else { quote!() };
+        let line = format!(" {}", self.to_doc_string());
+        let new_docs = syn::Attribute::parse_outer
+            .parse2(quote!(#blank #[doc = #line]))
+            .expect("since doc attributes are well-formed");
+
+        for (offset, attr) in new_docs.into_iter().enumerate() {
+            attrs.insert(lead_docs + offset, attr);
+        }
     }
 
     /// Build doc string: `Since: 1.0.0, Date(2021-01-01)` or  `Since: 1.0.0`
@@ -214,4 +243,78 @@ impl Since {
         };
         Ok(s)
     }
+}
+
+/// Expand `#[since]` on a `struct`/`enum`/`union` that carries `#[since(...)]` markers on its
+/// fields or variants.
+///
+/// Rust forbids attribute macros directly on fields, so a field-level `#[since]` is reachable only
+/// when the enclosing container is annotated with `#[since]`: that invocation expands first and
+/// rewrites the markers here. Returns `Ok(None)` when `item` is not such a container, so the caller
+/// falls back to the plain item-level expansion.
+pub(crate) fn try_expand_container(args: TokenStream, item: TokenStream) -> Result<Option<TokenStream>, syn::Error> {
+    let Ok(mut input) = syn::parse2::<syn::DeriveInput>(item.into()) else {
+        return Ok(None);
+    };
+
+    if !rewrite_field_since(&mut input)? {
+        return Ok(None);
+    }
+
+    // Args on the container document the container itself; empty args only enable field rewriting.
+    let args = proc_macro2::TokenStream::from(args);
+    if !args.is_empty() {
+        Since::from_tokens(args)?.append_since_doc_attrs(&mut input.attrs);
+    }
+
+    Ok(Some(quote!(#input).into()))
+}
+
+/// Rewrite every `#[since(...)]` marker on the fields / variants of `input` into a `Since:` doc.
+///
+/// Returns whether any marker was found.
+fn rewrite_field_since(input: &mut syn::DeriveInput) -> Result<bool, syn::Error> {
+    let mut found = false;
+    match &mut input.data {
+        syn::Data::Struct(data) => {
+            for field in &mut data.fields {
+                found |= rewrite_attrs_since(&mut field.attrs)?;
+            }
+        }
+        syn::Data::Enum(data) => {
+            for variant in &mut data.variants {
+                found |= rewrite_attrs_since(&mut variant.attrs)?;
+                for field in &mut variant.fields {
+                    found |= rewrite_attrs_since(&mut field.attrs)?;
+                }
+            }
+        }
+        syn::Data::Union(data) => {
+            for field in &mut data.fields.named {
+                found |= rewrite_attrs_since(&mut field.attrs)?;
+            }
+        }
+    }
+    Ok(found)
+}
+
+/// Replace each `#[since(...)]` attribute in `attrs` with its `Since:` doc, preserving order.
+fn rewrite_attrs_since(attrs: &mut Vec<syn::Attribute>) -> Result<bool, syn::Error> {
+    let sinces = attrs.iter().filter(|a| is_since(a)).map(Since::from_attr).collect::<Result<Vec<_>, _>>()?;
+
+    if sinces.is_empty() {
+        return Ok(false);
+    }
+
+    attrs.retain(|a| !is_since(a));
+    for since in &sinces {
+        since.append_since_doc_attrs(attrs);
+    }
+
+    Ok(true)
+}
+
+/// Whether `attr` is a `#[since(...)]` marker, matching both `since` and `openraft_macros::since`.
+fn is_since(attr: &syn::Attribute) -> bool {
+    attr.path().segments.last().is_some_and(|s| s.ident == "since")
 }
