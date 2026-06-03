@@ -420,6 +420,14 @@ jobs:
 
   examples:
     runs-on: ubuntu-latest
+    # RocksDB-backed examples (raft-kv-rocksdb, rocksstore) compile RocksDB's
+    # bundled C++ from source — the slowest step in CI. Route that C/C++ build
+    # through sccache (object-level cache, shared across jobs) so a cold target
+    # rebuild reuses the .o files. `cc` recognizes sccache as a known wrapper.
+    env:
+      SCCACHE_GHA_ENABLED: 'true'
+      CC: 'sccache cc'
+      CXX: 'sccache c++'
     strategy:
       fail-fast: false
       matrix:
@@ -444,6 +452,13 @@ jobs:
         with:
           toolchain: '${{ matrix.toolchain }}'
           components: rustfmt, clippy
+          # Examples are separate workspaces; the default cache only covers the
+          # repo-root target, so examples/*/target (incl. the built RocksDB lib)
+          # was never cached. Point the cache at this example's own workspace.
+          cache-workspaces: examples/${{ matrix.example }}
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.10
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
