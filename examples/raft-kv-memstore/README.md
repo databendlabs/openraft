@@ -21,6 +21,31 @@ Includes:
   [`app_http::Client`](../app-http/src/client.rs) is a minimal client in Rust to talk to a raft cluster.
   - It includes application API `write()`, `read()`, `linearizable_read()`, and administrative API `init()`, `add_learner()`, `change_membership()`, `metrics()`.
 
+## Build an OpenRaft application
+
+To run an application on OpenRaft you supply a handful of pieces; this example
+wires them together in [`src/lib.rs`](./src/lib.rs). The checklist, and where each
+piece lives:
+
+1. Define a `RaftTypeConfig` — the associated types for your app (request,
+   response, node). Declared with `declare_raft_types!` in
+   [`src/lib.rs`](./src/lib.rs); the request/response types come from
+   [`types-kv`](../types-kv/src/lib.rs).
+2. Choose a `RaftLogStorage` — where the Raft log is kept. Here, the in-memory
+   [`log-mem`](../log-mem/src/log_store.rs).
+3. Choose a `RaftStateMachine` — applies committed entries and holds your data.
+   Here, the in-memory [`sm-mem`](../sm-mem/src/lib.rs).
+4. Provide a `RaftNetworkFactory` — how a node opens connections to its peers.
+   Here, [`network-v2-http`](../network-v2-http/src/client.rs).
+5. Call `Raft::new()` — passing the node id, config, network factory, log store,
+   and state machine. The returned `Raft` is your handle to the cluster.
+6. Serve inbound Raft RPCs — run a server on the Raft address so peers can reach
+   this node ([`network-v2-http`](../network-v2-http/src/server.rs)).
+7. Serve your application API — run a server on the API address for client and
+   admin requests ([`app-http`](../app-http/)).
+
+Steps 1–5 build the OpenRaft node; steps 6–7 are how peers and clients reach it.
+
 ## Run it
 
 There is a example in bash script and an example in rust:
