@@ -48,6 +48,7 @@ pub(crate) struct Defaults {
     pub enable_tick: bool,
     pub enable_heartbeat: bool,
     pub enable_elect: bool,
+    pub enable_fast_path_reelect: bool,
 }
 
 pub(crate) const DEFAULTS: Defaults = Defaults {
@@ -73,6 +74,7 @@ pub(crate) const DEFAULTS: Defaults = Defaults {
     enable_tick: true,
     enable_heartbeat: true,
     enable_elect: true,
+    enable_fast_path_reelect: true,
 };
 
 /// Log compaction and snapshot policy.
@@ -431,6 +433,45 @@ pub struct Config {
            default_missing_value = "true"
     ))]
     pub allow_log_reversion: Option<bool>,
+
+    /// Whether to allow a restarted leader to re-elect itself without a vote.
+    ///
+    /// When enabled (`true`), if a node that was leader before a restart comes back quickly
+    /// enough, before any other node triggers and election, it can continue serving as leader
+    /// without re-election. This differs from standard Raft, but can help improve availability
+    /// after a leader restart.
+    ///
+    /// When disabled (`false`), a restarted leader must always trigger a new election to become
+    /// leader again.
+    ///
+    /// **Important**: When this setting is enabled, it can introduce inconsistencies when the
+    /// following conditions are true:
+    ///
+    /// - The state machine does not flush state to disk before returning from
+    ///   [`openraft::storage::RaftLogStorage::apply`].
+    /// - The last committed log id is not persisted.
+    ///
+    /// When the above conditions are met and this setting is enabled, then a leader can restart
+    /// with a stale state machine and re-elect itself as leadet without any mechanism to detect
+    /// the staleness it.
+    ///
+    /// When the above conditions are met and this setting is disabled, then a restarted leader can
+    /// learn the current commit log id by participating in a new election or receiving a message
+    /// from the new leader.
+    ///
+    /// See: [`docs::data::log_pointers`].
+    ///
+    /// [`docs::data::log_pointers`]: `crate::docs::data::log_pointers#optionally-persisted-committed`
+    // clap 4 requires `num_args = 0..=1`, or it complains about missing arg error
+    // https://github.com/clap-rs/clap/discussions/4374
+    #[since(version = "0.11.0")]
+    #[cfg_attr(feature = "clap", clap(long,
+           default_value_t = true,
+           action = clap::ArgAction::Set,
+           num_args = 0..=1,
+           default_missing_value = "true"
+    ))]
+    pub enable_fast_path_reelect: bool,
 }
 
 impl Default for Config {
@@ -461,6 +502,7 @@ impl Default for Config {
             enable_elect: DEFAULTS.enable_elect,
             backoff: DEFAULTS.backoff.to_string(),
             allow_log_reversion: None,
+            enable_fast_path_reelect: DEFAULTS.enable_fast_path_reelect,
         }
     }
 }

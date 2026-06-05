@@ -239,3 +239,31 @@ fn test_startup_as_learner() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_startup_as_leader_fast_path_reelect_disabled() -> anyhow::Result<()> {
+    let mut eng = eng();
+    eng.config.enable_fast_path_reelect = false;
+
+    // self.id==2 is a voter:
+    eng.state.membership_state.set_effective(Arc::new(EffectiveMembershipOf::<UTConfig>::new(
+        Some(log_id(1, 1, 3)),
+        m23(),
+    )));
+    eng.state.log_ids = LogIdList::new(None, [log_id(1, 1, 3)]);
+    // Committed vote would normally make it a leader at startup.
+    eng.state.vote = Leased::new(
+        UTConfig::<()>::now(),
+        Duration::from_millis(500),
+        Vote::new_committed(2, 2),
+    );
+
+    eng.startup();
+
+    // It does not re-elect itself; as a voter it becomes a Follower.
+    assert_eq!(ServerState::Follower, eng.state.server_state);
+    assert!(eng.leader_ref().is_none());
+    assert_eq!(eng.output.take_commands(), vec![]);
+
+    Ok(())
+}
