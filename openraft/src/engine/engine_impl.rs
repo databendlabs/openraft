@@ -144,7 +144,7 @@ where C: RaftTypeConfig
 
         // TODO: replace all the following codes with one update_internal_server_state;
         // Previously it is a leader. restore it as leader at once
-        if self.state.is_leader(&self.config.id) {
+        if self.config.enable_fast_path_reelect && self.state.is_leader(&self.config.id) {
             self.vote_handler().update_internal_server_state();
             return;
         }

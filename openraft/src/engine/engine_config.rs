@@ -24,6 +24,8 @@ pub(crate) struct EngineConfig<C: RaftTypeConfig> {
     pub(crate) allow_log_reversion: bool,
 
     pub(crate) timer_config: time_state::Config,
+
+    pub(crate) enable_fast_path_reelect: bool,
 }
 
 impl<C> EngineConfig<C>
@@ -43,6 +45,8 @@ where C: RaftTypeConfig
                 smaller_log_timeout: Duration::from_millis(config.election_timeout_max * 2),
                 leader_lease: Duration::from_millis(config.election_timeout_max),
             },
+
+            enable_fast_path_reelect: config.enable_fast_path_reelect,
         }
     }
 
@@ -55,6 +59,7 @@ where C: RaftTypeConfig
             max_payload_entries: 300,
             allow_log_reversion: false,
             timer_config: time_state::Config::default(),
+            enable_fast_path_reelect: true,
         }
     }
 }
