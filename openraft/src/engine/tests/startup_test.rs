@@ -264,7 +264,7 @@ fn test_startup_as_leader_leader_restore_disabled() -> anyhow::Result<()> {
     assert_eq!(ServerState::Follower, eng.state.server_state);
     assert!(eng.leader_ref().is_none());
     assert!(!eng.state.is_leader(&eng.config.id));
-    assert_eq!(eng.output.take_commands(), vec![]);
+    assert_eq!(eng.output.take_commands(), vec![Command::SaveVote {vote: Vote::new(2, 2)}]);
 
     Ok(())
 }

@@ -149,8 +149,10 @@ where C: RaftTypeConfig
                 self.vote_handler().update_internal_server_state();
                 return;
             } else {
-                // TODO: Update in-memory state so that this node doesn't think it's a leader. i.e.
-                // assert!(!self.state.is_leader(&self.config.id))
+                let uncommitted: VoteOf<C> = self.state.vote.to_non_committed().into_vote();
+                self.state.vote.update(C::now(), Duration::default(), uncommitted.clone());
+                self.output.push_command(Command::SaveVote {vote: uncommitted});
+                debug_assert!(!self.state.is_leader(&self.config.id))
             }
         }
 
