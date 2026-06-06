@@ -138,6 +138,27 @@ where C: RaftTypeConfig
     /// Send a RequestVote RPC to the target.
     async fn vote(&mut self, rpc: VoteRequest<C>, option: RPCOption) -> Result<VoteResponse<C>, RPCError<C>>;
 
+    /// Send a **pre-vote** probe RPC to the target (Raft §9.6).
+    ///
+    /// The node receiving this should pass it to [`Raft::pre_vote()`]. A pre-vote
+    /// probes whether the candidate *could* win an election at `term + 1` without
+    /// the candidate (or the responder) persisting or bumping any term, so an
+    /// isolated or lagging voter cannot disrupt a healthy leader on reconnection.
+    ///
+    /// This provides a default implementation that returns [`Unreachable`], so a
+    /// network layer that has not implemented pre-vote yet does not brick
+    /// elections: the caller counts an `Unreachable` pre-vote as a grant and falls
+    /// back to a normal election. This makes enabling
+    /// [`Config::enable_pre_vote`](crate::Config::enable_pre_vote) rolling-upgrade
+    /// safe — the config can be turned on before every node implements this RPC.
+    ///
+    /// [`Raft::pre_vote()`]: crate::raft::Raft::pre_vote
+    async fn pre_vote(&mut self, _rpc: VoteRequest<C>, _option: RPCOption) -> Result<VoteResponse<C>, RPCError<C>> {
+        Err(RPCError::Unreachable(Unreachable::new(&AnyError::error(
+            "pre_vote not implemented",
+        ))))
+    }
+
     /// Send a complete Snapshot to the target.
     ///
     /// This method is responsible for fragmenting the snapshot and sending it to the target node.
@@ -247,6 +268,10 @@ where
 {
     async fn vote(&mut self, rpc: VoteRequest<C>, option: RPCOption) -> Result<VoteResponse<C>, RPCError<C>> {
         RaftNetworkV2::vote(self, rpc, option).await
+    }
+
+    async fn pre_vote(&mut self, rpc: VoteRequest<C>, option: RPCOption) -> Result<VoteResponse<C>, RPCError<C>> {
+        RaftNetworkV2::pre_vote(self, rpc, option).await
     }
 }
 

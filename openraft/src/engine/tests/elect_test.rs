@@ -60,6 +60,7 @@ fn test_elect_single_node() -> anyhow::Result<()> {
                     vote_req: VoteRequest {
                         vote: Vote::new(1, 1),
                         last_log_id: Some(log_id(0, 0, 0)),
+                        pre_vote: false,
                     },
                 },
             ],
@@ -107,6 +108,7 @@ fn test_elect_single_node_elect_again() -> anyhow::Result<()> {
                     vote_req: VoteRequest {
                         vote: Vote::new(2, 1),
                         last_log_id: Some(log_id(0, 0, 0)),
+                        pre_vote: false,
                     },
                 },
             ],
@@ -152,5 +154,74 @@ fn test_elect_multi_node_enter_candidate() -> anyhow::Result<()> {
             eng.output.take_commands()
         );
     }
+    Ok(())
+}
+
+#[test]
+fn test_pre_elect_multi_node_does_not_bump_term() -> anyhow::Result<()> {
+    // In a 2-node cluster, a single node's pre-vote round only self-grants (no
+    // quorum), so it must NOT bump the persisted vote/term and must NOT save a
+    // vote — it only emits a pre-vote SendVote probe.
+    let mut eng = eng();
+    eng.config.id = 1;
+    eng.state.membership_state.set_effective(Arc::new(EffectiveMembershipOf::<UTConfig>::new(
+        Some(log_id(0, 1, 1)),
+        m12(),
+    )));
+
+    let vote_before = eng.state.vote_ref().clone();
+    eng.pre_elect();
+
+    assert_eq!(
+        vote_before,
+        *eng.state.vote_ref(),
+        "pre-vote must not bump the persisted vote/term"
+    );
+    assert!(eng.pre_candidate.is_some(), "pre-vote tally exists");
+    assert!(
+        eng.candidate_ref().is_none(),
+        "real candidate must NOT be set during pre-vote"
+    );
+
+    let cmds = eng.output.take_commands();
+    assert!(
+        cmds.iter().any(|c| matches!(c, Command::SendVote { vote_req } if vote_req.pre_vote)),
+        "must emit a pre-vote SendVote probe"
+    );
+    assert!(
+        !cmds.iter().any(|c| matches!(c, Command::SaveVote { .. })),
+        "pre-vote must not persist a vote"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_pre_elect_single_node_proceeds_to_real_election() -> anyhow::Result<()> {
+    // A single-voter cluster reaches quorum on its own pre-vote, so it proceeds
+    // straight to the real election: the term is bumped and the vote is saved.
+    let mut eng = eng();
+    eng.config.id = 1;
+    eng.state.membership_state.set_effective(Arc::new(EffectiveMembershipOf::<UTConfig>::new(
+        Some(log_id(0, 1, 1)),
+        m1(),
+    )));
+
+    eng.pre_elect();
+
+    assert_eq!(Vote::new(1, 1), *eng.state.vote_ref(), "real election bumped the term");
+    assert!(
+        eng.pre_candidate.is_none(),
+        "pre-vote tally cleared after proceeding to real election"
+    );
+
+    let cmds = eng.output.take_commands();
+    assert!(
+        cmds.iter().any(|c| matches!(c, Command::SaveVote { .. })),
+        "real election must save the vote"
+    );
+    assert!(
+        cmds.iter().any(|c| matches!(c, Command::SendVote { vote_req } if !vote_req.pre_vote)),
+        "real election sends a normal (non-pre) vote"
+    );
     Ok(())
 }

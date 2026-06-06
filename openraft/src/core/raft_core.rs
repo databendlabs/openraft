@@ -1360,6 +1360,10 @@ where
         let members = self.engine.state.membership_state.effective().voter_ids();
 
         let vote = vote_req.vote.clone();
+        // A pre-vote probe is sent via the dedicated `pre_vote` RPC and tallied
+        // separately; an `Unreachable` (e.g. a peer whose network layer predates
+        // pre-vote) is counted as a grant so the round is rolling-upgrade safe.
+        let is_pre_vote = vote_req.pre_vote;
 
         for target in members {
             if target == self.id {
@@ -1386,7 +1390,11 @@ where
                 {
                     let target = target.clone();
                     async move {
-                        let tm_res = C::timeout(ttl, client.vote(req, option)).await;
+                        let tm_res = if is_pre_vote {
+                            C::timeout(ttl, client.pre_vote(req, option)).await
+                        } else {
+                            C::timeout(ttl, client.vote(req, option)).await
+                        };
                         let res = match tm_res {
                             Ok(res) => res,
 
@@ -1404,6 +1412,19 @@ where
 
                         match res {
                             Ok(resp) => {
+                                tx.send(Notification::VoteResponse {
+                                    target,
+                                    resp,
+                                    candidate_vote: vote.into_non_committed(),
+                                })
+                                .await
+                                .ok();
+                            }
+                            // Rolling-upgrade fallback: a peer whose network layer
+                            // does not implement `pre_vote` returns `Unreachable`;
+                            // count it as a grant so pre-vote never bricks elections.
+                            Err(RPCError::Unreachable(_)) if is_pre_vote => {
+                                let resp = VoteResponse::new_pre_vote(vote.clone(), None, true);
                                 tx.send(Notification::VoteResponse {
                                     target,
                                     resp,
@@ -1692,7 +1713,13 @@ where
                 );
 
                 #[allow(clippy::collapsible_if)]
-                if self.engine.candidate.is_some() {
+                if resp.pre_vote {
+                    // Pre-vote responses are tallied separately (the probe term is
+                    // never persisted, so it isn't in `candidate`). The probe vote
+                    // is stable, so no per-response vote match is needed; a stale
+                    // response is dropped because `pre_candidate` is `None`.
+                    self.engine.handle_pre_vote_resp(target, resp);
+                } else if self.engine.candidate.is_some() {
                     if self.does_candidate_vote_match(&candidate_vote, "VoteResponse") {
                         self.engine.handle_vote_resp(target, resp);
                     }
@@ -1914,7 +1941,15 @@ where
         self.engine.reset_greater_log();
 
         tracing::info!("trigger election");
-        self.engine.elect();
+        // Timer-driven election: run a pre-vote round first when enabled, so an
+        // isolated/lagging voter can't bump its term and disrupt a healthy leader.
+        // Operator-forced elections (ExternalCommand::Elect, leader transfer) call
+        // `elect()` directly and bypass pre-vote.
+        if self.engine.config.enable_pre_vote {
+            self.engine.pre_elect();
+        } else {
+            self.engine.elect();
+        }
     }
 
     /// If a message is sent by a previous Candidate but is received by current Candidate,

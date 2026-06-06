@@ -15,6 +15,13 @@ pub struct VoteRequest<C: RaftTypeConfig> {
     pub vote: VoteOf<C>,
     /// The candidate's last log id.
     pub last_log_id: Option<LogIdOf<C>>,
+    /// If true this is a **pre-vote** probe (Raft §9.6): the candidate is testing
+    /// whether it *could* win an election at `vote.term()` without bumping its
+    /// persisted term. A recipient runs the same grant checks but does not
+    /// persist/adopt the vote, so a node that cannot win never disturbs the
+    /// cluster's term. Always `false` for a normal vote.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub pre_vote: bool,
 }
 
 impl<C> fmt::Display for VoteRequest<C>
@@ -30,7 +37,20 @@ where C: RaftTypeConfig
 {
     /// Create a new vote request.
     pub fn new(vote: VoteOf<C>, last_log_id: Option<LogIdOf<C>>) -> Self {
-        Self { vote, last_log_id }
+        Self {
+            vote,
+            last_log_id,
+            pre_vote: false,
+        }
+    }
+
+    /// Create a new **pre-vote** probe request (does not bump the term).
+    pub fn new_pre_vote(vote: VoteOf<C>, last_log_id: Option<LogIdOf<C>>) -> Self {
+        Self {
+            vote,
+            last_log_id,
+            pre_vote: true,
+        }
     }
 }
 
@@ -50,6 +70,13 @@ pub struct VoteResponse<C: RaftTypeConfig> {
 
     /// The last log id stored on the remote voter.
     pub last_log_id: Option<LogIdOf<C>>,
+
+    /// Echoes [`VoteRequest::pre_vote`]: true if this responds to a pre-vote
+    /// probe. A pre-vote grant means "I would grant this vote" without the
+    /// responder adopting the candidate's vote, so the tally keys on
+    /// `vote_granted`, not on `vote` equality.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub pre_vote: bool,
 }
 
 impl<C> VoteResponse<C>
@@ -61,6 +88,17 @@ where C: RaftTypeConfig
             vote: vote.borrow().clone(),
             vote_granted: granted,
             last_log_id: last_log_id.map(|x| x.borrow().clone()),
+            pre_vote: false,
+        }
+    }
+
+    /// Create a new **pre-vote** response (echoes the pre-vote marker).
+    pub fn new_pre_vote(vote: impl Borrow<VoteOf<C>>, last_log_id: Option<LogIdOf<C>>, granted: bool) -> Self {
+        Self {
+            vote: vote.borrow().clone(),
+            vote_granted: granted,
+            last_log_id: last_log_id.map(|x| x.borrow().clone()),
+            pre_vote: true,
         }
     }
 

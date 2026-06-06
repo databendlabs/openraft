@@ -48,6 +48,7 @@ pub(crate) struct Defaults {
     pub enable_tick: bool,
     pub enable_heartbeat: bool,
     pub enable_elect: bool,
+    pub enable_pre_vote: bool,
 }
 
 pub(crate) const DEFAULTS: Defaults = Defaults {
@@ -73,6 +74,7 @@ pub(crate) const DEFAULTS: Defaults = Defaults {
     enable_tick: true,
     enable_heartbeat: true,
     enable_elect: true,
+    enable_pre_vote: false,
 };
 
 /// Log compaction and snapshot policy.
@@ -358,6 +360,22 @@ pub struct Config {
     ))]
     pub enable_elect: bool,
 
+    /// Enable the **pre-vote** phase (Raft §9.6) before a real election.
+    ///
+    /// When `true`, a node that times out first runs a pre-vote probe round at
+    /// `term+1` *without* bumping its persisted term; it only starts a real
+    /// election (which bumps the term) after a quorum indicates it would grant the
+    /// vote. This prevents an isolated or partitioned voter from repeatedly
+    /// bumping its term and disrupting a healthy leader when it reconnects.
+    /// Defaults to `false` (behavior unchanged).
+    #[cfg_attr(feature = "clap", clap(long,
+           default_value_t = false,
+           action = clap::ArgAction::Set,
+           num_args = 0..=1,
+           default_missing_value = "true"
+    ))]
+    pub enable_pre_vote: bool,
+
     /// Default backoff policy used when
     /// [`RaftNetworkV2::backoff`](crate::network::RaftNetworkV2::backoff) returns `None`.
     ///
@@ -459,6 +477,7 @@ impl Default for Config {
             enable_tick: DEFAULTS.enable_tick,
             enable_heartbeat: DEFAULTS.enable_heartbeat,
             enable_elect: DEFAULTS.enable_elect,
+            enable_pre_vote: DEFAULTS.enable_pre_vote,
             backoff: DEFAULTS.backoff.to_string(),
             allow_log_reversion: None,
         }

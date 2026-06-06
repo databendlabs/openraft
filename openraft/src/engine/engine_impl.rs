@@ -43,6 +43,7 @@ use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
@@ -91,6 +92,15 @@ where C: RaftTypeConfig
     /// without losing leadership status.
     pub(crate) candidate: CandidateState<C>,
 
+    /// A **pre-vote** tally, kept entirely separate from [`Self::candidate`].
+    ///
+    /// The real `candidate` must stay consistent with the persisted `state.vote`
+    /// (openraft clears it otherwise), but a pre-vote probes at `term+1` *without*
+    /// persisting anything — so its tally cannot live in `candidate`. On a pre-vote
+    /// quorum the engine starts the real [`Self::elect`]; the probe term never
+    /// enters `state.vote`, so a node that cannot win never disturbs the term.
+    pub(crate) pre_candidate: CandidateState<C>,
+
     /// Output entry for the runtime.
     pub(crate) output: EngineOutput<C, SM>,
 }
@@ -105,6 +115,7 @@ where C: RaftTypeConfig
             seen_greater_log: false,
             leader: None,
             candidate: None,
+            pre_candidate: None,
             output: EngineOutput::new(4096),
         }
     }
@@ -219,6 +230,106 @@ where C: RaftTypeConfig
         self.server_state_handler().update_server_state_if_changed();
     }
 
+    /// Start a **pre-vote** round (Raft §9.6): probe whether this node could win an
+    /// election at `term+1` *without* bumping its persisted term. The probe vote is
+    /// held only in the in-memory [`Self::candidate`] tally (never saved via
+    /// `update_vote`), so a node that cannot collect a quorum never disturbs the
+    /// cluster's term. On a pre-vote quorum, [`Self::handle_vote_resp`] starts the
+    /// real [`Self::elect`].
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub(crate) fn pre_elect(&mut self) {
+        let id = self.config.id.clone();
+
+        // Reset the local election clock so the timer doesn't re-fire `pre_elect`
+        // on the next tick and reset this tally before responses arrive (a real
+        // election refreshes the lease via `update_vote`; pre-vote persists
+        // nothing, so we reset it directly). Lease is set to 0 so this node still
+        // grants *other* peers' (pre-)votes — otherwise two probing peers would
+        // reject each other and deadlock.
+        let now = C::now();
+        self.state.vote.touch(now, Duration::from_millis(0));
+
+        let new_term = self.state.vote.term().next();
+        let leader_id = LeaderIdOf::<C>::new(new_term, id.clone());
+        let probe_vote = VoteOf::<C>::from_leader_id(leader_id, false);
+        let last_log_id = self.state.last_log_id().cloned();
+
+        // Build the tally in a DEDICATED `pre_candidate` (not `self.candidate`,
+        // which must track the persisted vote). Nothing is persisted.
+        let membership = self.state.membership_state.effective().membership();
+        let mut pc = Candidate::new(
+            now,
+            probe_vote.clone(),
+            last_log_id.clone(),
+            membership.to_quorum_set(),
+            membership.learner_ids(),
+            self.state.progress_id_gen.clone(),
+        );
+        tracing::info!("{}: new pre-vote candidate at term {}", func_name!(), new_term);
+
+        // Self-grant. A single-voter cluster reaches quorum immediately, so go
+        // straight to the real election.
+        let quorum = pc.grant_by(&id);
+        if quorum {
+            self.elect();
+            return;
+        }
+        self.pre_candidate = Some(pc);
+
+        self.output.push_command(Command::SendVote {
+            vote_req: VoteRequest::new_pre_vote(probe_vote, last_log_id),
+        });
+    }
+
+    /// Tally a pre-vote response. A grant means "I would vote for you" (the
+    /// responder did NOT adopt the probe vote), so we count by `vote_granted`. On
+    /// a quorum, start the real election (which bumps the term).
+    pub(crate) fn handle_pre_vote_resp(&mut self, target: C::NodeId, resp: VoteResponse<C>) {
+        let Some(pc) = self.pre_candidate.as_mut() else {
+            return;
+        };
+        if resp.vote_granted {
+            let quorum_granted = pc.grant_by(&target);
+            if quorum_granted {
+                tracing::info!("pre-vote quorum granted; starting real election");
+                self.pre_candidate = None;
+                self.elect();
+            }
+            return;
+        }
+        // Rejected: if the peer has a greater log, delay the next attempt.
+        if resp.last_log_id.as_ref() > self.state.last_log_id() {
+            self.set_greater_log();
+        }
+    }
+
+    /// Answer a **pre-vote** probe (Raft §9.6): run the same grant gates as a real
+    /// vote, but read-only — do NOT adopt the candidate's vote, bump the term, or
+    /// persist anything. The probing candidate only starts a real election once a
+    /// quorum of these grant, so a node that cannot win never disturbs the cluster.
+    pub(crate) fn handle_pre_vote_req(&self, req: &VoteRequest<C>, now: InstantOf<C>) -> VoteResponse<C> {
+        let granted = self.would_grant_pre_vote(req, now);
+        tracing::info!("handle pre-vote request: granted={}", granted);
+        VoteResponse::new_pre_vote(self.state.vote_ref(), self.state.last_log_id().cloned(), granted)
+    }
+
+    /// Whether this node would grant a **pre-vote** to `req`: the same gates a real
+    /// vote uses (leader lease not held, candidate's log at least as up-to-date,
+    /// probe term not stale) — but evaluated read-only, with no `update_vote`.
+    fn would_grant_pre_vote(&self, req: &VoteRequest<C>, now: InstantOf<C>) -> bool {
+        let v = &self.state.vote;
+        // Leader-lease gate: don't pre-grant while a committed leader vote holds.
+        if v.is_committed() && !v.is_expired(now, Duration::from_millis(0)) {
+            return false;
+        }
+        // The candidate's log must be at least as up-to-date as ours.
+        if req.last_log_id.as_ref() < self.state.last_log_id() {
+            return false;
+        }
+        // The probe term must not be behind ours.
+        req.vote.term() >= v.term()
+    }
+
     pub(crate) fn leader_ref(&self) -> Option<&Leader<C, LeaderQuorumSet<C>>> {
         self.leader.as_deref()
     }
@@ -247,6 +358,13 @@ where C: RaftTypeConfig
             self.state.last_log_id().display(),
             local_leased_vote.display_lease_info(now)
         );
+
+        // Pre-vote probe: answered read-only, adopting/persisting nothing — see
+        // `handle_pre_vote_req`. The candidate only bumps its term once a quorum
+        // of these grant.
+        if req.pre_vote {
+            return self.handle_pre_vote_req(&req, now);
+        }
 
         if local_leased_vote.is_committed() {
             // Current leader lease has not yet expired, reject voting request

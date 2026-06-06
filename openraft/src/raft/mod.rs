@@ -925,6 +925,21 @@ where C: RaftTypeConfig
         self.protocol_api().vote(rpc).await.into_raft_result()
     }
 
+    /// Submit a **pre-vote** probe (Raft §9.6) to this Raft node.
+    ///
+    /// Sent by a peer that timed out and is testing whether it could win an
+    /// election at `term + 1`, *before* it bumps its own term. The responder runs
+    /// the same grant checks as a real vote (leader-lease stickiness and last-log
+    /// up-to-dateness) but does **not** adopt the vote or change its term /
+    /// voted-for — so a node that cannot win never disturbs the cluster's term.
+    /// Reuses the vote request/response types (the request carries
+    /// [`VoteRequest::pre_vote`]) and the vote dispatch path.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub async fn pre_vote(&self, mut rpc: VoteRequest<C>) -> Result<VoteResponse<C>, RaftError<C>> {
+        rpc.pre_vote = true;
+        self.protocol_api().vote(rpc).await.into_raft_result()
+    }
+
     /// Get the latest snapshot from the state machine.
     ///
     /// It returns error only when `RaftCore` fails to serve the request, e.g., Encountering a

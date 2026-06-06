@@ -23,6 +23,9 @@ pub(crate) struct EngineConfig<C: RaftTypeConfig> {
 
     pub(crate) allow_log_reversion: bool,
 
+    /// Run a pre-vote round before bumping the term on a timer-driven election.
+    pub(crate) enable_pre_vote: bool,
+
     pub(crate) timer_config: time_state::Config,
 }
 
@@ -37,6 +40,7 @@ where C: RaftTypeConfig
             purge_batch_size: config.purge_batch_size,
             max_payload_entries: config.max_payload_entries,
             allow_log_reversion: config.get_allow_log_reversion(),
+            enable_pre_vote: config.enable_pre_vote,
 
             timer_config: time_state::Config {
                 election_timeout,
@@ -54,6 +58,7 @@ where C: RaftTypeConfig
             purge_batch_size: 256,
             max_payload_entries: 300,
             allow_log_reversion: false,
+            enable_pre_vote: false,
             timer_config: time_state::Config::default(),
         }
     }

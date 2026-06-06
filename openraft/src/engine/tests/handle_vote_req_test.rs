@@ -52,6 +52,7 @@ fn test_handle_vote_req_rejected_by_leader_lease() -> anyhow::Result<()> {
     let resp = eng.handle_vote_req(VoteRequest {
         vote: Vote::new(3, 2),
         last_log_id: Some(log_id(2, 1, 3)),
+        pre_vote: false,
     });
 
     assert_eq!(VoteResponse::new(Vote::new_committed(2, 1), None, false), resp);
@@ -73,6 +74,7 @@ fn test_handle_vote_req_reject_smaller_vote() -> anyhow::Result<()> {
     let resp = eng.handle_vote_req(VoteRequest {
         vote: Vote::new(1, 2),
         last_log_id: None,
+        pre_vote: false,
     });
 
     assert_eq!(VoteResponse::new(Vote::new(2, 1), None, false), resp);
@@ -95,6 +97,7 @@ fn test_handle_vote_req_reject_smaller_last_log_id() -> anyhow::Result<()> {
     let resp = eng.handle_vote_req(VoteRequest {
         vote: Vote::new(3, 2),
         last_log_id: Some(log_id(1, 1, 3)),
+        pre_vote: false,
     });
 
     assert_eq!(VoteResponse::new(Vote::new(2, 1), Some(log_id(2, 1, 3)), false), resp);
@@ -122,6 +125,7 @@ fn test_handle_vote_req_granted_equal_vote_and_last_log_id() -> anyhow::Result<(
     let resp = eng.handle_vote_req(VoteRequest {
         vote: Vote::new(2, 1),
         last_log_id: Some(log_id(2, 1, 3)),
+        pre_vote: false,
     });
 
     assert_eq!(VoteResponse::new(Vote::new(2, 1), Some(log_id(2, 1, 3)), true), resp);
@@ -148,6 +152,7 @@ fn test_handle_vote_req_granted_greater_vote() -> anyhow::Result<()> {
     let resp = eng.handle_vote_req(VoteRequest {
         vote: Vote::new(3, 1),
         last_log_id: Some(log_id(2, 1, 3)),
+        pre_vote: false,
     });
 
     // respond the updated vote.
@@ -184,6 +189,7 @@ fn test_handle_vote_req_granted_follower_learner_does_not_emit_update_server_sta
         eng.handle_vote_req(VoteRequest {
             vote: Vote::new(3, 1),
             last_log_id: Some(log_id(2, 1, 3)),
+            pre_vote: false,
         });
 
         assert_eq!(st, eng.state.server_state);
@@ -208,6 +214,7 @@ fn test_handle_vote_req_granted_follower_learner_does_not_emit_update_server_sta
         eng.handle_vote_req(VoteRequest {
             vote: Vote::new(3, 1),
             last_log_id: Some(log_id(2, 1, 3)),
+            pre_vote: false,
         });
 
         assert_eq!(st, eng.state.server_state);
