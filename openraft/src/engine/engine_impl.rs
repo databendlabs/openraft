@@ -143,10 +143,15 @@ where C: RaftTypeConfig
         );
 
         // TODO: replace all the following codes with one update_internal_server_state;
-        // Previously it is a leader. restore it as leader at once
-        if self.config.enable_fast_path_reelect && self.state.is_leader(&self.config.id) {
-            self.vote_handler().update_internal_server_state();
-            return;
+        // Previously it is a leader. restore it as leader at once if leader restore enabled.
+        if self.state.is_leader(&self.config.id) {
+            if self.config.enable_leader_restore {
+                self.vote_handler().update_internal_server_state();
+                return;
+            } else {
+                // TODO: Update in-memory state so that this node doesn't think it's a leader. i.e.
+                // assert!(!self.state.is_leader(&self.config.id))
+            }
         }
 
         let server_state = if self.state.membership_state.effective().is_voter(&self.config.id) {

@@ -48,7 +48,6 @@ pub(crate) struct Defaults {
     pub enable_tick: bool,
     pub enable_heartbeat: bool,
     pub enable_elect: bool,
-    pub enable_fast_path_reelect: bool,
 }
 
 pub(crate) const DEFAULTS: Defaults = Defaults {
@@ -74,7 +73,6 @@ pub(crate) const DEFAULTS: Defaults = Defaults {
     enable_tick: true,
     enable_heartbeat: true,
     enable_elect: true,
-    enable_fast_path_reelect: true,
 };
 
 /// Log compaction and snapshot policy.
@@ -434,7 +432,7 @@ pub struct Config {
     ))]
     pub allow_log_reversion: Option<bool>,
 
-    /// Whether to allow a restarted leader to re-elect itself without a vote.
+    /// Whether to allow a restarted leader to restore leadership without a vote.
     ///
     /// When enabled (`true`), if a node that was leader before a restart comes back quickly
     /// enough, before any other node triggers and election, it can continue serving as leader
@@ -452,7 +450,7 @@ pub struct Config {
     /// - The last committed log id is not persisted.
     ///
     /// When the above conditions are met and this setting is enabled, then a leader can restart
-    /// with a stale state machine and re-elect itself as leader without any mechanism to detect
+    /// with a stale state machine and restore itself as leader without any mechanism to detect
     /// the staleness.
     ///
     /// When the above conditions are met and this setting is disabled, then a restarted leader can
@@ -464,14 +462,13 @@ pub struct Config {
     /// [`docs::data::log_pointers`]: `crate::docs::data::log_pointers#optionally-persisted-committed`
     // clap 4 requires `num_args = 0..=1`, or it complains about missing arg error
     // https://github.com/clap-rs/clap/discussions/4374
-    #[since(version = "0.11.0")]
+    #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long,
-           default_value_t = true,
            action = clap::ArgAction::Set,
            num_args = 0..=1,
            default_missing_value = "true"
     ))]
-    pub enable_fast_path_reelect: bool,
+    pub enable_leader_restore: Option<bool>,
 }
 
 impl Default for Config {
@@ -502,7 +499,7 @@ impl Default for Config {
             enable_elect: DEFAULTS.enable_elect,
             backoff: DEFAULTS.backoff.to_string(),
             allow_log_reversion: None,
-            enable_fast_path_reelect: DEFAULTS.enable_fast_path_reelect,
+            enable_leader_restore: None,
         }
     }
 }
