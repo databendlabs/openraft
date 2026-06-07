@@ -32,7 +32,6 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// a higher `leader_id`(roughly the `term` in original raft) is seen.
 /// But instead it will be able to upgrade its `leader_id` without losing leadership.
 #[derive(Clone, Debug)]
-#[derive(PartialEq, Eq)]
 pub(crate) struct Leader<C, QS: QuorumSet<C::NodeId>>
 where C: RaftTypeConfig
 {
