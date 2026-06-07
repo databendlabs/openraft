@@ -18,7 +18,6 @@ use crate::vote::raft_vote::RaftVoteExt;
 
 /// Candidate: voting state.
 #[derive(Clone, Debug)]
-#[derive(PartialEq, Eq)]
 pub(crate) struct Candidate<C, QS>
 where
     C: RaftTypeConfig,

@@ -15,7 +15,6 @@ use crate::quorum::QuorumSet;
 ///
 /// Suitable for a small quorum set.
 #[derive(Clone, Debug)]
-#[derive(PartialEq, Eq)]
 pub(crate) struct VecProgress<ID, Ent, Prog, QS>
 where
     ID: 'static,
