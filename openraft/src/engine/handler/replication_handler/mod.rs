@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use display_more::DisplayOptionExt;
 use display_more::DisplayResultExt;
 
@@ -112,14 +114,14 @@ where C: RaftTypeConfig
             };
 
             self.leader.progress =
-                old_progress.upgrade_quorum_set(em.membership().to_quorum_set(), learner_ids.clone(), default_v);
+                old_progress.upgrade_quorum_set(Arc::new((*em.membership()).clone()), learner_ids.clone(), default_v);
         }
 
         {
             let old_progress = self.leader.clock_progress.clone();
 
             self.leader.clock_progress =
-                old_progress.upgrade_quorum_set(em.membership().to_quorum_set(), learner_ids, || None);
+                old_progress.upgrade_quorum_set(Arc::new((*em.membership()).clone()), learner_ids, || None);
         }
     }
 
