@@ -25,6 +25,7 @@ mod effective_membership;
 mod into_nodes;
 #[allow(clippy::module_inception)]
 mod membership;
+mod membership_impl_quorum_set;
 mod stored_membership;
 
 #[cfg(feature = "bench")]
