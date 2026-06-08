@@ -3,7 +3,6 @@ use maplit::btreeset;
 use crate::quorum::Joint;
 use crate::quorum::coherent::Coherent;
 use crate::quorum::coherent::FindCoherent;
-use crate::quorum::joint::AsJoint;
 
 #[test]
 fn test_is_coherent_vec() -> anyhow::Result<()> {
@@ -45,15 +44,15 @@ fn test_is_coherent_slice() -> anyhow::Result<()> {
     let s345 = || btreeset! {3,4,5};
     let s789 = || btreeset! {7,8,9};
 
-    let v123 = vec![s123()];
-    let v345 = vec![s345()];
-    let v123_345 = vec![s123(), s345()];
-    let v345_789 = vec![s345(), s789()];
+    let v123 = [s123()];
+    let v345 = [s345()];
+    let v123_345 = [s123(), s345()];
+    let v345_789 = [s345(), s789()];
 
-    let j123 = v123.as_joint();
-    let j345 = v345.as_joint();
-    let j123_345 = v123_345.as_joint();
-    let j345_789 = v345_789.as_joint();
+    let j123 = Joint::new(&v123[..]);
+    let j345 = Joint::new(&v345[..]);
+    let j123_345 = Joint::new(&v123_345[..]);
+    let j345_789 = Joint::new(&v345_789[..]);
 
     assert!(j123.is_coherent_with(&j123));
     assert!(!j123.is_coherent_with(&j345));
