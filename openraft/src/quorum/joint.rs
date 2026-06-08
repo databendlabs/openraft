@@ -5,18 +5,6 @@ use maplit::btreeset;
 
 use crate::quorum::QuorumSet;
 
-/// Use another data as a joint quorum set.
-///
-/// The ids have to be a quorum in every sub-config to constitute a joint-quorum.
-pub(crate) trait AsJoint<'d, ID, QS, D>
-where
-    ID: 'static,
-    QS: QuorumSet<Id = ID>,
-{
-    fn as_joint(&'d self) -> Joint<ID, QS, D>
-    where D: 'd;
-}
-
 /// A wrapper that uses other data to define a joint quorum set.
 ///
 /// The input ids have to be a quorum in every sub-config to constitute a joint-quorum.

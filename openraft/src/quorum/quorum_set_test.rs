@@ -1,6 +1,5 @@
 use maplit::btreeset;
 
-use crate::quorum::AsJoint;
 use crate::quorum::Joint;
 use crate::quorum::QuorumSet;
 
@@ -37,8 +36,8 @@ fn test_simple_quorum_set_impl() -> anyhow::Result<()> {
 fn test_joint_quorum_set_impl() -> anyhow::Result<()> {
     // Vec<BTreeSet> as majority quorum set
     {
-        let m12345 = vec![btreeset! {1,2,3,4,5}];
-        let qs = m12345.as_joint();
+        let m12345 = [btreeset! {1,2,3,4,5}];
+        let qs = Joint::new(&m12345[..]);
 
         assert!(!qs.is_quorum([0].iter()));
         assert!(!qs.is_quorum([0, 1, 2].iter()));
@@ -50,8 +49,8 @@ fn test_joint_quorum_set_impl() -> anyhow::Result<()> {
 
     // Vec<BTreeSet, BTreeSet> as joint-of-majority quorum set
     {
-        let m12345_678 = vec![btreeset! {1,2,3,4,5}, btreeset! {6,7,8}];
-        let qs = m12345_678.as_joint();
+        let m12345_678 = [btreeset! {1,2,3,4,5}, btreeset! {6,7,8}];
+        let qs = Joint::new(&m12345_678[..]);
 
         assert!(!qs.is_quorum([0].iter()));
         assert!(!qs.is_quorum([0, 1, 2].iter()));
@@ -64,7 +63,7 @@ fn test_joint_quorum_set_impl() -> anyhow::Result<()> {
     // Vec<&[], &[]> as joint-of-majority quorum set
     {
         let m12345_678: Vec<&[usize]> = vec![&[1, 2, 3, 4, 5], &[6, 7, 8]];
-        let qs = m12345_678.as_joint();
+        let qs = Joint::new(&m12345_678[..]);
 
         assert!(!qs.is_quorum([0].iter()));
         assert!(!qs.is_quorum([0, 1, 2].iter()));
@@ -76,8 +75,8 @@ fn test_joint_quorum_set_impl() -> anyhow::Result<()> {
 
     // Vec<Vec, Vec> as joint-of-majority quorum set
     {
-        let m12345_678 = vec![vec![1, 2, 3, 4, 5], vec![6, 7, 8]];
-        let qs = m12345_678.as_joint();
+        let m12345_678 = [vec![1, 2, 3, 4, 5], vec![6, 7, 8]];
+        let qs = Joint::new(&m12345_678[..]);
 
         assert!(!qs.is_quorum([0].iter()));
         assert!(!qs.is_quorum([0, 1, 2].iter()));
@@ -120,8 +119,8 @@ fn test_ids() -> anyhow::Result<()> {
     }
 
     {
-        let m12345_678 = vec![btreeset! {1,2,3,4,5}, btreeset! {4,5,6,7,8}];
-        let qs = m12345_678.as_joint();
+        let m12345_678 = [btreeset! {1,2,3,4,5}, btreeset! {4,5,6,7,8}];
+        let qs = Joint::new(&m12345_678[..]);
 
         assert_eq!(btreeset! {1,2,3,4,5,6,7,8}, qs.ids().collect());
     }

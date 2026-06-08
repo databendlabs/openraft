@@ -21,6 +21,5 @@ mod quorum_set_test;
 
 pub(crate) use coherent::Coherent;
 pub(crate) use coherent::FindCoherent;
-pub(crate) use joint::AsJoint;
 pub(crate) use joint::Joint;
 pub(crate) use quorum_set::QuorumSet;

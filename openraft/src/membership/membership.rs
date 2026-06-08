@@ -12,10 +12,8 @@ use crate::errors::Operation;
 use crate::membership::IntoNodes;
 use crate::node::Node;
 use crate::node::NodeId;
-use crate::quorum::AsJoint;
 use crate::quorum::FindCoherent;
 use crate::quorum::Joint;
-use crate::quorum::QuorumSet;
 
 /// The membership configuration of the cluster.
 ///
@@ -159,7 +157,7 @@ where
         T: IntoIterator<Item = NID>,
         N: Default,
     {
-        let voter_nodes = config.as_joint().ids().map(|x| (x, N::default())).collect::<BTreeMap<_, _>>();
+        let voter_nodes = config.iter().flatten().cloned().map(|x| (x, N::default())).collect::<BTreeMap<_, _>>();
 
         let nodes = Self::extend_nodes(nodes.into_iter().map(|x| (x, N::default())).collect(), &voter_nodes);
 
@@ -189,7 +187,7 @@ where
 
     /// Returns an Iterator of all voter node ids. Learners are not included.
     pub fn voter_ids(&self) -> impl Iterator<Item = NID> {
-        self.configs.as_joint().ids()
+        self.configs.iter().flatten().cloned().collect::<BTreeSet<_>>().into_iter()
     }
 
     /// Returns an Iterator of all learner node ids. Voters are not included.
@@ -307,8 +305,8 @@ where
         let mut nodes = self.nodes.clone();
 
         if !retain {
-            let old_voter_ids = self.configs.as_joint().ids().collect::<BTreeSet<_>>();
-            let new_voter_ids = config.as_joint().ids().collect::<BTreeSet<_>>();
+            let old_voter_ids = self.configs.iter().flatten().cloned().collect::<BTreeSet<_>>();
+            let new_voter_ids = config.iter().flatten().cloned().collect::<BTreeSet<_>>();
 
             for node_id in old_voter_ids.difference(&new_voter_ids) {
                 nodes.remove(node_id);
