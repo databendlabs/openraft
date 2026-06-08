@@ -21,7 +21,7 @@ use crate::vote::raft_vote::RaftVoteExt;
 pub(crate) struct Candidate<C, QS>
 where
     C: RaftTypeConfig,
-    QS: QuorumSet<C::NodeId>,
+    QS: QuorumSet<Id = C::NodeId>,
 {
     /// When the voting is started.
     starting_time: InstantOf<C>,
@@ -44,7 +44,7 @@ where
 impl<C, QS> fmt::Display for Candidate<C, QS>
 where
     C: RaftTypeConfig,
-    QS: QuorumSet<C::NodeId> + fmt::Debug + 'static,
+    QS: QuorumSet<Id = C::NodeId> + fmt::Debug + 'static,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -61,7 +61,7 @@ where
 impl<C, QS> Candidate<C, QS>
 where
     C: RaftTypeConfig,
-    QS: QuorumSet<C::NodeId> + fmt::Debug + Clone + 'static,
+    QS: QuorumSet<Id = C::NodeId> + fmt::Debug + Clone + 'static,
 {
     pub(crate) fn new(
         starting_time: InstantOf<C>,

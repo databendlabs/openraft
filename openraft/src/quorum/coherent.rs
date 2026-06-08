@@ -8,8 +8,8 @@ use crate::quorum::QuorumSet;
 pub(crate) trait Coherent<ID, Other>
 where
     ID: PartialOrd + Ord + 'static,
-    Self: QuorumSet<ID>,
-    Other: QuorumSet<ID>,
+    Self: QuorumSet<Id = ID>,
+    Other: QuorumSet<Id = ID>,
 {
     /// Returns `true` if this QuorumSet is coherent with the other quorum set.
     fn is_coherent_with(&self, other: &Other) -> bool;
@@ -18,8 +18,8 @@ where
 pub(crate) trait FindCoherent<ID, Other>
 where
     ID: PartialOrd + Ord + 'static,
-    Self: QuorumSet<ID>,
-    Other: QuorumSet<ID>,
+    Self: QuorumSet<Id = ID>,
+    Other: QuorumSet<Id = ID>,
 {
     /// Build a QuorumSet `X` so that `self` is coherent with `X` and `X` is coherent with `other`,
     /// i.e., `self ~ X ~ other`.

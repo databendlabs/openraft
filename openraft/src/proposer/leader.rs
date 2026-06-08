@@ -32,7 +32,7 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// a higher `leader_id`(roughly the `term` in original raft) is seen.
 /// But instead it will be able to upgrade its `leader_id` without losing leadership.
 #[derive(Clone, Debug)]
-pub(crate) struct Leader<C, QS: QuorumSet<C::NodeId>>
+pub(crate) struct Leader<C, QS: QuorumSet<Id = C::NodeId>>
 where C: RaftTypeConfig
 {
     /// Whether this Leader is marked as transferring to another node.
@@ -82,7 +82,7 @@ where C: RaftTypeConfig
 impl<C, QS> Leader<C, QS>
 where
     C: RaftTypeConfig,
-    QS: QuorumSet<C::NodeId> + Clone + fmt::Debug + 'static,
+    QS: QuorumSet<Id = C::NodeId> + Clone + fmt::Debug + 'static,
 {
     /// Create a new Leader.
     ///

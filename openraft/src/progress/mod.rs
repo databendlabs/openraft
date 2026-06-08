@@ -40,7 +40,7 @@ where
     ID: PartialEq + 'static,
     Ent: Borrow<Prog>,
     Prog: PartialOrd + Clone,
-    QS: QuorumSet<ID>,
+    QS: QuorumSet<Id = ID>,
 {
     /// Update one of the scalar values and re-calculate the quorum-accepted value with the provided
     /// function.
