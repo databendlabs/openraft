@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use display_more::DisplayOptionExt;
@@ -123,7 +124,7 @@ where C: RaftTypeConfig
             now,
             vote,
             last_log_id,
-            membership.to_quorum_set(),
+            Arc::new((*membership).clone()),
             membership.learner_ids(),
             self.state.progress_id_gen.clone(),
         ));

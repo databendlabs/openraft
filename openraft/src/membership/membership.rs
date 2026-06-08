@@ -411,15 +411,6 @@ where
             }
         }
     }
-
-    /// Build a QuorumSet from current joint config
-    pub(crate) fn to_quorum_set(&self) -> Joint<NID, Vec<NID>, Vec<Vec<NID>>> {
-        let mut qs = vec![];
-        for c in self.get_joint_config().iter() {
-            qs.push(c.iter().cloned().collect::<Vec<_>>());
-        }
-        Joint::new(qs)
-    }
 }
 
 #[cfg(test)]

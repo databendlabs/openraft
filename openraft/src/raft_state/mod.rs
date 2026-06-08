@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::ops::Deref;
+use std::sync::Arc;
 
 use validit::Valid;
 use validit::Validate;
@@ -469,13 +470,13 @@ where C: RaftTypeConfig
     /// vote.
     /// A Leader established with election using the state in `Engine.candidate`.
     pub(crate) fn new_leader(&mut self) -> Leader<C, LeaderQuorumSet<C>> {
-        let em = &self.membership_state.effective().membership();
+        let em = self.membership_state.effective().membership();
 
         let last_leader_log_ids = self.log_ids.by_last_leader();
 
         Leader::new(
             self.vote_ref().to_committed(),
-            em.to_quorum_set(),
+            Arc::new((*em).clone()),
             em.learner_ids(),
             last_leader_log_ids,
             self.progress_id_gen.clone(),
