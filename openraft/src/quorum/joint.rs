@@ -11,7 +11,7 @@ use crate::quorum::QuorumSet;
 pub(crate) trait AsJoint<'d, ID, QS, D>
 where
     ID: 'static,
-    QS: QuorumSet<ID>,
+    QS: QuorumSet<Id = ID>,
 {
     fn as_joint(&'d self) -> Joint<ID, QS, D>
     where D: 'd;
@@ -26,7 +26,7 @@ where
 pub(crate) struct Joint<ID, QS, D>
 where
     ID: 'static,
-    QS: QuorumSet<ID>,
+    QS: QuorumSet<Id = ID>,
 {
     data: D,
     _p: PhantomData<(ID, QS)>,
@@ -35,7 +35,7 @@ where
 impl<ID, QS, D> Default for Joint<ID, QS, D>
 where
     ID: 'static,
-    QS: QuorumSet<ID>,
+    QS: QuorumSet<Id = ID>,
     D: Default,
 {
     fn default() -> Self {
@@ -49,7 +49,7 @@ where
 impl<ID, QS, D> Joint<ID, QS, D>
 where
     ID: 'static,
-    QS: QuorumSet<ID>,
+    QS: QuorumSet<Id = ID>,
 {
     pub(crate) fn new(data: D) -> Self {
         Self { data, _p: PhantomData }
@@ -61,11 +61,12 @@ where
 }
 
 /// Implement QuorumSet for `Joint<.., &[QS]>`
-impl<ID, QS> QuorumSet<ID> for Joint<ID, QS, &[QS]>
+impl<ID, QS> QuorumSet for Joint<ID, QS, &[QS]>
 where
     ID: PartialOrd + Ord + 'static,
-    QS: QuorumSet<ID>,
+    QS: QuorumSet<Id = ID>,
 {
+    type Id = ID;
     type Iter = std::collections::btree_set::IntoIter<ID>;
 
     fn is_quorum<'a, I: Iterator<Item = &'a ID> + Clone>(&self, ids: I) -> bool {
@@ -87,11 +88,12 @@ where
 }
 
 /// Implement QuorumSet for `Joint<.., Vec<QS>>`
-impl<ID, QS> QuorumSet<ID> for Joint<ID, QS, Vec<QS>>
+impl<ID, QS> QuorumSet for Joint<ID, QS, Vec<QS>>
 where
     ID: PartialOrd + Ord + 'static,
-    QS: QuorumSet<ID>,
+    QS: QuorumSet<Id = ID>,
 {
+    type Id = ID;
     type Iter = std::collections::btree_set::IntoIter<ID>;
 
     fn is_quorum<'a, I: Iterator<Item = &'a ID> + Clone>(&self, ids: I) -> bool {

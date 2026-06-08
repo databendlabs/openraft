@@ -203,12 +203,13 @@ where
 }
 
 /// Implement node-id joint quorum set.
-impl<CLID, NID, N> QuorumSet<NID> for EffectiveMembership<CLID, NID, N>
+impl<CLID, NID, N> QuorumSet for EffectiveMembership<CLID, NID, N>
 where
     CLID: RaftCommittedLeaderId,
     NID: NodeId,
     N: Node,
 {
+    type Id = NID;
     type Iter = std::collections::btree_set::IntoIter<NID>;
 
     fn is_quorum<'a, I: Iterator<Item = &'a NID> + Clone>(&self, ids: I) -> bool {

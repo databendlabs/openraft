@@ -6,7 +6,7 @@ use crate::quorum::QuorumSet;
 impl<'d, ID, QS> AsJoint<'d, ID, QS, &'d [QS]> for Vec<QS>
 where
     ID: 'static,
-    QS: QuorumSet<ID>,
+    QS: QuorumSet<Id = ID>,
 {
     fn as_joint(&'d self) -> Joint<ID, QS, &'d [QS]>
     where &'d [QS]: 'd {
@@ -17,7 +17,7 @@ where
 impl<ID, QS> From<Vec<QS>> for Joint<ID, QS, Vec<QS>>
 where
     ID: 'static,
-    QS: QuorumSet<ID>,
+    QS: QuorumSet<Id = ID>,
 {
     fn from(v: Vec<QS>) -> Self {
         Joint::new(v)

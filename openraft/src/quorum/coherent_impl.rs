@@ -6,7 +6,7 @@ use crate::quorum::coherent::FindCoherent;
 impl<ID, QS> Coherent<ID, Joint<ID, QS, Vec<QS>>> for Joint<ID, QS, Vec<QS>>
 where
     ID: PartialOrd + Ord + 'static,
-    QS: QuorumSet<ID> + PartialEq,
+    QS: QuorumSet<Id = ID> + PartialEq,
 {
     /// Check if two `joint` are coherent.
     ///
@@ -28,7 +28,7 @@ where
 impl<ID, QS> Coherent<ID, Joint<ID, QS, &[QS]>> for Joint<ID, QS, &[QS]>
 where
     ID: PartialOrd + Ord + 'static,
-    QS: QuorumSet<ID> + PartialEq,
+    QS: QuorumSet<Id = ID> + PartialEq,
 {
     fn is_coherent_with(&self, other: &Joint<ID, QS, &[QS]>) -> bool {
         for a in self.children().iter() {
@@ -46,7 +46,7 @@ where
 impl<ID, QS> Coherent<ID, QS> for Joint<ID, QS, Vec<QS>>
 where
     ID: PartialOrd + Ord + 'static,
-    QS: QuorumSet<ID> + PartialEq,
+    QS: QuorumSet<Id = ID> + PartialEq,
 {
     fn is_coherent_with(&self, other: &QS) -> bool {
         for a in self.children().iter() {
@@ -63,7 +63,7 @@ where
 impl<ID, QS> FindCoherent<ID, QS> for Joint<ID, QS, Vec<QS>>
 where
     ID: PartialOrd + Ord + 'static,
-    QS: QuorumSet<ID> + PartialEq + Clone,
+    QS: QuorumSet<Id = ID> + PartialEq + Clone,
 {
     fn find_coherent(&self, other: QS) -> Self {
         if self.is_coherent_with(&other) {

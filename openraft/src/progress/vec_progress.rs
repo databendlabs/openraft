@@ -18,7 +18,7 @@ use crate::quorum::QuorumSet;
 pub(crate) struct VecProgress<ID, Ent, Prog, QS>
 where
     ID: 'static,
-    QS: QuorumSet<ID>,
+    QS: QuorumSet<Id = ID>,
 {
     /// Quorum set to determine if a set of `id` constitutes a quorum.
     quorum_set: QS,
@@ -50,7 +50,7 @@ where
     Ent: Clone + 'static,
     Ent: Borrow<Prog>,
     Prog: PartialOrd + Ord + Clone + 'static,
-    QS: QuorumSet<ID> + 'static,
+    QS: QuorumSet<Id = ID> + 'static,
     ID: Display,
     Ent: Display,
 {
@@ -72,7 +72,7 @@ impl<ID, Ent, Prog, QS> VecProgress<ID, Ent, Prog, QS>
 where
     ID: 'static,
     Ent: Borrow<Prog>,
-    QS: QuorumSet<ID>,
+    QS: QuorumSet<Id = ID>,
     Prog: Clone,
 {
     pub(crate) fn new(quorum_set: QS, learner_ids: impl IntoIterator<Item = ID>, default_v: impl Fn() -> Ent) -> Self {
@@ -139,7 +139,7 @@ where
     ID: PartialEq + 'static,
     Ent: Borrow<Prog>,
     Prog: PartialOrd + Clone,
-    QS: QuorumSet<ID>,
+    QS: QuorumSet<Id = ID>,
 {
     /// Update one of the scalar values and re-calculate the quorum-accepted value.
     ///

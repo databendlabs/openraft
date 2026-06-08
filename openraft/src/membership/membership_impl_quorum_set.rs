@@ -5,11 +5,12 @@ use crate::node::Node;
 use crate::node::NodeId;
 use crate::quorum::QuorumSet;
 
-impl<NID, N> QuorumSet<NID> for Membership<NID, N>
+impl<NID, N> QuorumSet for Membership<NID, N>
 where
     NID: NodeId,
     N: Node,
 {
+    type Id = NID;
     type Iter = std::collections::btree_set::IntoIter<NID>;
 
     fn is_quorum<'a, I>(&self, ids: I) -> bool
