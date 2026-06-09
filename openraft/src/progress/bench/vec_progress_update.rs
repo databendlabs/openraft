@@ -1,16 +1,15 @@
 extern crate test;
 
+use maplit::btreeset;
 use test::Bencher;
 use test::black_box;
 
 use crate::progress::Progress;
 use crate::progress::VecProgress;
-use crate::quorum::Joint;
 
 #[bench]
 fn progress_update_01234_567(b: &mut Bencher) {
-    let membership: Vec<Vec<u64>> = vec![vec![0, 1, 2, 3, 4], vec![5, 6, 7]];
-    let quorum_set = Joint::from(membership);
+    let quorum_set = vec![btreeset! {0, 1, 2, 3, 4}, btreeset! {5, 6, 7}];
     let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, 0..=7, || 0);
 
     let mut id = 0u64;
