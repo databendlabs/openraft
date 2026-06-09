@@ -15,7 +15,7 @@ use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::raft::VoteRequest;
 use crate::type_config::TypeConfigExt;
-use crate::type_config::alias::EffectiveMembershipOf;
+use crate::type_config::alias::StoredMembershipOf;
 use crate::utime::Leased;
 
 fn m1() -> Membership<u64, ()> {
@@ -39,7 +39,7 @@ fn test_elect_single_node() -> anyhow::Result<()> {
     {
         let mut eng = eng();
         eng.config.id = 1;
-        eng.state.membership_state.set_effective(Arc::new(EffectiveMembershipOf::<UTConfig>::new(
+        eng.state.membership_state.set_effective(Arc::new(StoredMembershipOf::<UTConfig>::new(
             Some(log_id(0, 1, 1)),
             m1(),
         )));
@@ -76,7 +76,7 @@ fn test_elect_single_node_elect_again() -> anyhow::Result<()> {
     {
         let mut eng = eng();
         eng.config.id = 1;
-        eng.state.membership_state.set_effective(Arc::new(EffectiveMembershipOf::<UTConfig>::new(
+        eng.state.membership_state.set_effective(Arc::new(StoredMembershipOf::<UTConfig>::new(
             Some(log_id(0, 1, 1)),
             m1(),
         )));
@@ -122,7 +122,7 @@ fn test_elect_multi_node_enter_candidate() -> anyhow::Result<()> {
     {
         let mut eng = eng();
         eng.config.id = 1;
-        eng.state.membership_state.set_effective(Arc::new(EffectiveMembershipOf::<UTConfig>::new(
+        eng.state.membership_state.set_effective(Arc::new(StoredMembershipOf::<UTConfig>::new(
             Some(log_id(0, 1, 1)),
             m12(),
         )));

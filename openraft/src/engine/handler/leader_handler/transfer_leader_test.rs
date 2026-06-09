@@ -18,7 +18,7 @@ use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::raft::TransferLeaderRequest;
 use crate::type_config::TypeConfigExt;
-use crate::type_config::alias::EffectiveMembershipOf;
+use crate::type_config::alias::StoredMembershipOf;
 use crate::utime::Leased;
 
 fn m23() -> Membership<u64, ()> {
@@ -38,8 +38,8 @@ fn eng() -> Engine<UTConfig> {
     eng.state.log_ids.append(log_id(1, 1, 1));
     eng.state.log_ids.append(log_id(2, 1, 3));
     eng.state.membership_state = MembershipState::new(
-        Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m23())),
-        Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(2, 1, 3)), m23())),
+        Arc::new(StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m23())),
+        Arc::new(StoredMembershipOf::<UTConfig>::new(Some(log_id(2, 1, 3)), m23())),
     );
     eng.testing_new_leader();
     eng.state.server_state = eng.calc_server_state();

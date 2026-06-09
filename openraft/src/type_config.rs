@@ -243,8 +243,6 @@ pub mod alias {
     pub type EntryPayloadOf<C> = EntryPayload<DOf<C>, NodeIdOf<C>, NodeOf<C>>;
     pub type DefaultEntryOf<C> = crate::Entry<CommittedLeaderIdOf<C>, DOf<C>, NodeIdOf<C>, NodeOf<C>>;
     pub type StoredMembershipOf<C> = crate::StoredMembership<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>>;
-    pub type EffectiveMembershipOf<C> =
-        crate::membership::EffectiveMembership<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>>;
     pub type SnapshotSignatureOf<C> = crate::storage::SnapshotSignature<CommittedLeaderIdOf<C>>;
     pub type SnapshotMetaOf<C> = crate::storage::SnapshotMeta<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>>;
     pub type SnapshotOf<C> =

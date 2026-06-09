@@ -23,8 +23,8 @@ use crate::progress::stream_id::StreamId;
 use crate::raft_state::IOId;
 use crate::replication::replicate::Replicate;
 use crate::type_config::TypeConfigExt;
-use crate::type_config::alias::EffectiveMembershipOf;
 use crate::type_config::alias::EntryOf;
+use crate::type_config::alias::StoredMembershipOf;
 use crate::utime::Leased;
 use crate::vote::raft_vote::RaftVoteExt;
 
@@ -54,7 +54,7 @@ fn eng() -> Engine<UTConfig> {
 fn test_startup_as_leader_without_logs() -> anyhow::Result<()> {
     let mut eng = eng();
     // self.id==2 is a voter:
-    eng.state.membership_state.set_effective(Arc::new(EffectiveMembershipOf::<UTConfig>::new(
+    eng.state.membership_state.set_effective(Arc::new(StoredMembershipOf::<UTConfig>::new(
         Some(log_id(1, 1, 3)),
         m23(),
     )));
@@ -113,7 +113,7 @@ fn test_startup_as_leader_with_proposed_logs() -> anyhow::Result<()> {
     tracing::info!("--- a leader proposed logs and restarted, reuse noop_log_id");
     let mut eng = eng();
     // self.id==2 is a voter:
-    eng.state.membership_state.set_effective(Arc::new(EffectiveMembershipOf::<UTConfig>::new(
+    eng.state.membership_state.set_effective(Arc::new(StoredMembershipOf::<UTConfig>::new(
         Some(log_id(2, 1, 3)),
         m23(),
     )));
@@ -169,7 +169,7 @@ fn test_startup_as_leader_with_proposed_logs() -> anyhow::Result<()> {
 fn test_startup_as_leader_not_voter_issue_920() -> anyhow::Result<()> {
     let mut eng = eng();
     // self.id==2 is a voter:
-    eng.state.membership_state.set_effective(Arc::new(EffectiveMembershipOf::<UTConfig>::new(
+    eng.state.membership_state.set_effective(Arc::new(StoredMembershipOf::<UTConfig>::new(
         Some(log_id(2, 1, 3)),
         m_empty(),
     )));
@@ -192,7 +192,7 @@ fn test_startup_as_leader_not_voter_issue_920() -> anyhow::Result<()> {
 fn test_startup_candidate_becomes_follower() -> anyhow::Result<()> {
     let mut eng = eng();
     // self.id==2 is a voter:
-    eng.state.membership_state.set_effective(Arc::new(EffectiveMembershipOf::<UTConfig>::new(
+    eng.state.membership_state.set_effective(Arc::new(StoredMembershipOf::<UTConfig>::new(
         Some(log_id(2, 1, 3)),
         m23(),
     )));
@@ -210,7 +210,7 @@ fn test_startup_candidate_becomes_follower() -> anyhow::Result<()> {
 fn test_startup_as_follower() -> anyhow::Result<()> {
     let mut eng = eng();
     // self.id==2 is a voter:
-    eng.state.membership_state.set_effective(Arc::new(EffectiveMembershipOf::<UTConfig>::new(
+    eng.state.membership_state.set_effective(Arc::new(StoredMembershipOf::<UTConfig>::new(
         Some(log_id(2, 1, 3)),
         m23(),
     )));
@@ -227,7 +227,7 @@ fn test_startup_as_follower() -> anyhow::Result<()> {
 fn test_startup_as_learner() -> anyhow::Result<()> {
     let mut eng = eng();
     // self.id==2 is not a voter:
-    eng.state.membership_state.set_effective(Arc::new(EffectiveMembershipOf::<UTConfig>::new(
+    eng.state.membership_state.set_effective(Arc::new(StoredMembershipOf::<UTConfig>::new(
         Some(log_id(2, 1, 3)),
         m34(),
     )));

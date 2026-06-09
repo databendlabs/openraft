@@ -29,9 +29,9 @@ use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::replication::replicate::Replicate;
 use crate::replication::response::ReplicationResult;
 use crate::type_config::alias::CommittedVoteOf;
-use crate::type_config::alias::EffectiveMembershipOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::StoredMembershipOf;
 use crate::vote::raft_vote::RaftVoteExt;
 
 #[cfg(test)]
@@ -77,7 +77,7 @@ where C: RaftTypeConfig
 
         self.state
             .membership_state
-            .append(EffectiveMembershipOf::<C>::new_arc(Some(log_id.clone()), m.clone()));
+            .append(StoredMembershipOf::<C>::new_arc(Some(log_id.clone()), m.clone()));
 
         // TODO(9): currently only a leader has replication setup.
         //       It's better to setup replication for both leader and candidate.
