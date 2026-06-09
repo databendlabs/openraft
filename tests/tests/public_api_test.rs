@@ -18,7 +18,6 @@ use openraft::BasicNode;
 use openraft::ChangeMembers;
 use openraft::Config;
 use openraft::ConfigError;
-use openraft::EffectiveMembership;
 use openraft::EmptyNode;
 use openraft::Entry;
 use openraft::EntryPayload;
@@ -180,7 +179,6 @@ use openraft::macros;
 // =============================================================================
 // membership module exports
 // =============================================================================
-use openraft::membership::EffectiveMembership as EffectiveMembershipModule;
 use openraft::membership::Membership as MembershipModule;
 use openraft::membership::StoredMembership as StoredMembershipModule;
 // =============================================================================

@@ -24,7 +24,6 @@ use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::type_config::alias::CommittedVoteOf;
-use crate::type_config::alias::EffectiveMembershipOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::SnapshotOf;
 use crate::type_config::alias::StoredMembershipOf;
@@ -198,9 +197,7 @@ where C: RaftTypeConfig
         // Other membership log can be just ignored.
         for (i, m) in memberships.into_iter().enumerate() {
             tracing::debug!("apply membership config #{} from leader: {}", i, m);
-            self.state
-                .membership_state
-                .append(Arc::new(EffectiveMembershipOf::<C>::new_from_stored_membership(m)));
+            self.state.membership_state.append(Arc::new(m));
         }
 
         tracing::debug!("membership state updated: {}", self.state.membership_state);
@@ -210,7 +207,7 @@ where C: RaftTypeConfig
 
     /// Update membership state with a committed membership config
     #[tracing::instrument(level = "debug", skip_all)]
-    fn update_committed_membership(&mut self, membership: EffectiveMembershipOf<C>) {
+    fn update_committed_membership(&mut self, membership: StoredMembershipOf<C>) {
         tracing::debug!("update committed membership: {}", membership);
 
         let m = Arc::new(membership);
@@ -284,9 +281,7 @@ where C: RaftTypeConfig
         self.state.apply_progress_mut().accept(snap_last_log_id.clone());
         self.state.snapshot_progress_mut().accept(snap_last_log_id.clone());
 
-        self.update_committed_membership(EffectiveMembershipOf::<C>::new_from_stored_membership(
-            meta.last_membership.clone(),
-        ));
+        self.update_committed_membership(meta.last_membership.clone());
 
         self.output.push_command(Command::from(sm::Command::install_full_snapshot(snapshot, log_io_id)));
 

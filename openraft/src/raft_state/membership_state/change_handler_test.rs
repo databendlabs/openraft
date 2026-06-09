@@ -10,13 +10,13 @@ use crate::errors::ChangeMembershipError;
 use crate::errors::EmptyMembership;
 use crate::errors::InProgress;
 use crate::errors::LearnerNotFound;
-use crate::type_config::alias::EffectiveMembershipOf;
 use crate::type_config::alias::MembershipStateOf;
+use crate::type_config::alias::StoredMembershipOf;
 
-/// Create an Arc<EffectiveMembership>
-fn effmem(term: u64, index: u64, m: Membership<u64, ()>) -> Arc<EffectiveMembershipOf<UTConfig>> {
+/// Create an Arc<StoredMembership>
+fn effmem(term: u64, index: u64, m: Membership<u64, ()>) -> Arc<StoredMembershipOf<UTConfig>> {
     let lid = Some(log_id(term, 1, index));
-    Arc::new(EffectiveMembershipOf::<UTConfig>::new(lid, m))
+    Arc::new(StoredMembershipOf::<UTConfig>::new(lid, m))
 }
 
 fn m1() -> Membership<u64, ()> {

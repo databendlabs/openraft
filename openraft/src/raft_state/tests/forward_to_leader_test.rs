@@ -11,10 +11,10 @@ use crate::Vote;
 use crate::engine::testing::UTConfig;
 use crate::errors::ForwardToLeader;
 use crate::type_config::TypeConfigExt;
-use crate::type_config::alias::EffectiveMembershipOf;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::NodeIdOf;
+use crate::type_config::alias::StoredMembershipOf;
 use crate::utime::Leased;
 use crate::vote::RaftLeaderIdExt;
 
@@ -31,14 +31,8 @@ fn test_forward_to_leader_vote_not_committed() {
     let rs = RaftState::<UTConfig<u64>> {
         vote: Leased::new(UTConfig::<()>::now(), Duration::from_millis(500), Vote::new(1, 2)),
         membership_state: MembershipState::new(
-            Arc::new(EffectiveMembershipOf::<UTConfig<u64>>::new(
-                Some(log_id(1, 0, 1)),
-                m12(),
-            )),
-            Arc::new(EffectiveMembershipOf::<UTConfig<u64>>::new(
-                Some(log_id(1, 0, 1)),
-                m12(),
-            )),
+            Arc::new(StoredMembershipOf::<UTConfig<u64>>::new(Some(log_id(1, 0, 1)), m12())),
+            Arc::new(StoredMembershipOf::<UTConfig<u64>>::new(Some(log_id(1, 0, 1)), m12())),
         ),
         ..Default::default()
     };
@@ -55,14 +49,8 @@ fn test_forward_to_leader_not_a_member() {
             Vote::new_committed(1, 3),
         ),
         membership_state: MembershipState::new(
-            Arc::new(EffectiveMembershipOf::<UTConfig<u64>>::new(
-                Some(log_id(1, 0, 1)),
-                m12(),
-            )),
-            Arc::new(EffectiveMembershipOf::<UTConfig<u64>>::new(
-                Some(log_id(1, 0, 1)),
-                m12(),
-            )),
+            Arc::new(StoredMembershipOf::<UTConfig<u64>>::new(Some(log_id(1, 0, 1)), m12())),
+            Arc::new(StoredMembershipOf::<UTConfig<u64>>::new(Some(log_id(1, 0, 1)), m12())),
         ),
         ..Default::default()
     };
@@ -81,14 +69,8 @@ fn test_forward_to_leader_has_leader() {
             Vote::new_committed(1, 3),
         ),
         membership_state: MembershipState::new(
-            Arc::new(EffectiveMembershipOf::<UTConfig<u64>>::new(
-                Some(log_id(1, 0, 1)),
-                m123(),
-            )),
-            Arc::new(EffectiveMembershipOf::<UTConfig<u64>>::new(
-                Some(log_id(1, 0, 1)),
-                m123(),
-            )),
+            Arc::new(StoredMembershipOf::<UTConfig<u64>>::new(Some(log_id(1, 0, 1)), m123())),
+            Arc::new(StoredMembershipOf::<UTConfig<u64>>::new(Some(log_id(1, 0, 1)), m123())),
         ),
         ..Default::default()
     };

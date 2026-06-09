@@ -141,7 +141,7 @@ async fn run_test(router: Router) {
     // ```text
     // metrics: RaftMetrics {
     //   current_leader: Some(1),
-    //   membership_config: EffectiveMembership {
+    //   membership_config: StoredMembership {
     //        log_id: LogId { leader_id: LeaderId { term: 1, node_id: 1 }, index: 8 },
     //        membership: Membership { learners: {}, configs: [{1, 2, 3}] }
     //   },

@@ -10,7 +10,7 @@ use openraft::Membership;
 use openraft::RaftLogReader;
 use openraft::SnapshotPolicy;
 use openraft::Vote;
-use openraft::alias::EffectiveMembershipOf;
+use openraft::alias::StoredMembershipOf;
 use openraft::raft::AppendEntriesRequest;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
@@ -93,7 +93,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
                 let m = StorageHelper::new(&mut sto, &mut sm).get_membership().await?;
 
                 assert_eq!(
-                    &EffectiveMembershipOf::<openraft_memstore::TypeConfig>::default(),
+                    &StoredMembershipOf::<openraft_memstore::TypeConfig>::default(),
                     m.committed().as_ref()
                 );
                 assert_eq!(

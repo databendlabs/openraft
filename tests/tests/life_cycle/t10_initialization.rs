@@ -10,7 +10,6 @@ use openraft::Membership;
 use openraft::RaftLogReader;
 use openraft::ServerState;
 use openraft::Vote;
-use openraft::alias::EffectiveMembershipOf;
 use openraft::alias::StoredMembershipOf;
 use openraft::errors::InitializeError;
 use openraft::errors::NotAllowed;
@@ -107,7 +106,7 @@ async fn initialization() -> anyhow::Result<()> {
     for node_id in [0, 1, 2] {
         router
             .external_request(node_id, move |s| {
-                let want = EffectiveMembershipOf::<openraft_memstore::TypeConfig>::new(
+                let want = StoredMembershipOf::<openraft_memstore::TypeConfig>::new(
                     Some(log_id(0, 0, 0)),
                     Membership::new_with_defaults(vec![btreeset! {0,1,2}], []),
                 );

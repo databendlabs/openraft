@@ -5,13 +5,13 @@ use maplit::btreeset;
 use crate::Membership;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
-use crate::type_config::alias::EffectiveMembershipOf;
 use crate::type_config::alias::MembershipStateOf;
+use crate::type_config::alias::StoredMembershipOf;
 
-/// Create an Arc<EffectiveMembership>
-fn effmem(term: u64, index: u64, m: Membership<u64, ()>) -> Arc<EffectiveMembershipOf<UTConfig>> {
+/// Create an Arc<StoredMembership>
+fn effmem(term: u64, index: u64, m: Membership<u64, ()>) -> Arc<StoredMembershipOf<UTConfig>> {
     let lid = Some(log_id(term, 1, index));
-    Arc::new(EffectiveMembershipOf::<UTConfig>::new(lid, m))
+    Arc::new(StoredMembershipOf::<UTConfig>::new(lid, m))
 }
 
 fn m1() -> Membership<u64, ()> {
@@ -45,18 +45,15 @@ fn test_membership_state_is_member() -> anyhow::Result<()> {
 fn test_membership_state_update_committed() -> anyhow::Result<()> {
     let new = || {
         MembershipStateOf::<UTConfig>::new(
-            Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(2, 1, 2)), m1())),
-            Arc::new(EffectiveMembershipOf::<UTConfig>::new(
-                Some(log_id(3, 1, 4)),
-                m123_345(),
-            )),
+            Arc::new(StoredMembershipOf::<UTConfig>::new(Some(log_id(2, 1, 2)), m1())),
+            Arc::new(StoredMembershipOf::<UTConfig>::new(Some(log_id(3, 1, 4)), m123_345())),
         )
     };
 
     // Smaller new committed won't take effect.
     {
         let mut x = new();
-        let res = x.update_committed(Arc::new(EffectiveMembershipOf::<UTConfig>::new(
+        let res = x.update_committed(Arc::new(StoredMembershipOf::<UTConfig>::new(
             Some(log_id(1, 1, 1)),
             m12(),
         )));
@@ -68,7 +65,7 @@ fn test_membership_state_update_committed() -> anyhow::Result<()> {
     // Update committed, not effective.
     {
         let mut x = new();
-        let res = x.update_committed(Arc::new(EffectiveMembershipOf::<UTConfig>::new(
+        let res = x.update_committed(Arc::new(StoredMembershipOf::<UTConfig>::new(
             Some(log_id(2, 1, 3)),
             m12(),
         )));
@@ -80,7 +77,7 @@ fn test_membership_state_update_committed() -> anyhow::Result<()> {
     // Update both
     {
         let mut x = new();
-        let res = x.update_committed(Arc::new(EffectiveMembershipOf::<UTConfig>::new(
+        let res = x.update_committed(Arc::new(StoredMembershipOf::<UTConfig>::new(
             Some(log_id(3, 1, 4)),
             m12(),
         )));
@@ -94,7 +91,7 @@ fn test_membership_state_update_committed() -> anyhow::Result<()> {
     // Because leader may have a smaller log_id that is committed.
     {
         let mut x = new();
-        let res = x.update_committed(Arc::new(EffectiveMembershipOf::<UTConfig>::new(
+        let res = x.update_committed(Arc::new(StoredMembershipOf::<UTConfig>::new(
             Some(log_id(2, 1, 5)),
             m12(),
         )));

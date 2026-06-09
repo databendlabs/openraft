@@ -715,7 +715,7 @@ where
 
         let st = &self.engine.state;
 
-        let membership_config = st.membership_state.effective().stored_membership().clone();
+        let membership_config = st.membership_state.effective().clone();
         let current_leader = self.current_leader();
 
         // Get the last flushed vote, or use initial vote (term=0, node_id=self.id)
