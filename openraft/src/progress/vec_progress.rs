@@ -298,14 +298,15 @@ where
 mod tests {
     use std::borrow::Borrow;
 
+    use maplit::btreeset;
+
     use super::Progress;
     use super::VecProgress;
     use crate::progress::id_val::IdVal;
-    use crate::quorum::Joint;
 
     #[test]
     fn vec_progress_new() {
-        let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
+        let quorum_set = vec![btreeset! {0, 1, 2, 3, 4}];
         let progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6, 7], || 0);
 
         assert_eq!(
@@ -325,7 +326,7 @@ mod tests {
 
     #[test]
     fn vec_progress_index() {
-        let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
+        let quorum_set = vec![btreeset! {0, 1, 2, 3, 4}];
         let progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6, 7], || 0);
 
         assert_eq!(Some(0), progress.index(&0));
@@ -339,7 +340,7 @@ mod tests {
 
     #[test]
     fn vec_progress_get() {
-        let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
+        let quorum_set = vec![btreeset! {0, 1, 2, 3, 4}];
         let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6, 7], || 0);
 
         progress.update(&6, 5).ok();
@@ -358,7 +359,7 @@ mod tests {
 
     #[test]
     fn vec_progress_iter() {
-        let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
+        let quorum_set = vec![btreeset! {0, 1, 2, 3, 4}];
         let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6, 7], || 0);
 
         progress.update(&7, 7).ok();
@@ -382,7 +383,7 @@ mod tests {
 
     #[test]
     fn vec_progress_move_up() {
-        let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
+        let quorum_set = vec![btreeset! {0, 1, 2, 3, 4}];
         let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6], || 0);
 
         // initial: 0-0, 1-0, 2-0, 3-0, 4-0
@@ -461,7 +462,7 @@ mod tests {
 
     #[test]
     fn vec_progress_update() {
-        let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
+        let quorum_set = vec![btreeset! {0, 1, 2, 3, 4}];
         let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6], || 0);
 
         // initial: 0,0,0,0,0
@@ -486,7 +487,7 @@ mod tests {
 
     #[test]
     fn vec_progress_update_with() {
-        let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
+        let quorum_set = vec![btreeset! {0, 1, 2, 3, 4}];
         let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6], || 0);
 
         // Test that update_with can use closures to modify values
@@ -551,7 +552,7 @@ mod tests {
     fn vec_progress_update_struct_value() {
         let pv = |p, user_data| ProgressEntry { progress: p, user_data };
 
-        let quorum_set: Vec<u64> = vec![0, 1, 2];
+        let quorum_set = vec![btreeset! {0, 1, 2}];
         let mut progress = VecProgress::<u64, ProgressEntry, u64, _>::new(quorum_set, [3], || pv(0, "foo"));
 
         // initial: 0,0,0,0
@@ -584,7 +585,7 @@ mod tests {
 
     #[test]
     fn vec_progress_update_does_not_move_learner_elt() {
-        let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
+        let quorum_set = vec![btreeset! {0, 1, 2, 3, 4}];
         let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6], || 0);
 
         assert_eq!(Some(5), progress.index(&6));
@@ -598,9 +599,9 @@ mod tests {
 
     #[test]
     fn vec_progress_upgrade_quorum_set() {
-        let qs012 = Joint::from(vec![vec![0, 1, 2]]);
-        let qs012_345 = Joint::from(vec![vec![0, 1, 2], vec![3, 4, 5]]);
-        let qs345 = Joint::from(vec![vec![3, 4, 5]]);
+        let qs012 = vec![btreeset! {0, 1, 2}];
+        let qs012_345 = vec![btreeset! {0, 1, 2}, btreeset! {3, 4, 5}];
+        let qs345 = vec![btreeset! {3, 4, 5}];
 
         // Initially, quorum-accepted is 5
 
@@ -639,7 +640,7 @@ mod tests {
 
     #[test]
     fn vec_progress_is_voter() {
-        let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
+        let quorum_set = vec![btreeset! {0, 1, 2, 3, 4}];
         let progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6, 7], || 0);
 
         assert_eq!(Some(true), progress.is_voter(&1));
@@ -650,7 +651,7 @@ mod tests {
 
     #[test]
     fn vec_progress_display() {
-        let quorum_set: Vec<u64> = vec![0, 1, 2];
+        let quorum_set = vec![btreeset! {0, 1, 2}];
         let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [3], || 0);
 
         progress.update(&1, 5).ok();
@@ -662,7 +663,7 @@ mod tests {
 
     #[test]
     fn vec_progress_iter_mut() {
-        let quorum_set: Vec<u64> = vec![0, 1, 2];
+        let quorum_set = vec![btreeset! {0, 1, 2}];
         let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [3], || 0);
 
         // Mutate values through iter_mut
@@ -679,7 +680,7 @@ mod tests {
 
     #[test]
     fn vec_progress_stat() {
-        let quorum_set: Vec<u64> = vec![0, 1, 2];
+        let quorum_set = vec![btreeset! {0, 1, 2}];
         let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [3], || 0);
 
         assert_eq!(0, progress.stat().update_count);
@@ -695,7 +696,7 @@ mod tests {
 
     #[test]
     fn vec_progress_display_with() {
-        let quorum_set: Vec<u64> = vec![0, 1, 2];
+        let quorum_set = vec![btreeset! {0, 1, 2}];
         let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [3], || 0);
 
         progress.update(&1, 5).ok();
@@ -709,7 +710,7 @@ mod tests {
 
     #[test]
     fn vec_progress_increase_to() {
-        let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
+        let quorum_set = vec![btreeset! {0, 1, 2, 3, 4}];
         let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6], || 0);
 
         // Increase from 0 to 5
@@ -731,7 +732,7 @@ mod tests {
 
     #[test]
     fn vec_progress_collect_mapped() {
-        let quorum_set: Vec<u64> = vec![0, 1, 2];
+        let quorum_set = vec![btreeset! {0, 1, 2}];
         let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [3], || 0);
 
         progress.update(&1, 5).ok();

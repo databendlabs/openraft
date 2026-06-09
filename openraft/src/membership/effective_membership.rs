@@ -13,7 +13,6 @@ use crate::log_id::raft_log_id::RaftLogId;
 use crate::log_id::raft_log_id_ext::RaftLogIdExt;
 use crate::node::Node;
 use crate::node::NodeId;
-use crate::quorum::Joint;
 use crate::quorum::QuorumSet;
 use crate::vote::RaftCommittedLeaderId;
 
@@ -37,9 +36,6 @@ where
 {
     stored_membership: Arc<StoredMembership<CLID, NID, N>>,
 
-    /// The quorum set built from `membership`.
-    quorum_set: Joint<NID, Vec<NID>, Vec<Vec<NID>>>,
-
     /// Cache of the union of all members
     voter_ids: BTreeSet<NID>,
 }
@@ -53,7 +49,6 @@ where
     fn default() -> Self {
         Self {
             stored_membership: Arc::new(StoredMembership::<CLID, NID, N>::default()),
-            quorum_set: Joint::default(),
             voter_ids: Default::default(),
         }
     }
@@ -111,17 +106,8 @@ where
     pub fn new(log_id: Option<LogId<CLID>>, membership: Membership<NID, N>) -> Self {
         let voter_ids = membership.voter_ids().collect();
 
-        let configs = membership.get_joint_config();
-        let mut joint = vec![];
-        for c in configs {
-            joint.push(c.iter().cloned().collect::<Vec<_>>());
-        }
-
-        let quorum_set = Joint::from(joint);
-
         Self {
             stored_membership: Arc::new(StoredMembership::<CLID, NID, N>::new(log_id, membership)),
-            quorum_set,
             voter_ids,
         }
     }
@@ -180,9 +166,13 @@ where
     /// Returns reference to the joint config.
     ///
     /// Membership is defined by a joint of multiple configs.
-    /// Each config is a vec of node-id.
-    pub fn get_joint_config(&self) -> &Vec<Vec<NID>> {
-        self.quorum_set.children()
+    /// Each config is a set of node-id.
+    #[since(
+        version = "0.10.0",
+        change = "returns `&Vec<BTreeSet<NID>>` instead of `&Vec<Vec<NID>>`"
+    )]
+    pub fn get_joint_config(&self) -> &Vec<BTreeSet<NID>> {
+        self.membership().get_joint_config()
     }
 }
 
@@ -213,10 +203,10 @@ where
     type Iter = std::collections::btree_set::IntoIter<NID>;
 
     fn is_quorum<'a, I: Iterator<Item = &'a NID> + Clone>(&self, ids: I) -> bool {
-        self.quorum_set.is_quorum(ids)
+        self.membership().is_quorum(ids)
     }
 
     fn ids(&self) -> Self::Iter {
-        self.quorum_set.ids()
+        self.membership().ids()
     }
 }

@@ -1,80 +1,40 @@
+use std::collections::BTreeSet;
+
 use crate::quorum::Coherent;
-use crate::quorum::Joint;
-use crate::quorum::QuorumSet;
 use crate::quorum::coherent::FindCoherent;
 
-impl<ID, QS> Coherent<ID, Joint<ID, QS, Vec<QS>>> for Joint<ID, QS, Vec<QS>>
-where
-    ID: PartialOrd + Ord + 'static,
-    QS: QuorumSet<Id = ID> + PartialEq,
+/// Two joint configs are coherent iff they share at least one config: then every quorum of one
+/// intersects every quorum of the other.
+impl<NID> Coherent<NID, Vec<BTreeSet<NID>>> for Vec<BTreeSet<NID>>
+where NID: PartialOrd + Ord + Clone + 'static
 {
     /// Check if two `joint` are coherent.
     ///
     /// Read more about:
     /// [Extended membership change](crate::docs::data::extended_membership)
-    fn is_coherent_with(&self, other: &Joint<ID, QS, Vec<QS>>) -> bool {
-        for a in self.children() {
-            for b in other.children() {
+    fn is_coherent_with(&self, other: &Vec<BTreeSet<NID>>) -> bool {
+        for a in self {
+            for b in other {
                 if a == b {
                     return true;
                 }
             }
         }
-
-        false
-    }
-}
-
-impl<ID, QS> Coherent<ID, Joint<ID, QS, &[QS]>> for Joint<ID, QS, &[QS]>
-where
-    ID: PartialOrd + Ord + 'static,
-    QS: QuorumSet<Id = ID> + PartialEq,
-{
-    fn is_coherent_with(&self, other: &Joint<ID, QS, &[QS]>) -> bool {
-        for a in self.children().iter() {
-            for b in other.children().iter() {
-                if a == b {
-                    return true;
-                }
-            }
-        }
-
-        false
-    }
-}
-
-impl<ID, QS> Coherent<ID, QS> for Joint<ID, QS, Vec<QS>>
-where
-    ID: PartialOrd + Ord + 'static,
-    QS: QuorumSet<Id = ID> + PartialEq,
-{
-    fn is_coherent_with(&self, other: &QS) -> bool {
-        for a in self.children().iter() {
-            if a == other {
-                return true;
-            }
-        }
-
         false
     }
 }
 
 /// Impl to build an intermediate quorum set that is coherent with a joint and a uniform quorum set.
-impl<ID, QS> FindCoherent<ID, QS> for Joint<ID, QS, Vec<QS>>
-where
-    ID: PartialOrd + Ord + 'static,
-    QS: QuorumSet<Id = ID> + PartialEq + Clone,
+impl<NID> FindCoherent<NID, BTreeSet<NID>> for Vec<BTreeSet<NID>>
+where NID: PartialOrd + Ord + Clone + 'static
 {
-    fn find_coherent(&self, other: QS) -> Self {
-        if self.is_coherent_with(&other) {
-            Joint::from(vec![other])
+    fn find_coherent(&self, other: BTreeSet<NID>) -> Self {
+        if self.is_coherent_with(&vec![other.clone()]) {
+            vec![other]
+        } else if let Some(last) = self.last() {
+            vec![last.clone(), other]
         } else {
-            let last = self.children().last();
-            if let Some(last) = last {
-                Joint::from(vec![last.clone(), other])
-            } else {
-                Joint::from(vec![other])
-            }
+            vec![other]
         }
     }
 }
