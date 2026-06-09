@@ -19,12 +19,13 @@ The second-to-last membership log has to be committed.
 > after it has been committed. However, this does not simplify the problem, as
 > followers still need to keep track of the last two membership config logs.
 
-In Openraft, the membership state contains these two configs:
+In Openraft, the membership state contains these two configs, each held as a
+`StoredMembership`:
 
 ```ignore
-pub struct MembershipState<NID: NodeId> {
-    pub committed: Arc<EffectiveMembership<NID>>,
-    pub effective: Arc<EffectiveMembership<NID>>,
+pub struct MembershipState<CLID, NID, N> {
+    committed: Arc<StoredMembership<CLID, NID, N>>,
+    effective: Arc<StoredMembership<CLID, NID, N>>,
 }
 ```
 

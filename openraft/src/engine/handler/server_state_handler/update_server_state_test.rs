@@ -12,7 +12,7 @@ use crate::engine::Engine;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::type_config::TypeConfigExt;
-use crate::type_config::alias::EffectiveMembershipOf;
+use crate::type_config::alias::StoredMembershipOf;
 use crate::utime::Leased;
 
 fn m01() -> Membership<u64, ()> {
@@ -34,8 +34,8 @@ fn eng() -> Engine<UTConfig> {
         Vote::new_committed(2, 2),
     );
     eng.state.membership_state = MembershipState::new(
-        Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m01())),
-        Arc::new(EffectiveMembershipOf::<UTConfig>::new(Some(log_id(2, 1, 3)), m123())),
+        Arc::new(StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m01())),
+        Arc::new(StoredMembershipOf::<UTConfig>::new(Some(log_id(2, 1, 3)), m123())),
     );
     eng.state.server_state = eng.state.calc_server_state(&eng.config.id);
 

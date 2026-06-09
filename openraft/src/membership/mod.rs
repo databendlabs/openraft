@@ -5,7 +5,6 @@
 //! ## Key Types
 //!
 //! - [`Membership`] - Cluster membership configuration (voters and learners)
-//! - [`EffectiveMembership`] - Currently active membership, including joint consensus state
 //! - [`StoredMembership`] - Membership state stored in state machine
 //! - [`IntoNodes`] - Trait for converting node sets with metadata
 //!
@@ -21,7 +20,6 @@
 //! - [Dynamic membership guide](crate::docs::cluster_control::dynamic_membership)
 //! - [Joint consensus guide](crate::docs::cluster_control::joint_consensus)
 
-mod effective_membership;
 mod into_nodes;
 #[allow(clippy::module_inception)]
 mod membership;
@@ -33,11 +31,10 @@ mod stored_membership;
 mod bench;
 
 #[cfg(test)]
-mod effective_membership_test;
-#[cfg(test)]
 mod membership_test;
+#[cfg(test)]
+mod stored_membership_test;
 
-pub use effective_membership::EffectiveMembership;
 pub use into_nodes::IntoNodes;
 pub use membership::Membership;
 pub use stored_membership::StoredMembership;

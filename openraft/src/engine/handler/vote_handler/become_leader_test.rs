@@ -21,8 +21,8 @@ use crate::raft_state::IOId;
 use crate::replication::payload::Payload;
 use crate::replication::replicate::Replicate;
 use crate::type_config::TypeConfigExt;
-use crate::type_config::alias::EffectiveMembershipOf;
 use crate::type_config::alias::EntryOf;
+use crate::type_config::alias::StoredMembershipOf;
 use crate::utime::Leased;
 use crate::vote::raft_vote::RaftVoteExt;
 
@@ -41,7 +41,7 @@ fn eng() -> Engine<UTConfig> {
         Vote::new_committed(2, 1),
     );
     eng.state.server_state = ServerState::Candidate;
-    eng.state.membership_state.set_effective(Arc::new(EffectiveMembershipOf::<UTConfig>::new(
+    eng.state.membership_state.set_effective(Arc::new(StoredMembershipOf::<UTConfig>::new(
         Some(log_id(1, 1, 1)),
         m01(),
     )));
