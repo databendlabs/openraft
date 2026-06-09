@@ -248,6 +248,10 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
+    use maplit::btreeset;
+
     use crate::Vote;
     use crate::base::shared_id_generator::SharedIdGenerator;
     use crate::engine::leader_log_ids::LeaderLogIds;
@@ -265,7 +269,7 @@ mod tests {
             let vote = Vote::new(2, 2).into_committed();
             let leader = Leader::<UTConfig, _>::new(
                 vote,
-                vec![1, 2, 3],
+                vec![btreeset! {1, 2, 3}],
                 vec![],
                 Some(LeaderLogIds::new(*log_id(1, 2, 0).committed_leader_id(), 1, 3)),
                 SharedIdGenerator::new(),
@@ -280,7 +284,7 @@ mod tests {
             let vote = Vote::new(1, 2).into_committed();
             let leader = Leader::<UTConfig, _>::new(
                 vote,
-                vec![1, 2, 3],
+                vec![btreeset! {1, 2, 3}],
                 vec![],
                 Some(LeaderLogIds::new(*log_id(1, 2, 0).committed_leader_id(), 1, 3)),
                 SharedIdGenerator::new(),
@@ -295,7 +299,7 @@ mod tests {
             let vote = Vote::new(1, 2).into_committed();
             let leader = Leader::<UTConfig, _>::new(
                 vote,
-                vec![1, 2, 3],
+                vec![btreeset! {1, 2, 3}],
                 vec![],
                 Some(LeaderLogIds::new_single(log_id(1, 2, 3))),
                 SharedIdGenerator::new(),
@@ -308,7 +312,8 @@ mod tests {
         tracing::info!("--- no last log ids, create new noop_log_id, last_leader_log_id.len()==0");
         {
             let vote = Vote::new(1, 2).into_committed();
-            let leader = Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], vec![], None, SharedIdGenerator::new());
+            let leader =
+                Leader::<UTConfig, _>::new(vote, vec![btreeset! {1, 2, 3}], vec![], None, SharedIdGenerator::new());
 
             assert_eq!(leader.noop_log_id(), &log_id(1, 2, 0));
             assert_eq!(leader.last_log_id(), None);
@@ -320,7 +325,7 @@ mod tests {
         let vote = Vote::new(2, 2).into_committed();
         let mut leader = Leader::<UTConfig, _>::new(
             vote,
-            vec![1, 2, 3],
+            vec![btreeset! {1, 2, 3}],
             vec![],
             Some(LeaderLogIds::new_single(log_id(1, 2, 3))),
             SharedIdGenerator::new(),
@@ -339,7 +344,8 @@ mod tests {
     #[test]
     fn test_1_entry_none_last_log_id() {
         let vote = Vote::new(0, 0).into_committed();
-        let mut leading = Leader::<UTConfig, _>::new(vote, vec![1, 2, 3], vec![], None, SharedIdGenerator::new());
+        let mut leading =
+            Leader::<UTConfig, _>::new(vote, vec![btreeset! {1, 2, 3}], vec![], None, SharedIdGenerator::new());
 
         let log_ids: Vec<_> = leading.assign_log_ids(1).unwrap().into_iter().collect();
 
@@ -352,7 +358,7 @@ mod tests {
         let vote = Vote::new(2, 2).into_committed();
         let mut leading = Leader::<UTConfig, _>::new(
             vote,
-            vec![1, 2, 3],
+            vec![btreeset! {1, 2, 3}],
             vec![],
             Some(LeaderLogIds::new_single(log_id(1, 1, 8))),
             SharedIdGenerator::new(),
@@ -368,7 +374,7 @@ mod tests {
         let vote = Vote::new(2, 2).into_committed();
         let mut leading = Leader::<UTConfig, _>::new(
             vote,
-            vec![1, 2, 3],
+            vec![btreeset! {1, 2, 3}],
             [],
             Some(LeaderLogIds::new_single(log_id(1, 1, 8))),
             SharedIdGenerator::new(),
@@ -381,9 +387,9 @@ mod tests {
 
     #[test]
     fn test_leading_last_quorum_acked_time_leader_is_voter() {
-        let mut leading = Leader::<UTConfig, Vec<u64>>::new(
+        let mut leading = Leader::<UTConfig, Vec<BTreeSet<u64>>>::new(
             Vote::new(2, 1).into_committed(),
-            vec![1, 2, 3],
+            vec![btreeset! {1, 2, 3}],
             [4],
             None,
             SharedIdGenerator::new(),
@@ -398,9 +404,9 @@ mod tests {
 
     #[test]
     fn test_leading_last_quorum_acked_time_leader_is_learner() {
-        let mut leading = Leader::<UTConfig, Vec<u64>>::new(
+        let mut leading = Leader::<UTConfig, Vec<BTreeSet<u64>>>::new(
             Vote::new(2, 4).into_committed(),
-            vec![1, 2, 3],
+            vec![btreeset! {1, 2, 3}],
             [4],
             None,
             SharedIdGenerator::new(),
@@ -419,9 +425,9 @@ mod tests {
 
     #[test]
     fn test_leading_last_quorum_acked_time_leader_is_not_member() {
-        let mut leading = Leader::<UTConfig, Vec<u64>>::new(
+        let mut leading = Leader::<UTConfig, Vec<BTreeSet<u64>>>::new(
             Vote::new(2, 5).into_committed(),
-            vec![1, 2, 3],
+            vec![btreeset! {1, 2, 3}],
             [4],
             None,
             SharedIdGenerator::new(),

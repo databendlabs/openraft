@@ -13,7 +13,6 @@ use crate::membership::IntoNodes;
 use crate::node::Node;
 use crate::node::NodeId;
 use crate::quorum::FindCoherent;
-use crate::quorum::Joint;
 
 /// The membership configuration of the cluster.
 ///
@@ -300,7 +299,7 @@ where
     /// }
     /// ```
     pub(crate) fn next_coherent(&self, goal: BTreeSet<NID>, retain: bool) -> Self {
-        let config = Joint::from(self.configs.clone()).find_coherent(goal).children().clone();
+        let config = self.configs.find_coherent(goal);
 
         let mut nodes = self.nodes.clone();
 
