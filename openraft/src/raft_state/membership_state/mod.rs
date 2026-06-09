@@ -23,6 +23,11 @@ use crate::vote::RaftCommittedLeaderId;
 
 /// The state of membership configs a raft node needs to know.
 ///
+/// `MembershipState` is a minimal store of the membership log and the membership state machine:
+/// - `committed` is the membership state machine, i.e., the last committed membership;
+/// - `effective` is the last membership log, and thus plays the role of a log entry: the last seen
+///   membership, committed or not.
+///
 /// A raft node needs to store at most 2 membership config logs:
 /// - The first(committed) one must have been committed, because (1): raft allows proposing new
 ///   membership only when the previous one is committed.
@@ -122,44 +127,38 @@ where
         }
     }
 
-    /// A committed membership log is found, and either of `self.committed` and `self.effective`
-    /// should be updated if it is smaller than the new one.
+    /// Install the membership config carried by a snapshot.
     ///
-    /// If `self.effective` changed, it returns a reference to the new one.
-    /// If not, it returns None.
-    pub(crate) fn update_committed(
-        &mut self,
-        c: Arc<StoredMembership<CLID, NID, N>>,
-    ) -> Option<Arc<StoredMembership<CLID, NID, N>>> {
-        let mut changed = false;
-
+    /// A snapshot stores the last membership applied to its state machine, so this membership is
+    /// committed. It updates `self.committed`(the membership state machine), and may also update
+    /// `self.effective`(the last membership log), each only when the snapshot is newer than the
+    /// corresponding local membership.
+    pub(crate) fn install_membership_snapshot(&mut self, membership_snapshot: Arc<StoredMembership<CLID, NID, N>>) {
         // The local effective membership may conflict with the leader.
         // Thus, it has to compare by log-index, e.g.:
         //   membership.log_id       = (10, 5);
         //   local_effective.log_id = (2, 10);
-        if c.log_id().index() >= self.effective.log_id().index() {
-            changed = c.membership() != self.effective.membership();
-
+        if membership_snapshot.log_id().index() >= self.effective.log_id().index() {
             // The effective may override by a new leader with a different one.
-            self.effective = c.clone()
+            self.effective = membership_snapshot.clone()
         }
 
         #[allow(clippy::collapsible_if)]
         if cfg!(debug_assertions) {
-            if c.log_id() == self.committed.log_id() {
+            if membership_snapshot.log_id() == self.committed.log_id() {
                 debug_assert_eq!(
-                    c.membership(),
+                    membership_snapshot.membership(),
                     self.committed.membership(),
                     "the same log id implies the same membership"
                 );
             }
         }
 
-        if c.log_id() > self.committed.log_id() {
-            self.committed = c
+        // same log id implies the same membership,
+        // so it only needs to compare log id.
+        if membership_snapshot.log_id() > self.committed.log_id() {
+            self.committed = membership_snapshot
         }
-
-        if changed { Some(self.effective().clone()) } else { None }
     }
 
     /// Append a membership config `m`.

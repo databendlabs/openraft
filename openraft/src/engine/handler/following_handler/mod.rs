@@ -205,17 +205,14 @@ where C: RaftTypeConfig
         self.server_state_handler().update_server_state_if_changed();
     }
 
-    /// Update membership state with a committed membership config
+    /// Install into the membership state the membership config carried by a snapshot.
     #[tracing::instrument(level = "debug", skip_all)]
-    fn update_committed_membership(&mut self, membership: StoredMembershipOf<C>) {
-        tracing::debug!("update committed membership: {}", membership);
+    fn membership_install_snapshot(&mut self, membership: StoredMembershipOf<C>) {
+        tracing::debug!("install membership from snapshot: {}", membership);
 
         let m = Arc::new(membership);
 
-        // TODO: if effective membership changes, call `update_replication()`, if a follower has replication
-        //       streams. Now we don't have replication streams for follower, so it's ok to not call
-        //       `update_replication()`.
-        let _effective_changed = self.state.membership_state.update_committed(m);
+        self.state.membership_state.install_membership_snapshot(m);
 
         self.server_state_handler().update_server_state_if_changed();
     }
@@ -281,7 +278,7 @@ where C: RaftTypeConfig
         self.state.apply_progress_mut().accept(snap_last_log_id.clone());
         self.state.snapshot_progress_mut().accept(snap_last_log_id.clone());
 
-        self.update_committed_membership(meta.last_membership.clone());
+        self.membership_install_snapshot(meta.last_membership.clone());
 
         self.output.push_command(Command::from(sm::Command::install_full_snapshot(snapshot, log_io_id)));
 
