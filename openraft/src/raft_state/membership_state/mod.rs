@@ -118,13 +118,32 @@ where
         self.effective.membership().is_voter(id)
     }
 
-    /// Update the membership state if the specified committed_log_id is greater than
-    /// `self.effective`
-    pub(crate) fn commit(&mut self, committed_log_id: &Option<LogId<CLID>>) {
-        if committed_log_id >= self.effective().log_id() {
-            debug_assert!(committed_log_id.index() >= self.effective().log_id().index());
+    /// Commit the effective membership config if `committed_log_id` is greater than or equal to
+    /// its log id.
+    ///
+    /// Committing replaces `self.committed`(the membership state machine) with
+    /// `self.effective`(the last membership log).
+    ///
+    /// If the committed membership config changes, it returns the committed log ids before and
+    /// after the update; otherwise it returns `None`, e.g., when the effective membership is
+    /// already committed.
+    pub(crate) fn commit(
+        &mut self,
+        committed_log_id: &Option<LogId<CLID>>,
+    ) -> Option<(Option<LogId<CLID>>, LogId<CLID>)> {
+        let current = self.committed.log_id().clone();
+        let last = self.effective().log_id().clone();
+
+        // `current == last` means the effective membership is already committed.
+        if committed_log_id >= &last && current < last {
+            debug_assert!(committed_log_id.index() >= last.index());
             self.committed = self.effective.clone();
+
+            // `current < last` implies `last` is not `None`.
+            return Some((current, last.unwrap()));
         }
+
+        None
     }
 
     /// Install the membership config carried by a snapshot.
