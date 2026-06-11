@@ -1654,6 +1654,9 @@ where
                         tracing::info!("setting metrics recorder");
                         self.metrics_recorder = recorder;
                     }
+                    ExternalCommand::RefreshServerState => {
+                        self.engine.refresh_server_state();
+                    }
                 }
             }
             #[cfg(feature = "runtime-stats")]

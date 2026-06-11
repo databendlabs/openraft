@@ -10,12 +10,13 @@ pub enum ExternalCommandName {
     TriggerTransferLeader,
     AllowNextRevert,
     SetMetricsRecorder,
+    RefreshServerState,
 }
 
 impl ExternalCommandName {
     /// Total number of variants.
     #[allow(dead_code)]
-    pub const COUNT: usize = 8;
+    pub const COUNT: usize = 9;
 
     /// All variants in canonical order.
     #[allow(dead_code)]
@@ -28,6 +29,7 @@ impl ExternalCommandName {
         ExternalCommandName::TriggerTransferLeader,
         ExternalCommandName::AllowNextRevert,
         ExternalCommandName::SetMetricsRecorder,
+        ExternalCommandName::RefreshServerState,
     ];
 
     /// Returns the index of this variant for array-based storage.
@@ -42,6 +44,7 @@ impl ExternalCommandName {
             ExternalCommandName::TriggerTransferLeader => 5,
             ExternalCommandName::AllowNextRevert => 6,
             ExternalCommandName::SetMetricsRecorder => 7,
+            ExternalCommandName::RefreshServerState => 8,
         }
     }
 
@@ -56,6 +59,7 @@ impl ExternalCommandName {
             ExternalCommandName::TriggerTransferLeader => "Ext::TriggerTransferLeader",
             ExternalCommandName::AllowNextRevert => "Ext::AllowNextRevert",
             ExternalCommandName::SetMetricsRecorder => "Ext::SetMetricsRecorder",
+            ExternalCommandName::RefreshServerState => "Ext::RefreshServerState",
         }
     }
 }
@@ -89,7 +93,7 @@ pub enum RaftMsgName {
 
 impl RaftMsgName {
     /// Total number of variants (including expanded ExternalCommand variants).
-    pub const COUNT: usize = 19;
+    pub const COUNT: usize = 20;
 
     /// All variants in canonical order.
     ///
@@ -114,6 +118,7 @@ impl RaftMsgName {
         RaftMsgName::ExternalCommand(ExternalCommandName::TriggerTransferLeader),
         RaftMsgName::ExternalCommand(ExternalCommandName::AllowNextRevert),
         RaftMsgName::ExternalCommand(ExternalCommandName::SetMetricsRecorder),
+        RaftMsgName::ExternalCommand(ExternalCommandName::RefreshServerState),
         RaftMsgName::GetRuntimeStats,
     ];
 

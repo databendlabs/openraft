@@ -1,5 +1,7 @@
 //! Trigger an action to RaftCore by an external caller.
 
+use openraft_macros::since;
+
 use crate::RaftTypeConfig;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::errors::AllowNextRevertError;
@@ -142,5 +144,24 @@ where C: RaftTypeConfig
         let res: Result<(), AllowNextRevertError<C>> = self.raft_inner.recv_msg(rx).await?;
 
         Ok(res)
+    }
+
+    /// Recalculate the internal server state(Leader/Follower/Learner) based on the vote and the
+    /// membership config.
+    ///
+    /// Usually this method is not used at all: the internal server state is always recalculated
+    /// automatically. The only exception is the step down of a Leader that is removed from the
+    /// membership config: openraft allows such a removed node to keep acting as a Leader, and the
+    /// application or the administrator decides when to revert it to a learner by calling this
+    /// method.
+    ///
+    /// It is safe to call this method at any time on any node: it is a no-op until the membership
+    /// config that removes this node is committed. A Leader keeps leading while that membership
+    /// config is not yet committed, because it is the one responsible for replicating it.
+    ///
+    /// Returns error when RaftCore has [`Fatal`] error, e.g., shut down or having storage error.
+    #[since(version = "0.10.0")]
+    pub async fn refresh_server_state(&self) -> Result<(), Fatal<C>> {
+        self.raft_inner.send_external_command(ExternalCommand::RefreshServerState).await
     }
 }

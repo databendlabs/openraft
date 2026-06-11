@@ -55,6 +55,12 @@ pub(crate) enum ExternalCommand<C: RaftTypeConfig> {
     /// (e.g., OpenTelemetry, Prometheus, StatsD) at runtime.
     /// Pass `None` to disable metrics recording.
     SetMetricsRecorder { recorder: Option<Arc<dyn MetricsRecorder>> },
+
+    /// Recalculate the internal server state based on the vote and the membership config.
+    ///
+    /// Most of the time the internal server state is recalculated automatically; the only
+    /// exception is the step down of a Leader that is removed from the membership config.
+    RefreshServerState,
 }
 
 impl<C: RaftTypeConfig> ExternalCommand<C> {
@@ -69,6 +75,7 @@ impl<C: RaftTypeConfig> ExternalCommand<C> {
             ExternalCommand::TriggerTransferLeader { .. } => ExternalCommandName::TriggerTransferLeader,
             ExternalCommand::AllowNextRevert { .. } => ExternalCommandName::AllowNextRevert,
             ExternalCommand::SetMetricsRecorder { .. } => ExternalCommandName::SetMetricsRecorder,
+            ExternalCommand::RefreshServerState => ExternalCommandName::RefreshServerState,
         }
     }
 }
@@ -114,6 +121,9 @@ where C: RaftTypeConfig
             }
             ExternalCommand::SetMetricsRecorder { .. } => {
                 write!(f, "SetMetricsRecorder")
+            }
+            ExternalCommand::RefreshServerState => {
+                write!(f, "RefreshServerState")
             }
         }
     }

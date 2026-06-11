@@ -52,6 +52,7 @@ mod tests {
     mod handle_vote_resp_test;
     mod initialize_test;
     mod install_full_snapshot_test;
+    mod refresh_server_state_test;
     mod startup_test;
     mod trigger_purge_log_test;
 }
