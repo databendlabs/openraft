@@ -1762,7 +1762,7 @@ where
                 //       ---
                 //       A better way is to make leader step down a command that waits for the log to be applied.
                 if self.engine.state.io_applied() >= self.engine.state.membership_state.effective().log_id().as_ref() {
-                    self.engine.leader_step_down();
+                    self.engine.refresh_server_state();
                 }
             }
 

@@ -440,15 +440,26 @@ where C: RaftTypeConfig
         self.output.push_command(Command::from(sm::Command::begin_receiving_snapshot(tx)));
     }
 
-    /// Leader steps down(convert to learner) once the membership not containing it is committed.
+    /// Re-derive the internal server state(Leader/Following) from the vote and the membership
+    /// config.
     ///
-    /// This is only called by leader.
+    /// The internal server state is maintained automatically, with one exception: a Leader that
+    /// is removed from the membership config keeps leading until the membership config that
+    /// removes it is committed, and it is this method that then reverts it to a learner.
+    ///
+    /// It is safe to call this method at any time on any node; it is a no-op if the effective
+    /// membership config is not yet committed: the Leader, even when removed, must keep leading
+    /// to replicate the membership log entry that removes it; otherwise this entry could never
+    /// be committed.
+    ///
+    /// A Leader demoted to a learner that is still in the membership config is not affected:
+    /// openraft allows a learner to act as Leader. See: [Determine Server
+    /// State](crate::docs::data::vote#vote-and-membership-define-the-server-state).
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn leader_step_down(&mut self) {
-        tracing::debug!("leader step down, node_id: {}", self.config.id);
+    pub(crate) fn refresh_server_state(&mut self) {
+        tracing::debug!("{}: node_id: {}", func_name!(), self.config.id);
 
-        // Step down:
-        // Keep acting as leader until a membership without this node is committed.
+        // A removed Leader keeps leading until the membership config without it is committed.
         let em = &self.state.membership_state.effective();
 
         tracing::debug!(
