@@ -309,6 +309,7 @@ where C: RaftTypeConfig<NodeId = u64> {
         millis_since_quorum_ack: None,
         last_quorum_acked: None,
         membership_config: Arc::new(StoredMembershipOf::<C>::new(None, Membership::default())),
+        committed_membership_config: Arc::new(StoredMembershipOf::<C>::new(None, Membership::default())),
         heartbeat: None,
 
         snapshot: None,
