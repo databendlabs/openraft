@@ -215,7 +215,7 @@ where C: RaftTypeConfig
         let committed = LogIOId::new(self.state.vote_ref().to_committed(), granted.clone());
         self.state.io_state_mut().cluster_committed.try_update(committed.clone()).ok();
 
-        if let Some(_prev_committed) = self.state.update_local_committed(&granted) {
+        if let Some(_membership_transition) = self.state.update_local_committed(&granted) {
             self.output.push_command(Command::ReplicateCommitted {
                 committed: self.state.committed().cloned(),
             });
