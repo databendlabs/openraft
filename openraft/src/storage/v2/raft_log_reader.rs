@@ -196,16 +196,32 @@ where C: RaftTypeConfig
     ///
     /// ### Correctness requirements
     ///
-    /// - All log entries in the range must be returned. Unlike
+    /// - Every entry in the range that the log **contains** must be returned. Unlike
     ///   [`limited_get_log_entries()`](Self::limited_get_log_entries), which may return only the
-    ///   first several log entries.
+    ///   first several log entries, this method must not stop early.
     ///
-    /// - If the log doesn't contain all the requested entries, return the existing entries. The
-    ///   absence of an entry is tolerated only at the beginning or end of the range. Missing
-    ///   entries within the range (i.e., holes) are not permitted and should result in an error.
+    /// - The absence of an entry is tolerated **only at the beginning or end of the range, and only
+    ///   for entries the log genuinely does not contain**:
+    ///   - at the beginning: entries already removed by [`RaftLogStorage::purge`];
+    ///   - at the end: entries not yet stored by [`RaftLogStorage::append`].
+    ///
+    ///   This tolerance does **not** permit omitting an entry that has already been appended but is
+    ///   not yet visible to this reader handle (for example, a read-after-write or
+    ///   read-after-flush visibility lag in the storage implementation).
+    ///   [`RaftLogStorage::append`] requires appended entries to be readable the moment it returns
+    ///   — even before its flush callback fires — so once the log "contains" an entry, every reader
+    ///   handle must return it. Omitting such an entry is a storage contract violation, not a
+    ///   tolerated boundary short read, and openraft may treat it as a fatal error (committed
+    ///   entries are read back through this method on the apply path).
+    ///
+    ///   Missing entries *within* the range (i.e., holes) are never permitted and must result in an
+    ///   error.
     ///
     /// - The read operation must be atomic. That is, it should not reflect any state changes that
     ///   occur after the read operation has started.
+    ///
+    /// [`RaftLogStorage::append`]: crate::storage::RaftLogStorage::append
+    /// [`RaftLogStorage::purge`]: crate::storage::RaftLogStorage::purge
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend>(
         &mut self,
         range: RB,
