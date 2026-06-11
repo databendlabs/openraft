@@ -5,6 +5,7 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::ServerState;
+use openraft::StepDownPolicy;
 use openraft::errors::ClientWriteError;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::ClientRequest;
@@ -17,7 +18,8 @@ use crate::fixtures::ut_harness;
 
 /// Change membership from {0,1} to {1,2,3}.
 ///
-/// - Then the leader should step down after joint log is committed.
+/// - The leader should transfer leadership and step down after the second membership log is
+///   committed.
 /// - Check logs on other node.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
@@ -177,6 +179,112 @@ async fn remove_leader_and_convert_to_learner() -> Result<()> {
     Ok(())
 }
 
+/// Change membership from {0,1,2} to {1,2}: the removed leader transfers leadership and steps
+/// down automatically.
+///
+/// Election is disabled: the new leader can only be established by transfer-leader.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn remove_leader_auto_transfer() -> Result<()> {
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            enable_elect: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+    let mut router = RaftRouter::new(config.clone());
+
+    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+
+    tracing::info!(log_index, "--- change membership 012 to 12");
+    {
+        let node = router.get_raft_handle(&0)?;
+        node.change_membership([1, 2], false).await?;
+        log_index += 2;
+    }
+
+    tracing::info!(
+        log_index,
+        "--- a new leader is established by transfer-leader, not by election"
+    );
+    {
+        router
+            .wait(&1, timeout())
+            .metrics(
+                |x| matches!(x.current_leader, Some(1) | Some(2)) && x.current_term >= 2,
+                "a new leader is established by transfer-leader",
+            )
+            .await?;
+    }
+
+    tracing::info!(log_index, "--- the removed leader reverts to learner");
+    {
+        let metrics = router.wait(&0, timeout()).state(ServerState::Learner, "removed leader steps down").await?;
+        assert_eq!(
+            metrics.current_term, 1,
+            "the removed leader is not disturbed by the new election"
+        );
+    }
+
+    Ok(())
+}
+
+/// Change membership from {0,1,2} to {1,2} with the automated step down disabled.
+///
+/// The removed leader keeps leading, until the application reverts it to a learner with
+/// `Trigger::refresh_server_state()`.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn remove_leader_manual_step_down() -> Result<()> {
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            enable_elect: false,
+            removed_leader_step_down: StepDownPolicy::Never,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+    let mut router = RaftRouter::new(config.clone());
+
+    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+
+    tracing::info!(log_index, "--- change membership 012 to 12");
+    {
+        let node = router.get_raft_handle(&0)?;
+        node.change_membership([1, 2], false).await?;
+        log_index += 2;
+    }
+
+    tracing::info!(log_index, "--- the removed leader keeps leading");
+    {
+        let res = router
+            .wait(&0, Some(Duration::from_millis(1_000)))
+            .metrics(
+                |x| x.state != ServerState::Leader,
+                "the removed leader leaves the Leader state",
+            )
+            .await;
+
+        assert!(
+            res.is_err(),
+            "the automated step down is disabled, the removed leader keeps leading"
+        );
+    }
+
+    tracing::info!(log_index, "--- manually revert the removed leader to a learner");
+    {
+        let node = router.get_raft_handle(&0)?;
+        node.trigger().refresh_server_state().await?;
+
+        router.wait(&0, timeout()).state(ServerState::Learner, "removed leader reverts to learner").await?;
+    }
+
+    Ok(())
+}
+
 /// Change membership from {0,1,2} to {2}. Access {2} at once.
 ///
 /// It should not respond a ForwardToLeader error that pointing to the removed leader.
@@ -188,6 +296,8 @@ async fn remove_leader_access_new_cluster() -> Result<()> {
         Config {
             enable_heartbeat: false,
             enable_elect: false,
+            // Disable the automated step down, to keep the new cluster leaderless.
+            removed_leader_step_down: StepDownPolicy::Never,
             ..Default::default()
         }
         .validate()?,
@@ -207,12 +317,9 @@ async fn remove_leader_access_new_cluster() -> Result<()> {
 
         router
             .wait(&2, timeout())
-            // The last_applied may not be updated on follower nodes:
-            // because leader node-0 will steps down at once when the second membership log is
-            // committed.
             .metrics(
                 |x| x.last_log_index == Some(log_index),
-                "new leader node-2 commits 2 membership log",
+                "node-2 receives 2 membership logs",
             )
             .await?;
     }

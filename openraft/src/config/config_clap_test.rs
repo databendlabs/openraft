@@ -7,6 +7,7 @@ use core::time::Duration;
 
 use crate::Config;
 use crate::SnapshotPolicy;
+use crate::StepDownPolicy;
 
 #[test]
 fn test_build() -> anyhow::Result<()> {
@@ -73,6 +74,30 @@ fn test_config_snapshot_policy() -> anyhow::Result<()> {
     assert_eq!(SnapshotPolicy::LogsSinceLast(3), config.snapshot_policy);
 
     let res = Config::build(&["foo", "--snapshot-policy=bar:3"]);
+    assert!(res.is_err());
+
+    Ok(())
+}
+
+#[test]
+fn test_config_removed_leader_step_down() -> anyhow::Result<()> {
+    let config = Config::build(&["foo"])?;
+    assert_eq!(StepDownPolicy::After(150), config.removed_leader_step_down);
+
+    for never in ["never", "no", "none", "off", "false", "Never", "NO", "OFF"] {
+        let config = Config::build(&["foo", &format!("--removed-leader-step-down={}", never)])?;
+        assert_eq!(
+            StepDownPolicy::Never,
+            config.removed_leader_step_down,
+            "literal: {}",
+            never
+        );
+    }
+
+    let config = Config::build(&["foo", "--removed-leader-step-down=500"])?;
+    assert_eq!(StepDownPolicy::After(500), config.removed_leader_step_down);
+
+    let res = Config::build(&["foo", "--removed-leader-step-down=bar"]);
     assert!(res.is_err());
 
     Ok(())
