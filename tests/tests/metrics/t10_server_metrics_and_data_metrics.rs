@@ -4,6 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
+use openraft::Membership;
 use openraft::async_runtime::WatchReceiver;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
@@ -141,6 +142,93 @@ async fn heartbeat_metrics() -> Result<()> {
 
         assert_eq!(n1_hb_ts2, n1_hb_ts);
         assert_eq!(n2_hb_ts2, n2_hb_ts);
+    }
+
+    Ok(())
+}
+
+/// The `committed_membership_config` lags behind the effective `membership_config` until the
+/// effective one is committed; the two become equal when a membership change is completed.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn committed_membership_config() -> Result<()> {
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            enable_elect: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+    let mut router = RaftRouter::new(config.clone());
+
+    tracing::info!("--- initializing cluster");
+    let log_index = router.new_cluster(btreeset! {0,1}, btreeset! {}).await?;
+
+    let node = router.get_raft_handle(&0)?;
+
+    let old_membership = Membership::new_with_defaults(vec![btreeset! {0,1}], []);
+    let new_membership = Membership::new_with_defaults(vec![btreeset! {0,1}], [2]);
+
+    tracing::info!(
+        log_index,
+        "--- the initial membership config is committed: the two are equal"
+    );
+    {
+        let metrics = node.metrics().borrow_watched().clone();
+        assert_eq!(metrics.committed_membership_config, metrics.membership_config);
+        assert_eq!(&old_membership, metrics.committed_membership_config.membership());
+    }
+
+    tracing::info!(
+        log_index,
+        "--- block node-1, add a learner: the membership log can not commit"
+    );
+    router.new_raft_node(2).await;
+    router.set_network_error(1, true);
+
+    let n0 = node.clone();
+    let add_learner_handle = TypeConfig::spawn(async move { n0.add_learner(2, (), false).await });
+
+    tracing::info!(
+        log_index,
+        "--- the effective membership config updates, the committed one lags"
+    );
+    {
+        let metrics = router
+            .wait(&0, Some(Duration::from_millis(3_000)))
+            .metrics(
+                |x| x.membership_config.membership() == &new_membership,
+                "the effective membership config contains the new learner",
+            )
+            .await?;
+
+        assert_eq!(&old_membership, metrics.committed_membership_config.membership());
+        assert!(metrics.committed_membership_config.log_id() < metrics.membership_config.log_id());
+    }
+
+    tracing::info!(
+        log_index,
+        "--- restore node-1, the membership log commits: the two are equal"
+    );
+    {
+        router.set_network_error(1, false);
+        add_learner_handle.await??;
+
+        let metrics = router
+            .wait(&0, Some(Duration::from_millis(3_000)))
+            .metrics(
+                |x| x.committed_membership_config == x.membership_config,
+                "the committed membership config catches up with the effective one",
+            )
+            .await?;
+        assert_eq!(&new_membership, metrics.committed_membership_config.membership());
+
+        let server_metrics = node.server_metrics().borrow_watched().clone();
+        assert_eq!(
+            metrics.committed_membership_config,
+            server_metrics.committed_membership_config
+        );
     }
 
     Ok(())

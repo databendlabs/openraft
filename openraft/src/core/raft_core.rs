@@ -716,6 +716,7 @@ where
         let st = &self.engine.state;
 
         let membership_config = st.membership_state.effective().clone();
+        let committed_membership_config = st.membership_state.committed().clone();
         let current_leader = self.current_leader();
 
         // Get the last flushed vote, or use initial vote (term=0, node_id=self.id)
@@ -749,6 +750,7 @@ where
             millis_since_quorum_ack,
             last_quorum_acked: last_quorum_acked.map(SerdeInstant::new),
             membership_config: membership_config.clone(),
+            committed_membership_config: committed_membership_config.clone(),
             heartbeat: heartbeat.clone(),
 
             // --- replication ---
@@ -778,6 +780,7 @@ where
             state: st.server_state,
             current_leader,
             membership_config,
+            committed_membership_config,
         };
 
         // Record to external metrics recorder

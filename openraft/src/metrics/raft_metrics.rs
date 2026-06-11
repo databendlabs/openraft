@@ -172,6 +172,14 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     /// The current membership config of the cluster.
     pub membership_config: Arc<StoredMembershipOf<C>>,
 
+    /// The last committed membership config.
+    ///
+    /// It lags behind [`membership_config`](Self::membership_config) until the effective
+    /// membership config is committed: when the two are equal, the last membership log entry is
+    /// committed, i.e., a membership change is fully completed.
+    #[since(version = "0.10.0")]
+    pub committed_membership_config: Arc<StoredMembershipOf<C>>,
+
     /// Heartbeat metrics. It is Some() only when this node is leader.
     ///
     /// This field records a mapping between a node's ID and the time of the
@@ -223,8 +231,9 @@ where C: RaftTypeConfig
         write!(f, ", ")?;
         write!(
             f,
-            "membership:{}, snapshot:{}, purged:{}, replication:{{{}}}, heartbeat:{{{}}}",
+            "membership:{}, committed_membership:{}, snapshot:{}, purged:{}, replication:{{{}}}, heartbeat:{{{}}}",
             self.membership_config,
+            self.committed_membership_config,
             self.snapshot.display(),
             self.purged.display(),
             self.replication.as_ref().map(DisplayBTreeMapOptValue).display(),
@@ -263,6 +272,7 @@ where C: RaftTypeConfig
             millis_since_quorum_ack: None,
             last_quorum_acked: None,
             membership_config: Arc::new(StoredMembershipOf::<C>::default()),
+            committed_membership_config: Arc::new(StoredMembershipOf::<C>::default()),
             replication: None,
             heartbeat: None,
         }
@@ -385,6 +395,7 @@ where C: RaftTypeConfig
 }
 
 /// Subset of RaftMetrics, only include server-related metrics
+#[since]
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct RaftServerMetrics<C: RaftTypeConfig> {
@@ -399,6 +410,14 @@ pub struct RaftServerMetrics<C: RaftTypeConfig> {
 
     /// The current membership configuration.
     pub membership_config: Arc<StoredMembershipOf<C>>,
+
+    /// The last committed membership config.
+    ///
+    /// It lags behind [`membership_config`](Self::membership_config) until the effective
+    /// membership config is committed: when the two are equal, the last membership log entry is
+    /// committed, i.e., a membership change is fully completed.
+    #[since(version = "0.10.0")]
+    pub committed_membership_config: Arc<StoredMembershipOf<C>>,
 }
 
 impl<C> fmt::Display for RaftServerMetrics<C>
@@ -409,12 +428,13 @@ where C: RaftTypeConfig
 
         write!(
             f,
-            "id:{}, {:?}, vote:{}, leader:{}, membership:{}",
+            "id:{}, {:?}, vote:{}, leader:{}, membership:{}, committed_membership:{}",
             self.id,
             self.state,
             self.vote,
             self.current_leader.display(),
             self.membership_config,
+            self.committed_membership_config,
         )?;
 
         write!(f, "}}")?;
@@ -437,6 +457,7 @@ where C: RaftTypeConfig
             state: Default::default(),
             current_leader: None,
             membership_config: Arc::new(Default::default()),
+            committed_membership_config: Arc::new(Default::default()),
         }
     }
 }
