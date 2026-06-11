@@ -80,6 +80,7 @@ use crate::config::RuntimeConfig;
 use crate::core::ClientResponderQueue;
 use crate::core::RaftCore;
 use crate::core::SharedReplicateBatch;
+use crate::core::StepDownWatcher;
 use crate::core::Tick;
 use crate::core::heartbeat::handle::HeartbeatWorkersHandle;
 use crate::core::io_flush_tracking::AppliedProgress;
@@ -550,6 +551,13 @@ where
 
         // Spawn forwarder task to bridge Watch channel to notification channel
         let _forwarder_handle = C::spawn(io_completion_forwarder::<C>(rx_io_completed, weak_tx_notify));
+
+        StepDownWatcher::<C>::spawn(
+            rx_server_metrics.clone(),
+            rx_metrics.clone(),
+            tx_api.downgrade(),
+            &config,
+        );
 
         let core_handle = C::spawn(core.main(rx_shutdown).instrument(trace_span!("spawn").or_current()));
 

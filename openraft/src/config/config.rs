@@ -12,11 +12,14 @@ use rand::RngExt;
 use crate::AsyncRuntime;
 use crate::LogId;
 use crate::LogIdOptionExt;
+use crate::config::StepDownPolicy;
 use crate::config::error::ConfigError;
 #[cfg(feature = "clap")]
 use crate::config::parser::parse_bytes_with_unit;
 #[cfg(feature = "clap")]
 use crate::config::parser::parse_snapshot_policy;
+#[cfg(feature = "clap")]
+use crate::config::parser::parse_step_down_policy;
 use crate::network::Backoff;
 use crate::raft_state::LogStateReader;
 use crate::vote::RaftCommittedLeaderId;
@@ -48,6 +51,7 @@ pub(crate) struct Defaults {
     pub enable_tick: bool,
     pub enable_heartbeat: bool,
     pub enable_elect: bool,
+    pub removed_leader_step_down: StepDownPolicy,
 }
 
 pub(crate) const DEFAULTS: Defaults = Defaults {
@@ -73,7 +77,15 @@ pub(crate) const DEFAULTS: Defaults = Defaults {
     enable_tick: true,
     enable_heartbeat: true,
     enable_elect: true,
+    removed_leader_step_down: StepDownPolicy::After(150),
 };
+
+/// The serde default for [`Config::removed_leader_step_down`]: it is used when the field is
+/// absent, so that config files written before this field existed keep the default behavior.
+#[cfg(feature = "serde")]
+fn default_removed_leader_step_down() -> StepDownPolicy {
+    DEFAULTS.removed_leader_step_down.clone()
+}
 
 /// Log compaction and snapshot policy.
 ///
@@ -358,6 +370,28 @@ pub struct Config {
     ))]
     pub enable_elect: bool,
 
+    /// The policy for stepping down a Leader that is removed from a committed membership config.
+    ///
+    /// - [`After(ms)`](StepDownPolicy::After): when the membership config that removes this Leader
+    ///   is committed and `ms` milliseconds have elapsed, the Leader transfers leadership to the
+    ///   most up-to-date voter, then reverts itself to a learner. During the delay it keeps serving
+    ///   as a Leader, so that in-flight requests and the commit notification of the membership log
+    ///   entry can still reach the followers.
+    /// - [`Never`](StepDownPolicy::Never): the removed Leader keeps leading, until the application
+    ///   reverts it manually with [`Trigger::refresh_server_state()`].
+    ///
+    /// In CLI it is either a "never" literal (`never`, `no`, `none`, `off` or `false`,
+    /// case-insensitive) or the number of milliseconds, e.g.,
+    /// `--removed-leader-step-down=never` or `--removed-leader-step-down=150`.
+    ///
+    /// Defaults to `After(150)`.
+    ///
+    /// [`Trigger::refresh_server_state()`]: crate::raft::trigger::Trigger::refresh_server_state
+    #[since(version = "0.10.0")]
+    #[cfg_attr(feature = "clap", clap(long, default_value = "150", value_parser = parse_step_down_policy))]
+    #[cfg_attr(feature = "serde", serde(default = "default_removed_leader_step_down"))]
+    pub removed_leader_step_down: StepDownPolicy,
+
     /// Default backoff policy used when
     /// [`RaftNetworkV2::backoff`](crate::network::RaftNetworkV2::backoff) returns `None`.
     ///
@@ -459,6 +493,7 @@ impl Default for Config {
             enable_tick: DEFAULTS.enable_tick,
             enable_heartbeat: DEFAULTS.enable_heartbeat,
             enable_elect: DEFAULTS.enable_elect,
+            removed_leader_step_down: DEFAULTS.removed_leader_step_down.clone(),
             backoff: DEFAULTS.backoff.to_string(),
             allow_log_reversion: None,
         }

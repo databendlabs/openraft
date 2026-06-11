@@ -6,6 +6,7 @@
 //!
 //! - [`Config`] - Main configuration for Raft runtime behavior
 //! - [`SnapshotPolicy`] - Policy for triggering automatic snapshots
+//! - [`StepDownPolicy`] - Policy for stepping down a removed Leader
 //! - [`RuntimeConfig`] - Dynamic configuration that can be changed at runtime
 //! - [`ConfigError`] - Configuration validation errors
 //!
@@ -41,6 +42,7 @@ mod error;
 #[cfg(feature = "clap")]
 mod parser;
 mod runtime_config;
+mod step_down_policy;
 
 #[cfg(test)]
 mod config_test;
@@ -52,3 +54,4 @@ pub use config::Config;
 pub use config::SnapshotPolicy;
 pub use error::ConfigError;
 pub(crate) use runtime_config::RuntimeConfig;
+pub use step_down_policy::StepDownPolicy;

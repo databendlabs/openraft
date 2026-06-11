@@ -1,5 +1,6 @@
 use crate::Config;
 use crate::SnapshotPolicy;
+use crate::StepDownPolicy;
 use crate::config::error::ConfigError;
 
 #[test]
@@ -17,6 +18,21 @@ fn test_config_defaults() {
     assert_eq!(SnapshotPolicy::LogsSinceLast(5000), cfg.snapshot_policy);
     assert_eq!(Some(65536), cfg.api_channel_size);
     assert_eq!(Some(65536), cfg.notification_channel_size);
+    assert_eq!(StepDownPolicy::After(150), cfg.removed_leader_step_down);
+}
+
+/// A config serialized before `removed_leader_step_down` existed deserializes to the default
+/// policy.
+#[cfg(feature = "serde")]
+#[test]
+fn test_removed_leader_step_down_serde_default() -> anyhow::Result<()> {
+    let mut value = serde_json::to_value(Config::default())?;
+    value.as_object_mut().unwrap().remove("removed_leader_step_down");
+
+    let cfg: Config = serde_json::from_value(value)?;
+    assert_eq!(StepDownPolicy::After(150), cfg.removed_leader_step_down);
+
+    Ok(())
 }
 
 #[test]

@@ -1748,28 +1748,6 @@ where
                         l.next_heartbeat = C::now() + Duration::from_millis(self.config.heartbeat_interval);
                     }
                 }
-
-                // When a membership that removes the leader is committed,
-                // the leader continue to work for a short while before reverting to a learner.
-                // This way, let the leader replicate the `membership-log-is-committed` message to
-                // followers.
-                // Otherwise, if the leader step down at once, the follower might have to
-                // re-commit the membership log again, electing itself.
-                //
-                // ---
-                //
-                // Stepping down only when the response of the second change-membership is sent.
-                // Otherwise, the Sender to the caller will be dropped before sending back the
-                // response.
-
-                // TODO: temp solution: Manually wait until the second membership log being applied to state
-                //       machine. Because the response is sent back to the caller after log is
-                //       applied.
-                //       ---
-                //       A better way is to make leader step down a command that waits for the log to be applied.
-                if self.engine.state.io_applied() >= self.engine.state.membership_state.effective().log_id().as_ref() {
-                    self.engine.refresh_server_state();
-                }
             }
 
             Notification::StorageError { error } => {

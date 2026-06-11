@@ -151,9 +151,11 @@ where C: RaftTypeConfig
     ///
     /// Usually this method is not used at all: the internal server state is always recalculated
     /// automatically. The only exception is the step down of a Leader that is removed from the
-    /// membership config: openraft allows such a removed node to keep acting as a Leader, and the
-    /// application or the administrator decides when to revert it to a learner by calling this
-    /// method.
+    /// membership config: openraft allows such a removed node to keep acting as a Leader. By
+    /// default it is stepped down automatically (see
+    /// [`Config::removed_leader_step_down`](crate::Config::removed_leader_step_down));
+    /// with the automated step down disabled, the application or the administrator decides when
+    /// to revert it to a learner by calling this method.
     ///
     /// It is safe to call this method at any time on any node: it is a no-op until the membership
     /// config that removes this node is committed. A Leader keeps leading while that membership

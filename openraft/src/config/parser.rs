@@ -10,6 +10,7 @@ use clap::Parser;
 
 use crate::Config;
 use crate::SnapshotPolicy;
+use crate::StepDownPolicy;
 use crate::config::error::ConfigError;
 
 /// Parse number with unit such as 5.3 KB
@@ -47,6 +48,22 @@ pub(super) fn parse_snapshot_policy(src: &str) -> Result<SnapshotPolicy, ConfigE
         reason: e.to_string(),
     })?;
     Ok(SnapshotPolicy::LogsSinceLast(n_logs))
+}
+
+/// Parse a step-down policy: a "never" literal (`never`, `no`, `none`, `off` or `false`,
+/// case-insensitive), or the number of milliseconds to wait.
+pub(super) fn parse_step_down_policy(src: &str) -> Result<StepDownPolicy, ConfigError> {
+    const NEVER_LITERALS: &[&str] = &["never", "no", "none", "off", "false"];
+
+    if NEVER_LITERALS.iter().any(|x| src.eq_ignore_ascii_case(x)) {
+        return Ok(StepDownPolicy::Never);
+    }
+
+    let ms = src.parse::<u64>().map_err(|e| ConfigError::InvalidNumber {
+        invalid: src.to_string(),
+        reason: e.to_string(),
+    })?;
+    Ok(StepDownPolicy::After(ms))
 }
 
 impl Config {

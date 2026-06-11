@@ -120,6 +120,7 @@ pub use crate::change_members::ChangeMembers;
 pub use crate::config::Config;
 pub use crate::config::ConfigError;
 pub use crate::config::SnapshotPolicy;
+pub use crate::config::StepDownPolicy;
 pub use crate::core::ServerState;
 pub use crate::entry::Entry;
 pub use crate::entry::EntryPayload;
