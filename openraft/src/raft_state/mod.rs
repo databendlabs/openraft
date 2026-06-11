@@ -327,16 +327,19 @@ where C: RaftTypeConfig
     /// This method updates the committed log id only if the input is greater than the current
     /// value.
     ///
-    /// Returns `Some(previous_value)` if updated, or `None` if the input was not greater.
-    pub(crate) fn update_local_committed(&mut self, committed: &Option<LogIdOf<C>>) -> Option<Option<LogIdOf<C>>> {
+    /// If updated, it returns `Some(membership_transition)`, where `membership_transition` is
+    /// the committed membership config change reported by `MembershipState::commit()`;
+    /// otherwise it returns `None`.
+    pub(crate) fn update_local_committed(
+        &mut self,
+        committed: &Option<LogIdOf<C>>,
+    ) -> Option<Option<(Option<LogIdOf<C>>, LogIdOf<C>)>> {
         if committed.as_ref() > self.committed() {
-            let prev = self.committed().cloned();
-
             // Safe unwrap(): committed > self.committed(), implies it cannot be None
             self.apply_progress_mut().accept(committed.clone().unwrap());
-            self.membership_state.commit(committed);
+            let membership_transition = self.membership_state.commit(committed);
 
-            Some(prev)
+            Some(membership_transition)
         } else {
             None
         }
