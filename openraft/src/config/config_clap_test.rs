@@ -183,6 +183,34 @@ fn test_config_allow_log_reversion() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_config_enable_leader_restore() -> anyhow::Result<()> {
+    let config = Config::build(&["foo", "--enable-leader-restore=false"])?;
+    assert_eq!(Some(false), config.enable_leader_restore);
+
+    let config = Config::build(&["foo", "--enable-leader-restore=true"])?;
+    assert_eq!(Some(true), config.enable_leader_restore);
+
+    let config = Config::build(&["foo", "--enable-leader-restore"])?;
+    assert_eq!(Some(true), config.enable_leader_restore);
+
+    let mut config = Config::build(&["foo"])?;
+    assert_eq!(None, config.enable_leader_restore);
+
+    // test enable_leader_restore method
+
+    config.enable_leader_restore = None;
+    assert_eq!(true, config.enable_leader_restore());
+
+    config.enable_leader_restore = Some(true);
+    assert_eq!(true, config.enable_leader_restore());
+
+    config.enable_leader_restore = Some(false);
+    assert_eq!(false, config.enable_leader_restore());
+
+    Ok(())
+}
+
+#[test]
 fn test_config_api_channel_size() -> anyhow::Result<()> {
     // Test default value
     let config = Config::build(&["foo"])?;

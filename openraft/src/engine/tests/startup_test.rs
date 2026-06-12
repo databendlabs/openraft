@@ -239,3 +239,34 @@ fn test_startup_as_learner() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_startup_as_leader_leader_restore_disabled() -> anyhow::Result<()> {
+    let mut eng = eng();
+    eng.config.enable_leader_restore = false;
+
+    // self.id==2 is a voter:
+    eng.state.membership_state.set_effective(Arc::new(StoredMembershipOf::<UTConfig>::new(
+        Some(log_id(1, 1, 3)),
+        m23(),
+    )));
+    eng.state.log_ids = LogIdList::new(None, [log_id(1, 1, 3)]);
+    // Committed vote would normally make it a leader at startup.
+    eng.state.vote = Leased::new(
+        UTConfig::<()>::now(),
+        Duration::from_millis(500),
+        Vote::new_committed(2, 2),
+    );
+
+    eng.startup();
+
+    // It does not re-elect itself; as a voter it becomes a Follower.
+    assert_eq!(ServerState::Follower, eng.state.server_state);
+    assert!(eng.leader_ref().is_none());
+    assert!(!eng.state.is_leader(&eng.config.id));
+    // The demotion is in-memory only: no command is emitted; the committed vote stays in storage.
+    assert_eq!(eng.output.take_commands(), vec![]);
+    assert_eq!(eng.state.vote_ref(), &Vote::new(2, 2));
+
+    Ok(())
+}
