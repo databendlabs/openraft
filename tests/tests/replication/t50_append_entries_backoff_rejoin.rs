@@ -48,7 +48,7 @@ async fn append_entries_backoff_rejoin() -> Result<()> {
         // Timeout leader lease otherwise vote-request will be rejected by node-2
         TypeConfig::sleep(Duration::from_millis(1_000)).await;
 
-        n1.trigger().elect().await?;
+        n1.trigger().elect(false).await?;
         n1.wait(timeout()).state(ServerState::Leader, "node-1 elect").await?;
     }
 

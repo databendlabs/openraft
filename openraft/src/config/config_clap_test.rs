@@ -155,6 +155,28 @@ fn test_config_enable_elect() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_config_enable_pre_vote() -> anyhow::Result<()> {
+    let config = Config::build(&["foo", "--enable-pre-vote=false"])?;
+    assert_eq!(Some(false), config.enable_pre_vote);
+    assert_eq!(false, config.get_enable_pre_vote());
+
+    let config = Config::build(&["foo", "--enable-pre-vote=true"])?;
+    assert_eq!(Some(true), config.enable_pre_vote);
+    assert_eq!(true, config.get_enable_pre_vote());
+
+    let config = Config::build(&["foo", "--enable-pre-vote"])?;
+    assert_eq!(Some(true), config.enable_pre_vote);
+    assert_eq!(true, config.get_enable_pre_vote());
+
+    // Omitted: the field defaults to `None`, which evaluates to disabled (`false`).
+    let config = Config::build(&["foo"])?;
+    assert_eq!(None, config.enable_pre_vote);
+    assert_eq!(false, config.get_enable_pre_vote());
+
+    Ok(())
+}
+
+#[test]
 fn test_config_allow_log_reversion() -> anyhow::Result<()> {
     let config = Config::build(&["foo", "--allow-log-reversion=false"])?;
     assert_eq!(Some(false), config.allow_log_reversion);

@@ -1428,6 +1428,91 @@ where
         }
     }
 
+    /// Spawn parallel Pre-Vote requests to all other cluster members.
+    ///
+    /// Mirrors [`spawn_parallel_vote_requests`](Self::spawn_parallel_vote_requests) but calls
+    /// [`RaftNetworkV2::pre_vote`](crate::network::v2::RaftNetworkV2::pre_vote). Only an
+    /// affirmative `Ok(granted)` response counts toward the Pre-Vote quorum. A transport error
+    /// — including [`Unreachable`](crate::error::Unreachable) from a genuinely partitioned peer
+    /// — is **not** a grant; otherwise a fully isolated node would synthesize a quorum and
+    /// inflate its term. A network that has not implemented `pre_vote` instead returns
+    /// `Ok(granted)` from the default `pre_vote` impl, keeping Pre-Vote a no-op
+    /// during a rolling upgrade.
+    async fn spawn_parallel_pre_vote_requests(&mut self, vote_req: &VoteRequest<C>) {
+        let members = self.engine.state.membership_state.effective().voter_ids();
+
+        let vote = vote_req.vote.clone();
+
+        for target in members {
+            if target == self.id {
+                continue;
+            }
+
+            let req = vote_req.clone();
+
+            // Safe unwrap(): target must be in membership
+            let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap().clone();
+            let mut client = self.network_factory.new_client(target.clone(), &target_node).await;
+
+            let tx = self.tx_notification.clone();
+
+            let ttl = Duration::from_millis(self.config.election_timeout_min);
+            let id = self.id.clone();
+            let option = RPCOption::new(ttl);
+
+            let vote = vote.clone();
+
+            // False positive lint warning(`non-binding `let` on a future`): https://github.com/rust-lang/rust-clippy/issues/9932
+            #[allow(clippy::let_underscore_future)]
+            let _ = C::spawn(
+                {
+                    let target = target.clone();
+                    async move {
+                        let tm_res = C::timeout(ttl, client.pre_vote(req, option)).await;
+                        let res = match tm_res {
+                            Ok(res) => res,
+
+                            Err(_timeout) => {
+                                let timeout_err = Timeout::<C> {
+                                    action: RPCTypes::Vote,
+                                    id,
+                                    target: target.clone(),
+                                    timeout: ttl,
+                                };
+                                tracing::error!("timeout while requesting pre-vote: {}", timeout_err);
+                                return;
+                            }
+                        };
+
+                        match res {
+                            Ok(resp) => {
+                                tx.send(Notification::PreVoteResponse {
+                                    target,
+                                    resp,
+                                    candidate_vote: vote.into_non_committed(),
+                                })
+                                .await
+                                .ok();
+                            }
+                            Err(err) => {
+                                // A transport failure is not a grant: a partitioned peer must not
+                                // count toward the Pre-Vote quorum. A network that has not
+                                // implemented `pre_vote` returns `Ok(granted)` from the default
+                                // impl, so Pre-Vote degrades to a no-op rather than relying on this.
+                                tracing::error!("while requesting pre-vote, error: {}, target: {}", err, target)
+                            }
+                        }
+                    }
+                }
+                .instrument(tracing::debug_span!(
+                    parent: &Span::current(),
+                    "send_pre_vote_req",
+                    target = display(&target)
+                )),
+            );
+        }
+    }
+
     /// Spawn parallel vote requests to all cluster members.
     #[tracing::instrument(level = "trace", skip_all)]
     async fn broadcast_transfer_leader(&mut self, req: TransferLeaderRequest<C>) {
@@ -1500,6 +1585,19 @@ where
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
+    pub(super) fn handle_pre_vote_request(&mut self, req: VoteRequest<C>, tx: VoteTx<C>) {
+        tracing::info!("{}: req: {}", func_name!(), req);
+
+        let resp = self.engine.handle_pre_vote_req(req);
+
+        // A Pre-Vote persists nothing, so there is no vote IO to wait for: respond at once.
+        self.engine.output.push_command(Command::Respond {
+            when: None,
+            resp: Respond::new(resp, tx),
+        });
+    }
+
+    #[tracing::instrument(level = "debug", skip_all)]
     pub(super) fn handle_append_entries_request(&mut self, req: AppendEntriesRequest<C>, tx: AppendEntriesTx<C>) {
         tracing::debug!("{}: req: {}", func_name!(), req);
 
@@ -1537,6 +1635,11 @@ where
                 );
 
                 self.handle_vote_request(rpc, tx);
+            }
+            RaftMsg::RequestPreVote { rpc, tx } => {
+                tracing::info!("received RaftMsg::RequestPreVote: vote_request: {}", rpc);
+
+                self.handle_pre_vote_request(rpc, tx);
             }
             RaftMsg::GetSnapshotReceiver { tx } => {
                 self.engine.handle_begin_receiving_snapshot(tx);
@@ -1613,11 +1716,15 @@ where
                 tracing::info!("{}: received RaftMsg::ExternalCommand, cmd: {:?}", func_name!(), cmd);
 
                 match cmd {
-                    ExternalCommand::Elect => {
+                    ExternalCommand::Elect { pre_vote } => {
                         if self.engine.state.membership_state.effective().is_voter(&self.id) {
                             // TODO: reject if it is already a leader?
-                            self.engine.elect();
-                            tracing::debug!("ExternalCommand: triggered election");
+                            if pre_vote {
+                                self.engine.pre_elect();
+                            } else {
+                                self.engine.elect();
+                            }
+                            tracing::debug!("ExternalCommand: triggered election, pre_vote: {}", pre_vote);
                         } else {
                             // Node is switched to learner.
                         }
@@ -1725,6 +1832,25 @@ where
                 if self.engine.candidate.is_some() {
                     if self.does_candidate_vote_match(&candidate_vote, "VoteResponse") {
                         self.engine.handle_vote_resp(target, resp);
+                    }
+                }
+            }
+
+            Notification::PreVoteResponse {
+                target,
+                resp,
+                candidate_vote,
+            } => {
+                tracing::info!(
+                    "received Notification::PreVoteResponse: target: {}, resp: {}",
+                    target,
+                    resp
+                );
+
+                #[allow(clippy::collapsible_if)]
+                if self.engine.pre_candidate.is_some() {
+                    if self.does_pre_candidate_vote_match(&candidate_vote, "PreVoteResponse") {
+                        self.engine.handle_pre_vote_resp(target, resp);
                     }
                 }
             }
@@ -1888,7 +2014,14 @@ where
             return;
         }
 
-        if self.engine.state.membership_state.effective().voter_ids().count() == 1 {
+        let mut election_timeout = self.engine.config.timer_config.election_timeout;
+        if self.engine.is_there_greater_log() {
+            election_timeout += self.engine.config.timer_config.smaller_log_timeout;
+        }
+
+        let voter_count = self.engine.state.membership_state.effective().voter_ids().count();
+
+        if voter_count == 1 {
             // When a node restart, it may stay in any state but the in progress election(engine.candidate) is
             // empty.
             if self.engine.candidate_ref().is_some() {
@@ -1900,14 +2033,6 @@ where
             tracing::debug!("multiple voters, check election timeout");
 
             let local_vote = &self.engine.state.vote;
-            let timer_config = &self.engine.config.timer_config;
-
-            let mut election_timeout = timer_config.election_timeout;
-
-            if self.engine.is_there_greater_log() {
-                election_timeout += timer_config.smaller_log_timeout;
-            }
-
             tracing::debug!("local vote: {}, election_timeout: {:?}", local_vote, election_timeout,);
 
             if local_vote.is_expired(now, election_timeout) {
@@ -1918,11 +2043,32 @@ where
             }
         }
 
+        // Pre-Vote (multi-voter only): probe a quorum before incrementing the term.
+        // A single voter always wins its own Pre-Vote, so it elects directly.
+        let pre_vote = self.runtime_config.enable_pre_vote.load(Ordering::Relaxed) && voter_count > 1;
+
+        if pre_vote {
+            // A Pre-Vote does not advance `vote.last_update_time`, so without this guard a node
+            // would re-issue a Pre-Vote on every tick. Skip while a fresh round is still in flight;
+            // restart once it has been pending longer than `election_timeout`.
+            if let Some(started) = self.engine.pre_candidate_ref().map(|pc| pc.starting_time())
+                && now < started + election_timeout
+            {
+                tracing::debug!("skip pre-vote, a pre-vote round is already in flight");
+                return;
+            }
+        }
+
         // Every time elect, reset this flag.
         self.engine.reset_greater_log();
 
-        tracing::info!("trigger election");
-        self.engine.elect();
+        if pre_vote {
+            tracing::info!("trigger pre-vote");
+            self.engine.pre_elect();
+        } else {
+            tracing::info!("trigger election");
+            self.engine.elect();
+        }
     }
 
     /// If a message is sent by a previous Candidate but is received by current Candidate,
@@ -1943,6 +2089,32 @@ where
             tracing::warn!(
                 "A message will be ignored because vote changed: \
                 msg sent by vote: {}; current my vote: {}; when ({})",
+                candidate_vote,
+                my_vote,
+                msg
+            );
+            false
+        } else {
+            true
+        }
+    }
+
+    /// If a Pre-Vote response is for a previous Pre-Vote round, it is stale and should be ignored.
+    fn does_pre_candidate_vote_match(&self, candidate_vote: &UncommittedVoteOf<C>, msg: impl fmt::Display) -> bool {
+        let Some(my_vote) = self.engine.pre_candidate_ref().map(|x| x.vote_ref().clone()) else {
+            tracing::warn!(
+                "A message will be ignored because this node is no longer a pre-candidate: \
+                 msg sent by vote: {}; when ({})",
+                candidate_vote,
+                msg
+            );
+            return false;
+        };
+
+        if candidate_vote.leader_id() != my_vote.leader_id() {
+            tracing::warn!(
+                "A message will be ignored because pre-candidate vote changed: \
+                msg sent by vote: {}; current my pre-vote: {}; when ({})",
                 candidate_vote,
                 my_vote,
                 msg
@@ -2202,6 +2374,9 @@ where
             }
             Command::SendVote { vote_req } => {
                 self.spawn_parallel_vote_requests(&vote_req).await;
+            }
+            Command::SendPreVote { vote_req } => {
+                self.spawn_parallel_pre_vote_requests(&vote_req).await;
             }
             Command::ReplicateCommitted { committed } => {
                 self.committed_tx.send_if_greater(committed);

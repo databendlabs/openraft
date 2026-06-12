@@ -135,6 +135,12 @@ where C: RaftTypeConfig
     /// Send vote to all other members
     SendVote { vote_req: VoteRequest<C> },
 
+    /// Send a Pre-Vote request to all other members.
+    ///
+    /// Unlike [`SendVote`](Command::SendVote), this does not persist a vote or bump the term; it
+    /// only probes whether a quorum would grant a vote at the hypothetical next term.
+    SendPreVote { vote_req: VoteRequest<C> },
+
     /// Purge log from the beginning to `upto`, inclusive.
     PurgeLog { upto: LogIdOf<C> },
 
@@ -223,6 +229,7 @@ where C: RaftTypeConfig
             }
             Command::SaveVote { vote } => write!(f, "SaveVote: {}", vote),
             Command::SendVote { vote_req } => write!(f, "SendVote: {}", vote_req),
+            Command::SendPreVote { vote_req } => write!(f, "SendPreVote: {}", vote_req),
             Command::PurgeLog { upto } => write!(f, "PurgeLog: upto: {}", upto),
             Command::TruncateLog { after } => write!(f, "TruncateLog: since: {}", after.display()),
             Command::StateMachine { command } => write!(f, "StateMachine: command: {}", command),
@@ -259,6 +266,7 @@ where
             (Command::RebuildReplicationStreams { leader_vote, targets, close_old_streams },   Command::RebuildReplicationStreams { leader_vote: lb, targets: b, close_old_streams: cb }, ) => leader_vote == lb && targets == b && close_old_streams == cb,
             (Command::SaveVote { vote },                       Command::SaveVote { vote: b })                                        => vote == b,
             (Command::SendVote { vote_req },                   Command::SendVote { vote_req: b }, )                                  => vote_req == b,
+            (Command::SendPreVote { vote_req },                Command::SendPreVote { vote_req: b }, )                               => vote_req == b,
             (Command::PurgeLog { upto },                       Command::PurgeLog { upto: b })                                        => upto == b,
             (Command::TruncateLog { after },                   Command::TruncateLog { after: b }, )                                  => after == b,
             (Command::Respond { when, resp: send },            Command::Respond { when: b_when, resp: b })                           => send == b && when == b_when,
@@ -289,6 +297,7 @@ where C: RaftTypeConfig
             Command::RebuildReplicationStreams { .. } => CommandName::RebuildReplicationStreams,
             Command::SaveVote { .. }                  => CommandName::SaveVote,
             Command::SendVote { .. }                  => CommandName::SendVote,
+            Command::SendPreVote { .. }               => CommandName::SendPreVote,
             Command::PurgeLog { .. }                  => CommandName::PurgeLog,
             Command::TruncateLog { .. }               => CommandName::TruncateLog,
             Command::StateMachine { command }          => CommandName::StateMachine(command.name()),
@@ -319,6 +328,7 @@ where C: RaftTypeConfig
             Command::ReplicateSnapshot { .. }         => CommandKind::Network,
             Command::BroadcastTransferLeader { .. }   => CommandKind::Network,
             Command::SendVote { .. }                  => CommandKind::Network,
+            Command::SendPreVote { .. }               => CommandKind::Network,
 
             Command::SaveCommittedAndApply { .. }     => CommandKind::StateMachine,
             Command::StateMachine { .. }              => CommandKind::StateMachine,
@@ -346,6 +356,7 @@ where C: RaftTypeConfig
             Command::ReplicateSnapshot { .. }         => None,
             Command::BroadcastTransferLeader { .. }   => None,
             Command::SendVote { .. }                  => None,
+            Command::SendPreVote { .. }               => None,
 
             Command::SaveCommittedAndApply { .. }                     => None,
             Command::StateMachine { .. }              => None,

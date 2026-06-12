@@ -143,7 +143,7 @@ async fn log_progress_with_leader_change() -> Result<()> {
 
     tracing::info!(log_index, "--- trigger election on node 1");
     let n1 = router.get_raft_handle(&1)?;
-    n1.trigger().elect().await?;
+    n1.trigger().elect(false).await?;
 
     tracing::info!(log_index, "--- send client requests to new leader");
     router
@@ -221,7 +221,7 @@ async fn vote_progress_api() -> Result<()> {
 
     tracing::info!("--- trigger election on node 1 to seize leadership");
     let n1 = router.get_raft_handle(&1)?;
-    n1.trigger().elect().await?;
+    n1.trigger().elect(false).await?;
 
     tracing::info!("--- verify wait_until_ge returns with term 2 vote");
     let got_wait = handle.await??;

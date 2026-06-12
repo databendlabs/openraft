@@ -136,7 +136,7 @@ async fn get_read_log_id() -> Result<()> {
 
     tracing::info!("--- let node 1 to become leader, append a blank log");
     let n1 = router.get_raft_handle(&1).unwrap();
-    n1.trigger().elect().await?;
+    n1.trigger().elect(false).await?;
 
     n1.wait(timeout()).state(ServerState::Leader, "node 1 becomes leader").await?;
 

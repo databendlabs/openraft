@@ -84,6 +84,14 @@ where C: RaftTypeConfig
         self.inner.call_core(RaftMsg::RequestVote { rpc, tx }, rx).await
     }
 
+    #[tracing::instrument(level = "debug", skip(self, rpc))]
+    pub(crate) async fn pre_vote(&self, rpc: VoteRequest<C>) -> Result<VoteResponse<C>, Fatal<C>> {
+        tracing::info!("Raft::pre_vote(): rpc: {}", rpc);
+
+        let (tx, rx) = C::oneshot();
+        self.inner.call_core(RaftMsg::RequestPreVote { rpc, tx }, rx).await
+    }
+
     #[since(version = "0.10.0")]
     #[tracing::instrument(level = "debug", skip(self, rpc))]
     pub(crate) async fn append_entries(

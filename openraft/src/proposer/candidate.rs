@@ -90,6 +90,14 @@ where
         self.last_log_id.as_ref()
     }
 
+    /// The time at which this voting round started.
+    ///
+    /// Used to rate-limit Pre-Vote retries: a fresh round already in flight should not be restarted
+    /// on every tick.
+    pub(crate) fn starting_time(&self) -> InstantOf<C> {
+        self.starting_time
+    }
+
     pub(crate) fn progress(&self) -> &VecProgress<C::NodeId, bool, bool, QS> {
         &self.progress
     }

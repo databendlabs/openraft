@@ -47,7 +47,7 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
 
     // Let node-1 become leader.
     let node_1 = router.get_raft_handle(&1)?;
-    node_1.trigger().elect().await?;
+    node_1.trigger().elect(false).await?;
     log_index += 1; // leader initial blank log
 
     router.wait(&1, timeout()).metrics(|x| x.current_leader == Some(1), "wait for new leader").await?;
