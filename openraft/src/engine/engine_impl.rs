@@ -144,10 +144,26 @@ where C: RaftTypeConfig
         );
 
         // TODO: replace all the following codes with one update_internal_server_state;
-        // Previously it is a leader. restore it as leader at once
+        // Previously it is a leader. restore it as leader at once if leader restore enabled.
         if self.state.is_leader(&self.config.id) {
-            self.vote_handler().update_internal_server_state();
-            return;
+            if self.config.enable_leader_restore {
+                self.vote_handler().update_internal_server_state();
+                return;
+            } else {
+                // Demote the vote in memory only; do not persist it.
+                //
+                // Saving a non-committed vote would revert the vote value in storage
+                // (non-committed < committed for the same leader), breaking the
+                // monotonicity invariant of vote storage and of IO progress tracking.
+                //
+                // Keeping the committed vote in storage is safe: there is no vote `x`
+                // such that `(term, node, non-committed) < x < (term, node, committed)`,
+                // so any vote accepted later is also greater than the stored one and
+                // the next `SaveVote` automatically heals the divergence.
+                let uncommitted: VoteOf<C> = self.state.vote.to_non_committed().into_vote();
+                self.state.vote.update(C::now(), Duration::default(), uncommitted);
+                debug_assert!(!self.state.is_leader(&self.config.id))
+            }
         }
 
         let server_state = if self.state.membership_state.effective().is_voter(&self.config.id) {

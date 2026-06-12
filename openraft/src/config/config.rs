@@ -465,6 +465,44 @@ pub struct Config {
            default_missing_value = "true"
     ))]
     pub allow_log_reversion: Option<bool>,
+
+    /// Whether to allow a restarted leader to restore leadership without a vote.
+    ///
+    /// When enabled (`true`), if a node that was leader before a restart comes back quickly
+    /// enough, before any other node triggers and election, it can continue serving as leader
+    /// without re-election. This differs from standard Raft, but can help improve availability
+    /// after a leader restart.
+    ///
+    /// When disabled (`false`), a restarted leader must always trigger a new election to become
+    /// leader again.
+    ///
+    /// **Important**: When this setting is enabled, it can introduce inconsistencies when the
+    /// following conditions are true:
+    ///
+    /// - The state machine does not flush state to disk before returning from
+    ///   [`openraft::storage::RaftLogStorage::apply`].
+    /// - The last committed log id is not persisted.
+    ///
+    /// When the above conditions are met and this setting is enabled, then a leader can restart
+    /// with a stale state machine and restore itself as leader without any mechanism to detect
+    /// the staleness.
+    ///
+    /// When the above conditions are met and this setting is disabled, then a restarted leader can
+    /// learn the current commit log id by participating in a new election or receiving a message
+    /// from the new leader.
+    ///
+    /// See: [`docs::data::log_pointers`].
+    ///
+    /// [`docs::data::log_pointers`]: `crate::docs::data::log_pointers#optionally-persisted-committed`
+    // clap 4 requires `num_args = 0..=1`, or it complains about missing arg error
+    // https://github.com/clap-rs/clap/discussions/4374
+    #[since(version = "0.10.0")]
+    #[cfg_attr(feature = "clap", clap(long,
+           action = clap::ArgAction::Set,
+           num_args = 0..=1,
+           default_missing_value = "true"
+    ))]
+    pub enable_leader_restore: Option<bool>,
 }
 
 impl Default for Config {
@@ -496,6 +534,7 @@ impl Default for Config {
             removed_leader_step_down: DEFAULTS.removed_leader_step_down.clone(),
             backoff: DEFAULTS.backoff.to_string(),
             allow_log_reversion: None,
+            enable_leader_restore: None,
         }
     }
 }
