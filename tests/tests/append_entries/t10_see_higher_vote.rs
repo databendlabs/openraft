@@ -44,6 +44,7 @@ async fn append_sees_higher_vote() -> Result<()> {
             .vote(VoteRequest {
                 vote: Vote::new(10, 1),
                 last_log_id: Some(log_id(10, 1, 5)),
+                leadership_transfer: false,
             })
             .await?;
 

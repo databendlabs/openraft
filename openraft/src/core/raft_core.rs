@@ -1605,7 +1605,7 @@ where
 
                     self.engine.state.vote.disable_lease();
                     if self.id == to {
-                        self.engine.elect();
+                        self.engine.elect_by_leadership_transfer();
                     }
                 }
             }

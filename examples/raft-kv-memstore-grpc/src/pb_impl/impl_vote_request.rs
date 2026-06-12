@@ -6,6 +6,7 @@ impl From<VoteRequest> for pb::VoteRequest {
         pb::VoteRequest {
             vote: Some(vote_req.vote),
             last_log_id: vote_req.last_log_id.map(|log_id| log_id.into()),
+            leadership_transfer: vote_req.leadership_transfer,
         }
     }
 }
@@ -14,6 +15,10 @@ impl From<pb::VoteRequest> for VoteRequest {
     fn from(proto_vote_req: pb::VoteRequest) -> Self {
         let vote = proto_vote_req.vote.unwrap();
         let last_log_id = proto_vote_req.last_log_id.map(|log_id| log_id.into());
-        VoteRequest::new(vote, last_log_id)
+        VoteRequest {
+            vote,
+            last_log_id,
+            leadership_transfer: proto_vote_req.leadership_transfer,
+        }
     }
 }

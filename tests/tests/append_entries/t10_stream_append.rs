@@ -149,6 +149,7 @@ async fn stream_append_higher_vote() -> Result<()> {
         .vote(VoteRequest {
             vote: Vote::new(10, 2),
             last_log_id: Some(log_id(10, 2, 100)),
+            leadership_transfer: false,
         })
         .await?;
     assert!(resp.is_granted_to(&Vote::new(10, 2)));

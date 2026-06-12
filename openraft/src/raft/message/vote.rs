@@ -2,12 +2,14 @@ use std::borrow::Borrow;
 use std::fmt;
 
 use display_more::DisplayOptionExt;
+use openraft_macros::since;
 
 use crate::RaftTypeConfig;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
 
 /// An RPC sent by candidates to gather votes (§5.2).
+#[since]
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct VoteRequest<C: RaftTypeConfig> {
@@ -15,13 +17,29 @@ pub struct VoteRequest<C: RaftTypeConfig> {
     pub vote: VoteOf<C>,
     /// The candidate's last log id.
     pub last_log_id: Option<LogIdOf<C>>,
+
+    /// True if the election is part of a leadership transfer authorized by the current Leader.
+    ///
+    /// A voter processes such a request even if the leader lease has not expired: the disruption
+    /// the lease protects against is legitimate when the Leader itself initiates the election
+    /// ("I have permission to disrupt the leader--it told me to!").
+    /// See: Raft dissertation, section 4.2.3.
+    #[since(version = "0.10.0")]
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub leadership_transfer: bool,
 }
 
 impl<C> fmt::Display for VoteRequest<C>
 where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{{vote:{}, last_log:{}}}", self.vote, self.last_log_id.display(),)
+        write!(
+            f,
+            "{{vote:{}, last_log:{}, leadership_transfer:{}}}",
+            self.vote,
+            self.last_log_id.display(),
+            self.leadership_transfer,
+        )
     }
 }
 
@@ -30,7 +48,11 @@ where C: RaftTypeConfig
 {
     /// Create a new vote request.
     pub fn new(vote: VoteOf<C>, last_log_id: Option<LogIdOf<C>>) -> Self {
-        Self { vote, last_log_id }
+        Self {
+            vote,
+            last_log_id,
+            leadership_transfer: false,
+        }
     }
 }
 
