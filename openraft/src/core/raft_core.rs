@@ -1657,8 +1657,32 @@ where
                         tracing::info!("setting metrics recorder");
                         self.metrics_recorder = recorder;
                     }
-                    ExternalCommand::RefreshServerState => {
-                        self.engine.refresh_server_state();
+                    ExternalCommand::RefreshServerState {
+                        vote,
+                        membership_log_id,
+                    } => {
+                        // The condition to refresh, e.g., the membership config that removes the
+                        // Leader being committed, is checked by the sender. Refresh only if the
+                        // vote and the effective membership config log id still match what the
+                        // sender observed, so that a delayed command can not cause an unexpected
+                        // server state refresh. A `None` skips the corresponding check.
+                        let st = &self.engine.state;
+                        let vote_unchanged = vote.as_ref().is_none_or(|v| st.vote_ref() == v);
+                        let membership_unchanged = membership_log_id
+                            .as_ref()
+                            .is_none_or(|log_id| st.membership_state.effective().log_id().as_ref() == Some(log_id));
+
+                        if vote_unchanged && membership_unchanged {
+                            self.engine.refresh_server_state();
+                        } else {
+                            tracing::info!(
+                                "RefreshServerState is dropped: expected vote: {}, membership log id: {}; current vote: {}, membership log id: {}",
+                                vote.display(),
+                                membership_log_id.display(),
+                                self.engine.state.vote_ref(),
+                                self.engine.state.membership_state.effective().log_id().display(),
+                            );
+                        }
                     }
                 }
             }

@@ -3,13 +3,17 @@
 use std::fmt;
 use std::sync::Arc;
 
+use display_more::DisplayOptionExt;
+
 use crate::RaftTypeConfig;
 use crate::core::raft_msg::ExternalCommandName;
 use crate::core::raft_msg::ResultSender;
 use crate::errors::AllowNextRevertError;
 use crate::metrics::MetricsRecorder;
+use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::SnapshotOf;
+use crate::type_config::alias::VoteOf;
 
 /// Application-triggered Raft actions for testing and administration.
 ///
@@ -60,7 +64,21 @@ pub(crate) enum ExternalCommand<C: RaftTypeConfig> {
     ///
     /// Most of the time the internal server state is recalculated automatically; the only
     /// exception is the step down of a Leader that is removed from the membership config.
-    RefreshServerState,
+    ///
+    /// The command may carry the vote and the effective membership config log id observed by
+    /// the sender; it is dropped if either differs from the current state when it is handled,
+    /// so that a delayed command can not cause an unexpected refresh. The condition to refresh,
+    /// e.g., the membership config that removes the Leader being committed, is checked by the
+    /// sender, such as [`StepDownWatcher`].
+    ///
+    /// A `None` skips the corresponding check: with both `None` the server state is refreshed
+    /// unconditionally.
+    ///
+    /// [`StepDownWatcher`]: crate::core::StepDownWatcher
+    RefreshServerState {
+        vote: Option<VoteOf<C>>,
+        membership_log_id: Option<LogIdOf<C>>,
+    },
 }
 
 impl<C: RaftTypeConfig> ExternalCommand<C> {
@@ -75,7 +93,7 @@ impl<C: RaftTypeConfig> ExternalCommand<C> {
             ExternalCommand::TriggerTransferLeader { .. } => ExternalCommandName::TriggerTransferLeader,
             ExternalCommand::AllowNextRevert { .. } => ExternalCommandName::AllowNextRevert,
             ExternalCommand::SetMetricsRecorder { .. } => ExternalCommandName::SetMetricsRecorder,
-            ExternalCommand::RefreshServerState => ExternalCommandName::RefreshServerState,
+            ExternalCommand::RefreshServerState { .. } => ExternalCommandName::RefreshServerState,
         }
     }
 }
@@ -122,8 +140,16 @@ where C: RaftTypeConfig
             ExternalCommand::SetMetricsRecorder { .. } => {
                 write!(f, "SetMetricsRecorder")
             }
-            ExternalCommand::RefreshServerState => {
-                write!(f, "RefreshServerState")
+            ExternalCommand::RefreshServerState {
+                vote,
+                membership_log_id,
+            } => {
+                write!(
+                    f,
+                    "RefreshServerState: expected vote: {}, expected membership_log_id: {}",
+                    vote.display(),
+                    membership_log_id.display()
+                )
             }
         }
     }

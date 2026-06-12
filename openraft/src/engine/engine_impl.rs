@@ -447,10 +447,10 @@ where C: RaftTypeConfig
     /// is removed from the membership config keeps leading until the membership config that
     /// removes it is committed, and it is this method that then reverts it to a learner.
     ///
-    /// It is safe to call this method at any time on any node; it is a no-op if the effective
-    /// membership config is not yet committed: the Leader, even when removed, must keep leading
-    /// to replicate the membership log entry that removes it; otherwise this entry could never
-    /// be committed.
+    /// This method updates the internal server state unconditionally. The caller must not call
+    /// it on a Leader whose effective membership config is not yet committed: the Leader, even
+    /// when removed, must keep leading to replicate the membership log entry that removes it;
+    /// otherwise this entry could never be committed.
     ///
     /// A Leader demoted to a learner that is still in the membership config is not affected:
     /// openraft allows a learner to act as Leader. See: [Determine Server
@@ -459,7 +459,6 @@ where C: RaftTypeConfig
     pub(crate) fn refresh_server_state(&mut self) {
         tracing::debug!("{}: node_id: {}", func_name!(), self.config.id);
 
-        // A removed Leader keeps leading until the membership config without it is committed.
         let em = &self.state.membership_state.effective();
 
         tracing::debug!(
@@ -469,10 +468,7 @@ where C: RaftTypeConfig
             self.state.is_leading(&self.config.id),
         );
 
-        #[allow(clippy::collapsible_if)]
-        if em.log_id().as_ref() <= self.state.committed() {
-            self.vote_handler().update_internal_server_state();
-        }
+        self.vote_handler().update_internal_server_state();
     }
 
     /// Update Engine state when snapshot building completes or is deferred.
