@@ -8,6 +8,7 @@ use crate::Config;
 pub(crate) struct RuntimeConfig {
     pub(crate) enable_heartbeat: AtomicBool,
     pub(crate) enable_elect: AtomicBool,
+    pub(crate) enable_pre_vote: AtomicBool,
 }
 
 impl RuntimeConfig {
@@ -15,6 +16,7 @@ impl RuntimeConfig {
         Self {
             enable_heartbeat: AtomicBool::from(config.enable_heartbeat),
             enable_elect: AtomicBool::from(config.enable_elect),
+            enable_pre_vote: AtomicBool::from(config.get_enable_pre_vote()),
         }
     }
 }

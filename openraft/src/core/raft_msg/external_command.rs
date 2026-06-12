@@ -22,8 +22,19 @@ use crate::type_config::alias::VoteOf;
 /// An application can also disable these policy-based triggering and use these commands manually,
 /// for testing or administrative purposes.
 pub(crate) enum ExternalCommand<C: RaftTypeConfig> {
-    /// Initiate an election at once.
-    Elect,
+    /// Initiate an election immediately.
+    ///
+    /// With `pre_vote = false`, a real election starts at once: the term is incremented and the
+    /// node votes for itself, bypassing both `enable_elect` and Pre-Vote. The term climbs even
+    /// when the node cannot win, which can step down a healthy leader of a lower term once it
+    /// observes the higher term.
+    ///
+    /// With `pre_vote = true`, a Pre-Vote round runs first: it probes whether a quorum *would*
+    /// grant a vote at `term + 1` without changing any state, and runs the real election only
+    /// if a quorum would. A node that cannot currently win — e.g. while a healthy leader still
+    /// holds its lease — leaves the term untouched, so an incautious trigger does not disrupt a
+    /// live leader.
+    Elect { pre_vote: bool },
 
     /// Send a heartbeat message, only if the node is leader, or it will be ignored.
     Heartbeat,
@@ -85,7 +96,7 @@ impl<C: RaftTypeConfig> ExternalCommand<C> {
     /// Returns the name of this command variant.
     pub fn name(&self) -> ExternalCommandName {
         match self {
-            ExternalCommand::Elect => ExternalCommandName::Elect,
+            ExternalCommand::Elect { .. } => ExternalCommandName::Elect,
             ExternalCommand::Heartbeat => ExternalCommandName::Heartbeat,
             ExternalCommand::Snapshot => ExternalCommandName::Snapshot,
             ExternalCommand::GetSnapshot { .. } => ExternalCommandName::GetSnapshot,
@@ -111,8 +122,8 @@ where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ExternalCommand::Elect => {
-                write!(f, "Elect")
+            ExternalCommand::Elect { pre_vote } => {
+                write!(f, "Elect{{pre_vote={pre_vote}}}")
             }
             ExternalCommand::Heartbeat => {
                 write!(f, "Heartbeat")

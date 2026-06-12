@@ -75,7 +75,7 @@ async fn on_cluster_leader_change_api() -> Result<()> {
 
     tracing::info!("--- trigger election on node 2");
     let n2 = router.get_raft_handle(&2)?;
-    n2.trigger().elect().await?;
+    n2.trigger().elect(false).await?;
 
     tracing::info!("--- wait for node 2 to become leader");
     n2.wait(Some(Duration::from_millis(2000)))
@@ -108,7 +108,7 @@ async fn on_cluster_leader_change_api() -> Result<()> {
     TypeConfig::sleep(Duration::from_millis(700)).await;
 
     tracing::info!("--- trigger election on node 1 after handle closed (node 2 still running for quorum)");
-    n1.trigger().elect().await?;
+    n1.trigger().elect(false).await?;
 
     n1.wait(Some(Duration::from_millis(2000)))
         .state(ServerState::Leader, "wait for node 1 to become leader")
@@ -193,7 +193,7 @@ async fn on_leader_change_api() -> Result<()> {
 
     tracing::info!("--- trigger election on node 2");
     let n2 = router.get_raft_handle(&2)?;
-    n2.trigger().elect().await?;
+    n2.trigger().elect(false).await?;
 
     tracing::info!("--- wait for node 2 to become leader");
     n2.wait(Some(Duration::from_millis(2000)))
@@ -294,7 +294,7 @@ async fn on_leader_change_future_is_awaited() -> Result<()> {
 
     tracing::info!("--- trigger election on node 2 to cause leadership change");
     let n2 = router.get_raft_handle(&2)?;
-    n2.trigger().elect().await?;
+    n2.trigger().elect(false).await?;
 
     n2.wait(Some(Duration::from_millis(2000)))
         .state(ServerState::Leader, "wait for node 2 to become leader")
@@ -369,7 +369,7 @@ async fn on_cluster_leader_change_future_is_awaited() -> Result<()> {
 
     tracing::info!("--- trigger election on node 2");
     let n2 = router.get_raft_handle(&2)?;
-    n2.trigger().elect().await?;
+    n2.trigger().elect(false).await?;
 
     n2.wait(Some(Duration::from_millis(2000)))
         .state(ServerState::Leader, "wait for node 2 to become leader")

@@ -79,6 +79,7 @@ impl std::fmt::Display for ExternalCommandName {
 pub enum RaftMsgName {
     AppendEntries,
     RequestVote,
+    RequestPreVote,
     InstallSnapshot,
     GetSnapshotReceiver,
     ClientWrite,
@@ -93,7 +94,7 @@ pub enum RaftMsgName {
 
 impl RaftMsgName {
     /// Total number of variants (including expanded ExternalCommand variants).
-    pub const COUNT: usize = 20;
+    pub const COUNT: usize = 21;
 
     /// All variants in canonical order.
     ///
@@ -102,6 +103,7 @@ impl RaftMsgName {
     pub const ALL: &'static [RaftMsgName] = &[
         RaftMsgName::AppendEntries,
         RaftMsgName::RequestVote,
+        RaftMsgName::RequestPreVote,
         RaftMsgName::InstallSnapshot,
         RaftMsgName::GetSnapshotReceiver,
         RaftMsgName::ClientWrite,
@@ -127,16 +129,17 @@ impl RaftMsgName {
         match self {
             RaftMsgName::AppendEntries => 0,
             RaftMsgName::RequestVote => 1,
-            RaftMsgName::InstallSnapshot => 2,
-            RaftMsgName::GetSnapshotReceiver => 3,
-            RaftMsgName::ClientWrite => 4,
-            RaftMsgName::GetLinearizer => 5,
-            RaftMsgName::Initialize => 6,
-            RaftMsgName::ChangeMembership => 7,
-            RaftMsgName::HandleTransferLeader => 8,
-            RaftMsgName::WithRaftState => 9,
-            RaftMsgName::ExternalCommand(ext) => 10 + ext.index(),
-            RaftMsgName::GetRuntimeStats => 10 + ExternalCommandName::COUNT,
+            RaftMsgName::RequestPreVote => 2,
+            RaftMsgName::InstallSnapshot => 3,
+            RaftMsgName::GetSnapshotReceiver => 4,
+            RaftMsgName::ClientWrite => 5,
+            RaftMsgName::GetLinearizer => 6,
+            RaftMsgName::Initialize => 7,
+            RaftMsgName::ChangeMembership => 8,
+            RaftMsgName::HandleTransferLeader => 9,
+            RaftMsgName::WithRaftState => 10,
+            RaftMsgName::ExternalCommand(ext) => 11 + ext.index(),
+            RaftMsgName::GetRuntimeStats => 11 + ExternalCommandName::COUNT,
         }
     }
 
@@ -146,6 +149,7 @@ impl RaftMsgName {
         match self {
             RaftMsgName::AppendEntries => "AppendEntries",
             RaftMsgName::RequestVote => "RequestVote",
+            RaftMsgName::RequestPreVote => "RequestPreVote",
             RaftMsgName::InstallSnapshot => "InstallSnapshot",
             RaftMsgName::GetSnapshotReceiver => "GetSnapshotReceiver",
             RaftMsgName::ClientWrite => "ClientWrite",

@@ -69,7 +69,7 @@ async fn leader_restart_clears_state() -> anyhow::Result<()> {
         n0.initialize(btreemap! {0 => (), 1=>(), 2=>()}).await?;
 
         tracing::info!(log_index, "--- trigger election for node-0 after restart");
-        n0.trigger().elect().await?;
+        n0.trigger().elect(false).await?;
 
         let res = n0.wait(timeout()).state(ServerState::Leader, "should not become leader upon restart").await;
         assert!(res.is_err());

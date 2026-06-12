@@ -66,6 +66,12 @@ where C: RaftTypeConfig
         tx: VoteTx<C>,
     },
 
+    /// A Pre-Vote request: probe whether a quorum would grant a vote without changing any state.
+    RequestPreVote {
+        rpc: VoteRequest<C>,
+        tx: VoteTx<C>,
+    },
+
     InstallSnapshot {
         vote: VoteOf<C>,
         snapshot: SnapshotOf<C>,
@@ -144,6 +150,7 @@ impl<C: RaftTypeConfig> RaftMsg<C> {
         match self {
             RaftMsg::AppendEntries { .. } => RaftMsgName::AppendEntries,
             RaftMsg::RequestVote { .. } => RaftMsgName::RequestVote,
+            RaftMsg::RequestPreVote { .. } => RaftMsgName::RequestPreVote,
             RaftMsg::InstallSnapshot { .. } => RaftMsgName::InstallSnapshot,
             RaftMsg::GetSnapshotReceiver { .. } => RaftMsgName::GetSnapshotReceiver,
             RaftMsg::ClientWrite { .. } => RaftMsgName::ClientWrite,
@@ -169,6 +176,9 @@ where C: RaftTypeConfig
             }
             RaftMsg::RequestVote { rpc, .. } => {
                 write!(f, "RequestVote: {}", rpc)
+            }
+            RaftMsg::RequestPreVote { rpc, .. } => {
+                write!(f, "RequestPreVote: {}", rpc)
             }
             RaftMsg::GetSnapshotReceiver { .. } => {
                 write!(f, "GetSnapshotReceiver")

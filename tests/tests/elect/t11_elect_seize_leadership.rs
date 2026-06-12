@@ -38,7 +38,7 @@ async fn elect_seize_leadership() -> Result<()> {
     tracing::info!(log_index, "--- trigger election on node 1");
     {
         let n1 = router.get_raft_handle(&1)?;
-        n1.trigger().elect().await?;
+        n1.trigger().elect(false).await?;
 
         n1.wait(timeout()).state(ServerState::Leader, "node 1 becomes leader").await?;
     }

@@ -31,6 +31,18 @@ where C: RaftTypeConfig
         candidate_vote: UncommittedVoteOf<C>,
     },
 
+    /// Response to a Pre-Vote request sent by a pre-candidate.
+    ///
+    /// Unlike [`VoteResponse`](Self::VoteResponse), receiving this does not change any persistent
+    /// state; it only advances the pre-vote tally that decides whether to start a real election.
+    PreVoteResponse {
+        target: C::NodeId,
+        resp: VoteResponse<C>,
+
+        /// The pre-candidate vote (the hypothetical next-term vote) this response answers.
+        candidate_vote: UncommittedVoteOf<C>,
+    },
+
     /// A Leader sees a higher `vote` when replicating.
     HigherVote {
         /// The ID of the target node from which the new term was observed.
@@ -93,6 +105,7 @@ where C: RaftTypeConfig
     pub(crate) fn name(&self) -> NotificationName {
         match self {
             Self::VoteResponse { .. } => NotificationName::VoteResponse,
+            Self::PreVoteResponse { .. } => NotificationName::PreVoteResponse,
             Self::HigherVote { .. } => NotificationName::HigherVote,
             Self::StorageError { .. } => NotificationName::StorageError,
             Self::LocalIO { .. } => NotificationName::LocalIO,
@@ -117,6 +130,17 @@ where C: RaftTypeConfig
                 write!(
                     f,
                     "VoteResponse: from target={}, to candidate_vote: {}, {}",
+                    target, candidate_vote, resp
+                )
+            }
+            Self::PreVoteResponse {
+                target,
+                resp,
+                candidate_vote,
+            } => {
+                write!(
+                    f,
+                    "PreVoteResponse: from target={}, to pre_candidate_vote: {}, {}",
                     target, candidate_vote, resp
                 )
             }

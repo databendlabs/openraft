@@ -71,6 +71,7 @@ pub enum CommandName {
     RebuildReplicationStreams,
     SaveVote,
     SendVote,
+    SendPreVote,
     PurgeLog,
     TruncateLog,
     StateMachine(SMCommandName),
@@ -79,7 +80,7 @@ pub enum CommandName {
 
 impl CommandName {
     /// Total number of variants (including expanded StateMachine variants).
-    pub const COUNT: usize = 21;
+    pub const COUNT: usize = 22;
 
     /// All variants in canonical order.
     ///
@@ -98,6 +99,7 @@ impl CommandName {
         CommandName::RebuildReplicationStreams,
         CommandName::SaveVote,
         CommandName::SendVote,
+        CommandName::SendPreVote,
         CommandName::PurgeLog,
         CommandName::TruncateLog,
         CommandName::StateMachine(SMCommandName::BuildSnapshot),
@@ -124,10 +126,11 @@ impl CommandName {
             CommandName::RebuildReplicationStreams => 9,
             CommandName::SaveVote => 10,
             CommandName::SendVote => 11,
-            CommandName::PurgeLog => 12,
-            CommandName::TruncateLog => 13,
-            CommandName::StateMachine(sm) => 14 + sm.index(),
-            CommandName::Respond => 14 + SMCommandName::COUNT,
+            CommandName::SendPreVote => 12,
+            CommandName::PurgeLog => 13,
+            CommandName::TruncateLog => 14,
+            CommandName::StateMachine(sm) => 15 + sm.index(),
+            CommandName::Respond => 15 + SMCommandName::COUNT,
         }
     }
 
@@ -147,6 +150,7 @@ impl CommandName {
             CommandName::RebuildReplicationStreams => "RebuildReplicationStreams",
             CommandName::SaveVote => "SaveVote",
             CommandName::SendVote => "SendVote",
+            CommandName::SendPreVote => "SendPreVote",
             CommandName::PurgeLog => "PurgeLog",
             CommandName::TruncateLog => "TruncateLog",
             CommandName::StateMachine(sm) => sm.as_str(),

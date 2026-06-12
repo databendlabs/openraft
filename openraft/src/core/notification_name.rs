@@ -6,6 +6,7 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum NotificationName {
     VoteResponse,
+    PreVoteResponse,
     HigherVote,
     StorageError,
     LocalIO,
@@ -18,12 +19,13 @@ pub enum NotificationName {
 impl NotificationName {
     /// Total number of variants.
     #[allow(dead_code)]
-    pub const COUNT: usize = 8;
+    pub const COUNT: usize = 9;
 
     /// All variants in canonical order.
     #[allow(dead_code)]
     pub const ALL: &'static [NotificationName] = &[
         NotificationName::VoteResponse,
+        NotificationName::PreVoteResponse,
         NotificationName::HigherVote,
         NotificationName::StorageError,
         NotificationName::LocalIO,
@@ -38,13 +40,14 @@ impl NotificationName {
     pub const fn index(&self) -> usize {
         match self {
             NotificationName::VoteResponse => 0,
-            NotificationName::HigherVote => 1,
-            NotificationName::StorageError => 2,
-            NotificationName::LocalIO => 3,
-            NotificationName::ReplicationProgress => 4,
-            NotificationName::HeartbeatProgress => 5,
-            NotificationName::StateMachine => 6,
-            NotificationName::Tick => 7,
+            NotificationName::PreVoteResponse => 1,
+            NotificationName::HigherVote => 2,
+            NotificationName::StorageError => 3,
+            NotificationName::LocalIO => 4,
+            NotificationName::ReplicationProgress => 5,
+            NotificationName::HeartbeatProgress => 6,
+            NotificationName::StateMachine => 7,
+            NotificationName::Tick => 8,
         }
     }
 
@@ -52,6 +55,7 @@ impl NotificationName {
     pub const fn as_str(&self) -> &'static str {
         match self {
             NotificationName::VoteResponse => "Notify::VoteResponse",
+            NotificationName::PreVoteResponse => "Notify::PreVoteResponse",
             NotificationName::HigherVote => "Notify::HigherVote",
             NotificationName::StorageError => "Notify::StorageError",
             NotificationName::LocalIO => "Notify::LocalIO",
