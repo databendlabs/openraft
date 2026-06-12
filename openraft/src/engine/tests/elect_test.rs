@@ -60,12 +60,48 @@ fn test_elect_single_node() -> anyhow::Result<()> {
                     vote_req: VoteRequest {
                         vote: Vote::new(1, 1),
                         last_log_id: Some(log_id(0, 0, 0)),
+                        leadership_transfer: false,
                     },
                 },
             ],
             eng.output.take_commands()
         );
     }
+
+    Ok(())
+}
+
+#[test]
+fn test_elect_by_leadership_transfer_sets_flag() -> anyhow::Result<()> {
+    // An election started by a leadership transfer marks the vote request, so that voters
+    // grant it even when the leader lease has not expired.
+    let mut eng = eng();
+    eng.config.id = 1;
+    eng.state.membership_state.set_effective(Arc::new(StoredMembershipOf::<UTConfig>::new(
+        Some(log_id(0, 1, 1)),
+        m12(),
+    )));
+
+    eng.elect_by_leadership_transfer();
+
+    assert_eq!(Vote::new(1, 1), *eng.state.vote_ref());
+    assert!(eng.candidate_ref().is_some(), "candidate state is pending");
+    assert_eq!(ServerState::Candidate, eng.state.server_state);
+
+    assert_eq!(
+        vec![
+            //
+            Command::SaveVote { vote: Vote::new(1, 1) },
+            Command::SendVote {
+                vote_req: VoteRequest {
+                    vote: Vote::new(1, 1),
+                    last_log_id: Some(log_id(0, 0, 0)),
+                    leadership_transfer: true,
+                },
+            },
+        ],
+        eng.output.take_commands()
+    );
 
     Ok(())
 }
@@ -107,6 +143,7 @@ fn test_elect_single_node_elect_again() -> anyhow::Result<()> {
                     vote_req: VoteRequest {
                         vote: Vote::new(2, 1),
                         last_log_id: Some(log_id(0, 0, 0)),
+                        leadership_transfer: false,
                     },
                 },
             ],

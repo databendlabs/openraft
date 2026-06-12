@@ -280,6 +280,54 @@ async fn transfer_leader_blocks_lease_read() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// A leadership-transfer election succeeds while the other voters still hold a fresh leader
+/// lease.
+///
+/// The `TransferLeaderRequest` is delivered only to the target: the other voters never receive
+/// it, so their leases are never disabled. They grant the vote anyway, because the vote request
+/// of a leadership-transfer election overrides the lease (Raft dissertation, section 4.2.3).
+/// This is the deterministic form of a race where the target's vote request overtakes the
+/// `TransferLeaderRequest` broadcast on its way to another voter.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn transfer_leader_overrides_lease() -> anyhow::Result<()> {
+    let config = Arc::new(
+        Config {
+            // A lease far longer than the test: the voters' leases stay fresh throughout,
+            // so a granted vote can only result from the leadership-transfer override.
+            election_timeout_min: 10_000,
+            election_timeout_max: 10_001,
+            enable_heartbeat: false,
+            enable_elect: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
+    let mut router = RaftRouter::new(config.clone());
+
+    tracing::info!("--- initializing cluster");
+    router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+
+    let n0 = router.get_raft_handle(&0)?;
+    let n2 = router.get_raft_handle(&2)?;
+
+    let metrics = n0.metrics().borrow_watched().clone();
+    let leader_vote = metrics.vote;
+    let last_log_id = metrics.last_applied;
+
+    tracing::info!("--- transfer Leader from 0 to 2, deliver the request only to the target");
+    {
+        let req = TransferLeaderRequest::new(leader_vote, 2, last_log_id);
+        n2.handle_transfer_leader(req).await?;
+
+        n2.wait(timeout()).state(ServerState::Leader, "node-2 becomes leader within the lease").await?;
+        n0.wait(timeout()).state(ServerState::Follower, "node-0 steps down").await?;
+    }
+
+    Ok(())
+}
+
 fn timeout() -> Option<Duration> {
     Some(Duration::from_millis(500))
 }

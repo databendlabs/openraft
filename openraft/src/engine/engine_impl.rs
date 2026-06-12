@@ -199,6 +199,19 @@ where C: RaftTypeConfig
     /// Start to elect this node as leader
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn elect(&mut self) {
+        self.do_elect(false);
+    }
+
+    /// Start an election as part of a leadership transfer.
+    ///
+    /// The emitted vote request is marked so that voters grant it even when the leader lease
+    /// has not expired. See: Raft dissertation, section 4.2.3.
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub(crate) fn elect_by_leadership_transfer(&mut self) {
+        self.do_elect(true);
+    }
+
+    fn do_elect(&mut self, leadership_transfer: bool) {
         let new_term = self.state.vote.term().next();
         let leader_id = LeaderIdOf::<C>::new(new_term, self.config.id.clone());
         let new_vote = VoteOf::<C>::from_leader_id(leader_id, false);
@@ -214,7 +227,11 @@ where C: RaftTypeConfig
         self.vote_handler().update_vote(&new_vote).unwrap();
 
         self.output.push_command(Command::SendVote {
-            vote_req: VoteRequest::new(new_vote, last_log_id),
+            vote_req: VoteRequest {
+                vote: new_vote,
+                last_log_id,
+                leadership_transfer,
+            },
         });
 
         self.server_state_handler().update_server_state_if_changed();
@@ -249,7 +266,10 @@ where C: RaftTypeConfig
             local_leased_vote.display_lease_info(now)
         );
 
-        if local_leased_vote.is_committed() {
+        // A leadership-transfer election is authorized by the current Leader, thus it proceeds
+        // even when the leader lease has not expired.
+        // See: Raft dissertation, section 4.2.3.
+        if local_leased_vote.is_committed() && !req.leadership_transfer {
             // Current leader lease has not yet expired, reject voting request
             if !local_leased_vote.is_expired(now, Duration::from_millis(0)) {
                 tracing::info!(
