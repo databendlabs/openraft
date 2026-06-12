@@ -79,7 +79,7 @@ async fn write_then_superseded_by_snapshot_install() -> Result<()> {
     );
     {
         let n1 = router.get_raft_handle(&1)?;
-        n1.trigger().elect().await?;
+        n1.trigger().elect(false).await?;
         // node 1 becomes leader at term 2 and commits its blank log at index log_index+1.
         router.wait(&1, timeout()).applied_index(Some(log_index + 1), "node 1 leader blank").await?;
     }

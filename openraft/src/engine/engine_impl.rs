@@ -92,6 +92,14 @@ where C: RaftTypeConfig
     /// without losing leadership status.
     pub(crate) candidate: CandidateState<C>,
 
+    /// Represents the Pre-Vote state.
+    ///
+    /// A pre-candidate runs a Pre-Vote round — probing whether a quorum would grant a vote — before
+    /// committing to a real election. Unlike [`candidate`](Self::candidate), entering this state
+    /// does not change `vote`: no term bump, no persisted vote. It is only populated when
+    /// [`Config::enable_pre_vote`](crate::Config::enable_pre_vote) is set.
+    pub(crate) pre_candidate: CandidateState<C>,
+
     /// Output entry for the runtime.
     pub(crate) output: EngineOutput<C, SM>,
 }
@@ -106,6 +114,7 @@ where C: RaftTypeConfig
             seen_greater_log: false,
             leader: None,
             candidate: None,
+            pre_candidate: None,
             output: EngineOutput::new(4096),
         }
     }
@@ -130,6 +139,29 @@ where C: RaftTypeConfig
         ));
 
         self.candidate.as_mut().unwrap()
+    }
+
+    /// Create a new pre-candidate state and return the mutable reference to it.
+    ///
+    /// Like [`new_candidate`](Self::new_candidate), but for the Pre-Vote round: the resulting
+    /// quorum tracker lives in [`pre_candidate`](Self::pre_candidate) and `vote` is only a
+    /// hypothetical next-term vote that is never persisted.
+    pub(crate) fn new_pre_candidate(&mut self, vote: VoteOf<C>) -> &mut Candidate<C, LeaderQuorumSet<C>> {
+        let now = C::now();
+        let last_log_id = self.state.last_log_id().cloned();
+
+        let membership = self.state.membership_state.effective().membership();
+
+        self.pre_candidate = Some(Candidate::new(
+            now,
+            vote,
+            last_log_id,
+            Arc::new((*membership).clone()),
+            membership.learner_ids(),
+            self.state.progress_id_gen.clone(),
+        ));
+
+        self.pre_candidate.as_mut().unwrap()
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
@@ -228,6 +260,9 @@ where C: RaftTypeConfig
     }
 
     fn do_elect(&mut self, leadership_transfer: bool) {
+        // A real election supersedes any in-flight Pre-Vote round.
+        self.pre_candidate = None;
+
         let new_term = self.state.vote.term().next();
         let leader_id = LeaderIdOf::<C>::new(new_term, self.config.id.clone());
         let new_vote = VoteOf::<C>::from_leader_id(leader_id, false);
@@ -253,6 +288,39 @@ where C: RaftTypeConfig
         self.server_state_handler().update_server_state_if_changed();
     }
 
+    /// Start a Pre-Vote round.
+    ///
+    /// Probe whether a quorum *would* grant a vote at `term + 1` without changing any local state:
+    /// no term bump, no persisted vote, no server-state change. If a quorum grants (tallied by
+    /// [`handle_pre_vote_resp`](Self::handle_pre_vote_resp)), a real [`elect`](Self::elect)
+    /// follows.
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub(crate) fn pre_elect(&mut self) {
+        let new_term = self.state.vote.term().next();
+        let leader_id = LeaderIdOf::<C>::new(new_term, self.config.id.clone());
+        let pre_vote = VoteOf::<C>::from_leader_id(leader_id, false);
+
+        let pre_candidate = self.new_pre_candidate(pre_vote.clone());
+        tracing::info!("{}: new pre-candidate: {}", func_name!(), pre_candidate);
+
+        let last_log_id = pre_candidate.last_log_id().cloned();
+
+        // Grant the Pre-Vote to itself. A single-voter cluster reaches a quorum at once and proceeds
+        // directly to a real election, without an unnecessary network round-trip.
+        let id = self.config.id.clone();
+        let quorum_granted = self.pre_candidate.as_mut().unwrap().grant_by(&id);
+        if quorum_granted {
+            self.elect();
+            return;
+        }
+
+        // Unlike `elect`, this neither updates `vote` (no term bump, no SaveVote) nor changes the
+        // server state: the node stays a Follower until a quorum would grant the vote.
+        self.output.push_command(Command::SendPreVote {
+            vote_req: VoteRequest::new(pre_vote, last_log_id),
+        });
+    }
+
     pub(crate) fn leader_ref(&self) -> Option<&Leader<C, LeaderQuorumSet<C>>> {
         self.leader.as_deref()
     }
@@ -267,6 +335,15 @@ where C: RaftTypeConfig
 
     pub(crate) fn candidate_mut(&mut self) -> Option<&mut Candidate<C, LeaderQuorumSet<C>>> {
         self.candidate.as_mut()
+    }
+
+    pub(crate) fn pre_candidate_ref(&self) -> Option<&Candidate<C, LeaderQuorumSet<C>>> {
+        self.pre_candidate.as_ref()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn pre_candidate_mut(&mut self) -> Option<&mut Candidate<C, LeaderQuorumSet<C>>> {
+        self.pre_candidate.as_mut()
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
@@ -324,6 +401,49 @@ where C: RaftTypeConfig
         // Return the updated vote, this way the candidate knows which vote is granted, in case
         // the candidate's vote is changed after sending the vote request.
         VoteResponse::new(self.state.vote_ref(), self.state.last_log_id().cloned(), res.is_ok())
+    }
+
+    /// Handle a Pre-Vote request.
+    ///
+    /// Report whether this node *would* grant a vote for `req.vote`, judged by the leader-lease
+    /// and last-log-id rules, but **without persisting any vote or changing the term**: the local
+    /// state is left untouched and no command is emitted. Unlike
+    /// [`handle_vote_req`](Self::handle_vote_req), a Pre-Vote is never a leadership transfer, so
+    /// the leader lease is always honored.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn handle_pre_vote_req(&mut self, req: VoteRequest<C>) -> VoteResponse<C> {
+        let now = C::now();
+        let local_leased_vote = &self.state.vote;
+
+        tracing::info!(
+            "handle pre-vote request: req: {}, my_vote: {}, my_last_log_id: {}, lease: {}",
+            req,
+            **local_leased_vote,
+            self.state.last_log_id().display(),
+            local_leased_vote.display_lease_info(now)
+        );
+
+        // Respect the leader lease: while an established Leader's lease has not expired, this node
+        // would not grant a vote, so it would not grant a Pre-Vote either.
+        if local_leased_vote.is_committed() && !local_leased_vote.is_expired(now, Duration::from_millis(0)) {
+            tracing::info!("reject pre-vote-request: leader lease has not yet expired");
+            return VoteResponse::new(self.state.vote_ref(), self.state.last_log_id().cloned(), false);
+        }
+
+        // Reject if the candidate's log is behind.
+        if req.last_log_id.as_ref() < self.state.last_log_id() {
+            tracing::info!(
+                "reject pre-vote-request: by last_log_id: req.last_log_id({}) < my_last_log_id({})",
+                req.last_log_id.display(),
+                self.state.last_log_id().display(),
+            );
+            return VoteResponse::new(self.state.vote_ref(), self.state.last_log_id().cloned(), false);
+        }
+
+        // Whether this node *would* grant the vote, compared the same way as a real vote — but
+        // without persisting anything. The local vote and term are left untouched.
+        let granted = req.vote.as_ref_vote() >= self.state.vote_ref().as_ref_vote();
+        VoteResponse::new(self.state.vote_ref(), self.state.last_log_id().cloned(), granted)
     }
 
     #[tracing::instrument(level = "debug", skip(self, resp))]
@@ -386,6 +506,51 @@ where C: RaftTypeConfig
 
         // Update if resp.vote is greater.
         self.vote_handler().update_vote(&vote).ok();
+    }
+
+    /// Handle a Pre-Vote response.
+    ///
+    /// Advance the Pre-Vote tally. When a quorum would grant, start the real election via
+    /// [`elect`](Self::elect). Receiving a Pre-Vote response never changes any persistent state.
+    #[tracing::instrument(level = "debug", skip(self, resp))]
+    pub(crate) fn handle_pre_vote_resp(&mut self, target: C::NodeId, resp: VoteResponse<C>) {
+        tracing::info!(
+            "{}: target: {}, resp: {}, my_vote: {}, my_last_log_id: {}",
+            func_name!(),
+            target,
+            resp,
+            self.state.vote_ref(),
+            self.state.last_log_id().display()
+        );
+
+        if self.pre_candidate.is_none() {
+            // The Pre-Vote round has finished or been canceled; ignore the delayed response.
+            return;
+        }
+
+        // A Pre-Vote response reports whether the target *would* grant the vote. Unlike a real vote
+        // response, the responder does not adopt the candidate's vote, so the grant is read from
+        // `vote_granted` rather than by comparing votes.
+        if resp.vote_granted {
+            let quorum_granted = self.pre_candidate.as_mut().unwrap().grant_by(&target);
+            if quorum_granted {
+                tracing::info!("a quorum would grant the vote; starting a real election");
+                self.elect();
+            }
+            return;
+        }
+
+        // Rejected. If the responder has a longer log, delay the next election attempt.
+        if resp.last_log_id.as_ref() > self.state.last_log_id() {
+            tracing::info!(
+                "{}: seen a greater log id during pre-vote: {}",
+                func_name!(),
+                resp.last_log_id.display()
+            );
+            self.set_greater_log();
+        }
+
+        // A Pre-Vote response never updates the local vote: the round is side-effect-free.
     }
 
     /// Append entries to follower/learner.
@@ -781,6 +946,7 @@ where C: RaftTypeConfig
             output: &mut self.output,
             leader: &mut self.leader,
             candidate: &mut self.candidate,
+            pre_candidate: &mut self.pre_candidate,
         }
     }
 

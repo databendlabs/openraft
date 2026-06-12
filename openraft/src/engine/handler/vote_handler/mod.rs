@@ -48,6 +48,7 @@ where C: RaftTypeConfig
     pub(crate) output: &'st mut EngineOutput<C, SM>,
     pub(crate) leader: &'st mut LeaderState<C>,
     pub(crate) candidate: &'st mut CandidateState<C>,
+    pub(crate) pre_candidate: &'st mut CandidateState<C>,
 }
 
 impl<C, SM> VoteHandler<'_, C, SM>
@@ -240,6 +241,7 @@ where C: RaftTypeConfig
 
         *self.leader = None;
         *self.candidate = None;
+        *self.pre_candidate = None;
 
         self.output.push_command(Command::CloseReplicationStreams);
 

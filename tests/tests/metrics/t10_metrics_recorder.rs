@@ -250,7 +250,7 @@ async fn test_metrics_recorder_on_follower() -> Result<()> {
     // Node 2 will send vote requests to node 1 (which has our recorder)
     tracing::info!("--- trigger election on node 2 to test vote_count");
     let node2 = router.get_raft_handle(&2)?;
-    node2.trigger().elect().await?;
+    node2.trigger().elect(false).await?;
 
     // Wait a bit for vote to be processed
     TypeConfig::sleep(Duration::from_millis(200)).await;

@@ -138,6 +138,28 @@ where C: RaftTypeConfig
     /// Send a RequestVote RPC to the target.
     async fn vote(&mut self, rpc: VoteRequest<C>, option: RPCOption) -> Result<VoteResponse<C>, RPCError<C>>;
 
+    /// Send a Pre-Vote RPC to the target.
+    ///
+    /// The node receiving this message should pass it to [`Raft::pre_vote()`]. Pre-Vote asks the
+    /// target whether it *would* grant a vote for `rpc.vote` (a hypothetical `term + 1`) without
+    /// persisting any vote or changing its term. It is only sent when
+    /// [`Config::enable_pre_vote`](crate::Config::enable_pre_vote) is set.
+    ///
+    /// The default implementation synthesizes a **granting** response, so a network that has not
+    /// implemented `pre_vote` makes Pre-Vote a no-op and elections proceed exactly as before (e.g.
+    /// during a rolling upgrade). This is deliberately distinct from a transport failure: an
+    /// implementor that cannot reach the target must return `Err` (typically
+    /// [`Unreachable`]), which the caller does **not** count as a grant — otherwise a fully
+    /// isolated node would synthesize a quorum of grants and inflate its term, defeating
+    /// Pre-Vote.
+    ///
+    /// [`Raft::pre_vote()`]: crate::raft::Raft::pre_vote
+    #[since(version = "0.10.0", change = "added pre_vote RPC for the Pre-Vote feature")]
+    async fn pre_vote(&mut self, rpc: VoteRequest<C>, _option: RPCOption) -> Result<VoteResponse<C>, RPCError<C>> {
+        // Not implemented: grant unconditionally so Pre-Vote degrades to the normal election path.
+        Ok(VoteResponse::new(rpc.vote, None, true))
+    }
+
     /// Send a complete Snapshot to the target.
     ///
     /// This method is responsible for fragmenting the snapshot and sending it to the target node.
@@ -247,6 +269,10 @@ where
 {
     async fn vote(&mut self, rpc: VoteRequest<C>, option: RPCOption) -> Result<VoteResponse<C>, RPCError<C>> {
         RaftNetworkV2::vote(self, rpc, option).await
+    }
+
+    async fn pre_vote(&mut self, rpc: VoteRequest<C>, option: RPCOption) -> Result<VoteResponse<C>, RPCError<C>> {
+        RaftNetworkV2::pre_vote(self, rpc, option).await
     }
 }
 

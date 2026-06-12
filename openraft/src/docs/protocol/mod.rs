@@ -12,6 +12,10 @@ pub mod read {
     #![doc = include_str!("read.md")]
 }
 
+pub mod pre_vote {
+    #![doc = include_str!("pre_vote.md")]
+}
+
 pub mod replication {
     #![doc = include_str!("replication.md")]
 

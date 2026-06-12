@@ -17,7 +17,7 @@ use crate::type_config::alias::VoteOf;
 ///
 /// For example, to trigger an election at once, you can use the following code
 /// ```ignore
-/// raft.trigger().elect().await?;
+/// raft.trigger().elect(false).await?;
 /// ```
 ///
 /// Or to fire a heartbeat, building a snapshot, or purging logs:
@@ -44,10 +44,22 @@ where C: RaftTypeConfig
 
     /// Trigger election at once and return at once.
     ///
+    /// With `pre_vote = false`, a real election starts immediately: the term is incremented and the
+    /// node votes for itself. This bypasses both `enable_elect` and Pre-Vote, so the term climbs
+    /// even when the node cannot win — which may step down a healthy leader of a lower term.
+    ///
+    /// With `pre_vote = true`, a Pre-Vote round runs first and the real election proceeds only if a
+    /// quorum would grant a vote. A live leader holding its lease causes the Pre-Vote to be
+    /// declined, leaving the term untouched — use this to avoid disrupting a healthy leader
+    /// with a manual trigger. It does not require [`Config::enable_pre_vote`]; the caller opts
+    /// in per call.
+    ///
     /// Returns error when RaftCore has [`Fatal`] error, e.g., shut down or having storage error.
     /// It is not affected by `Raft::enable_elect(false)`.
-    pub async fn elect(&self) -> Result<(), Fatal<C>> {
-        self.raft_inner.send_external_command(ExternalCommand::Elect).await
+    ///
+    /// [`Config::enable_pre_vote`]: crate::Config::enable_pre_vote
+    pub async fn elect(&self, pre_vote: bool) -> Result<(), Fatal<C>> {
+        self.raft_inner.send_external_command(ExternalCommand::Elect { pre_vote }).await
     }
 
     /// Trigger a heartbeat at once and return at once.

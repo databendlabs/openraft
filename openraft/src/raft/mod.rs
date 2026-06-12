@@ -804,7 +804,7 @@ where C: RaftTypeConfig
     /// Example:
     /// ```ignore
     /// let raft = Raft::new(...).await?;
-    /// raft.trigger().elect().await?;
+    /// raft.trigger().elect(false).await?;
     /// ```
     pub fn trigger(&self) -> Trigger<'_, C> {
         Trigger::new(self.inner.as_ref())
@@ -931,6 +931,20 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn vote(&self, rpc: VoteRequest<C>) -> Result<VoteResponse<C>, RaftError<C>> {
         self.protocol_api().vote(rpc).await.into_raft_result()
+    }
+
+    /// Submit a Pre-Vote RPC to this Raft node.
+    ///
+    /// A pre-candidate sends this before incrementing its term to ask whether peers *would* grant
+    /// it a vote at `rpc.vote` (a hypothetical next term). Handling this RPC never persists a
+    /// vote or changes this node's term; it only reports whether the vote would be granted,
+    /// judged by the same leader-lease and last-log-id rules as [`Raft::vote()`]. Pre-Vote is
+    /// only used when [`Config::enable_pre_vote`](crate::Config::enable_pre_vote) is enabled on
+    /// the sender.
+    #[since(version = "0.10.0", change = "added for the Pre-Vote feature")]
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub async fn pre_vote(&self, rpc: VoteRequest<C>) -> Result<VoteResponse<C>, RaftError<C>> {
+        self.protocol_api().pre_vote(rpc).await.into_raft_result()
     }
 
     /// Get the latest snapshot from the state machine.

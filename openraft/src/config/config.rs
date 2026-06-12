@@ -52,6 +52,7 @@ pub(crate) struct Defaults {
     pub enable_heartbeat: bool,
     pub enable_elect: bool,
     pub removed_leader_step_down: StepDownPolicy,
+    pub enable_pre_vote: Option<bool>,
 }
 
 pub(crate) const DEFAULTS: Defaults = Defaults {
@@ -78,6 +79,7 @@ pub(crate) const DEFAULTS: Defaults = Defaults {
     enable_heartbeat: true,
     enable_elect: true,
     removed_leader_step_down: StepDownPolicy::After(150),
+    enable_pre_vote: None,
 };
 
 /// The serde default for [`Config::removed_leader_step_down`]: it is used when the field is
@@ -392,6 +394,38 @@ pub struct Config {
     #[cfg_attr(feature = "serde", serde(default = "default_removed_leader_step_down"))]
     pub removed_leader_step_down: StepDownPolicy,
 
+    /// Whether a follower runs a Pre-Vote round before incrementing its term and starting a real
+    /// election.
+    ///
+    /// When enabled (`Some(true)`), a follower whose election timer fires first asks peers whether
+    /// they *would* grant it a vote at `term + 1`, without persisting any vote or bumping its term.
+    /// Only after a quorum would grant does it run the real election. This prevents a node that
+    /// cannot currently win — e.g. one that was partitioned, restarted, or has a stale log — from
+    /// inflating its term and disrupting a healthy leader once it reconnects.
+    ///
+    /// When disabled (`Some(false)`), a follower increments its term and votes for itself
+    /// immediately on election timeout, the historical Openraft behavior. The leader-lease already
+    /// rejects such a candidate's vote requests, so Pre-Vote is an optional refinement rather than
+    /// a correctness requirement.
+    ///
+    /// `None` (the default) leaves the choice to Openraft, which currently treats it as disabled.
+    /// Leaving it unset lets a future release change this default without breaking configs that
+    /// never opted in.
+    ///
+    /// Pre-Vote uses a separate network RPC
+    /// ([`RaftNetworkV2::pre_vote`](crate::network::v2::RaftNetworkV2::pre_vote)). A peer whose
+    /// network does not implement it is counted as granting the Pre-Vote, so a cluster mid-upgrade
+    /// stays live.
+    #[since(version = "0.10.0")]
+    // clap 4 requires `num_args = 0..=1`, or it complains about missing arg error
+    // https://github.com/clap-rs/clap/discussions/4374
+    #[cfg_attr(feature = "clap", clap(long,
+           action = clap::ArgAction::Set,
+           num_args = 0..=1,
+           default_missing_value = "true"
+    ))]
+    pub enable_pre_vote: Option<bool>,
+
     /// Default backoff policy used when
     /// [`RaftNetworkV2::backoff`](crate::network::RaftNetworkV2::backoff) returns `None`.
     ///
@@ -532,6 +566,7 @@ impl Default for Config {
             enable_heartbeat: DEFAULTS.enable_heartbeat,
             enable_elect: DEFAULTS.enable_elect,
             removed_leader_step_down: DEFAULTS.removed_leader_step_down.clone(),
+            enable_pre_vote: DEFAULTS.enable_pre_vote,
             backoff: DEFAULTS.backoff.to_string(),
             allow_log_reversion: None,
             enable_leader_restore: None,
@@ -580,6 +615,14 @@ impl Config {
     #[since(version = "0.10.0")]
     pub(crate) fn enable_leader_restore(&self) -> bool {
         self.enable_leader_restore.unwrap_or(true)
+    }
+
+    /// Whether a follower runs a Pre-Vote round before starting a real election.
+    ///
+    /// Evaluates the [`enable_pre_vote`](Self::enable_pre_vote) option: `None` is treated as
+    /// disabled (`false`), the current default.
+    pub(crate) fn get_enable_pre_vote(&self) -> bool {
+        self.enable_pre_vote.unwrap_or(false)
     }
 
     /// Get the API channel size for bounded MPSC channel.

@@ -970,6 +970,33 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
         Ok(resp)
     }
 
+    async fn pre_vote(
+        &mut self,
+        rpc: VoteRequest<MemConfig>,
+        _option: RPCOption,
+    ) -> Result<VoteResponse<MemConfig>, RPCError<MemConfig>> {
+        let from_id = rpc.vote.leader_id().to_node_id();
+
+        self.owner.count_rpc(RPCTypes::Vote);
+        self.owner.call_rpc_pre_hook(rpc.clone(), from_id, self.target).await?;
+        self.owner.emit_rpc_error(from_id, self.target)?;
+        self.owner.rand_send_delay().await;
+
+        let node = self.owner.get_raft_handle(&self.target)?;
+
+        let resp = node.pre_vote(rpc.clone()).await;
+        let resp = resp.map_err(|e| {
+            RPCError::Unreachable(Unreachable::<MemConfig>::from_string(format!(
+                "error: {} target={}",
+                e, self.target
+            )))
+        })?;
+
+        self.owner.call_rpc_post_hook(rpc, resp.clone(), from_id, self.target).await?;
+
+        Ok(resp)
+    }
+
     async fn transfer_leader(
         &mut self,
         rpc: TransferLeaderRequest<MemConfig>,
