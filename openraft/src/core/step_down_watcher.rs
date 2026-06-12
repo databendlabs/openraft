@@ -108,8 +108,9 @@ where C: RaftTypeConfig
     ///   newer membership config that contains this node is committed.
     /// - Transfer leadership to the most up-to-date voter.
     /// - Wait for `transfer_wait`, then revert this node to a learner. This is the guaranteed
-    ///   fallback in case the transfer takes no effect; it is a no-op if a new Leader is already
-    ///   established.
+    ///   fallback in case the transfer takes no effect; the command is fenced by the vote and the
+    ///   membership config log id observed above, thus it is dropped if a new Leader is already
+    ///   established or the membership config has changed.
     async fn try_step_down(&self) {
         // Clone the metrics out of the watch channel: the borrowed reference is not `Send`,
         // and holding it across an `await` would block the metrics updater.
@@ -135,7 +136,19 @@ where C: RaftTypeConfig
 
         C::sleep(self.transfer_wait).await;
 
-        self.send(ExternalCommand::RefreshServerState).await;
+        // In the fence a `None` membership log id means skipping the membership check, thus it
+        // must be `Some` here. It always holds: this node is a Leader, hence the cluster is
+        // initialized, hence the membership config comes from a log entry that has a log id.
+        debug_assert!(
+            server_metrics.membership_config.log_id().is_some(),
+            "the membership config of a Leader must have a log id"
+        );
+
+        let cmd = ExternalCommand::RefreshServerState {
+            vote: Some(server_metrics.vote.clone()),
+            membership_log_id: server_metrics.membership_config.log_id().clone(),
+        };
+        self.send(cmd).await;
     }
 
     /// Send an external command to `RaftCore`.

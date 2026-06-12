@@ -8,6 +8,8 @@ use crate::errors::AllowNextRevertError;
 use crate::errors::Fatal;
 use crate::raft::RaftInner;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::VoteOf;
 
 /// Trigger is an interface to trigger an action to RaftCore by external caller.
 ///
@@ -157,13 +159,27 @@ where C: RaftTypeConfig
     /// with the automated step down disabled, the application or the administrator decides when
     /// to revert it to a learner by calling this method.
     ///
-    /// It is safe to call this method at any time on any node: it is a no-op until the membership
-    /// config that removes this node is committed. A Leader keeps leading while that membership
-    /// config is not yet committed, because it is the one responsible for replicating it.
+    /// `vote` and `membership_log_id` are the expected current vote and the expected log id of
+    /// the effective membership config: the refresh is dropped if either differs from the
+    /// current state when the command is handled, so that a delayed command can not cause an
+    /// unexpected refresh. A `None` skips the corresponding check: with both `None` the server
+    /// state is refreshed unconditionally.
+    ///
+    /// To step down a removed Leader, call this method after the membership config that removes
+    /// it is committed: a Leader keeps leading while that membership config is not yet
+    /// committed, because it is the one responsible for replicating it.
     ///
     /// Returns error when RaftCore has [`Fatal`] error, e.g., shut down or having storage error.
     #[since(version = "0.10.0")]
-    pub async fn refresh_server_state(&self) -> Result<(), Fatal<C>> {
-        self.raft_inner.send_external_command(ExternalCommand::RefreshServerState).await
+    pub async fn refresh_server_state(
+        &self,
+        vote: Option<VoteOf<C>>,
+        membership_log_id: Option<LogIdOf<C>>,
+    ) -> Result<(), Fatal<C>> {
+        let cmd = ExternalCommand::RefreshServerState {
+            vote,
+            membership_log_id,
+        };
+        self.raft_inner.send_external_command(cmd).await
     }
 }

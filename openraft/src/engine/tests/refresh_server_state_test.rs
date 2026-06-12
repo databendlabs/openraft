@@ -97,14 +97,17 @@ fn test_refresh_server_state_learner_leader() -> anyhow::Result<()> {
 
 #[test]
 fn test_refresh_server_state_removed_leader_uncommitted_membership() -> anyhow::Result<()> {
-    // The membership config removing the Leader is not yet committed:
-    // the Leader must keep leading to replicate this membership log entry.
+    // This method updates the server state unconditionally: the Leader is reverted even when
+    // the membership config removing it is not yet committed. The sender of
+    // `ExternalCommand::RefreshServerState`, e.g., the `StepDownWatcher`, is responsible for
+    // checking the commit condition.
     let mut eng = eng_leader(m23(), log_id(2, 1, 2));
 
     eng.refresh_server_state();
 
-    assert!(eng.leader.is_some());
-    assert!(eng.output.take_commands().is_empty());
+    assert!(eng.leader.is_none());
+    assert_eq!(ServerState::Learner, eng.state.server_state);
+    assert_eq!(vec![Command::CloseReplicationStreams], eng.output.take_commands());
 
     Ok(())
 }

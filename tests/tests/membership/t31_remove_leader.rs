@@ -6,6 +6,7 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::ServerState;
 use openraft::StepDownPolicy;
+use openraft::Vote;
 use openraft::errors::ClientWriteError;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::ClientRequest;
@@ -277,7 +278,93 @@ async fn remove_leader_manual_step_down() -> Result<()> {
     tracing::info!(log_index, "--- manually revert the removed leader to a learner");
     {
         let node = router.get_raft_handle(&0)?;
-        node.trigger().refresh_server_state().await?;
+        node.trigger().refresh_server_state(None, None).await?;
+
+        router.wait(&0, timeout()).state(ServerState::Learner, "removed leader reverts to learner").await?;
+    }
+
+    Ok(())
+}
+
+/// Change membership from {0,1,2} to {1,2} with the automated step down disabled, then step down
+/// the removed leader with a fenced `Trigger::refresh_server_state()`.
+///
+/// The refresh is dropped if the expected vote or the expected membership log id does not match
+/// the current state; it proceeds when both match.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn remove_leader_fenced_step_down() -> Result<()> {
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            enable_elect: false,
+            removed_leader_step_down: StepDownPolicy::Never,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+    let mut router = RaftRouter::new(config.clone());
+
+    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+
+    tracing::info!(log_index, "--- change membership 012 to 12");
+    {
+        let node = router.get_raft_handle(&0)?;
+        node.change_membership([1, 2], false).await?;
+        log_index += 2;
+    }
+
+    let node = router.get_raft_handle(&0)?;
+    let metrics = router
+        .wait(&0, timeout())
+        .applied_index(Some(log_index), "the removed leader applies the membership logs")
+        .await?;
+    let vote = metrics.vote;
+    let membership_log_id =
+        (*metrics.membership_config.log_id()).expect("an initialized cluster has a membership log id");
+
+    tracing::info!(log_index, "--- mismatching expected vote: the refresh is dropped");
+    {
+        let mismatching = Vote::new(100, 100);
+        node.trigger().refresh_server_state(Some(mismatching), None).await?;
+
+        let res = router
+            .wait(&0, Some(Duration::from_millis(1_000)))
+            .metrics(
+                |x| x.state != ServerState::Leader,
+                "the removed leader leaves the Leader state",
+            )
+            .await;
+        assert!(res.is_err(), "the expected vote does not match, the refresh is dropped");
+    }
+
+    tracing::info!(
+        log_index,
+        "--- mismatching expected membership log id: the refresh is dropped"
+    );
+    {
+        let mismatching = log_id(1, 0, 1);
+        node.trigger().refresh_server_state(None, Some(mismatching)).await?;
+
+        let res = router
+            .wait(&0, Some(Duration::from_millis(1_000)))
+            .metrics(
+                |x| x.state != ServerState::Leader,
+                "the removed leader leaves the Leader state",
+            )
+            .await;
+        assert!(
+            res.is_err(),
+            "the expected membership log id does not match, the refresh is dropped"
+        );
+    }
+
+    tracing::info!(
+        log_index,
+        "--- matching vote and membership log id: the refresh proceeds"
+    );
+    {
+        node.trigger().refresh_server_state(Some(vote), Some(membership_log_id)).await?;
 
         router.wait(&0, timeout()).state(ServerState::Learner, "removed leader reverts to learner").await?;
     }
