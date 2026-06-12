@@ -60,6 +60,7 @@ struct DerivedConfig {
     long_outage_min_ticks: u64,
     /// Maximum downtime (in ticks) for a long outage.
     long_outage_max_ticks: u64,
+    enable_leader_restore: bool,
 }
 
 impl DerivedConfig {
@@ -72,6 +73,7 @@ impl DerivedConfig {
         let fail_rate = rng.gen_range(0.0..0.002);
         let election_timeout_max = election_timeout_min + rng.gen_range(100..500);
         let enable_chaos = rng.gen_bool(0.8);
+        let enable_leader_restore = rng.gen_bool(0.5);
         Self {
             num_initial_nodes,
             max_potential_nodes: 10,
@@ -89,6 +91,7 @@ impl DerivedConfig {
             long_outage_chance: rng.gen_range(0.1..=0.3), // 10-30% of crashes
             long_outage_min_ticks: 5000,
             long_outage_max_ticks: 15000,
+            enable_leader_restore,
         }
     }
 }
@@ -111,7 +114,8 @@ impl std::fmt::Display for DerivedConfig {
         writeln!(f, "  replication_lag_threshold: {}", self.replication_lag_threshold)?;
         writeln!(f, "  long_outage_chance: {:.4}", self.long_outage_chance)?;
         writeln!(f, "  long_outage_min_ticks: {}", self.long_outage_min_ticks)?;
-        write!(f, "  long_outage_max_ticks: {}", self.long_outage_max_ticks)
+        writeln!(f, "  long_outage_max_ticks: {}", self.long_outage_max_ticks)?;
+        write!(f, "  enable_leader_restore: {}", self.enable_leader_restore)
     }
 }
 
@@ -261,12 +265,13 @@ fn run_fuzz_loop(base_seed: u64, max_steps: u64, iterations: u64, crash_file: Op
         let derived = DerivedConfig::from_seed(iteration_seed);
 
         println!(
-            "--- Iteration {} (seed: {}, nodes: {}, fail_rate: {:.2}%, chaos: {}) ---",
+            "--- Iteration {} (seed: {}, nodes: {}, fail_rate: {:.2}%, chaos: {}, leader_restore: {}) ---",
             iteration + 1,
             iteration_seed,
             derived.num_initial_nodes,
             derived.fail_rate * 100.0,
-            derived.enable_chaos
+            derived.enable_chaos,
+            derived.enable_leader_restore,
         );
 
         let result = run_single_iteration(iteration_seed, &derived, max_steps, running.clone());
@@ -593,6 +598,7 @@ fn run_single_iteration(
         snapshot_policy: openraft::SnapshotPolicy::LogsSinceLast(derived.snapshot_logs_threshold),
         max_in_snapshot_log_to_keep: derived.max_in_snapshot_log_to_keep,
         replication_lag_threshold: derived.replication_lag_threshold,
+        enable_leader_restore: Some(derived.enable_leader_restore),
         ..Default::default()
     });
 
