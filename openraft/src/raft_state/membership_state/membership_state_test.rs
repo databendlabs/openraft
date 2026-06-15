@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use maplit::btreeset;
 
+use super::CommittedMembershipTransition;
 use crate::Membership;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
@@ -149,7 +150,13 @@ fn test_membership_state_commit() -> anyhow::Result<()> {
     {
         let mut ms = new();
         let got = ms.commit(&Some(log_id(3, 1, 4)));
-        assert_eq!(Some((Some(log_id(2, 1, 2)), log_id(3, 1, 4))), got);
+        assert_eq!(
+            Some(CommittedMembershipTransition {
+                before: Some(log_id(2, 1, 2)),
+                after: log_id(3, 1, 4),
+            }),
+            got
+        );
         assert_eq!(&Some(log_id(3, 1, 4)), ms.committed().log_id());
         assert_eq!(&Some(log_id(3, 1, 4)), ms.effective().log_id());
     }
@@ -158,7 +165,13 @@ fn test_membership_state_commit() -> anyhow::Result<()> {
     {
         let mut ms = new();
         let got = ms.commit(&Some(log_id(3, 1, 5)));
-        assert_eq!(Some((Some(log_id(2, 1, 2)), log_id(3, 1, 4))), got);
+        assert_eq!(
+            Some(CommittedMembershipTransition {
+                before: Some(log_id(2, 1, 2)),
+                after: log_id(3, 1, 4),
+            }),
+            got
+        );
         assert_eq!(&Some(log_id(3, 1, 4)), ms.committed().log_id());
         assert_eq!(&Some(log_id(3, 1, 4)), ms.effective().log_id());
     }

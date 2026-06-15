@@ -35,6 +35,7 @@ mod tests {
 
 use display_more::DisplayOptionExt;
 pub(crate) use log_state_reader::LogStateReader;
+pub(crate) use membership_state::CommittedMembershipTransition;
 pub use membership_state::MembershipState;
 pub(crate) use vote_state_reader::VoteStateReader;
 
@@ -333,7 +334,7 @@ where C: RaftTypeConfig
     pub(crate) fn update_local_committed(
         &mut self,
         committed: &Option<LogIdOf<C>>,
-    ) -> Option<Option<(Option<LogIdOf<C>>, LogIdOf<C>)>> {
+    ) -> Option<Option<CommittedMembershipTransition<CommittedLeaderIdOf<C>>>> {
         if committed.as_ref() > self.committed() {
             // Safe unwrap(): committed > self.committed(), implies it cannot be None
             self.apply_progress_mut().accept(committed.clone().unwrap());

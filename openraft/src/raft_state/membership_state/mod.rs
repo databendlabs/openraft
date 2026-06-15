@@ -10,10 +10,12 @@ use crate::LogIdOptionExt;
 mod change_handler;
 #[cfg(test)]
 mod change_handler_test;
+mod committed_membership_transition;
 #[cfg(test)]
 mod membership_state_test;
 
 pub(crate) use change_handler::ChangeHandler;
+pub(crate) use committed_membership_transition::CommittedMembershipTransition;
 
 use crate::log_id::LogId;
 use crate::membership::StoredMembership;
@@ -130,7 +132,7 @@ where
     pub(crate) fn commit(
         &mut self,
         committed_log_id: &Option<LogId<CLID>>,
-    ) -> Option<(Option<LogId<CLID>>, LogId<CLID>)> {
+    ) -> Option<CommittedMembershipTransition<CLID>> {
         let current = self.committed.log_id().clone();
         let last = self.effective().log_id().clone();
 
@@ -140,7 +142,10 @@ where
             self.committed = self.effective.clone();
 
             // `current < last` implies `last` is not `None`.
-            return Some((current, last.unwrap()));
+            return Some(CommittedMembershipTransition {
+                before: current,
+                after: last.unwrap(),
+            });
         }
 
         None
