@@ -118,7 +118,7 @@ pub fn forward_metrics<C: RaftTypeConfig>(metrics: &RaftMetrics<C>, recorder: &d
         recorder.set_last_log_index(index);
     }
 
-    if let Some(ref committed) = metrics.committed {
+    if let Some(ref committed) = metrics.local_committed {
         recorder.set_committed_index(committed.index());
     }
 

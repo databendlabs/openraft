@@ -212,12 +212,20 @@ where C: RaftTypeConfig
             return;
         }
 
-        let committed = LogIOId::new(self.state.vote_ref().to_committed(), granted.clone());
-        self.state.io_state_mut().cluster_committed.try_update(committed.clone()).ok();
+        let prev_cluster_committed = self.state.cluster_committed().cloned();
 
-        if let Some(_membership_transition) = self.state.update_local_committed(&granted) {
+        let committed = LogIOId::new(self.state.vote_ref().to_committed(), granted.clone());
+        self.state.io_state_mut().cluster_committed.try_update(committed).ok();
+
+        // Advance the local apply ceiling regardless; it is a no-op when nothing changed.
+        self.state.update_local_committed(&granted);
+
+        // Notify replication only when the cluster-committed log id advanced. The vote component of
+        // `cluster_committed` can bump on its own at leadership start with no new committed log id,
+        // which must not trigger a broadcast.
+        if self.state.cluster_committed() > prev_cluster_committed.as_ref() {
             self.output.push_command(Command::ReplicateCommitted {
-                committed: self.state.committed().cloned(),
+                committed: self.state.cluster_committed().cloned(),
             });
         }
     }

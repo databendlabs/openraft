@@ -38,7 +38,9 @@ impl Witness {
         violations: &mut Vec<InvariantViolation>,
     ) {
         for (node_id, s) in snapshots {
-            let Some(committed) = s.raft.committed else { continue };
+            let Some(committed) = s.raft.local_committed else {
+                continue;
+            };
 
             // Include the purged entry (boundary) — see module docs.
             let first = s.raft.log_id_list.purged().map(|id| id.index()).unwrap_or(0);

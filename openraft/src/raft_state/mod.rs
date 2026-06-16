@@ -2,6 +2,7 @@ use std::error::Error;
 use std::ops::Deref;
 use std::sync::Arc;
 
+use openraft_macros::since;
 use validit::Valid;
 use validit::Validate;
 
@@ -178,12 +179,12 @@ where C: RaftTypeConfig
             // There is no snapshot, it is possible the application does not store snapshot, and
             // just restarted. it is just ok.
             // In such a case, we assert the monotonic relation without  snapshot-last-log-id
-            validit::less_equal!(self.purge_upto(), self.committed());
+            validit::less_equal!(self.purge_upto(), self.local_committed());
         } else {
             validit::less_equal!(self.purge_upto(), self.snapshot_last_log_id());
         }
-        validit::less_equal!(self.snapshot_last_log_id(), self.committed());
-        validit::less_equal!(self.committed(), self.last_log_id());
+        validit::less_equal!(self.snapshot_last_log_id(), self.local_committed());
+        validit::less_equal!(self.local_committed(), self.last_log_id());
 
         self.membership_state.validate()?;
         self.io_state.validate()?;
@@ -222,9 +223,33 @@ where C: RaftTypeConfig
         self.vote.last_update()
     }
 
-    /// Get the last committed log ID.
-    pub fn committed(&self) -> Option<&LogIdOf<C>> {
+    /// Get the local committed log ID: the log id up to which entries are safe to apply to the
+    /// local state machine.
+    ///
+    /// On a node that has not yet received and accepted all committed entries (e.g. a follower
+    /// catching up, or just after restart), this may lag [`Self::cluster_committed`].
+    #[since(version = "0.10.0")]
+    pub fn local_committed(&self) -> Option<&LogIdOf<C>> {
         self.apply_progress().accepted()
+    }
+
+    /// Get the cluster committed log ID: the log id granted by a quorum, as last reported by the
+    /// leader.
+    ///
+    /// This is the cluster-wide commit, visible to all future leaders. It may be ahead of
+    /// [`Self::local_committed`] on a node that has not yet received the corresponding entries.
+    #[since(version = "0.10.0")]
+    pub fn cluster_committed(&self) -> Option<&LogIdOf<C>> {
+        self.io_state().cluster_committed.value().and_then(|io_id| io_id.last_log_id())
+    }
+
+    /// Get the last committed log ID.
+    #[deprecated(
+        since = "0.10.0",
+        note = "use `local_committed()` instead, or `cluster_committed()` for the quorum-granted commit"
+    )]
+    pub fn committed(&self) -> Option<&LogIdOf<C>> {
+        self.local_committed()
     }
 
     pub(crate) fn is_initialized(&self) -> bool {
@@ -309,7 +334,7 @@ where C: RaftTypeConfig
             func_name!(),
             cluster_committed,
             self.accepted_log_io().display(),
-            self.committed().display()
+            self.local_committed().display()
         );
 
         self.io_state_mut().cluster_committed.try_update(cluster_committed.clone()).ok();
@@ -335,7 +360,7 @@ where C: RaftTypeConfig
         &mut self,
         committed: &Option<LogIdOf<C>>,
     ) -> Option<Option<CommittedMembershipTransition<CommittedLeaderIdOf<C>>>> {
-        if committed.as_ref() > self.committed() {
+        if committed.as_ref() > self.local_committed() {
             // Safe unwrap(): committed > self.committed(), implies it cannot be None
             self.apply_progress_mut().accept(committed.clone().unwrap());
             let membership_transition = self.membership_state.commit(committed);

@@ -19,7 +19,7 @@ pub fn check(node: NodeId, s: &FullNodeSnapshot, violations: &mut Vec<InvariantV
     let purged = s.raft.purged.as_ref().map(|id| id.index());
     let snapshot = s.raft.snapshot.as_ref().map(|id| id.index());
     let applied = s.raft.last_applied.as_ref().map(|id| id.index());
-    let committed = s.raft.committed.as_ref().map(|id| id.index());
+    let committed = s.raft.local_committed.as_ref().map(|id| id.index());
     let last_log = s.raft.last_log_index;
 
     let pairs = [

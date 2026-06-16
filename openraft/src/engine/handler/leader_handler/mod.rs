@@ -115,7 +115,7 @@ where C: RaftTypeConfig
     ///
     /// See: [Read Operation](crate::docs::protocol::read)
     pub(crate) fn get_read_log_id(&self) -> LogIdOf<C> {
-        let committed = self.state.committed().cloned();
+        let committed = self.state.local_committed().cloned();
         let Some(committed) = committed else {
             return self.leader.noop_log_id.clone();
         };

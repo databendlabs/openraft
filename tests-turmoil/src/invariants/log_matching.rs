@@ -27,8 +27,8 @@ pub fn check(a: &(NodeId, FullNodeSnapshot), b: &(NodeId, FullNodeSnapshot), vio
     let (id_a, s_a) = a;
     let (id_b, s_b) = b;
 
-    let last_a = s_a.raft.committed.map(|id: LogId| id.index()).unwrap_or(0);
-    let last_b = s_b.raft.committed.map(|id: LogId| id.index()).unwrap_or(0);
+    let last_a = s_a.raft.local_committed.map(|id: LogId| id.index()).unwrap_or(0);
+    let last_b = s_b.raft.local_committed.map(|id: LogId| id.index()).unwrap_or(0);
 
     // Include the purged entry itself — `LogIdList::get(purged.index)` returns
     // the purged log id, so we can still compare at the boundary.

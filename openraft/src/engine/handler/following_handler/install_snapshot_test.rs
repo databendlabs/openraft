@@ -149,7 +149,7 @@ fn test_install_snapshot_not_conflict() -> anyhow::Result<()> {
     );
     assert_eq!(Some(&log_id(4, 1, 6)), eng.state.log_ids.purged());
     assert_eq!(&[log_id(4, 1, 8)], eng.state.log_ids.key_log_ids());
-    assert_eq!(Some(&log_id(4, 1, 6)), eng.state.committed());
+    assert_eq!(Some(&log_id(4, 1, 6)), eng.state.local_committed());
     assert_eq!(
         &Arc::new(StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234())),
         eng.state.membership_state.committed()
@@ -235,7 +235,7 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
     // All logs purged by snapshot, only purged field contains the snapshot's last_log_id
     assert!(eng.state.log_ids.key_log_ids().is_empty());
     assert_eq!(Some(&log_id(5, 1, 6)), eng.state.log_ids.purged());
-    assert_eq!(Some(&log_id(5, 1, 6)), eng.state.committed());
+    assert_eq!(Some(&log_id(5, 1, 6)), eng.state.local_committed());
     assert_eq!(
         &Arc::new(StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234())),
         eng.state.membership_state.committed()
@@ -297,7 +297,7 @@ fn test_install_snapshot_advance_last_log_id() -> anyhow::Result<()> {
     // All logs purged by snapshot, only purged field contains the snapshot's last_log_id
     assert!(eng.state.log_ids.key_log_ids().is_empty());
     assert_eq!(Some(&log_id(100, 1, 100)), eng.state.log_ids.purged());
-    assert_eq!(Some(&log_id(100, 1, 100)), eng.state.committed());
+    assert_eq!(Some(&log_id(100, 1, 100)), eng.state.local_committed());
     assert_eq!(
         &Arc::new(StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234())),
         eng.state.membership_state.committed()

@@ -242,11 +242,11 @@ where C: RaftTypeConfig
 
         let snap_last_log_id = meta.last_log_id.clone();
 
-        if snap_last_log_id.as_ref() <= self.state.committed() {
+        if snap_last_log_id.as_ref() <= self.state.local_committed() {
             tracing::info!(
                 "No need to install snapshot; snapshot last_log_id({}) <= committed({})",
                 snap_last_log_id.display(),
-                self.state.committed().display()
+                self.state.local_committed().display()
             );
             return None;
         }
@@ -269,7 +269,7 @@ where C: RaftTypeConfig
             && local != snap_last_log_id
         {
             // Conflict, delete all non-committed logs.
-            self.truncate_logs(self.state.committed().next_index());
+            self.truncate_logs(self.state.local_committed().next_index());
         }
 
         let log_io_id = LogIOId::new(self.leader_vote.to_committed(), Some(snap_last_log_id.clone()));

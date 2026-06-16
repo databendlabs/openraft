@@ -63,7 +63,7 @@ impl MonotonicHistory {
 fn observe(s: &FullNodeSnapshot) -> LastSeen {
     LastSeen {
         term: s.raft.current_term,
-        committed_index: s.raft.committed.as_ref().map(|id| id.index()).unwrap_or(0),
+        committed_index: s.raft.local_committed.as_ref().map(|id| id.index()).unwrap_or(0),
         applied_index: s.raft.last_applied.as_ref().map(|id| id.index()).unwrap_or(0),
         vote: s.raft.vote,
     }

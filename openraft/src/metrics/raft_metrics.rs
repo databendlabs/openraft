@@ -96,12 +96,31 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     /// The last log ID known to this node as committed, i.e., safe to apply to the local state
     /// machine.
     ///
-    /// This is the **local committed** value, which may lag behind the **cluster-committed** value
-    /// (the actual quorum-acknowledged frontier) due to network delays or out-of-order RPC
-    /// delivery. See [`commit`] for the full explanation of the distinction.
+    /// This is the **local committed** value, which may lag behind the
+    /// [**cluster-committed**](Self::cluster_committed) value (the actual quorum-acknowledged
+    /// frontier) due to network delays or out-of-order RPC delivery. See [`commit`] for the full
+    /// explanation of the distinction.
     ///
     /// [`commit`]: crate::docs::protocol::commit
     #[since(version = "0.10.0")]
+    pub local_committed: Option<LogIdOf<C>>,
+
+    /// The last log ID known to be committed by a quorum of the cluster, as last reported by the
+    /// leader.
+    ///
+    /// This is the **cluster-committed** value. It may lead
+    /// [`local_committed`](Self::local_committed) on a node that has not yet received the
+    /// corresponding log entries. See [`commit`] for the full explanation of the distinction.
+    ///
+    /// [`commit`]: crate::docs::protocol::commit
+    #[since(version = "0.10.0")]
+    pub cluster_committed: Option<LogIdOf<C>>,
+
+    /// The last log ID known to this node as committed.
+    #[deprecated(
+        since = "0.10.0",
+        note = "use `local_committed` instead, or `cluster_committed` for the quorum-granted commit"
+    )]
     pub committed: Option<LogIdOf<C>>,
 
     /// The last log index has been applied to this Raft node's state machine.
@@ -206,13 +225,14 @@ where C: RaftTypeConfig
 
         write!(
             f,
-            "id:{}, {:?}, term:{}, vote:{}, last_log:{}, committed:{}, last_applied:{}, leader:{}",
+            "id:{}, {:?}, term:{}, vote:{}, last_log:{}, local_committed:{}, cluster_committed:{}, last_applied:{}, leader:{}",
             self.id,
             self.state,
             self.current_term,
             self.vote,
             self.last_log_index.display(),
-            self.committed.display(),
+            self.local_committed.display(),
+            self.cluster_committed.display(),
             self.last_applied.display(),
             self.current_leader.display(),
         )?;
@@ -259,7 +279,9 @@ where C: RaftTypeConfig
             current_term: Default::default(),
             vote,
             last_log_index: None,
+            local_committed: None,
             committed: None,
+            cluster_committed: None,
             last_applied: None,
             snapshot: None,
             purged: None,
@@ -289,11 +311,20 @@ pub struct RaftDataMetrics<C: RaftTypeConfig> {
     /// The last log ID known to this node as committed.
     ///
     /// This is the **local committed** value. See [`commit`] for the distinction from
-    /// cluster-committed.
+    /// [`cluster_committed`](Self::cluster_committed).
     ///
     /// [`commit`]: crate::docs::protocol::commit
     #[since(version = "0.10.0")]
     pub committed: Option<LogIdOf<C>>,
+    /// The last log ID known to be committed by a quorum of the cluster, as last reported by the
+    /// leader.
+    ///
+    /// This is the **cluster-committed** value. It may lead [`committed`](Self::committed). See
+    /// [`commit`] for the distinction.
+    ///
+    /// [`commit`]: crate::docs::protocol::commit
+    #[since(version = "0.10.0")]
+    pub cluster_committed: Option<LogIdOf<C>>,
     /// The last applied log id.
     pub last_applied: Option<LogIdOf<C>>,
     /// The last log id in the last snapshot.
@@ -363,9 +394,10 @@ where C: RaftTypeConfig
 
         write!(
             f,
-            "last_log:{}, committed:{}, last_applied:{}, snapshot:{}, purged:{}",
+            "last_log:{}, committed:{}, cluster_committed:{}, last_applied:{}, snapshot:{}, purged:{}",
             self.last_log.display(),
             self.committed.display(),
+            self.cluster_committed.display(),
             self.last_applied.display(),
             self.snapshot.display(),
             self.purged.display(),

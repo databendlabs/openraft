@@ -234,6 +234,86 @@ async fn committed_membership_config() -> Result<()> {
     Ok(())
 }
 
+/// The `cluster_committed` metric reports the quorum-granted commit. It is exposed via both
+/// `metrics()` and `data_metrics()`, and in steady state equals the local `committed`.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn cluster_committed_metric() -> Result<()> {
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            enable_elect: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+    let mut router = RaftRouter::new(config.clone());
+
+    tracing::info!("--- initializing cluster");
+    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+
+    tracing::info!(log_index, "--- write logs to advance the commit");
+    log_index += router.client_request_many(0, "foo", 10).await?;
+
+    for id in [0, 1, 2] {
+        // Once applied reaches the last log, the local committed and the cluster committed have
+        // both converged to it (applied <= local_committed <= cluster_committed).
+        router.wait(&id, timeout()).applied_index(Some(log_index), "applied log index").await?;
+
+        let node = router.get_raft_handle(&id)?;
+        let metrics = node.metrics().borrow_watched().clone();
+        let data_metrics = node.data_metrics().borrow_watched().clone();
+
+        // The cluster-committed frontier reached the last written log.
+        assert_eq!(
+            metrics.cluster_committed.as_ref().map(|x| x.index()),
+            Some(log_index),
+            "node {}: cluster_committed index",
+            id
+        );
+
+        // In steady state the quorum-granted commit equals the local committed.
+        assert_eq!(
+            metrics.cluster_committed, metrics.local_committed,
+            "node {}: cluster_committed should equal local_committed",
+            id
+        );
+
+        // The deprecated `committed` field is still populated, mirroring `local_committed`.
+        #[allow(deprecated)]
+        {
+            assert_eq!(
+                metrics.committed, metrics.local_committed,
+                "node {}: deprecated committed mirrors local_committed",
+                id
+            );
+        }
+
+        // The same value is reported through data_metrics.
+        assert_eq!(
+            data_metrics.cluster_committed, metrics.cluster_committed,
+            "node {}: data_metrics.cluster_committed should match metrics",
+            id
+        );
+
+        // The canonical fields are rendered by the Display impls.
+        let metrics_str = format!("{}", metrics);
+        assert!(
+            metrics_str.contains("local_committed:") && metrics_str.contains("cluster_committed:"),
+            "node {}: RaftMetrics Display should include local_committed and cluster_committed: {}",
+            id,
+            metrics_str
+        );
+        assert!(
+            format!("{}", data_metrics).contains("cluster_committed:"),
+            "node {}: RaftDataMetrics Display should include cluster_committed",
+            id
+        );
+    }
+
+    Ok(())
+}
+
 fn timeout() -> Option<Duration> {
     Some(Duration::from_millis(500))
 }
