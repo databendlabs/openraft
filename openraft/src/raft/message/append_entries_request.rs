@@ -31,7 +31,10 @@ pub struct AppendEntriesRequest<C: RaftTypeConfig> {
     /// are batched for efficiency.
     pub entries: Vec<C::Entry>,
 
-    /// The leader's committed log id.
+    /// The leader's cluster-committed log id: the quorum-granted commit frontier.
+    ///
+    /// The receiver records this as its own cluster-committed value and applies up to it (gated by
+    /// the locally persisted logs).
     pub leader_commit: Option<LogIdOf<C>>,
 }
 

@@ -107,9 +107,9 @@ where
                 // prev_log_id == None does not conflict.
                 //
                 // Fail test `t99_issue_1500_heartbeat_cause_reversion_panic` by changing the
-                // following line to `prev_log_id = heartbeat.committed.clone()`.
+                // following line to `prev_log_id = heartbeat.cluster_committed.clone()`.
                 prev_log_id: heartbeat.matching.clone(),
-                leader_commit: heartbeat.committed.clone(),
+                leader_commit: heartbeat.cluster_committed.clone(),
                 entries: vec![],
             };
 

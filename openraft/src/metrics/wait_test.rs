@@ -262,7 +262,7 @@ fn test_wait_committed_index() {
         let h = UTConfig::<()>::spawn(async move {
             UTConfig::<()>::sleep(Duration::from_millis(10)).await;
             let mut update = init.clone();
-            update.committed = Some(log_id(1, 0, 3));
+            update.local_committed = Some(log_id(1, 0, 3));
             let rst = tx.send(update);
             assert!(rst.is_ok());
         });
@@ -273,9 +273,9 @@ fn test_wait_committed_index() {
         let got_least4 = w.committed_index_at_least(Some(4), "committed").await;
         h.await?;
 
-        assert_eq!(Some(3), got.committed.index());
-        assert_eq!(Some(3), got_least2.committed.index());
-        assert_eq!(Some(3), got_least3.committed.index());
+        assert_eq!(Some(3), got.local_committed.index());
+        assert_eq!(Some(3), got_least2.local_committed.index());
+        assert_eq!(Some(3), got_least3.local_committed.index());
 
         assert!(got_least4.is_err());
 
@@ -298,7 +298,9 @@ where C: RaftTypeConfig<NodeId = u64> {
         current_term: Default::default(),
         vote: VoteOf::<C>::new_with_default_term(0),
         last_log_index: None,
+        local_committed: None,
         committed: None,
+        cluster_committed: None,
         last_applied: None,
         purged: None,
 

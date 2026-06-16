@@ -665,7 +665,7 @@ where C: RaftTypeConfig
         tracing::debug!(
             "membership: {}, committed: {}, is_leading: {}",
             em,
-            self.state.committed().display(),
+            self.state.local_committed().display(),
             self.state.is_leading(&self.config.id),
         );
 

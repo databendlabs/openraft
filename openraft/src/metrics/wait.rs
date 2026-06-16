@@ -228,7 +228,7 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn committed_index(&self, index: Option<u64>, msg: impl ToString) -> Result<RaftMetrics<C>, WaitError> {
         self.metrics(
-            |m| m.committed.index() == index,
+            |m| m.local_committed.index() == index,
             &format!("{} .committed_index == {:?}", msg.to_string(), index),
         )
         .await
@@ -242,7 +242,7 @@ where C: RaftTypeConfig
         msg: impl ToString,
     ) -> Result<RaftMetrics<C>, WaitError> {
         self.metrics(
-            |m| m.committed.index() >= index,
+            |m| m.local_committed.index() >= index,
             &format!("{} .committed_index >= {:?}", msg.to_string(), index),
         )
         .await

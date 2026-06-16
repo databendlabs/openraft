@@ -411,7 +411,7 @@ where
                 vote: my_vote.clone(),
                 prev_log_id: progress.matching().cloned(),
                 entries: vec![],
-                leader_commit: self.engine.state.committed().cloned(),
+                leader_commit: self.engine.state.cluster_committed().cloned(),
             };
 
             // Safe unwrap(): target is in membership
@@ -753,7 +753,9 @@ where
             current_term: st.vote_ref().term(),
             vote: vote.clone(),
             last_log_index: st.last_log_id().index(),
-            committed: st.committed().cloned(),
+            local_committed: st.local_committed().cloned(),
+            committed: st.local_committed().cloned(),
+            cluster_committed: st.cluster_committed().cloned(),
             last_applied: st.io_applied().cloned(),
             snapshot: st.io_snapshot_last_log_id().cloned(),
             purged: st.io_purged().cloned(),
@@ -777,7 +779,9 @@ where
         #[allow(deprecated)]
         let data_metrics = RaftDataMetrics {
             last_log: st.last_log_id().cloned(),
-            committed: st.committed().cloned(),
+            local_committed: st.local_committed().cloned(),
+            committed: st.local_committed().cloned(),
+            cluster_committed: st.cluster_committed().cloned(),
             last_applied: st.io_applied().cloned(),
             snapshot: st.io_snapshot_last_log_id().cloned(),
             purged: st.io_purged().cloned(),
@@ -1040,7 +1044,7 @@ where
         let (mut replication_handle, replication_context) = self.new_replication(leader_vote, prog, replicate_tx);
 
         let progress = replication_progress::ReplicationProgress {
-            local_committed: self.engine.state.committed().cloned(),
+            local_committed: self.engine.state.local_committed().cloned(),
             remote_matched: prog.progress.matching.clone(),
         };
 
@@ -2137,7 +2141,7 @@ where
             return;
         }
 
-        let committed = lh.state.committed().cloned();
+        let cluster_committed = lh.state.cluster_committed().cloned();
         let now = C::now();
         let events =
             lh.leader
@@ -2148,7 +2152,7 @@ where
                     (progress_entry.id.clone(), HeartbeatEvent {
                         time: now,
                         matching: progress_entry.val.matching.clone(),
-                        committed: committed.clone(),
+                        cluster_committed: cluster_committed.clone(),
                     })
                 });
 

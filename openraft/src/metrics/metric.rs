@@ -67,7 +67,7 @@ where C: RaftTypeConfig
             Metric::Term(v) => self.current_term == *v,
             Metric::Vote(v) => &self.vote == v,
             Metric::LastLogIndex(v) => self.last_log_index == *v,
-            Metric::Committed(v) => &self.committed == v,
+            Metric::Committed(v) => &self.local_committed == v,
             Metric::Applied(v) => &self.last_applied == v,
             Metric::AppliedIndex(v) => self.last_applied.index() == *v,
             Metric::Snapshot(v) => &self.snapshot == v,
@@ -85,7 +85,7 @@ where C: RaftTypeConfig
             Metric::Term(v) => Some(self.current_term.cmp(v)),
             Metric::Vote(v) => self.vote.as_ref_vote().partial_cmp(&v.as_ref_vote()),
             Metric::LastLogIndex(v) => Some(self.last_log_index.cmp(v)),
-            Metric::Committed(v) => Some(self.committed.cmp(v)),
+            Metric::Committed(v) => Some(self.local_committed.cmp(v)),
             Metric::Applied(v) => Some(self.last_applied.cmp(v)),
             Metric::AppliedIndex(v) => Some(self.last_applied.index().cmp(v)),
             Metric::Snapshot(v) => Some(self.snapshot.cmp(v)),
@@ -105,7 +105,7 @@ mod tests {
 
     fn init_metrics() -> RaftMetrics<UTConfig> {
         let mut m = RaftMetrics::new_initial(0);
-        m.committed = Some(log_id(1, 0, 5));
+        m.local_committed = Some(log_id(1, 0, 5));
         m
     }
 
