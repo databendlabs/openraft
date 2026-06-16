@@ -113,6 +113,7 @@ use crate::metrics::RaftDataMetrics;
 use crate::metrics::RaftMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::metrics::Wait;
+use crate::metrics::WaitError;
 use crate::raft::raft_inner::RaftInner;
 pub use crate::raft::runtime_config_handle::RuntimeConfigHandle;
 use crate::raft::trigger::Trigger;
@@ -1754,6 +1755,50 @@ where C: RaftTypeConfig
     /// ```
     pub fn wait(&self, timeout: Option<Duration>) -> Wait<C> {
         self.inner.wait(timeout)
+    }
+
+    /// Wait for this node's state machine to recover to at least the state it had before restart.
+    ///
+    /// On restart, [`cluster_committed`](RaftMetrics::cluster_committed) is reset to `None` and is
+    /// re-established only by replicating to a quorum — it is never restored from storage. A
+    /// non-null `cluster_committed` is therefore always a genuine, freshly quorum-granted commit,
+    /// so it is greater than or equal to any commit this node perceived before restart, and hence
+    /// to everything its state machine had already applied.
+    ///
+    /// The method waits in two phases, together bounded by `timeout`:
+    /// 1. until `cluster_committed` is perceived as non-null (the cluster commit is
+    ///    re-established),
+    /// 2. until the state machine has applied up to that cluster commit.
+    ///
+    /// The target is pinned to the *first* non-null `cluster_committed`, so the node catches up to
+    /// the commit perceived at recovery time. If the cluster advanced while this node was down,
+    /// that target may exceed the node's own pre-restart applied index — which still satisfies "at
+    /// least the same state".
+    ///
+    /// It requires a reachable, functioning cluster: if no cluster commit is re-established (no
+    /// leader, lost quorum, or this node is isolated), the method returns [`WaitError::Timeout`].
+    /// If `timeout` is `None` it waits forever (see [`wait`](Self::wait)).
+    #[since(version = "0.10.0")]
+    pub async fn wait_for_recovery(&self, timeout: Option<Duration>) -> Result<RaftMetrics<C>, WaitError> {
+        let start = C::now();
+
+        // Phase 1: wait until the cluster commit is re-established (perceived as non-null).
+        let metrics = self
+            .wait(timeout)
+            .metrics(
+                |m| m.cluster_committed.is_some(),
+                "wait_for_recovery: cluster commit re-established",
+            )
+            .await?;
+
+        let target = metrics.cluster_committed.as_ref().map(|x| x.index());
+
+        // Phase 2: wait until the state machine has applied up to that cluster commit, within the
+        // time remaining from the original budget.
+        let remaining = timeout.map(|t| t.saturating_sub(C::now() - start));
+        self.wait(remaining)
+            .applied_index_at_least(target, "wait_for_recovery: state machine applied cluster commit")
+            .await
     }
 
     /// Shutdown this Raft node.
