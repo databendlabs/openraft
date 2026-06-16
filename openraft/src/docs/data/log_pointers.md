@@ -90,6 +90,33 @@ If the state machine does not flush state to disk before returning from `apply()
 - If the `committed` log id is not saved, Openraft will just recover the state machine to
   the state of the last snapshot taken.
 
+### Reverted reads when `committed` is not saved
+
+If `committed` is not saved, the state machine is recovered only to the last snapshot on
+restart. It catches back up once this node perceives the cluster commit re-established by the
+current leader and re-applies up to it; until then a read may observe a state older than one
+observed before the restart.
+
+The recovery signal is the cluster commit, established only by the current leader replicating to
+a quorum — it is never recovered from local storage. After a restart this node perceives it only
+once the current leader has re-established the commit by committing its own-term (blank) entry to
+a quorum. That re-established commit is at least every previously committed — hence previously
+applied — log id, so once the state machine applies up to it, no read can be reverted. This is
+the same `read_log_id` condition that linearizable reads rely on; see [`docs::protocol::read`]
+and [`docs::protocol::commit`].
+
+To avoid serving a reverted read, either:
+
+- Persist `committed` (recommended): on restart the recovered `committed` is the true
+  pre-restart value, and the state machine is re-applied up to it on startup.
+- Wait for recovery before serving reads: [`Raft::wait_for_recovery`] blocks until the
+  re-established cluster commit has been applied.
+
+```ignore
+let raft = Raft::new(id, config, network, log_store, sm).await?;
+raft.wait_for_recovery(Some(Duration::from_secs(5))).await?;
+```
+
 ### Why
 
 The reason of adding a persisted `committed` is to just make things clear.
@@ -108,3 +135,6 @@ Meanwhile, I do not quite worry about the penalty, unless there is a measurable 
 
 [`RaftLogStorage`]: `crate::storage::RaftLogStorage`
 [`RaftLogStorage::save_committed`]: `crate::storage::RaftLogStorage::save_committed`
+[`docs::protocol::read`]: `crate::docs::protocol::read`
+[`docs::protocol::commit`]: `crate::docs::protocol::commit`
+[`Raft::wait_for_recovery`]: `crate::Raft::wait_for_recovery`
