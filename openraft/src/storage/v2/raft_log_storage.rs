@@ -68,13 +68,35 @@ where C: RaftTypeConfig
     ///
     /// If the state machine flushes state to disk before
     /// returning from `apply()`, then the application does not need to implement this method.
-    /// Otherwise, this method is also optional(but not recommended), but your application has to
-    /// deal with state reversion of state machine carefully upon restart. E.g., do not serve
-    /// read operation a new `commit` message is received.
+    /// Otherwise, this method is optional (but not recommended): without it the state machine
+    /// may revert to an older state on restart, and the application must handle that carefully.
     ///
-    /// See: [`docs::data::log_pointers`].
+    /// When `committed` is not saved, on restart the state machine is recovered only to the last
+    /// snapshot. It catches back up once this node perceives the cluster commit re-established by
+    /// the current leader and re-applies up to it; until then a read — linearizable or not — may
+    /// observe a state older than one already observed before the restart.
+    ///
+    /// To avoid serving such a reverted read, either:
+    ///
+    /// - save `committed` here (recommended): the recovered `committed` is then the true
+    ///   pre-restart value, and the state machine is re-applied up to it on startup; or
+    /// - wait for recovery before serving reads: [`Raft::wait_for_recovery`] blocks until the
+    ///   re-established cluster commit has been applied. This is sound for the same reason
+    ///   linearizable reads are — the re-established commit is at least the current leader's first
+    ///   (blank) log entry, hence at least any previously applied log id (the `read_log_id`
+    ///   condition).
+    ///
+    /// ```ignore
+    /// let raft = Raft::new(id, config, network, log_store, sm).await?;
+    /// raft.wait_for_recovery(Some(Duration::from_secs(5))).await?;
+    /// ```
+    ///
+    /// See: [`docs::data::log_pointers`], [`docs::protocol::read`] and [`docs::protocol::commit`].
     ///
     /// [`docs::data::log_pointers`]: `crate::docs::data::log_pointers#optionally-persisted-committed`
+    /// [`docs::protocol::read`]: `crate::docs::protocol::read`
+    /// [`docs::protocol::commit`]: `crate::docs::protocol::commit`
+    /// [`Raft::wait_for_recovery`]: `crate::Raft::wait_for_recovery`
     async fn save_committed(&mut self, _committed: Option<LogIdOf<C>>) -> Result<(), io::Error> {
         // By default `committed` log id is not saved
         Ok(())
