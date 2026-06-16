@@ -426,6 +426,19 @@ where
     /// ### `storage`
     /// An implementation of the [`RaftLogStorage`] and [`RaftStateMachine`] trait which will be
     /// used by Raft for data storage.
+    ///
+    /// ### Recovering committed state on startup
+    /// `new()` returns as soon as the node task is spawned, but the state machine may still lag the
+    /// state it had before a restart — see [`RaftLogStorage::save_committed`]. An
+    /// application that serves reads immediately (especially when `committed` is not persisted) may
+    /// then observe a reverted state. To prevent that, await
+    /// [`wait_for_recovery`](Self::wait_for_recovery) before serving reads:
+    ///
+    /// ```ignore
+    /// let raft = Raft::new(id, config, network, log_store, sm).await?;
+    /// raft.wait_for_recovery(Some(Duration::from_secs(5))).await?;
+    /// // The state machine has recovered at least its pre-restart committed state.
+    /// ```
     #[tracing::instrument(level="debug", skip_all, fields(cluster=%config.cluster_name))]
     pub async fn new<LS, N>(
         id: C::NodeId,
@@ -1759,6 +1772,12 @@ where C: RaftTypeConfig
 
     /// Wait for this node's state machine to recover to at least the state it had before restart.
     ///
+    /// Call this **once**, right after the node is created, before it starts serving requests. It
+    /// is a one-time step for recovering across a restart, **not** a per-read primitive: it does
+    /// not make later reads linearizable — use [`ensure_linearizable`](Self::ensure_linearizable)
+    /// for each linearizable read instead. (Once recovered, the node stays recovered, so calling it
+    /// again is a no-op that returns as soon as the current cluster commit has been applied.)
+    ///
     /// On restart, [`cluster_committed`](RaftMetrics::cluster_committed) is reset to `None` and is
     /// re-established only by replicating to a quorum — it is never restored from storage. A
     /// non-null `cluster_committed` is therefore always a genuine, freshly quorum-granted commit,
@@ -1778,6 +1797,26 @@ where C: RaftTypeConfig
     /// It requires a reachable, functioning cluster: if no cluster commit is re-established (no
     /// leader, lost quorum, or this node is isolated), the method returns [`WaitError::Timeout`].
     /// If `timeout` is `None` it waits forever (see [`wait`](Self::wait)).
+    ///
+    /// # Why this works
+    ///
+    /// Perceiving a non-null `cluster_committed` means the current leader has re-established the
+    /// commit by committing its own-term (blank) entry to a quorum, so that commit is at least the
+    /// leader's blank log id — and therefore at least any previously committed, hence previously
+    /// applied, log id. Applying up to it restores everything the state machine held before the
+    /// restart. This is the same `read_log_id` argument that makes linearizable reads safe: see
+    /// [the read protocol](crate::docs::protocol::read) for the read-safety argument and
+    /// [the commit protocol](crate::docs::protocol::commit) for why `cluster_committed` is never a
+    /// value restored from storage. A node that did not persist `committed` can use this in place
+    /// of, or together with, saving it (see [log pointers](crate::docs::data::log_pointers)).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // On startup, block until the state machine has recovered the committed state before
+    /// // serving reads:
+    /// raft.wait_for_recovery(Some(Duration::from_secs(5))).await?;
+    /// ```
     #[since(version = "0.10.0")]
     pub async fn wait_for_recovery(&self, timeout: Option<Duration>) -> Result<RaftMetrics<C>, WaitError> {
         let start = C::now();
