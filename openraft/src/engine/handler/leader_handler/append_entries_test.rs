@@ -224,7 +224,7 @@ fn test_leader_append_entries_single_node_leader() -> anyhow::Result<()> {
         ),
         eng.state.membership_state
     );
-    assert_eq!(Some(&log_id(0, 1, 0)), eng.state.committed());
+    assert_eq!(Some(&log_id(0, 1, 0)), eng.state.local_committed());
 
     assert_eq!(
         vec![Command::AppendEntries {
@@ -287,7 +287,7 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
         ),
         eng.state.membership_state
     );
-    assert_eq!(Some(&log_id(0, 1, 0)), eng.state.committed());
+    assert_eq!(Some(&log_id(0, 1, 0)), eng.state.local_committed());
 
     assert_eq!(
         vec![

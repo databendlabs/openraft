@@ -29,7 +29,7 @@ where C: RaftTypeConfig
     ///
     /// When there are no new logs to replicate, the Leader sends a heartbeat to replicate committed
     /// log id to followers to update their committed log id.
-    pub(crate) committed: Option<LogIdOf<C>>,
+    pub(crate) cluster_committed: Option<LogIdOf<C>>,
 }
 
 impl<C> fmt::Display for HeartbeatEvent<C>
@@ -38,10 +38,10 @@ where C: RaftTypeConfig
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "(time={}, matching: {}, committed: {})",
+            "(time={}, matching: {}, cluster_committed: {})",
             self.time.display(),
             self.matching.display(),
-            self.committed.display()
+            self.cluster_committed.display()
         )
     }
 }

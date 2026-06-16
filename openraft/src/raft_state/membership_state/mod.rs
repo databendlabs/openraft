@@ -123,14 +123,7 @@ where
     ///
     /// Committing replaces `self.committed`(the membership state machine) with
     /// `self.effective`(the last membership log).
-    ///
-    /// If the committed membership config changes, it returns the committed log ids before and
-    /// after the update; otherwise it returns `None`, e.g., when the effective membership is
-    /// already committed.
-    pub(crate) fn commit(
-        &mut self,
-        committed_log_id: &Option<LogId<CLID>>,
-    ) -> Option<(Option<LogId<CLID>>, LogId<CLID>)> {
+    pub(crate) fn commit(&mut self, committed_log_id: &Option<LogId<CLID>>) {
         let current = self.committed.log_id().clone();
         let last = self.effective().log_id().clone();
 
@@ -138,12 +131,7 @@ where
         if committed_log_id >= &last && current < last {
             debug_assert!(committed_log_id.index() >= last.index());
             self.committed = self.effective.clone();
-
-            // `current < last` implies `last` is not `None`.
-            return Some((current, last.unwrap()));
         }
-
-        None
     }
 
     /// Install the membership config carried by a snapshot.

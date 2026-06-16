@@ -147,7 +147,7 @@ impl SnapshotBuilder {
         raft.vote = vote;
         raft.state = self.state;
         raft.last_log_index = self.last_log_index;
-        raft.committed = self.committed;
+        raft.local_committed = self.committed;
         raft.last_applied = self.last_applied;
         raft.snapshot = self.snapshot;
         raft.purged = self.purged;

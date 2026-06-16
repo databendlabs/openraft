@@ -71,7 +71,7 @@ pub fn check(snapshots: &[(NodeId, FullNodeSnapshot)], violations: &mut Vec<Inva
 fn collect_committed_entries(snapshots: &[(NodeId, FullNodeSnapshot)]) -> HashMap<u64, LogId> {
     let mut committed: HashMap<u64, LogId> = HashMap::new();
     for (_, s) in snapshots {
-        let Some(c) = s.raft.committed else { continue };
+        let Some(c) = s.raft.local_committed else { continue };
 
         // Include the purged entry (`LogIdList::get(purged.index)` returns it).
         let first = s.raft.log_id_list.purged().map(|id| id.index()).unwrap_or(0);

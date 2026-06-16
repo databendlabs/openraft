@@ -121,8 +121,7 @@ fn test_membership_state_commit() -> anyhow::Result<()> {
     // Less than committed
     {
         let mut ms = new();
-        let got = ms.commit(&Some(log_id(1, 1, 1)));
-        assert_eq!(None, got);
+        ms.commit(&Some(log_id(1, 1, 1)));
         assert_eq!(&Some(log_id(2, 1, 2)), ms.committed().log_id());
         assert_eq!(&Some(log_id(3, 1, 4)), ms.effective().log_id());
     }
@@ -130,8 +129,7 @@ fn test_membership_state_commit() -> anyhow::Result<()> {
     // Equal committed
     {
         let mut ms = new();
-        let got = ms.commit(&Some(log_id(2, 1, 2)));
-        assert_eq!(None, got);
+        ms.commit(&Some(log_id(2, 1, 2)));
         assert_eq!(&Some(log_id(2, 1, 2)), ms.committed().log_id());
         assert_eq!(&Some(log_id(3, 1, 4)), ms.effective().log_id());
     }
@@ -139,8 +137,7 @@ fn test_membership_state_commit() -> anyhow::Result<()> {
     // Greater than committed, smaller than effective
     {
         let mut ms = new();
-        let got = ms.commit(&Some(log_id(2, 1, 3)));
-        assert_eq!(None, got);
+        ms.commit(&Some(log_id(2, 1, 3)));
         assert_eq!(&Some(log_id(2, 1, 2)), ms.committed().log_id());
         assert_eq!(&Some(log_id(3, 1, 4)), ms.effective().log_id());
     }
@@ -148,8 +145,7 @@ fn test_membership_state_commit() -> anyhow::Result<()> {
     // Greater than committed, equal effective
     {
         let mut ms = new();
-        let got = ms.commit(&Some(log_id(3, 1, 4)));
-        assert_eq!(Some((Some(log_id(2, 1, 2)), log_id(3, 1, 4))), got);
+        ms.commit(&Some(log_id(3, 1, 4)));
         assert_eq!(&Some(log_id(3, 1, 4)), ms.committed().log_id());
         assert_eq!(&Some(log_id(3, 1, 4)), ms.effective().log_id());
     }
@@ -157,27 +153,24 @@ fn test_membership_state_commit() -> anyhow::Result<()> {
     // Greater than effective
     {
         let mut ms = new();
-        let got = ms.commit(&Some(log_id(3, 1, 5)));
-        assert_eq!(Some((Some(log_id(2, 1, 2)), log_id(3, 1, 4))), got);
+        ms.commit(&Some(log_id(3, 1, 5)));
         assert_eq!(&Some(log_id(3, 1, 4)), ms.committed().log_id());
         assert_eq!(&Some(log_id(3, 1, 4)), ms.effective().log_id());
     }
 
-    // Commit again: the effective membership is already committed; no change to report.
+    // Commit again: the effective membership is already committed; committed stays unchanged.
     {
         let mut ms = new();
         ms.commit(&Some(log_id(3, 1, 4)));
-        let got = ms.commit(&Some(log_id(3, 1, 5)));
-        assert_eq!(None, got);
+        ms.commit(&Some(log_id(3, 1, 5)));
         assert_eq!(&Some(log_id(3, 1, 4)), ms.committed().log_id());
         assert_eq!(&Some(log_id(3, 1, 4)), ms.effective().log_id());
     }
 
-    // Initial state: both log ids are None; no change to report.
+    // Initial state: both log ids are None; committed stays None.
     {
         let mut ms = MembershipStateOf::<UTConfig>::default();
-        let got = ms.commit(&Some(log_id(1, 1, 1)));
-        assert_eq!(None, got);
+        ms.commit(&Some(log_id(1, 1, 1)));
         assert_eq!(&None, ms.committed().log_id());
         assert_eq!(&None, ms.effective().log_id());
     }

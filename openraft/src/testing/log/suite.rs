@@ -508,7 +508,7 @@ where
             "state machine has higher log"
         );
         assert_eq!(
-            initial.committed(),
+            initial.local_committed(),
             Some(&log_id_0::<C>(3, 1)),
             "unexpected value for last applied log"
         );

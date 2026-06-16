@@ -28,13 +28,17 @@ async fn with_raft_state() -> Result<()> {
 
     let n0 = router.get_raft_handle(&0)?;
 
-    let committed = n0.with_raft_state(|st| st.committed().cloned()).await?;
+    let committed = n0.with_raft_state(|st| st.local_committed().cloned()).await?;
     assert_eq!(committed, Some(log_id(1, 0, log_index)));
+
+    // On the leader, the cluster-committed log id equals the local committed log id.
+    let cluster_committed = n0.with_raft_state(|st| st.cluster_committed().cloned()).await?;
+    assert_eq!(cluster_committed, Some(log_id(1, 0, log_index)));
 
     tracing::info!("--- shutting down node 0");
     n0.shutdown().await?;
 
-    let res = n0.with_raft_state(|st| st.committed().cloned()).await;
+    let res = n0.with_raft_state(|st| st.local_committed().cloned()).await;
     assert_eq!(Err(Fatal::Stopped), res);
 
     Ok(())

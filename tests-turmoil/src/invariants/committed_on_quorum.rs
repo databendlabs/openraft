@@ -35,7 +35,7 @@ pub fn check(
         if !s.raft.state.is_leader() {
             continue;
         }
-        let Some(committed) = &s.raft.committed else {
+        let Some(committed) = &s.raft.local_committed else {
             continue;
         };
 

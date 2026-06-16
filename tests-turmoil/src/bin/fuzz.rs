@@ -812,7 +812,7 @@ fn run_single_iteration(
             let metrics = cluster_state.lock().unwrap().get_all_metrics();
             let leaders: Vec<_> = metrics.iter().filter(|(_, m)| m.state.is_leader()).map(|(id, _)| *id).collect();
             let max_term = metrics.iter().map(|(_, m)| m.vote.leader_id().term).max().unwrap_or(0);
-            let max_committed = metrics.iter().filter_map(|(_, m)| m.committed).max_by_key(|id| id.index());
+            let max_committed = metrics.iter().filter_map(|(_, m)| m.local_committed).max_by_key(|id| id.index());
             println!(
                 "[Step {steps}] leaders={leaders:?}, term={max_term}, \
                  voters={active_voters:?}, checks={invariant_checks}, \
@@ -831,7 +831,7 @@ fn run_single_iteration(
     let metrics = cluster_state.lock().unwrap().get_all_metrics();
     let leaders: Vec<_> = metrics.iter().filter(|(_, m)| m.state.is_leader()).map(|(id, _)| *id).collect();
     let max_term = metrics.iter().map(|(_, m)| m.vote.leader_id().term).max().unwrap_or(0);
-    let max_committed = metrics.iter().filter_map(|(_, m)| m.committed).max_by_key(|id| id.index());
+    let max_committed = metrics.iter().filter_map(|(_, m)| m.local_committed).max_by_key(|id| id.index());
     println!(
         "Final summary: leaders={leaders:?}, term={max_term}, voters={active_voters:?}, \
          workload_attempts={}, max_committed={max_committed:?}",
