@@ -41,12 +41,12 @@ OpenRaft now expects the factory to produce a V2-compatible network. This crate
 therefore wraps the V1 implementation with `into_v2()`:
 
 ```rust
-impl<C> RaftNetworkFactory<C> for NetworkFactory
+impl<C, SD> RaftNetworkFactory<C> for NetworkFactory<SD>
 where
     C: RaftTypeConfig<Node = BasicNode>,
-    C::SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Unpin,
+    SD: AsyncRead + AsyncWrite + AsyncSeek + Unpin + OptionalSend + 'static,
 {
-    type Network = Adapter<C, Network<C>>;
+    type Network = Adapter<C, Network<C>, SD>;
 
     async fn new_client(&mut self, target: C::NodeId, node: &BasicNode) -> Self::Network {
         let addr = node.addr.clone();
@@ -92,7 +92,7 @@ Use its factory when constructing `Raft`:
 ```rust
 use network_v1_http::NetworkFactory;
 
-let network = NetworkFactory {};
+let network = NetworkFactory::<SnapshotData>::new();
 
 let raft = openraft::Raft::new(
     node_id,

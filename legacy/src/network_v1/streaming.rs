@@ -1,10 +1,12 @@
 //! Streaming state for receiving snapshot chunks.
 
 use std::io::SeekFrom;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use openraft::ErrorSubject;
 use openraft::ErrorVerb;
+use openraft::OptionalSend;
 use openraft::RaftTypeConfig;
 use openraft::SnapshotId;
 use openraft::StorageError;
@@ -21,8 +23,10 @@ use tokio::io::AsyncWriteExt;
 /// into a complete snapshot. Once all chunks are received, the snapshot data
 /// can be extracted and installed into the Raft state machine.
 #[since(version = "0.10.0")]
-pub struct Streaming<C>
-where C: RaftTypeConfig
+pub struct Streaming<C, SD>
+where
+    C: RaftTypeConfig,
+    SD: OptionalSend + 'static,
 {
     /// The offset of the last byte written to the snapshot.
     offset: u64,
@@ -31,18 +35,23 @@ where C: RaftTypeConfig
     snapshot_id: SnapshotId,
 
     /// A handle to the snapshot writer.
-    snapshot_data: C::SnapshotData,
+    snapshot_data: SD,
+
+    _phantom: PhantomData<fn() -> C>,
 }
 
-impl<C> Streaming<C>
-where C: RaftTypeConfig
+impl<C, SD> Streaming<C, SD>
+where
+    C: RaftTypeConfig,
+    SD: OptionalSend + 'static,
 {
     #[since(version = "0.10.0")]
-    pub fn new(snapshot_id: SnapshotId, snapshot_data: C::SnapshotData) -> Self {
+    pub fn new(snapshot_id: SnapshotId, snapshot_data: SD) -> Self {
         Self {
             offset: 0,
             snapshot_id,
             snapshot_data,
+            _phantom: PhantomData,
         }
     }
 
@@ -52,15 +61,15 @@ where C: RaftTypeConfig
     }
 
     /// Consumes the `Streaming` and returns the snapshot data.
-    pub fn into_snapshot_data(self) -> C::SnapshotData {
+    pub fn into_snapshot_data(self) -> SD {
         self.snapshot_data
     }
 }
 
-impl<C> Streaming<C>
+impl<C, SD> Streaming<C, SD>
 where
     C: RaftTypeConfig,
-    C::SnapshotData: tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin,
+    SD: tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin + OptionalSend + 'static,
 {
     /// Receive a single chunk of snapshot data.
     ///
@@ -99,12 +108,19 @@ where
 /// via [`Raft::extension()`] to track chunk-based snapshot transfers.
 ///
 /// [`Raft::extension()`]: openraft::Raft::extension
-#[derive(Clone)]
-pub struct StreamingState<C: RaftTypeConfig> {
-    pub(crate) streaming: Arc<MutexOf<C, Option<Streaming<C>>>>,
+pub struct StreamingState<C: RaftTypeConfig, SD: OptionalSend + 'static> {
+    pub(crate) streaming: Arc<MutexOf<C, Option<Streaming<C, SD>>>>,
 }
 
-impl<C: RaftTypeConfig> StreamingState<C> {
+impl<C: RaftTypeConfig, SD: OptionalSend + 'static> Clone for StreamingState<C, SD> {
+    fn clone(&self) -> Self {
+        Self {
+            streaming: self.streaming.clone(),
+        }
+    }
+}
+
+impl<C: RaftTypeConfig, SD: OptionalSend + 'static> StreamingState<C, SD> {
     /// Create a new empty streaming state.
     pub fn new() -> Self {
         Self {
@@ -113,7 +129,7 @@ impl<C: RaftTypeConfig> StreamingState<C> {
     }
 }
 
-impl<C: RaftTypeConfig> Default for StreamingState<C> {
+impl<C: RaftTypeConfig, SD: OptionalSend + 'static> Default for StreamingState<C, SD> {
     fn default() -> Self {
         Self::new()
     }

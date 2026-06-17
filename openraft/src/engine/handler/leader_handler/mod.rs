@@ -12,6 +12,7 @@ use crate::proposer::LeaderQuorumSet;
 use crate::raft::message::TransferLeaderRequest;
 use crate::raft_state::IOId;
 use crate::replication::ReplicationSessionId;
+use crate::storage::RaftStateMachine;
 use crate::type_config::alias::BatchOf;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::EntryPayloadOf;
@@ -32,7 +33,9 @@ mod transfer_leader_test;
 /// - Change membership;
 /// - etc.
 pub(crate) struct LeaderHandler<'x, C, SM = ()>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     pub(crate) config: &'x mut EngineConfig<C>,
     pub(crate) leader: &'x mut Leader<C, LeaderQuorumSet<C>>,
@@ -41,7 +44,9 @@ where C: RaftTypeConfig
 }
 
 impl<C, SM> LeaderHandler<'_, C, SM>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     /// Append new log entries by a leader.
     ///
