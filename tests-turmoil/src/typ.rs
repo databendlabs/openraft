@@ -57,7 +57,8 @@ pub type Vote = openraft::type_config::alias::VoteOf<TypeConfig>;
 pub type LogId = openraft::type_config::alias::LogIdOf<TypeConfig>;
 pub type Entry = openraft::type_config::alias::EntryOf<TypeConfig>;
 pub type SnapshotMeta = openraft::type_config::alias::SnapshotMetaOf<TypeConfig>;
-pub type Snapshot = openraft::type_config::alias::SnapshotOf<TypeConfig>;
+pub type SnapshotData = Cursor<Vec<u8>>;
+pub type Snapshot = openraft::type_config::alias::SnapshotOf<TypeConfig, SnapshotData>;
 pub type StoredMembership = openraft::type_config::alias::StoredMembershipOf<TypeConfig>;
 
 pub type AppendEntriesRequest = openraft::raft::AppendEntriesRequest<TypeConfig>;
@@ -66,5 +67,4 @@ pub type VoteRequest = openraft::raft::VoteRequest<TypeConfig>;
 pub type VoteResponse = openraft::raft::VoteResponse<TypeConfig>;
 pub type SnapshotResponse = openraft::raft::SnapshotResponse<TypeConfig>;
 
-pub type SnapshotData = Cursor<Vec<u8>>;
 pub type RaftMetrics = openraft::RaftMetrics<TypeConfig>;

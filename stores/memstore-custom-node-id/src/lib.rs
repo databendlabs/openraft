@@ -16,7 +16,6 @@ use openraft::OptionalSend;
 use openraft::Vote;
 use openraft::alias::EntryOf;
 use openraft::alias::LogIdOf;
-use openraft::alias::SnapshotDataOf;
 use openraft::alias::SnapshotMetaOf;
 use openraft::alias::SnapshotOf;
 use openraft::alias::StoredMembershipOf;
@@ -224,8 +223,8 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
 
 // ── RaftSnapshotBuilder ──────────────────────────────────────────────────────
 
-impl RaftSnapshotBuilder<TypeConfig> for Arc<MemStateMachine> {
-    async fn build_snapshot(&mut self) -> Result<SnapshotOf<TypeConfig>, io::Error> {
+impl RaftSnapshotBuilder<TypeConfig, Cursor<Vec<u8>>> for Arc<MemStateMachine> {
+    async fn build_snapshot(&mut self) -> Result<SnapshotOf<TypeConfig, Cursor<Vec<u8>>>, io::Error> {
         let sm = self.sm.read().await;
         let data = serde_json::to_vec(&*sm).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
@@ -248,7 +247,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<MemStateMachine> {
 
         *self.current_snapshot.write().await = Some((meta.clone(), data.clone()));
 
-        Ok(SnapshotOf::<TypeConfig> {
+        Ok(SnapshotOf::<TypeConfig, Cursor<Vec<u8>>> {
             meta,
             snapshot: Cursor::new(data),
         })
@@ -258,6 +257,8 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<MemStateMachine> {
 // ── RaftStateMachine ─────────────────────────────────────────────────────────
 
 impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
+    type SnapshotData = Cursor<Vec<u8>>;
+
     type SnapshotBuilder = Self;
 
     async fn applied_state(
@@ -288,14 +289,14 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
         self.clone()
     }
 
-    async fn begin_receiving_snapshot(&mut self) -> Result<SnapshotDataOf<TypeConfig>, io::Error> {
+    async fn begin_receiving_snapshot(&mut self) -> Result<Self::SnapshotData, io::Error> {
         Ok(Cursor::new(Vec::new()))
     }
 
     async fn install_snapshot(
         &mut self,
         meta: &SnapshotMetaOf<TypeConfig>,
-        snapshot: SnapshotDataOf<TypeConfig>,
+        snapshot: Self::SnapshotData,
     ) -> Result<(), io::Error> {
         let new_sm: StateMachine =
             serde_json::from_slice(snapshot.get_ref()).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
@@ -304,12 +305,12 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
         Ok(())
     }
 
-    async fn get_current_snapshot(&mut self) -> Result<Option<SnapshotOf<TypeConfig>>, io::Error> {
-        Ok(
-            self.current_snapshot.read().await.as_ref().map(|(meta, data)| SnapshotOf::<TypeConfig> {
+    async fn get_current_snapshot(&mut self) -> Result<Option<SnapshotOf<TypeConfig, Self::SnapshotData>>, io::Error> {
+        Ok(self.current_snapshot.read().await.as_ref().map(
+            |(meta, data)| SnapshotOf::<TypeConfig, Self::SnapshotData> {
                 meta: meta.clone(),
                 snapshot: Cursor::new(data.clone()),
-            }),
-        )
+            },
+        ))
     }
 }

@@ -26,6 +26,9 @@ use crate::type_config::alias::VoteOf;
 pub trait NetSnapshot<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
 {
+    /// Snapshot data this network implementation can transmit.
+    type SnapshotData: OptionalSend + 'static;
+
     /// Send a complete Snapshot to the target.
     ///
     /// This method is responsible for fragmenting the snapshot and sending it to the target node.
@@ -45,7 +48,7 @@ where C: RaftTypeConfig
     async fn full_snapshot(
         &mut self,
         vote: VoteOf<C>,
-        snapshot: SnapshotOf<C>,
+        snapshot: SnapshotOf<C, Self::SnapshotData>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,
     ) -> Result<SnapshotResponse<C>, StreamingError<C>>;

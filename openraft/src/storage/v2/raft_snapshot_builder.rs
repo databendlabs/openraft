@@ -17,8 +17,10 @@ use crate::type_config::alias::SnapshotOf;
 ///
 /// [`RaftStateMachine`]: crate::storage::RaftStateMachine
 #[add_async_trait]
-pub trait RaftSnapshotBuilder<C>: OptionalSend + OptionalSync + 'static
-where C: RaftTypeConfig
+pub trait RaftSnapshotBuilder<C, SD = ()>: OptionalSend + OptionalSync + 'static
+where
+    C: RaftTypeConfig,
+    SD: OptionalSend + 'static,
 {
     /// Build snapshot
     ///
@@ -29,7 +31,7 @@ where C: RaftTypeConfig
     /// - Performing log compaction, e.g., merge log entries that operate on the same key, like an
     ///   LSM-tree does,
     /// - or by fetching a snapshot from the state machine.
-    async fn build_snapshot(&mut self) -> Result<SnapshotOf<C>, io::Error>;
+    async fn build_snapshot(&mut self) -> Result<SnapshotOf<C, SD>, io::Error>;
 
     // NOTES:
     // This interface is geared toward small file-based snapshots. However, not all snapshots can

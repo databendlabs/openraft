@@ -95,16 +95,11 @@ impl<C: RaftTypeConfig> StateMachineStore<C> {
     }
 }
 
-impl<C> RaftSnapshotBuilder<C> for StateMachineStore<C>
-where C: RaftTypeConfig<
-            D = types_kv::Request,
-            R = types_kv::Response,
-            SnapshotData = Cursor<Vec<u8>>,
-            Entry = DefaultEntryOf<C>,
-        >
+impl<C> RaftSnapshotBuilder<C, Cursor<Vec<u8>>> for StateMachineStore<C>
+where C: RaftTypeConfig<D = types_kv::Request, R = types_kv::Response, Entry = DefaultEntryOf<C>>
 {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn build_snapshot(&mut self) -> Result<SnapshotOf<C>, io::Error> {
+    async fn build_snapshot(&mut self) -> Result<SnapshotOf<C, Cursor<Vec<u8>>>, io::Error> {
         let mut inner = self.0.lock().await;
 
         let data =
@@ -130,7 +125,7 @@ where C: RaftTypeConfig<
 
         inner.current_snapshot = Some(snapshot);
 
-        Ok(SnapshotOf::<C> {
+        Ok(SnapshotOf::<C, Cursor<Vec<u8>>> {
             meta,
             snapshot: Cursor::new(data),
         })
@@ -138,13 +133,10 @@ where C: RaftTypeConfig<
 }
 
 impl<C> RaftStateMachine<C> for StateMachineStore<C>
-where C: RaftTypeConfig<
-            D = types_kv::Request,
-            R = types_kv::Response,
-            SnapshotData = Cursor<Vec<u8>>,
-            Entry = DefaultEntryOf<C>,
-        >
+where C: RaftTypeConfig<D = types_kv::Request, R = types_kv::Response, Entry = DefaultEntryOf<C>>
 {
+    type SnapshotData = Cursor<Vec<u8>>;
+
     type SnapshotBuilder = Self;
 
     async fn applied_state(&mut self) -> Result<(Option<LogIdOf<C>>, StoredMembershipOf<C>), io::Error> {
@@ -184,12 +176,16 @@ where C: RaftTypeConfig<
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(&mut self) -> Result<C::SnapshotData, io::Error> {
+    async fn begin_receiving_snapshot(&mut self) -> Result<Self::SnapshotData, io::Error> {
         Ok(Cursor::new(Vec::new()))
     }
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
-    async fn install_snapshot(&mut self, meta: &SnapshotMetaOf<C>, snapshot: C::SnapshotData) -> Result<(), io::Error> {
+    async fn install_snapshot(
+        &mut self,
+        meta: &SnapshotMetaOf<C>,
+        snapshot: Self::SnapshotData,
+    ) -> Result<(), io::Error> {
         tracing::info!(
             { snapshot_size = snapshot.get_ref().len() },
             "decoding snapshot for installation"
@@ -215,12 +211,12 @@ where C: RaftTypeConfig<
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn get_current_snapshot(&mut self) -> Result<Option<SnapshotOf<C>>, io::Error> {
+    async fn get_current_snapshot(&mut self) -> Result<Option<SnapshotOf<C, Self::SnapshotData>>, io::Error> {
         let inner = self.0.lock().await;
         match &inner.current_snapshot {
             Some(snapshot) => {
                 let data = snapshot.data.clone();
-                Ok(Some(SnapshotOf::<C> {
+                Ok(Some(SnapshotOf::<C, Self::SnapshotData> {
                     meta: snapshot.meta.clone(),
                     snapshot: Cursor::new(data),
                 }))

@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use display_more::DisplayOptionExt;
 
+use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::core::raft_msg::ExternalCommandName;
 use crate::core::raft_msg::ResultSender;
@@ -21,7 +22,11 @@ use crate::type_config::alias::VoteOf;
 ///
 /// An application can also disable these policy-based triggering and use these commands manually,
 /// for testing or administrative purposes.
-pub(crate) enum ExternalCommand<C: RaftTypeConfig> {
+pub(crate) enum ExternalCommand<C, SD = ()>
+where
+    C: RaftTypeConfig,
+    SD: OptionalSend + 'static,
+{
     /// Initiate an election immediately.
     ///
     /// With `pre_vote = false`, a real election starts at once: the term is incremented and the
@@ -44,7 +49,7 @@ pub(crate) enum ExternalCommand<C: RaftTypeConfig> {
 
     /// Get a snapshot from the state machine, send back via a oneshot::Sender.
     GetSnapshot {
-        tx: OneshotSenderOf<C, Option<SnapshotOf<C>>>,
+        tx: OneshotSenderOf<C, Option<SnapshotOf<C, SD>>>,
     },
 
     /// Purge logs covered by a snapshot up to a specified index.
@@ -92,7 +97,11 @@ pub(crate) enum ExternalCommand<C: RaftTypeConfig> {
     },
 }
 
-impl<C: RaftTypeConfig> ExternalCommand<C> {
+impl<C, SD> ExternalCommand<C, SD>
+where
+    C: RaftTypeConfig,
+    SD: OptionalSend + 'static,
+{
     /// Returns the name of this command variant.
     pub fn name(&self) -> ExternalCommandName {
         match self {
@@ -109,16 +118,20 @@ impl<C: RaftTypeConfig> ExternalCommand<C> {
     }
 }
 
-impl<C> fmt::Debug for ExternalCommand<C>
-where C: RaftTypeConfig
+impl<C, SD> fmt::Debug for ExternalCommand<C, SD>
+where
+    C: RaftTypeConfig,
+    SD: OptionalSend + 'static,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(self, f)
     }
 }
 
-impl<C> fmt::Display for ExternalCommand<C>
-where C: RaftTypeConfig
+impl<C, SD> fmt::Display for ExternalCommand<C, SD>
+where
+    C: RaftTypeConfig,
+    SD: OptionalSend + 'static,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

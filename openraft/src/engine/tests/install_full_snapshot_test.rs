@@ -1,4 +1,3 @@
-use std::io::Cursor;
 use std::time::Duration;
 
 use maplit::btreeset;
@@ -77,7 +76,7 @@ fn test_handle_install_full_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
                 last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
                 snapshot_id: "1-2-3-4".to_string(),
             },
-            snapshot: Cursor::new(vec![0u8]),
+            snapshot: (),
         },
         tx,
     );
@@ -122,7 +121,7 @@ fn test_handle_install_full_snapshot_no_conflict() -> anyhow::Result<()> {
                 last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
                 snapshot_id: "1-2-3-4".to_string(),
             },
-            snapshot: Cursor::new(vec![0u8]),
+            snapshot: (),
         },
         tx,
     );
@@ -147,7 +146,7 @@ fn test_handle_install_full_snapshot_no_conflict() -> anyhow::Result<()> {
                         last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
                         snapshot_id: "1-2-3-4".to_string(),
                     },
-                    snapshot: Cursor::new(vec![0u8]),
+                    snapshot: (),
                 },
                 LogIOId::new(Vote::new(2, 1).into_committed(), Some(log_id(4, 1, 6)))
             )),
