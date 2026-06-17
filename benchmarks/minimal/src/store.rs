@@ -18,7 +18,6 @@ use openraft::Vote;
 use openraft::alias::DefaultEntryOf;
 use openraft::alias::EntryOf;
 use openraft::alias::LogIdOf;
-use openraft::alias::SnapshotDataOf;
 use openraft::alias::SnapshotMetaOf;
 use openraft::alias::SnapshotOf;
 use openraft::alias::StoredMembershipOf;
@@ -47,6 +46,7 @@ impl fmt::Display for ClientRequest {
 pub struct ClientResponse {}
 
 pub type NodeId = u64;
+pub type SnapshotData = Cursor<Vec<u8>>;
 
 /// Choose a LeaderId implementation by feature flag.
 mod leader_id_mode {
@@ -70,7 +70,6 @@ impl RaftTypeConfig for TypeConfig {
     type LeaderId = LeaderId;
     type Vote = Vote<Self::LeaderId>;
     type Entry = DefaultEntryOf<Self>;
-    type SnapshotData = Cursor<Vec<u8>>;
     type Responder<T>
         = openraft::impls::OneshotResponder<Self, T>
     where T: Send + 'static;
@@ -165,8 +164,10 @@ impl RaftLogReader<TypeConfig> for Arc<LogStore> {
 }
 
 impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
+    type SnapshotData = SnapshotData;
+
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn build_snapshot(&mut self) -> Result<SnapshotOf<TypeConfig>, io::Error> {
+    async fn build_snapshot(&mut self) -> Result<SnapshotOf<TypeConfig, SnapshotData>, io::Error> {
         let data;
         let last_applied_log;
         let last_membership;
@@ -208,7 +209,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
 
         tracing::info!(snapshot_size, "log compaction complete");
 
-        Ok(SnapshotOf::<TypeConfig> {
+        Ok(SnapshotOf::<TypeConfig, SnapshotData> {
             meta,
             snapshot: Cursor::new(data),
         })
@@ -282,6 +283,8 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
 }
 
 impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
+    type SnapshotData = Cursor<Vec<u8>>;
+
     async fn applied_state(
         &mut self,
     ) -> Result<(Option<LogIdOf<TypeConfig>>, StoredMembershipOf<TypeConfig>), io::Error> {
@@ -313,7 +316,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(&mut self) -> Result<SnapshotDataOf<TypeConfig>, io::Error> {
+    async fn begin_receiving_snapshot(&mut self) -> Result<Self::SnapshotData, io::Error> {
         Ok(Cursor::new(Vec::new()))
     }
 
@@ -321,7 +324,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     async fn install_snapshot(
         &mut self,
         meta: &SnapshotMetaOf<TypeConfig>,
-        snapshot: SnapshotDataOf<TypeConfig>,
+        snapshot: Self::SnapshotData,
     ) -> Result<(), io::Error> {
         let new_snapshot = StoredSnapshot {
             meta: meta.clone(),
@@ -342,11 +345,11 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn get_current_snapshot(&mut self) -> Result<Option<SnapshotOf<TypeConfig>>, io::Error> {
+    async fn get_current_snapshot(&mut self) -> Result<Option<SnapshotOf<TypeConfig, Self::SnapshotData>>, io::Error> {
         match &*self.current_snapshot.read().await {
             Some(snapshot) => {
                 let data = snapshot.data.clone();
-                Ok(Some(SnapshotOf::<TypeConfig> {
+                Ok(Some(SnapshotOf::<TypeConfig, Self::SnapshotData> {
                     meta: snapshot.meta.clone(),
                     snapshot: Cursor::new(data),
                 }))
