@@ -17,7 +17,7 @@ Multi-Raft adapters for connection sharing across Raft groups.
 use openraft_multiraft::{GroupRouter, GroupNetworkAdapter, GroupNetworkFactory};
 
 // Your Router implements GroupRouter
-impl GroupRouter<TypeConfig, GroupId> for Router {
+impl GroupRouter<TypeConfig, GroupId, SnapshotData> for Router {
     // ...
 }
 
@@ -26,7 +26,7 @@ let factory = GroupNetworkFactory::new(router, group_id);
 
 // Factory creates adapters that implement RaftNetworkV2
 impl RaftNetworkFactory<TypeConfig> for NetworkFactory {
-    type Network = GroupNetworkAdapter<TypeConfig, GroupId, Router>;
+    type Network = GroupNetworkAdapter<TypeConfig, GroupId, Router, SnapshotData>;
     
     async fn new_client(&mut self, target: NodeId, _node: &Node) -> Self::Network {
         GroupNetworkAdapter::new(self.factory.clone(), target, self.group_id.clone())
@@ -37,4 +37,3 @@ impl RaftNetworkFactory<TypeConfig> for NetworkFactory {
 ## Examples
 
 - [multi-raft-kv](../examples/multi-raft-kv/) - Basic Multi-Raft with 3 groups
-

@@ -23,7 +23,6 @@ use openraft::OptionalSend;
 use openraft::Vote;
 use openraft::alias::EntryOf;
 use openraft::alias::LogIdOf;
-use openraft::alias::SnapshotDataOf;
 use openraft::alias::SnapshotMetaOf;
 use openraft::alias::SnapshotOf;
 use openraft::alias::StoredMembershipOf;
@@ -325,8 +324,10 @@ impl RaftLogReader<TypeConfig> for Arc<MemLogStore> {
 }
 
 impl RaftSnapshotBuilder<TypeConfig> for Arc<MemStateMachine> {
+    type SnapshotData = Cursor<Vec<u8>>;
+
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn build_snapshot(&mut self) -> Result<SnapshotOf<TypeConfig>, io::Error> {
+    async fn build_snapshot(&mut self) -> Result<SnapshotOf<TypeConfig, Cursor<Vec<u8>>>, io::Error> {
         let data;
         let last_applied_log;
         let last_membership;
@@ -382,7 +383,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<MemStateMachine> {
 
         tracing::info!(snapshot_size, "log compaction complete");
 
-        Ok(SnapshotOf::<TypeConfig> {
+        Ok(SnapshotOf::<TypeConfig, Cursor<Vec<u8>>> {
             meta,
             snapshot: Cursor::new(data),
         })
@@ -516,6 +517,8 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
 }
 
 impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
+    type SnapshotData = Cursor<Vec<u8>>;
+
     type SnapshotBuilder = Self;
 
     async fn applied_state(
@@ -571,7 +574,7 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(&mut self) -> Result<SnapshotDataOf<TypeConfig>, io::Error> {
+    async fn begin_receiving_snapshot(&mut self) -> Result<Self::SnapshotData, io::Error> {
         Ok(Cursor::new(Vec::new()))
     }
 
@@ -579,7 +582,7 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
     async fn install_snapshot(
         &mut self,
         meta: &SnapshotMetaOf<TypeConfig>,
-        snapshot: SnapshotDataOf<TypeConfig>,
+        snapshot: Self::SnapshotData,
     ) -> Result<(), io::Error> {
         tracing::info!(
             { snapshot_size = snapshot.get_ref().len() },
@@ -613,11 +616,11 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn get_current_snapshot(&mut self) -> Result<Option<SnapshotOf<TypeConfig>>, io::Error> {
+    async fn get_current_snapshot(&mut self) -> Result<Option<SnapshotOf<TypeConfig, Self::SnapshotData>>, io::Error> {
         match &*self.current_snapshot.read().await {
             Some(snapshot) => {
                 let data = snapshot.data.clone();
-                Ok(Some(SnapshotOf::<TypeConfig> {
+                Ok(Some(SnapshotOf::<TypeConfig, Self::SnapshotData> {
                     meta: snapshot.meta.clone(),
                     snapshot: Cursor::new(data),
                 }))

@@ -17,6 +17,7 @@ use openraft::errors::LinearizableReadError;
 use openraft::errors::decompose::DecomposeResult;
 use openraft::raft::ClientWriteResponse;
 use openraft::raft::linearizable_read::Linearizer;
+use openraft::storage::RaftStateMachine;
 use serde::Deserialize;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -25,7 +26,9 @@ use crate::Client;
 use crate::FollowerReadError;
 
 pub struct App<C, SM, D>
-where C: RaftTypeConfig<Node = NodeInfo>
+where
+    C: RaftTypeConfig<Node = NodeInfo>,
+    SM: RaftStateMachine<C>,
 {
     pub id: C::NodeId,
     pub api_addr: String,
@@ -55,7 +58,9 @@ where C: RaftTypeConfig
 }
 
 impl<C, SM, D> App<C, SM, D>
-where C: RaftTypeConfig<Node = NodeInfo>
+where
+    C: RaftTypeConfig<Node = NodeInfo>,
+    SM: RaftStateMachine<C>,
 {
     pub async fn write(self: Arc<Self>, req: C::D) -> Result<ClientWriteResponse<C>, ClientWriteError<C>> {
         self.raft.client_write(req).await.decompose().unwrap()

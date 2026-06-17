@@ -260,7 +260,10 @@ where
     }
 
     #[tracing::instrument(level = "info", skip_all)]
-    async fn get_snapshot(&mut self, tx: OneshotSenderOf<C, Option<SnapshotOf<C>>>) -> Result<(), StorageError<C>> {
+    async fn get_snapshot(
+        &mut self,
+        tx: OneshotSenderOf<C, Option<SnapshotOf<C, SM::SnapshotData>>>,
+    ) -> Result<(), StorageError<C>> {
         tracing::info!("{}", func_name!());
 
         let snapshot = self.state_machine.get_current_snapshot().await.sto_read_snapshot(None)?;

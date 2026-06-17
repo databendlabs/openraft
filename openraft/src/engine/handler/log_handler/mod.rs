@@ -8,6 +8,7 @@ use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
 use crate::log_id::option_ref_log_id_ext::OptionRefLogIdExt;
 use crate::raft_state::LogStateReader;
+use crate::storage::RaftStateMachine;
 use crate::type_config::alias::LogIdOf;
 
 #[cfg(test)]
@@ -17,7 +18,9 @@ mod purge_log_test;
 
 /// Handle raft-log related operations
 pub(crate) struct LogHandler<'x, C, SM = ()>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     pub(crate) config: &'x mut EngineConfig<C>,
     pub(crate) state: &'x mut RaftState<C>,
@@ -25,7 +28,9 @@ where C: RaftTypeConfig
 }
 
 impl<C, SM> LogHandler<'_, C, SM>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     /// Purge log entries up to `RaftState.purge_upto()`, inclusive.
     #[tracing::instrument(level = "debug", skip_all)]
