@@ -7,11 +7,14 @@ use crate::engine::Condition;
 use crate::engine::command_scheduler::CommandScheduler;
 use crate::engine::pending_responds::PendingResponds;
 use crate::engine::respond_command::PendingRespond;
+use crate::storage::RaftStateMachine;
 
 /// The entry of output from Engine to the runtime.
 #[derive(Debug)]
 pub(crate) struct EngineOutput<C, SM = ()>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     /// Command queue that needs to be executed by `RaftRuntime`.
     pub(crate) commands: VecDeque<Command<C, SM>>,
@@ -21,7 +24,9 @@ where C: RaftTypeConfig
 }
 
 impl<C, SM> Default for EngineOutput<C, SM>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     fn default() -> Self {
         Self {
@@ -32,7 +37,9 @@ where C: RaftTypeConfig
 }
 
 impl<C, SM> EngineOutput<C, SM>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     pub(crate) fn new(command_buffer_size: usize) -> Self {
         let pending_capacity = 1024;

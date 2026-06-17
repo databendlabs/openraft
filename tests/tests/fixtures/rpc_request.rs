@@ -2,6 +2,7 @@
 
 use std::fmt;
 
+use openraft::OptionalSend;
 use openraft::RPCTypes;
 use openraft::RaftTypeConfig;
 use openraft::alias::SnapshotOf;
@@ -13,18 +14,18 @@ use openraft::raft::VoteRequest;
 /// Unified enum for all RPC request types in the test framework.
 #[derive(Debug)]
 #[derive(derive_more::From, derive_more::TryInto)]
-pub enum RpcRequest<C: RaftTypeConfig>
-where C::SnapshotData: fmt::Debug
+pub enum RpcRequest<C: RaftTypeConfig, SD = ()>
+where SD: fmt::Debug + OptionalSend + 'static
 {
     AppendEntries(AppendEntriesRequest<C>),
     InstallSnapshot(InstallSnapshotRequest<C>),
-    InstallFullSnapshot(SnapshotOf<C>),
+    InstallFullSnapshot(SnapshotOf<C, SD>),
     Vote(VoteRequest<C>),
     TransferLeader(TransferLeaderRequest<C>),
 }
 
-impl<C: RaftTypeConfig> RpcRequest<C>
-where C::SnapshotData: fmt::Debug
+impl<C: RaftTypeConfig, SD> RpcRequest<C, SD>
+where SD: fmt::Debug + OptionalSend + 'static
 {
     pub fn get_type(&self) -> RPCTypes {
         match self {
@@ -37,10 +38,10 @@ where C::SnapshotData: fmt::Debug
     }
 }
 
-impl<C> fmt::Display for RpcRequest<C>
+impl<C, SD> fmt::Display for RpcRequest<C, SD>
 where
     C: RaftTypeConfig,
-    C::SnapshotData: fmt::Debug,
+    SD: fmt::Debug + OptionalSend + 'static,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

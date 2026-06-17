@@ -20,6 +20,7 @@ use hyper::service::service_fn;
 use hyper_util::rt::TokioIo;
 use openraft::NodeInfo;
 use openraft::RaftTypeConfig;
+use openraft::storage::RaftStateMachine;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use tokio::net::TcpListener;
@@ -93,6 +94,7 @@ where D: Send + Sync + 'static
 impl<C, SM, Data> Server<App<C, SM, Data>>
 where
     C: RaftTypeConfig<Node = NodeInfo>,
+    SM: RaftStateMachine<C>,
     App<C, SM, Data>: Send + Sync + 'static,
 {
     pub fn add_openraft_routes(self) -> Self {

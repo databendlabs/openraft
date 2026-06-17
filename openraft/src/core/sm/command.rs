@@ -8,6 +8,7 @@ use crate::engine::SMCommandName;
 use crate::raft::responder::core_responder::CoreResponder;
 use crate::raft_state::IOId;
 use crate::raft_state::io_state::log_io_id::LogIOId;
+use crate::storage::RaftStateMachine;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::SnapshotDataOf;
@@ -15,18 +16,20 @@ use crate::type_config::alias::SnapshotOf;
 
 /// The payload of a state machine command.
 pub(crate) enum Command<C, SM = ()>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     /// Instruct the state machine to create a snapshot based on its most recent view.
     BuildSnapshot,
 
     /// Get the latest built snapshot.
     GetSnapshot {
-        tx: OneshotSenderOf<C, Option<SnapshotOf<C>>>,
+        tx: OneshotSenderOf<C, Option<SnapshotOf<C, SnapshotDataOf<C, SM>>>>,
     },
 
     BeginReceivingSnapshot {
-        tx: OneshotSenderOf<C, SnapshotDataOf<C>>,
+        tx: OneshotSenderOf<C, SnapshotDataOf<C, SM>>,
     },
 
     InstallFullSnapshot {
@@ -35,7 +38,7 @@ where C: RaftTypeConfig
         /// Installing a snapshot is considered as an IO of AppendEntries `[0,
         /// snapshot.last_log_id]`
         log_io_id: LogIOId<C>,
-        snapshot: SnapshotOf<C>,
+        snapshot: SnapshotOf<C, SnapshotDataOf<C, SM>>,
     },
 
     /// Apply the log entries to the state machine.
@@ -54,13 +57,13 @@ where C: RaftTypeConfig
     /// Apply a typed function to the state machine.
     ///
     /// The function receives a mutable reference to the concrete state machine type `SM`.
-    ExternalFunc {
-        func: BoxAsyncOnceMut<'static, SM>,
-    },
+    ExternalFunc { func: BoxAsyncOnceMut<'static, SM> },
 }
 
 impl<C, SM> Command<C, SM>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     #[allow(dead_code)]
     pub(crate) fn name(&self) -> SMCommandName {
@@ -78,15 +81,15 @@ where C: RaftTypeConfig
         Command::BuildSnapshot
     }
 
-    pub(crate) fn get_snapshot(tx: OneshotSenderOf<C, Option<SnapshotOf<C>>>) -> Self {
+    pub(crate) fn get_snapshot(tx: OneshotSenderOf<C, Option<SnapshotOf<C, SnapshotDataOf<C, SM>>>>) -> Self {
         Command::GetSnapshot { tx }
     }
 
-    pub(crate) fn begin_receiving_snapshot(tx: OneshotSenderOf<C, SnapshotDataOf<C>>) -> Self {
+    pub(crate) fn begin_receiving_snapshot(tx: OneshotSenderOf<C, SnapshotDataOf<C, SM>>) -> Self {
         Command::BeginReceivingSnapshot { tx }
     }
 
-    pub(crate) fn install_full_snapshot(snapshot: SnapshotOf<C>, log_io_id: LogIOId<C>) -> Self {
+    pub(crate) fn install_full_snapshot(snapshot: SnapshotOf<C, SnapshotDataOf<C, SM>>, log_io_id: LogIOId<C>) -> Self {
         Command::InstallFullSnapshot { log_io_id, snapshot }
     }
 
@@ -154,7 +157,9 @@ where C: RaftTypeConfig
 }
 
 impl<C, SM> Debug for Command<C, SM>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -176,7 +181,9 @@ where C: RaftTypeConfig
 }
 
 impl<C, SM> fmt::Display for Command<C, SM>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -199,7 +206,9 @@ where C: RaftTypeConfig
 
 // `PartialEq` is only used for testing
 impl<C, SM> PartialEq for Command<C, SM>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {

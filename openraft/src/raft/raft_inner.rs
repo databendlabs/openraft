@@ -34,14 +34,16 @@ use crate::type_config::alias::WatchReceiverOf;
 
 /// RaftInner is the internal handle and provides internally used APIs to communicate with
 /// `RaftCore`.
-pub(in crate::raft) struct RaftInner<C>
-where C: RaftTypeConfig
+pub(in crate::raft) struct RaftInner<C, SD = ()>
+where
+    C: RaftTypeConfig,
+    SD: OptionalSend + 'static,
 {
     pub(in crate::raft) id: C::NodeId,
     pub(in crate::raft) config: Arc<Config>,
     pub(in crate::raft) runtime_config: Arc<RuntimeConfig>,
     pub(in crate::raft) tick_handle: TickHandle<C>,
-    pub(in crate::raft) tx_api: MpscSenderOf<C, RaftMsg<C>>,
+    pub(in crate::raft) tx_api: MpscSenderOf<C, RaftMsg<C, SD>>,
     pub(in crate::raft) rx_metrics: WatchReceiverOf<C, RaftMetrics<C>>,
     pub(in crate::raft) rx_data_metrics: WatchReceiverOf<C, RaftDataMetrics<C>>,
     pub(in crate::raft) rx_server_metrics: WatchReceiverOf<C, RaftServerMetrics<C>>,
@@ -56,8 +58,10 @@ where C: RaftTypeConfig
     pub(in crate::raft) extensions: Extensions,
 }
 
-impl<C> RaftInner<C>
-where C: RaftTypeConfig
+impl<C, SD> RaftInner<C, SD>
+where
+    C: RaftTypeConfig,
+    SD: OptionalSend + 'static,
 {
     pub(crate) fn id(&self) -> &C::NodeId {
         &self.id
@@ -67,7 +71,7 @@ where C: RaftTypeConfig
         self.config.as_ref()
     }
 
-    pub(crate) async fn send_msg(&self, mes: RaftMsg<C>) -> Result<(), Fatal<C>> {
+    pub(crate) async fn send_msg(&self, mes: RaftMsg<C, SD>) -> Result<(), Fatal<C>> {
         let send_res = self.tx_api.send(mes).await;
 
         if let Err(e) = send_res {
@@ -82,7 +86,7 @@ where C: RaftTypeConfig
 
     /// Invoke RaftCore by sending a RaftMsg and blocks waiting for response.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) async fn call_core<T>(&self, mes: RaftMsg<C>, rx: OneshotReceiverOf<C, T>) -> Result<T, Fatal<C>>
+    pub(crate) async fn call_core<T>(&self, mes: RaftMsg<C, SD>, rx: OneshotReceiverOf<C, T>) -> Result<T, Fatal<C>>
     where T: OptionalSend {
         let sum = if tracing::enabled!(Level::DEBUG) {
             Some(mes.to_string())
@@ -118,7 +122,7 @@ where C: RaftTypeConfig
     /// Send an [`ExternalCommand`] to RaftCore to execute in the `RaftCore` thread.
     ///
     /// It returns at once.
-    pub(in crate::raft) async fn send_external_command(&self, cmd: ExternalCommand<C>) -> Result<(), Fatal<C>> {
+    pub(in crate::raft) async fn send_external_command(&self, cmd: ExternalCommand<C, SD>) -> Result<(), Fatal<C>> {
         let send_res = self.tx_api.send(RaftMsg::ExternalCommand { cmd }).await;
 
         if send_res.is_err() {
