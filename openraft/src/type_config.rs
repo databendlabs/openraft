@@ -62,7 +62,6 @@ use crate::vote::raft_vote::RaftVote;
 ///         LeaderId         = openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>,
 ///         Vote             = openraft::impls::Vote<Self::LeaderId>,
 ///         Entry            = openraft::impls::Entry<Self>,
-///         SnapshotData     = Cursor<Vec<u8>>,
 ///         Responder<T>     = openraft::impls::OneshotResponder<Self, T>,
 ///         AsyncRuntime     = openraft::impls::TokioRuntime,
 /// );
@@ -131,13 +130,6 @@ pub trait RaftTypeConfig:
             Node = Self::Node,
         >;
 
-    /// Snapshot data for exposing a snapshot for reading & writing.
-    ///
-    /// See the [storage chapter of the guide][sto] for details on log compaction / snapshotting.
-    ///
-    /// [sto]: crate::docs::getting_started#3-implement-raftlogstorage-and-raftstatemachine
-    type SnapshotData: OptionalSend + 'static;
-
     /// Asynchronous runtime type.
     type AsyncRuntime: AsyncRuntime;
 
@@ -187,6 +179,7 @@ pub mod alias {
     use crate::async_runtime::Oneshot;
     use crate::async_runtime::watch;
     use crate::raft::message::ClientWriteResult;
+    use crate::storage::RaftStateMachine;
     use crate::type_config::AsyncRuntime;
     use crate::vote::RaftLeaderId;
 
@@ -200,7 +193,7 @@ pub mod alias {
     pub type LeaderIdOf<C> = <C as RaftTypeConfig>::LeaderId;
     pub type VoteOf<C> = <C as RaftTypeConfig>::Vote;
     pub type EntryOf<C> = <C as RaftTypeConfig>::Entry;
-    pub type SnapshotDataOf<C> = <C as RaftTypeConfig>::SnapshotData;
+    pub type SnapshotDataOf<C, SM> = <SM as RaftStateMachine<C>>::SnapshotData;
     pub type AsyncRuntimeOf<C> = <C as RaftTypeConfig>::AsyncRuntime;
     pub type ResponderOf<C, T> = <C as RaftTypeConfig>::Responder<T>;
     pub type BatchOf<C, T> = <C as RaftTypeConfig>::Batch<T>;
@@ -245,8 +238,7 @@ pub mod alias {
     pub type StoredMembershipOf<C> = crate::StoredMembership<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>>;
     pub type SnapshotSignatureOf<C> = crate::storage::SnapshotSignature<CommittedLeaderIdOf<C>>;
     pub type SnapshotMetaOf<C> = crate::storage::SnapshotMeta<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>>;
-    pub type SnapshotOf<C> =
-        crate::storage::Snapshot<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>, SnapshotDataOf<C>>;
+    pub type SnapshotOf<C, SD> = crate::storage::Snapshot<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>, SD>;
     pub type MembershipStateOf<C> = crate::MembershipState<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>>;
     pub type ChangeMembershipErrorOf<C> = crate::errors::ChangeMembershipError<CommittedLeaderIdOf<C>, NodeIdOf<C>>;
     pub type InProgressOf<C> = crate::errors::InProgress<CommittedLeaderIdOf<C>>;

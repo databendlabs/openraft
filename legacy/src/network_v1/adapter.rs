@@ -44,17 +44,18 @@ use super::sender::Sender;
 /// let network: MyNetwork = /* ... */;
 ///
 /// // Wrap it to use as RaftNetworkV2
-/// let adapter = network.into_v2();
+/// let adapter = network.into_v2::<MySnapshotData>();
 /// ```
-pub struct Adapter<C, N> {
+pub struct Adapter<C, N, SD> {
     network: N,
-    _phantom: PhantomData<C>,
+    _phantom: PhantomData<(C, fn() -> SD)>,
 }
 
-impl<C, N> Adapter<C, N>
+impl<C, N, SD> Adapter<C, N, SD>
 where
     C: RaftTypeConfig,
     N: RaftNetwork<C>,
+    SD: OptionalSend + 'static,
 {
     /// Create a new adapter wrapping the given `RaftNetwork` implementation.
     pub fn new(network: N) -> Self {
@@ -80,12 +81,14 @@ where
     }
 }
 
-impl<C, N> RaftNetworkV2<C> for Adapter<C, N>
+impl<C, N, SD> RaftNetworkV2<C> for Adapter<C, N, SD>
 where
     C: RaftTypeConfig,
     N: RaftNetwork<C>,
-    C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin,
+    SD: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin + OptionalSend + 'static,
 {
+    type SnapshotData = SD;
+
     async fn append_entries(
         &mut self,
         rpc: AppendEntriesRequest<C>,
@@ -101,11 +104,11 @@ where
     async fn full_snapshot(
         &mut self,
         vote: VoteOf<C>,
-        snapshot: SnapshotOf<C>,
+        snapshot: SnapshotOf<C, Self::SnapshotData>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,
     ) -> Result<SnapshotResponse<C>, StreamingError<C>> {
-        Sender::<C>::send_snapshot(&mut self.network, vote, snapshot, cancel, option).await
+        Sender::<C, SD>::send_snapshot(&mut self.network, vote, snapshot, cancel, option).await
     }
 
     fn backoff(&self) -> Option<Backoff> {

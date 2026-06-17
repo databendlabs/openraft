@@ -19,14 +19,13 @@ pub mod network;
 pub mod store;
 
 pub type NodeId = u64;
+pub type SnapshotData = String;
 
 openraft::declare_raft_types!(
     /// Declare the type configuration for example K/V store.
     pub TypeConfig:
         D = types_kv::Request,
         R = types_kv::Response,
-        // In this example, snapshot is a path pointing to a file stored in shared storage.
-        SnapshotData = String
 );
 
 pub type LogStore = store::LogStore;

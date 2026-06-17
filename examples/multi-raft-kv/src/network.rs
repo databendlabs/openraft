@@ -25,7 +25,7 @@ use crate::TypeConfig;
 use crate::router::Router;
 use crate::typ;
 
-impl GroupRouter<TypeConfig, GroupId> for Router {
+impl GroupRouter<TypeConfig, GroupId, typ::SnapshotData> for Router {
     async fn append_entries(
         &self,
         target: NodeId,
@@ -51,7 +51,7 @@ impl GroupRouter<TypeConfig, GroupId> for Router {
         target: NodeId,
         group_id: GroupId,
         vote: typ::Vote,
-        snapshot: SnapshotOf<TypeConfig>,
+        snapshot: SnapshotOf<TypeConfig, typ::SnapshotData>,
         _cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         _option: RPCOption,
     ) -> Result<SnapshotResponse<TypeConfig>, StreamingError<TypeConfig>> {
@@ -82,7 +82,7 @@ pub type NetworkFactory = GroupNetworkFactory<Router, GroupId>;
 
 impl RaftNetworkFactory<TypeConfig> for NetworkFactory {
     /// The network type is `GroupNetworkAdapter` binding (Router, target, group_id).
-    type Network = GroupNetworkAdapter<TypeConfig, GroupId, Router>;
+    type Network = GroupNetworkAdapter<TypeConfig, GroupId, Router, typ::SnapshotData>;
 
     async fn new_client(&mut self, target: NodeId, _node: &openraft::BasicNode) -> Self::Network {
         GroupNetworkAdapter::new(self.factory.clone(), target, self.group_id.clone())

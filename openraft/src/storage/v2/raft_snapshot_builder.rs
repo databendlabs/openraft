@@ -1,6 +1,7 @@
 use std::io;
 
 use openraft_macros::add_async_trait;
+use openraft_macros::since;
 
 use crate::OptionalSend;
 use crate::OptionalSync;
@@ -16,10 +17,14 @@ use crate::type_config::alias::SnapshotOf;
 /// underlying state machine is anyway synchronized.
 ///
 /// [`RaftStateMachine`]: crate::storage::RaftStateMachine
+#[since(version = "0.10.0", change = "added SnapshotData associated type")]
 #[add_async_trait]
 pub trait RaftSnapshotBuilder<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
 {
+    /// Snapshot data this builder produces.
+    type SnapshotData: OptionalSend + 'static;
+
     /// Build snapshot
     ///
     /// A snapshot has to contain state of all applied logs, including membership. Usually it is
@@ -29,7 +34,7 @@ where C: RaftTypeConfig
     /// - Performing log compaction, e.g., merge log entries that operate on the same key, like an
     ///   LSM-tree does,
     /// - or by fetching a snapshot from the state machine.
-    async fn build_snapshot(&mut self) -> Result<SnapshotOf<C>, io::Error>;
+    async fn build_snapshot(&mut self) -> Result<SnapshotOf<C, Self::SnapshotData>, io::Error>;
 
     // NOTES:
     // This interface is geared toward small file-based snapshots. However, not all snapshots can
