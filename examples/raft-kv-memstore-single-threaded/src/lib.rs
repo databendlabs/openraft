@@ -20,6 +20,7 @@ pub mod network;
 pub mod store;
 
 // pub type NodeId = u64;
+pub type SnapshotData = std::io::Cursor<Vec<u8>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[derive(Default)]

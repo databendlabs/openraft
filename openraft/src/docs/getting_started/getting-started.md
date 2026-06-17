@@ -88,7 +88,6 @@ impl openraft::RaftTypeConfig for TypeConfig {
     type Responder<T>     = openraft::impls::OneshotResponder<TypeConfig, T>
         where T: openraft::OptionalSend + 'static;
     type AsyncRuntime     = openraft::impls::TokioRuntime;
-    type SnapshotData     = Cursor<Vec<u8>>;
 }
 ```
 
@@ -103,7 +102,6 @@ impl openraft::RaftTypeConfig for TypeConfig {
 >   which implements [`Responder`] trait.
 > - `AsyncRuntime` is the async runtime that will be used to run the raft
 >   instance, which implements [`AsyncRuntime`] trait.
-> - `SnapshotData` is the type that will be used to store the snapshot data.
 
 Openraft provides default implementations for mostly used types:
 - `Node`: [`EmptyNode`] and [`BasicNode`],
@@ -123,6 +121,8 @@ The trait [`RaftLogStorage`] defines how log data is stored and consumed.
 It could be a wrapper for a local key-value store like [RocksDB](https://docs.rs/rocksdb/latest/rocksdb/).
 
 The trait [`RaftStateMachine`] defines how log is interpreted. Usually it is an in memory state machine with or without on-disk data backed.
+
+Snapshot data is configured by the [`SnapshotData`] associated type, because it is the handle produced and consumed by the state machine.
 
 There is a good example,
 [`Mem KV Store`](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/src/store/mod.rs),
@@ -202,9 +202,11 @@ The trait [`RaftNetworkV2`] defines the data transmission protocol.
 
 ```ignore
 pub trait RaftNetworkV2<C: RaftTypeConfig>: Send + Sync + 'static {
+    type SnapshotData: OptionalSend + 'static;
+
     async fn append_entries(&mut self, rpc: AppendEntriesRequest<C>, option: RPCOption) -> Result<...>;
     async fn vote(&mut self, rpc: VoteRequest<C>, option: RPCOption) -> Result<...>;
-    async fn full_snapshot(&mut self, vote: Vote<C::NodeId>, snapshot: Snapshot<C>, cancel: impl Future<...>, option: RPCOption) -> Result<...>;
+    async fn full_snapshot(&mut self, vote: Vote<C::NodeId>, snapshot: SnapshotOf<C, Self::SnapshotData>, cancel: impl Future<...>, option: RPCOption) -> Result<...>;
 
     // Optional: override for pipelined replication
     fn stream_append(&mut self, input: impl Stream<Item = AppendEntriesRequest<C>>, option: RPCOption) -> BoxFuture<Result<BoxStream<StreamAppendResult<C>>>>;
@@ -497,6 +499,7 @@ Additionally, two test scripts for setting up a cluster are available:
 [`get_log_reader()`]:                   `crate::storage::RaftLogStorage::get_log_reader`
 
 [`RaftStateMachine`]:                   `crate::storage::RaftStateMachine`
+[`SnapshotData`]:                       `crate::storage::RaftStateMachine::SnapshotData`
 [`RaftStateMachine::SnapshotBuilder`]:  `crate::storage::RaftStateMachine::SnapshotBuilder`
 [`applied_state()`]:                    `crate::storage::RaftStateMachine::applied_state`
 [`apply()`]:                            `crate::storage::RaftStateMachine::apply`

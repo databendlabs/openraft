@@ -5,15 +5,19 @@ use crate::async_runtime::MpscSender;
 use crate::async_runtime::MpscWeakSender;
 use crate::async_runtime::SendError;
 use crate::core::sm;
+use crate::storage::RaftStateMachine;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::MpscWeakSenderOf;
+use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::SnapshotOf;
 
 /// State machine worker handle for sending command to it.
 pub(crate) struct Handle<C, SM = ()>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     pub(in crate::core::sm) cmd_tx: MpscSenderOf<C, sm::Command<C, SM>>,
 
@@ -22,7 +26,9 @@ where C: RaftTypeConfig
 }
 
 impl<C, SM> Handle<C, SM>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     pub(crate) async fn send(&mut self, cmd: sm::Command<C, SM>) -> Result<(), SendError<sm::Command<C, SM>>> {
         tracing::debug!("sending command to state machine worker: {:?}", cmd);
@@ -48,7 +54,9 @@ where C: RaftTypeConfig
 
 /// A handle for retrieving a snapshot from the state machine.
 pub(crate) struct SnapshotReader<C, SM = ()>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     /// Weak command sender to the state machine worker.
     ///
@@ -59,13 +67,15 @@ where C: RaftTypeConfig
 }
 
 impl<C, SM> SnapshotReader<C, SM>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     /// Get a snapshot from the state machine.
     ///
     /// If the state machine worker has shutdown, it will return an error.
     /// If there is no snapshot available, it will return `Ok(None)`.
-    pub(crate) async fn get_snapshot(&self) -> Result<Option<SnapshotOf<C>>, &'static str> {
+    pub(crate) async fn get_snapshot(&self) -> Result<Option<SnapshotOf<C, SnapshotDataOf<C, SM>>>, &'static str> {
         let (tx, rx) = C::oneshot();
 
         let cmd = sm::Command::get_snapshot(tx);
