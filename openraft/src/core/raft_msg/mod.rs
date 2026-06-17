@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use crate::ChangeMembers;
+use crate::OptionalSend;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::base::BoxOnce;
@@ -28,7 +29,6 @@ use crate::type_config::alias::EntryPayloadOf;
 #[cfg(feature = "runtime-stats")]
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::OneshotSenderOf;
-use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::SnapshotOf;
 use crate::type_config::alias::VoteOf;
 
@@ -53,8 +53,10 @@ pub(crate) type ClientReadTx<C> = ResultSender<C, Linearizer<C>, LinearizableRea
 /// A message sent by application to the [`RaftCore`].
 ///
 /// [`RaftCore`]: crate::core::RaftCore
-pub(crate) enum RaftMsg<C>
-where C: RaftTypeConfig
+pub(crate) enum RaftMsg<C, SD = ()>
+where
+    C: RaftTypeConfig,
+    SD: OptionalSend + 'static,
 {
     AppendEntries {
         rpc: AppendEntriesRequest<C>,
@@ -74,7 +76,7 @@ where C: RaftTypeConfig
 
     InstallSnapshot {
         vote: VoteOf<C>,
-        snapshot: SnapshotOf<C>,
+        snapshot: SnapshotOf<C, SD>,
         tx: OneshotSenderOf<C, SnapshotResponse<C>>,
     },
 
@@ -85,7 +87,7 @@ where C: RaftTypeConfig
     /// It does not check `Vote` because it is a read operation
     /// and does not break raft protocol.
     GetSnapshotReceiver {
-        tx: OneshotSenderOf<C, SnapshotDataOf<C>>,
+        tx: OneshotSenderOf<C, SD>,
     },
 
     ClientWrite {
@@ -132,7 +134,7 @@ where C: RaftTypeConfig
     },
 
     ExternalCommand {
-        cmd: ExternalCommand<C>,
+        cmd: ExternalCommand<C, SD>,
     },
 
     /// Get runtime statistics from RaftCore.
@@ -144,7 +146,11 @@ where C: RaftTypeConfig
     },
 }
 
-impl<C: RaftTypeConfig> RaftMsg<C> {
+impl<C, SD> RaftMsg<C, SD>
+where
+    C: RaftTypeConfig,
+    SD: OptionalSend + 'static,
+{
     /// Returns the name of this message variant.
     pub fn name(&self) -> RaftMsgName {
         match self {
@@ -166,8 +172,10 @@ impl<C: RaftTypeConfig> RaftMsg<C> {
     }
 }
 
-impl<C> fmt::Display for RaftMsg<C>
-where C: RaftTypeConfig
+impl<C, SD> fmt::Display for RaftMsg<C, SD>
+where
+    C: RaftTypeConfig,
+    SD: OptionalSend + 'static,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

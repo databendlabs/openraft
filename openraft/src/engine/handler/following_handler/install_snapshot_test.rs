@@ -1,4 +1,3 @@
-use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -68,7 +67,7 @@ fn test_install_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
             snapshot_id: "1-2-3-4".to_string(),
         },
-        snapshot: Cursor::new(vec![0u8]),
+        snapshot: (),
     });
 
     assert_eq!(None, cond);
@@ -100,7 +99,7 @@ fn test_install_snapshot_lt_committed() -> anyhow::Result<()> {
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
             snapshot_id: "1-2-3-4".to_string(),
         },
-        snapshot: Cursor::new(vec![0u8]),
+        snapshot: (),
     });
 
     assert_eq!(None, cond);
@@ -129,7 +128,7 @@ fn test_install_snapshot_not_conflict() -> anyhow::Result<()> {
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
             snapshot_id: "1-2-3-4".to_string(),
         },
-        snapshot: Cursor::new(vec![0u8]),
+        snapshot: (),
     });
 
     assert_eq!(
@@ -164,7 +163,7 @@ fn test_install_snapshot_not_conflict() -> anyhow::Result<()> {
                         last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
                         snapshot_id: "1-2-3-4".to_string(),
                     },
-                    snapshot: Cursor::new(vec![0u8]),
+                    snapshot: (),
                 },
                 LogIOId::new(Vote::new(2, 1).into_committed(), Some(log_id(4, 1, 6))),
             )),
@@ -214,7 +213,7 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
             snapshot_id: "1-2-3-4".to_string(),
         },
-        snapshot: Cursor::new(vec![0u8]),
+        snapshot: (),
     });
 
     assert_eq!(
@@ -253,7 +252,7 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
                         last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
                         snapshot_id: "1-2-3-4".to_string(),
                     },
-                    snapshot: Cursor::new(vec![0u8]),
+                    snapshot: (),
                 },
                 LogIOId::new(Vote::new(2, 1).into_committed(), Some(log_id(5, 1, 6)))
             )),
@@ -276,7 +275,7 @@ fn test_install_snapshot_advance_last_log_id() -> anyhow::Result<()> {
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
             snapshot_id: "1-2-3-4".to_string(),
         },
-        snapshot: Cursor::new(vec![0u8]),
+        snapshot: (),
     });
 
     assert_eq!(
@@ -315,7 +314,7 @@ fn test_install_snapshot_advance_last_log_id() -> anyhow::Result<()> {
                         last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
                         snapshot_id: "1-2-3-4".to_string(),
                     },
-                    snapshot: Cursor::new(vec![0u8]),
+                    snapshot: (),
                 },
                 LogIOId::new(Vote::new(2, 1).into_committed(), Some(log_id(100, 1, 100)))
             )),
@@ -340,7 +339,7 @@ fn test_install_snapshot_update_accepted() -> anyhow::Result<()> {
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
             snapshot_id: "1-2-3-4".to_string(),
         },
-        snapshot: Cursor::new(vec![0u8]),
+        snapshot: (),
     });
 
     assert_eq!(

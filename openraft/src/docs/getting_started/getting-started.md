@@ -202,9 +202,11 @@ The trait [`RaftNetworkV2`] defines the data transmission protocol.
 
 ```ignore
 pub trait RaftNetworkV2<C: RaftTypeConfig>: Send + Sync + 'static {
+    type SnapshotData: OptionalSend + 'static;
+
     async fn append_entries(&mut self, rpc: AppendEntriesRequest<C>, option: RPCOption) -> Result<...>;
     async fn vote(&mut self, rpc: VoteRequest<C>, option: RPCOption) -> Result<...>;
-    async fn full_snapshot(&mut self, vote: Vote<C::NodeId>, snapshot: Snapshot<C>, cancel: impl Future<...>, option: RPCOption) -> Result<...>;
+    async fn full_snapshot(&mut self, vote: Vote<C::NodeId>, snapshot: SnapshotOf<C, Self::SnapshotData>, cancel: impl Future<...>, option: RPCOption) -> Result<...>;
 
     // Optional: override for pipelined replication
     fn stream_append(&mut self, input: impl Stream<Item = AppendEntriesRequest<C>>, option: RPCOption) -> BoxFuture<Result<BoxStream<StreamAppendResult<C>>>>;

@@ -21,19 +21,22 @@ use openraft::RaftTypeConfig;
 use openraft::Snapshot;
 use openraft::errors::RaftError;
 use openraft::raft::SnapshotResponse;
+use openraft::storage::RaftStateMachine;
 use serde::Serialize;
 use tokio::net::TcpListener;
 
 pub struct Server<C, SM>
-where C: RaftTypeConfig<Node = NodeInfo, SnapshotData = Cursor<Vec<u8>>>
+where
+    C: RaftTypeConfig<Node = NodeInfo>,
+    SM: RaftStateMachine<C, SnapshotData = Cursor<Vec<u8>>>,
 {
     raft: Arc<openraft::Raft<C, SM>>,
 }
 
 impl<C, SM> Server<C, SM>
 where
-    C: RaftTypeConfig<Node = NodeInfo, SnapshotData = Cursor<Vec<u8>>>,
-    SM: 'static,
+    C: RaftTypeConfig<Node = NodeInfo>,
+    SM: RaftStateMachine<C, SnapshotData = Cursor<Vec<u8>>> + 'static,
 {
     pub fn new(raft: openraft::Raft<C, SM>) -> Self {
         Self { raft: Arc::new(raft) }
@@ -64,8 +67,8 @@ async fn handle<C, SM>(
     req: Request<Incoming>,
 ) -> Result<Response<Full<Bytes>>, Infallible>
 where
-    C: RaftTypeConfig<Node = NodeInfo, SnapshotData = Cursor<Vec<u8>>>,
-    SM: 'static,
+    C: RaftTypeConfig<Node = NodeInfo>,
+    SM: RaftStateMachine<C, SnapshotData = Cursor<Vec<u8>>> + 'static,
 {
     if req.method() != Method::POST {
         return Ok(error_response(StatusCode::NOT_FOUND, "not found"));
@@ -91,7 +94,8 @@ async fn handle_raft_rpc<C, SM>(
     body: Bytes,
 ) -> Result<Response<Full<Bytes>>, Response<Full<Bytes>>>
 where
-    C: RaftTypeConfig<Node = NodeInfo, SnapshotData = Cursor<Vec<u8>>>,
+    C: RaftTypeConfig<Node = NodeInfo>,
+    SM: RaftStateMachine<C, SnapshotData = Cursor<Vec<u8>>>,
 {
     match path {
         "/append" => {

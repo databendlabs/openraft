@@ -23,8 +23,10 @@ use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::io_state::log_io_id::LogIOId;
+use crate::storage::RaftStateMachine;
 use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::SnapshotOf;
 use crate::type_config::alias::StoredMembershipOf;
 use crate::vote::raft_vote::RaftVoteExt;
@@ -44,7 +46,9 @@ mod update_committed_membership_test;
 ///
 /// It mainly implements the logic of a follower/learner
 pub(crate) struct FollowingHandler<'x, C, SM = ()>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     /// The Leader this Acceptor (Follower/Leaner) currently following.
     pub(crate) leader_vote: CommittedVoteOf<C>,
@@ -55,7 +59,9 @@ where C: RaftTypeConfig
 }
 
 impl<C, SM> FollowingHandler<'_, C, SM>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     /// Append entries to follower/learner.
     ///
@@ -236,7 +242,10 @@ where C: RaftTypeConfig
     /// - Otherwise `None` if the snapshot will not be installed (e.g., if it is not newer than the
     ///   current state).
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn install_full_snapshot(&mut self, snapshot: SnapshotOf<C>) -> Option<Condition<C>> {
+    pub(crate) fn install_full_snapshot(
+        &mut self,
+        snapshot: SnapshotOf<C, SnapshotDataOf<C, SM>>,
+    ) -> Option<Condition<C>> {
         let meta = &snapshot.meta;
         tracing::info!("install full snapshot, meta: {:?}", meta);
 

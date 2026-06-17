@@ -3,6 +3,7 @@ use openraft_macros::add_async_trait;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::engine::Command;
+use crate::storage::RaftStateMachine;
 
 /// Defines behaviors of a runtime to support the protocol engine.
 ///
@@ -58,7 +59,9 @@ use crate::engine::Command;
 ///
 /// TODO: add this diagram to guides/
 #[add_async_trait]
-pub(crate) trait RaftRuntime<C: RaftTypeConfig, SM = ()> {
+pub(crate) trait RaftRuntime<C: RaftTypeConfig, SM = ()>
+where SM: RaftStateMachine<C>
+{
     /// Run a command produced by the engine.
     ///
     /// If a command cannot be run, i.e., waiting for some event, it will be returned

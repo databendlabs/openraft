@@ -28,6 +28,7 @@ use crate::raft_state::LogStateReader;
 use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::replication::replicate::Replicate;
 use crate::replication::response::ReplicationResult;
+use crate::storage::RaftStateMachine;
 use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
@@ -48,7 +49,9 @@ mod update_matching_test;
 /// - Purging in-snapshot logs;
 /// - etc.
 pub(crate) struct ReplicationHandler<'x, C, SM = ()>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     pub(crate) config: &'x mut EngineConfig<C>,
     pub(crate) leader: &'x mut Leader<C, LeaderQuorumSet<C>>,
@@ -57,7 +60,9 @@ where C: RaftTypeConfig
 }
 
 impl<C, SM> ReplicationHandler<'_, C, SM>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     /// Append a new membership and update related state such as replication streams.
     ///

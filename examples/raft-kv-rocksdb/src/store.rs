@@ -55,7 +55,7 @@ pub struct StateMachineData {
     pub kvs: Arc<Mutex<BTreeMap<String, String>>>,
 }
 
-impl RaftSnapshotBuilder<TypeConfig> for StateMachineStore {
+impl RaftSnapshotBuilder<TypeConfig, Cursor<Vec<u8>>> for StateMachineStore {
     async fn build_snapshot(&mut self) -> Result<Snapshot, io::Error> {
         let last_applied_log = self.data.last_applied_log_id;
         let last_membership = self.data.last_membership.clone();
@@ -145,6 +145,8 @@ impl StateMachineStore {
 }
 
 impl RaftStateMachine<TypeConfig> for StateMachineStore {
+    type SnapshotData = Cursor<Vec<u8>>;
+
     type SnapshotBuilder = Self;
 
     async fn applied_state(&mut self) -> Result<(Option<LogId>, StoredMembership), io::Error> {

@@ -8,6 +8,7 @@
 //! See `examples/multi-raft-kv` for usage.
 
 use std::future::Future;
+use std::marker::PhantomData;
 
 use openraft::OptionalSend;
 use openraft::OptionalSync;
@@ -32,8 +33,10 @@ use openraft::type_config::alias::VoteOf;
 ///
 /// Implement this on your shared router/connection pool to enable connection
 /// sharing across all Raft groups. The adapter will bind (target, group_id).
-pub trait GroupRouter<C, G>: Clone + OptionalSend + OptionalSync + 'static
-where C: RaftTypeConfig
+pub trait GroupRouter<C, G, SD = ()>: Clone + OptionalSend + OptionalSync + 'static
+where
+    C: RaftTypeConfig,
+    SD: OptionalSend + 'static,
 {
     /// Send AppendEntries to target node for a specific group.
     fn append_entries(
@@ -59,7 +62,7 @@ where C: RaftTypeConfig
         target: C::NodeId,
         group_id: G,
         vote: VoteOf<C>,
-        snapshot: SnapshotOf<C>,
+        snapshot: SnapshotOf<C, SD>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,
     ) -> impl Future<Output = Result<SnapshotResponse<C>, StreamingError<C>>> + OptionalSend;
@@ -91,35 +94,40 @@ where C: RaftTypeConfig
 ///
 /// This wraps a [`GroupRouter`] implementation (e.g., your Router) and
 /// automatically implements `RaftNetworkV2` for a specific (target, group).
-pub struct GroupNetworkAdapter<C, G, N>
+pub struct GroupNetworkAdapter<C, G, N, SD = ()>
 where
     C: RaftTypeConfig,
-    N: GroupRouter<C, G>,
+    N: GroupRouter<C, G, SD>,
+    SD: OptionalSend + 'static,
 {
     router: N,
     target: C::NodeId,
     group_id: G,
+    _phantom: PhantomData<fn() -> SD>,
 }
 
-impl<C, G, N> Clone for GroupNetworkAdapter<C, G, N>
+impl<C, G, N, SD> Clone for GroupNetworkAdapter<C, G, N, SD>
 where
     C: RaftTypeConfig,
     G: Clone,
-    N: GroupRouter<C, G>,
+    N: GroupRouter<C, G, SD>,
+    SD: OptionalSend + 'static,
 {
     fn clone(&self) -> Self {
         Self {
             router: self.router.clone(),
             target: self.target.clone(),
             group_id: self.group_id.clone(),
+            _phantom: PhantomData,
         }
     }
 }
 
-impl<C, G, N> GroupNetworkAdapter<C, G, N>
+impl<C, G, N, SD> GroupNetworkAdapter<C, G, N, SD>
 where
     C: RaftTypeConfig,
-    N: GroupRouter<C, G>,
+    N: GroupRouter<C, G, SD>,
+    SD: OptionalSend + 'static,
 {
     /// Create adapter binding router to specific (target, group).
     pub fn new(router: N, target: C::NodeId, group_id: G) -> Self {
@@ -127,6 +135,7 @@ where
             router,
             target,
             group_id,
+            _phantom: PhantomData,
         }
     }
 
@@ -142,12 +151,15 @@ where
 }
 
 // Implement RaftNetworkV2 for GroupNetworkAdapter.
-impl<C, G, N> RaftNetworkV2<C> for GroupNetworkAdapter<C, G, N>
+impl<C, G, N, SD> RaftNetworkV2<C> for GroupNetworkAdapter<C, G, N, SD>
 where
     C: RaftTypeConfig,
     G: Clone + OptionalSend + OptionalSync + 'static,
-    N: GroupRouter<C, G>,
+    N: GroupRouter<C, G, SD>,
+    SD: OptionalSend + 'static,
 {
+    type SnapshotData = SD;
+
     async fn append_entries(
         &mut self,
         rpc: AppendEntriesRequest<C>,
@@ -163,7 +175,7 @@ where
     async fn full_snapshot(
         &mut self,
         vote: VoteOf<C>,
-        snapshot: SnapshotOf<C>,
+        snapshot: SnapshotOf<C, Self::SnapshotData>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,
     ) -> Result<SnapshotResponse<C>, StreamingError<C>> {

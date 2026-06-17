@@ -110,6 +110,8 @@ impl TurmoilConnection {
 }
 
 impl RaftNetworkV2<TypeConfig> for TurmoilConnection {
+    type SnapshotData = crate::typ::SnapshotData;
+
     async fn append_entries(
         &mut self,
         rpc: AppendEntriesRequest,

@@ -26,7 +26,6 @@ mod append_trait;
 mod backoff;
 mod backoff_trait;
 mod factory;
-mod raft_network_api;
 mod raft_network_v1;
 mod rpc_option;
 mod rpc_type;
@@ -41,7 +40,6 @@ pub use append_trait::NetAppend;
 pub use backoff::Backoff;
 pub use backoff_trait::NetBackoff;
 pub use factory::RaftNetworkFactory;
-pub(crate) use raft_network_api::RaftNetworkApi;
 #[allow(deprecated)]
 pub use raft_network_v1::RaftNetwork;
 pub use rpc_option::RPCOption;

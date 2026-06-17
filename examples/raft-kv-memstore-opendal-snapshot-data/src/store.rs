@@ -68,7 +68,7 @@ impl StateMachineStore {
     }
 }
 
-impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
+impl RaftSnapshotBuilder<TypeConfig, SnapshotData> for Arc<StateMachineStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(&mut self) -> Result<Snapshot, io::Error> {
         let data;
@@ -126,6 +126,8 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
 }
 
 impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
+    type SnapshotData = crate::SnapshotData;
+
     type SnapshotBuilder = Self;
 
     async fn applied_state(&mut self) -> Result<(Option<LogId>, StoredMembership), io::Error> {

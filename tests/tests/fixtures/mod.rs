@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use std::env;
 use std::fmt;
 use std::future::Future;
+use std::io::Cursor;
 use std::panic::PanicHookInfo;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -70,6 +71,8 @@ use pretty_assertions::assert_ne;
 use tracing_appender::non_blocking::WorkerGuard;
 
 use crate::fixtures::logging::init_file_logging;
+use crate::fixtures::rpc_request::RpcRequest;
+use crate::fixtures::rpc_response::RpcResponse;
 
 pub mod logging;
 mod post_hook;
@@ -77,6 +80,10 @@ mod pre_hook;
 pub mod rpc_error_type;
 pub mod rpc_request;
 pub mod rpc_response;
+
+type MemSnapshotData = Cursor<Vec<u8>>;
+type MemRpcRequest = RpcRequest<TypeConfig, MemSnapshotData>;
+type MemRpcResponse = RpcResponse<TypeConfig>;
 
 pub type MemLogStore = Arc<LogStoreInner>;
 pub type MemStateMachine = Arc<SMInner>;
@@ -199,8 +206,6 @@ use post_hook::PostHookResult;
 use pre_hook::PreHook;
 use pre_hook::PreHookResult;
 use rpc_error_type::RpcErrorType;
-use rpc_request::RpcRequest;
-use rpc_response::RpcResponse;
 
 /// A type which emulates a network transport and implements the `RaftNetworkFactory` trait.
 #[derive(Clone)]
@@ -501,20 +506,13 @@ impl TypedRaftRouter {
 
     /// Set a hook function to be called when before an RPC is sent to target node.
     pub async fn set_rpc_pre_hook<F>(&self, rpc_type: RPCTypes, hook: F)
-    where F: Fn(&TypedRaftRouter, RpcRequest<TypeConfig>, MemNodeId, MemNodeId) -> PreHookResult + Send + 'static {
+    where F: Fn(&TypedRaftRouter, MemRpcRequest, MemNodeId, MemNodeId) -> PreHookResult + Send + 'static {
         self.rpc_pre_hook(rpc_type, Some(Box::new(hook))).await;
     }
 
     pub async fn set_rpc_post_hook<F>(&self, rpc_type: RPCTypes, hook: F)
-    where F: Fn(
-                &TypedRaftRouter,
-                RpcRequest<TypeConfig>,
-                RpcResponse<TypeConfig>,
-                MemNodeId,
-                MemNodeId,
-            ) -> PostHookResult
-            + Send
-            + 'static {
+    where F: Fn(&TypedRaftRouter, MemRpcRequest, MemRpcResponse, MemNodeId, MemNodeId) -> PostHookResult + Send + 'static
+    {
         self.rpc_post_hook(rpc_type, Some(Box::new(hook))).await;
     }
 
@@ -541,7 +539,7 @@ impl TypedRaftRouter {
     #[allow(clippy::result_large_err)]
     async fn call_rpc_pre_hook<E>(
         &self,
-        request: impl Into<RpcRequest<TypeConfig>>,
+        request: impl Into<MemRpcRequest>,
         from: MemNodeId,
         to: MemNodeId,
     ) -> Result<(), RPCError<MemConfig, E>>
@@ -584,8 +582,8 @@ impl TypedRaftRouter {
     #[allow(clippy::result_large_err)]
     async fn call_rpc_post_hook<E>(
         &self,
-        request: impl Into<RpcRequest<TypeConfig>>,
-        response: impl Into<RpcResponse<TypeConfig>>,
+        request: impl Into<MemRpcRequest>,
+        response: impl Into<MemRpcResponse>,
         from: MemNodeId,
         to: MemNodeId,
     ) -> Result<(), RPCError<MemConfig, E>>
@@ -842,6 +840,8 @@ pub struct RaftRouterNetwork {
 }
 
 impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
+    type SnapshotData = MemSnapshotData;
+
     /// Send an AppendEntries RPC to the target Raft node (§5).
     async fn append_entries(
         &mut self,
@@ -916,7 +916,7 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
     async fn full_snapshot(
         &mut self,
         vote: Vote<<MemConfig as RaftTypeConfig>::LeaderId>,
-        snapshot: SnapshotOf<MemConfig>,
+        snapshot: SnapshotOf<MemConfig, Self::SnapshotData>,
         _cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         _option: RPCOption,
     ) -> Result<SnapshotResponse<MemConfig>, StreamingError<MemConfig>> {

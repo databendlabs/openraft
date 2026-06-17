@@ -43,6 +43,7 @@ use crate::raft::stream_append::StreamAppendResult;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
+use crate::storage::RaftStateMachine;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
@@ -68,7 +69,9 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// TODO: make the fields private
 #[derive(Debug)]
 pub(crate) struct Engine<C, SM = ()>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     pub(crate) config: EngineConfig<C>,
 
@@ -105,7 +108,9 @@ where C: RaftTypeConfig
 }
 
 impl<C, SM> Engine<C, SM>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     pub(crate) fn new(init_state: RaftState<C>, config: EngineConfig<C>) -> Self {
         Self {
@@ -606,7 +611,7 @@ where C: RaftTypeConfig
     pub(crate) fn handle_install_full_snapshot(
         &mut self,
         vote: VoteOf<C>,
-        snapshot: SnapshotOf<C>,
+        snapshot: SnapshotOf<C, SnapshotDataOf<C, SM>>,
         tx: OneshotSenderOf<C, SnapshotResponse<C>>,
     ) {
         tracing::info!("{}: vote: {}, snapshot: {}", func_name!(), vote, snapshot);
@@ -636,7 +641,7 @@ where C: RaftTypeConfig
 
     /// Install a completely received snapshot on a follower.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn handle_begin_receiving_snapshot(&mut self, tx: OneshotSenderOf<C, SnapshotDataOf<C>>) {
+    pub(crate) fn handle_begin_receiving_snapshot(&mut self, tx: OneshotSenderOf<C, SnapshotDataOf<C, SM>>) {
         tracing::info!("{}", func_name!());
         self.output.push_command(Command::from(sm::Command::begin_receiving_snapshot(tx)));
     }
@@ -848,7 +853,9 @@ where C: RaftTypeConfig
 
 /// Supporting util
 impl<C, SM> Engine<C, SM>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     /// Vote is granted by a quorum, leader established.
     #[tracing::instrument(level = "debug", skip_all)]
@@ -1061,7 +1068,9 @@ mod engine_testing {
     use crate::raft_state::RaftState;
 
     impl<C, SM> Engine<C, SM>
-    where C: RaftTypeConfig
+    where
+        C: RaftTypeConfig,
+        SM: crate::storage::RaftStateMachine<C>,
     {
         /// Create a Leader state just for testing purpose only,
         /// without initializing related resource,

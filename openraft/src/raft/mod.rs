@@ -114,6 +114,7 @@ use crate::metrics::RaftMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::metrics::Wait;
 use crate::metrics::WaitError;
+use crate::network::NetSnapshot;
 use crate::raft::raft_inner::RaftInner;
 pub use crate::raft::runtime_config_handle::RuntimeConfigHandle;
 use crate::raft::trigger::Trigger;
@@ -222,7 +223,6 @@ macro_rules! declare_raft_types {
                 (LeaderId     , , $crate::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId> ),
                 (Vote           , , $crate::impls::Vote<Self::LeaderId>            ),
                 (Entry          , , $crate::Entry<<Self::LeaderId as $crate::vote::RaftLeaderId>::Committed, Self::D, Self::NodeId, Self::Node> ),
-                (SnapshotData   , , std::io::Cursor<Vec<u8>>                     ),
                 (Responder<T>   , , $crate::impls::ProgressResponder<Self, T> where T: $crate::OptionalSend + 'static     ),
                 (Batch<T>       , , $crate::impls::InlineBatch<T> where T: $crate::OptionalSend + 'static     ),
                 (AsyncRuntime   , , $crate::impls::TokioRuntime                  ),
@@ -319,14 +319,18 @@ pub enum ReadPolicy {
 /// - [`Config`] for configuration options
 /// - [`RaftMetrics`] for monitoring cluster state
 pub struct Raft<C, SM = ()>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
-    inner: Arc<RaftInner<C>>,
+    inner: Arc<RaftInner<C, SM::SnapshotData>>,
     sm_cmd_tx: MpscWeakSenderOf<C, sm::Command<C, SM>>,
 }
 
 impl<C, SM> Clone for Raft<C, SM>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     fn clone(&self) -> Self {
         Self {
@@ -337,7 +341,9 @@ where C: RaftTypeConfig
 }
 
 impl<C, SM> Debug for Raft<C, SM>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Raft").field("id", &self.inner.id).finish()
@@ -449,6 +455,7 @@ where
     ) -> Result<Self, Fatal<C>>
     where
         N: RaftNetworkFactory<C>,
+        N::Network: NetSnapshot<C, SnapshotData = SM::SnapshotData>,
         LS: RaftLogStorage<C>,
     {
         let api_channel_size = config.api_channel_size();
@@ -566,7 +573,7 @@ where
         // Spawn forwarder task to bridge Watch channel to notification channel
         let _forwarder_handle = C::spawn(io_completion_forwarder::<C>(rx_io_completed, weak_tx_notify));
 
-        StepDownWatcher::<C>::spawn(
+        StepDownWatcher::<C, SM::SnapshotData>::spawn(
             rx_server_metrics.clone(),
             rx_metrics.clone(),
             tx_api.downgrade(),
@@ -598,7 +605,9 @@ where
 }
 
 impl<C, SM> Raft<C, SM>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     /// Return a handle to update runtime config.
     ///
@@ -611,7 +620,7 @@ where C: RaftTypeConfig
     /// raft.runtime_config().tick(true);
     /// raft.runtime_config().elect(true);
     /// ```
-    pub fn runtime_config(&self) -> RuntimeConfigHandle<'_, C> {
+    pub fn runtime_config(&self) -> RuntimeConfigHandle<'_, C, SM::SnapshotData> {
         RuntimeConfigHandle::new(self.inner.as_ref())
     }
 
@@ -800,15 +809,15 @@ where C: RaftTypeConfig
     /// - [`ProtocolApi::begin_receiving_snapshot`]
     /// - [`ProtocolApi::install_full_snapshot`]
     /// - [`ProtocolApi::handle_transfer_leader`]
-    pub(crate) fn protocol_api(&self) -> ProtocolApi<C> {
+    pub(crate) fn protocol_api(&self) -> ProtocolApi<C, SM::SnapshotData> {
         ProtocolApi::new(self.inner.clone())
     }
 
-    pub(crate) fn app_api(&self) -> AppApi<'_, C> {
+    pub(crate) fn app_api(&self) -> AppApi<'_, C, SM::SnapshotData> {
         AppApi::new(&self.inner)
     }
 
-    pub(crate) fn management_api(&self) -> ManagementApi<'_, C> {
+    pub(crate) fn management_api(&self) -> ManagementApi<'_, C, SM::SnapshotData> {
         ManagementApi::new(self.inner.as_ref())
     }
 
@@ -820,7 +829,7 @@ where C: RaftTypeConfig
     /// let raft = Raft::new(...).await?;
     /// raft.trigger().elect(false).await?;
     /// ```
-    pub fn trigger(&self) -> Trigger<'_, C> {
+    pub fn trigger(&self) -> Trigger<'_, C, SM::SnapshotData> {
         Trigger::new(self.inner.as_ref())
     }
 
@@ -966,14 +975,14 @@ where C: RaftTypeConfig
     /// It returns error only when `RaftCore` fails to serve the request, e.g., Encountering a
     /// storage error or shutting down.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn get_snapshot(&self) -> Result<Option<SnapshotOf<C>>, RaftError<C>> {
+    pub async fn get_snapshot(&self) -> Result<Option<SnapshotOf<C, SM::SnapshotData>>, RaftError<C>> {
         self.protocol_api().get_snapshot().await.into_raft_result()
     }
 
     /// Get a snapshot data for receiving snapshot from the leader.
     #[since(version = "0.10.0", change = "SnapshotData without Box")]
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn begin_receiving_snapshot(&self) -> Result<SnapshotDataOf<C>, RaftError<C>> {
+    pub async fn begin_receiving_snapshot(&self) -> Result<SnapshotDataOf<C, SM>, RaftError<C>> {
         self.protocol_api().begin_receiving_snapshot().await.into_raft_result()
     }
 
@@ -987,7 +996,7 @@ where C: RaftTypeConfig
     pub async fn install_full_snapshot(
         &self,
         vote: VoteOf<C>,
-        snapshot: SnapshotOf<C>,
+        snapshot: SnapshotOf<C, SM::SnapshotData>,
     ) -> Result<SnapshotResponse<C>, Fatal<C>> {
         self.protocol_api().install_full_snapshot(vote, snapshot).await
     }
@@ -1247,7 +1256,7 @@ where C: RaftTypeConfig
     /// [`.responder()`]: WriteRequest::responder
     /// [`.with_leader()`]: WriteRequest::with_leader
     #[since(version = "0.10.0")]
-    pub fn write(&self, app_data: C::D) -> WriteRequest<'_, C> {
+    pub fn write(&self, app_data: C::D) -> WriteRequest<'_, C, SM::SnapshotData> {
         WriteRequest {
             inner: &self.inner,
             app_data,

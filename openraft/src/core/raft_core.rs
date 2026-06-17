@@ -77,6 +77,7 @@ use crate::metrics::RaftMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::metrics::ReplicationMetrics;
 use crate::metrics::SerdeInstant;
+use crate::network::NetSnapshot;
 use crate::network::NetStreamAppend;
 use crate::network::NetTransferLeader;
 use crate::network::NetVote;
@@ -111,6 +112,7 @@ use crate::replication::snapshot_transmitter::SnapshotTransmitter;
 use crate::runtime::RaftRuntime;
 use crate::storage::IOFlushed;
 use crate::storage::RaftLogStorage;
+use crate::storage::RaftStateMachine;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::BatchOf;
 use crate::type_config::alias::CommittedLeaderIdOf;
@@ -163,7 +165,9 @@ pub struct RaftCore<C, NF, LS, SM>
 where
     C: RaftTypeConfig,
     NF: RaftNetworkFactory<C>,
+    NF::Network: NetSnapshot<C, SnapshotData = SM::SnapshotData>,
     LS: RaftLogStorage<C>,
+    SM: RaftStateMachine<C>,
 {
     /// This node's ID.
     pub(crate) id: C::NodeId,
@@ -198,8 +202,8 @@ where
     pub(crate) heartbeat_handle: HeartbeatWorkersHandle<C>,
 
     #[allow(dead_code)]
-    pub(crate) tx_api: MpscSenderOf<C, RaftMsg<C>>,
-    pub(crate) rx_api: BatchRaftMsgReceiver<C>,
+    pub(crate) tx_api: MpscSenderOf<C, RaftMsg<C, SM::SnapshotData>>,
+    pub(crate) rx_api: BatchRaftMsgReceiver<C, SM::SnapshotData>,
 
     /// A Sender to send callback by other components to [`RaftCore`], when an action is finished,
     /// such as flushing log to disk, or applying log entries to state machine.
@@ -279,8 +283,9 @@ impl<C, NF, LS, SM> RaftCore<C, NF, LS, SM>
 where
     C: RaftTypeConfig,
     NF: RaftNetworkFactory<C>,
+    NF::Network: NetSnapshot<C, SnapshotData = SM::SnapshotData>,
     LS: RaftLogStorage<C>,
-    SM: 'static,
+    SM: RaftStateMachine<C>,
 {
     /// The main loop of the Raft protocol.
     pub(crate) async fn main(mut self, rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<Infallible, Fatal<C>> {
@@ -1584,7 +1589,7 @@ where
     // TODO: Make this method non-async. It does not need to run any async command in it.
     #[tracing::instrument(level = "debug", skip(self, msg), fields(state = debug(self.engine.state.server_state), id=display(&self.id)
     ))]
-    pub(crate) async fn handle_api_msg(&mut self, msg: RaftMsg<C>) {
+    pub(crate) async fn handle_api_msg(&mut self, msg: RaftMsg<C, SM::SnapshotData>) {
         tracing::debug!("RAFT_event id={:<2}  input: {}", self.id, msg);
 
         self.runtime_stats.record_raft_msg(msg.name());
@@ -2202,8 +2207,9 @@ impl<C, N, LS, SM> RaftRuntime<C, SM> for RaftCore<C, N, LS, SM>
 where
     C: RaftTypeConfig,
     N: RaftNetworkFactory<C>,
+    N::Network: NetSnapshot<C, SnapshotData = SM::SnapshotData>,
     LS: RaftLogStorage<C>,
-    SM: 'static,
+    SM: RaftStateMachine<C>,
 {
     async fn run_command(&mut self, cmd: Command<C, SM>) -> Result<Option<Command<C, SM>>, StorageError<C>> {
         // tracing::debug!("RAFT_event id={:<2} trycmd: {}", self.id, cmd);
@@ -2412,7 +2418,7 @@ where
                 close_old_streams,
             } => {
                 self.heartbeat_handle
-                    .spawn_workers(
+                    .spawn_workers::<N>(
                         leader_vote.clone(),
                         &mut self.network_factory,
                         &self.tx_notification,

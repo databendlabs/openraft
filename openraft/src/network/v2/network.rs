@@ -92,6 +92,13 @@ use crate::type_config::alias::VoteOf;
 pub trait RaftNetworkV2<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
 {
+    /// Snapshot data this network implementation can transmit.
+    #[since(
+        version = "0.10.0",
+        change = "moved SnapshotData from RaftTypeConfig to RaftNetworkV2"
+    )]
+    type SnapshotData: OptionalSend + 'static;
+
     /// Send an AppendEntries RPC to the target.
     async fn append_entries(
         &mut self,
@@ -180,7 +187,7 @@ where C: RaftTypeConfig
     async fn full_snapshot(
         &mut self,
         vote: VoteOf<C>,
-        snapshot: SnapshotOf<C>,
+        snapshot: SnapshotOf<C, Self::SnapshotData>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,
     ) -> Result<SnapshotResponse<C>, StreamingError<C>>;
@@ -282,10 +289,12 @@ where
     C: RaftTypeConfig,
     T: RaftNetworkV2<C> + ?Sized,
 {
+    type SnapshotData = T::SnapshotData;
+
     async fn full_snapshot(
         &mut self,
         vote: VoteOf<C>,
-        snapshot: SnapshotOf<C>,
+        snapshot: SnapshotOf<C, Self::SnapshotData>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,
     ) -> Result<SnapshotResponse<C>, StreamingError<C>> {
