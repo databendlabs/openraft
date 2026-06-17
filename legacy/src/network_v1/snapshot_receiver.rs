@@ -15,6 +15,7 @@ use openraft::errors::RaftError;
 use openraft::errors::SnapshotMismatch;
 use openraft::raft::InstallSnapshotRequest;
 use openraft::raft::InstallSnapshotResponse;
+use openraft::storage::RaftStateMachine;
 use openraft::type_config::alias::SnapshotOf;
 use tokio::io::AsyncWriteExt;
 
@@ -41,9 +42,7 @@ use super::streaming::StreamingState;
 /// // Added method for chunked snapshot receiving (via trait)
 /// raft.install_snapshot(req).await?;
 /// ```
-pub trait ChunkedSnapshotReceiver<C: RaftTypeConfig>: private::Sealed<C>
-where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin
-{
+pub trait ChunkedSnapshotReceiver<C: RaftTypeConfig>: private::Sealed<C> {
     /// Receive a snapshot chunk and assemble it into a complete snapshot.
     ///
     /// This method should be called from your RPC handler when receiving an
@@ -66,7 +65,9 @@ where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io:
 }
 
 impl<C: RaftTypeConfig, SM> ChunkedSnapshotReceiver<C> for Raft<C, SM>
-where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin
+where
+    SM: RaftStateMachine<C>,
+    SM::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin,
 {
     async fn install_snapshot(
         &self,
@@ -85,7 +86,7 @@ where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io:
         );
 
         // Get or create streaming state via extension()
-        let state: StreamingState<C> = self.extension();
+        let state: StreamingState<C, SM::SnapshotData> = self.extension();
         let mut streaming = state.streaming.lock().await;
 
         // Check if this is a new snapshot or continuation
@@ -133,7 +134,7 @@ where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io:
 
             tracing::info!(snapshot_meta = debug(&snapshot_meta), "Finished streaming snapshot");
 
-            let snapshot = SnapshotOf::<C> {
+            let snapshot = SnapshotOf::<C, SM::SnapshotData> {
                 meta: snapshot_meta,
                 snapshot: data,
             };
@@ -151,8 +152,9 @@ where C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io:
 mod private {
     use openraft::Raft;
     use openraft::RaftTypeConfig;
+    use openraft::storage::RaftStateMachine;
 
     pub trait Sealed<C: RaftTypeConfig> {}
 
-    impl<C: RaftTypeConfig, SM> Sealed<C> for Raft<C, SM> {}
+    impl<C: RaftTypeConfig, SM: RaftStateMachine<C>> Sealed<C> for Raft<C, SM> {}
 }

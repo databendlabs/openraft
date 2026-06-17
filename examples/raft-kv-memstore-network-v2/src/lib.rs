@@ -1,7 +1,6 @@
 #![allow(clippy::uninlined_format_args)]
 #![deny(unused_qualifications)]
 
-use std::io::Cursor;
 use std::sync::Arc;
 
 use openraft::Config;
@@ -14,6 +13,7 @@ pub mod app;
 pub mod store;
 
 pub type NodeId = u64;
+pub type SnapshotData = std::io::Cursor<Vec<u8>>;
 
 openraft::declare_raft_types!(
     /// Declare the type configuration for example K/V store.
@@ -21,7 +21,6 @@ openraft::declare_raft_types!(
         D = types_kv::Request,
         R = types_kv::Response,
         Node = NodeInfo,
-        SnapshotData = Cursor<Vec<u8>>,
 );
 
 pub type LogStore = store::LogStore;

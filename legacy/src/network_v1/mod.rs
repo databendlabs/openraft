@@ -21,7 +21,7 @@
 //!
 //! // In RaftNetworkFactory:
 //! impl RaftNetworkFactory<MyConfig> for MyFactory {
-//!     type Network = Adapter<MyConfig, MyNetwork>;
+//!     type Network = Adapter<MyConfig, MyNetwork, MySnapshotData>;
 //!
 //!     async fn new_client(&mut self, ...) -> Self::Network {
 //!         MyNetwork::new(...).into_v2()

@@ -2,6 +2,7 @@ use std::future::IntoFuture;
 
 use openraft_macros::since;
 
+use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::base::BoxFuture;
 use crate::batch::Batch;
@@ -41,17 +42,21 @@ use crate::type_config::alias::WriteResponderOf;
 /// [`Raft::write()`]: crate::Raft::write
 /// [`.responder()`]: WriteRequest::responder
 #[since(version = "0.10.0")]
-pub struct WriteRequest<'a, C>
-where C: RaftTypeConfig
+pub struct WriteRequest<'a, C, SD = ()>
+where
+    C: RaftTypeConfig,
+    SD: OptionalSend + 'static,
 {
-    pub(in crate::raft) inner: &'a RaftInner<C>,
+    pub(in crate::raft) inner: &'a RaftInner<C, SD>,
     pub(in crate::raft) app_data: C::D,
     pub(in crate::raft) responder: Option<CoreResponder<C>>,
     pub(in crate::raft) expected_leader: Option<CommittedLeaderIdOf<C>>,
 }
 
-impl<'a, C> WriteRequest<'a, C>
-where C: RaftTypeConfig
+impl<'a, C, SD> WriteRequest<'a, C, SD>
+where
+    C: RaftTypeConfig,
+    SD: OptionalSend + 'static,
 {
     /// Attach a responder to receive the write result.
     ///
@@ -130,8 +135,10 @@ where C: RaftTypeConfig
     }
 }
 
-impl<'a, C> IntoFuture for WriteRequest<'a, C>
-where C: RaftTypeConfig
+impl<'a, C, SD> IntoFuture for WriteRequest<'a, C, SD>
+where
+    C: RaftTypeConfig,
+    SD: OptionalSend + 'static,
 {
     type Output = Result<(), Fatal<C>>;
     type IntoFuture = BoxFuture<'a, Self::Output>;

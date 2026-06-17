@@ -21,7 +21,7 @@ server on a separate address.
 This example keeps the type surface small by assuming:
 
 - `C::Node = openraft::NodeInfo`
-- `C::SnapshotData = Cursor<Vec<u8>>`
+- `Client::SnapshotData = Cursor<Vec<u8>>`
 
 `NodeInfo.raft_addr` is used by `NetworkFactory` to contact peer nodes.
 `NodeInfo.data` is left to the application. For example, an application

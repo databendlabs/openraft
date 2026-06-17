@@ -15,6 +15,7 @@ pub mod store;
 mod test;
 
 pub type NodeId = u64;
+pub type SnapshotData = std::io::Cursor<Vec<u8>>;
 
 openraft::declare_raft_types!(
     /// Declare the type configuration for example K/V store.

@@ -6,6 +6,7 @@ use std::time::Duration;
 use tracing::Instrument;
 
 use crate::Config;
+use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::StepDownPolicy;
 use crate::async_runtime::MpscSender;
@@ -39,8 +40,10 @@ use crate::type_config::alias::WatchReceiverOf;
 /// [`removed_leader_step_down`]: crate::Config::removed_leader_step_down
 /// [`TriggerTransferLeader`]: ExternalCommand::TriggerTransferLeader
 /// [`RefreshServerState`]: ExternalCommand::RefreshServerState
-pub(crate) struct StepDownWatcher<C>
-where C: RaftTypeConfig
+pub(crate) struct StepDownWatcher<C, SD = ()>
+where
+    C: RaftTypeConfig,
+    SD: OptionalSend + 'static,
 {
     rx_server_metrics: WatchReceiverOf<C, RaftServerMetrics<C>>,
 
@@ -48,7 +51,7 @@ where C: RaftTypeConfig
     rx_metrics: WatchReceiverOf<C, RaftMetrics<C>>,
 
     /// Weak sender to the `RaftCore` API channel: the watcher must not keep the channel alive.
-    tx_api: MpscWeakSenderOf<C, RaftMsg<C>>,
+    tx_api: MpscWeakSenderOf<C, RaftMsg<C, SD>>,
 
     /// The delay between the commit of the removing membership config and the transfer-leader.
     step_down_delay: Duration,
@@ -57,8 +60,10 @@ where C: RaftTypeConfig
     transfer_wait: Duration,
 }
 
-impl<C> StepDownWatcher<C>
-where C: RaftTypeConfig
+impl<C, SD> StepDownWatcher<C, SD>
+where
+    C: RaftTypeConfig,
+    SD: OptionalSend + 'static,
 {
     /// Spawn the watcher task.
     ///
@@ -69,7 +74,7 @@ where C: RaftTypeConfig
     pub(crate) fn spawn(
         rx_server_metrics: WatchReceiverOf<C, RaftServerMetrics<C>>,
         rx_metrics: WatchReceiverOf<C, RaftMetrics<C>>,
-        tx_api: MpscWeakSenderOf<C, RaftMsg<C>>,
+        tx_api: MpscWeakSenderOf<C, RaftMsg<C, SD>>,
         config: &Config,
     ) {
         let delay = match config.removed_leader_step_down {
@@ -155,7 +160,7 @@ where C: RaftTypeConfig
     ///
     /// A failure to upgrade the weak sender or to send means `RaftCore` is terminated. It is
     /// safe to ignore it here: the watch loop quits at the next `changed()` call in this case.
-    async fn send(&self, cmd: ExternalCommand<C>) {
+    async fn send(&self, cmd: ExternalCommand<C, SD>) {
         let Some(tx_api) = self.tx_api.upgrade() else {
             return;
         };
