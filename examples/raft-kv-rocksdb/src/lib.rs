@@ -16,6 +16,7 @@ pub mod network;
 pub mod store;
 
 pub type NodeId = u64;
+pub type SnapshotData = std::io::Cursor<Vec<u8>>;
 
 openraft::declare_raft_types!(
     pub TypeConfig:
