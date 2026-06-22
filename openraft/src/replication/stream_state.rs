@@ -146,7 +146,8 @@ where
 
             if last_log_id > prev || committed > self.leader_committed {
                 self.leader_committed = committed;
-                return Some(LogIdRange::new(prev, last_log_id));
+                let last = std::cmp::max(last_log_id, prev.clone());
+                return Some(LogIdRange::new(prev, last));
             } else {
                 let data_change = self.event_watcher.replicate_rx.changed();
                 let io_change = self.event_watcher.io_submitted_rx.changed();
@@ -171,7 +172,8 @@ where
                         // in which scenario, it is for replication committed log id,
                         // thus we just emit an RPC once committed receiver is notified.
                         self.leader_committed = self.event_watcher.committed_rx.borrow_watched().clone();
-                        return Some(LogIdRange::new(prev, last_log_id));
+                        let last = std::cmp::max(last_log_id, prev.clone());
+                        return Some(LogIdRange::new(prev, last));
                     }
                     cancel_res = cancel.fuse() => {
                         tracing::info!("Replication Stream is canceled, res: {:?}, when:(get_log_id_range:wait-for-changed)", cancel_res);
@@ -239,8 +241,17 @@ where
             (start, end)
         };
 
-        if start == end {
-            // Heartbeat RPC, no logs to send, last log id is the same as prev_log_id
+        if start >= end {
+            // Heartbeat RPC: no logs to send. Callers guarantee prev <= last,
+            // so this should only be reached with start == end. The >= guard
+            // is defense-in-depth.
+            debug_assert!(
+                start == end,
+                "read_log_entries received reversed range: start({}) > end({}), log_id_range: {}",
+                start,
+                end,
+                log_id_range
+            );
             let r = LogIdRange::new(rng.prev.clone(), rng.prev.clone());
             Ok((vec![], r))
         } else {
