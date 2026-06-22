@@ -51,7 +51,7 @@ where
 
     pub(crate) inflight_id: Option<InflightId>,
 
-    /// The leader's committed log id to send in AppendEntries requests.
+    /// The leader_commit value to send in AppendEntries requests.
     pub(crate) leader_committed: Option<LogIdOf<C>>,
 
     /// Read-only handle to the shared backoff state, sampled before each request.
@@ -71,8 +71,7 @@ where
     /// Returns `None` when there are no more entries to send or on storage error.
     /// After each call, `log_id_range` is updated to exclude the sent entries.
     pub(crate) async fn next_request(&mut self) -> Option<AppendEntriesRequest<C>> {
-        // The initial log_id_range may be empty range, for sync a commit log id.
-        // In this case, still send one RPC, and set log_id_range in `update_log_id_range()`
+        // An empty range still sends one RPC and is then cleared by `update_log_id_range()`.
         let log_id_range = self.get_log_id_range().await?;
 
         tracing::debug!("{}: log_id_range: {}", func_name!(), log_id_range);
@@ -146,7 +145,7 @@ where
 
             if last_log_id > prev || committed > self.leader_committed {
                 self.leader_committed = committed;
-                return Some(LogIdRange::new(prev, last_log_id));
+                return Some(non_reversed_log_id_range(prev, last_log_id));
             } else {
                 let data_change = self.event_watcher.replicate_rx.changed();
                 let io_change = self.event_watcher.io_submitted_rx.changed();
@@ -167,11 +166,9 @@ where
                     }
                     _committed_change = committed_change.fuse() => {
                         tracing::debug!("committed_rx changed");
-                        // `committed` may be triggered even when the value does not change.
-                        // in which scenario, it is for replication committed log id,
-                        // thus we just emit an RPC once committed receiver is notified.
+                        // A notification may force an RPC even if no new readable logs are available.
                         self.leader_committed = self.event_watcher.committed_rx.borrow_watched().clone();
-                        return Some(LogIdRange::new(prev, last_log_id));
+                        return Some(non_reversed_log_id_range(prev, last_log_id));
                     }
                     cancel_res = cancel.fuse() => {
                         tracing::info!("Replication Stream is canceled, res: {:?}, when:(get_log_id_range:wait-for-changed)", cancel_res);
@@ -239,7 +236,12 @@ where
             (start, end)
         };
 
-        if start == end {
+        if start >= end {
+            debug_assert_eq!(
+                start, end,
+                "read_log_entries received reversed range: start({}) > end({}), log_id_range: {}",
+                start, end, log_id_range
+            );
             // Heartbeat RPC, no logs to send, last log id is the same as prev_log_id
             let r = LogIdRange::new(rng.prev.clone(), rng.prev.clone());
             Ok((vec![], r))
@@ -284,5 +286,42 @@ where
             let r = LogIdRange::new(rng.prev.clone(), Some(last));
             Ok((logs, r))
         }
+    }
+}
+
+fn non_reversed_log_id_range<C>(prev: Option<LogIdOf<C>>, last: Option<LogIdOf<C>>) -> LogIdRange<C>
+where C: RaftTypeConfig {
+    // `prev` is delivered through ReplicationCore's replication command channel, while `last` is
+    // observed through the io_submitted watch channel. The watch channel may not have caught up yet.
+    let last = std::cmp::max(last, prev.clone());
+    LogIdRange::new(prev, last)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::non_reversed_log_id_range;
+    use crate::engine::testing::UTConfig;
+    use crate::engine::testing::log_id;
+
+    #[test]
+    fn test_non_reversed_log_id_range() {
+        let prev = Some(log_id(1, 1, 10));
+        let stale_last = Some(log_id(1, 1, 9));
+
+        let got = non_reversed_log_id_range::<UTConfig>(prev.clone(), stale_last);
+
+        assert_eq!(got.prev, prev);
+        assert_eq!(got.last, got.prev);
+    }
+
+    #[test]
+    fn test_non_reversed_log_id_range_keeps_larger_last() {
+        let prev = Some(log_id(1, 1, 10));
+        let last = Some(log_id(1, 1, 12));
+
+        let got = non_reversed_log_id_range::<UTConfig>(prev.clone(), last.clone());
+
+        assert_eq!(got.prev, prev);
+        assert_eq!(got.last, last);
     }
 }
