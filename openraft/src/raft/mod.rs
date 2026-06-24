@@ -1232,7 +1232,7 @@ where C: RaftTypeConfig
     /// raft.write(my_data).await?;
     ///
     /// // With responder
-    /// let (responder, _, rx) = ProgressResponder::new();
+    /// let (responder, rx) = ProgressResponder::complete_only();
     /// raft.write(my_data).responder(responder).await?;
     /// let result = rx.await??;
     ///

@@ -33,7 +33,7 @@ use crate::type_config::alias::WriteResponderOf;
 /// raft.write(my_data).await?;
 ///
 /// // With responder to receive result
-/// let (responder, _commit_rx, complete_rx) = ProgressResponder::new();
+/// let (responder, complete_rx) = ProgressResponder::complete_only();
 /// raft.write(my_data).responder(responder).await?;
 /// let result = complete_rx.await??;
 /// ```
@@ -63,7 +63,7 @@ where C: RaftTypeConfig
     /// ```ignore
     /// use openraft::impls::ProgressResponder;
     ///
-    /// let (responder, _commit_rx, complete_rx) = ProgressResponder::new();
+    /// let (responder, complete_rx) = ProgressResponder::complete_only();
     /// raft.write(my_data).responder(responder).await?;
     /// let result = complete_rx.await??;
     /// ```
