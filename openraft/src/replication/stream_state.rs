@@ -12,6 +12,7 @@ use crate::async_runtime::watch::WatchReceiver;
 use crate::core::notification::Notification;
 use crate::entry::RaftEntry;
 use crate::entry::raft_entry_ext::RaftEntryExt;
+use crate::errors::ReplicationClosed;
 use crate::errors::StorageIOResult;
 use crate::log_id_range::LogIdRange;
 use crate::progress::inflight_id::InflightId;
@@ -59,6 +60,9 @@ where
     /// The consumer can only query the next delay; only `ReplicationCore` (via its
     /// owned `BackoffState`) enables or clears the backoff.
     pub(crate) backoff_consumer: BackoffConsumer,
+
+    /// Fatal error that has already been reported to RaftCore.
+    pub(crate) fatal_error: Option<ReplicationClosed>,
 }
 
 impl<C, LS> StreamState<C, LS>
@@ -83,6 +87,7 @@ where
                 tracing::error!("{} replication to target={}", sto_err, self.replication_context.target);
 
                 self.replication_context.tx_notify.send(Notification::StorageError { error: sto_err }).await.ok();
+                self.fatal_error = Some(ReplicationClosed::new("storage error"));
                 return None;
             }
         };
@@ -101,12 +106,22 @@ where
 
         self.update_log_id_range(sending_range.last);
 
-        let payload = AppendEntriesRequest {
+        let payload: AppendEntriesRequest<C> = AppendEntriesRequest {
             vote: self.replication_context.leader_vote.clone().into_vote(),
             prev_log_id: sending_range.prev.clone(),
             leader_commit: self.event_watcher.committed_rx.borrow_watched().clone(),
             entries,
         };
+
+        if let Some(first) = payload.entries.first() {
+            debug_assert_eq!(
+                payload.prev_log_id.next_index(),
+                first.index(),
+                "expect AppendEntries prev_log_id({}) to be immediately before the first entry at index {}",
+                payload.prev_log_id.display(),
+                first.index()
+            );
+        }
 
         let entry_count = payload.entries.len() as u64;
         self.replication_context.replicate_batch.record(entry_count);
