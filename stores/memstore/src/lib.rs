@@ -176,6 +176,9 @@ pub struct MemLogStore {
     /// When set to true, `limited_get_log_entries` will return empty result.
     /// This is for testing graceful handling of faulty storage implementations.
     pub return_empty_limited_get: AtomicBool,
+
+    /// When set to true, the next `limited_get_log_entries` call will return an IO error.
+    pub fail_next_limited_get: AtomicBool,
 }
 
 impl MemLogStore {
@@ -190,6 +193,7 @@ impl MemLogStore {
             block,
             vote: RwLock::new(None),
             return_empty_limited_get: AtomicBool::new(false),
+            fail_next_limited_get: AtomicBool::new(false),
         }
     }
 
@@ -197,6 +201,11 @@ impl MemLogStore {
     /// This is for testing graceful handling of faulty storage implementations.
     pub fn set_return_empty_limited_get(&self, value: bool) {
         self.return_empty_limited_get.store(value, Ordering::Relaxed);
+    }
+
+    /// Make the next `limited_get_log_entries` call fail with an IO error.
+    pub fn set_fail_next_limited_get(&self, value: bool) {
+        self.fail_next_limited_get.store(value, Ordering::Relaxed);
     }
 }
 
@@ -294,6 +303,15 @@ impl RaftLogReader<TypeConfig> for Arc<MemLogStore> {
     }
 
     async fn limited_get_log_entries(&mut self, start: u64, end: u64) -> Result<Vec<EntryOf<TypeConfig>>, io::Error> {
+        if self.fail_next_limited_get.swap(false, Ordering::Relaxed) {
+            tracing::info!(
+                "limited_get_log_entries({}, {}): returning io::Error for testing",
+                start,
+                end
+            );
+            return Err(io::Error::other("injected limited_get_log_entries error"));
+        }
+
         if self.return_empty_limited_get.load(Ordering::Relaxed) {
             tracing::info!(
                 "limited_get_log_entries({}, {}): returning empty for testing",

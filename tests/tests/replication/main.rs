@@ -12,4 +12,5 @@ mod t51_backoff_cleared_after_success;
 mod t60_feature_loosen_follower_log_revert;
 mod t61_allow_follower_log_revert;
 mod t62_follower_clear_restart_recover;
+mod t90_issue_1795_storage_error_stops_replication;
 mod t99_issue_1500_heartbeat_cause_reversion_panic;
