@@ -668,6 +668,13 @@ impl TypedRaftRouter {
         Ok(())
     }
 
+    /// Set whether the next `limited_get_log_entries` call should fail for a node.
+    pub fn set_fail_next_limited_get(&self, node_id: &MemNodeId, value: bool) -> anyhow::Result<()> {
+        let (log_store, _) = self.get_storage_handle(node_id)?;
+        log_store.set_fail_next_limited_get(value);
+        Ok(())
+    }
+
     pub fn wait(&self, node_id: &MemNodeId, timeout: Option<Duration>) -> Wait<MemConfig> {
         let node = {
             let rt = self.nodes.lock().unwrap();
