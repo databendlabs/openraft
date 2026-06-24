@@ -1,4 +1,5 @@
 use crate::RaftTypeConfig;
+use crate::progress::inflight_id::InflightId;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::WatchSenderOf;
 
@@ -13,4 +14,9 @@ where C: RaftTypeConfig
 
     /// Dropping this sender signals the task to cancel.
     pub(crate) _tx_cancel: WatchSenderOf<C, ()>,
+
+    /// The inflight id of this snapshot transmission.
+    ///
+    /// Used by RaftCore to match completion notifications against the currently stored handle.
+    pub(crate) inflight_id: InflightId,
 }
