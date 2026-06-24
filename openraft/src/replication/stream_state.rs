@@ -12,6 +12,7 @@ use crate::async_runtime::watch::WatchReceiver;
 use crate::core::notification::Notification;
 use crate::entry::RaftEntry;
 use crate::entry::raft_entry_ext::RaftEntryExt;
+use crate::errors::ReplicationClosed;
 use crate::errors::StorageIOResult;
 use crate::log_id_range::LogIdRange;
 use crate::progress::inflight_id::InflightId;
@@ -68,11 +69,13 @@ where
 {
     /// Generates the next AppendEntries request from the current log range.
     ///
-    /// Returns `None` when there are no more entries to send or on storage error.
+    /// Returns `Ok(None)` when there are no more entries to send.
     /// After each call, `log_id_range` is updated to exclude the sent entries.
-    pub(crate) async fn next_request(&mut self) -> Option<AppendEntriesRequest<C>> {
+    pub(crate) async fn next_request(&mut self) -> Result<Option<AppendEntriesRequest<C>>, ReplicationClosed> {
         // An empty range still sends one RPC and is then cleared by `update_log_id_range()`.
-        let log_id_range = self.get_log_id_range().await?;
+        let Some(log_id_range) = self.get_log_id_range().await else {
+            return Ok(None);
+        };
 
         tracing::debug!("{}: log_id_range: {}", func_name!(), log_id_range);
 
@@ -83,7 +86,7 @@ where
                 tracing::error!("{} replication to target={}", sto_err, self.replication_context.target);
 
                 self.replication_context.tx_notify.send(Notification::StorageError { error: sto_err }).await.ok();
-                return None;
+                return Err(ReplicationClosed::new("storage error"));
             }
         };
 
@@ -96,17 +99,27 @@ where
                 belonging_leader,
                 current_leader
             );
-            return None;
+            return Ok(None);
         }
 
         self.update_log_id_range(sending_range.last);
 
-        let payload = AppendEntriesRequest {
+        let payload: AppendEntriesRequest<C> = AppendEntriesRequest {
             vote: self.replication_context.leader_vote.clone().into_vote(),
             prev_log_id: sending_range.prev.clone(),
             leader_commit: self.event_watcher.committed_rx.borrow_watched().clone(),
             entries,
         };
+
+        if let Some(first) = payload.entries.first() {
+            debug_assert_eq!(
+                payload.prev_log_id.next_index(),
+                first.index(),
+                "expect AppendEntries prev_log_id({}) to be immediately before the first entry at index {}",
+                payload.prev_log_id.display(),
+                first.index()
+            );
+        }
 
         let entry_count = payload.entries.len() as u64;
         self.replication_context.replicate_batch.record(entry_count);
@@ -115,7 +128,7 @@ where
 
         self.backoff_if_enabled().await;
 
-        Some(payload)
+        Ok(Some(payload))
     }
 
     /// Return None if no more data to send.
@@ -290,7 +303,9 @@ where
 }
 
 fn non_reversed_log_id_range<C>(prev: Option<LogIdOf<C>>, last: Option<LogIdOf<C>>) -> LogIdRange<C>
-where C: RaftTypeConfig {
+where
+    C: RaftTypeConfig,
+{
     // `prev` is delivered through ReplicationCore's replication command channel, while `last` is
     // observed through the io_submitted watch channel. The watch channel may not have caught up yet.
     let last = std::cmp::max(last, prev.clone());
