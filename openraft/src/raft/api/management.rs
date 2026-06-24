@@ -240,7 +240,7 @@ where
     C: RaftTypeConfig,
     T: OptionalSend,
 {
-    let (tx, _commit_rx, complete_rx) = ProgressResponder::new();
+    let (tx, complete_rx) = ProgressResponder::complete_only();
 
     (tx, complete_rx)
 }

@@ -1,3 +1,5 @@
+use openraft_macros::since;
+
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::async_runtime::OneshotSender;
@@ -7,15 +9,17 @@ use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
 
-/// A [`Responder`] implementation that sends notifications via two oneshot channels.
+/// A [`Responder`] implementation that sends notifications via oneshot channels.
 ///
-/// This responder provides both commit and completion notifications:
+/// This responder can provide both commit and completion notifications:
 /// - **Commit channel**: Notifies when the log entry is committed (replicated to a quorum)
 /// - **Complete channel**: Sends the final result when the request completes
 ///
-/// Use this when the caller wants to be notified at both stages:
+/// Use [`ProgressResponder::new()`] when the caller wants to be notified at both stages:
 /// 1. When the entry is committed and safe to read
 /// 2. When the entry is applied and the result is available
+///
+/// Use [`ProgressResponder::complete_only()`] when the caller only needs the final result.
 ///
 /// # Example
 ///
@@ -69,6 +73,22 @@ where
 
         (responder, commit_rx, complete_rx)
     }
+
+    /// Create a new responder with only a complete receiver.
+    ///
+    /// Commit notifications are ignored. Use this when callers only wait for
+    /// the final result and intentionally do not need commit progress.
+    #[since(version = "0.10.0", change = "added complete_only constructor")]
+    pub fn complete_only() -> (Self, OneshotReceiverOf<C, T>) {
+        let (complete_tx, complete_rx) = C::oneshot();
+
+        let responder = Self {
+            commit_tx: None,
+            complete_tx,
+        };
+
+        (responder, complete_rx)
+    }
 }
 
 impl<C, T> Responder<C, T> for ProgressResponder<C, T>
@@ -118,6 +138,35 @@ mod tests {
             // Receivers should be created but not yet have values
             assert!(commit_rx.try_recv().is_err());
             assert!(complete_rx.try_recv().is_err());
+        });
+    }
+
+    #[test]
+    fn test_twoshot_responder_complete_only_new() {
+        UTConfig::<()>::run(async {
+            let (_responder, mut complete_rx): (ProgressResponder<UTConfig, String>, _) =
+                ProgressResponder::complete_only();
+
+            // Receiver should be created but not yet have a value.
+            assert!(complete_rx.try_recv().is_err());
+        });
+    }
+
+    #[test]
+    fn test_twoshot_responder_complete_only_ignores_commit() {
+        UTConfig::<()>::run(async {
+            let (mut responder, complete_rx): (ProgressResponder<UTConfig, String>, _) =
+                ProgressResponder::complete_only();
+
+            let test_log_id = log_id(1, 2, 3);
+            let test_result = "test_result".to_string();
+
+            // The complete-only responder intentionally has no commit receiver.
+            responder.on_commit(test_log_id);
+            responder.on_complete(test_result.clone());
+
+            let received_result = complete_rx.await.unwrap();
+            assert_eq!(test_result, received_result);
         });
     }
 
