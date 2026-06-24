@@ -144,6 +144,7 @@ where
                 inflight_id: None,
                 leader_committed: None,
                 backoff_consumer: backoff_state.consumer(),
+                fatal_error: None,
             })),
             inflight_id: None,
             event_watcher,
@@ -257,6 +258,13 @@ where
             let option = RPCOption::new(rpc_timeout);
 
             let resp_strm_res = network.stream_append(req_strm, option).await;
+            // A custom streaming transport may poll the request stream while establishing
+            // `stream_append()` and then still return an RPC error. Check the fatal marker here too,
+            // because in that case there is no response stream for `handle_response_stream()` to
+            // consume.
+            if let Some(err) = self.take_stream_fatal_error().await {
+                return Err(err);
+            }
 
             let resp_strm = match resp_strm_res {
                 Ok(resp_strm) => resp_strm,
@@ -269,6 +277,9 @@ where
             };
 
             let res = self.handle_response_stream(resp_strm, inflight_queue).await;
+            if let Some(err) = self.take_stream_fatal_error().await {
+                return Err(err);
+            }
 
             // Response stream is successfully exhausted.
             if res.is_ok() {
@@ -282,6 +293,11 @@ where
                 }
             }
         }
+    }
+
+    async fn take_stream_fatal_error(&mut self) -> Option<ReplicationClosed> {
+        let mut stream_state = self.stream_state.lock().await;
+        stream_state.fatal_error.take()
     }
 
     async fn handle_response_stream<'s>(
