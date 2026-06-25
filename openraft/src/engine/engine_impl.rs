@@ -511,7 +511,14 @@ where C: RaftTypeConfig
     /// Handle a Pre-Vote response.
     ///
     /// Advance the Pre-Vote tally. When a quorum would grant, start the real election via
-    /// [`elect`](Self::elect). Receiving a Pre-Vote response never changes any persistent state.
+    /// [`elect`](Self::elect).
+    ///
+    /// On rejection, if the responder reports a strictly higher vote, the local vote is
+    /// updated and persisted to catch up to a term that already exists in the cluster.
+    /// This does not grant a vote to anyone — it only propagates term information
+    /// (mirroring `handle_vote_resp` and etcd's term-propagation on message receipt).
+    /// Without it, a lower-term cohort can never discover a higher term via Pre-Vote,
+    /// causing a permanent election deadlock during membership changes (issue #1796).
     #[tracing::instrument(level = "debug", skip(self, resp))]
     pub(crate) fn handle_pre_vote_resp(&mut self, target: C::NodeId, resp: VoteResponse<C>) {
         tracing::info!(
@@ -550,7 +557,15 @@ where C: RaftTypeConfig
             self.set_greater_log();
         }
 
-        // A Pre-Vote response never updates the local vote: the round is side-effect-free.
+        // Adopt the responder's higher term, same as handle_vote_resp does on reject.
+        // Only adopt a strictly higher vote; an equal vote must not disturb the ongoing
+        // Pre-Vote round (update_vote would clear pre_candidate via become_following).
+        // Without this term propagation, a lower-term cohort can never discover a higher
+        // term via Pre-Vote and stays permanently deadlocked (issue #1796).
+        if resp.vote.as_ref_vote() > self.state.vote_ref().as_ref_vote() {
+            let vote = resp.vote.to_non_committed().into_vote();
+            self.vote_handler().update_vote(&vote).ok();
+        }
     }
 
     /// Append entries to follower/learner.
