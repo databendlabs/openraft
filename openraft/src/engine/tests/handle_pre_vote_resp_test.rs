@@ -90,3 +90,57 @@ fn test_handle_pre_vote_resp_reject_keeps_waiting() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_handle_pre_vote_resp_reject_adopts_higher_vote() -> anyhow::Result<()> {
+    let mut eng = eng();
+
+    // Local vote at a lower term: term=5, node=3.
+    eng.state.vote = Leased::new(UTConfig::<()>::now(), Duration::from_millis(0), Vote::new(5, 3));
+
+    // Pre-vote round in flight at hypothetical term 6, self-granted by node 1.
+    eng.new_pre_candidate(Vote::new(6, 1));
+    eng.pre_candidate_mut().unwrap().grant_by(&1);
+    eng.output.take_commands();
+
+    // Peer 2 rejects with a strictly higher vote: term=10, node=2.
+    eng.handle_pre_vote_resp(2, VoteResponse::new(Vote::new(10, 2), Some(log_id(1, 1, 1)), false));
+
+    // Local vote adopted the responder's higher term (non-committed).
+    assert_eq!(&Vote::new(10, 2), eng.state.vote_ref());
+
+    // Persisted via SaveVote.
+    assert!(
+        eng.output.take_commands().contains(&Command::SaveVote { vote: Vote::new(10, 2) }),
+        "expected SaveVote for the adopted higher vote"
+    );
+
+    // Adopting the higher term transitions to following state, clearing pre-candidate.
+    assert!(
+        eng.pre_candidate_ref().is_none(),
+        "pre-candidate cleared by term adoption"
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_handle_pre_vote_resp_reject_equal_vote_unchanged() -> anyhow::Result<()> {
+    let mut eng = eng();
+
+    // Local vote: term=5, node=1.
+    eng.state.vote = Leased::new(UTConfig::<()>::now(), Duration::from_millis(0), Vote::new(5, 1));
+
+    eng.new_pre_candidate(Vote::new(6, 1));
+    eng.pre_candidate_mut().unwrap().grant_by(&1);
+    eng.output.take_commands();
+
+    // Peer 2 rejects with an equal vote — must not disturb the ongoing pre-vote round.
+    eng.handle_pre_vote_resp(2, VoteResponse::new(Vote::new(5, 1), Some(log_id(1, 1, 1)), false));
+
+    assert!(eng.pre_candidate_ref().is_some(), "pre-vote round still in flight");
+    assert_eq!(&Vote::new(5, 1), eng.state.vote_ref(), "vote unchanged");
+    assert_eq!(0, eng.output.take_commands().len(), "no side effects");
+
+    Ok(())
+}
