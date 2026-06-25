@@ -5,11 +5,14 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::ServerState;
+use openraft::Vote;
 use openraft::async_runtime::WatchReceiver;
+use openraft::raft::VoteRequest;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
 
 /// With Pre-Vote enabled, an isolated follower does not inflate its term.
@@ -267,6 +270,61 @@ async fn pre_vote_unreachable_peer_is_not_a_grant() -> Result<()> {
         n1.metrics().borrow_watched().current_term,
         "an Unreachable Pre-Vote response must not count toward the quorum"
     );
+
+    Ok(())
+}
+
+/// A rejected Pre-Vote response with a higher vote must catch the requester up to that vote.
+///
+/// This is the minimal public reproduction for databendlabs/openraft#1796: node 1 cannot reach a
+/// quorum because node 0 is isolated, and node 2 rejects node 1's Pre-Vote with a higher vote. If
+/// node 1 ignores that higher vote, it keeps retrying from the stale term forever.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn pre_vote_rejection_with_higher_vote_catches_up_requester() -> Result<()> {
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            enable_elect: false,
+            enable_pre_vote: Some(true),
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
+    let mut router = RaftRouter::new(config.clone());
+    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+
+    let n1 = router.get_raft_handle(&1)?;
+    let n2 = router.get_raft_handle(&2)?;
+
+    tracing::info!("--- isolate node 0 so node 1 cannot assemble a Pre-Vote quorum");
+    router.set_network_error(0, true);
+    // Drain delayed AppendEntries heartbeats from node 0; one arriving during node 1's Pre-Vote
+    // would reset `pre_candidate` and make node 1 ignore node 2's response.
+    TypeConfig::sleep(Duration::from_millis(config.election_timeout_max * 2)).await;
+
+    tracing::info!("--- move node 2 to a higher vote");
+    let resp = n2
+        .vote(VoteRequest {
+            vote: Vote::new(10, 2),
+            last_log_id: Some(log_id(1, 0, log_index)),
+            leadership_transfer: true,
+        })
+        .await?;
+    assert!(resp.vote_granted);
+    router.wait(&2, timeout()).vote(Vote::new(10, 2), "node 2 has a higher vote").await?;
+
+    tracing::info!("--- node 1 sees node 2's higher vote through a rejected Pre-Vote response");
+    n1.trigger().elect(true).await?;
+    router
+        .wait(&1, Some(Duration::from_millis(1_000)))
+        .vote(Vote::new(10, 2), "node 1 catches up from a higher Pre-Vote rejection")
+        .await?;
+
+    tracing::info!("--- node 1 retries and wins with node 2's vote");
+    n1.trigger().elect(true).await?;
+    n1.wait(timeout()).state(ServerState::Leader, "node 1 becomes leader").await?;
 
     Ok(())
 }

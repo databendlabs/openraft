@@ -41,12 +41,13 @@ A peer answers with the same rules it uses for a real vote request:
 
 The crucial difference from a real vote: handling a Pre-Vote request **persists
 nothing and changes nothing** — no term bump, no saved vote, no lease update. It
-is a pure query. Likewise, the requester does not change its own state while
-pre-voting: it stays a Follower with its term unchanged until a quorum responds.
+is a pure query.
 
 If a quorum would grant, the node runs the real election
 ([`elect`](`crate::Raft`)), incrementing its term and persisting its vote as
-usual. If not, nothing changed, and it retries on a later tick.
+usual. If a peer rejects with a higher vote, the requester adopts that vote in
+non-committed form so it can catch up to the cluster's term. Otherwise, nothing
+changed, and it retries on a later tick.
 
 A single-voter cluster always wins its own Pre-Vote, so it skips the round and
 elects directly.
