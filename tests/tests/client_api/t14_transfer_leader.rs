@@ -7,6 +7,7 @@ use openraft::ReadPolicy;
 use openraft::ServerState;
 use openraft::async_runtime::WatchReceiver;
 use openraft::errors::LinearizableReadError;
+use openraft::raft::TransferLeaderError;
 use openraft::raft::TransferLeaderRequest;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
@@ -47,8 +48,8 @@ async fn transfer_leader() -> anyhow::Result<()> {
 
     tracing::info!("--- transfer Leader from 0 to 2");
     {
-        n1.handle_transfer_leader(req.clone()).await?;
-        n2.handle_transfer_leader(req.clone()).await?;
+        n1.handle_transfer_leader(req.clone()).await??;
+        n2.handle_transfer_leader(req.clone()).await??;
 
         n2.wait(timeout()).state(ServerState::Leader, "node-2 become leader").await?;
         n0.wait(timeout()).state(ServerState::Follower, "node-0 become follower").await?;
@@ -58,8 +59,15 @@ async fn transfer_leader() -> anyhow::Result<()> {
     {
         let req = TransferLeaderRequest::new(leader_vote, 0, last_log_id);
 
-        n0.handle_transfer_leader(req.clone()).await?;
-        n1.handle_transfer_leader(req.clone()).await?;
+        let actual_vote = n0.metrics().borrow_watched().vote;
+        assert_eq!(
+            Ok(Err(TransferLeaderError::VoteChanged {
+                expected: leader_vote,
+                actual: actual_vote,
+            })),
+            n0.handle_transfer_leader(req.clone()).await
+        );
+        n1.handle_transfer_leader(req.clone()).await??;
 
         let n0_res = n0
             .wait(Some(Duration::from_millis(1_000)))
@@ -319,7 +327,7 @@ async fn transfer_leader_overrides_lease() -> anyhow::Result<()> {
     tracing::info!("--- transfer Leader from 0 to 2, deliver the request only to the target");
     {
         let req = TransferLeaderRequest::new(leader_vote, 2, last_log_id);
-        n2.handle_transfer_leader(req).await?;
+        n2.handle_transfer_leader(req).await??;
 
         n2.wait(timeout()).state(ServerState::Leader, "node-2 becomes leader within the lease").await?;
         n0.wait(timeout()).state(ServerState::Follower, "node-0 steps down").await?;
@@ -392,10 +400,19 @@ async fn transfer_leader_to_promoted_learner_without_promotion_log_does_not_pani
         .await?;
 
     let leader_metrics = n0.metrics().borrow_watched().clone();
-    let req = TransferLeaderRequest::new(leader_metrics.vote, 3, leader_metrics.last_applied);
+    let expected_last_log_id = leader_metrics.last_applied;
+    let actual_last_log_id = n3.data_metrics().borrow_watched().last_log;
+    let req = TransferLeaderRequest::new(leader_metrics.vote, 3, expected_last_log_id);
 
     tracing::info!("--- deliver transfer directly to the stale target");
-    n3.handle_transfer_leader(req).await?;
+    let resp = n3.handle_transfer_leader(req).await;
+    assert_eq!(
+        Ok(Err(TransferLeaderError::LogNotFlushed {
+            expected: expected_last_log_id,
+            actual: actual_last_log_id,
+        })),
+        resp
+    );
 
     TypeConfig::sleep(Duration::from_millis(50)).await;
 

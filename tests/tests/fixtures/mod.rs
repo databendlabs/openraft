@@ -50,6 +50,7 @@ use openraft::raft::AppendEntriesResponse;
 use openraft::raft::ClientWriteResponse;
 use openraft::raft::SnapshotResponse;
 use openraft::raft::TransferLeaderRequest;
+use openraft::raft::TransferLeaderResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft::type_config::TypeConfigExt;
@@ -1008,7 +1009,7 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
         &mut self,
         rpc: TransferLeaderRequest<MemConfig>,
         _option: RPCOption,
-    ) -> Result<(), RPCError<MemConfig>> {
+    ) -> Result<TransferLeaderResponse<MemConfig>, RPCError<MemConfig>> {
         let from_id = rpc.from_leader().leader_id().to_node_id();
 
         self.owner.count_rpc(RPCTypes::TransferLeader);
@@ -1019,16 +1020,16 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
         let node = self.owner.get_raft_handle(&self.target)?;
 
         let resp = node.handle_transfer_leader(rpc.clone()).await;
-        resp.map_err(|e| {
+        let resp = resp.map_err(|err| {
             RPCError::Unreachable(Unreachable::<MemConfig>::from_string(format!(
                 "error: {} target={}",
-                e, self.target
+                err, self.target
             )))
         })?;
 
-        self.owner.call_rpc_post_hook(rpc, (), from_id, self.target).await?;
+        self.owner.call_rpc_post_hook(rpc, resp.clone(), from_id, self.target).await?;
 
-        Ok(())
+        Ok(resp)
     }
 }
 

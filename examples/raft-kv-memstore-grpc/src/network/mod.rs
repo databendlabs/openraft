@@ -23,6 +23,7 @@ use openraft::network::RPCOption;
 use openraft::raft::StreamAppendError;
 use openraft::raft::StreamAppendResult;
 use openraft::raft::TransferLeaderRequest;
+use openraft::raft::TransferLeaderResponse;
 use tonic::transport::Channel;
 
 use crate::NodeId;
@@ -216,7 +217,7 @@ impl NetTransferLeader<TypeConfig> for NetworkConnection {
         &mut self,
         _req: TransferLeaderRequest<TypeConfig>,
         _option: RPCOption,
-    ) -> Result<(), RPCError> {
+    ) -> Result<TransferLeaderResponse<TypeConfig>, RPCError> {
         Err(RPCError::Unreachable(Unreachable::new(&AnyError::error(
             "transfer_leader not implemented",
         ))))

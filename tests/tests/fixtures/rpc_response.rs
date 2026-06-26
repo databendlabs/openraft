@@ -7,6 +7,7 @@ use openraft::RaftTypeConfig;
 use openraft::raft::AppendEntriesResponse;
 use openraft::raft::InstallSnapshotResponse;
 use openraft::raft::SnapshotResponse;
+use openraft::raft::TransferLeaderResponse;
 use openraft::raft::VoteResponse;
 
 /// Unified enum for all RPC response types in the test framework.
@@ -21,7 +22,7 @@ where
     InstallSnapshot(InstallSnapshotResponse<C>),
     InstallFullSnapshot(SnapshotResponse<C>),
     Vote(VoteResponse<C>),
-    TransferLeader(()),
+    TransferLeader(TransferLeaderResponse<C>),
 }
 
 impl<C> RpcResponse<C>
@@ -51,7 +52,7 @@ where
             RpcResponse::InstallSnapshot(req) => write!(f, "InstallSnapshot({})", req),
             RpcResponse::InstallFullSnapshot(resp) => write!(f, "InstallFullSnapshot({})", resp),
             RpcResponse::Vote(resp) => write!(f, "Vote({})", resp),
-            RpcResponse::TransferLeader(_resp) => write!(f, "TransferLeader(())"),
+            RpcResponse::TransferLeader(resp) => write!(f, "TransferLeader({:?})", resp),
         }
     }
 }

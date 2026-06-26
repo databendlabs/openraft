@@ -1512,10 +1512,13 @@ where
                         }
                     };
 
-                    if let Err(e) = res {
-                        tracing::error!("error sending transfer_leader: {}, target: {}", e, target);
-                    } else {
-                        tracing::info!("Done transfer_leader sent to {}", target);
+                    match res {
+                        Err(e) => {
+                            tracing::error!("error sending transfer_leader: {}, target: {}", e, target);
+                        }
+                        Ok(resp) => {
+                            tracing::info!("Done transfer_leader sent to {}, resp: {:?}", target, resp);
+                        }
                     }
                 }
             };
@@ -1670,12 +1673,22 @@ where
             RaftMsg::HandleTransferLeader {
                 from: current_leader_vote,
                 to,
+                last_log_id,
             } => {
                 if self.engine.state.vote_ref() == &current_leader_vote {
                     tracing::info!("Transfer Leader from: {}, to {}", current_leader_vote, to);
 
                     self.engine.state.vote.disable_lease();
                     if self.id == to {
+                        if last_log_id.as_ref() > self.engine.state.last_log_id() {
+                            tracing::info!(
+                                "ignore transfer Leader: local log is not up to date; expected: {}, local: {}",
+                                last_log_id.display(),
+                                self.engine.state.last_log_id().display()
+                            );
+                            return;
+                        }
+
                         self.engine.elect_by_leadership_transfer();
                     }
                 }
