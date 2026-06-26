@@ -59,7 +59,14 @@ async fn transfer_leader() -> anyhow::Result<()> {
     {
         let req = TransferLeaderRequest::new(leader_vote, 0, last_log_id);
 
-        let actual_vote = n0.metrics().borrow_watched().vote;
+        let actual_vote = n0
+            .wait(timeout())
+            .metrics(
+                |m| m.vote.is_committed() && &m.vote > &leader_vote,
+                "node-0 committed transferred leader vote",
+            )
+            .await?
+            .vote;
         assert_eq!(
             Ok(Err(TransferLeaderError::VoteChanged {
                 expected: leader_vote,
