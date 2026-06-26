@@ -25,6 +25,7 @@ use crate::raft::StreamAppendResult;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft::message::TransferLeaderRequest;
+use crate::raft::message::TransferLeaderResponse;
 use crate::type_config::alias::SnapshotOf;
 use crate::type_config::alias::VoteOf;
 
@@ -194,8 +195,13 @@ where C: RaftTypeConfig
     /// Leader lease to timeout and then restart election.
     ///
     /// [`Raft::handle_transfer_leader()`]: crate::raft::Raft::handle_transfer_leader
+    #[since(version = "0.10.0", change = "returns TransferLeaderResponse")]
     #[since(version = "0.10.0")]
-    async fn transfer_leader(&mut self, _req: TransferLeaderRequest<C>, _option: RPCOption) -> Result<(), RPCError<C>> {
+    async fn transfer_leader(
+        &mut self,
+        _req: TransferLeaderRequest<C>,
+        _option: RPCOption,
+    ) -> Result<TransferLeaderResponse<C>, RPCError<C>> {
         Err(RPCError::Unreachable(Unreachable::new(&AnyError::error(
             "transfer_leader not implemented",
         ))))
@@ -299,7 +305,11 @@ where
     C: RaftTypeConfig,
     T: RaftNetworkV2<C> + ?Sized,
 {
-    async fn transfer_leader(&mut self, req: TransferLeaderRequest<C>, option: RPCOption) -> Result<(), RPCError<C>> {
+    async fn transfer_leader(
+        &mut self,
+        req: TransferLeaderRequest<C>,
+        option: RPCOption,
+    ) -> Result<TransferLeaderResponse<C>, RPCError<C>> {
         RaftNetworkV2::transfer_leader(self, req, option).await
     }
 }

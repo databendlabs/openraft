@@ -47,7 +47,9 @@ pub use message::InstallSnapshotResponse;
 pub use message::LogSegment;
 pub use message::SnapshotResponse;
 pub use message::StreamAppendError;
+pub use message::TransferLeaderError;
 pub use message::TransferLeaderRequest;
+pub use message::TransferLeaderResponse;
 pub use message::VoteRequest;
 pub use message::VoteResponse;
 pub use message::WriteRequest;
@@ -1269,9 +1271,13 @@ where C: RaftTypeConfig
     /// responds to transfer leader request by calling this method.
     ///
     /// [`RaftNetworkV2::transfer_leader`]: crate::network::RaftNetworkV2::transfer_leader
+    #[since(version = "0.10.0", change = "returns TransferLeaderResponse")]
     #[since(version = "0.10.0")]
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn handle_transfer_leader(&self, req: TransferLeaderRequest<C>) -> Result<(), Fatal<C>> {
+    pub async fn handle_transfer_leader(
+        &self,
+        req: TransferLeaderRequest<C>,
+    ) -> Result<TransferLeaderResponse<C>, Fatal<C>> {
         self.protocol_api().handle_transfer_leader(req).await
     }
 

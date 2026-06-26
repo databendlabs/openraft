@@ -6,6 +6,7 @@ use openraft::BasicNode;
 use openraft::ReadPolicy;
 use openraft::async_runtime::WatchReceiver;
 use openraft::raft::TransferLeaderRequest;
+use openraft::raft::TransferLeaderResponse;
 
 use crate::NodeId;
 use crate::app::GroupApp;
@@ -69,7 +70,8 @@ pub async fn snapshot(app: &mut GroupApp, req: String) -> String {
 /// Handle transfer leader request
 pub async fn transfer_leader(app: &mut GroupApp, req: String) -> String {
     let transfer_req: TransferLeaderRequest<crate::TypeConfig> = decode(&req);
-    let res = app.raft.handle_transfer_leader(transfer_req).await;
+    let res: Result<TransferLeaderResponse<crate::TypeConfig>, RaftError> =
+        app.raft.handle_transfer_leader(transfer_req).await.map_err(RaftError::Fatal);
     encode(res)
 }
 

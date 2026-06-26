@@ -12,6 +12,7 @@ use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse;
 use openraft::raft::SnapshotResponse;
 use openraft::raft::TransferLeaderRequest;
+use openraft::raft::TransferLeaderResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft_multi::GroupNetworkAdapter;
@@ -67,7 +68,7 @@ impl GroupRouter<TypeConfig, GroupId> for Router {
         group_id: GroupId,
         req: TransferLeaderRequest<TypeConfig>,
         _option: RPCOption,
-    ) -> Result<(), RPCError<TypeConfig>> {
+    ) -> Result<TransferLeaderResponse<TypeConfig>, RPCError<TypeConfig>> {
         self.send(target, &group_id, "/raft/transfer_leader", req).await.map_err(RPCError::Unreachable)
     }
 

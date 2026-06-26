@@ -18,6 +18,7 @@ use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse;
 use openraft::raft::SnapshotResponse;
 use openraft::raft::TransferLeaderRequest;
+use openraft::raft::TransferLeaderResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft::type_config::alias::SnapshotOf;
@@ -118,7 +119,11 @@ where C: RaftTypeConfig<Node = NodeInfo, SnapshotData = Cursor<Vec<u8>>>
         }
     }
 
-    async fn transfer_leader(&mut self, req: TransferLeaderRequest<C>, _option: RPCOption) -> Result<(), RPCError<C>> {
+    async fn transfer_leader(
+        &mut self,
+        req: TransferLeaderRequest<C>,
+        _option: RPCOption,
+    ) -> Result<TransferLeaderResponse<C>, RPCError<C>> {
         self.request("transfer-leader", req).await
     }
 
