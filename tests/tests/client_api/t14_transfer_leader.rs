@@ -328,6 +328,87 @@ async fn transfer_leader_overrides_lease() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// A transfer target may be a voter in the leader's effective membership while still
+/// being a learner in its own effective membership if it has not replicated the
+/// promotion entry yet.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn transfer_leader_to_promoted_learner_without_promotion_log_does_not_panic() -> anyhow::Result<()> {
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            enable_tick: false,
+            election_timeout_min: 100,
+            election_timeout_max: 200,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
+    let mut router = RaftRouter::new(config.clone());
+    router.network_send_delay(0);
+
+    tracing::info!("--- initialize 3 voters and node 3 as a learner");
+    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3}).await?;
+
+    let n0 = router.get_raft_handle(&0)?;
+    let n3 = router.get_raft_handle(&3)?;
+
+    router
+        .wait(&3, timeout())
+        .metrics(
+            |m| {
+                m.state == ServerState::Learner
+                    && !m.membership_config.voter_ids().any(|id| id == 3)
+                    && m.last_log_index == Some(log_index)
+            },
+            "node 3 starts as a caught-up learner",
+        )
+        .await?;
+
+    tracing::info!("--- isolate node 3 before promoting it to voter");
+    router.set_network_error(3, true);
+
+    n0.change_membership([0, 1, 2, 3], false).await?;
+    log_index += 2;
+
+    router
+        .wait(&0, timeout())
+        .metrics(
+            |m| {
+                m.membership_config.voter_ids().any(|id| id == 3)
+                    && m.last_applied.as_ref().map(|log_id| log_id.index()) == Some(log_index)
+            },
+            "leader sees node 3 as a voter",
+        )
+        .await?;
+
+    router
+        .wait(&3, timeout())
+        .metrics(
+            |m| !m.membership_config.voter_ids().any(|id| id == 3) && m.last_log_index < Some(log_index),
+            "node 3 has not received its promotion log",
+        )
+        .await?;
+
+    let leader_metrics = n0.metrics().borrow_watched().clone();
+    let req = TransferLeaderRequest::new(leader_metrics.vote, 3, leader_metrics.last_applied);
+
+    tracing::info!("--- deliver transfer directly to the stale target");
+    n3.handle_transfer_leader(req).await?;
+
+    TypeConfig::sleep(Duration::from_millis(50)).await;
+
+    let alive = n3.is_initialized().await;
+    assert!(
+        alive.is_ok(),
+        "stale transfer target should ignore the transfer without panicking: {:?}",
+        alive
+    );
+
+    Ok(())
+}
+
 fn timeout() -> Option<Duration> {
     Some(Duration::from_millis(500))
 }
