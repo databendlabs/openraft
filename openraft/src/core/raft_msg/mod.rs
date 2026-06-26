@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
+use display_more::DisplayOptionExt;
+
 use crate::ChangeMembers;
 use crate::RaftState;
 use crate::RaftTypeConfig;
@@ -27,6 +29,7 @@ use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::EntryPayloadOf;
 #[cfg(feature = "runtime-stats")]
 use crate::type_config::alias::InstantOf;
+use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::SnapshotOf;
@@ -129,6 +132,8 @@ where C: RaftTypeConfig
         from: VoteOf<C>,
         /// The assigned node to be the next Leader.
         to: C::NodeId,
+        /// The last log id the target must have locally before starting election.
+        last_log_id: Option<LogIdOf<C>>,
     },
 
     ExternalCommand {
@@ -197,8 +202,14 @@ where C: RaftTypeConfig
                 write!(f, "ChangeMembership: {}, retain: {}", changes, retain)
             }
             RaftMsg::WithRaftState { .. } => write!(f, "WithRaftState"),
-            RaftMsg::HandleTransferLeader { from, to } => {
-                write!(f, "TransferLeader: from_leader: vote={}, to: {}", from, to)
+            RaftMsg::HandleTransferLeader { from, to, last_log_id } => {
+                write!(
+                    f,
+                    "TransferLeader: from_leader: vote={}, to: {}, last_log_id: {}",
+                    from,
+                    to,
+                    last_log_id.display()
+                )
             }
             RaftMsg::ExternalCommand { cmd } => {
                 write!(f, "ExternalCommand: {}", cmd)
