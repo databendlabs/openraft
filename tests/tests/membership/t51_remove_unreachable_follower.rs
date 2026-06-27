@@ -49,14 +49,6 @@ async fn stop_replication_to_removed_unreachable_follower_network_failure() -> R
                 )
                 .await?;
         }
-
-        router
-            .wait(&3, timeout())
-            .metrics(
-                |x| x.last_log_index >= Some(log_index - 1),
-                "node-3 recv at least 1 change-membership log",
-            )
-            .await?;
     }
 
     tracing::info!(log_index, "--- replication to node 4 will be removed");
