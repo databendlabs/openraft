@@ -207,12 +207,12 @@ where C: RaftTypeConfig
 
     /// Install into the membership state the membership config carried by a snapshot.
     #[tracing::instrument(level = "debug", skip_all)]
-    fn membership_install_snapshot(&mut self, membership: StoredMembershipOf<C>) {
+    fn membership_install_snapshot(&mut self, membership: StoredMembershipOf<C>, snapshot_last_log_index: u64) {
         tracing::debug!("install membership from snapshot: {}", membership);
 
         let m = Arc::new(membership);
 
-        self.state.membership_state.install_membership_snapshot(m);
+        self.state.membership_state.install_membership_snapshot(m, snapshot_last_log_index);
 
         self.server_state_handler().update_server_state_if_changed();
     }
@@ -278,7 +278,7 @@ where C: RaftTypeConfig
         self.state.apply_progress_mut().accept(snap_last_log_id.clone());
         self.state.snapshot_progress_mut().accept(snap_last_log_id.clone());
 
-        self.membership_install_snapshot(meta.last_membership.clone());
+        self.membership_install_snapshot(meta.last_membership.clone(), snap_last_log_id.index());
 
         self.output.push_command(Command::from(sm::Command::install_full_snapshot(snapshot, log_io_id)));
 

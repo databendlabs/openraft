@@ -140,13 +140,21 @@ where
     /// committed. It updates `self.committed`(the membership state machine), and may also update
     /// `self.effective`(the last membership log), each only when the snapshot is newer than the
     /// corresponding local membership.
-    pub(crate) fn install_membership_snapshot(&mut self, membership_snapshot: Arc<StoredMembership<CLID, NID, N>>) {
-        // The local effective membership may conflict with the leader.
-        // Thus, it has to compare by log-index, e.g.:
-        //   membership.log_id       = (10, 5);
-        //   local_effective.log_id = (2, 10);
+    pub(crate) fn install_membership_snapshot(
+        &mut self,
+        membership_snapshot: Arc<StoredMembership<CLID, NID, N>>,
+        snapshot_last_log_index: u64,
+    ) {
+        // Snapshot install purges every log entry up to snapshot_last_log_index.
+        let effective_is_purged = self.effective.log_id().index() <= Some(snapshot_last_log_index);
+
+        if effective_is_purged {
+            self.committed = membership_snapshot.clone();
+            self.effective = membership_snapshot;
+            return;
+        }
+
         if membership_snapshot.log_id().index() >= self.effective.log_id().index() {
-            // The effective may override by a new leader with a different one.
             self.effective = membership_snapshot.clone()
         }
 
