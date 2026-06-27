@@ -6,6 +6,7 @@ use maplit::btreeset;
 use pretty_assertions::assert_eq;
 
 use crate::Membership;
+use crate::MembershipState;
 use crate::Vote;
 use crate::core::sm;
 use crate::engine::Command;
@@ -171,6 +172,44 @@ fn test_install_snapshot_not_conflict() -> anyhow::Result<()> {
             Command::PurgeLog { upto: log_id(4, 1, 6) },
         ],
         eng.output.take_commands()
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_install_snapshot_resets_purged_effective_membership() -> anyhow::Result<()> {
+    // Snapshot last_membership has a lower index than the stale effective membership, but the
+    // snapshot covers and purges the stale effective membership log.
+    let mut eng = eng();
+    let snapshot_membership = StoredMembershipOf::<UTConfig>::new(Some(log_id(5, 1, 4)), m12());
+
+    eng.state.membership_state = MembershipState::new(
+        Arc::new(StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m12())),
+        Arc::new(StoredMembershipOf::<UTConfig>::new(Some(log_id(4, 1, 8)), m1234())),
+    );
+    eng.state.server_state = eng.calc_server_state();
+
+    let cond = eng.following_handler().install_full_snapshot(SnapshotOf::<UTConfig> {
+        meta: SnapshotMetaOf::<UTConfig> {
+            last_log_id: Some(log_id(5, 1, 9)),
+            last_membership: snapshot_membership.clone(),
+            snapshot_id: "1-2-3-4".to_string(),
+        },
+        snapshot: Cursor::new(vec![0u8]),
+    });
+
+    assert_eq!(
+        Some(Condition::Snapshot::<UTConfig> {
+            log_id: log_id(5, 1, 9)
+        }),
+        cond
+    );
+
+    let expected_membership = Arc::new(snapshot_membership);
+    assert_eq!(
+        MembershipState::new(expected_membership.clone(), expected_membership),
+        eng.state.membership_state
     );
 
     Ok(())

@@ -49,14 +49,12 @@ fn test_membership_state_update_committed() -> anyhow::Result<()> {
             Arc::new(StoredMembershipOf::<UTConfig>::new(Some(log_id(3, 1, 4)), m123_345())),
         )
     };
+    let stored = |log_id, membership| Arc::new(StoredMembershipOf::<UTConfig>::new(Some(log_id), membership));
 
     // Smaller new committed won't take effect.
     {
         let mut x = new();
-        x.install_membership_snapshot(Arc::new(StoredMembershipOf::<UTConfig>::new(
-            Some(log_id(1, 1, 1)),
-            m12(),
-        )));
+        x.install_membership_snapshot(stored(log_id(1, 1, 1), m12()), 1);
         assert_eq!(&Some(log_id(2, 1, 2)), x.committed().log_id());
         assert_eq!(&Some(log_id(3, 1, 4)), x.effective().log_id());
     }
@@ -64,10 +62,7 @@ fn test_membership_state_update_committed() -> anyhow::Result<()> {
     // Update committed, not effective.
     {
         let mut x = new();
-        x.install_membership_snapshot(Arc::new(StoredMembershipOf::<UTConfig>::new(
-            Some(log_id(2, 1, 3)),
-            m12(),
-        )));
+        x.install_membership_snapshot(stored(log_id(2, 1, 3), m12()), 3);
         assert_eq!(&Some(log_id(2, 1, 3)), x.committed().log_id());
         assert_eq!(&Some(log_id(3, 1, 4)), x.effective().log_id());
     }
@@ -75,10 +70,7 @@ fn test_membership_state_update_committed() -> anyhow::Result<()> {
     // Update both
     {
         let mut x = new();
-        x.install_membership_snapshot(Arc::new(StoredMembershipOf::<UTConfig>::new(
-            Some(log_id(3, 1, 4)),
-            m12(),
-        )));
+        x.install_membership_snapshot(stored(log_id(3, 1, 4), m12()), 4);
         assert_eq!(&Some(log_id(3, 1, 4)), x.committed().log_id());
         assert_eq!(&Some(log_id(3, 1, 4)), x.effective().log_id());
         assert_eq!(&m12(), x.effective().membership());
@@ -88,10 +80,7 @@ fn test_membership_state_update_committed() -> anyhow::Result<()> {
     // Because leader may have a smaller log_id that is committed.
     {
         let mut x = new();
-        x.install_membership_snapshot(Arc::new(StoredMembershipOf::<UTConfig>::new(
-            Some(log_id(2, 1, 5)),
-            m12(),
-        )));
+        x.install_membership_snapshot(stored(log_id(2, 1, 5), m12()), 5);
         assert_eq!(&Some(log_id(2, 1, 5)), x.committed().log_id());
         assert_eq!(&Some(log_id(2, 1, 5)), x.effective().log_id());
         assert_eq!(&m12(), x.effective().membership());
