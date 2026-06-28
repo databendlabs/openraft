@@ -1911,11 +1911,15 @@ where
                 }
             }
 
-            Notification::ReplicationProgress { progress, inflight_id } => {
+            Notification::ReplicationProgress {
+                stream_id,
+                progress,
+                inflight_id,
+            } => {
                 tracing::debug!("recv Notification::ReplicationProgress: progress: {}", progress);
 
                 if let Some(mut rh) = self.engine.try_replication_handler() {
-                    rh.update_progress(progress.target, progress.result, inflight_id);
+                    rh.update_progress(progress.target, stream_id, progress.result, inflight_id);
                 }
             }
 
@@ -2196,7 +2200,7 @@ where
         (ctx, cancel_tx)
     }
 
-    async fn close_replication(target: &C::NodeId, mut s: ReplicationHandle<C>) {
+    fn close_replication(target: &C::NodeId, mut s: ReplicationHandle<C>) {
         let Some(handle) = s.join_handle.take() else {
             return;
         };
@@ -2205,9 +2209,13 @@ where
         drop(s.replicate_tx);
         drop(s.cancel_tx);
 
-        tracing::debug!("joining removed replication: {}", target);
-        let _x = handle.await;
-        tracing::info!("done joining removed replication: {}", target);
+        let target = target.clone();
+        #[allow(clippy::let_underscore_future)]
+        let _ = C::spawn(async move {
+            tracing::debug!("joining removed replication: {}", target);
+            let _x = handle.await;
+            tracing::info!("done joining removed replication: {}", target);
+        });
     }
 }
 
@@ -2416,7 +2424,7 @@ where
 
                 let left = std::mem::take(&mut self.replications);
                 for (target, s) in left {
-                    Self::close_replication(&target, s).await;
+                    Self::close_replication(&target, s);
                 }
             }
             Command::RebuildReplicationStreams {
@@ -2441,7 +2449,7 @@ where
 
                     let handle = if let Some(removed) = removed {
                         if close_old_streams {
-                            Self::close_replication(&prog.target, removed).await;
+                            Self::close_replication(&prog.target, removed);
                             None
                         } else {
                             Some(removed)
@@ -2464,7 +2472,7 @@ where
                 let left = std::mem::replace(&mut self.replications, new_replications);
 
                 for (target, s) in left {
-                    Self::close_replication(&target, s).await;
+                    Self::close_replication(&target, s);
                 }
             }
             Command::StateMachine { command } => {
