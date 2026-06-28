@@ -13,13 +13,14 @@ pub enum NotificationName {
     ReplicationProgress,
     HeartbeatProgress,
     StateMachine,
+    SnapshotTransmitted,
     Tick,
 }
 
 impl NotificationName {
     /// Total number of variants.
     #[allow(dead_code)]
-    pub const COUNT: usize = 9;
+    pub const COUNT: usize = 10;
 
     /// All variants in canonical order.
     #[allow(dead_code)]
@@ -32,6 +33,7 @@ impl NotificationName {
         NotificationName::ReplicationProgress,
         NotificationName::HeartbeatProgress,
         NotificationName::StateMachine,
+        NotificationName::SnapshotTransmitted,
         NotificationName::Tick,
     ];
 
@@ -47,7 +49,8 @@ impl NotificationName {
             NotificationName::ReplicationProgress => 5,
             NotificationName::HeartbeatProgress => 6,
             NotificationName::StateMachine => 7,
-            NotificationName::Tick => 8,
+            NotificationName::SnapshotTransmitted => 8,
+            NotificationName::Tick => 9,
         }
     }
 
@@ -62,6 +65,7 @@ impl NotificationName {
             NotificationName::ReplicationProgress => "Notify::ReplicationProgress",
             NotificationName::HeartbeatProgress => "Notify::HeartbeatProgress",
             NotificationName::StateMachine => "Notify::StateMachine",
+            NotificationName::SnapshotTransmitted => "Notify::SnapshotTransmitted",
             NotificationName::Tick => "Notify::Tick",
         }
     }

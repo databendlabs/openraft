@@ -90,6 +90,24 @@ where C: RaftTypeConfig
     /// Result of executing a command sent from a state machine worker.
     StateMachine { command_result: sm::CommandResult<C> },
 
+    /// A snapshot transmission task has finished.
+    ///
+    /// Sent by [`SnapshotTransmitter`](`crate::replication::snapshot_transmitter::SnapshotTransmitter`)
+    /// before it returns, regardless of success, failure, or cancellation.
+    /// RaftCore uses this to clear the stored
+    /// [`SnapshotTransmitterHandle`](`crate::replication::snapshot_transmitter_handle::SnapshotTransmitterHandle`)
+    /// so that completed tasks do not accumulate.
+    SnapshotTransmitted {
+        /// The target node to which the snapshot was sent.
+        target: C::NodeId,
+
+        /// The inflight id of the snapshot transmission.
+        ///
+        /// Used to distinguish stale notifications from a newer snapshot transmission
+        /// to the same target.
+        inflight_id: InflightId,
+    },
+
     /// A tick event to wake up RaftCore to check timeout etc.
     Tick {
         /// ith tick
@@ -115,6 +133,7 @@ where C: RaftTypeConfig
             Self::ReplicationProgress { .. } => NotificationName::ReplicationProgress,
             Self::HeartbeatProgress { .. } => NotificationName::HeartbeatProgress,
             Self::StateMachine { .. } => NotificationName::StateMachine,
+            Self::SnapshotTransmitted { .. } => NotificationName::SnapshotTransmitted,
             Self::Tick { .. } => NotificationName::Tick,
         }
     }
@@ -188,6 +207,9 @@ where C: RaftTypeConfig
             }
             Self::StateMachine { command_result } => {
                 write!(f, "{}", command_result)
+            }
+            Self::SnapshotTransmitted { target, inflight_id } => {
+                write!(f, "SnapshotTransmitted: target={}, inflight_id={}", target, inflight_id)
             }
             Self::Tick { i } => {
                 write!(f, "Tick {}", i)
