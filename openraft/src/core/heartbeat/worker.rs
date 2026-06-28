@@ -171,6 +171,7 @@ where
                 let conflict_log_id = heartbeat.matching.clone().unwrap();
 
                 let noti = Notification::ReplicationProgress {
+                    stream_id: self.stream_id,
                     progress: Progress {
                         target: self.target.clone(),
                         result: Ok(ReplicationResult(Err(conflict_log_id))),

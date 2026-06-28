@@ -286,17 +286,23 @@ where C: RaftTypeConfig
     pub(crate) fn update_progress(
         &mut self,
         target: C::NodeId,
+        stream_id: StreamId,
         repl_res: Result<ReplicationResult<C>, String>,
         inflight_id: Option<InflightId>,
     ) {
         tracing::debug!(
-            "{}: target: {}, result: {}, inflight_id: {}, current progresses: {}",
+            "{}: target: {}, stream_id: {}, result: {}, inflight_id: {}, current progresses: {}",
             func_name!(),
             target,
+            stream_id,
             repl_res.display(),
             inflight_id.display(),
             self.leader.progress
         );
+
+        if !self.leader.is_replication_stream_valid(&target, stream_id) {
+            return;
+        }
 
         match repl_res {
             Ok(p) => match p.0 {

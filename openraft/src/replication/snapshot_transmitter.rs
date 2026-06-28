@@ -259,6 +259,7 @@ where
             .tx_notify
             .send({
                 Notification::ReplicationProgress {
+                    stream_id: self.replication_context.stream_id,
                     progress: Progress {
                         target: self.replication_context.target.clone(),
                         result: Ok(replication_result.clone()),

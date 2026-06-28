@@ -319,8 +319,26 @@ where
         inflight_queue: InflightAppendQueue<C>,
     ) -> Result<(), &'static str> {
         let mut resp_strm = std::pin::pin!(resp_strm);
+        let mut cancel_rx = self.replication_context.cancel_rx.clone();
 
-        while let Some(rpc_res) = resp_strm.next().await {
+        loop {
+            let rpc_res = {
+                let next_resp = resp_strm.next();
+                let cancel = cancel_rx.changed();
+
+                futures_util::select! {
+                    rpc_res = next_resp.fuse() => rpc_res,
+                    cancel_res = cancel.fuse() => {
+                        tracing::info!("ReplicationCore: canceled while waiting response: {:?}", cancel_res);
+                        return Err("canceled");
+                    }
+                }
+            };
+
+            let Some(rpc_res) = rpc_res else {
+                return Ok(());
+            };
+
             tracing::debug!("AppendEntries RPC response: {:?}", rpc_res);
 
             self.backoff_state.observe(&rpc_res);
@@ -366,7 +384,6 @@ where
                 }
             }
         }
-        Ok(())
     }
 
     /// Send the error result to RaftCore.
@@ -386,6 +403,7 @@ where
         self.replication_context
             .tx_notify
             .send(Notification::ReplicationProgress {
+                stream_id: self.replication_context.stream_id,
                 progress: Progress {
                     target: self.replication_context.target.clone(),
                     result: Err(err.to_string()),
@@ -447,6 +465,7 @@ where
             .tx_notify
             .send({
                 Notification::ReplicationProgress {
+                    stream_id: self.replication_context.stream_id,
                     progress: Progress {
                         target: self.replication_context.target.clone(),
                         result: Ok(replication_result.clone()),
