@@ -23,6 +23,8 @@ pub trait NetAppend<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
 {
     /// Send an AppendEntries RPC to the target.
+    ///
+    /// The network implementation is responsible for enforcing `option.soft_ttl()`.
     async fn append_entries(
         &mut self,
         rpc: AppendEntriesRequest<C>,
