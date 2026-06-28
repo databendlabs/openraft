@@ -64,7 +64,12 @@ pub struct Client {
 }
 
 impl Client {
-    async fn request<C, Req, Resp>(&mut self, uri: impl Display, req: Req) -> Result<Resp, RPCError<C>>
+    async fn request<C, Req, Resp>(
+        &mut self,
+        uri: impl Display,
+        req: Req,
+        option: &RPCOption,
+    ) -> Result<Resp, RPCError<C>>
     where
         C: RaftTypeConfig,
         Req: Serialize,
@@ -72,7 +77,7 @@ impl Client {
     {
         let url = format!("http://{}/{}", self.addr, uri);
 
-        let resp = self.client.post(url.clone()).json(&req).send().await.map_err(|e| {
+        let resp = self.client.post(url.clone()).json(&req).timeout(option.soft_ttl()).send().await.map_err(|e| {
             if e.is_connect() {
                 RPCError::Unreachable(Unreachable::new(&e))
             } else {
@@ -98,9 +103,9 @@ where C: RaftTypeConfig<Node = NodeInfo, SnapshotData = Cursor<Vec<u8>>>
     async fn append_entries(
         &mut self,
         req: AppendEntriesRequest<C>,
-        _option: RPCOption,
+        option: RPCOption,
     ) -> Result<AppendEntriesResponse<C>, RPCError<C>> {
-        self.request("append", req).await
+        self.request("append", req, &option).await
     }
 
     async fn full_snapshot(
@@ -108,26 +113,26 @@ where C: RaftTypeConfig<Node = NodeInfo, SnapshotData = Cursor<Vec<u8>>>
         vote: VoteOf<C>,
         snapshot: SnapshotOf<C>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
-        _option: RPCOption,
+        option: RPCOption,
     ) -> Result<SnapshotResponse<C>, StreamingError<C>> {
         let req = (vote, snapshot.meta, snapshot.snapshot.into_inner());
         tokio::pin!(cancel);
 
         tokio::select! {
             closed = &mut cancel => Err(StreamingError::Closed(closed)),
-            res = self.request("snapshot", req) => Ok(res?),
+            res = self.request("snapshot", req, &option) => Ok(res?),
         }
     }
 
     async fn transfer_leader(
         &mut self,
         req: TransferLeaderRequest<C>,
-        _option: RPCOption,
+        option: RPCOption,
     ) -> Result<TransferLeaderResponse<C>, RPCError<C>> {
-        self.request("transfer-leader", req).await
+        self.request("transfer-leader", req, &option).await
     }
 
-    async fn vote(&mut self, req: VoteRequest<C>, _option: RPCOption) -> Result<VoteResponse<C>, RPCError<C>> {
-        self.request("vote", req).await
+    async fn vote(&mut self, req: VoteRequest<C>, option: RPCOption) -> Result<VoteResponse<C>, RPCError<C>> {
+        self.request("vote", req, &option).await
     }
 }
