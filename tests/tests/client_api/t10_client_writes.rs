@@ -104,7 +104,7 @@ async fn client_write_ff() -> Result<()> {
 
     let n0 = router.get_raft_handle(&0)?;
 
-    let (responder, _commit_rx, complete_rx) = ProgressResponder::new();
+    let (responder, complete_rx) = ProgressResponder::complete_only();
     n0.client_write_ff(ClientRequest::make_request("foo", 2), Some(responder)).await?;
     let got: ClientWriteResponse<TypeConfig> = complete_rx.await??;
     assert_eq!(None, got.response().0.as_deref());
@@ -112,7 +112,7 @@ async fn client_write_ff() -> Result<()> {
     // Deliberately set the responder to None and do not wait for the result.
     n0.client_write_ff(ClientRequest::make_request("foo", 3), None).await?;
 
-    let (responder, _commit_rx, complete_rx) = ProgressResponder::new();
+    let (responder, complete_rx) = ProgressResponder::complete_only();
     n0.client_write_ff(ClientRequest::make_request("foo", 4), Some(responder)).await?;
     let got: ClientWriteResponse<TypeConfig> = complete_rx.await??;
     assert_eq!(Some("request-3"), got.response().0.as_deref());
@@ -143,7 +143,7 @@ async fn write_builder() -> Result<()> {
     let n0 = router.get_raft_handle(&0)?;
 
     // Test write with responder
-    let (responder, _commit_rx, complete_rx) = ProgressResponder::new();
+    let (responder, complete_rx) = ProgressResponder::complete_only();
     n0.write(ClientRequest::make_request("foo", 2)).responder(responder).await?;
     let got: ClientWriteResponse<TypeConfig> = complete_rx.await??;
     assert_eq!(None, got.response().0.as_deref());
@@ -152,7 +152,7 @@ async fn write_builder() -> Result<()> {
     n0.write(ClientRequest::make_request("foo", 3)).await?;
 
     // Test write with responder again to verify previous write completed
-    let (responder, _commit_rx, complete_rx) = ProgressResponder::new();
+    let (responder, complete_rx) = ProgressResponder::complete_only();
     n0.write(ClientRequest::make_request("foo", 4)).responder(responder).await?;
     let got: ClientWriteResponse<TypeConfig> = complete_rx.await??;
     assert_eq!(Some("request-3"), got.response().0.as_deref());
@@ -187,7 +187,7 @@ async fn write_with_leader() -> Result<()> {
     let leader_id = n0.as_leader().unwrap().to_committed_leader_id();
 
     // Test 1: Write with correct leader should succeed
-    let (responder, _commit_rx, complete_rx) = ProgressResponder::new();
+    let (responder, complete_rx) = ProgressResponder::complete_only();
     n0.write(ClientRequest::make_request("foo", 2)).with_leader(leader_id).responder(responder).await?;
 
     log_index += 1;
@@ -201,7 +201,7 @@ async fn write_with_leader() -> Result<()> {
     // Create a fake leader ID that doesn't match
     let fake_leader = LeaderIdOf::<TypeConfig>::new(100, 99).to_committed();
 
-    let (responder, _commit_rx, complete_rx) = ProgressResponder::new();
+    let (responder, complete_rx) = ProgressResponder::complete_only();
     n0.write(ClientRequest::make_request("foo", 3))
         .with_leader(fake_leader)
         .responder(responder)
@@ -215,7 +215,7 @@ async fn write_with_leader() -> Result<()> {
     assert_eq!(Some(0), forward.leader_id);
 
     // Test 3: Write without leader check should succeed
-    let (responder, _commit_rx, complete_rx) = ProgressResponder::new();
+    let (responder, complete_rx) = ProgressResponder::complete_only();
     n0.write(ClientRequest::make_request("foo", 4)).responder(responder).await?;
 
     log_index += 1;

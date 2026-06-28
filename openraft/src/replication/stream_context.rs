@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::RaftTypeConfig;
+use crate::errors::ReplicationClosed;
 use crate::replication::inflight_append_queue::InflightAppendQueue;
 use crate::replication::stream_state::StreamState;
 use crate::storage::RaftLogStorage;
@@ -21,4 +22,7 @@ where
 
     /// Tracks in-flight requests for RTT measurement.
     pub(crate) inflight_append_queue: InflightAppendQueue<C>,
+
+    /// Fatal error found while generating the request stream.
+    pub(crate) fatal_error: Arc<MutexOf<C, Option<ReplicationClosed>>>,
 }

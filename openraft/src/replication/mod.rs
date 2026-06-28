@@ -168,9 +168,19 @@ where
     async fn next_append_request(
         stream_context: StreamContext<C, LS>,
     ) -> Option<(AppendEntriesRequest<C>, StreamContext<C, LS>)> {
-        let req = {
+        let res = {
             let mut state = stream_context.stream_state.as_ref().lock().await;
-            state.next_request().await?
+            state.next_request().await
+        };
+
+        let req = match res {
+            Ok(Some(req)) => req,
+            Ok(None) => return None,
+            Err(err) => {
+                let mut fatal_error = stream_context.fatal_error.lock().await;
+                *fatal_error = Some(err);
+                return None;
+            }
         };
 
         stream_context.inflight_append_queue.push(req.last_log_id());
@@ -245,10 +255,12 @@ where
             }
 
             let inflight_queue = InflightAppendQueue::new();
+            let fatal_error = Arc::new(MutexOf::<C, _>::new(None));
 
             let stream_context = StreamContext {
                 stream_state: self.stream_state.clone(),
                 inflight_append_queue: inflight_queue.clone(),
+                fatal_error: fatal_error.clone(),
             };
 
             let req_strm = Self::new_request_stream(stream_context);
@@ -257,6 +269,13 @@ where
             let option = RPCOption::new(rpc_timeout);
 
             let resp_strm_res = network.stream_append(req_strm, option).await;
+            // A custom streaming transport may poll the request stream while establishing
+            // `stream_append()` and then still return an RPC error. Check the fatal marker here too,
+            // because in that case there is no response stream for `handle_response_stream()` to
+            // consume.
+            if let Some(err) = Self::take_stream_fatal_error(&fatal_error).await {
+                return Err(err);
+            }
 
             let resp_strm = match resp_strm_res {
                 Ok(resp_strm) => resp_strm,
@@ -269,6 +288,9 @@ where
             };
 
             let res = self.handle_response_stream(resp_strm, inflight_queue).await;
+            if let Some(err) = Self::take_stream_fatal_error(&fatal_error).await {
+                return Err(err);
+            }
 
             // Response stream is successfully exhausted.
             if res.is_ok() {
@@ -282,6 +304,13 @@ where
                 }
             }
         }
+    }
+
+    async fn take_stream_fatal_error(
+        fatal_error: &Arc<MutexOf<C, Option<ReplicationClosed>>>,
+    ) -> Option<ReplicationClosed> {
+        let mut fatal_error = fatal_error.lock().await;
+        fatal_error.take()
     }
 
     async fn handle_response_stream<'s>(

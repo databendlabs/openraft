@@ -214,26 +214,28 @@ where
 
         // Sort and find the greatest value accepted by a quorum set.
 
-        if prev_le_qa && new_gt_qa {
+        if new_gt_qa {
             let new_index = self.move_up(index);
 
-            // From high to low, find the max value that has constituted a quorum.
-            for i in new_index..self.voter_count {
-                let prog = self.entries[i].val.borrow();
+            if prev_le_qa {
+                // From high to low, find the max value that has constituted a quorum.
+                for i in new_index..self.voter_count {
+                    let prog = self.entries[i].val.borrow();
 
-                // No need to re-calculate already quorum-accepted value.
-                if prog <= &self.quorum_accepted {
-                    break;
-                }
+                    // No need to re-calculate already quorum-accepted value.
+                    if prog <= &self.quorum_accepted {
+                        break;
+                    }
 
-                // Ids of the target that has value GE `entries[i]`
-                let it = self.entries[0..=i].iter().map(|item| &item.id);
+                    // Ids of the target that has value GE `entries[i]`
+                    let it = self.entries[0..=i].iter().map(|item| &item.id);
 
-                self.stat.is_quorum_count += 1;
+                    self.stat.is_quorum_count += 1;
 
-                if self.quorum_set.is_quorum(it) {
-                    self.quorum_accepted = prog.clone();
-                    break;
+                    if self.quorum_set.is_quorum(it) {
+                        self.quorum_accepted = prog.clone();
+                        break;
+                    }
                 }
             }
         }
@@ -749,5 +751,23 @@ mod tests {
         // Collect as Vec of tuples - order matters after updates
         let pairs: Vec<(u64, u64)> = progress.collect_mapped(|item| (item.id, item.val));
         assert_eq!(vec![(1, 5), (2, 3), (0, 0), (3, 0)], pairs);
+    }
+
+    #[test]
+    fn vec_progress_sub_quorum_commit_regression() {
+        let quorum_set = vec![btreeset! {0, 1, 2, 3, 4}];
+        let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [], || 0);
+
+        progress.update(&0, 5).ok(); // qa = 0
+        progress.update(&1, 3).ok(); // qa = 0
+        progress.update(&2, 4).ok(); // qa = 3 ; above-qa region = [0:5, 2:4] (descending, ok)
+        progress.update(&2, 10).ok(); // voter 2 was already > qa(3) and advances further:
+        //   move_up is SKIPPED, region becomes [0:5, 2:10] (NOT descending)
+        let qa = progress.update(&3, 6).ok();
+
+        // True match values: {0:5, 1:3, 2:10, 3:6, 4:0}; sorted desc = 10,6,5,3,0 -> 3rd-largest = 5.
+        // Only voters {2,3} reached 6 -> 2 voters -> NOT a majority.
+        // Expected quorum_accepted = 5.
+        assert_eq!(Some(&5), qa);
     }
 }

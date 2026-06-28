@@ -21,6 +21,7 @@ use openraft::RaftTypeConfig;
 use openraft::Snapshot;
 use openraft::errors::RaftError;
 use openraft::raft::SnapshotResponse;
+use openraft::raft::TransferLeaderResponse;
 use serde::Serialize;
 use tokio::net::TcpListener;
 
@@ -112,7 +113,8 @@ where
         }
         "/transfer-leader" => {
             let req = serde_json::from_slice(&body).map_err(bad_request)?;
-            let res: Result<(), RaftError<C>> = raft.handle_transfer_leader(req).await.map_err(RaftError::Fatal);
+            let res: Result<TransferLeaderResponse<C>, RaftError<C>> =
+                raft.handle_transfer_leader(req).await.map_err(RaftError::Fatal);
 
             json_response(&res)
         }

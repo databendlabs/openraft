@@ -60,7 +60,7 @@ where C: RaftTypeConfig
         payload: EntryPayloadOf<C>,
         // TODO: ClientWriteError can only be ForwardToLeader Error
     ) -> Result<Result<ClientWriteResponse<C>, ClientWriteError<C>>, Fatal<C>> {
-        let (responder, _commit_rx, complete_rx) = ProgressResponder::new();
+        let (responder, complete_rx) = ProgressResponder::complete_only();
 
         self.do_client_write_ff(
             Batch::of([payload]),
@@ -126,7 +126,7 @@ where C: RaftTypeConfig
         let mut receivers = Vec::with_capacity(payloads.len());
 
         for _ in 0..payloads.len() {
-            let (responder, _commit_rx, complete_rx) = ProgressResponder::<C, ClientWriteResult<C>>::new();
+            let (responder, complete_rx) = ProgressResponder::<C, ClientWriteResult<C>>::complete_only();
             responders.push(Some(CoreResponder::Progress(responder)));
             receivers.push(complete_rx);
         }

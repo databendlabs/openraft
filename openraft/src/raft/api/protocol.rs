@@ -5,11 +5,9 @@ use display_more::DisplayOptionExt;
 use futures_util::Stream;
 use openraft_macros::since;
 
-use crate::LogIdOptionExt;
-use crate::LogIndexOptionExt;
 use crate::OptionalSend;
-use crate::RaftMetrics;
 use crate::RaftTypeConfig;
+use crate::core::io_flush_tracking::FlushPoint;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::errors::Fatal;
@@ -18,7 +16,9 @@ use crate::errors::into_raft_result::IntoRaftResult;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::SnapshotResponse;
+use crate::raft::TransferLeaderError;
 use crate::raft::TransferLeaderRequest;
+use crate::raft::TransferLeaderResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft::raft_inner::RaftInner;
@@ -28,6 +28,7 @@ use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::SnapshotOf;
 use crate::type_config::alias::VoteOf;
+use crate::vote::RaftVote;
 use crate::vote::raft_vote::RaftVoteExt;
 
 /// Handles Raft protocol requests from other nodes in the cluster.
@@ -149,52 +150,76 @@ where C: RaftTypeConfig
     }
 
     #[since(version = "0.10.0")]
-    pub(crate) async fn handle_transfer_leader(&self, req: TransferLeaderRequest<C>) -> Result<(), Fatal<C>> {
+    pub(crate) async fn handle_transfer_leader(
+        &self,
+        req: TransferLeaderRequest<C>,
+    ) -> Result<TransferLeaderResponse<C>, Fatal<C>> {
         // Reset the Leader lease at once and quit if this is not the assigned next leader.
         // Only the assigned next Leader waits for the log to be flushed.
-        if &req.to_node_id == self.inner.id() {
-            self.ensure_log_flushed_for_transfer_leader(&req).await?;
+        if &req.to_node_id == self.inner.id()
+            && let Err(err) = self.ensure_log_flushed_for_transfer_leader(&req).await?
+        {
+            return Ok(Err(err));
         }
 
         let raft_msg = RaftMsg::HandleTransferLeader {
-            from: req.from_leader,
-            to: req.to_node_id,
+            from: req.from_leader.clone(),
+            to: req.to_node_id.clone(),
+            last_log_id: req.last_log_id.clone(),
         };
 
         self.inner.send_msg(raft_msg).await?;
 
-        Ok(())
+        Ok(Ok(()))
     }
 
-    /// Wait for the log to be flushed to make sure the RequestVote.last_log_id is up to date, then
-    /// TransferLeader will be able to proceed.
-    async fn ensure_log_flushed_for_transfer_leader(&self, req: &TransferLeaderRequest<C>) -> Result<(), Fatal<C>> {
-        // If the next Leader is this node, wait for the log to be flushed to make sure the
-        // RequestVote.last_log_id is up to date.
-
-        // Condition satisfied to become Leader
-        let ok = |m: &RaftMetrics<C>| {
-            req.from_leader() == &m.vote && m.last_log_index.next_index() >= req.last_log_id().next_index()
+    fn check_transfer_leader_progress(
+        req: &TransferLeaderRequest<C>,
+        progress: &Option<FlushPoint<C>>,
+    ) -> TransferLeaderResponse<C> {
+        let progress = if let Some(progress) = progress {
+            progress
+        } else {
+            return Err(TransferLeaderError::LogNotFlushed {
+                expected: req.last_log_id.clone(),
+                actual: None,
+            });
         };
 
-        // Condition failed to become Leader
+        let actual_vote = progress.vote.as_ref_vote();
+
+        let vote_matches = actual_vote == req.from_leader.as_ref_vote();
+        let log_is_flushed = progress.last_log_id.as_ref() >= req.last_log_id.as_ref();
+
+        if vote_matches && log_is_flushed {
+            return Ok(());
+        }
+
         #[allow(clippy::neg_cmp_op_on_partial_ord)]
-        let fail = |m: &RaftMetrics<C>| !(req.from_leader.as_ref_vote() >= m.vote.as_ref_vote());
+        let vote_changed = !(req.from_leader.as_ref_vote() >= actual_vote);
+        if vote_changed {
+            let actual_vote =
+                VoteOf::<C>::from_leader_id(progress.vote.leader_id().clone(), progress.vote.is_committed());
 
-        let timeout = Some(Duration::from_millis(self.inner.config().election_timeout_min));
-        let metrics_res =
-            self.inner.wait(timeout).metrics(|st| ok(st) || fail(st), "transfer_leader await flushed log").await;
+            return Err(TransferLeaderError::VoteChanged {
+                expected: req.from_leader.clone(),
+                actual: actual_vote,
+            });
+        }
 
-        match metrics_res {
-            Ok(metrics) => {
-                if fail(&metrics) {
-                    tracing::warn!(
-                        "Vote changed, give up Leader-transfer; expected vote: {}, metrics: {}",
-                        req.from_leader,
-                        metrics
-                    );
-                    return Ok(());
-                }
+        Err(TransferLeaderError::LogNotFlushed {
+            expected: req.last_log_id.clone(),
+            actual: progress.last_log_id.clone(),
+        })
+    }
+
+    fn log_transfer_leader_progress(
+        req: &TransferLeaderRequest<C>,
+        progress: &Option<FlushPoint<C>>,
+        res: &TransferLeaderResponse<C>,
+    ) {
+        match res {
+            Ok(()) => {
                 tracing::info!(
                     "Leader-transfer condition satisfied, submit Leader-transfer message; \
                      expected: (vote: {}, flushed_log: {})",
@@ -202,17 +227,60 @@ where C: RaftTypeConfig
                     req.last_log_id.display(),
                 );
             }
-            Err(err) => {
+            Err(TransferLeaderError::VoteChanged { .. }) => {
                 tracing::warn!(
-                    "Leader-transfer condition fail to satisfy, still submit Leader-transfer; \
-                    expected: (vote: {}; flushed_log: {}), error: {}",
+                    "Vote changed, give up Leader-transfer; expected vote: {}, progress: {}",
                     req.from_leader,
-                    req.last_log_id.display(),
-                    err
+                    progress.display()
                 );
             }
-        };
+            Err(_) => {
+                tracing::warn!(
+                    "Leader-transfer condition failed, reject Leader-transfer; \
+                     expected: (vote: {}; flushed_log: {}), progress: {}",
+                    req.from_leader,
+                    req.last_log_id.display(),
+                    progress.display()
+                );
+            }
+        }
+    }
 
-        Ok(())
+    /// Wait for the log to be flushed to make sure the RequestVote.last_log_id is up to date, then
+    /// TransferLeader will be able to proceed.
+    async fn ensure_log_flushed_for_transfer_leader(
+        &self,
+        req: &TransferLeaderRequest<C>,
+    ) -> Result<TransferLeaderResponse<C>, Fatal<C>> {
+        // If the next Leader is this node, wait for the log to be flushed to make sure the
+        // RequestVote.last_log_id is up to date.
+
+        let timeout_at = C::now() + Duration::from_millis(self.inner.config().election_timeout_min);
+        let mut log_progress = self.inner.progress_watcher.log_progress();
+
+        loop {
+            let progress = log_progress.get();
+            let res = Self::check_transfer_leader_progress(req, &progress);
+
+            if let Ok(()) | Err(TransferLeaderError::VoteChanged { .. }) = &res {
+                Self::log_transfer_leader_progress(req, &progress, &res);
+                return Ok(res);
+            }
+
+            let changed_res = C::timeout_at(timeout_at, log_progress.changed()).await;
+            let changed_res = match changed_res {
+                Ok(changed_res) => changed_res,
+                Err(_) => {
+                    let progress = log_progress.get();
+                    let res = Self::check_transfer_leader_progress(req, &progress);
+                    Self::log_transfer_leader_progress(req, &progress, &res);
+                    return Ok(res);
+                }
+            };
+
+            if changed_res.is_err() {
+                return Err(self.inner.get_core_stop_error().await);
+            }
+        }
     }
 }
