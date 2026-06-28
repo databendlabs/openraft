@@ -215,6 +215,15 @@ An implementation of [`RaftNetworkV2`] can be considered as a wrapper that invok
 the corresponding methods of a remote [`Raft`]. It is responsible for sending
 and receiving messages between Raft nodes.
 
+The `RPCOption` argument carries the timeout budget for an RPC. The network
+implementation is responsible for enforcing `soft_ttl()` with a transport
+timeout, deadline, or reconnect policy. Openraft may shut down an in-flight RPC
+once `hard_ttl()` has elapsed.
+
+For streaming AppendEntries, `hard_ttl()` is not a lifetime limit for the whole
+stream. Use `soft_ttl()` for setup, idle timeout, keepalive, or per-response
+deadline policy to detect a stuck stream.
+
 Here is the list of methods that need to be implemented for the [`RaftNetworkV2`] trait:
 
 

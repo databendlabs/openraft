@@ -39,6 +39,7 @@ where C: RaftTypeConfig
     /// [`Raft::install_full_snapshot()`] with this vote.
     ///
     /// `cancel` gets `Ready` when the caller decides to cancel this snapshot transmission.
+    /// The network implementation is also responsible for enforcing `option.soft_ttl()`.
     ///
     /// [`Raft::install_full_snapshot()`]: crate::raft::Raft::install_full_snapshot
     async fn full_snapshot(

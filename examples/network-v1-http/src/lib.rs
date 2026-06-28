@@ -131,7 +131,12 @@ where C: RaftTypeConfig
 impl<C> Network<C>
 where C: RaftTypeConfig
 {
-    async fn request<Req, Resp, Err>(&mut self, uri: impl Display, req: Req) -> Result<Result<Resp, Err>, RPCError<C>>
+    async fn request<Req, Resp, Err>(
+        &mut self,
+        uri: impl Display,
+        req: Req,
+        option: &RPCOption,
+    ) -> Result<Result<Resp, Err>, RPCError<C>>
     where
         Req: Serialize + 'static,
         Resp: Serialize + DeserializeOwned,
@@ -144,7 +149,14 @@ where C: RaftTypeConfig
         //     serde_json::to_string_pretty(&req).unwrap()
         // );
 
-        let resp = self.client.post(url.clone()).json(&req).send().await.map_err(|e| {
+        let resp = self
+            .client
+            .post(url.clone())
+            .json(&req)
+            .timeout(option.soft_ttl())
+            .send()
+            .await
+            .map_err(|e| {
             if e.is_connect() {
                 // `Unreachable` informs the caller to backoff for a short while to avoid error log flush.
                 RPCError::Unreachable(Unreachable::new(&e))
@@ -172,9 +184,12 @@ where C: RaftTypeConfig
     async fn append_entries(
         &mut self,
         req: AppendEntriesRequest<C>,
-        _option: RPCOption,
+        option: RPCOption,
     ) -> Result<AppendEntriesResponse<C>, RPCError<C, RaftError<C>>> {
-        let res = self.request::<_, _, Infallible>("append", req).await.map_err(RPCError::with_raft_error)?;
+        let res = self
+            .request::<_, _, Infallible>("append", req, &option)
+            .await
+            .map_err(RPCError::with_raft_error)?;
         Ok(res.unwrap())
     }
 
@@ -182,9 +197,9 @@ where C: RaftTypeConfig
     async fn install_snapshot(
         &mut self,
         req: InstallSnapshotRequest<C>,
-        _option: RPCOption,
+        option: RPCOption,
     ) -> Result<InstallSnapshotResponse<C>, RPCError<C, RaftError<C, InstallSnapshotError>>> {
-        let res = self.request("snapshot", req).await.map_err(RPCError::with_raft_error)?;
+        let res = self.request("snapshot", req, &option).await.map_err(RPCError::with_raft_error)?;
         match res {
             Ok(resp) => Ok(resp),
             Err(e) => Err(RPCError::RemoteError(RemoteError::new(
@@ -198,9 +213,12 @@ where C: RaftTypeConfig
     async fn vote(
         &mut self,
         req: VoteRequest<C>,
-        _option: RPCOption,
+        option: RPCOption,
     ) -> Result<VoteResponse<C>, RPCError<C, RaftError<C>>> {
-        let res = self.request::<_, _, Infallible>("vote", req).await.map_err(RPCError::with_raft_error)?;
+        let res = self
+            .request::<_, _, Infallible>("vote", req, &option)
+            .await
+            .map_err(RPCError::with_raft_error)?;
         Ok(res.unwrap())
     }
 }
