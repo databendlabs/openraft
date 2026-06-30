@@ -13,11 +13,14 @@ use crate::impls::OneshotResponder;
 use crate::raft::ClientWriteResponse;
 #[cfg(doc)]
 use crate::raft::ManagementApi;
+use crate::storage::RaftStateMachine;
 
 /// Implement blocking mode write operations those reply on oneshot channel for communication
 /// between Raft core and client.
 impl<C, SM> Raft<C, SM>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     /// Propose a cluster configuration change.
     ///
