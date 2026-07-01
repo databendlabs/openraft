@@ -302,7 +302,12 @@ impl RaftLogReader<TypeConfig> for Arc<MemLogStore> {
         Ok(*self.vote.read().await)
     }
 
-    async fn limited_get_log_entries(&mut self, start: u64, end: u64) -> Result<Vec<EntryOf<TypeConfig>>, io::Error> {
+    async fn limited_get_log_entries(
+        &mut self,
+        start: u64,
+        end: u64,
+        max_bytes: Option<u64>,
+    ) -> Result<Vec<EntryOf<TypeConfig>>, io::Error> {
         if self.fail_next_limited_get.swap(false, Ordering::Relaxed) {
             tracing::info!(
                 "limited_get_log_entries({}, {}): returning io::Error for testing",
@@ -320,7 +325,28 @@ impl RaftLogReader<TypeConfig> for Arc<MemLogStore> {
             );
             return Ok(vec![]);
         }
-        self.try_get_log_entries(start..end).await
+
+        // Entries are stored already serialized, so the byte budget is enforced cheaply here.
+        let log = self.log.read().await;
+        let mut entries = Vec::new();
+        let mut total_bytes: u64 = 0;
+        for (_, serialized) in log.range(start..end) {
+            let entry_bytes = serialized.len() as u64;
+            // Always include at least one entry so a single oversized entry cannot stall
+            // replication; otherwise stop once including this entry would exceed the budget.
+            if !entries.is_empty()
+                && let Some(max) = max_bytes
+                && total_bytes + entry_bytes > max
+            {
+                break;
+            }
+            let ent = serde_json::from_str(serialized)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+            entries.push(ent);
+            total_bytes += entry_bytes;
+        }
+
+        Ok(entries)
     }
 }
 

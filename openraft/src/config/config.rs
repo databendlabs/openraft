@@ -218,6 +218,27 @@ pub struct Config {
     #[cfg_attr(feature = "clap", clap(long, default_value_t = DEFAULTS.max_payload_entries))]
     pub max_payload_entries: u64,
 
+    /// The maximum number of bytes of entries allowed in a single `AppendEntries` RPC payload.
+    ///
+    /// This bounds the **serialized size** of the entries batched into one replication RPC,
+    /// complementing [`max_payload_entries`](Self::max_payload_entries) (the count limit):
+    /// whichever limit is reached first caps the batch. At least one entry is always included, so
+    /// a single entry larger than this limit does not stall replication.
+    ///
+    /// Because Openraft does not serialize entries itself, byte-size enforcement is delegated to
+    /// the log store's [`limited_get_log_entries`] implementation, which receives this value as
+    /// its `max_bytes` argument (the store is where the serialized bytes are known). Stores that
+    /// do not honor `max_bytes` — including the default implementation — ignore this limit.
+    ///
+    /// Accepts a size with an optional unit on the command line, e.g. `1MiB`. Defaults to `None`,
+    /// meaning no byte-size limit is applied.
+    ///
+    /// [`limited_get_log_entries`]: crate::storage::RaftLogReader::limited_get_log_entries
+    #[since(version = "0.10.0")]
+    #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "clap", clap(long, value_parser = parse_bytes_with_unit))]
+    pub max_payload_size: Option<u64>,
+
     /// The maximum number of log entries per append I/O operation.
     ///
     /// When multiple `AppendEntries` commands are queued, Openraft can merge them into
@@ -550,6 +571,7 @@ impl Default for Config {
             install_snapshot_timeout: DEFAULTS.install_snapshot_timeout,
             send_snapshot_timeout: DEFAULTS.send_snapshot_timeout,
             max_payload_entries: DEFAULTS.max_payload_entries,
+            max_payload_size: None,
             max_append_entries: Some(DEFAULTS.max_append_entries),
             replication_lag_threshold: DEFAULTS.replication_lag_threshold,
             snapshot_policy: DEFAULTS.snapshot_policy.clone(),

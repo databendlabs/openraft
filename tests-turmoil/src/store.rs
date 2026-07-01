@@ -80,7 +80,12 @@ impl RaftLogReader<TypeConfig> for Arc<LogStore> {
         Ok(*self.vote.lock().unwrap())
     }
 
-    async fn limited_get_log_entries(&mut self, start: u64, end: u64) -> Result<Vec<Entry>, io::Error> {
+    async fn limited_get_log_entries(
+        &mut self,
+        start: u64,
+        end: u64,
+        _max_bytes: Option<u64>,
+    ) -> Result<Vec<Entry>, io::Error> {
         self.try_get_log_entries(start..end).await
     }
 }

@@ -12,6 +12,7 @@ fn test_config_defaults() {
 
     assert_eq!(50, cfg.heartbeat_interval);
     assert_eq!(300, cfg.max_payload_entries);
+    assert_eq!(None, cfg.max_payload_size);
     assert_eq!(5000, cfg.replication_lag_threshold);
 
     assert_eq!(3 * 1024 * 1024, cfg.snapshot_max_chunk_size);

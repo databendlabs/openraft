@@ -262,8 +262,12 @@ where
             let max_entries = self.replication_context.config.max_payload_entries;
             let end = std::cmp::min(end, start + max_entries);
 
+            // Optional byte-size cap on the payload; the store enforces it (see
+            // `RaftLogReader::limited_get_log_entries`), since it knows the serialized size.
+            let max_bytes = self.replication_context.config.max_payload_size;
+
             // limited_get_log_entries will return logs smaller than the range [start, end).
-            let logs = self.log_reader.limited_get_log_entries(start, end).await.sto_read_logs()?;
+            let logs = self.log_reader.limited_get_log_entries(start, end, max_bytes).await.sto_read_logs()?;
 
             // Handle empty result gracefully: treat as heartbeat.
             // This violates the API contract but we don't panic.

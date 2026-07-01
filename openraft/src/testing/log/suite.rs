@@ -80,8 +80,13 @@ where C: RaftTypeConfig
     }
 
     /// Proxy method to invoke [`RaftLogReader::limited_get_log_entries`].
-    async fn limited_get_log_entries(&mut self, start: u64, end: u64) -> Result<Vec<C::Entry>, io::Error> {
-        self.get_log_reader().await.limited_get_log_entries(start, end).await
+    async fn limited_get_log_entries(
+        &mut self,
+        start: u64,
+        end: u64,
+        max_bytes: Option<u64>,
+    ) -> Result<Vec<C::Entry>, io::Error> {
+        self.get_log_reader().await.limited_get_log_entries(start, end, max_bytes).await
     }
 }
 
@@ -960,17 +965,33 @@ where
 
         tracing::info!("--- get start == stop");
         {
-            let logs = store.limited_get_log_entries(3, 3).await?;
+            let logs = store.limited_get_log_entries(3, 3, None).await?;
             assert_eq!(logs.len(), 0, "expected no logs to be returned");
         }
 
         tracing::info!("--- get start < stop");
         {
-            let logs = store.limited_get_log_entries(5, 7).await?;
+            let logs = store.limited_get_log_entries(5, 7, None).await?;
 
             assert!(!logs.is_empty());
             assert!(logs.len() <= 2);
             assert_eq!(logs[0].log_id(), log_id_0::<C>(1, 5));
+        }
+
+        tracing::info!("--- max_bytes is an optional cap; assert only the universal contract");
+        {
+            let unlimited = store.limited_get_log_entries(5, 11, None).await?;
+
+            // A tiny budget must still return at least one entry: a single oversized entry must
+            // never stall replication. Stores that do not honor `max_bytes` simply return more.
+            let tiny = store.limited_get_log_entries(5, 11, Some(1)).await?;
+            assert!(!tiny.is_empty(), "must return >= 1 entry even below one entry's size");
+            assert!(tiny.len() <= unlimited.len());
+            assert_eq!(tiny[0].log_id(), log_id_0::<C>(1, 5));
+
+            // A huge budget must never truncate.
+            let huge = store.limited_get_log_entries(5, 11, Some(u64::MAX)).await?;
+            assert_eq!(huge.len(), unlimited.len(), "huge budget must behave like no limit");
         }
 
         Ok(())

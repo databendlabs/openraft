@@ -241,11 +241,25 @@ where C: RaftTypeConfig
     /// If the specified range is too large, the implementation may return only the first few log
     /// entries to ensure the result is not excessively large.
     ///
+    /// `max_bytes` is an optional cap on the **total serialized size** of the returned entries,
+    /// sourced from [`Config::max_payload_size`](crate::Config::max_payload_size). When set, the
+    /// implementation should stop accumulating once including the next entry would exceed this many
+    /// bytes. It must, however, always return at least one entry for a non-empty range, so a single
+    /// entry larger than `max_bytes` cannot stall replication. Because Openraft does not serialize
+    /// entries itself, only stores that know their serialized size can honor this; the default
+    /// implementation ignores `max_bytes`.
+    ///
     /// It must not return an empty result if the input range is not empty.
     ///
     /// The default implementation just returns the full range of log entries.
     #[since(version = "0.10.0")]
-    async fn limited_get_log_entries(&mut self, start: u64, end: u64) -> Result<Vec<C::Entry>, io::Error> {
+    async fn limited_get_log_entries(
+        &mut self,
+        start: u64,
+        end: u64,
+        max_bytes: Option<u64>,
+    ) -> Result<Vec<C::Entry>, io::Error> {
+        let _ = max_bytes;
         self.try_get_log_entries(start..end).await
     }
 
