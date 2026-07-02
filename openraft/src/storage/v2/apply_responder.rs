@@ -11,8 +11,8 @@ use crate::storage::v2::apply_responder_inner::ApplyResponderInner;
 ///
 /// This type cannot be constructed by user code. Instances are provided by
 /// Openraft when entries are passed to [`RaftStateMachine::apply`](super::RaftStateMachine::apply).
-/// State machine implementations should call [`send()`](Self::send) to
-/// return the response after applying each entry.
+/// State machine implementations must call [`send()`](Self::send) after applying each entry.
+/// Failure to call `send()` will cause [`client_write`](crate::Raft::client_write) to hang.
 ///
 /// # Example
 ///
@@ -54,6 +54,10 @@ pub struct ApplyResponder<C: RaftTypeConfig> {
 
 impl<C: RaftTypeConfig> ApplyResponder<C> {
     /// Send the response after applying an entry.
+    ///
+    /// The response will be returned by [`Raft::client_write`](crate::Raft::client_write).
+    /// This method must be called by [`RaftStateMachine::apply`](crate::RaftStateMachine::apply),
+    /// otherwise [`Raft::client_write`](crate::Raft::client_write) will never return.
     pub fn send(self, response: C::R) {
         self.inner.send(response)
     }
