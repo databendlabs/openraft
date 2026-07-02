@@ -57,12 +57,13 @@ where C: RaftTypeConfig
     /// application-specific transaction is being started, or perhaps committed. This may be
     /// where a key/value is being stored.
     ///
-    /// For every entry to apply, an implementation should:
+    /// For every entry to apply, an implementation must:
     /// - Store the log id as last-applied log id.
     /// - Deal with the business logic log.
     /// - Store membership config if `RaftEntry::get_membership()` returns `Some`.
     /// - Call [`ApplyResponder::send`](crate::storage::ApplyResponder::send) with the response
-    ///   immediately after applying the entry.
+    ///   immediately after applying the entry. If this is not called,
+    ///   [`Raft::client_write`](crate::Raft::client_write) will never return.
     ///
     /// Note that for a membership log, the implementation needs to do nothing about it, except
     /// storing it.
