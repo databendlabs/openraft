@@ -12,7 +12,6 @@ use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
-use crate::progress::Progress;
 use crate::storage::SnapshotMeta;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::StoredMembershipOf;

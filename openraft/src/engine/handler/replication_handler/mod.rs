@@ -18,7 +18,6 @@ use crate::errors::NodeNotFound;
 use crate::errors::Operation;
 use crate::progress;
 use crate::progress::Inflight;
-use crate::progress::Progress;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::inflight_id::InflightId;
 use crate::progress::stream_id::StreamId;

@@ -6,7 +6,6 @@ use crate::RaftTypeConfig;
 use crate::base::shared_id_generator::SharedIdGenerator;
 use crate::display_ext::DisplayInstantExt;
 use crate::engine::leader_log_ids::LeaderLogIds;
-use crate::progress::Progress;
 use crate::progress::VecProgress;
 use crate::proposer::Leader;
 use crate::quorum::QuorumSet;
