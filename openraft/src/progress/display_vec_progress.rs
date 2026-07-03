@@ -2,7 +2,6 @@ use std::borrow::Borrow;
 use std::fmt::Display;
 use std::fmt::Formatter;
 
-use super::Progress;
 use super::vec_progress::VecProgress;
 use crate::quorum::QuorumSet;
 

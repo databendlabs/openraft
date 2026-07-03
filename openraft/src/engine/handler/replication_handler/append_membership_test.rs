@@ -15,7 +15,6 @@ use crate::engine::TargetProgress;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::progress::Inflight;
-use crate::progress::Progress;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::inflight_id::InflightId;
 use crate::progress::stream_id::StreamId;

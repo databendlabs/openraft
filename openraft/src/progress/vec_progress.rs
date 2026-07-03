@@ -5,15 +5,20 @@ use std::fmt::Formatter;
 use std::slice::Iter;
 use std::slice::IterMut;
 
-use super::Progress;
 use super::display_vec_progress::DisplayVecProgress;
 use super::id_val::IdVal;
 use super::progress_stats::ProgressStats;
 use crate::quorum::QuorumSet;
 
-/// A Progress implementation with vector as storage.
+/// Track the progress of several incremental values.
 ///
-/// Suitable for a small quorum set.
+/// When one of the values is updated, it uses a `QuorumSet` to calculate the quorum-accepted
+/// value. `ID` is the identifier of every progress value.
+/// `Ent` is a type of progress entry.
+/// `Prog` is the progress data of `Ent`, a progress entry `Ent` could contain other user data.
+/// `QS` is a quorum set implementation.
+///
+/// Internally it uses a vector as storage, thus it is suitable for a small quorum set.
 #[derive(Clone, Debug)]
 pub(crate) struct VecProgress<ID, Ent, Prog, QS>
 where
@@ -134,7 +139,7 @@ where
     }
 }
 
-impl<ID, Ent, Prog, QS> Progress<ID, Ent, Prog, QS> for VecProgress<ID, Ent, Prog, QS>
+impl<ID, Ent, Prog, QS> VecProgress<ID, Ent, Prog, QS>
 where
     ID: PartialEq + 'static,
     Ent: Borrow<Prog>,
@@ -143,6 +148,7 @@ where
 {
     /// Update one of the scalar values and re-calculate the quorum-accepted value.
     ///
+    /// It returns `Err(quorum_accepted)` if the `id` is not found.
     /// Re-updating with the same V will do nothing.
     ///
     /// # Algorithm
@@ -174,11 +180,8 @@ where
     /// - update(c, 3): nothing to do: quorum-accepted is still 3;
     /// - update(c, 4): re-calc:       quorum-accepted becomes 4;
     /// - update(c, 6): re-calc:       quorum-accepted becomes 5;
-    fn update_with<F>(&mut self, id: &ID, f: F) -> Result<&Prog, &Prog>
-    where
-        F: FnOnce(&mut Ent),
-        ID: PartialEq,
-    {
+    pub(crate) fn update_with<F>(&mut self, id: &ID, f: F) -> Result<&Prog, &Prog>
+    where F: FnOnce(&mut Ent) {
         self.stat.update_count += 1;
 
         let index = match self.index(id) {
@@ -243,38 +246,77 @@ where
         Ok(&self.quorum_accepted)
     }
 
-    #[allow(dead_code)]
-    fn try_get(&self, id: &ID) -> Option<&Ent> {
+    /// Update one of the scalar values and re-calculate the quorum-accepted value.
+    ///
+    /// It returns `Err(quorum_accepted)` if the `id` is not found.
+    pub(crate) fn update(&mut self, id: &ID, value: Ent) -> Result<&Prog, &Prog> {
+        self.update_with(id, |x| *x = value)
+    }
+
+    /// Update the value if the new value is greater than the current value.
+    ///
+    /// It returns `Err(quorum_accepted)` if the `id` is not found.
+    pub(crate) fn increase_to(&mut self, id: &ID, value: Ent) -> Result<&Prog, &Prog>
+    where Ent: PartialOrd {
+        self.update_with(id, |x| {
+            if value > *x {
+                *x = value;
+            }
+        })
+    }
+
+    /// Try to get the value by `id`.
+    pub(crate) fn try_get(&self, id: &ID) -> Option<&Ent> {
         let index = self.index(id)?;
         Some(&self.entries[index].val)
     }
 
-    fn get_mut(&mut self, id: &ID) -> Option<&mut Ent> {
+    /// Returns a mutable reference to the value corresponding to the `id`.
+    pub(crate) fn get_mut(&mut self, id: &ID) -> Option<&mut Ent> {
         let index = self.index(id)?;
         Some(&mut self.entries[index].val)
     }
 
+    // TODO: merge `get` and `try_get`
+    /// Get the value by `id`.
     #[allow(dead_code)]
-    fn get(&self, id: &ID) -> &Ent {
+    pub(crate) fn get(&self, id: &ID) -> &Ent {
         let index = self.index(id).unwrap();
         &self.entries[index].val
     }
 
+    /// Get the greatest value that is accepted by a quorum defined in [`Self::quorum_set()`].
+    ///
+    /// In raft or other distributed consensus,
+    /// To commit a value, the value has to be **accepted by a quorum** and has to be the greatest
+    /// value every proposed.
     #[allow(dead_code)]
-    fn quorum_accepted(&self) -> &Prog {
+    pub(crate) fn quorum_accepted(&self) -> &Prog {
         &self.quorum_accepted
     }
 
+    /// Returns the reference to the quorum set
     #[allow(dead_code)]
-    fn quorum_set(&self) -> &QS {
+    pub(crate) fn quorum_set(&self) -> &QS {
         &self.quorum_set
     }
 
-    fn iter(&self) -> Iter<'_, IdVal<ID, Ent>> {
+    /// Iterate over all id and values, voters first followed by learners.
+    pub(crate) fn iter(&self) -> Iter<'_, IdVal<ID, Ent>> {
         self.entries.as_slice().iter()
     }
 
-    fn upgrade_quorum_set(
+    /// Map each item to a value and collect into a collection.
+    pub(crate) fn collect_mapped<F, T, C>(&self, f: F) -> C
+    where
+        F: Fn(&IdVal<ID, Ent>) -> T,
+        C: FromIterator<T>,
+    {
+        self.iter().map(f).collect()
+    }
+
+    /// Build a new instance with the new quorum set, inheriting progress data from `self`.
+    pub(crate) fn upgrade_quorum_set(
         self,
         quorum_set: QS,
         learner_ids: impl IntoIterator<Item = ID>,
@@ -290,7 +332,13 @@ where
         new_prog
     }
 
-    fn is_voter(&self, id: &ID) -> Option<bool> {
+    /// Return if the given id is a voter.
+    ///
+    /// A voter is a node in the quorum set that can grant a value.
+    /// A learner's progress is also tracked, but it will never grant a value.
+    ///
+    /// If the given id is not in this `VecProgress`, it returns `None`.
+    pub(crate) fn is_voter(&self, id: &ID) -> Option<bool> {
         let index = self.index(id)?;
         Some(index < self.voter_count)
     }
@@ -302,7 +350,6 @@ mod tests {
 
     use maplit::btreeset;
 
-    use super::Progress;
     use super::VecProgress;
     use crate::progress::id_val::IdVal;
 

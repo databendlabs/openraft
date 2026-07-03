@@ -12,7 +12,6 @@ use crate::engine::Engine;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::progress::Inflight;
-use crate::progress::Progress;
 use crate::progress::inflight_id::InflightId;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::StoredMembershipOf;

@@ -5,7 +5,6 @@ use crate::RaftTypeConfig;
 use crate::base::shared_id_generator::SharedIdGenerator;
 use crate::display_ext::DisplayInstantExt;
 use crate::engine::leader_log_ids::LeaderLogIds;
-use crate::progress::Progress;
 use crate::progress::VecProgress;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::stream_id::StreamId;
@@ -257,7 +256,6 @@ mod tests {
     use crate::engine::leader_log_ids::LeaderLogIds;
     use crate::engine::testing::UTConfig;
     use crate::engine::testing::log_id;
-    use crate::progress::Progress;
     use crate::proposer::Leader;
     use crate::type_config::TypeConfigExt;
     use crate::vote::raft_vote::RaftVoteExt;

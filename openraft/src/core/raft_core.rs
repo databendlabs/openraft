@@ -83,7 +83,6 @@ use crate::network::NetVote;
 use crate::network::RPCOption;
 use crate::network::RPCTypes;
 use crate::network::RaftNetworkFactory;
-use crate::progress::Progress;
 use crate::progress::stream_id::StreamId;
 use crate::quorum::QuorumSet;
 use crate::raft::AppendEntriesRequest;
