@@ -32,6 +32,14 @@ use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::WatchReceiverOf;
 
+/// How long [`RaftInner::recv_msg`] waits for RaftCore to actually stop after a response channel
+/// closed, before concluding the channel was closed by a dropped responder instead.
+///
+/// A real stop is observable almost immediately -- RaftCore reports it in metrics and drops the
+/// metrics sender as its task ends -- so this only needs to tolerate scheduling latency, not an
+/// actual shutdown. It solely bounds how long a caller waits on the dropped-responder path.
+const RECV_CORE_STOP_TIMEOUT: Duration = Duration::from_secs(1);
+
 /// RaftInner is the internal handle and provides internally used APIs to communicate with
 /// `RaftCore`.
 pub(in crate::raft) struct RaftInner<C>
@@ -96,7 +104,7 @@ where C: RaftTypeConfig
         })
     }
 
-    /// Receive a message from RaftCore, return an error if RaftCore has stopped.
+    /// Receive a message from RaftCore, return an error if the response is not delivered.
     pub(crate) async fn recv_msg<T, E>(&self, rx: impl Future<Output = Result<T, E>>) -> Result<T, Fatal<C>>
     where
         T: OptionalSend,
@@ -108,11 +116,53 @@ where C: RaftTypeConfig
         match recv_res {
             Ok(x) => Ok(x),
             Err(_) => {
-                let fatal = self.get_core_stop_error().await;
-                tracing::error!("{}: error: {}", func_name!(), fatal);
+                // The response channel was closed without a reply. Usually this means RaftCore has
+                // stopped, and we return the fatal error that stopped it. But a malfunctioning
+                // state machine can drop the responder without replying while RaftCore is still
+                // running; joining the core then would block forever. Bound the wait: if the core
+                // has not stopped, the dropped responder is itself the error, and we return at once
+                // instead of waiting any longer.
+                let fatal = if self.wait_core_stopped(RECV_CORE_STOP_TIMEOUT).await {
+                    let fatal = self.get_core_stop_error().await;
+                    tracing::error!("{}: error: {}", func_name!(), fatal);
+                    fatal
+                } else {
+                    tracing::error!(
+                        "{}: response dropped without a reply while RaftCore is running",
+                        func_name!()
+                    );
+                    Fatal::Stopped
+                };
+
                 Err(fatal)
             }
         }
+    }
+
+    /// Wait up to `timeout` for RaftCore to stop, without joining (and thus consuming) it.
+    ///
+    /// Observes the metrics watch channel, a non-destructive signal safe to poll from any number of
+    /// callers: RaftCore sets [`running_state`](RaftMetrics::running_state) to `Err` when it stops,
+    /// and drops the metrics sender when its task ends -- including on panic. Either is a reliable
+    /// signal that the core has stopped.
+    ///
+    /// Returns `true` if a stop was observed, `false` if the core is still running after `timeout`
+    /// (e.g. the response channel was closed by a dropped responder rather than a core shutdown).
+    async fn wait_core_stopped(&self, timeout: Duration) -> bool {
+        let mut rx = self.rx_metrics.clone();
+        let observe = async move {
+            loop {
+                if rx.borrow_watched().running_state.is_err() {
+                    return;
+                }
+                // `changed()` errors only when the metrics sender is dropped, i.e. the core task
+                // has ended.
+                if rx.changed().await.is_err() {
+                    return;
+                }
+            }
+        };
+        C::timeout(timeout, observe).await.is_ok()
     }
 
     /// Send an [`ExternalCommand`] to RaftCore to execute in the `RaftCore` thread.
