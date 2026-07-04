@@ -478,12 +478,15 @@ where C: RaftTypeConfig
         let id = self.config.id.clone();
 
         // The leader may not be in membership anymore
-        if let Some(prog_entry) = self.leader.progress.get_mut(&id) {
+        if let Some(prog_entry) = self.leader.progress.try_get(&id) {
             tracing::debug!("update progress: self_matching: {}", prog_entry.matching().display());
 
             if prog_entry.matching() >= upto.as_ref() {
                 return;
             }
+        }
+
+        if let Some(prog_entry) = self.leader.progress.get_mut(&id) {
             // TODO: It should be self.state.last_log_id() but None is ok.
             prog_entry.inflight = Inflight::logs(None, upto.clone(), InflightId::new(0));
 
