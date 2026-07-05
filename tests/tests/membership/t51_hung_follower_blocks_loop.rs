@@ -21,6 +21,7 @@ async fn setup() -> Result<TypedRaftRouter> {
     let config = Arc::new(
         Config {
             enable_heartbeat: false,
+            enable_elect: false,
             ..Default::default()
         }
         .validate()?,
