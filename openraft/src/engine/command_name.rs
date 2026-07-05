@@ -263,7 +263,7 @@ mod tests {
             targets: vec![TargetProgress {
                 target: 1,
                 target_node: (),
-                progress: ProgressEntry::empty(StreamId::new(1), 1),
+                progress: ProgressEntry::empty(1, StreamId::new(1), 1),
             }],
             close_old_streams: false,
         };

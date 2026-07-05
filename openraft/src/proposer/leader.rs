@@ -7,6 +7,7 @@ use crate::display_ext::DisplayInstantExt;
 use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::progress::VecProgress;
 use crate::progress::entry::ProgressEntry;
+use crate::progress::id_val::IdVal;
 use crate::progress::stream_id::StreamId;
 use crate::quorum::QuorumSet;
 use crate::type_config::TypeConfigExt;
@@ -60,7 +61,7 @@ where C: RaftTypeConfig
     pub(crate) noop_log_id: LogIdOf<C>,
 
     /// Tracks the replication progress and committed index
-    pub(crate) progress: VecProgress<C::NodeId, ProgressEntry<C>, Option<LogIdOf<C>>, QS>,
+    pub(crate) progress: VecProgress<ProgressEntry<C>, QS>,
 
     /// Tracks the clock time acknowledged by other nodes.
     ///
@@ -75,7 +76,7 @@ where C: RaftTypeConfig
     /// See [`docs::leader_lease`] for more details.
     ///
     /// [`docs::leader_lease`]: `crate::docs::protocol::replication::leader_lease`
-    pub(crate) clock_progress: VecProgress<C::NodeId, Option<InstantOf<C>>, Option<InstantOf<C>>, QS>,
+    pub(crate) clock_progress: VecProgress<IdVal<C::NodeId, Option<InstantOf<C>>>, QS>,
 }
 
 impl<C, QS> Leader<C, QS>
@@ -138,11 +139,11 @@ where
             next_heartbeat: C::now(),
             last_log_id: last_log_id.clone(),
             noop_log_id,
-            progress: VecProgress::new(quorum_set.clone(), learner_ids.iter().cloned(), || {
+            progress: VecProgress::new(quorum_set.clone(), learner_ids.iter().cloned(), |id| {
                 let stream_id = StreamId::new(id_gen.next_id());
-                ProgressEntry::empty(stream_id, last_log_id.next_index())
+                ProgressEntry::empty(id, stream_id, last_log_id.next_index())
             }),
-            clock_progress: VecProgress::new(quorum_set, learner_ids, || None),
+            clock_progress: VecProgress::new(quorum_set, learner_ids, IdVal::new_default),
         }
     }
 
@@ -228,8 +229,8 @@ where
     }
 
     pub(crate) fn is_replication_stream_valid(&self, target: &C::NodeId, stream_id: StreamId) -> bool {
-        if let Some(prog_ent) = self.progress.try_get(target)
-            && prog_ent.stream_id == stream_id
+        if let Some(entry) = self.progress.try_get(target)
+            && entry.stream_id == stream_id
         {
             return true;
         }

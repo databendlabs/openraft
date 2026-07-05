@@ -83,6 +83,7 @@ use crate::network::NetVote;
 use crate::network::RPCOption;
 use crate::network::RPCTypes;
 use crate::network::RaftNetworkFactory;
+use crate::progress::VecProgressEntry;
 use crate::progress::stream_id::StreamId;
 use crate::quorum::QuorumSet;
 use crate::raft::AppendEntriesRequest;
@@ -400,7 +401,7 @@ where
 
         for item in voter_progresses {
             let target = item.id.clone();
-            let progress = &item.val;
+            let progress = item;
 
             if target == my_id {
                 continue;
@@ -706,7 +707,7 @@ where
 
         let (replication, heartbeat) = if let Some(leader) = self.engine.leader.as_ref() {
             let replication_prog = &leader.progress;
-            let replication = Some(replication_prog.collect_mapped(|item| item.to_matching_tuple()));
+            let replication = Some(replication_prog.collect_mapped(|item| item.id_progress_owned()));
 
             let clock_prog = &leader.clock_progress;
             let heartbeat = Some(clock_prog.collect_mapped(|item| (item.id.clone(), item.val.map(SerdeInstant::new))));
@@ -2167,7 +2168,7 @@ where
                 .map(|progress_entry| {
                     (progress_entry.id.clone(), HeartbeatEvent {
                         time: now,
-                        matching: progress_entry.val.matching.clone(),
+                        matching: progress_entry.matching.clone(),
                         cluster_committed: cluster_committed.clone(),
                     })
                 });
