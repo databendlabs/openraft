@@ -442,11 +442,62 @@ mod tests {
     use maplit::btreeset;
 
     use super::VecProgress;
-    use crate::progress::id_val::IdValData;
+    use crate::progress::VecProgressEntry;
+    use crate::progress::VecProgressEntryData;
     use crate::quorum::QuorumSet;
 
     const LCG_A: u64 = 6364136223846793005;
     const LCG_C: u64 = 1442695040888963407;
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct IdValData<ID, Val, Data> {
+        id: ID,
+        val: Val,
+        data: Data,
+    }
+
+    impl<ID, Val, Data> IdValData<ID, Val, Data> {
+        fn new(id: ID, val: Val, data: Data) -> Self {
+            Self { id, val, data }
+        }
+    }
+
+    impl<ID, Val, Data> VecProgressEntry for IdValData<ID, Val, Data>
+    where
+        ID: 'static + PartialEq,
+        Val: Clone + Default + Ord,
+    {
+        type Id = ID;
+        type Progress = Val;
+
+        fn id(&self) -> &Self::Id {
+            &self.id
+        }
+
+        fn progress(&self) -> &Self::Progress {
+            &self.val
+        }
+
+        fn progress_mut(&mut self) -> &mut Self::Progress {
+            &mut self.val
+        }
+    }
+
+    impl<ID, Val, Data> VecProgressEntryData for IdValData<ID, Val, Data>
+    where
+        ID: 'static + PartialEq,
+        Val: Clone + Default + Ord,
+    {
+        type Data = Data;
+
+        fn data(&self) -> &Self::Data {
+            &self.data
+        }
+
+        fn data_mut(&mut self) -> &mut Self::Data {
+            &mut self.data
+        }
+    }
 
     #[derive(Clone, Debug)]
     struct RequiredSetQuorum {
