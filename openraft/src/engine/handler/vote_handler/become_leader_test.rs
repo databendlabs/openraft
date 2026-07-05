@@ -72,7 +72,7 @@ fn test_become_leader() -> anyhow::Result<()> {
             targets: vec![TargetProgress {
                 target: 0,
                 target_node: (),
-                progress: ProgressEntry::empty(StreamId::new(1), 0),
+                progress: ProgressEntry::empty(0, StreamId::new(1), 0),
             }],
             close_old_streams: true,
         },

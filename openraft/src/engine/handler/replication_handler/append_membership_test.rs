@@ -92,12 +92,12 @@ fn test_leader_append_membership_for_leader() -> anyhow::Result<()> {
                     TargetProgress {
                         target: 3,
                         target_node: (),
-                        progress: ProgressEntry::empty(StreamId::new(2), 0),
+                        progress: ProgressEntry::empty(3, StreamId::new(2), 0),
                     },
                     TargetProgress {
                         target: 4,
                         target_node: (),
-                        progress: ProgressEntry::empty(StreamId::new(5), 0),
+                        progress: ProgressEntry::empty(4, StreamId::new(4), 0),
                     }
                 ], /* node-2 is leader,
                     * won't be removed */
@@ -150,19 +150,19 @@ fn test_leader_append_membership_update_learner_process() -> anyhow::Result<()> 
     eng.testing_new_leader();
 
     if let Some(l) = &mut eng.leader.as_mut() {
-        assert_eq!(&ProgressEntry::empty(StreamId::new(3), 11), l.progress.get(&4));
-        assert_eq!(&ProgressEntry::empty(StreamId::new(4), 11), l.progress.get(&5));
+        assert_eq!(&ProgressEntry::empty(4, StreamId::new(3), 11), l.progress.get(&4));
+        assert_eq!(&ProgressEntry::empty(5, StreamId::new(4), 11), l.progress.get(&5));
 
-        let p = ProgressEntry::testing_new(Some(log_id(1, 1, 4)));
-        l.progress.update(&4, p.clone()).ok();
+        let p = ProgressEntry::testing_new(4, Some(log_id(1, 1, 4)));
+        l.progress.update_entry_with(&4, |entry| *entry = p.clone()).ok();
         assert_eq!(&p, l.progress.get(&4));
 
-        let p = ProgressEntry::testing_new(Some(log_id(1, 1, 5)));
-        l.progress.update(&5, p.clone()).ok();
+        let p = ProgressEntry::testing_new(5, Some(log_id(1, 1, 5)));
+        l.progress.update_entry_with(&5, |entry| *entry = p.clone()).ok();
         assert_eq!(&p, l.progress.get(&5));
 
-        let p = ProgressEntry::testing_new(Some(log_id(1, 1, 3)));
-        l.progress.update(&3, p.clone()).ok();
+        let p = ProgressEntry::testing_new(3, Some(log_id(1, 1, 3)));
+        l.progress.update_entry_with(&3, |entry| *entry = p.clone()).ok();
         assert_eq!(&p, l.progress.get(&3));
     } else {
         unreachable!("leader should not be None");
@@ -181,21 +181,21 @@ fn test_leader_append_membership_update_learner_process() -> anyhow::Result<()> 
     if let Some(l) = &mut eng.leader.as_mut() {
         // Progress entries with matching.next_index() == searching_end enter pipeline mode
         assert_eq!(
-            &ProgressEntry::testing_new(Some(log_id(1, 1, 4)))
+            &ProgressEntry::testing_new(4, Some(log_id(1, 1, 4)))
                 .with_inflight(Inflight::logs_since(Some(log_id(1, 1, 4)), InflightId::new(1))),
             l.progress.get(&4),
             "learner-4 progress should be transferred to voter progress (pipeline mode)"
         );
 
         assert_eq!(
-            &ProgressEntry::testing_new(Some(log_id(1, 1, 3)))
+            &ProgressEntry::testing_new(3, Some(log_id(1, 1, 3)))
                 .with_inflight(Inflight::logs_since(Some(log_id(1, 1, 3)), InflightId::new(2))),
             l.progress.get(&3),
             "voter-3 progress should be transferred to learner progress (pipeline mode)"
         );
 
         assert_eq!(
-            &ProgressEntry::testing_new(Some(log_id(1, 1, 5)))
+            &ProgressEntry::testing_new(5, Some(log_id(1, 1, 5)))
                 .with_inflight(Inflight::logs_since(Some(log_id(1, 1, 5)), InflightId::new(3))),
             l.progress.get(&5),
             "learner-5 has previous value (pipeline mode)"
@@ -204,7 +204,7 @@ fn test_leader_append_membership_update_learner_process() -> anyhow::Result<()> 
         // Node 6 is new, with matching=None and searching_end=11
         // matching.next_index()=0 != searching_end=11, so NOT pipeline mode
         assert_eq!(
-            &ProgressEntry::empty(StreamId::new(9), 11).with_inflight(Inflight::logs(
+            &ProgressEntry::empty(6, StreamId::new(8), 11).with_inflight(Inflight::logs(
                 None,
                 Some(log_id(5, 1, 10)),
                 InflightId::new(4)
