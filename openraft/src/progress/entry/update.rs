@@ -38,6 +38,12 @@ where C: RaftTypeConfig
     ///
     /// To allow follower log reversion, enable [`Config::allow_log_reversion`].
     ///
+    /// When log reversion is allowed and the conflict is before the last known matching log,
+    /// this method resets `matching` to `None`. This lowers the progress value, so the caller
+    /// must apply it via `VecProgress::reset_entry_with()`, which moves the entry down to keep
+    /// the progress ordering while keeping the already quorum-accepted value: a value accepted
+    /// by a quorum must never be withdrawn.
+    ///
     /// [`Config::allow_log_reversion`]: `crate::config::Config::allow_log_reversion`
     pub(crate) fn update_conflicting(&mut self, conflict: u64, inflight_id: Option<InflightId>) {
         tracing::debug!(
@@ -79,6 +85,9 @@ where C: RaftTypeConfig
                     self.entry.matching().display(),
                 );
 
+                // This is the only place replication progress is allowed to move backward.
+                // The caller applies it via `VecProgress::reset_entry_with()`, which restores
+                // the progress ordering without lowering the quorum-accepted value.
                 self.entry.matching = None;
                 self.entry.allow_log_reversion = false;
 

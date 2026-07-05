@@ -1,27 +1,25 @@
-use std::borrow::Borrow;
 use std::fmt::Display;
 use std::fmt::Formatter;
 
+use super::VecProgressEntry;
 use super::vec_progress::VecProgress;
 use crate::quorum::QuorumSet;
 
-pub(crate) struct DisplayVecProgress<'a, ID, Ent, Prog, QS, Fmt>
+pub(crate) struct DisplayVecProgress<'a, Entry, QS, Fmt>
 where
-    ID: 'static,
-    QS: QuorumSet<Id = ID>,
-    Fmt: Fn(&mut Formatter<'_>, &ID, &Ent) -> std::fmt::Result,
+    Entry: VecProgressEntry,
+    QS: QuorumSet<Id = Entry::Id>,
+    Fmt: Fn(&mut Formatter<'_>, &Entry) -> std::fmt::Result,
 {
-    pub(crate) inner: &'a VecProgress<ID, Ent, Prog, QS>,
+    pub(crate) inner: &'a VecProgress<Entry, QS>,
     pub(crate) f: Fmt,
 }
 
-impl<ID, Ent, Prog, QS, Fmt> Display for DisplayVecProgress<'_, ID, Ent, Prog, QS, Fmt>
+impl<Entry, QS, Fmt> Display for DisplayVecProgress<'_, Entry, QS, Fmt>
 where
-    ID: PartialEq + 'static,
-    Ent: Borrow<Prog>,
-    Prog: PartialOrd + Copy,
-    QS: QuorumSet<Id = ID>,
-    Fmt: Fn(&mut Formatter<'_>, &ID, &Ent) -> std::fmt::Result,
+    Entry: VecProgressEntry,
+    QS: QuorumSet<Id = Entry::Id>,
+    Fmt: Fn(&mut Formatter<'_>, &Entry) -> std::fmt::Result,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{")?;
@@ -29,7 +27,7 @@ where
             if i > 0 {
                 write!(f, ", ")?;
             }
-            (self.f)(f, &item.id, &item.val)?;
+            (self.f)(f, item)?;
         }
         write!(f, "}}")?;
 

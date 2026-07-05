@@ -1,10 +1,11 @@
 pub(crate) mod update;
 
-use std::borrow::Borrow;
 use std::error::Error;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
+use std::ops::Deref;
+use std::ops::DerefMut;
 
 use display_more::DisplayOptionExt;
 use validit::Validate;
@@ -13,6 +14,8 @@ use crate::LogIdOptionExt;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::engine::EngineConfig;
+use crate::progress::VecProgressEntry;
+use crate::progress::VecProgressEntryData;
 use crate::progress::entry::update::Updater;
 use crate::progress::inflight::Inflight;
 use crate::progress::stream_id::StreamId;
@@ -25,10 +28,21 @@ use crate::type_config::alias::LogIdOf;
 pub(crate) struct ProgressEntry<C>
 where C: RaftTypeConfig
 {
-    pub(crate) stream_id: StreamId,
+    pub(crate) id: C::NodeId,
 
     /// The id of the last matching log on the target following node.
     pub(crate) matching: Option<LogIdOf<C>>,
+
+    pub(crate) data: ProgressData<C>,
+}
+
+/// Application-owned replication state that is not used for quorum calculation.
+#[derive(Clone, Debug)]
+#[derive(PartialEq, Eq)]
+pub(crate) struct ProgressData<C>
+where C: RaftTypeConfig
+{
+    pub(crate) stream_id: StreamId,
 
     /// The data being transmitted in flight.
     ///
@@ -38,7 +52,7 @@ where C: RaftTypeConfig
     /// One plus the max log index on the following node that might match the leader log.
     pub(crate) searching_end: u64,
 
-    /// If true, reset the progress by setting [`Self::matching`] to `None` when the follower's
+    /// If true, reset the progress by setting matching to `None` when the follower's
     /// log is found reverted to an early state.
     ///
     /// This allows the target node to clean its data and wait for the leader to replicate all data
@@ -52,27 +66,27 @@ impl<C> ProgressEntry<C>
 where C: RaftTypeConfig
 {
     #[allow(dead_code)]
-    pub(crate) fn testing_new(matching: Option<LogIdOf<C>>) -> Self {
+    pub(crate) fn testing_new(id: C::NodeId, matching: Option<LogIdOf<C>>) -> Self {
         Self {
-            stream_id: StreamId::new(0),
+            id,
             matching: matching.clone(),
-            inflight: Inflight::None,
-            searching_end: matching.next_index(),
-            allow_log_reversion: false,
+            data: ProgressData::new(StreamId::new(0), matching.next_index()),
         }
     }
 
     /// Create a progress entry that does not have any matching log id.
     ///
     /// It's going to initiate a binary search to find the minimal matching log id.
-    pub(crate) fn empty(stream_id: StreamId, end: u64) -> Self {
+    pub(crate) fn empty(id: C::NodeId, stream_id: StreamId, end: u64) -> Self {
         Self {
-            stream_id,
+            id,
             matching: None,
-            inflight: Inflight::None,
-            searching_end: end,
-            allow_log_reversion: false,
+            data: ProgressData::new(stream_id, end),
         }
+    }
+
+    pub(crate) fn matching(&self) -> Option<&LogIdOf<C>> {
+        self.matching.as_ref()
     }
 
     // This method is only used by tests.
@@ -87,11 +101,75 @@ where C: RaftTypeConfig
     pub(crate) fn new_updater<'a>(&'a mut self, engine_config: &'a EngineConfig<C>) -> Updater<'a, C> {
         Updater::new(engine_config, self)
     }
+}
 
-    pub(crate) fn matching(&self) -> Option<&LogIdOf<C>> {
-        self.matching.as_ref()
+impl<C> ProgressData<C>
+where C: RaftTypeConfig
+{
+    pub(crate) fn new(stream_id: StreamId, searching_end: u64) -> Self {
+        Self {
+            stream_id,
+            inflight: Inflight::None,
+            searching_end,
+            allow_log_reversion: false,
+        }
+    }
+}
+
+impl<C> VecProgressEntry for ProgressEntry<C>
+where C: RaftTypeConfig
+{
+    type Id = C::NodeId;
+    type Progress = Option<LogIdOf<C>>;
+
+    fn id(&self) -> &Self::Id {
+        &self.id
     }
 
+    fn progress(&self) -> &Self::Progress {
+        &self.matching
+    }
+
+    fn progress_mut(&mut self) -> &mut Self::Progress {
+        &mut self.matching
+    }
+}
+
+impl<C> VecProgressEntryData for ProgressEntry<C>
+where C: RaftTypeConfig
+{
+    type Data = ProgressData<C>;
+
+    fn data(&self) -> &Self::Data {
+        &self.data
+    }
+
+    fn data_mut(&mut self) -> &mut Self::Data {
+        &mut self.data
+    }
+}
+
+impl<C> Deref for ProgressEntry<C>
+where C: RaftTypeConfig
+{
+    type Target = ProgressData<C>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.data
+    }
+}
+
+impl<C> DerefMut for ProgressEntry<C>
+where C: RaftTypeConfig
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.data
+    }
+}
+
+impl<C> ProgressEntry<C>
+where C: RaftTypeConfig
+{
     /// Return if a range of log id `..=log_id` is inflight sending.
     ///
     /// `prev_log_id` is never inflight.
@@ -198,14 +276,6 @@ where C: RaftTypeConfig
         let d = end - matching_next;
         let offset = d / 16 * 8;
         matching_next + offset
-    }
-}
-
-impl<C> Borrow<Option<LogIdOf<C>>> for ProgressEntry<C>
-where C: RaftTypeConfig
-{
-    fn borrow(&self) -> &Option<LogIdOf<C>> {
-        &self.matching
     }
 }
 

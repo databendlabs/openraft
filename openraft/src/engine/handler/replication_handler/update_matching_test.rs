@@ -64,18 +64,17 @@ fn test_update_matching() -> anyhow::Result<()> {
     eng.output.take_commands();
 
     let mut rh = eng.replication_handler();
-    {
-        let prog_entry = rh.leader.progress.get_mut(&1).unwrap();
-        prog_entry.inflight = Inflight::logs(Some(log_id(2, 1, 3)), Some(log_id(2, 1, 4)), InflightId::new(1));
+    let mut set_inflight = |id, prev| {
+        let inflight = Inflight::logs(prev, Some(log_id(2, 1, 4)), InflightId::new(1));
+        assert_eq!(
+            Some(&inflight),
+            rh.leader.progress.update_data_with(&id, |data| data.inflight = inflight).map(|data| &data.inflight)
+        );
     };
-    {
-        let prog_entry = rh.leader.progress.get_mut(&2).unwrap();
-        prog_entry.inflight = Inflight::logs(Some(log_id(1, 1, 0)), Some(log_id(2, 1, 4)), InflightId::new(1));
-    };
-    {
-        let prog_entry = rh.leader.progress.get_mut(&3).unwrap();
-        prog_entry.inflight = Inflight::logs(Some(log_id(1, 1, 1)), Some(log_id(2, 1, 4)), InflightId::new(1));
-    };
+
+    set_inflight(1, Some(log_id(2, 1, 3)));
+    set_inflight(2, Some(log_id(1, 1, 0)));
+    set_inflight(3, Some(log_id(1, 1, 1)));
 
     // progress: None, None, (1,2)
     {
