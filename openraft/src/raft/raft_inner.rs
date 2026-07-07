@@ -203,6 +203,20 @@ where C: RaftTypeConfig
         core_res.unwrap_err()
     }
 
+    /// Like [`Self::get_core_stop_error`], but does not block forever when the caller can't tell
+    /// whether RaftCore itself stopped or a *different*, independently-failing task did.
+    ///
+    /// Waits up to [`RECV_CORE_STOP_TIMEOUT`] for RaftCore to stop; if it hasn't by then, RaftCore
+    /// is still running and [`Self::get_core_stop_error`] would block on it indefinitely, so this
+    /// returns `Fatal::Stopped` instead.
+    pub(crate) async fn get_core_stop_error_bounded(&self) -> Fatal<C> {
+        if self.wait_core_stopped(RECV_CORE_STOP_TIMEOUT).await {
+            self.get_core_stop_error().await
+        } else {
+            Fatal::Stopped
+        }
+    }
+
     /// Wait for `RaftCore` task to finish and record the returned value from the task.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(in crate::raft) async fn join_core_task(&self) {
