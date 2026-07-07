@@ -31,8 +31,8 @@ use crate::storage::RaftStateMachine;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::MpscWeakSenderOf;
+use crate::type_config::alias::SmSnapshotOf;
 use crate::type_config::alias::SnapshotDataOf;
-use crate::type_config::alias::SnapshotOf;
 use crate::type_config::alias::VoteOf;
 use crate::vote::RaftVote;
 use crate::vote::raft_vote::RaftVoteExt;
@@ -162,7 +162,7 @@ where
 
     #[since(version = "0.10.0")]
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) async fn get_snapshot(&self) -> Result<Option<SnapshotOf<C, SnapshotDataOf<C, SM>>>, Fatal<C>> {
+    pub(crate) async fn get_snapshot(&self) -> Result<Option<SmSnapshotOf<C, SM>>, Fatal<C>> {
         tracing::debug!("Raft::get_snapshot()");
 
         let (tx, rx) = C::oneshot();
@@ -185,7 +185,7 @@ where
     pub(crate) async fn install_full_snapshot(
         &self,
         vote: VoteOf<C>,
-        snapshot: SnapshotOf<C, SnapshotDataOf<C, SM>>,
+        snapshot: SmSnapshotOf<C, SM>,
     ) -> Result<SnapshotResponse<C>, Fatal<C>> {
         tracing::info!("Raft::install_full_snapshot()");
 

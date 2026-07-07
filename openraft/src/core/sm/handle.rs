@@ -10,8 +10,7 @@ use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::MpscWeakSenderOf;
-use crate::type_config::alias::SnapshotDataOf;
-use crate::type_config::alias::SnapshotOf;
+use crate::type_config::alias::SmSnapshotOf;
 
 /// State machine worker handle for sending command to it.
 pub(crate) struct Handle<C, SM = ()>
@@ -75,7 +74,7 @@ where
     ///
     /// If the state machine worker has shutdown, it will return an error.
     /// If there is no snapshot available, it will return `Ok(None)`.
-    pub(crate) async fn get_snapshot(&self) -> Result<Option<SnapshotOf<C, SnapshotDataOf<C, SM>>>, &'static str> {
+    pub(crate) async fn get_snapshot(&self) -> Result<Option<SmSnapshotOf<C, SM>>, &'static str> {
         let (tx, rx) = C::oneshot();
 
         let cmd = sm::Command::get_snapshot(tx);

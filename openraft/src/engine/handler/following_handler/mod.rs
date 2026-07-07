@@ -26,8 +26,7 @@ use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::storage::RaftStateMachine;
 use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::LogIdOf;
-use crate::type_config::alias::SnapshotDataOf;
-use crate::type_config::alias::SnapshotOf;
+use crate::type_config::alias::SmSnapshotOf;
 use crate::type_config::alias::StoredMembershipOf;
 use crate::vote::raft_vote::RaftVoteExt;
 
@@ -242,10 +241,7 @@ where
     /// - Otherwise `None` if the snapshot will not be installed (e.g., if it is not newer than the
     ///   current state).
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn install_full_snapshot(
-        &mut self,
-        snapshot: SnapshotOf<C, SnapshotDataOf<C, SM>>,
-    ) -> Option<Condition<C>> {
+    pub(crate) fn install_full_snapshot(&mut self, snapshot: SmSnapshotOf<C, SM>) -> Option<Condition<C>> {
         let meta = &snapshot.meta;
         tracing::info!("install full snapshot, meta: {:?}", meta);
 

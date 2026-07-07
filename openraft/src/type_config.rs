@@ -239,6 +239,7 @@ pub mod alias {
     pub type SnapshotSignatureOf<C> = crate::storage::SnapshotSignature<CommittedLeaderIdOf<C>>;
     pub type SnapshotMetaOf<C> = crate::storage::SnapshotMeta<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>>;
     pub type SnapshotOf<C, SD> = crate::storage::Snapshot<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>, SD>;
+    pub type SmSnapshotOf<C, SM> = SnapshotOf<C, SnapshotDataOf<C, SM>>;
     pub type MembershipStateOf<C> = crate::MembershipState<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>>;
     pub type ChangeMembershipErrorOf<C> = crate::errors::ChangeMembershipError<CommittedLeaderIdOf<C>, NodeIdOf<C>>;
     pub type InProgressOf<C> = crate::errors::InProgress<CommittedLeaderIdOf<C>>;

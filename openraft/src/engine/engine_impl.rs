@@ -47,9 +47,8 @@ use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
-use crate::type_config::alias::SnapshotDataOf;
+use crate::type_config::alias::SmSnapshotOf;
 use crate::type_config::alias::SnapshotMetaOf;
-use crate::type_config::alias::SnapshotOf;
 use crate::type_config::alias::TermOf;
 use crate::type_config::alias::VoteOf;
 use crate::vote::RaftLeaderId;
@@ -625,7 +624,7 @@ where
     pub(crate) fn handle_install_full_snapshot(
         &mut self,
         vote: VoteOf<C>,
-        snapshot: SnapshotOf<C, SnapshotDataOf<C, SM>>,
+        snapshot: SmSnapshotOf<C, SM>,
         tx: OneshotSenderOf<C, SnapshotResponse<C>>,
     ) {
         tracing::info!("{}: vote: {}, snapshot: {}", func_name!(), vote, snapshot);
