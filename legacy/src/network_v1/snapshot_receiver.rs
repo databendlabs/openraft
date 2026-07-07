@@ -19,6 +19,7 @@ use openraft::raft::InstallSnapshotResponse;
 use openraft::storage::RaftStateMachine;
 use openraft::type_config::alias::SnapshotDataOf;
 use openraft::type_config::alias::SnapshotOf;
+use openraft_macros::since;
 use tokio::io::AsyncWriteExt;
 
 use super::streaming::Streaming;
@@ -46,6 +47,10 @@ use super::streaming::StreamingState;
 /// ```
 pub trait ChunkedSnapshotReceiver<C: RaftTypeConfig>: private::Sealed<C> {
     /// Snapshot data used to assemble incoming chunks.
+    #[since(
+        version = "0.10.0",
+        change = "moved SnapshotData from RaftTypeConfig to ChunkedSnapshotReceiver"
+    )]
     type SnapshotData: OptionalSend + 'static;
 
     /// Receive a snapshot chunk and assemble it into a complete snapshot.

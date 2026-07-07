@@ -20,6 +20,7 @@ use openraft::raft::InstallSnapshotResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft_macros::add_async_trait;
+use openraft_macros::since;
 
 use crate::network_v1::Adapter;
 
@@ -98,6 +99,7 @@ where C: RaftTypeConfig
     ///     }
     /// }
     /// ```
+    #[since(version = "0.10.0")]
     fn into_v2<SD>(self) -> Adapter<C, Self, SD>
     where
         Self: Sized,

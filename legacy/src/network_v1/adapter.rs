@@ -24,6 +24,7 @@ use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft::type_config::alias::SnapshotOf;
 use openraft::type_config::alias::VoteOf;
+use openraft_macros::since;
 
 use super::RaftNetwork;
 use super::sender::Sender;
@@ -46,6 +47,7 @@ use super::sender::Sender;
 /// // Wrap it to use as RaftNetworkV2
 /// let adapter = network.into_v2::<MySnapshotData>();
 /// ```
+#[since(version = "0.10.0")]
 pub struct Adapter<C, N, SD> {
     network: N,
     _phantom: PhantomData<(C, fn() -> SD)>,
