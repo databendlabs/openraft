@@ -4,7 +4,6 @@ use std::fmt;
 use display_more::DisplayOptionExt;
 
 use crate::ChangeMembers;
-use crate::OptionalSend;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::base::BoxOnce;
@@ -19,7 +18,6 @@ use crate::impls::ProgressResponder;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::ClientWriteResult;
 use crate::raft::ReadPolicy;
-use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft::linearizable_read::Linearizer;
@@ -32,10 +30,10 @@ use crate::type_config::alias::EntryPayloadOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
-use crate::type_config::alias::SnapshotOf;
 use crate::type_config::alias::VoteOf;
 
 pub(crate) mod external_command;
+pub(crate) mod install_full_snapshot_request;
 mod raft_msg_name;
 
 pub use raft_msg_name::ExternalCommandName;
@@ -56,10 +54,8 @@ pub(crate) type ClientReadTx<C> = ResultSender<C, Linearizer<C>, LinearizableRea
 /// A message sent by application to the [`RaftCore`].
 ///
 /// [`RaftCore`]: crate::core::RaftCore
-pub(crate) enum RaftMsg<C, SD = ()>
-where
-    C: RaftTypeConfig,
-    SD: OptionalSend + 'static,
+pub(crate) enum RaftMsg<C>
+where C: RaftTypeConfig
 {
     AppendEntries {
         rpc: AppendEntriesRequest<C>,
@@ -75,22 +71,6 @@ where
     RequestPreVote {
         rpc: VoteRequest<C>,
         tx: VoteTx<C>,
-    },
-
-    InstallSnapshot {
-        vote: VoteOf<C>,
-        snapshot: SnapshotOf<C, SD>,
-        tx: OneshotSenderOf<C, SnapshotResponse<C>>,
-    },
-
-    /// Begin receiving a snapshot from the leader.
-    ///
-    /// Returns a snapshot data handle for receiving data.
-    ///
-    /// It does not check `Vote` because it is a read operation
-    /// and does not break raft protocol.
-    GetSnapshotReceiver {
-        tx: OneshotSenderOf<C, SD>,
     },
 
     ClientWrite {
@@ -139,7 +119,7 @@ where
     },
 
     ExternalCommand {
-        cmd: ExternalCommand<C, SD>,
+        cmd: ExternalCommand<C>,
     },
 
     /// Get runtime statistics from RaftCore.
@@ -151,10 +131,8 @@ where
     },
 }
 
-impl<C, SD> RaftMsg<C, SD>
-where
-    C: RaftTypeConfig,
-    SD: OptionalSend + 'static,
+impl<C> RaftMsg<C>
+where C: RaftTypeConfig
 {
     /// Returns the name of this message variant.
     pub fn name(&self) -> RaftMsgName {
@@ -162,8 +140,6 @@ where
             RaftMsg::AppendEntries { .. } => RaftMsgName::AppendEntries,
             RaftMsg::RequestVote { .. } => RaftMsgName::RequestVote,
             RaftMsg::RequestPreVote { .. } => RaftMsgName::RequestPreVote,
-            RaftMsg::InstallSnapshot { .. } => RaftMsgName::InstallSnapshot,
-            RaftMsg::GetSnapshotReceiver { .. } => RaftMsgName::GetSnapshotReceiver,
             RaftMsg::ClientWrite { .. } => RaftMsgName::ClientWrite,
             RaftMsg::GetLinearizer { .. } => RaftMsgName::GetLinearizer,
             RaftMsg::Initialize { .. } => RaftMsgName::Initialize,
@@ -177,10 +153,8 @@ where
     }
 }
 
-impl<C, SD> fmt::Display for RaftMsg<C, SD>
-where
-    C: RaftTypeConfig,
-    SD: OptionalSend + 'static,
+impl<C> fmt::Display for RaftMsg<C>
+where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -192,12 +166,6 @@ where
             }
             RaftMsg::RequestPreVote { rpc, .. } => {
                 write!(f, "RequestPreVote: {}", rpc)
-            }
-            RaftMsg::GetSnapshotReceiver { .. } => {
-                write!(f, "GetSnapshotReceiver")
-            }
-            RaftMsg::InstallSnapshot { vote, snapshot, .. } => {
-                write!(f, "InstallSnapshot: vote: {}, snapshot: {}", vote, snapshot)
             }
             RaftMsg::ClientWrite { .. } => write!(f, "ClientWrite"),
             RaftMsg::GetLinearizer { read_policy, .. } => {
