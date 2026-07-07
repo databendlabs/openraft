@@ -7,9 +7,12 @@ use openraft_macros::since;
 
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
+use crate::async_runtime::MpscSender;
+use crate::async_runtime::MpscWeakSender;
 use crate::core::io_flush_tracking::FlushPoint;
 use crate::core::raft_msg::RaftMsg;
-use crate::core::raft_msg::external_command::ExternalCommand;
+use crate::core::raft_msg::install_full_snapshot_request::InstallFullSnapshotRequest;
+use crate::core::sm;
 use crate::errors::Fatal;
 #[cfg(doc)]
 use crate::errors::into_raft_result::IntoRaftResult;
@@ -24,7 +27,11 @@ use crate::raft::VoteResponse;
 use crate::raft::raft_inner::RaftInner;
 use crate::raft::stream_append;
 use crate::raft::stream_append::StreamAppendResult;
+use crate::storage::RaftStateMachine;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::MpscSenderOf;
+use crate::type_config::alias::MpscWeakSenderOf;
+use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::SnapshotOf;
 use crate::type_config::alias::VoteOf;
 use crate::vote::RaftVote;
@@ -62,21 +69,51 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// Remote Leader Node                                           Local Follower Node
 /// ```
 #[since(version = "0.10.0")]
-pub(crate) struct ProtocolApi<C, SD = ()>
+pub(crate) struct ProtocolApi<C, SM>
 where
     C: RaftTypeConfig,
-    SD: OptionalSend + 'static,
+    SM: RaftStateMachine<C>,
 {
-    inner: Arc<RaftInner<C, SD>>,
+    inner: Arc<RaftInner<C>>,
+
+    /// Sender to the state machine worker, for requests that RaftCore just forwards.
+    sm_cmd_tx: MpscWeakSenderOf<C, sm::Command<C, SM>>,
+
+    /// Sender of the dedicated channel that delivers a full snapshot to RaftCore.
+    ///
+    /// The snapshot data type is defined by the state machine, thus it does not go through
+    /// the [`RaftMsg`] channel, which is independent of the state machine type.
+    install_snapshot_tx: MpscSenderOf<C, InstallFullSnapshotRequest<C, SM>>,
 }
 
-impl<C, SD> ProtocolApi<C, SD>
+impl<C, SM> ProtocolApi<C, SM>
 where
     C: RaftTypeConfig,
-    SD: OptionalSend + 'static,
+    SM: RaftStateMachine<C>,
 {
-    pub(in crate::raft) fn new(inner: Arc<RaftInner<C, SD>>) -> Self {
-        Self { inner }
+    pub(in crate::raft) fn new(
+        inner: Arc<RaftInner<C>>,
+        sm_cmd_tx: MpscWeakSenderOf<C, sm::Command<C, SM>>,
+        install_snapshot_tx: MpscSenderOf<C, InstallFullSnapshotRequest<C, SM>>,
+    ) -> Self {
+        Self {
+            inner,
+            sm_cmd_tx,
+            install_snapshot_tx,
+        }
+    }
+
+    /// Send a command to the state machine worker directly, without going through RaftCore.
+    async fn send_sm_command(&self, cmd: sm::Command<C, SM>) -> Result<(), Fatal<C>> {
+        let Some(tx) = self.sm_cmd_tx.upgrade() else {
+            return Err(self.inner.get_core_stop_error().await);
+        };
+
+        let send_res = tx.send(cmd).await;
+        if send_res.is_err() {
+            return Err(self.inner.get_core_stop_error().await);
+        }
+        Ok(())
     }
 
     #[since(version = "0.10.0")]
@@ -122,21 +159,22 @@ where
 
     #[since(version = "0.10.0")]
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) async fn get_snapshot(&self) -> Result<Option<SnapshotOf<C, SD>>, Fatal<C>> {
+    pub(crate) async fn get_snapshot(&self) -> Result<Option<SnapshotOf<C, SnapshotDataOf<C, SM>>>, Fatal<C>> {
         tracing::debug!("Raft::get_snapshot()");
 
         let (tx, rx) = C::oneshot();
-        let cmd = ExternalCommand::GetSnapshot { tx };
-        self.inner.call_core(RaftMsg::ExternalCommand { cmd }, rx).await
+        self.send_sm_command(sm::Command::get_snapshot(tx)).await?;
+        self.inner.recv_msg(rx).await
     }
 
     #[since(version = "0.10.0")]
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) async fn begin_receiving_snapshot(&self) -> Result<SD, Fatal<C>> {
+    pub(crate) async fn begin_receiving_snapshot(&self) -> Result<SnapshotDataOf<C, SM>, Fatal<C>> {
         tracing::info!("Raft::begin_receiving_snapshot()");
 
         let (tx, rx) = C::oneshot();
-        self.inner.call_core(RaftMsg::GetSnapshotReceiver { tx }, rx).await
+        self.send_sm_command(sm::Command::begin_receiving_snapshot(tx)).await?;
+        self.inner.recv_msg(rx).await
     }
 
     #[since(version = "0.10.0")]
@@ -144,12 +182,19 @@ where
     pub(crate) async fn install_full_snapshot(
         &self,
         vote: VoteOf<C>,
-        snapshot: SnapshotOf<C, SD>,
+        snapshot: SnapshotOf<C, SnapshotDataOf<C, SM>>,
     ) -> Result<SnapshotResponse<C>, Fatal<C>> {
         tracing::info!("Raft::install_full_snapshot()");
 
         let (tx, rx) = C::oneshot();
-        self.inner.call_core(RaftMsg::InstallSnapshot { vote, snapshot, tx }, rx).await
+        let req = InstallFullSnapshotRequest { vote, snapshot, tx };
+
+        let send_res = self.install_snapshot_tx.send(req).await;
+        if send_res.is_err() {
+            return Err(self.inner.get_core_stop_error().await);
+        }
+
+        self.inner.recv_msg(rx).await
     }
 
     #[since(version = "0.10.0")]

@@ -5,15 +5,12 @@ use std::sync::Arc;
 
 use display_more::DisplayOptionExt;
 
-use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::core::raft_msg::ExternalCommandName;
 use crate::core::raft_msg::ResultSender;
 use crate::errors::AllowNextRevertError;
 use crate::metrics::MetricsRecorder;
 use crate::type_config::alias::LogIdOf;
-use crate::type_config::alias::OneshotSenderOf;
-use crate::type_config::alias::SnapshotOf;
 use crate::type_config::alias::VoteOf;
 
 /// Application-triggered Raft actions for testing and administration.
@@ -22,10 +19,8 @@ use crate::type_config::alias::VoteOf;
 ///
 /// An application can also disable these policy-based triggering and use these commands manually,
 /// for testing or administrative purposes.
-pub(crate) enum ExternalCommand<C, SD = ()>
-where
-    C: RaftTypeConfig,
-    SD: OptionalSend + 'static,
+pub(crate) enum ExternalCommand<C>
+where C: RaftTypeConfig
 {
     /// Initiate an election immediately.
     ///
@@ -46,11 +41,6 @@ where
 
     /// Initiate to build a snapshot on this node.
     Snapshot,
-
-    /// Get a snapshot from the state machine, send back via a oneshot::Sender.
-    GetSnapshot {
-        tx: OneshotSenderOf<C, Option<SnapshotOf<C, SD>>>,
-    },
 
     /// Purge logs covered by a snapshot up to a specified index.
     ///
@@ -97,10 +87,8 @@ where
     },
 }
 
-impl<C, SD> ExternalCommand<C, SD>
-where
-    C: RaftTypeConfig,
-    SD: OptionalSend + 'static,
+impl<C> ExternalCommand<C>
+where C: RaftTypeConfig
 {
     /// Returns the name of this command variant.
     pub fn name(&self) -> ExternalCommandName {
@@ -108,7 +96,6 @@ where
             ExternalCommand::Elect { .. } => ExternalCommandName::Elect,
             ExternalCommand::Heartbeat => ExternalCommandName::Heartbeat,
             ExternalCommand::Snapshot => ExternalCommandName::Snapshot,
-            ExternalCommand::GetSnapshot { .. } => ExternalCommandName::GetSnapshot,
             ExternalCommand::PurgeLog { .. } => ExternalCommandName::PurgeLog,
             ExternalCommand::TriggerTransferLeader { .. } => ExternalCommandName::TriggerTransferLeader,
             ExternalCommand::AllowNextRevert { .. } => ExternalCommandName::AllowNextRevert,
@@ -118,20 +105,16 @@ where
     }
 }
 
-impl<C, SD> fmt::Debug for ExternalCommand<C, SD>
-where
-    C: RaftTypeConfig,
-    SD: OptionalSend + 'static,
+impl<C> fmt::Debug for ExternalCommand<C>
+where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(self, f)
     }
 }
 
-impl<C, SD> fmt::Display for ExternalCommand<C, SD>
-where
-    C: RaftTypeConfig,
-    SD: OptionalSend + 'static,
+impl<C> fmt::Display for ExternalCommand<C>
+where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -143,9 +126,6 @@ where
             }
             ExternalCommand::Snapshot => {
                 write!(f, "Snapshot")
-            }
-            ExternalCommand::GetSnapshot { .. } => {
-                write!(f, "GetSnapshot")
             }
             ExternalCommand::PurgeLog { upto } => {
                 write!(f, "PurgeLog[..={}]", upto)

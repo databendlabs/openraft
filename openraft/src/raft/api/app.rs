@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use openraft_macros::since;
 
-use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::ReadPolicy;
 use crate::base::BoxStream;
@@ -31,20 +30,16 @@ use crate::type_config::alias::WriteResponderOf;
 /// This struct contains methods for client operations such as linearizable reads
 /// and writes.
 #[since(version = "0.10.0")]
-pub(crate) struct AppApi<'a, C, SD = ()>
-where
-    C: RaftTypeConfig,
-    SD: OptionalSend + 'static,
+pub(crate) struct AppApi<'a, C>
+where C: RaftTypeConfig
 {
-    inner: &'a Arc<RaftInner<C, SD>>,
+    inner: &'a Arc<RaftInner<C>>,
 }
 
-impl<'a, C, SD> AppApi<'a, C, SD>
-where
-    C: RaftTypeConfig,
-    SD: OptionalSend + 'static,
+impl<'a, C> AppApi<'a, C>
+where C: RaftTypeConfig
 {
-    pub(in crate::raft) fn new(inner: &'a Arc<RaftInner<C, SD>>) -> Self {
+    pub(in crate::raft) fn new(inner: &'a Arc<RaftInner<C>>) -> Self {
         Self { inner }
     }
 
