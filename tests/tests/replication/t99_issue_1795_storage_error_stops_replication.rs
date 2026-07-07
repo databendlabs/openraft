@@ -85,7 +85,12 @@ async fn storage_error_stops_replication() -> Result<()> {
     router.set_fail_next_limited_get(&0, true)?;
 
     let leader = router.get_raft_handle(&0)?;
-    leader.add_learner(1, (), false).await?;
+    // Adding the learner starts replication to node 1, which reads the live suffix and hits the
+    // injected one-shot read error. That error is reported to RaftCore as a fatal `StorageError`,
+    // so `add_learner` races the shutdown: it returns `Ok` when the membership response wins, or the
+    // injected `StorageError` when the fatal wins. Both outcomes are expected here; the behavior
+    // under test is whether replication retried with a malformed AppendEntries, asserted below.
+    let _ = leader.add_learner(1, (), false).await;
 
     TypeConfig::sleep(Duration::from_millis(800)).await;
 
