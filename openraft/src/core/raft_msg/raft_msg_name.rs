@@ -5,7 +5,6 @@ pub enum ExternalCommandName {
     Elect,
     Heartbeat,
     Snapshot,
-    GetSnapshot,
     PurgeLog,
     TriggerTransferLeader,
     AllowNextRevert,
@@ -16,7 +15,7 @@ pub enum ExternalCommandName {
 impl ExternalCommandName {
     /// Total number of variants.
     #[allow(dead_code)]
-    pub const COUNT: usize = 9;
+    pub const COUNT: usize = 8;
 
     /// All variants in canonical order.
     #[allow(dead_code)]
@@ -24,7 +23,6 @@ impl ExternalCommandName {
         ExternalCommandName::Elect,
         ExternalCommandName::Heartbeat,
         ExternalCommandName::Snapshot,
-        ExternalCommandName::GetSnapshot,
         ExternalCommandName::PurgeLog,
         ExternalCommandName::TriggerTransferLeader,
         ExternalCommandName::AllowNextRevert,
@@ -39,12 +37,11 @@ impl ExternalCommandName {
             ExternalCommandName::Elect => 0,
             ExternalCommandName::Heartbeat => 1,
             ExternalCommandName::Snapshot => 2,
-            ExternalCommandName::GetSnapshot => 3,
-            ExternalCommandName::PurgeLog => 4,
-            ExternalCommandName::TriggerTransferLeader => 5,
-            ExternalCommandName::AllowNextRevert => 6,
-            ExternalCommandName::SetMetricsRecorder => 7,
-            ExternalCommandName::RefreshServerState => 8,
+            ExternalCommandName::PurgeLog => 3,
+            ExternalCommandName::TriggerTransferLeader => 4,
+            ExternalCommandName::AllowNextRevert => 5,
+            ExternalCommandName::SetMetricsRecorder => 6,
+            ExternalCommandName::RefreshServerState => 7,
         }
     }
 
@@ -54,7 +51,6 @@ impl ExternalCommandName {
             ExternalCommandName::Elect => "Ext::Elect",
             ExternalCommandName::Heartbeat => "Ext::Heartbeat",
             ExternalCommandName::Snapshot => "Ext::Snapshot",
-            ExternalCommandName::GetSnapshot => "Ext::GetSnapshot",
             ExternalCommandName::PurgeLog => "Ext::PurgeLog",
             ExternalCommandName::TriggerTransferLeader => "Ext::TriggerTransferLeader",
             ExternalCommandName::AllowNextRevert => "Ext::AllowNextRevert",
@@ -81,7 +77,6 @@ pub enum RaftMsgName {
     RequestVote,
     RequestPreVote,
     InstallSnapshot,
-    GetSnapshotReceiver,
     ClientWrite,
     GetLinearizer,
     Initialize,
@@ -94,7 +89,7 @@ pub enum RaftMsgName {
 
 impl RaftMsgName {
     /// Total number of variants (including expanded ExternalCommand variants).
-    pub const COUNT: usize = 21;
+    pub const COUNT: usize = 19;
 
     /// All variants in canonical order.
     ///
@@ -105,7 +100,6 @@ impl RaftMsgName {
         RaftMsgName::RequestVote,
         RaftMsgName::RequestPreVote,
         RaftMsgName::InstallSnapshot,
-        RaftMsgName::GetSnapshotReceiver,
         RaftMsgName::ClientWrite,
         RaftMsgName::GetLinearizer,
         RaftMsgName::Initialize,
@@ -115,7 +109,6 @@ impl RaftMsgName {
         RaftMsgName::ExternalCommand(ExternalCommandName::Elect),
         RaftMsgName::ExternalCommand(ExternalCommandName::Heartbeat),
         RaftMsgName::ExternalCommand(ExternalCommandName::Snapshot),
-        RaftMsgName::ExternalCommand(ExternalCommandName::GetSnapshot),
         RaftMsgName::ExternalCommand(ExternalCommandName::PurgeLog),
         RaftMsgName::ExternalCommand(ExternalCommandName::TriggerTransferLeader),
         RaftMsgName::ExternalCommand(ExternalCommandName::AllowNextRevert),
@@ -131,15 +124,14 @@ impl RaftMsgName {
             RaftMsgName::RequestVote => 1,
             RaftMsgName::RequestPreVote => 2,
             RaftMsgName::InstallSnapshot => 3,
-            RaftMsgName::GetSnapshotReceiver => 4,
-            RaftMsgName::ClientWrite => 5,
-            RaftMsgName::GetLinearizer => 6,
-            RaftMsgName::Initialize => 7,
-            RaftMsgName::ChangeMembership => 8,
-            RaftMsgName::HandleTransferLeader => 9,
-            RaftMsgName::WithRaftState => 10,
-            RaftMsgName::ExternalCommand(ext) => 11 + ext.index(),
-            RaftMsgName::GetRuntimeStats => 11 + ExternalCommandName::COUNT,
+            RaftMsgName::ClientWrite => 4,
+            RaftMsgName::GetLinearizer => 5,
+            RaftMsgName::Initialize => 6,
+            RaftMsgName::ChangeMembership => 7,
+            RaftMsgName::HandleTransferLeader => 8,
+            RaftMsgName::WithRaftState => 9,
+            RaftMsgName::ExternalCommand(ext) => 10 + ext.index(),
+            RaftMsgName::GetRuntimeStats => 10 + ExternalCommandName::COUNT,
         }
     }
 
@@ -151,7 +143,6 @@ impl RaftMsgName {
             RaftMsgName::RequestVote => "RequestVote",
             RaftMsgName::RequestPreVote => "RequestPreVote",
             RaftMsgName::InstallSnapshot => "InstallSnapshot",
-            RaftMsgName::GetSnapshotReceiver => "GetSnapshotReceiver",
             RaftMsgName::ClientWrite => "ClientWrite",
             RaftMsgName::GetLinearizer => "GetLinearizer",
             RaftMsgName::Initialize => "Initialize",
