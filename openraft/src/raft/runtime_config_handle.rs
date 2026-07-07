@@ -2,7 +2,6 @@
 
 use std::sync::atomic::Ordering;
 
-use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::raft::RaftInner;
 
@@ -10,20 +9,16 @@ use crate::raft::RaftInner;
 ///
 /// These configs are mainly designed for testing purposes and special use cases.
 /// Usually you don't need to change runtime config.
-pub struct RuntimeConfigHandle<'r, C, SD = ()>
-where
-    C: RaftTypeConfig,
-    SD: OptionalSend + 'static,
+pub struct RuntimeConfigHandle<'r, C>
+where C: RaftTypeConfig
 {
-    raft_inner: &'r RaftInner<C, SD>,
+    raft_inner: &'r RaftInner<C>,
 }
 
-impl<'r, C, SD> RuntimeConfigHandle<'r, C, SD>
-where
-    C: RaftTypeConfig,
-    SD: OptionalSend + 'static,
+impl<'r, C> RuntimeConfigHandle<'r, C>
+where C: RaftTypeConfig
 {
-    pub(in crate::raft) fn new(raft_inner: &'r RaftInner<C, SD>) -> Self {
+    pub(in crate::raft) fn new(raft_inner: &'r RaftInner<C>) -> Self {
         Self { raft_inner }
     }
 

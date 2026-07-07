@@ -96,6 +96,7 @@ use crate::core::merged_raft_msg_receiver::BatchRaftMsgReceiver;
 use crate::core::notification::Notification;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::external_command::ExternalCommand;
+use crate::core::raft_msg::install_full_snapshot_request::InstallFullSnapshotRequest;
 use crate::core::runtime_stats::RuntimeStats;
 use crate::core::sm;
 use crate::core::sm::worker;
@@ -126,6 +127,7 @@ use crate::storage::RaftStateMachine;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinErrorOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::MpscWeakSenderOf;
 use crate::type_config::alias::NodeIdOf;
 use crate::type_config::alias::SnapshotDataOf;
@@ -323,8 +325,16 @@ where
     C: RaftTypeConfig,
     SM: RaftStateMachine<C>,
 {
-    inner: Arc<RaftInner<C, SM::SnapshotData>>,
+    inner: Arc<RaftInner<C>>,
     sm_cmd_tx: MpscWeakSenderOf<C, sm::Command<C, SM>>,
+
+    /// Sender of the dedicated channel that delivers a full snapshot to RaftCore.
+    ///
+    /// The snapshot data type is defined by the state machine, thus it does not go through
+    /// the [`RaftMsg`] channel, which is independent of the state machine type.
+    ///
+    /// [`RaftMsg`]: crate::core::raft_msg::RaftMsg
+    install_snapshot_tx: MpscSenderOf<C, InstallFullSnapshotRequest<C, SM>>,
 }
 
 impl<C, SM> Clone for Raft<C, SM>
@@ -336,6 +346,7 @@ where
         Self {
             inner: self.inner.clone(),
             sm_cmd_tx: self.sm_cmd_tx.clone(),
+            install_snapshot_tx: self.install_snapshot_tx.clone(),
         }
     }
 }
@@ -462,6 +473,7 @@ where
         let notification_channel_size = config.notification_channel_size();
 
         let (tx_api, rx_api) = C::mpsc(api_channel_size);
+        let (tx_install_snapshot, rx_install_snapshot) = C::mpsc(api_channel_size);
         let (tx_notify, rx_notify) = C::mpsc(notification_channel_size);
         let (tx_metrics, rx_metrics) = C::watch_channel(RaftMetrics::new_initial(id.clone()));
         let (tx_data_metrics, rx_data_metrics) = C::watch_channel(RaftDataMetrics::default());
@@ -546,6 +558,7 @@ where
                 config.api_batch_capacity,
                 Duration::from_millis(config.api_batch_linger_ms),
             ),
+            rx_install_snapshot,
 
             tx_notification: tx_notify,
             rx_notification: rx_notify,
@@ -573,7 +586,7 @@ where
         // Spawn forwarder task to bridge Watch channel to notification channel
         let _forwarder_handle = C::spawn(io_completion_forwarder::<C>(rx_io_completed, weak_tx_notify));
 
-        StepDownWatcher::<C, SM::SnapshotData>::spawn(
+        StepDownWatcher::<C>::spawn(
             rx_server_metrics.clone(),
             rx_metrics.clone(),
             tx_api.downgrade(),
@@ -600,6 +613,7 @@ where
         Ok(Self {
             inner: Arc::new(inner),
             sm_cmd_tx,
+            install_snapshot_tx: tx_install_snapshot,
         })
     }
 }
@@ -620,7 +634,7 @@ where
     /// raft.runtime_config().tick(true);
     /// raft.runtime_config().elect(true);
     /// ```
-    pub fn runtime_config(&self) -> RuntimeConfigHandle<'_, C, SM::SnapshotData> {
+    pub fn runtime_config(&self) -> RuntimeConfigHandle<'_, C> {
         RuntimeConfigHandle::new(self.inner.as_ref())
     }
 
@@ -809,15 +823,19 @@ where
     /// - [`ProtocolApi::begin_receiving_snapshot`]
     /// - [`ProtocolApi::install_full_snapshot`]
     /// - [`ProtocolApi::handle_transfer_leader`]
-    pub(crate) fn protocol_api(&self) -> ProtocolApi<C, SM::SnapshotData> {
-        ProtocolApi::new(self.inner.clone())
+    pub(crate) fn protocol_api(&self) -> ProtocolApi<C, SM> {
+        ProtocolApi::new(
+            self.inner.clone(),
+            self.sm_cmd_tx.clone(),
+            self.install_snapshot_tx.clone(),
+        )
     }
 
-    pub(crate) fn app_api(&self) -> AppApi<'_, C, SM::SnapshotData> {
+    pub(crate) fn app_api(&self) -> AppApi<'_, C> {
         AppApi::new(&self.inner)
     }
 
-    pub(crate) fn management_api(&self) -> ManagementApi<'_, C, SM::SnapshotData> {
+    pub(crate) fn management_api(&self) -> ManagementApi<'_, C> {
         ManagementApi::new(self.inner.as_ref())
     }
 
@@ -829,7 +847,7 @@ where
     /// let raft = Raft::new(...).await?;
     /// raft.trigger().elect(false).await?;
     /// ```
-    pub fn trigger(&self) -> Trigger<'_, C, SM::SnapshotData> {
+    pub fn trigger(&self) -> Trigger<'_, C> {
         Trigger::new(self.inner.as_ref())
     }
 
@@ -1256,7 +1274,7 @@ where
     /// [`.responder()`]: WriteRequest::responder
     /// [`.with_leader()`]: WriteRequest::with_leader
     #[since(version = "0.10.0")]
-    pub fn write(&self, app_data: C::D) -> WriteRequest<'_, C, SM::SnapshotData> {
+    pub fn write(&self, app_data: C::D) -> WriteRequest<'_, C> {
         WriteRequest {
             inner: &self.inner,
             app_data,

@@ -9,7 +9,6 @@ use crate::Membership;
 use crate::RaftTypeConfig;
 use crate::core::ServerState;
 use crate::core::raft_msg::AppendEntriesTx;
-use crate::core::sm;
 use crate::engine::Command;
 use crate::engine::Condition;
 use crate::engine::EngineOutput;
@@ -652,13 +651,6 @@ where
             when: cond,
             resp: Respond::new(res, tx),
         });
-    }
-
-    /// Install a completely received snapshot on a follower.
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn handle_begin_receiving_snapshot(&mut self, tx: OneshotSenderOf<C, SnapshotDataOf<C, SM>>) {
-        tracing::info!("{}", func_name!());
-        self.output.push_command(Command::from(sm::Command::begin_receiving_snapshot(tx)));
     }
 
     /// Re-derive the internal server state(Leader/Following) from the vote and the membership
