@@ -16,7 +16,7 @@ use crate::vote::RaftTerm;
 /// This struct contains metadata about the current leader state, including
 /// its identity and health indicators.
 #[since(version = "0.10.0")]
-pub struct Leader<C, SM = ()>
+pub struct Leader<C, SM>
 where
     C: RaftTypeConfig,
     SM: RaftStateMachine<C>,
@@ -86,11 +86,12 @@ where
 /// `Term` and `NID` are extracted as separate type parameters to avoid a rustc cycle error
 /// that occurs when using `C::Term` or `C::NodeId` inside an associated type equality constraint
 /// (e.g., `LeaderId = LeaderId<C::Term, C::NodeId>`).
-impl<Term, NID, C> Leader<C>
+impl<Term, NID, C, SM> Leader<C, SM>
 where
     Term: RaftTerm,
     NID: NodeId,
     C: RaftTypeConfig<Term = Term, NodeId = NID, LeaderId = leader_id_std::LeaderId<Term, NID>>,
+    SM: RaftStateMachine<C>,
 {
     /// Only when the [`CommittedLeaderIdOf`] is a single term this method is allowed.
     /// Otherwise, the user may mistakenly get the term as the entire [`CommittedLeaderIdOf`]

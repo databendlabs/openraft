@@ -185,6 +185,9 @@ where C: RaftTypeConfig
     async fn get_current_snapshot(&mut self) -> Result<Option<SnapshotOf<C, Self::SnapshotData>>, io::Error>;
 }
 
+// Test-only: an unconditional impl would downgrade a missing-state-machine mistake from a compile
+// error to a runtime `Fatal`.
+#[cfg(test)]
 fn unit_state_machine_error() -> io::Error {
     io::Error::new(
         io::ErrorKind::Unsupported,
@@ -192,6 +195,7 @@ fn unit_state_machine_error() -> io::Error {
     )
 }
 
+#[cfg(test)]
 impl<C> RaftSnapshotBuilder<C> for ()
 where C: RaftTypeConfig
 {
@@ -202,6 +206,7 @@ where C: RaftTypeConfig
     }
 }
 
+#[cfg(test)]
 impl<C> RaftStateMachine<C> for ()
 where C: RaftTypeConfig
 {
