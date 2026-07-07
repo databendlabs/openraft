@@ -4,8 +4,7 @@ use crate::RaftTypeConfig;
 use crate::raft::SnapshotResponse;
 use crate::storage::RaftStateMachine;
 use crate::type_config::alias::OneshotSenderOf;
-use crate::type_config::alias::SnapshotDataOf;
-use crate::type_config::alias::SnapshotOf;
+use crate::type_config::alias::SmSnapshotOf;
 use crate::type_config::alias::VoteOf;
 
 /// A request to install a full snapshot, sent to [`RaftCore`] via a dedicated channel.
@@ -21,7 +20,7 @@ where
     SM: RaftStateMachine<C>,
 {
     pub(crate) vote: VoteOf<C>,
-    pub(crate) snapshot: SnapshotOf<C, SnapshotDataOf<C, SM>>,
+    pub(crate) snapshot: SmSnapshotOf<C, SM>,
     pub(crate) tx: OneshotSenderOf<C, SnapshotResponse<C>>,
 }
 

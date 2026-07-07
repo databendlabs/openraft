@@ -998,6 +998,9 @@ where
     }
 
     /// Get a snapshot data for receiving snapshot from the leader.
+    ///
+    /// It does not check `Vote` because it is a read operation and does not break raft
+    /// protocol.
     #[since(version = "0.10.0", change = "SnapshotData without Box")]
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn begin_receiving_snapshot(&self) -> Result<SnapshotDataOf<C, SM>, RaftError<C>> {
