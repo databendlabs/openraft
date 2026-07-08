@@ -519,6 +519,7 @@ where
         let sm_span = tracing::span!(parent: &core_span, Level::DEBUG, "sm_worker");
 
         let sm_handle = worker::Worker::spawn(
+            id.clone(),
             state_machine,
             log_store.get_log_reader().await,
             tx_notify.clone(),
