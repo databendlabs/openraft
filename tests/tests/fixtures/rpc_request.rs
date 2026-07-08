@@ -14,8 +14,10 @@ use openraft::raft::VoteRequest;
 /// Unified enum for all RPC request types in the test framework.
 #[derive(Debug)]
 #[derive(derive_more::From, derive_more::TryInto)]
-pub enum RpcRequest<C: RaftTypeConfig, SD = ()>
-where SD: fmt::Debug + OptionalSend + 'static
+pub enum RpcRequest<C, SD = ()>
+where
+    C: RaftTypeConfig,
+    SD: fmt::Debug + OptionalSend + 'static,
 {
     AppendEntries(AppendEntriesRequest<C>),
     InstallSnapshot(InstallSnapshotRequest<C>),
@@ -24,8 +26,10 @@ where SD: fmt::Debug + OptionalSend + 'static
     TransferLeader(TransferLeaderRequest<C>),
 }
 
-impl<C: RaftTypeConfig, SD> RpcRequest<C, SD>
-where SD: fmt::Debug + OptionalSend + 'static
+impl<C, SD> RpcRequest<C, SD>
+where
+    C: RaftTypeConfig,
+    SD: fmt::Debug + OptionalSend + 'static,
 {
     pub fn get_type(&self) -> RPCTypes {
         match self {

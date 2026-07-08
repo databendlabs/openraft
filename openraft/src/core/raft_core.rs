@@ -207,6 +207,14 @@ where
     pub(crate) tx_api: MpscSenderOf<C, RaftMsg<C>>,
     pub(crate) rx_api: BatchRaftMsgReceiver<C>,
 
+    /// A self-held keepalive sender for the dedicated install-snapshot channel.
+    ///
+    /// Mirrors [`Self::tx_api`]: it keeps `rx_install_snapshot` open after the application drops
+    /// its last `Raft` handle, so the core shuts down only via `rx_shutdown` instead of
+    /// truncating an in-flight `stream_append`.
+    #[allow(dead_code)]
+    pub(crate) tx_install_snapshot: MpscSenderOf<C, InstallFullSnapshotRequest<C, SM>>,
+
     /// Receiver of the dedicated channel that delivers a full snapshot to install.
     ///
     /// The snapshot data type is defined by the state machine, thus it does not go through
