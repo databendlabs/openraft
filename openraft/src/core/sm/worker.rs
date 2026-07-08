@@ -36,6 +36,9 @@ where
     SM: RaftStateMachine<C>,
     LR: RaftLogReader<C>,
 {
+    /// The ID of this Raft node, used to tag worker logs for correlation with core logs.
+    id: C::NodeId,
+
     /// The application state machine implementation.
     state_machine: SM,
 
@@ -57,6 +60,7 @@ where
 {
     /// Spawn a new state machine worker, return a controlling handle.
     pub(crate) fn spawn(
+        id: C::NodeId,
         state_machine: SM,
         log_reader: LR,
         resp_tx: MpscSenderOf<C, Notification<C>>,
@@ -66,6 +70,7 @@ where
         let (cmd_tx, cmd_rx) = C::mpsc(state_machine_channel_size);
 
         let worker = Worker {
+            id,
             state_machine,
             log_reader,
             cmd_rx,
@@ -107,7 +112,7 @@ where
                 Some(x) => x,
             };
 
-            tracing::debug!("{}: received command: {:?}", func_name!(), cmd);
+            tracing::debug!("RAFT_event id={:<2}  input: {:?}", self.id, cmd);
 
             match cmd {
                 Command::BuildSnapshot => {
