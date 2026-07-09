@@ -108,11 +108,19 @@ where
 /// via [`Raft::extension()`] to track chunk-based snapshot transfers.
 ///
 /// [`Raft::extension()`]: openraft::Raft::extension
-pub struct StreamingState<C: RaftTypeConfig, SD: OptionalSend + 'static> {
+pub struct StreamingState<C, SD>
+where
+    C: RaftTypeConfig,
+    SD: OptionalSend + 'static,
+{
     pub(crate) streaming: Arc<MutexOf<C, Option<Streaming<C, SD>>>>,
 }
 
-impl<C: RaftTypeConfig, SD: OptionalSend + 'static> Clone for StreamingState<C, SD> {
+impl<C, SD> Clone for StreamingState<C, SD>
+where
+    C: RaftTypeConfig,
+    SD: OptionalSend + 'static,
+{
     fn clone(&self) -> Self {
         Self {
             streaming: self.streaming.clone(),
@@ -120,7 +128,11 @@ impl<C: RaftTypeConfig, SD: OptionalSend + 'static> Clone for StreamingState<C, 
     }
 }
 
-impl<C: RaftTypeConfig, SD: OptionalSend + 'static> StreamingState<C, SD> {
+impl<C, SD> StreamingState<C, SD>
+where
+    C: RaftTypeConfig,
+    SD: OptionalSend + 'static,
+{
     /// Create a new empty streaming state.
     pub fn new() -> Self {
         Self {
@@ -129,7 +141,11 @@ impl<C: RaftTypeConfig, SD: OptionalSend + 'static> StreamingState<C, SD> {
     }
 }
 
-impl<C: RaftTypeConfig, SD: OptionalSend + 'static> Default for StreamingState<C, SD> {
+impl<C, SD> Default for StreamingState<C, SD>
+where
+    C: RaftTypeConfig,
+    SD: OptionalSend + 'static,
+{
     fn default() -> Self {
         Self::new()
     }

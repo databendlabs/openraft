@@ -10,7 +10,6 @@ use std::time::Duration;
 
 use rt::AsyncRuntime;
 
-use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::async_runtime::MpscReceiver;
 use crate::async_runtime::TryRecvError;
@@ -43,17 +42,15 @@ use crate::type_config::alias::MpscReceiverOf;
 ///     handle_msg(msg);
 /// }
 /// ```
-pub(crate) struct BatchRaftMsgReceiver<C, SD>
-where
-    C: RaftTypeConfig,
-    SD: OptionalSend + 'static,
+pub(crate) struct BatchRaftMsgReceiver<C>
+where C: RaftTypeConfig
 {
     /// A message that was received but not yet returned to the caller.
     ///
     /// This is used when:
     /// - A non-mergeable message is encountered during batching
     /// - A `ClientWrite` with different `expected_leader` is encountered
-    buffered: Option<RaftMsg<C, SD>>,
+    buffered: Option<RaftMsg<C>>,
 
     /// Maximum items allowed to be merged before return the batch.
     capacity: u64,
@@ -62,19 +59,17 @@ where
     linger: Duration,
 
     /// The underlying mpsc receiver.
-    inner: MpscReceiverOf<C, RaftMsg<C, SD>>,
+    inner: MpscReceiverOf<C, RaftMsg<C>>,
 }
 
-impl<C, SD> BatchRaftMsgReceiver<C, SD>
-where
-    C: RaftTypeConfig,
-    SD: OptionalSend + 'static,
+impl<C> BatchRaftMsgReceiver<C>
+where C: RaftTypeConfig
 {
     /// Creates a new batching receiver given:
     /// - mpsc receiver channel
     /// - capacity
     /// - linger
-    pub(crate) fn new(receiver: MpscReceiverOf<C, RaftMsg<C, SD>>, capacity: u64, linger: Duration) -> Self {
+    pub(crate) fn new(receiver: MpscReceiverOf<C, RaftMsg<C>>, capacity: u64, linger: Duration) -> Self {
         Self {
             buffered: None,
             capacity,
@@ -107,7 +102,7 @@ where
     ///
     /// If the first available message is a `ClientWrite`, this method attempts to
     /// merge additional `ClientWrite` messages with the same `expected_leader`.
-    pub(crate) async fn try_recv(&mut self) -> Result<Option<RaftMsg<C, SD>>, Fatal<C>> {
+    pub(crate) async fn try_recv(&mut self) -> Result<Option<RaftMsg<C>>, Fatal<C>> {
         let msg = self.buffered_try_recv()?;
 
         let Some(mut msg) = msg else {
@@ -120,7 +115,7 @@ where
     }
 
     /// Returns a buffered message if available, otherwise tries the inner receiver.
-    fn buffered_try_recv(&mut self) -> Result<Option<RaftMsg<C, SD>>, Fatal<C>> {
+    fn buffered_try_recv(&mut self) -> Result<Option<RaftMsg<C>>, Fatal<C>> {
         if let Some(msg) = self.buffered.take() {
             return Ok(Some(msg));
         }
@@ -129,7 +124,7 @@ where
     }
 
     /// Waits for a message from the inner receiver.
-    async fn inner_recv(&mut self) -> Result<RaftMsg<C, SD>, Fatal<C>> {
+    async fn inner_recv(&mut self) -> Result<RaftMsg<C>, Fatal<C>> {
         let Some(msg) = self.inner.recv().await else {
             tracing::info!("all rx_api senders are dropped");
             return Err(Fatal::Stopped);
@@ -148,7 +143,7 @@ where
     async fn inner_recv_timeout_at(
         &mut self,
         deadline: <C::AsyncRuntime as AsyncRuntime>::Instant,
-    ) -> Result<Option<RaftMsg<C, SD>>, Fatal<C>> {
+    ) -> Result<Option<RaftMsg<C>>, Fatal<C>> {
         match C::AsyncRuntime::mpsc_recv_deadline(&mut self.inner, deadline).await {
             Ok(value) => Ok(Some(value)),
             Err(TryRecvError::Empty) => {
@@ -163,7 +158,7 @@ where
     }
 
     /// Non-blocking receive from the inner receiver.
-    fn inner_try_recv(&mut self) -> Result<Option<RaftMsg<C, SD>>, Fatal<C>> {
+    fn inner_try_recv(&mut self) -> Result<Option<RaftMsg<C>>, Fatal<C>> {
         let res = self.inner.try_recv();
 
         match res {
@@ -190,7 +185,7 @@ where
     /// - Maximum batch size is reached
     /// - No more messages are available
     /// - Linger timeout expires before the batch is filled
-    async fn merge_client_writes(&mut self, msg: &mut RaftMsg<C, SD>) -> Result<(), Fatal<C>> {
+    async fn merge_client_writes(&mut self, msg: &mut RaftMsg<C>) -> Result<(), Fatal<C>> {
         debug_assert!(self.buffered.is_none());
 
         let (batch_payloads, batch_responders, batch_leader) = match msg {
@@ -258,7 +253,7 @@ mod tests {
         *log_id(term, node_id, 0).committed_leader_id()
     }
 
-    fn default_msg_receiver(receiver: MpscReceiverOf<C, RaftMsg<C>>) -> BatchRaftMsgReceiver<C, ()> {
+    fn default_msg_receiver(receiver: MpscReceiverOf<C, RaftMsg<C>>) -> BatchRaftMsgReceiver<C> {
         BatchRaftMsgReceiver::new(receiver, 4096, Duration::ZERO)
     }
 
@@ -287,7 +282,7 @@ mod tests {
     fn test_merge_consecutive_client_writes_with_same_leader() {
         C::run(async {
             let (tx, rx) = C::mpsc(100);
-            let mut receiver: BatchRaftMsgReceiver<C, ()> = default_msg_receiver(rx);
+            let mut receiver: BatchRaftMsgReceiver<C> = default_msg_receiver(rx);
 
             let leader = Some(committed_leader_id(1, 1));
             tx.send(client_write(1, leader)).await.unwrap();
@@ -312,7 +307,7 @@ mod tests {
     fn test_no_merge_when_expected_leader_differs() {
         C::run(async {
             let (tx, rx) = C::mpsc(100);
-            let mut receiver: BatchRaftMsgReceiver<C, ()> = default_msg_receiver(rx);
+            let mut receiver: BatchRaftMsgReceiver<C> = default_msg_receiver(rx);
 
             let leader1 = Some(committed_leader_id(1, 1));
             let leader2 = Some(committed_leader_id(2, 1));
@@ -349,7 +344,7 @@ mod tests {
     fn test_non_client_write_stops_merging() {
         C::run(async {
             let (tx, rx) = C::mpsc(100);
-            let mut receiver: BatchRaftMsgReceiver<C, ()> = default_msg_receiver(rx);
+            let mut receiver: BatchRaftMsgReceiver<C> = default_msg_receiver(rx);
 
             let leader = Some(committed_leader_id(1, 1));
             tx.send(client_write(1, leader)).await.unwrap();
@@ -390,7 +385,7 @@ mod tests {
     fn test_try_recv_returns_none_when_empty() {
         C::run(async {
             let (_tx, rx) = C::mpsc::<RaftMsg<C>>(100);
-            let mut receiver: BatchRaftMsgReceiver<C, ()> = default_msg_receiver(rx);
+            let mut receiver: BatchRaftMsgReceiver<C> = default_msg_receiver(rx);
 
             let result = receiver.try_recv().await.unwrap();
             assert!(result.is_none());
@@ -401,7 +396,7 @@ mod tests {
     fn test_ensure_buffered_waits_for_message() {
         C::run(async {
             let (tx, rx) = C::mpsc(100);
-            let mut receiver: BatchRaftMsgReceiver<C, ()> = default_msg_receiver(rx);
+            let mut receiver: BatchRaftMsgReceiver<C> = default_msg_receiver(rx);
 
             tx.send(client_write(42, None)).await.unwrap();
 
@@ -424,7 +419,7 @@ mod tests {
     fn test_ensure_buffered_returns_immediately_if_already_buffered() {
         C::run(async {
             let (tx, rx) = C::mpsc(100);
-            let mut receiver: BatchRaftMsgReceiver<C, ()> = default_msg_receiver(rx);
+            let mut receiver: BatchRaftMsgReceiver<C> = default_msg_receiver(rx);
 
             let leader = Some(committed_leader_id(1, 1));
             tx.send(client_write(1, None)).await.unwrap();
@@ -457,8 +452,7 @@ mod tests {
 
         C::run(async {
             let (tx, rx) = C::mpsc(NUM_CLIENT_WRITES as usize);
-            let mut receiver: BatchRaftMsgReceiver<C, ()> =
-                BatchRaftMsgReceiver::new(rx, BATCH_CAPACITY, Duration::ZERO);
+            let mut receiver: BatchRaftMsgReceiver<C> = BatchRaftMsgReceiver::new(rx, BATCH_CAPACITY, Duration::ZERO);
 
             let leader = Some(committed_leader_id(1, 1));
             for index in 0..NUM_CLIENT_WRITES {
@@ -488,7 +482,7 @@ mod tests {
 
         C::run(async {
             let (tx, rx) = C::mpsc(BATCH_CAPACITY as usize);
-            let mut receiver: BatchRaftMsgReceiver<C, ()> = BatchRaftMsgReceiver::new(rx, BATCH_CAPACITY, LINGER);
+            let mut receiver: BatchRaftMsgReceiver<C> = BatchRaftMsgReceiver::new(rx, BATCH_CAPACITY, LINGER);
 
             let now = C::now();
 
