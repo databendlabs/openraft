@@ -70,7 +70,7 @@ use crate::vote::raft_vote::RaftVote;
 /// Then use your config with Raft:
 ///
 /// ```ignore
-/// type MyRaft = Raft<MyTypeConfig>;
+/// type MyRaft = Raft<MyTypeConfig, MyStateMachine>;
 /// let raft = MyRaft::new(id, config, network, log_store, state_machine).await?;
 /// ```
 ///

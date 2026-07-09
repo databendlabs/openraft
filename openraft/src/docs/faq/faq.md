@@ -423,7 +423,7 @@ use openraft::Raft;
 
 // Leader builds and distributes snapshot
 async fn distribute_snapshot(
-    leader: &Raft<TypeConfig>,
+    leader: &Raft<TypeConfig, MyStateMachine>,
     followers: Vec<NodeId>
 ) -> Result<(), io::Error> {
     // Build snapshot on leader
@@ -440,7 +440,7 @@ async fn distribute_snapshot(
 
 // Follower receives and saves snapshot
 async fn receive_snapshot(
-    follower: &Raft<TypeConfig>,
+    follower: &Raft<TypeConfig, MyStateMachine>,
     snapshot_data: Vec<u8>
 ) -> Result<(), io::Error> {
     follower.with_state_machine(|sm: &mut MyStateMachine| {

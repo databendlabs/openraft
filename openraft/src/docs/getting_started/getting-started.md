@@ -324,7 +324,7 @@ The same pattern applies to other RPC methods: [`vote()`], [`full_snapshot()`].
 
 ```rust,ignore
 async fn handle_append_entries(
-    raft: Arc<Raft<TypeConfig>>,
+    raft: Arc<Raft<TypeConfig, StateMachineStore>>,
     req: AppendEntriesRequest<TypeConfig>,
 ) -> Result<AppendEntriesResponse, ServerError> {
     let resp = raft.append_entries(req).await?;

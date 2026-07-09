@@ -142,7 +142,7 @@ use std::time::Duration;
 const OFFLINE_THRESHOLD: Duration = Duration::from_secs(30);
 const MAX_LAG: u64 = 1000;
 
-async fn check_and_maintain(raft: &Raft<TypeConfig>) -> Result<()> {
+async fn check_and_maintain(raft: &Raft<TypeConfig, MyStateMachine>) -> Result<()> {
     let metrics = raft.metrics().borrow_watched();
 
     // Only leader performs maintenance
