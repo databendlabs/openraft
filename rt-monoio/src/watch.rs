@@ -80,6 +80,11 @@ where T: OptionalSend + OptionalSync
     fn borrow_watched(&self) -> <TokioWatch as watch::Watch>::Ref<'_, T> {
         TokioWatchRef(self.0.borrow())
     }
+
+    #[inline]
+    fn borrow_and_update(&mut self) -> <TokioWatch as watch::Watch>::Ref<'_, T> {
+        TokioWatchRef(self.0.borrow_and_update())
+    }
 }
 
 impl<'a, T> Deref for TokioWatchRef<'a, T> {

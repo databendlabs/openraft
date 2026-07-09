@@ -3,6 +3,7 @@
 mod watch_error;
 
 use openraft_macros::add_async_trait;
+use openraft_macros::since;
 pub use watch_error::RecvError;
 pub use watch_error::SendError;
 
@@ -163,6 +164,20 @@ where
     /// See: [`Watch::Ref`]
     #[track_caller]
     fn borrow_watched(&self) -> W::Ref<'_, T>;
+
+    /// Returns a reference to the most recently sent value and marks that value as seen.
+    ///
+    /// Unlike [`borrow_watched()`](Self::borrow_watched), this marks the returned value as
+    /// seen: a following call to [`changed()`](Self::changed) sleeps until a newer value is
+    /// sent, instead of returning immediately for the value already returned here.
+    ///
+    /// Use this method when the read value is consumed (acted upon), so that no pending
+    /// change notification is left behind to deliver the same value again.
+    ///
+    /// See: [`Watch::Ref`] for caveats about holding the returned reference.
+    #[since(version = "0.10.0")]
+    #[track_caller]
+    fn borrow_and_update(&mut self) -> W::Ref<'_, T>;
 
     /// Waits until the watched value is greater than or equal to the given value.
     ///
