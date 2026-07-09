@@ -86,6 +86,11 @@ where T: OptionalSend + OptionalSync
     fn borrow_watched(&self) -> <See as watch::Watch>::Ref<'_, T> {
         SeeRef(self.0.borrow())
     }
+
+    #[inline]
+    fn borrow_and_update(&mut self) -> <See as watch::Watch>::Ref<'_, T> {
+        SeeRef(self.0.borrow_and_update())
+    }
 }
 
 impl<T> Deref for SeeRef<'_, T> {
