@@ -124,6 +124,39 @@ async fn get_snapshot_returns_stopped_when_sm_worker_dies() -> Result<()> {
     Ok(())
 }
 
+/// `with_state_machine` must not hang when its function panics the state-machine worker.
+///
+/// The user function runs in the SM worker; a panic there kills the worker and drops the
+/// responder while RaftCore keeps running. Resolving the stop cause must fall back to
+/// `Fatal::Stopped` within the bounded wait instead of joining the still-running core forever.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn with_state_machine_returns_stopped_when_func_panics() -> Result<()> {
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
+    let mut router = RaftRouter::new(config.clone());
+
+    tracing::info!("--- initializing single-node cluster");
+    let _log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
+
+    tracing::info!("--- a panicking with_state_machine func kills the worker; the call must return Fatal::Stopped");
+    {
+        let raft = router.get_raft_handle(&0)?;
+        let res = raft
+            .with_state_machine::<_, ()>(|_sm| Box::pin(async move { panic!("injected worker panic") }))
+            .await;
+        assert_eq!(Fatal::Stopped, res.unwrap_err());
+    }
+
+    Ok(())
+}
+
 /// After shutdown(), access to Raft should return a Fatal::Stopped error.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]

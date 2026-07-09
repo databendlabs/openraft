@@ -1940,16 +1940,11 @@ where
         })
         .await?;
 
-        let recv_res = rx.await;
-        tracing::debug!("{}: receives result is error: {:?}", func_name!(), recv_res.is_err());
-
-        let Ok(v) = recv_res else {
-            let fatal = self.inner.get_core_stop_error().await;
-            tracing::error!("{}: error: {}", func_name!(), fatal);
-            return Err(fatal);
-        };
-
-        Ok(v)
+        // Use the bounded receive: the state-machine worker owns the responder and can die on its
+        // own (e.g. a panic in `func`) while RaftCore keeps running. An unbounded join on the core
+        // would then hang forever. `recv_msg` waits only up to `RECV_CORE_STOP_TIMEOUT` before
+        // resolving to `Fatal::Stopped`.
+        self.inner.recv_msg(rx).await
     }
 
     /// Send a request to the [`RaftStateMachine`] worker in a fire-and-forget manner.
