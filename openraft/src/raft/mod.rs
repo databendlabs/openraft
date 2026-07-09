@@ -1785,14 +1785,13 @@ where C: RaftTypeConfig
     /// again is a no-op that returns as soon as the current cluster commit has been applied.)
     ///
     /// The method waits in two phases, together bounded by `timeout`:
-    /// 1. until `cluster_committed` is perceived as non-null (the cluster commit is
-    ///    re-established),
+    /// 1. until `cluster_committed` is perceived as covering this node's current durable log tail
+    ///    (the cluster commit is re-established for everything this node may have applied),
     /// 2. until the state machine has applied up to that cluster commit.
     ///
-    /// The target is pinned to the *first* non-null `cluster_committed`, so the node catches up to
-    /// the commit perceived at recovery time. If the cluster advanced while this node was down,
-    /// that target may exceed the node's own pre-restart applied index — which still satisfies "at
-    /// least the same state".
+    /// The target is pinned to the first `cluster_committed` that covers this node's current
+    /// durable log tail. If the cluster advanced while this node was down, that target may exceed
+    /// the node's own pre-restart applied index — which still satisfies "at least the same state".
     ///
     /// It requires a reachable, functioning cluster: if no cluster commit is re-established (no
     /// leader, lost quorum, or this node is isolated), the method returns [`WaitError::Timeout`].
@@ -1800,15 +1799,15 @@ where C: RaftTypeConfig
     ///
     /// # Why this works
     ///
-    /// Perceiving a non-null `cluster_committed` means the current leader has re-established the
-    /// commit by committing its own-term (blank) entry to a quorum, so that commit is at least the
-    /// leader's blank log id — and therefore at least any previously committed, hence previously
-    /// applied, log id. Applying up to it restores everything the state machine held before the
-    /// restart. This is the same `read_log_id` argument that makes linearizable reads safe: see
-    /// [the read protocol](crate::docs::protocol::read) for the read-safety argument and
-    /// [the commit protocol](crate::docs::protocol::commit) for why `cluster_committed` is never a
-    /// value restored from storage. A node that did not persist `committed` can use this in place
-    /// of, or together with, saving it (see [log pointers](crate::docs::data::log_pointers)).
+    /// Perceiving a `cluster_committed` that covers this node's durable log tail means the current
+    /// leader has either committed the local tail this node may have applied before restart, or has
+    /// first replaced any uncommitted tail with the leader's log. Applying up to that commit
+    /// restores every durable log entry that could have contributed to the pre-restart state. This
+    /// is the same `read_log_id` argument that makes linearizable reads safe: see [the read
+    /// protocol](crate::docs::protocol::read) for the read-safety argument and [the commit
+    /// protocol](crate::docs::protocol::commit) for why `cluster_committed` is never a value
+    /// restored from storage. A node that did not persist `committed` can use this in place of, or
+    /// together with, saving it (see [log pointers](crate::docs::data::log_pointers)).
     ///
     /// # Example
     ///
@@ -1821,12 +1820,17 @@ where C: RaftTypeConfig
     pub async fn wait_for_recovery(&self, timeout: Option<Duration>) -> Result<RaftMetrics<C>, WaitError> {
         let start = C::now();
 
-        // Phase 1: wait until the cluster commit is re-established (perceived as non-null).
+        // Phase 1: wait until the cluster commit is re-established for this node's durable log
+        // tail. A follower may first hear an older leader_commit, which is not enough to recover
+        // everything it had applied before restart.
         let metrics = self
             .wait(timeout)
             .metrics(
-                |m| m.cluster_committed.is_some(),
-                "wait_for_recovery: cluster commit re-established",
+                |m| {
+                    let cluster_committed = m.cluster_committed.as_ref().map(|x| x.index());
+                    cluster_committed.is_some() && cluster_committed >= m.last_log_index
+                },
+                "wait_for_recovery: cluster commit covers local log",
             )
             .await?;
 
