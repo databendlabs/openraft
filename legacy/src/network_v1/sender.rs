@@ -30,13 +30,15 @@ use super::RaftNetwork;
 ///
 /// This is the client-side (Leader) component for chunk-based snapshot transport.
 /// It splits a snapshot into chunks and sends them incrementally to a follower.
-pub struct Sender<C>(std::marker::PhantomData<C>)
-where C: RaftTypeConfig;
-
-impl<C> Sender<C>
+pub struct Sender<C, SD>(std::marker::PhantomData<(C, fn() -> SD)>)
 where
     C: RaftTypeConfig,
-    C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncSeek + Unpin,
+    SD: OptionalSend + 'static;
+
+impl<C, SD> Sender<C, SD>
+where
+    C: RaftTypeConfig,
+    SD: tokio::io::AsyncRead + tokio::io::AsyncSeek + Unpin + OptionalSend + 'static,
 {
     /// Send a snapshot to a target node via `Net`.
     ///
@@ -51,7 +53,7 @@ where
     pub async fn send_snapshot<Net>(
         net: &mut Net,
         vote: VoteOf<C>,
-        mut snapshot: SnapshotOf<C>,
+        mut snapshot: SnapshotOf<C, SD>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,
     ) -> Result<SnapshotResponse<C>, StreamingError<C>>

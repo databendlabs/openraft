@@ -23,8 +23,10 @@ use crate::replication::Progress;
 use crate::replication::replication_context::ReplicationContext;
 use crate::replication::response::ReplicationResult;
 use crate::replication::snapshot_transmitter_handle::SnapshotTransmitterHandle;
+use crate::storage::RaftStateMachine;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::InstantOf;
+use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::SnapshotOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchSenderOf;
@@ -39,6 +41,8 @@ pub(crate) struct SnapshotTransmitter<C, N, SM = ()>
 where
     C: RaftTypeConfig,
     N: RaftNetworkFactory<C>,
+    N::Network: NetSnapshot<C, SnapshotData = SnapshotDataOf<C, SM>>,
+    SM: RaftStateMachine<C>,
 {
     pub(crate) replication_context: ReplicationContext<C>,
 
@@ -57,10 +61,12 @@ where
     snapshot_reader: SnapshotReader<C, SM>,
 }
 
-impl<C, N, SM: 'static> SnapshotTransmitter<C, N, SM>
+impl<C, N, SM> SnapshotTransmitter<C, N, SM>
 where
     C: RaftTypeConfig,
     N: RaftNetworkFactory<C>,
+    N::Network: NetSnapshot<C, SnapshotData = SnapshotDataOf<C, SM>>,
+    SM: RaftStateMachine<C>,
 {
     pub(crate) fn spawn(
         replication_context: ReplicationContext<C>,
@@ -203,7 +209,11 @@ where
         self.send_snapshot(snapshot, option).await
     }
 
-    async fn send_snapshot(&mut self, snapshot: SnapshotOf<C>, option: RPCOption) -> Result<(), ReplicationError<C>> {
+    async fn send_snapshot(
+        &mut self,
+        snapshot: SnapshotOf<C, SnapshotDataOf<C, SM>>,
+        option: RPCOption,
+    ) -> Result<(), ReplicationError<C>> {
         let meta = snapshot.meta.clone();
 
         let mut c = self.replication_context.cancel_rx.clone();

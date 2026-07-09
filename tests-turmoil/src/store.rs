@@ -171,6 +171,8 @@ impl StateMachine {
 }
 
 impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachine> {
+    type SnapshotData = SnapshotData;
+
     async fn build_snapshot(&mut self) -> Result<Snapshot, io::Error> {
         let data = self.data.lock().unwrap();
         let snapshot_data = serde_json::to_vec(&*data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
@@ -196,6 +198,8 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachine> {
 }
 
 impl RaftStateMachine<TypeConfig> for Arc<StateMachine> {
+    type SnapshotData = crate::typ::SnapshotData;
+
     type SnapshotBuilder = Self;
 
     async fn applied_state(&mut self) -> Result<(Option<LogId>, StoredMembership), io::Error> {

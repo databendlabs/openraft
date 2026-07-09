@@ -84,7 +84,10 @@ async fn install_snapshot_lower_vote() -> Result<()> {
         req.vote = Vote::new_committed(1, 1);
 
         let got = n0
-            .install_full_snapshot(Vote::new_committed(1, 1), SnapshotOf::<openraft_memstore::TypeConfig> {
+            .install_full_snapshot(Vote::new_committed(1, 1), SnapshotOf::<
+                openraft_memstore::TypeConfig,
+                Cursor<Vec<u8>>,
+            > {
                 meta: Default::default(),
                 snapshot: Cursor::new(vec![]),
             })

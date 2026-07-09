@@ -25,7 +25,6 @@ use crate::raft::raft_inner::RaftInner;
 use crate::raft::stream_append;
 use crate::raft::stream_append::StreamAppendResult;
 use crate::type_config::TypeConfigExt;
-use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::SnapshotOf;
 use crate::type_config::alias::VoteOf;
 use crate::vote::RaftVote;
@@ -63,16 +62,20 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// Remote Leader Node                                           Local Follower Node
 /// ```
 #[since(version = "0.10.0")]
-pub(crate) struct ProtocolApi<C>
-where C: RaftTypeConfig
+pub(crate) struct ProtocolApi<C, SD = ()>
+where
+    C: RaftTypeConfig,
+    SD: OptionalSend + 'static,
 {
-    inner: Arc<RaftInner<C>>,
+    inner: Arc<RaftInner<C, SD>>,
 }
 
-impl<C> ProtocolApi<C>
-where C: RaftTypeConfig
+impl<C, SD> ProtocolApi<C, SD>
+where
+    C: RaftTypeConfig,
+    SD: OptionalSend + 'static,
 {
-    pub(in crate::raft) fn new(inner: Arc<RaftInner<C>>) -> Self {
+    pub(in crate::raft) fn new(inner: Arc<RaftInner<C, SD>>) -> Self {
         Self { inner }
     }
 
@@ -119,7 +122,7 @@ where C: RaftTypeConfig
 
     #[since(version = "0.10.0")]
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) async fn get_snapshot(&self) -> Result<Option<SnapshotOf<C>>, Fatal<C>> {
+    pub(crate) async fn get_snapshot(&self) -> Result<Option<SnapshotOf<C, SD>>, Fatal<C>> {
         tracing::debug!("Raft::get_snapshot()");
 
         let (tx, rx) = C::oneshot();
@@ -129,7 +132,7 @@ where C: RaftTypeConfig
 
     #[since(version = "0.10.0")]
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) async fn begin_receiving_snapshot(&self) -> Result<SnapshotDataOf<C>, Fatal<C>> {
+    pub(crate) async fn begin_receiving_snapshot(&self) -> Result<SD, Fatal<C>> {
         tracing::info!("Raft::begin_receiving_snapshot()");
 
         let (tx, rx) = C::oneshot();
@@ -141,7 +144,7 @@ where C: RaftTypeConfig
     pub(crate) async fn install_full_snapshot(
         &self,
         vote: VoteOf<C>,
-        snapshot: SnapshotOf<C>,
+        snapshot: SnapshotOf<C, SD>,
     ) -> Result<SnapshotResponse<C>, Fatal<C>> {
         tracing::info!("Raft::install_full_snapshot()");
 
