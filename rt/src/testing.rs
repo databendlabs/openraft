@@ -68,6 +68,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
             Self::test_watch_wait_until_ge().await;
             Self::test_watch_wait_until().await;
             Self::test_watch_changed_marks_as_seen().await;
+            Self::test_watch_borrow_and_update_marks_seen().await;
             Self::test_watch_changed_returns_immediately_when_unseen().await;
             Self::test_watch_multiple_borrow_then_changed().await;
             Self::test_watch_wait_loop_pattern().await;
@@ -614,6 +615,45 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
             let val = rx.borrow_watched();
             assert_eq!(*val, 2);
         }
+
+        drop(tx);
+    }
+
+    /// Test that `borrow_and_update()` returns the latest value and marks it as seen.
+    ///
+    /// Per the trait contract: after `borrow_and_update()`, a following `changed()`
+    /// sleeps until a newer value is sent, instead of returning immediately for the
+    /// value already returned.
+    pub async fn test_watch_borrow_and_update_marks_seen() {
+        let (tx, mut rx) = Rt::Watch::channel(0i32);
+
+        // A plain borrow does not mark the value as seen: changed() still fires.
+        tx.send(1).unwrap();
+        {
+            let val = rx.borrow_watched();
+            assert_eq!(*val, 1);
+        }
+        assert!(is_ready(rx.changed()));
+
+        // borrow_and_update() returns the latest value and marks it as seen.
+        tx.send(2).unwrap();
+        {
+            let val = rx.borrow_and_update();
+            assert_eq!(*val, 2);
+        }
+        assert!(is_pending(rx.changed()));
+
+        // A newer value makes changed() fire again.
+        tx.send(3).unwrap();
+        assert!(is_ready(rx.changed()));
+
+        // On an already-seen value, borrow_and_update() still returns it, and
+        // changed() stays pending.
+        {
+            let val = rx.borrow_and_update();
+            assert_eq!(*val, 3);
+        }
+        assert!(is_pending(rx.changed()));
 
         drop(tx);
     }
