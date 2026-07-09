@@ -36,13 +36,12 @@ struct Pending<C: RaftTypeConfig> {
 /// On API error (Conflict or HigherVote), the stream terminates with the error.
 /// On Fatal error (RaftCore stopped), the stream yields `Err(Fatal)` and terminates.
 /// The background task exits when it fails to send to the dropped channel.
-pub(in crate::raft) fn stream_append<C, SD, S>(
-    inner: Arc<RaftInner<C, SD>>,
+pub(in crate::raft) fn stream_append<C, S>(
+    inner: Arc<RaftInner<C>>,
     input: S,
 ) -> impl Stream<Item = Result<StreamAppendResult<C>, Fatal<C>>> + OptionalSend + 'static
 where
     C: RaftTypeConfig,
-    SD: OptionalSend + 'static,
     S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + 'static,
 {
     let (tx, rx) = C::mpsc::<Pending<C>>(PIPELINE_BUFFER_SIZE);

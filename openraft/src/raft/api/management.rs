@@ -26,20 +26,16 @@ use crate::type_config::alias::OneshotReceiverOf;
 /// This struct contains methods for managing the Raft cluster, including
 /// membership changes and node additions.
 #[since(version = "0.10.0")]
-pub(crate) struct ManagementApi<'a, C, SD = ()>
-where
-    C: RaftTypeConfig,
-    SD: OptionalSend + 'static,
+pub(crate) struct ManagementApi<'a, C>
+where C: RaftTypeConfig
 {
-    inner: &'a RaftInner<C, SD>,
+    inner: &'a RaftInner<C>,
 }
 
-impl<'a, C, SD> ManagementApi<'a, C, SD>
-where
-    C: RaftTypeConfig,
-    SD: OptionalSend + 'static,
+impl<'a, C> ManagementApi<'a, C>
+where C: RaftTypeConfig
 {
-    pub(in crate::raft) fn new(inner: &'a RaftInner<C, SD>) -> Self {
+    pub(in crate::raft) fn new(inner: &'a RaftInner<C>) -> Self {
         Self { inner }
     }
 
