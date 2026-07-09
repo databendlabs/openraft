@@ -320,6 +320,7 @@ pub enum ReadPolicy {
 /// - [Raft specification](https://raft.github.io/raft.pdf) for protocol details
 /// - [`Config`] for configuration options
 /// - [`RaftMetrics`] for monitoring cluster state
+#[since(version = "0.10.0", change = "added SM state machine type parameter")]
 pub struct Raft<C, SM = ()>
 where
     C: RaftTypeConfig,
@@ -456,6 +457,10 @@ where
     /// raft.wait_for_recovery(Some(Duration::from_secs(5))).await?;
     /// // The state machine has recovered at least its pre-restart committed state.
     /// ```
+    #[since(
+        version = "0.10.0",
+        change = "require N::Network: NetSnapshot<SnapshotData = SM::SnapshotData>"
+    )]
     #[tracing::instrument(level="debug", skip_all, fields(cluster=%config.cluster_name))]
     pub async fn new<LS, N>(
         id: C::NodeId,
@@ -992,8 +997,9 @@ where
 
     /// Get the latest snapshot from the state machine.
     ///
-    /// It returns error only when `RaftCore` fails to serve the request, e.g., Encountering a
-    /// storage error or shutting down.
+    /// The request is served directly by the state-machine worker, not `RaftCore`. It returns an
+    /// error only when that worker fails to serve it, e.g., encountering a storage error or having
+    /// stopped (`Fatal::Stopped`), which can occur while `RaftCore` is still running.
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn get_snapshot(&self) -> Result<Option<SnapshotOf<C, SM::SnapshotData>>, RaftError<C>> {
         self.protocol_api().get_snapshot().await.into_raft_result()

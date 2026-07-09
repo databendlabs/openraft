@@ -11,7 +11,10 @@ This crate provides a generic state machine component for Raft. It implements:
 The state machine is parameterized by `RaftTypeConfig` with constraints:
 - `D = types_kv::Request`
 - `R = types_kv::Response`
-- `SnapshotData = Cursor<Vec<u8>>`
+
+The snapshot data type is the state machine's own associated type, not a `RaftTypeConfig`
+constraint:
+- `RaftStateMachine::SnapshotData = Cursor<Vec<u8>>`
 
 ## What's NOT included
 

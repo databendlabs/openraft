@@ -78,6 +78,52 @@ async fn return_error_after_panic() -> Result<()> {
     Ok(())
 }
 
+/// A state-machine worker that dies while RaftCore stays alive must not hang callers.
+///
+/// `get_snapshot()` sends a command straight to the state-machine worker's channel, bypassing
+/// RaftCore. When the worker has panicked, resolving the stop cause must fall back to
+/// `Fatal::Stopped` within the bounded wait, instead of joining the still-running core forever.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn get_snapshot_returns_stopped_when_sm_worker_dies() -> Result<()> {
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
+    let mut router = RaftRouter::new(config.clone());
+
+    tracing::info!("--- initializing single-node cluster");
+    let _log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
+
+    tracing::info!("--- arm the state machine to panic on the next apply");
+    {
+        let (_log_store, sm) = router.get_storage_handle(&0)?;
+        sm.panic_on_apply(true);
+    }
+
+    tracing::info!("--- a client write makes the SM worker panic and die; RaftCore stays up");
+    {
+        let res = router.client_request(0, "c", 1).await;
+        assert!(
+            res.is_err(),
+            "write must fail: the SM worker panicked while applying it"
+        );
+    }
+
+    tracing::info!("--- get_snapshot() must resolve to Fatal::Stopped, not hang");
+    {
+        let raft = router.get_raft_handle(&0)?;
+        let err = raft.get_snapshot().await.unwrap_err();
+        assert_eq!(Fatal::Stopped, err.into_fatal().unwrap());
+    }
+
+    Ok(())
+}
+
 /// After shutdown(), access to Raft should return a Fatal::Stopped error.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]

@@ -59,8 +59,10 @@ use crate::storage::RaftStateMachine;
 ///
 /// TODO: add this diagram to guides/
 #[add_async_trait]
-pub(crate) trait RaftRuntime<C: RaftTypeConfig, SM = ()>
-where SM: RaftStateMachine<C>
+pub(crate) trait RaftRuntime<C, SM = ()>
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     /// Run a command produced by the engine.
     ///

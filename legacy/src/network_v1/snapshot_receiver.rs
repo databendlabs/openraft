@@ -171,5 +171,10 @@ mod private {
 
     pub trait Sealed<C: RaftTypeConfig> {}
 
-    impl<C: RaftTypeConfig, SM: RaftStateMachine<C>> Sealed<C> for Raft<C, SM> {}
+    impl<C, SM> Sealed<C> for Raft<C, SM>
+    where
+        C: RaftTypeConfig,
+        SM: RaftStateMachine<C>,
+    {
+    }
 }
