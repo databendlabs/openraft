@@ -225,6 +225,10 @@ pub struct MemStateMachine {
 
     /// Counter for testing: tracks how many times `try_create_snapshot_builder` is called.
     pub try_create_snapshot_builder_count: Arc<AtomicU64>,
+
+    /// When set, [`apply`](RaftStateMachine::apply) panics, simulating the state-machine worker
+    /// task dying mid-apply while RaftCore keeps running.
+    panic_on_apply: AtomicBool,
 }
 
 impl MemStateMachine {
@@ -239,11 +243,18 @@ impl MemStateMachine {
             current_snapshot,
             block,
             try_create_snapshot_builder_count: Arc::new(AtomicU64::new(0)),
+            panic_on_apply: AtomicBool::new(false),
         }
     }
 
     pub fn allow_build_snapshot(&self, allowed: bool) {
         self.allow_build_snapshot.store(allowed, Ordering::Relaxed);
+    }
+
+    /// Arm the state machine to panic on the next `apply`, simulating a crash of the state-machine
+    /// worker task while RaftCore keeps running.
+    pub fn panic_on_apply(&self, panic: bool) {
+        self.panic_on_apply.store(panic, Ordering::Relaxed);
     }
 
     /// Get and reset the counter for `try_create_snapshot_builder` calls.
@@ -536,6 +547,10 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
         let mut sm = self.sm.write().await;
 
         while let Some((entry, responder)) = entries.try_next().await? {
+            if self.panic_on_apply.load(Ordering::Relaxed) {
+                panic!("injected state-machine worker panic during apply");
+            }
+
             tracing::debug!(%entry.log_id, "replicate to sm");
 
             sm.last_applied_log = Some(entry.log_id);
