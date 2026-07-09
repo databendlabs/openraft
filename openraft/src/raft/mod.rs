@@ -1785,14 +1785,13 @@ where C: RaftTypeConfig
     /// again is a no-op that returns as soon as the current cluster commit has been applied.)
     ///
     /// The method waits in two phases, together bounded by `timeout`:
-    /// 1. until `cluster_committed` is perceived as non-null (the cluster commit is
-    ///    re-established),
+    /// 1. until `cluster_committed` is perceived as covering this node's current durable log tail
+    ///    (the cluster commit is re-established for everything this node may have applied),
     /// 2. until the state machine has applied up to that cluster commit.
     ///
-    /// The target is pinned to the *first* non-null `cluster_committed`, so the node catches up to
-    /// the commit perceived at recovery time. If the cluster advanced while this node was down,
-    /// that target may exceed the node's own pre-restart applied index — which still satisfies "at
-    /// least the same state".
+    /// The target is pinned to the first `cluster_committed` that covers this node's current
+    /// durable log tail. If the cluster advanced while this node was down, that target may exceed
+    /// the node's own pre-restart applied index — which still satisfies "at least the same state".
     ///
     /// It requires a reachable, functioning cluster: if no cluster commit is re-established (no
     /// leader, lost quorum, or this node is isolated), the method returns [`WaitError::Timeout`].
@@ -1800,15 +1799,38 @@ where C: RaftTypeConfig
     ///
     /// # Why this works
     ///
-    /// Perceiving a non-null `cluster_committed` means the current leader has re-established the
-    /// commit by committing its own-term (blank) entry to a quorum, so that commit is at least the
-    /// leader's blank log id — and therefore at least any previously committed, hence previously
-    /// applied, log id. Applying up to it restores everything the state machine held before the
-    /// restart. This is the same `read_log_id` argument that makes linearizable reads safe: see
-    /// [the read protocol](crate::docs::protocol::read) for the read-safety argument and
-    /// [the commit protocol](crate::docs::protocol::commit) for why `cluster_committed` is never a
-    /// value restored from storage. A node that did not persist `committed` can use this in place
-    /// of, or together with, saving it (see [log pointers](crate::docs::data::log_pointers)).
+    /// Perceiving a `cluster_committed` that covers this node's durable log tail means the current
+    /// leader has either committed the local tail this node may have applied before restart, or has
+    /// first replaced any uncommitted tail with the leader's log. Applying up to that commit
+    /// restores every durable log entry that could have contributed to the pre-restart state. This
+    /// is the same `read_log_id` argument that makes linearizable reads safe: see [the read
+    /// protocol](crate::docs::protocol::read) for the read-safety argument and [the commit
+    /// protocol](crate::docs::protocol::commit) for why `cluster_committed` is never a value
+    /// restored from storage. A node that did not persist `committed` can use this in place of, or
+    /// together with, saving it (see [log pointers](crate::docs::data::log_pointers)).
+    ///
+    /// # Limitation: a follower may still recover a stale state
+    ///
+    /// The soundness above is bounded by what this node made **durable**. A follower may apply an
+    /// entry the cluster has committed before it flushes that entry locally — apply is gated on the
+    /// cluster commit, not on the local flush (the invariant is `applied ≤ committed ≤ submitted`,
+    /// not `applied ≤ flushed`; see [log pointers](crate::docs::data::log_pointers)). If the node
+    /// restarts while such an entry is applied but still unflushed, and its applied state was not
+    /// otherwise persisted, the restart reverts three tracking points at once: the durable log tail
+    /// falls back to `flushed`, the state machine falls back to an earlier applied state, and
+    /// `last_log_index` now describes the shorter log.
+    ///
+    /// Because the first-phase wait is `cluster_committed >= last_log_index` and `last_log_index`
+    /// has itself reverted, a stale `cluster_committed` covering only the shrunken log satisfies it.
+    /// `wait_for_recovery` can then return having recovered a state older than the one this node
+    /// served immediately before the restart. The node is not stuck — the leader re-replicates the
+    /// lost tail and it catches up — but across that window the method no longer pins recovery to
+    /// the pre-restart state.
+    ///
+    /// This can only happen while serving reads as a follower. A leader holds every committed entry
+    /// and never applies below its commit, so a read taken on the leader through
+    /// [`ensure_linearizable`](Self::ensure_linearizable) cannot revert to an earlier state. When a
+    /// read must be guaranteed fresh across a restart, serve it on the leader.
     ///
     /// # Example
     ///
@@ -1821,12 +1843,17 @@ where C: RaftTypeConfig
     pub async fn wait_for_recovery(&self, timeout: Option<Duration>) -> Result<RaftMetrics<C>, WaitError> {
         let start = C::now();
 
-        // Phase 1: wait until the cluster commit is re-established (perceived as non-null).
+        // Phase 1: wait until the cluster commit is re-established for this node's durable log
+        // tail. A follower may first hear an older leader_commit, which is not enough to recover
+        // everything it had applied before restart.
         let metrics = self
             .wait(timeout)
             .metrics(
-                |m| m.cluster_committed.is_some(),
-                "wait_for_recovery: cluster commit re-established",
+                |m| {
+                    let cluster_committed = m.cluster_committed.as_ref().map(|x| x.index());
+                    cluster_committed.is_some() && cluster_committed >= m.last_log_index
+                },
+                "wait_for_recovery: cluster commit covers local log",
             )
             .await?;
 
