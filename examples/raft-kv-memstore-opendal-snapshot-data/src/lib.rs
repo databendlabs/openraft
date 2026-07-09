@@ -19,6 +19,7 @@ pub mod network;
 pub mod store;
 
 pub type NodeId = u64;
+/// In this example, the snapshot is a path pointing to a file stored in shared storage.
 pub type SnapshotData = String;
 
 openraft::declare_raft_types!(

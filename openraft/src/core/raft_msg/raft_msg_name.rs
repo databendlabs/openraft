@@ -66,10 +66,13 @@ impl std::fmt::Display for ExternalCommandName {
     }
 }
 
-/// Enum representing the name of each `RaftMsg` variant.
+/// Enum naming each Raft message type tracked for logging, metrics, and debugging.
 ///
-/// This provides an efficient way to identify message types without
-/// string comparisons, useful for logging, metrics, and debugging.
+/// Most variants correspond one-to-one with a `RaftMsg` variant. The exception is
+/// `InstallSnapshot`: full-snapshot installation is delivered through a dedicated channel rather
+/// than as a `RaftMsg` variant, but is still recorded here for runtime stats.
+///
+/// This provides an efficient way to identify message types without string comparisons.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RaftMsgName {

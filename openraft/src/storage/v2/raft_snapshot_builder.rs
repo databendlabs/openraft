@@ -17,12 +17,12 @@ use crate::type_config::alias::SnapshotOf;
 /// underlying state machine is anyway synchronized.
 ///
 /// [`RaftStateMachine`]: crate::storage::RaftStateMachine
-#[since(version = "0.10.0", change = "added SnapshotData associated type")]
 #[add_async_trait]
 pub trait RaftSnapshotBuilder<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
 {
     /// Snapshot data this builder produces.
+    #[since(version = "0.10.0", change = "added SnapshotData associated type")]
     type SnapshotData: OptionalSend + 'static;
 
     /// Build snapshot
