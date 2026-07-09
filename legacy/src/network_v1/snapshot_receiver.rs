@@ -45,7 +45,9 @@ use super::streaming::StreamingState;
 /// // Added method for chunked snapshot receiving (via trait)
 /// raft.install_snapshot(req).await?;
 /// ```
-pub trait ChunkedSnapshotReceiver<C: RaftTypeConfig>: private::Sealed<C> {
+pub trait ChunkedSnapshotReceiver<C>: private::Sealed<C>
+where C: RaftTypeConfig
+{
     /// Snapshot data used to assemble incoming chunks.
     #[since(
         version = "0.10.0",
@@ -74,8 +76,9 @@ pub trait ChunkedSnapshotReceiver<C: RaftTypeConfig>: private::Sealed<C> {
     ) -> impl std::future::Future<Output = Result<InstallSnapshotResponse<C>, RaftError<C, InstallSnapshotError>>>;
 }
 
-impl<C: RaftTypeConfig, SM> ChunkedSnapshotReceiver<C> for Raft<C, SM>
+impl<C, SM> ChunkedSnapshotReceiver<C> for Raft<C, SM>
 where
+    C: RaftTypeConfig,
     SM: RaftStateMachine<C>,
     SnapshotDataOf<C, SM>: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin,
 {

@@ -41,9 +41,11 @@ use crate::core::notification::Notification;
 use crate::core::raft_msg::AppendEntriesTx;
 use crate::core::raft_msg::ClientReadTx;
 use crate::core::raft_msg::RaftMsg;
+use crate::core::raft_msg::RaftMsgName;
 use crate::core::raft_msg::ResultSender;
 use crate::core::raft_msg::VoteTx;
 use crate::core::raft_msg::external_command::ExternalCommand;
+use crate::core::raft_msg::install_full_snapshot_request::InstallFullSnapshotRequest;
 use crate::core::runtime_stats::RuntimeStats;
 use crate::core::sm;
 use crate::core::stage::Stage;
@@ -202,8 +204,22 @@ where
     pub(crate) heartbeat_handle: HeartbeatWorkersHandle<C>,
 
     #[allow(dead_code)]
-    pub(crate) tx_api: MpscSenderOf<C, RaftMsg<C, SM::SnapshotData>>,
-    pub(crate) rx_api: BatchRaftMsgReceiver<C, SM::SnapshotData>,
+    pub(crate) tx_api: MpscSenderOf<C, RaftMsg<C>>,
+    pub(crate) rx_api: BatchRaftMsgReceiver<C>,
+
+    /// A self-held keepalive sender for the dedicated install-snapshot channel.
+    ///
+    /// Mirrors [`Self::tx_api`]: it keeps `rx_install_snapshot` open after the application drops
+    /// its last `Raft` handle, so the core shuts down only via `rx_shutdown` instead of
+    /// truncating an in-flight `stream_append`.
+    #[allow(dead_code)]
+    pub(crate) tx_install_snapshot: MpscSenderOf<C, InstallFullSnapshotRequest<C, SM>>,
+
+    /// Receiver of the dedicated channel that delivers a full snapshot to install.
+    ///
+    /// The snapshot data type is defined by the state machine, thus it does not go through
+    /// `rx_api`, which is independent of the state machine type.
+    pub(crate) rx_install_snapshot: MpscReceiverOf<C, InstallFullSnapshotRequest<C, SM>>,
 
     /// A Sender to send callback by other components to [`RaftCore`], when an action is finished,
     /// such as flushing log to disk, or applying log entries to state machine.
@@ -1255,6 +1271,16 @@ where
                     };
                 }
 
+                install_res = self.rx_install_snapshot.recv().fuse() => {
+                    match install_res {
+                        Some(req) => self.handle_install_full_snapshot_request(req),
+                        None => {
+                            tracing::error!("all rx_install_snapshot senders are dropped");
+                            return Err(Fatal::Stopped);
+                        }
+                    };
+                }
+
                 msg_res = self.rx_api.ensure_buffered().fuse() => {
                     msg_res?;
                 }
@@ -1589,10 +1615,21 @@ where
         self.engine.state.update_committed(committed);
     }
 
+    /// Handle a full snapshot received from the dedicated install-snapshot channel.
+    #[tracing::instrument(level = "debug", skip(self, req), fields(state = debug(self.engine.state.server_state), id=display(&self.id)
+    ))]
+    pub(crate) fn handle_install_full_snapshot_request(&mut self, req: InstallFullSnapshotRequest<C, SM>) {
+        tracing::debug!("RAFT_event id={:<2}  input: {}", self.id, req);
+
+        self.runtime_stats.record_raft_msg(RaftMsgName::InstallSnapshot);
+
+        self.engine.handle_install_full_snapshot(req.vote, req.snapshot, req.tx);
+    }
+
     // TODO: Make this method non-async. It does not need to run any async command in it.
     #[tracing::instrument(level = "debug", skip(self, msg), fields(state = debug(self.engine.state.server_state), id=display(&self.id)
     ))]
-    pub(crate) async fn handle_api_msg(&mut self, msg: RaftMsg<C, SM::SnapshotData>) {
+    pub(crate) async fn handle_api_msg(&mut self, msg: RaftMsg<C>) {
         tracing::debug!("RAFT_event id={:<2}  input: {}", self.id, msg);
 
         self.runtime_stats.record_raft_msg(msg.name());
@@ -1616,12 +1653,6 @@ where
                 tracing::info!("received RaftMsg::RequestPreVote: vote_request: {}", rpc);
 
                 self.handle_pre_vote_request(rpc, tx);
-            }
-            RaftMsg::GetSnapshotReceiver { tx } => {
-                self.engine.handle_begin_receiving_snapshot(tx);
-            }
-            RaftMsg::InstallSnapshot { vote, snapshot, tx } => {
-                self.engine.handle_install_full_snapshot(vote, snapshot, tx);
             }
             RaftMsg::GetLinearizer { read_policy, tx } => {
                 self.handle_ensure_linearizable_read(read_policy, tx).await;
@@ -1719,13 +1750,6 @@ where
                         self.send_heartbeat("ExternalCommand");
                     }
                     ExternalCommand::Snapshot => self.trigger_snapshot(),
-                    ExternalCommand::GetSnapshot { tx } => {
-                        let cmd = sm::Command::get_snapshot(tx);
-                        let res = self.sm_handle.send(cmd).await;
-                        if let Err(e) = res {
-                            tracing::error!("error sending GetSnapshot to sm worker: {}", e);
-                        }
-                    }
                     ExternalCommand::PurgeLog { upto } => {
                         self.engine.trigger_purge_log(upto);
                     }
