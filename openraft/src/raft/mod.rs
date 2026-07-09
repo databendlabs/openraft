@@ -997,8 +997,9 @@ where
 
     /// Get the latest snapshot from the state machine.
     ///
-    /// It returns error only when `RaftCore` fails to serve the request, e.g., Encountering a
-    /// storage error or shutting down.
+    /// The request is served directly by the state-machine worker, not `RaftCore`. It returns an
+    /// error only when that worker fails to serve it, e.g., encountering a storage error or having
+    /// stopped (`Fatal::Stopped`), which can occur while `RaftCore` is still running.
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn get_snapshot(&self) -> Result<Option<SnapshotOf<C, SM::SnapshotData>>, RaftError<C>> {
         self.protocol_api().get_snapshot().await.into_raft_result()
@@ -1966,16 +1967,11 @@ where
         })
         .await?;
 
-        let recv_res = rx.await;
-        tracing::debug!("{}: receives result is error: {:?}", func_name!(), recv_res.is_err());
-
-        let Ok(v) = recv_res else {
-            let fatal = self.inner.get_core_stop_error().await;
-            tracing::error!("{}: error: {}", func_name!(), fatal);
-            return Err(fatal);
-        };
-
-        Ok(v)
+        // Use the bounded receive: the state-machine worker owns the responder and can die on its
+        // own (e.g. a panic in `func`) while RaftCore keeps running. An unbounded join on the core
+        // would then hang forever. `recv_msg` waits only up to `RECV_CORE_STOP_TIMEOUT` before
+        // resolving to `Fatal::Stopped`.
+        self.inner.recv_msg(rx).await
     }
 
     /// Send a request to the [`RaftStateMachine`] worker in a fire-and-forget manner.
@@ -1998,12 +1994,15 @@ where
         F: FnOnce(&mut SM) -> BoxFuture<()> + OptionalSend + 'static,
     {
         let Some(tx) = self.sm_cmd_tx.upgrade() else {
-            return Err(Fatal::Stopped);
+            return Err(self.inner.get_core_stop_error_bounded().await);
         };
 
         let sm_cmd = sm::Command::ExternalFunc {
             func: Box::new(move |sm| req(sm)),
         };
-        tx.send(sm_cmd).await.map_err(|_e| Fatal::Stopped)
+        if tx.send(sm_cmd).await.is_err() {
+            return Err(self.inner.get_core_stop_error_bounded().await);
+        }
+        Ok(())
     }
 }
