@@ -26,6 +26,8 @@ use crate::router::Router;
 use crate::typ;
 
 impl GroupRouter<TypeConfig, GroupId> for Router {
+    type SnapshotData = typ::SnapshotData;
+
     async fn append_entries(
         &self,
         target: NodeId,
@@ -51,7 +53,7 @@ impl GroupRouter<TypeConfig, GroupId> for Router {
         target: NodeId,
         group_id: GroupId,
         vote: typ::Vote,
-        snapshot: SnapshotOf<TypeConfig>,
+        snapshot: SnapshotOf<TypeConfig, typ::SnapshotData>,
         _cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         _option: RPCOption,
     ) -> Result<SnapshotResponse<TypeConfig>, StreamingError<TypeConfig>> {

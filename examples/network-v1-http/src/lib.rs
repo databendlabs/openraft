@@ -1,6 +1,8 @@
 use std::fmt::Display;
+use std::marker::PhantomData;
 
 use openraft::BasicNode;
+use openraft::OptionalSend;
 use openraft::RaftTypeConfig;
 use openraft::errors::Infallible;
 use openraft::errors::InstallSnapshotError;
@@ -41,6 +43,7 @@ pub mod actix {
     use openraft::raft::InstallSnapshotResponse;
     use openraft::raft::VoteRequest;
     use openraft::raft::VoteResponse;
+    use openraft::storage::RaftStateMachine;
     use openraft_legacy::prelude::ChunkedSnapshotReceiver;
     use serde::Serialize;
     use serde::de::DeserializeOwned;
@@ -51,8 +54,8 @@ pub mod actix {
     pub fn configure<C, SM>(cfg: &mut web::ServiceConfig)
     where
         C: RaftTypeConfig + 'static,
-        SM: 'static,
-        C::SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Unpin,
+        SM: RaftStateMachine<C> + 'static,
+        SM::SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Unpin,
         VoteRequest<C>: DeserializeOwned,
         AppendEntriesRequest<C>: DeserializeOwned,
         InstallSnapshotRequest<C>: DeserializeOwned,
@@ -71,6 +74,7 @@ pub mod actix {
     ) -> actix_web::Result<Json<Result<AppendEntriesResponse<C>, Infallible>>>
     where
         C: RaftTypeConfig,
+        SM: RaftStateMachine<C>,
     {
         let res = raft.append_entries(req.0).await.decompose().unwrap();
         Ok(Json(res))
@@ -82,6 +86,7 @@ pub mod actix {
     ) -> actix_web::Result<Json<Result<VoteResponse<C>, Infallible>>>
     where
         C: RaftTypeConfig,
+        SM: RaftStateMachine<C>,
     {
         let res = raft.vote(req.0).await.decompose().unwrap();
         Ok(Json(res))
@@ -93,22 +98,37 @@ pub mod actix {
     ) -> actix_web::Result<Json<Result<InstallSnapshotResponse<C>, InstallSnapshotError>>>
     where
         C: RaftTypeConfig,
-        C::SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Unpin,
+        SM: RaftStateMachine<C>,
+        SM::SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Unpin,
     {
         let res = raft.install_snapshot(req.0).await.decompose().unwrap();
         Ok(Json(res))
     }
 }
 
-pub struct NetworkFactory {}
+pub struct NetworkFactory<SD> {
+    _p: PhantomData<fn() -> SD>,
+}
 
-impl<C> RaftNetworkFactory<C> for NetworkFactory
+impl<SD> NetworkFactory<SD> {
+    pub fn new() -> Self {
+        Self { _p: PhantomData }
+    }
+}
+
+impl<SD> Default for NetworkFactory<SD> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<C, SD> RaftNetworkFactory<C> for NetworkFactory<SD>
 where
     C: RaftTypeConfig<Node = BasicNode>,
     // RaftNetwork requires the snapshot to be a file-like object that can be seeked, read from, and written to.
-    <C as RaftTypeConfig>::SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Unpin,
+    SD: AsyncRead + AsyncWrite + AsyncSeek + Unpin + OptionalSend + 'static,
 {
-    type Network = Adapter<C, Network<C>>;
+    type Network = Adapter<C, Network<C>, SD>;
 
     #[tracing::instrument(level = "debug", skip_all)]
     async fn new_client(&mut self, target: C::NodeId, node: &BasicNode) -> Self::Network {

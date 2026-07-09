@@ -199,7 +199,6 @@ impl<T> TypeConfigExt for T where T: RaftTypeConfig {}
 
 #[cfg(test)]
 mod tests {
-    use std::io::Cursor;
 
     use futures_util::StreamExt;
     use openraft_rt_tokio::TokioRuntime;
@@ -222,7 +221,6 @@ mod tests {
         type Vote = crate::impls::Vote<Self::LeaderId>;
         type Entry =
             crate::Entry<<Self::LeaderId as crate::vote::RaftLeaderId>::Committed, Self::D, Self::NodeId, Self::Node>;
-        type SnapshotData = Cursor<Vec<u8>>;
         type AsyncRuntime = TokioRuntime;
         type Responder<T>
             = crate::impls::OneshotResponder<Self, T>

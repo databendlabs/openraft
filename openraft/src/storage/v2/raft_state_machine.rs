@@ -30,8 +30,17 @@ use crate::type_config::alias::StoredMembershipOf;
 pub trait RaftStateMachine<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
 {
+    /// Snapshot data for exposing a snapshot for reading & writing.
+    ///
+    /// See the [storage chapter of the guide][sto] for details on log compaction / snapshotting.
+    ///
+    /// [sto]: crate::docs::getting_started#3-implement-raftlogstorage-and-raftstatemachine
+    #[since(version = "0.10.0", change = "moved from RaftTypeConfig to RaftStateMachine")]
+    type SnapshotData: OptionalSend + 'static;
+
     /// Snapshot builder type.
-    type SnapshotBuilder: RaftSnapshotBuilder<C>;
+    #[since(version = "0.10.0", change = "uses the state machine SnapshotData")]
+    type SnapshotBuilder: RaftSnapshotBuilder<C, SnapshotData = Self::SnapshotData>;
 
     // TODO: This can be made into sync, provided all state machines will use atomic read or the
     //       like.
@@ -132,7 +141,7 @@ where C: RaftTypeConfig
     ///
     /// [sto]: crate::docs::getting_started#3-implement-raftlogstorage-and-raftstatemachine
     #[since(version = "0.10.0", change = "SnapshotData without Box")]
-    async fn begin_receiving_snapshot(&mut self) -> Result<C::SnapshotData, io::Error>;
+    async fn begin_receiving_snapshot(&mut self) -> Result<Self::SnapshotData, io::Error>;
 
     /// Install a snapshot which has finished streaming from the leader.
     ///
@@ -154,7 +163,11 @@ where C: RaftTypeConfig
     /// [`StorageHelper::get_initial_state()`]: crate::StorageHelper::get_initial_state
     /// [`Raft`]: crate::Raft
     #[since(version = "0.10.0", change = "SnapshotData without Box")]
-    async fn install_snapshot(&mut self, meta: &SnapshotMetaOf<C>, snapshot: C::SnapshotData) -> Result<(), io::Error>;
+    async fn install_snapshot(
+        &mut self,
+        meta: &SnapshotMetaOf<C>,
+        snapshot: Self::SnapshotData,
+    ) -> Result<(), io::Error>;
 
     /// Get a readable handle to the current snapshot.
     ///
@@ -169,5 +182,62 @@ where C: RaftTypeConfig
     /// A proper snapshot implementation will store last-applied-log-id and the
     /// last-applied-membership config as part of the snapshot, which should be decoded for
     /// creating this method's response data.
-    async fn get_current_snapshot(&mut self) -> Result<Option<SnapshotOf<C>>, io::Error>;
+    async fn get_current_snapshot(&mut self) -> Result<Option<SnapshotOf<C, Self::SnapshotData>>, io::Error>;
+}
+
+// Test-only: an unconditional impl would downgrade a missing-state-machine mistake from a compile
+// error to a runtime `Fatal`.
+#[cfg(test)]
+fn unit_state_machine_error() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::Unsupported,
+        "unit type does not implement a usable state machine",
+    )
+}
+
+#[cfg(test)]
+impl<C> RaftSnapshotBuilder<C> for ()
+where C: RaftTypeConfig
+{
+    type SnapshotData = ();
+
+    async fn build_snapshot(&mut self) -> Result<SnapshotOf<C, ()>, io::Error> {
+        Err(unit_state_machine_error())
+    }
+}
+
+#[cfg(test)]
+impl<C> RaftStateMachine<C> for ()
+where C: RaftTypeConfig
+{
+    type SnapshotData = ();
+
+    type SnapshotBuilder = ();
+
+    async fn applied_state(&mut self) -> Result<(Option<LogIdOf<C>>, StoredMembershipOf<C>), io::Error> {
+        Err(unit_state_machine_error())
+    }
+
+    async fn apply<Strm>(&mut self, _entries: Strm) -> Result<(), io::Error>
+    where Strm: Stream<Item = Result<EntryResponder<C>, io::Error>> + Unpin + OptionalSend {
+        Err(unit_state_machine_error())
+    }
+
+    async fn get_snapshot_builder(&mut self) -> Self::SnapshotBuilder {}
+
+    async fn begin_receiving_snapshot(&mut self) -> Result<Self::SnapshotData, io::Error> {
+        Err(unit_state_machine_error())
+    }
+
+    async fn install_snapshot(
+        &mut self,
+        _meta: &SnapshotMetaOf<C>,
+        _snapshot: Self::SnapshotData,
+    ) -> Result<(), io::Error> {
+        Err(unit_state_machine_error())
+    }
+
+    async fn get_current_snapshot(&mut self) -> Result<Option<SnapshotOf<C, Self::SnapshotData>>, io::Error> {
+        Err(unit_state_machine_error())
+    }
 }

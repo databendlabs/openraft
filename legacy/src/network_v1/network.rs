@@ -20,6 +20,7 @@ use openraft::raft::InstallSnapshotResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft_macros::add_async_trait;
+use openraft_macros::since;
 
 use crate::network_v1::Adapter;
 
@@ -91,15 +92,19 @@ where C: RaftTypeConfig
     ///
     /// ```ignore
     /// impl RaftNetworkFactory<MyConfig> for MyFactory {
-    ///     type Network = Adapter<MyConfig, MyNetwork>;
+    ///     type Network = Adapter<MyConfig, MyNetwork, MySnapshotData>;
     ///
     ///     async fn new_client(&mut self, target: NodeId, node: Node) -> Self::Network {
     ///         MyNetwork::new(target, node).into_v2()
     ///     }
     /// }
     /// ```
-    fn into_v2(self) -> Adapter<C, Self>
-    where Self: Sized {
+    #[since(version = "0.10.0")]
+    fn into_v2<SD>(self) -> Adapter<C, Self, SD>
+    where
+        Self: Sized,
+        SD: OptionalSend + 'static,
+    {
         Adapter::new(self)
     }
 }
