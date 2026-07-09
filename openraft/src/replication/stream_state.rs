@@ -180,7 +180,8 @@ where
                     _committed_change = committed_change.fuse() => {
                         tracing::debug!("committed_rx changed");
                         // A notification may force an RPC even if no new readable logs are available.
-                        self.leader_committed = self.event_watcher.committed_rx.borrow_watched().clone();
+                        // This read delivers the event, thus it marks the value as seen.
+                        self.leader_committed = self.event_watcher.committed_rx.borrow_and_update().clone();
                         return Some(non_reversed_log_id_range(prev, last_log_id));
                     }
                     cancel_res = cancel.fuse() => {

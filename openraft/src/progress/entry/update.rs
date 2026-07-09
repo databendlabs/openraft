@@ -121,7 +121,14 @@ where C: RaftTypeConfig
         );
 
         if let Some(inflight_id) = inflight_id {
-            self.entry.inflight.ack(matching.clone(), inflight_id);
+            let applied = self.entry.inflight.ack(matching.clone(), inflight_id);
+            if !applied {
+                // Stale payload ack: a newer request superseded this one, or a concurrent log
+                // reversion cleared the inflight to `None` (see `update_conflicting`). Do not
+                // advance `matching`: the follower no longer holds the acked logs, and counting
+                // them as matched could form a false quorum over data the follower has reverted.
+                return;
+            }
         }
 
         // If it is not a response of an actual replication(such as replicating commit log id),
