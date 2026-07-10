@@ -53,6 +53,8 @@ async fn leader_restart_clears_state() -> anyhow::Result<()> {
     tracing::info!(log_index, "--- write to 1 log");
     {
         log_index += router.client_request_many(0, "foo", 1).await?;
+        router.wait(&1, timeout()).applied_index(Some(log_index), "node-1 applied log").await?;
+        router.wait(&2, timeout()).applied_index(Some(log_index), "node-2 applied log").await?;
     }
 
     tracing::info!(log_index, "--- stop and restart node-0");
