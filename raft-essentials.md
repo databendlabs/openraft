@@ -19,7 +19,7 @@ This document presents the essential details of the Raft protocol as an aid for 
 
 ## terms
 - time is divided into terms of arbitrary length. §5.1
-- each server stores a current term number, which increases monotonically over time. 5.1
+- each server stores a current term number, which increases monotonically over time. §5.1
 - each term begins with an election, in which one or more candidates attempt to become leader. §5.1
 - if a candidate wins the election, then it serves as leader for the rest of the term. §5.1
 - in some situations an election will result in a split vote. In this case the term will end with no leader; a new term (with a new election) will begin shortly. Raft ensures that there is at most one leader in a given term. §5.1
@@ -39,7 +39,7 @@ Follower servers simply respond to requests from leaders and candidates. §5.1
 - if a follower receives no communication during the election timeout window, then it assumes there is no viable leader, transitions to the candidate state, and begins campaigning to become the new leader. §5.2
 
 ### learner
-learners are the same as followers, except are not considered for votes, and do not have election timeouts. §6
+Learners are the same as followers, except that they are not considered for votes and do not have election timeouts. §6
 
 ### candidate
 Candidate servers campaign to become the cluster leader using the RequestVote RPC. §5.1
@@ -54,7 +54,7 @@ Candidate servers campaign to become the cluster leader using the RequestVote RP
 - each server will vote for at most one candidate in a given term, on a first-come-first-served basis. §5.2
 - once a candidate wins an election, it becomes leader. §5.2
 
-#### loosing elections
+#### losing elections
 - while waiting for votes, a candidate may receive an AppendEntries RPC from another server claiming to be leader. §5.2
 - if the leader's term (included in its RPC) is at least as large as the candidate's current term, then the candidate recognizes the leader as legitimate and returns to follower state. §5.2
 - if the term in the RPC is smaller than the candidate's current term, then the candidate rejects the RPC and continues in candidate state. §5.2
@@ -92,7 +92,7 @@ The follower can include the term of the conflicting entry and the first index i
 
 ##### receiver implementation: AppendEntries RPC
 1. Reply false if term < currentTerm (§5.1).
-2. Reply false if log doesn't contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3) Use the log consistency check optimization when possible.
+2. Reply false if log doesn't contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3). Use the log consistency check optimization when possible.
 3. If an existing entry conflicts with a new one (same index but different terms), delete the existing entry and all that follow it (§5.3).
 4. Append any new entries not already in the log.
 5. If leaderCommit > commitIndex, set commitIndex to min(leaderCommit, index of last new entry).
@@ -141,7 +141,7 @@ Clients of Raft send all of their requests to the leader.
 
 - when a client first starts up, it connects to a randomly-chosen server. §8
 - if the client's first choice is not the leader, that server will reject the client's request and supply information about the most recent leader it has heard from. §8
-- if the leader crashes, client requests will timeout; clients then try again with randomly-chosen servers. §8
+- if the leader crashes, client requests will time out; clients then try again with randomly-chosen servers. §8
 
 ### request forwarding
 A non-spec pattern may be used to satisfy the requirements of the spec: request forwarding. Non-leader servers may forward client requests to the leader instead of rejecting the request. If the leader is not currently known, due to being in an election, the request may be buffered for some period of time to wait for a new leader to be elected. Worst case scenario, the request times out, and the client needs to send the request again.
@@ -152,7 +152,7 @@ Our goal for Raft is to implement linearizable semantics. If the leader crashes 
 
 The solution is for clients to assign unique serial numbers to every command. Then, the state machine tracks the latest serial number processed for each client, along with the associated response. If it receives a command whose serial number has already been executed, it responds immediately without reexecuting the request. §8
 
-Note well: this is an application specific requirement, and must be implemented on the application-level.
+Note well: this is an application-specific requirement and must be implemented at the application level.
 
 #### reads
 Linearizable reads must not return stale data.
