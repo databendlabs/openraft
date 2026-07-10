@@ -144,11 +144,14 @@ For benchmark detail, go to the [./benchmarks/minimal](./benchmarks/minimal) fol
 ## Functionality:
 
 - ✅ **Leader election**: by policy or manually ([`Trigger::elect()`][]).
+- ✅ **Leader transfer**: [`Trigger::transfer_leader()`][].
+- ✅ **Pre-vote**: avoid unnecessary term increments by enabling [`Config::enable_pre_vote`][].
 - ✅ **Non-voter(learner) Role**: refer to [`add_learner()`][].
 - ✅ **Log Compaction**(snapshot of state machine): by policy or manually ([`Trigger::snapshot()`][]).
 - ✅ **Snapshot replication**.
 - ✅ **Dynamic Membership**: using joint membership config change. Refer to [dynamic membership](https://docs.rs/openraft/0.10.0-alpha.29/openraft/docs/cluster_control/dynamic_membership/index.html)
 - ✅ **Linearizable read**: [`ensure_linearizable()`][].
+- ✅ **Metrics**: [`Raft::metrics()`][], [`Raft::data_metrics()`][], and [`Raft::server_metrics()`][].
 - ⛔️ **Won't support**: Single-step config change. Single-step membership change is a restricted subset of joint consensus that only allows changing one node at a time. Openraft uses the more general [joint consensus](https://docs.rs/openraft/0.10.0-alpha.29/openraft/docs/cluster_control/dynamic_membership/index.html) approach which supports arbitrary membership changes in a single operation.
 - ✅ Toggle heartbeat / election: [`RuntimeConfigHandle::heartbeat()`][] / [`RuntimeConfigHandle::elect()`][].
 - ✅ Trigger snapshot / election manually: [`Trigger::snapshot()`][] / [`Trigger::elect()`][].
@@ -192,4 +195,9 @@ or the [Apache License 2.0](http://www.apache.org/licenses/LICENSE-2.0), at your
 
 [`Trigger::elect()`]: https://docs.rs/openraft/0.10.0-alpha.29/openraft/raft/trigger/struct.Trigger.html#method.elect
 [`Trigger::snapshot()`]: https://docs.rs/openraft/0.10.0-alpha.29/openraft/raft/trigger/struct.Trigger.html#method.snapshot
+[`Trigger::transfer_leader()`]: https://docs.rs/openraft/0.10.0-alpha.29/openraft/raft/trigger/struct.Trigger.html#method.transfer_leader
+[`Config::enable_pre_vote`]: https://docs.rs/openraft/0.10.0-alpha.29/openraft/struct.Config.html#structfield.enable_pre_vote
+[`Raft::metrics()`]: https://docs.rs/openraft/0.10.0-alpha.29/openraft/raft/struct.Raft.html#method.metrics
+[`Raft::data_metrics()`]: https://docs.rs/openraft/0.10.0-alpha.29/openraft/raft/struct.Raft.html#method.data_metrics
+[`Raft::server_metrics()`]: https://docs.rs/openraft/0.10.0-alpha.29/openraft/raft/struct.Raft.html#method.server_metrics
 [`ensure_linearizable()`]: https://docs.rs/openraft/0.10.0-alpha.29/openraft/raft/struct.Raft.html#method.ensure_linearizable
