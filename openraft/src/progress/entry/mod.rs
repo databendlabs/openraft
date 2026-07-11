@@ -189,14 +189,48 @@ where C: RaftTypeConfig
         }
     }
 
-    /// Initialize a replication action: sending log entries or sending snapshot.
+    /// Initialize a replication action: sending log entries or sending a snapshot.
     ///
     /// If there is an action in progress, i.e., `inflight` is not None, it returns an `Err`
     /// containing the current `inflight` data.
     ///
     /// See: [Algorithm to find the last matching log id on a Follower][algo].
     ///
+    /// # Decision logic
+    ///
+    /// The follower's last log id matching the leader's log is known to lie in the range
+    /// `[matching, searching_end)`; the invariant `matching.next_index() <= searching_end`
+    /// always holds. This puts the progress in one of two regimes:
+    ///
+    /// - **Probing** (`matching.next_index() < searching_end`): the exact matching point is not yet
+    ///   determined. Send a fixed range of logs `(prev, last]` ([`Inflight::Logs`]) with `prev` at
+    ///   a binary-search midpoint: a success response raises `matching`, a conflict response lowers
+    ///   `searching_end`, until the range collapses.
+    ///
+    /// - **Pipeline** (`matching.next_index() == searching_end`): the matching point is exactly
+    ///   `matching`. Stream all logs after it, with no fixed upper bound ([`Inflight::LogsSince`]).
+    ///
+    /// Purging constrains what AppendEntries can be built: log entries at index
+    /// `<= purge_upto` are deleted, and only the log id at `purge_upto` itself is still
+    /// known, as the snapshot's last log id. Thus the lowest usable `prev` is `purge_upto`.
+    /// A snapshot must be sent instead of logs in exactly two situations:
+    ///
+    /// 1. `searching_end < purge_upto_next`, in either regime: every candidate matching position
+    ///    lies strictly below the purge boundary. The lowest possible probe, `prev = purge_upto`,
+    ///    sits at an index `>= searching_end` — a position already known not to match — so the
+    ///    follower would reply with a conflict at that same index, which carries no new information
+    ///    and is discarded (see [`Updater::update_conflicting`]): log replication cannot make
+    ///    progress. `searching_end == purge_upto_next` is excluded: `prev = purge_upto` is then at
+    ///    index `searching_end - 1`, still a candidate position worth probing.
+    ///
+    /// 2. Probing while the leader log is fully purged (`purge_upto == last_log_id`, which makes
+    ///    the send range empty: `start == end`): the probe cannot carry any entry, and
+    ///    [`Inflight::logs`] cannot represent an AppendEntries without payload — an empty range
+    ///    collapses to [`Inflight::None`]. Pipeline mode is not affected: [`Inflight::LogsSince`]
+    ///    is an open-ended stream, and an empty tail is valid.
+    ///
     /// [algo]: crate::docs::protocol::replication::log_replication#algorithm-to-find-the-last-matching-log-id-on-a-follower
+    /// [`Updater::update_conflicting`]: crate::progress::entry::update::Updater::update_conflicting
     pub(crate) fn next_send(
         &mut self,
         log_state: &mut RaftState<C>,
@@ -214,50 +248,44 @@ where C: RaftTypeConfig
             last_next
         );
 
-        let purge_upto_next = {
-            let purge_upto = log_state.purge_upto();
-            purge_upto.next_index()
-        };
+        let purge_upto_next = log_state.purge_upto().next_index();
+        let inflight_id = log_state.new_inflight_id();
 
-        // `searching_end` is the max value for `start`.
-
-        // The log the follower needs is purged.
-        // Replicate by snapshot.
+        // Snapshot condition 1: all candidate matching positions are purged.
         if self.searching_end < purge_upto_next {
-            let inflight_id = log_state.new_inflight_id();
             self.inflight = Inflight::snapshot(inflight_id);
             return Ok(&self.inflight);
         }
 
         let matching_next = self.matching().next_index();
+        let is_probing = matching_next < self.searching_end;
 
-        // Replicate by logs.
-        // Run a binary search to find the matching log id, if matching log id is not determined.
-        let mut start = Self::calc_mid(matching_next, self.searching_end);
-        if start < purge_upto_next {
-            start = purge_upto_next;
-        }
+        if is_probing {
+            // Probe at the binary-search midpoint, but not below the purge boundary.
+            // `start <= searching_end` still holds: `mid <= searching_end` by construction,
+            // and `purge_upto_next <= searching_end` by snapshot condition 1 above.
+            let mid = Self::calc_mid(matching_next, self.searching_end);
+            let start = std::cmp::max(mid, purge_upto_next);
+            let end = std::cmp::min(start + max_entries, last_next);
 
-        // Enter pipeline mode
-        if start == matching_next && matching_next == self.searching_end {
+            // Snapshot condition 2: the leader log is fully purged; there is no entry
+            // for the probe to carry.
+            if start == end {
+                self.inflight = Inflight::snapshot(inflight_id);
+                return Ok(&self.inflight);
+            }
+
             let prev = log_state.prev_log_id(start);
-            let inflight_id = log_state.new_inflight_id();
-            self.inflight = Inflight::LogsSince { prev, inflight_id };
-            return Ok(&self.inflight);
+            let last = log_state.prev_log_id(end);
+            self.inflight = Inflight::logs(prev, last, inflight_id);
+        } else {
+            // Pipeline: stream every log after the known matching point.
+            // Snapshot condition 1 ensured `matching >= purge_upto`: no needed log is purged.
+            self.inflight = Inflight::LogsSince {
+                prev: self.matching.clone(),
+                inflight_id,
+            };
         }
-
-        let end = std::cmp::min(start + max_entries, last_next);
-
-        if start == end {
-            self.inflight = Inflight::None;
-            return Err(&self.inflight);
-        }
-
-        let prev = log_state.prev_log_id(start);
-        let last = log_state.prev_log_id(end);
-
-        let inflight_id = log_state.new_inflight_id();
-        self.inflight = Inflight::logs(prev, last, inflight_id);
 
         Ok(&self.inflight)
     }
