@@ -5,6 +5,10 @@ pub mod faq;
 
 pub mod getting_started;
 
+pub mod features {
+    #![doc = include_str!("features.md")]
+}
+
 pub mod cluster_control;
 
 pub mod feature_flags;
