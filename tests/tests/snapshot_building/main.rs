@@ -9,3 +9,4 @@ mod t11_snapshot_builder_control;
 mod t35_building_snapshot_does_not_block_append;
 mod t35_building_snapshot_does_not_block_apply;
 mod t60_snapshot_policy_never;
+mod t90_issue_1829_lost_snapshot_trigger;

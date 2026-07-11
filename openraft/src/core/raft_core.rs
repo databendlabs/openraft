@@ -914,10 +914,13 @@ where
     }
 
     /// Trigger a snapshot building(log compaction) job if there is no pending building job.
+    ///
+    /// Returns `true` if a build was queued, `false` if one is already in progress and the request
+    /// was dropped.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub(crate) fn trigger_snapshot(&mut self) {
+    pub(crate) fn trigger_snapshot(&mut self) -> bool {
         tracing::debug!("{}", func_name!());
-        self.engine.snapshot_handler().trigger_snapshot();
+        self.engine.snapshot_handler().trigger_snapshot()
     }
 
     /// Trigger routine actions that need to be checked after processing messages.
@@ -938,8 +941,13 @@ where
             .should_snapshot(&self.engine.state, self.core_state.snapshot_tried_at.as_ref())
         {
             tracing::debug!("snapshot policy triggered at: {}", at);
-            self.core_state.snapshot_tried_at = Some(at);
-            self.trigger_snapshot();
+            // Only record the attempt if a build was actually queued. A trigger dropped because a
+            // build is already in flight must not advance `snapshot_tried_at`; otherwise the phantom
+            // attempt suppresses `should_snapshot` and the snapshot never re-arms once the in-flight
+            // build completes. See https://github.com/databendlabs/openraft/issues/1829
+            if self.trigger_snapshot() {
+                self.core_state.snapshot_tried_at = Some(at);
+            }
         }
 
         // Keep replicating to a target if the replication stream to it is idle
@@ -1749,7 +1757,9 @@ where
                     ExternalCommand::Heartbeat => {
                         self.send_heartbeat("ExternalCommand");
                     }
-                    ExternalCommand::Snapshot => self.trigger_snapshot(),
+                    ExternalCommand::Snapshot => {
+                        self.trigger_snapshot();
+                    }
                     ExternalCommand::PurgeLog { upto } => {
                         self.engine.trigger_purge_log(upto);
                     }
