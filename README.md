@@ -1,7 +1,7 @@
 <div align="center">
     <h1>OpenRaft</h1>
     <h4>
-        Advanced <a href="https://raft.github.io/">Raft</a> in 🦀 Rust using <a href="https://tokio.rs/">Tokio</a>. Please ⭐ on <a href="https://github.com/databendlabs/openraft">GitHub</a>!
+        Advanced <a href="https://raft.github.io/">Raft</a> in 🦀 Rust on any async runtime. Please ⭐ on <a href="https://github.com/databendlabs/openraft">GitHub</a>!
     </h4>
 
 
@@ -135,11 +135,15 @@ For benchmark detail, go to the [./benchmarks/minimal](./benchmarks/minimal) fol
 
 # Features
 
-- **Async and Event-Driven**: Operates based on Raft events without reliance on periodic ticks, optimizing message batching for high throughput.
-- **Extensible Storage and Networking**: Customizable via `RaftLogStorage`, `RaftStateMachine` and `RaftNetworkV2` traits, allowing flexibility in choosing storage and network solutions.
-- **Unified Raft API**: Offers a single `Raft` type for creating and interacting with Raft tasks, with a straightforward API.
-- **Cluster Formation**: Provides strategies for initial cluster setup as detailed in the [cluster formation guide](https://docs.rs/openraft/0.10.0-alpha.29/openraft/docs/cluster_control/cluster_formation/index.html).
-- **Built-In Tracing Instrumentation**: The codebase integrates [tracing](https://docs.rs/tracing/) for logging and distributed tracing, with the option to [set verbosity levels at compile time](https://docs.rs/tracing/latest/tracing/level_filters/index.html).
+What sets OpenRaft apart from a standard Raft implementation:
+
+- **Generalized membership change**: [extended joint membership](https://docs.rs/openraft/0.10.0-alpha.29/openraft/docs/data/extended_membership/index.html) changes an arbitrary set of nodes in a single operation; standard Raft's one-node-at-a-time change is a restricted special case.
+- **Fewer election conflicts**: the redesigned [Vote](https://docs.rs/openraft/0.10.0-alpha.29/openraft/docs/data/vote/index.html) minimizes election conflict rate — a split vote does not force a new term; the [standard Raft leader-ID mode](https://docs.rs/openraft/0.10.0-alpha.29/openraft/docs/data/leader_id/index.html) is also supported.
+- **Async and event-driven**: state transitions are driven by Raft events without periodic ticks; messages are batched, reaching millions of writes/sec in the [framework benchmark](#performance).
+- **Fully pluggable**: storage (`RaftLogStorage`, `RaftStateMachine`), networking (`RaftNetworkV2`, including application-defined snapshot transport), and every core type — node ID, node, term, vote, log entry — via `RaftTypeConfig`.
+- **Runtime-agnostic**: tokio by default, [compio](./rt-compio) and [monoio](./rt-monoio) via the `AsyncRuntime` trait, and a `single-threaded` mode that removes `Send` bounds.
+- **Deterministically tested**: a [turmoil-based simulation fuzzer](./tests-turmoil) steps the cluster tick by tick and verifies Raft invariants from the paper and the TLA+ spec after every tick.
+- **Observable**: streaming metrics via watch channels, and [tracing](https://docs.rs/tracing/) instrumentation with [compile-time verbosity filtering](https://docs.rs/tracing/latest/tracing/level_filters/index.html).
 
 ## Functionality:
 
