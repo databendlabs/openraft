@@ -1,5 +1,8 @@
 use std::time::Duration;
 
+use rand::RngExt;
+
+use crate::AsyncRuntime;
 use crate::Config;
 use crate::RaftTypeConfig;
 use crate::engine::time_state;
@@ -23,6 +26,12 @@ pub(crate) struct EngineConfig<C: RaftTypeConfig> {
 
     pub(crate) allow_log_reversion: bool,
 
+    /// Inclusive lower bound for a sampled election timeout, in milliseconds.
+    pub(crate) election_timeout_min: u64,
+
+    /// Exclusive upper bound for a sampled election timeout, in milliseconds.
+    pub(crate) election_timeout_max: u64,
+
     pub(crate) timer_config: time_state::Config,
 
     pub(crate) enable_leader_restore: bool,
@@ -39,6 +48,8 @@ where C: RaftTypeConfig
             purge_batch_size: config.purge_batch_size,
             max_payload_entries: config.max_payload_entries,
             allow_log_reversion: config.get_allow_log_reversion(),
+            election_timeout_min: config.election_timeout_min,
+            election_timeout_max: config.election_timeout_max,
 
             timer_config: time_state::Config {
                 election_timeout,
@@ -58,8 +69,17 @@ where C: RaftTypeConfig
             purge_batch_size: 256,
             max_payload_entries: 300,
             allow_log_reversion: false,
+            election_timeout_min: 150,
+            election_timeout_max: 300,
             timer_config: time_state::Config::default(),
             enable_leader_restore: true,
         }
+    }
+
+    /// Sample the timeout that gates the next election campaign.
+    pub(crate) fn resample_election_timeout(&mut self) {
+        let election_timeout =
+            AsyncRuntimeOf::<C>::thread_rng().random_range(self.election_timeout_min..self.election_timeout_max);
+        self.timer_config.election_timeout = Duration::from_millis(election_timeout);
     }
 }
