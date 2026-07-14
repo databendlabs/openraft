@@ -305,7 +305,7 @@ fn test_elect_single_node_elect_again() -> anyhow::Result<()> {
 
         assert_eq!(
             vec![
-                //
+                Command::CloseReplicationStreams,
                 Command::SaveVote { vote: Vote::new(2, 1) },
                 Command::SendVote {
                     vote_req: VoteRequest {
@@ -352,6 +352,52 @@ fn test_elect_multi_node_enter_candidate() -> anyhow::Result<()> {
                 Command::SaveVote { vote: Vote::new(1, 1) },
                 Command::SendVote {
                     vote_req: VoteRequest::new(Vote::new(1, 1), Some(log_id(1, 1, 1)))
+                },
+            ],
+            eng.output.take_commands()
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn test_elect_while_leader_relinquishes_leadership() -> anyhow::Result<()> {
+    tracing::info!("--- electing while leader drops the leader and closes its streams");
+    {
+        let mut eng = eng();
+        eng.config.id = 1;
+        eng.state.membership_state.set_effective(Arc::new(StoredMembershipOf::<UTConfig>::new(
+            Some(log_id(0, 1, 1)),
+            m12(),
+        )));
+
+        // Node 1 is a committed leader of term 2.
+        eng.state.vote = Leased::new(
+            UTConfig::<()>::now(),
+            Duration::from_millis(500),
+            Vote::new_committed(2, 1),
+        );
+        eng.testing_new_leader();
+
+        eng.elect();
+
+        assert_eq!(Vote::new(3, 1), *eng.state.vote_ref());
+        assert!(eng.leader.is_none());
+        assert!(eng.candidate_ref().is_some(), "candidate state is pending");
+
+        assert_eq!(ServerState::Candidate, eng.state.server_state);
+
+        assert_eq!(
+            vec![
+                // Relinquish the term-2 leadership before campaigning for term 3.
+                Command::CloseReplicationStreams,
+                Command::SaveVote { vote: Vote::new(3, 1) },
+                Command::SendVote {
+                    vote_req: VoteRequest {
+                        vote: Vote::new(3, 1),
+                        last_log_id: Some(log_id(0, 0, 0)),
+                        leadership_transfer: false,
+                    },
                 },
             ],
             eng.output.take_commands()

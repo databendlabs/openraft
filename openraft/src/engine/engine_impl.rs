@@ -270,6 +270,12 @@ where
         // A real election supersedes any in-flight Pre-Vote round.
         self.pre_candidate = None;
 
+        // Entering Candidate state relinquishes any leadership held under the previous vote.
+        if self.leader.is_some() {
+            self.leader = None;
+            self.output.push_command(Command::CloseReplicationStreams);
+        }
+
         let new_term = self.state.vote.term().next();
         let leader_id = LeaderIdOf::<C>::new(new_term, self.config.id.clone());
         let new_vote = VoteOf::<C>::from_leader_id(leader_id, false);
