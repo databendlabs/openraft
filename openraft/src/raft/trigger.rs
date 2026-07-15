@@ -44,7 +44,9 @@ where C: RaftTypeConfig
 
     /// Trigger election at once and return at once.
     ///
-    /// With `pre_vote = false`, a real election starts immediately: the term is incremented and the
+    /// If this node is already a leader, this is a no-op.
+    ///
+    /// Otherwise, with `pre_vote = false`, a real election starts immediately: the term is incremented and the
     /// node votes for itself. This bypasses both `enable_elect` and Pre-Vote, so the term climbs
     /// even when the node cannot win — which may step down a healthy leader of a lower term.
     ///
