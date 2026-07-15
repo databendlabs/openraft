@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::Parser;
 use raft_kv_rocksdb::start_example_raft_node;
 use tracing_subscriber::EnvFilter;
@@ -13,6 +15,9 @@ pub struct Opt {
 
     #[clap(long)]
     pub raft_addr: String,
+
+    #[clap(long, value_name = "PATH")]
+    pub data_dir: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -28,10 +33,13 @@ async fn main() -> std::io::Result<()> {
 
     // Parse the parameters passed by arguments.
     let options = Opt::parse();
+    let data_dir = options
+        .data_dir
+        .unwrap_or_else(|| PathBuf::from(format!("{}.db", options.api_addr)));
 
     start_example_raft_node(
         options.id,
-        format!("{}.db", options.api_addr),
+        data_dir,
         options.api_addr,
         options.raft_addr,
     )
