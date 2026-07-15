@@ -14,7 +14,7 @@ Beyond `rustfmt`, OpenRaft follows the conventions in [`CLAUDE.md`](CLAUDE.md). 
 
 ## Documentation
 
-Public documentation lives in Rustdoc comments under `openraft/src/docs/` and is published on [docs.rs](https://docs.rs/openraft/0.10.0-alpha.29/openraft/docs/index.html). Update it when a public API or user-facing behavior changes.
+Public documentation lives in Rustdoc comments under `openraft/src/docs/` and is published on [docs.rs](https://docs.rs/openraft/0.10.0-alpha.30/openraft/docs/index.html). Update it when a public API or user-facing behavior changes.
 
 ## Working with git
 
