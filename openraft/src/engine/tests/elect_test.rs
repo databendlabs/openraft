@@ -20,11 +20,9 @@ use crate::engine::LogIdList;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::raft::VoteRequest;
-use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::StoredMembershipOf;
-use crate::utime::Leased;
 use crate::vote::RaftLeaderIdExt;
 
 fn m1() -> Membership<u64, ()> {
@@ -275,8 +273,8 @@ fn test_elect_by_leadership_transfer_sets_flag() -> anyhow::Result<()> {
 }
 
 #[test]
-fn test_elect_single_node_elect_again() -> anyhow::Result<()> {
-    tracing::info!("--- single node: electing again will override previous state");
+fn test_elect_again_overrides_previous_campaign() -> anyhow::Result<()> {
+    tracing::info!("--- electing again bumps the term off the current vote and overrides the previous campaign");
     {
         let mut eng = eng();
         eng.config.id = 1;
@@ -285,14 +283,11 @@ fn test_elect_single_node_elect_again() -> anyhow::Result<()> {
             m1(),
         )));
 
-        // Build in-progress election state
-        eng.state.vote = Leased::new(
-            UTConfig::<()>::now(),
-            Duration::from_millis(500),
-            Vote::new_committed(1, 2),
-        );
-        eng.testing_new_leader();
-        eng.candidate_mut().map(|candidate| candidate.grant_by(&1));
+        // The first campaign, to be overridden by the second one.
+        eng.elect();
+        assert_eq!(Vote::new(1, 1), *eng.state.vote_ref());
+        assert_eq!(Vote::new(1, 1), *eng.candidate_ref().unwrap().vote_ref());
+        eng.output.take_commands();
 
         eng.elect();
 
