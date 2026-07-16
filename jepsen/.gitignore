@@ -1,0 +1,15 @@
+/target
+/store
+/classes
+/checkouts
+/docker/ssh/
+profiles.clj
+pom.xml
+pom.xml.asc
+*.jar
+*.swp
+*.class
+/.lein-*
+/.nrepl-port
+.hgignore
+.hg/
