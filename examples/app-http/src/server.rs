@@ -26,6 +26,7 @@ use serde::de::DeserializeOwned;
 use tokio::net::TcpListener;
 
 use crate::App;
+use crate::HttpStatus;
 
 type HandlerFuture = Pin<Box<dyn Future<Output = Response<Full<Bytes>>> + Send>>;
 type Handler = Arc<dyn Fn(Bytes) -> HandlerFuture + Send + Sync>;
@@ -51,7 +52,7 @@ where D: Send + Sync + 'static
     pub fn post<Req, Resp, Fut, F>(mut self, path: impl Into<String>, handler: F) -> Self
     where
         Req: DeserializeOwned + Send + 'static,
-        Resp: Serialize + Send + 'static,
+        Resp: Serialize + HttpStatus + Send + 'static,
         Fut: Future<Output = Resp> + Send + 'static,
         F: Fn(Arc<D>, Req) -> Fut + Send + Sync + 'static,
     {
@@ -62,7 +63,7 @@ where D: Send + Sync + 'static
 
     pub fn get<Resp, Fut, F>(mut self, path: impl Into<String>, handler: F) -> Self
     where
-        Resp: Serialize + Send + 'static,
+        Resp: Serialize + HttpStatus + Send + 'static,
         Fut: Future<Output = Resp> + Send + 'static,
         F: Fn(Arc<D>) -> Fut + Send + Sync + 'static,
     {
@@ -111,7 +112,7 @@ fn wrap<D, Req, Resp, Fut, F>(app: Arc<D>, handler: F) -> Handler
 where
     D: Send + Sync + 'static,
     Req: DeserializeOwned + Send + 'static,
-    Resp: Serialize + Send + 'static,
+    Resp: Serialize + HttpStatus + Send + 'static,
     Fut: Future<Output = Resp> + Send + 'static,
     F: Fn(Arc<D>, Req) -> Fut + Send + Sync + 'static,
 {
@@ -159,9 +160,10 @@ fn normalize_path(path: impl Into<String>) -> String {
     }
 }
 
-fn json_response<T: Serialize>(value: &T) -> Response<Full<Bytes>> {
+fn json_response<T>(value: &T) -> Response<Full<Bytes>>
+where T: Serialize + HttpStatus {
     match serde_json::to_vec(value) {
-        Ok(body) => response(StatusCode::OK, "application/json", Bytes::from(body)),
+        Ok(body) => response(value.status_code(), "application/json", Bytes::from(body)),
         Err(e) => internal_server_error(e),
     }
 }
