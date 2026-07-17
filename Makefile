@@ -1,10 +1,3 @@
-JEPSEN_DIR := jepsen
-JEPSEN_COMPOSE := docker compose -f $(JEPSEN_DIR)/docker/docker-compose.yml
-JEPSEN_NODES ?= n1,n2,n3
-JEPSEN_CONCURRENCY ?= 1
-JEPSEN_SSH_KEY ?= /root/.ssh/openraft-jepsen
-JEPSEN_ARGS ?= --nodes $(JEPSEN_NODES) --concurrency $(JEPSEN_CONCURRENCY) --ssh-private-key $(JEPSEN_SSH_KEY)
-
 all: test defensive_test send_delay_test check_all
 
 check_all: lint fmt doc unused_dep typos detsim
@@ -98,32 +91,6 @@ guide:
 
 detsim:
 	cd tests-turmoil && cargo run --bin fuzz -- --iterations 5 --max-steps 10000
-
-jepsen: jepsen-build
-	@echo "[jepsen] starting containers"
-	@$(JEPSEN_COMPOSE) up -d --force-recreate
-	@echo "[jepsen] running smoke test"
-	@$(JEPSEN_COMPOSE) exec control lein run test $(JEPSEN_ARGS)
-
-jepsen-key:
-	@echo "[jepsen] preparing SSH key"
-	@sh $(JEPSEN_DIR)/docker/init-ssh-key.sh
-
-jepsen-build: jepsen-key
-	@echo "[jepsen] building Docker images"
-	@$(JEPSEN_COMPOSE) build
-
-jepsen-up: jepsen-key
-	@echo "[jepsen] starting containers"
-	@$(JEPSEN_COMPOSE) up -d --force-recreate
-
-jepsen-test:
-	@echo "[jepsen] running smoke test"
-	@$(JEPSEN_COMPOSE) exec control lein run test $(JEPSEN_ARGS)
-
-jepsen-down:
-	@echo "[jepsen] stopping containers"
-	@$(JEPSEN_COMPOSE) down
 
 lint:
 	cargo fmt
@@ -237,4 +204,4 @@ clean:
 	cargo clean --manifest-path examples/multi-raft-kv/Cargo.toml
 	rm -rf tests/_log
 
-.PHONY: test fmt lint clean doc guide detsim jepsen jepsen-key jepsen-build jepsen-up jepsen-test jepsen-down
+.PHONY: test fmt lint clean doc guide detsim
