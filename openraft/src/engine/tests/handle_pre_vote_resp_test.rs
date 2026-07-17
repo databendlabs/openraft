@@ -71,6 +71,59 @@ fn test_handle_pre_vote_resp_quorum_starts_real_election() -> anyhow::Result<()>
 }
 
 #[test]
+fn test_winning_election_cancels_overlapping_pre_vote() -> anyhow::Result<()> {
+    let mut eng = eng();
+
+    // Pre-vote A succeeds and starts election A.
+    eng.pre_elect();
+    eng.handle_pre_vote_resp(2, VoteResponse::new(Vote::new(0, 0), Some(log_id(1, 1, 1)), true));
+    eng.candidate_mut().unwrap().grant_by(&1);
+
+    // Election A is still pending when the next election tick starts pre-vote B.
+    eng.pre_elect();
+
+    assert_eq!(Vote::new(1, 1), *eng.candidate_ref().unwrap().vote_ref());
+    assert_eq!(Vote::new(2, 1), *eng.pre_candidate_ref().unwrap().vote_ref());
+    assert_eq!(
+        vec![
+            Command::SendPreVote {
+                vote_req: VoteRequest::new(Vote::new(1, 1), Some(log_id(1, 1, 1))),
+            },
+            Command::SaveVote { vote: Vote::new(1, 1) },
+            Command::SendVote {
+                vote_req: VoteRequest::new(Vote::new(1, 1), Some(log_id(1, 1, 1))),
+            },
+            Command::SendPreVote {
+                vote_req: VoteRequest::new(Vote::new(2, 1), Some(log_id(1, 1, 1))),
+            },
+        ],
+        eng.output.take_commands()
+    );
+
+    // Election A wins before the delayed response for pre-vote B is received.
+    eng.handle_vote_resp(2, VoteResponse::new(Vote::new(1, 1), Some(log_id(1, 1, 1)), true));
+
+    assert_eq!(Vote::new_committed(1, 1), *eng.state.vote_ref());
+    assert!(eng.leader.is_some(), "election A established a leader");
+    assert!(eng.candidate_ref().is_none(), "election A is complete");
+    assert!(
+        eng.pre_candidate_ref().is_none(),
+        "winning election A must cancel overlapping pre-vote B"
+    );
+
+    eng.output.take_commands();
+
+    // A delayed success for B must not start a new election on the leader.
+    eng.handle_pre_vote_resp(2, VoteResponse::new(Vote::new(1, 1), Some(log_id(1, 1, 1)), true));
+
+    assert_eq!(Vote::new_committed(1, 1), *eng.state.vote_ref());
+    assert_eq!(ServerState::Leader, eng.state.server_state);
+    assert_eq!(Vec::<Command<UTConfig>>::new(), eng.output.take_commands());
+
+    Ok(())
+}
+
+#[test]
 fn test_handle_pre_vote_resp_reject_keeps_waiting() -> anyhow::Result<()> {
     let mut eng = eng();
 
