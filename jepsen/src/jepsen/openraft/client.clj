@@ -41,25 +41,45 @@
     (.timeout (Duration/ofSeconds 5))))
 
 (defn- send! [request]
-  (let [response (.send http-client request (HttpResponse$BodyHandlers/ofString))
+  (let [request-info {:method (.method request)
+                      :uri (str (.uri request))}
+        response (try
+                   (.send http-client request (HttpResponse$BodyHandlers/ofString))
+                   (catch java.io.IOException e
+                     (throw (ex-info "HTTP request failed"
+                                     (assoc request-info :kind :transport-error)
+                                     e)))
+                   (catch InterruptedException e
+                     (.interrupt (Thread/currentThread))
+                     (throw (ex-info "HTTP request interrupted"
+                                     (assoc request-info :kind :transport-error)
+                                     e))))
         status (.statusCode response)
-        body (.body response)]
+        body (.body response)
+        result (assoc request-info
+                      :status status
+                      :body body)]
     (when-not (= 200 status)
       (throw (ex-info (str "HTTP request failed with status " status)
-                      {:status status
-                       :body body})))
-    {:status status
-     :body body}))
+                      (assoc result :kind :http-error))))
+    result))
 
 (defn- parse-body [response]
-  (json/parse-string (:body response) true))
+  (try
+    (json/parse-string (:body response) true)
+    (catch Exception e
+      (throw (ex-info "Failed to parse OpenRaft API response"
+                      {:kind :invalid-json
+                       :response response}
+                      e)))))
 
 (defn- ok-value [response]
   (let [body (parse-body response)]
     (cond
       (contains? body :Ok) (:Ok body)
       (contains? body :Err) (throw (ex-info "OpenRaft API returned Err"
-                                            {:error (:Err body)
+                                            {:kind :openraft-error
+                                             :error (:Err body)
                                              :response response}))
       :else body)))
 
