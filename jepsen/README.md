@@ -36,12 +36,15 @@ The intended layout is:
 
 ```text
 jepsen/
+  Makefile
   project.clj
   README.md
   docker/
     docker-compose.yml
     control.Dockerfile
+    control.Dockerfile.dockerignore
     node.Dockerfile
+    node.Dockerfile.dockerignore
     init-ssh-key.sh
   src/jepsen/openraft/
     cli.clj
@@ -71,19 +74,19 @@ From the repository root:
 
 ```bash
 # Build images, start containers, and run the smoke test.
-$ make jepsen
+$ make -C jepsen jepsen
 
 # Generate the local Docker SSH key and build the Jepsen images.
-$ make jepsen-build
+$ make -C jepsen build
 
 # Start or recreate the Jepsen containers.
-$ make jepsen-up
+$ make -C jepsen up
 
 # Run the smoke test against the running containers.
-$ make jepsen-test
+$ make -C jepsen test
 
 # Stop and remove the Jepsen containers.
-$ make jepsen-down
+$ make -C jepsen down
 ```
 
 This starts three Docker node containers, then runs the Jepsen control process from the control container. The current smoke test starts the OpenRaft processes, bootstraps a three-node cluster, writes one key, reads it back, and then tears the cluster down.
