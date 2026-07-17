@@ -263,21 +263,17 @@ where
     }
 
     fn do_elect(&mut self, leadership_transfer: bool) {
-        // Leadership must be relinquished before campaigning: a Leader that campaigns keeps
-        // `leader.committed_vote` at the old term while `state.vote` moves to the new one, which
-        // breaks the invariant `LeaderHandler` relies on.
-        debug_assert!(
-            self.leader.is_none(),
-            "elect() requires leadership to be relinquished: leader.vote({})",
-            self.leader.as_ref().map(|l| l.committed_vote.to_string()).unwrap_or_default()
-        );
+        // An election attempt supersedes any in-flight Pre-Vote round.
+        self.pre_candidate = None;
+
+        if self.leader.is_some() {
+            tracing::info!("skip election, already a leader");
+            return;
+        }
 
         // A real campaign consumes the timeout selected before it. Sample the
         // timeout that will gate the next campaign before entering this one.
         self.config.resample_election_timeout();
-
-        // A real election supersedes any in-flight Pre-Vote round.
-        self.pre_candidate = None;
 
         let new_term = self.state.vote.term().next();
         let leader_id = LeaderIdOf::<C>::new(new_term, self.config.id.clone());
@@ -893,6 +889,10 @@ where
 
         let vote = leader.committed_vote_ref().clone();
         let last_log_id = leader.last_log_id().cloned();
+
+        // The winning campaign may overlap a later Pre-Vote round. Cancel it so delayed responses
+        // cannot trigger another election after becoming Leader.
+        self.pre_candidate = None;
 
         self.replication_handler().rebuild_replication_streams(true);
 

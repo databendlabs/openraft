@@ -20,6 +20,7 @@ use crate::engine::LogIdList;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::raft::VoteRequest;
+use crate::raft::VoteResponse;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::StoredMembershipOf;
@@ -313,6 +314,36 @@ fn test_elect_again_overrides_previous_campaign() -> anyhow::Result<()> {
             eng.output.take_commands()
         );
     }
+    Ok(())
+}
+
+#[test]
+fn test_election_on_leader_is_ignored() -> anyhow::Result<()> {
+    let mut eng = eng();
+    eng.config.id = 1;
+    eng.state.membership_state.set_effective(Arc::new(StoredMembershipOf::<UTConfig>::new(
+        Some(log_id(0, 1, 1)),
+        m12(),
+    )));
+
+    eng.elect();
+    eng.candidate_mut().unwrap().grant_by(&1);
+    eng.handle_vote_resp(2, VoteResponse::new(Vote::new(1, 1), Some(log_id(0, 0, 0)), true));
+    eng.output.take_commands();
+
+    eng.new_pre_candidate(Vote::new(2, 1));
+    assert_eq!(Vote::new(2, 1), *eng.pre_candidate_ref().unwrap().vote_ref());
+
+    eng.elect();
+    eng.elect_by_leadership_transfer();
+
+    assert_eq!(Vote::new_committed(1, 1), *eng.state.vote_ref());
+    assert!(eng.leader.is_some(), "leadership is preserved");
+    assert!(eng.candidate_ref().is_none(), "no campaign is created");
+    assert!(eng.pre_candidate_ref().is_none(), "no pre-vote is retained");
+    assert_eq!(ServerState::Leader, eng.state.server_state);
+    assert_eq!(Vec::<Command<UTConfig>>::new(), eng.output.take_commands());
+
     Ok(())
 }
 
