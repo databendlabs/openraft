@@ -30,7 +30,7 @@ pub async fn read(app: &mut App, req: String) -> String {
             let state_machine = app.state_machine.state_machine.lock().await;
             let value = state_machine.data.get(&key).cloned();
 
-            let res: Result<String, RaftError<LinearizableReadError>> = Ok(value.unwrap_or_default());
+            let res: Result<types_kv::Response, RaftError<LinearizableReadError>> = Ok(types_kv::Response { value });
             res
         }
         Err(e) => Err(e),

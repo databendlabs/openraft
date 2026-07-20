@@ -36,7 +36,7 @@ pub struct StoredSnapshot<C: RaftTypeConfig> {
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct StateMachineData {
     /// Application data.
-    pub data: BTreeMap<String, String>,
+    pub data: BTreeMap<String, types_kv::VersionedValue>,
 }
 
 /// Inner storage for the state machine.
@@ -89,7 +89,7 @@ impl<C: RaftTypeConfig> Default for StateMachineStore<C> {
 
 impl<C: RaftTypeConfig> StateMachineStore<C> {
     /// Get a value from the state machine by key, locking the state machine.
-    pub async fn get(&self, key: &str) -> Option<String> {
+    pub async fn get(&self, key: &str) -> Option<types_kv::VersionedValue> {
         let inner = self.0.lock().await;
         inner.state_machine.data.get(key).cloned()
     }
@@ -154,14 +154,18 @@ where C: RaftTypeConfig<D = types_kv::Request, R = types_kv::Response, Entry = D
         while let Some((entry, responder)) = entries.try_next().await? {
             tracing::debug!(%entry.log_id, "replicate to sm");
 
+            let version = entry.log_id.index();
             inner.last_applied_log = Some(entry.log_id.clone());
 
             let response = match &entry.payload {
                 EntryPayload::Blank => types_kv::Response::none(),
                 EntryPayload::Normal(req) => match req {
                     types_kv::Request::Set { key, value } => {
-                        inner.state_machine.data.insert(key.clone(), value.clone());
-                        types_kv::Response::new(value.clone())
+                        inner.state_machine.data.insert(key.clone(), types_kv::VersionedValue {
+                            value: value.clone(),
+                            version,
+                        });
+                        types_kv::Response::new(value.clone(), version)
                     }
                 },
                 EntryPayload::Membership(mem) => {
@@ -198,7 +202,7 @@ where C: RaftTypeConfig<D = types_kv::Request, R = types_kv::Response, Entry = D
             data: snapshot.into_inner(),
         };
 
-        let updated_state_machine_data: BTreeMap<String, String> =
+        let updated_state_machine_data: BTreeMap<String, types_kv::VersionedValue> =
             serde_json::from_slice(&new_snapshot.data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
         let mut inner = self.0.lock().await;

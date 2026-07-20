@@ -31,7 +31,7 @@ pub async fn read(app: &mut GroupApp, req: String) -> String {
             linearizer.await_ready(&app.raft).await.unwrap();
             let value = app.state_machine.get(&key).await;
 
-            let res: Result<String, RaftError<LinearizableReadError>> = Ok(value.unwrap_or_default());
+            let res: Result<types_kv::Response, RaftError<LinearizableReadError>> = Ok(types_kv::Response { value });
             res
         }
         Err(e) => Err(e),
