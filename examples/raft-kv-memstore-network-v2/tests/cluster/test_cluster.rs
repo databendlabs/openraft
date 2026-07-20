@@ -91,12 +91,14 @@ async fn run_test(rafts: &[Raft]) {
     }
 
     println!("=== write 2 logs");
-    {
+    let expected_foo2 = {
         let resp = client.write(&types_kv::Request::set("foo1", "bar1")).await.unwrap().unwrap();
         println!("write resp: {:#?}", resp);
         let resp = client.write(&types_kv::Request::set("foo2", "bar2")).await.unwrap().unwrap();
         println!("write resp: {:#?}", resp);
-    }
+        assert_eq!(resp.log_id.index(), resp.data.value.as_ref().unwrap().version);
+        resp.data
+    };
 
     println!("=== let node-1 take a snapshot");
     {
@@ -138,6 +140,9 @@ async fn run_test(rafts: &[Raft]) {
         println!("node 2 metrics: {:#?}", metrics);
         assert_eq!(Some(3), metrics.snapshot.map(|x| x.index));
         assert_eq!(Some(3), metrics.purged.map(|x| x.index));
+
+        let got = client2.read(&"foo2".to_string()).await.unwrap();
+        assert_eq!(expected_foo2, got);
     }
 
     // In this example, the snapshot is just a copy of the state machine.
