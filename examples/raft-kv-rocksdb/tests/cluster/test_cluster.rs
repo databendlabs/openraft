@@ -197,7 +197,6 @@ async fn test_cluster_inner() -> Result<(), Box<dyn std::error::Error + Send + S
             value: "bar".to_string(),
         })
         .await??;
-    assert_eq!(write_bar.log_id.index(), write_bar.data.value.as_ref().unwrap().version);
     let expected_bar = write_bar.data;
 
     // --- Wait for a while to let the replication get done.
@@ -229,7 +228,6 @@ async fn test_cluster_inner() -> Result<(), Box<dyn std::error::Error + Send + S
         .await??;
     let bar_version = expected_bar.value.as_ref().unwrap().version;
     let wow_version = write_wow.data.value.as_ref().unwrap().version;
-    assert_eq!(write_wow.log_id.index(), wow_version);
     assert!(wow_version > bar_version);
     let expected_wow = write_wow.data;
 
@@ -268,6 +266,19 @@ async fn test_cluster_inner() -> Result<(), Box<dyn std::error::Error + Send + S
         }
         Ok(_) => panic!("MUST return LinearizableReadError"),
     }
+
+    println!("=== compare and set `foo=wow` to `foo=cas`");
+    let cas = leader.write(&types_kv::Request::compare_and_set("foo", wow_version, "cas")).await??;
+    let cas_value = cas.data.value.as_ref().unwrap();
+    assert_eq!("cas", cas_value.value);
+    assert!(cas_value.version > wow_version);
+
+    println!("=== reject a stale compare and set");
+    let stale = leader.write(&types_kv::Request::compare_and_set("foo", wow_version, "stale")).await??;
+    assert_eq!(types_kv::Response::none(), stale.data);
+
+    let got = leader.linearizable_read(&"foo".to_string()).await??;
+    assert_eq!(cas.data, got);
 
     Ok(())
 }

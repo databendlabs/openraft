@@ -167,6 +167,27 @@ where C: RaftTypeConfig<D = types_kv::Request, R = types_kv::Response, Entry = D
                         });
                         types_kv::Response::new(value.clone(), version)
                     }
+                    types_kv::Request::CompareAndSet {
+                        key,
+                        expected_version,
+                        value,
+                    } => {
+                        let matches = inner
+                            .state_machine
+                            .data
+                            .get(key)
+                            .is_some_and(|current| current.version == *expected_version);
+
+                        if matches {
+                            inner.state_machine.data.insert(key.clone(), types_kv::VersionedValue {
+                                value: value.clone(),
+                                version,
+                            });
+                            types_kv::Response::new(value.clone(), version)
+                        } else {
+                            types_kv::Response::none()
+                        }
+                    }
                 },
                 EntryPayload::Membership(mem) => {
                     inner.last_membership = StoredMembershipOf::<C>::new(Some(entry.log_id.clone()), mem.clone());

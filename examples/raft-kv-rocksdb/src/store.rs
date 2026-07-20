@@ -172,6 +172,24 @@ impl RaftStateMachine<TypeConfig> for StateMachineStore {
                         });
                         types_kv::Response::new(value, version)
                     }
+                    types_kv::Request::CompareAndSet {
+                        key,
+                        expected_version,
+                        value,
+                    } => {
+                        let mut st = self.data.kvs.lock().await;
+                        let matches = st.get(&key).is_some_and(|current| current.version == expected_version);
+
+                        if matches {
+                            st.insert(key, types_kv::VersionedValue {
+                                value: value.clone(),
+                                version,
+                            });
+                            types_kv::Response::new(value, version)
+                        } else {
+                            types_kv::Response::none()
+                        }
+                    }
                 },
                 EntryPayload::Membership(mem) => {
                     self.data.last_membership = StoredMembership::new(Some(entry.log_id), mem);
