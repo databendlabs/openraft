@@ -158,6 +158,23 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
                         });
                         types_kv::Response::new(value.clone(), version)
                     }
+                    types_kv::Request::CompareAndSet {
+                        key,
+                        expected_version,
+                        value,
+                    } => {
+                        let matches = sm.data.get(key).is_some_and(|current| current.version == *expected_version);
+
+                        if matches {
+                            sm.data.insert(key.clone(), types_kv::VersionedValue {
+                                value: value.clone(),
+                                version,
+                            });
+                            types_kv::Response::new(value.clone(), version)
+                        } else {
+                            types_kv::Response::none()
+                        }
+                    }
                 },
                 EntryPayload::Membership(ref mem) => {
                     sm.last_membership = StoredMembership::new(Some(entry.log_id), mem.clone());
