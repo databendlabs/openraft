@@ -40,7 +40,7 @@ pub struct StateMachineData {
     pub last_membership: StoredMembership,
 
     /// Application data.
-    pub data: BTreeMap<String, String>,
+    pub data: BTreeMap<String, types_kv::VersionedValue>,
 }
 
 /// Defines a state machine for the Raft cluster. This state machine represents a copy of the
@@ -145,14 +145,18 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
         while let Some((entry, responder)) = entries.try_next().await? {
             tracing::debug!(%entry.log_id, "replicate to sm");
 
+            let version = entry.log_id.index();
             sm.last_applied = Some(entry.log_id);
 
             let response = match entry.payload {
                 EntryPayload::Blank => types_kv::Response::none(),
                 EntryPayload::Normal(ref req) => match req {
                     types_kv::Request::Set { key, value, .. } => {
-                        sm.data.insert(key.clone(), value.clone());
-                        types_kv::Response::new(value.clone())
+                        sm.data.insert(key.clone(), types_kv::VersionedValue {
+                            value: value.clone(),
+                            version,
+                        });
+                        types_kv::Response::new(value.clone(), version)
                     }
                 },
                 EntryPayload::Membership(ref mem) => {

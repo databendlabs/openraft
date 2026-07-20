@@ -29,19 +29,29 @@ impl fmt::Display for Request {
 }
 
 /// A response from the KV store.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct Response {
-    pub value: Option<String>,
+    pub value: Option<VersionedValue>,
 }
 
 impl Response {
-    pub fn new(value: impl Into<String>) -> Self {
+    pub fn new(value: impl Into<String>, version: u64) -> Self {
         Response {
-            value: Some(value.into()),
+            value: Some(VersionedValue {
+                value: value.into(),
+                version,
+            }),
         }
     }
 
     pub fn none() -> Self {
         Response { value: None }
     }
+}
+
+/// The current value of a key and its version.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct VersionedValue {
+    pub value: String,
+    pub version: u64,
 }

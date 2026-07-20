@@ -187,6 +187,7 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
         while let Some((entry, responder)) = entries.try_next().await? {
             tracing::debug!(%entry.log_id, "replicate to sm");
 
+            let version = entry.log_id().index();
             last_applied_log = Some(entry.log_id());
 
             let response = match entry.payload {
@@ -194,9 +195,13 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
                 EntryPayload::Normal(ref req) => match req {
                     types_kv::Request::Set { key, value } => {
                         let cf_data = self.cf_sm_data();
+                        let versioned_value = types_kv::VersionedValue {
+                            value: value.clone(),
+                            version,
+                        };
 
-                        batch.put_cf(cf_data, key.as_bytes(), value.as_bytes());
-                        types_kv::Response::new(value.clone())
+                        batch.put_cf(cf_data, key.as_bytes(), serialize(&versioned_value)?);
+                        types_kv::Response::new(value.clone(), version)
                     }
                 },
                 EntryPayload::Membership(ref mem) => {
