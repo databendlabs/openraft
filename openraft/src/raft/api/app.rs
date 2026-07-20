@@ -52,7 +52,16 @@ where C: RaftTypeConfig
         timeout: Option<Duration>,
     ) -> Result<Result<Linearizer<C>, LinearizableReadError<C>>, Fatal<C>> {
         let (tx, rx) = C::oneshot();
-        self.inner.call_core(RaftMsg::GetLinearizer { read_policy, timeout, tx }, rx).await
+        self.inner
+            .call_core(
+                RaftMsg::GetLinearizer {
+                    read_policy,
+                    timeout,
+                    tx,
+                },
+                rx,
+            )
+            .await
     }
 
     #[since(version = "0.10.0")]

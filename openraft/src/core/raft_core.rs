@@ -375,6 +375,11 @@ where
     /// quorum acks or the budget is exhausted; already-acked voters are not re-contacted and the
     /// call returns as soon as a quorum is reached. When `timeout` is `None` a single round is
     /// performed (one attempt per voter), matching the legacy behavior.
+    ///
+    /// The effective budget is clamped below `leader_lease` regardless of how large the caller's
+    /// `timeout` is: the reply carries a single up-front `read_log_id`, which is only
+    /// linearizable while the granting quorum is still suppressing competing elections. A larger
+    /// wait cannot be answered safely without re-capturing `read_log_id` under a fresh quorum.
     #[tracing::instrument(level = "trace", skip(self, tx))]
     pub(super) async fn handle_ensure_linearizable_read(
         &mut self,
@@ -437,7 +442,24 @@ where
         // Overall budget for gathering a quorum of confirmations. `None` => a single round
         // (legacy behavior); `Some(d)` => keep re-confirming un-acked voters until a quorum
         // acks or the deadline passes.
-        let confirm_deadline = timeout.map(|d| C::now() + d);
+        //
+        // The budget is clamped below `leader_lease`. This confirmation answers with a single
+        // `read_log_id` captured up-front, so it stays linearizable only while the granting
+        // quorum is *still* provably suppressing competing elections: every follower that acks
+        // our heartbeat resets its election timer and will not start an election for
+        // `leader_lease` (see `Leader::clock_progress`). As long as every ack lands within
+        // `leader_lease` of the round start, those suppression windows overlap, so no
+        // higher-term leader can have been elected -- let alone committed past `read_log_id` --
+        // before we answer. If the window were allowed to grow with the full caller budget,
+        // grants could be accumulated across a leadership change and the read could go stale.
+        // Keep a one-heartbeat margin, and never drop below one heartbeat of patience (the
+        // effective window of the legacy single round).
+        let safe_window = {
+            let heartbeat = Duration::from_millis(self.config.heartbeat_interval);
+            let leader_lease = self.engine.config.timer_config.leader_lease;
+            leader_lease.saturating_sub(heartbeat).max(heartbeat)
+        };
+        let confirm_deadline = timeout.map(|d| C::now() + d.min(safe_window));
 
         // Snapshot everything each per-peer probe needs, so the borrow on `self.engine` is
         // released before we take `&mut self.network_factory` to create clients.
@@ -1697,7 +1719,11 @@ where
 
                 self.handle_pre_vote_request(rpc, tx);
             }
-            RaftMsg::GetLinearizer { read_policy, timeout, tx } => {
+            RaftMsg::GetLinearizer {
+                read_policy,
+                timeout,
+                tx,
+            } => {
                 self.handle_ensure_linearizable_read(read_policy, timeout, tx).await;
             }
             RaftMsg::ClientWrite {

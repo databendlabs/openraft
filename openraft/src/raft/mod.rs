@@ -1106,6 +1106,16 @@ where
     /// healthy replicas. A higher vote from any peer still aborts immediately with
     /// [`ForwardToLeader`](crate::error::ForwardToLeader).
     ///
+    /// # Effective upper bound
+    ///
+    /// `timeout` is an upper bound, not a guaranteed wait: the confirmation window is
+    /// internally clamped below the leader lease (`election_timeout_max`). The reply carries a
+    /// single `read_log_id` captured when the call starts, which is only linearizable while the
+    /// granting quorum is still suppressing competing elections — a span bounded by the leader
+    /// lease. A `timeout` larger than the lease is therefore capped; spending a longer budget
+    /// safely would require re-capturing `read_log_id` under a fresh quorum, which this call
+    /// does not do.
+    ///
     /// Returns the same result as [`ensure_linearizable`](Self::ensure_linearizable).
     #[since(version = "0.10.0", change = "add timeout-bounded ReadIndex confirmation")]
     #[tracing::instrument(level = "debug", skip(self))]
@@ -1114,8 +1124,7 @@ where
         read_policy: ReadPolicy,
         timeout: Duration,
     ) -> Result<Option<LogIdOf<C>>, RaftError<C, LinearizableReadError<C>>> {
-        let linearizer =
-            self.app_api().get_read_linearizer(read_policy, Some(timeout)).await.into_raft_result()?;
+        let linearizer = self.app_api().get_read_linearizer(read_policy, Some(timeout)).await.into_raft_result()?;
 
         let state = linearizer.await_ready(self).await?;
         Ok(Some(state.read_log_id().clone()))
