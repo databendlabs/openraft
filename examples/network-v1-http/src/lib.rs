@@ -169,14 +169,7 @@ where C: RaftTypeConfig
         //     serde_json::to_string_pretty(&req).unwrap()
         // );
 
-        let resp = self
-            .client
-            .post(url.clone())
-            .json(&req)
-            .timeout(option.soft_ttl())
-            .send()
-            .await
-            .map_err(|e| {
+        let resp = self.client.post(url.clone()).json(&req).timeout(option.soft_ttl()).send().await.map_err(|e| {
             if e.is_connect() {
                 // `Unreachable` informs the caller to backoff for a short while to avoid error log flush.
                 RPCError::Unreachable(Unreachable::new(&e))
@@ -206,10 +199,7 @@ where C: RaftTypeConfig
         req: AppendEntriesRequest<C>,
         option: RPCOption,
     ) -> Result<AppendEntriesResponse<C>, RPCError<C, RaftError<C>>> {
-        let res = self
-            .request::<_, _, Infallible>("append", req, &option)
-            .await
-            .map_err(RPCError::with_raft_error)?;
+        let res = self.request::<_, _, Infallible>("append", req, &option).await.map_err(RPCError::with_raft_error)?;
         Ok(res.unwrap())
     }
 
@@ -235,10 +225,7 @@ where C: RaftTypeConfig
         req: VoteRequest<C>,
         option: RPCOption,
     ) -> Result<VoteResponse<C>, RPCError<C, RaftError<C>>> {
-        let res = self
-            .request::<_, _, Infallible>("vote", req, &option)
-            .await
-            .map_err(RPCError::with_raft_error)?;
+        let res = self.request::<_, _, Infallible>("vote", req, &option).await.map_err(RPCError::with_raft_error)?;
         Ok(res.unwrap())
     }
 }
