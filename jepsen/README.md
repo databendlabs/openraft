@@ -25,7 +25,8 @@ The Docker test environment separates the Jepsen control plane from the OpenRaft
 +-------+-------+         +-------+-------+         +-------+-------+
         |                         |                         |
         | app_http API            | app_http API            | app_http API
-        | /init /write /read      | /metrics                | /metrics
+        | /init /write            | /metrics                | /metrics
+        | /linearizable_read      |                         |
         |                         |                         |
         +----------- Raft RPC: /append /vote /snapshot -----+
 ```
@@ -73,7 +74,7 @@ The `jepsen.openraft` namespace contains the OpenRaft-specific Jepsen code:
 From the repository root:
 
 ```bash
-# Build images, start containers, and run the smoke test.
+# Build images, start containers, and run the linearizability test.
 $ make -C jepsen jepsen
 
 # Generate the local Docker SSH key and build the Jepsen images.
@@ -82,14 +83,14 @@ $ make -C jepsen build
 # Start or recreate the Jepsen containers.
 $ make -C jepsen up
 
-# Run the smoke test against the running containers.
+# Run the linearizability test against the running containers.
 $ make -C jepsen test
 
 # Stop and remove the Jepsen containers.
 $ make -C jepsen down
 ```
 
-This starts three Docker node containers, then runs the Jepsen control process from the control container. The current smoke test starts the OpenRaft processes, bootstraps a three-node cluster, writes one key, reads it back, and then tears the cluster down.
+This starts three Docker node containers, then runs the Jepsen control process from the control container. The test bootstraps a three-node cluster and checks a concurrent mix of linearizable reads, writes, and compare-and-set operations with Knossos.
 
 ## TODO
 
@@ -101,5 +102,6 @@ This starts three Docker node containers, then runs the Jepsen control process f
 - [x] Bootstrap a three-node OpenRaft cluster.
 - [ ] Record acknowledged write, read, and info operation counts in each run.
 - [ ] Add nemeses for network partitions and process kill/restart.
-- [ ] Add linearizability checking.
+- [x] Add a read, write, and compare-and-set workload.
+- [x] Add linearizability checking with Knossos.
 - [ ] Add snapshot pressure and membership churn workloads.

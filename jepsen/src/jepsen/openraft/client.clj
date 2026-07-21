@@ -111,10 +111,27 @@
 (defn change-membership! [endpoint node-ids]
   (ok-value (post! endpoint "/change-membership" node-ids)))
 
+;; Workload request errors currently propagate and abort the test. Fault
+;; workloads will classify them as :fail or :info in KVClient based on whether
+;; the operation may have taken effect.
 (defn write! [endpoint key value]
-  (ok-value (post! endpoint "/write"
-                   {:Set {:key key
-                          :value value}})))
+  (-> (post! endpoint "/write"
+             {:Set {:key key
+                    :value value}})
+      ok-value
+      :data
+      :value))
 
-(defn read! [endpoint key]
-  (ok-value (post! endpoint "/read" key)))
+(defn cas! [endpoint key expected-version value]
+  (-> (post! endpoint "/write"
+             {:CompareAndSet {:key key
+                              :expected_version expected-version
+                              :value value}})
+      ok-value
+      :data
+      :value))
+
+(defn linearizable-read! [endpoint key]
+  (-> (post! endpoint "/linearizable_read" key)
+      ok-value
+      :value))
