@@ -1,11 +1,13 @@
 (ns jepsen.openraft.client
   (:require [cheshire.core :as json]
             [clojure.string :as str])
-  (:import (java.net URI)
+  (:import (java.net ConnectException URI)
            (java.net.http HttpClient
+                          HttpConnectTimeoutException
                           HttpRequest
                           HttpRequest$BodyPublishers
-                          HttpResponse$BodyHandlers)
+                          HttpResponse$BodyHandlers
+                          HttpTimeoutException)
            (java.time Duration)))
 
 (def default-api-port 21001)
@@ -45,6 +47,18 @@
                       :uri (str (.uri request))}
         response (try
                    (.send http-client request (HttpResponse$BodyHandlers/ofString))
+                   (catch HttpConnectTimeoutException e
+                     (throw (ex-info "HTTP connection timed out"
+                                     (assoc request-info :kind :unreachable)
+                                     e)))
+                   (catch ConnectException e
+                     (throw (ex-info "HTTP connection failed"
+                                     (assoc request-info :kind :unreachable)
+                                     e)))
+                   (catch HttpTimeoutException e
+                     (throw (ex-info "HTTP request timed out"
+                                     (assoc request-info :kind :request-timeout)
+                                     e)))
                    (catch java.io.IOException e
                      (throw (ex-info "HTTP request failed"
                                      (assoc request-info :kind :transport-error)
@@ -52,7 +66,7 @@
                    (catch InterruptedException e
                      (.interrupt (Thread/currentThread))
                      (throw (ex-info "HTTP request interrupted"
-                                     (assoc request-info :kind :transport-error)
+                                     (assoc request-info :kind :interrupted)
                                      e))))
         status (.statusCode response)
         body (.body response)
@@ -83,6 +97,50 @@
                                              :response response}))
       :else body)))
 
+(defn- forward-to-leader? [e]
+  (contains? (or (:error (ex-data e)) {}) :ForwardToLeader))
+
+(defn- forward-endpoint [e]
+  (get-in (ex-data e)
+          [:error :ForwardToLeader :leader_node :data]))
+
+(defn- unreachable? [e]
+  (= :unreachable (:kind (ex-data e))))
+
+(defn- next-endpoint [endpoints attempted e]
+  (let [forward (forward-endpoint e)
+        candidates (if forward
+                     (cons forward endpoints)
+                     endpoints)]
+    (first (remove attempted candidates))))
+
+(defn with-leader!
+  "Runs request against the cached leader and follows safe routing failures.
+
+  ForwardToLeader and connection-establishment failures prove that the request
+  was not applied, so retrying them does not duplicate a mutation. Other
+  transport failures are returned to the workload for operation-aware handling."
+  [leader-endpoint endpoints request]
+  (loop [endpoint @leader-endpoint
+         attempted #{}]
+    (let [attempted (conj attempted endpoint)
+          [result value] (try
+                           [:ok (request endpoint)]
+                           (catch Exception e
+                             [:error e]))]
+      (if (= :ok result)
+        (do
+          (reset! leader-endpoint endpoint)
+          value)
+        (if (or (forward-to-leader? value)
+                (unreachable? value))
+          (if-let [endpoint (next-endpoint endpoints attempted value)]
+            (do
+              (reset! leader-endpoint endpoint)
+              (recur endpoint attempted))
+            (throw value))
+          (throw value))))))
+
 (defn get! [endpoint path]
   (-> (request-builder endpoint path)
       (.GET)
@@ -111,9 +169,8 @@
 (defn change-membership! [endpoint node-ids]
   (ok-value (post! endpoint "/change-membership" node-ids)))
 
-;; Workload request errors currently propagate and abort the test. Fault
-;; workloads will classify them as :fail or :info in KVClient based on whether
-;; the operation may have taken effect.
+;; These functions make one HTTP attempt. KVClient performs leader routing and
+;; classifies errors based on whether the operation may have taken effect.
 (defn write! [endpoint key value]
   (-> (post! endpoint "/write"
              {:Set {:key key
