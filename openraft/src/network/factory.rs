@@ -1,4 +1,5 @@
 use openraft_macros::add_async_trait;
+use openraft_macros::since;
 
 use crate::OptionalSend;
 use crate::OptionalSync;
@@ -40,4 +41,33 @@ where C: RaftTypeConfig
     /// The method is intentionally async to give the implementation a chance to use asynchronous
     /// sync primitives to serialize access to the common internal object, if needed.
     async fn new_client(&mut self, target: C::NodeId, node: &C::Node) -> Self::Network;
+
+    /// Create a network client dedicated to sending heartbeat RPCs to the target node.
+    ///
+    /// This client carries the Leader's liveness probes: the periodic heartbeat that maintains the
+    /// Leader lease and the lease-confirmation probe issued for linearizable reads. These must not
+    /// be delayed by replication backpressure. On a transport that cannot multiplex a single
+    /// connection (e.g., HTTP/1.1), sharing the replication client lets a large `AppendEntries`
+    /// batch or a snapshot transfer stall heartbeats through head-of-line blocking. Override this
+    /// method to isolate these probes on an independent connection when that matters.
+    ///
+    /// The default implementation delegates to [`new_client()`](Self::new_client), so heartbeats
+    /// share the replication path unless overridden.
+    #[since(version = "0.10.0")]
+    async fn new_heartbeat_client(&mut self, target: C::NodeId, node: &C::Node) -> Self::Network {
+        self.new_client(target, node).await
+    }
+
+    /// Create a network client dedicated to transmitting snapshots to the target node.
+    ///
+    /// Snapshot transfers can be large and long-running. On a transport that cannot multiplex a
+    /// single connection, sharing the replication client lets an in-flight snapshot block ordinary
+    /// log replication. Override this method to isolate snapshot transfer on its own connection.
+    ///
+    /// The default implementation delegates to [`new_client()`](Self::new_client), so snapshot
+    /// transfer shares the replication path unless overridden.
+    #[since(version = "0.10.0")]
+    async fn new_snapshot_client(&mut self, target: C::NodeId, node: &C::Node) -> Self::Network {
+        self.new_client(target, node).await
+    }
 }

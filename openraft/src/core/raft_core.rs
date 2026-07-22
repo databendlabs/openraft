@@ -437,7 +437,7 @@ where
 
             // Safe unwrap(): target is in membership
             let target_node = eff_mem.get_node(&target).unwrap().clone();
-            let mut client = self.network_factory.new_client(target.clone(), &target_node).await;
+            let mut client = self.network_factory.new_heartbeat_client(target.clone(), &target_node).await;
 
             let option = RPCOption::new(ttl);
 
@@ -2449,7 +2449,7 @@ where
                     self.new_replication_task_context(leader_vote, stream_id, target.clone());
 
                 let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap();
-                let snapshot_network = self.network_factory.new_client(target.clone(), target_node).await;
+                let snapshot_network = self.network_factory.new_snapshot_client(target.clone(), target_node).await;
 
                 let handle = SnapshotTransmitter::<C, N, SM>::spawn(
                     replication_task_context,
