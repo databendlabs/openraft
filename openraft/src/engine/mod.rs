@@ -59,6 +59,9 @@ mod tests {
     mod startup_test;
     mod trigger_purge_log_test;
 }
+#[cfg(feature = "bench")]
+#[cfg(test)]
+mod bench;
 #[cfg(test)]
 mod log_id_list_test;
 #[cfg(test)]
