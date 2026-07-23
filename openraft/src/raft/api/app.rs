@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use openraft_macros::since;
 
@@ -48,9 +49,19 @@ where C: RaftTypeConfig
     pub(crate) async fn get_read_linearizer(
         &self,
         read_policy: ReadPolicy,
+        timeout: Option<Duration>,
     ) -> Result<Result<Linearizer<C>, LinearizableReadError<C>>, Fatal<C>> {
         let (tx, rx) = C::oneshot();
-        self.inner.call_core(RaftMsg::GetLinearizer { read_policy, tx }, rx).await
+        self.inner
+            .call_core(
+                RaftMsg::GetLinearizer {
+                    read_policy,
+                    timeout,
+                    tx,
+                },
+                rx,
+            )
+            .await
     }
 
     #[since(version = "0.10.0")]

@@ -1080,9 +1080,52 @@ where
         &self,
         read_policy: ReadPolicy,
     ) -> Result<Option<LogIdOf<C>>, RaftError<C, LinearizableReadError<C>>> {
-        let linearizer = self.app_api().get_read_linearizer(read_policy).await.into_raft_result()?;
+        let linearizer = self.app_api().get_read_linearizer(read_policy, None).await.into_raft_result()?;
 
         // Safe unwrap: it never times out.
+        let state = linearizer.await_ready(self).await?;
+        Ok(Some(state.read_log_id().clone()))
+    }
+
+    /// Same as [`ensure_linearizable`](Self::ensure_linearizable) but bounds the
+    /// leadership-confirmation step (ReadIndex) by an overall `timeout`.
+    ///
+    /// Without a timeout, ReadIndex performs a single heartbeat round: every voter is
+    /// contacted once with a per-peer timeout of
+    /// [`Config::heartbeat_interval`](crate::Config::heartbeat_interval), and if a quorum
+    /// does not ack within that one round the call fails with
+    /// [`LinearizableReadError::QuorumNotEnough`]. A transient blip on the one healthy peer
+    /// that carries the quorum therefore fails the read even though the caller had a much
+    /// larger request budget to spend.
+    ///
+    /// With `timeout`, the confirmation keeps re-contacting only the voters that have **not**
+    /// yet acked — one heartbeat at a time per peer, paced at roughly
+    /// `Config::heartbeat_interval` so a dead peer is not hammered — until a quorum acks or
+    /// the budget is exhausted. A peer that has already acked is not contacted again, and the
+    /// call returns as soon as a quorum is reached, so this does not fan extra load onto
+    /// healthy replicas. A higher vote from any peer still aborts immediately with
+    /// [`ForwardToLeader`](crate::error::ForwardToLeader).
+    ///
+    /// # Effective upper bound
+    ///
+    /// `timeout` is an upper bound, not a guaranteed wait: the confirmation window is
+    /// internally clamped below the leader lease (`election_timeout_max`). The reply carries a
+    /// single `read_log_id` captured when the call starts, which is only linearizable while the
+    /// granting quorum is still suppressing competing elections — a span bounded by the leader
+    /// lease. A `timeout` larger than the lease is therefore capped; spending a longer budget
+    /// safely would require re-capturing `read_log_id` under a fresh quorum, which this call
+    /// does not do.
+    ///
+    /// Returns the same result as [`ensure_linearizable`](Self::ensure_linearizable).
+    #[since(version = "0.10.0", change = "add timeout-bounded ReadIndex confirmation")]
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn ensure_linearizable_with_timeout(
+        &self,
+        read_policy: ReadPolicy,
+        timeout: Duration,
+    ) -> Result<Option<LogIdOf<C>>, RaftError<C, LinearizableReadError<C>>> {
+        let linearizer = self.app_api().get_read_linearizer(read_policy, Some(timeout)).await.into_raft_result()?;
+
         let state = linearizer.await_ready(self).await?;
         Ok(Some(state.read_log_id().clone()))
     }
@@ -1100,7 +1143,7 @@ where
         &self,
         read_policy: ReadPolicy,
     ) -> Result<(Option<LogIdOf<C>>, Option<LogIdOf<C>>), RaftError<C, LinearizableReadError<C>>> {
-        let linearizer = self.app_api().get_read_linearizer(read_policy).await.into_raft_result()?;
+        let linearizer = self.app_api().get_read_linearizer(read_policy, None).await.into_raft_result()?;
 
         let read_log_id = linearizer.read_log_id();
         let applied = linearizer.applied();
@@ -1158,7 +1201,7 @@ where
         &self,
         read_policy: ReadPolicy,
     ) -> Result<Linearizer<C>, RaftError<C, LinearizableReadError<C>>> {
-        self.app_api().get_read_linearizer(read_policy).await.into_raft_result()
+        self.app_api().get_read_linearizer(read_policy, None).await.into_raft_result()
     }
 
     /// Submit a mutating client request to Raft to update the state of the system (§5.1).

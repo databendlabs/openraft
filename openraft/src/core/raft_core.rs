@@ -9,7 +9,6 @@ use display_more::DisplayOptionExt;
 use display_more::DisplaySliceExt;
 use futures_util::FutureExt;
 use futures_util::StreamExt;
-use futures_util::TryFutureExt;
 use futures_util::stream::FuturesUnordered;
 use maplit::btreeset;
 use tracing::Instrument;
@@ -65,9 +64,7 @@ use crate::errors::Fatal;
 use crate::errors::ForwardToLeader;
 use crate::errors::Infallible;
 use crate::errors::InitializeError;
-use crate::errors::NetworkError;
 use crate::errors::QuorumNotEnough;
-use crate::errors::RPCError;
 use crate::errors::StorageIOResult;
 use crate::errors::Timeout;
 use crate::impls::ProgressResponder;
@@ -160,6 +157,18 @@ impl<C: RaftTypeConfig> fmt::Display for ApplyResult<C> {
             self.since, self.end, self.last_applied,
         )
     }
+}
+
+/// The outcome of a single voter's ReadIndex leadership-confirmation probe.
+///
+/// See [`RaftCore::handle_ensure_linearizable_read`].
+enum ConfirmOutcome<C: RaftTypeConfig> {
+    /// The voter acked the current vote (Success or Conflict both confirm leadership).
+    Granted(C::NodeId),
+    /// The voter reported a higher vote: this node is no longer leader.
+    HigherVote { target: C::NodeId, higher: VoteOf<C> },
+    /// The per-peer budget was exhausted without an ack.
+    Exhausted,
 }
 
 /// The core type implementing the Raft protocol.
@@ -360,8 +369,24 @@ where
     /// this node.
     // TODO: the second condition is such a read request can only read from state machine only when the last log it sees
     //       at `T1` is committed.
+    ///
+    /// When `timeout` is `Some`, the confirmation keeps re-probing only the voters that have
+    /// not yet acked (one heartbeat at a time per peer, paced at ~`heartbeat_interval`) until a
+    /// quorum acks or the budget is exhausted; already-acked voters are not re-contacted and the
+    /// call returns as soon as a quorum is reached. When `timeout` is `None` a single round is
+    /// performed (one attempt per voter), matching the legacy behavior.
+    ///
+    /// The effective budget is clamped below `leader_lease` regardless of how large the caller's
+    /// `timeout` is: the reply carries a single up-front `read_log_id`, which is only
+    /// linearizable while the granting quorum is still suppressing competing elections. A larger
+    /// wait cannot be answered safely without re-capturing `read_log_id` under a fresh quorum.
     #[tracing::instrument(level = "trace", skip(self, tx))]
-    pub(super) async fn handle_ensure_linearizable_read(&mut self, read_policy: ReadPolicy, tx: ClientReadTx<C>) {
+    pub(super) async fn handle_ensure_linearizable_read(
+        &mut self,
+        read_policy: ReadPolicy,
+        timeout: Option<Duration>,
+        tx: ClientReadTx<C>,
+    ) {
         // Setup sentinel values to track when we've received majority confirmation of leadership.
 
         let resp = {
@@ -400,7 +425,9 @@ where
 
         let my_id = self.id.clone();
         let my_vote = self.engine.state.vote_ref().clone();
-        let ttl = Duration::from_millis(self.config.heartbeat_interval);
+        // Per-attempt patience is always one heartbeat interval, regardless of the overall
+        // budget: shrinking it would make a healthy-but-slow peer look unreachable.
+        let per_attempt_ttl = Duration::from_millis(self.config.heartbeat_interval);
         let eff_mem = self.engine.state.membership_state.effective().clone();
         let core_tx = self.tx_notification.clone();
 
@@ -412,137 +439,167 @@ where
             return;
         }
 
-        // Spawn parallel requests, all with the standard timeout for heartbeats.
-        let mut pending = FuturesUnordered::new();
+        // Overall budget for gathering a quorum of confirmations. `None` => a single round
+        // (legacy behavior); `Some(d)` => keep re-confirming un-acked voters until a quorum
+        // acks or the deadline passes.
+        //
+        // The budget is clamped below `leader_lease`. This confirmation answers with a single
+        // `read_log_id` captured up-front, so it stays linearizable only while the granting
+        // quorum is *still* provably suppressing competing elections: every follower that acks
+        // our heartbeat resets its election timer and will not start an election for
+        // `leader_lease` (see `Leader::clock_progress`). As long as every ack lands within
+        // `leader_lease` of the round start, those suppression windows overlap, so no
+        // higher-term leader can have been elected -- let alone committed past `read_log_id` --
+        // before we answer. If the window were allowed to grow with the full caller budget,
+        // grants could be accumulated across a leadership change and the read could go stale.
+        // Keep a one-heartbeat margin, and never drop below one heartbeat of patience (the
+        // effective window of the legacy single round).
+        let safe_window = {
+            let heartbeat = Duration::from_millis(self.config.heartbeat_interval);
+            let leader_lease = self.engine.config.timer_config.leader_lease;
+            leader_lease.saturating_sub(heartbeat).max(heartbeat)
+        };
+        let confirm_deadline = timeout.map(|d| C::now() + d.min(safe_window));
 
-        let voter_progresses = {
-            let l = &self.engine.leader.as_ref().unwrap();
-            l.progress.iter().filter(|item| l.progress.is_voter(&item.id) == Some(true))
+        // Snapshot everything each per-peer probe needs, so the borrow on `self.engine` is
+        // released before we take `&mut self.network_factory` to create clients.
+        let leader_commit = self.engine.state.cluster_committed().cloned();
+        let voters = {
+            let l = self.engine.leader.as_ref().unwrap();
+            l.progress
+                .iter()
+                .filter(|item| l.progress.is_voter(&item.id) == Some(true))
+                .map(|item| (item.id.clone(), item.matching().cloned()))
+                .collect::<Vec<_>>()
         };
 
-        for item in voter_progresses {
-            let target = item.id.clone();
-            let progress = item;
+        // One independent, self-pacing confirmation future per voter (excluding self).
+        let mut pending = FuturesUnordered::new();
 
+        for (target, matching) in voters {
             if target == my_id {
                 continue;
             }
-
-            let rpc = AppendEntriesRequest {
-                vote: my_vote.clone(),
-                prev_log_id: progress.matching().cloned(),
-                entries: vec![],
-                leader_commit: self.engine.state.cluster_committed().cloned(),
-            };
 
             // Safe unwrap(): target is in membership
             let target_node = eff_mem.get_node(&target).unwrap().clone();
             let mut client = self.network_factory.new_heartbeat_client(target.clone(), &target_node).await;
 
-            let option = RPCOption::new(ttl);
+            let probe_id = my_id.clone();
+            let target_label = target.to_string();
+            // `AppendEntriesRequest` is not `Clone` (no `C: Clone` bound), so keep the
+            // cloneable parts and rebuild the heartbeat request on each retry.
+            let probe_vote = my_vote.clone();
+            let probe_commit = leader_commit.clone();
 
-            let fu = {
-                let my_id = my_id.clone();
-                let target = target.clone();
+            let fu = async move {
+                loop {
+                    let attempt_start = C::now();
 
-                async move {
-                    let input_stream = Box::pin(futures_util::stream::once(async { rpc }));
+                    let rpc = AppendEntriesRequest {
+                        vote: probe_vote.clone(),
+                        prev_log_id: matching.clone(),
+                        entries: vec![],
+                        leader_commit: probe_commit.clone(),
+                    };
+                    let input_stream = Box::pin(futures_util::stream::once(async move { rpc }));
 
-                    let outer_res = C::timeout(ttl, async {
-                        let mut output = client.stream_append(input_stream, option).await?;
+                    let outer_res = C::timeout(per_attempt_ttl, async {
+                        let mut output = client.stream_append(input_stream, RPCOption::new(per_attempt_ttl)).await?;
                         output.next().await.transpose()
                     })
                     .await;
 
                     match outer_res {
-                        Ok(Ok(Some(stream_result))) => Ok((target, stream_result)),
-                        Ok(Ok(None)) => {
-                            // Stream returned no response - treat as network error
-                            Err((
-                                target,
-                                RPCError::Network(NetworkError::from_string("stream_append returned no response")),
-                            ))
+                        // Got a response from the follower.
+                        Ok(Ok(Some(stream_result))) => {
+                            // A higher vote means this node is no longer leader.
+                            if let Err(StreamAppendError::HigherVote(higher)) = stream_result {
+                                return ConfirmOutcome::<C>::HigherVote { target, higher };
+                            }
+                            // Success or Conflict both confirm leadership.
+                            return ConfirmOutcome::<C>::Granted(target);
                         }
-                        Ok(Err(rpc_err)) => Err((target, rpc_err)),
+                        // No response / network error / timeout: a failed attempt to retry.
+                        Ok(Ok(None)) => {
+                            tracing::debug!("read-index probe to {} returned no response", target);
+                        }
+                        Ok(Err(rpc_err)) => {
+                            tracing::debug!("read-index probe to {} failed: {}", target, rpc_err);
+                        }
                         Err(_timeout) => {
-                            let timeout_err = Timeout {
+                            let timeout_err = Timeout::<C> {
                                 action: RPCTypes::AppendEntries,
-                                id: my_id,
+                                id: probe_id.clone(),
                                 target: target.clone(),
-                                timeout: ttl,
+                                timeout: per_attempt_ttl,
                             };
+                            tracing::debug!("read-index probe timed out: {}", timeout_err);
+                        }
+                    }
 
-                            Err((target, RPCError::Timeout(timeout_err)))
+                    // Attempt failed. Retry only while a budget remains.
+                    let Some(deadline) = confirm_deadline else {
+                        return ConfirmOutcome::<C>::Exhausted;
+                    };
+                    let now = C::now();
+                    if now >= deadline {
+                        return ConfirmOutcome::<C>::Exhausted;
+                    }
+
+                    // Pace retries to ~one heartbeat_interval per peer so a dead peer is probed at
+                    // the normal heartbeat cadence rather than in a busy loop on fast failures.
+                    let elapsed = now.saturating_duration_since(attempt_start);
+                    if elapsed < per_attempt_ttl {
+                        let remaining = deadline.saturating_duration_since(now);
+                        let pause = (per_attempt_ttl - elapsed).min(remaining);
+                        if !pause.is_zero() {
+                            C::sleep(pause).await;
                         }
                     }
                 }
             };
 
-            let fu = fu.instrument(tracing::debug_span!("spawn_is_leader", target = target.to_string()));
-            let task = C::spawn(fu).map_err(move |err| (target, err));
-
-            pending.push(task);
+            pending.push(fu.instrument(tracing::debug_span!("read_index_probe", target = target_label)));
         }
 
         let waiting_fu = async move {
-            // Handle responses as they return.
-            while let Some(res) = pending.next().await {
-                let (target, stream_result) = match res {
-                    Ok(Ok(res)) => res,
-                    Ok(Err((target, err))) => {
-                        tracing::error!(
-                            "timeout while confirming leadership for read request, target: {}, error: {}",
-                            target,
-                            err
-                        );
-                        continue;
+            // Handle per-peer outcomes as they resolve.
+            while let Some(outcome) = pending.next().await {
+                match outcome {
+                    // If any peer reports a greater vote, revert to follower and abort.
+                    ConfirmOutcome::HigherVote { target, higher } => {
+                        let send_res = core_tx
+                            .send(Notification::HigherVote {
+                                target,
+                                higher,
+                                leader_vote: my_vote.clone().into_committed(),
+                            })
+                            .await;
+
+                        if let Err(_e) = send_res {
+                            tracing::error!("failed to send HigherVote to RaftCore");
+                        }
+
+                        // we are no longer leader so error out early
+                        let err = ForwardToLeader::empty();
+                        tx.send(Err(err.into())).ok();
+                        return;
                     }
-                    Err((target, err)) => {
-                        tracing::error!("failed to join task: {}, target: {}", err, target);
-                        continue;
+                    ConfirmOutcome::Granted(target) => {
+                        granted.insert(target);
+                        if eff_mem.is_quorum(granted.iter()) {
+                            tx.send(Ok(resp)).ok();
+                            return;
+                        }
                     }
-                };
-
-                // If we receive a response with a greater vote, then revert to follower and abort this
-                // request.
-                if let Err(StreamAppendError::HigherVote(vote)) = stream_result {
-                    debug_assert!(
-                        vote.as_ref_vote() > my_vote.as_ref_vote(),
-                        "committed vote({}) has total order relation with other votes({})",
-                        my_vote,
-                        vote
-                    );
-
-                    let send_res = core_tx
-                        .send(Notification::HigherVote {
-                            target,
-                            higher: vote,
-                            leader_vote: my_vote.into_committed(),
-                        })
-                        .await;
-
-                    if let Err(_e) = send_res {
-                        tracing::error!("failed to send HigherVote to RaftCore");
+                    ConfirmOutcome::Exhausted => {
+                        // This voter gave up within the budget; keep waiting on the others.
                     }
-
-                    // we are no longer leader so error out early
-                    let err = ForwardToLeader::empty();
-                    tx.send(Err(err.into())).ok();
-                    return;
-                }
-
-                // Success or Conflict both confirm leadership (got valid response from follower)
-                granted.insert(target);
-
-                if eff_mem.is_quorum(granted.iter()) {
-                    tx.send(Ok(resp)).ok();
-                    return;
                 }
             }
 
-            // If we've hit this location, then we've failed to gather needed confirmations due to
-            // request failures.
-
+            // Every voter resolved without reaching a quorum.
             tx.send(Err(QuorumNotEnough {
                 cluster: eff_mem.membership().to_string(),
                 got: granted,
@@ -1662,8 +1719,12 @@ where
 
                 self.handle_pre_vote_request(rpc, tx);
             }
-            RaftMsg::GetLinearizer { read_policy, tx } => {
-                self.handle_ensure_linearizable_read(read_policy, tx).await;
+            RaftMsg::GetLinearizer {
+                read_policy,
+                timeout,
+                tx,
+            } => {
+                self.handle_ensure_linearizable_read(read_policy, timeout, tx).await;
             }
             RaftMsg::ClientWrite {
                 payloads,

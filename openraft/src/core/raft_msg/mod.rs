@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::fmt;
+use std::time::Duration;
 
 use display_more::DisplayOptionExt;
 
@@ -83,6 +84,18 @@ where C: RaftTypeConfig
 
     GetLinearizer {
         read_policy: ReadPolicy,
+        /// Overall budget for confirming leadership (ReadIndex).
+        ///
+        /// `None` performs a single heartbeat round (per-peer timeout is
+        /// `Config::heartbeat_interval`). `Some(d)` keeps re-confirming the
+        /// still-unacked voters, one heartbeat at a time per peer, until a
+        /// quorum acks or the budget `d` is exhausted.
+        ///
+        /// `d` is clamped below `leader_lease`: the reply carries a single
+        /// up-front `read_log_id` that only stays linearizable while the
+        /// granting quorum keeps suppressing competing elections, so a longer
+        /// wait cannot be honored without re-capturing under a fresh quorum.
+        timeout: Option<Duration>,
         tx: ClientReadTx<C>,
     },
 
