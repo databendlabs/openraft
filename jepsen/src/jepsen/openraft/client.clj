@@ -1,11 +1,13 @@
 (ns jepsen.openraft.client
   (:require [cheshire.core :as json]
             [clojure.string :as str])
-  (:import (java.net URI)
+  (:import (java.net ConnectException URI)
            (java.net.http HttpClient
+                          HttpConnectTimeoutException
                           HttpRequest
                           HttpRequest$BodyPublishers
-                          HttpResponse$BodyHandlers)
+                          HttpResponse$BodyHandlers
+                          HttpTimeoutException)
            (java.time Duration)))
 
 (def default-api-port 21001)
@@ -45,6 +47,18 @@
                       :uri (str (.uri request))}
         response (try
                    (.send http-client request (HttpResponse$BodyHandlers/ofString))
+                   (catch HttpConnectTimeoutException e
+                     (throw (ex-info "HTTP connection timed out"
+                                     (assoc request-info :kind :unreachable)
+                                     e)))
+                   (catch ConnectException e
+                     (throw (ex-info "HTTP connection failed"
+                                     (assoc request-info :kind :unreachable)
+                                     e)))
+                   (catch HttpTimeoutException e
+                     (throw (ex-info "HTTP request timed out"
+                                     (assoc request-info :kind :request-timeout)
+                                     e)))
                    (catch java.io.IOException e
                      (throw (ex-info "HTTP request failed"
                                      (assoc request-info :kind :transport-error)
@@ -52,7 +66,7 @@
                    (catch InterruptedException e
                      (.interrupt (Thread/currentThread))
                      (throw (ex-info "HTTP request interrupted"
-                                     (assoc request-info :kind :transport-error)
+                                     (assoc request-info :kind :interrupted)
                                      e))))
         status (.statusCode response)
         body (.body response)
@@ -83,6 +97,48 @@
                                              :response response}))
       :else body)))
 
+(defn- forward-to-leader? [e]
+  (contains? (or (:error (ex-data e)) {}) :ForwardToLeader))
+
+(defn- forward-endpoint [e]
+  (get-in (ex-data e)
+          [:error :ForwardToLeader :leader_node :data]))
+
+(defn- unreachable? [e]
+  (= :unreachable (:kind (ex-data e))))
+
+(defn- next-endpoint [endpoints attempted e]
+  (let [forward (forward-endpoint e)
+        candidates (if forward
+                     (cons forward endpoints)
+                     endpoints)]
+    (first (remove attempted candidates))))
+
+(defn with-leader!
+  "Runs request against the cached leader and follows safe routing failures.
+
+  ForwardToLeader and connection-establishment failures prove that the request
+  was not applied, so retrying them does not duplicate a mutation. Other
+  transport failures are returned to the workload for operation-aware handling."
+  [leader-endpoint endpoints request]
+  (loop [endpoint @leader-endpoint
+         attempted #{}]
+    (let [attempted (conj attempted endpoint)
+          [result value] (try
+                           [:ok (request endpoint)]
+                           (catch Exception e
+                             [:error e]))]
+      (if (= :ok result)
+        (do
+          (reset! leader-endpoint endpoint)
+          value)
+        (if (or (forward-to-leader? value)
+                (unreachable? value))
+          (if-let [endpoint (next-endpoint endpoints attempted value)]
+            (recur endpoint attempted)
+            (throw value))
+          (throw value))))))
+
 (defn get! [endpoint path]
   (-> (request-builder endpoint path)
       (.GET)
@@ -111,10 +167,26 @@
 (defn change-membership! [endpoint node-ids]
   (ok-value (post! endpoint "/change-membership" node-ids)))
 
+;; These functions make one HTTP attempt. KVClient performs leader routing and
+;; classifies errors based on whether the operation may have taken effect.
 (defn write! [endpoint key value]
-  (ok-value (post! endpoint "/write"
-                   {:Set {:key key
-                          :value value}})))
+  (-> (post! endpoint "/write"
+             {:Set {:key key
+                    :value value}})
+      ok-value
+      :data
+      :value))
 
-(defn read! [endpoint key]
-  (ok-value (post! endpoint "/read" key)))
+(defn cas! [endpoint key expected-version value]
+  (-> (post! endpoint "/write"
+             {:CompareAndSet {:key key
+                              :expected_version expected-version
+                              :value value}})
+      ok-value
+      :data
+      :value))
+
+(defn linearizable-read! [endpoint key]
+  (-> (post! endpoint "/linearizable_read" key)
+      ok-value
+      :value))
