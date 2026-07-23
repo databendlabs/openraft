@@ -33,6 +33,7 @@ pub(crate) struct Defaults {
     pub election_timeout_min: u64,
     pub election_timeout_max: u64,
     pub heartbeat_interval: u64,
+    pub heartbeat_min_interval: u64,
     pub install_snapshot_timeout: u64,
     pub send_snapshot_timeout: u64,
     pub max_payload_entries: u64,
@@ -60,6 +61,7 @@ pub(crate) const DEFAULTS: Defaults = Defaults {
     election_timeout_min: 150,
     election_timeout_max: 300,
     heartbeat_interval: 50,
+    heartbeat_min_interval: 0,
     install_snapshot_timeout: 200,
     send_snapshot_timeout: 0,
     max_payload_entries: 300,
@@ -193,6 +195,23 @@ pub struct Config {
     /// The heartbeat interval in milliseconds at which leaders will send heartbeats to followers
     #[cfg_attr(feature = "clap", clap(long, default_value_t = DEFAULTS.heartbeat_interval))]
     pub heartbeat_interval: u64,
+
+    /// The minimum interval in milliseconds between two heartbeats to the same follower.
+    ///
+    /// A successful replication response proves the same liveness facts as a heartbeat response
+    /// and also updates the leader lease clock. When a follower has acknowledged an RPC
+    /// (replication or heartbeat) that was sent within the last `heartbeat_min_interval`
+    /// milliseconds, the periodic heartbeat to this follower is suppressed, since it would be
+    /// redundant. Under sustained writes this eliminates most heartbeat RPCs; heartbeats resume
+    /// automatically once replication idles.
+    ///
+    /// It must hold that `heartbeat_interval + heartbeat_min_interval < election_timeout_min`,
+    /// so that suppression can never delay a heartbeat past a follower's election timeout.
+    ///
+    /// Defaults to 0, meaning heartbeats are always sent at `heartbeat_interval`.
+    #[since(version = "0.10.0")]
+    #[cfg_attr(feature = "clap", clap(long, default_value = "0"))]
+    pub heartbeat_min_interval: Option<u64>,
 
     /// The timeout for sending then installing the last snapshot segment,
     /// in millisecond. It is also used as the timeout for sending a non-last segment if
@@ -547,6 +566,7 @@ impl Default for Config {
             election_timeout_min: DEFAULTS.election_timeout_min,
             election_timeout_max: DEFAULTS.election_timeout_max,
             heartbeat_interval: DEFAULTS.heartbeat_interval,
+            heartbeat_min_interval: Some(DEFAULTS.heartbeat_min_interval),
             install_snapshot_timeout: DEFAULTS.install_snapshot_timeout,
             send_snapshot_timeout: DEFAULTS.send_snapshot_timeout,
             max_payload_entries: DEFAULTS.max_payload_entries,
@@ -661,6 +681,13 @@ impl Config {
         self.max_append_entries.unwrap_or(4096)
     }
 
+    /// Get the minimum interval in milliseconds between two heartbeats to the same follower.
+    ///
+    /// Defaults to 0 if not specified, meaning heartbeat suppression is disabled.
+    pub(crate) fn heartbeat_min_interval(&self) -> u64 {
+        self.heartbeat_min_interval.unwrap_or(0)
+    }
+
     /// Validate the state of this config.
     pub fn validate(self) -> Result<Config, ConfigError> {
         if self.election_timeout_min >= self.election_timeout_max {
@@ -674,6 +701,14 @@ impl Config {
             return Err(ConfigError::ElectionTimeoutLTHeartBeat {
                 election_timeout_min: self.election_timeout_min,
                 heartbeat_interval: self.heartbeat_interval,
+            });
+        }
+
+        if self.election_timeout_min <= self.heartbeat_interval + self.heartbeat_min_interval() {
+            return Err(ConfigError::HeartbeatMinIntervalTooLarge {
+                election_timeout_min: self.election_timeout_min,
+                heartbeat_interval: self.heartbeat_interval,
+                heartbeat_min_interval: self.heartbeat_min_interval(),
             });
         }
 
