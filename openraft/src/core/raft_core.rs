@@ -2205,18 +2205,20 @@ where
 
         let cluster_committed = lh.state.cluster_committed().cloned();
         let now = C::now();
-        let events =
-            lh.leader
-                .progress
-                .iter()
-                .filter(|progress_entry| progress_entry.id != self.id)
-                .map(|progress_entry| {
-                    (progress_entry.id.clone(), HeartbeatEvent {
-                        time: now,
-                        matching: progress_entry.matching.clone(),
-                        cluster_committed: cluster_committed.clone(),
-                    })
-                });
+        let min_interval = Duration::from_millis(self.config.heartbeat_min_interval());
+        let leader = &*lh.leader;
+        let events = leader
+            .progress
+            .iter()
+            .filter(|progress_entry| progress_entry.id != self.id)
+            .filter(|progress_entry| leader.need_heartbeat(&progress_entry.id, now, min_interval))
+            .map(|progress_entry| {
+                (progress_entry.id.clone(), HeartbeatEvent {
+                    time: now,
+                    matching: progress_entry.matching.clone(),
+                    cluster_committed: cluster_committed.clone(),
+                })
+            });
 
         self.heartbeat_handle.broadcast(events);
     }

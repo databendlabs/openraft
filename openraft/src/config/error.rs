@@ -38,6 +38,20 @@ pub enum ConfigError {
         heartbeat_interval: u64,
     },
 
+    /// Heartbeat suppression must not delay a heartbeat past a follower's election timeout.
+    #[since(version = "0.10.0")]
+    #[error(
+        "heartbeat_interval({heartbeat_interval}) + heartbeat_min_interval({heartbeat_min_interval}) must be < election_timeout_min({election_timeout_min})"
+    )]
+    HeartbeatMinIntervalTooLarge {
+        /// Minimum election timeout value.
+        election_timeout_min: u64,
+        /// Heartbeat interval value.
+        heartbeat_interval: u64,
+        /// Minimum interval between two heartbeats to the same follower.
+        heartbeat_min_interval: u64,
+    },
+
     /// Invalid snapshot policy string format.
     #[error("snapshot policy string is invalid: '{invalid:?}' expect: '{syntax}'")]
     InvalidSnapshotPolicy {
