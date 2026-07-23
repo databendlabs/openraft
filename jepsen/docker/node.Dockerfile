@@ -23,6 +23,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates \
       iproute2 \
+      iptables \
       libgcc-s1 \
       libstdc++6 \
       netcat-openbsd \

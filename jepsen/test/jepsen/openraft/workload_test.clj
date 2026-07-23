@@ -26,7 +26,18 @@
         (let [op {:type :invoke :f :read :value nil}
               result (client/invoke! (kv-client) {} op)]
           (is (= :fail (:type result)))
-          (is (= :timeout (:error result))))))))
+          (is (= :timeout (:error result)))))
+
+      (testing "a final recovery write must complete"
+        (let [op {:type :invoke
+                  :f :write
+                  :value "recovery-value"
+                  :final? true}
+              result (client/invoke! (kv-client) {} op)]
+          (is (= :info (:type result)))
+          (is (:unexpected? result))
+          (is (= :request-timeout
+                 (-> result :exception-data :kind))))))))
 
 (deftest classifies-cas-outcomes
   (let [op {:type :invoke
