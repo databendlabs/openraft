@@ -60,7 +60,26 @@
     (is (= :request-timeout (:kind (ex-data error)))
         "request timeouts must reach the workload error classifier")
     (is (= 1 @attempts)
-        "request timeouts must not be retried because a mutation may have committed")))
+        "request timeouts must not be retried because a mutation may have committed")
+    (is (= "n2:21001" @leader)
+        "the next operation should avoid the endpoint which timed out")))
+
+(deftest retries-read-timeout-on-another-node
+  (let [leader (atom "n1:21001")
+        attempts (atom [])
+        result (client/with-leader!
+                 leader
+                 ["n1:21001" "n2:21001" "n3:21001"]
+                 (fn [endpoint]
+                   (swap! attempts conj endpoint)
+                   (if (= "n1:21001" endpoint)
+                     (throw (ex-info "timeout"
+                                     {:kind :request-timeout}))
+                     :ok))
+                 client/retryable-read-error?)]
+    (is (= :ok result))
+    (is (= ["n1:21001" "n2:21001"] @attempts))
+    (is (= "n2:21001" @leader))))
 
 (deftest does-not-cache-an-unverified-leader
   (let [leader (atom "n1:21001")

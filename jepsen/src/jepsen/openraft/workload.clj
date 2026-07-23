@@ -32,6 +32,14 @@
      :f :write
      :value (next-value! value-counter)}))
 
+(defn- final-read-op [test process]
+  (assoc (read-op test process) :final? true))
+
+(defn- final-write-op [value-counter]
+  (let [write (write-op value-counter)]
+    (fn [test process]
+      (assoc (write test process) :final? true))))
+
 (defn- cas-op [latest-value value-counter]
   (fn [_test _process]
     (let [expected @latest-value
@@ -106,9 +114,10 @@
 
               (complete-with-ambiguous-outcome op :client-error true))]
         (cond-> result
-          (:unexpected? result)
+          (or (:unexpected? result) (:final? op))
           (assoc :exception-message (ex-message e)
-                 :exception-data (ex-data e)))))))
+                 :exception-data (ex-data e)
+                 :unexpected? true))))))
 
 (defn- unexpected-errors-checker []
   (reify checker/Checker
@@ -148,7 +157,8 @@
         (let [value (->> (http/with-leader!
                            leader-endpoint
                            endpoints
-                           #(http/linearizable-read! % key-name))
+                           #(http/linearizable-read! % key-name)
+                           http/retryable-read-error?)
                          (remember-latest! latest-value))]
           (assoc op
                  :type :ok
@@ -176,7 +186,7 @@
 
   (close! [_ _test]))
 
-(defn workload [opts]
+(defn workload [_opts]
   (let [latest-value (atom nil)
         value-counter (atom 0)
         operations (gen/mix [read-op
@@ -188,9 +198,11 @@
                     (gen/once {:type :invoke
                                :f :write
                                :value (next-value! value-counter)})
-                    (gen/time-limit (:time-limit opts)
-                                    (gen/stagger 0.1 operations))
-                    (gen/once read-op)))
+                    (gen/stagger 0.1 operations)))
+     :final-generator (gen/clients
+                        (gen/phases
+                          (gen/once (final-write-op value-counter))
+                          (gen/once final-read-op)))
      :checker (checker/compose
                 {:linearizable (checker/linearizable
                                  {:model (model/cas-register)})
