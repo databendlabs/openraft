@@ -135,9 +135,7 @@
         (if (or (forward-to-leader? value)
                 (unreachable? value))
           (if-let [endpoint (next-endpoint endpoints attempted value)]
-            (do
-              (reset! leader-endpoint endpoint)
-              (recur endpoint attempted))
+            (recur endpoint attempted)
             (throw value))
           (throw value))))))
 
