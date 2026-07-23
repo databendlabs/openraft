@@ -34,9 +34,18 @@
 
 (defn- cas-op [latest-value value-counter]
   (fn [_test _process]
-    {:type :invoke
-     :f :cas
-     :value [@latest-value (next-value! value-counter)]}))
+    (let [expected @latest-value
+          new-value (next-value! value-counter)]
+      (if expected
+        {:type :invoke
+         :f :cas
+         ;; Knossos models logical values. The version is request metadata for
+         ;; OpenRaft's version-based CAS and is not part of the model value.
+         :value [(:value expected) new-value]
+         :expected-version (:version expected)}
+        {:type :invoke
+         :f :write
+         :value new-value}))))
 
 (defn- mutation? [op]
   (#{:write :cas} (:f op)))
@@ -60,41 +69,46 @@
   Thread interruptions are rethrown."
   [op e]
   (let [{:keys [kind status error]} (ex-data e)]
-    (case kind
-      :interrupted
+    (if (= :interrupted kind)
       (throw e)
+      (let [result
+            (case kind
+              :unreachable
+              (complete-with-error op :fail :unreachable false)
 
-      :unreachable
-      (complete-with-error op :fail :unreachable false)
+              :request-timeout
+              (complete-with-ambiguous-outcome op :timeout false)
 
-      :request-timeout
-      (complete-with-ambiguous-outcome op :timeout false)
+              :transport-error
+              (complete-with-ambiguous-outcome op :transport-error false)
 
-      :transport-error
-      (complete-with-ambiguous-outcome op :transport-error false)
+              :http-error
+              ;; app-http returns 4xx before invoking a handler, while a 5xx
+              ;; may occur while serializing a response after a mutation has
+              ;; completed.
+              (if (and status (<= 400 status 499))
+                (complete-with-error op :fail [:http status] true)
+                (complete-with-ambiguous-outcome op [:http status] true))
 
-      :http-error
-      ;; app-http returns 4xx before invoking a handler, while a 5xx may occur
-      ;; while serializing a response after a mutation has completed.
-      (if (and status (<= 400 status 499))
-        (complete-with-error op :fail [:http status] true)
-        (complete-with-ambiguous-outcome op [:http status] true))
+              :invalid-json
+              (complete-with-ambiguous-outcome op :invalid-json true)
 
-      :invalid-json
-      (complete-with-ambiguous-outcome op :invalid-json true)
+              :openraft-error
+              (cond
+                (contains? error :ForwardToLeader)
+                (complete-with-error op :fail :not-leader false)
 
-      :openraft-error
-      (cond
-        (contains? error :ForwardToLeader)
-        (complete-with-error op :fail :not-leader false)
+                (contains? error :QuorumNotEnough)
+                (complete-with-error op :fail :quorum-not-enough false)
 
-        (contains? error :QuorumNotEnough)
-        (complete-with-error op :fail :quorum-not-enough false)
+                :else
+                (complete-with-ambiguous-outcome op :openraft-error true))
 
-        :else
-        (complete-with-ambiguous-outcome op :openraft-error true))
-
-      (complete-with-ambiguous-outcome op :client-error true))))
+              (complete-with-ambiguous-outcome op :client-error true))]
+        (cond-> result
+          (:unexpected? result)
+          (assoc :exception-message (ex-message e)
+                 :exception-data (ex-data e)))))))
 
 (defn- unexpected-errors-checker []
   (reify checker/Checker
@@ -123,14 +137,12 @@
     (try
       (case (:f op)
         :write
-        (let [value (->> (http/with-leader!
-                           leader-endpoint
-                           endpoints
-                           #(http/write! % key-name (:value op)))
-                         (remember-latest! latest-value))]
-          (assoc op
-                 :type :ok
-                 :value value))
+        (let [value (http/with-leader!
+                      leader-endpoint
+                      endpoints
+                      #(http/write! % key-name (:value op)))]
+          (remember-latest! latest-value value)
+          (assoc op :type :ok))
 
         :read
         (let [value (->> (http/with-leader!
@@ -140,23 +152,23 @@
                          (remember-latest! latest-value))]
           (assoc op
                  :type :ok
-                 :value value))
+                 :value (:value value)))
 
         :cas
-        (let [[expected new-value] (:value op)
+        (let [[_expected new-value] (:value op)
               value (->> (http/with-leader!
                            leader-endpoint
                            endpoints
                            #(http/cas! %
                                        key-name
-                                       (:version expected)
+                                       (:expected-version op)
                                        new-value))
                          (remember-latest! latest-value))]
           (if value
+            (assoc op :type :ok)
             (assoc op
-                   :type :ok
-                   :value [expected value])
-            (assoc op :type :fail))))
+                   :type :fail
+                   :error :version-mismatch))))
       (catch Exception e
         (handle-operation-exception op e))))
 

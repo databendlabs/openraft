@@ -25,13 +25,12 @@ The Docker test environment separates the Jepsen control plane from the OpenRaft
 +-------+-------+         +-------+-------+         +-------+-------+
         |                         |                         |
         | app_http API            | app_http API            | app_http API
-        | /init /write            | /metrics                | /metrics
-        | /linearizable_read      |                         |
+        | same endpoints          | same endpoints          | same endpoints
         |                         |                         |
         +----------- Raft RPC: /append /vote /snapshot -----+
 ```
 
-The control container is not an OpenRaft member. It runs the Jepsen process, controls the db nodes over SSH, and sends client operations to the KV service API. The OpenRaft cluster itself runs on `n1`, `n2`, and `n3`; those nodes communicate with each other over the Raft RPC port.
+The control container is not an OpenRaft member. It runs the Jepsen process, controls the db nodes over SSH, and sends client operations to the KV service API. Every db node exposes the same `app_http` endpoints, and the leader-aware client may contact any of them. The OpenRaft cluster itself runs on `n1`, `n2`, and `n3`; those nodes communicate with each other over the Raft RPC port.
 
 The intended layout is:
 

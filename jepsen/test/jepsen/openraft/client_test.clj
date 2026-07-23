@@ -61,3 +61,21 @@
         "request timeouts must reach the workload error classifier")
     (is (= 1 @attempts)
         "request timeouts must not be retried because a mutation may have committed")))
+
+(deftest does-not-cache-an-unverified-leader
+  (let [leader (atom "n1:21001")
+        attempts (atom [])
+        error (try
+                (client/with-leader!
+                  leader
+                  ["n1:21001" "n2:21001" "n3:21001"]
+                  (fn [endpoint]
+                    (swap! attempts conj endpoint)
+                    (throw (forward-error))))
+                nil
+                (catch clojure.lang.ExceptionInfo e
+                  e))]
+    (is error)
+    (is (= ["n1:21001" "n2:21001" "n3:21001"] @attempts))
+    (is (= "n1:21001" @leader)
+        "a retry candidate becomes the cached leader only after it succeeds")))
