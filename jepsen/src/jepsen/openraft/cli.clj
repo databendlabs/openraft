@@ -2,10 +2,11 @@
   (:gen-class)
   (:require [jepsen [checker :as checker]
                     [cli :as cli]
-                    [nemesis :as nemesis]
+                    [generator :as gen]
                     [tests :as tests]]
             [jepsen.openraft [db :as openraft-db]
-                             [workload :as workload]]))
+                             [workload :as workload]]
+            [jepsen.openraft.nemesis [partition :as partition]]))
 
 (def cli-opts
   [[nil "--api-port PORT" "OpenRaft application HTTP port."
@@ -17,15 +18,27 @@
     :parse-fn parse-long]])
 
 (defn openraft-test [opts]
-  (let [workload (workload/workload opts)]
+  (let [workload (workload/workload opts)
+        nemesis-package (partition/partition-package)]
     (merge tests/noop-test
            opts
-           workload
            {:name "openraft linearizable register"
             :db (openraft-db/db opts)
-            :nemesis nemesis/noop
+            :client (:client workload)
+            :nemesis (:nemesis nemesis-package)
+            :generator (gen/phases
+                         (gen/shortest-any
+                           (gen/nemesis
+                             (gen/phases
+                               (gen/time-limit
+                                 (:time-limit opts)
+                                 (:generator nemesis-package))
+                               (:final-generator nemesis-package)))
+                           (:generator workload))
+                         (:final-generator workload))
             :checker (checker/compose
                         {:stats (checker/stats)
+                         :nemesis (:checker nemesis-package)
                          :workload (:checker workload)})})))
 
 (defn -main [& args]

@@ -20,24 +20,30 @@
 (defn- ready-state? [state]
   (#{"Leader" "Follower"} state))
 
-(defn- cluster-ready? [test]
-  (let [leader-id (node-id test (jepsen/primary test))
-        metrics (into {}
+(defn- cluster-status [test]
+  (let [metrics (into {}
                       (map (fn [node]
                              [node (client/metrics!
                                      (client/api-endpoint test node))])
-                           (:nodes test)))]
-    (when (every? (fn [[_ m]]
-                    (and (= leader-id (:current_leader m))
-                         (ready-state? (:state m))))
-                  metrics)
-      metrics)))
+                           (:nodes test)))
+        leader-ids (set (map :current_leader (vals metrics)))
+        leaders (filter (fn [[_ metrics]]
+                          (= "Leader" (:state metrics)))
+                        metrics)]
+    (when (and (= 1 (count leader-ids))
+               (= 1 (count leaders))
+               (every? (comp ready-state? :state val) metrics))
+      (let [leader-id (first leader-ids)
+            [leader _] (first leaders)]
+        (when (= leader-id (node-id test leader))
+          {:leader leader
+           :metrics metrics})))))
 
 (defn await-ready! [test]
   (util/await-fn
-    #(or (cluster-ready? test)
+    #(or (cluster-status test)
          (throw (ex-info "OpenRaft cluster is not ready yet" {})))
-    {:log-message "Waiting for OpenRaft cluster to elect a leader"
+    {:log-message "Waiting for every OpenRaft node to agree on a leader"
      :timeout 60000}))
 
 (defn bootstrap! [test]

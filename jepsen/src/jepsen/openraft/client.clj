@@ -100,12 +100,25 @@
 (defn- forward-to-leader? [e]
   (contains? (or (:error (ex-data e)) {}) :ForwardToLeader))
 
+(defn- quorum-not-enough? [e]
+  (contains? (or (:error (ex-data e)) {}) :QuorumNotEnough))
+
 (defn- forward-endpoint [e]
   (get-in (ex-data e)
           [:error :ForwardToLeader :leader_node :data]))
 
 (defn- unreachable? [e]
   (= :unreachable (:kind (ex-data e))))
+
+(defn retryable-read-error?
+  "Returns true when a read can safely try another node after this error."
+  [e]
+  (let [kind (:kind (ex-data e))]
+    (or (#{:request-timeout :transport-error} kind)
+        (quorum-not-enough? e))))
+
+(defn- reroute-next-operation? [e]
+  (retryable-read-error? e))
 
 (defn- next-endpoint [endpoints attempted e]
   (let [forward (forward-endpoint e)
@@ -118,26 +131,35 @@
   "Runs request against the cached leader and follows safe routing failures.
 
   ForwardToLeader and connection-establishment failures prove that the request
-  was not applied, so retrying them does not duplicate a mutation. Other
-  transport failures are returned to the workload for operation-aware handling."
-  [leader-endpoint endpoints request]
-  (loop [endpoint @leader-endpoint
-         attempted #{}]
-    (let [attempted (conj attempted endpoint)
-          [result value] (try
-                           [:ok (request endpoint)]
-                           (catch Exception e
-                             [:error e]))]
-      (if (= :ok result)
-        (do
-          (reset! leader-endpoint endpoint)
-          value)
-        (if (or (forward-to-leader? value)
-                (unreachable? value))
-          (if-let [endpoint (next-endpoint endpoints attempted value)]
-            (recur endpoint attempted)
-            (throw value))
-          (throw value))))))
+  was not applied, so retrying them does not duplicate a mutation. The optional
+  retryable? predicate allows side-effect-free operations to retry additional
+  failures. An ambiguous failure is returned to the workload, but the next
+  operation starts from another endpoint."
+  ([leader-endpoint endpoints request]
+   (with-leader! leader-endpoint endpoints request (constantly false)))
+  ([leader-endpoint endpoints request retryable?]
+   (loop [endpoint @leader-endpoint
+          attempted #{}]
+     (let [attempted (conj attempted endpoint)
+           [result value] (try
+                            [:ok (request endpoint)]
+                            (catch Exception e
+                              [:error e]))]
+       (if (= :ok result)
+         (do
+           (reset! leader-endpoint endpoint)
+           value)
+         (if (or (forward-to-leader? value)
+                 (unreachable? value)
+                 (retryable? value))
+           (if-let [endpoint (next-endpoint endpoints attempted value)]
+             (recur endpoint attempted)
+             (throw value))
+           (do
+             (when (reroute-next-operation? value)
+               (when-let [endpoint (next-endpoint endpoints attempted value)]
+                 (reset! leader-endpoint endpoint)))
+             (throw value))))))))
 
 (defn get! [endpoint path]
   (-> (request-builder endpoint path)
