@@ -89,6 +89,7 @@ where
         SnapshotTransmitterHandle {
             _join_handle: join_handle,
             _tx_cancel: cancel_tx,
+            inflight_id,
         }
     }
 
@@ -105,6 +106,7 @@ where
             let error = match res {
                 Err(error) => error,
                 Ok(_) => {
+                    self.notify_snapshot_transmitted().await;
                     return;
                 }
             };
@@ -114,6 +116,7 @@ where
             match error {
                 ReplicationError::Closed(closed) => {
                     tracing::info!("snapshot transmission canceled: {}", closed);
+                    self.notify_snapshot_transmitted().await;
                     return;
                 }
                 ReplicationError::HigherVote(h) => {
@@ -121,13 +124,14 @@ where
                     self.replication_context
                         .tx_notify
                         .send(Notification::HigherVote {
-                            target: self.replication_context.target,
+                            target: self.replication_context.target.clone(),
                             higher: h.higher,
                             leader_vote: self.replication_context.leader_vote.clone(),
                         })
                         .await
                         .ok();
 
+                    self.notify_snapshot_transmitted().await;
                     return;
                 }
                 ReplicationError::StorageError(error) => {
@@ -137,6 +141,7 @@ where
                         error
                     );
                     self.replication_context.tx_notify.send(Notification::StorageError { error }).await.ok();
+                    self.notify_snapshot_transmitted().await;
                     return;
                 }
                 ReplicationError::RPCError(err) => {
@@ -173,6 +178,7 @@ where
                             }
                             _ = recv.fuse() => {
                                 tracing::info!("snapshot transmission canceled by RaftCore");
+                                self.notify_snapshot_transmitted().await;
                                 return;
                             }
                         }
@@ -250,6 +256,19 @@ where
                     stream_id: self.replication_context.stream_id,
                     target: self.replication_context.target.clone(),
                     sending_time,
+                }
+            })
+            .await
+            .ok();
+    }
+
+    async fn notify_snapshot_transmitted(&mut self) {
+        self.replication_context
+            .tx_notify
+            .send({
+                Notification::SnapshotTransmitted {
+                    target: self.replication_context.target.clone(),
+                    inflight_id: self.inflight_id,
                 }
             })
             .await

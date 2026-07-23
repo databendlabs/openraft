@@ -14,6 +14,8 @@ mod replication_session_id;
 pub(crate) mod response;
 pub(crate) mod snapshot_transmitter;
 pub(crate) mod snapshot_transmitter_handle;
+#[cfg(test)]
+mod snapshot_transmitter_test;
 pub(crate) mod stream_context;
 pub(crate) mod stream_state;
 

@@ -1978,6 +1978,20 @@ where
                 }
             }
 
+            Notification::SnapshotTransmitted { target, inflight_id } => {
+                tracing::debug!(
+                    "recv Notification::SnapshotTransmitted: target: {}, inflight_id: {}",
+                    target,
+                    inflight_id
+                );
+
+                if let Some(node) = self.replications.get_mut(&target)
+                    && node.clear_snapshot_transmit_if_match(inflight_id)
+                {
+                    tracing::info!("snapshot transmission done for target {}", target);
+                }
+            }
+
             Notification::StateMachine { command_result } => {
                 tracing::debug!("sm::StateMachine command result: {:?}", command_result);
 
@@ -2462,7 +2476,9 @@ where
                 );
 
                 let node = self.replications.get_mut(&target).expect("replication to target node exists");
-                // TODO: it is not cleaned when snapshot transmission is done.
+                // Replace any existing handle. The old handle is dropped, which signals its
+                // snapshot task to cancel. Completed tasks clear the handle via
+                // `Notification::SnapshotTransmitted`.
                 node.snapshot_transmit_handle = Some(handle);
             }
             Command::BroadcastTransferLeader { req } => self.broadcast_transfer_leader(req).await,

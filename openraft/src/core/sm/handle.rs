@@ -70,6 +70,11 @@ where
     C: RaftTypeConfig,
     SM: RaftStateMachine<C>,
 {
+    #[cfg(test)]
+    pub(crate) fn new_test(cmd_tx: MpscWeakSenderOf<C, sm::Command<C, SM>>) -> Self {
+        Self { cmd_tx }
+    }
+
     /// Get a snapshot from the state machine.
     ///
     /// If the state machine worker has shutdown, it will return an error.
