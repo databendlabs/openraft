@@ -7,6 +7,8 @@ ARGS ?= --nodes $(NODES) --concurrency $(CONCURRENCY) --ssh-private-key $(SSH_KE
 jepsen: build
 	@echo "[jepsen] starting containers"
 	@$(COMPOSE) up -d --force-recreate
+	@echo "[jepsen] running unit tests"
+	@$(COMPOSE) exec control lein test
 	@echo "[jepsen] running linearizability test"
 	@$(COMPOSE) exec control lein run test $(ARGS)
 
