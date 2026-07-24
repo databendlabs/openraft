@@ -1,0 +1,44 @@
+name: jepsen
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  jepsen:
+    name: Jepsen
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+
+      - name: Test | Jepsen
+        run: make -C jepsen jepsen
+
+      - name: Debug | Docker logs
+        if: failure()
+        run: |
+          docker compose -f jepsen/docker/docker-compose.yml logs --no-color \
+            | tee jepsen/docker-compose.log
+
+      - name: Debug | Upload Jepsen results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jepsen-results
+          path: |
+            jepsen/store/
+            jepsen/docker-compose.log
+          if-no-files-found: ignore
+
+      - name: Cleanup | Docker
+        if: always()
+        run: make -C jepsen down
