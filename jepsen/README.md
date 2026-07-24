@@ -76,7 +76,7 @@ The `jepsen.openraft` namespace contains the OpenRaft-specific Jepsen code:
 From the repository root:
 
 ```bash
-# Build images, start containers, and run the linearizability test.
+# Build images, start containers, then run unit and linearizability tests.
 $ make -C jepsen jepsen
 
 # Generate the local Docker SSH key and build the Jepsen images.
