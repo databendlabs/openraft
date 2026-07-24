@@ -21,7 +21,7 @@
     (merge tests/noop-test
            opts
            workload
-           {:name "openraft cluster smoke"
+           {:name "openraft linearizable register"
             :db (openraft-db/db opts)
             :nemesis nemesis/noop
             :checker (checker/compose
