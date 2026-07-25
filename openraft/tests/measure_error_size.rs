@@ -12,7 +12,6 @@ openraft::declare_raft_types!(
         NodeId = u64,
         Node = BasicNode,
         Entry = openraft::Entry<<Self::LeaderId as openraft::vote::RaftLeaderId>::Committed, Self::D, Self::NodeId, Self::Node>,
-        SnapshotData = std::io::Cursor<Vec<u8>>,
         AsyncRuntime = openraft::impls::TokioRuntime
 );
 

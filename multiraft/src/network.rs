@@ -36,6 +36,9 @@ use openraft::type_config::alias::VoteOf;
 pub trait GroupRouter<C, G>: Clone + OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
 {
+    /// Snapshot data this router can transmit.
+    type SnapshotData: OptionalSend + 'static;
+
     /// Send AppendEntries to target node for a specific group.
     fn append_entries(
         &self,
@@ -60,7 +63,7 @@ where C: RaftTypeConfig
         target: C::NodeId,
         group_id: G,
         vote: VoteOf<C>,
-        snapshot: SnapshotOf<C>,
+        snapshot: SnapshotOf<C, Self::SnapshotData>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,
     ) -> impl Future<Output = Result<SnapshotResponse<C>, StreamingError<C>>> + OptionalSend;
@@ -149,6 +152,8 @@ where
     G: Clone + OptionalSend + OptionalSync + 'static,
     N: GroupRouter<C, G>,
 {
+    type SnapshotData = N::SnapshotData;
+
     async fn append_entries(
         &mut self,
         rpc: AppendEntriesRequest<C>,
@@ -164,7 +169,7 @@ where
     async fn full_snapshot(
         &mut self,
         vote: VoteOf<C>,
-        snapshot: SnapshotOf<C>,
+        snapshot: SnapshotOf<C, Self::SnapshotData>,
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,
     ) -> Result<SnapshotResponse<C>, StreamingError<C>> {

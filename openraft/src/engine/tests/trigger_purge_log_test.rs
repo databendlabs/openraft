@@ -12,7 +12,6 @@ use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
-use crate::progress::Progress;
 use crate::storage::SnapshotMeta;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::StoredMembershipOf;
@@ -115,7 +114,11 @@ fn test_trigger_purge_log_in_used_wont_be_delete() -> anyhow::Result<()> {
     // Make it a leader and mark the logs are in flight.
     eng.testing_new_leader();
     let l = eng.leader.as_mut().unwrap();
-    let _ = l.progress.get_mut(&2).unwrap().next_send(eng.state.deref_mut(), 10).unwrap();
+    l.progress
+        .update_entry_with(&2, |entry| {
+            entry.next_send(eng.state.deref_mut(), 10).unwrap();
+        })
+        .unwrap();
 
     eng.trigger_purge_log(5);
 

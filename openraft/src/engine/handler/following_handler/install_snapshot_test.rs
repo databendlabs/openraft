@@ -1,4 +1,3 @@
-use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -63,13 +62,13 @@ fn test_install_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
     // `snapshot_meta.last_log_id`.
     let mut eng = eng();
 
-    let cond = eng.following_handler().install_full_snapshot(SnapshotOf::<UTConfig> {
+    let cond = eng.following_handler().install_full_snapshot(SnapshotOf::<UTConfig, ()> {
         meta: SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(2, 1, 2)),
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
             snapshot_id: "1-2-3-4".to_string(),
         },
-        snapshot: Cursor::new(vec![0u8]),
+        snapshot: (),
     });
 
     assert_eq!(None, cond);
@@ -95,13 +94,13 @@ fn test_install_snapshot_lt_committed() -> anyhow::Result<()> {
     // Although in this case the state machine is not affected.
     let mut eng = eng();
 
-    let cond = eng.following_handler().install_full_snapshot(SnapshotOf::<UTConfig> {
+    let cond = eng.following_handler().install_full_snapshot(SnapshotOf::<UTConfig, ()> {
         meta: SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(4, 1, 5)),
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
             snapshot_id: "1-2-3-4".to_string(),
         },
-        snapshot: Cursor::new(vec![0u8]),
+        snapshot: (),
     });
 
     assert_eq!(None, cond);
@@ -124,13 +123,13 @@ fn test_install_snapshot_not_conflict() -> anyhow::Result<()> {
     // Snapshot will be installed and there are no conflicting logs.
     let mut eng = eng();
 
-    let cond = eng.following_handler().install_full_snapshot(SnapshotOf::<UTConfig> {
+    let cond = eng.following_handler().install_full_snapshot(SnapshotOf::<UTConfig, ()> {
         meta: SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(4, 1, 6)),
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
             snapshot_id: "1-2-3-4".to_string(),
         },
-        snapshot: Cursor::new(vec![0u8]),
+        snapshot: (),
     });
 
     assert_eq!(
@@ -159,13 +158,13 @@ fn test_install_snapshot_not_conflict() -> anyhow::Result<()> {
         vec![
             //
             Command::from(sm::Command::install_full_snapshot(
-                SnapshotOf::<UTConfig> {
+                SnapshotOf::<UTConfig, ()> {
                     meta: SnapshotMetaOf::<UTConfig> {
                         last_log_id: Some(log_id(4, 1, 6)),
                         last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
                         snapshot_id: "1-2-3-4".to_string(),
                     },
-                    snapshot: Cursor::new(vec![0u8]),
+                    snapshot: (),
                 },
                 LogIOId::new(Vote::new(2, 1).into_committed(), Some(log_id(4, 1, 6))),
             )),
@@ -190,13 +189,13 @@ fn test_install_snapshot_resets_purged_effective_membership() -> anyhow::Result<
     );
     eng.state.server_state = eng.calc_server_state();
 
-    let cond = eng.following_handler().install_full_snapshot(SnapshotOf::<UTConfig> {
+    let cond = eng.following_handler().install_full_snapshot(SnapshotOf::<UTConfig, ()> {
         meta: SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(5, 1, 9)),
             last_membership: snapshot_membership.clone(),
             snapshot_id: "1-2-3-4".to_string(),
         },
-        snapshot: Cursor::new(vec![0u8]),
+        snapshot: (),
     });
 
     assert_eq!(
@@ -233,13 +232,13 @@ fn test_install_snapshot_resets_purged_effective_without_truncating() -> anyhow:
     );
     eng.state.server_state = eng.calc_server_state();
 
-    let cond = eng.following_handler().install_full_snapshot(SnapshotOf::<UTConfig> {
+    let cond = eng.following_handler().install_full_snapshot(SnapshotOf::<UTConfig, ()> {
         meta: SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(5, 1, 9)),
             last_membership: snapshot_membership.clone(),
             snapshot_id: "1-2-3-4".to_string(),
         },
-        snapshot: Cursor::new(vec![0u8]),
+        snapshot: (),
     });
 
     assert_eq!(
@@ -257,13 +256,13 @@ fn test_install_snapshot_resets_purged_effective_without_truncating() -> anyhow:
     assert_eq!(
         vec![
             Command::from(sm::Command::install_full_snapshot(
-                SnapshotOf::<UTConfig> {
+                SnapshotOf::<UTConfig, ()> {
                     meta: SnapshotMetaOf::<UTConfig> {
                         last_log_id: Some(log_id(5, 1, 9)),
                         last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(5, 1, 4)), m12()),
                         snapshot_id: "1-2-3-4".to_string(),
                     },
-                    snapshot: Cursor::new(vec![0u8]),
+                    snapshot: (),
                 },
                 LogIOId::new(Vote::new(2, 1).into_committed(), Some(log_id(5, 1, 9)))
             )),
@@ -307,13 +306,13 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
         eng
     };
 
-    let cond = eng.following_handler().install_full_snapshot(SnapshotOf::<UTConfig> {
+    let cond = eng.following_handler().install_full_snapshot(SnapshotOf::<UTConfig, ()> {
         meta: SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(5, 1, 6)),
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
             snapshot_id: "1-2-3-4".to_string(),
         },
-        snapshot: Cursor::new(vec![0u8]),
+        snapshot: (),
     });
 
     assert_eq!(
@@ -346,13 +345,13 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
                 after: Some(log_id(2, 1, 3))
             },
             Command::from(sm::Command::install_full_snapshot(
-                SnapshotOf::<UTConfig> {
+                SnapshotOf::<UTConfig, ()> {
                     meta: SnapshotMetaOf::<UTConfig> {
                         last_log_id: Some(log_id(5, 1, 6)),
                         last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
                         snapshot_id: "1-2-3-4".to_string(),
                     },
-                    snapshot: Cursor::new(vec![0u8]),
+                    snapshot: (),
                 },
                 LogIOId::new(Vote::new(2, 1).into_committed(), Some(log_id(5, 1, 6)))
             )),
@@ -369,13 +368,13 @@ fn test_install_snapshot_advance_last_log_id() -> anyhow::Result<()> {
     // Snapshot will be installed and there are no conflicting logs.
     let mut eng = eng();
 
-    let cond = eng.following_handler().install_full_snapshot(SnapshotOf::<UTConfig> {
+    let cond = eng.following_handler().install_full_snapshot(SnapshotOf::<UTConfig, ()> {
         meta: SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(100, 1, 100)),
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
             snapshot_id: "1-2-3-4".to_string(),
         },
-        snapshot: Cursor::new(vec![0u8]),
+        snapshot: (),
     });
 
     assert_eq!(
@@ -408,13 +407,13 @@ fn test_install_snapshot_advance_last_log_id() -> anyhow::Result<()> {
     assert_eq!(
         vec![
             Command::from(sm::Command::install_full_snapshot(
-                SnapshotOf::<UTConfig> {
+                SnapshotOf::<UTConfig, ()> {
                     meta: SnapshotMetaOf::<UTConfig> {
                         last_log_id: Some(log_id(100, 1, 100)),
                         last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
                         snapshot_id: "1-2-3-4".to_string(),
                     },
-                    snapshot: Cursor::new(vec![0u8]),
+                    snapshot: (),
                 },
                 LogIOId::new(Vote::new(2, 1).into_committed(), Some(log_id(100, 1, 100)))
             )),
@@ -433,13 +432,13 @@ fn test_install_snapshot_update_accepted() -> anyhow::Result<()> {
     // Snapshot will be installed and `accepted` should be updated.
     let mut eng = eng();
 
-    let cond = eng.following_handler().install_full_snapshot(SnapshotOf::<UTConfig> {
+    let cond = eng.following_handler().install_full_snapshot(SnapshotOf::<UTConfig, ()> {
         meta: SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(100, 1, 100)),
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
             snapshot_id: "1-2-3-4".to_string(),
         },
-        snapshot: Cursor::new(vec![0u8]),
+        snapshot: (),
     });
 
     assert_eq!(

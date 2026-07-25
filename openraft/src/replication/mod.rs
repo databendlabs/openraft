@@ -233,7 +233,12 @@ where
                 // If there is new data to send, even when the current data is not yet finished sending
                 // discard the current data, start to send the new data.
                 // When data is reverted in LogsSince mode, it needs such a mechanism.
-                let new_data = self.event_watcher.replicate_rx.borrow_watched().clone();
+                //
+                // `borrow_and_update()` marks the value as seen; a plain `borrow_watched()`
+                // would leave the change notification pending, and `drain_events()` would
+                // later observe it and replay the same command, re-running an
+                // already-acknowledged payload.
+                let new_data = self.event_watcher.replicate_rx.borrow_and_update().clone();
                 if self.inflight_id != Some(new_data.inflight_id) {
                     tracing::info!(
                         "ReplicationCore replaced current data with inflight id {:?} with new {}",
@@ -319,8 +324,26 @@ where
         inflight_queue: InflightAppendQueue<C>,
     ) -> Result<(), &'static str> {
         let mut resp_strm = std::pin::pin!(resp_strm);
+        let mut cancel_rx = self.replication_context.cancel_rx.clone();
 
-        while let Some(rpc_res) = resp_strm.next().await {
+        loop {
+            let rpc_res = {
+                let next_resp = resp_strm.next();
+                let cancel = cancel_rx.changed();
+
+                futures_util::select! {
+                    rpc_res = next_resp.fuse() => rpc_res,
+                    cancel_res = cancel.fuse() => {
+                        tracing::info!("ReplicationCore: canceled while waiting response: {:?}", cancel_res);
+                        return Err("canceled");
+                    }
+                }
+            };
+
+            let Some(rpc_res) = rpc_res else {
+                return Ok(());
+            };
+
             tracing::debug!("AppendEntries RPC response: {:?}", rpc_res);
 
             self.backoff_state.observe(&rpc_res);
@@ -366,7 +389,6 @@ where
                 }
             }
         }
-        Ok(())
     }
 
     /// Send the error result to RaftCore.
@@ -386,6 +408,7 @@ where
         self.replication_context
             .tx_notify
             .send(Notification::ReplicationProgress {
+                stream_id: self.replication_context.stream_id,
                 progress: Progress {
                     target: self.replication_context.target.clone(),
                     result: Err(err.to_string()),
@@ -447,6 +470,7 @@ where
             .tx_notify
             .send({
                 Notification::ReplicationProgress {
+                    stream_id: self.replication_context.stream_id,
                     progress: Progress {
                         target: self.replication_context.target.clone(),
                         result: Ok(replication_result.clone()),
@@ -476,7 +500,9 @@ where
         futures_util::select! {
             entries_res = entries.fuse() => {
                 entries_res.map_err(|_e| ReplicationClosed::new("replicate_rx closed"))?;
-                let data = self.event_watcher.replicate_rx.borrow_watched().clone();
+                // This read delivers the command: `borrow_and_update()` marks it as seen so a
+                // value arriving after `changed()` resolved is not delivered a second time.
+                let data = self.event_watcher.replicate_rx.borrow_and_update().clone();
                 self.inflight_id = Some(data.inflight_id);
                 self.next_action = Some(data.payload);
             }
@@ -484,7 +510,8 @@ where
                 committed_res.map_err(|_e| ReplicationClosed::new("committed_rx closed"))?;
 
                 // Committed update: create an empty-range payload to sync commit index.
-                let committed = self.event_watcher.committed_rx.borrow_watched().clone();
+                // This read delivers the event, thus it marks the value as seen.
+                let committed = self.event_watcher.committed_rx.borrow_and_update().clone();
                 self.replication_progress.local_committed = committed;
 
                 let m = self.replication_progress.remote_matched.clone();

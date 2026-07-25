@@ -136,7 +136,8 @@ fn test_inflight_ack_inflight_id_mismatch() -> anyhow::Result<()> {
         let mut f = Inflight::<UTConfig>::logs(Some(log_id(5)), Some(log_id(10)), InflightId::new(1));
         let original = f;
 
-        f.ack(Some(log_id(7)), InflightId::new(2));
+        let applied = f.ack(Some(log_id(7)), InflightId::new(2));
+        assert!(!applied, "ack with mismatched inflight_id is stale");
         assert_eq!(original, f, "ack with mismatched inflight_id should be ignored");
     }
 
@@ -145,12 +146,28 @@ fn test_inflight_ack_inflight_id_mismatch() -> anyhow::Result<()> {
         let mut f = Inflight::<UTConfig>::snapshot(InflightId::new(1));
         let original = f;
 
-        f.ack(Some(log_id(5)), InflightId::new(2));
+        let applied = f.ack(Some(log_id(5)), InflightId::new(2));
+        assert!(!applied, "snapshot ack with mismatched inflight_id is stale");
         assert_eq!(
             original, f,
             "snapshot ack with mismatched inflight_id should be ignored"
         );
     }
+
+    Ok(())
+}
+
+#[test]
+fn test_inflight_ack_none_is_stale() -> anyhow::Result<()> {
+    // A log reversion can clear the inflight to `None` while acks queued before the reset are
+    // still arriving (in pipeline mode many acks share one `InflightId`). Such an ack must be
+    // reported as stale and ignored -- it must never panic, and it must not mutate the inflight.
+    let mut f = Inflight::<UTConfig>::None;
+
+    let applied = f.ack(Some(log_id(5)), InflightId::new(1));
+
+    assert!(!applied, "ack on a cleared (None) inflight is stale");
+    assert_eq!(Inflight::<UTConfig>::None, f, "stale ack must not mutate inflight");
 
     Ok(())
 }

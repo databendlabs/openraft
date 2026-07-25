@@ -72,19 +72,18 @@ where C: RaftTypeConfig
     /// may revert to an older state on restart, and the application must handle that carefully.
     ///
     /// When `committed` is not saved, on restart the state machine is recovered only to the last
-    /// snapshot. It catches back up once this node perceives the cluster commit re-established by
-    /// the current leader and re-applies up to it; until then a read — linearizable or not — may
+    /// snapshot. It catches back up once this node perceives a cluster commit that covers its
+    /// durable log tail and re-applies up to it; until then a read — linearizable or not — may
     /// observe a state older than one already observed before the restart.
     ///
     /// To avoid serving such a reverted read, either:
     ///
     /// - save `committed` here (recommended): the recovered `committed` is then the true
     ///   pre-restart value, and the state machine is re-applied up to it on startup; or
-    /// - wait for recovery before serving reads: [`Raft::wait_for_recovery`] blocks until the
-    ///   re-established cluster commit has been applied. This is sound for the same reason
-    ///   linearizable reads are — the re-established commit is at least the current leader's first
-    ///   (blank) log entry, hence at least any previously applied log id (the `read_log_id`
-    ///   condition).
+    /// - wait for recovery before serving reads: [`Raft::wait_for_recovery`] blocks until a cluster
+    ///   commit covering the node's durable log tail has been applied. This is sound for the same
+    ///   reason linearizable reads are: the applied log reaches a quorum-confirmed `read_log_id`
+    ///   that covers every durable entry the old state machine could have applied.
     ///
     /// ```ignore
     /// let raft = Raft::new(id, config, network, log_store, sm).await?;

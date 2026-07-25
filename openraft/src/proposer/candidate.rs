@@ -6,8 +6,8 @@ use crate::RaftTypeConfig;
 use crate::base::shared_id_generator::SharedIdGenerator;
 use crate::display_ext::DisplayInstantExt;
 use crate::engine::leader_log_ids::LeaderLogIds;
-use crate::progress::Progress;
 use crate::progress::VecProgress;
+use crate::progress::id_val::IdVal;
 use crate::proposer::Leader;
 use crate::quorum::QuorumSet;
 use crate::type_config::alias::InstantOf;
@@ -32,7 +32,7 @@ where
     last_log_id: Option<LogIdOf<C>>,
 
     /// Which nodes have granted the vote at certain time point.
-    progress: VecProgress<C::NodeId, bool, bool, QS>,
+    progress: VecProgress<IdVal<C::NodeId, bool>, QS>,
 
     quorum_set: QS,
 
@@ -75,7 +75,7 @@ where
             starting_time,
             vote,
             last_log_id,
-            progress: VecProgress::new(quorum_set.clone(), [], || false),
+            progress: VecProgress::new(quorum_set.clone(), [], IdVal::new_default),
             quorum_set,
             learner_ids: learner_ids.into_iter().collect::<Vec<_>>(),
             progress_id_gen,
@@ -98,7 +98,7 @@ where
         self.starting_time
     }
 
-    pub(crate) fn progress(&self) -> &VecProgress<C::NodeId, bool, bool, QS> {
+    pub(crate) fn progress(&self) -> &VecProgress<IdVal<C::NodeId, bool>, QS> {
         &self.progress
     }
 

@@ -41,9 +41,11 @@ use crate::core::notification::Notification;
 use crate::core::raft_msg::AppendEntriesTx;
 use crate::core::raft_msg::ClientReadTx;
 use crate::core::raft_msg::RaftMsg;
+use crate::core::raft_msg::RaftMsgName;
 use crate::core::raft_msg::ResultSender;
 use crate::core::raft_msg::VoteTx;
 use crate::core::raft_msg::external_command::ExternalCommand;
+use crate::core::raft_msg::install_full_snapshot_request::InstallFullSnapshotRequest;
 use crate::core::runtime_stats::RuntimeStats;
 use crate::core::sm;
 use crate::core::stage::Stage;
@@ -77,13 +79,14 @@ use crate::metrics::RaftMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::metrics::ReplicationMetrics;
 use crate::metrics::SerdeInstant;
+use crate::network::NetSnapshot;
 use crate::network::NetStreamAppend;
 use crate::network::NetTransferLeader;
 use crate::network::NetVote;
 use crate::network::RPCOption;
 use crate::network::RPCTypes;
 use crate::network::RaftNetworkFactory;
-use crate::progress::Progress;
+use crate::progress::VecProgressEntry;
 use crate::progress::stream_id::StreamId;
 use crate::quorum::QuorumSet;
 use crate::raft::AppendEntriesRequest;
@@ -111,6 +114,7 @@ use crate::replication::snapshot_transmitter::SnapshotTransmitter;
 use crate::runtime::RaftRuntime;
 use crate::storage::IOFlushed;
 use crate::storage::RaftLogStorage;
+use crate::storage::RaftStateMachine;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::BatchOf;
 use crate::type_config::alias::CommittedLeaderIdOf;
@@ -163,7 +167,9 @@ pub struct RaftCore<C, NF, LS, SM>
 where
     C: RaftTypeConfig,
     NF: RaftNetworkFactory<C>,
+    NF::Network: NetSnapshot<C, SnapshotData = SM::SnapshotData>,
     LS: RaftLogStorage<C>,
+    SM: RaftStateMachine<C>,
 {
     /// This node's ID.
     pub(crate) id: C::NodeId,
@@ -200,6 +206,20 @@ where
     #[allow(dead_code)]
     pub(crate) tx_api: MpscSenderOf<C, RaftMsg<C>>,
     pub(crate) rx_api: BatchRaftMsgReceiver<C>,
+
+    /// A self-held keepalive sender for the dedicated install-snapshot channel.
+    ///
+    /// Mirrors [`Self::tx_api`]: it keeps `rx_install_snapshot` open after the application drops
+    /// its last `Raft` handle, so the core shuts down only via `rx_shutdown` instead of
+    /// truncating an in-flight `stream_append`.
+    #[allow(dead_code)]
+    pub(crate) tx_install_snapshot: MpscSenderOf<C, InstallFullSnapshotRequest<C, SM>>,
+
+    /// Receiver of the dedicated channel that delivers a full snapshot to install.
+    ///
+    /// The snapshot data type is defined by the state machine, thus it does not go through
+    /// `rx_api`, which is independent of the state machine type.
+    pub(crate) rx_install_snapshot: MpscReceiverOf<C, InstallFullSnapshotRequest<C, SM>>,
 
     /// A Sender to send callback by other components to [`RaftCore`], when an action is finished,
     /// such as flushing log to disk, or applying log entries to state machine.
@@ -279,8 +299,9 @@ impl<C, NF, LS, SM> RaftCore<C, NF, LS, SM>
 where
     C: RaftTypeConfig,
     NF: RaftNetworkFactory<C>,
+    NF::Network: NetSnapshot<C, SnapshotData = SM::SnapshotData>,
     LS: RaftLogStorage<C>,
-    SM: 'static,
+    SM: RaftStateMachine<C>,
 {
     /// The main loop of the Raft protocol.
     pub(crate) async fn main(mut self, rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<Infallible, Fatal<C>> {
@@ -401,7 +422,7 @@ where
 
         for item in voter_progresses {
             let target = item.id.clone();
-            let progress = &item.val;
+            let progress = item;
 
             if target == my_id {
                 continue;
@@ -416,7 +437,7 @@ where
 
             // Safe unwrap(): target is in membership
             let target_node = eff_mem.get_node(&target).unwrap().clone();
-            let mut client = self.network_factory.new_client(target.clone(), &target_node).await;
+            let mut client = self.network_factory.new_heartbeat_client(target.clone(), &target_node).await;
 
             let option = RPCOption::new(ttl);
 
@@ -707,7 +728,7 @@ where
 
         let (replication, heartbeat) = if let Some(leader) = self.engine.leader.as_ref() {
             let replication_prog = &leader.progress;
-            let replication = Some(replication_prog.collect_mapped(|item| item.to_matching_tuple()));
+            let replication = Some(replication_prog.collect_mapped(|item| item.id_progress_owned()));
 
             let clock_prog = &leader.clock_progress;
             let heartbeat = Some(clock_prog.collect_mapped(|item| (item.id.clone(), item.val.map(SerdeInstant::new))));
@@ -893,10 +914,13 @@ where
     }
 
     /// Trigger a snapshot building(log compaction) job if there is no pending building job.
+    ///
+    /// Returns `true` if a build was queued, `false` if one is already in progress and the request
+    /// was dropped.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub(crate) fn trigger_snapshot(&mut self) {
+    pub(crate) fn trigger_snapshot(&mut self) -> bool {
         tracing::debug!("{}", func_name!());
-        self.engine.snapshot_handler().trigger_snapshot();
+        self.engine.snapshot_handler().trigger_snapshot()
     }
 
     /// Trigger routine actions that need to be checked after processing messages.
@@ -917,8 +941,13 @@ where
             .should_snapshot(&self.engine.state, self.core_state.snapshot_tried_at.as_ref())
         {
             tracing::debug!("snapshot policy triggered at: {}", at);
-            self.core_state.snapshot_tried_at = Some(at);
-            self.trigger_snapshot();
+            // Only record the attempt if a build was actually queued. A trigger dropped because a
+            // build is already in flight must not advance `snapshot_tried_at`; otherwise the phantom
+            // attempt suppresses `should_snapshot` and the snapshot never re-arms once the in-flight
+            // build completes. See https://github.com/databendlabs/openraft/issues/1829
+            if self.trigger_snapshot() {
+                self.core_state.snapshot_tried_at = Some(at);
+            }
         }
 
         // Keep replicating to a target if the replication stream to it is idle
@@ -1245,6 +1274,16 @@ where
                         Some(notify) => self.handle_notification(notify)?,
                         None => {
                             tracing::error!("all rx_notify senders are dropped");
+                            return Err(Fatal::Stopped);
+                        }
+                    };
+                }
+
+                install_res = self.rx_install_snapshot.recv().fuse() => {
+                    match install_res {
+                        Some(req) => self.handle_install_full_snapshot_request(req),
+                        None => {
+                            tracing::error!("all rx_install_snapshot senders are dropped");
                             return Err(Fatal::Stopped);
                         }
                     };
@@ -1584,6 +1623,17 @@ where
         self.engine.state.update_committed(committed);
     }
 
+    /// Handle a full snapshot received from the dedicated install-snapshot channel.
+    #[tracing::instrument(level = "debug", skip(self, req), fields(state = debug(self.engine.state.server_state), id=display(&self.id)
+    ))]
+    pub(crate) fn handle_install_full_snapshot_request(&mut self, req: InstallFullSnapshotRequest<C, SM>) {
+        tracing::debug!("RAFT_event id={:<2}  input: {}", self.id, req);
+
+        self.runtime_stats.record_raft_msg(RaftMsgName::InstallSnapshot);
+
+        self.engine.handle_install_full_snapshot(req.vote, req.snapshot, req.tx);
+    }
+
     // TODO: Make this method non-async. It does not need to run any async command in it.
     #[tracing::instrument(level = "debug", skip(self, msg), fields(state = debug(self.engine.state.server_state), id=display(&self.id)
     ))]
@@ -1611,12 +1661,6 @@ where
                 tracing::info!("received RaftMsg::RequestPreVote: vote_request: {}", rpc);
 
                 self.handle_pre_vote_request(rpc, tx);
-            }
-            RaftMsg::GetSnapshotReceiver { tx } => {
-                self.engine.handle_begin_receiving_snapshot(tx);
-            }
-            RaftMsg::InstallSnapshot { vote, snapshot, tx } => {
-                self.engine.handle_install_full_snapshot(vote, snapshot, tx);
             }
             RaftMsg::GetLinearizer { read_policy, tx } => {
                 self.handle_ensure_linearizable_read(read_policy, tx).await;
@@ -1698,28 +1742,29 @@ where
 
                 match cmd {
                     ExternalCommand::Elect { pre_vote } => {
-                        if self.engine.state.membership_state.effective().is_voter(&self.id) {
-                            // TODO: reject if it is already a leader?
-                            if pre_vote {
-                                self.engine.pre_elect();
-                            } else {
-                                self.engine.elect();
-                            }
-                            tracing::debug!("ExternalCommand: triggered election, pre_vote: {}", pre_vote);
+                        if self.engine.leader.is_some() {
+                            // A Leader can not win a campaign it starts: its own heartbeats keep
+                            // refreshing the voters' leader lease, and a lease that has not expired
+                            // rejects the vote request. Leave the established leadership alone.
+                            tracing::info!("ExternalCommand: already a Leader, ignore election trigger");
                         } else {
-                            // Node is switched to learner.
+                            if self.engine.state.membership_state.effective().is_voter(&self.id) {
+                                if pre_vote {
+                                    self.engine.pre_elect();
+                                } else {
+                                    self.engine.elect();
+                                }
+                                tracing::debug!("ExternalCommand: triggered election, pre_vote: {}", pre_vote);
+                            } else {
+                                // Node is switched to learner.
+                            }
                         }
                     }
                     ExternalCommand::Heartbeat => {
                         self.send_heartbeat("ExternalCommand");
                     }
-                    ExternalCommand::Snapshot => self.trigger_snapshot(),
-                    ExternalCommand::GetSnapshot { tx } => {
-                        let cmd = sm::Command::get_snapshot(tx);
-                        let res = self.sm_handle.send(cmd).await;
-                        if let Err(e) = res {
-                            tracing::error!("error sending GetSnapshot to sm worker: {}", e);
-                        }
+                    ExternalCommand::Snapshot => {
+                        self.trigger_snapshot();
                     }
                     ExternalCommand::PurgeLog { upto } => {
                         self.engine.trigger_purge_log(upto);
@@ -1911,11 +1956,15 @@ where
                 }
             }
 
-            Notification::ReplicationProgress { progress, inflight_id } => {
+            Notification::ReplicationProgress {
+                stream_id,
+                progress,
+                inflight_id,
+            } => {
                 tracing::debug!("recv Notification::ReplicationProgress: progress: {}", progress);
 
                 if let Some(mut rh) = self.engine.try_replication_handler() {
-                    rh.update_progress(progress.target, progress.result, inflight_id);
+                    rh.update_progress(progress.target, stream_id, progress.result, inflight_id);
                 }
             }
 
@@ -2156,18 +2205,20 @@ where
 
         let cluster_committed = lh.state.cluster_committed().cloned();
         let now = C::now();
-        let events =
-            lh.leader
-                .progress
-                .iter()
-                .filter(|progress_entry| progress_entry.id != self.id)
-                .map(|progress_entry| {
-                    (progress_entry.id.clone(), HeartbeatEvent {
-                        time: now,
-                        matching: progress_entry.val.matching.clone(),
-                        cluster_committed: cluster_committed.clone(),
-                    })
-                });
+        let min_interval = Duration::from_millis(self.config.heartbeat_min_interval());
+        let leader = &*lh.leader;
+        let events = leader
+            .progress
+            .iter()
+            .filter(|progress_entry| progress_entry.id != self.id)
+            .filter(|progress_entry| leader.need_heartbeat(&progress_entry.id, now, min_interval))
+            .map(|progress_entry| {
+                (progress_entry.id.clone(), HeartbeatEvent {
+                    time: now,
+                    matching: progress_entry.matching.clone(),
+                    cluster_committed: cluster_committed.clone(),
+                })
+            });
 
         self.heartbeat_handle.broadcast(events);
     }
@@ -2196,7 +2247,7 @@ where
         (ctx, cancel_tx)
     }
 
-    async fn close_replication(target: &C::NodeId, mut s: ReplicationHandle<C>) {
+    fn close_replication(target: &C::NodeId, mut s: ReplicationHandle<C>) {
         let Some(handle) = s.join_handle.take() else {
             return;
         };
@@ -2205,9 +2256,13 @@ where
         drop(s.replicate_tx);
         drop(s.cancel_tx);
 
-        tracing::debug!("joining removed replication: {}", target);
-        let _x = handle.await;
-        tracing::info!("done joining removed replication: {}", target);
+        let target = target.clone();
+        #[allow(clippy::let_underscore_future)]
+        let _ = C::spawn(async move {
+            tracing::debug!("joining removed replication: {}", target);
+            let _x = handle.await;
+            tracing::info!("done joining removed replication: {}", target);
+        });
     }
 }
 
@@ -2215,8 +2270,9 @@ impl<C, N, LS, SM> RaftRuntime<C, SM> for RaftCore<C, N, LS, SM>
 where
     C: RaftTypeConfig,
     N: RaftNetworkFactory<C>,
+    N::Network: NetSnapshot<C, SnapshotData = SM::SnapshotData>,
     LS: RaftLogStorage<C>,
-    SM: 'static,
+    SM: RaftStateMachine<C>,
 {
     async fn run_command(&mut self, cmd: Command<C, SM>) -> Result<Option<Command<C, SM>>, StorageError<C>> {
         // tracing::debug!("RAFT_event id={:<2} trycmd: {}", self.id, cmd);
@@ -2395,7 +2451,7 @@ where
                     self.new_replication_task_context(leader_vote, stream_id, target.clone());
 
                 let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap();
-                let snapshot_network = self.network_factory.new_client(target.clone(), target_node).await;
+                let snapshot_network = self.network_factory.new_snapshot_client(target.clone(), target_node).await;
 
                 let handle = SnapshotTransmitter::<C, N, SM>::spawn(
                     replication_task_context,
@@ -2416,7 +2472,7 @@ where
 
                 let left = std::mem::take(&mut self.replications);
                 for (target, s) in left {
-                    Self::close_replication(&target, s).await;
+                    Self::close_replication(&target, s);
                 }
             }
             Command::RebuildReplicationStreams {
@@ -2425,7 +2481,7 @@ where
                 close_old_streams,
             } => {
                 self.heartbeat_handle
-                    .spawn_workers(
+                    .spawn_workers::<N>(
                         leader_vote.clone(),
                         &mut self.network_factory,
                         &self.tx_notification,
@@ -2441,7 +2497,7 @@ where
 
                     let handle = if let Some(removed) = removed {
                         if close_old_streams {
-                            Self::close_replication(&prog.target, removed).await;
+                            Self::close_replication(&prog.target, removed);
                             None
                         } else {
                             Some(removed)
@@ -2464,7 +2520,7 @@ where
                 let left = std::mem::replace(&mut self.replications, new_replications);
 
                 for (target, s) in left {
-                    Self::close_replication(&target, s).await;
+                    Self::close_replication(&target, s);
                 }
             }
             Command::StateMachine { command } => {

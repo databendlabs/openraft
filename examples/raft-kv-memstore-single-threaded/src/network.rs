@@ -15,7 +15,7 @@ pub struct Connection {
 }
 
 impl RaftNetworkFactory<TypeConfig> for Router {
-    type Network = Adapter<TypeConfig, Connection>;
+    type Network = Adapter<TypeConfig, Connection, SnapshotData>;
 
     async fn new_client(&mut self, target: NodeId, _node: &BasicNode) -> Self::Network {
         Connection {

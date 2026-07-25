@@ -96,6 +96,7 @@ use crate::core::merged_raft_msg_receiver::BatchRaftMsgReceiver;
 use crate::core::notification::Notification;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::external_command::ExternalCommand;
+use crate::core::raft_msg::install_full_snapshot_request::InstallFullSnapshotRequest;
 use crate::core::runtime_stats::RuntimeStats;
 use crate::core::sm;
 use crate::core::sm::worker;
@@ -116,6 +117,7 @@ use crate::metrics::RaftMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::metrics::Wait;
 use crate::metrics::WaitError;
+use crate::network::NetSnapshot;
 use crate::raft::raft_inner::RaftInner;
 pub use crate::raft::runtime_config_handle::RuntimeConfigHandle;
 use crate::raft::trigger::Trigger;
@@ -125,6 +127,7 @@ use crate::storage::RaftStateMachine;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinErrorOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::MpscWeakSenderOf;
 use crate::type_config::alias::NodeIdOf;
 use crate::type_config::alias::SnapshotDataOf;
@@ -159,7 +162,6 @@ use crate::vote::raft_vote::RaftVoteExt;
 ///        LeaderId     = openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>,
 ///        Vote           = openraft::impls::Vote<Self::LeaderId>,
 ///        Entry          = openraft::Entry<Self>,
-///        SnapshotData   = Cursor<Vec<u8>>,
 ///        Responder<T>   = openraft::impls::OneshotResponder<Self, T>,
 ///        AsyncRuntime   = openraft::TokioRuntime,
 /// );
@@ -174,7 +176,6 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// - `LeaderId`:     `::openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>`
 /// - `Vote`:           `::openraft::impls::Vote<Self::LeaderId>`
 /// - `Entry`:          `::openraft::impls::Entry<Self>`
-/// - `SnapshotData`:   `Cursor<Vec<u8>>`
 /// - `Responder<T>`:   `::openraft::impls::OneshotResponder<Self, T>`
 /// - `AsyncRuntime`:   `::openraft::impls::TokioRuntime`
 /// - `ErrorSource`:    `::anyerror::AnyError`
@@ -224,7 +225,6 @@ macro_rules! declare_raft_types {
                 (LeaderId     , , $crate::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId> ),
                 (Vote           , , $crate::impls::Vote<Self::LeaderId>            ),
                 (Entry          , , $crate::Entry<<Self::LeaderId as $crate::vote::RaftLeaderId>::Committed, Self::D, Self::NodeId, Self::Node> ),
-                (SnapshotData   , , std::io::Cursor<Vec<u8>>                     ),
                 (Responder<T>   , , $crate::impls::ProgressResponder<Self, T> where T: $crate::OptionalSend + 'static     ),
                 (Batch<T>       , , $crate::impls::InlineBatch<T> where T: $crate::OptionalSend + 'static     ),
                 (AsyncRuntime   , , $crate::impls::TokioRuntime                  ),
@@ -320,26 +320,42 @@ pub enum ReadPolicy {
 /// - [Raft specification](https://raft.github.io/raft.pdf) for protocol details
 /// - [`Config`] for configuration options
 /// - [`RaftMetrics`] for monitoring cluster state
+#[since(version = "0.10.0", change = "added SM state machine type parameter")]
 pub struct Raft<C, SM = ()>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     inner: Arc<RaftInner<C>>,
     sm_cmd_tx: MpscWeakSenderOf<C, sm::Command<C, SM>>,
+
+    /// Sender of the dedicated channel that delivers a full snapshot to RaftCore.
+    ///
+    /// The snapshot data type is defined by the state machine, thus it does not go through
+    /// the [`RaftMsg`] channel, which is independent of the state machine type.
+    ///
+    /// [`RaftMsg`]: crate::core::raft_msg::RaftMsg
+    install_snapshot_tx: MpscSenderOf<C, InstallFullSnapshotRequest<C, SM>>,
 }
 
 impl<C, SM> Clone for Raft<C, SM>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
             sm_cmd_tx: self.sm_cmd_tx.clone(),
+            install_snapshot_tx: self.install_snapshot_tx.clone(),
         }
     }
 }
 
 impl<C, SM> Debug for Raft<C, SM>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Raft").field("id", &self.inner.id).finish()
@@ -441,6 +457,10 @@ where
     /// raft.wait_for_recovery(Some(Duration::from_secs(5))).await?;
     /// // The state machine has recovered at least its pre-restart committed state.
     /// ```
+    #[since(
+        version = "0.10.0",
+        change = "require N::Network: NetSnapshot<SnapshotData = SM::SnapshotData>"
+    )]
     #[tracing::instrument(level="debug", skip_all, fields(cluster=%config.cluster_name))]
     pub async fn new<LS, N>(
         id: C::NodeId,
@@ -451,12 +471,14 @@ where
     ) -> Result<Self, Fatal<C>>
     where
         N: RaftNetworkFactory<C>,
+        N::Network: NetSnapshot<C, SnapshotData = SM::SnapshotData>,
         LS: RaftLogStorage<C>,
     {
         let api_channel_size = config.api_channel_size();
         let notification_channel_size = config.notification_channel_size();
 
         let (tx_api, rx_api) = C::mpsc(api_channel_size);
+        let (tx_install_snapshot, rx_install_snapshot) = C::mpsc(api_channel_size);
         let (tx_notify, rx_notify) = C::mpsc(notification_channel_size);
         let (tx_metrics, rx_metrics) = C::watch_channel(RaftMetrics::new_initial(id.clone()));
         let (tx_data_metrics, rx_data_metrics) = C::watch_channel(RaftDataMetrics::default());
@@ -502,6 +524,7 @@ where
         let sm_span = tracing::span!(parent: &core_span, Level::DEBUG, "sm_worker");
 
         let sm_handle = worker::Worker::spawn(
+            id.clone(),
             state_machine,
             log_store.get_log_reader().await,
             tx_notify.clone(),
@@ -541,6 +564,8 @@ where
                 config.api_batch_capacity,
                 Duration::from_millis(config.api_batch_linger_ms),
             ),
+            tx_install_snapshot: tx_install_snapshot.clone(),
+            rx_install_snapshot,
 
             tx_notification: tx_notify,
             rx_notification: rx_notify,
@@ -595,12 +620,15 @@ where
         Ok(Self {
             inner: Arc::new(inner),
             sm_cmd_tx,
+            install_snapshot_tx: tx_install_snapshot,
         })
     }
 }
 
 impl<C, SM> Raft<C, SM>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     /// Return a handle to update runtime config.
     ///
@@ -802,8 +830,12 @@ where C: RaftTypeConfig
     /// - [`ProtocolApi::begin_receiving_snapshot`]
     /// - [`ProtocolApi::install_full_snapshot`]
     /// - [`ProtocolApi::handle_transfer_leader`]
-    pub(crate) fn protocol_api(&self) -> ProtocolApi<C> {
-        ProtocolApi::new(self.inner.clone())
+    pub(crate) fn protocol_api(&self) -> ProtocolApi<C, SM> {
+        ProtocolApi::new(
+            self.inner.clone(),
+            self.sm_cmd_tx.clone(),
+            self.install_snapshot_tx.clone(),
+        )
     }
 
     pub(crate) fn app_api(&self) -> AppApi<'_, C> {
@@ -965,17 +997,21 @@ where C: RaftTypeConfig
 
     /// Get the latest snapshot from the state machine.
     ///
-    /// It returns error only when `RaftCore` fails to serve the request, e.g., Encountering a
-    /// storage error or shutting down.
+    /// The request is served directly by the state-machine worker, not `RaftCore`. It returns an
+    /// error only when that worker fails to serve it, e.g., encountering a storage error or having
+    /// stopped (`Fatal::Stopped`), which can occur while `RaftCore` is still running.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn get_snapshot(&self) -> Result<Option<SnapshotOf<C>>, RaftError<C>> {
+    pub async fn get_snapshot(&self) -> Result<Option<SnapshotOf<C, SM::SnapshotData>>, RaftError<C>> {
         self.protocol_api().get_snapshot().await.into_raft_result()
     }
 
     /// Get a snapshot data for receiving snapshot from the leader.
+    ///
+    /// It does not check `Vote` because it is a read operation and does not break raft
+    /// protocol.
     #[since(version = "0.10.0", change = "SnapshotData without Box")]
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn begin_receiving_snapshot(&self) -> Result<SnapshotDataOf<C>, RaftError<C>> {
+    pub async fn begin_receiving_snapshot(&self) -> Result<SnapshotDataOf<C, SM>, RaftError<C>> {
         self.protocol_api().begin_receiving_snapshot().await.into_raft_result()
     }
 
@@ -989,7 +1025,7 @@ where C: RaftTypeConfig
     pub async fn install_full_snapshot(
         &self,
         vote: VoteOf<C>,
-        snapshot: SnapshotOf<C>,
+        snapshot: SnapshotOf<C, SM::SnapshotData>,
     ) -> Result<SnapshotResponse<C>, Fatal<C>> {
         self.protocol_api().install_full_snapshot(vote, snapshot).await
     }
@@ -1785,14 +1821,13 @@ where C: RaftTypeConfig
     /// again is a no-op that returns as soon as the current cluster commit has been applied.)
     ///
     /// The method waits in two phases, together bounded by `timeout`:
-    /// 1. until `cluster_committed` is perceived as non-null (the cluster commit is
-    ///    re-established),
+    /// 1. until `cluster_committed` is perceived as covering this node's current durable log tail
+    ///    (the cluster commit is re-established for everything this node may have applied),
     /// 2. until the state machine has applied up to that cluster commit.
     ///
-    /// The target is pinned to the *first* non-null `cluster_committed`, so the node catches up to
-    /// the commit perceived at recovery time. If the cluster advanced while this node was down,
-    /// that target may exceed the node's own pre-restart applied index — which still satisfies "at
-    /// least the same state".
+    /// The target is pinned to the first `cluster_committed` that covers this node's current
+    /// durable log tail. If the cluster advanced while this node was down, that target may exceed
+    /// the node's own pre-restart applied index — which still satisfies "at least the same state".
     ///
     /// It requires a reachable, functioning cluster: if no cluster commit is re-established (no
     /// leader, lost quorum, or this node is isolated), the method returns [`WaitError::Timeout`].
@@ -1800,15 +1835,38 @@ where C: RaftTypeConfig
     ///
     /// # Why this works
     ///
-    /// Perceiving a non-null `cluster_committed` means the current leader has re-established the
-    /// commit by committing its own-term (blank) entry to a quorum, so that commit is at least the
-    /// leader's blank log id — and therefore at least any previously committed, hence previously
-    /// applied, log id. Applying up to it restores everything the state machine held before the
-    /// restart. This is the same `read_log_id` argument that makes linearizable reads safe: see
-    /// [the read protocol](crate::docs::protocol::read) for the read-safety argument and
-    /// [the commit protocol](crate::docs::protocol::commit) for why `cluster_committed` is never a
-    /// value restored from storage. A node that did not persist `committed` can use this in place
-    /// of, or together with, saving it (see [log pointers](crate::docs::data::log_pointers)).
+    /// Perceiving a `cluster_committed` that covers this node's durable log tail means the current
+    /// leader has either committed the local tail this node may have applied before restart, or has
+    /// first replaced any uncommitted tail with the leader's log. Applying up to that commit
+    /// restores every durable log entry that could have contributed to the pre-restart state. This
+    /// is the same `read_log_id` argument that makes linearizable reads safe: see [the read
+    /// protocol](crate::docs::protocol::read) for the read-safety argument and [the commit
+    /// protocol](crate::docs::protocol::commit) for why `cluster_committed` is never a value
+    /// restored from storage. A node that did not persist `committed` can use this in place of, or
+    /// together with, saving it (see [log pointers](crate::docs::data::log_pointers)).
+    ///
+    /// # Limitation: a follower may still recover a stale state
+    ///
+    /// The soundness above is bounded by what this node made **durable**. A follower may apply an
+    /// entry the cluster has committed before it flushes that entry locally — apply is gated on the
+    /// cluster commit, not on the local flush (the invariant is `applied ≤ committed ≤ submitted`,
+    /// not `applied ≤ flushed`; see [log pointers](crate::docs::data::log_pointers)). If the node
+    /// restarts while such an entry is applied but still unflushed, and its applied state was not
+    /// otherwise persisted, the restart reverts three tracking points at once: the durable log tail
+    /// falls back to `flushed`, the state machine falls back to an earlier applied state, and
+    /// `last_log_index` now describes the shorter log.
+    ///
+    /// Because the first-phase wait is `cluster_committed >= last_log_index` and `last_log_index`
+    /// has itself reverted, a stale `cluster_committed` covering only the shrunken log satisfies
+    /// it. `wait_for_recovery` can then return having recovered a state older than the one this
+    /// node served immediately before the restart. The node is not stuck — the leader
+    /// re-replicates the lost tail and it catches up — but across that window the method no
+    /// longer pins recovery to the pre-restart state.
+    ///
+    /// This can only happen while serving reads as a follower. A leader holds every committed entry
+    /// and never applies below its commit, so a read taken on the leader through
+    /// [`ensure_linearizable`](Self::ensure_linearizable) cannot revert to an earlier state. When a
+    /// read must be guaranteed fresh across a restart, serve it on the leader.
     ///
     /// # Example
     ///
@@ -1821,12 +1879,17 @@ where C: RaftTypeConfig
     pub async fn wait_for_recovery(&self, timeout: Option<Duration>) -> Result<RaftMetrics<C>, WaitError> {
         let start = C::now();
 
-        // Phase 1: wait until the cluster commit is re-established (perceived as non-null).
+        // Phase 1: wait until the cluster commit is re-established for this node's durable log
+        // tail. A follower may first hear an older leader_commit, which is not enough to recover
+        // everything it had applied before restart.
         let metrics = self
             .wait(timeout)
             .metrics(
-                |m| m.cluster_committed.is_some(),
-                "wait_for_recovery: cluster commit re-established",
+                |m| {
+                    let cluster_committed = m.cluster_committed.as_ref().map(|x| x.index());
+                    cluster_committed.is_some() && cluster_committed >= m.last_log_index
+                },
+                "wait_for_recovery: cluster commit covers local log",
             )
             .await?;
 
@@ -1904,16 +1967,11 @@ where C: RaftTypeConfig
         })
         .await?;
 
-        let recv_res = rx.await;
-        tracing::debug!("{}: receives result is error: {:?}", func_name!(), recv_res.is_err());
-
-        let Ok(v) = recv_res else {
-            let fatal = self.inner.get_core_stop_error().await;
-            tracing::error!("{}: error: {}", func_name!(), fatal);
-            return Err(fatal);
-        };
-
-        Ok(v)
+        // Use the bounded receive: the state-machine worker owns the responder and can die on its
+        // own (e.g. a panic in `func`) while RaftCore keeps running. An unbounded join on the core
+        // would then hang forever. `recv_msg` waits only up to `RECV_CORE_STOP_TIMEOUT` before
+        // resolving to `Fatal::Stopped`.
+        self.inner.recv_msg(rx).await
     }
 
     /// Send a request to the [`RaftStateMachine`] worker in a fire-and-forget manner.
@@ -1936,12 +1994,15 @@ where C: RaftTypeConfig
         F: FnOnce(&mut SM) -> BoxFuture<()> + OptionalSend + 'static,
     {
         let Some(tx) = self.sm_cmd_tx.upgrade() else {
-            return Err(Fatal::Stopped);
+            return Err(self.inner.get_core_stop_error_bounded().await);
         };
 
         let sm_cmd = sm::Command::ExternalFunc {
             func: Box::new(move |sm| req(sm)),
         };
-        tx.send(sm_cmd).await.map_err(|_e| Fatal::Stopped)
+        if tx.send(sm_cmd).await.is_err() {
+            return Err(self.inner.get_core_stop_error_bounded().await);
+        }
+        Ok(())
     }
 }

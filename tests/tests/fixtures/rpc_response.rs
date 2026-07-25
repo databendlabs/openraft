@@ -14,9 +14,7 @@ use openraft::raft::VoteResponse;
 #[derive(Debug)]
 #[derive(derive_more::From, derive_more::TryInto)]
 pub enum RpcResponse<C>
-where
-    C: RaftTypeConfig,
-    C::SnapshotData: fmt::Debug,
+where C: RaftTypeConfig
 {
     AppendEntries(AppendEntriesResponse<C>),
     InstallSnapshot(InstallSnapshotResponse<C>),
@@ -26,9 +24,7 @@ where
 }
 
 impl<C> RpcResponse<C>
-where
-    C: RaftTypeConfig,
-    C::SnapshotData: fmt::Debug,
+where C: RaftTypeConfig
 {
     pub fn get_type(&self) -> RPCTypes {
         match self {
@@ -42,9 +38,7 @@ where
 }
 
 impl<C> fmt::Display for RpcResponse<C>
-where
-    C: RaftTypeConfig,
-    C::SnapshotData: fmt::Debug,
+where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

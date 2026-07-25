@@ -44,6 +44,11 @@ where C: RaftTypeConfig
     /// and send back a stream of responses.
     ///
     /// The output stream terminates when the input is exhausted or an error occurs.
+    /// The network implementation is responsible for enforcing `option.soft_ttl()`.
+    ///
+    /// `option.hard_ttl()` is not a hard limit on the lifetime of a long-lived stream. Streaming
+    /// transports should use `soft_ttl()` for setup, per-request-response, or idle-timeout policy,
+    /// and return an error when the connection stops making progress.
     ///
     /// # Note
     ///

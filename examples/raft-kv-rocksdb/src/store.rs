@@ -52,10 +52,12 @@ pub struct StateMachineData {
     pub last_membership: StoredMembership,
 
     /// State built from applying the raft logs
-    pub kvs: Arc<Mutex<BTreeMap<String, String>>>,
+    pub kvs: Arc<Mutex<BTreeMap<String, types_kv::VersionedValue>>>,
 }
 
 impl RaftSnapshotBuilder<TypeConfig> for StateMachineStore {
+    type SnapshotData = Cursor<Vec<u8>>;
+
     async fn build_snapshot(&mut self) -> Result<Snapshot, io::Error> {
         let last_applied_log = self.data.last_applied_log_id;
         let last_membership = self.data.last_membership.clone();
@@ -112,7 +114,7 @@ impl StateMachineStore {
     }
 
     async fn update_state_machine_(&mut self, snapshot: StoredSnapshot) -> Result<(), io::Error> {
-        let kvs: BTreeMap<String, String> =
+        let kvs: BTreeMap<String, types_kv::VersionedValue> =
             serde_json::from_slice(&snapshot.data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
         self.data.last_applied_log_id = snapshot.meta.last_log_id;
@@ -145,6 +147,8 @@ impl StateMachineStore {
 }
 
 impl RaftStateMachine<TypeConfig> for StateMachineStore {
+    type SnapshotData = Cursor<Vec<u8>>;
+
     type SnapshotBuilder = Self;
 
     async fn applied_state(&mut self) -> Result<(Option<LogId>, StoredMembership), io::Error> {
@@ -154,6 +158,7 @@ impl RaftStateMachine<TypeConfig> for StateMachineStore {
     async fn apply<Strm>(&mut self, mut entries: Strm) -> Result<(), io::Error>
     where Strm: Stream<Item = Result<EntryResponder<TypeConfig>, io::Error>> + Unpin + OptionalSend {
         while let Some((entry, responder)) = entries.try_next().await? {
+            let version = entry.log_id.index();
             self.data.last_applied_log_id = Some(entry.log_id);
 
             let response = match entry.payload {
@@ -161,8 +166,29 @@ impl RaftStateMachine<TypeConfig> for StateMachineStore {
                 EntryPayload::Normal(req) => match req {
                     types_kv::Request::Set { key, value } => {
                         let mut st = self.data.kvs.lock().await;
-                        st.insert(key, value.clone());
-                        types_kv::Response::new(value)
+                        st.insert(key, types_kv::VersionedValue {
+                            value: value.clone(),
+                            version,
+                        });
+                        types_kv::Response::new(value, version)
+                    }
+                    types_kv::Request::CompareAndSet {
+                        key,
+                        expected_version,
+                        value,
+                    } => {
+                        let mut st = self.data.kvs.lock().await;
+                        let matches = st.get(&key).is_some_and(|current| current.version == expected_version);
+
+                        if matches {
+                            st.insert(key, types_kv::VersionedValue {
+                                value: value.clone(),
+                                version,
+                            });
+                            types_kv::Response::new(value, version)
+                        } else {
+                            types_kv::Response::none()
+                        }
                     }
                 },
                 EntryPayload::Membership(mem) => {

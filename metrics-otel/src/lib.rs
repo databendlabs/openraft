@@ -7,33 +7,33 @@
 //! # Usage
 //!
 //! 1. Add this crate to your `Cargo.toml`:
-//!    ```toml
-//!    [dependencies]
-//!    openraft = "0.10"
-//!    openraft-metrics-otel = "0.1"
-//!    opentelemetry = "0.30"
-//!    opentelemetry_sdk = "0.30"  # For configuring exporters
-//!    ```
+//!   ```toml
+//!   [dependencies]
+//!   openraft = "0.10"
+//!   openraft-metrics-otel = "0.1"
+//!   opentelemetry = "0.30"
+//!   opentelemetry_sdk = "0.30"  # For configuring exporters
+//!   ```
 //!
 //! 2. Configure the OpenTelemetry SDK in your application:
-//!    ```rust,ignore
-//!    use opentelemetry_sdk::metrics::MeterProvider;
+//!   ```rust,ignore
+//!   use opentelemetry_sdk::metrics::MeterProvider;
 //!
-//!    let meter_provider = MeterProvider::builder()
-//!        .with_reader(/* your exporter */)
-//!        .build();
+//!   let meter_provider = MeterProvider::builder()
+//!       .with_reader(/* your exporter */)
+//!       .build();
 //!
-//!    opentelemetry::global::set_meter_provider(meter_provider);
-//!    ```
+//!   opentelemetry::global::set_meter_provider(meter_provider);
+//!   ```
 //!
 //! 3. Install the recorder in your Raft instance:
-//!    ```rust,ignore
-//!    use std::sync::Arc;
-//!    use openraft_metrics_otel::Instruments;
+//!   ```rust,ignore
+//!   use std::sync::Arc;
+//!   use openraft_metrics_otel::Instruments;
 //!
-//!    let raft = Raft::new(...).await?;
-//!    raft.set_metrics_recorder(Some(Arc::new(Instruments::new()))).await?;
-//!    ```
+//!   let raft = Raft::new(...).await?;
+//!   raft.set_metrics_recorder(Some(Arc::new(Instruments::new()))).await?;
+//!   ```
 //!
 //! # Metrics
 //!
@@ -155,8 +155,10 @@ impl Instruments {
         let snapshot_index =
             meter.u64_gauge("openraft.snapshot.index").with_description("Index of last snapshot").build();
 
-        let purged_index =
-            meter.u64_gauge("openraft.log.index.purged").with_description("Index of last purged log entry").build();
+        let purged_index = meter
+            .u64_gauge("openraft.log.index.purged")
+            .with_description("Index of last purged log entry")
+            .build();
 
         let server_state = meter
             .u64_gauge("openraft.server.state")

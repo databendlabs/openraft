@@ -191,12 +191,13 @@ async fn test_cluster_inner() -> Result<(), Box<dyn std::error::Error + Send + S
     // --- Try to write some application data through the leader.
 
     println!("=== write `foo=bar`");
-    leader
+    let write_bar = leader
         .write(&types_kv::Request::Set {
             key: "foo".to_string(),
             value: "bar".to_string(),
         })
         .await??;
+    let expected_bar = write_bar.data;
 
     // --- Wait for a while to let the replication get done.
 
@@ -206,25 +207,29 @@ async fn test_cluster_inner() -> Result<(), Box<dyn std::error::Error + Send + S
 
     println!("=== read `foo=bar` on node 1");
     let x = leader.read(&("foo".to_string())).await?;
-    assert_eq!("bar", x);
+    assert_eq!(expected_bar, x);
 
     println!("=== read `foo=bar` on node 2");
     let client2 = Client::<TypeConfig>::new(2, get_api_addr(2));
     let x = client2.read(&("foo".to_string())).await?;
-    assert_eq!("bar", x);
+    assert_eq!(expected_bar, x);
 
     println!("=== read `foo=bar` on node 3");
     let client3 = Client::<TypeConfig>::new(3, get_api_addr(3));
     let x = client3.read(&("foo".to_string())).await?;
-    assert_eq!("bar", x);
+    assert_eq!(expected_bar, x);
 
     println!("=== write `foo=wow` on leader");
-    leader
+    let write_wow = leader
         .write(&types_kv::Request::Set {
             key: "foo".to_string(),
             value: "wow".to_string(),
         })
         .await??;
+    let bar_version = expected_bar.value.as_ref().unwrap().version;
+    let wow_version = write_wow.data.value.as_ref().unwrap().version;
+    assert!(wow_version > bar_version);
+    let expected_wow = write_wow.data;
 
     TypeConfig::sleep(Duration::from_millis(500)).await;
 
@@ -232,21 +237,21 @@ async fn test_cluster_inner() -> Result<(), Box<dyn std::error::Error + Send + S
 
     println!("=== read `foo=wow` on node 1");
     let x = leader.read(&("foo".to_string())).await?;
-    assert_eq!("wow", x);
+    assert_eq!(expected_wow, x);
 
     println!("=== read `foo=wow` on node 2");
     let client2 = Client::<TypeConfig>::new(2, get_api_addr(2));
     let x = client2.read(&("foo".to_string())).await?;
-    assert_eq!("wow", x);
+    assert_eq!(expected_wow, x);
 
     println!("=== read `foo=wow` on node 3");
     let client3 = Client::<TypeConfig>::new(3, get_api_addr(3));
     let x = client3.read(&("foo".to_string())).await?;
-    assert_eq!("wow", x);
+    assert_eq!(expected_wow, x);
 
     println!("=== linearizable_read `foo=wow` on node 1");
     let x = leader.linearizable_read(&("foo".to_string())).await??;
-    assert_eq!("wow", x);
+    assert_eq!(expected_wow, x);
 
     println!("=== linearizable_read `foo=wow` on node 2 MUST return LinearizableReadError");
     let x = client2.linearizable_read(&("foo".to_string())).await?;
@@ -261,6 +266,19 @@ async fn test_cluster_inner() -> Result<(), Box<dyn std::error::Error + Send + S
         }
         Ok(_) => panic!("MUST return LinearizableReadError"),
     }
+
+    println!("=== compare and set `foo=wow` to `foo=cas`");
+    let cas = leader.write(&types_kv::Request::compare_and_set("foo", wow_version, "cas")).await??;
+    let cas_value = cas.data.value.as_ref().unwrap();
+    assert_eq!("cas", cas_value.value);
+    assert!(cas_value.version > wow_version);
+
+    println!("=== reject a stale compare and set");
+    let stale = leader.write(&types_kv::Request::compare_and_set("foo", wow_version, "stale")).await??;
+    assert_eq!(types_kv::Response::none(), stale.data);
+
+    let got = leader.linearizable_read(&"foo".to_string()).await??;
+    assert_eq!(cas.data, got);
 
     Ok(())
 }

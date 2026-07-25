@@ -6,9 +6,11 @@ use std::time::Duration;
 /// [`RaftNetworkV2`]: `crate::network::RaftNetworkV2`
 #[derive(Clone, Debug)]
 pub struct RPCOption {
-    /// The expected time-to-last for an RPC.
+    /// The hard upper bound for a request-response RPC.
     ///
-    /// The caller will cancel an RPC if it takes longer than this duration.
+    /// Openraft may shut down an in-flight RPC once this duration has elapsed. Network
+    /// implementations may read this value, but should use [`RPCOption::soft_ttl`] to configure
+    /// their transport timeout, deadline, or equivalent mechanism.
     hard_ttl: Duration,
 
     /// The size of the snapshot chunk.
@@ -24,15 +26,18 @@ impl RPCOption {
         }
     }
 
-    /// The moderate max interval an RPC should last for.
+    /// The timeout budget a network implementation should enforce.
     ///
     /// The [`hard_ttl()`] and `soft_ttl()` methods of `RPCOption` set the hard limit and the
-    /// moderate limit of the duration for which an RPC should run. Once the `soft_ttl()` ends,
-    /// the RPC implementation should start to gracefully cancel the RPC, and once the
-    /// `hard_ttl()` ends, Openraft will terminate the ongoing RPC at once.
+    /// application-controlled timeout of a request-response RPC. The network implementation should
+    /// time out the RPC once `soft_ttl()` ends.
     ///
-    /// `soft_ttl` is smaller than [`hard_ttl()`] so that the RPC implementation can cancel the RPC
-    /// gracefully after `soft_ttl` and before `hard_ttl`.
+    /// `soft_ttl` is smaller than [`hard_ttl()`] so that the RPC implementation can return a
+    /// timeout error before Openraft may shut down the in-flight RPC at the hard limit.
+    ///
+    /// For a long-lived stream, [`hard_ttl()`] is not a limit on the stream lifetime. The transport
+    /// should apply `soft_ttl()` to its setup, idle timeout, keepalive, read deadline, or reconnect
+    /// policy.
     ///
     /// `soft_ttl` is 3/4 of `hard_ttl` but it may change in future, do not rely on this ratio.
     ///
@@ -41,9 +46,9 @@ impl RPCOption {
         self.hard_ttl * 3 / 4
     }
 
-    /// The hard limit of the interval an RPC should last for.
+    /// The hard upper bound Openraft may use to shut down an in-flight RPC.
     ///
-    /// When exceeding this limit, the RPC will be dropped by Openraft at once.
+    /// Network implementations should use [`RPCOption::soft_ttl`] to control their own timeout.
     pub fn hard_ttl(&self) -> Duration {
         self.hard_ttl
     }

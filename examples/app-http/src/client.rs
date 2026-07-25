@@ -72,7 +72,7 @@ where C: RaftTypeConfig<Node = NodeInfo>
     /// Read value by key, in an inconsistent mode.
     ///
     /// This method may return stale value because it does not force to read on a legal leader.
-    pub async fn read(&self, req: &String) -> Result<String, RPCError<C>> {
+    pub async fn read(&self, req: &String) -> Result<C::R, RPCError<C>> {
         let res = self.send::<_, _, Infallible>("read", Some(req)).await?;
         Ok(res.unwrap())
     }
@@ -80,10 +80,7 @@ where C: RaftTypeConfig<Node = NodeInfo>
     /// Consistent Read value by key, in an inconsistent mode.
     ///
     /// This method MUST return consistent value or LinearizableReadError.
-    pub async fn linearizable_read(
-        &self,
-        req: &String,
-    ) -> Result<Result<String, LinearizableReadError<C>>, RPCError<C>> {
+    pub async fn linearizable_read(&self, req: &String) -> Result<Result<C::R, LinearizableReadError<C>>, RPCError<C>> {
         self.send_with_forwarding("linearizable_read", Some(req), 0).await
     }
 
@@ -92,7 +89,7 @@ where C: RaftTypeConfig<Node = NodeInfo>
     pub async fn linearizable_read_auto_forward(
         &self,
         req: &String,
-    ) -> Result<Result<String, LinearizableReadError<C>>, RPCError<C>> {
+    ) -> Result<Result<C::R, LinearizableReadError<C>>, RPCError<C>> {
         self.send_with_forwarding("linearizable_read", Some(req), 3).await
     }
 
@@ -102,7 +99,7 @@ where C: RaftTypeConfig<Node = NodeInfo>
     /// waits for the local state machine to catch up, then reads from the local state machine.
     ///
     /// Returns the value if successful, or an error from the follower.
-    pub async fn follower_read(&self, req: &String) -> Result<Result<String, FollowerReadError>, RPCError<C>> {
+    pub async fn follower_read(&self, req: &String) -> Result<Result<C::R, FollowerReadError>, RPCError<C>> {
         self.send("follower_read", Some(req)).await
     }
 

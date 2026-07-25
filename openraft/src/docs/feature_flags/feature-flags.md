@@ -181,11 +181,13 @@ For example:
 use openraft::alias::SnapshotDataOf;
 
 struct MyTypeConfig;
+struct MyStateMachine;
 impl RaftTypeconfig For MyTypeConfig { /*...*/ }
+impl RaftStateMachine<MyTypeConfig> for MyStateMachine { /*...*/ }
 
 // The following two lines are equivalent:
-let snapshot_data: SnapshotDataOf<MyTypeConfig>;
-let snapshot_data: <MyTypeConfig as RaftTypeConfig>::SnapshotData;
+let snapshot_data: SnapshotDataOf<MyTypeConfig, MyStateMachine>;
+let snapshot_data: <MyStateMachine as RaftStateMachine<MyTypeConfig>>::SnapshotData;
 ```
 
 Note that the type shortcuts are not stable and may be changed in the future.

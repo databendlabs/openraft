@@ -1,5 +1,6 @@
 //! RocksDB-backed state machine implementation.
 
+use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::fs;
 use std::io;
@@ -14,7 +15,6 @@ use openraft::OptionalSend;
 use openraft::RaftSnapshotBuilder;
 use openraft::StorageError;
 use openraft::alias::LogIdOf;
-use openraft::alias::SnapshotDataOf;
 use openraft::alias::SnapshotMetaOf;
 use openraft::alias::SnapshotOf;
 use openraft::alias::StoredMembershipOf;
@@ -99,8 +99,10 @@ struct SnapshotFile {
 }
 
 impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
+    type SnapshotData = Cursor<Vec<u8>>;
+
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn build_snapshot(&mut self) -> Result<SnapshotOf<TypeConfig>, io::Error> {
+    async fn build_snapshot(&mut self) -> Result<SnapshotOf<TypeConfig, Cursor<Vec<u8>>>, io::Error> {
         let (last_applied_log, last_membership) = self.get_meta()?;
 
         // Generate a random snapshot index.
@@ -158,7 +160,7 @@ impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
             StorageError::<TypeConfig>::write_snapshot(Some(meta.signature()), TypeConfig::err_from_error(&e))
         })?;
 
-        Ok(SnapshotOf::<TypeConfig> {
+        Ok(SnapshotOf::<TypeConfig, Cursor<Vec<u8>>> {
             meta,
             snapshot: Cursor::new(data_bytes),
         })
@@ -166,6 +168,8 @@ impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
 }
 
 impl RaftStateMachine<TypeConfig> for RocksStateMachine {
+    type SnapshotData = Cursor<Vec<u8>>;
+
     type SnapshotBuilder = Self;
 
     async fn applied_state(
@@ -179,11 +183,13 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
         let mut batch = rocksdb::WriteBatch::default();
         let mut last_applied_log = None;
         let mut last_membership: Option<StoredMembershipOf<TypeConfig>> = None;
+        let mut pending_values = BTreeMap::<String, types_kv::VersionedValue>::new();
         let mut responses = Vec::new();
 
         while let Some((entry, responder)) = entries.try_next().await? {
             tracing::debug!(%entry.log_id, "replicate to sm");
 
+            let version = entry.log_id().index();
             last_applied_log = Some(entry.log_id());
 
             let response = match entry.payload {
@@ -191,9 +197,43 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
                 EntryPayload::Normal(ref req) => match req {
                     types_kv::Request::Set { key, value } => {
                         let cf_data = self.cf_sm_data();
+                        let versioned_value = types_kv::VersionedValue {
+                            value: value.clone(),
+                            version,
+                        };
 
-                        batch.put_cf(cf_data, key.as_bytes(), value.as_bytes());
-                        types_kv::Response::new(value.clone())
+                        batch.put_cf(cf_data, key.as_bytes(), serialize(&versioned_value)?);
+                        pending_values.insert(key.clone(), versioned_value);
+                        types_kv::Response::new(value.clone(), version)
+                    }
+                    types_kv::Request::CompareAndSet {
+                        key,
+                        expected_version,
+                        value,
+                    } => {
+                        let current = if let Some(current) = pending_values.get(key) {
+                            Some(current.clone())
+                        } else {
+                            self.db
+                                .get_cf(self.cf_sm_data(), key.as_bytes())
+                                .map_err(|e| io::Error::other(e.to_string()))?
+                                .map(|bytes| deserialize(&bytes))
+                                .transpose()
+                                .map_err(|e| io::Error::other(e.to_string()))?
+                        };
+
+                        if current.is_some_and(|current| current.version == *expected_version) {
+                            let versioned_value = types_kv::VersionedValue {
+                                value: value.clone(),
+                                version,
+                            };
+
+                            batch.put_cf(self.cf_sm_data(), key.as_bytes(), serialize(&versioned_value)?);
+                            pending_values.insert(key.clone(), versioned_value);
+                            types_kv::Response::new(value.clone(), version)
+                        } else {
+                            types_kv::Response::none()
+                        }
                     }
                 },
                 EntryPayload::Membership(ref mem) => {
@@ -233,14 +273,14 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
         self.clone()
     }
 
-    async fn begin_receiving_snapshot(&mut self) -> Result<SnapshotDataOf<TypeConfig>, io::Error> {
+    async fn begin_receiving_snapshot(&mut self) -> Result<Self::SnapshotData, io::Error> {
         Ok(Cursor::new(Vec::new()))
     }
 
     async fn install_snapshot(
         &mut self,
         meta: &SnapshotMetaOf<TypeConfig>,
-        snapshot: SnapshotDataOf<TypeConfig>,
+        snapshot: Self::SnapshotData,
     ) -> Result<(), io::Error> {
         tracing::info!(
             { snapshot_size = snapshot.get_ref().len() },
@@ -312,7 +352,7 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
         Ok(())
     }
 
-    async fn get_current_snapshot(&mut self) -> Result<Option<SnapshotOf<TypeConfig>>, io::Error> {
+    async fn get_current_snapshot(&mut self) -> Result<Option<SnapshotOf<TypeConfig, Self::SnapshotData>>, io::Error> {
         // Find the latest snapshot file by comparing filenames lexicographically
         let mut latest_snapshot_id: Option<String> = None;
 
@@ -349,9 +389,64 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
         let data_bytes =
             serialize(&snapshot_file.data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
 
-        Ok(Some(SnapshotOf::<TypeConfig> {
+        Ok(Some(SnapshotOf::<TypeConfig, Self::SnapshotData> {
             meta: snapshot_file.meta,
             snapshot: Cursor::new(data_bytes),
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use futures::stream;
+    use openraft::entry::RaftEntry;
+    use openraft::type_config::alias::EntryOf;
+    use tempfile::TempDir;
+
+    use super::*;
+
+    #[test]
+    fn cas_sees_earlier_write_in_same_batch() {
+        TypeConfig::run(async {
+            let td = TempDir::new().unwrap();
+            let (_, mut state_machine) = crate::new::<TypeConfig, _>(td.path()).await.unwrap();
+
+            let initial: Vec<Result<EntryResponder<TypeConfig>, io::Error>> = vec![Ok((
+                EntryOf::<TypeConfig>::new_normal(
+                    openraft::testing::log_id::<TypeConfig>(1, 1, 1),
+                    types_kv::Request::set("key", "A"),
+                ),
+                None,
+            ))];
+            state_machine.apply(stream::iter(initial)).await.unwrap();
+
+            let bytes = state_machine.db.get_cf(state_machine.cf_sm_data(), "key").unwrap().unwrap();
+            let initial_value: types_kv::VersionedValue = deserialize(&bytes).unwrap();
+
+            let entries: Vec<Result<EntryResponder<TypeConfig>, io::Error>> = vec![
+                Ok((
+                    EntryOf::<TypeConfig>::new_normal(
+                        openraft::testing::log_id::<TypeConfig>(1, 1, 2),
+                        types_kv::Request::compare_and_set("key", initial_value.version, "B"),
+                    ),
+                    None,
+                )),
+                Ok((
+                    EntryOf::<TypeConfig>::new_normal(
+                        openraft::testing::log_id::<TypeConfig>(1, 1, 3),
+                        types_kv::Request::compare_and_set("key", initial_value.version, "C"),
+                    ),
+                    None,
+                )),
+            ];
+
+            state_machine.apply(stream::iter(entries)).await.unwrap();
+
+            let bytes = state_machine.db.get_cf(state_machine.cf_sm_data(), "key").unwrap().unwrap();
+            let value: types_kv::VersionedValue = deserialize(&bytes).unwrap();
+
+            assert_eq!("B", value.value);
+            assert!(value.version > initial_value.version);
+        });
     }
 }

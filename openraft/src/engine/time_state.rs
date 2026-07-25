@@ -3,8 +3,9 @@ use std::time::Duration;
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
 pub(crate) struct Config {
-    /// The time interval after which the next election will be initiated once the current lease has
-    /// expired.
+    /// The sampled time interval after which the next election will be initiated once the current
+    /// lease has expired. A new interval is sampled whenever a Pre-Vote or election campaign
+    /// begins.
     pub(crate) election_timeout: Duration,
 
     /// If this node has a smaller last-log-id than others, it will be less likely to be elected as
@@ -32,8 +33,8 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             election_timeout: Duration::from_millis(150),
-            smaller_log_timeout: Duration::from_millis(200),
-            leader_lease: Duration::from_millis(150),
+            smaller_log_timeout: Duration::from_millis(600),
+            leader_lease: Duration::from_millis(300),
         }
     }
 }

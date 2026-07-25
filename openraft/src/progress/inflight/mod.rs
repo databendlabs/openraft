@@ -154,42 +154,51 @@ where C: RaftTypeConfig
 
     /// Update inflight state when log up to `upto` is acknowledged by a follower/learner.
     ///
-    /// If `from_inflight_id` doesn't match the current `InflightId`,
-    /// the ack is ignored as a stale response.
-    pub(crate) fn ack(&mut self, upto: Option<LogIdOf<C>>, from_inflight_id: InflightId) {
+    /// Returns `true` if the ack matched the current inflight request and was applied; `false` if
+    /// it was stale and ignored. An ack is stale when its `from_inflight_id` does not match the
+    /// current request, or when there is no inflight request at all ([`Inflight::None`]): in
+    /// pipeline ([`Inflight::LogsSince`]) mode several acks share one [`InflightId`], and a
+    /// concurrent log reversion can clear the inflight to `None` (see
+    /// [`Updater::update_conflicting`]) while acks queued before the reset are still arriving. The
+    /// caller must not advance `matching` when this returns `false`: the follower state such an ack
+    /// reports no longer holds.
+    ///
+    /// [`Updater::update_conflicting`]: crate::progress::entry::update::Updater::update_conflicting
+    pub(crate) fn ack(&mut self, upto: Option<LogIdOf<C>>, from_inflight_id: InflightId) -> bool {
         match self {
-            Inflight::None => {
-                unreachable!("no inflight data")
-            }
+            Inflight::None => false,
             Inflight::Logs {
                 log_id_range,
                 inflight_id,
             } => {
                 if *inflight_id != from_inflight_id {
-                    return;
+                    return false;
                 }
 
                 *self = {
                     debug_assert!(upto >= log_id_range.prev);
                     debug_assert!(upto <= log_id_range.last);
                     Inflight::logs(upto, log_id_range.last.clone(), *inflight_id)
-                }
+                };
+                true
             }
             Inflight::Snapshot { inflight_id } => {
                 if *inflight_id != from_inflight_id {
-                    return;
+                    return false;
                 }
 
                 *self = Inflight::None;
+                true
             }
             Inflight::LogsSince { prev, inflight_id } => {
                 if *inflight_id != from_inflight_id {
-                    return;
+                    return false;
                 }
 
                 debug_assert!(&upto >= prev);
 
                 *prev = upto;
+                true
             }
         }
     }

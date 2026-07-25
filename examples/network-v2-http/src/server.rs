@@ -22,19 +22,22 @@ use openraft::Snapshot;
 use openraft::errors::RaftError;
 use openraft::raft::SnapshotResponse;
 use openraft::raft::TransferLeaderResponse;
+use openraft::storage::RaftStateMachine;
 use serde::Serialize;
 use tokio::net::TcpListener;
 
 pub struct Server<C, SM>
-where C: RaftTypeConfig<Node = NodeInfo, SnapshotData = Cursor<Vec<u8>>>
+where
+    C: RaftTypeConfig<Node = NodeInfo>,
+    SM: RaftStateMachine<C, SnapshotData = Cursor<Vec<u8>>>,
 {
     raft: Arc<openraft::Raft<C, SM>>,
 }
 
 impl<C, SM> Server<C, SM>
 where
-    C: RaftTypeConfig<Node = NodeInfo, SnapshotData = Cursor<Vec<u8>>>,
-    SM: 'static,
+    C: RaftTypeConfig<Node = NodeInfo>,
+    SM: RaftStateMachine<C, SnapshotData = Cursor<Vec<u8>>> + 'static,
 {
     pub fn new(raft: openraft::Raft<C, SM>) -> Self {
         Self { raft: Arc::new(raft) }
@@ -65,8 +68,8 @@ async fn handle<C, SM>(
     req: Request<Incoming>,
 ) -> Result<Response<Full<Bytes>>, Infallible>
 where
-    C: RaftTypeConfig<Node = NodeInfo, SnapshotData = Cursor<Vec<u8>>>,
-    SM: 'static,
+    C: RaftTypeConfig<Node = NodeInfo>,
+    SM: RaftStateMachine<C, SnapshotData = Cursor<Vec<u8>>> + 'static,
 {
     if req.method() != Method::POST {
         return Ok(error_response(StatusCode::NOT_FOUND, "not found"));
@@ -92,13 +95,14 @@ async fn handle_raft_rpc<C, SM>(
     body: Bytes,
 ) -> Result<Response<Full<Bytes>>, Response<Full<Bytes>>>
 where
-    C: RaftTypeConfig<Node = NodeInfo, SnapshotData = Cursor<Vec<u8>>>,
+    C: RaftTypeConfig<Node = NodeInfo>,
+    SM: RaftStateMachine<C, SnapshotData = Cursor<Vec<u8>>>,
 {
     match path {
         "/append" => {
             let req = serde_json::from_slice(&body).map_err(bad_request)?;
 
-            json_response(&raft.append_entries(req).await)
+            Ok(json_response(&raft.append_entries(req).await))
         }
         "/snapshot" => {
             let (vote, meta, data) = serde_json::from_slice(&body).map_err(bad_request)?;
@@ -109,28 +113,29 @@ where
             let res: Result<SnapshotResponse<C>, RaftError<C>> =
                 raft.install_full_snapshot(vote, snapshot).await.map_err(RaftError::Fatal);
 
-            json_response(&res)
+            Ok(json_response(&res))
         }
         "/transfer-leader" => {
             let req = serde_json::from_slice(&body).map_err(bad_request)?;
             let res: Result<TransferLeaderResponse<C>, RaftError<C>> =
                 raft.handle_transfer_leader(req).await.map_err(RaftError::Fatal);
 
-            json_response(&res)
+            Ok(json_response(&res))
         }
         "/vote" => {
             let req = serde_json::from_slice(&body).map_err(bad_request)?;
 
-            json_response(&raft.vote(req).await)
+            Ok(json_response(&raft.vote(req).await))
         }
         _ => Err(error_response(StatusCode::NOT_FOUND, "not found")),
     }
 }
 
-fn json_response<T: Serialize>(value: &T) -> Result<Response<Full<Bytes>>, Response<Full<Bytes>>> {
-    let body = serde_json::to_vec(value).map_err(internal_server_error)?;
-
-    Ok(response(StatusCode::OK, "application/json", Bytes::from(body)))
+fn json_response<T: Serialize>(value: &T) -> Response<Full<Bytes>> {
+    match serde_json::to_vec(value) {
+        Ok(body) => response(StatusCode::OK, "application/json", Bytes::from(body)),
+        Err(e) => internal_server_error(e),
+    }
 }
 
 fn bad_request(e: impl Display) -> Response<Full<Bytes>> {

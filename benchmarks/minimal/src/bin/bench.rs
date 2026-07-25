@@ -76,11 +76,11 @@ impl Display for BenchConfig {
 /// Format a number in human-readable form: "20m (20_000_000)"
 fn format_number(n: u64) -> String {
     let with_underscores = format_with_underscores(n);
-    let short = if n >= 1_000_000_000 && n % 1_000_000_000 == 0 {
+    let short = if n >= 1_000_000_000 && n.is_multiple_of(1_000_000_000) {
         format!("{}g", n / 1_000_000_000)
-    } else if n >= 1_000_000 && n % 1_000_000 == 0 {
+    } else if n >= 1_000_000 && n.is_multiple_of(1_000_000) {
         format!("{}m", n / 1_000_000)
-    } else if n >= 1_000 && n % 1_000 == 0 {
+    } else if n >= 1_000 && n.is_multiple_of(1_000) {
         format!("{}k", n / 1_000)
     } else {
         return with_underscores;

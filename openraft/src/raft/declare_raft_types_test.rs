@@ -2,8 +2,6 @@
 
 #![allow(dead_code)]
 
-use std::io::Cursor;
-
 use openraft_rt_tokio::TokioRuntime;
 
 use crate::declare_raft_types;
@@ -22,7 +20,6 @@ declare_raft_types!(
         LeaderId = crate::impls::leader_id_std::LeaderId<u64, u64>,
         Entry = crate::Entry<<Self::LeaderId as crate::vote::RaftLeaderId>::Committed, Self::D, Self::NodeId, Self::Node>,
         Vote = crate::impls::Vote<Self::LeaderId>,
-        SnapshotData = Cursor<Vec<u8>>,
         AsyncRuntime = TokioRuntime,
         // Responder<T> is not supported by  declare_raft_types
         // Responder<T> = crate::impls::OneshotResponder<Self, T> where T: OptionalSend + 'static,
@@ -34,7 +31,6 @@ declare_raft_types!(
         NodeId = u64,
         Node = (),
         Entry = crate::Entry<<Self::LeaderId as crate::vote::RaftLeaderId>::Committed, Self::D, Self::NodeId, Self::Node>,
-        SnapshotData = Cursor<Vec<u8>>,
         AsyncRuntime = TokioRuntime,
 );
 
@@ -44,7 +40,6 @@ declare_raft_types!(
         NodeId = u64,
         Node = (),
         Entry = crate::Entry<<Self::LeaderId as crate::vote::RaftLeaderId>::Committed, Self::D, Self::NodeId, Self::Node>,
-        SnapshotData = Cursor<Vec<u8>>,
         AsyncRuntime = TokioRuntime,
 );
 

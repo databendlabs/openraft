@@ -28,10 +28,10 @@ openraft::declare_raft_types!(
         Vote = pb::Vote,
         Entry = pb::Entry,
         Node = pb::Node,
-        SnapshotData = Vec<u8>,
 );
 
 pub type NodeId = u64;
+pub type SnapshotData = Vec<u8>;
 pub type LogStore = store::LogStore;
 pub type StateMachineStore = store::StateMachineStore;
 pub type Raft = openraft::Raft<TypeConfig, std::sync::Arc<StateMachineStore>>;

@@ -7,8 +7,6 @@
 
 #![allow(dead_code)]
 
-use std::io::Cursor;
-
 use openraft::Entry;
 use openraft::OptionalSend;
 use openraft::RaftTypeConfig;
@@ -70,7 +68,6 @@ impl RaftTypeConfig for CustomConfig {
     type LeaderId = openraft::impls::leader_id_adv::LeaderId<u64, u64>;
     type Vote = openraft::impls::Vote<Self::LeaderId>;
     type Entry = Entry<<Self::LeaderId as openraft::vote::RaftLeaderId>::Committed, Self::D, Self::NodeId, Self::Node>;
-    type SnapshotData = Cursor<Vec<u8>>;
     type AsyncRuntime = TokioRuntime;
     type Responder<T>
         = OneshotResponder<Self, T>

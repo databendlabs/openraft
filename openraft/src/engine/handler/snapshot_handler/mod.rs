@@ -8,6 +8,7 @@ use crate::core::sm;
 use crate::engine::Command;
 use crate::engine::EngineOutput;
 use crate::raft_state::LogStateReader;
+use crate::storage::RaftStateMachine;
 use crate::type_config::alias::SnapshotMetaOf;
 
 #[cfg(test)]
@@ -17,14 +18,18 @@ mod update_snapshot_test;
 
 /// Handle raft vote related operations
 pub(crate) struct SnapshotHandler<'st, 'out, C, SM = ()>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     pub(crate) state: &'st mut RaftState<C>,
     pub(crate) output: &'out mut EngineOutput<C, SM>,
 }
 
 impl<C, SM> SnapshotHandler<'_, '_, C, SM>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     /// Trigger building a snapshot if there is no pending building job.
     #[tracing::instrument(level = "debug", skip_all)]

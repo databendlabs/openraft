@@ -16,7 +16,6 @@ use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::entry::RaftEntry;
 use crate::log_id_range::LogIdRange;
-use crate::progress::Inflight;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::inflight_id::InflightId;
 use crate::progress::stream_id::StreamId;
@@ -83,13 +82,7 @@ fn test_startup_as_leader_without_logs() -> anyhow::Result<()> {
                 targets: vec![TargetProgress {
                     target: 3,
                     target_node: (),
-                    progress: ProgressEntry {
-                        stream_id: StreamId::new(2),
-                        matching: None,
-                        inflight: Inflight::None,
-                        searching_end: 4,
-                        allow_log_reversion: false,
-                    },
+                    progress: ProgressEntry::empty(3, StreamId::new(2), 4),
                 }],
                 close_old_streams: true,
             },
@@ -143,13 +136,7 @@ fn test_startup_as_leader_with_proposed_logs() -> anyhow::Result<()> {
                 targets: vec![TargetProgress {
                     target: 3,
                     target_node: (),
-                    progress: ProgressEntry {
-                        stream_id: StreamId::new(2),
-                        matching: None,
-                        inflight: Inflight::None,
-                        searching_end: 7,
-                        allow_log_reversion: false,
-                    },
+                    progress: ProgressEntry::empty(3, StreamId::new(2), 7),
                 }],
                 close_old_streams: true,
             },

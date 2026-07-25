@@ -23,6 +23,8 @@ pub trait NetVote<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
 {
     /// Send a RequestVote RPC to the target.
+    ///
+    /// The network implementation is responsible for enforcing `option.soft_ttl()`.
     async fn vote(&mut self, rpc: VoteRequest<C>, option: RPCOption) -> Result<VoteResponse<C>, RPCError<C>>;
 
     /// Send a Pre-Vote RPC to the target.
@@ -31,6 +33,9 @@ where C: RaftTypeConfig
     /// implemented `pre_vote` makes Pre-Vote a no-op and elections proceed as before. A transport
     /// failure must instead be returned as `Err` (it is not counted as a grant). See
     /// [`RaftNetworkV2::pre_vote`](crate::network::v2::RaftNetworkV2::pre_vote).
+    ///
+    /// Implementations that send a real Pre-Vote RPC are responsible for enforcing
+    /// `option.soft_ttl()`.
     async fn pre_vote(&mut self, rpc: VoteRequest<C>, _option: RPCOption) -> Result<VoteResponse<C>, RPCError<C>> {
         Ok(VoteResponse::new(rpc.vote, None, true))
     }

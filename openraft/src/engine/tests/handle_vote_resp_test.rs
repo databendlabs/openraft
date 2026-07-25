@@ -219,7 +219,7 @@ fn test_handle_vote_resp_equal_vote() -> anyhow::Result<()> {
                     targets: vec![TargetProgress {
                         target: 2,
                         target_node: (),
-                        progress: ProgressEntry::empty(StreamId::new(2), 1),
+                        progress: ProgressEntry::empty(2, StreamId::new(2), 1),
                     }],
                     close_old_streams: true,
                 },

@@ -98,10 +98,15 @@ lint:
 	cargo fmt --manifest-path rt-compio/Cargo.toml
 	cargo fmt --manifest-path rt-monoio/Cargo.toml
 	cargo fmt --manifest-path rt-tokio/Cargo.toml
+	cargo fmt --manifest-path metrics-otel/Cargo.toml
+	cargo fmt --manifest-path benchmarks/minimal/Cargo.toml
 	cargo fmt --manifest-path examples/app-http/Cargo.toml
+	cargo fmt --manifest-path examples/network-v1-http/Cargo.toml
+	cargo fmt --manifest-path examples/network-v2-http/Cargo.toml
 	cargo fmt --manifest-path examples/log-mem/Cargo.toml
 	cargo fmt --manifest-path examples/sm-mem/Cargo.toml
 	cargo fmt --manifest-path examples/rocksstore/Cargo.toml
+	cargo fmt --manifest-path examples/types-kv/Cargo.toml
 	cargo fmt --manifest-path examples/raft-kv-memstore-grpc/Cargo.toml
 	cargo fmt --manifest-path examples/raft-kv-memstore-network-v2/Cargo.toml
 	cargo fmt --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml
@@ -115,10 +120,15 @@ lint:
 	cargo clippy --no-deps --manifest-path rt-compio/Cargo.toml                                       --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path rt-monoio/Cargo.toml                                       --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path rt-tokio/Cargo.toml                                        --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path metrics-otel/Cargo.toml                                    --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path benchmarks/minimal/Cargo.toml                               --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/app-http/Cargo.toml                               --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path examples/network-v1-http/Cargo.toml                         --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path examples/network-v2-http/Cargo.toml                         --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/log-mem/Cargo.toml                                --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/sm-mem/Cargo.toml                                --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/rocksstore/Cargo.toml                                --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path examples/types-kv/Cargo.toml                               --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore-grpc/Cargo.toml                  --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore-network-v2/Cargo.toml            --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml --all-targets -- -D warnings
@@ -127,10 +137,10 @@ lint:
 	cargo clippy --no-deps --manifest-path examples/raft-kv-rocksdb/Cargo.toml                        --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/multi-raft-kv/Cargo.toml                          --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path tests-turmoil/Cargo.toml                                   --all-targets -- -D warnings
-	# Bug: clippy --all-targets reports false warning about unused dep in
-	# `[dev-dependencies]`:
-	# https://github.com/rust-lang/rust/issues/72686#issuecomment-635539688
-	# Thus we only check unused deps for lib
+	@# Bug: clippy --all-targets reports false warning about unused dep in
+	@# `[dev-dependencies]`:
+	@# https://github.com/rust-lang/rust/issues/72686#issuecomment-635539688
+	@# Thus we only check unused deps for lib
 	RUSTFLAGS=-Wunused-crate-dependencies cargo clippy --no-deps  --lib -- -D warnings
 
 unused_dep:

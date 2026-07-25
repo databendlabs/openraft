@@ -1,13 +1,14 @@
 use std::fmt;
+use std::time::Duration;
 
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 use crate::base::shared_id_generator::SharedIdGenerator;
 use crate::display_ext::DisplayInstantExt;
 use crate::engine::leader_log_ids::LeaderLogIds;
-use crate::progress::Progress;
 use crate::progress::VecProgress;
 use crate::progress::entry::ProgressEntry;
+use crate::progress::id_val::IdVal;
 use crate::progress::stream_id::StreamId;
 use crate::quorum::QuorumSet;
 use crate::type_config::TypeConfigExt;
@@ -61,7 +62,7 @@ where C: RaftTypeConfig
     pub(crate) noop_log_id: LogIdOf<C>,
 
     /// Tracks the replication progress and committed index
-    pub(crate) progress: VecProgress<C::NodeId, ProgressEntry<C>, Option<LogIdOf<C>>, QS>,
+    pub(crate) progress: VecProgress<ProgressEntry<C>, QS>,
 
     /// Tracks the clock time acknowledged by other nodes.
     ///
@@ -76,7 +77,7 @@ where C: RaftTypeConfig
     /// See [`docs::leader_lease`] for more details.
     ///
     /// [`docs::leader_lease`]: `crate::docs::protocol::replication::leader_lease`
-    pub(crate) clock_progress: VecProgress<C::NodeId, Option<InstantOf<C>>, Option<InstantOf<C>>, QS>,
+    pub(crate) clock_progress: VecProgress<IdVal<C::NodeId, Option<InstantOf<C>>>, QS>,
 }
 
 impl<C, QS> Leader<C, QS>
@@ -139,11 +140,11 @@ where
             next_heartbeat: C::now(),
             last_log_id: last_log_id.clone(),
             noop_log_id,
-            progress: VecProgress::new(quorum_set.clone(), learner_ids.iter().cloned(), || {
+            progress: VecProgress::new(quorum_set.clone(), learner_ids.iter().cloned(), |id| {
                 let stream_id = StreamId::new(id_gen.next_id());
-                ProgressEntry::empty(stream_id, last_log_id.next_index())
+                ProgressEntry::empty(id, stream_id, last_log_id.next_index())
             }),
-            clock_progress: VecProgress::new(quorum_set, learner_ids, || None),
+            clock_progress: VecProgress::new(quorum_set, learner_ids, IdVal::new_default),
         }
     }
 
@@ -228,9 +229,25 @@ where
         }
     }
 
+    /// Decide whether a heartbeat needs to be sent to `target` at time `now`.
+    ///
+    /// A heartbeat is redundant if `target` has recently acknowledged an RPC (log replication
+    /// or heartbeat): the acknowledgment proves the follower's liveness and already extended
+    /// the leader lease via [`Self::clock_progress`], which records the *sending* time of the
+    /// last acknowledged RPC.
+    ///
+    /// `min_interval` is [`Config::heartbeat_min_interval`]; `0` disables suppression so that
+    /// a heartbeat is always sent.
+    ///
+    /// [`Config::heartbeat_min_interval`]: `crate::Config::heartbeat_min_interval`
+    pub(crate) fn need_heartbeat(&self, target: &C::NodeId, now: InstantOf<C>, min_interval: Duration) -> bool {
+        let acked = self.clock_progress.try_get(target).and_then(|entry| entry.val);
+        acked.is_none_or(|sending_time| now >= sending_time + min_interval)
+    }
+
     pub(crate) fn is_replication_stream_valid(&self, target: &C::NodeId, stream_id: StreamId) -> bool {
-        if let Some(prog_ent) = self.progress.try_get(target)
-            && prog_ent.stream_id == stream_id
+        if let Some(entry) = self.progress.try_get(target)
+            && entry.stream_id == stream_id
         {
             return true;
         }
@@ -249,6 +266,7 @@ where
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
+    use std::time::Duration;
 
     use maplit::btreeset;
 
@@ -257,7 +275,6 @@ mod tests {
     use crate::engine::leader_log_ids::LeaderLogIds;
     use crate::engine::testing::UTConfig;
     use crate::engine::testing::log_id;
-    use crate::progress::Progress;
     use crate::proposer::Leader;
     use crate::type_config::TypeConfigExt;
     use crate::vote::raft_vote::RaftVoteExt;
@@ -442,5 +459,47 @@ mod tests {
         leading.clock_progress.increase_to(&3, Some(t3)).ok();
         let t = leading.last_quorum_acked_time();
         assert_eq!(Some(t2), t, "n2 and n3 acked");
+    }
+
+    #[test]
+    fn test_need_heartbeat() {
+        let mut leading = Leader::<UTConfig, Vec<BTreeSet<u64>>>::new(
+            Vote::new(2, 1).into_committed(),
+            vec![btreeset! {1, 2, 3}],
+            [4],
+            None,
+            SharedIdGenerator::new(),
+        );
+
+        let min_interval = Duration::from_millis(100);
+        let t0 = UTConfig::<()>::now();
+
+        assert!(
+            leading.need_heartbeat(&2, t0, min_interval),
+            "never acknowledged: must send"
+        );
+        assert!(
+            leading.need_heartbeat(&9, t0, min_interval),
+            "unknown target: must send"
+        );
+
+        leading.clock_progress.increase_to(&2, Some(t0)).ok();
+
+        assert!(
+            !leading.need_heartbeat(&2, t0 + Duration::from_millis(99), min_interval),
+            "acked RPC sent within min_interval: suppressed"
+        );
+        assert!(
+            leading.need_heartbeat(&2, t0 + Duration::from_millis(100), min_interval),
+            "acked RPC sending time is min_interval old: must send"
+        );
+        assert!(
+            leading.need_heartbeat(&2, t0, Duration::ZERO),
+            "zero min_interval disables suppression"
+        );
+        assert!(
+            leading.need_heartbeat(&3, t0 + Duration::from_millis(99), min_interval),
+            "only the acked follower is suppressed"
+        );
     }
 }

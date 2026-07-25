@@ -1,5 +1,6 @@
-## Openraft is derived from [async-raft](https://docs.rs/crate/async-raft/latest).
-Bugs that are found in async-raft are fixed by openraft:
+# Fixes carried forward from async-raft
+
+OpenRaft began as a fork of [async-raft](https://docs.rs/crate/async-raft/latest). The linked commits below record fixes that were made while carrying that code forward.
 
 -   Fixed: [6c0ccaf3](https://github.com/databendlabs/openraft/commit/6c0ccaf3ab3f262437d8fc021d4b13437fa4c9ac) consider joint config when starting up and committing.; by drdr xp; 2021-12-24
 -   Fixed: [228077a6](https://github.com/databendlabs/openraft/commit/228077a66d5099fd404ae9c68f0977e5f978f102) a restarted follower should not wait too long to elect. Otherwise, the entire cluster hangs; by drdr xp; 2021-11-19
@@ -26,4 +27,4 @@ Bugs that are found in async-raft are fixed by openraft:
 -   Fixed: [39690593](https://github.com/databendlabs/openraft/commit/39690593a07c6b9ded4b7b8f1aca3191fa7641e4) a NonVoter should stay as NonVoter instead of Follower after restart; by drdr xp; 2021-05-14
 
 
-A full list of changes/fixes can be found in the [change-log](https://github.com/databendlabs/openraft/blob/main/change-log.md).
+The [changelog](change-log.md) records the full release history.

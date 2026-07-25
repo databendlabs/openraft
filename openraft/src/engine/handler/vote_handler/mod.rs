@@ -22,6 +22,7 @@ use crate::proposer::CandidateState;
 use crate::proposer::LeaderState;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
+use crate::storage::RaftStateMachine;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::VoteOf;
@@ -41,7 +42,9 @@ mod handle_message_vote_test;
 /// A `vote` defines the state of an openraft node.
 /// See [`RaftState::calc_server_state`].
 pub(crate) struct VoteHandler<'st, C, SM = ()>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     pub(crate) config: &'st mut EngineConfig<C>,
     pub(crate) state: &'st mut RaftState<C>,
@@ -52,7 +55,9 @@ where C: RaftTypeConfig
 }
 
 impl<C, SM> VoteHandler<'_, C, SM>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     /// Validate and accept the input `vote` and send the result via `tx`.
     ///

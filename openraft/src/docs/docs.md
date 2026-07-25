@@ -4,6 +4,9 @@ If you're starting to build an application with Openraft, check out
 - [`getting_started`](crate::docs::getting_started).
 - [`faq`](crate::docs::faq),
 
+For an overview of Openraft's capabilities and their APIs, see
+- [`features`](crate::docs::features).
+
 To maintain an Openraft cluster, e.g., add or remove nodes, refer to
 - [`cluster_control`](crate::docs::cluster_control) :
   - [`cluster_formation`](`crate::docs::cluster_control::cluster_formation`) describes how to form a cluster;

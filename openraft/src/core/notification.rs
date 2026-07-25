@@ -64,6 +64,9 @@ where C: RaftTypeConfig
 
     /// Result of executing a command sent from network worker.
     ReplicationProgress {
+        /// Identifies the replication stream that produced this progress.
+        stream_id: StreamId,
+
         progress: replication::Progress<C>,
 
         /// The `InflightId` of the replication request that produced this response.
@@ -157,8 +160,18 @@ where C: RaftTypeConfig
             }
             Self::StorageError { error } => write!(f, "StorageError: {}", error),
             Self::LocalIO { io_id } => write!(f, "IOFlushed: {}", io_id),
-            Self::ReplicationProgress { progress, inflight_id } => {
-                write!(f, "{}, inflight_id: {}", progress, inflight_id.display())
+            Self::ReplicationProgress {
+                stream_id,
+                progress,
+                inflight_id,
+            } => {
+                write!(
+                    f,
+                    "{}, stream_id: {}, inflight_id: {}",
+                    progress,
+                    stream_id,
+                    inflight_id.display()
+                )
             }
             Self::HeartbeatProgress {
                 stream_id: leader_vote,

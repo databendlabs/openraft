@@ -1,6 +1,8 @@
 use std::fmt::Display;
+use std::marker::PhantomData;
 
 use openraft::BasicNode;
+use openraft::OptionalSend;
 use openraft::RaftTypeConfig;
 use openraft::errors::Infallible;
 use openraft::errors::InstallSnapshotError;
@@ -41,6 +43,7 @@ pub mod actix {
     use openraft::raft::InstallSnapshotResponse;
     use openraft::raft::VoteRequest;
     use openraft::raft::VoteResponse;
+    use openraft::storage::RaftStateMachine;
     use openraft_legacy::prelude::ChunkedSnapshotReceiver;
     use serde::Serialize;
     use serde::de::DeserializeOwned;
@@ -51,8 +54,8 @@ pub mod actix {
     pub fn configure<C, SM>(cfg: &mut web::ServiceConfig)
     where
         C: RaftTypeConfig + 'static,
-        SM: 'static,
-        C::SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Unpin,
+        SM: RaftStateMachine<C> + 'static,
+        SM::SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Unpin,
         VoteRequest<C>: DeserializeOwned,
         AppendEntriesRequest<C>: DeserializeOwned,
         InstallSnapshotRequest<C>: DeserializeOwned,
@@ -71,6 +74,7 @@ pub mod actix {
     ) -> actix_web::Result<Json<Result<AppendEntriesResponse<C>, Infallible>>>
     where
         C: RaftTypeConfig,
+        SM: RaftStateMachine<C>,
     {
         let res = raft.append_entries(req.0).await.decompose().unwrap();
         Ok(Json(res))
@@ -82,6 +86,7 @@ pub mod actix {
     ) -> actix_web::Result<Json<Result<VoteResponse<C>, Infallible>>>
     where
         C: RaftTypeConfig,
+        SM: RaftStateMachine<C>,
     {
         let res = raft.vote(req.0).await.decompose().unwrap();
         Ok(Json(res))
@@ -93,22 +98,37 @@ pub mod actix {
     ) -> actix_web::Result<Json<Result<InstallSnapshotResponse<C>, InstallSnapshotError>>>
     where
         C: RaftTypeConfig,
-        C::SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Unpin,
+        SM: RaftStateMachine<C>,
+        SM::SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Unpin,
     {
         let res = raft.install_snapshot(req.0).await.decompose().unwrap();
         Ok(Json(res))
     }
 }
 
-pub struct NetworkFactory {}
+pub struct NetworkFactory<SD> {
+    _p: PhantomData<fn() -> SD>,
+}
 
-impl<C> RaftNetworkFactory<C> for NetworkFactory
+impl<SD> NetworkFactory<SD> {
+    pub fn new() -> Self {
+        Self { _p: PhantomData }
+    }
+}
+
+impl<SD> Default for NetworkFactory<SD> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<C, SD> RaftNetworkFactory<C> for NetworkFactory<SD>
 where
     C: RaftTypeConfig<Node = BasicNode>,
     // RaftNetwork requires the snapshot to be a file-like object that can be seeked, read from, and written to.
-    <C as RaftTypeConfig>::SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Unpin,
+    SD: AsyncRead + AsyncWrite + AsyncSeek + Unpin + OptionalSend + 'static,
 {
-    type Network = Adapter<C, Network<C>>;
+    type Network = Adapter<C, Network<C>, SD>;
 
     #[tracing::instrument(level = "debug", skip_all)]
     async fn new_client(&mut self, target: C::NodeId, node: &BasicNode) -> Self::Network {
@@ -131,7 +151,12 @@ where C: RaftTypeConfig
 impl<C> Network<C>
 where C: RaftTypeConfig
 {
-    async fn request<Req, Resp, Err>(&mut self, uri: impl Display, req: Req) -> Result<Result<Resp, Err>, RPCError<C>>
+    async fn request<Req, Resp, Err>(
+        &mut self,
+        uri: impl Display,
+        req: Req,
+        option: &RPCOption,
+    ) -> Result<Result<Resp, Err>, RPCError<C>>
     where
         Req: Serialize + 'static,
         Resp: Serialize + DeserializeOwned,
@@ -144,7 +169,7 @@ where C: RaftTypeConfig
         //     serde_json::to_string_pretty(&req).unwrap()
         // );
 
-        let resp = self.client.post(url.clone()).json(&req).send().await.map_err(|e| {
+        let resp = self.client.post(url.clone()).json(&req).timeout(option.soft_ttl()).send().await.map_err(|e| {
             if e.is_connect() {
                 // `Unreachable` informs the caller to backoff for a short while to avoid error log flush.
                 RPCError::Unreachable(Unreachable::new(&e))
@@ -172,9 +197,9 @@ where C: RaftTypeConfig
     async fn append_entries(
         &mut self,
         req: AppendEntriesRequest<C>,
-        _option: RPCOption,
+        option: RPCOption,
     ) -> Result<AppendEntriesResponse<C>, RPCError<C, RaftError<C>>> {
-        let res = self.request::<_, _, Infallible>("append", req).await.map_err(RPCError::with_raft_error)?;
+        let res = self.request::<_, _, Infallible>("append", req, &option).await.map_err(RPCError::with_raft_error)?;
         Ok(res.unwrap())
     }
 
@@ -182,9 +207,9 @@ where C: RaftTypeConfig
     async fn install_snapshot(
         &mut self,
         req: InstallSnapshotRequest<C>,
-        _option: RPCOption,
+        option: RPCOption,
     ) -> Result<InstallSnapshotResponse<C>, RPCError<C, RaftError<C, InstallSnapshotError>>> {
-        let res = self.request("snapshot", req).await.map_err(RPCError::with_raft_error)?;
+        let res = self.request("snapshot", req, &option).await.map_err(RPCError::with_raft_error)?;
         match res {
             Ok(resp) => Ok(resp),
             Err(e) => Err(RPCError::RemoteError(RemoteError::new(
@@ -198,9 +223,9 @@ where C: RaftTypeConfig
     async fn vote(
         &mut self,
         req: VoteRequest<C>,
-        _option: RPCOption,
+        option: RPCOption,
     ) -> Result<VoteResponse<C>, RPCError<C, RaftError<C>>> {
-        let res = self.request::<_, _, Infallible>("vote", req).await.map_err(RPCError::with_raft_error)?;
+        let res = self.request::<_, _, Infallible>("vote", req, &option).await.map_err(RPCError::with_raft_error)?;
         Ok(res.unwrap())
     }
 }

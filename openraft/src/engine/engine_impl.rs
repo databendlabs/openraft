@@ -9,7 +9,6 @@ use crate::Membership;
 use crate::RaftTypeConfig;
 use crate::core::ServerState;
 use crate::core::raft_msg::AppendEntriesTx;
-use crate::core::sm;
 use crate::engine::Command;
 use crate::engine::Condition;
 use crate::engine::EngineOutput;
@@ -43,13 +42,13 @@ use crate::raft::stream_append::StreamAppendResult;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
+use crate::storage::RaftStateMachine;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
-use crate::type_config::alias::SnapshotDataOf;
+use crate::type_config::alias::SmSnapshotOf;
 use crate::type_config::alias::SnapshotMetaOf;
-use crate::type_config::alias::SnapshotOf;
 use crate::type_config::alias::TermOf;
 use crate::type_config::alias::VoteOf;
 use crate::vote::RaftLeaderId;
@@ -68,7 +67,9 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// TODO: make the fields private
 #[derive(Debug)]
 pub(crate) struct Engine<C, SM = ()>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     pub(crate) config: EngineConfig<C>,
 
@@ -105,7 +106,9 @@ where C: RaftTypeConfig
 }
 
 impl<C, SM> Engine<C, SM>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     pub(crate) fn new(init_state: RaftState<C>, config: EngineConfig<C>) -> Self {
         Self {
@@ -260,8 +263,17 @@ where C: RaftTypeConfig
     }
 
     fn do_elect(&mut self, leadership_transfer: bool) {
-        // A real election supersedes any in-flight Pre-Vote round.
+        // An election attempt supersedes any in-flight Pre-Vote round.
         self.pre_candidate = None;
+
+        if self.leader.is_some() {
+            tracing::info!("skip election, already a leader");
+            return;
+        }
+
+        // A real campaign consumes the timeout selected before it. Sample the
+        // timeout that will gate the next campaign before entering this one.
+        self.config.resample_election_timeout();
 
         let new_term = self.state.vote.term().next();
         let leader_id = LeaderIdOf::<C>::new(new_term, self.config.id.clone());
@@ -296,6 +308,10 @@ where C: RaftTypeConfig
     /// follows.
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn pre_elect(&mut self) {
+        // Pre-Vote does not advance the persisted vote timestamp. Give every
+        // new Pre-Vote round a fresh timeout instead of retaining one sample.
+        self.config.resample_election_timeout();
+
         let new_term = self.state.vote.term().next();
         let leader_id = LeaderIdOf::<C>::new(new_term, self.config.id.clone());
         let pre_vote = VoteOf::<C>::from_leader_id(leader_id, false);
@@ -621,7 +637,7 @@ where C: RaftTypeConfig
     pub(crate) fn handle_install_full_snapshot(
         &mut self,
         vote: VoteOf<C>,
-        snapshot: SnapshotOf<C>,
+        snapshot: SmSnapshotOf<C, SM>,
         tx: OneshotSenderOf<C, SnapshotResponse<C>>,
     ) {
         tracing::info!("{}: vote: {}, snapshot: {}", func_name!(), vote, snapshot);
@@ -647,13 +663,6 @@ where C: RaftTypeConfig
             when: cond,
             resp: Respond::new(res, tx),
         });
-    }
-
-    /// Install a completely received snapshot on a follower.
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn handle_begin_receiving_snapshot(&mut self, tx: OneshotSenderOf<C, SnapshotDataOf<C>>) {
-        tracing::info!("{}", func_name!());
-        self.output.push_command(Command::from(sm::Command::begin_receiving_snapshot(tx)));
     }
 
     /// Re-derive the internal server state(Leader/Following) from the vote and the membership
@@ -863,7 +872,9 @@ where C: RaftTypeConfig
 
 /// Supporting util
 impl<C, SM> Engine<C, SM>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     /// Vote is granted by a quorum, leader established.
     #[tracing::instrument(level = "debug", skip_all)]
@@ -878,6 +889,10 @@ where C: RaftTypeConfig
 
         let vote = leader.committed_vote_ref().clone();
         let last_log_id = leader.last_log_id().cloned();
+
+        // The winning campaign may overlap a later Pre-Vote round. Cancel it so delayed responses
+        // cannot trigger another election after becoming Leader.
+        self.pre_candidate = None;
 
         self.replication_handler().rebuild_replication_streams(true);
 
@@ -1076,7 +1091,9 @@ mod engine_testing {
     use crate::raft_state::RaftState;
 
     impl<C, SM> Engine<C, SM>
-    where C: RaftTypeConfig
+    where
+        C: RaftTypeConfig,
+        SM: crate::storage::RaftStateMachine<C>,
     {
         /// Create a Leader state just for testing purpose only,
         /// without initializing related resource,

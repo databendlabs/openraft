@@ -29,6 +29,8 @@ impl RaftNetworkFactory<TypeConfig> for Router {
 }
 
 impl RaftNetworkV2<TypeConfig> for Connection {
+    type SnapshotData = crate::SnapshotData;
+
     async fn append_entries(
         &mut self,
         req: AppendEntriesRequest,

@@ -18,6 +18,7 @@ use openraft_multiraft::{GroupRouter, GroupNetworkAdapter, GroupNetworkFactory};
 
 // Your Router implements GroupRouter
 impl GroupRouter<TypeConfig, GroupId> for Router {
+    type SnapshotData = SnapshotData;
     // ...
 }
 
@@ -37,4 +38,3 @@ impl RaftNetworkFactory<TypeConfig> for NetworkFactory {
 ## Examples
 
 - [multi-raft-kv](../examples/multi-raft-kv/) - Basic Multi-Raft with 3 groups
-

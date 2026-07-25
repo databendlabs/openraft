@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="153" height="32" viewBox="0 0 153 32" role="img" aria-label="@George-Miao">
+  <defs>
+    <clipPath id="c"><circle cx="16" cy="16" r="16"/></clipPath>
+    <style>
+    .h { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji'; font-size: 14px; font-weight: 600; fill: #1f2328; }
+    @media (prefers-color-scheme: dark) { .h { fill: #e6edf3; } }
+    </style>
+  </defs>
+  <image xlink:href="data:image/jpeg;base64,/9j/2wCEAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDIBCQkJDAsMGA0NGDIhHCEyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMv/AABEIAEAAQAMBIgACEQEDEQH/xAGiAAABBQEBAQEBAQAAAAAAAAAAAQIDBAUGBwgJCgsQAAIBAwMCBAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5+gEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoLEQACAQIEBAMEBwUEBAABAncAAQIDEQQFITEGEkFRB2FxEyIygQgUQpGhscEJIzNS8BVictEKFiQ04SXxFxgZGiYnKCkqNTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqCg4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2dri4+Tl5ufo6ery8/T19vf4+fr/2gAMAwEAAhEDEQA/AOKCU8JUgSnBK1uYWIwlPCVKEpwSi4WIwlOCVKEpwSlcLEQWnbKlCU4JRcLFQJTwlSpGWYKqkk8ADvW3Z+GrmVRJcsttH/tcsfotZSqRjrJmsacpaJGIkTOwVVLMTgADrW5B4U1CS289/JhUdpGwR9cDityztbWykSO2jVGOd80hBbH9CfQVY1a7xb/Z1UtAAQ+Opx3/ADrmliW2lA6Y4VWvI4u4sTbuQrrKvZl71CFq3MZl2O/zE5yB2/8Ar+3vUDMN2SMA9xzXWndHK42YzbShakIAGcjHqKMUXCxjaZ4vbTJg0VqshI+dpW+Y/QDhR+dPvPHmpXTnyxDCmCcYJz71wP2pjgZ4zSfamPcmsnRi3dnQq0krI7GfXHu5IpyGaRhkknhB6Aep6kmtMeOHsrYxRxi4kcYMs/APsFXoB9a8++1yk/L9MCka4d9o5+XpQ6Sb1BVWlodVd+Jbu83IJfKfOMLwufpVOPX79chpQ+f7yj+lYhuVyCF2tjBPvSJOCRlgPftVxXKZyblqdFBr99FIS+yRD1UjH8qe/iG6ySkar+P9K5xrlgflcfh0pftjDqQfwqibGaWI7EfhRuNaUWnRMeZH/OrR0y2Ycs+fXNJspK5hk46nH1pvme9dCNItWwC8mP8AeqY6Fp6rkmTP+9UuSQ1BnMeaaUS+9bUmlWangv8A99VF/Zlrnq/51S1JehmqGf7ozilZXQ4bA/GtQadbDoz/AJ0h0+37PJ/31TFc/9k=" x="0" y="0" width="32" height="32" clip-path="url(#c)"/>
+  <text class="h" x="39" y="16" dominant-baseline="central">@George-Miao</text>
+</svg>

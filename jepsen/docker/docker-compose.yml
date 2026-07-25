@@ -1,0 +1,33 @@
+services:
+  control:
+    image: openraft-jepsen-control
+    build:
+      context: ../..
+      dockerfile: jepsen/docker/control.Dockerfile
+    command: ["sleep", "infinity"]
+    depends_on:
+      - n1
+      - n2
+      - n3
+    volumes:
+      - ../..:/openraft
+      - ./ssh/openraft-jepsen:/root/.ssh/openraft-jepsen:ro
+    working_dir: /openraft/jepsen
+
+  n1: &node
+    image: openraft-jepsen-node
+    build:
+      context: ../..
+      dockerfile: jepsen/docker/node.Dockerfile
+    cap_add:
+      - NET_ADMIN
+    hostname: n1
+    init: true
+
+  n2:
+    <<: *node
+    hostname: n2
+
+  n3:
+    <<: *node
+    hostname: n3

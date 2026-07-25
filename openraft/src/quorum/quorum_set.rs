@@ -4,6 +4,8 @@ use std::sync::Arc;
 ///
 /// A quorum is a collection of nodes that a read or write operation in a distributed system has to
 /// contact. See: <http://web.mit.edu/6.033/2005/wwwdocs/quorum_note.html>
+///
+/// Implementations must be upward-closed: adding more IDs to a quorum must still be a quorum.
 pub(crate) trait QuorumSet {
     type Id: 'static;
 

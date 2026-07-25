@@ -19,6 +19,7 @@ mod t30_elect_with_new_config;
 mod t31_add_remove_follower;
 mod t31_remove_leader;
 mod t31_removed_follower;
+mod t51_hung_follower_blocks_loop;
 mod t51_remove_unreachable_follower;
 mod t52_change_membership_on_uninitialized_node;
 mod t99_issue_471_adding_learner_uses_uninit_leader_id;

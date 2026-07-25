@@ -24,6 +24,7 @@ use openraft_legacy::prelude::*;
 
 use crate::store::LogStore;
 use crate::store::NodeId;
+use crate::store::SnapshotData;
 use crate::store::StateMachineStore;
 use crate::store::TypeConfig;
 
@@ -85,7 +86,7 @@ impl Default for Router {
 }
 
 impl RaftNetworkFactory<TypeConfig> for Router {
-    type Network = Adapter<TypeConfig, Network>;
+    type Network = Adapter<TypeConfig, Network, SnapshotData>;
 
     async fn new_client(&mut self, target: NodeId, _node: &()) -> Self::Network {
         Network {

@@ -24,8 +24,8 @@ pub type Node = <TypeConfig as openraft::RaftTypeConfig>::Node;
 pub type LogState = openraft::storage::LogState<TypeConfig>;
 
 pub type SnapshotMeta = openraft::alias::SnapshotMetaOf<TypeConfig>;
-pub type Snapshot = openraft::alias::SnapshotOf<TypeConfig>;
-pub type SnapshotData = <TypeConfig as openraft::RaftTypeConfig>::SnapshotData;
+pub type SnapshotData = super::SnapshotData;
+pub type Snapshot = openraft::alias::SnapshotOf<TypeConfig, SnapshotData>;
 
 pub type IOFlushed = openraft::storage::IOFlushed<TypeConfig>;
 

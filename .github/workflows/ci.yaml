@@ -20,10 +20,14 @@ jobs:
       - name: Setup | Checkout
         uses: actions/checkout@v4
 
+      - name: Pin nightly from rust-toolchain
+        if: matrix.toolchain == 'nightly'
+        run: echo "PIN=$(cat rust-toolchain)" >> "$GITHUB_ENV"
+
       - name: Setup | Toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: '${{ matrix.toolchain }}'
+          toolchain: ${{ matrix.toolchain == 'nightly' && env.PIN || matrix.toolchain }}
 
       - name: Build | Release Mode
         run: cargo build --release --features "${{ matrix.features }}" --manifest-path openraft/Cargo.toml
@@ -40,10 +44,14 @@ jobs:
       - name: Setup | Checkout
         uses: actions/checkout@v4
 
+      - name: Pin nightly from rust-toolchain
+        if: matrix.toolchain == 'nightly'
+        run: echo "PIN=$(cat rust-toolchain)" >> "$GITHUB_ENV"
+
       - name: Setup | Toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: '${{ matrix.toolchain }}'
+          toolchain: ${{ matrix.toolchain == 'nightly' && env.PIN || matrix.toolchain }}
 
       - name: Test build for benchmark
         run: cargo bench --features bench nothing-to-run --manifest-path openraft/Cargo.toml
@@ -66,10 +74,14 @@ jobs:
       - name: Setup | Checkout
         uses: actions/checkout@v4
 
+      - name: Pin nightly from rust-toolchain
+        if: matrix.toolchain == 'nightly'
+        run: echo "PIN=$(cat rust-toolchain)" >> "$GITHUB_ENV"
+
       - name: Setup | Toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: '${{ matrix.toolchain }}'
+          toolchain: ${{ matrix.toolchain == 'nightly' && env.PIN || matrix.toolchain }}
 
       - name: Install cargo-expand
         run: cargo install cargo-expand
@@ -120,10 +132,14 @@ jobs:
       - name: Setup | Checkout
         uses: actions/checkout@v4
 
+      - name: Pin nightly from rust-toolchain
+        if: matrix.toolchain == 'nightly'
+        run: echo "PIN=$(cat rust-toolchain)" >> "$GITHUB_ENV"
+
       - name: Setup | Toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: '${{ matrix.toolchain }}'
+          toolchain: ${{ matrix.toolchain == 'nightly' && env.PIN || matrix.toolchain }}
 
       - name: Test crate `tests/`
         run: cargo test --features "${{ matrix.features }}" --manifest-path tests/Cargo.toml
@@ -158,8 +174,6 @@ jobs:
 
       - name: Setup | Toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: 'nightly'
 
       # - A store with defensive checks returns error when unexpected accesses are sent to RaftStore.
       # - Raft should not depend on defensive error to work correctly.
@@ -189,8 +203,6 @@ jobs:
 
       - name: Setup | Toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: 'nightly'
 
       - name: Unit Tests
         run: cargo test --tests nothing --manifest-path "${{ matrix.crate }}/Cargo.toml"
@@ -208,8 +220,6 @@ jobs:
 
       - name: Setup | Toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: 'nightly'
 
       - name: Unit Tests
         run: cargo test --tests --manifest-path "rt-monoio/Cargo.toml"
@@ -226,8 +236,6 @@ jobs:
 
       - name: Setup | Toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: 'nightly'
 
       - name: Unit Tests
         run: cargo test --tests --manifest-path "rt-compio/Cargo.toml"
@@ -244,8 +252,6 @@ jobs:
 
       - name: Setup | Toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: 'nightly'
 
       - name: Unit Tests
         run: cargo test --manifest-path "metrics-otel/Cargo.toml"
@@ -298,10 +304,14 @@ jobs:
       - name: Setup | Checkout
         uses: actions/checkout@v4
 
+      - name: Pin nightly from rust-toolchain
+        if: matrix.toolchain == 'nightly'
+        run: echo "PIN=$(cat rust-toolchain)" >> "$GITHUB_ENV"
+
       - name: Setup | Toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: '${{ matrix.toolchain }}'
+          toolchain: ${{ matrix.toolchain == 'nightly' && env.PIN || matrix.toolchain }}
 
       - name: Test crate `openraft/`
         run: cargo test ${{ matrix.extra_args }} --features "${{ matrix.features }}" --manifest-path openraft/Cargo.toml
@@ -337,10 +347,14 @@ jobs:
       - name: Setup | Checkout
         uses: actions/checkout@v4
 
+      - name: Pin nightly from rust-toolchain
+        if: matrix.toolchain == 'nightly'
+        run: echo "PIN=$(cat rust-toolchain)" >> "$GITHUB_ENV"
+
       - name: Setup | Toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: '${{ matrix.toolchain }}'
+          toolchain: ${{ matrix.toolchain == 'nightly' && env.PIN || matrix.toolchain }}
 
       - name: Test crate `tests/`
         run: cargo test --features "${{ matrix.features }}" --manifest-path tests/Cargo.toml
@@ -367,7 +381,6 @@ jobs:
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: 'nightly-2026-03-01'
           # tests-turmoil is excluded from the root workspace, so the default
           # cache misses its target dir and the fuzz binary recompiles cold
           # every run. Cache this workspace so warm runs skip the compile.
@@ -387,7 +400,6 @@ jobs:
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: 'nightly-2026-03-01'
           components: rustfmt, clippy
 
       - name: Format
@@ -452,9 +464,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Pin nightly from rust-toolchain
+        if: matrix.toolchain == 'nightly'
+        run: echo "PIN=$(cat rust-toolchain)" >> "$GITHUB_ENV"
+
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: '${{ matrix.toolchain }}'
+          toolchain: ${{ matrix.toolchain == 'nightly' && env.PIN || matrix.toolchain }}
           components: rustfmt, clippy
           # Examples are separate workspaces; the default cache only covers the
           # repo-root target, so examples/*/target was never cached. Point the
@@ -464,12 +480,6 @@ jobs:
       - name: Install system RocksDB
         if: matrix.example == 'raft-kv-rocksdb' || matrix.example == 'rocksstore'
         run: sudo apt-get update && sudo apt-get install -y librocksdb-dev
-
-      - name: Install Protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          version: '23.x'
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       # Run the following steps in the exmple dir in order to reuse the `./target` dir.
 

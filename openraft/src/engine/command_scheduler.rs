@@ -3,20 +3,25 @@ use crate::batch::Batch;
 use crate::config::Config;
 use crate::engine::Command;
 use crate::engine::engine_output::EngineOutput;
+use crate::storage::RaftStateMachine;
 
 /// Scheduler for reorganizing commands to improve I/O performance.
 ///
 /// This scheduler optimizes the command queue by batching related operations together,
 /// reducing the number of I/O operations and improving throughput.
 pub(crate) struct CommandScheduler<'a, C, SM = ()>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     config: &'a Config,
     output: &'a mut EngineOutput<C, SM>,
 }
 
 impl<'a, C, SM> CommandScheduler<'a, C, SM>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     pub(crate) fn new(config: &'a Config, output: &'a mut EngineOutput<C, SM>) -> Self {
         Self { config, output }

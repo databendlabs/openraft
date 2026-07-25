@@ -1,4 +1,3 @@
-use std::io::Cursor;
 use std::sync::Arc;
 
 use openraft::Config;
@@ -18,13 +17,13 @@ pub type NodeId = u64;
 
 /// Group ID type - identifies a Raft group
 pub type GroupId = String;
+pub type SnapshotData = std::io::Cursor<Vec<u8>>;
 
 openraft::declare_raft_types!(
     /// Declare the type configuration for Multi-Raft K/V store.
     pub TypeConfig:
         D = types_kv::Request,
         R = types_kv::Response,
-        SnapshotData = Cursor<Vec<u8>>,
 );
 
 pub type LogStore = store::LogStore;

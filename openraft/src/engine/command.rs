@@ -25,6 +25,7 @@ use crate::raft_state::IOId;
 use crate::raft_state::IOState;
 use crate::replication::ReplicationSessionId;
 use crate::replication::replicate::Replicate;
+use crate::storage::RaftStateMachine;
 use crate::type_config::alias::BatchOf;
 use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::LogIdOf;
@@ -33,7 +34,9 @@ use crate::type_config::alias::VoteOf;
 
 /// Commands to send to `RaftRuntime` to execute, to update the application state.
 pub(crate) enum Command<C, SM = ()>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     /// No actual IO is submitted but need to update io progress.
     ///
@@ -162,7 +165,9 @@ where C: RaftTypeConfig
 }
 
 impl<C, SM> Debug for Command<C, SM>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(self, f)
@@ -170,7 +175,9 @@ where C: RaftTypeConfig
 }
 
 impl<C, SM> fmt::Display for Command<C, SM>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -239,7 +246,9 @@ where C: RaftTypeConfig
 }
 
 impl<C, SM> From<sm::Command<C, SM>> for Command<C, SM>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     fn from(cmd: sm::Command<C, SM>) -> Self {
         Self::StateMachine { command: cmd }
@@ -250,6 +259,7 @@ where C: RaftTypeConfig
 impl<C, SM> PartialEq for Command<C, SM>
 where
     C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
     C::Entry: PartialEq,
     BatchOf<C, C::Entry>: PartialEq,
 {
@@ -279,7 +289,9 @@ where
 }
 
 impl<C, SM> Command<C, SM>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
 {
     #[allow(dead_code)]
     #[rustfmt::skip]

@@ -38,7 +38,7 @@ impl RaftNetwork<C> for MyNetwork {
 }
 
 impl RaftNetworkFactory<C> for MyFactory {
-    type Network = Adapter<C, MyNetwork>;
+    type Network = Adapter<C, MyNetwork, MySnapshotData>;
 
     async fn new_client(...) -> Self::Network {
         MyNetwork::new(...).into_v2()

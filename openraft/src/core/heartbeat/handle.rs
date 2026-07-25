@@ -94,7 +94,7 @@ where C: RaftTypeConfig
             let handle = if let Some(handle) = handle {
                 handle
             } else {
-                let network = network_factory.new_client(prog.target.clone(), &prog.target_node).await;
+                let network = network_factory.new_heartbeat_client(prog.target.clone(), &prog.target_node).await;
 
                 let (tx, rx) = C::watch_channel(None);
 

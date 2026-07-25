@@ -11,8 +11,6 @@ use crate::core::raft_msg::ResultSender;
 use crate::errors::AllowNextRevertError;
 use crate::metrics::MetricsRecorder;
 use crate::type_config::alias::LogIdOf;
-use crate::type_config::alias::OneshotSenderOf;
-use crate::type_config::alias::SnapshotOf;
 use crate::type_config::alias::VoteOf;
 
 /// Application-triggered Raft actions for testing and administration.
@@ -21,7 +19,9 @@ use crate::type_config::alias::VoteOf;
 ///
 /// An application can also disable these policy-based triggering and use these commands manually,
 /// for testing or administrative purposes.
-pub(crate) enum ExternalCommand<C: RaftTypeConfig> {
+pub(crate) enum ExternalCommand<C>
+where C: RaftTypeConfig
+{
     /// Initiate an election immediately.
     ///
     /// With `pre_vote = false`, a real election starts at once: the term is incremented and the
@@ -41,11 +41,6 @@ pub(crate) enum ExternalCommand<C: RaftTypeConfig> {
 
     /// Initiate to build a snapshot on this node.
     Snapshot,
-
-    /// Get a snapshot from the state machine, send back via a oneshot::Sender.
-    GetSnapshot {
-        tx: OneshotSenderOf<C, Option<SnapshotOf<C>>>,
-    },
 
     /// Purge logs covered by a snapshot up to a specified index.
     ///
@@ -92,14 +87,15 @@ pub(crate) enum ExternalCommand<C: RaftTypeConfig> {
     },
 }
 
-impl<C: RaftTypeConfig> ExternalCommand<C> {
+impl<C> ExternalCommand<C>
+where C: RaftTypeConfig
+{
     /// Returns the name of this command variant.
     pub fn name(&self) -> ExternalCommandName {
         match self {
             ExternalCommand::Elect { .. } => ExternalCommandName::Elect,
             ExternalCommand::Heartbeat => ExternalCommandName::Heartbeat,
             ExternalCommand::Snapshot => ExternalCommandName::Snapshot,
-            ExternalCommand::GetSnapshot { .. } => ExternalCommandName::GetSnapshot,
             ExternalCommand::PurgeLog { .. } => ExternalCommandName::PurgeLog,
             ExternalCommand::TriggerTransferLeader { .. } => ExternalCommandName::TriggerTransferLeader,
             ExternalCommand::AllowNextRevert { .. } => ExternalCommandName::AllowNextRevert,
@@ -130,9 +126,6 @@ where C: RaftTypeConfig
             }
             ExternalCommand::Snapshot => {
                 write!(f, "Snapshot")
-            }
-            ExternalCommand::GetSnapshot { .. } => {
-                write!(f, "GetSnapshot")
             }
             ExternalCommand::PurgeLog { upto } => {
                 write!(f, "PurgeLog[..={}]", upto)
