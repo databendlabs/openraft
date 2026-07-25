@@ -11,16 +11,23 @@ permissions:
 
 jobs:
   jepsen:
-    name: Jepsen
+    name: Jepsen (${{ matrix.nemesis }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        nemesis:
+          - partition
+          - process
 
     steps:
       - name: Setup | Checkout
         uses: actions/checkout@v4
 
       - name: Test | Jepsen
-        run: make -C jepsen jepsen
+        run: make -C jepsen jepsen NEMESIS=${{ matrix.nemesis }}
 
       - name: Debug | Docker logs
         if: failure()
@@ -32,7 +39,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: jepsen-results
+          name: jepsen-results-${{ matrix.nemesis }}
           path: |
             jepsen/store/
             jepsen/docker-compose.log
