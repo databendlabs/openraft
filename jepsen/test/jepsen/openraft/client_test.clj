@@ -43,6 +43,38 @@
     (is (= ["n1:21001" "n2:21001" "n3:21001"] @attempts))
     (is (= "n3:21001" @leader))))
 
+(deftest retries-unreachable-endpoint
+  (let [leader (atom "n1:21001")
+        attempts (atom [])
+        result (client/with-leader!
+                 leader
+                 ["n1:21001" "n2:21001" "n3:21001"]
+                 (fn [endpoint]
+                   (swap! attempts conj endpoint)
+                   (if (= "n1:21001" endpoint)
+                     (throw (ex-info "unreachable" {:kind :unreachable}))
+                     :ok)))]
+    (is (= :ok result))
+    (is (= ["n1:21001" "n2:21001"] @attempts)
+        "a connection failure proves nothing was applied and is retried")
+    (is (= "n2:21001" @leader))))
+
+(deftest ignores-empty-forward-target
+  (let [leader (atom "n1:21001")
+        attempts (atom [])
+        result (client/with-leader!
+                 leader
+                 ["n1:21001" "n2:21001" "n3:21001"]
+                 (fn [endpoint]
+                   (swap! attempts conj endpoint)
+                   (if (= "n1:21001" endpoint)
+                     (throw (forward-error ""))
+                     :ok)))]
+    (is (= :ok result))
+    (is (= ["n1:21001" "n2:21001"] @attempts)
+        "an empty forward target is skipped in favor of a known endpoint")
+    (is (= "n2:21001" @leader))))
+
 (deftest does-not-retry-request-timeout
   (let [leader (atom "n1:21001")
         attempts (atom 0)

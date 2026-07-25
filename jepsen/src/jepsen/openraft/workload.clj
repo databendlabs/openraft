@@ -18,7 +18,10 @@
                current))))
   value)
 
-(defn- next-value! [value-counter]
+(defn- next-value!
+  "Returns a globally unique value. Uniqueness lets Knossos treat logical values
+  as a faithful stand-in for server versions; see cas-op."
+  [value-counter]
   (str "value-" (swap! value-counter inc)))
 
 (defn- read-op [_test _process]
@@ -40,7 +43,20 @@
     (fn [test process]
       (assoc (write test process) :final? true))))
 
-(defn- cas-op [latest-value value-counter]
+(defn- cas-op
+  "Generates a CAS against the latest known value, falling back to a write until
+  a version is observed.
+
+  Knossos checks linearizability over the logical string values only. This is
+  sound because logical values and server versions are in bijection:
+
+    1. next-value! never repeats a value, so every mutation is globally unique.
+    2. with-leader! never retries a mutation once it is sent, so each unique
+       value is applied at most once.
+
+  Breaking either invariant (reusing a value, or retrying a sent mutation) would
+  map one logical value onto two versions and could mask a real violation."
+  [latest-value value-counter]
   (fn [_test _process]
     (let [expected @latest-value
           new-value (next-value! value-counter)]
@@ -74,9 +90,16 @@
 
 (defn- handle-operation-exception
   "Classifies a client exception and returns a completed Jepsen operation.
-  Thread interruptions are rethrown."
+  Thread interruptions are rethrown so Jepsen's control signals survive."
   [op e]
+  ;; A raw InterruptedException (thrown outside send!, which clears the interrupt
+  ;; flag) would otherwise fall through to the :client-error default and be
+  ;; swallowed. Restore the flag and rethrow so the interrupt is not lost.
+  (when (instance? InterruptedException e)
+    (.interrupt (Thread/currentThread))
+    (throw e))
   (let [{:keys [kind status error]} (ex-data e)]
+    ;; send! already re-interrupted the thread for wrapped interruptions.
     (if (= :interrupted kind)
       (throw e)
       (let [result
