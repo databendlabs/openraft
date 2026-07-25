@@ -98,10 +98,11 @@
       :else body)))
 
 (defn- forward-to-leader? [e]
-  (contains? (or (:error (ex-data e)) {}) :ForwardToLeader))
+  ;; contains? returns false for a nil map, so no nil guard is needed.
+  (contains? (:error (ex-data e)) :ForwardToLeader))
 
 (defn- quorum-not-enough? [e]
-  (contains? (or (:error (ex-data e)) {}) :QuorumNotEnough))
+  (contains? (:error (ex-data e)) :QuorumNotEnough))
 
 (defn- forward-endpoint [e]
   (get-in (ex-data e)
@@ -121,8 +122,10 @@
   (retryable-read-error? e))
 
 (defn- next-endpoint [endpoints attempted e]
+  ;; A ForwardToLeader with an empty data field carries no usable address, and
+  ;; "" is truthy in Clojure, so use seq to fall back to the known endpoints.
   (let [forward (forward-endpoint e)
-        candidates (if forward
+        candidates (if (seq forward)
                      (cons forward endpoints)
                      endpoints)]
     (first (remove attempted candidates))))
