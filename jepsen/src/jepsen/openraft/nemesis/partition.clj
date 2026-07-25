@@ -4,35 +4,41 @@
                     [generator :as gen]
                     [nemesis :as nemesis]
                     [random :as random]]
-            [jepsen.openraft.cluster :as cluster]))
+            [jepsen.openraft.cluster :as cluster]
+            [jepsen.openraft.quorum :as quorum]))
 
 (def partition-seconds 10)
 (def recovery-seconds 5)
 (def required-partition-modes
   #{:leader-in-majority :leader-in-minority})
 
-(defn- partition-components [nodes leader mode]
-  (let [nodes (vec nodes)
-        node-count (count nodes)
-        majority-size (inc (quot node-count 2))
-        minority-size (- node-count majority-size)]
-    (when (< node-count 3)
-      (throw (ex-info "A partition test requires at least three nodes"
-                      {:nodes nodes})))
-    (when-not (some #{leader} nodes)
-      (throw (ex-info "The current leader is not a test node"
+(defn- partition-components [nodes configs leader mode]
+  (let [voters (quorum/voter-set configs)]
+    (when-not (contains? voters leader)
+      (throw (ex-info "The current leader is not a voter"
                       {:leader leader
-                       :nodes nodes})))
-    (let [leader-component-size (case mode
-                                  :leader-in-majority majority-size
-                                  :leader-in-minority minority-size
-                                  (throw (ex-info "Unknown partition mode"
-                                                  {:mode mode})))
-          followers (random/shuffle (remove #{leader} nodes))
-          leader-component (into [leader]
-                                 (take (dec leader-component-size) followers))
-          other-component (vec (remove (set leader-component) nodes))]
-      [leader-component other-component])))
+                       :configs configs})))
+    (let [quorums (remove #(= voters %)
+                          (quorum/quorum-sets configs))
+          candidates (case mode
+                       :leader-in-majority
+                       (filter #(contains? % leader) quorums)
+
+                       :leader-in-minority
+                       (remove #(contains? % leader) quorums)
+
+                       (throw (ex-info "Unknown partition mode"
+                                       {:mode mode})))
+          quorum-side (first (random/shuffle candidates))]
+      (when-not quorum-side
+        (throw (ex-info "Membership has no partition for the requested mode"
+                        {:leader leader
+                         :mode mode
+                         :configs configs})))
+      (let [other-side (remove quorum-side nodes)]
+        (if (contains? quorum-side leader)
+          [(vec (filter quorum-side nodes)) (vec other-side)]
+          [(vec other-side) (vec (filter quorum-side nodes))])))))
 
 (defrecord PartitionNemesis [partitioner]
   nemesis/Nemesis
@@ -42,9 +48,13 @@
   (invoke! [_ test op]
     (case (:f op)
       :start-partition
-      (let [{:keys [leader]} (cluster/await-ready! test)
+      (let [{:keys [leader] :as status} (cluster/await-ready! test)
+            configs (cluster/voter-configs test status)
             mode (:value op)
-            components (partition-components (:nodes test) leader mode)
+            components (partition-components (:nodes test)
+                                             configs
+                                             leader
+                                             mode)
             grudge (nemesis/complete-grudge components)]
         (info "Partitioning OpenRaft nodes"
               {:mode mode
@@ -57,6 +67,7 @@
         (assoc op
                :value {:mode mode
                        :leader leader
+                       :voter-configs configs
                        :components components}))
 
       :stop-partition

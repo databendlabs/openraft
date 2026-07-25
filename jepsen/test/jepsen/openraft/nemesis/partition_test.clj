@@ -1,31 +1,35 @@
 (ns jepsen.openraft.nemesis.partition-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.set :as set]
+            [clojure.test :refer [deftest is testing]]
             [jepsen [checker :as checker]
                     [nemesis :as nemesis]]
             [jepsen.openraft.cluster :as cluster]
-            [jepsen.openraft.nemesis.partition :as partition]))
+            [jepsen.openraft.nemesis.partition :as partition]
+            [jepsen.openraft.quorum :as quorum]))
 
 (def nodes ["n1" "n2" "n3"])
 
 (deftest places-leader-in-requested-component
-  (testing "leader remains in the majority"
-    (let [[leader-side other-side]
-          (#'partition/partition-components
-            nodes
-            "n1"
-            :leader-in-majority)]
-      (is (contains? (set leader-side) "n1"))
-      (is (= 2 (count leader-side)))
-      (is (= 1 (count other-side)))))
-
-  (testing "leader is isolated in the minority"
-    (let [[leader-side other-side]
-          (#'partition/partition-components
-            nodes
-            "n1"
-            :leader-in-minority)]
-      (is (= ["n1"] leader-side))
-      (is (= #{"n2" "n3"} (set other-side))))))
+  (let [configs [(set nodes)]
+        quorums (set (quorum/quorum-sets configs))]
+    (doseq [mode [:leader-in-majority :leader-in-minority]]
+      (testing (name mode)
+        (let [[leader-side other-side]
+              (#'partition/partition-components
+                nodes
+                configs
+                "n1"
+                mode)
+              quorum-side (if (= mode :leader-in-majority)
+                            leader-side
+                            other-side)]
+          (is (contains? (set leader-side) "n1"))
+          (is (contains? quorums (set quorum-side)))
+          (is (= (set nodes)
+                 (set (concat leader-side other-side))))
+          (is (empty? (set/intersection (set leader-side)
+                                        (set other-side))))
+          (is (seq other-side)))))))
 
 (deftest resolves-leader-when-partition-starts
   (let [invocations (atom [])
@@ -43,7 +47,9 @@
             :f :start-partition
             :value :leader-in-minority}]
     (with-redefs [cluster/await-ready! (fn [_test]
-                                         {:leader "n2"})]
+                                         {:leader "n2"})
+                  cluster/voter-configs (fn [_test _status]
+                                          [(set nodes)])]
       (let [result (nemesis/invoke! subject {:nodes nodes} op)
             delegated (first @invocations)]
         (is (= :start (:f delegated)))
