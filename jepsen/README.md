@@ -53,6 +53,7 @@ jepsen/
     cluster.clj
     nemesis/
       partition.clj
+      process.clj
     workload.clj
 ```
 
@@ -63,6 +64,7 @@ The `jepsen.openraft` namespace contains the OpenRaft-specific Jepsen code:
 - `db.clj`: Jepsen DB lifecycle for starting and stopping OpenRaft nodes.
 - `cluster.clj`: cluster bootstrap helpers.
 - `nemesis/partition.clj`: leader-aware network partition faults and recovery.
+- `nemesis/process.clj`: quorum-safe process crashes and restarts.
 - `workload.clj`: generators and checkers for client operations.
 
 ## Running
@@ -88,6 +90,9 @@ $ make -C jepsen up
 # Run the linearizability test against the running containers.
 $ make -C jepsen test
 
+# Run the process crash/restart test instead of the default partition test.
+$ make -C jepsen test NEMESIS=process
+
 # Stop and remove the Jepsen containers.
 $ make -C jepsen down
 ```
@@ -101,6 +106,11 @@ lasts 10 seconds. A run is valid only if both modes occur, every node agrees on
 a leader after the final heal, client operations continue during recovery, and
 the final recovery write and read succeed.
 
+The process nemesis reads the effective voter configs from OpenRaft metrics and
+randomly stops a non-empty voter subset whose survivors still form a quorum. It
+supports both stable and joint membership, covers leader and follower-only
+crashes, and waits for every stopped node to rejoin after restart.
+
 ## TODO
 
 - [x] Add the Leiningen project definition and CLI skeleton.
@@ -111,7 +121,7 @@ the final recovery write and read succeed.
 - [x] Bootstrap a three-node OpenRaft cluster.
 - [ ] Record acknowledged write, read, and info operation counts in each run.
 - [x] Add a network partition nemesis.
-- [ ] Add nemeses for process kill/restart.
+- [x] Add nemeses for process kill/restart.
 - [x] Add a read, write, and compare-and-set workload.
 - [x] Add linearizability checking with Knossos.
 - [ ] Add snapshot pressure and membership churn workloads.

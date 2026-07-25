@@ -4,6 +4,8 @@
             [jepsen.openraft.client :as client]
             [jepsen.util :as util]))
 
+;; TODO: Use an explicit node-name to OpenRaft ID mapping before introducing
+;; membership change nemeses.
 (defn node-id [test node]
   (let [index (.indexOf (:nodes test) node)]
     (when (neg? index)
@@ -45,6 +47,32 @@
          (throw (ex-info "OpenRaft cluster is not ready yet" {})))
     {:log-message "Waiting for every OpenRaft node to agree on a leader"
      :timeout 60000}))
+
+(defn voter-configs
+  "Maps the effective OpenRaft voter configs to Jepsen node names."
+  [test {:keys [leader metrics]}]
+  (let [configs (get-in metrics
+                        [leader
+                         :membership_config
+                         :membership
+                         :configs])
+        voter-ids (set (mapcat identity configs))]
+    (when-not (seq configs)
+      (throw (ex-info "OpenRaft metrics contain no voter configs"
+                      {:leader leader
+                       :metrics (get metrics leader)})))
+    (let [nodes-by-id (into {}
+                            (map (fn [node]
+                                   [(node-id test node) node])
+                                 (:nodes test)))
+          unknown-ids (remove #(contains? nodes-by-id %) voter-ids)]
+      (when (seq unknown-ids)
+        (throw (ex-info "OpenRaft voter is not a Jepsen test node"
+                        {:voter-ids voter-ids
+                         :unknown-ids (vec unknown-ids)})))
+      (mapv (fn [config]
+              (set (map nodes-by-id config)))
+            configs))))
 
 (defn bootstrap! [test]
   (let [leader (jepsen/primary test)
