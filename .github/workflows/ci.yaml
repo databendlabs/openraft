@@ -481,12 +481,6 @@ jobs:
         if: matrix.example == 'raft-kv-rocksdb' || matrix.example == 'rocksstore'
         run: sudo apt-get update && sudo apt-get install -y librocksdb-dev
 
-      - name: Install Protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          version: '23.x'
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
       # Run the following steps in the exmple dir in order to reuse the `./target` dir.
 
       - name: Test examples/${{ matrix.example }}
