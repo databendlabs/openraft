@@ -62,7 +62,7 @@ async fn empty_limited_get_log_entries() -> Result<()> {
 
         // Send a fire-and-forget write to the leader - this won't wait for commit
         let raft = router.get_raft_handle(&0)?;
-        raft.client_write_ff(ClientRequest::make_request("bar", 1), None).await?;
+        raft.write(ClientRequest::make_request("bar", 1)).await?;
 
         // Give replication some time to attempt sending - this is where it would panic
         // if the empty handling wasn't working correctly.

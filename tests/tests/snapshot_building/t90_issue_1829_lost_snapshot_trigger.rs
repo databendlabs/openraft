@@ -89,7 +89,7 @@ async fn issue_1829_lost_snapshot_trigger() -> Result<()> {
     );
     {
         for i in 0..(FINAL - FIRST) {
-            n0.client_write_ff(ClientRequest::make_request("ff", i), None).await?;
+            n0.write(ClientRequest::make_request("ff", i)).await?;
         }
     }
 
