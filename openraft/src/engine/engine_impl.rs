@@ -1043,7 +1043,7 @@ where
         );
 
         FollowingHandler {
-            leader_vote: leader_vote.into_committed(),
+            leader_vote: leader_vote.to_committed(),
             config: &mut self.config,
             state: &mut self.state,
             output: &mut self.output,

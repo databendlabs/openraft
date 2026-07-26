@@ -283,7 +283,7 @@ mod tests {
     fn test_leader_new_with_proposed_log_id() {
         tracing::info!("--- vote greater than last log id, create new noop_log_id");
         {
-            let vote = Vote::new(2, 2).into_committed();
+            let vote = Vote::new(2, 2).to_committed();
             let leader = Leader::<UTConfig, _>::new(
                 vote,
                 vec![btreeset! {1, 2, 3}],
@@ -298,7 +298,7 @@ mod tests {
 
         tracing::info!("--- vote equals last log id, reuse noop_log_id");
         {
-            let vote = Vote::new(1, 2).into_committed();
+            let vote = Vote::new(1, 2).to_committed();
             let leader = Leader::<UTConfig, _>::new(
                 vote,
                 vec![btreeset! {1, 2, 3}],
@@ -313,7 +313,7 @@ mod tests {
 
         tracing::info!("--- vote equals last log id, reuse noop_log_id, last_leader_log_id.len()==1");
         {
-            let vote = Vote::new(1, 2).into_committed();
+            let vote = Vote::new(1, 2).to_committed();
             let leader = Leader::<UTConfig, _>::new(
                 vote,
                 vec![btreeset! {1, 2, 3}],
@@ -328,7 +328,7 @@ mod tests {
 
         tracing::info!("--- no last log ids, create new noop_log_id, last_leader_log_id.len()==0");
         {
-            let vote = Vote::new(1, 2).into_committed();
+            let vote = Vote::new(1, 2).to_committed();
             let leader =
                 Leader::<UTConfig, _>::new(vote, vec![btreeset! {1, 2, 3}], vec![], None, SharedIdGenerator::new());
 
@@ -339,7 +339,7 @@ mod tests {
 
     #[test]
     fn test_leader_established() {
-        let vote = Vote::new(2, 2).into_committed();
+        let vote = Vote::new(2, 2).to_committed();
         let mut leader = Leader::<UTConfig, _>::new(
             vote,
             vec![btreeset! {1, 2, 3}],
@@ -360,7 +360,7 @@ mod tests {
 
     #[test]
     fn test_1_entry_none_last_log_id() {
-        let vote = Vote::new(0, 0).into_committed();
+        let vote = Vote::new(0, 0).to_committed();
         let mut leading =
             Leader::<UTConfig, _>::new(vote, vec![btreeset! {1, 2, 3}], vec![], None, SharedIdGenerator::new());
 
@@ -372,7 +372,7 @@ mod tests {
 
     #[test]
     fn test_no_entries_provided() {
-        let vote = Vote::new(2, 2).into_committed();
+        let vote = Vote::new(2, 2).to_committed();
         let mut leading = Leader::<UTConfig, _>::new(
             vote,
             vec![btreeset! {1, 2, 3}],
@@ -388,7 +388,7 @@ mod tests {
 
     #[test]
     fn test_multiple_entries() {
-        let vote = Vote::new(2, 2).into_committed();
+        let vote = Vote::new(2, 2).to_committed();
         let mut leading = Leader::<UTConfig, _>::new(
             vote,
             vec![btreeset! {1, 2, 3}],
@@ -405,7 +405,7 @@ mod tests {
     #[test]
     fn test_leading_last_quorum_acked_time_leader_is_voter() {
         let mut leading = Leader::<UTConfig, Vec<BTreeSet<u64>>>::new(
-            Vote::new(2, 1).into_committed(),
+            Vote::new(2, 1).to_committed(),
             vec![btreeset! {1, 2, 3}],
             [4],
             None,
@@ -422,7 +422,7 @@ mod tests {
     #[test]
     fn test_leading_last_quorum_acked_time_leader_is_learner() {
         let mut leading = Leader::<UTConfig, Vec<BTreeSet<u64>>>::new(
-            Vote::new(2, 4).into_committed(),
+            Vote::new(2, 4).to_committed(),
             vec![btreeset! {1, 2, 3}],
             [4],
             None,
@@ -443,7 +443,7 @@ mod tests {
     #[test]
     fn test_leading_last_quorum_acked_time_leader_is_not_member() {
         let mut leading = Leader::<UTConfig, Vec<BTreeSet<u64>>>::new(
-            Vote::new(2, 5).into_committed(),
+            Vote::new(2, 5).to_committed(),
             vec![btreeset! {1, 2, 3}],
             [4],
             None,
@@ -464,7 +464,7 @@ mod tests {
     #[test]
     fn test_need_heartbeat() {
         let mut leading = Leader::<UTConfig, Vec<BTreeSet<u64>>>::new(
-            Vote::new(2, 1).into_committed(),
+            Vote::new(2, 1).to_committed(),
             vec![btreeset! {1, 2, 3}],
             [4],
             None,

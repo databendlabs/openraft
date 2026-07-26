@@ -1796,7 +1796,7 @@ where
     // Dummy log io id for blocking append
     let leader_id = LeaderIdOf::<C>::new(TermOf::<C>::default().next(), 0u64.into());
     let io_id = IOId::<C>::new_log_io(
-        VoteOf::<C>::from_leader_id(leader_id, true).into_committed(),
+        VoteOf::<C>::from_leader_id(leader_id, true).to_committed(),
         Some(last_log_id),
     );
 

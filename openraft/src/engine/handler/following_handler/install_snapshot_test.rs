@@ -166,7 +166,7 @@ fn test_install_snapshot_not_conflict() -> anyhow::Result<()> {
                     },
                     snapshot: (),
                 },
-                LogIOId::new(Vote::new(2, 1).into_committed(), Some(log_id(4, 1, 6))),
+                LogIOId::new(Vote::new(2, 1).to_committed(), Some(log_id(4, 1, 6))),
             )),
             Command::PurgeLog { upto: log_id(4, 1, 6) },
         ],
@@ -264,7 +264,7 @@ fn test_install_snapshot_resets_purged_effective_without_truncating() -> anyhow:
                     },
                     snapshot: (),
                 },
-                LogIOId::new(Vote::new(2, 1).into_committed(), Some(log_id(5, 1, 9)))
+                LogIOId::new(Vote::new(2, 1).to_committed(), Some(log_id(5, 1, 9)))
             )),
             Command::PurgeLog { upto: log_id(5, 1, 9) },
         ],
@@ -353,7 +353,7 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
                     },
                     snapshot: (),
                 },
-                LogIOId::new(Vote::new(2, 1).into_committed(), Some(log_id(5, 1, 6)))
+                LogIOId::new(Vote::new(2, 1).to_committed(), Some(log_id(5, 1, 6)))
             )),
             Command::PurgeLog { upto: log_id(5, 1, 6) },
         ],
@@ -415,7 +415,7 @@ fn test_install_snapshot_advance_last_log_id() -> anyhow::Result<()> {
                     },
                     snapshot: (),
                 },
-                LogIOId::new(Vote::new(2, 1).into_committed(), Some(log_id(100, 1, 100)))
+                LogIOId::new(Vote::new(2, 1).to_committed(), Some(log_id(100, 1, 100)))
             )),
             Command::PurgeLog {
                 upto: log_id(100, 1, 100)
@@ -450,7 +450,7 @@ fn test_install_snapshot_update_accepted() -> anyhow::Result<()> {
 
     assert_eq!(
         Some(&IOId::new_log_io(
-            Vote::new(2, 1).into_committed(),
+            Vote::new(2, 1).to_committed(),
             Some(log_id(100, 1, 100))
         )),
         eng.state.accepted_log_io()
