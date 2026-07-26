@@ -1,0 +1,5 @@
+error: VariantName only applies to enums
+ --> tests/variant_name/fail/on_union.rs:4:7
+  |
+4 | union NotAnEnum {
+  |       ^^^^^^^^^

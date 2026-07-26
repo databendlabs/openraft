@@ -1,0 +1,5 @@
+error: VariantName only applies to enums
+ --> tests/variant_name/fail/on_struct.rs:4:8
+  |
+4 | struct NotAnEnum {
+  |        ^^^^^^^^^
