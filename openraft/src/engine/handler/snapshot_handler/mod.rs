@@ -26,11 +26,15 @@ where
     pub(crate) output: &'out mut EngineOutput<C, SM>,
 }
 
-impl<C, SM> SnapshotHandler<'_, '_, C, SM>
+impl<'st, 'out, C, SM> SnapshotHandler<'st, 'out, C, SM>
 where
     C: RaftTypeConfig,
     SM: RaftStateMachine<C>,
 {
+    pub(crate) fn new(state: &'st mut RaftState<C>, output: &'out mut EngineOutput<C, SM>) -> Self {
+        Self { state, output }
+    }
+
     /// Trigger building a snapshot if there is no pending building job.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn trigger_snapshot(&mut self) -> bool {

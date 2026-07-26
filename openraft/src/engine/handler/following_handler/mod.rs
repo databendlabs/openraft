@@ -317,24 +317,14 @@ where
     }
 
     fn log_handler(&mut self) -> LogHandler<'_, C, SM> {
-        LogHandler {
-            config: self.config,
-            state: self.state,
-            output: self.output,
-        }
+        LogHandler::new(self.config, self.state, self.output)
     }
 
     fn snapshot_handler(&mut self) -> SnapshotHandler<'_, '_, C, SM> {
-        SnapshotHandler {
-            state: self.state,
-            output: self.output,
-        }
+        SnapshotHandler::new(self.state, self.output)
     }
 
     fn server_state_handler(&mut self) -> ServerStateHandler<'_, C> {
-        ServerStateHandler {
-            config: self.config,
-            state: self.state,
-        }
+        ServerStateHandler::new(self.config, self.state)
     }
 }
