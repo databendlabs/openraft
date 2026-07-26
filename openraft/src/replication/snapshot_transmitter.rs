@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use display_more::DisplayOptionExt;
 use futures_util::FutureExt;
 
@@ -19,6 +17,7 @@ use crate::network::NetBackoff;
 use crate::network::NetSnapshot;
 use crate::network::RPCOption;
 use crate::progress::inflight_id::InflightId;
+use crate::replication::EXHAUSTED_BACKOFF_DELAY;
 use crate::replication::replication_context::ReplicationContext;
 use crate::replication::response::ReplicationResult;
 use crate::replication::snapshot_transmitter_handle::SnapshotTransmitterHandle;
@@ -52,6 +51,13 @@ where
 
     /// The backoff policy if an [`Unreachable`](`crate::error::Unreachable`) error is returned.
     /// It will be reset to `None` when a successful response is received.
+    ///
+    /// This is deliberately not
+    /// [`BackoffState`](crate::replication::backoff_state::BackoffState), which log replication
+    /// uses: that one accumulates an error rank and backs off once the rank crosses a threshold,
+    /// so a `RemoteError` also throttles and the throttling persists across error kinds. Here
+    /// only [`Unreachable`](`crate::error::Unreachable`) throttles, and any other error clears it,
+    /// because a target that answers at all is worth retrying immediately.
     backoff: Option<Backoff>,
 
     /// The handle to get a snapshot directly from the state machine.
@@ -159,7 +165,7 @@ where
                     if let Some(b) = &mut self.backoff {
                         let duration = b.next().unwrap_or_else(|| {
                             tracing::warn!("backoff exhausted, using default");
-                            Duration::from_millis(500)
+                            EXHAUSTED_BACKOFF_DELAY
                         });
 
                         let sleep = C::sleep(duration);
