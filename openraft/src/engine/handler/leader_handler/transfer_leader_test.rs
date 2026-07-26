@@ -2,12 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
-#[allow(unused_imports)]
 use pretty_assertions::assert_eq;
-#[allow(unused_imports)]
-use pretty_assertions::assert_ne;
-#[allow(unused_imports)]
-use pretty_assertions::assert_str_eq;
 
 use crate::Membership;
 use crate::MembershipState;
