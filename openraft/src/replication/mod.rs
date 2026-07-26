@@ -28,6 +28,9 @@ use payload::Payload;
 use replication_progress::ReplicationProgress;
 pub(crate) use replication_session_id::ReplicationSessionId;
 pub(crate) use response::Progress;
+
+/// Fallback delay used when a [`Backoff`](crate::network::Backoff) iterator is exhausted.
+pub(crate) const EXHAUSTED_BACKOFF_DELAY: Duration = Duration::from_millis(500);
 use response::ReplicationResult;
 use stream_state::StreamState;
 use tracing::Instrument;

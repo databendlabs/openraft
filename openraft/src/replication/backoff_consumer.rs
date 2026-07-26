@@ -13,9 +13,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use crate::network::Backoff;
-
-/// Fallback delay used when the [`Backoff`] iterator is exhausted.
-const EXHAUSTED_BACKOFF_DELAY: Duration = Duration::from_millis(500);
+use crate::replication::EXHAUSTED_BACKOFF_DELAY;
 
 /// Read-only handle to the backoff shared with the request-stream generator.
 ///
