@@ -1739,84 +1739,7 @@ where
             RaftMsg::ExternalCommand { cmd } => {
                 tracing::info!("{}: received RaftMsg::ExternalCommand, cmd: {:?}", func_name!(), cmd);
 
-                match cmd {
-                    ExternalCommand::Elect { pre_vote } => {
-                        if self.engine.leader.is_some() {
-                            // A Leader can not win a campaign it starts: its own heartbeats keep
-                            // refreshing the voters' leader lease, and a lease that has not expired
-                            // rejects the vote request. Leave the established leadership alone.
-                            tracing::info!("ExternalCommand: already a Leader, ignore election trigger");
-                        } else {
-                            if self.engine.state.membership_state.effective().is_voter(&self.id) {
-                                if pre_vote {
-                                    self.engine.pre_elect();
-                                } else {
-                                    self.engine.elect();
-                                }
-                                tracing::debug!("ExternalCommand: triggered election, pre_vote: {}", pre_vote);
-                            } else {
-                                // Node is switched to learner.
-                            }
-                        }
-                    }
-                    ExternalCommand::Heartbeat => {
-                        self.send_heartbeat("ExternalCommand");
-                    }
-                    ExternalCommand::Snapshot => {
-                        self.trigger_snapshot();
-                    }
-                    ExternalCommand::PurgeLog { upto } => {
-                        self.engine.trigger_purge_log(upto);
-                    }
-                    ExternalCommand::TriggerTransferLeader { to } => {
-                        self.engine.trigger_transfer_leader(to);
-                    }
-                    ExternalCommand::AllowNextRevert { to, allow, tx } => {
-                        //
-                        let res = match self.engine.try_leader_handler() {
-                            Ok(mut l) => {
-                                let res = l.replication_handler().allow_next_revert(to, allow);
-                                res.map_err(AllowNextRevertError::from)
-                            }
-                            Err(e) => {
-                                tracing::warn!("AllowNextRevert: current node is not a Leader");
-                                Err(AllowNextRevertError::from(e))
-                            }
-                        };
-                        tx.send(res).ok();
-                    }
-                    ExternalCommand::SetMetricsRecorder { recorder } => {
-                        tracing::info!("setting metrics recorder");
-                        self.metrics_recorder = recorder;
-                    }
-                    ExternalCommand::RefreshServerState {
-                        vote,
-                        membership_log_id,
-                    } => {
-                        // The condition to refresh, e.g., the membership config that removes the
-                        // Leader being committed, is checked by the sender. Refresh only if the
-                        // vote and the effective membership config log id still match what the
-                        // sender observed, so that a delayed command can not cause an unexpected
-                        // server state refresh. A `None` skips the corresponding check.
-                        let st = &self.engine.state;
-                        let vote_unchanged = vote.as_ref().is_none_or(|v| st.vote_ref() == v);
-                        let membership_unchanged = membership_log_id
-                            .as_ref()
-                            .is_none_or(|log_id| st.membership_state.effective().log_id().as_ref() == Some(log_id));
-
-                        if vote_unchanged && membership_unchanged {
-                            self.engine.refresh_server_state();
-                        } else {
-                            tracing::info!(
-                                "RefreshServerState is dropped: expected vote: {}, membership log id: {}; current vote: {}, membership log id: {}",
-                                vote.display(),
-                                membership_log_id.display(),
-                                self.engine.state.vote_ref(),
-                                self.engine.state.membership_state.effective().log_id().display(),
-                            );
-                        }
-                    }
-                }
+                self.handle_external_command(cmd);
             }
             #[cfg(feature = "runtime-stats")]
             RaftMsg::GetRuntimeStats { tx } => {
@@ -1829,6 +1752,89 @@ where
                 tx.send(stats).ok();
             }
         };
+    }
+
+    /// Handle an [`ExternalCommand`], a request from the application that bypasses the Raft
+    /// protocol, such as triggering an election or a snapshot.
+    fn handle_external_command(&mut self, cmd: ExternalCommand<C>) {
+        match cmd {
+            ExternalCommand::Elect { pre_vote } => {
+                if self.engine.leader.is_some() {
+                    // A Leader can not win a campaign it starts: its own heartbeats keep
+                    // refreshing the voters' leader lease, and a lease that has not expired
+                    // rejects the vote request. Leave the established leadership alone.
+                    tracing::info!("ExternalCommand: already a Leader, ignore election trigger");
+                } else {
+                    if self.engine.state.membership_state.effective().is_voter(&self.id) {
+                        if pre_vote {
+                            self.engine.pre_elect();
+                        } else {
+                            self.engine.elect();
+                        }
+                        tracing::debug!("ExternalCommand: triggered election, pre_vote: {}", pre_vote);
+                    } else {
+                        // Node is switched to learner.
+                    }
+                }
+            }
+            ExternalCommand::Heartbeat => {
+                self.send_heartbeat("ExternalCommand");
+            }
+            ExternalCommand::Snapshot => {
+                self.trigger_snapshot();
+            }
+            ExternalCommand::PurgeLog { upto } => {
+                self.engine.trigger_purge_log(upto);
+            }
+            ExternalCommand::TriggerTransferLeader { to } => {
+                self.engine.trigger_transfer_leader(to);
+            }
+            ExternalCommand::AllowNextRevert { to, allow, tx } => {
+                //
+                let res = match self.engine.try_leader_handler() {
+                    Ok(mut l) => {
+                        let res = l.replication_handler().allow_next_revert(to, allow);
+                        res.map_err(AllowNextRevertError::from)
+                    }
+                    Err(e) => {
+                        tracing::warn!("AllowNextRevert: current node is not a Leader");
+                        Err(AllowNextRevertError::from(e))
+                    }
+                };
+                tx.send(res).ok();
+            }
+            ExternalCommand::SetMetricsRecorder { recorder } => {
+                tracing::info!("setting metrics recorder");
+                self.metrics_recorder = recorder;
+            }
+            ExternalCommand::RefreshServerState {
+                vote,
+                membership_log_id,
+            } => {
+                // The condition to refresh, e.g., the membership config that removes the
+                // Leader being committed, is checked by the sender. Refresh only if the
+                // vote and the effective membership config log id still match what the
+                // sender observed, so that a delayed command can not cause an unexpected
+                // server state refresh. A `None` skips the corresponding check.
+                let st = &self.engine.state;
+                let vote_unchanged = vote.as_ref().is_none_or(|v| st.vote_ref() == v);
+                let membership_unchanged = membership_log_id
+                    .as_ref()
+                    .is_none_or(|log_id| st.membership_state.effective().log_id().as_ref() == Some(log_id));
+
+                if vote_unchanged && membership_unchanged {
+                    self.engine.refresh_server_state();
+                } else {
+                    tracing::info!(
+                        "RefreshServerState is dropped: expected vote: {}, membership log id: {}; current vote: {}, membership log id: {}",
+                        vote.display(),
+                        membership_log_id.display(),
+                        self.engine.state.vote_ref(),
+                        self.engine.state.membership_state.effective().log_id().display(),
+                    );
+                }
+            }
+        }
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(state = debug(self.engine.state.server_state), id=display(&self.id)
