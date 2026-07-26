@@ -100,19 +100,7 @@ where
     C::NodeId: Default,
 {
     fn default() -> Self {
-        let vote = VoteOf::<C>::new_with_default_term(C::NodeId::default());
-
-        Self {
-            vote: Leased::without_last_update(vote),
-            log_ids: LogIdList::default(),
-            membership_state: MembershipState::default(),
-            snapshot_meta: SnapshotMetaOf::<C>::default(),
-            last_inflight_id: 0,
-            server_state: ServerState::default(),
-            io_state: Valid::new(IOState::default()),
-            purge_upto: None,
-            progress_id_gen: Default::default(),
-        }
+        Self::new(C::NodeId::default())
     }
 }
 
@@ -195,7 +183,6 @@ where C: RaftTypeConfig
 impl<C> RaftState<C>
 where C: RaftTypeConfig
 {
-    #[allow(dead_code)]
     pub(crate) fn new(node_id: C::NodeId) -> Self {
         let vote = VoteOf::<C>::new_with_default_term(node_id);
 
