@@ -26,6 +26,7 @@
 pub(crate) mod balancer;
 pub(crate) mod core_state;
 pub(crate) mod heartbeat;
+pub(crate) mod io_broadcast;
 pub(crate) mod io_flush_tracking;
 pub(crate) mod merged_raft_msg_receiver;
 pub(crate) mod notification;
@@ -35,6 +36,7 @@ pub(crate) mod sm;
 pub(crate) mod stage;
 
 mod client_responder_queue;
+mod metrics_channels;
 mod notification_name;
 mod raft_core;
 mod replication_state;
@@ -44,6 +46,8 @@ mod step_down_watcher;
 mod tick;
 
 pub(crate) use client_responder_queue::ClientResponderQueue;
+pub(crate) use io_broadcast::IoBroadcast;
+pub(crate) use metrics_channels::MetricsChannels;
 pub use notification_name::NotificationName;
 pub(crate) use raft_core::ApplyResult;
 pub use raft_core::RaftCore;

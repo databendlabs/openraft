@@ -80,6 +80,8 @@ use crate::base::BoxStream;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::ClientResponderQueue;
+use crate::core::IoBroadcast;
+use crate::core::MetricsChannels;
 use crate::core::RaftCore;
 use crate::core::SharedReplicateBatch;
 use crate::core::StepDownWatcher;
@@ -570,17 +572,19 @@ where
             tx_notification: tx_notify,
             rx_notification: rx_notify,
 
-            tx_io_completed,
+            io_broadcast: IoBroadcast {
+                completed: tx_io_completed,
+                accepted: io_accepted_tx,
+                submitted: io_submitted_tx,
+                committed: committed_tx,
+            },
 
-            io_accepted_tx,
-
-            io_submitted_tx,
-
-            committed_tx,
-            tx_metrics,
-            tx_data_metrics,
-            tx_server_metrics,
-            tx_progress,
+            metrics: MetricsChannels {
+                all: tx_metrics,
+                data: tx_data_metrics,
+                server: tx_server_metrics,
+                progress: tx_progress,
+            },
 
             runtime_stats: RuntimeStats::new(&config),
             shared_replicate_batch,

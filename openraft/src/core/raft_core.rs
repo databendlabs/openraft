@@ -33,13 +33,14 @@ use crate::batch::Batch;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::ClientResponderQueue;
+use crate::core::IoBroadcast;
+use crate::core::MetricsChannels;
 use crate::core::ServerState;
 use crate::core::SharedReplicateBatch;
 use crate::core::balancer::Balancer;
 use crate::core::core_state::CoreState;
 use crate::core::heartbeat::event::HeartbeatEvent;
 use crate::core::heartbeat::handle::HeartbeatWorkersHandle;
-use crate::core::io_flush_tracking::IoProgressSender;
 use crate::core::merged_raft_msg_receiver::BatchRaftMsgReceiver;
 use crate::core::notification::Notification;
 use crate::core::raft_msg::AppendEntriesTx;
@@ -236,32 +237,11 @@ where
     /// A Receiver to receive callback from other components.
     pub(crate) rx_notification: MpscReceiverOf<C, Notification<C>>,
 
-    /// A Watch channel sender for IO completion notifications from storage callbacks.
-    /// This is used by IOFlushed callbacks to report IO completion in a synchronous manner.
-    pub(crate) tx_io_completed: WatchSenderOf<C, Result<IOId<C>, StorageError<C>>>,
+    /// The watch channels that broadcast local IO progress to storage callbacks and replication.
+    pub(crate) io_broadcast: IoBroadcast<C>,
 
-    /// Broadcasts I/O acceptance before submission to storage.
-    ///
-    /// Updated when `RaftCore` is about to execute an I/O operation. This allows
-    /// observers to prepare for upcoming I/O before it actually happens.
-    ///
-    /// Note: This is sent when `RaftCore` executes the I/O, not when `Engine` accepts it,
-    /// since `Engine` is a pure algorithm implementation without I/O capabilities.
-    pub(crate) io_accepted_tx: WatchSenderOf<C, IOId<C>>,
-
-    /// Broadcasts I/O submission progress to replication tasks.
-    ///
-    /// This enables replication tasks to know which log entries have been submitted
-    /// to storage and are safe to read. Updated after each I/O submission completes.
-    pub(crate) io_submitted_tx: WatchSenderOf<C, IOId<C>>,
-
-    /// For broadcast committed log id to replication task.
-    pub(crate) committed_tx: WatchSenderOf<C, Option<LogIdOf<C>>>,
-
-    pub(crate) tx_metrics: WatchSenderOf<C, RaftMetrics<C>>,
-    pub(crate) tx_data_metrics: WatchSenderOf<C, RaftDataMetrics<C>>,
-    pub(crate) tx_server_metrics: WatchSenderOf<C, RaftServerMetrics<C>>,
-    pub(crate) tx_progress: IoProgressSender<C>,
+    /// The watch channels that publish this node's state for observers.
+    pub(crate) metrics: MetricsChannels<C>,
 
     /// Runtime statistics for Raft operations.
     ///
@@ -334,11 +314,11 @@ where
 
         tracing::debug!("update metrics for shutdown");
         {
-            let mut curr = self.tx_metrics.borrow_watched().clone();
+            let mut curr = self.metrics.all.borrow_watched().clone();
             curr.state = ServerState::Shutdown;
             curr.running_state = Err(err.clone());
 
-            self.tx_metrics.send(curr).ok();
+            self.metrics.all.send(curr).ok();
         }
 
         tracing::info!("RaftCore shutdown complete");
@@ -774,10 +754,10 @@ where
     #[tracing::instrument(level = "debug", skip_all)]
     pub fn flush_metrics(&mut self) {
         let io_state = self.engine.state.io_state();
-        self.tx_progress.send_log_progress(io_state.log_progress.flushed().cloned());
-        self.tx_progress.send_commit_progress(io_state.apply_progress.accepted().cloned());
-        self.tx_progress.send_apply_progress(io_state.apply_progress.flushed().cloned());
-        self.tx_progress.send_snapshot_progress(io_state.snapshot.flushed().cloned());
+        self.metrics.progress.send_log_progress(io_state.log_progress.flushed().cloned());
+        self.metrics.progress.send_commit_progress(io_state.apply_progress.accepted().cloned());
+        self.metrics.progress.send_apply_progress(io_state.apply_progress.flushed().cloned());
+        self.metrics.progress.send_snapshot_progress(io_state.snapshot.flushed().cloned());
 
         let (replication, heartbeat) = if let Some(leader) = self.engine.leader.as_ref() {
             let replication_prog = &leader.progress;
@@ -887,7 +867,7 @@ where
         // but not `RaftDataMetrics` and `RaftServerMetrics`.
         // Thus if `RaftMetrics` change is perceived, the other two should have been updated.
 
-        self.tx_data_metrics.send_if_modified(|metrix| {
+        self.metrics.data.send_if_modified(|metrix| {
             if data_metrics.ne(metrix) {
                 *metrix = data_metrics.clone();
                 return true;
@@ -895,7 +875,7 @@ where
             false
         });
 
-        self.tx_server_metrics.send_if_modified(|metrix| {
+        self.metrics.server.send_if_modified(|metrix| {
             if server_metrics.ne(metrix) {
                 *metrix = server_metrics.clone();
                 return true;
@@ -904,7 +884,7 @@ where
         });
 
         tracing::debug!("report metrics: {}", m);
-        let res = self.tx_metrics.send(m);
+        let res = self.metrics.all.send(m);
 
         if let Err(err) = res {
             tracing::error!("failed to report metrics, error: {}, id: {}", err, &self.id);
@@ -1009,7 +989,7 @@ where
 
         // Broadcast I/O progress so replication tasks can read submitted logs.
         if let Some(submitted) = self.engine.state.log_progress().submitted().cloned() {
-            self.io_submitted_tx.send_if_greater(submitted);
+            self.io_broadcast.submitted.send_if_greater(submitted);
         }
     }
 
@@ -1181,9 +1161,9 @@ where
     fn new_event_watcher(&self, replicate_rx: WatchReceiverOf<C, Replicate<C>>) -> EventWatcher<C> {
         EventWatcher {
             replicate_rx,
-            committed_rx: self.committed_tx.subscribe(),
-            io_accepted_rx: self.io_accepted_tx.subscribe(),
-            io_submitted_rx: self.io_submitted_tx.subscribe(),
+            committed_rx: self.io_broadcast.committed.subscribe(),
+            io_accepted_rx: self.io_broadcast.accepted.subscribe(),
+            io_submitted_rx: self.io_broadcast.submitted.subscribe(),
         }
     }
 
@@ -2290,7 +2270,7 @@ where
     /// Run [`Command::UpdateIOProgress`].
     async fn run_update_io_progress(&mut self, io_id: IOId<C>) {
         // Notify that I/O is about to be submitted.
-        self.io_accepted_tx.send_if_greater(io_id.clone());
+        self.io_broadcast.accepted.send_if_greater(io_id.clone());
 
         self.engine.state.log_progress_mut().submit(io_id.clone());
 
@@ -2320,10 +2300,10 @@ where
         }
 
         let io_id = IOId::new_log_io(committed_vote, Some(last_log_id));
-        let callback = IOFlushed::new(io_id.clone(), self.tx_io_completed.clone());
+        let callback = IOFlushed::new(io_id.clone(), self.io_broadcast.completed.clone());
 
         // Notify that I/O is about to be submitted.
-        self.io_accepted_tx.send_if_greater(io_id.clone());
+        self.io_broadcast.accepted.send_if_greater(io_id.clone());
 
         // Mark this IO request as submitted,
         // other commands relying on it can then be processed.
@@ -2348,7 +2328,7 @@ where
         let io_id = IOId::new(&vote);
 
         // Notify that vote I/O is about to be submitted.
-        self.io_accepted_tx.send_if_greater(io_id.clone());
+        self.io_broadcast.accepted.send_if_greater(io_id.clone());
 
         self.engine.state.log_progress_mut().submit(io_id.clone());
         self.log_store.save_vote(&vote).await.sto_write_vote()?;
@@ -2600,7 +2580,7 @@ where
                 self.spawn_parallel_vote_requests(&vote_req, VoteRequestKind::PreVote).await;
             }
             Command::ReplicateCommitted { committed } => {
-                self.committed_tx.send_if_greater(committed);
+                self.io_broadcast.committed.send_if_greater(committed);
             }
             Command::BroadcastHeartbeat { session_id } => self.broadcast_heartbeat(session_id),
             Command::SaveCommittedAndApply { already_applied, upto } => {
