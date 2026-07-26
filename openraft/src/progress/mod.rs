@@ -18,8 +18,6 @@ pub(crate) mod stream_id;
 pub(crate) mod vec_progress;
 pub(crate) mod vec_progress_entry;
 
-// TODO: remove it
-#[allow(unused_imports)]
 pub(crate) use inflight::Inflight;
 pub(crate) use vec_progress::VecProgress;
 pub(crate) use vec_progress_entry::VecProgressEntry;
