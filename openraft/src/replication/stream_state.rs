@@ -7,9 +7,7 @@ use crate::LogIdOptionExt;
 use crate::RaftLogReader;
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::async_runtime::MpscSender;
 use crate::async_runtime::watch::WatchReceiver;
-use crate::core::notification::Notification;
 use crate::entry::RaftEntry;
 use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::errors::ReplicationClosed;
@@ -26,7 +24,6 @@ use crate::storage::RaftLogStorage;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::EntryOf;
 use crate::type_config::alias::LogIdOf;
-use crate::vote::RaftVote;
 
 /// Mutable state for generating AppendEntries requests in a replication stream.
 ///
@@ -85,20 +82,13 @@ where
             Err(sto_err) => {
                 tracing::error!("{} replication to target={}", sto_err, self.replication_context.target);
 
-                self.replication_context.tx_notify.send(Notification::StorageError { error: sto_err }).await.ok();
+                self.replication_context.notify_storage_error(sto_err).await;
                 return Err(ReplicationClosed::new("storage error"));
             }
         };
 
-        let belonging_leader = self.replication_context.leader_vote.leader_id().clone();
         let accepted_io: IOId<C> = self.event_watcher.io_accepted_rx.borrow_watched().clone();
-        let current_leader = accepted_io.leader_id().clone();
-        if current_leader != belonging_leader {
-            tracing::info!(
-                "Leader changed from {} to {}, quit replication",
-                belonging_leader,
-                current_leader
-            );
+        if self.replication_context.leader_changed(&accepted_io) {
             return Ok(None);
         }
 
