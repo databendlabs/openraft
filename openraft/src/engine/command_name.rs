@@ -65,7 +65,7 @@ mod tests {
     type C = UTConfig;
 
     fn committed_vote(term: u64, node_id: u64) -> CommittedVote<UTLeaderId> {
-        Vote::<UTLeaderId>::new(term, node_id).into_committed()
+        Vote::<UTLeaderId>::new(term, node_id).to_committed()
     }
 
     #[test]

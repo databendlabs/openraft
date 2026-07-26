@@ -557,7 +557,7 @@ where
                     .send(Notification::HigherVote {
                         target,
                         higher: vote,
-                        leader_vote: my_vote.into_committed(),
+                        leader_vote: my_vote.to_committed(),
                     })
                     .await;
 
@@ -1500,7 +1500,7 @@ where
 
                 match res {
                     Ok(resp) => {
-                        let candidate_vote = vote.into_non_committed();
+                        let candidate_vote = vote.to_non_committed();
                         let notification = match kind {
                             VoteRequestKind::Vote => Notification::VoteResponse {
                                 target,

@@ -87,7 +87,7 @@ fn test_leader_append_membership_for_leader() -> anyhow::Result<()> {
         vec![
             //
             Command::RebuildReplicationStreams {
-                leader_vote: Vote::new(6, 2).into_committed(),
+                leader_vote: Vote::new(6, 2).to_committed(),
                 targets: vec![
                     TargetProgress {
                         target: 3,

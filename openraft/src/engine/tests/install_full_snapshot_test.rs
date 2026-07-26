@@ -148,7 +148,7 @@ fn test_handle_install_full_snapshot_no_conflict() -> anyhow::Result<()> {
                     },
                     snapshot: (),
                 },
-                LogIOId::new(Vote::new(2, 1).into_committed(), Some(log_id(4, 1, 6)))
+                LogIOId::new(Vote::new(2, 1).to_committed(), Some(log_id(4, 1, 6)))
             )),
             Command::PurgeLog { upto: log_id(4, 1, 6) },
             Command::Respond {

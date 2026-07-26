@@ -125,10 +125,7 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
         "should return log ids for 3 entries"
     );
     assert_eq!(
-        Some(&IOId::new_log_io(
-            Vote::new(3, 1).into_committed(),
-            Some(log_id(3, 1, 6))
-        )),
+        Some(&IOId::new_log_io(Vote::new(3, 1).to_committed(), Some(log_id(3, 1, 6)))),
         eng.state.accepted_log_io()
     );
     assert_eq!(None, eng.state.log_ids.purged());
@@ -151,7 +148,7 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
     assert_eq!(
         vec![
             Command::AppendEntries {
-                committed_vote: Vote::new(3, 1).into_committed(),
+                committed_vote: Vote::new(3, 1).to_committed(),
                 entries: Batch::of([
                     blank_ent::<UTConfig>(3, 1, 4), //
                     blank_ent::<UTConfig>(3, 1, 5),
@@ -196,10 +193,7 @@ fn test_leader_append_entries_single_node_leader() -> anyhow::Result<()> {
         "should return log ids for 3 entries"
     );
     assert_eq!(
-        Some(&IOId::new_log_io(
-            Vote::new(3, 1).into_committed(),
-            Some(log_id(3, 1, 6))
-        )),
+        Some(&IOId::new_log_io(Vote::new(3, 1).to_committed(), Some(log_id(3, 1, 6)))),
         eng.state.accepted_log_io()
     );
     assert_eq!(None, eng.state.log_ids.purged());
@@ -223,7 +217,7 @@ fn test_leader_append_entries_single_node_leader() -> anyhow::Result<()> {
 
     assert_eq!(
         vec![Command::AppendEntries {
-            committed_vote: Vote::new(3, 1).into_committed(),
+            committed_vote: Vote::new(3, 1).to_committed(),
             entries: Batch::of([
                 blank_ent::<UTConfig>(3, 1, 4), //
                 blank_ent::<UTConfig>(3, 1, 5),
@@ -259,10 +253,7 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
         "should return log ids for 3 entries"
     );
     assert_eq!(
-        Some(&IOId::new_log_io(
-            Vote::new(3, 1).into_committed(),
-            Some(log_id(3, 1, 6))
-        )),
+        Some(&IOId::new_log_io(Vote::new(3, 1).to_committed(), Some(log_id(3, 1, 6)))),
         eng.state.accepted_log_io()
     );
     assert_eq!(None, eng.state.log_ids.purged());
@@ -287,7 +278,7 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
     assert_eq!(
         vec![
             Command::AppendEntries {
-                committed_vote: Vote::new(3, 1).into_committed(),
+                committed_vote: Vote::new(3, 1).to_committed(),
                 entries: Batch::of([
                     blank_ent::<UTConfig>(3, 1, 4), //
                     EntryOf::<UTConfig>::new_membership(log_id(3, 1, 5), m1_2()),
@@ -295,7 +286,7 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
                 ])
             },
             Command::RebuildReplicationStreams {
-                leader_vote: Vote::new(3, 1).into_committed(),
+                leader_vote: Vote::new(3, 1).to_committed(),
                 targets: vec![TargetProgress {
                     target: 2,
                     target_node: (),

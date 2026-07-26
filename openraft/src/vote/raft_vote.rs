@@ -73,7 +73,6 @@ where Self: OptionalFeatures + Eq + Clone + Debug + Display + 'static
 }
 
 pub(crate) trait RaftVoteExt: RaftVote {
-    #[allow(dead_code)]
     fn new_with_default_term(node_id: LeaderNodeId<Self::LeaderId>) -> Self {
         let leader_id = Self::LeaderId::new_with_default_term(node_id);
         Self::from_leader_id(leader_id, false)
@@ -130,29 +129,18 @@ pub(crate) trait RaftVoteExt: RaftVote {
         UncommittedVote::new(self.to_leader_id())
     }
 
-    /// Convert this vote into a [`CommittedVote`]
-    fn into_committed(self) -> CommittedVote<Self::LeaderId> {
-        CommittedVote::new(self.to_leader_id())
-    }
-
-    /// Convert this vote into a [`UncommittedVote`]
-    fn into_non_committed(self) -> UncommittedVote<Self::LeaderId> {
-        UncommittedVote::new(self.to_leader_id())
-    }
-
     /// Converts this vote into a [`VoteStatus`] enum based on its commitment state.
     fn into_vote_status(self) -> VoteStatus<Self::LeaderId> {
         if self.is_committed() {
-            VoteStatus::Committed(self.into_committed())
+            VoteStatus::Committed(self.to_committed())
         } else {
-            VoteStatus::Pending(self.into_non_committed())
+            VoteStatus::Pending(self.to_non_committed())
         }
     }
 
     /// Converts this vote to a [`CommittedVote`] if it is committed.
     ///
     /// Returns `Some(CommittedVote)` if the vote is committed, otherwise returns `None`.
-    #[allow(dead_code)]
     fn try_to_committed(&self) -> Option<CommittedVote<Self::LeaderId>> {
         if self.is_committed() {
             Some(self.to_committed())
@@ -165,7 +153,6 @@ pub(crate) trait RaftVoteExt: RaftVote {
     ///
     /// Returns `Some(CommittedLeaderId)` if the vote is committed and has a leader ID.
     /// Returns `None` if the vote is not committed or has no leader ID.
-    #[allow(dead_code)]
     fn try_to_committed_leader_id(&self) -> Option<LeaderCommitted<Self::LeaderId>> {
         if self.is_committed() {
             Some(self.leader_id().to_committed())

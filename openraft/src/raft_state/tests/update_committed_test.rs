@@ -44,7 +44,7 @@ fn new_state() -> RaftState<UTConfig> {
 #[test]
 fn test_update_committed_none() -> anyhow::Result<()> {
     let mut state = new_state();
-    let committed_vote = state.vote_ref().into_committed();
+    let committed_vote = state.vote_ref().to_committed();
 
     state.update_committed(LogIOId::new(committed_vote, None));
 
@@ -65,7 +65,7 @@ fn test_update_committed_none() -> anyhow::Result<()> {
 #[test]
 fn test_update_committed_ge_accepted() -> anyhow::Result<()> {
     let mut state = new_state();
-    let committed_vote = state.vote_ref().into_committed();
+    let committed_vote = state.vote_ref().to_committed();
     state.log_progress_mut().accept(IOId::new_log_io(committed_vote.clone(), Some(log_id(1, 1, 2))));
 
     state.update_committed(LogIOId::new(committed_vote, Some(log_id(2, 1, 3))));
@@ -89,7 +89,7 @@ fn test_update_committed_ge_accepted() -> anyhow::Result<()> {
 #[test]
 fn test_update_committed_le_accepted() -> anyhow::Result<()> {
     let mut state = new_state();
-    let committed_vote = state.vote_ref().into_committed();
+    let committed_vote = state.vote_ref().to_committed();
     state.log_progress_mut().accept(IOId::new_log_io(committed_vote.clone(), Some(log_id(3, 1, 4))));
 
     state.update_committed(LogIOId::new(committed_vote, Some(log_id(2, 1, 3))));
@@ -113,10 +113,10 @@ fn test_update_committed_le_accepted() -> anyhow::Result<()> {
 #[test]
 fn test_update_committed_local_vote_lags_cluster_vote() -> anyhow::Result<()> {
     let mut state = new_state();
-    let committed_vote = state.vote_ref().into_committed();
+    let committed_vote = state.vote_ref().to_committed();
     state.log_progress_mut().accept(IOId::new_log_io(committed_vote.clone(), Some(log_id(2, 1, 3))));
 
-    let higher_vote = Vote::new_committed(3, 2).into_committed();
+    let higher_vote = Vote::new_committed(3, 2).to_committed();
     let cluster_committed = LogIOId::new(higher_vote.clone(), Some(log_id(3, 2, 4)));
 
     state.update_committed(cluster_committed.clone());
@@ -136,10 +136,10 @@ fn test_update_committed_local_vote_lags_cluster_vote() -> anyhow::Result<()> {
 #[test]
 fn test_update_committed_advances_after_local_vote_catches_up() -> anyhow::Result<()> {
     let mut state = new_state();
-    let committed_vote = state.vote_ref().into_committed();
+    let committed_vote = state.vote_ref().to_committed();
     state.log_progress_mut().accept(IOId::new_log_io(committed_vote.clone(), Some(log_id(2, 1, 3))));
 
-    let higher_vote = Vote::new_committed(3, 2).into_committed();
+    let higher_vote = Vote::new_committed(3, 2).to_committed();
     let cluster_committed = LogIOId::new(higher_vote.clone(), Some(log_id(3, 2, 4)));
 
     // Commit notification arrives before logs from the new leader; no local advancement yet.
@@ -181,7 +181,7 @@ fn test_committed_accessors() -> anyhow::Result<()> {
     // Caught-up node: the accepted log id reaches the quorum-granted commit, so the two agree.
     {
         let mut state = new_state();
-        let committed_vote = state.vote_ref().into_committed();
+        let committed_vote = state.vote_ref().to_committed();
         state.log_progress_mut().accept(IOId::new_log_io(committed_vote.clone(), Some(log_id(2, 1, 3))));
 
         state.update_committed(LogIOId::new(committed_vote, Some(log_id(2, 1, 3))));
@@ -194,10 +194,10 @@ fn test_committed_accessors() -> anyhow::Result<()> {
     // cluster-committed leads local-committed.
     {
         let mut state = new_state();
-        let committed_vote = state.vote_ref().into_committed();
+        let committed_vote = state.vote_ref().to_committed();
         state.log_progress_mut().accept(IOId::new_log_io(committed_vote, Some(log_id(2, 1, 3))));
 
-        let higher_vote = Vote::new_committed(3, 2).into_committed();
+        let higher_vote = Vote::new_committed(3, 2).to_committed();
         state.update_committed(LogIOId::new(higher_vote, Some(log_id(3, 2, 4))));
 
         assert_eq!(Some(&log_id(3, 2, 4)), state.cluster_committed());

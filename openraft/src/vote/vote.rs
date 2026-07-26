@@ -83,7 +83,7 @@ where LID: RaftLeaderId
     }
 
     /// Mark this vote as committed (deprecated).
-    #[deprecated(note = "use `into_committed()` instead", since = "0.10.0")]
+    #[deprecated(note = "use `to_committed()` instead", since = "0.10.0")]
     pub fn commit(&mut self) {
         self.committed = true
     }

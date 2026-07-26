@@ -130,7 +130,7 @@ where
         let vote = {
             let vote = self.vote_ref().clone();
             debug_assert!(!vote.is_committed());
-            vote.into_committed()
+            vote.to_committed()
         };
 
         // TODO: tricky: the new LeaderId is different from the last log id

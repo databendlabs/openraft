@@ -75,10 +75,10 @@ fn test_startup_as_leader_without_logs() -> anyhow::Result<()> {
         vec![
             Command::UpdateIOProgress {
                 when: None,
-                io_id: IOId::new_log_io(Vote::new(2, 2).into_committed(), Some(log_id(1, 1, 3)))
+                io_id: IOId::new_log_io(Vote::new(2, 2).to_committed(), Some(log_id(1, 1, 3)))
             },
             Command::RebuildReplicationStreams {
-                leader_vote: Vote::new(2, 2).into_committed(),
+                leader_vote: Vote::new(2, 2).to_committed(),
                 targets: vec![TargetProgress {
                     target: 3,
                     target_node: (),
@@ -87,7 +87,7 @@ fn test_startup_as_leader_without_logs() -> anyhow::Result<()> {
                 close_old_streams: true,
             },
             Command::AppendEntries {
-                committed_vote: Vote::new(2, 2).into_committed(),
+                committed_vote: Vote::new(2, 2).to_committed(),
                 entries: Batch::of([EntryOf::<UTConfig>::new_blank(log_id(2, 2, 4))]),
             },
             Command::Replicate {
@@ -129,10 +129,10 @@ fn test_startup_as_leader_with_proposed_logs() -> anyhow::Result<()> {
         vec![
             Command::UpdateIOProgress {
                 when: None,
-                io_id: IOId::new_log_io(Vote::new(1, 2).into_committed(), Some(log_id(1, 2, 6)))
+                io_id: IOId::new_log_io(Vote::new(1, 2).to_committed(), Some(log_id(1, 2, 6)))
             },
             Command::RebuildReplicationStreams {
-                leader_vote: Vote::new(1, 2).into_committed(),
+                leader_vote: Vote::new(1, 2).to_committed(),
                 targets: vec![TargetProgress {
                     target: 3,
                     target_node: (),
