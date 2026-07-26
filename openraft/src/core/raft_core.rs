@@ -752,10 +752,6 @@ where
 
         let st = &self.engine.state;
 
-        let membership_config = st.membership_state.effective().clone();
-        let committed_membership_config = st.membership_state.committed().clone();
-        let current_leader = self.current_leader();
-
         // Get the last flushed vote, or use initial vote (term=0, node_id=self.id)
         // if no IO has been flushed yet (e.g., during startup).
         let vote = st
@@ -763,38 +759,6 @@ where
             .flushed()
             .map(|io_id| io_id.to_app_vote())
             .unwrap_or_else(|| VoteOf::<C>::new_with_default_term(self.id.clone()));
-
-        #[allow(deprecated)]
-        let m = RaftMetrics {
-            running_state: Ok(()),
-            id: self.id.clone(),
-
-            // --- data ---
-            current_term: st.vote_ref().term(),
-            vote: vote.clone(),
-            last_log_index: st.last_log_id().index(),
-            local_committed: st.local_committed().cloned(),
-            committed: st.local_committed().cloned(),
-            cluster_committed: st.cluster_committed().cloned(),
-            last_applied: st.io_applied().cloned(),
-            snapshot: st.io_snapshot_last_log_id().cloned(),
-            purged: st.io_purged().cloned(),
-
-            #[cfg(feature = "metrics-logids")]
-            log_id_list: st.log_ids.clone(),
-
-            // --- cluster ---
-            state: st.server_state,
-            current_leader: current_leader.clone(),
-            millis_since_quorum_ack,
-            last_quorum_acked: last_quorum_acked.map(SerdeInstant::new),
-            membership_config: membership_config.clone(),
-            committed_membership_config: committed_membership_config.clone(),
-            heartbeat: heartbeat.clone(),
-
-            // --- replication ---
-            replication: replication.clone(),
-        };
 
         #[allow(deprecated)]
         let data_metrics = RaftDataMetrics {
@@ -815,13 +779,48 @@ where
             heartbeat,
         };
 
-        let server_metrics = RaftServerMetrics {
+        let server_metrics = RaftServerMetrics::<C> {
             id: self.id.clone(),
-            vote: vote.clone(),
+            vote,
             state: st.server_state,
-            current_leader,
-            membership_config,
-            committed_membership_config,
+            current_leader: self.current_leader(),
+            membership_config: st.membership_state.effective().clone(),
+            committed_membership_config: st.membership_state.committed().clone(),
+        };
+
+        // `RaftMetrics` is the union of the two above, plus the running state and the term.
+        // It is assembled from them rather than re-read from the state, so that every field has
+        // exactly one place where it is derived.
+        #[allow(deprecated)]
+        let m = RaftMetrics {
+            running_state: Ok(()),
+            id: server_metrics.id.clone(),
+
+            // --- data ---
+            current_term: st.vote_ref().term(),
+            vote: server_metrics.vote.clone(),
+            last_log_index: data_metrics.last_log.index(),
+            local_committed: data_metrics.local_committed.clone(),
+            committed: data_metrics.committed.clone(),
+            cluster_committed: data_metrics.cluster_committed.clone(),
+            last_applied: data_metrics.last_applied.clone(),
+            snapshot: data_metrics.snapshot.clone(),
+            purged: data_metrics.purged.clone(),
+
+            #[cfg(feature = "metrics-logids")]
+            log_id_list: data_metrics.log_id_list.clone(),
+
+            // --- cluster ---
+            state: server_metrics.state,
+            current_leader: server_metrics.current_leader.clone(),
+            millis_since_quorum_ack: data_metrics.millis_since_quorum_ack,
+            last_quorum_acked: data_metrics.last_quorum_acked,
+            membership_config: server_metrics.membership_config.clone(),
+            committed_membership_config: server_metrics.committed_membership_config.clone(),
+            heartbeat: data_metrics.heartbeat.clone(),
+
+            // --- replication ---
+            replication: data_metrics.replication.clone(),
         };
 
         // Record to external metrics recorder
