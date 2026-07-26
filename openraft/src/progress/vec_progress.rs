@@ -152,13 +152,7 @@ where
     where Fmt: Fn(&mut Formatter<'_>, &Entry) -> std::fmt::Result {
         DisplayVecProgress { inner: self, f }
     }
-}
 
-impl<Entry, QS> VecProgress<Entry, QS>
-where
-    Entry: VecProgressEntry,
-    QS: QuorumSet<Id = Entry::Id>,
-{
     /// Update one of the scalar values and re-calculate the quorum-accepted value.
     ///
     /// It returns `Err(quorum_accepted)` if the `id` is not found.
