@@ -61,7 +61,6 @@ use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::MutexOf;
 use crate::type_config::async_runtime::mpsc::MpscSender;
-use crate::vote::RaftVote;
 
 /// A task responsible for sending replication events to a target follower in the Raft cluster.
 ///
@@ -210,14 +209,7 @@ where
             }
 
             let accepted_io: IOId<C> = self.event_watcher.io_accepted_rx.borrow_watched().clone();
-            let current_leader = accepted_io.leader_id().clone();
-            let belonging_leader = self.replication_context.leader_vote.leader_id().clone();
-            if current_leader != belonging_leader {
-                tracing::info!(
-                    "ReplicationCore: Leader changed from {} to {}, quit replication",
-                    belonging_leader,
-                    current_leader
-                );
+            if self.replication_context.leader_changed(&accepted_io) {
                 return Err(ReplicationClosed::new("Leader changed"));
             }
 
@@ -405,19 +397,7 @@ where
         if self.inflight_id.is_none() {
             return;
         }
-        self.replication_context
-            .tx_notify
-            .send(Notification::ReplicationProgress {
-                stream_id: self.replication_context.stream_id,
-                progress: Progress {
-                    target: self.replication_context.target.clone(),
-                    result: Err(err.to_string()),
-                },
-
-                inflight_id: self.inflight_id,
-            })
-            .await
-            .ok();
+        self.replication_context.notify_progress(Err(err.to_string()), self.inflight_id).await;
     }
 
     /// A successful replication implies a successful heartbeat.
@@ -426,17 +406,7 @@ where
     /// [`RaftCore`]: crate::core::RaftCore
     async fn notify_heartbeat_progress(&mut self, sending_time: InstantOf<C>) {
         tracing::debug!("ReplicationCore notify_heartbeat_progress: {}", sending_time.display());
-        self.replication_context
-            .tx_notify
-            .send({
-                Notification::HeartbeatProgress {
-                    stream_id: self.replication_context.stream_id,
-                    target: self.replication_context.target.clone(),
-                    sending_time,
-                }
-            })
-            .await
-            .ok();
+        self.replication_context.notify_heartbeat_progress(sending_time).await;
     }
 
     /// Notify RaftCore with the success replication result (log matching or conflict).
@@ -466,21 +436,7 @@ where
 
         // always send Conflict error back, even when the inflight id is None
         // for heartbeat to detect log reversion
-        self.replication_context
-            .tx_notify
-            .send({
-                Notification::ReplicationProgress {
-                    stream_id: self.replication_context.stream_id,
-                    progress: Progress {
-                        target: self.replication_context.target.clone(),
-                        result: Ok(replication_result.clone()),
-                    },
-                    // If it is None, meaning it is not a response to a request with payload.
-                    inflight_id: self.inflight_id,
-                }
-            })
-            .await
-            .ok();
+        self.replication_context.notify_progress(Ok(replication_result), self.inflight_id).await;
     }
 
     /// Receive and process events from RaftCore and set `next_action` and `inflight_id`.

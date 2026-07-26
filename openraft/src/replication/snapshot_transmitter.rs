@@ -19,13 +19,11 @@ use crate::network::NetBackoff;
 use crate::network::NetSnapshot;
 use crate::network::RPCOption;
 use crate::progress::inflight_id::InflightId;
-use crate::replication::Progress;
 use crate::replication::replication_context::ReplicationContext;
 use crate::replication::response::ReplicationResult;
 use crate::replication::snapshot_transmitter_handle::SnapshotTransmitterHandle;
 use crate::storage::RaftStateMachine;
 use crate::type_config::TypeConfigExt;
-use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::SmSnapshotOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchSenderOf;
@@ -136,7 +134,7 @@ where
                         self.replication_context.target,
                         error
                     );
-                    self.replication_context.tx_notify.send(Notification::StorageError { error }).await.ok();
+                    self.replication_context.notify_storage_error(error).await;
                     return;
                 }
                 ReplicationError::RPCError(err) => {
@@ -237,46 +235,10 @@ where
             }));
         }
 
-        self.notify_heartbeat_progress(start_time).await;
-        self.notify_progress(ReplicationResult(Ok(meta.last_log_id))).await;
+        self.replication_context.notify_heartbeat_progress(start_time).await;
+        self.replication_context
+            .notify_progress(Ok(ReplicationResult(Ok(meta.last_log_id))), Some(self.inflight_id))
+            .await;
         Ok(())
-    }
-
-    async fn notify_heartbeat_progress(&mut self, sending_time: InstantOf<C>) {
-        self.replication_context
-            .tx_notify
-            .send({
-                Notification::HeartbeatProgress {
-                    stream_id: self.replication_context.stream_id,
-                    target: self.replication_context.target.clone(),
-                    sending_time,
-                }
-            })
-            .await
-            .ok();
-    }
-
-    async fn notify_progress(&mut self, replication_result: ReplicationResult<C>) {
-        tracing::debug!(
-            "{}: target: {}, result: {}",
-            func_name!(),
-            self.replication_context.target.clone(),
-            replication_result
-        );
-
-        self.replication_context
-            .tx_notify
-            .send({
-                Notification::ReplicationProgress {
-                    stream_id: self.replication_context.stream_id,
-                    progress: Progress {
-                        target: self.replication_context.target.clone(),
-                        result: Ok(replication_result.clone()),
-                    },
-                    inflight_id: Some(self.inflight_id),
-                }
-            })
-            .await
-            .ok();
     }
 }
