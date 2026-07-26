@@ -6,7 +6,6 @@ use openraft_macros::since;
 
 use crate::ChangeMembers;
 use crate::LogIdOptionExt;
-use crate::OptionalSend;
 use crate::RaftMetrics;
 use crate::RaftTypeConfig;
 use crate::core::raft_msg::RaftMsg;
@@ -18,7 +17,6 @@ use crate::membership::IntoNodes;
 use crate::raft::ClientWriteResult;
 use crate::raft::raft_inner::RaftInner;
 use crate::type_config::alias::LogIdOf;
-use crate::type_config::alias::OneshotReceiverOf;
 
 /// Provides management APIs for the Raft system.
 ///
@@ -65,7 +63,7 @@ where C: RaftTypeConfig
             retain
         );
 
-        let (tx, rx) = new_responder_pair::<C, _>();
+        let (tx, rx) = ProgressResponder::<C, _>::complete_only();
 
         tracing::debug!("change_membership: start",);
 
@@ -107,7 +105,7 @@ where C: RaftTypeConfig
         tracing::debug!("committed a joint config: {} {:?}", log_id, joint);
         tracing::debug!("the second step is to change to uniform config: {:?}", changes);
 
-        let (tx, rx) = new_responder_pair::<C, _>();
+        let (tx, rx) = ProgressResponder::<C, _>::complete_only();
 
         // The second step, send a NOOP change to flatten the joint config.
         let changes = ChangeMembers::AddVoterIds(Default::default());
@@ -133,7 +131,7 @@ where C: RaftTypeConfig
         node: C::Node,
         blocking: bool,
     ) -> Result<ClientWriteResult<C>, Fatal<C>> {
-        let (tx, rx) = new_responder_pair::<C, _>();
+        let (tx, rx) = ProgressResponder::<C, _>::complete_only();
 
         let msg = RaftMsg::ChangeMembership {
             changes: ChangeMembers::AddNodes(btreemap! {id.clone()=>node}),
@@ -228,14 +226,4 @@ where C: RaftTypeConfig
         // Not up to date, keep waiting.
         Err(())
     }
-}
-
-fn new_responder_pair<C, T>() -> (ProgressResponder<C, T>, OneshotReceiverOf<C, T>)
-where
-    C: RaftTypeConfig,
-    T: OptionalSend,
-{
-    let (tx, complete_rx) = ProgressResponder::complete_only();
-
-    (tx, complete_rx)
 }
