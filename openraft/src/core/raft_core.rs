@@ -125,7 +125,6 @@ use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscReceiverOf;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::OneshotReceiverOf;
-use crate::type_config::alias::UncommittedVoteOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::alias::WatchSenderOf;
@@ -1856,7 +1855,8 @@ where
 
                 #[allow(clippy::collapsible_if)]
                 if self.engine.candidate.is_some() {
-                    if self.does_candidate_vote_match(&candidate_vote, "VoteResponse") {
+                    let my_vote = self.engine.candidate_ref().map(|x| x.vote_ref());
+                    if Self::does_vote_match("Candidate", &candidate_vote, my_vote, "VoteResponse") {
                         self.engine.handle_vote_resp(target, resp);
                     }
                 }
@@ -1875,7 +1875,8 @@ where
 
                 #[allow(clippy::collapsible_if)]
                 if self.engine.pre_candidate.is_some() {
-                    if self.does_pre_candidate_vote_match(&candidate_vote, "PreVoteResponse") {
+                    let my_vote = self.engine.pre_candidate_ref().map(|x| x.vote_ref());
+                    if Self::does_vote_match("Pre-Candidate", &candidate_vote, my_vote, "PreVoteResponse") {
                         self.engine.handle_pre_vote_resp(target, resp);
                     }
                 }
@@ -1894,7 +1895,8 @@ where
                     leader_vote
                 );
 
-                if self.does_leader_vote_match(&leader_vote, "HigherVote") {
+                let my_vote = self.engine.leader.as_ref().map(|x| &x.committed_vote);
+                if Self::does_vote_match("Leader", &leader_vote, my_vote, "HigherVote") {
                     // Rejected vote change is ok.
                     self.engine.vote_handler().update_vote(&higher).ok();
                 }
@@ -1945,7 +1947,13 @@ where
                         // local log wont revert when membership changes.
                         #[allow(clippy::collapsible_if)]
                         if self.engine.leader.is_some() {
-                            if self.does_leader_vote_match(&log_io_id.committed_vote, "LocalIO Notification") {
+                            let my_vote = self.engine.leader.as_ref().map(|x| &x.committed_vote);
+                            if Self::does_vote_match(
+                                "Leader",
+                                &log_io_id.committed_vote,
+                                my_vote,
+                                "LocalIO Notification",
+                            ) {
                                 self.engine.replication_handler().update_local_progress(log_io_id.log_id);
                             }
                         }
@@ -2101,85 +2109,45 @@ where
         }
     }
 
-    /// If a message is sent by a previous Candidate but is received by current Candidate,
-    /// it is a stale message and should be just ignored.
-    fn does_candidate_vote_match(&self, candidate_vote: &UncommittedVoteOf<C>, msg: impl fmt::Display) -> bool {
-        // If it finished voting, Candidate's vote is None.
-        let Some(my_vote) = self.engine.candidate_ref().map(|x| x.vote_ref().clone()) else {
+    /// If a message is sent under a vote that this node no longer holds, it is a stale message
+    /// and should be just ignored.
+    ///
+    /// `role` names the role the vote belongs to, for the log message, e.g. `"Candidate"`.
+    /// `my_vote` is the vote this node currently holds in that role, `None` if it left the role
+    /// (a Candidate that finished voting has no vote).
+    ///
+    /// The two votes may have different types: the vote a message was sent under is an
+    /// `UncommittedVote`/`CommittedVote`, while the vote this node holds may be the
+    /// application's `C::Vote`. They are therefore compared by leader id.
+    fn does_vote_match<V, W>(role: &str, sent_vote: &V, my_vote: Option<&W>, msg: impl fmt::Display) -> bool
+    where
+        V: RaftVote,
+        W: RaftVote<LeaderId = V::LeaderId>,
+    {
+        let Some(my_vote) = my_vote else {
             tracing::warn!(
-                "A message will be ignored because this node is no longer Candidate: \
+                "A message will be ignored because this node is no longer {}: \
                  msg sent by vote: {}; when ({})",
-                candidate_vote,
+                role,
+                sent_vote,
                 msg
             );
             return false;
         };
 
-        if candidate_vote.leader_id() != my_vote.leader_id() {
+        if sent_vote.leader_id() != my_vote.leader_id() {
             tracing::warn!(
-                "A message will be ignored because vote changed: \
+                "A message will be ignored because {} vote changed: \
                 msg sent by vote: {}; current my vote: {}; when ({})",
-                candidate_vote,
+                role,
+                sent_vote,
                 my_vote,
-                msg
-            );
-            false
-        } else {
-            true
-        }
-    }
-
-    /// If a Pre-Vote response is for a previous Pre-Vote round, it is stale and should be ignored.
-    fn does_pre_candidate_vote_match(&self, candidate_vote: &UncommittedVoteOf<C>, msg: impl fmt::Display) -> bool {
-        let Some(my_vote) = self.engine.pre_candidate_ref().map(|x| x.vote_ref().clone()) else {
-            tracing::warn!(
-                "A message will be ignored because this node is no longer a pre-candidate: \
-                 msg sent by vote: {}; when ({})",
-                candidate_vote,
                 msg
             );
             return false;
-        };
-
-        if candidate_vote.leader_id() != my_vote.leader_id() {
-            tracing::warn!(
-                "A message will be ignored because pre-candidate vote changed: \
-                msg sent by vote: {}; current my pre-vote: {}; when ({})",
-                candidate_vote,
-                my_vote,
-                msg
-            );
-            false
-        } else {
-            true
         }
-    }
 
-    /// If a message is sent by a previous Leader but is received by current Leader,
-    /// it is a stale message and should be just ignored.
-    fn does_leader_vote_match(&self, leader_vote: &CommittedVoteOf<C>, msg: impl fmt::Display) -> bool {
-        let Some(my_vote) = self.engine.leader.as_ref().map(|x| x.committed_vote.clone()) else {
-            tracing::warn!(
-                "A message will be ignored because this node is no longer Leader: \
-                msg sent by vote: {}; when ({})",
-                leader_vote,
-                msg
-            );
-            return false;
-        };
-
-        if leader_vote != &my_vote {
-            tracing::warn!(
-                "A message will be ignored because vote changed: \
-                msg sent by vote: {}; current my vote: {}; when ({})",
-                leader_vote,
-                my_vote,
-                msg
-            );
-            false
-        } else {
-            true
-        }
+        true
     }
 
     /// Broadcast heartbeat to all followers with per-follower matching log ids.
