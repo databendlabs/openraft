@@ -1,0 +1,5 @@
+error: VariantName needs at least one variant
+ --> tests/variant_name/fail/empty_enum.rs:4:6
+  |
+4 | enum NoVariants {}
+  |      ^^^^^^^^^^

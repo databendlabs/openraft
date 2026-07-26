@@ -1,0 +1,5 @@
+error: unsupported `variant_name` argument, expected `prefix`
+ --> tests/variant_name/fail/unknown_attribute_arg.rs:4:16
+  |
+4 | #[variant_name(suffix = "::")]
+  |                ^^^^^^
