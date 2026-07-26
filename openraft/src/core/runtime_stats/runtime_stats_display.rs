@@ -23,7 +23,6 @@ use crate::type_config::alias::InstantOf;
 ///
 /// All values are computed upfront so `Display::fmt()` is cheap.
 /// Use [`DisplayMode`] to control the output format.
-#[allow(dead_code)]
 pub struct RuntimeStatsDisplay<C>
 where C: RaftTypeConfig
 {
@@ -45,7 +44,6 @@ where C: RaftTypeConfig
     pub(crate) log_stages: LogStages<InstantOf<C>>,
 }
 
-#[allow(dead_code)]
 impl<C> RuntimeStatsDisplay<C>
 where C: RaftTypeConfig
 {
@@ -86,7 +84,6 @@ where C: RaftTypeConfig
 impl<C> RuntimeStatsDisplay<C>
 where C: RaftTypeConfig
 {
-    #[allow(dead_code)]
     fn fmt_compact(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -158,7 +155,6 @@ where C: RaftTypeConfig
         write!(f, "}} }}")
     }
 
-    #[allow(dead_code)]
     fn fmt_multiline(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "RuntimeStats:")?;
         writeln!(f, "  apply_batch: {}", self.apply_batch)?;
@@ -217,7 +213,6 @@ where C: RaftTypeConfig
         Ok(())
     }
 
-    #[allow(dead_code)]
     #[cfg(feature = "runtime-stats")]
     fn fmt_human_readable(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Batch sizes table
@@ -396,7 +391,6 @@ where C: RaftTypeConfig
     }
 
     /// Fallback when tabled is not available.
-    #[allow(dead_code)]
     #[cfg(not(feature = "runtime-stats"))]
     fn fmt_human_readable(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.fmt_multiline(f)
