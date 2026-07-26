@@ -87,6 +87,7 @@ use crate::network::RPCOption;
 use crate::network::RPCTypes;
 use crate::network::RaftNetworkFactory;
 use crate::progress::VecProgressEntry;
+use crate::progress::inflight_id::InflightId;
 use crate::progress::stream_id::StreamId;
 use crate::quorum::QuorumSet;
 use crate::raft::AppendEntriesRequest;
@@ -2231,6 +2232,274 @@ where
             tracing::info!("done joining removed replication: {}", target);
         });
     }
+
+    /// Run [`Command::UpdateIOProgress`].
+    async fn run_update_io_progress(&mut self, io_id: IOId<C>) {
+        // Notify that I/O is about to be submitted.
+        self.io_accepted_tx.send_if_greater(io_id.clone());
+
+        self.engine.state.log_progress_mut().submit(io_id.clone());
+
+        let notify = Notification::LocalIO { io_id: io_id.clone() };
+
+        self.tx_notification.send(notify).await.ok();
+    }
+
+    /// Run [`Command::AppendEntries`].
+    async fn run_append_entries(
+        &mut self,
+        committed_vote: CommittedVoteOf<C>,
+        entries: BatchOf<C, C::Entry>,
+    ) -> Result<(), StorageError<C>> {
+        let last_log_id = entries.last().unwrap().log_id();
+        let last_log_index = last_log_id.index();
+        tracing::debug!("AppendEntries: {}", entries.as_ref().display_n(10));
+
+        let entry_count = entries.len() as u64;
+
+        // Record to internal histogram
+        self.runtime_stats.append_batch.record(entry_count);
+
+        // Record to external metrics recorder
+        if let Some(r) = &self.metrics_recorder {
+            r.record_append_batch(entry_count);
+        }
+
+        let io_id = IOId::new_log_io(committed_vote, Some(last_log_id));
+        let callback = IOFlushed::new(io_id.clone(), self.tx_io_completed.clone());
+
+        // Notify that I/O is about to be submitted.
+        self.io_accepted_tx.send_if_greater(io_id.clone());
+
+        // Mark this IO request as submitted,
+        // other commands relying on it can then be processed.
+        // For example,
+        // `Replicate` command cannot run until this IO request is submitted(no need to be flushed),
+        // because it needs to read the log entry from the log store.
+        //
+        // The `submit` state must be updated before calling `append()`,
+        // because `append()` may call the callback before returning.
+        self.engine.state.log_progress_mut().submit(io_id.clone());
+
+        self.runtime_stats.record_log_stage_now(Stage::Submitted, last_log_index + 1);
+
+        // Submit IO request, do not wait for the response.
+        self.log_store.append(entries, callback).await.sto_write_logs()?;
+
+        Ok(())
+    }
+
+    /// Run [`Command::SaveVote`].
+    async fn run_save_vote(&mut self, vote: VoteOf<C>) -> Result<(), StorageError<C>> {
+        let io_id = IOId::new(&vote);
+
+        // Notify that vote I/O is about to be submitted.
+        self.io_accepted_tx.send_if_greater(io_id.clone());
+
+        self.engine.state.log_progress_mut().submit(io_id.clone());
+        self.log_store.save_vote(&vote).await.sto_write_vote()?;
+
+        self.tx_notification
+            .send(Notification::LocalIO {
+                io_id: IOId::new(&vote),
+            })
+            .await
+            .ok();
+
+        // If a non-committed vote is saved,
+        // there may be a candidate waiting for the response.
+        if let VoteStatus::Pending(non_committed) = vote.clone().into_vote_status() {
+            self.tx_notification
+                .send(Notification::VoteResponse {
+                    target: self.id.clone(),
+                    // last_log_id is not used when sending VoteRequest to local node
+                    resp: VoteResponse::new(vote, None, true),
+                    candidate_vote: non_committed,
+                })
+                .await
+                .ok();
+        }
+
+        Ok(())
+    }
+
+    /// Run [`Command::PurgeLog`].
+    async fn run_purge_log(&mut self, upto: LogIdOf<C>) -> Result<(), StorageError<C>> {
+        self.log_store.purge(upto.clone()).await.sto_write_logs()?;
+
+        // A responder may still be pending for a log covered by this purge, e.g. a former
+        // leader's uncommitted log superseded by a snapshot install. That log is gone, so
+        // fail the responder with `ForwardToLeader` instead of leaving it stranded below the
+        // purge boundary (which would later panic in `apply_to_state_machine`).
+        let leader_id = self.current_leader();
+        let leader_node = self.get_leader_node(leader_id.clone());
+        for (log_index, tx) in self.client_responders.drain_upto(upto.index()) {
+            tx.on_complete(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
+                leader_id: leader_id.clone(),
+                leader_node: leader_node.clone(),
+            })));
+            tracing::debug!("sent ForwardToLeader for purged log_index: {}", log_index);
+        }
+
+        self.engine.state.io_state_mut().update_purged(Some(upto));
+
+        Ok(())
+    }
+
+    /// Run [`Command::TruncateLog`].
+    async fn run_truncate_log(&mut self, after: Option<LogIdOf<C>>) -> Result<(), StorageError<C>> {
+        self.log_store.truncate_after(after.clone()).await.sto_write_logs()?;
+
+        // Inform clients waiting for logs to be applied.
+        let leader_id = self.current_leader();
+        let leader_node = self.get_leader_node(leader_id.clone());
+
+        for (log_index, tx) in self.client_responders.drain_from(after.next_index()) {
+            tx.on_complete(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
+                leader_id: leader_id.clone(),
+                leader_node: leader_node.clone(),
+            })));
+
+            tracing::debug!("sent ForwardToLeader for log_index: {}", log_index);
+        }
+
+        Ok(())
+    }
+
+    /// Run [`Command::SaveCommittedAndApply`].
+    async fn run_save_committed_and_apply(
+        &mut self,
+        already_applied: Option<LogIdOf<C>>,
+        upto: LogIdOf<C>,
+    ) -> Result<(), StorageError<C>> {
+        self.runtime_stats.record_log_stage_now(Stage::Committed, upto.index() + 1);
+
+        self.engine.state.apply_progress_mut().submit(upto.clone());
+
+        self.log_store.save_committed(Some(upto.clone())).await.sto_write()?;
+
+        let first = self.engine.state.get_log_id(already_applied.next_index()).unwrap();
+        self.apply_to_state_machine(first, upto).await?;
+
+        Ok(())
+    }
+
+    /// Run [`Command::ReplicateSnapshot`].
+    async fn run_replicate_snapshot(
+        &mut self,
+        leader_vote: CommittedVoteOf<C>,
+        target: C::NodeId,
+        inflight_id: InflightId,
+    ) {
+        let node = self.replications.get(&target).expect("replication to target node exists");
+
+        let snapshot_reader = self.sm_handle.new_snapshot_reader();
+        let stream_id = node.stream_id;
+        let (replication_task_context, cancel_tx) =
+            self.new_replication_task_context(leader_vote, stream_id, target.clone());
+
+        let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap();
+        let snapshot_network = self.network_factory.new_snapshot_client(target.clone(), target_node).await;
+
+        let handle = SnapshotTransmitter::<C, NF, SM>::spawn(
+            replication_task_context,
+            snapshot_network,
+            snapshot_reader,
+            inflight_id,
+            cancel_tx,
+        );
+
+        let node = self.replications.get_mut(&target).expect("replication to target node exists");
+        // TODO: it is not cleaned when snapshot transmission is done.
+        node.snapshot_transmit_handle = Some(handle);
+    }
+
+    /// Run [`Command::CloseReplicationStreams`].
+    fn run_close_replication_streams(&mut self) {
+        self.heartbeat_handle.close_workers();
+
+        let left = std::mem::take(&mut self.replications);
+        for (target, s) in left {
+            Self::close_replication(&target, s);
+        }
+    }
+
+    /// Run [`Command::RebuildReplicationStreams`].
+    async fn run_rebuild_replication_streams(
+        &mut self,
+        leader_vote: CommittedVoteOf<C>,
+        targets: Vec<TargetProgress<C>>,
+        close_old_streams: bool,
+    ) {
+        self.heartbeat_handle
+            .spawn_workers::<NF>(
+                leader_vote.clone(),
+                &mut self.network_factory,
+                &self.tx_notification,
+                &targets,
+                close_old_streams,
+            )
+            .await;
+
+        let mut new_replications = BTreeMap::new();
+
+        for prog in targets.iter() {
+            let removed = self.replications.remove(&prog.target);
+
+            let handle = if let Some(removed) = removed {
+                if close_old_streams {
+                    Self::close_replication(&prog.target, removed);
+                    None
+                } else {
+                    Some(removed)
+                }
+            } else {
+                None
+            };
+
+            let handle = if let Some(handle) = handle {
+                handle
+            } else {
+                self.spawn_replication_stream(leader_vote.clone(), prog).await
+            };
+
+            new_replications.insert(prog.target.clone(), handle);
+        }
+
+        tracing::debug!("removing unused replications");
+
+        let left = std::mem::replace(&mut self.replications, new_replications);
+
+        for (target, s) in left {
+            Self::close_replication(&target, s);
+        }
+    }
+
+    /// Run [`Command::StateMachine`], forwarding the inner command to the state machine worker.
+    async fn run_state_machine(&mut self, command: sm::Command<C, SM>) -> Result<(), StorageError<C>> {
+        let io_id = command.get_log_progress();
+
+        if let Some(io_id) = io_id {
+            self.engine.state.log_progress_mut().submit(io_id);
+        }
+
+        // If this command update the last-applied log id, mark it as submitted(to state machine).
+        if let Some(log_id) = command.get_apply_progress() {
+            self.engine.state.apply_progress_mut().submit(log_id);
+        }
+
+        if let Some(log_id) = command.get_snapshot_progress() {
+            self.engine.state.snapshot_progress_mut().submit(log_id);
+        }
+
+        // Just forward a state machine command to the worker.
+        self.sm_handle
+            .send(command)
+            .await
+            .map_err(|_e| StorageError::write_state_machine(C::err_from_string("cannot send to sm::Worker")))?;
+
+        Ok(())
+    }
 }
 
 impl<C, N, LS, SM> RaftRuntime<C, SM> for RaftCore<C, N, LS, SM>
@@ -2262,120 +2531,14 @@ where
         self.runtime_stats.record_command(cmd.name());
 
         match cmd {
-            Command::UpdateIOProgress { io_id, .. } => {
-                // Notify that I/O is about to be submitted.
-                self.io_accepted_tx.send_if_greater(io_id.clone());
-
-                self.engine.state.log_progress_mut().submit(io_id.clone());
-
-                let notify = Notification::LocalIO { io_id: io_id.clone() };
-
-                self.tx_notification.send(notify).await.ok();
-            }
+            Command::UpdateIOProgress { io_id, .. } => self.run_update_io_progress(io_id).await,
             Command::AppendEntries {
-                committed_vote: vote,
+                committed_vote,
                 entries,
-            } => {
-                let last_log_id = entries.last().unwrap().log_id();
-                let last_log_index = last_log_id.index();
-                tracing::debug!("AppendEntries: {}", entries.as_ref().display_n(10));
-
-                let entry_count = entries.len() as u64;
-
-                // Record to internal histogram
-                self.runtime_stats.append_batch.record(entry_count);
-
-                // Record to external metrics recorder
-                if let Some(r) = &self.metrics_recorder {
-                    r.record_append_batch(entry_count);
-                }
-
-                let io_id = IOId::new_log_io(vote, Some(last_log_id));
-                let callback = IOFlushed::new(io_id.clone(), self.tx_io_completed.clone());
-
-                // Notify that I/O is about to be submitted.
-                self.io_accepted_tx.send_if_greater(io_id.clone());
-
-                // Mark this IO request as submitted,
-                // other commands relying on it can then be processed.
-                // For example,
-                // `Replicate` command cannot run until this IO request is submitted(no need to be flushed),
-                // because it needs to read the log entry from the log store.
-                //
-                // The `submit` state must be updated before calling `append()`,
-                // because `append()` may call the callback before returning.
-                self.engine.state.log_progress_mut().submit(io_id.clone());
-
-                self.runtime_stats.record_log_stage_now(Stage::Submitted, last_log_index + 1);
-
-                // Submit IO request, do not wait for the response.
-                self.log_store.append(entries, callback).await.sto_write_logs()?;
-            }
-            Command::SaveVote { vote } => {
-                let io_id = IOId::new(&vote);
-
-                // Notify that vote I/O is about to be submitted.
-                self.io_accepted_tx.send_if_greater(io_id.clone());
-
-                self.engine.state.log_progress_mut().submit(io_id.clone());
-                self.log_store.save_vote(&vote).await.sto_write_vote()?;
-
-                self.tx_notification
-                    .send(Notification::LocalIO {
-                        io_id: IOId::new(&vote),
-                    })
-                    .await
-                    .ok();
-
-                // If a non-committed vote is saved,
-                // there may be a candidate waiting for the response.
-                if let VoteStatus::Pending(non_committed) = vote.clone().into_vote_status() {
-                    self.tx_notification
-                        .send(Notification::VoteResponse {
-                            target: self.id.clone(),
-                            // last_log_id is not used when sending VoteRequest to local node
-                            resp: VoteResponse::new(vote, None, true),
-                            candidate_vote: non_committed,
-                        })
-                        .await
-                        .ok();
-                }
-            }
-            Command::PurgeLog { upto } => {
-                self.log_store.purge(upto.clone()).await.sto_write_logs()?;
-
-                // A responder may still be pending for a log covered by this purge, e.g. a former
-                // leader's uncommitted log superseded by a snapshot install. That log is gone, so
-                // fail the responder with `ForwardToLeader` instead of leaving it stranded below the
-                // purge boundary (which would later panic in `apply_to_state_machine`).
-                let leader_id = self.current_leader();
-                let leader_node = self.get_leader_node(leader_id.clone());
-                for (log_index, tx) in self.client_responders.drain_upto(upto.index()) {
-                    tx.on_complete(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
-                        leader_id: leader_id.clone(),
-                        leader_node: leader_node.clone(),
-                    })));
-                    tracing::debug!("sent ForwardToLeader for purged log_index: {}", log_index);
-                }
-
-                self.engine.state.io_state_mut().update_purged(Some(upto));
-            }
-            Command::TruncateLog { after } => {
-                self.log_store.truncate_after(after.clone()).await.sto_write_logs()?;
-
-                // Inform clients waiting for logs to be applied.
-                let leader_id = self.current_leader();
-                let leader_node = self.get_leader_node(leader_id.clone());
-
-                for (log_index, tx) in self.client_responders.drain_from(after.next_index()) {
-                    tx.on_complete(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
-                        leader_id: leader_id.clone(),
-                        leader_node: leader_node.clone(),
-                    })));
-
-                    tracing::debug!("sent ForwardToLeader for log_index: {}", log_index);
-                }
-            }
+            } => self.run_append_entries(committed_vote, entries).await?,
+            Command::SaveVote { vote } => self.run_save_vote(vote).await?,
+            Command::PurgeLog { upto } => self.run_purge_log(upto).await?,
+            Command::TruncateLog { after } => self.run_truncate_log(after).await?,
             Command::SendVote { vote_req } => {
                 self.spawn_parallel_vote_requests(&vote_req, VoteRequestKind::Vote).await;
             }
@@ -2385,21 +2548,9 @@ where
             Command::ReplicateCommitted { committed } => {
                 self.committed_tx.send_if_greater(committed);
             }
-            Command::BroadcastHeartbeat { session_id } => {
-                self.broadcast_heartbeat(session_id);
-            }
-            Command::SaveCommittedAndApply {
-                already_applied: already_committed,
-                upto,
-            } => {
-                self.runtime_stats.record_log_stage_now(Stage::Committed, upto.index() + 1);
-
-                self.engine.state.apply_progress_mut().submit(upto.clone());
-
-                self.log_store.save_committed(Some(upto.clone())).await.sto_write()?;
-
-                let first = self.engine.state.get_log_id(already_committed.next_index()).unwrap();
-                self.apply_to_state_machine(first, upto).await?;
+            Command::BroadcastHeartbeat { session_id } => self.broadcast_heartbeat(session_id),
+            Command::SaveCommittedAndApply { already_applied, upto } => {
+                self.run_save_committed_and_apply(already_applied, upto).await?
             }
             Command::Replicate { req, target } => {
                 let node = self.replications.get(&target).expect("replication to target node exists");
@@ -2409,112 +2560,18 @@ where
                 leader_vote,
                 target,
                 inflight_id,
-            } => {
-                let node = self.replications.get(&target).expect("replication to target node exists");
-
-                let snapshot_reader = self.sm_handle.new_snapshot_reader();
-                let stream_id = node.stream_id;
-                let (replication_task_context, cancel_tx) =
-                    self.new_replication_task_context(leader_vote, stream_id, target.clone());
-
-                let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap();
-                let snapshot_network = self.network_factory.new_snapshot_client(target.clone(), target_node).await;
-
-                let handle = SnapshotTransmitter::<C, N, SM>::spawn(
-                    replication_task_context,
-                    snapshot_network,
-                    snapshot_reader,
-                    inflight_id,
-                    cancel_tx,
-                );
-
-                let node = self.replications.get_mut(&target).expect("replication to target node exists");
-                // TODO: it is not cleaned when snapshot transmission is done.
-                node.snapshot_transmit_handle = Some(handle);
-            }
+            } => self.run_replicate_snapshot(leader_vote, target, inflight_id).await,
             Command::BroadcastTransferLeader { req } => self.broadcast_transfer_leader(req).await,
-
-            Command::CloseReplicationStreams => {
-                self.heartbeat_handle.close_workers();
-
-                let left = std::mem::take(&mut self.replications);
-                for (target, s) in left {
-                    Self::close_replication(&target, s);
-                }
-            }
+            Command::CloseReplicationStreams => self.run_close_replication_streams(),
             Command::RebuildReplicationStreams {
                 leader_vote,
                 targets,
                 close_old_streams,
             } => {
-                self.heartbeat_handle
-                    .spawn_workers::<N>(
-                        leader_vote.clone(),
-                        &mut self.network_factory,
-                        &self.tx_notification,
-                        &targets,
-                        close_old_streams,
-                    )
-                    .await;
-
-                let mut new_replications = BTreeMap::new();
-
-                for prog in targets.iter() {
-                    let removed = self.replications.remove(&prog.target);
-
-                    let handle = if let Some(removed) = removed {
-                        if close_old_streams {
-                            Self::close_replication(&prog.target, removed);
-                            None
-                        } else {
-                            Some(removed)
-                        }
-                    } else {
-                        None
-                    };
-
-                    let handle = if let Some(handle) = handle {
-                        handle
-                    } else {
-                        self.spawn_replication_stream(leader_vote.clone(), prog).await
-                    };
-
-                    new_replications.insert(prog.target.clone(), handle);
-                }
-
-                tracing::debug!("removing unused replications");
-
-                let left = std::mem::replace(&mut self.replications, new_replications);
-
-                for (target, s) in left {
-                    Self::close_replication(&target, s);
-                }
+                self.run_rebuild_replication_streams(leader_vote, targets, close_old_streams).await;
             }
-            Command::StateMachine { command } => {
-                let io_id = command.get_log_progress();
-
-                if let Some(io_id) = io_id {
-                    self.engine.state.log_progress_mut().submit(io_id);
-                }
-
-                // If this command update the last-applied log id, mark it as submitted(to state machine).
-                if let Some(log_id) = command.get_apply_progress() {
-                    self.engine.state.apply_progress_mut().submit(log_id);
-                }
-
-                if let Some(log_id) = command.get_snapshot_progress() {
-                    self.engine.state.snapshot_progress_mut().submit(log_id);
-                }
-
-                // Just forward a state machine command to the worker.
-                self.sm_handle
-                    .send(command)
-                    .await
-                    .map_err(|_e| StorageError::write_state_machine(C::err_from_string("cannot send to sm::Worker")))?;
-            }
-            Command::Respond { resp: send, .. } => {
-                send.send();
-            }
+            Command::StateMachine { command } => self.run_state_machine(command).await?,
+            Command::Respond { resp, .. } => resp.send(),
         }
 
         Ok(None)
