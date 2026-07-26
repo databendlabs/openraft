@@ -283,7 +283,28 @@ where
             (Command::StateMachine { command },                Command::StateMachine { command: b })                                 => command == b,
             (Command::CloseReplicationStreams,                 Command::CloseReplicationStreams)                                     => true,
             (Command::ReplicateSnapshot { leader_vote, target, inflight_id }, Command::ReplicateSnapshot { leader_vote: lb, target: tb, inflight_id: ib }) => leader_vote == lb && target == tb && inflight_id == ib,
-            _ => false,
+
+            // Two different commands are never equal. These arms are spelled out per variant
+            // instead of one `_ => false`, so that a newly added variant leaves the match
+            // non-exhaustive and fails to compile until it gets a comparison arm above. A
+            // catch-all would instead make the new variant silently unequal to itself.
+            (Command::UpdateIOProgress { .. },          _) => false,
+            (Command::AppendEntries { .. },             _) => false,
+            (Command::ReplicateCommitted { .. },        _) => false,
+            (Command::BroadcastHeartbeat { .. },        _) => false,
+            (Command::SaveCommittedAndApply { .. },     _) => false,
+            (Command::Replicate { .. },                 _) => false,
+            (Command::ReplicateSnapshot { .. },         _) => false,
+            (Command::BroadcastTransferLeader { .. },   _) => false,
+            (Command::CloseReplicationStreams,          _) => false,
+            (Command::RebuildReplicationStreams { .. }, _) => false,
+            (Command::SaveVote { .. },                  _) => false,
+            (Command::SendVote { .. },                  _) => false,
+            (Command::SendPreVote { .. },               _) => false,
+            (Command::PurgeLog { .. },                  _) => false,
+            (Command::TruncateLog { .. },               _) => false,
+            (Command::StateMachine { .. },              _) => false,
+            (Command::Respond { .. },                   _) => false,
         }
     }
 }
