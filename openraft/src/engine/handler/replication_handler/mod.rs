@@ -362,7 +362,7 @@ where
         for item in self.leader.progress.iter_mut_without_reorder() {
             if item.id != self.config.id {
                 if close_old {
-                    item.inflight = Inflight::None;
+                    item.data.inflight = Inflight::None;
                 }
 
                 let target_node = membership.get_node(&item.id).unwrap().clone();

@@ -4,8 +4,6 @@ use std::error::Error;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
-use std::ops::Deref;
-use std::ops::DerefMut;
 
 use display_more::DisplayOptionExt;
 use validit::Validate;
@@ -92,9 +90,9 @@ where C: RaftTypeConfig
     // This method is only used by tests.
     #[allow(dead_code)]
     pub(crate) fn with_inflight(mut self, inflight: Inflight<C>) -> Self {
-        debug_assert_eq!(self.inflight, Inflight::None);
+        debug_assert_eq!(self.data.inflight, Inflight::None);
 
-        self.inflight = inflight;
+        self.data.inflight = inflight;
         self
     }
 
@@ -149,24 +147,6 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> Deref for ProgressEntry<C>
-where C: RaftTypeConfig
-{
-    type Target = ProgressData<C>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.data
-    }
-}
-
-impl<C> DerefMut for ProgressEntry<C>
-where C: RaftTypeConfig
-{
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.data
-    }
-}
-
 impl<C> ProgressEntry<C>
 where C: RaftTypeConfig
 {
@@ -174,7 +154,7 @@ where C: RaftTypeConfig
     ///
     /// `prev_log_id` is never inflight.
     pub(crate) fn is_log_range_inflight(&self, upto: &LogIdOf<C>) -> bool {
-        match &self.inflight {
+        match &self.data.inflight {
             Inflight::None => false,
             Inflight::Logs { log_id_range, .. } => {
                 let lid = Some(upto);
@@ -236,15 +216,15 @@ where C: RaftTypeConfig
         log_state: &mut RaftState<C>,
         max_entries: u64,
     ) -> Result<&Inflight<C>, &Inflight<C>> {
-        if !self.inflight.is_none() {
-            return Err(&self.inflight);
+        if !self.data.inflight.is_none() {
+            return Err(&self.data.inflight);
         }
 
         let last_next = log_state.last_log_id().next_index();
         debug_assert!(
-            self.searching_end <= last_next,
+            self.data.searching_end <= last_next,
             "expect: searching_end: {} <= last_log_id.next_index: {}",
-            self.searching_end,
+            self.data.searching_end,
             last_next
         );
 
@@ -252,42 +232,42 @@ where C: RaftTypeConfig
         let inflight_id = log_state.new_inflight_id();
 
         // Snapshot condition 1: all candidate matching positions are purged.
-        if self.searching_end < purge_upto_next {
-            self.inflight = Inflight::snapshot(inflight_id);
-            return Ok(&self.inflight);
+        if self.data.searching_end < purge_upto_next {
+            self.data.inflight = Inflight::snapshot(inflight_id);
+            return Ok(&self.data.inflight);
         }
 
         let matching_next = self.matching().next_index();
-        let is_probing = matching_next < self.searching_end;
+        let is_probing = matching_next < self.data.searching_end;
 
         if is_probing {
             // Probe at the binary-search midpoint, but not below the purge boundary.
             // `start <= searching_end` still holds: `mid <= searching_end` by construction,
             // and `purge_upto_next <= searching_end` by snapshot condition 1 above.
-            let mid = Self::calc_mid(matching_next, self.searching_end);
+            let mid = Self::calc_mid(matching_next, self.data.searching_end);
             let start = std::cmp::max(mid, purge_upto_next);
             let end = std::cmp::min(start + max_entries, last_next);
 
             // Snapshot condition 2: the leader log is fully purged; there is no entry
             // for the probe to carry.
             if start == end {
-                self.inflight = Inflight::snapshot(inflight_id);
-                return Ok(&self.inflight);
+                self.data.inflight = Inflight::snapshot(inflight_id);
+                return Ok(&self.data.inflight);
             }
 
             let prev = log_state.prev_log_id(start);
             let last = log_state.prev_log_id(end);
-            self.inflight = Inflight::logs(prev, last, inflight_id);
+            self.data.inflight = Inflight::logs(prev, last, inflight_id);
         } else {
             // Pipeline: stream every log after the known matching point.
             // Snapshot condition 1 ensured `matching >= purge_upto`: no needed log is purged.
-            self.inflight = Inflight::LogsSince {
+            self.data.inflight = Inflight::LogsSince {
                 prev: self.matching.clone(),
                 inflight_id,
             };
         }
 
-        Ok(&self.inflight)
+        Ok(&self.data.inflight)
     }
 
     /// Return the index range (`[start,end]`) of the first log in the next AppendEntries.
@@ -295,8 +275,8 @@ where C: RaftTypeConfig
     /// The returned range is left close and right close.
     #[allow(dead_code)]
     pub(crate) fn sending_start(&self) -> (u64, u64) {
-        let mid = Self::calc_mid(self.matching().next_index(), self.searching_end);
-        (mid, self.searching_end)
+        let mid = Self::calc_mid(self.matching().next_index(), self.data.searching_end);
+        (mid, self.data.searching_end)
     }
 
     fn calc_mid(matching_next: u64, end: u64) -> u64 {
@@ -314,10 +294,10 @@ where C: RaftTypeConfig
         write!(
             f,
             "{{P({})[{}, {}), inflight:{}}}",
-            self.stream_id,
+            self.data.stream_id,
             self.matching().display(),
-            self.searching_end,
-            self.inflight,
+            self.data.searching_end,
+            self.data.inflight,
         )
     }
 }
@@ -326,17 +306,17 @@ impl<C> Validate for ProgressEntry<C>
 where C: RaftTypeConfig
 {
     fn validate(&self) -> Result<(), Box<dyn Error>> {
-        validit::less_equal!(self.matching().next_index(), self.searching_end);
+        validit::less_equal!(self.matching().next_index(), self.data.searching_end);
 
-        self.inflight.validate()?;
+        self.data.inflight.validate()?;
 
-        match &self.inflight {
+        match &self.data.inflight {
             Inflight::None => {}
             Inflight::Logs { log_id_range, .. } => {
                 // matching <= prev_log_id              <= last_log_id
                 //             prev_log_id.next_index() <= searching_end
                 validit::less_equal!(self.matching(), log_id_range.prev.as_ref());
-                validit::less_equal!(log_id_range.prev.next_index(), self.searching_end);
+                validit::less_equal!(log_id_range.prev.next_index(), self.data.searching_end);
             }
             Inflight::Snapshot { inflight_id: _ } => {}
             Inflight::LogsSince { .. } => {}
