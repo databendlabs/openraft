@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fmt;
 use std::fmt::Debug;
+use std::future::Future;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -21,6 +22,7 @@ use tracing::Span;
 use crate::ChangeMembers;
 use crate::Instant;
 use crate::Membership;
+use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::async_runtime::MpscReceiver;
@@ -1476,28 +1478,16 @@ where
     /// `Ok(granted)` from the default impl, keeping Pre-Vote a no-op during a rolling upgrade.
     #[tracing::instrument(level = "trace", skip_all)]
     async fn spawn_parallel_vote_requests(&mut self, vote_req: &VoteRequest<C>, kind: VoteRequestKind) {
-        let members = self.engine.state.membership_state.effective().voter_ids();
-
         let vote = vote_req.vote.clone();
+        let id = self.id.clone();
+        let tx = self.tx_notification.clone();
+        let ttl = Duration::from_millis(self.config.election_timeout_min);
 
-        for target in members {
-            if target == self.id {
-                continue;
-            }
-
+        self.broadcast_to_voters(ttl, |target, mut client, option| {
             let req = vote_req.clone();
-
-            // Safe unwrap(): target must be in membership
-            let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap().clone();
-            let mut client = self.network_factory.new_client(target.clone(), &target_node).await;
-
-            let tx = self.tx_notification.clone();
-
-            let ttl = Duration::from_millis(self.config.election_timeout_min);
-            let id = self.id.clone();
-            let option = RPCOption::new(ttl);
-
             let vote = vote.clone();
+            let id = id.clone();
+            let tx = tx.clone();
 
             let span = match kind {
                 VoteRequestKind::Vote => {
@@ -1508,109 +1498,64 @@ where
                 }
             };
 
-            // False positive lint warning(`non-binding `let` on a future`): https://github.com/rust-lang/rust-clippy/issues/9932
-            #[allow(clippy::let_underscore_future)]
-            let _ = C::spawn(
-                {
-                    let target = target.clone();
-                    async move {
-                        let tm_res = match kind {
-                            VoteRequestKind::Vote => C::timeout(ttl, client.vote(req, option)).await,
-                            VoteRequestKind::PreVote => C::timeout(ttl, client.pre_vote(req, option)).await,
-                        };
-                        let res = match tm_res {
-                            Ok(res) => res,
+            async move {
+                let tm_res = match kind {
+                    VoteRequestKind::Vote => C::timeout(ttl, client.vote(req, option)).await,
+                    VoteRequestKind::PreVote => C::timeout(ttl, client.pre_vote(req, option)).await,
+                };
+                let res = match tm_res {
+                    Ok(res) => res,
 
-                            Err(_timeout) => {
-                                let timeout_err = Timeout::<C> {
-                                    action: RPCTypes::Vote,
-                                    id,
-                                    target: target.clone(),
-                                    timeout: ttl,
-                                };
-                                tracing::error!("timeout while requesting {}: {}", kind.as_str(), timeout_err);
-                                return;
-                            }
+                    Err(_timeout) => {
+                        let timeout_err = Timeout::<C> {
+                            action: RPCTypes::Vote,
+                            id,
+                            target: target.clone(),
+                            timeout: ttl,
                         };
+                        tracing::error!("timeout while requesting {}: {}", kind.as_str(), timeout_err);
+                        return;
+                    }
+                };
 
-                        match res {
-                            Ok(resp) => {
-                                let candidate_vote = vote.into_non_committed();
-                                let notification = match kind {
-                                    VoteRequestKind::Vote => Notification::VoteResponse {
-                                        target,
-                                        resp,
-                                        candidate_vote,
-                                    },
-                                    VoteRequestKind::PreVote => Notification::PreVoteResponse {
-                                        target,
-                                        resp,
-                                        candidate_vote,
-                                    },
-                                };
-                                tx.send(notification).await.ok();
-                            }
-                            // A transport failure is not a grant: a partitioned peer must not count
-                            // toward the (Pre-)Vote quorum. A network that has not implemented
-                            // `pre_vote` returns `Ok(granted)` from the default impl, so Pre-Vote
-                            // degrades to a no-op rather than relying on this.
-                            Err(err) => {
-                                tracing::error!(
-                                    "while requesting {}, error: {}, target: {}",
-                                    kind.as_str(),
-                                    err,
-                                    target
-                                )
-                            }
-                        }
+                match res {
+                    Ok(resp) => {
+                        let candidate_vote = vote.into_non_committed();
+                        let notification = match kind {
+                            VoteRequestKind::Vote => Notification::VoteResponse {
+                                target,
+                                resp,
+                                candidate_vote,
+                            },
+                            VoteRequestKind::PreVote => Notification::PreVoteResponse {
+                                target,
+                                resp,
+                                candidate_vote,
+                            },
+                        };
+                        tx.send(notification).await.ok();
+                    }
+                    // A transport failure is not a grant: a partitioned peer must not count
+                    // toward the (Pre-)Vote quorum. A network that has not implemented
+                    // `pre_vote` returns `Ok(granted)` from the default impl, so Pre-Vote
+                    // degrades to a no-op rather than relying on this.
+                    Err(err) => {
+                        tracing::error!("while requesting {}, error: {}, target: {}", kind.as_str(), err, target)
                     }
                 }
-                .instrument(span),
-            );
-        }
+            }
+            .instrument(span)
+        })
+        .await;
     }
 
-    /// Spawn parallel vote requests to all cluster members.
+    /// Tell every other voter to accept a new leader.
     #[tracing::instrument(level = "trace", skip_all)]
     async fn broadcast_transfer_leader(&mut self, req: TransferLeaderRequest<C>) {
-        let voter_ids = self.engine.state.membership_state.effective().voter_ids();
+        let ttl = Duration::from_millis(self.config.election_timeout_min);
 
-        for target in voter_ids {
-            if target == self.id {
-                continue;
-            }
-
+        self.broadcast_to_voters(ttl, |target, mut client, option| {
             let r = req.clone();
-
-            // Safe unwrap(): target must be in membership
-            let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap().clone();
-            let mut client = self.network_factory.new_client(target.clone(), &target_node).await;
-
-            let ttl = Duration::from_millis(self.config.election_timeout_min);
-            let option = RPCOption::new(ttl);
-
-            let fut = {
-                let target = target.clone();
-                async move {
-                    let tm_res = C::timeout(ttl, client.transfer_leader(r, option)).await;
-                    let res = match tm_res {
-                        Ok(res) => res,
-                        Err(timeout) => {
-                            tracing::error!("timeout sending transfer_leader: {}, target: {}", timeout, target);
-                            return;
-                        }
-                    };
-
-                    match res {
-                        Err(e) => {
-                            tracing::error!("error sending transfer_leader: {}, target: {}", e, target);
-                        }
-                        Ok(resp) => {
-                            tracing::info!("Done transfer_leader sent to {}, resp: {:?}", target, resp);
-                        }
-                    }
-                }
-            };
 
             let span = tracing::debug_span!(
                 parent: &Span::current(),
@@ -1618,9 +1563,56 @@ where
                 target = display(&target)
             );
 
+            async move {
+                let tm_res = C::timeout(ttl, client.transfer_leader(r, option)).await;
+                let res = match tm_res {
+                    Ok(res) => res,
+                    Err(timeout) => {
+                        tracing::error!("timeout sending transfer_leader: {}, target: {}", timeout, target);
+                        return;
+                    }
+                };
+
+                match res {
+                    Err(e) => {
+                        tracing::error!("error sending transfer_leader: {}, target: {}", e, target);
+                    }
+                    Ok(resp) => {
+                        tracing::info!("Done transfer_leader sent to {}, resp: {:?}", target, resp);
+                    }
+                }
+            }
+            .instrument(span)
+        })
+        .await;
+    }
+
+    /// Send an RPC to every voter except this node, each in its own detached task.
+    ///
+    /// `make_rpc` is handed a fresh client for one target and the shared [`RPCOption`], and returns
+    /// the future that talks to it. Nothing is joined, so each future has to report its own
+    /// outcome; `ttl` is the timeout the caller is expected to enforce inside that future.
+    async fn broadcast_to_voters<F, Fut>(&mut self, ttl: Duration, make_rpc: F)
+    where
+        F: Fn(C::NodeId, NF::Network, RPCOption) -> Fut,
+        Fut: Future<Output = ()> + OptionalSend + 'static,
+    {
+        let voter_ids = self.engine.state.membership_state.effective().voter_ids();
+
+        for target in voter_ids {
+            if target == self.id {
+                continue;
+            }
+
+            // Safe unwrap(): target must be in membership
+            let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap().clone();
+            let client = self.network_factory.new_client(target.clone(), &target_node).await;
+
+            let fut = make_rpc(target, client, RPCOption::new(ttl));
+
             // False positive lint warning(`non-binding `let` on a future`): https://github.com/rust-lang/rust-clippy/issues/9932
             #[allow(clippy::let_underscore_future)]
-            let _ = C::spawn(fut.instrument(span));
+            let _ = C::spawn(fut);
         }
     }
 
