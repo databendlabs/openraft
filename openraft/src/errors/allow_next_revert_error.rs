@@ -1,6 +1,7 @@
 use crate::RaftTypeConfig;
 use crate::errors::ForwardToLeader;
 use crate::errors::NodeNotFound;
+use crate::errors::impl_try_as_ref_forward_to_leader;
 
 /// Error related to setting the allow_next_revert flag.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -13,3 +14,5 @@ pub enum AllowNextRevertError<C: RaftTypeConfig> {
     #[error("cannot set allow_next_revert; error: {0}")]
     ForwardToLeader(#[from] ForwardToLeader<C>),
 }
+
+impl_try_as_ref_forward_to_leader!(AllowNextRevertError);

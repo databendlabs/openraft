@@ -58,6 +58,28 @@ use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
 use crate::vote::RaftCommittedLeaderId;
 
+/// Implement [`TryAsRef<ForwardToLeader<C>>`](TryAsRef) for an error enum that has a
+/// `ForwardToLeader(ForwardToLeader<C>)` variant.
+///
+/// Every such enum is expected to expose that variant through [`TryAsRef`]: it is how a caller
+/// finds the leader to retry against, e.g. [`RaftError::forward_to_leader()`]. Generating the
+/// impl keeps a new error enum from carrying the variant while silently reporting no leader.
+macro_rules! impl_try_as_ref_forward_to_leader {
+    ($error:ident) => {
+        impl<C> $crate::TryAsRef<$crate::errors::ForwardToLeader<C>> for $error<C>
+        where C: $crate::RaftTypeConfig
+        {
+            fn try_as_ref(&self) -> Option<&$crate::errors::ForwardToLeader<C>> {
+                match self {
+                    Self::ForwardToLeader(f) => Some(f),
+                    _ => None,
+                }
+            }
+        }
+    };
+}
+pub(crate) use impl_try_as_ref_forward_to_leader;
+
 /// For backward compatibility, use [`LinearizableReadError`] instead.
 #[deprecated(since = "0.10.0", note = "use `LinearizableReadError` instead")]
 pub type CheckIsLeaderError<C> = LinearizableReadError<C>;
@@ -89,16 +111,7 @@ where C: RaftTypeConfig
     ChangeMembershipError(#[from] ChangeMembershipError<CommittedLeaderIdOf<C>, C::NodeId>),
 }
 
-impl<C> TryAsRef<ForwardToLeader<C>> for ClientWriteError<C>
-where C: RaftTypeConfig
-{
-    fn try_as_ref(&self) -> Option<&ForwardToLeader<C>> {
-        match self {
-            Self::ForwardToLeader(f) => Some(f),
-            _ => None,
-        }
-    }
-}
+impl_try_as_ref_forward_to_leader!(ClientWriteError);
 
 /// The set of errors which may take place when requesting to propose a config change.
 #[since(

@@ -1,7 +1,7 @@
 use crate::RaftTypeConfig;
-use crate::TryAsRef;
 use crate::errors::ForwardToLeader;
 use crate::errors::QuorumNotEnough;
+use crate::errors::impl_try_as_ref_forward_to_leader;
 
 /// An error related to an is_leader request.
 #[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
@@ -18,13 +18,4 @@ where C: RaftTypeConfig
     QuorumNotEnough(#[from] QuorumNotEnough<C>),
 }
 
-impl<C> TryAsRef<ForwardToLeader<C>> for LinearizableReadError<C>
-where C: RaftTypeConfig
-{
-    fn try_as_ref(&self) -> Option<&ForwardToLeader<C>> {
-        match self {
-            Self::ForwardToLeader(f) => Some(f),
-            _ => None,
-        }
-    }
-}
+impl_try_as_ref_forward_to_leader!(LinearizableReadError);
