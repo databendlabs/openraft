@@ -1133,7 +1133,7 @@ where
 
         let context = self.new_replication_context(leader_vote, prog, cancel_rx);
 
-        let handle = ReplicationHandle::new(prog.progress.stream_id, replicate_tx, cancel_tx);
+        let handle = ReplicationHandle::new(prog.progress.data.stream_id, replicate_tx, cancel_tx);
 
         (handle, context)
     }
@@ -1150,7 +1150,7 @@ where
             id,
             target: prog.target.clone(),
             leader_vote,
-            stream_id: prog.progress.stream_id,
+            stream_id: prog.progress.data.stream_id,
             config: self.config.clone(),
             tx_notify: self.tx_notification.clone(),
             cancel_rx,

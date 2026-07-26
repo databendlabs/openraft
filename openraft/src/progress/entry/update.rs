@@ -54,26 +54,26 @@ where C: RaftTypeConfig
 
         // The inflight may be None if the conflict is caused by a heartbeat response.
         if let Some(inflight_id) = inflight_id {
-            self.entry.inflight.conflict(conflict, inflight_id);
+            self.entry.data.inflight.conflict(conflict, inflight_id);
         }
 
-        if conflict >= self.entry.searching_end {
+        if conflict >= self.entry.data.searching_end {
             tracing::debug!(
                 "conflict {} >= searching_end {}; no need to update",
                 conflict,
-                self.entry.searching_end
+                self.entry.data.searching_end
             );
             return;
         }
 
-        self.entry.searching_end = conflict;
+        self.entry.data.searching_end = conflict;
 
         // An already matching log id is found lost:
         //
         // - If log reversion is allowed, just restart the binary search from the beginning.
         // - Otherwise, panic it.
 
-        let allow_reset = self.entry.allow_log_reversion || self.engine_config.allow_log_reversion;
+        let allow_reset = self.entry.data.allow_log_reversion || self.engine_config.allow_log_reversion;
 
         if allow_reset {
             if conflict < self.entry.matching().next_index() {
@@ -89,11 +89,11 @@ where C: RaftTypeConfig
                 // The caller applies it via `VecProgress::reset_entry_with()`, which restores
                 // the progress ordering without lowering the quorum-accepted value.
                 self.entry.matching = None;
-                self.entry.allow_log_reversion = false;
+                self.entry.data.allow_log_reversion = false;
 
                 // Reset pipeline mode when logs are reverted
-                if self.entry.inflight.is_logs_since() {
-                    self.entry.inflight = Inflight::None;
+                if self.entry.data.inflight.is_logs_since() {
+                    self.entry.data.inflight = Inflight::None;
                 }
             }
         } else {
@@ -121,7 +121,7 @@ where C: RaftTypeConfig
         );
 
         if let Some(inflight_id) = inflight_id {
-            let applied = self.entry.inflight.ack(matching.clone(), inflight_id);
+            let applied = self.entry.data.inflight.ack(matching.clone(), inflight_id);
             if !applied {
                 // Stale payload ack: a newer request superseded this one, or a concurrent log
                 // reversion cleared the inflight to `None` (see `update_conflicting`). Do not
@@ -141,6 +141,6 @@ where C: RaftTypeConfig
         self.entry.matching = matching;
 
         let matching_next = self.entry.matching().next_index();
-        self.entry.searching_end = std::cmp::max(self.entry.searching_end, matching_next);
+        self.entry.data.searching_end = std::cmp::max(self.entry.data.searching_end, matching_next);
     }
 }
