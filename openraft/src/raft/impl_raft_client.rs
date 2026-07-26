@@ -214,8 +214,16 @@ where
     /// `_ff` means fire and forget.
     ///
     /// It is same as [`Self::client_write`] but does not wait for the response.
+    ///
+    /// Deprecated in favor of [`Self::write()`], which sends the same request and additionally
+    /// supports conditioning the write on the leader still being current:
+    ///
+    /// - `client_write_ff(data, None)` becomes `write(data).await`
+    /// - `client_write_ff(data, Some(r))` becomes `write(data).responder(r).await`
+    #[since(version = "0.10.0", change = "deprecated in favor of write()")]
     #[since(version = "0.10.0", date = "2025-10-27", change = "add responder arg")]
     #[since(version = "0.10.0")]
+    #[deprecated(since = "0.10.0", note = "use `Raft::write()` instead")]
     pub async fn client_write_ff(
         &self,
         app_data: C::D,

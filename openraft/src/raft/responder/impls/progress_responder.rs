@@ -27,7 +27,7 @@ use crate::type_config::alias::OneshotSenderOf;
 /// let (responder, commit_rx, complete_rx) = ProgressResponder::new();
 ///
 /// // Send write request with the responder
-/// raft.client_write_ff(request, responder).await;
+/// raft.write(request).responder(responder).await;
 ///
 /// // Wait for commit notification
 /// let commit_log_id = commit_rx.await.unwrap();

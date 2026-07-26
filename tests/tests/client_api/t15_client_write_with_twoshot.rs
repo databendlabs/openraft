@@ -19,6 +19,7 @@ use crate::fixtures::ut_harness;
 /// and on_complete() is called when the entry is applied.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
+#[allow(deprecated)]
 async fn client_write_ff_with_progress_responder() -> Result<()> {
     let config = Arc::new(
         Config {

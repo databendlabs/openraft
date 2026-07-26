@@ -87,6 +87,7 @@ async fn client_writes() -> Result<()> {
 /// Manually receive the client-write response via the returned `Responder::Receiver`
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
+#[allow(deprecated)]
 async fn client_write_ff() -> Result<()> {
     let config = Arc::new(
         Config {
