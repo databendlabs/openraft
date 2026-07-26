@@ -102,7 +102,7 @@ mod tests {
     type C = UTConfig;
 
     fn committed_vote(term: u64, node_id: u64) -> crate::vote::committed::CommittedVote<UTLeaderId> {
-        Vote::<UTLeaderId>::new(term, node_id).into_committed()
+        Vote::<UTLeaderId>::new(term, node_id).to_committed()
     }
 
     fn config_with_max_append(max_append_entries: u64) -> Config {
