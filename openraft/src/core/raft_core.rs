@@ -1908,68 +1908,13 @@ where
                 }
             }
 
-            Notification::Tick { i } => {
-                // check every timer
-
-                let now = C::now();
-                tracing::debug!("received tick: {}, now: {}", i, now.display());
-
-                self.handle_tick_election();
-
-                // TODO: test: fixture: make isolated_nodes a single-way isolating.
-
-                // Leader send heartbeat
-                let heartbeat_at = self.engine.leader_ref().map(|l| l.next_heartbeat);
-                if let Some(t) = heartbeat_at
-                    && now >= t
-                {
-                    if self.runtime_config.enable_heartbeat.load(Ordering::Relaxed) {
-                        self.send_heartbeat("tick");
-                    }
-
-                    // Install next heartbeat
-                    if let Some(l) = self.engine.leader_mut() {
-                        l.next_heartbeat = C::now() + Duration::from_millis(self.config.heartbeat_interval);
-                    }
-                }
-            }
-
+            Notification::Tick { i } => self.handle_tick(i),
             Notification::StorageError { error } => {
                 tracing::error!("RaftCore received Notification::StorageError: {}", error);
                 return Err(Fatal::StorageError(error));
             }
 
-            Notification::LocalIO { io_id } => {
-                self.engine.state.log_progress_mut().try_flush(io_id.clone());
-
-                match io_id {
-                    IOId::Log(log_io_id) => {
-                        if let Some(ref log_id) = log_io_id.log_id {
-                            self.runtime_stats.record_log_stage_now(Stage::Persisted, log_id.index() + 1);
-                        }
-
-                        // No need to check against membership change,
-                        // because not like removing-then-adding a remote node,
-                        // local log wont revert when membership changes.
-                        #[allow(clippy::collapsible_if)]
-                        if self.engine.leader.is_some() {
-                            let my_vote = self.engine.leader.as_ref().map(|x| &x.committed_vote);
-                            if Self::does_vote_match(
-                                "Leader",
-                                &log_io_id.committed_vote,
-                                my_vote,
-                                "LocalIO Notification",
-                            ) {
-                                self.engine.replication_handler().update_local_progress(log_io_id.log_id);
-                            }
-                        }
-                    }
-                    IOId::Vote(_vote) => {
-                        // nothing to do
-                    }
-                }
-            }
-
+            Notification::LocalIO { io_id } => self.handle_local_io(io_id),
             Notification::ReplicationProgress {
                 stream_id,
                 progress,
@@ -1992,46 +1937,106 @@ where
                 }
             }
 
-            Notification::StateMachine { command_result } => {
-                tracing::debug!("sm::StateMachine command result: {:?}", command_result);
+            Notification::StateMachine { command_result } => self.handle_state_machine_result(command_result)?,
+        };
+        Ok(())
+    }
 
-                let res = command_result.result?;
+    /// Handle [`Notification::Tick`]: check the election timer and, if leading, the heartbeat
+    /// timer.
+    fn handle_tick(&mut self, i: u64) {
+        // check every timer
 
-                match res {
-                    sm::Response::BuildSnapshotDone(meta) => {
-                        tracing::info!(
-                            "sm::StateMachine command done: BuildSnapshotDone: {}: {}",
-                            meta.display(),
-                            func_name!()
-                        );
+        let now = C::now();
+        tracing::debug!("received tick: {}, now: {}", i, now.display());
 
-                        self.engine.on_building_snapshot_done(meta);
-                    }
-                    sm::Response::InstallSnapshot((log_io_id, meta)) => {
-                        tracing::info!(
-                            "sm::StateMachine command done: InstallSnapshot: {}, log_io_id: {}: {}",
-                            meta.display(),
-                            log_io_id,
-                            func_name!()
-                        );
+        self.handle_tick_election();
 
-                        self.engine.state.log_progress_mut().try_flush(IOId::Log(log_io_id));
+        // TODO: test: fixture: make isolated_nodes a single-way isolating.
 
-                        if let Some(meta) = meta {
-                            let st = self.engine.state.io_state_mut();
-                            if let Some(last) = &meta.last_log_id {
-                                st.apply_progress.try_flush(last.clone());
-                                st.snapshot.try_flush(last.clone());
-                            }
-                        }
-                    }
-                    sm::Response::Apply(res) => {
-                        self.runtime_stats.record_log_stage_now(Stage::Applied, res.last_applied.index() + 1);
-                        self.engine.state.apply_progress_mut().try_flush(res.last_applied);
+        // Leader send heartbeat
+        let heartbeat_at = self.engine.leader_ref().map(|l| l.next_heartbeat);
+        if let Some(t) = heartbeat_at
+            && now >= t
+        {
+            if self.runtime_config.enable_heartbeat.load(Ordering::Relaxed) {
+                self.send_heartbeat("tick");
+            }
+
+            // Install next heartbeat
+            if let Some(l) = self.engine.leader_mut() {
+                l.next_heartbeat = C::now() + Duration::from_millis(self.config.heartbeat_interval);
+            }
+        }
+    }
+
+    /// Handle [`Notification::LocalIO`]: a local log or vote write reached the disk.
+    fn handle_local_io(&mut self, io_id: IOId<C>) {
+        self.engine.state.log_progress_mut().try_flush(io_id.clone());
+
+        match io_id {
+            IOId::Log(log_io_id) => {
+                if let Some(ref log_id) = log_io_id.log_id {
+                    self.runtime_stats.record_log_stage_now(Stage::Persisted, log_id.index() + 1);
+                }
+
+                // No need to check against membership change,
+                // because not like removing-then-adding a remote node,
+                // local log wont revert when membership changes.
+                #[allow(clippy::collapsible_if)]
+                if self.engine.leader.is_some() {
+                    let my_vote = self.engine.leader.as_ref().map(|x| &x.committed_vote);
+                    if Self::does_vote_match("Leader", &log_io_id.committed_vote, my_vote, "LocalIO Notification") {
+                        self.engine.replication_handler().update_local_progress(log_io_id.log_id);
                     }
                 }
             }
-        };
+            IOId::Vote(_vote) => {
+                // nothing to do
+            }
+        }
+    }
+
+    /// Handle [`Notification::StateMachine`]: the state machine worker finished a command.
+    fn handle_state_machine_result(&mut self, command_result: sm::CommandResult<C>) -> Result<(), Fatal<C>> {
+        tracing::debug!("sm::StateMachine command result: {:?}", command_result);
+
+        let res = command_result.result?;
+
+        match res {
+            sm::Response::BuildSnapshotDone(meta) => {
+                tracing::info!(
+                    "sm::StateMachine command done: BuildSnapshotDone: {}: {}",
+                    meta.display(),
+                    func_name!()
+                );
+
+                self.engine.on_building_snapshot_done(meta);
+            }
+            sm::Response::InstallSnapshot((log_io_id, meta)) => {
+                tracing::info!(
+                    "sm::StateMachine command done: InstallSnapshot: {}, log_io_id: {}: {}",
+                    meta.display(),
+                    log_io_id,
+                    func_name!()
+                );
+
+                self.engine.state.log_progress_mut().try_flush(IOId::Log(log_io_id));
+
+                if let Some(meta) = meta {
+                    let st = self.engine.state.io_state_mut();
+                    if let Some(last) = &meta.last_log_id {
+                        st.apply_progress.try_flush(last.clone());
+                        st.snapshot.try_flush(last.clone());
+                    }
+                }
+            }
+            sm::Response::Apply(res) => {
+                self.runtime_stats.record_log_stage_now(Stage::Applied, res.last_applied.index() + 1);
+                self.engine.state.apply_progress_mut().try_flush(res.last_applied);
+            }
+        }
+
         Ok(())
     }
 
