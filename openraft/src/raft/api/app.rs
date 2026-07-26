@@ -18,6 +18,7 @@ use crate::raft::message::WriteResult;
 use crate::raft::message::into_write_result;
 use crate::raft::raft_inner::RaftInner;
 use crate::raft::responder::core_responder::CoreResponder;
+#[cfg(feature = "runtime-stats")]
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::BatchOf;
 use crate::type_config::alias::EntryPayloadOf;
@@ -49,8 +50,7 @@ where C: RaftTypeConfig
         &self,
         read_policy: ReadPolicy,
     ) -> Result<Result<Linearizer<C>, LinearizableReadError<C>>, Fatal<C>> {
-        let (tx, rx) = C::oneshot();
-        self.inner.call_core(RaftMsg::GetLinearizer { read_policy, tx }, rx).await
+        self.inner.call_core_oneshot(|tx| RaftMsg::GetLinearizer { read_policy, tx }).await
     }
 
     #[since(version = "0.10.0")]

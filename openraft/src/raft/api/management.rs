@@ -17,7 +17,6 @@ use crate::impls::ProgressResponder;
 use crate::membership::IntoNodes;
 use crate::raft::ClientWriteResult;
 use crate::raft::raft_inner::RaftInner;
-use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotReceiverOf;
 
@@ -43,15 +42,11 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) async fn initialize<T>(&self, members: T) -> Result<Result<(), InitializeError<C>>, Fatal<C>>
     where T: IntoNodes<C::NodeId, C::Node> + Debug {
-        let (tx, rx) = C::oneshot();
         self.inner
-            .call_core(
-                RaftMsg::Initialize {
-                    members: members.into_nodes(),
-                    tx,
-                },
-                rx,
-            )
+            .call_core_oneshot(|tx| RaftMsg::Initialize {
+                members: members.into_nodes(),
+                tx,
+            })
             .await
     }
 
