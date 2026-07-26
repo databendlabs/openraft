@@ -88,6 +88,8 @@ pub use crate::core::io_flush_tracking::FlushPoint;
 use crate::core::io_flush_tracking::IoProgressWatcher;
 use crate::core::merged_raft_msg_receiver::BatchRaftMsgReceiver;
 use crate::core::notification::Notification;
+#[cfg(feature = "runtime-stats")]
+use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::raft_msg::install_full_snapshot_request::InstallFullSnapshotRequest;
 use crate::core::runtime_stats::RuntimeStats;
