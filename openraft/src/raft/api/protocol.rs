@@ -124,16 +124,14 @@ where
     pub(crate) async fn vote(&self, rpc: VoteRequest<C>) -> Result<VoteResponse<C>, Fatal<C>> {
         tracing::info!("Raft::vote(): rpc: {}", rpc);
 
-        let (tx, rx) = C::oneshot();
-        self.inner.call_core(RaftMsg::RequestVote { rpc, tx }, rx).await
+        self.inner.call_core_oneshot(|tx| RaftMsg::RequestVote { rpc, tx }).await
     }
 
     #[tracing::instrument(level = "debug", skip(self, rpc))]
     pub(crate) async fn pre_vote(&self, rpc: VoteRequest<C>) -> Result<VoteResponse<C>, Fatal<C>> {
         tracing::info!("Raft::pre_vote(): rpc: {}", rpc);
 
-        let (tx, rx) = C::oneshot();
-        self.inner.call_core(RaftMsg::RequestPreVote { rpc, tx }, rx).await
+        self.inner.call_core_oneshot(|tx| RaftMsg::RequestPreVote { rpc, tx }).await
     }
 
     #[since(version = "0.10.0")]
@@ -144,8 +142,8 @@ where
     ) -> Result<AppendEntriesResponse<C>, Fatal<C>> {
         tracing::debug!("Raft::append_entries: rpc: {}", rpc);
 
-        let (tx, rx) = C::oneshot();
-        let stream_result: StreamAppendResult<C> = self.inner.call_core(RaftMsg::AppendEntries { rpc, tx }, rx).await?;
+        let stream_result: StreamAppendResult<C> =
+            self.inner.call_core_oneshot(|tx| RaftMsg::AppendEntries { rpc, tx }).await?;
         Ok(AppendEntriesResponse::from(stream_result))
     }
 

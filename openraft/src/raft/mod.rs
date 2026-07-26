@@ -697,8 +697,7 @@ where
     /// This returns a snapshot of the stats at the time of the call.
     #[cfg(feature = "runtime-stats")]
     pub async fn runtime_stats(&self) -> Result<RuntimeStats<C>, Fatal<C>> {
-        let (tx, rx) = C::oneshot();
-        self.inner.call_core(RaftMsg::GetRuntimeStats { tx }, rx).await
+        self.inner.call_core_oneshot(|tx| RaftMsg::GetRuntimeStats { tx }).await
     }
 
     /// Check if this node is currently the leader.
