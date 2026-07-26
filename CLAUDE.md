@@ -48,6 +48,17 @@ Any change to a public type, trait, or associated type needs a `#[since]` attrib
 
 Each file should contain one main trait or type and its implementations. Apply this rule when adding new types or traits. Do not reorganize existing files unless explicitly asked.
 
+## Test Placement
+
+Keep unit tests inline as `#[cfg(test)] mod tests` at the end of the file. Move them to their own file once they outgrow the code under test, or exceed roughly 200 lines.
+
+A moved test module stays a child of the module it tests, so it keeps access to private items:
+
+- Directory module: declare `#[cfg(test)] mod <topic>_test;` in `mod.rs` and put the file next to it.
+- File module `foo.rs`: declare `#[cfg(test)] mod foo_test;` inside `foo.rs` and put the file at `foo/foo_test.rs`.
+
+Both layouts are in use, and the choice follows test size, so a directory containing a mix of inline and separate test modules is expected rather than something to normalize.
+
 ## Project Structure
 
 - `openraft/` - Core Raft implementation
