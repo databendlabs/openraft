@@ -82,13 +82,7 @@ where
                 if i > 0 {
                     write!(f, ",",)?;
                 }
-                write!(f, "{node_id}:")?;
-
-                if let Some(n) = self.get_node(node_id) {
-                    write!(f, "{n:?}")?;
-                } else {
-                    write!(f, "None")?;
-                }
+                self.fmt_node(f, node_id)?;
             }
             write!(f, "}}")?;
         }
@@ -104,12 +98,7 @@ where
                 write!(f, ",")?;
             }
 
-            write!(f, "{learner_id}:")?;
-            if let Some(n) = self.get_node(learner_id) {
-                write!(f, "{n:?}")?;
-            } else {
-                write!(f, "None")?;
-            }
+            self.fmt_node(f, learner_id)?;
         }
         write!(f, "]}}")?;
         Ok(())
@@ -200,6 +189,16 @@ where
     NID: NodeId,
     N: Node,
 {
+    /// Format one node as `<node_id>:<node>`, or `<node_id>:None` if this membership has no such
+    /// node.
+    fn fmt_node(&self, f: &mut fmt::Formatter<'_>, node_id: &NID) -> fmt::Result {
+        write!(f, "{node_id}:")?;
+        match self.get_node(node_id) {
+            Some(n) => write!(f, "{n:?}"),
+            None => write!(f, "None"),
+        }
+    }
+
     /// Return true if the given node id is either a voter or a learner.
     pub(crate) fn contains(&self, node_id: &NID) -> bool {
         self.nodes.contains_key(node_id)
