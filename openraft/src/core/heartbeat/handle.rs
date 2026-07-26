@@ -101,7 +101,7 @@ where C: RaftTypeConfig
                 let worker = HeartbeatWorker {
                     id: self.id.clone(),
                     leader_vote: leader_vote.clone(),
-                    stream_id: prog.progress.stream_id,
+                    stream_id: prog.progress.data.stream_id,
                     rx,
                     network,
                     target: prog.target.clone(),
@@ -118,7 +118,7 @@ where C: RaftTypeConfig
 
                 WorkerHandle {
                     event_tx: tx,
-                    stream_id: prog.progress.stream_id,
+                    stream_id: prog.progress.data.stream_id,
                     _shutdown_tx: tx_shutdown,
                     _join_handle: worker_handle,
                 }

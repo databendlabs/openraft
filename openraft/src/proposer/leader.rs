@@ -247,7 +247,7 @@ where
 
     pub(crate) fn is_replication_stream_valid(&self, target: &C::NodeId, stream_id: StreamId) -> bool {
         if let Some(entry) = self.progress.try_get(target)
-            && entry.stream_id == stream_id
+            && entry.data.stream_id == stream_id
         {
             return true;
         }
