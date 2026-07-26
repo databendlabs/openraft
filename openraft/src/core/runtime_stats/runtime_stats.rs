@@ -173,7 +173,6 @@ where C: RaftTypeConfig
         }
     }
 
-    #[allow(dead_code)]
     pub fn record_log_stage(&mut self, stage: Stage, index: u64, now: InstantOf<C>) {
         #[cfg(feature = "runtime-stats")]
         self.log_stage.record_stage(stage, index, now);
@@ -184,7 +183,6 @@ where C: RaftTypeConfig
         }
     }
 
-    #[allow(dead_code)]
     pub fn build_log_stage_histograms(&mut self) {
         #[cfg(feature = "runtime-stats")]
         {
@@ -198,7 +196,6 @@ where C: RaftTypeConfig
     /// `RuntimeStatsDisplay` can be cheaply formatted multiple times.
     ///
     /// Use builder methods like `.human_readable()` to change the display mode.
-    #[allow(dead_code)]
     pub fn display(&self) -> RuntimeStatsDisplay<C> {
         RuntimeStatsDisplay {
             mode: DisplayMode::default(),

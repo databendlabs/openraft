@@ -45,7 +45,6 @@ impl LogStageHistograms {
     }
 
     /// Build a stacked ASCII chart of all stage-to-stage latency histograms.
-    #[allow(dead_code)]
     pub(crate) fn ascii_chart(&self) -> AsciiChart {
         AsciiChart::new()
             .add("1:proposed→received", self.proposed_to_received.clone())
