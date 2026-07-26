@@ -94,28 +94,33 @@ where CLID: RaftCommittedLeaderId
     }
 }
 
+/// Inherent counterparts of the [`RaftLogId`] methods, so callers do not have to import the trait.
+///
+/// Each one delegates rather than reimplementing, so the trait impl stays the only definition. An
+/// inherent method shadows the trait method at every call site, so a second copy here would let the
+/// two drift apart without any call site changing.
 impl<CLID> LogId<CLID>
 where CLID: RaftCommittedLeaderId
 {
     /// Creates a log id proposed by a committed leader with `leader_id` at the given index.
     pub fn new(leader_id: CLID, index: u64) -> Self {
-        LogId { leader_id, index }
+        RaftLogId::new(leader_id, index)
     }
 
     /// Returns the leader id that proposed this log.
     pub fn committed_leader_id(&self) -> &CLID {
-        &self.leader_id
+        RaftLogId::committed_leader_id(self)
     }
 
     /// Get the established(committed) leader ID of this log entry.
     #[deprecated(since = "0.10.0", note = "Use `committed_leader_id` instead.")]
     pub fn leader_id(&self) -> &CLID {
-        &self.leader_id
+        RaftLogId::committed_leader_id(self)
     }
 
     /// Get the log index.
     pub fn index(&self) -> u64 {
-        self.index
+        RaftLogId::index(self)
     }
 }
 
