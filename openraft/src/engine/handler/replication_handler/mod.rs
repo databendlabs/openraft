@@ -60,11 +60,25 @@ where
     pub(crate) output: &'x mut EngineOutput<C, SM>,
 }
 
-impl<C, SM> ReplicationHandler<'_, C, SM>
+impl<'x, C, SM> ReplicationHandler<'x, C, SM>
 where
     C: RaftTypeConfig,
     SM: RaftStateMachine<C>,
 {
+    pub(crate) fn new(
+        config: &'x mut EngineConfig<C>,
+        leader: &'x mut Leader<C, LeaderQuorumSet<C>>,
+        state: &'x mut RaftState<C>,
+        output: &'x mut EngineOutput<C, SM>,
+    ) -> Self {
+        Self {
+            config,
+            leader,
+            state,
+            output,
+        }
+    }
+
     /// Append a new membership and update related state such as replication streams.
     ///
     /// It is called by the leader when a new membership log is appended to the log store.
@@ -514,10 +528,6 @@ where
     }
 
     pub(crate) fn log_handler(&mut self) -> LogHandler<'_, C, SM> {
-        LogHandler {
-            config: self.config,
-            state: self.state,
-            output: self.output,
-        }
+        LogHandler::new(self.config, self.state, self.output)
     }
 }

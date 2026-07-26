@@ -254,31 +254,18 @@ where
     }
 
     pub(crate) fn server_state_handler(&mut self) -> ServerStateHandler<'_, C> {
-        ServerStateHandler {
-            config: self.config,
-            state: self.state,
-        }
+        ServerStateHandler::new(self.config, self.state)
     }
 
     pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<'_, C, SM> {
         let leader = self.leader.as_mut().unwrap();
 
-        ReplicationHandler {
-            config: self.config,
-            leader,
-            state: self.state,
-            output: self.output,
-        }
+        ReplicationHandler::new(self.config, leader, self.state, self.output)
     }
 
     pub(crate) fn leader_handler(&mut self) -> LeaderHandler<'_, C, SM> {
         let leader = self.leader.as_mut().unwrap();
 
-        LeaderHandler {
-            config: self.config,
-            leader,
-            state: self.state,
-            output: self.output,
-        }
+        LeaderHandler::new(self.config, leader, self.state, self.output)
     }
 }

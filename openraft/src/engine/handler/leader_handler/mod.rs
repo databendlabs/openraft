@@ -43,11 +43,25 @@ where
     pub(crate) output: &'x mut EngineOutput<C, SM>,
 }
 
-impl<C, SM> LeaderHandler<'_, C, SM>
+impl<'x, C, SM> LeaderHandler<'x, C, SM>
 where
     C: RaftTypeConfig,
     SM: RaftStateMachine<C>,
 {
+    pub(crate) fn new(
+        config: &'x mut EngineConfig<C>,
+        leader: &'x mut Leader<C, LeaderQuorumSet<C>>,
+        state: &'x mut RaftState<C>,
+        output: &'x mut EngineOutput<C, SM>,
+    ) -> Self {
+        Self {
+            config,
+            leader,
+            state,
+            output,
+        }
+    }
+
     /// Append new log entries by a leader.
     ///
     /// Also Update effective membership if the payload contains
@@ -152,11 +166,6 @@ where
     }
 
     pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<'_, C, SM> {
-        ReplicationHandler {
-            config: self.config,
-            leader: self.leader,
-            state: self.state,
-            output: self.output,
-        }
+        ReplicationHandler::new(self.config, self.leader, self.state, self.output)
     }
 }
