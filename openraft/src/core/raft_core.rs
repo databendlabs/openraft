@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::fmt;
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -8,6 +9,7 @@ use std::time::Duration;
 use display_more::DisplayOptionExt;
 use display_more::DisplaySliceExt;
 use futures_util::FutureExt;
+use futures_util::Stream;
 use futures_util::StreamExt;
 use futures_util::TryFutureExt;
 use futures_util::stream::FuturesUnordered;
@@ -95,6 +97,7 @@ use crate::raft::ClientWriteResult;
 use crate::raft::LogSegment;
 use crate::raft::ReadPolicy;
 use crate::raft::StreamAppendError;
+use crate::raft::StreamAppendResult;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft::linearizable_read::Linearizer;
@@ -122,10 +125,13 @@ use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::EntryPayloadOf;
 use crate::type_config::alias::InstantOf;
+use crate::type_config::alias::JoinErrorOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscReceiverOf;
 use crate::type_config::alias::MpscSenderOf;
+use crate::type_config::alias::NodeIdOf;
 use crate::type_config::alias::OneshotReceiverOf;
+use crate::type_config::alias::StoredMembershipOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::alias::WatchSenderOf;
@@ -295,6 +301,10 @@ impl VoteRequestKind {
     }
 }
 
+/// The outcome of one leadership probe sent by [`RaftCore::spawn_leadership_probes`]: the target
+/// that answered and its append result, or the target that did not and the error that stopped it.
+type ProbeResult<C> = Result<(NodeIdOf<C>, StreamAppendResult<C>), (NodeIdOf<C>, RPCError<C>)>;
+
 impl<C, NF, LS, SM> RaftCore<C, NF, LS, SM>
 where
     C: RaftTypeConfig,
@@ -383,28 +393,15 @@ where
         };
 
         if read_policy == ReadPolicy::LeaseRead {
-            let now = C::now();
-            // Check if the lease is expired.
-            if let Some(last_quorum_acked_time) = self.last_quorum_acked_time()
-                && now < last_quorum_acked_time + self.engine.config.timer_config.leader_lease
-            {
-                tx.send(Ok(resp)).ok();
-                return;
-            }
-            tracing::debug!("{}: lease expired during lease read", self.id);
-            // we may no longer leader so error out early
-            let err = ForwardToLeader::empty();
-            tx.send(Err(err.into())).ok();
+            self.respond_lease_read(resp, tx);
             return;
         }
 
-        let my_id = self.id.clone();
         let my_vote = self.engine.state.vote_ref().clone();
-        let ttl = Duration::from_millis(self.config.heartbeat_interval);
         let eff_mem = self.engine.state.membership_state.effective().clone();
         let core_tx = self.tx_notification.clone();
 
-        let mut granted = btreeset! {my_id.clone()};
+        let granted = btreeset! {self.id.clone()};
 
         // single-node quorum, fast path, return quickly.
         if eff_mem.is_quorum(granted.iter()) {
@@ -412,8 +409,50 @@ where
             return;
         }
 
+        let pending = self.spawn_leadership_probes(&my_vote, &eff_mem).await;
+
+        // TODO: do not spawn, manage read requests with a queue by RaftCore
+
+        let waiting_fu = Self::wait_for_leadership_quorum(pending, my_vote, eff_mem, granted, core_tx, resp, tx);
+
+        // False positive lint warning(`non-binding `let` on a future`): https://github.com/rust-lang/rust-clippy/issues/9932
+        #[allow(clippy::let_underscore_future)]
+        let _ = C::spawn(waiting_fu.instrument(tracing::debug_span!("spawn_is_leader_waiting")));
+    }
+
+    /// Serve a [`ReadPolicy::LeaseRead`] request without contacting any peer.
+    ///
+    /// While the last quorum acknowledgement is younger than `leader_lease`, no other node can have
+    /// become leader, so the read is safe to answer from local state alone. Once the lease lapses
+    /// this node can no longer vouch for itself and the caller has to find the leader again.
+    fn respond_lease_read(&mut self, resp: Linearizer<C>, tx: ClientReadTx<C>) {
+        let now = C::now();
+        // Check if the lease is expired.
+        if let Some(last_quorum_acked_time) = self.last_quorum_acked_time()
+            && now < last_quorum_acked_time + self.engine.config.timer_config.leader_lease
+        {
+            tx.send(Ok(resp)).ok();
+            return;
+        }
+        tracing::debug!("{}: lease expired during lease read", self.id);
+        // we may no longer leader so error out early
+        let err = ForwardToLeader::empty();
+        tx.send(Err(err.into())).ok();
+    }
+
+    /// Probe every other voter with an empty AppendEntries, to confirm this node is still leading.
+    ///
+    /// The returned probes complete in arrival order; joining one may fail if its task panicked.
+    async fn spawn_leadership_probes(
+        &mut self,
+        my_vote: &VoteOf<C>,
+        eff_mem: &StoredMembershipOf<C>,
+    ) -> impl Stream<Item = Result<ProbeResult<C>, (NodeIdOf<C>, JoinErrorOf<C>)>> + Unpin + use<C, NF, LS, SM> {
+        let my_id = self.id.clone();
+        let ttl = Duration::from_millis(self.config.heartbeat_interval);
+
         // Spawn parallel requests, all with the standard timeout for heartbeats.
-        let mut pending = FuturesUnordered::new();
+        let pending = FuturesUnordered::new();
 
         let voter_progresses = {
             let l = &self.engine.leader.as_ref().unwrap();
@@ -484,78 +523,90 @@ where
             pending.push(task);
         }
 
-        let waiting_fu = async move {
-            // Handle responses as they return.
-            while let Some(res) = pending.next().await {
-                let (target, stream_result) = match res {
-                    Ok(Ok(res)) => res,
-                    Ok(Err((target, err))) => {
-                        tracing::error!(
-                            "timeout while confirming leadership for read request, target: {}, error: {}",
-                            target,
-                            err
-                        );
-                        continue;
-                    }
-                    Err((target, err)) => {
-                        tracing::error!("failed to join task: {}, target: {}", err, target);
-                        continue;
-                    }
-                };
+        pending
+    }
 
-                // If we receive a response with a greater vote, then revert to follower and abort this
-                // request.
-                if let Err(StreamAppendError::HigherVote(vote)) = stream_result {
-                    debug_assert!(
-                        vote.as_ref_vote() > my_vote.as_ref_vote(),
-                        "committed vote({}) has total order relation with other votes({})",
-                        my_vote,
-                        vote
+    /// Answer a read request as soon as a quorum of `pending` probes confirms this node still
+    /// leads.
+    ///
+    /// A probe reporting a higher vote ends the request immediately: the vote is forwarded to
+    /// [`RaftCore`] and the caller is told to look for the new leader. Exhausting the probes
+    /// without reaching a quorum yields [`QuorumNotEnough`].
+    async fn wait_for_leadership_quorum<S>(
+        mut pending: S,
+        my_vote: VoteOf<C>,
+        eff_mem: Arc<StoredMembershipOf<C>>,
+        mut granted: BTreeSet<NodeIdOf<C>>,
+        core_tx: MpscSenderOf<C, Notification<C>>,
+        resp: Linearizer<C>,
+        tx: ClientReadTx<C>,
+    ) where
+        S: Stream<Item = Result<ProbeResult<C>, (NodeIdOf<C>, JoinErrorOf<C>)>> + Unpin,
+    {
+        // Handle responses as they return.
+        while let Some(res) = pending.next().await {
+            let (target, stream_result) = match res {
+                Ok(Ok(res)) => res,
+                Ok(Err((target, err))) => {
+                    tracing::error!(
+                        "timeout while confirming leadership for read request, target: {}, error: {}",
+                        target,
+                        err
                     );
+                    continue;
+                }
+                Err((target, err)) => {
+                    tracing::error!("failed to join task: {}, target: {}", err, target);
+                    continue;
+                }
+            };
 
-                    let send_res = core_tx
-                        .send(Notification::HigherVote {
-                            target,
-                            higher: vote,
-                            leader_vote: my_vote.into_committed(),
-                        })
-                        .await;
+            // If we receive a response with a greater vote, then revert to follower and abort this
+            // request.
+            if let Err(StreamAppendError::HigherVote(vote)) = stream_result {
+                debug_assert!(
+                    vote.as_ref_vote() > my_vote.as_ref_vote(),
+                    "committed vote({}) has total order relation with other votes({})",
+                    my_vote,
+                    vote
+                );
 
-                    if let Err(_e) = send_res {
-                        tracing::error!("failed to send HigherVote to RaftCore");
-                    }
+                let send_res = core_tx
+                    .send(Notification::HigherVote {
+                        target,
+                        higher: vote,
+                        leader_vote: my_vote.into_committed(),
+                    })
+                    .await;
 
-                    // we are no longer leader so error out early
-                    let err = ForwardToLeader::empty();
-                    tx.send(Err(err.into())).ok();
-                    return;
+                if let Err(_e) = send_res {
+                    tracing::error!("failed to send HigherVote to RaftCore");
                 }
 
-                // Success or Conflict both confirm leadership (got valid response from follower)
-                granted.insert(target);
-
-                if eff_mem.is_quorum(granted.iter()) {
-                    tx.send(Ok(resp)).ok();
-                    return;
-                }
+                // we are no longer leader so error out early
+                let err = ForwardToLeader::empty();
+                tx.send(Err(err.into())).ok();
+                return;
             }
 
-            // If we've hit this location, then we've failed to gather needed confirmations due to
-            // request failures.
+            // Success or Conflict both confirm leadership (got valid response from follower)
+            granted.insert(target);
 
-            tx.send(Err(QuorumNotEnough {
-                cluster: eff_mem.membership().to_string(),
-                got: granted,
+            if eff_mem.is_quorum(granted.iter()) {
+                tx.send(Ok(resp)).ok();
+                return;
             }
-            .into()))
-                .ok();
-        };
+        }
 
-        // TODO: do not spawn, manage read requests with a queue by RaftCore
+        // If we've hit this location, then we've failed to gather needed confirmations due to
+        // request failures.
 
-        // False positive lint warning(`non-binding `let` on a future`): https://github.com/rust-lang/rust-clippy/issues/9932
-        #[allow(clippy::let_underscore_future)]
-        let _ = C::spawn(waiting_fu.instrument(tracing::debug_span!("spawn_is_leader_waiting")));
+        tx.send(Err(QuorumNotEnough {
+            cluster: eff_mem.membership().to_string(),
+            got: granted,
+        }
+        .into()))
+            .ok();
     }
 
     /// Submit change-membership by writing a Membership log entry.
