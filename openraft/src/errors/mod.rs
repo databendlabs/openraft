@@ -6,7 +6,7 @@ pub mod decompose;
 mod error_source;
 mod fatal;
 pub(crate) mod higher_vote;
-pub mod into_ok;
+pub(crate) mod into_ok;
 pub(crate) mod into_raft_result;
 mod leader_changed;
 mod linearizable_read_error;
