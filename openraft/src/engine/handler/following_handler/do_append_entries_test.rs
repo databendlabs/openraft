@@ -88,7 +88,7 @@ fn test_follower_do_append_entries_no_membership_entries() -> anyhow::Result<()>
         vec![
             //
             Command::AppendEntries {
-                committed_vote: Vote::new(1, 1).into_committed(),
+                committed_vote: Vote::new(1, 1).to_committed(),
                 entries: Batch::of([blank_ent::<UTConfig>(3, 1, 4)])
             },
         ],
@@ -137,7 +137,7 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
     );
     assert_eq!(
         vec![Command::AppendEntries {
-            committed_vote: Vote::new(1, 1).into_committed(),
+            committed_vote: Vote::new(1, 1).to_committed(),
             entries: Batch::of([
                 //
                 blank_ent::<UTConfig>(3, 1, 4),
@@ -196,7 +196,7 @@ fn test_follower_do_append_entries_three_membership_entries() -> anyhow::Result<
     );
     assert_eq!(
         vec![Command::AppendEntries {
-            committed_vote: Vote::new(1, 1).into_committed(),
+            committed_vote: Vote::new(1, 1).to_committed(),
             entries: Batch::of([
                 blank_ent::<UTConfig>(3, 1, 4),
                 EntryOf::<UTConfig>::new_membership(log_id(3, 1, 5), m01()),

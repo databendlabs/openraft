@@ -58,17 +58,17 @@ fn test_become_leader() -> anyhow::Result<()> {
     let leader = eng.leader.as_ref().unwrap();
     assert_eq!(leader.noop_log_id, log_id(2, 1, 0));
     assert_eq!(leader.last_log_id(), Some(&log_id(2, 1, 0)));
-    assert_eq!(*leader.committed_vote_ref(), Vote::new(2, 1).into_committed());
+    assert_eq!(*leader.committed_vote_ref(), Vote::new(2, 1).to_committed());
 
     assert_eq!(ServerState::Leader, eng.state.server_state);
 
     assert_eq!(eng.output.take_commands(), vec![
         Command::UpdateIOProgress {
             when: None,
-            io_id: IOId::new_log_io(Vote::new(2, 1).into_committed(), None)
+            io_id: IOId::new_log_io(Vote::new(2, 1).to_committed(), None)
         },
         Command::RebuildReplicationStreams {
-            leader_vote: Vote::new(2, 1).into_committed(),
+            leader_vote: Vote::new(2, 1).to_committed(),
             targets: vec![TargetProgress {
                 target: 0,
                 target_node: (),
@@ -77,7 +77,7 @@ fn test_become_leader() -> anyhow::Result<()> {
             close_old_streams: true,
         },
         Command::AppendEntries {
-            committed_vote: Vote::new(2, 1).into_committed(),
+            committed_vote: Vote::new(2, 1).to_committed(),
             entries: Batch::of([EntryOf::<UTConfig>::new_blank(log_id(2, 1, 0))])
         },
         // Pipeline mode: ProgressEntry::empty(0) has matching.next_index()=0 == searching_end=0

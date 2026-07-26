@@ -199,10 +199,7 @@ fn test_handle_vote_resp_equal_vote() -> anyhow::Result<()> {
             eng.leader.as_ref().unwrap().last_log_id().copied()
         );
         assert_eq!(
-            Some(&IOId::new_log_io(
-                Vote::new(2, 1).into_committed(),
-                Some(log_id(2, 1, 1))
-            )),
+            Some(&IOId::new_log_io(Vote::new(2, 1).to_committed(), Some(log_id(2, 1, 1)))),
             eng.state.accepted_log_io()
         );
         assert!(
@@ -215,7 +212,7 @@ fn test_handle_vote_resp_equal_vote() -> anyhow::Result<()> {
         assert_eq!(
             vec![
                 Command::RebuildReplicationStreams {
-                    leader_vote: Vote::new(2, 1).into_committed(),
+                    leader_vote: Vote::new(2, 1).to_committed(),
                     targets: vec![TargetProgress {
                         target: 2,
                         target_node: (),
@@ -227,7 +224,7 @@ fn test_handle_vote_resp_equal_vote() -> anyhow::Result<()> {
                     vote: Vote::new_committed(2, 1)
                 },
                 Command::AppendEntries {
-                    committed_vote: Vote::new(2, 1).into_committed(),
+                    committed_vote: Vote::new(2, 1).to_committed(),
                     entries: Batch::of([EntryOf::<UTConfig>::new_blank(log_id(2, 1, 1))]),
                 },
                 Command::Replicate {

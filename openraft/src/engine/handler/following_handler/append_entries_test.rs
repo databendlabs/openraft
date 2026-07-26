@@ -70,16 +70,13 @@ fn test_follower_append_entries_update_accepted() -> anyhow::Result<()> {
         eng.state.log_ids.key_log_ids()
     );
     assert_eq!(
-        Some(&IOId::new_log_io(
-            Vote::new(2, 1).into_committed(),
-            Some(log_id(3, 1, 5))
-        )),
+        Some(&IOId::new_log_io(Vote::new(2, 1).to_committed(), Some(log_id(3, 1, 5)))),
         eng.state.accepted_log_io()
     );
     assert_eq!(eng.output.take_commands(), vec![
         //
         Command::AppendEntries {
-            committed_vote: Vote::new(2, 1).into_committed(),
+            committed_vote: Vote::new(2, 1).to_committed(),
             entries: Batch::of([blank_ent::<UTConfig>(3, 1, 4), blank_ent::<UTConfig>(3, 1, 5)]),
         }
     ]);
@@ -98,19 +95,16 @@ fn test_follower_append_entries_update_accepted() -> anyhow::Result<()> {
         ]);
         assert_eq!(Some(&log_id(3, 1, 5)), eng.state.last_log_id());
         assert_eq!(
-            Some(&IOId::new_log_io(
-                Vote::new(3, 1).into_committed(),
-                Some(log_id(3, 1, 4))
-            )),
+            Some(&IOId::new_log_io(Vote::new(3, 1).to_committed(), Some(log_id(3, 1, 4)))),
             eng.state.accepted_log_io()
         );
         assert_eq!(eng.output.take_commands(), vec![
             //
             Command::UpdateIOProgress {
                 when: Some(Condition::IOFlushed {
-                    io_id: IOId::new_log_io(Vote::new(2, 1).into_committed(), Some(log_id(3, 1, 5)))
+                    io_id: IOId::new_log_io(Vote::new(2, 1).to_committed(), Some(log_id(3, 1, 5)))
                 }),
-                io_id: IOId::new_log_io(Vote::new(3, 1).into_committed(), Some(log_id(3, 1, 4))),
+                io_id: IOId::new_log_io(Vote::new(3, 1).to_committed(), Some(log_id(3, 1, 4))),
             }
         ]);
     }
@@ -120,10 +114,7 @@ fn test_follower_append_entries_update_accepted() -> anyhow::Result<()> {
         eng.following_handler().append_entries(Some(log_id(2, 1, 3)), vec![]);
         assert_eq!(Some(&log_id(3, 1, 5)), eng.state.last_log_id());
         assert_eq!(
-            Some(&IOId::new_log_io(
-                Vote::new(3, 1).into_committed(),
-                Some(log_id(3, 1, 4))
-            )),
+            Some(&IOId::new_log_io(Vote::new(3, 1).to_committed(), Some(log_id(3, 1, 4)))),
             eng.state.accepted_log_io()
         );
 
