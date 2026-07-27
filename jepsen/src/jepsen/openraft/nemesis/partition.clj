@@ -117,14 +117,52 @@
                                 (keep #(get-in % [:value :mode]))
                                 set)
             missing-modes (remove observed-modes required-partition-modes)
-            recovered? (boolean
-                         (some #(and (= :await-recovery (:f %))
-                                     (get-in % [:value :leader]))
-                               history))]
-        {:valid? (and (empty? missing-modes) recovered?)
+            cluster-state (reduce
+                            (fn [state op]
+                              (let [operation-error? (boolean
+                                                      (or (:error op)
+                                                          (:exception op)))]
+                                (cond
+                                  (and (= :start-partition (:f op))
+                                       operation-error?)
+                                  :unknown
+
+                                  (and (= :start-partition (:f op))
+                                       (get-in op [:value :mode]))
+                                  :recovery-pending
+
+                                  (and (= :stop-partition (:f op))
+                                       operation-error?)
+                                  :unknown
+
+                                  (and (= :stop-partition (:f op))
+                                       (= :network-healed (:value op)))
+                                  :recovery-pending
+
+                                  (and (= :await-recovery (:f op))
+                                       (get-in op [:value :leader]))
+                                  (if (= :recovery-pending state)
+                                    :intact
+                                    :unknown)
+
+                                  (and (= :await-recovery (:f op))
+                                       operation-error?)
+                                  (if (= :recovery-pending state)
+                                    :recovery-pending
+                                    :unknown)
+
+                                  :else state)))
+                            :intact
+                            history)
+            valid? (cond
+                     (seq missing-modes) false
+                     (= :intact cluster-state) true
+                     (= :recovery-pending cluster-state) false
+                     :else :unknown)]
+        {:valid? valid?
          :observed-modes (vec (sort observed-modes))
          :missing-modes (vec (sort missing-modes))
-         :recovered? recovered?}))))
+         :cluster-state cluster-state}))))
 
 (defn partition-package []
   {:nemesis (partition-nemesis)

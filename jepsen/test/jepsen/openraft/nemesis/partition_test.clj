@@ -60,18 +60,72 @@
         (is (= "n2"
                (-> result :value :leader)))))))
 
-(deftest requires-both-partitions-and-recovery
+(deftest requires-both-partitions-and-an-intact-cluster
   (let [subject (#'partition/coverage-checker)
         complete-history [{:f :start-partition
                            :value {:mode :leader-in-majority}}
+                          {:f :stop-partition
+                           :value :network-healed}
                           {:f :start-partition
                            :value {:mode :leader-in-minority}}
+                          {:f :stop-partition
+                           :value :network-healed}
                           {:f :await-recovery
                            :value {:leader "n2"}}]
-        incomplete-history [{:f :start-partition
-                             :value {:mode :leader-in-majority}}]]
-    (is (:valid? (checker/check subject {} complete-history {})))
-    (let [result (checker/check subject {} incomplete-history {})]
+        missing-mode-history [{:f :start-partition
+                               :value {:mode :leader-in-majority}}
+                              {:f :stop-partition
+                               :value :network-healed}
+                              {:f :start-partition
+                               :value :leader-in-minority
+                               :error :partition-failed}
+                              {:f :stop-partition
+                               :value :network-healed}
+                              {:f :await-recovery
+                               :value {:leader "n2"}}]
+        unrecovered-history [{:f :start-partition
+                              :value {:mode :leader-in-majority}}
+                             {:f :stop-partition
+                              :value :network-healed}
+                             {:f :start-partition
+                              :value {:mode :leader-in-minority}}
+                             {:f :stop-partition
+                              :value :network-healed}
+                             {:f :await-recovery
+                              :error :timeout}]]
+    (let [result (checker/check subject {} complete-history {})]
+      (is (:valid? result))
+      (is (= :intact (:cluster-state result))))
+    (let [result (checker/check subject {} missing-mode-history {})]
       (is (false? (:valid? result)))
       (is (= [:leader-in-minority] (:missing-modes result)))
-      (is (false? (:recovered? result))))))
+      (is (= :intact (:cluster-state result))))
+    (let [result (checker/check subject {} unrecovered-history {})]
+      (is (false? (:valid? result)))
+      (is (empty? (:missing-modes result)))
+      (is (= :recovery-pending (:cluster-state result))))))
+
+(deftest reports-an-indeterminate-heal-state
+  (let [subject (#'partition/coverage-checker)
+        history-before-heal [{:f :start-partition
+                              :value {:mode :leader-in-majority}}
+                             {:f :stop-partition
+                              :value :network-healed}
+                             {:f :start-partition
+                              :value {:mode :leader-in-minority}}
+                             {:f :stop-partition
+                              :error :heal-failed}]
+        indeterminate-history (conj history-before-heal
+                                    {:f :await-recovery
+                                     :value {:leader "n2"}})
+        recovered-history (into history-before-heal
+                                [{:f :stop-partition
+                                  :value :network-healed}
+                                 {:f :await-recovery
+                                  :value {:leader "n2"}}])]
+    (let [result (checker/check subject {} indeterminate-history {})]
+      (is (= :unknown (:valid? result)))
+      (is (= :unknown (:cluster-state result))))
+    (let [result (checker/check subject {} recovered-history {})]
+      (is (:valid? result))
+      (is (= :intact (:cluster-state result))))))
