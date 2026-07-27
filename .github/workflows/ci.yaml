@@ -2,8 +2,17 @@ name: ci
 
 on:
   push:
+    branches:
+      - main
   pull_request:
   schedule: [cron: '40 1 * * *']
+
+# Superseded runs keep occupying runner slots, and this workflow alone queues
+# 41 jobs against 20 concurrent runners. Cancel outdated pull-request runs, but
+# let main and scheduled runs finish so history stays complete.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   test-release-build:
