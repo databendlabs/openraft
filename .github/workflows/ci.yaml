@@ -426,8 +426,10 @@ jobs:
       - name: Doc tests
         run: cargo test --doc --all
 
-      - shell: bash
-        run: cargo install cargo-audit
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
 
       - name: Audit dependencies
         shell: bash
