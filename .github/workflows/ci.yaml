@@ -387,7 +387,7 @@ jobs:
           cache-workspaces: tests-turmoil
 
       - name: Run deterministic simulation
-        run: cd tests-turmoil && cargo run --bin fuzz -- --iterations 5 --max-steps 10000
+        run: cd tests-turmoil && cargo run --release --bin fuzz -- --iterations 5 --max-steps 10000
         env:
           RUST_LOG: info
           RUST_BACKTRACE: full

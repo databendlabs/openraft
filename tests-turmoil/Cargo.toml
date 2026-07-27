@@ -30,3 +30,9 @@ turmoil = "0.6"
 
 [dev-dependencies]
 test-harness = "0.3"
+
+# The fuzzer runs release-built so the simulation is not bottlenecked by
+# unoptimized code, but its purpose is to trip openraft's invariant checks,
+# which a stock release build would compile out.
+[profile.release]
+debug-assertions = true
