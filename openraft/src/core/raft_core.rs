@@ -1193,8 +1193,12 @@ where
 
                 match cmd {
                     ExternalCommand::Elect => {
-                        if self.engine.state.membership_state.effective().is_voter(&self.id) {
-                            // TODO: reject if it is already a leader?
+                        if self.engine.leader.is_some() {
+                            // A Leader can not win a campaign it starts: its own heartbeats keep
+                            // refreshing the voters' leader lease, and a lease that has not expired
+                            // rejects the vote request. Leave the established leadership alone.
+                            tracing::info!("ExternalCommand: already a Leader, ignore election trigger");
+                        } else if self.engine.state.membership_state.effective().is_voter(&self.id) {
                             self.engine.elect();
                             tracing::debug!("ExternalCommand: triggered election");
                         } else {

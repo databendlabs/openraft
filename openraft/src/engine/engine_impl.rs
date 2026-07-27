@@ -216,6 +216,15 @@ where C: RaftTypeConfig
     /// Start to elect this node as leader
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn elect(&mut self) {
+        // Leadership must be relinquished before campaigning: a Leader that campaigns keeps
+        // `leader.vote` at the old term while `state.vote` moves to the new one, which breaks the
+        // invariant `LeaderHandler` relies on.
+        debug_assert!(
+            self.leader.is_none(),
+            "elect() requires leadership to be relinquished: leader.vote({})",
+            self.leader.as_ref().map(|l| l.vote.to_string()).unwrap_or_default()
+        );
+
         let new_term = self.state.vote.leader_id().term + 1;
         let new_vote = Vote::new(new_term, self.config.id.clone());
 

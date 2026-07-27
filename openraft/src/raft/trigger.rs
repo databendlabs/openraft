@@ -38,6 +38,8 @@ where C: RaftTypeConfig
 
     /// Trigger election at once and return at once.
     ///
+    /// If this node is already a leader, this is a no-op.
+    ///
     /// Returns error when RaftCore has [`Fatal`] error, e.g. shut down or having storage error.
     /// It is not affected by `Raft::enable_elect(false)`.
     pub async fn elect(&self) -> Result<(), Fatal<C::NodeId>> {
