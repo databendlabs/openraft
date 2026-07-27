@@ -73,6 +73,51 @@ async fn return_error_after_panic() -> Result<()> {
     Ok(())
 }
 
+/// A state machine worker that dies while `RaftCore` stays alive must not hang callers.
+///
+/// The worker owns the responder for `begin_receiving_snapshot()`, so a panic there drops that
+/// responder and the caller's receiver closes. `RaftCore` never learns the worker is gone and
+/// keeps running, so joining it to fetch a stop cause would block forever. The call, and every
+/// later state machine call such as `get_snapshot()`, must resolve to `Fatal::Stopped` through the
+/// bounded wait instead.
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+async fn return_error_when_sm_worker_dies() -> Result<()> {
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
+    let mut router = RaftRouter::new(config.clone());
+
+    tracing::info!("--- initializing cluster");
+    let _log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
+
+    tracing::info!("--- arm the state machine to panic when it begins receiving a snapshot");
+    {
+        let (_log_store, sm) = router.get_storage_handle(&0)?;
+        sm.storage_mut().await.set_panic_on_begin_receiving_snapshot(true);
+    }
+
+    tracing::info!("--- the call kills the sm worker; it must return instead of hanging");
+    {
+        let raft = router.get_raft_handle(&0)?;
+        let err = raft.begin_receiving_snapshot().await.unwrap_err();
+        assert_eq!(Fatal::Stopped, err.into_fatal().unwrap());
+    }
+
+    tracing::info!("--- RaftCore is still running, and get_snapshot() must not hang either");
+    {
+        let raft = router.get_raft_handle(&0)?;
+        let err = raft.get_snapshot().await.unwrap_err();
+        assert_eq!(Fatal::Stopped, err.into_fatal().unwrap());
+    }
+
+    Ok(())
+}
+
 /// After shutdown(), access to Raft should return a Fatal::Stopped error.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn return_error_after_shutdown() -> Result<()> {
