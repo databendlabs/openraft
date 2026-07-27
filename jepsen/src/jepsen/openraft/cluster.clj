@@ -22,6 +22,10 @@
 (defn- ready-state? [state]
   (#{"Leader" "Follower"} state))
 
+(defn- membership-committed? [metrics]
+  (= (get-in metrics [:committed_membership_config :log_id])
+     (get-in metrics [:membership_config :log_id])))
+
 (defn- cluster-status [test]
   (let [metrics (into {}
                       (map (fn [node]
@@ -82,13 +86,20 @@
     (info "Initializing OpenRaft cluster on" leader)
     (client/init! leader-endpoint)
 
+    ;; OpenRaft rejects a membership change until the previous membership log
+    ;; entry is committed. `init!` only waits for the initial membership entry
+    ;; to be flushed, and `current_leader` is set as soon as the vote commits,
+    ;; which is still before that entry commits. Waiting for the leader alone
+    ;; therefore races with the first add-learner, which fails with
+    ;; `ChangeMembershipError::InProgress`.
     (util/await-fn
       #(let [metrics (client/metrics! leader-endpoint)]
-         (if (= leader-id (:current_leader metrics))
+         (if (and (= leader-id (:current_leader metrics))
+                  (membership-committed? metrics))
            metrics
            (throw (ex-info "Initial OpenRaft leader is not ready yet"
                            {:metrics metrics}))))
-      {:log-message "Waiting for initial OpenRaft leader"
+      {:log-message "Waiting for initial OpenRaft leader to commit its membership"
        :timeout 60000})
 
     (doseq [node learners
