@@ -303,6 +303,29 @@ fn test_next_send() -> anyhow::Result<()> {
         assert_eq!(Err(&Inflight::None), res, "nothing to send");
     }
 
+    {
+        // The leader log is fully purged and the follower's progress was just reset, so the
+        // matching point is still unknown but no entry survives for a probe to carry.
+        // Without a snapshot here `next_send()` returns `Inflight::None` on every call and the
+        // follower can never converge.
+        //
+        // matching        end
+        // None            21
+        //                 v
+        // ----------------+--->
+        //                 purged,snap,last
+        //                 20
+
+        let mut pe = ProgressEntry::empty(21);
+
+        let res = pe.next_send(&LogState::new(20, 20, 20), 100);
+        assert_eq!(
+            Ok(&Inflight::snapshot(Some(log_id(20))).with_id(1)),
+            res,
+            "fully purged leader log: replicate by snapshot"
+        );
+    }
+
     // Test max_entries
     {
         //       matching,end

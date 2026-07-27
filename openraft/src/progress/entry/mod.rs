@@ -203,8 +203,13 @@ impl<NID: NodeId> ProgressEntry<NID> {
 
         // `searching_end` is the max value for `start`.
 
-        // The log the follower needs is purged.
-        // Replicate by snapshot.
+        // Snapshot condition 1: every candidate matching position is purged.
+        //
+        // The lowest usable `prev` is `purge_upto`, which sits at an index `>= searching_end`,
+        // a position already known not to match. The follower would reply with a conflict at
+        // that same index, which carries no new information, so log replication cannot make
+        // progress. `searching_end == purge_upto_next` is excluded: `prev = purge_upto` is then
+        // at index `searching_end - 1`, still a candidate worth probing.
         if self.searching_end < purge_upto_next {
             self.curr_inflight_id += 1;
             let snapshot_last = log_state.snapshot_last_log_id();
@@ -214,7 +219,8 @@ impl<NID: NodeId> ProgressEntry<NID> {
 
         // Replicate by logs.
         // Run a binary search to find the matching log id, if matching log id is not determined.
-        let mut start = Self::calc_mid(self.matching.next_index(), self.searching_end);
+        let matching_next = self.matching.next_index();
+        let mut start = Self::calc_mid(matching_next, self.searching_end);
         if start < purge_upto_next {
             start = purge_upto_next;
         }
@@ -222,6 +228,18 @@ impl<NID: NodeId> ProgressEntry<NID> {
         let end = std::cmp::min(start + max_entries, last_next);
 
         if start == end {
+            // Snapshot condition 2: still probing, but the leader log is fully purged, so there
+            // is no entry for the probe to carry and `Inflight::logs` cannot represent an
+            // AppendEntries without payload. Without this the call would return `Inflight::None`
+            // on every attempt and the follower could never converge.
+            if matching_next < self.searching_end {
+                self.curr_inflight_id += 1;
+                let snapshot_last = log_state.snapshot_last_log_id();
+                self.inflight = Inflight::snapshot(snapshot_last.cloned()).with_id(self.curr_inflight_id);
+                return Ok(&self.inflight);
+            }
+
+            // The matching point is determined and there is nothing after it to send.
             self.inflight = Inflight::None;
             return Err(&self.inflight);
         }
