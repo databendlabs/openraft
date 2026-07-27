@@ -396,21 +396,41 @@ where
                 // limited_get_log_entries will return logs smaller than the range [start, end).
                 let logs = self.log_reader.limited_get_log_entries(start, end).await?;
 
-                let first = logs.first().map(|x| x.get_log_id().clone()).unwrap();
-                let last = logs.last().map(|x| x.get_log_id().clone()).unwrap();
+                // Handle an empty result gracefully by treating it as a heartbeat.
+                // Returning nothing for a non-empty range violates the API contract, but a
+                // faulty store must not panic replication. Sleep briefly first: `log_id_range`
+                // does not advance when no logs are returned, so retrying at once would spin.
+                if logs.is_empty() {
+                    let sleep_duration = Duration::from_millis(10);
+                    tracing::warn!(
+                        "limited_get_log_entries({}, {}) returned empty; \
+                         this violates the API contract but is handled gracefully as a heartbeat. \
+                         Sleeping {:?} to avoid a tight loop.",
+                        start,
+                        end,
+                        sleep_duration
+                    );
+                    C::sleep(sleep_duration).await;
 
-                debug_assert!(
-                    !logs.is_empty() && logs.len() <= (end - start) as usize,
-                    "expect logs ⊆ [{}..{}) but got {} entries, first: {}, last: {}",
-                    start,
-                    end,
-                    logs.len(),
-                    first,
-                    last
-                );
+                    let r = LogIdRange::new(rng.prev.clone(), rng.prev.clone());
+                    (vec![], r)
+                } else {
+                    let first = logs.first().map(|x| x.get_log_id().clone()).unwrap();
+                    let last = logs.last().map(|x| x.get_log_id().clone()).unwrap();
 
-                let r = LogIdRange::new(rng.prev.clone(), Some(last));
-                (logs, r)
+                    debug_assert!(
+                        logs.len() <= (end - start) as usize,
+                        "expect logs ⊆ [{}..{}) but got {} entries, first: {}, last: {}",
+                        start,
+                        end,
+                        logs.len(),
+                        first,
+                        last
+                    );
+
+                    let r = LogIdRange::new(rng.prev.clone(), Some(last));
+                    (logs, r)
+                }
             }
         };
 

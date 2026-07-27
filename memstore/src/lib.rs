@@ -148,6 +148,12 @@ pub struct MemStore {
     ///
     /// [`begin_receiving_snapshot()`]: openraft::RaftStorage::begin_receiving_snapshot
     panic_on_begin_receiving_snapshot: AtomicBool,
+
+    /// When set, [`limited_get_log_entries()`] returns an empty result for a non-empty range,
+    /// simulating a store that violates the API contract.
+    ///
+    /// [`limited_get_log_entries()`]: openraft::RaftLogReader::limited_get_log_entries
+    return_empty_limited_get: AtomicBool,
 }
 
 impl MemStore {
@@ -168,6 +174,7 @@ impl MemStore {
             snapshot_idx: Arc::new(Mutex::new(0)),
             current_snapshot,
             panic_on_begin_receiving_snapshot: AtomicBool::new(false),
+            return_empty_limited_get: AtomicBool::new(false),
         }
     }
 
@@ -200,6 +207,14 @@ impl MemStore {
     /// This method is only used for testing purposes.
     pub fn set_panic_on_begin_receiving_snapshot(&self, panic: bool) {
         self.panic_on_begin_receiving_snapshot.store(panic, Ordering::Relaxed);
+    }
+
+    /// Make `limited_get_log_entries()` return an empty result for a non-empty range, simulating
+    /// a store that violates the API contract.
+    ///
+    /// This method is only used for testing purposes.
+    pub fn set_return_empty_limited_get(&self, value: bool) {
+        self.return_empty_limited_get.store(value, Ordering::Relaxed);
     }
 
     /// Block an operation for testing purposes.
@@ -239,6 +254,18 @@ impl RaftLogReader<TypeConfig> for Arc<MemStore> {
         };
 
         Ok(entries)
+    }
+
+    async fn limited_get_log_entries(
+        &mut self,
+        start: u64,
+        end: u64,
+    ) -> Result<Vec<Entry<TypeConfig>>, StorageError<MemNodeId>> {
+        if self.return_empty_limited_get.load(Ordering::Relaxed) {
+            return Ok(vec![]);
+        }
+
+        self.try_get_log_entries(start..end).await
     }
 }
 
