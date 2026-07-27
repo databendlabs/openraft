@@ -9,7 +9,6 @@ use std::ops::DerefMut;
 use display_more::DisplayOptionExt;
 
 use crate::NodeId;
-use crate::vote::LeaderIdCompare;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftTerm;
 
@@ -40,7 +39,21 @@ where
 {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        LeaderIdCompare::std(self, other)
+        match self.term.cmp(&other.term) {
+            Ordering::Equal => match (&self.voted_for, &other.voted_for) {
+                (None, None) => Some(Ordering::Equal),
+                (Some(_), None) => Some(Ordering::Greater),
+                (None, Some(_)) => Some(Ordering::Less),
+                (Some(a), Some(b)) => {
+                    if a == b {
+                        Some(Ordering::Equal)
+                    } else {
+                        None
+                    }
+                }
+            },
+            cmp => Some(cmp),
+        }
     }
 }
 
@@ -247,6 +260,15 @@ mod tests {
         assert!(!(lid(2, 2) > lid(2, 3)));
         assert!(!(lid(2, 2) < lid(2, 3)));
         assert!(!(lid(2, 2) == lid(2, 3)));
+
+        // `voted_for: None` orders below any vote in the same term
+        let none = |term| LeaderId::<u64, u64> { term, voted_for: None };
+
+        assert!(none(2) == none(2));
+        assert!(none(2) < lid(2, 2));
+        assert!(lid(2, 2) > none(2));
+        assert!(none(1) < none(2));
+        assert!(lid(1, 2) < none(2));
 
         Ok(())
     }
