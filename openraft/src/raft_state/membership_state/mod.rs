@@ -100,12 +100,29 @@ where
     /// A committed membership log is found and the either of `self.committed` and `self.effective`
     /// should be updated if it is smaller than the new one.
     ///
+    /// `snapshot_last_log_index` is the last log index the committed membership was read from,
+    /// i.e., the last log index a snapshot covers.
+    ///
     /// If `self.effective` changed, it returns a reference to the new one.
     /// If not, it returns None.
     pub(crate) fn update_committed(
         &mut self,
         c: Arc<EffectiveMembership<NID, N>>,
+        snapshot_last_log_index: u64,
     ) -> Option<Arc<EffectiveMembership<NID, N>>> {
+        // Installing a snapshot purges every log upto `snapshot_last_log_index`, including the log
+        // that backs a local effective membership. Such an effective membership can no longer be
+        // restored from the log, so `c` is the only membership left, even when its log index is
+        // smaller.
+        if self.effective.log_id().index() <= Some(snapshot_last_log_index) {
+            let changed = c.membership() != self.effective.membership();
+
+            self.committed = c.clone();
+            self.effective = c;
+
+            return if changed { Some(self.effective.clone()) } else { None };
+        }
+
         let mut changed = false;
 
         // The local effective membership may conflict with the leader.

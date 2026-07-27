@@ -14,6 +14,7 @@ use crate::raft_state::LogStateReader;
 use crate::testing::log_id;
 use crate::EffectiveMembership;
 use crate::Membership;
+use crate::MembershipState;
 use crate::Snapshot;
 use crate::SnapshotMeta;
 use crate::StoredMembership;
@@ -158,6 +159,97 @@ fn test_install_snapshot_not_conflict() -> anyhow::Result<()> {
                 .with_seq(1)
             ),
             Command::PurgeLog { upto: log_id(4, 1, 6) },
+        ],
+        eng.output.take_commands()
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_install_snapshot_resets_purged_effective_membership() -> anyhow::Result<()> {
+    // The snapshot's last membership sits at a lower index than the stale local effective
+    // membership, but the snapshot still covers and purges the log backing that local membership.
+    let mut eng = eng();
+    let snapshot_membership = StoredMembership::new(Some(log_id(5, 1, 4)), m12());
+
+    eng.state.membership_state = MembershipState::new(
+        Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m12())),
+        Arc::new(EffectiveMembership::new(Some(log_id(4, 1, 8)), m1234())),
+    );
+    eng.state.server_state = eng.calc_server_state();
+
+    let cond = eng.following_handler().install_full_snapshot(Snapshot {
+        meta: SnapshotMeta {
+            last_log_id: Some(log_id(5, 1, 9)),
+            last_membership: snapshot_membership.clone(),
+            snapshot_id: "1-2-3-4".to_string(),
+        },
+        snapshot: Box::new(Cursor::new(vec![0u8])),
+    });
+
+    assert_eq!(Some(Condition::StateMachineCommand { command_seq: 1 }), cond);
+
+    let expected = Arc::new(EffectiveMembership::new_from_stored_membership(snapshot_membership));
+    assert_eq!(
+        MembershipState::new(expected.clone(), expected),
+        eng.state.membership_state
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_install_snapshot_resets_purged_effective_without_truncating() -> anyhow::Result<()> {
+    // Same as above, but the local log matches the snapshot at its last index, so nothing is
+    // truncated: the effective membership is replaced purely because it is purged.
+    let mut eng = eng();
+    let snapshot_membership = StoredMembership::new(Some(log_id(5, 1, 4)), m12());
+
+    eng.state.log_ids = LogIdList::new(vec![
+        //
+        log_id(2, 1, 4),
+        log_id(3, 1, 5),
+        log_id(4, 1, 8),
+        log_id(5, 1, 9),
+    ]);
+    eng.state.membership_state = MembershipState::new(
+        Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m12())),
+        Arc::new(EffectiveMembership::new(Some(log_id(4, 1, 8)), m1234())),
+    );
+    eng.state.server_state = eng.calc_server_state();
+
+    let cond = eng.following_handler().install_full_snapshot(Snapshot {
+        meta: SnapshotMeta {
+            last_log_id: Some(log_id(5, 1, 9)),
+            last_membership: snapshot_membership.clone(),
+            snapshot_id: "1-2-3-4".to_string(),
+        },
+        snapshot: Box::new(Cursor::new(vec![0u8])),
+    });
+
+    assert_eq!(Some(Condition::StateMachineCommand { command_seq: 1 }), cond);
+
+    let expected = Arc::new(EffectiveMembership::new_from_stored_membership(snapshot_membership));
+    assert_eq!(
+        MembershipState::new(expected.clone(), expected),
+        eng.state.membership_state
+    );
+    assert_eq!(
+        vec![
+            //
+            Command::from(
+                sm::Command::install_full_snapshot(Snapshot {
+                    meta: SnapshotMeta {
+                        last_log_id: Some(log_id(5, 1, 9)),
+                        last_membership: StoredMembership::new(Some(log_id(5, 1, 4)), m12()),
+                        snapshot_id: "1-2-3-4".to_string(),
+                    },
+                    snapshot: Box::new(Cursor::new(vec![0u8])),
+                })
+                .with_seq(1)
+            ),
+            Command::PurgeLog { upto: log_id(5, 1, 9) },
         ],
         eng.output.take_commands()
     );

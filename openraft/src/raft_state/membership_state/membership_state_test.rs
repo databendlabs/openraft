@@ -52,7 +52,7 @@ fn test_membership_state_update_committed() -> anyhow::Result<()> {
     // Smaller new committed wont take effect.
     {
         let mut x = new();
-        let res = x.update_committed(Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m12())));
+        let res = x.update_committed(Arc::new(EffectiveMembership::new(Some(log_id(1, 1, 1)), m12())), 1);
         assert!(res.is_none());
         assert_eq!(&Some(log_id(2, 1, 2)), x.committed().log_id());
         assert_eq!(&Some(log_id(3, 1, 4)), x.effective().log_id());
@@ -61,7 +61,7 @@ fn test_membership_state_update_committed() -> anyhow::Result<()> {
     // Update committed, not effective.
     {
         let mut x = new();
-        let res = x.update_committed(Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m12())));
+        let res = x.update_committed(Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 3)), m12())), 3);
         assert!(res.is_none());
         assert_eq!(&Some(log_id(2, 1, 3)), x.committed().log_id());
         assert_eq!(&Some(log_id(3, 1, 4)), x.effective().log_id());
@@ -70,7 +70,7 @@ fn test_membership_state_update_committed() -> anyhow::Result<()> {
     // Update both
     {
         let mut x = new();
-        let res = x.update_committed(Arc::new(EffectiveMembership::new(Some(log_id(3, 1, 4)), m12())));
+        let res = x.update_committed(Arc::new(EffectiveMembership::new(Some(log_id(3, 1, 4)), m12())), 4);
         assert_eq!(Some(x.effective().clone()), res);
         assert_eq!(&Some(log_id(3, 1, 4)), x.committed().log_id());
         assert_eq!(&Some(log_id(3, 1, 4)), x.effective().log_id());
@@ -81,12 +81,64 @@ fn test_membership_state_update_committed() -> anyhow::Result<()> {
     // Because leader may have a smaller log_id that is committed.
     {
         let mut x = new();
-        let res = x.update_committed(Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 5)), m12())));
+        let res = x.update_committed(Arc::new(EffectiveMembership::new(Some(log_id(2, 1, 5)), m12())), 5);
         assert_eq!(Some(x.effective().clone()), res);
         assert_eq!(&Some(log_id(2, 1, 5)), x.committed().log_id());
         assert_eq!(&Some(log_id(2, 1, 5)), x.effective().log_id());
         assert_eq!(&m12(), x.effective().membership());
     }
+
+    Ok(())
+}
+
+/// The snapshot purges the log that backs the local effective membership, so the effective
+/// membership must be replaced even though the snapshot's membership has a smaller log index.
+#[test]
+fn test_update_committed_resets_purged_effective() -> anyhow::Result<()> {
+    let snapshot_membership = effmem(5, 4, m12());
+    let mut ms = MembershipState::new(effmem(2, 2, m1()), effmem(4, 8, m123_345()));
+
+    let res = ms.update_committed(snapshot_membership.clone(), 9);
+
+    assert_eq!(Some(snapshot_membership.clone()), res);
+    assert_eq!(
+        MembershipState::new(snapshot_membership.clone(), snapshot_membership),
+        ms
+    );
+
+    Ok(())
+}
+
+/// The purge boundary is inclusive: an effective membership at exactly the snapshot's last log
+/// index is purged too.
+#[test]
+fn test_update_committed_resets_effective_at_purge_boundary() -> anyhow::Result<()> {
+    let snapshot_membership = effmem(5, 4, m12());
+    let mut ms = MembershipState::new(effmem(2, 2, m1()), effmem(4, 8, m123_345()));
+
+    let res = ms.update_committed(snapshot_membership.clone(), 8);
+
+    assert_eq!(Some(snapshot_membership.clone()), res);
+    assert_eq!(
+        MembershipState::new(snapshot_membership.clone(), snapshot_membership),
+        ms
+    );
+
+    Ok(())
+}
+
+/// An effective membership the snapshot does not cover still backed by a log entry, thus it is
+/// kept.
+#[test]
+fn test_update_committed_keeps_uncovered_effective() -> anyhow::Result<()> {
+    let snapshot_membership = effmem(2, 4, m12());
+    let local_effective = effmem(4, 8, m123_345());
+    let mut ms = MembershipState::new(snapshot_membership.clone(), local_effective.clone());
+
+    let res = ms.update_committed(snapshot_membership.clone(), 7);
+
+    assert!(res.is_none());
+    assert_eq!(MembershipState::new(snapshot_membership, local_effective), ms);
 
     Ok(())
 }
