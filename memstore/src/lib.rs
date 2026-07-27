@@ -142,6 +142,12 @@ pub struct MemStore {
 
     /// The current snapshot.
     current_snapshot: RwLock<Option<MemStoreSnapshot>>,
+
+    /// When set, [`begin_receiving_snapshot()`] panics, simulating the state machine worker task
+    /// dying while `RaftCore` keeps running.
+    ///
+    /// [`begin_receiving_snapshot()`]: openraft::RaftStorage::begin_receiving_snapshot
+    panic_on_begin_receiving_snapshot: AtomicBool,
 }
 
 impl MemStore {
@@ -161,6 +167,7 @@ impl MemStore {
             vote: RwLock::new(None),
             snapshot_idx: Arc::new(Mutex::new(0)),
             current_snapshot,
+            panic_on_begin_receiving_snapshot: AtomicBool::new(false),
         }
     }
 
@@ -185,6 +192,14 @@ impl MemStore {
     pub async fn clear_state_machine(&self) {
         let mut sm = self.sm.write().await;
         *sm = MemStoreStateMachine::default();
+    }
+
+    /// Arm the state machine to panic the next time it begins receiving a snapshot, simulating a
+    /// crash of the state machine worker task while `RaftCore` keeps running.
+    ///
+    /// This method is only used for testing purposes.
+    pub fn set_panic_on_begin_receiving_snapshot(&self, panic: bool) {
+        self.panic_on_begin_receiving_snapshot.store(panic, Ordering::Relaxed);
     }
 
     /// Block an operation for testing purposes.
@@ -455,6 +470,10 @@ impl RaftStorage<TypeConfig> for Arc<MemStore> {
     async fn begin_receiving_snapshot(
         &mut self,
     ) -> Result<Box<<TypeConfig as RaftTypeConfig>::SnapshotData>, StorageError<MemNodeId>> {
+        if self.panic_on_begin_receiving_snapshot.load(Ordering::Relaxed) {
+            panic!("injected state machine worker panic in begin_receiving_snapshot");
+        }
+
         Ok(Box::new(Cursor::new(Vec::new())))
     }
 

@@ -2,6 +2,7 @@ use std::fmt;
 use std::fmt::Debug;
 use std::future::Future;
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::sync::mpsc;
 use tokio::sync::watch;
@@ -24,6 +25,14 @@ use crate::MessageSummary;
 use crate::OptionalSend;
 use crate::RaftMetrics;
 use crate::RaftTypeConfig;
+
+/// How long a caller waits for `RaftCore` to actually stop after a response channel closed,
+/// before concluding the channel was closed by a dropped responder instead.
+///
+/// A real stop is observable almost immediately: `RaftCore` reports it in metrics and drops the
+/// metrics sender as its task ends. This only needs to tolerate scheduling latency, not an actual
+/// shutdown, and solely bounds how long a caller waits on the dropped-responder path.
+const RECV_CORE_STOP_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// RaftInner is the internal handle and provides internally used APIs to communicate with
 /// `RaftCore`.
@@ -74,7 +83,8 @@ where C: RaftTypeConfig
         match recv_res {
             Ok(x) => Ok(x),
             Err(_) => {
-                let fatal = self.get_core_stopped_error("receiving rx from RaftCore", None::<&'static str>).await;
+                let fatal =
+                    self.get_core_stopped_error_bounded("receiving rx from RaftCore", None::<&'static str>).await;
                 tracing::error!(error = debug(&fatal), "error when {}", func_name!());
                 Err(fatal)
             }
@@ -106,7 +116,7 @@ where C: RaftTypeConfig
         match recv_res {
             Ok(x) => x.map_err(|e| RaftError::APIError(e)),
             Err(_) => {
-                let fatal = self.get_core_stopped_error("receiving rx from RaftCore", sum).await;
+                let fatal = self.get_core_stopped_error_bounded("receiving rx from RaftCore", sum).await;
                 tracing::error!(error = debug(&fatal), "core_call fatal error");
                 Err(RaftError::Fatal(fatal))
             }
@@ -128,6 +138,58 @@ where C: RaftTypeConfig
             return Err(fatal);
         }
         Ok(())
+    }
+
+    /// Get the error for a response channel that closed without delivering a reply.
+    ///
+    /// Usually this means RaftCore has stopped, and the error that stopped it is returned. But a
+    /// malfunctioning state machine can drop a responder without replying while RaftCore is still
+    /// running, and joining the core then would block forever. The wait is therefore bounded: if
+    /// the core has not stopped, the dropped responder is itself the failure and
+    /// [`Fatal::Stopped`] is returned at once.
+    async fn get_core_stopped_error_bounded(
+        &self,
+        when: impl fmt::Display,
+        message_summary: Option<impl fmt::Display + Default>,
+    ) -> Fatal<C::NodeId> {
+        if self.wait_core_stopped(RECV_CORE_STOP_TIMEOUT).await {
+            return self.get_core_stopped_error(when, message_summary).await;
+        }
+
+        tracing::error!(
+            "response dropped without a reply while RaftCore is running, when: {}",
+            when
+        );
+        Fatal::Stopped
+    }
+
+    /// Wait up to `timeout` for RaftCore to stop, without joining (and thus consuming) it.
+    ///
+    /// This observes the metrics watch channel, a non-destructive signal that is safe to poll from
+    /// any number of callers: RaftCore sets [`running_state`](RaftMetrics::running_state) to `Err`
+    /// when it stops, and the metrics sender is dropped when its task ends, including on a panic.
+    /// Either is a reliable indication that the core has stopped.
+    ///
+    /// Returns `true` if a stop was observed, `false` if the core is still running after
+    /// `timeout`.
+    async fn wait_core_stopped(&self, timeout: Duration) -> bool {
+        let mut rx = self.rx_metrics.clone();
+
+        let observe = async move {
+            loop {
+                if rx.borrow().running_state.is_err() {
+                    return;
+                }
+
+                // `changed()` returns an error only when the metrics sender is dropped,
+                // i.e. the RaftCore task has ended.
+                if rx.changed().await.is_err() {
+                    return;
+                }
+            }
+        };
+
+        C::AsyncRuntime::timeout(timeout, observe).await.is_ok()
     }
 
     /// Get the error that caused RaftCore to stop.
