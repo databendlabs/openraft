@@ -6,7 +6,7 @@ use std::fmt;
 use std::ops::Deref;
 use std::ops::DerefMut;
 
-use display_more::DisplayOptionExt;
+use openraft_macros::since;
 
 use crate::NodeId;
 use crate::vote::LeaderIdCompare;
@@ -19,6 +19,7 @@ use crate::vote::RaftTerm;
 ///
 /// Raft specifies that in a term there is at most one leader, thus Leader ID is partially order as
 /// defined below.
+#[since(version = "0.10.0", change = "`voted_for` from `Option<NID>` to `NID`")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct LeaderId<Term, NID>
@@ -30,7 +31,44 @@ where
     pub term: Term,
 
     /// The node ID that was voted for in this term.
-    pub voted_for: Option<NID>,
+    ///
+    /// A `LeaderId` always votes for a node, thus this field is not an `Option`. It is still
+    /// serialized as `Option<NID>`, to keep the encoding identical to openraft-0.9 and earlier, in
+    /// which this field was an `Option`. A `None` is rejected when decoding.
+    #[cfg_attr(feature = "serde", serde(with = "serde_voted_for"))]
+    pub voted_for: NID,
+}
+
+/// Serialize [`LeaderId::voted_for`] as `Option<NID>`, the encoding used by openraft-0.9 and
+/// earlier.
+///
+/// Self-describing formats such as JSON encode `Some(x)` the same as `x`, but tagged formats such
+/// as bincode prefix `Option` with a discriminant byte. Keeping the `Option` in the encoding makes
+/// the on-disk data identical in either kind of format, so no data migration is required, and a
+/// binary of an earlier version still decodes data written by this version.
+#[cfg(feature = "serde")]
+mod serde_voted_for {
+    use serde::Deserialize;
+    use serde::Deserializer;
+    use serde::Serialize;
+    use serde::Serializer;
+
+    pub(super) fn serialize<S, NID>(voted_for: &NID, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+        NID: Serialize,
+    {
+        Some(voted_for).serialize(serializer)
+    }
+
+    pub(super) fn deserialize<'de, D, NID>(deserializer: D) -> Result<NID, D::Error>
+    where
+        D: Deserializer<'de>,
+        NID: Deserialize<'de>,
+    {
+        Option::<NID>::deserialize(deserializer)?
+            .ok_or_else(|| serde::de::Error::custom("LeaderId.voted_for must not be null"))
+    }
 }
 
 impl<Term, NID> PartialOrd for LeaderId<Term, NID>
@@ -50,7 +88,7 @@ where
     NID: NodeId,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "T{}-N{}", self.term, self.voted_for.display())
+        write!(f, "T{}-N{}", self.term, self.voted_for)
     }
 }
 
@@ -122,7 +160,7 @@ where
     fn new(term: Term, node_id: NID) -> Self {
         Self {
             term,
-            voted_for: Some(node_id),
+            voted_for: node_id,
         }
     }
 
@@ -131,7 +169,7 @@ where
     }
 
     fn node_id(&self) -> &NID {
-        self.voted_for.as_ref().unwrap()
+        &self.voted_for
     }
 
     fn to_committed(&self) -> Self::Committed {
@@ -224,6 +262,57 @@ mod tests {
 
         let c2: CommittedLeaderId<u64> = serde_json::from_str(&s)?;
         assert_eq!(CommittedLeaderId::new(5), c2);
+
+        Ok(())
+    }
+
+    /// `voted_for` must be encoded as `Option<NID>`, the shape used by openraft-0.9 and earlier.
+    ///
+    /// A self-describing format such as JSON encodes `Some(x)` the same as `x`, but a tagged
+    /// format such as bincode prefixes an `Option` with a discriminant byte.
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_leader_id_serde_compat_with_option() -> anyhow::Result<()> {
+        /// `LeaderId` as defined by openraft-0.9 and earlier.
+        #[derive(serde::Deserialize, serde::Serialize)]
+        struct LegacyLeaderId {
+            term: u64,
+            voted_for: Option<u64>,
+        }
+
+        let legacy = LegacyLeaderId {
+            term: 5,
+            voted_for: Some(3),
+        };
+        let lid = LeaderId::<u64, u64>::new(5, 3);
+
+        let legacy_json = serde_json::to_string(&legacy)?;
+        assert_eq!(legacy_json, serde_json::to_string(&lid)?);
+        let decoded: LeaderId<u64, u64> = serde_json::from_str(&legacy_json)?;
+        assert_eq!(lid, decoded);
+
+        let legacy_bin = bincode::serialize(&legacy)?;
+        assert_eq!(legacy_bin, bincode::serialize(&lid)?);
+        let decoded: LeaderId<u64, u64> = bincode::deserialize(&legacy_bin)?;
+        assert_eq!(lid, decoded);
+
+        Ok(())
+    }
+
+    /// A `None` written by openraft-0.9 or earlier is rejected when decoding, instead of building a
+    /// `LeaderId` without a node id.
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_leader_id_serde_reject_none() -> anyhow::Result<()> {
+        let res = serde_json::from_str::<LeaderId<u64, u64>>(r#"{"term":5,"voted_for":null}"#);
+        assert_eq!(
+            "LeaderId.voted_for must not be null at line 1 column 27",
+            res.unwrap_err().to_string()
+        );
+
+        let legacy_none = bincode::serialize(&(5u64, None::<u64>))?;
+        let res = bincode::deserialize::<LeaderId<u64, u64>>(&legacy_none);
+        assert_eq!("LeaderId.voted_for must not be null", res.unwrap_err().to_string());
 
         Ok(())
     }

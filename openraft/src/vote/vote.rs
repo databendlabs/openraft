@@ -248,11 +248,7 @@ mod tests {
 
             let committed = Vote::<TCLeaderId>::new_committed(1, 2);
             let leader_id = committed.try_to_committed_leader_id();
-            let expected = LeaderId {
-                term: 1,
-                voted_for: Some(2),
-            }
-            .to_committed();
+            let expected = LeaderId { term: 1, voted_for: 2 }.to_committed();
             assert_eq!(Some(expected), leader_id);
 
             Ok(())
