@@ -40,7 +40,7 @@ fn test_update_committed_membership_at_index_4() -> anyhow::Result<()> {
     let mut eng = eng();
 
     eng.following_handler()
-        .update_committed_membership(EffectiveMembership::new(Some(log_id(3, 1, 4)), m34()));
+        .update_committed_membership(EffectiveMembership::new(Some(log_id(3, 1, 4)), m34()), 4);
 
     assert_eq!(
         MembershipState::new(
