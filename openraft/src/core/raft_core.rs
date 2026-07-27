@@ -661,6 +661,15 @@ where
         self.engine.snapshot_handler().trigger_snapshot();
     }
 
+    /// Return the current leader node ID based on the committed vote.
+    ///
+    /// In Openraft a leader does not have to be a voter: leadership is determined solely by a
+    /// committed vote, i.e. a vote granted by a quorum, following Paxos semantics. This method
+    /// therefore does not check voter or membership status.
+    ///
+    /// This situation arises when a membership change removes the leader from the voter set, or
+    /// from the membership entirely. The leader keeps operating and committing logs until it steps
+    /// down or a new leader is elected.
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn current_leader(&self) -> Option<C::NodeId> {
         tracing::debug!(
@@ -676,16 +685,7 @@ where
         }
 
         // Safe unwrap(): vote that is committed has to already have voted for some node.
-        let id = vote.leader_id().voted_for().unwrap();
-
-        // TODO: `is_voter()` is slow, maybe cache `current_leader`,
-        //       e.g., only update it when membership or vote changes
-        if self.engine.state.membership_state.effective().is_voter(&id) {
-            Some(id)
-        } else {
-            tracing::debug!("id={} is not a voter", id);
-            None
-        }
+        Some(vote.leader_id().voted_for().unwrap())
     }
 
     /// Retrieves the most recent timestamp that is acknowledged by a quorum.
