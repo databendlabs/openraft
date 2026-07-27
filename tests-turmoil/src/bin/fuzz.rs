@@ -144,15 +144,14 @@ struct FuzzConfig {
     crash_file: Option<String>,
 }
 
+/// Verbose defaults for interactive fuzzing. `RUST_LOG`, when set, replaces them
+/// entirely; previously it was merged with these, so a caller asking for `info`
+/// still got every `openraft` trace event.
+const DEFAULT_LOG_FILTER: &str = "info,openraft=trace,tests_turmoil=debug";
+
 fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("openraft=trace".parse().unwrap())
-                .add_directive("tests_turmoil=debug".parse().unwrap())
-                .add_directive("info".parse().unwrap()),
-        )
-        .init();
+    let log_filter = std::env::var("RUST_LOG").unwrap_or_else(|_| DEFAULT_LOG_FILTER.to_string());
+    tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::new(log_filter)).init();
 
     let config = FuzzConfig::parse();
 
