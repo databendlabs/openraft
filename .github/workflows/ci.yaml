@@ -18,6 +18,7 @@ jobs:
   test-release-build:
     name: Build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     strategy:
       matrix:
@@ -43,6 +44,7 @@ jobs:
 
   openraft-test-bench:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     strategy:
       matrix:
@@ -68,6 +70,7 @@ jobs:
   # Test crate `openraft/` and `macros/`
   test-openraft-core-crates:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     strategy:
       fail-fast: false
@@ -118,6 +121,7 @@ jobs:
   # Run integration test `tests/`.
   test-crate-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     strategy:
       fail-fast: false
@@ -169,6 +173,7 @@ jobs:
 
   stores:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     strategy:
       fail-fast: false
@@ -199,6 +204,7 @@ jobs:
   # benchmarks/minimal is a standalone crate for benchmarking openraft cluster.
   bench-minimal:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     strategy:
       fail-fast: false
@@ -222,6 +228,7 @@ jobs:
   # Test external crate.
   rt-monoio:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Setup | Checkout
@@ -238,6 +245,7 @@ jobs:
 
   rt-compio:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Setup | Checkout
@@ -254,6 +262,7 @@ jobs:
 
   metrics-otel:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Setup | Checkout
@@ -276,6 +285,7 @@ jobs:
   # This job only tests crate `openraft`.
   openraft-feature-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     strategy:
       fail-fast: false
@@ -341,6 +351,7 @@ jobs:
   # Integration tests with various features.
   tests-feature-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     strategy:
       fail-fast: false
@@ -385,6 +396,7 @@ jobs:
   detsim:
     name: Deterministic simulation test
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -404,6 +416,7 @@ jobs:
   lint:
     name: lint
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -447,6 +460,7 @@ jobs:
 
   examples:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # RocksDB-backed examples (raft-kv-rocksdb, rocksstore) were the slowest CI
     # jobs because librocksdb-sys compiles bundled RocksDB (8.10) C++ from
     # source. Link the system librocksdb instead so it is not compiled at all;
