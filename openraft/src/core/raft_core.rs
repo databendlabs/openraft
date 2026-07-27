@@ -841,7 +841,7 @@ where
 
     /// Remove all replication.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn remove_all_replication(&mut self) {
+    pub fn remove_all_replication(&mut self) {
         tracing::info!("remove all replication");
 
         let nodes = std::mem::take(&mut self.replications);
@@ -857,9 +857,19 @@ where
             // Drop sender to notify the task to shutdown
             drop(s.tx_repl);
 
-            tracing::debug!("joining removed replication: {}", target);
-            let _x = handle.await;
-            tracing::info!("Done joining removed replication : {}", target);
+            // Join in the background: a replication task blocked in a hung follower RPC
+            // must not stop RaftCore from serving membership changes and new writes.
+            //
+            // A detached task may still deliver progress. It is discarded by the
+            // `session_id` check in `does_replication_session_match()`: every caller of
+            // `rebuild_replication_streams()` has changed either the leader vote or the
+            // effective membership log id.
+            #[allow(clippy::let_underscore_future)]
+            let _ = C::AsyncRuntime::spawn(async move {
+                tracing::debug!("joining removed replication: {}", target);
+                let _x = handle.await;
+                tracing::info!("Done joining removed replication : {}", target);
+            });
         }
     }
 
@@ -1708,7 +1718,7 @@ where
                 }
             }
             Command::RebuildReplicationStreams { targets } => {
-                self.remove_all_replication().await;
+                self.remove_all_replication();
 
                 for (target, matching) in targets.iter() {
                     let handle = self.spawn_replication_stream(target.clone(), matching.clone()).await;
