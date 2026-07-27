@@ -306,26 +306,28 @@ where
 
         // Sort and find the greatest value granted by a quorum set.
 
-        if prev_le_granted && new_gt_granted {
+        if new_gt_granted {
             let new_index = self.move_up(index);
 
-            // From high to low, find the max value that has constituted a quorum.
-            for i in new_index..self.voter_count {
-                let prog = self.vector[i].1.borrow();
+            if prev_le_granted {
+                // From high to low, find the max value that has constituted a quorum.
+                for i in new_index..self.voter_count {
+                    let prog = self.vector[i].1.borrow();
 
-                // No need to re-calculate already committed value.
-                if prog <= &self.granted {
-                    break;
-                }
+                    // No need to re-calculate already committed value.
+                    if prog <= &self.granted {
+                        break;
+                    }
 
-                // Ids of the target that has value GE `vector[i]`
-                let it = self.vector[0..=i].iter().map(|x| &x.0);
+                    // Ids of the target that has value GE `vector[i]`
+                    let it = self.vector[0..=i].iter().map(|x| &x.0);
 
-                self.stat.is_quorum_count += 1;
+                    self.stat.is_quorum_count += 1;
 
-                if self.quorum_set.is_quorum(it) {
-                    self.granted = prog.clone();
-                    break;
+                    if self.quorum_set.is_quorum(it) {
+                        self.granted = prog.clone();
+                        break;
+                    }
                 }
             }
         }
@@ -516,6 +518,34 @@ mod t {
             let got = progress.update_with(id, |x| *x = *v);
             assert_eq!(want_committed.clone(), got, "{}-th case: id:{}, v:{}", ith, id, v);
         }
+        Ok(())
+    }
+
+    /// A voter already greater than `granted` must still be moved up when it advances.
+    ///
+    /// Otherwise the descending order of the greater-than-`granted` region breaks, and the quorum
+    /// scan, which assumes that region is a descending prefix, grants a value that no quorum has
+    /// reached.
+    #[test]
+    fn vec_progress_update_moves_up_above_granted() -> anyhow::Result<()> {
+        let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
+        let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [], 0);
+
+        let _ = progress.update(&0, 5); // granted=0; vector: 0:5
+        let _ = progress.update(&1, 3); // granted=0; vector: 0:5, 1:3
+        let _ = progress.update(&2, 4); // granted=3; vector: 0:5, 2:4, 1:3
+
+        // Voter 2 is already above granted(3) and advances further: without move_up the region
+        // becomes 0:5, 2:10, which is no longer descending.
+        let _ = progress.update(&2, 10);
+
+        let got = progress.update(&3, 6);
+
+        // Values are {0:5, 1:3, 2:10, 3:6, 4:0}, i.e. 10, 6, 5, 3, 0 in descending order.
+        // A quorum of 5 voters is 3, so the 3rd greatest value, 5, is granted.
+        // Only voters {2, 3} reached 6, which is not a quorum.
+        assert_eq!(Ok(&5), got);
+
         Ok(())
     }
 
