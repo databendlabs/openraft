@@ -133,14 +133,46 @@
                                 (keep #(get-in % [:value :mode]))
                                 set)
             missing-modes (remove observed-modes required-process-modes)
-            recovered? (boolean
-                         (some #(and (= :await-recovery (:f %))
-                                     (get-in % [:value :leader]))
-                               history))]
-        {:valid? (and (empty? missing-modes) recovered?)
+            cluster-state (reduce
+                            (fn [state op]
+                              (let [operation-error? (boolean
+                                                      (or (:error op)
+                                                          (:exception op)))]
+                                (cond
+                                  (and (= :kill-process (:f op))
+                                       operation-error?)
+                                  :unknown
+
+                                  (and (= :kill-process (:f op))
+                                       (get-in op [:value :mode]))
+                                  :degraded
+
+                                  (and (= :restart-process (:f op))
+                                       operation-error?)
+                                  :unknown
+
+                                  (and (= :await-recovery (:f op))
+                                       (get-in op [:value :leader]))
+                                  :intact
+
+                                  (and (= :await-recovery (:f op))
+                                       operation-error?)
+                                  (if (= :degraded state)
+                                    :degraded
+                                    :unknown)
+
+                                  :else state)))
+                            :intact
+                            history)
+            valid? (cond
+                     (seq missing-modes) false
+                     (= :intact cluster-state) true
+                     (= :degraded cluster-state) false
+                     :else :unknown)]
+        {:valid? valid?
          :observed-modes (vec (sort observed-modes))
          :missing-modes (vec (sort missing-modes))
-         :recovered? recovered?}))))
+         :cluster-state cluster-state}))))
 
 (defn process-package [db]
   {:nemesis (process-nemesis db)

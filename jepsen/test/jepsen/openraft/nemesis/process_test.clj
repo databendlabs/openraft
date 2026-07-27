@@ -55,18 +55,58 @@
                 [:start ["n1"]]]
                (mapv (juxt :f :value) @invocations)))))))
 
-(deftest requires-both-process-modes-and-recovery
+(deftest requires-both-process-modes-and-an-intact-cluster
   (let [subject (#'process/coverage-checker)
         complete-history [{:f :kill-process
                            :value {:mode :leader-survives}}
+                          {:f :await-recovery
+                           :value {:leader "n1"}}
                           {:f :kill-process
                            :value {:mode :leader-killed}}
                           {:f :await-recovery
                            :value {:leader "n2"}}]
-        incomplete-history [{:f :kill-process
-                             :value {:mode :leader-survives}}]]
-    (is (:valid? (checker/check subject {} complete-history {})))
-    (let [result (checker/check subject {} incomplete-history {})]
+        missing-mode-history [{:f :kill-process
+                               :value {:mode :leader-survives}}]
+        unrecovered-history [{:f :kill-process
+                              :value {:mode :leader-survives}}
+                             {:f :await-recovery
+                              :value {:leader "n1"}}
+                             {:f :kill-process
+                              :value {:mode :leader-killed}}
+                             {:f :await-recovery
+                              :error :timeout}]]
+    (let [result (checker/check subject {} complete-history {})]
+      (is (:valid? result))
+      (is (= :intact (:cluster-state result))))
+    (let [result (checker/check subject {} missing-mode-history {})]
       (is (false? (:valid? result)))
       (is (= [:leader-killed] (:missing-modes result)))
-      (is (false? (:recovered? result))))))
+      (is (= :degraded (:cluster-state result))))
+    (let [result (checker/check subject {} unrecovered-history {})]
+      (is (false? (:valid? result)))
+      (is (empty? (:missing-modes result)))
+      (is (= :degraded (:cluster-state result))))))
+
+(deftest reports-an-indeterminate-process-state
+  (let [subject (#'process/coverage-checker)
+        covered-history [{:f :kill-process
+                          :value {:mode :leader-survives}}
+                         {:f :await-recovery
+                          :value {:leader "n1"}}
+                         {:f :kill-process
+                          :value {:mode :leader-killed}}
+                         {:f :await-recovery
+                          :value {:leader "n2"}}]
+        indeterminate-history (conj covered-history
+                                    {:f :kill-process
+                                     :value :leader-killed
+                                     :error :kill-failed})
+        recovered-history (conj indeterminate-history
+                                {:f :await-recovery
+                                 :value {:leader "n2"}})]
+    (let [result (checker/check subject {} indeterminate-history {})]
+      (is (= :unknown (:valid? result)))
+      (is (= :unknown (:cluster-state result))))
+    (let [result (checker/check subject {} recovered-history {})]
+      (is (:valid? result))
+      (is (= :intact (:cluster-state result))))))
