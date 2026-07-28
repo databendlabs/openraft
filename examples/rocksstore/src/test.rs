@@ -1,3 +1,4 @@
+use log_rocks::RocksLogStore;
 use openraft::StorageError;
 use openraft::testing::log::StoreBuilder;
 use openraft::testing::log::Suite;
@@ -6,7 +7,6 @@ use tempfile::TempDir;
 
 use crate::RocksStateMachine;
 use crate::TypeConfig;
-use crate::log_store::RocksLogStore;
 
 struct RocksBuilder {}
 

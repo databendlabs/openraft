@@ -25,7 +25,7 @@ openraft::declare_raft_types!(
         Node = Node,
 );
 
-pub type LogStore = openraft_rocksstore::log_store::RocksLogStore<TypeConfig>;
+pub type LogStore = log_rocks::RocksLogStore<TypeConfig>;
 pub type StateMachineStore = store::StateMachineStore;
 pub type Raft = openraft::Raft<TypeConfig, StateMachineStore>;
 
