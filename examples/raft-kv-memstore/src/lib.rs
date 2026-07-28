@@ -33,7 +33,20 @@ pub type Raft = openraft::Raft<TypeConfig, StateMachineStore>;
 pub mod typ;
 
 pub async fn start_example_raft_node(node_id: NodeId, api_addr: String, raft_addr: String) -> std::io::Result<()> {
-    let (raft, state_machine_store) = new_raft_node(node_id).await;
+    start_example_raft_node_with_config(node_id, api_addr, raft_addr, example_config()).await
+}
+
+/// Same as [`start_example_raft_node`] but with a caller-provided [`Config`].
+///
+/// Tests use it to reach behaviors [`example_config()`] never triggers, such as snapshot
+/// replication to a learner.
+pub async fn start_example_raft_node_with_config(
+    node_id: NodeId,
+    api_addr: String,
+    raft_addr: String,
+    config: Config,
+) -> std::io::Result<()> {
+    let (raft, state_machine_store) = new_raft_node(node_id, config).await;
 
     let app = Arc::new(App {
         id: node_id,
@@ -50,16 +63,19 @@ pub async fn start_example_raft_node(node_id: NodeId, api_addr: String, raft_add
     Ok(())
 }
 
-/// Create the `Raft` instance from its building blocks. The `StateMachineStore` is returned
-/// alongside so it can be reused as the application's data handle.
-async fn new_raft_node(node_id: NodeId) -> (Raft, StateMachineStore) {
-    // Create a configuration for the raft instance.
-    let config = Config {
+/// The timing settings this example runs with.
+pub fn example_config() -> Config {
+    Config {
         heartbeat_interval: 500,
         election_timeout_min: 1500,
         election_timeout_max: 3000,
         ..Default::default()
-    };
+    }
+}
+
+/// Create the `Raft` instance from its building blocks. The `StateMachineStore` is returned
+/// alongside so it can be reused as the application's data handle.
+async fn new_raft_node(node_id: NodeId, config: Config) -> (Raft, StateMachineStore) {
     let config = Arc::new(config.validate().unwrap());
 
     // Create an instance of where the Raft logs will be stored.

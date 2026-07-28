@@ -7,11 +7,13 @@ use std::time::Duration;
 use app_http::AddLearnerRequest;
 use app_http::Client;
 use maplit::btreeset;
+use openraft::Config;
 use openraft::async_runtime::AsyncRuntime;
 use openraft::type_config::TypeConfigExt;
 use openraft::type_config::alias::AsyncRuntimeOf;
 use raft_kv_memstore::TypeConfig;
-use raft_kv_memstore::start_example_raft_node;
+use raft_kv_memstore::example_config;
+use raft_kv_memstore::start_example_raft_node_with_config;
 use tracing_subscriber::EnvFilter;
 
 /// Install a panic hook and tracing subscriber, exactly once per test process.
@@ -68,14 +70,41 @@ pub fn raft_addr(base: u16, node_id: u64) -> String {
 
 /// Start three example raft nodes, each on its own thread and runtime.
 pub fn spawn_nodes(base: u16) {
+    spawn_nodes_with_config(base, 3, example_config());
+}
+
+/// Start `count` example raft nodes running `config`, each on its own thread and runtime.
+pub fn spawn_nodes_with_config(base: u16, count: u64, config: Config) {
     init_observability();
 
-    for id in 1..=3u64 {
+    for id in 1..=count {
+        let config = config.clone();
         thread::spawn(move || {
             let mut rt = AsyncRuntimeOf::<TypeConfig>::new(1);
-            let _ = rt.block_on(start_example_raft_node(id, api_addr(base, id), raft_addr(base, id)));
+            let _ = rt.block_on(start_example_raft_node_with_config(
+                id,
+                api_addr(base, id),
+                raft_addr(base, id),
+                config,
+            ));
         });
     }
+}
+
+/// Initialize node 1 as a single-node cluster and return a client once it leads.
+pub async fn init_leader(base: u16) -> anyhow::Result<Client<TypeConfig>> {
+    let leader = Client::<TypeConfig>::new(1, api_addr(base, 1));
+    leader.init().await??;
+
+    loop {
+        let metrics = leader.metrics().await?;
+        if metrics.current_leader == Some(1) {
+            break;
+        }
+        TypeConfig::sleep(Duration::from_millis(200)).await;
+    }
+
+    Ok(leader)
 }
 
 /// Start a 3-node cluster and return a client to the leader (node 1).
@@ -87,16 +116,7 @@ pub async fn bootstrap(base: u16) -> anyhow::Result<Client<TypeConfig>> {
     spawn_nodes(base);
     TypeConfig::sleep(Duration::from_millis(1_000)).await;
 
-    let leader = Client::<TypeConfig>::new(1, api_addr(base, 1));
-    leader.init().await??;
-
-    loop {
-        let metrics = leader.metrics().await?;
-        if metrics.current_leader == Some(1) {
-            break;
-        }
-        TypeConfig::sleep(Duration::from_millis(200)).await;
-    }
+    let leader = init_leader(base).await?;
 
     leader
         .add_learner(&AddLearnerRequest {
