@@ -8,21 +8,21 @@ use std::time::Duration;
 use openraft::OptionalSend;
 use openraft::OptionalSync;
 use openraft::RaftTypeConfig;
-use openraft::errors::InstallSnapshotError;
 use openraft::errors::RPCError;
 use openraft::errors::RaftError;
 use openraft::network::Backoff;
 use openraft::network::RPCOption;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse;
-use openraft::raft::InstallSnapshotRequest;
-use openraft::raft::InstallSnapshotResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft_macros::add_async_trait;
 use openraft_macros::since;
 
 use crate::network_v1::Adapter;
+use crate::network_v1::InstallSnapshotError;
+use crate::network_v1::InstallSnapshotRequest;
+use crate::network_v1::InstallSnapshotResponse;
 
 /// A trait defining the interface for a Raft network between cluster members.
 ///

@@ -147,6 +147,7 @@ pub use crate::raft::WatchChangeHandle;
 pub use crate::raft_state::MembershipState;
 pub use crate::raft_state::RaftState;
 pub use crate::raft_types::SnapshotId;
+#[allow(deprecated)]
 pub use crate::raft_types::SnapshotSegmentId;
 pub use crate::summary::MessageSummary;
 pub use crate::try_as_ref::TryAsRef;

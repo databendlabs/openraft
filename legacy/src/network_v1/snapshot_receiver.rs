@@ -6,16 +6,11 @@
 use openraft::OptionalSend;
 use openraft::Raft;
 use openraft::RaftTypeConfig;
-use openraft::SnapshotSegmentId;
 use openraft::StorageError;
 use openraft::async_runtime::Mutex;
 use openraft::async_runtime::WatchReceiver;
 use openraft::errors::ErrorSource;
-use openraft::errors::InstallSnapshotError;
 use openraft::errors::RaftError;
-use openraft::errors::SnapshotMismatch;
-use openraft::raft::InstallSnapshotRequest;
-use openraft::raft::InstallSnapshotResponse;
 use openraft::storage::RaftStateMachine;
 use openraft::type_config::alias::SnapshotDataOf;
 use openraft::type_config::alias::SnapshotOf;
@@ -24,6 +19,11 @@ use tokio::io::AsyncWriteExt;
 
 use super::streaming::Streaming;
 use super::streaming::StreamingState;
+use crate::network_v1::InstallSnapshotError;
+use crate::network_v1::InstallSnapshotRequest;
+use crate::network_v1::InstallSnapshotResponse;
+use crate::network_v1::SnapshotMismatch;
+use crate::network_v1::SnapshotSegmentId;
 
 /// Extension trait for `Raft` to support chunk-based snapshot receiving.
 ///

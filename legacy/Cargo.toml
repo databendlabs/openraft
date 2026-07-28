@@ -17,12 +17,16 @@ repository.workspace = true
 openraft = { path = "../openraft", version = "0.10.0-alpha.31", default-features = false }
 openraft-macros = { path = "../macros", version = "0.10.0-alpha.31" }
 
+derive_more = { workspace = true }
 futures = { workspace = true }
+serde = { workspace = true, optional = true }
+thiserror = { workspace = true }
 tokio = { workspace = true, features = ["io-util", "sync"] }
 tracing = { workspace = true }
 
 [features]
 default = []
+serde = ["dep:serde", "openraft/serde"]
 
 [package.metadata.docs.rs]
 all-features = true

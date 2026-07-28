@@ -8,7 +8,6 @@ use openraft::Vote;
 use openraft::alias::SnapshotMetaOf;
 use openraft::alias::SnapshotOf;
 use openraft::raft::AppendEntriesRequest;
-use openraft::raft::InstallSnapshotRequest;
 use openraft_legacy::prelude::*;
 
 use crate::fixtures::RaftRouter;
