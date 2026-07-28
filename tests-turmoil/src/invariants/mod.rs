@@ -23,6 +23,7 @@
 //! | Monotonic CommitIndex   | §3.4        | `MonotonicCommitIndex`           | [`monotonic`]            |
 //! | Monotonic AppliedIndex  | derived     | (follows `applied ≤ committed`)  | [`monotonic`]            |
 //! | Monotonic Vote          | §3.3        | `MonotonicVote`                  | [`monotonic`]            |
+//! | Monotonic SM Keys       | derived     | —                                | [`sm_monotonic`]         |
 //!
 //! Leader Append-Only (Paper §3.6.3) is not checked directly: its safety
 //! content for committed entries is already covered by Log Matching +
@@ -50,6 +51,7 @@ pub mod election_safety;
 pub mod leader_completeness;
 pub mod log_matching;
 pub mod monotonic;
+pub mod sm_monotonic;
 pub mod state_machine_safety;
 pub mod state_ordering;
 pub mod violation;
@@ -92,6 +94,7 @@ pub struct InvariantCheckResult {
 pub struct InvariantChecker {
     witnesses: committed_immutable::Witness,
     monotonic: monotonic::MonotonicHistory,
+    sm_monotonic: sm_monotonic::SmMonotonicHistory,
 }
 
 impl InvariantChecker {
@@ -130,6 +133,7 @@ impl InvariantChecker {
         // --- Cross-tick checks (must update internal state) ---
         self.witnesses.check_and_record(snapshots, &mut violations);
         self.monotonic.check_and_record(snapshots, &mut violations);
+        self.sm_monotonic.check_and_record(snapshots, &mut violations);
 
         InvariantCheckResult { violations }
     }

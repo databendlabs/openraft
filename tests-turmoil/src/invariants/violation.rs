@@ -96,6 +96,17 @@ pub enum InvariantViolation {
         previous: String,
         current: String,
     },
+
+    /// Monotonic SM Keys (derived — a node applies committed entries in log
+    /// order and installs only at-or-ahead snapshots): on one node, the log
+    /// id that last wrote a key must never decrease across ticks, and a key
+    /// must never disappear (`current: None`).
+    SmKeyRegressed {
+        node: NodeId,
+        key: String,
+        previous: crate::typ::LogId,
+        current: Option<crate::typ::LogId>,
+    },
 }
 
 impl std::fmt::Display for InvariantViolation {
@@ -191,6 +202,17 @@ impl std::fmt::Display for InvariantViolation {
                 current,
             } => {
                 write!(f, "MonotonicVote: n{node} vote {previous} -> {current}")
+            }
+            Self::SmKeyRegressed {
+                node,
+                key,
+                previous,
+                current,
+            } => {
+                write!(
+                    f,
+                    "MonotonicSmKeys: n{node} key={key} written at {previous} -> {current:?}"
+                )
             }
         }
     }
