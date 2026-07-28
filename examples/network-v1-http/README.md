@@ -10,8 +10,7 @@ snapshot transfer through `full_snapshot()`.
 
 See:
 
-- [`raft-kv-memstore-network-v2`](../raft-kv-memstore-network-v2/) for a V2
-  network example.
+- [`network-v2-http`](../network-v2-http/) for the V2 counterpart of this crate.
 - [`raft-kv-memstore-grpc`](../raft-kv-memstore-grpc/) for a gRPC example that
   implements network sub-traits directly.
 - [OpenRaft network guide](../../openraft/src/docs/getting_started/getting-started.md#4-implement-raftnetwork)
@@ -108,10 +107,9 @@ Serve the inbound endpoints on the address other nodes dial:
 network_v1_http::Server::new(raft.clone()).run(raft_addr).await?;
 ```
 
-Complete examples using this crate:
+Complete example using this crate:
 
-- [`raft-kv-memstore`](../raft-kv-memstore/)
-- [`raft-kv-rocksdb`](../raft-kv-rocksdb/)
+- [`raft-kv-memstore-network-v1`](../raft-kv-memstore-network-v1/)
 
 ## When To Use This Example
 
@@ -119,4 +117,4 @@ Read this crate if you maintain V1 network code or want to understand how the
 legacy chunked snapshot API maps into the current V2 network model.
 
 For a new HTTP network implementation, start from
-[`raft-kv-memstore-network-v2`](../raft-kv-memstore-network-v2/) instead.
+[`network-v2-http`](../network-v2-http/) instead.

@@ -6,10 +6,10 @@ use app_http::AddLearnerRequest;
 use app_http::Client;
 use openraft::ServerState;
 use openraft::type_config::TypeConfigExt;
-use raft_kv_memstore_network_v2::Raft;
-use raft_kv_memstore_network_v2::TypeConfig;
-use raft_kv_memstore_network_v2::new_raft_node;
-use raft_kv_memstore_network_v2::run_raft_node;
+use raft_kv_memstore_network_v1::Raft;
+use raft_kv_memstore_network_v1::TypeConfig;
+use raft_kv_memstore_network_v1::new_raft_node;
+use raft_kv_memstore_network_v1::run_raft_node;
 use tracing_subscriber::EnvFilter;
 
 pub fn log_panic(panic: &PanicHookInfo) {
@@ -33,13 +33,15 @@ pub fn log_panic(panic: &PanicHookInfo) {
     eprintln!("{}", backtrace);
 }
 
-/// This test shows how to transfer a snapshot from one node to another:
+/// This test shows how to transfer a snapshot from one node to another over the legacy V1
+/// network:
 ///
 /// - Setup a single node cluster, write some logs, take a snapshot;
-/// - Add a learner node-2 to receive snapshot replication, via the complete-snapshot API:
-///   - The sending end sends snapshot with `RaftNetwork::full_snapshot()`;
-///   - The receiving end deliver the received snapshot to `Raft` with
-///     `Raft::install_full_snapshot()`.
+/// - Add a learner node-2 to receive snapshot replication, via the chunked V1 API:
+///   - The sending end splits the snapshot into `InstallSnapshotRequest` chunks, which the
+///     `Adapter` derives from `RaftNetworkV2::full_snapshot()`;
+///   - The receiving end reassembles them with `ChunkedSnapshotReceiver::install_snapshot()`, which
+///     installs the snapshot once the last chunk arrives.
 #[test]
 fn test_cluster() {
     TypeConfig::run(async {

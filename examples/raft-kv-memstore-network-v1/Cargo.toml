@@ -1,5 +1,5 @@
 [package]
-name = "raft-kv-memstore-network-v2"
+name = "raft-kv-memstore-network-v1"
 version = "0.1.0"
 readme = "README.md"
 
@@ -18,7 +18,7 @@ repository = "https://github.com/databendlabs/openraft"
 [dependencies]
 app-http        = { path = "../app-http" }
 log-mem         = { path = "../log-mem", features = [] }
-network-v2-http = { path = "../network-v2-http" }
+network-v1-http = { path = "../network-v1-http" }
 openraft        = { path = "../../openraft", features = ["serde", "type-alias"] }
 sm-mem          = { path = "../sm-mem" }
 types-kv        = { path = "../types-kv" }
