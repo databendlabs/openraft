@@ -7,7 +7,6 @@ use openraft::BasicNode;
 use openraft::ReadPolicy;
 use openraft::async_runtime::WatchReceiver;
 use openraft::error::Infallible;
-use openraft_legacy::prelude::*;
 
 use crate::NodeId;
 use crate::app::App;
@@ -53,8 +52,12 @@ pub async fn append(app: &mut App, req: String) -> String {
 }
 
 pub async fn snapshot(app: &mut App, req: String) -> String {
-    let req = decode(&req);
-    let res = app.raft.install_snapshot(req).await;
+    let (vote, snapshot_meta, snapshot_data): (Vote, SnapshotMeta, Vec<u8>) = decode(&req);
+    let snapshot = Snapshot {
+        meta: snapshot_meta,
+        snapshot: SnapshotData::new(snapshot_data),
+    };
+    let res = app.raft.install_full_snapshot(vote, snapshot).await.map_err(RaftError::<Infallible>::Fatal);
     encode(res)
 }
 
