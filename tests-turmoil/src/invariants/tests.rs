@@ -51,7 +51,7 @@ struct SnapshotBuilder {
     membership_log_id: Option<LogId>,
     membership: Vec<Vec<NodeId>>,
     sm_last_applied: Option<LogId>,
-    sm_data: std::collections::HashMap<String, String>,
+    sm_data: std::collections::BTreeMap<String, crate::store::ValueMeta>,
 }
 
 impl SnapshotBuilder {
@@ -71,7 +71,7 @@ impl SnapshotBuilder {
             membership_log_id: None,
             membership: Vec::new(),
             sm_last_applied: None,
-            sm_data: std::collections::HashMap::new(),
+            sm_data: std::collections::BTreeMap::new(),
         }
     }
 
@@ -133,7 +133,11 @@ impl SnapshotBuilder {
     }
 
     fn sm_data(mut self, k: &str, v: &str) -> Self {
-        self.sm_data.insert(k.into(), v.into());
+        self.sm_data.insert(k.into(), crate::store::ValueMeta {
+            value: v.into(),
+            serial: 0,
+            log_id: log_id(1, 1, 1),
+        });
         self
     }
 

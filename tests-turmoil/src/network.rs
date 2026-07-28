@@ -5,6 +5,7 @@ use std::io;
 use std::io::Cursor;
 use std::io::ErrorKind;
 use std::sync::Arc;
+use std::time::Duration;
 
 use openraft::error::RPCError;
 use openraft::error::ReplicationClosed;
@@ -28,6 +29,7 @@ enum RpcType {
     AppendEntries = 1,
     Vote = 2,
     InstallSnapshot = 3,
+    PreVote = 4,
 }
 
 /// Snapshot request for wire transmission.
@@ -64,8 +66,37 @@ pub struct TurmoilConnection {
 }
 
 impl TurmoilConnection {
-    /// Send an RPC and receive a response.
-    async fn send_rpc<Req, Resp>(&mut self, rpc_type: RpcType, req: &Req) -> Result<Resp, RPCError<TypeConfig>>
+    /// Send an RPC and receive a response, bounded by `ttl`.
+    ///
+    /// The timeout is essential for liveness, not a nicety: turmoil TCP does
+    /// not retransmit, so a partition can eat an in-flight response while the
+    /// connection stays open. Without a deadline the response read would pend
+    /// forever and wedge the replication stream past the point where the
+    /// network heals.
+    async fn send_rpc<Req, Resp>(
+        &mut self,
+        rpc_type: RpcType,
+        req: &Req,
+        ttl: Duration,
+    ) -> Result<Resp, RPCError<TypeConfig>>
+    where
+        Req: Serialize,
+        Resp: for<'de> Deserialize<'de>,
+    {
+        match tokio::time::timeout(ttl, self.send_rpc_attempts(rpc_type, req)).await {
+            Ok(result) => result,
+            Err(_elapsed) => {
+                // The response may still arrive later; drop the stream so it
+                // cannot desync the framing of the next request.
+                self.stream = None;
+                let e = io::Error::new(ErrorKind::TimedOut, format!("{rpc_type:?} RPC timed out after {ttl:?}"));
+                Err(to_unreachable(&e))
+            }
+        }
+    }
+
+    /// Send an RPC, reconnecting and retrying once if a reused stream fails.
+    async fn send_rpc_attempts<Req, Resp>(&mut self, rpc_type: RpcType, req: &Req) -> Result<Resp, RPCError<TypeConfig>>
     where
         Req: Serialize,
         Resp: for<'de> Deserialize<'de>,
@@ -115,13 +146,19 @@ impl RaftNetworkV2<TypeConfig> for TurmoilConnection {
     async fn append_entries(
         &mut self,
         rpc: AppendEntriesRequest,
-        _option: RPCOption,
+        option: RPCOption,
     ) -> Result<AppendEntriesResponse, RPCError<TypeConfig>> {
-        self.send_rpc(RpcType::AppendEntries, &rpc).await
+        self.send_rpc(RpcType::AppendEntries, &rpc, option.soft_ttl()).await
     }
 
-    async fn vote(&mut self, rpc: VoteRequest, _option: RPCOption) -> Result<VoteResponse, RPCError<TypeConfig>> {
-        self.send_rpc(RpcType::Vote, &rpc).await
+    async fn vote(&mut self, rpc: VoteRequest, option: RPCOption) -> Result<VoteResponse, RPCError<TypeConfig>> {
+        self.send_rpc(RpcType::Vote, &rpc, option.soft_ttl()).await
+    }
+
+    async fn pre_vote(&mut self, rpc: VoteRequest, option: RPCOption) -> Result<VoteResponse, RPCError<TypeConfig>> {
+        // The default implementation grants unconditionally (a no-op Pre-Vote);
+        // send a real RPC so `enable_pre_vote` exercises the actual protocol.
+        self.send_rpc(RpcType::PreVote, &rpc, option.soft_ttl()).await
     }
 
     async fn full_snapshot(
@@ -129,7 +166,7 @@ impl RaftNetworkV2<TypeConfig> for TurmoilConnection {
         vote: Vote,
         snapshot: Snapshot,
         _cancel: impl Future<Output = ReplicationClosed> + Send + 'static,
-        _option: RPCOption,
+        option: RPCOption,
     ) -> Result<SnapshotResponse, StreamingError<TypeConfig>> {
         let req = SnapshotRequest {
             vote,
@@ -137,7 +174,7 @@ impl RaftNetworkV2<TypeConfig> for TurmoilConnection {
             data: snapshot.snapshot.into_inner(),
         };
 
-        self.send_rpc(RpcType::InstallSnapshot, &req).await.map_err(|e| match e {
+        self.send_rpc(RpcType::InstallSnapshot, &req, option.soft_ttl()).await.map_err(|e| match e {
             RPCError::Unreachable(u) => StreamingError::Unreachable(u),
             RPCError::Network(n) => StreamingError::Network(n),
             RPCError::Timeout(t) => StreamingError::Timeout(t),
@@ -179,6 +216,10 @@ pub async fn handle_rpc(raft: Arc<Raft>, mut stream: TcpStream) -> io::Result<()
             x if x == RpcType::Vote as u8 => {
                 let req: VoteRequest = deser(&payload)?;
                 ser(&raft.vote(req).await.map_err(io::Error::other)?)?
+            }
+            x if x == RpcType::PreVote as u8 => {
+                let req: VoteRequest = deser(&payload)?;
+                ser(&raft.pre_vote(req).await.map_err(io::Error::other)?)?
             }
             x if x == RpcType::InstallSnapshot as u8 => {
                 let req: SnapshotRequest = deser(&payload)?;
