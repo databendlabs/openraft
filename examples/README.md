@@ -18,11 +18,11 @@ This directory contains example applications demonstrating different implementat
 |---------|-----|---------------|------------------|-------------|--------|--------|------------------|
 | [raft-kv-memstore] | [log-mem] | [sm-mem] | HTTP/reqwest([network-v2]) | RaftNetworkV2 | [app-http] | [app-http] | Basic example |
 | [raft-kv-rocksdb] | [log-rocks] | [rocksstore] | HTTP/reqwest([network-v2]) | RaftNetworkV2 | [app-http] | [app-http] | Persistent storage |
-| [raft-kv-memstore-network-v2] | [log-mem] | [sm-mem] | HTTP/reqwest([network-v2]) | RaftNetworkV2 | [app-http] | [app-http] | Snapshot replication |
+| [raft-kv-memstore-network-v1] | [log-mem] | [sm-mem] | HTTP/reqwest([network-v1]) | RaftNetwork | [app-http] | [app-http] | Legacy V1 network + chunked snapshot replication |
 | [multi-raft-kv] | [log-mem] | [sm-mem] | HTTP/channel | GroupRouter | channel | in-memory | Multi-Raft groups |
-| [raft-kv-memstore-grpc] | [log-mem] | in-memory | gRPC/tonic | RaftNetwork | tonic | tonic | gRPC transport |
-| [raft-kv-memstore-single-threaded] | [log-mem] | in-memory | HTTP/reqwest | RaftNetwork | reqwest | actix-web | Single-threaded runtime |
-| [raft-kv-memstore-opendal-snapshot-data] | [log-mem] | in-memory+OpenDAL | HTTP/reqwest | RaftNetwork | reqwest | actix-web | OpenDAL snapshot storage |
+| [raft-kv-memstore-grpc] | [log-mem] | in-memory | gRPC/tonic | RaftNetworkV2 sub-traits | tonic | tonic | gRPC transport |
+| [raft-kv-memstore-single-threaded] | in-memory | in-memory | in-process channel | RaftNetworkV2 | channel | in-memory | Single-threaded runtime |
+| [raft-kv-memstore-opendal-snapshot-data] | [log-mem] | in-memory+OpenDAL | in-process channel | RaftNetworkV2 | channel | in-memory | OpenDAL snapshot storage |
 
 
 ## Component Implementations
@@ -58,7 +58,7 @@ The following symbolic links are provided for backward compatibility:
 <!-- Reference Links -->
 [raft-kv-memstore]: raft-kv-memstore/
 [raft-kv-rocksdb]: raft-kv-rocksdb/
-[raft-kv-memstore-network-v2]: raft-kv-memstore-network-v2/
+[raft-kv-memstore-network-v1]: raft-kv-memstore-network-v1/
 [raft-kv-memstore-grpc]: raft-kv-memstore-grpc/
 [raft-kv-memstore-single-threaded]: raft-kv-memstore-single-threaded/
 [raft-kv-memstore-opendal-snapshot-data]: raft-kv-memstore-opendal-snapshot-data/
