@@ -36,7 +36,7 @@ fn eng() -> Engine<UTConfig> {
     eng.state.vote.update(
         UTConfig::<()>::now(),
         Duration::from_millis(500),
-        Vote::new_committed(2, 1),
+        Vote::new_committed(4, 1),
     );
     eng.state.apply_progress_mut().accept(log_id(4, 1, 5));
     eng.state.log_ids = LogIdList::new(None, vec![
@@ -148,7 +148,7 @@ fn test_handle_install_full_snapshot_no_conflict() -> anyhow::Result<()> {
                     },
                     snapshot: (),
                 },
-                LogIOId::new(Vote::new(2, 1).to_committed(), Some(log_id(4, 1, 6)))
+                LogIOId::new(Vote::new(4, 1).to_committed(), Some(log_id(4, 1, 6)))
             )),
             Command::PurgeLog { upto: log_id(4, 1, 6) },
             Command::Respond {
