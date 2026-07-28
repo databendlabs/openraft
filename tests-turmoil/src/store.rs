@@ -29,7 +29,7 @@ use crate::typ::*;
 /// `log_id` is the id of the log entry that last wrote the key. It exposes the
 /// key's position in the total log order, which is what the client oracle
 /// compares to detect stale or non-monotonic reads.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ValueMeta {
     pub value: String,
     /// Serial of the client write that produced this value.
@@ -247,20 +247,18 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachine> {
             data.last_applied = Some(entry.log_id);
 
             let response = match entry.payload {
-                EntryPayload::Blank => Response { value: None },
+                EntryPayload::Blank => Response { prev: None },
                 EntryPayload::Normal(ref req) => {
                     let prev = data.data.insert(req.key.clone(), ValueMeta {
                         value: req.value.clone(),
                         serial: req.serial,
                         log_id: entry.log_id,
                     });
-                    Response {
-                        value: prev.map(|v| v.value),
-                    }
+                    Response { prev }
                 }
                 EntryPayload::Membership(ref mem) => {
                     data.last_membership = StoredMembership::new(Some(entry.log_id), mem.clone());
-                    Response { value: None }
+                    Response { prev: None }
                 }
             };
 
