@@ -1106,12 +1106,16 @@ async fn read_client_loop(
         )
         .await
         {
-            Ok(Ok(_)) => {
+            Ok(Ok(barrier)) => {
                 let observed = sm.get_key(&key);
                 if dbg_ops() {
-                    println!("DBG read key={key} observed={:?}", observed.as_ref().map(|m| m.log_id));
+                    println!(
+                        "DBG read key={key} observed={:?} barrier={:?}",
+                        observed.as_ref().map(|m| m.log_id),
+                        barrier
+                    );
                 }
-                history.lock().unwrap().record_read(&key, observed.as_ref(), floor);
+                history.lock().unwrap().record_read(&key, observed.as_ref(), floor, barrier);
             }
             _ => {
                 if dbg_ops() {
