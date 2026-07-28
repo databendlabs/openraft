@@ -20,6 +20,9 @@
 //!   that write or a later one.
 //! - **Lost acked write** (final): after the cluster heals, every key's value must sit at or above
 //!   the highest acked log id for that key.
+//! - **Lost observed write** (final): likewise for the highest log id any linearizable read
+//!   observed per key — an observation of committed state is a durability commitment even when the
+//!   write that produced it was never acked.
 //!
 //! A failed or timed-out write is recorded as [`WriteOutcome::Unknown`], never
 //! as "guaranteed absent": openraft may fail a `client_write` call (e.g. on
@@ -77,6 +80,14 @@ pub enum OracleViolation {
         acked: LogId,
         found: Option<LogId>,
     },
+    /// After healing, a key ended below a log id that a linearizable read
+    /// had already observed (the write itself may never have been acked).
+    LostObservedWrite {
+        node: NodeId,
+        key: String,
+        observed: LogId,
+        found: Option<LogId>,
+    },
     /// One serial was seen at two different log ids: the same request was
     /// applied at two log positions, or an ack pointed at a different entry
     /// than the one later observed.
@@ -117,6 +128,17 @@ impl std::fmt::Display for OracleViolation {
                 write!(
                     f,
                     "LostAckedWrite: n{node} key={key} acked at {acked}, final state has {found:?}"
+                )
+            }
+            Self::LostObservedWrite {
+                node,
+                key,
+                observed,
+                found,
+            } => {
+                write!(
+                    f,
+                    "LostObservedWrite: n{node} key={key} read-observed at {observed}, final state has {found:?}"
                 )
             }
             Self::DuplicateApply { serial, first, second } => {
@@ -278,7 +300,10 @@ impl ClientHistory {
     /// Check every acked write against the final, healed state machines.
     ///
     /// Call only after convergence: each member must hold, for every key with
-    /// an acked write, a value at or above the acked log id.
+    /// an acked write, a value at or above the acked log id, and for every
+    /// key a read observed, a value at or above the observed log id — a
+    /// linearizable observation of committed state is a durability commitment
+    /// exactly like an ack, even when the write itself was never acked.
     pub fn check_final_durability(&mut self, members: &[(NodeId, StateMachineData)]) {
         for (node, sm) in members {
             for (key, (acked, _serial)) in &self.max_acked {
@@ -292,6 +317,21 @@ impl ClientHistory {
                         node: *node,
                         key: key.clone(),
                         acked: *acked,
+                        found: found.map(|m| m.log_id),
+                    });
+                }
+            }
+            for (key, observed) in &self.last_read {
+                let found = sm.data.get(key);
+                let lost = match found {
+                    Some(meta) => meta.log_id < *observed,
+                    None => true,
+                };
+                if lost {
+                    self.violations.push(OracleViolation::LostObservedWrite {
+                        node: *node,
+                        key: key.clone(),
+                        observed: *observed,
                         found: found.map(|m| m.log_id),
                     });
                 }
@@ -505,6 +545,40 @@ mod tests {
             })),
             "{violations:?}"
         );
+    }
+
+    #[test]
+    fn lost_observed_write_detected_in_final_state() {
+        // The write was never acked (Unknown), but a linearizable read
+        // observed it: it committed, so it must survive to the final state.
+        let mut h = history_with_write(1, "k", "v1");
+        h.record_write_failed(1);
+        h.record_read("k", Some(&meta(1, "v1", log_id(2, 1, 9))), None);
+
+        let sm = StateMachineData::default();
+        h.check_final_durability(&[(1, sm)]);
+
+        let violations = h.drain_violations();
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(matches!(&violations[0], OracleViolation::LostObservedWrite {
+            node: 1,
+            found: None,
+            ..
+        }));
+    }
+
+    #[test]
+    fn final_at_or_above_observed_is_clean() {
+        let mut h = history_with_write(1, "k", "v1");
+        h.record_write_attempt(2, "k".to_string(), "v2".to_string());
+        h.record_read("k", Some(&meta(1, "v1", log_id(2, 1, 9))), None);
+
+        // Overwritten by a later (never-acked, never-read) write: fine.
+        let mut sm = StateMachineData::default();
+        sm.data.insert("k".to_string(), meta(2, "v2", log_id(3, 1, 12)));
+        h.check_final_durability(&[(1, sm)]);
+
+        assert!(h.drain_violations().is_empty());
     }
 
     #[test]
