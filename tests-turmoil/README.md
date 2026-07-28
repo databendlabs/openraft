@@ -18,12 +18,15 @@ A cluster that cannot heal without faults has a liveness bug (stuck replication,
 
 ### Client oracle
 
-`src/oracle.rs` tracks every write attempt by unique serial. Acked writes record the returned `LogId`; failed or timed-out writes are *unknown* (they may still commit later) and are never assumed absent. Each observed value embeds `(serial, writing LogId)`, giving four checks:
+`src/oracle.rs` tracks every write attempt by unique serial. Acked writes record the returned `LogId`; failed or timed-out writes are *unknown* (they may still commit later) and are never assumed absent. Each observed value embeds `(serial, writing LogId)`, and every piece of evidence — acks (including the previous value each apply returns), linearizable reads, and final-state scans — feeds these checks:
 
 - **Phantom value**: an observed value must map back to a known write attempt.
+- **One serial, one log id**: all sightings of a serial must agree on its log id, and one log id must never carry two different serials.
 - **Monotonic reads**: per key, a sequential reader must never observe an older `LogId` than it already saw.
 - **Read-your-writes**: a linearizable read must observe at least the acked floor captured before the read started.
-- **Durability**: after final convergence, no acked write may be lost.
+- **Predecessor chain**: the previous value an ack's apply returns must be the newest known-committed write to the key below the new entry — committed data cannot vanish between two acks even if no read touches the window.
+- **Absence floor**: an apply seeing the key absent, or a read observing it absent at its `ReadIndex` barrier, forbids any write to the key from ever resolving below that point.
+- **Durability** (final): after final convergence, no acked write — and no write any read observed — may be lost.
 
 ### Chaos and operations
 
@@ -50,6 +53,7 @@ The checker lives in `src/invariants/`, with one file per property. Each propert
 | Monotonic Commit Index  | §3.4     | `MonotonicCommitIndex`          | A node's `committed.index` never decreases across ticks                              |
 | Monotonic Applied Index | derived  | —                               | A node's `last_applied.index` never decreases across ticks                           |
 | Monotonic Vote          | §3.3     | `MonotonicVote`                 | A node's persisted vote (ordered by `(term, leader_id, committed)`) never regresses  |
+| Monotonic SM Keys       | derived  | —                               | Per node and key, the writing log id never decreases and keys never vanish          |
 
 All identity comparisons use `CommittedLeaderId` (not just `term`), so the same checks are correct under both openraft modes:
 - `leader_id_std`: `CommittedLeaderId == term`, so Election Safety reduces to "one leader per term".
