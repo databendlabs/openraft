@@ -47,11 +47,20 @@
 //! ```
 
 mod adapter;
+mod install_snapshot;
+mod install_snapshot_error;
 mod network;
 mod sender;
+mod snapshot_mismatch;
 mod snapshot_receiver;
+mod snapshot_segment_id;
 mod streaming;
 
 pub use adapter::Adapter;
+pub use install_snapshot::InstallSnapshotRequest;
+pub use install_snapshot::InstallSnapshotResponse;
+pub use install_snapshot_error::InstallSnapshotError;
 pub use network::RaftNetwork;
+pub use snapshot_mismatch::SnapshotMismatch;
 pub use snapshot_receiver::ChunkedSnapshotReceiver;
+pub use snapshot_segment_id::SnapshotSegmentId;

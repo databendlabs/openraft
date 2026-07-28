@@ -19,8 +19,6 @@ pub use append_entries_request::AppendEntriesRequest;
 pub use append_entries_response::AppendEntriesResponse;
 pub use client_write::ClientWriteResponse;
 pub use client_write::ClientWriteResult;
-pub use install_snapshot::InstallSnapshotRequest;
-pub use install_snapshot::InstallSnapshotResponse;
 pub use install_snapshot::SnapshotResponse;
 pub use log_segment::LogSegment;
 pub use stream_append_error::StreamAppendError;

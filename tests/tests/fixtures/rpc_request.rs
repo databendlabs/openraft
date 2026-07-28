@@ -7,9 +7,9 @@ use openraft::RPCTypes;
 use openraft::RaftTypeConfig;
 use openraft::alias::SnapshotOf;
 use openraft::raft::AppendEntriesRequest;
-use openraft::raft::InstallSnapshotRequest;
 use openraft::raft::TransferLeaderRequest;
 use openraft::raft::VoteRequest;
+use openraft_legacy::network_v1::InstallSnapshotRequest;
 
 /// Unified enum for all RPC request types in the test framework.
 #[derive(Debug)]
