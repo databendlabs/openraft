@@ -1,6 +1,5 @@
 use openraft::BasicNode;
 use openraft::RaftNetworkFactory;
-use openraft::error::InstallSnapshotError;
 use openraft::network::RPCOption;
 use openraft_legacy::prelude::*;
 
@@ -8,6 +7,9 @@ use crate::NodeId;
 use crate::TypeConfig;
 use crate::router::Router;
 use crate::typ::*;
+
+type InstallSnapshotRequest = openraft_legacy::network_v1::InstallSnapshotRequest<TypeConfig>;
+type InstallSnapshotResponse = openraft_legacy::network_v1::InstallSnapshotResponse<TypeConfig>;
 
 pub struct Connection {
     router: Router,

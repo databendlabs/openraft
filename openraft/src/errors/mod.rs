@@ -51,7 +51,6 @@ use crate::Membership;
 use crate::RaftTypeConfig;
 use crate::network::RPCTypes;
 use crate::node::NodeId;
-use crate::raft_types::SnapshotSegmentId;
 use crate::try_as_ref::TryAsRef;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::LogIdOf;
@@ -62,16 +61,29 @@ use crate::vote::RaftCommittedLeaderId;
 #[deprecated(since = "0.10.0", note = "use `LinearizableReadError` instead")]
 pub type CheckIsLeaderError<C> = LinearizableReadError<C>;
 
-/// Error related to installing a snapshot.
-// TODO: remove
-#[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
-#[derive(PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-pub enum InstallSnapshotError {
-    /// The snapshot segment offset does not match what was expected.
-    #[error(transparent)]
-    SnapshotMismatch(#[from] SnapshotMismatch),
-}
+/// **REMOVED**: Use `openraft_legacy::network_v1::InstallSnapshotError` instead.
+///
+/// The v1 chunk-based `InstallSnapshotError` has been moved to the `openraft-legacy` crate.
+///
+/// # Migration
+///
+/// Add to `Cargo.toml`:
+/// ```toml
+/// [dependencies]
+/// openraft-legacy = "0.10"
+/// ```
+///
+/// Update imports:
+/// ```ignore
+/// use openraft_legacy::network_v1::InstallSnapshotError;
+/// ```
+#[deprecated(
+    since = "0.10.0",
+    note = "InstallSnapshotError has been moved to the `openraft-legacy` crate. \
+            Add `openraft-legacy` to your dependencies and use \
+            `openraft_legacy::network_v1::InstallSnapshotError` instead."
+)]
+pub enum InstallSnapshotError {}
 
 /// An error related to a client write request.
 #[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
@@ -377,16 +389,29 @@ where C: RaftTypeConfig
     }
 }
 
-/// Error indicating a snapshot segment ID mismatch.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[error("snapshot segment id mismatch, expect: {expect}, got: {got}")]
-pub struct SnapshotMismatch {
-    /// The expected snapshot segment ID.
-    pub expect: SnapshotSegmentId,
-    /// The actual snapshot segment ID received.
-    pub got: SnapshotSegmentId,
-}
+/// **REMOVED**: Use `openraft_legacy::network_v1::SnapshotMismatch` instead.
+///
+/// The v1 chunk-based `SnapshotMismatch` has been moved to the `openraft-legacy` crate.
+///
+/// # Migration
+///
+/// Add to `Cargo.toml`:
+/// ```toml
+/// [dependencies]
+/// openraft-legacy = "0.10"
+/// ```
+///
+/// Update imports:
+/// ```ignore
+/// use openraft_legacy::network_v1::SnapshotMismatch;
+/// ```
+#[deprecated(
+    since = "0.10.0",
+    note = "SnapshotMismatch has been moved to the `openraft-legacy` crate. \
+            Add `openraft-legacy` to your dependencies and use \
+            `openraft_legacy::network_v1::SnapshotMismatch` instead."
+)]
+pub struct SnapshotMismatch {}
 
 /// Error indicating that not enough nodes responded to form a quorum.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

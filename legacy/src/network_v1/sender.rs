@@ -10,13 +10,11 @@ use openraft::ErrorVerb;
 use openraft::OptionalSend;
 use openraft::RaftTypeConfig;
 use openraft::ToStorageResult;
-use openraft::errors::InstallSnapshotError;
 use openraft::errors::RPCError;
 use openraft::errors::RaftError;
 use openraft::errors::ReplicationClosed;
 use openraft::errors::StreamingError;
 use openraft::network::RPCOption;
-use openraft::raft::InstallSnapshotRequest;
 use openraft::raft::SnapshotResponse;
 use openraft::type_config::TypeConfigExt;
 use openraft::type_config::alias::SnapshotOf;
@@ -25,6 +23,8 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncSeekExt;
 
 use super::RaftNetwork;
+use crate::network_v1::InstallSnapshotError;
+use crate::network_v1::InstallSnapshotRequest;
 
 /// Sends snapshots in chunks via `RaftNetwork::install_snapshot()`.
 ///

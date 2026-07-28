@@ -5,10 +5,10 @@ use std::fmt;
 use openraft::RPCTypes;
 use openraft::RaftTypeConfig;
 use openraft::raft::AppendEntriesResponse;
-use openraft::raft::InstallSnapshotResponse;
 use openraft::raft::SnapshotResponse;
 use openraft::raft::TransferLeaderResponse;
 use openraft::raft::VoteResponse;
+use openraft_legacy::network_v1::InstallSnapshotResponse;
 
 /// Unified enum for all RPC response types in the test framework.
 #[derive(Debug)]

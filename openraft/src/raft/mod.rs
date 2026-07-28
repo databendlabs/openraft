@@ -42,7 +42,9 @@ pub use message::AppendEntriesRequest;
 pub use message::AppendEntriesResponse;
 pub use message::ClientWriteResponse;
 pub use message::ClientWriteResult;
+#[allow(deprecated)]
 pub use message::InstallSnapshotRequest;
+#[allow(deprecated)]
 pub use message::InstallSnapshotResponse;
 pub use message::LogSegment;
 pub use message::SnapshotResponse;
