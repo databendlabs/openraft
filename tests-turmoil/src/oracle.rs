@@ -28,7 +28,8 @@
 //!   below that position — a committed write cannot vanish between two acks, even if no read ever
 //!   touches the window.
 //! - **Absence floor**: a write applied onto an absent key asserts the key had no committed write
-//!   below that log id, so no write to the key may ever resolve below it.
+//!   below that log id; a linearizable read observing the key absent asserts none at or below its
+//!   `ReadIndex` barrier. No write to the key may ever resolve below such a floor.
 //!
 //! A failed or timed-out write is recorded as [`WriteOutcome::Unknown`], never
 //! as "guaranteed absent": openraft may fail a `client_write` call (e.g. on
@@ -125,9 +126,9 @@ pub enum OracleViolation {
         prev: Option<LogId>,
         newest_below: Option<LogId>,
     },
-    /// A write resolved to a position below an absence floor: an earlier
-    /// apply at `absent_at` had observed the key absent, so no write to the
-    /// key may exist below `absent_at`.
+    /// A write was found at a position below an absence floor: an apply's
+    /// previous value or an absent read at a `ReadIndex` barrier asserted
+    /// that the key holds no committed write below `absent_at` (exclusive).
     WriteBelowAbsence {
         key: String,
         serial: u64,
@@ -212,8 +213,8 @@ impl std::fmt::Display for OracleViolation {
             } => {
                 write!(
                     f,
-                    "WriteBelowAbsence: key={key} serial={serial} resolved at {log_id}, \
-                     but the apply at {absent_at} observed the key absent"
+                    "WriteBelowAbsence: key={key} serial={serial} found at {log_id}, \
+                     but the key was asserted absent below {absent_at}"
                 )
             }
         }
@@ -323,8 +324,20 @@ impl ClientHistory {
     /// Record and check one completed linearizable read.
     ///
     /// `floor` is the value of [`Self::acked_floor`] captured before the read
-    /// started.
-    pub fn record_read(&mut self, key: &str, observed: Option<&ValueMeta>, floor: Option<LogId>) {
+    /// started. `barrier` is the `ReadIndex` log id returned by
+    /// `ensure_linearizable`: the observed state contains at least every
+    /// entry at or below it. The state may legitimately have advanced
+    /// *beyond* the barrier by the time the value is read, so a present
+    /// value asserts nothing extra; but keys are never deleted, so observing
+    /// the key *absent* asserts it has no committed write at or below the
+    /// barrier.
+    pub fn record_read(
+        &mut self,
+        key: &str,
+        observed: Option<&ValueMeta>,
+        floor: Option<LogId>,
+        barrier: Option<LogId>,
+    ) {
         self.stats.reads_ok += 1;
 
         if let Some(meta) = observed {
@@ -365,6 +378,26 @@ impl ClientHistory {
 
         if let Some(meta) = observed {
             self.last_read.insert(key.to_string(), meta.log_id);
+        }
+
+        // An absent key at a ReadIndex barrier proves the key had no
+        // committed write at or below the barrier: check the known committed
+        // writes now and raise the key's absence floor for future evidence.
+        if observed.is_none()
+            && let Some(b) = barrier
+        {
+            let bound = after(b);
+            if let Some((log_id, serial)) =
+                self.committed_by_key.get(key).and_then(|writes| writes.range(..bound).next_back())
+            {
+                self.violations.push(OracleViolation::WriteBelowAbsence {
+                    key: key.to_string(),
+                    serial: *serial,
+                    log_id: *log_id,
+                    absent_at: bound,
+                });
+            }
+            self.raise_absence_floor(key, bound);
         }
     }
 
@@ -502,10 +535,16 @@ impl ClientHistory {
         }
 
         if prev.is_none() {
-            let floor = self.absent_below.entry(key.to_string()).or_insert(log_id);
-            if *floor < log_id {
-                *floor = log_id;
-            }
+            self.raise_absence_floor(key, log_id);
+        }
+    }
+
+    /// Raise `key`'s absence floor to `bound`: the key is asserted to hold
+    /// no committed write below `bound` (exclusive). Floors only go up.
+    fn raise_absence_floor(&mut self, key: &str, bound: LogId) {
+        let floor = self.absent_below.entry(key.to_string()).or_insert(bound);
+        if *floor < bound {
+            *floor = bound;
         }
     }
 
@@ -528,6 +567,14 @@ impl ClientHistory {
             });
         }
     }
+}
+
+/// The exclusive-bound equivalent of an inclusive one: `x <= b` iff
+/// `x < after(b)`. Log indexes are consecutive integers per leader and the
+/// leader id orders before the index, so no log id sorts strictly between
+/// `(leader, index)` and `(leader, index + 1)`.
+fn after(b: LogId) -> LogId {
+    LogId::new(b.leader_id, b.index + 1)
 }
 
 #[cfg(test)]
@@ -557,7 +604,7 @@ mod tests {
     #[test]
     fn read_of_attempted_value_is_clean() {
         let mut h = history_with_write(1, "k", "v1");
-        h.record_read("k", Some(&meta(1, "v1", log_id(1, 1, 5))), None);
+        h.record_read("k", Some(&meta(1, "v1", log_id(1, 1, 5))), None, None);
         assert!(h.drain_violations().is_empty());
     }
 
@@ -566,12 +613,12 @@ mod tests {
         let mut h = history_with_write(1, "k", "v1");
 
         // Unknown serial.
-        h.record_read("k", Some(&meta(99, "v1", log_id(1, 1, 5))), None);
+        h.record_read("k", Some(&meta(99, "v1", log_id(1, 1, 5))), None, None);
         // Right serial, wrong value. (Same log id in both serial-1 reads so
         // only the phantom check fires, not the bijection check.)
-        h.record_read("k", Some(&meta(1, "other", log_id(1, 1, 6))), None);
+        h.record_read("k", Some(&meta(1, "other", log_id(1, 1, 6))), None, None);
         // Right serial and value, wrong key.
-        h.record_read("x", Some(&meta(1, "v1", log_id(1, 1, 6))), None);
+        h.record_read("x", Some(&meta(1, "v1", log_id(1, 1, 6))), None, None);
 
         let violations = h.drain_violations();
         assert_eq!(violations.len(), 3);
@@ -583,11 +630,11 @@ mod tests {
         let mut h = history_with_write(1, "k", "v1");
         h.record_write_attempt(2, "k".to_string(), "v2".to_string());
 
-        h.record_read("k", Some(&meta(2, "v2", log_id(2, 1, 9))), None);
+        h.record_read("k", Some(&meta(2, "v2", log_id(2, 1, 9))), None, None);
         // Older log id observed after a newer one.
-        h.record_read("k", Some(&meta(1, "v1", log_id(1, 1, 5))), None);
+        h.record_read("k", Some(&meta(1, "v1", log_id(1, 1, 5))), None, None);
         // Key vanished after being present.
-        h.record_read("k", None, None);
+        h.record_read("k", None, None, None);
 
         let violations = h.drain_violations();
         assert_eq!(violations.len(), 2);
@@ -599,9 +646,9 @@ mod tests {
         let mut h = history_with_write(1, "k", "v1");
         h.record_write_attempt(2, "k".to_string(), "v2".to_string());
 
-        h.record_read("k", Some(&meta(1, "v1", log_id(1, 1, 5))), None);
-        h.record_read("k", Some(&meta(1, "v1", log_id(1, 1, 5))), None);
-        h.record_read("k", Some(&meta(2, "v2", log_id(2, 2, 9))), None);
+        h.record_read("k", Some(&meta(1, "v1", log_id(1, 1, 5))), None, None);
+        h.record_read("k", Some(&meta(1, "v1", log_id(1, 1, 5))), None, None);
+        h.record_read("k", Some(&meta(2, "v2", log_id(2, 2, 9))), None, None);
         assert!(h.drain_violations().is_empty());
     }
 
@@ -614,7 +661,7 @@ mod tests {
         assert_eq!(floor, Some(log_id(2, 1, 9)));
 
         // Read started after the ack but observes nothing.
-        h.record_read("k", None, floor);
+        h.record_read("k", None, floor, None);
         let violations = h.drain_violations();
         assert_eq!(violations.len(), 1);
         assert!(matches!(&violations[0], OracleViolation::StaleRead { .. }));
@@ -628,9 +675,9 @@ mod tests {
 
         let floor = h.acked_floor("k");
         // Exactly the acked write.
-        h.record_read("k", Some(&meta(1, "v1", log_id(2, 1, 9))), floor);
+        h.record_read("k", Some(&meta(1, "v1", log_id(2, 1, 9))), floor, None);
         // A later (unacked) write is also fine.
-        h.record_read("k", Some(&meta(2, "v2", log_id(2, 1, 12))), floor);
+        h.record_read("k", Some(&meta(2, "v2", log_id(2, 1, 12))), floor, None);
         assert!(h.drain_violations().is_empty());
     }
 
@@ -640,7 +687,7 @@ mod tests {
         h.record_write_failed(1);
 
         // A failed write may still commit and be observed later: not a violation.
-        h.record_read("k", Some(&meta(1, "v1", log_id(1, 1, 3))), None);
+        h.record_read("k", Some(&meta(1, "v1", log_id(1, 1, 3))), None, None);
         assert!(h.drain_violations().is_empty());
     }
 
@@ -683,7 +730,7 @@ mod tests {
         // observed it: it committed, so it must survive to the final state.
         let mut h = history_with_write(1, "k", "v1");
         h.record_write_failed(1);
-        h.record_read("k", Some(&meta(1, "v1", log_id(2, 1, 9))), None);
+        h.record_read("k", Some(&meta(1, "v1", log_id(2, 1, 9))), None, None);
 
         let sm = StateMachineData::default();
         h.check_final_durability(&[(1, sm)]);
@@ -701,7 +748,7 @@ mod tests {
     fn final_at_or_above_observed_is_clean() {
         let mut h = history_with_write(1, "k", "v1");
         h.record_write_attempt(2, "k".to_string(), "v2".to_string());
-        h.record_read("k", Some(&meta(1, "v1", log_id(2, 1, 9))), None);
+        h.record_read("k", Some(&meta(1, "v1", log_id(2, 1, 9))), None, None);
 
         // Overwritten by a later (never-acked, never-read) write: fine.
         let mut sm = StateMachineData::default();
@@ -717,7 +764,7 @@ mod tests {
         h.record_write_acked(1, log_id(2, 1, 9), None);
 
         // The same serial shows up at a different log position.
-        h.record_read("k", Some(&meta(1, "v1", log_id(3, 1, 20))), None);
+        h.record_read("k", Some(&meta(1, "v1", log_id(3, 1, 20))), None, None);
 
         let violations = h.drain_violations();
         assert_eq!(violations.len(), 1, "{violations:?}");
@@ -752,8 +799,8 @@ mod tests {
         h.record_write_attempt(2, "x".to_string(), "v2".to_string());
 
         // Two different serials observed at the same log id.
-        h.record_read("k", Some(&meta(1, "v1", log_id(2, 1, 9))), None);
-        h.record_read("x", Some(&meta(2, "v2", log_id(2, 1, 9))), None);
+        h.record_read("k", Some(&meta(1, "v1", log_id(2, 1, 9))), None, None);
+        h.record_read("x", Some(&meta(2, "v2", log_id(2, 1, 9))), None, None);
 
         let violations = h.drain_violations();
         assert_eq!(violations.len(), 1, "{violations:?}");
@@ -764,7 +811,7 @@ mod tests {
     fn consistent_evidence_is_clean() {
         let mut h = history_with_write(1, "k", "v1");
         h.record_write_acked(1, log_id(2, 1, 9), None);
-        h.record_read("k", Some(&meta(1, "v1", log_id(2, 1, 9))), None);
+        h.record_read("k", Some(&meta(1, "v1", log_id(2, 1, 9))), None, None);
 
         let mut sm = StateMachineData::default();
         sm.data.insert("k".to_string(), meta(1, "v1", log_id(2, 1, 9)));
@@ -838,7 +885,7 @@ mod tests {
         // W2's apply at 9 observed the key absent: nothing committed below 9.
         h.record_write_acked(2, log_id(1, 1, 9), None);
         // Yet a read finds W1 committed at 5.
-        h.record_read("k", Some(&meta(1, "v1", log_id(1, 1, 5))), None);
+        h.record_read("k", Some(&meta(1, "v1", log_id(1, 1, 5))), None, None);
 
         let violations = h.drain_violations();
         assert_eq!(violations.len(), 1, "{violations:?}");
@@ -846,6 +893,57 @@ mod tests {
             serial: 1,
             ..
         }));
+    }
+
+    #[test]
+    fn absent_read_at_barrier_forbids_later_resolution_below() {
+        let mut h = history_with_write(1, "k", "v1");
+
+        // The key is absent at barrier 9: no committed write may exist <= 9.
+        h.record_read("k", None, None, Some(log_id(1, 1, 9)));
+        // Yet W1 turns up committed at 5.
+        h.record_read("k", Some(&meta(1, "v1", log_id(1, 1, 5))), None, None);
+
+        let violations = h.drain_violations();
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(matches!(&violations[0], OracleViolation::WriteBelowAbsence {
+            serial: 1,
+            ..
+        }));
+    }
+
+    #[test]
+    fn absent_read_at_barrier_detects_known_write_at_boundary() {
+        let mut h = history_with_write(1, "k", "v1");
+        h.record_write_acked(1, log_id(1, 1, 9), None);
+
+        // The barrier covers the acked position itself: <= is violated.
+        h.record_read("k", None, None, Some(log_id(1, 1, 9)));
+
+        let violations = h.drain_violations();
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(matches!(&violations[0], OracleViolation::WriteBelowAbsence {
+            serial: 1,
+            ..
+        }));
+    }
+
+    #[test]
+    fn absent_read_without_barrier_is_uninformative() {
+        let mut h = history_with_write(1, "k", "v1");
+
+        h.record_read("k", None, None, None);
+        h.record_read("k", Some(&meta(1, "v1", log_id(1, 1, 5))), None, None);
+        assert!(h.drain_violations().is_empty());
+    }
+
+    #[test]
+    fn present_read_beyond_barrier_is_clean() {
+        let mut h = history_with_write(1, "k", "v1");
+
+        // The state may have advanced past the barrier by read time.
+        h.record_read("k", Some(&meta(1, "v1", log_id(1, 1, 12))), None, Some(log_id(1, 1, 9)));
+        assert!(h.drain_violations().is_empty());
     }
 
     #[test]
