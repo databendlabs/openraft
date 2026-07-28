@@ -44,6 +44,14 @@ pub enum WriteOutcome {
     /// Acked as committed and applied at this log id.
     Acked(LogId),
     /// The call failed or timed out. The write may still commit later.
+    ///
+    /// This is the only failure outcome on purpose: no `client_write` error
+    /// variant proves the entry was never proposed. Even `ForwardToLeader`
+    /// is delivered to responders of already-appended entries when their log
+    /// is truncated or purged (`RaftCore::run_truncate_log` /
+    /// `run_purge_log`), and a purged entry may even have committed — it can
+    /// be superseded by a snapshot that contains it. Refining any error into
+    /// "definitely absent" would therefore be unsound.
     Unknown,
 }
 
