@@ -23,6 +23,12 @@
 //! - **Lost observed write** (final): likewise for the highest log id any linearizable read
 //!   observed per key — an observation of committed state is a durability commitment even when the
 //!   write that produced it was never acked.
+//! - **Predecessor chain**: an ack carries the key's previous versioned value, read by the apply at
+//!   the state directly below the new entry. It must be the newest known-committed write to the key
+//!   below that position — a committed write cannot vanish between two acks, even if no read ever
+//!   touches the window.
+//! - **Absence floor**: a write applied onto an absent key asserts the key had no committed write
+//!   below that log id, so no write to the key may ever resolve below it.
 //!
 //! A failed or timed-out write is recorded as [`WriteOutcome::Unknown`], never
 //! as "guaranteed absent": openraft may fail a `client_write` call (e.g. on
@@ -107,6 +113,27 @@ pub enum OracleViolation {
         first_serial: u64,
         second_serial: u64,
     },
+    /// An ack's previous-value evidence contradicts the known committed
+    /// writes to the key: the apply at `log_id` returned `prev` (`None` =
+    /// key absent), but the newest known-committed write to the key below
+    /// `log_id` is `newest_below`. Fires when `prev` is not below `log_id`,
+    /// when it is older than `newest_below`, or when the key was reported
+    /// absent over a committed write.
+    BrokenPredecessor {
+        key: String,
+        log_id: LogId,
+        prev: Option<LogId>,
+        newest_below: Option<LogId>,
+    },
+    /// A write resolved to a position below an absence floor: an earlier
+    /// apply at `absent_at` had observed the key absent, so no write to the
+    /// key may exist below `absent_at`.
+    WriteBelowAbsence {
+        key: String,
+        serial: u64,
+        log_id: LogId,
+        absent_at: LogId,
+    },
 }
 
 impl std::fmt::Display for OracleViolation {
@@ -165,6 +192,30 @@ impl std::fmt::Display for OracleViolation {
                     "DivergentEntry: log id {log_id} seen with serial {first_serial} and again with {second_serial}"
                 )
             }
+            Self::BrokenPredecessor {
+                key,
+                log_id,
+                prev,
+                newest_below,
+            } => {
+                write!(
+                    f,
+                    "BrokenPredecessor: key={key} apply at {log_id} returned prev {prev:?}, \
+                     newest known-committed write below is {newest_below:?}"
+                )
+            }
+            Self::WriteBelowAbsence {
+                key,
+                serial,
+                log_id,
+                absent_at,
+            } => {
+                write!(
+                    f,
+                    "WriteBelowAbsence: key={key} serial={serial} resolved at {log_id}, \
+                     but the apply at {absent_at} observed the key absent"
+                )
+            }
         }
     }
 }
@@ -202,6 +253,12 @@ pub struct ClientHistory {
     resolved_log: BTreeMap<u64, LogId>,
     /// log id -> serial: the reverse direction of [`Self::resolved_log`].
     resolved_serial: BTreeMap<LogId, u64>,
+    /// Per key: every exactly-positioned committed write (log id -> serial),
+    /// accumulated from all evidence via [`Self::resolve`].
+    committed_by_key: BTreeMap<String, BTreeMap<LogId, u64>>,
+    /// Per key: the highest log id whose apply observed the key absent.
+    /// No write to the key may ever resolve below this floor.
+    absent_below: BTreeMap<String, LogId>,
     /// Per key: highest acked (log_id, serial).
     max_acked: BTreeMap<String, (LogId, u64)>,
     /// Per key: log id observed by the latest completed read.
@@ -222,19 +279,25 @@ impl ClientHistory {
     }
 
     /// Record a successful `client_write` response.
-    pub fn record_write_acked(&mut self, serial: u64, log_id: LogId) {
+    ///
+    /// `prev` is the key's previous versioned value returned by the apply
+    /// ([`crate::typ::Response::prev`]): an exact observation of the key at
+    /// the state directly below `log_id`, checked against the predecessor
+    /// chain.
+    pub fn record_write_acked(&mut self, serial: u64, log_id: LogId, prev: Option<ValueMeta>) {
         self.stats.writes_acked += 1;
-        self.resolve(serial, log_id);
         let Some(attempt) = self.attempts.get_mut(&serial) else {
             return;
         };
         attempt.outcome = WriteOutcome::Acked(log_id);
 
         let key = attempt.key.clone();
+        self.resolve(&key, serial, log_id);
         let is_newer = self.max_acked.get(&key).is_none_or(|(acked, _)| log_id > *acked);
         if is_newer {
-            self.max_acked.insert(key, (log_id, serial));
+            self.max_acked.insert(key.clone(), (log_id, serial));
         }
+        self.check_prev_chain(&key, log_id, prev.as_ref());
     }
 
     /// Record a failed or timed-out `client_write` call.
@@ -266,7 +329,7 @@ impl ClientHistory {
 
         if let Some(meta) = observed {
             self.check_value_is_attempted(key, meta);
-            self.resolve(meta.serial, meta.log_id);
+            self.resolve(key, meta.serial, meta.log_id);
         }
 
         // Monotonic reads: this client reads sequentially, so per key the
@@ -346,19 +409,24 @@ impl ClientHistory {
             }
             for (key, meta) in &sm.data {
                 self.check_value_is_attempted(key, meta);
-                self.resolve(meta.serial, meta.log_id);
+                self.resolve(key, meta.serial, meta.log_id);
             }
         }
     }
 
-    /// Pin `serial` to `log_id` and check the serial <-> log id bijection.
+    /// Pin `serial` to `log_id` on `key` and check the serial <-> log id
+    /// bijection.
     ///
-    /// Every evidence source feeds this: write acks, read observations and
-    /// final-scan observations. A request is proposed exactly once and a log
-    /// entry has exactly one log id, so the mapping must be one-to-one in
-    /// both directions; any disagreement means an entry was applied twice or
-    /// an ack pointed at the wrong entry.
-    fn resolve(&mut self, serial: u64, log_id: LogId) {
+    /// Every evidence source feeds this: write acks, read observations,
+    /// previous-value observations and final-scan observations. A request is
+    /// proposed exactly once and a log entry has exactly one log id, so the
+    /// mapping must be one-to-one in both directions; any disagreement means
+    /// an entry was applied twice or an ack pointed at the wrong entry.
+    ///
+    /// `key` is the key the value was observed under. The position also
+    /// feeds the per-key committed-write chain and is checked against the
+    /// key's absence floor.
+    fn resolve(&mut self, key: &str, serial: u64, log_id: LogId) {
         match self.resolved_log.get(&serial) {
             None => {
                 self.resolved_log.insert(serial, log_id);
@@ -384,6 +452,60 @@ impl ClientHistory {
                 });
             }
             Some(_) => {}
+        }
+        self.committed_by_key.entry(key.to_string()).or_default().insert(log_id, serial);
+        if let Some(absent_at) = self.absent_below.get(key)
+            && log_id < *absent_at
+        {
+            self.violations.push(OracleViolation::WriteBelowAbsence {
+                key: key.to_string(),
+                serial,
+                log_id,
+                absent_at: *absent_at,
+            });
+        }
+    }
+
+    /// Check an ack's previous-value evidence against the predecessor chain.
+    ///
+    /// The apply of the entry at `log_id` read the key's state directly
+    /// below its own position, so `prev` must be the newest committed write
+    /// to the key below `log_id`. Any known-committed write above `prev`
+    /// (or any at all, when `prev` is `None`) vanished from the key without
+    /// being overwritten. A `None` also establishes the key's absence floor.
+    fn check_prev_chain(&mut self, key: &str, log_id: LogId, prev: Option<&ValueMeta>) {
+        if let Some(meta) = prev {
+            self.check_value_is_attempted(key, meta);
+            self.resolve(key, meta.serial, meta.log_id);
+        }
+
+        let newest_below = self
+            .committed_by_key
+            .get(key)
+            .and_then(|writes| writes.range(..log_id).next_back())
+            .map(|(l, _)| *l);
+        let prev_pos = prev.map(|m| m.log_id);
+        let broken = match (prev_pos, newest_below) {
+            (Some(p), _) if p >= log_id => true,
+            (Some(p), Some(newest)) => p < newest,
+            (Some(_), None) => false,
+            (None, Some(_)) => true,
+            (None, None) => false,
+        };
+        if broken {
+            self.violations.push(OracleViolation::BrokenPredecessor {
+                key: key.to_string(),
+                log_id,
+                prev: prev_pos,
+                newest_below,
+            });
+        }
+
+        if prev.is_none() {
+            let floor = self.absent_below.entry(key.to_string()).or_insert(log_id);
+            if *floor < log_id {
+                *floor = log_id;
+            }
         }
     }
 
@@ -486,7 +608,7 @@ mod tests {
     #[test]
     fn stale_read_detected() {
         let mut h = history_with_write(1, "k", "v1");
-        h.record_write_acked(1, log_id(2, 1, 9));
+        h.record_write_acked(1, log_id(2, 1, 9), None);
 
         let floor = h.acked_floor("k");
         assert_eq!(floor, Some(log_id(2, 1, 9)));
@@ -502,7 +624,7 @@ mod tests {
     fn read_at_or_above_floor_is_clean() {
         let mut h = history_with_write(1, "k", "v1");
         h.record_write_attempt(2, "k".to_string(), "v2".to_string());
-        h.record_write_acked(1, log_id(2, 1, 9));
+        h.record_write_acked(1, log_id(2, 1, 9), None);
 
         let floor = h.acked_floor("k");
         // Exactly the acked write.
@@ -525,7 +647,7 @@ mod tests {
     #[test]
     fn lost_acked_write_detected_in_final_state() {
         let mut h = history_with_write(1, "k", "v1");
-        h.record_write_acked(1, log_id(2, 1, 9));
+        h.record_write_acked(1, log_id(2, 1, 9), None);
 
         // Node 1 lost the key entirely; node 2 has an older log id.
         let mut sm1 = StateMachineData::default();
@@ -592,7 +714,7 @@ mod tests {
     #[test]
     fn duplicate_apply_detected_across_ack_and_read() {
         let mut h = history_with_write(1, "k", "v1");
-        h.record_write_acked(1, log_id(2, 1, 9));
+        h.record_write_acked(1, log_id(2, 1, 9), None);
 
         // The same serial shows up at a different log position.
         h.record_read("k", Some(&meta(1, "v1", log_id(3, 1, 20))), None);
@@ -608,7 +730,7 @@ mod tests {
     #[test]
     fn duplicate_apply_detected_in_final_scan() {
         let mut h = history_with_write(1, "k", "v1");
-        h.record_write_acked(1, log_id(2, 1, 9));
+        h.record_write_acked(1, log_id(2, 1, 9), None);
 
         // Final state holds the acked serial at a higher position: not a
         // lost write, but the same entry applied twice.
@@ -641,7 +763,7 @@ mod tests {
     #[test]
     fn consistent_evidence_is_clean() {
         let mut h = history_with_write(1, "k", "v1");
-        h.record_write_acked(1, log_id(2, 1, 9));
+        h.record_write_acked(1, log_id(2, 1, 9), None);
         h.record_read("k", Some(&meta(1, "v1", log_id(2, 1, 9))), None);
 
         let mut sm = StateMachineData::default();
@@ -652,10 +774,129 @@ mod tests {
     }
 
     #[test]
+    fn prev_chain_consistent_is_clean() {
+        let mut h = history_with_write(1, "k", "v1");
+        h.record_write_attempt(2, "k".to_string(), "v2".to_string());
+
+        h.record_write_acked(1, log_id(1, 1, 5), None);
+        h.record_write_acked(2, log_id(1, 1, 9), Some(meta(1, "v1", log_id(1, 1, 5))));
+        assert!(h.drain_violations().is_empty());
+    }
+
+    #[test]
+    fn broken_predecessor_missed_committed_write() {
+        let mut h = history_with_write(1, "k", "v1");
+        h.record_write_attempt(2, "k".to_string(), "v2".to_string());
+        h.record_write_attempt(3, "k".to_string(), "v3".to_string());
+
+        h.record_write_acked(1, log_id(1, 1, 5), None);
+        h.record_write_acked(2, log_id(1, 1, 9), Some(meta(1, "v1", log_id(1, 1, 5))));
+        // W3's apply skipped the committed W2@9: it saw W1@5 as predecessor.
+        h.record_write_acked(3, log_id(1, 1, 12), Some(meta(1, "v1", log_id(1, 1, 5))));
+
+        let violations = h.drain_violations();
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(matches!(&violations[0], OracleViolation::BrokenPredecessor { .. }));
+    }
+
+    #[test]
+    fn broken_predecessor_absent_over_committed_write() {
+        let mut h = history_with_write(1, "k", "v1");
+        h.record_write_attempt(2, "k".to_string(), "v2".to_string());
+
+        h.record_write_acked(1, log_id(1, 1, 5), None);
+        // W2's apply saw the key absent although W1 committed below it.
+        h.record_write_acked(2, log_id(1, 1, 9), None);
+
+        let violations = h.drain_violations();
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(matches!(&violations[0], OracleViolation::BrokenPredecessor {
+            prev: None,
+            newest_below: Some(_),
+            ..
+        }));
+    }
+
+    #[test]
+    fn prev_at_or_above_own_position_detected() {
+        let mut h = history_with_write(1, "k", "v1");
+        h.record_write_attempt(2, "k".to_string(), "v2".to_string());
+
+        // The apply at 9 returned a predecessor from position 10.
+        h.record_write_acked(2, log_id(1, 1, 9), Some(meta(1, "v1", log_id(1, 1, 10))));
+
+        let violations = h.drain_violations();
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(matches!(&violations[0], OracleViolation::BrokenPredecessor { .. }));
+    }
+
+    #[test]
+    fn write_below_absence_detected() {
+        let mut h = history_with_write(1, "k", "v1");
+        h.record_write_attempt(2, "k".to_string(), "v2".to_string());
+
+        // W2's apply at 9 observed the key absent: nothing committed below 9.
+        h.record_write_acked(2, log_id(1, 1, 9), None);
+        // Yet a read finds W1 committed at 5.
+        h.record_read("k", Some(&meta(1, "v1", log_id(1, 1, 5))), None);
+
+        let violations = h.drain_violations();
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(matches!(&violations[0], OracleViolation::WriteBelowAbsence {
+            serial: 1,
+            ..
+        }));
+    }
+
+    #[test]
+    fn prev_of_unacked_write_is_clean() {
+        // W2's prev names the never-acked W1: committed evidence, not a
+        // violation; W1's late ack at exactly that position stays consistent.
+        let mut h = history_with_write(1, "k", "v1");
+        h.record_write_attempt(2, "k".to_string(), "v2".to_string());
+
+        h.record_write_acked(2, log_id(1, 1, 9), Some(meta(1, "v1", log_id(1, 1, 5))));
+        h.record_write_acked(1, log_id(1, 1, 5), None);
+        assert!(h.drain_violations().is_empty());
+    }
+
+    #[test]
+    fn duplicate_apply_detected_via_prev_value() {
+        let mut h = history_with_write(1, "k", "v1");
+        h.record_write_attempt(2, "k".to_string(), "v2".to_string());
+
+        h.record_write_acked(1, log_id(1, 1, 5), None);
+        // W2's prev carries W1 at position 7, but W1 was acked at 5.
+        h.record_write_acked(2, log_id(1, 1, 9), Some(meta(1, "v1", log_id(1, 1, 7))));
+
+        let violations = h.drain_violations();
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(matches!(&violations[0], OracleViolation::DuplicateApply {
+            serial: 1,
+            ..
+        }));
+    }
+
+    #[test]
+    fn phantom_prev_value_detected() {
+        let mut h = history_with_write(2, "k", "v2");
+
+        // The apply returned a predecessor no tracked write produced.
+        h.record_write_acked(2, log_id(1, 1, 9), Some(meta(99, "vx", log_id(1, 1, 5))));
+
+        let violations = h.drain_violations();
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(matches!(&violations[0], OracleViolation::PhantomValue {
+            serial: 99,
+            ..
+        }));
+    }
+
+    #[test]
     fn final_durability_clean_when_overwritten_by_later_write() {
         let mut h = history_with_write(1, "k", "v1");
         h.record_write_attempt(2, "k".to_string(), "v2".to_string());
-        h.record_write_acked(1, log_id(2, 1, 9));
+        h.record_write_acked(1, log_id(2, 1, 9), None);
 
         // The acked write was overwritten by a later, never-acked write:
         // that is a legal linearizable history.

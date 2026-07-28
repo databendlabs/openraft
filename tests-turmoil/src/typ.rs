@@ -39,9 +39,14 @@ impl std::fmt::Display for Request {
 }
 
 /// Client response.
+///
+/// `prev` is the key's previous versioned value, read by the apply at state
+/// `log_id - 1`: an exact, linearizable observation of the key immediately
+/// below the write's own log position, which the oracle uses to verify the
+/// per-key predecessor chain.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Response {
-    pub value: Option<String>,
+    pub prev: Option<crate::store::ValueMeta>,
 }
 
 openraft::declare_raft_types!(
