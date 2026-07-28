@@ -16,4 +16,5 @@ mod t50_snapshot_line_rate_to_snapshot;
 mod t50_snapshot_when_lacking_log;
 mod t51_after_snapshot_add_learner_and_request_a_log;
 mod t60_snapshot_chunk_size;
+mod t90_issue_1892_inconsistent_snapshot;
 mod t90_issue_808_snapshot_to_unreachable_node_should_not_block;

@@ -1025,6 +1025,22 @@ where
     /// This method is used to implement an application defined snapshot transmission.
     /// The application receives a snapshot from the leader, in chunks or a stream, and
     /// then rebuild a snapshot, then pass the snapshot to Raft to install.
+    ///
+    /// # Panics
+    ///
+    /// If `vote` is accepted, the input must be one a protocol-following cluster can produce,
+    /// otherwise this method panics (also in release builds):
+    /// - the snapshot's last log id must not be beyond the leadership of `vote`: no leader owns a
+    ///   snapshot with a log id greater than its own vote;
+    /// - a snapshot greater than the locally committed log id must not be at a smaller index: it
+    ///   would contradict locally committed logs.
+    ///
+    /// Such input indicates a forged or corrupted snapshot, e.g., one built by a previous
+    /// incarnation of the cluster. Installing it would corrupt the log id order.
+    #[since(
+        version = "0.10.0",
+        change = "panic on a snapshot inconsistent with the vote or with locally committed logs"
+    )]
     #[since(version = "0.9.0")]
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn install_full_snapshot(

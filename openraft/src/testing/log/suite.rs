@@ -146,6 +146,7 @@ where
         run_test(builder, Self::get_initial_state_with_state).await?;
         run_test(builder, Self::get_initial_state_last_log_gt_sm).await?;
         run_test(builder, Self::get_initial_state_last_log_lt_sm).await?;
+        run_test(builder, Self::get_initial_state_inverted_log_order).await?;
         run_test(builder, Self::get_initial_state_log_ids).await?;
         run_test(builder, Self::get_initial_state_re_apply_committed).await?;
         run_test(builder, Self::save_vote).await?;
@@ -628,19 +629,39 @@ where
 
         append(&mut store, [blank_ent_0::<C>(1, 2)]).await?;
 
-        apply(&mut sm, [blank_ent_0::<C>(3, 1)]).await?;
+        apply(&mut sm, [blank_ent_0::<C>(3, 3)]).await?;
 
         let initial = StorageHelper::new(&mut store, &mut sm).with_id(NODE_ID.into()).get_initial_state().await?;
 
         assert_eq!(
-            Some(&log_id_0::<C>(3, 1)),
+            Some(&log_id_0::<C>(3, 3)),
             initial.last_log_id(),
             "state machine has higher log"
         );
         assert_eq!(
             initial.last_purged_log_id().cloned(),
-            Some(log_id_0::<C>(3, 1)),
+            Some(log_id_0::<C>(3, 3)),
             "state machine has higher log"
+        );
+        Ok(())
+    }
+
+    pub async fn get_initial_state_inverted_log_order(mut store: LS, mut sm: SM) -> Result<(), io::Error> {
+        Self::default_vote(&mut store).await?;
+
+        // The log tail (1,0,2) is at a greater index than the applied (3,0,1) but smaller in log
+        // id order: the log store contradicts the state machine; startup must refuse it.
+        append(&mut store, [blank_ent_0::<C>(1, 2)]).await?;
+
+        apply(&mut sm, [blank_ent_0::<C>(3, 1)]).await?;
+
+        let res = StorageHelper::new(&mut store, &mut sm).with_id(NODE_ID.into()).get_initial_state().await;
+
+        let err = res.unwrap_err();
+        assert!(
+            err.to_string().contains("inverted log order"),
+            "expect inverted-log-order error, got: {}",
+            err
         );
         Ok(())
     }
