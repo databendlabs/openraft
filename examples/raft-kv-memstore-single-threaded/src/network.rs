@@ -1,15 +1,16 @@
+use std::future::Future;
+
 use openraft::BasicNode;
+use openraft::OptionalSend;
 use openraft::RaftNetworkFactory;
+use openraft::errors::ReplicationClosed;
 use openraft::network::RPCOption;
-use openraft_legacy::prelude::*;
+use openraft::network::v2::RaftNetworkV2;
 
 use crate::NodeId;
 use crate::TypeConfig;
 use crate::router::Router;
 use crate::typ::*;
-
-type InstallSnapshotRequest = openraft_legacy::network_v1::InstallSnapshotRequest<TypeConfig>;
-type InstallSnapshotResponse = openraft_legacy::network_v1::InstallSnapshotResponse<TypeConfig>;
 
 pub struct Connection {
     router: Router,
@@ -17,37 +18,42 @@ pub struct Connection {
 }
 
 impl RaftNetworkFactory<TypeConfig> for Router {
-    type Network = Adapter<TypeConfig, Connection, SnapshotData>;
+    type Network = Connection;
 
     async fn new_client(&mut self, target: NodeId, _node: &BasicNode) -> Self::Network {
         Connection {
             router: self.clone(),
             target,
         }
-        .into_v2()
     }
 }
 
-impl RaftNetwork<TypeConfig> for Connection {
+impl RaftNetworkV2<TypeConfig> for Connection {
+    type SnapshotData = crate::SnapshotData;
+
     async fn append_entries(
         &mut self,
         req: AppendEntriesRequest,
         _option: RPCOption,
-    ) -> Result<AppendEntriesResponse, RPCError<RaftError>> {
+    ) -> Result<AppendEntriesResponse, RPCError> {
         let resp = self.router.send(self.target, "/raft/append", req).await?;
         Ok(resp)
     }
 
-    async fn install_snapshot(
+    /// A real application should replace this method with customized implementation.
+    async fn full_snapshot(
         &mut self,
-        req: InstallSnapshotRequest,
+        vote: Vote,
+        snapshot: Snapshot,
+        _cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         _option: RPCOption,
-    ) -> Result<InstallSnapshotResponse, RPCError<RaftError<InstallSnapshotError>>> {
+    ) -> Result<SnapshotResponse, StreamingError> {
+        let req = (vote, snapshot.meta, snapshot.snapshot.into_inner());
         let resp = self.router.send(self.target, "/raft/snapshot", req).await?;
         Ok(resp)
     }
 
-    async fn vote(&mut self, req: VoteRequest, _option: RPCOption) -> Result<VoteResponse, RPCError<RaftError>> {
+    async fn vote(&mut self, req: VoteRequest, _option: RPCOption) -> Result<VoteResponse, RPCError> {
         let resp = self.router.send(self.target, "/raft/vote", req).await?;
         Ok(resp)
     }
