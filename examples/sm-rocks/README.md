@@ -1,4 +1,4 @@
-# openraft-rocksstore
+# sm-rocks
 
 A RocksDB-backed persistent state machine implementation for Openraft.
 
@@ -19,11 +19,11 @@ Built with [RocksDB](https://docs.rs/rocksdb/latest/rocksdb/) for production-gra
 
 ## Usage
 
-```rust
-use openraft_rocksstore::RocksStore;
+`new()` opens one RocksDB instance and returns a log store and a state machine
+that share it, so both halves of storage live in the same database:
 
-// Create a persistent store
-let store = RocksStore::new(path)?;
+```rust
+let (log_store, state_machine) = sm_rocks::new::<TypeConfig, _>(db_path).await?;
 ```
 
 ## Architecture
@@ -32,13 +32,13 @@ let store = RocksStore::new(path)?;
 - State machine data in separate column family
 
 **Key Code Locations**:
-- Storage implementation: `src/lib.rs`
+- State machine implementation: `src/state_machine.rs`
 - Type definitions: See parent example for network and client implementations
 
 ## Comparison
 
-| Feature | rocksstore | memstore |
-|---------|------------|----------|
+| Feature | sm-rocks | [sm-mem](../sm-mem/) |
+|---------|----------|----------------------|
 | Storage | RocksDB (disk) | Memory |
 | Persistence | Yes | No |
 | Recovery | Full | None |

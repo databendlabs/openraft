@@ -1,7 +1,6 @@
 [package]
-name = "openraft-rocksstore"
-description = "A RocksDB-based implementation of the `openraft::RaftStateMachine` trait."
-documentation = "https://docs.rs/openraft-rocksstore"
+name = "sm-rocks"
+description = "An example RocksDB-backed state machine for `openraft`."
 readme = "README.md"
 
 version = "0.1.0"
