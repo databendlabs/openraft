@@ -10,6 +10,9 @@
 //!
 //! - **Phantom value**: an observed value must correspond to a tracked write attempt (same serial,
 //!   key and value). Anything else is corruption.
+//! - **One serial, one log id**: every request is proposed exactly once, so all sightings of a
+//!   serial (ack, read, final scan) must agree on its log id, and one log id must never be seen
+//!   carrying two different serials.
 //! - **Monotonic reads**: sequential linearizable reads of one key must observe non-decreasing log
 //!   ids. Keys are never deleted, so a key can never be observed absent after being observed
 //!   present.
@@ -74,6 +77,17 @@ pub enum OracleViolation {
         acked: LogId,
         found: Option<LogId>,
     },
+    /// One serial was seen at two different log ids: the same request was
+    /// applied at two log positions, or an ack pointed at a different entry
+    /// than the one later observed.
+    DuplicateApply { serial: u64, first: LogId, second: LogId },
+    /// One log id was seen carrying two different serials: a single log
+    /// position held two different contents.
+    DivergentEntry {
+        log_id: LogId,
+        first_serial: u64,
+        second_serial: u64,
+    },
 }
 
 impl std::fmt::Display for OracleViolation {
@@ -103,6 +117,22 @@ impl std::fmt::Display for OracleViolation {
                 write!(
                     f,
                     "LostAckedWrite: n{node} key={key} acked at {acked}, final state has {found:?}"
+                )
+            }
+            Self::DuplicateApply { serial, first, second } => {
+                write!(
+                    f,
+                    "DuplicateApply: serial={serial} seen at log id {first} and again at {second}"
+                )
+            }
+            Self::DivergentEntry {
+                log_id,
+                first_serial,
+                second_serial,
+            } => {
+                write!(
+                    f,
+                    "DivergentEntry: log id {log_id} seen with serial {first_serial} and again with {second_serial}"
                 )
             }
         }
@@ -138,6 +168,10 @@ impl std::fmt::Display for WorkloadStats {
 pub struct ClientHistory {
     /// serial -> attempt. Serials are unique across one simulation.
     attempts: BTreeMap<u64, WriteAttempt>,
+    /// serial -> log id, pinned by the first evidence (ack or observation).
+    resolved_log: BTreeMap<u64, LogId>,
+    /// log id -> serial: the reverse direction of [`Self::resolved_log`].
+    resolved_serial: BTreeMap<LogId, u64>,
     /// Per key: highest acked (log_id, serial).
     max_acked: BTreeMap<String, (LogId, u64)>,
     /// Per key: log id observed by the latest completed read.
@@ -160,6 +194,7 @@ impl ClientHistory {
     /// Record a successful `client_write` response.
     pub fn record_write_acked(&mut self, serial: u64, log_id: LogId) {
         self.stats.writes_acked += 1;
+        self.resolve(serial, log_id);
         let Some(attempt) = self.attempts.get_mut(&serial) else {
             return;
         };
@@ -201,6 +236,7 @@ impl ClientHistory {
 
         if let Some(meta) = observed {
             self.check_value_is_attempted(key, meta);
+            self.resolve(meta.serial, meta.log_id);
         }
 
         // Monotonic reads: this client reads sequentially, so per key the
@@ -262,7 +298,44 @@ impl ClientHistory {
             }
             for (key, meta) in &sm.data {
                 self.check_value_is_attempted(key, meta);
+                self.resolve(meta.serial, meta.log_id);
             }
+        }
+    }
+
+    /// Pin `serial` to `log_id` and check the serial <-> log id bijection.
+    ///
+    /// Every evidence source feeds this: write acks, read observations and
+    /// final-scan observations. A request is proposed exactly once and a log
+    /// entry has exactly one log id, so the mapping must be one-to-one in
+    /// both directions; any disagreement means an entry was applied twice or
+    /// an ack pointed at the wrong entry.
+    fn resolve(&mut self, serial: u64, log_id: LogId) {
+        match self.resolved_log.get(&serial) {
+            None => {
+                self.resolved_log.insert(serial, log_id);
+            }
+            Some(first) if *first != log_id => {
+                self.violations.push(OracleViolation::DuplicateApply {
+                    serial,
+                    first: *first,
+                    second: log_id,
+                });
+            }
+            Some(_) => {}
+        }
+        match self.resolved_serial.get(&log_id) {
+            None => {
+                self.resolved_serial.insert(log_id, serial);
+            }
+            Some(first) if *first != serial => {
+                self.violations.push(OracleViolation::DivergentEntry {
+                    log_id,
+                    first_serial: *first,
+                    second_serial: serial,
+                });
+            }
+            Some(_) => {}
         }
     }
 
@@ -324,10 +397,11 @@ mod tests {
 
         // Unknown serial.
         h.record_read("k", Some(&meta(99, "v1", log_id(1, 1, 5))), None);
-        // Right serial, wrong value.
+        // Right serial, wrong value. (Same log id in both serial-1 reads so
+        // only the phantom check fires, not the bijection check.)
         h.record_read("k", Some(&meta(1, "other", log_id(1, 1, 6))), None);
         // Right serial and value, wrong key.
-        h.record_read("x", Some(&meta(1, "v1", log_id(1, 1, 7))), None);
+        h.record_read("x", Some(&meta(1, "v1", log_id(1, 1, 6))), None);
 
         let violations = h.drain_violations();
         assert_eq!(violations.len(), 3);
@@ -431,6 +505,68 @@ mod tests {
             })),
             "{violations:?}"
         );
+    }
+
+    #[test]
+    fn duplicate_apply_detected_across_ack_and_read() {
+        let mut h = history_with_write(1, "k", "v1");
+        h.record_write_acked(1, log_id(2, 1, 9));
+
+        // The same serial shows up at a different log position.
+        h.record_read("k", Some(&meta(1, "v1", log_id(3, 1, 20))), None);
+
+        let violations = h.drain_violations();
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(matches!(&violations[0], OracleViolation::DuplicateApply {
+            serial: 1,
+            ..
+        }));
+    }
+
+    #[test]
+    fn duplicate_apply_detected_in_final_scan() {
+        let mut h = history_with_write(1, "k", "v1");
+        h.record_write_acked(1, log_id(2, 1, 9));
+
+        // Final state holds the acked serial at a higher position: not a
+        // lost write, but the same entry applied twice.
+        let mut sm = StateMachineData::default();
+        sm.data.insert("k".to_string(), meta(1, "v1", log_id(3, 1, 12)));
+        h.check_final_durability(&[(1, sm)]);
+
+        let violations = h.drain_violations();
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(matches!(&violations[0], OracleViolation::DuplicateApply {
+            serial: 1,
+            ..
+        }));
+    }
+
+    #[test]
+    fn divergent_entry_detected() {
+        let mut h = history_with_write(1, "k", "v1");
+        h.record_write_attempt(2, "x".to_string(), "v2".to_string());
+
+        // Two different serials observed at the same log id.
+        h.record_read("k", Some(&meta(1, "v1", log_id(2, 1, 9))), None);
+        h.record_read("x", Some(&meta(2, "v2", log_id(2, 1, 9))), None);
+
+        let violations = h.drain_violations();
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(matches!(&violations[0], OracleViolation::DivergentEntry { .. }));
+    }
+
+    #[test]
+    fn consistent_evidence_is_clean() {
+        let mut h = history_with_write(1, "k", "v1");
+        h.record_write_acked(1, log_id(2, 1, 9));
+        h.record_read("k", Some(&meta(1, "v1", log_id(2, 1, 9))), None);
+
+        let mut sm = StateMachineData::default();
+        sm.data.insert("k".to_string(), meta(1, "v1", log_id(2, 1, 9)));
+        h.check_final_durability(&[(1, sm)]);
+
+        assert!(h.drain_violations().is_empty());
     }
 
     #[test]
