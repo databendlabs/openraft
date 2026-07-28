@@ -40,6 +40,7 @@ check-parallel:
 
 test-examples:
 	cargo test --manifest-path examples/log-mem/Cargo.toml
+	cargo test --manifest-path examples/log-rocks/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-memstore/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-memstore-grpc/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-memstore-network-v2/Cargo.toml
@@ -104,6 +105,7 @@ lint:
 	cargo fmt --manifest-path examples/network-v1-http/Cargo.toml
 	cargo fmt --manifest-path examples/network-v2-http/Cargo.toml
 	cargo fmt --manifest-path examples/log-mem/Cargo.toml
+	cargo fmt --manifest-path examples/log-rocks/Cargo.toml
 	cargo fmt --manifest-path examples/sm-mem/Cargo.toml
 	cargo fmt --manifest-path examples/rocksstore/Cargo.toml
 	cargo fmt --manifest-path examples/types-kv/Cargo.toml
@@ -126,6 +128,7 @@ lint:
 	cargo clippy --no-deps --manifest-path examples/network-v1-http/Cargo.toml                         --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/network-v2-http/Cargo.toml                         --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/log-mem/Cargo.toml                                --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path examples/log-rocks/Cargo.toml                              --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/sm-mem/Cargo.toml                                --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/rocksstore/Cargo.toml                                --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/types-kv/Cargo.toml                               --all-targets -- -D warnings
@@ -154,6 +157,7 @@ unused_dep:
 	cargo machete examples/raft-kv-memstore-network-v2
 	cargo machete examples/multi-raft-kv
 	cargo machete examples/rocksstore
+	cargo machete examples/log-rocks
 	cargo machete multiraft
 	cargo machete rt-compio
 	cargo machete rt-monoio
@@ -177,6 +181,7 @@ check:
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/network-v1-http/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/network-v2-http/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/log-mem/Cargo.toml
+	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/log-rocks/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/sm-mem/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/rocksstore/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/types-kv/Cargo.toml
@@ -201,6 +206,7 @@ clean:
 	cargo clean --manifest-path examples/network-v1-http/Cargo.toml
 	cargo clean --manifest-path examples/network-v2-http/Cargo.toml
 	cargo clean --manifest-path examples/log-mem/Cargo.toml
+	cargo clean --manifest-path examples/log-rocks/Cargo.toml
 	cargo clean --manifest-path examples/sm-mem/Cargo.toml
 	cargo clean --manifest-path examples/rocksstore/Cargo.toml
 	cargo clean --manifest-path examples/types-kv/Cargo.toml

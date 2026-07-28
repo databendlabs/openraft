@@ -1,12 +1,11 @@
-//! This rocks-db backed storage implement the v2 storage API: [`RaftLogStorage`] and
-//! [`RaftStateMachine`] traits. The state machine stores all data directly in RocksDB,
-//! providing full persistence. Log entries are applied directly to disk, and snapshots
+//! This RocksDB-backed storage implements the [`openraft::storage::RaftStateMachine`] trait.
+//! The state machine stores all data directly in RocksDB,
+//! providing full persistence. Entries are applied directly to disk, and snapshots
 //! use RocksDB's snapshot mechanism for consistent point-in-time views.
 #![deny(unused_crate_dependencies)]
 #![deny(unused_qualifications)]
 #![allow(clippy::uninlined_format_args)]
 
-pub mod log_store;
 pub mod state_machine;
 
 #[cfg(test)]
@@ -16,12 +15,12 @@ use std::io;
 use std::path::Path;
 use std::sync::Arc;
 
+use log_rocks::RocksLogStore;
 use openraft::RaftTypeConfig;
 use rocksdb::ColumnFamilyDescriptor;
 use rocksdb::DB;
 use rocksdb::Options;
 
-use crate::log_store::RocksLogStore;
 pub use crate::state_machine::RocksStateMachine;
 
 pub type RocksNodeId = u64;

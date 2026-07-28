@@ -17,7 +17,7 @@ This directory contains example applications demonstrating different implementat
 | Example | Log | State Machine | RaftNetwork Impl | RaftNetwork | Client | Server | Special Features |
 |---------|-----|---------------|------------------|-------------|--------|--------|------------------|
 | [raft-kv-memstore] | [log-mem] | [sm-mem] | HTTP/reqwest([network-v2]) | RaftNetworkV2 | [app-http] | [app-http] | Basic example |
-| [raft-kv-rocksdb] | [rocksstore] | [rocksstore] | HTTP/reqwest([network-v2]) | RaftNetworkV2 | [app-http] | [app-http] | Persistent storage |
+| [raft-kv-rocksdb] | [log-rocks] | [rocksstore] | HTTP/reqwest([network-v2]) | RaftNetworkV2 | [app-http] | [app-http] | Persistent storage |
 | [raft-kv-memstore-network-v2] | [log-mem] | [sm-mem] | HTTP/reqwest([network-v2]) | RaftNetworkV2 | [app-http] | [app-http] | Snapshot replication |
 | [multi-raft-kv] | [log-mem] | [sm-mem] | HTTP/channel | GroupRouter | channel | in-memory | Multi-Raft groups |
 | [raft-kv-memstore-grpc] | [log-mem] | in-memory | gRPC/tonic | RaftNetwork | tonic | tonic | gRPC transport |
@@ -29,8 +29,13 @@ This directory contains example applications demonstrating different implementat
 
 ### Storage Implementations
 - **[log-mem]** - In-memory Raft Log Store using `std::collections::BTreeMap`
+- **[log-rocks]** - RocksDB-based persistent Raft Log Store
 - **[sm-mem]** - In-memory KV State Machine implementation
-- **[rocksstore]** - RocksDB-based persistent storage using `rocksdb` crate
+- **[rocksstore]** - RocksDB-based persistent state machine
+
+Performance note: Raft log workloads are mostly append-only. RocksDB's general-purpose LSM design
+adds compaction and write-amplification overhead, so [log-rocks] is a durable example rather than an
+optimal-performance log store.
 
 ### Backward Compatibility (since 0.10)
 
@@ -59,6 +64,7 @@ The following symbolic links are provided for backward compatibility:
 [raft-kv-memstore-opendal-snapshot-data]: raft-kv-memstore-opendal-snapshot-data/
 [multi-raft-kv]: multi-raft-kv/
 [log-mem]: log-mem/
+[log-rocks]: log-rocks/
 [sm-mem]: sm-mem/
 [rocksstore]: rocksstore/
 [network-v2]: network-v2-http/

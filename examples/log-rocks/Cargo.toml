@@ -1,36 +1,27 @@
 [package]
-name = "openraft-rocksstore"
-description = "A RocksDB-based implementation of the `openraft::RaftStateMachine` trait."
-documentation = "https://docs.rs/openraft-rocksstore"
+name = "log-rocks"
+version = "0.1.0"
 readme = "README.md"
 
-version = "0.1.0"
 edition = "2024"
 authors = [
     "drdr xp <drdr.xp@gmail.com>",
 ]
 categories = ["algorithms", "asynchronous", "data-structures"]
+description = "An example RocksDB-backed log storage for `openraft`."
 homepage = "https://github.com/databendlabs/openraft"
 keywords = ["raft", "consensus"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/databendlabs/openraft"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-log-rocks = { path = "../log-rocks" }
 openraft = { path = "../../openraft", version = "0.10.0-alpha.31", features = ["serde", "type-alias"] }
-types-kv = { path = "../types-kv" }
 
-futures    = { version = "0.3" }
-rand       = { version = "0.9" }
+byteorder  = { version = "1.4.3" }
 rocksdb    = { version = "0.22.0" }
-serde      = { version = "1.0.114", features = ["derive"] }
+serde      = { version = "1.0.114" }
 serde_json = { version = "1.0.57" }
 tracing    = { version = "0.1.40" }
-
-[dev-dependencies]
-tempfile = { version = "3.4.0" }
 
 [features]
 bt = ["openraft/bt"]
