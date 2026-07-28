@@ -1,0 +1,12 @@
+# Force `rustix`'s libc backend.
+#
+# `tide 0.16` -> `async-h1 2.3` -> `async-io 1.x` pins `rustix 0.37`, whose `linux_raw` backend
+# tags its `Errno` with `#[rustc_layout_scalar_valid_range_start/_end]`. Current nightly rustc
+# rejects those attributes outside the compiler, so the crate no longer builds on nightly Linux.
+# `rustix 0.37.28` is the last release of that line and carries no fix, and `async-h1` requires
+# `async-io ^1.13`, so no dependency update resolves it.
+#
+# The libc backend does not compile that module. `rustix` reads this cfg in its build script; every
+# other crate ignores it.
+[build]
+rustflags = ["--cfg", "rustix_use_libc"]
