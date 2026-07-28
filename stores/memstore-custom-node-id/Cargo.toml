@@ -1,6 +1,7 @@
 [package]
 name = "openraft-memstore-custom-node-id"
 description = "Reproducer for issue #1659: storage test suite must not depend on NodeId Display format."
+publish = false
 
 version       = { workspace = true }
 edition       = { workspace = true }

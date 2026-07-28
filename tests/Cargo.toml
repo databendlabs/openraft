@@ -4,6 +4,7 @@
 [package]
 name = "tests"
 description = "openraft integration tests. To prevent memstore from enabling `serde` feature"
+publish = false
 
 version       = { workspace = true }
 edition       = { workspace = true }
