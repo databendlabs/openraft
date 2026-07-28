@@ -20,8 +20,6 @@ CRATES=(
     macros
     openraft
     memstore
-    rocsstore
-    sledstore
 )
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
