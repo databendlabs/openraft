@@ -13,9 +13,7 @@ use crate::engine::CommandKind;
 use crate::engine::CommandName;
 use crate::engine::replication_progress::TargetProgress;
 use crate::errors::InitializeError;
-use crate::errors::InstallSnapshotError;
 use crate::progress::inflight_id::InflightId;
-use crate::raft::InstallSnapshotResponse;
 use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
@@ -480,8 +478,6 @@ where C: RaftTypeConfig
 {
     Vote(ValueSender<C, VoteResponse<C>>),
     AppendEntries(ValueSender<C, StreamAppendResult<C>>),
-    ReceiveSnapshotChunk(ValueSender<C, Result<(), InstallSnapshotError>>),
-    InstallSnapshot(ValueSender<C, Result<InstallSnapshotResponse<C>, InstallSnapshotError>>),
     InstallFullSnapshot(ValueSender<C, SnapshotResponse<C>>),
     Initialize(ValueSender<C, Result<(), InitializeError<C>>>),
 }
@@ -496,14 +492,6 @@ where C: RaftTypeConfig
                 Ok(log_id) => write!(f, "AppendEntries Ok({})", log_id.display()),
                 Err(e) => write!(f, "AppendEntries Err({})", e),
             },
-            Respond::ReceiveSnapshotChunk(vs) => {
-                write!(
-                    f,
-                    "ReceiveSnapshotChunk {}",
-                    vs.value().as_ref().map(|_x| "()").display()
-                )
-            }
-            Respond::InstallSnapshot(vs) => write!(f, "InstallSnapshot {}", vs.value().display()),
             Respond::InstallFullSnapshot(vs) => write!(f, "InstallFullSnapshot {}", vs.value()),
             Respond::Initialize(vs) => write!(f, "Initialize {}", vs.value().as_ref().map(|_x| "()").display()),
         }
@@ -525,8 +513,6 @@ where C: RaftTypeConfig
         match self {
             Respond::Vote(x) => x.send(),
             Respond::AppendEntries(x) => x.send(),
-            Respond::ReceiveSnapshotChunk(x) => x.send(),
-            Respond::InstallSnapshot(x) => x.send(),
             Respond::InstallFullSnapshot(x) => x.send(),
             Respond::Initialize(x) => x.send(),
         }
