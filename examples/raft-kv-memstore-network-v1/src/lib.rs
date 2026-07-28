@@ -51,7 +51,7 @@ pub async fn new_raft_node(node_id: NodeId, api_addr: String, raft_addr: String)
     let state_machine_store = StateMachineStore::default();
 
     // Create a local raft instance.
-    let network = network_v2_http::NetworkFactory::new();
+    let network = network_v1_http::NetworkFactory::<SnapshotData>::new();
 
     let raft = openraft::Raft::new(node_id, config, network, log_store, state_machine_store.clone()).await.unwrap();
 
@@ -69,7 +69,7 @@ pub async fn run_raft_node(app: Arc<App>) -> std::io::Result<()> {
     let raft_addr = app.raft_addr.clone();
     let raft = app.raft.clone();
 
-    let raft_server = network_v2_http::Server::new(raft).run(raft_addr);
+    let raft_server = network_v1_http::Server::new(raft).run(raft_addr);
     let app_server = app_http::Server::new(app)
         .add_openraft_routes()
         .post("/read", api::read)

@@ -1,7 +1,7 @@
 use std::fmt::Display;
 use std::marker::PhantomData;
 
-use openraft::BasicNode;
+use openraft::NodeInfo;
 use openraft::OptionalSend;
 use openraft::RaftTypeConfig;
 use openraft::errors::Infallible;
@@ -42,15 +42,15 @@ impl<SD> Default for NetworkFactory<SD> {
 
 impl<C, SD> RaftNetworkFactory<C> for NetworkFactory<SD>
 where
-    C: RaftTypeConfig<Node = BasicNode>,
+    C: RaftTypeConfig<Node = NodeInfo>,
     // RaftNetwork requires the snapshot to be a file-like object that can be seeked, read from, and written to.
     SD: AsyncRead + AsyncWrite + AsyncSeek + Unpin + OptionalSend + 'static,
 {
     type Network = Adapter<C, Network<C>, SD>;
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn new_client(&mut self, target: C::NodeId, node: &BasicNode) -> Self::Network {
-        let addr = node.addr.clone();
+    async fn new_client(&mut self, target: C::NodeId, node: &NodeInfo) -> Self::Network {
+        let addr = node.raft_addr.clone();
 
         let client = Client::builder().no_proxy().build().unwrap();
 
