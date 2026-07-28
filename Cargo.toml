@@ -92,8 +92,9 @@ exclude = [
     "examples/log-rocks",
     "examples/mem-log",
     "examples/memstore",
-    "examples/sm-mem",
     "examples/rocksstore",
+    "examples/sm-mem",
+    "examples/sm-rocks",
     "examples/types-kv",
 
     "examples/raft-kv-memstore",

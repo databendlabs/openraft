@@ -473,7 +473,7 @@ jobs:
   examples:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # RocksDB-backed examples (log-rocks, raft-kv-rocksdb, rocksstore) were the slowest CI
+    # RocksDB-backed examples (log-rocks, raft-kv-rocksdb, sm-rocks) were the slowest CI
     # jobs because librocksdb-sys compiles bundled RocksDB (8.10) C++ from
     # source. Link the system librocksdb instead so it is not compiled at all;
     # ROCKSDB_INCLUDE_DIR points bindgen at the system headers so the generated
@@ -490,7 +490,7 @@ jobs:
         example:
           - 'log-mem'
           - 'log-rocks'
-          - 'rocksstore'
+          - 'sm-rocks'
           - 'raft-kv-memstore'
           - 'raft-kv-memstore-grpc'
           - 'raft-kv-memstore-network-v1'
@@ -516,7 +516,7 @@ jobs:
           cache-workspaces: examples/${{ matrix.example }}
 
       - name: Install system RocksDB
-        if: matrix.example == 'log-rocks' || matrix.example == 'raft-kv-rocksdb' || matrix.example == 'rocksstore'
+        if: matrix.example == 'log-rocks' || matrix.example == 'raft-kv-rocksdb' || matrix.example == 'sm-rocks'
         run: sudo apt-get update && sudo apt-get install -y librocksdb-dev
 
       # Run the following steps in the exmple dir in order to reuse the `./target` dir.
