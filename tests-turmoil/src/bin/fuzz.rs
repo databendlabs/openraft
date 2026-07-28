@@ -1091,7 +1091,7 @@ async fn read_client_loop(
 
         let leader = cluster_state.lock().unwrap().find_leader_entry();
         let Some((leader_id, raft)) = leader else {
-            history.lock().unwrap().record_read_failed();
+            history.lock().unwrap().record_read_no_leader();
             continue;
         };
         let sm = cluster_state.lock().unwrap().get_state_machine(leader_id).expect("sm must be registered");

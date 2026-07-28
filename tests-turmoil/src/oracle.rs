@@ -228,6 +228,9 @@ pub struct WorkloadStats {
     pub writes_acked: u64,
     pub writes_failed: u64,
     pub reads_ok: u64,
+    /// Reads abandoned because no leader was visible to send them to.
+    pub reads_no_leader: u64,
+    /// Reads whose `ReadIndex` barrier failed or timed out.
     pub reads_failed: u64,
 }
 
@@ -235,8 +238,13 @@ impl std::fmt::Display for WorkloadStats {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "writes attempted/acked/failed={}/{}/{}, reads ok/failed={}/{}",
-            self.writes_attempted, self.writes_acked, self.writes_failed, self.reads_ok, self.reads_failed
+            "writes attempted/acked/failed={}/{}/{}, reads ok/no-leader/failed={}/{}/{}",
+            self.writes_attempted,
+            self.writes_acked,
+            self.writes_failed,
+            self.reads_ok,
+            self.reads_no_leader,
+            self.reads_failed
         )
     }
 }
@@ -317,6 +325,12 @@ impl ClientHistory {
         self.max_acked.get(key).map(|(log_id, _)| *log_id)
     }
 
+    /// Record a read abandoned before it started: no leader was visible.
+    pub fn record_read_no_leader(&mut self) {
+        self.stats.reads_no_leader += 1;
+    }
+
+    /// Record a read whose `ReadIndex` barrier failed or timed out.
     pub fn record_read_failed(&mut self) {
         self.stats.reads_failed += 1;
     }
