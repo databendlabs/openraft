@@ -406,6 +406,11 @@ jobs:
           # cache misses its target dir and the fuzz binary recompiles cold
           # every run. Cache this workspace so warm runs skip the compile.
           cache-workspaces: tests-turmoil
+          # The action exports RUSTFLAGS="-D warnings" by default, and any
+          # RUSTFLAGS env var overrides the `--cfg tokio_unstable` rustflags
+          # from tests-turmoil/.cargo/config.toml. Keep RUSTFLAGS unset so
+          # the config applies.
+          rustflags: ""
 
       - name: Run deterministic simulation
         run: cd tests-turmoil && cargo run --release --bin fuzz -- --iterations 5 --max-steps 10000
@@ -438,7 +443,14 @@ jobs:
           cargo clippy --no-deps --workspace --all-targets --features "metrics-logids,serde" -- -D warnings
 
       - name: clippy tests-turmoil
-        run: cargo clippy --no-deps --manifest-path tests-turmoil/Cargo.toml --all-targets -- -D warnings
+        # Run from inside tests-turmoil so its .cargo/config.toml is read, and
+        # override the job-wide RUSTFLAGS="-D warnings" (set by the toolchain
+        # action), which would otherwise replace the config's rustflags and
+        # drop `--cfg tokio_unstable`. Warnings still fail via clippy's own
+        # `-D warnings` argument.
+        run: cd tests-turmoil && cargo clippy --no-deps --all-targets -- -D warnings
+        env:
+          RUSTFLAGS: --cfg tokio_unstable
 
       - name: Build-doc
         run: cargo doc --all --no-deps
