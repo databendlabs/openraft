@@ -109,6 +109,37 @@
       {:type :info
        :f :stop-partition})))
 
+(defn- next-cluster-state
+  "Applies one nemesis operation to the partition lifecycle state.
+
+  :intact means the network is healed and the cluster is ready.
+  :recovery-pending means a partition exists, or readiness after a heal has not
+  been confirmed. :unknown means a partition or heal returned an indeterminate
+  result."
+  [state op]
+  (let [operation-error? (boolean (or (:error op)
+                                      (:exception op)))]
+    (case (:f op)
+      :start-partition
+      (cond
+        operation-error? :unknown
+        (get-in op [:value :mode]) :recovery-pending
+        :else state)
+
+      :stop-partition
+      (cond
+        operation-error? :unknown
+        (= :network-healed (:value op)) :recovery-pending
+        :else state)
+
+      :await-recovery
+      (cond
+        (= :unknown state) :unknown
+        (get-in op [:value :leader]) :intact
+        :else state)
+
+      state)))
+
 (defn- coverage-checker []
   (reify checker/Checker
     (check [_ _test history _opts]
@@ -117,43 +148,7 @@
                                 (keep #(get-in % [:value :mode]))
                                 set)
             missing-modes (remove observed-modes required-partition-modes)
-            cluster-state (reduce
-                            (fn [state op]
-                              (let [operation-error? (boolean
-                                                      (or (:error op)
-                                                          (:exception op)))]
-                                (cond
-                                  (and (= :start-partition (:f op))
-                                       operation-error?)
-                                  :unknown
-
-                                  (and (= :start-partition (:f op))
-                                       (get-in op [:value :mode]))
-                                  :recovery-pending
-
-                                  (and (= :stop-partition (:f op))
-                                       operation-error?)
-                                  :unknown
-
-                                  (and (= :stop-partition (:f op))
-                                       (= :network-healed (:value op)))
-                                  :recovery-pending
-
-                                  (and (= :await-recovery (:f op))
-                                       (get-in op [:value :leader]))
-                                  (if (= :recovery-pending state)
-                                    :intact
-                                    :unknown)
-
-                                  (and (= :await-recovery (:f op))
-                                       operation-error?)
-                                  (if (= :recovery-pending state)
-                                    :recovery-pending
-                                    :unknown)
-
-                                  :else state)))
-                            :intact
-                            history)
+            cluster-state (reduce next-cluster-state :intact history)
             valid? (cond
                      (seq missing-modes) false
                      (= :intact cluster-state) true
