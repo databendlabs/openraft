@@ -115,7 +115,11 @@
   :intact means the network is healed and the cluster is ready.
   :recovery-pending means a partition exists, or readiness after a heal has not
   been confirmed. :unknown means a partition or heal returned an indeterminate
-  result."
+  result.
+
+  A successful await-recovery does not clear :unknown: readiness only proves
+  that every node follows one leader, while leftover rules from an
+  indeterminate heal may still cut follower-to-follower links."
   [state op]
   (let [operation-error? (boolean (or (:error op)
                                       (:exception op)))]
