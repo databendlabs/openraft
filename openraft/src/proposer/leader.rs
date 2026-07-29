@@ -141,11 +141,7 @@ where
         let now = C::now();
         let mut clock_progress = VecProgress::new(quorum_set, learner_ids, IdVal::new_default);
         let leader_node_id = vote.to_leader_node_id();
-        if clock_progress.try_get(&leader_node_id).is_some() {
-            clock_progress
-                .increase_to(&leader_node_id, Some(now))
-                .expect("the leader must exist in clock progress");
-        }
+        let _ = clock_progress.increase_to(&leader_node_id, Some(now));
 
         Self {
             transfer_to: None,
@@ -207,11 +203,7 @@ where
     /// Update the clock acknowledged by `target` and return the time acknowledged by a quorum.
     pub(crate) fn update_clock(&mut self, target: &C::NodeId, sending_time: InstantOf<C>) -> Option<InstantOf<C>> {
         let leader_node_id = self.committed_vote.to_leader_node_id();
-        if self.clock_progress.try_get(&leader_node_id).is_some() {
-            self.clock_progress
-                .increase_to(&leader_node_id, Some(sending_time))
-                .expect("the leader must exist in clock progress");
-        }
+        let _ = self.clock_progress.increase_to(&leader_node_id, Some(sending_time));
 
         *self
             .clock_progress
