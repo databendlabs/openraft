@@ -93,17 +93,102 @@
                               :value :network-healed}
                              {:f :await-recovery
                               :error :timeout}]]
-    (let [result (checker/check subject {} complete-history {})]
-      (is (:valid? result))
-      (is (= :intact (:cluster-state result))))
-    (let [result (checker/check subject {} missing-mode-history {})]
-      (is (false? (:valid? result)))
-      (is (= [:leader-in-minority] (:missing-modes result)))
-      (is (= :intact (:cluster-state result))))
-    (let [result (checker/check subject {} unrecovered-history {})]
-      (is (false? (:valid? result)))
-      (is (empty? (:missing-modes result)))
-      (is (= :recovery-pending (:cluster-state result))))))
+    (testing "both modes complete and the cluster recovers"
+      (let [result (checker/check subject {} complete-history {})]
+        (is (:valid? result))
+        (is (= :intact (:cluster-state result)))))
+    (testing "a failed partition does not count toward coverage"
+      (let [result (checker/check subject {} missing-mode-history {})]
+        (is (false? (:valid? result)))
+        (is (= [:leader-in-minority] (:missing-modes result)))
+        (is (= :intact (:cluster-state result)))))
+    (testing "a confirmed heal followed by a timeout fails recovery"
+      (let [result (checker/check subject {} unrecovered-history {})]
+        (is (false? (:valid? result)))
+        (is (empty? (:missing-modes result)))
+        (is (= :recovery-pending (:cluster-state result)))))))
+
+(deftest handles-realistic-invoke-and-completion-history
+  (let [subject (#'partition/coverage-checker)
+        history [{:type :info
+                  :process :nemesis
+                  :f :start-partition
+                  :value :leader-in-majority}
+                 {:type :info
+                  :process :nemesis
+                  :f :start-partition
+                  :value {:mode :leader-in-majority
+                          :leader "n1"}}
+                 {:type :info
+                  :process :nemesis
+                  :f :stop-partition
+                  :value nil}
+                 {:type :info
+                  :process :nemesis
+                  :f :stop-partition
+                  :value :network-healed}
+                 {:type :info
+                  :process :nemesis
+                  :f :start-partition
+                  :value :leader-in-minority}
+                 {:type :info
+                  :process :nemesis
+                  :f :start-partition
+                  :value {:mode :leader-in-minority
+                          :leader "n1"}}
+                 {:type :info
+                  :process :nemesis
+                  :f :stop-partition
+                  :value nil}
+                 {:type :info
+                  :process :nemesis
+                  :f :stop-partition
+                  :value :network-healed}
+                 {:type :info
+                  :process :nemesis
+                  :f :await-recovery
+                  :value nil}
+                 {:type :info
+                  :process :nemesis
+                  :f :await-recovery
+                  :value {:leader "n2"}}
+                 {:type :info
+                  :process :nemesis
+                  :f :await-recovery
+                  :value nil}
+                 {:type :info
+                  :process :nemesis
+                  :f :await-recovery
+                  :value {:leader "n2"}}]
+        result (checker/check subject {} history {})]
+    (is (:valid? result))
+    (is (= [:leader-in-majority :leader-in-minority]
+           (:observed-modes result)))
+    (is (= :intact (:cluster-state result)))))
+
+(deftest reports-an-indeterminate-partition-state
+  (let [subject (#'partition/coverage-checker)
+        covered-history [{:f :start-partition
+                          :value {:mode :leader-in-majority}}
+                         {:f :stop-partition
+                          :value :network-healed}
+                         {:f :start-partition
+                          :value {:mode :leader-in-minority}}
+                         {:f :stop-partition
+                          :value :network-healed}
+                         {:f :await-recovery
+                          :value {:leader "n2"}}]
+        indeterminate-history
+        (conj covered-history
+              {:type :info
+               :process :nemesis
+               :f :start-partition
+               :value :leader-in-majority
+               :error "indeterminate: partition failed"
+               :exception (ex-info "partition failed" {})})
+        result (checker/check subject {} indeterminate-history {})]
+    (is (= :unknown (:valid? result)))
+    (is (= :unknown (:cluster-state result)))))
 
 (deftest reports-an-indeterminate-heal-state
   (let [subject (#'partition/coverage-checker)
@@ -123,9 +208,11 @@
                                   :value :network-healed}
                                  {:f :await-recovery
                                   :value {:leader "n2"}}])]
-    (let [result (checker/check subject {} indeterminate-history {})]
-      (is (= :unknown (:valid? result)))
-      (is (= :unknown (:cluster-state result))))
-    (let [result (checker/check subject {} recovered-history {})]
-      (is (:valid? result))
-      (is (= :intact (:cluster-state result))))))
+    (testing "a successful readiness check cannot prove that a failed heal completed"
+      (let [result (checker/check subject {} indeterminate-history {})]
+        (is (= :unknown (:valid? result)))
+        (is (= :unknown (:cluster-state result)))))
+    (testing "a later confirmed heal and recovery restore the intact state"
+      (let [result (checker/check subject {} recovered-history {})]
+        (is (:valid? result))
+        (is (= :intact (:cluster-state result)))))))
