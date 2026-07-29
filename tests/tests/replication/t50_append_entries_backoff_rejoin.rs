@@ -4,7 +4,6 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
-use openraft::ServerState;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
 
@@ -49,7 +48,9 @@ async fn append_entries_backoff_rejoin() -> Result<()> {
         TypeConfig::sleep(Duration::from_millis(1_000)).await;
 
         n1.trigger().elect(false).await?;
-        n1.wait(timeout()).state(ServerState::Leader, "node-1 elect").await?;
+        n1.wait(timeout())
+            .leader_with_quorum_acked(None, "node-1 elects and establishes its leader lease")
+            .await?;
     }
 
     tracing::info!(log_index, "--- write {} entries to node-1", n);

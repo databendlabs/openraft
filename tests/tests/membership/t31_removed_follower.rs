@@ -15,7 +15,7 @@ use crate::fixtures::ut_harness;
 async fn stop_replication_to_removed_follower() -> Result<()> {
     let config = Arc::new(
         Config {
-            enable_heartbeat: false,
+            enable_heartbeat: true,
             ..Default::default()
         }
         .validate()?,

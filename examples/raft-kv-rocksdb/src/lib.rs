@@ -42,7 +42,7 @@ where
 {
     // Create a configuration for the raft instance.
     let config = Config {
-        heartbeat_interval: 250,
+        heartbeat_interval: 50,
         election_timeout_min: 299,
         ..Default::default()
     };

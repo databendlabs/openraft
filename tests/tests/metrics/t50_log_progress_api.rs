@@ -4,7 +4,6 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
-use openraft::ServerState;
 use openraft::Vote;
 use openraft::raft::FlushPoint;
 use openraft::type_config::TypeConfigExt;
@@ -148,7 +147,7 @@ async fn log_progress_with_leader_change() -> Result<()> {
     tracing::info!(log_index, "--- send client requests to new leader");
     router
         .wait(&1, Some(Duration::from_millis(2000)))
-        .state(ServerState::Leader, "wait for node 1 to become leader")
+        .leader_with_quorum_acked(None, "wait for node 1 to become leader and establish its leader lease")
         .await?;
     log_index += 1;
     log_index += router.client_request_many(1, "foo", 3).await?;

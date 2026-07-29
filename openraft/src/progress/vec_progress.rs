@@ -349,6 +349,11 @@ where
         Some(&self.entries[index])
     }
 
+    /// Return the number of voters.
+    pub(crate) fn voter_count(&self) -> usize {
+        self.voter_count
+    }
+
     // TODO: merge `get` and `try_get`
     /// Get the value by `id`.
     #[cfg(test)]
@@ -362,7 +367,6 @@ where
     /// In raft or other distributed consensus,
     /// To commit a value, the value has to be **accepted by a quorum** and has to be the greatest
     /// value every proposed.
-    #[cfg(test)]
     pub(crate) fn quorum_accepted(&self) -> &Entry::Progress {
         &self.quorum_accepted
     }
