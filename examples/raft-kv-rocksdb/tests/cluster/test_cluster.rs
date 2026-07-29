@@ -118,7 +118,7 @@ async fn test_cluster_inner() -> Result<(), Box<dyn std::error::Error + Send + S
     println!("=== get metrics after init, wait until leader is elected");
     loop {
         let metrics = leader.metrics().await?;
-        if metrics.current_leader == Some(1) {
+        if metrics.current_leader == Some(1) && metrics.last_quorum_acked.is_some() {
             break;
         }
         TypeConfig::sleep(Duration::from_millis(500)).await;

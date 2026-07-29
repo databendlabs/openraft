@@ -6,6 +6,7 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::ServerState;
 use openraft::Vote;
+use openraft::async_runtime::WatchReceiver;
 use openraft::raft::VoteRequest;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::ClientRequest;
@@ -32,12 +33,27 @@ async fn append_sees_higher_vote() -> Result<()> {
 
     let mut router = RaftRouter::new(config.clone());
 
-    let log_index = router.new_cluster(btreeset! {0,1}, btreeset! {}).await?;
+    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+
+    let n0 = router.get_raft_handle(&0)?;
+    router.set_unreachable(1, true);
 
     tracing::info!(log_index, "--- upgrade vote on node-1");
     {
         // Let leader lease expire
         TypeConfig::sleep(Duration::from_millis(800)).await;
+
+        // Re-establish node-0's quorum lease through node-2 while node-1 remains isolated.
+        let old_acked = n0.metrics().borrow_watched().last_quorum_acked.unwrap().into_inner();
+        n0.trigger().heartbeat().await?;
+        n0.wait(timeout())
+            .metrics(
+                |m| m.last_quorum_acked.is_some_and(|acked| acked.into_inner() > old_acked),
+                "node-0 quorum lease recovered through node-2",
+            )
+            .await?;
+
+        router.set_unreachable(1, false);
 
         let node = router.get_raft_handle(&1)?;
         let resp = node
@@ -58,7 +74,6 @@ async fn append_sees_higher_vote() -> Result<()> {
     {
         router.wait(&0, timeout()).state(ServerState::Leader, "node-0 is leader").await?;
 
-        let n0 = router.get_raft_handle(&0)?;
         TypeConfig::spawn(async move {
             let res = n0
                 .client_write(ClientRequest {

@@ -62,6 +62,11 @@ where
         }
     }
 
+    /// Return whether the leader's lease is valid.
+    pub(crate) fn is_lease_valid(&self) -> bool {
+        self.leader.is_lease_valid(self.config.timer_config.leader_lease)
+    }
+
     /// Append new log entries by a leader.
     ///
     /// Also Update effective membership if the payload contains

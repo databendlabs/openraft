@@ -8,6 +8,7 @@ mod fixtures;
 // See ./README.md
 
 mod t10_client_write_many;
+mod t10_client_write_quorum_lease;
 mod t10_client_writes;
 mod t11_client_reads;
 mod t12_trigger_purge_log;
