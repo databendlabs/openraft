@@ -219,6 +219,15 @@ async fn test_cluster_inner() -> Result<(), Box<dyn std::error::Error + Send + S
     let x = client3.read(&("foo".to_string())).await?;
     assert_eq!(expected_bar, x);
 
+    let old_quorum_acked = leader.metrics().await?.last_quorum_acked;
+    loop {
+        let metrics = leader.metrics().await?;
+        if metrics.last_quorum_acked > old_quorum_acked {
+            break;
+        }
+        TypeConfig::sleep(Duration::from_millis(10)).await;
+    }
+
     println!("=== write `foo=wow` on leader");
     let write_wow = leader
         .write(&types_kv::Request::Set {
