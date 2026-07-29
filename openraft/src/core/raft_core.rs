@@ -357,13 +357,19 @@ where
         // Setup sentinel values to track when we've received majority confirmation of leadership.
 
         let resp = {
-            let lh = match self.ensure_writable_leader_handler() {
+            let lh = match self.ensure_leader_handler() {
                 Ok(leading_handler) => leading_handler,
                 Err(forward) => {
                     tx.send(Err(forward.into())).ok();
                     return;
                 }
             };
+
+            if read_policy == ReadPolicy::LeaseRead && !lh.is_lease_valid() {
+                tracing::debug!("{}: lease expired during lease read", self.id);
+                tx.send(Err(ForwardToLeader::empty().into())).ok();
+                return;
+            }
 
             let read_log_id = lh.get_read_log_id();
 
@@ -375,7 +381,7 @@ where
         };
 
         if read_policy == ReadPolicy::LeaseRead {
-            self.respond_lease_read(resp, tx);
+            tx.send(Ok(resp)).ok();
             return;
         }
 
@@ -400,26 +406,6 @@ where
         // False positive lint warning(`non-binding `let` on a future`): https://github.com/rust-lang/rust-clippy/issues/9932
         #[allow(clippy::let_underscore_future)]
         let _ = C::spawn(waiting_fu.instrument(tracing::debug_span!("spawn_is_leader_waiting")));
-    }
-
-    /// Serve a [`ReadPolicy::LeaseRead`] request without contacting any peer.
-    ///
-    /// While the last quorum acknowledgement is younger than `leader_lease`, no other node can have
-    /// become leader, so the read is safe to answer from local state alone. Once the lease lapses
-    /// this node can no longer vouch for itself and the caller has to find the leader again.
-    fn respond_lease_read(&mut self, resp: Linearizer<C>, tx: ClientReadTx<C>) {
-        let now = C::now();
-        // Check if the lease is expired.
-        if let Some(last_quorum_acked_time) = self.last_quorum_acked_time()
-            && now < last_quorum_acked_time + self.engine.config.timer_config.leader_lease
-        {
-            tx.send(Ok(resp)).ok();
-            return;
-        }
-        tracing::debug!("{}: lease expired during lease read", self.id);
-        // we may no longer leader so error out early
-        let err = ForwardToLeader::empty();
-        tx.send(Err(err.into())).ok();
     }
 
     /// Probe every other voter with an empty AppendEntries, to confirm this node is still leading.
@@ -632,17 +618,28 @@ where
         );
     }
 
-    /// Ensure this node is a writable leader and return a leader handler.
+    /// Ensure this node is the leader and is not transferring leadership.
     ///
     /// Returns `Err(ForwardToLeader)` if:
     /// - This node is not the leader
     /// - The leader is transferring leadership to another node
-    fn ensure_writable_leader_handler(&mut self) -> Result<LeaderHandler<'_, C, SM>, ForwardToLeader<C>> {
+    fn ensure_leader_handler(&mut self) -> Result<LeaderHandler<'_, C, SM>, ForwardToLeader<C>> {
         let lh = self.engine.try_leader_handler()?;
 
-        // If the leader is transferring leadership, forward writes to the new leader.
+        // If the leader is transferring leadership, forward requests to the new leader.
         if let Some(to) = lh.leader.get_transfer_to() {
             return Err(lh.state.new_forward_to_leader(to.clone()));
+        }
+
+        Ok(lh)
+    }
+
+    /// Ensure this node has a valid leader lease and may accept new writes.
+    fn ensure_writable_leader_handler(&mut self) -> Result<LeaderHandler<'_, C, SM>, ForwardToLeader<C>> {
+        let lh = self.ensure_leader_handler()?;
+
+        if !lh.is_lease_valid() {
+            return Err(ForwardToLeader::empty());
         }
 
         Ok(lh)
@@ -782,7 +779,12 @@ where
         heartbeat: Option<HeartbeatMetrics<C>>,
     ) {
         let last_quorum_acked = self.last_quorum_acked_time();
-        let millis_since_quorum_ack = last_quorum_acked.map(|t| t.elapsed().as_millis() as u64);
+        let is_self_quorum = self.engine.leader.as_ref().is_some_and(|leader| leader.is_self_quorum());
+        let millis_since_quorum_ack = if is_self_quorum {
+            Some(0)
+        } else {
+            last_quorum_acked.map(|t| t.elapsed().as_millis() as u64)
+        };
 
         let st = &self.engine.state;
 
@@ -1028,8 +1030,8 @@ where
     /// This function returns the latest known time at which the leader received acknowledgment
     /// from a quorum of followers, indicating its leadership is current and recognized.
     /// If the node is not a leader or no acknowledgment has been received, `None` is returned.
-    fn last_quorum_acked_time(&mut self) -> Option<InstantOf<C>> {
-        let leading = self.engine.leader.as_mut();
+    fn last_quorum_acked_time(&self) -> Option<InstantOf<C>> {
+        let leading = self.engine.leader.as_ref();
         leading.and_then(|l| l.last_quorum_acked_time())
     }
 

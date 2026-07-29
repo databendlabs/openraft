@@ -50,6 +50,10 @@ async fn append_entries_backoff_rejoin() -> Result<()> {
 
         n1.trigger().elect(false).await?;
         n1.wait(timeout()).state(ServerState::Leader, "node-1 elect").await?;
+        n1.trigger().heartbeat().await?;
+        n1.wait(timeout())
+            .metrics(|m| m.last_quorum_acked.is_some(), "node-1 establishes its leader lease")
+            .await?;
     }
 
     tracing::info!(log_index, "--- write {} entries to node-1", n);

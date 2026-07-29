@@ -165,11 +165,7 @@ where
             return;
         }
 
-        let granted = *self
-            .leader
-            .clock_progress
-            .increase_to(&target, Some(sending_time))
-            .expect("it should always update existing progress");
+        let granted = self.leader.update_clock(&target, sending_time);
 
         tracing::debug!(
             "granted leader vote clock after updating: granted: {}; clock_progress: {}",

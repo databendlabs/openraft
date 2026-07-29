@@ -4,7 +4,6 @@ use std::time::Duration;
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 use crate::base::shared_id_generator::SharedIdGenerator;
-use crate::display_ext::DisplayInstantExt;
 use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::progress::VecProgress;
 use crate::progress::entry::ProgressEntry;
@@ -134,17 +133,28 @@ where
 
         let last_log_id = last_ref.map(|r| r.into_log_id());
 
+        let progress = VecProgress::new(quorum_set.clone(), learner_ids.iter().cloned(), |id| {
+            let stream_id = StreamId::new(id_gen.next_id());
+            ProgressEntry::empty(id, stream_id, last_log_id.next_index())
+        });
+
+        let now = C::now();
+        let mut clock_progress = VecProgress::new(quorum_set, learner_ids, IdVal::new_default);
+        let leader_node_id = vote.to_leader_node_id();
+        if clock_progress.try_get(&leader_node_id).is_some() {
+            clock_progress
+                .increase_to(&leader_node_id, Some(now))
+                .expect("the leader must exist in clock progress");
+        }
+
         Self {
             transfer_to: None,
             committed_vote: vote,
-            next_heartbeat: C::now(),
+            next_heartbeat: now,
             last_log_id: last_log_id.clone(),
             noop_log_id,
-            progress: VecProgress::new(quorum_set.clone(), learner_ids.iter().cloned(), |id| {
-                let stream_id = StreamId::new(id_gen.next_id());
-                ProgressEntry::empty(id, stream_id, last_log_id.next_index())
-            }),
-            clock_progress: VecProgress::new(quorum_set, learner_ids, IdVal::new_default),
+            progress,
+            clock_progress,
         }
     }
 
@@ -194,39 +204,44 @@ where
         Some(LeaderLogIds::new(committed_leader_id, first, last))
     }
 
-    /// Get the last timestamp acknowledged by a quorum.
-    ///
-    /// The acknowledgement by remote nodes are updated when AppendEntries reply is received.
-    /// But if the time of the leader itself is not updated.
-    ///
-    /// Therefore, every time to retrieve the quorum acked timestamp, it should update with the
-    /// leader's time first.
-    /// It does not matter if the leader is not a voter, the QuorumSet will just ignore it.
-    ///
-    /// Note that the leader may not be in the QuorumSet at all.
-    /// In such a case, the update operation will be just ignored,
-    /// and the quorum-acked-time is totally determined by remove voters.
-    pub(crate) fn last_quorum_acked_time(&mut self) -> Option<InstantOf<C>> {
-        // For `Leading`, the vote is always the leader's vote.
-        // Thus vote.voted_for() is this node.
-
-        let node_id = self.committed_vote.to_leader_node_id();
-        let now = C::now();
-
-        tracing::debug!(
-            "{}: update with leader's local time, before retrieving quorum acked clock: leader_id: {}, now: {}",
-            func_name!(),
-            node_id,
-            now.display()
-        );
-
-        let granted = self.clock_progress.increase_to(&node_id, Some(now));
-
-        match granted {
-            Ok(x) => *x,
-            // The leader node id may not be in the quorum set.
-            Err(x) => *x,
+    /// Update the clock acknowledged by `target` and return the time acknowledged by a quorum.
+    pub(crate) fn update_clock(&mut self, target: &C::NodeId, sending_time: InstantOf<C>) -> Option<InstantOf<C>> {
+        let leader_node_id = self.committed_vote.to_leader_node_id();
+        if self.clock_progress.try_get(&leader_node_id).is_some() {
+            self.clock_progress
+                .increase_to(&leader_node_id, Some(sending_time))
+                .expect("the leader must exist in clock progress");
         }
+
+        *self
+            .clock_progress
+            .increase_to(target, Some(sending_time))
+            .expect("the target must exist in clock progress")
+    }
+
+    /// Get the last timestamp acknowledged by a quorum.
+    pub(crate) fn last_quorum_acked_time(&self) -> Option<InstantOf<C>> {
+        *self.clock_progress.quorum_accepted()
+    }
+
+    /// Return whether this leader's lease is valid.
+    pub(crate) fn is_lease_valid(&self, leader_lease: Duration) -> bool {
+        if self.is_self_quorum() {
+            return true;
+        }
+
+        let now = C::now();
+        self.last_quorum_acked_time().is_some_and(|acked| now < acked + leader_lease)
+    }
+
+    /// Return whether this leader alone constitutes a quorum.
+    pub(crate) fn is_self_quorum(&self) -> bool {
+        if self.clock_progress.voter_count() != 1 {
+            return false;
+        }
+
+        let leader_node_id = self.committed_vote.to_leader_node_id();
+        self.clock_progress.iter().next().unwrap().id == leader_node_id
     }
 
     /// Decide whether a heartbeat needs to be sent to `target` at time `now`.
@@ -414,7 +429,7 @@ mod tests {
 
         let now1 = UTConfig::<()>::now();
 
-        let _t2 = leading.clock_progress.increase_to(&2, Some(now1));
+        leading.update_clock(&2, now1);
         let t1 = leading.last_quorum_acked_time();
         assert_eq!(Some(now1), t1, "n1(leader) and n2 acked, t1 > t2");
     }
@@ -430,12 +445,12 @@ mod tests {
         );
 
         let t2 = UTConfig::<()>::now();
-        leading.clock_progress.increase_to(&2, Some(t2)).ok();
+        leading.update_clock(&2, t2);
         let t = leading.last_quorum_acked_time();
         assert!(t.is_none(), "n1(leader+learner) does not count in quorum");
 
         let t3 = UTConfig::<()>::now();
-        leading.clock_progress.increase_to(&3, Some(t3)).ok();
+        leading.update_clock(&3, t3);
         let t = leading.last_quorum_acked_time();
         assert_eq!(Some(t2), t, "n2 and n3 acked");
     }
@@ -451,12 +466,12 @@ mod tests {
         );
 
         let t2 = UTConfig::<()>::now();
-        leading.clock_progress.increase_to(&2, Some(t2)).ok();
+        leading.update_clock(&2, t2);
         let t = leading.last_quorum_acked_time();
         assert!(t.is_none(), "n1(leader+learner) does not count in quorum");
 
         let t3 = UTConfig::<()>::now();
-        leading.clock_progress.increase_to(&3, Some(t3)).ok();
+        leading.update_clock(&3, t3);
         let t = leading.last_quorum_acked_time();
         assert_eq!(Some(t2), t, "n2 and n3 acked");
     }

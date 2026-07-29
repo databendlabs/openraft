@@ -150,6 +150,14 @@ async fn log_progress_with_leader_change() -> Result<()> {
         .wait(&1, Some(Duration::from_millis(2000)))
         .state(ServerState::Leader, "wait for node 1 to become leader")
         .await?;
+    n1.trigger().heartbeat().await?;
+    router
+        .wait(&1, Some(Duration::from_millis(2000)))
+        .metrics(
+            |m| m.last_quorum_acked.is_some(),
+            "wait for node 1 to establish its leader lease",
+        )
+        .await?;
     log_index += 1;
     log_index += router.client_request_many(1, "foo", 3).await?;
 
