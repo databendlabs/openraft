@@ -164,12 +164,7 @@ async fn leader_last_ack_3_nodes_abs_time() -> Result<()> {
         let now = TypeConfig::now();
 
         n0.trigger().heartbeat().await?;
-        n0.wait(timeout())
-            .metrics(
-                |x| x.last_quorum_acked.as_deref() >= Some(&now),
-                "last_quorum_acked refreshed",
-            )
-            .await?;
+        n0.wait(timeout()).leader_with_quorum_acked(Some(now), "last_quorum_acked refreshed").await?;
     }
 
     tracing::info!(log_index, "--- sleep and heartbeat again; last_quorum_acked refreshes");
@@ -179,12 +174,7 @@ async fn leader_last_ack_3_nodes_abs_time() -> Result<()> {
         let now = TypeConfig::now();
         n0.trigger().heartbeat().await?;
 
-        n0.wait(timeout())
-            .metrics(
-                |x| x.last_quorum_acked.as_deref() >= Some(&now),
-                "last_quorum_acked refreshed again",
-            )
-            .await?;
+        n0.wait(timeout()).leader_with_quorum_acked(Some(now), "last_quorum_acked refreshed again").await?;
     }
 
     tracing::info!(log_index, "--- remove node 1 and node 2");
@@ -203,13 +193,7 @@ async fn leader_last_ack_3_nodes_abs_time() -> Result<()> {
         let now = TypeConfig::now();
         n0.trigger().heartbeat().await?;
 
-        let got = n0
-            .wait(timeout())
-            .metrics(
-                |x| x.last_quorum_acked.as_deref() >= Some(&now),
-                "last_quorum_acked refreshed again",
-            )
-            .await;
+        let got = n0.wait(timeout()).leader_with_quorum_acked(Some(now), "last_quorum_acked refreshed again").await;
         assert!(got.is_err(), "last_quorum_acked does not refresh");
     }
 

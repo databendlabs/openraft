@@ -5,7 +5,6 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::RPCTypes;
-use openraft::async_runtime::WatchReceiver;
 use openraft::errors::Infallible;
 use openraft::errors::RPCError;
 use openraft::type_config::TypeConfigExt;
@@ -87,12 +86,12 @@ async fn remove_hung_follower_must_not_block_raft_core_loop_2() -> Result<()> {
 
     // Refresh the quorum lease after waiting for the core loop to reach the suspected blocking
     // point. Heartbeats are disabled in this test, so the previous lease may have expired.
-    let old_acked = router.get_raft_handle(&0)?.metrics().borrow_watched().last_quorum_acked.unwrap().into_inner();
+    let refresh_started = TypeConfig::now();
     router.get_raft_handle(&0)?.trigger().heartbeat().await?;
     router
         .wait(&0, timeout())
-        .metrics(
-            |m| m.last_quorum_acked.is_some_and(|acked| acked.into_inner() > old_acked),
+        .leader_with_quorum_acked(
+            Some(refresh_started),
             "leader lease recovered through the surviving quorum",
         )
         .await?;

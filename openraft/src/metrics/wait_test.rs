@@ -12,6 +12,7 @@ use crate::core::ServerState;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::log_id::LogIdOptionExt;
+use crate::metrics::SerdeInstant;
 use crate::metrics::Wait;
 use crate::metrics::WaitError;
 use crate::type_config::TypeConfigExt;
@@ -228,6 +229,44 @@ fn test_wait_vote() {
         h.await?;
         assert_eq!(Vote::new_committed(1, 2), got.vote);
 
+        Ok::<(), anyhow::Error>(())
+    })
+    .unwrap();
+}
+
+#[test]
+fn test_wait_leader_with_quorum_acked() {
+    UTConfig::<()>::run(async {
+        let (init, w, tx) = init_wait_test::<UTConfig>();
+        let first_acked = UTConfig::<()>::now();
+        let second_acked = first_acked + Duration::from_millis(10);
+
+        let h = UTConfig::<()>::spawn(async move {
+            UTConfig::<()>::sleep(Duration::from_millis(10)).await;
+            let mut update = init.clone();
+            update.state = ServerState::Leader;
+            update.last_quorum_acked = Some(SerdeInstant::new(first_acked));
+            tx.send(update.clone())?;
+
+            UTConfig::<()>::sleep(Duration::from_millis(10)).await;
+            update.last_quorum_acked = Some(SerdeInstant::new(second_acked));
+            tx.send(update)?;
+            Ok::<(), anyhow::Error>(())
+        });
+
+        let got = w.leader_with_quorum_acked(None, "any quorum ack").await?;
+        assert_eq!(
+            (ServerState::Leader, Some(SerdeInstant::new(first_acked))),
+            (got.state, got.last_quorum_acked)
+        );
+
+        let got = w.leader_with_quorum_acked(Some(second_acked), "newer quorum ack").await?;
+        assert_eq!(
+            (ServerState::Leader, Some(SerdeInstant::new(second_acked))),
+            (got.state, got.last_quorum_acked)
+        );
+
+        h.await??;
         Ok::<(), anyhow::Error>(())
     })
     .unwrap();

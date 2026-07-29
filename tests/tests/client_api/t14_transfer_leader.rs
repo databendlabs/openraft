@@ -260,9 +260,10 @@ async fn transfer_leader_blocks_lease_read() -> anyhow::Result<()> {
 
     // Refresh quorum-acked time before isolating n1, so the lease is comfortably fresh
     // and `LeaseRead` would succeed if the gate were absent.
+    let refresh_started = TypeConfig::now();
     n0.trigger().heartbeat().await?;
     n0.wait(Some(Duration::from_millis(500)))
-        .metrics(|m| m.last_quorum_acked.is_some(), "leader has fresh last_quorum_acked")
+        .leader_with_quorum_acked(Some(refresh_started), "leader has fresh last_quorum_acked")
         .await?;
 
     // Sanity: LeaseRead succeeds before the transfer.

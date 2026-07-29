@@ -219,6 +219,9 @@ async fn test_cluster_inner() -> Result<(), Box<dyn std::error::Error + Send + S
     let x = client3.read(&("foo".to_string())).await?;
     assert_eq!(expected_bar, x);
 
+    let x = leader.linearizable_read(&("foo".to_string())).await??;
+    assert_eq!(expected_bar, x);
+
     println!("=== write `foo=wow` on leader");
     let write_wow = leader
         .write(&types_kv::Request::Set {

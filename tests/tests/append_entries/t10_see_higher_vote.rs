@@ -6,7 +6,6 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::ServerState;
 use openraft::Vote;
-use openraft::async_runtime::WatchReceiver;
 use openraft::raft::VoteRequest;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::ClientRequest;
@@ -44,13 +43,10 @@ async fn append_sees_higher_vote() -> Result<()> {
         TypeConfig::sleep(Duration::from_millis(800)).await;
 
         // Re-establish node-0's quorum lease through node-2 while node-1 remains isolated.
-        let old_acked = n0.metrics().borrow_watched().last_quorum_acked.unwrap().into_inner();
+        let refresh_started = TypeConfig::now();
         n0.trigger().heartbeat().await?;
         n0.wait(timeout())
-            .metrics(
-                |m| m.last_quorum_acked.is_some_and(|acked| acked.into_inner() > old_acked),
-                "node-0 quorum lease recovered through node-2",
-            )
+            .leader_with_quorum_acked(Some(refresh_started), "node-0 quorum lease recovered through node-2")
             .await?;
 
         router.set_unreachable(1, false);

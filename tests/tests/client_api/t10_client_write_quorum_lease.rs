@@ -72,14 +72,9 @@ async fn client_write_requires_valid_quorum_lease() -> Result<()> {
     router.set_unreachable(1, false);
     router.set_unreachable(2, false);
 
-    let old_acked = metrics.last_quorum_acked.unwrap().into_inner();
+    let refresh_started = TypeConfig::now();
     n0.trigger().heartbeat().await?;
-    n0.wait(timeout())
-        .metrics(
-            |m| m.last_quorum_acked.is_some_and(|acked| acked.into_inner() > old_acked),
-            "leader lease recovered",
-        )
-        .await?;
+    n0.wait(timeout()).leader_with_quorum_acked(Some(refresh_started), "leader lease recovered").await?;
 
     let recovered = n0.client_write(ClientRequest::make_request("recovered", 3)).await?;
     log_index += 1;
