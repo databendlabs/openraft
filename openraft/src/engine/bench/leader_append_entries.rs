@@ -1,3 +1,8 @@
+// Benchmarks for leader_append_entries with varying batch sizes.
+//
+// Run with:
+//   cargo bench --features bench -p openraft -- leader_append
+
 extern crate test;
 
 use std::sync::Arc;
@@ -56,6 +61,7 @@ fn leader_append_1_entry(b: &mut Bencher) {
     b.iter(|| {
         eng.try_leader_handler().unwrap().leader_append_entries(black_box([EntryPayload::Blank]));
 
+        // Drain the command buffer periodically to avoid unbounded growth.
         i += 1;
         if i.is_multiple_of(64) {
             eng.output.clear_commands();
