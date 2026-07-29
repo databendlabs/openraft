@@ -123,6 +123,14 @@ fn test_install_snapshot_not_conflict() -> anyhow::Result<()> {
     // Snapshot will be installed and there are no conflicting logs.
     let mut eng = eng();
 
+    // The vote must cover the snapshot's last log id, as `accept_vote()` guarantees on the real
+    // path.
+    eng.state.vote.update(
+        UTConfig::<()>::now(),
+        Duration::from_millis(500),
+        Vote::new_committed(4, 1),
+    );
+
     let cond = eng.following_handler().install_full_snapshot(SnapshotOf::<UTConfig, ()> {
         meta: SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(4, 1, 6)),
@@ -166,7 +174,7 @@ fn test_install_snapshot_not_conflict() -> anyhow::Result<()> {
                     },
                     snapshot: (),
                 },
-                LogIOId::new(Vote::new(2, 1).into_committed(), Some(log_id(4, 1, 6))),
+                LogIOId::new(Vote::new(4, 1).to_committed(), Some(log_id(4, 1, 6))),
             )),
             Command::PurgeLog { upto: log_id(4, 1, 6) },
         ],
@@ -183,6 +191,11 @@ fn test_install_snapshot_resets_purged_effective_membership() -> anyhow::Result<
     let mut eng = eng();
     let snapshot_membership = StoredMembershipOf::<UTConfig>::new(Some(log_id(5, 1, 4)), m12());
 
+    eng.state.vote.update(
+        UTConfig::<()>::now(),
+        Duration::from_millis(500),
+        Vote::new_committed(5, 1),
+    );
     eng.state.membership_state = MembershipState::new(
         Arc::new(StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m12())),
         Arc::new(StoredMembershipOf::<UTConfig>::new(Some(log_id(4, 1, 8)), m1234())),
@@ -219,6 +232,11 @@ fn test_install_snapshot_resets_purged_effective_without_truncating() -> anyhow:
     let mut eng = eng();
     let snapshot_membership = StoredMembershipOf::<UTConfig>::new(Some(log_id(5, 1, 4)), m12());
 
+    eng.state.vote.update(
+        UTConfig::<()>::now(),
+        Duration::from_millis(500),
+        Vote::new_committed(5, 1),
+    );
     eng.state.log_ids = LogIdList::new(None, vec![
         //
         log_id(2, 1, 4),
@@ -264,7 +282,7 @@ fn test_install_snapshot_resets_purged_effective_without_truncating() -> anyhow:
                     },
                     snapshot: (),
                 },
-                LogIOId::new(Vote::new(2, 1).into_committed(), Some(log_id(5, 1, 9)))
+                LogIOId::new(Vote::new(5, 1).to_committed(), Some(log_id(5, 1, 9)))
             )),
             Command::PurgeLog { upto: log_id(5, 1, 9) },
         ],
@@ -285,7 +303,7 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
         eng.state.vote.update(
             UTConfig::<()>::now(),
             Duration::from_millis(500),
-            Vote::new_committed(2, 1),
+            Vote::new_committed(5, 1),
         );
         eng.state.apply_progress_mut().accept(log_id(2, 1, 3));
         eng.state.log_ids = LogIdList::new(None, vec![
@@ -353,7 +371,7 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
                     },
                     snapshot: (),
                 },
-                LogIOId::new(Vote::new(2, 1).into_committed(), Some(log_id(5, 1, 6)))
+                LogIOId::new(Vote::new(5, 1).to_committed(), Some(log_id(5, 1, 6)))
             )),
             Command::PurgeLog { upto: log_id(5, 1, 6) },
         ],
@@ -367,6 +385,12 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
 fn test_install_snapshot_advance_last_log_id() -> anyhow::Result<()> {
     // Snapshot will be installed and there are no conflicting logs.
     let mut eng = eng();
+
+    eng.state.vote.update(
+        UTConfig::<()>::now(),
+        Duration::from_millis(500),
+        Vote::new_committed(100, 1),
+    );
 
     let cond = eng.following_handler().install_full_snapshot(SnapshotOf::<UTConfig, ()> {
         meta: SnapshotMetaOf::<UTConfig> {
@@ -415,7 +439,7 @@ fn test_install_snapshot_advance_last_log_id() -> anyhow::Result<()> {
                     },
                     snapshot: (),
                 },
-                LogIOId::new(Vote::new(2, 1).into_committed(), Some(log_id(100, 1, 100)))
+                LogIOId::new(Vote::new(100, 1).to_committed(), Some(log_id(100, 1, 100)))
             )),
             Command::PurgeLog {
                 upto: log_id(100, 1, 100)
@@ -431,6 +455,12 @@ fn test_install_snapshot_advance_last_log_id() -> anyhow::Result<()> {
 fn test_install_snapshot_update_accepted() -> anyhow::Result<()> {
     // Snapshot will be installed and `accepted` should be updated.
     let mut eng = eng();
+
+    eng.state.vote.update(
+        UTConfig::<()>::now(),
+        Duration::from_millis(500),
+        Vote::new_committed(100, 1),
+    );
 
     let cond = eng.following_handler().install_full_snapshot(SnapshotOf::<UTConfig, ()> {
         meta: SnapshotMetaOf::<UTConfig> {
@@ -450,11 +480,50 @@ fn test_install_snapshot_update_accepted() -> anyhow::Result<()> {
 
     assert_eq!(
         Some(&IOId::new_log_io(
-            Vote::new(2, 1).into_committed(),
+            Vote::new(100, 1).to_committed(),
             Some(log_id(100, 1, 100))
         )),
         eng.state.accepted_log_io()
     );
 
     Ok(())
+}
+
+#[test]
+#[should_panic(expected = "can not be owned by the installing leader")]
+fn test_install_snapshot_beyond_leader_vote() {
+    // The vote is (2,1): no leader owns a snapshot with a term-4 last log id.
+    let mut eng = eng();
+
+    let _ = eng.following_handler().install_full_snapshot(SnapshotOf::<UTConfig, ()> {
+        meta: SnapshotMetaOf::<UTConfig> {
+            last_log_id: Some(log_id(4, 1, 6)),
+            last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
+            snapshot_id: "1-2-3-4".to_string(),
+        },
+        snapshot: (),
+    });
+}
+
+#[test]
+#[should_panic(expected = "contradicts locally committed logs")]
+fn test_install_snapshot_conflict_with_committed() {
+    // A snapshot greater than the local committed (4,1,5) but at a smaller index contradicts
+    // locally committed logs.
+    let mut eng = eng();
+
+    eng.state.vote.update(
+        UTConfig::<()>::now(),
+        Duration::from_millis(500),
+        Vote::new_committed(5, 1),
+    );
+
+    let _ = eng.following_handler().install_full_snapshot(SnapshotOf::<UTConfig, ()> {
+        meta: SnapshotMetaOf::<UTConfig> {
+            last_log_id: Some(log_id(5, 1, 3)),
+            last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
+            snapshot_id: "1-2-3-4".to_string(),
+        },
+        snapshot: (),
+    });
 }

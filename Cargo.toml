@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.10.0-alpha.30"
+version = "0.10.0-alpha.31"
 edition = "2024"
 authors = [
     "Databend Authors <opensource@datafuselabs.com>",
@@ -29,6 +29,7 @@ futures            = { version = "0.3" }
 futures-channel    = { version = "0.3" }
 futures-util       = { version = "0.3" }
 base2histogram     = { version = "0.2.3" }
+bincode            = { version = "1.3" }
 lazy_static        = { version = "1.4.0" }
 maplit             = { version = "1.0.2" }
 peel-off           = { version = "0.1.0" }
@@ -88,16 +89,18 @@ exclude = [
     "examples/network-v2-http",
 
     "examples/log-mem",
+    "examples/log-rocks",
     "examples/mem-log",
     "examples/memstore",
-    "examples/sm-mem",
     "examples/rocksstore",
+    "examples/sm-mem",
+    "examples/sm-rocks",
     "examples/types-kv",
 
     "examples/raft-kv-memstore",
     "examples/raft-kv-memstore-grpc",
     "examples/raft-kv-memstore-single-threaded",
-    "examples/raft-kv-memstore-network-v2",
+    "examples/raft-kv-memstore-network-v1",
     "examples/raft-kv-memstore-opendal-snapshot-data",
     "examples/raft-kv-rocksdb",
     "examples/multi-raft-kv",

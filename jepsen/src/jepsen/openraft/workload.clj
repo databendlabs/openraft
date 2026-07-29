@@ -18,7 +18,10 @@
                current))))
   value)
 
-(defn- next-value! [value-counter]
+(defn- next-value!
+  "Returns a globally unique value. Uniqueness lets Knossos treat logical values
+  as a faithful stand-in for server versions; see cas-op."
+  [value-counter]
   (str "value-" (swap! value-counter inc)))
 
 (defn- read-op [_test _process]
@@ -32,7 +35,30 @@
      :f :write
      :value (next-value! value-counter)}))
 
-(defn- cas-op [latest-value value-counter]
+(defn- final-read-op [test process]
+  (assoc (read-op test process) :final? true))
+
+(defn- final-write-op [value-counter]
+  (let [write (write-op value-counter)]
+    (fn [test process]
+      (assoc (write test process) :final? true))))
+
+(defn- cas-op
+  "Generates a CAS against the latest known value, falling back to a write until
+  a version is observed.
+
+  Knossos checks linearizability over the logical string values only. This is
+  sound because logical values and server versions are in bijection:
+
+    1. next-value! never repeats a value, so every mutation is globally unique.
+    2. with-leader! retries a mutation only after a failure proving it was not
+       applied, never after an ambiguous outcome, so each unique value is
+       applied at most once.
+
+  Breaking either invariant (reusing a value, or retrying a mutation with an
+  ambiguous outcome) would map one logical value onto two versions and could
+  mask a real violation."
+  [latest-value value-counter]
   (fn [_test _process]
     (let [expected @latest-value
           new-value (next-value! value-counter)]
@@ -66,9 +92,16 @@
 
 (defn- handle-operation-exception
   "Classifies a client exception and returns a completed Jepsen operation.
-  Thread interruptions are rethrown."
+  Thread interruptions are rethrown so Jepsen's control signals survive."
   [op e]
+  ;; A raw InterruptedException (thrown outside send!, which clears the interrupt
+  ;; flag) would otherwise fall through to the :client-error default and be
+  ;; swallowed. Restore the flag and rethrow so the interrupt is not lost.
+  (when (instance? InterruptedException e)
+    (.interrupt (Thread/currentThread))
+    (throw e))
   (let [{:keys [kind status error]} (ex-data e)]
+    ;; send! already re-interrupted the thread for wrapped interruptions.
     (if (= :interrupted kind)
       (throw e)
       (let [result
@@ -106,9 +139,10 @@
 
               (complete-with-ambiguous-outcome op :client-error true))]
         (cond-> result
-          (:unexpected? result)
+          (or (:unexpected? result) (:final? op))
           (assoc :exception-message (ex-message e)
-                 :exception-data (ex-data e)))))))
+                 :exception-data (ex-data e)
+                 :unexpected? true))))))
 
 (defn- unexpected-errors-checker []
   (reify checker/Checker
@@ -148,7 +182,8 @@
         (let [value (->> (http/with-leader!
                            leader-endpoint
                            endpoints
-                           #(http/linearizable-read! % key-name))
+                           #(http/linearizable-read! % key-name)
+                           http/retryable-read-error?)
                          (remember-latest! latest-value))]
           (assoc op
                  :type :ok
@@ -176,7 +211,7 @@
 
   (close! [_ _test]))
 
-(defn workload [opts]
+(defn workload [_opts]
   (let [latest-value (atom nil)
         value-counter (atom 0)
         operations (gen/mix [read-op
@@ -188,9 +223,11 @@
                     (gen/once {:type :invoke
                                :f :write
                                :value (next-value! value-counter)})
-                    (gen/time-limit (:time-limit opts)
-                                    (gen/stagger 0.1 operations))
-                    (gen/once read-op)))
+                    (gen/stagger 0.1 operations)))
+     :final-generator (gen/clients
+                        (gen/phases
+                          (gen/once (final-write-op value-counter))
+                          (gen/once final-read-op)))
      :checker (checker/compose
                 {:linearizable (checker/linearizable
                                  {:model (model/cas-register)})

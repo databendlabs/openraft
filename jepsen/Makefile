@@ -1,12 +1,15 @@
 COMPOSE := docker compose -f docker/docker-compose.yml
 NODES ?= n1,n2,n3
 CONCURRENCY ?= 3
+NEMESIS ?= partition
 SSH_KEY ?= /root/.ssh/openraft-jepsen
-ARGS ?= --nodes $(NODES) --concurrency $(CONCURRENCY) --ssh-private-key $(SSH_KEY)
+ARGS ?= --nodes $(NODES) --concurrency $(CONCURRENCY) --nemesis $(NEMESIS) --ssh-private-key $(SSH_KEY)
 
 jepsen: build
 	@echo "[jepsen] starting containers"
 	@$(COMPOSE) up -d --force-recreate
+	@echo "[jepsen] running unit tests"
+	@$(COMPOSE) exec control lein test
 	@echo "[jepsen] running linearizability test"
 	@$(COMPOSE) exec control lein run test $(ARGS)
 

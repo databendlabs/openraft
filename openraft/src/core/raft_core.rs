@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::fmt;
 use std::fmt::Debug;
+use std::future::Future;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -8,6 +10,7 @@ use std::time::Duration;
 use display_more::DisplayOptionExt;
 use display_more::DisplaySliceExt;
 use futures_util::FutureExt;
+use futures_util::Stream;
 use futures_util::StreamExt;
 use futures_util::TryFutureExt;
 use futures_util::stream::FuturesUnordered;
@@ -19,6 +22,7 @@ use tracing::Span;
 use crate::ChangeMembers;
 use crate::Instant;
 use crate::Membership;
+use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::async_runtime::MpscReceiver;
@@ -29,13 +33,14 @@ use crate::batch::Batch;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::ClientResponderQueue;
+use crate::core::IoBroadcast;
+use crate::core::MetricsChannels;
 use crate::core::ServerState;
 use crate::core::SharedReplicateBatch;
 use crate::core::balancer::Balancer;
 use crate::core::core_state::CoreState;
 use crate::core::heartbeat::event::HeartbeatEvent;
 use crate::core::heartbeat::handle::HeartbeatWorkersHandle;
-use crate::core::io_flush_tracking::IoProgressSender;
 use crate::core::merged_raft_msg_receiver::BatchRaftMsgReceiver;
 use crate::core::notification::Notification;
 use crate::core::raft_msg::AppendEntriesTx;
@@ -87,6 +92,7 @@ use crate::network::RPCOption;
 use crate::network::RPCTypes;
 use crate::network::RaftNetworkFactory;
 use crate::progress::VecProgressEntry;
+use crate::progress::inflight_id::InflightId;
 use crate::progress::stream_id::StreamId;
 use crate::quorum::QuorumSet;
 use crate::raft::AppendEntriesRequest;
@@ -94,6 +100,7 @@ use crate::raft::ClientWriteResult;
 use crate::raft::LogSegment;
 use crate::raft::ReadPolicy;
 use crate::raft::StreamAppendError;
+use crate::raft::StreamAppendResult;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft::linearizable_read::Linearizer;
@@ -121,11 +128,13 @@ use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::EntryPayloadOf;
 use crate::type_config::alias::InstantOf;
+use crate::type_config::alias::JoinErrorOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscReceiverOf;
 use crate::type_config::alias::MpscSenderOf;
+use crate::type_config::alias::NodeIdOf;
 use crate::type_config::alias::OneshotReceiverOf;
-use crate::type_config::alias::UncommittedVoteOf;
+use crate::type_config::alias::StoredMembershipOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::alias::WatchSenderOf;
@@ -228,32 +237,11 @@ where
     /// A Receiver to receive callback from other components.
     pub(crate) rx_notification: MpscReceiverOf<C, Notification<C>>,
 
-    /// A Watch channel sender for IO completion notifications from storage callbacks.
-    /// This is used by IOFlushed callbacks to report IO completion in a synchronous manner.
-    pub(crate) tx_io_completed: WatchSenderOf<C, Result<IOId<C>, StorageError<C>>>,
+    /// The watch channels that broadcast local IO progress to storage callbacks and replication.
+    pub(crate) io_broadcast: IoBroadcast<C>,
 
-    /// Broadcasts I/O acceptance before submission to storage.
-    ///
-    /// Updated when `RaftCore` is about to execute an I/O operation. This allows
-    /// observers to prepare for upcoming I/O before it actually happens.
-    ///
-    /// Note: This is sent when `RaftCore` executes the I/O, not when `Engine` accepts it,
-    /// since `Engine` is a pure algorithm implementation without I/O capabilities.
-    pub(crate) io_accepted_tx: WatchSenderOf<C, IOId<C>>,
-
-    /// Broadcasts I/O submission progress to replication tasks.
-    ///
-    /// This enables replication tasks to know which log entries have been submitted
-    /// to storage and are safe to read. Updated after each I/O submission completes.
-    pub(crate) io_submitted_tx: WatchSenderOf<C, IOId<C>>,
-
-    /// For broadcast committed log id to replication task.
-    pub(crate) committed_tx: WatchSenderOf<C, Option<LogIdOf<C>>>,
-
-    pub(crate) tx_metrics: WatchSenderOf<C, RaftMetrics<C>>,
-    pub(crate) tx_data_metrics: WatchSenderOf<C, RaftDataMetrics<C>>,
-    pub(crate) tx_server_metrics: WatchSenderOf<C, RaftServerMetrics<C>>,
-    pub(crate) tx_progress: IoProgressSender<C>,
+    /// The watch channels that publish this node's state for observers.
+    pub(crate) metrics: MetricsChannels<C>,
 
     /// Runtime statistics for Raft operations.
     ///
@@ -295,6 +283,10 @@ impl VoteRequestKind {
     }
 }
 
+/// The outcome of one leadership probe sent by [`RaftCore::spawn_leadership_probes`]: the target
+/// that answered and its append result, or the target that did not and the error that stopped it.
+type ProbeResult<C> = Result<(NodeIdOf<C>, StreamAppendResult<C>), (NodeIdOf<C>, RPCError<C>)>;
+
 impl<C, NF, LS, SM> RaftCore<C, NF, LS, SM>
 where
     C: RaftTypeConfig,
@@ -322,11 +314,11 @@ where
 
         tracing::debug!("update metrics for shutdown");
         {
-            let mut curr = self.tx_metrics.borrow_watched().clone();
+            let mut curr = self.metrics.all.borrow_watched().clone();
             curr.state = ServerState::Shutdown;
             curr.running_state = Err(err.clone());
 
-            self.tx_metrics.send(curr).ok();
+            self.metrics.all.send(curr).ok();
         }
 
         tracing::info!("RaftCore shutdown complete");
@@ -383,28 +375,15 @@ where
         };
 
         if read_policy == ReadPolicy::LeaseRead {
-            let now = C::now();
-            // Check if the lease is expired.
-            if let Some(last_quorum_acked_time) = self.last_quorum_acked_time()
-                && now < last_quorum_acked_time + self.engine.config.timer_config.leader_lease
-            {
-                tx.send(Ok(resp)).ok();
-                return;
-            }
-            tracing::debug!("{}: lease expired during lease read", self.id);
-            // we may no longer leader so error out early
-            let err = ForwardToLeader::empty();
-            tx.send(Err(err.into())).ok();
+            self.respond_lease_read(resp, tx);
             return;
         }
 
-        let my_id = self.id.clone();
         let my_vote = self.engine.state.vote_ref().clone();
-        let ttl = Duration::from_millis(self.config.heartbeat_interval);
         let eff_mem = self.engine.state.membership_state.effective().clone();
         let core_tx = self.tx_notification.clone();
 
-        let mut granted = btreeset! {my_id.clone()};
+        let granted = btreeset! {self.id.clone()};
 
         // single-node quorum, fast path, return quickly.
         if eff_mem.is_quorum(granted.iter()) {
@@ -412,8 +391,50 @@ where
             return;
         }
 
+        let pending = self.spawn_leadership_probes(&my_vote, &eff_mem).await;
+
+        // TODO: do not spawn, manage read requests with a queue by RaftCore
+
+        let waiting_fu = Self::wait_for_leadership_quorum(pending, my_vote, eff_mem, granted, core_tx, resp, tx);
+
+        // False positive lint warning(`non-binding `let` on a future`): https://github.com/rust-lang/rust-clippy/issues/9932
+        #[allow(clippy::let_underscore_future)]
+        let _ = C::spawn(waiting_fu.instrument(tracing::debug_span!("spawn_is_leader_waiting")));
+    }
+
+    /// Serve a [`ReadPolicy::LeaseRead`] request without contacting any peer.
+    ///
+    /// While the last quorum acknowledgement is younger than `leader_lease`, no other node can have
+    /// become leader, so the read is safe to answer from local state alone. Once the lease lapses
+    /// this node can no longer vouch for itself and the caller has to find the leader again.
+    fn respond_lease_read(&mut self, resp: Linearizer<C>, tx: ClientReadTx<C>) {
+        let now = C::now();
+        // Check if the lease is expired.
+        if let Some(last_quorum_acked_time) = self.last_quorum_acked_time()
+            && now < last_quorum_acked_time + self.engine.config.timer_config.leader_lease
+        {
+            tx.send(Ok(resp)).ok();
+            return;
+        }
+        tracing::debug!("{}: lease expired during lease read", self.id);
+        // we may no longer leader so error out early
+        let err = ForwardToLeader::empty();
+        tx.send(Err(err.into())).ok();
+    }
+
+    /// Probe every other voter with an empty AppendEntries, to confirm this node is still leading.
+    ///
+    /// The returned probes complete in arrival order; joining one may fail if its task panicked.
+    async fn spawn_leadership_probes(
+        &mut self,
+        my_vote: &VoteOf<C>,
+        eff_mem: &StoredMembershipOf<C>,
+    ) -> impl Stream<Item = Result<ProbeResult<C>, (NodeIdOf<C>, JoinErrorOf<C>)>> + Unpin + use<C, NF, LS, SM> {
+        let my_id = self.id.clone();
+        let ttl = Duration::from_millis(self.config.heartbeat_interval);
+
         // Spawn parallel requests, all with the standard timeout for heartbeats.
-        let mut pending = FuturesUnordered::new();
+        let pending = FuturesUnordered::new();
 
         let voter_progresses = {
             let l = &self.engine.leader.as_ref().unwrap();
@@ -484,78 +505,90 @@ where
             pending.push(task);
         }
 
-        let waiting_fu = async move {
-            // Handle responses as they return.
-            while let Some(res) = pending.next().await {
-                let (target, stream_result) = match res {
-                    Ok(Ok(res)) => res,
-                    Ok(Err((target, err))) => {
-                        tracing::error!(
-                            "timeout while confirming leadership for read request, target: {}, error: {}",
-                            target,
-                            err
-                        );
-                        continue;
-                    }
-                    Err((target, err)) => {
-                        tracing::error!("failed to join task: {}, target: {}", err, target);
-                        continue;
-                    }
-                };
+        pending
+    }
 
-                // If we receive a response with a greater vote, then revert to follower and abort this
-                // request.
-                if let Err(StreamAppendError::HigherVote(vote)) = stream_result {
-                    debug_assert!(
-                        vote.as_ref_vote() > my_vote.as_ref_vote(),
-                        "committed vote({}) has total order relation with other votes({})",
-                        my_vote,
-                        vote
+    /// Answer a read request as soon as a quorum of `pending` probes confirms this node still
+    /// leads.
+    ///
+    /// A probe reporting a higher vote ends the request immediately: the vote is forwarded to
+    /// [`RaftCore`] and the caller is told to look for the new leader. Exhausting the probes
+    /// without reaching a quorum yields [`QuorumNotEnough`].
+    async fn wait_for_leadership_quorum<S>(
+        mut pending: S,
+        my_vote: VoteOf<C>,
+        eff_mem: Arc<StoredMembershipOf<C>>,
+        mut granted: BTreeSet<NodeIdOf<C>>,
+        core_tx: MpscSenderOf<C, Notification<C>>,
+        resp: Linearizer<C>,
+        tx: ClientReadTx<C>,
+    ) where
+        S: Stream<Item = Result<ProbeResult<C>, (NodeIdOf<C>, JoinErrorOf<C>)>> + Unpin,
+    {
+        // Handle responses as they return.
+        while let Some(res) = pending.next().await {
+            let (target, stream_result) = match res {
+                Ok(Ok(res)) => res,
+                Ok(Err((target, err))) => {
+                    tracing::error!(
+                        "timeout while confirming leadership for read request, target: {}, error: {}",
+                        target,
+                        err
                     );
+                    continue;
+                }
+                Err((target, err)) => {
+                    tracing::error!("failed to join task: {}, target: {}", err, target);
+                    continue;
+                }
+            };
 
-                    let send_res = core_tx
-                        .send(Notification::HigherVote {
-                            target,
-                            higher: vote,
-                            leader_vote: my_vote.into_committed(),
-                        })
-                        .await;
+            // If we receive a response with a greater vote, then revert to follower and abort this
+            // request.
+            if let Err(StreamAppendError::HigherVote(vote)) = stream_result {
+                debug_assert!(
+                    vote.as_ref_vote() > my_vote.as_ref_vote(),
+                    "committed vote({}) has total order relation with other votes({})",
+                    my_vote,
+                    vote
+                );
 
-                    if let Err(_e) = send_res {
-                        tracing::error!("failed to send HigherVote to RaftCore");
-                    }
+                let send_res = core_tx
+                    .send(Notification::HigherVote {
+                        target,
+                        higher: vote,
+                        leader_vote: my_vote.to_committed(),
+                    })
+                    .await;
 
-                    // we are no longer leader so error out early
-                    let err = ForwardToLeader::empty();
-                    tx.send(Err(err.into())).ok();
-                    return;
+                if let Err(_e) = send_res {
+                    tracing::error!("failed to send HigherVote to RaftCore");
                 }
 
-                // Success or Conflict both confirm leadership (got valid response from follower)
-                granted.insert(target);
-
-                if eff_mem.is_quorum(granted.iter()) {
-                    tx.send(Ok(resp)).ok();
-                    return;
-                }
+                // we are no longer leader so error out early
+                let err = ForwardToLeader::empty();
+                tx.send(Err(err.into())).ok();
+                return;
             }
 
-            // If we've hit this location, then we've failed to gather needed confirmations due to
-            // request failures.
+            // Success or Conflict both confirm leadership (got valid response from follower)
+            granted.insert(target);
 
-            tx.send(Err(QuorumNotEnough {
-                cluster: eff_mem.membership().to_string(),
-                got: granted,
+            if eff_mem.is_quorum(granted.iter()) {
+                tx.send(Ok(resp)).ok();
+                return;
             }
-            .into()))
-                .ok();
-        };
+        }
 
-        // TODO: do not spawn, manage read requests with a queue by RaftCore
+        // If we've hit this location, then we've failed to gather needed confirmations due to
+        // request failures.
 
-        // False positive lint warning(`non-binding `let` on a future`): https://github.com/rust-lang/rust-clippy/issues/9932
-        #[allow(clippy::let_underscore_future)]
-        let _ = C::spawn(waiting_fu.instrument(tracing::debug_span!("spawn_is_leader_waiting")));
+        tx.send(Err(QuorumNotEnough {
+            cluster: eff_mem.membership().to_string(),
+            got: granted,
+        }
+        .into()))
+            .ok();
     }
 
     /// Submit change-membership by writing a Membership log entry.
@@ -721,10 +754,10 @@ where
     #[tracing::instrument(level = "debug", skip_all)]
     pub fn flush_metrics(&mut self) {
         let io_state = self.engine.state.io_state();
-        self.tx_progress.send_log_progress(io_state.log_progress.flushed().cloned());
-        self.tx_progress.send_commit_progress(io_state.apply_progress.accepted().cloned());
-        self.tx_progress.send_apply_progress(io_state.apply_progress.flushed().cloned());
-        self.tx_progress.send_snapshot_progress(io_state.snapshot.flushed().cloned());
+        self.metrics.progress.send_log_progress(io_state.log_progress.flushed().cloned());
+        self.metrics.progress.send_commit_progress(io_state.apply_progress.accepted().cloned());
+        self.metrics.progress.send_apply_progress(io_state.apply_progress.flushed().cloned());
+        self.metrics.progress.send_snapshot_progress(io_state.snapshot.flushed().cloned());
 
         let (replication, heartbeat) = if let Some(leader) = self.engine.leader.as_ref() {
             let replication_prog = &leader.progress;
@@ -753,10 +786,6 @@ where
 
         let st = &self.engine.state;
 
-        let membership_config = st.membership_state.effective().clone();
-        let committed_membership_config = st.membership_state.committed().clone();
-        let current_leader = self.current_leader();
-
         // Get the last flushed vote, or use initial vote (term=0, node_id=self.id)
         // if no IO has been flushed yet (e.g., during startup).
         let vote = st
@@ -764,38 +793,6 @@ where
             .flushed()
             .map(|io_id| io_id.to_app_vote())
             .unwrap_or_else(|| VoteOf::<C>::new_with_default_term(self.id.clone()));
-
-        #[allow(deprecated)]
-        let m = RaftMetrics {
-            running_state: Ok(()),
-            id: self.id.clone(),
-
-            // --- data ---
-            current_term: st.vote_ref().term(),
-            vote: vote.clone(),
-            last_log_index: st.last_log_id().index(),
-            local_committed: st.local_committed().cloned(),
-            committed: st.local_committed().cloned(),
-            cluster_committed: st.cluster_committed().cloned(),
-            last_applied: st.io_applied().cloned(),
-            snapshot: st.io_snapshot_last_log_id().cloned(),
-            purged: st.io_purged().cloned(),
-
-            #[cfg(feature = "metrics-logids")]
-            log_id_list: st.log_ids.clone(),
-
-            // --- cluster ---
-            state: st.server_state,
-            current_leader: current_leader.clone(),
-            millis_since_quorum_ack,
-            last_quorum_acked: last_quorum_acked.map(SerdeInstant::new),
-            membership_config: membership_config.clone(),
-            committed_membership_config: committed_membership_config.clone(),
-            heartbeat: heartbeat.clone(),
-
-            // --- replication ---
-            replication: replication.clone(),
-        };
 
         #[allow(deprecated)]
         let data_metrics = RaftDataMetrics {
@@ -816,13 +813,48 @@ where
             heartbeat,
         };
 
-        let server_metrics = RaftServerMetrics {
+        let server_metrics = RaftServerMetrics::<C> {
             id: self.id.clone(),
-            vote: vote.clone(),
+            vote,
             state: st.server_state,
-            current_leader,
-            membership_config,
-            committed_membership_config,
+            current_leader: self.current_leader(),
+            membership_config: st.membership_state.effective().clone(),
+            committed_membership_config: st.membership_state.committed().clone(),
+        };
+
+        // `RaftMetrics` is the union of the two above, plus the running state and the term.
+        // It is assembled from them rather than re-read from the state, so that every field has
+        // exactly one place where it is derived.
+        #[allow(deprecated)]
+        let m = RaftMetrics {
+            running_state: Ok(()),
+            id: server_metrics.id.clone(),
+
+            // --- data ---
+            current_term: st.vote_ref().term(),
+            vote: server_metrics.vote.clone(),
+            last_log_index: data_metrics.last_log.index(),
+            local_committed: data_metrics.local_committed.clone(),
+            committed: data_metrics.committed.clone(),
+            cluster_committed: data_metrics.cluster_committed.clone(),
+            last_applied: data_metrics.last_applied.clone(),
+            snapshot: data_metrics.snapshot.clone(),
+            purged: data_metrics.purged.clone(),
+
+            #[cfg(feature = "metrics-logids")]
+            log_id_list: data_metrics.log_id_list.clone(),
+
+            // --- cluster ---
+            state: server_metrics.state,
+            current_leader: server_metrics.current_leader.clone(),
+            millis_since_quorum_ack: data_metrics.millis_since_quorum_ack,
+            last_quorum_acked: data_metrics.last_quorum_acked,
+            membership_config: server_metrics.membership_config.clone(),
+            committed_membership_config: server_metrics.committed_membership_config.clone(),
+            heartbeat: data_metrics.heartbeat.clone(),
+
+            // --- replication ---
+            replication: data_metrics.replication.clone(),
         };
 
         // Record to external metrics recorder
@@ -835,7 +867,7 @@ where
         // but not `RaftDataMetrics` and `RaftServerMetrics`.
         // Thus if `RaftMetrics` change is perceived, the other two should have been updated.
 
-        self.tx_data_metrics.send_if_modified(|metrix| {
+        self.metrics.data.send_if_modified(|metrix| {
             if data_metrics.ne(metrix) {
                 *metrix = data_metrics.clone();
                 return true;
@@ -843,7 +875,7 @@ where
             false
         });
 
-        self.tx_server_metrics.send_if_modified(|metrix| {
+        self.metrics.server.send_if_modified(|metrix| {
             if server_metrics.ne(metrix) {
                 *metrix = server_metrics.clone();
                 return true;
@@ -852,7 +884,7 @@ where
         });
 
         tracing::debug!("report metrics: {}", m);
-        let res = self.tx_metrics.send(m);
+        let res = self.metrics.all.send(m);
 
         if let Err(err) = res {
             tracing::error!("failed to report metrics, error: {}, id: {}", err, &self.id);
@@ -957,7 +989,7 @@ where
 
         // Broadcast I/O progress so replication tasks can read submitted logs.
         if let Some(submitted) = self.engine.state.log_progress().submitted().cloned() {
-            self.io_submitted_tx.send_if_greater(submitted);
+            self.io_broadcast.submitted.send_if_greater(submitted);
         }
     }
 
@@ -1101,7 +1133,7 @@ where
 
         let context = self.new_replication_context(leader_vote, prog, cancel_rx);
 
-        let handle = ReplicationHandle::new(prog.progress.stream_id, replicate_tx, cancel_tx);
+        let handle = ReplicationHandle::new(prog.progress.data.stream_id, replicate_tx, cancel_tx);
 
         (handle, context)
     }
@@ -1118,7 +1150,7 @@ where
             id,
             target: prog.target.clone(),
             leader_vote,
-            stream_id: prog.progress.stream_id,
+            stream_id: prog.progress.data.stream_id,
             config: self.config.clone(),
             tx_notify: self.tx_notification.clone(),
             cancel_rx,
@@ -1129,9 +1161,9 @@ where
     fn new_event_watcher(&self, replicate_rx: WatchReceiverOf<C, Replicate<C>>) -> EventWatcher<C> {
         EventWatcher {
             replicate_rx,
-            committed_rx: self.committed_tx.subscribe(),
-            io_accepted_rx: self.io_accepted_tx.subscribe(),
-            io_submitted_rx: self.io_submitted_tx.subscribe(),
+            committed_rx: self.io_broadcast.committed.subscribe(),
+            io_accepted_rx: self.io_broadcast.accepted.subscribe(),
+            io_submitted_rx: self.io_broadcast.submitted.subscribe(),
         }
     }
 
@@ -1426,28 +1458,16 @@ where
     /// `Ok(granted)` from the default impl, keeping Pre-Vote a no-op during a rolling upgrade.
     #[tracing::instrument(level = "trace", skip_all)]
     async fn spawn_parallel_vote_requests(&mut self, vote_req: &VoteRequest<C>, kind: VoteRequestKind) {
-        let members = self.engine.state.membership_state.effective().voter_ids();
-
         let vote = vote_req.vote.clone();
+        let id = self.id.clone();
+        let tx = self.tx_notification.clone();
+        let ttl = Duration::from_millis(self.config.election_timeout_min);
 
-        for target in members {
-            if target == self.id {
-                continue;
-            }
-
+        self.broadcast_to_voters(ttl, |target, mut client, option| {
             let req = vote_req.clone();
-
-            // Safe unwrap(): target must be in membership
-            let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap().clone();
-            let mut client = self.network_factory.new_client(target.clone(), &target_node).await;
-
-            let tx = self.tx_notification.clone();
-
-            let ttl = Duration::from_millis(self.config.election_timeout_min);
-            let id = self.id.clone();
-            let option = RPCOption::new(ttl);
-
             let vote = vote.clone();
+            let id = id.clone();
+            let tx = tx.clone();
 
             let span = match kind {
                 VoteRequestKind::Vote => {
@@ -1458,109 +1478,64 @@ where
                 }
             };
 
-            // False positive lint warning(`non-binding `let` on a future`): https://github.com/rust-lang/rust-clippy/issues/9932
-            #[allow(clippy::let_underscore_future)]
-            let _ = C::spawn(
-                {
-                    let target = target.clone();
-                    async move {
-                        let tm_res = match kind {
-                            VoteRequestKind::Vote => C::timeout(ttl, client.vote(req, option)).await,
-                            VoteRequestKind::PreVote => C::timeout(ttl, client.pre_vote(req, option)).await,
-                        };
-                        let res = match tm_res {
-                            Ok(res) => res,
+            async move {
+                let tm_res = match kind {
+                    VoteRequestKind::Vote => C::timeout(ttl, client.vote(req, option)).await,
+                    VoteRequestKind::PreVote => C::timeout(ttl, client.pre_vote(req, option)).await,
+                };
+                let res = match tm_res {
+                    Ok(res) => res,
 
-                            Err(_timeout) => {
-                                let timeout_err = Timeout::<C> {
-                                    action: RPCTypes::Vote,
-                                    id,
-                                    target: target.clone(),
-                                    timeout: ttl,
-                                };
-                                tracing::error!("timeout while requesting {}: {}", kind.as_str(), timeout_err);
-                                return;
-                            }
+                    Err(_timeout) => {
+                        let timeout_err = Timeout::<C> {
+                            action: RPCTypes::Vote,
+                            id,
+                            target: target.clone(),
+                            timeout: ttl,
                         };
+                        tracing::error!("timeout while requesting {}: {}", kind.as_str(), timeout_err);
+                        return;
+                    }
+                };
 
-                        match res {
-                            Ok(resp) => {
-                                let candidate_vote = vote.into_non_committed();
-                                let notification = match kind {
-                                    VoteRequestKind::Vote => Notification::VoteResponse {
-                                        target,
-                                        resp,
-                                        candidate_vote,
-                                    },
-                                    VoteRequestKind::PreVote => Notification::PreVoteResponse {
-                                        target,
-                                        resp,
-                                        candidate_vote,
-                                    },
-                                };
-                                tx.send(notification).await.ok();
-                            }
-                            // A transport failure is not a grant: a partitioned peer must not count
-                            // toward the (Pre-)Vote quorum. A network that has not implemented
-                            // `pre_vote` returns `Ok(granted)` from the default impl, so Pre-Vote
-                            // degrades to a no-op rather than relying on this.
-                            Err(err) => {
-                                tracing::error!(
-                                    "while requesting {}, error: {}, target: {}",
-                                    kind.as_str(),
-                                    err,
-                                    target
-                                )
-                            }
-                        }
+                match res {
+                    Ok(resp) => {
+                        let candidate_vote = vote.to_non_committed();
+                        let notification = match kind {
+                            VoteRequestKind::Vote => Notification::VoteResponse {
+                                target,
+                                resp,
+                                candidate_vote,
+                            },
+                            VoteRequestKind::PreVote => Notification::PreVoteResponse {
+                                target,
+                                resp,
+                                candidate_vote,
+                            },
+                        };
+                        tx.send(notification).await.ok();
+                    }
+                    // A transport failure is not a grant: a partitioned peer must not count
+                    // toward the (Pre-)Vote quorum. A network that has not implemented
+                    // `pre_vote` returns `Ok(granted)` from the default impl, so Pre-Vote
+                    // degrades to a no-op rather than relying on this.
+                    Err(err) => {
+                        tracing::error!("while requesting {}, error: {}, target: {}", kind.as_str(), err, target)
                     }
                 }
-                .instrument(span),
-            );
-        }
+            }
+            .instrument(span)
+        })
+        .await;
     }
 
-    /// Spawn parallel vote requests to all cluster members.
+    /// Tell every other voter to accept a new leader.
     #[tracing::instrument(level = "trace", skip_all)]
     async fn broadcast_transfer_leader(&mut self, req: TransferLeaderRequest<C>) {
-        let voter_ids = self.engine.state.membership_state.effective().voter_ids();
+        let ttl = Duration::from_millis(self.config.election_timeout_min);
 
-        for target in voter_ids {
-            if target == self.id {
-                continue;
-            }
-
+        self.broadcast_to_voters(ttl, |target, mut client, option| {
             let r = req.clone();
-
-            // Safe unwrap(): target must be in membership
-            let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap().clone();
-            let mut client = self.network_factory.new_client(target.clone(), &target_node).await;
-
-            let ttl = Duration::from_millis(self.config.election_timeout_min);
-            let option = RPCOption::new(ttl);
-
-            let fut = {
-                let target = target.clone();
-                async move {
-                    let tm_res = C::timeout(ttl, client.transfer_leader(r, option)).await;
-                    let res = match tm_res {
-                        Ok(res) => res,
-                        Err(timeout) => {
-                            tracing::error!("timeout sending transfer_leader: {}, target: {}", timeout, target);
-                            return;
-                        }
-                    };
-
-                    match res {
-                        Err(e) => {
-                            tracing::error!("error sending transfer_leader: {}, target: {}", e, target);
-                        }
-                        Ok(resp) => {
-                            tracing::info!("Done transfer_leader sent to {}, resp: {:?}", target, resp);
-                        }
-                    }
-                }
-            };
 
             let span = tracing::debug_span!(
                 parent: &Span::current(),
@@ -1568,9 +1543,56 @@ where
                 target = display(&target)
             );
 
+            async move {
+                let tm_res = C::timeout(ttl, client.transfer_leader(r, option)).await;
+                let res = match tm_res {
+                    Ok(res) => res,
+                    Err(timeout) => {
+                        tracing::error!("timeout sending transfer_leader: {}, target: {}", timeout, target);
+                        return;
+                    }
+                };
+
+                match res {
+                    Err(e) => {
+                        tracing::error!("error sending transfer_leader: {}, target: {}", e, target);
+                    }
+                    Ok(resp) => {
+                        tracing::info!("Done transfer_leader sent to {}, resp: {:?}", target, resp);
+                    }
+                }
+            }
+            .instrument(span)
+        })
+        .await;
+    }
+
+    /// Send an RPC to every voter except this node, each in its own detached task.
+    ///
+    /// `make_rpc` is handed a fresh client for one target and the shared [`RPCOption`], and returns
+    /// the future that talks to it. Nothing is joined, so each future has to report its own
+    /// outcome; `ttl` is the timeout the caller is expected to enforce inside that future.
+    async fn broadcast_to_voters<F, Fut>(&mut self, ttl: Duration, make_rpc: F)
+    where
+        F: Fn(C::NodeId, NF::Network, RPCOption) -> Fut,
+        Fut: Future<Output = ()> + OptionalSend + 'static,
+    {
+        let voter_ids = self.engine.state.membership_state.effective().voter_ids();
+
+        for target in voter_ids {
+            if target == self.id {
+                continue;
+            }
+
+            // Safe unwrap(): target must be in membership
+            let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap().clone();
+            let client = self.network_factory.new_client(target.clone(), &target_node).await;
+
+            let fut = make_rpc(target, client, RPCOption::new(ttl));
+
             // False positive lint warning(`non-binding `let` on a future`): https://github.com/rust-lang/rust-clippy/issues/9932
             #[allow(clippy::let_underscore_future)]
-            let _ = C::spawn(fut.instrument(span));
+            let _ = C::spawn(fut);
         }
     }
 
@@ -1740,84 +1762,7 @@ where
             RaftMsg::ExternalCommand { cmd } => {
                 tracing::info!("{}: received RaftMsg::ExternalCommand, cmd: {:?}", func_name!(), cmd);
 
-                match cmd {
-                    ExternalCommand::Elect { pre_vote } => {
-                        if self.engine.leader.is_some() {
-                            // A Leader can not win a campaign it starts: its own heartbeats keep
-                            // refreshing the voters' leader lease, and a lease that has not expired
-                            // rejects the vote request. Leave the established leadership alone.
-                            tracing::info!("ExternalCommand: already a Leader, ignore election trigger");
-                        } else {
-                            if self.engine.state.membership_state.effective().is_voter(&self.id) {
-                                if pre_vote {
-                                    self.engine.pre_elect();
-                                } else {
-                                    self.engine.elect();
-                                }
-                                tracing::debug!("ExternalCommand: triggered election, pre_vote: {}", pre_vote);
-                            } else {
-                                // Node is switched to learner.
-                            }
-                        }
-                    }
-                    ExternalCommand::Heartbeat => {
-                        self.send_heartbeat("ExternalCommand");
-                    }
-                    ExternalCommand::Snapshot => {
-                        self.trigger_snapshot();
-                    }
-                    ExternalCommand::PurgeLog { upto } => {
-                        self.engine.trigger_purge_log(upto);
-                    }
-                    ExternalCommand::TriggerTransferLeader { to } => {
-                        self.engine.trigger_transfer_leader(to);
-                    }
-                    ExternalCommand::AllowNextRevert { to, allow, tx } => {
-                        //
-                        let res = match self.engine.try_leader_handler() {
-                            Ok(mut l) => {
-                                let res = l.replication_handler().allow_next_revert(to, allow);
-                                res.map_err(AllowNextRevertError::from)
-                            }
-                            Err(e) => {
-                                tracing::warn!("AllowNextRevert: current node is not a Leader");
-                                Err(AllowNextRevertError::from(e))
-                            }
-                        };
-                        tx.send(res).ok();
-                    }
-                    ExternalCommand::SetMetricsRecorder { recorder } => {
-                        tracing::info!("setting metrics recorder");
-                        self.metrics_recorder = recorder;
-                    }
-                    ExternalCommand::RefreshServerState {
-                        vote,
-                        membership_log_id,
-                    } => {
-                        // The condition to refresh, e.g., the membership config that removes the
-                        // Leader being committed, is checked by the sender. Refresh only if the
-                        // vote and the effective membership config log id still match what the
-                        // sender observed, so that a delayed command can not cause an unexpected
-                        // server state refresh. A `None` skips the corresponding check.
-                        let st = &self.engine.state;
-                        let vote_unchanged = vote.as_ref().is_none_or(|v| st.vote_ref() == v);
-                        let membership_unchanged = membership_log_id
-                            .as_ref()
-                            .is_none_or(|log_id| st.membership_state.effective().log_id().as_ref() == Some(log_id));
-
-                        if vote_unchanged && membership_unchanged {
-                            self.engine.refresh_server_state();
-                        } else {
-                            tracing::info!(
-                                "RefreshServerState is dropped: expected vote: {}, membership log id: {}; current vote: {}, membership log id: {}",
-                                vote.display(),
-                                membership_log_id.display(),
-                                self.engine.state.vote_ref(),
-                                self.engine.state.membership_state.effective().log_id().display(),
-                            );
-                        }
-                    }
-                }
+                self.handle_external_command(cmd);
             }
             #[cfg(feature = "runtime-stats")]
             RaftMsg::GetRuntimeStats { tx } => {
@@ -1830,6 +1775,89 @@ where
                 tx.send(stats).ok();
             }
         };
+    }
+
+    /// Handle an [`ExternalCommand`], a request from the application that bypasses the Raft
+    /// protocol, such as triggering an election or a snapshot.
+    fn handle_external_command(&mut self, cmd: ExternalCommand<C>) {
+        match cmd {
+            ExternalCommand::Elect { pre_vote } => {
+                if self.engine.leader.is_some() {
+                    // A Leader can not win a campaign it starts: its own heartbeats keep
+                    // refreshing the voters' leader lease, and a lease that has not expired
+                    // rejects the vote request. Leave the established leadership alone.
+                    tracing::info!("ExternalCommand: already a Leader, ignore election trigger");
+                } else {
+                    if self.engine.state.membership_state.effective().is_voter(&self.id) {
+                        if pre_vote {
+                            self.engine.pre_elect();
+                        } else {
+                            self.engine.elect();
+                        }
+                        tracing::debug!("ExternalCommand: triggered election, pre_vote: {}", pre_vote);
+                    } else {
+                        // Node is switched to learner.
+                    }
+                }
+            }
+            ExternalCommand::Heartbeat => {
+                self.send_heartbeat("ExternalCommand");
+            }
+            ExternalCommand::Snapshot => {
+                self.trigger_snapshot();
+            }
+            ExternalCommand::PurgeLog { upto } => {
+                self.engine.trigger_purge_log(upto);
+            }
+            ExternalCommand::TriggerTransferLeader { to } => {
+                self.engine.trigger_transfer_leader(to);
+            }
+            ExternalCommand::AllowNextRevert { to, allow, tx } => {
+                //
+                let res = match self.engine.try_leader_handler() {
+                    Ok(mut l) => {
+                        let res = l.replication_handler().allow_next_revert(to, allow);
+                        res.map_err(AllowNextRevertError::from)
+                    }
+                    Err(e) => {
+                        tracing::warn!("AllowNextRevert: current node is not a Leader");
+                        Err(AllowNextRevertError::from(e))
+                    }
+                };
+                tx.send(res).ok();
+            }
+            ExternalCommand::SetMetricsRecorder { recorder } => {
+                tracing::info!("setting metrics recorder");
+                self.metrics_recorder = recorder;
+            }
+            ExternalCommand::RefreshServerState {
+                vote,
+                membership_log_id,
+            } => {
+                // The condition to refresh, e.g., the membership config that removes the
+                // Leader being committed, is checked by the sender. Refresh only if the
+                // vote and the effective membership config log id still match what the
+                // sender observed, so that a delayed command can not cause an unexpected
+                // server state refresh. A `None` skips the corresponding check.
+                let st = &self.engine.state;
+                let vote_unchanged = vote.as_ref().is_none_or(|v| st.vote_ref() == v);
+                let membership_unchanged = membership_log_id
+                    .as_ref()
+                    .is_none_or(|log_id| st.membership_state.effective().log_id().as_ref() == Some(log_id));
+
+                if vote_unchanged && membership_unchanged {
+                    self.engine.refresh_server_state();
+                } else {
+                    tracing::info!(
+                        "RefreshServerState is dropped: expected vote: {}, membership log id: {}; current vote: {}, membership log id: {}",
+                        vote.display(),
+                        membership_log_id.display(),
+                        self.engine.state.vote_ref(),
+                        self.engine.state.membership_state.effective().log_id().display(),
+                    );
+                }
+            }
+        }
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(state = debug(self.engine.state.server_state), id=display(&self.id)
@@ -1856,7 +1884,8 @@ where
 
                 #[allow(clippy::collapsible_if)]
                 if self.engine.candidate.is_some() {
-                    if self.does_candidate_vote_match(&candidate_vote, "VoteResponse") {
+                    let my_vote = self.engine.candidate_ref().map(|x| x.vote_ref());
+                    if Self::does_vote_match("Candidate", &candidate_vote, my_vote, "VoteResponse") {
                         self.engine.handle_vote_resp(target, resp);
                     }
                 }
@@ -1875,7 +1904,8 @@ where
 
                 #[allow(clippy::collapsible_if)]
                 if self.engine.pre_candidate.is_some() {
-                    if self.does_pre_candidate_vote_match(&candidate_vote, "PreVoteResponse") {
+                    let my_vote = self.engine.pre_candidate_ref().map(|x| x.vote_ref());
+                    if Self::does_vote_match("Pre-Candidate", &candidate_vote, my_vote, "PreVoteResponse") {
                         self.engine.handle_pre_vote_resp(target, resp);
                     }
                 }
@@ -1894,68 +1924,20 @@ where
                     leader_vote
                 );
 
-                if self.does_leader_vote_match(&leader_vote, "HigherVote") {
+                let my_vote = self.engine.leader.as_ref().map(|x| &x.committed_vote);
+                if Self::does_vote_match("Leader", &leader_vote, my_vote, "HigherVote") {
                     // Rejected vote change is ok.
                     self.engine.vote_handler().update_vote(&higher).ok();
                 }
             }
 
-            Notification::Tick { i } => {
-                // check every timer
-
-                let now = C::now();
-                tracing::debug!("received tick: {}, now: {}", i, now.display());
-
-                self.handle_tick_election();
-
-                // TODO: test: fixture: make isolated_nodes a single-way isolating.
-
-                // Leader send heartbeat
-                let heartbeat_at = self.engine.leader_ref().map(|l| l.next_heartbeat);
-                if let Some(t) = heartbeat_at
-                    && now >= t
-                {
-                    if self.runtime_config.enable_heartbeat.load(Ordering::Relaxed) {
-                        self.send_heartbeat("tick");
-                    }
-
-                    // Install next heartbeat
-                    if let Some(l) = self.engine.leader_mut() {
-                        l.next_heartbeat = C::now() + Duration::from_millis(self.config.heartbeat_interval);
-                    }
-                }
-            }
-
+            Notification::Tick { i } => self.handle_tick(i),
             Notification::StorageError { error } => {
                 tracing::error!("RaftCore received Notification::StorageError: {}", error);
                 return Err(Fatal::StorageError(error));
             }
 
-            Notification::LocalIO { io_id } => {
-                self.engine.state.log_progress_mut().try_flush(io_id.clone());
-
-                match io_id {
-                    IOId::Log(log_io_id) => {
-                        if let Some(ref log_id) = log_io_id.log_id {
-                            self.runtime_stats.record_log_stage_now(Stage::Persisted, log_id.index() + 1);
-                        }
-
-                        // No need to check against membership change,
-                        // because not like removing-then-adding a remote node,
-                        // local log wont revert when membership changes.
-                        #[allow(clippy::collapsible_if)]
-                        if self.engine.leader.is_some() {
-                            if self.does_leader_vote_match(&log_io_id.committed_vote, "LocalIO Notification") {
-                                self.engine.replication_handler().update_local_progress(log_io_id.log_id);
-                            }
-                        }
-                    }
-                    IOId::Vote(_vote) => {
-                        // nothing to do
-                    }
-                }
-            }
-
+            Notification::LocalIO { io_id } => self.handle_local_io(io_id),
             Notification::ReplicationProgress {
                 stream_id,
                 progress,
@@ -1978,46 +1960,106 @@ where
                 }
             }
 
-            Notification::StateMachine { command_result } => {
-                tracing::debug!("sm::StateMachine command result: {:?}", command_result);
+            Notification::StateMachine { command_result } => self.handle_state_machine_result(command_result)?,
+        };
+        Ok(())
+    }
 
-                let res = command_result.result?;
+    /// Handle [`Notification::Tick`]: check the election timer and, if leading, the heartbeat
+    /// timer.
+    fn handle_tick(&mut self, i: u64) {
+        // check every timer
 
-                match res {
-                    sm::Response::BuildSnapshotDone(meta) => {
-                        tracing::info!(
-                            "sm::StateMachine command done: BuildSnapshotDone: {}: {}",
-                            meta.display(),
-                            func_name!()
-                        );
+        let now = C::now();
+        tracing::debug!("received tick: {}, now: {}", i, now.display());
 
-                        self.engine.on_building_snapshot_done(meta);
-                    }
-                    sm::Response::InstallSnapshot((log_io_id, meta)) => {
-                        tracing::info!(
-                            "sm::StateMachine command done: InstallSnapshot: {}, log_io_id: {}: {}",
-                            meta.display(),
-                            log_io_id,
-                            func_name!()
-                        );
+        self.handle_tick_election();
 
-                        self.engine.state.log_progress_mut().try_flush(IOId::Log(log_io_id));
+        // TODO: test: fixture: make isolated_nodes a single-way isolating.
 
-                        if let Some(meta) = meta {
-                            let st = self.engine.state.io_state_mut();
-                            if let Some(last) = &meta.last_log_id {
-                                st.apply_progress.try_flush(last.clone());
-                                st.snapshot.try_flush(last.clone());
-                            }
-                        }
-                    }
-                    sm::Response::Apply(res) => {
-                        self.runtime_stats.record_log_stage_now(Stage::Applied, res.last_applied.index() + 1);
-                        self.engine.state.apply_progress_mut().try_flush(res.last_applied);
+        // Leader send heartbeat
+        let heartbeat_at = self.engine.leader_ref().map(|l| l.next_heartbeat);
+        if let Some(t) = heartbeat_at
+            && now >= t
+        {
+            if self.runtime_config.enable_heartbeat.load(Ordering::Relaxed) {
+                self.send_heartbeat("tick");
+            }
+
+            // Install next heartbeat
+            if let Some(l) = self.engine.leader_mut() {
+                l.next_heartbeat = C::now() + Duration::from_millis(self.config.heartbeat_interval);
+            }
+        }
+    }
+
+    /// Handle [`Notification::LocalIO`]: a local log or vote write reached the disk.
+    fn handle_local_io(&mut self, io_id: IOId<C>) {
+        self.engine.state.log_progress_mut().try_flush(io_id.clone());
+
+        match io_id {
+            IOId::Log(log_io_id) => {
+                if let Some(ref log_id) = log_io_id.log_id {
+                    self.runtime_stats.record_log_stage_now(Stage::Persisted, log_id.index() + 1);
+                }
+
+                // No need to check against membership change,
+                // because not like removing-then-adding a remote node,
+                // local log wont revert when membership changes.
+                #[allow(clippy::collapsible_if)]
+                if self.engine.leader.is_some() {
+                    let my_vote = self.engine.leader.as_ref().map(|x| &x.committed_vote);
+                    if Self::does_vote_match("Leader", &log_io_id.committed_vote, my_vote, "LocalIO Notification") {
+                        self.engine.replication_handler().update_local_progress(log_io_id.log_id);
                     }
                 }
             }
-        };
+            IOId::Vote(_vote) => {
+                // nothing to do
+            }
+        }
+    }
+
+    /// Handle [`Notification::StateMachine`]: the state machine worker finished a command.
+    fn handle_state_machine_result(&mut self, command_result: sm::CommandResult<C>) -> Result<(), Fatal<C>> {
+        tracing::debug!("sm::StateMachine command result: {:?}", command_result);
+
+        let res = command_result.result?;
+
+        match res {
+            sm::Response::BuildSnapshotDone(meta) => {
+                tracing::info!(
+                    "sm::StateMachine command done: BuildSnapshotDone: {}: {}",
+                    meta.display(),
+                    func_name!()
+                );
+
+                self.engine.on_building_snapshot_done(meta);
+            }
+            sm::Response::InstallSnapshot((log_io_id, meta)) => {
+                tracing::info!(
+                    "sm::StateMachine command done: InstallSnapshot: {}, log_io_id: {}: {}",
+                    meta.display(),
+                    log_io_id,
+                    func_name!()
+                );
+
+                self.engine.state.log_progress_mut().try_flush(IOId::Log(log_io_id));
+
+                if let Some(meta) = meta {
+                    let st = self.engine.state.io_state_mut();
+                    if let Some(last) = &meta.last_log_id {
+                        st.apply_progress.try_flush(last.clone());
+                        st.snapshot.try_flush(last.clone());
+                    }
+                }
+            }
+            sm::Response::Apply(res) => {
+                self.runtime_stats.record_log_stage_now(Stage::Applied, res.last_applied.index() + 1);
+                self.engine.state.apply_progress_mut().try_flush(res.last_applied);
+            }
+        }
+
         Ok(())
     }
 
@@ -2101,85 +2143,45 @@ where
         }
     }
 
-    /// If a message is sent by a previous Candidate but is received by current Candidate,
-    /// it is a stale message and should be just ignored.
-    fn does_candidate_vote_match(&self, candidate_vote: &UncommittedVoteOf<C>, msg: impl fmt::Display) -> bool {
-        // If it finished voting, Candidate's vote is None.
-        let Some(my_vote) = self.engine.candidate_ref().map(|x| x.vote_ref().clone()) else {
+    /// If a message is sent under a vote that this node no longer holds, it is a stale message
+    /// and should be just ignored.
+    ///
+    /// `role` names the role the vote belongs to, for the log message, e.g. `"Candidate"`.
+    /// `my_vote` is the vote this node currently holds in that role, `None` if it left the role
+    /// (a Candidate that finished voting has no vote).
+    ///
+    /// The two votes may have different types: the vote a message was sent under is an
+    /// `UncommittedVote`/`CommittedVote`, while the vote this node holds may be the
+    /// application's `C::Vote`. They are therefore compared by leader id.
+    fn does_vote_match<V, W>(role: &str, sent_vote: &V, my_vote: Option<&W>, msg: impl fmt::Display) -> bool
+    where
+        V: RaftVote,
+        W: RaftVote<LeaderId = V::LeaderId>,
+    {
+        let Some(my_vote) = my_vote else {
             tracing::warn!(
-                "A message will be ignored because this node is no longer Candidate: \
+                "A message will be ignored because this node is no longer {}: \
                  msg sent by vote: {}; when ({})",
-                candidate_vote,
+                role,
+                sent_vote,
                 msg
             );
             return false;
         };
 
-        if candidate_vote.leader_id() != my_vote.leader_id() {
+        if sent_vote.leader_id() != my_vote.leader_id() {
             tracing::warn!(
-                "A message will be ignored because vote changed: \
+                "A message will be ignored because {} vote changed: \
                 msg sent by vote: {}; current my vote: {}; when ({})",
-                candidate_vote,
+                role,
+                sent_vote,
                 my_vote,
-                msg
-            );
-            false
-        } else {
-            true
-        }
-    }
-
-    /// If a Pre-Vote response is for a previous Pre-Vote round, it is stale and should be ignored.
-    fn does_pre_candidate_vote_match(&self, candidate_vote: &UncommittedVoteOf<C>, msg: impl fmt::Display) -> bool {
-        let Some(my_vote) = self.engine.pre_candidate_ref().map(|x| x.vote_ref().clone()) else {
-            tracing::warn!(
-                "A message will be ignored because this node is no longer a pre-candidate: \
-                 msg sent by vote: {}; when ({})",
-                candidate_vote,
                 msg
             );
             return false;
-        };
-
-        if candidate_vote.leader_id() != my_vote.leader_id() {
-            tracing::warn!(
-                "A message will be ignored because pre-candidate vote changed: \
-                msg sent by vote: {}; current my pre-vote: {}; when ({})",
-                candidate_vote,
-                my_vote,
-                msg
-            );
-            false
-        } else {
-            true
         }
-    }
 
-    /// If a message is sent by a previous Leader but is received by current Leader,
-    /// it is a stale message and should be just ignored.
-    fn does_leader_vote_match(&self, leader_vote: &CommittedVoteOf<C>, msg: impl fmt::Display) -> bool {
-        let Some(my_vote) = self.engine.leader.as_ref().map(|x| x.committed_vote.clone()) else {
-            tracing::warn!(
-                "A message will be ignored because this node is no longer Leader: \
-                msg sent by vote: {}; when ({})",
-                leader_vote,
-                msg
-            );
-            return false;
-        };
-
-        if leader_vote != &my_vote {
-            tracing::warn!(
-                "A message will be ignored because vote changed: \
-                msg sent by vote: {}; current my vote: {}; when ({})",
-                leader_vote,
-                my_vote,
-                msg
-            );
-            false
-        } else {
-            true
-        }
+        true
     }
 
     /// Broadcast heartbeat to all followers with per-follower matching log ids.
@@ -2264,6 +2266,274 @@ where
             tracing::info!("done joining removed replication: {}", target);
         });
     }
+
+    /// Run [`Command::UpdateIOProgress`].
+    async fn run_update_io_progress(&mut self, io_id: IOId<C>) {
+        // Notify that I/O is about to be submitted.
+        self.io_broadcast.accepted.send_if_greater(io_id.clone());
+
+        self.engine.state.log_progress_mut().submit(io_id.clone());
+
+        let notify = Notification::LocalIO { io_id: io_id.clone() };
+
+        self.tx_notification.send(notify).await.ok();
+    }
+
+    /// Run [`Command::AppendEntries`].
+    async fn run_append_entries(
+        &mut self,
+        committed_vote: CommittedVoteOf<C>,
+        entries: BatchOf<C, C::Entry>,
+    ) -> Result<(), StorageError<C>> {
+        let last_log_id = entries.last().unwrap().log_id();
+        let last_log_index = last_log_id.index();
+        tracing::debug!("AppendEntries: {}", entries.as_ref().display_n(10));
+
+        let entry_count = entries.len() as u64;
+
+        // Record to internal histogram
+        self.runtime_stats.append_batch.record(entry_count);
+
+        // Record to external metrics recorder
+        if let Some(r) = &self.metrics_recorder {
+            r.record_append_batch(entry_count);
+        }
+
+        let io_id = IOId::new_log_io(committed_vote, Some(last_log_id));
+        let callback = IOFlushed::new(io_id.clone(), self.io_broadcast.completed.clone());
+
+        // Notify that I/O is about to be submitted.
+        self.io_broadcast.accepted.send_if_greater(io_id.clone());
+
+        // Mark this IO request as submitted,
+        // other commands relying on it can then be processed.
+        // For example,
+        // `Replicate` command cannot run until this IO request is submitted(no need to be flushed),
+        // because it needs to read the log entry from the log store.
+        //
+        // The `submit` state must be updated before calling `append()`,
+        // because `append()` may call the callback before returning.
+        self.engine.state.log_progress_mut().submit(io_id.clone());
+
+        self.runtime_stats.record_log_stage_now(Stage::Submitted, last_log_index + 1);
+
+        // Submit IO request, do not wait for the response.
+        self.log_store.append(entries, callback).await.sto_write_logs()?;
+
+        Ok(())
+    }
+
+    /// Run [`Command::SaveVote`].
+    async fn run_save_vote(&mut self, vote: VoteOf<C>) -> Result<(), StorageError<C>> {
+        let io_id = IOId::new(&vote);
+
+        // Notify that vote I/O is about to be submitted.
+        self.io_broadcast.accepted.send_if_greater(io_id.clone());
+
+        self.engine.state.log_progress_mut().submit(io_id.clone());
+        self.log_store.save_vote(&vote).await.sto_write_vote()?;
+
+        self.tx_notification
+            .send(Notification::LocalIO {
+                io_id: IOId::new(&vote),
+            })
+            .await
+            .ok();
+
+        // If a non-committed vote is saved,
+        // there may be a candidate waiting for the response.
+        if let VoteStatus::Pending(non_committed) = vote.clone().into_vote_status() {
+            self.tx_notification
+                .send(Notification::VoteResponse {
+                    target: self.id.clone(),
+                    // last_log_id is not used when sending VoteRequest to local node
+                    resp: VoteResponse::new(vote, None, true),
+                    candidate_vote: non_committed,
+                })
+                .await
+                .ok();
+        }
+
+        Ok(())
+    }
+
+    /// Run [`Command::PurgeLog`].
+    async fn run_purge_log(&mut self, upto: LogIdOf<C>) -> Result<(), StorageError<C>> {
+        self.log_store.purge(upto.clone()).await.sto_write_logs()?;
+
+        // A responder may still be pending for a log covered by this purge, e.g. a former
+        // leader's uncommitted log superseded by a snapshot install. That log is gone, so
+        // fail the responder with `ForwardToLeader` instead of leaving it stranded below the
+        // purge boundary (which would later panic in `apply_to_state_machine`).
+        let leader_id = self.current_leader();
+        let leader_node = self.get_leader_node(leader_id.clone());
+        for (log_index, tx) in self.client_responders.drain_upto(upto.index()) {
+            tx.on_complete(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
+                leader_id: leader_id.clone(),
+                leader_node: leader_node.clone(),
+            })));
+            tracing::debug!("sent ForwardToLeader for purged log_index: {}", log_index);
+        }
+
+        self.engine.state.io_state_mut().update_purged(Some(upto));
+
+        Ok(())
+    }
+
+    /// Run [`Command::TruncateLog`].
+    async fn run_truncate_log(&mut self, after: Option<LogIdOf<C>>) -> Result<(), StorageError<C>> {
+        self.log_store.truncate_after(after.clone()).await.sto_write_logs()?;
+
+        // Inform clients waiting for logs to be applied.
+        let leader_id = self.current_leader();
+        let leader_node = self.get_leader_node(leader_id.clone());
+
+        for (log_index, tx) in self.client_responders.drain_from(after.next_index()) {
+            tx.on_complete(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
+                leader_id: leader_id.clone(),
+                leader_node: leader_node.clone(),
+            })));
+
+            tracing::debug!("sent ForwardToLeader for log_index: {}", log_index);
+        }
+
+        Ok(())
+    }
+
+    /// Run [`Command::SaveCommittedAndApply`].
+    async fn run_save_committed_and_apply(
+        &mut self,
+        already_applied: Option<LogIdOf<C>>,
+        upto: LogIdOf<C>,
+    ) -> Result<(), StorageError<C>> {
+        self.runtime_stats.record_log_stage_now(Stage::Committed, upto.index() + 1);
+
+        self.engine.state.apply_progress_mut().submit(upto.clone());
+
+        self.log_store.save_committed(Some(upto.clone())).await.sto_write()?;
+
+        let first = self.engine.state.get_log_id(already_applied.next_index()).unwrap();
+        self.apply_to_state_machine(first, upto).await?;
+
+        Ok(())
+    }
+
+    /// Run [`Command::ReplicateSnapshot`].
+    async fn run_replicate_snapshot(
+        &mut self,
+        leader_vote: CommittedVoteOf<C>,
+        target: C::NodeId,
+        inflight_id: InflightId,
+    ) {
+        let node = self.replications.get(&target).expect("replication to target node exists");
+
+        let snapshot_reader = self.sm_handle.new_snapshot_reader();
+        let stream_id = node.stream_id;
+        let (replication_task_context, cancel_tx) =
+            self.new_replication_task_context(leader_vote, stream_id, target.clone());
+
+        let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap();
+        let snapshot_network = self.network_factory.new_snapshot_client(target.clone(), target_node).await;
+
+        let handle = SnapshotTransmitter::<C, NF, SM>::spawn(
+            replication_task_context,
+            snapshot_network,
+            snapshot_reader,
+            inflight_id,
+            cancel_tx,
+        );
+
+        let node = self.replications.get_mut(&target).expect("replication to target node exists");
+        // TODO: it is not cleaned when snapshot transmission is done.
+        node.snapshot_transmit_handle = Some(handle);
+    }
+
+    /// Run [`Command::CloseReplicationStreams`].
+    fn run_close_replication_streams(&mut self) {
+        self.heartbeat_handle.close_workers();
+
+        let left = std::mem::take(&mut self.replications);
+        for (target, s) in left {
+            Self::close_replication(&target, s);
+        }
+    }
+
+    /// Run [`Command::RebuildReplicationStreams`].
+    async fn run_rebuild_replication_streams(
+        &mut self,
+        leader_vote: CommittedVoteOf<C>,
+        targets: Vec<TargetProgress<C>>,
+        close_old_streams: bool,
+    ) {
+        self.heartbeat_handle
+            .spawn_workers::<NF>(
+                leader_vote.clone(),
+                &mut self.network_factory,
+                &self.tx_notification,
+                &targets,
+                close_old_streams,
+            )
+            .await;
+
+        let mut new_replications = BTreeMap::new();
+
+        for prog in targets.iter() {
+            let removed = self.replications.remove(&prog.target);
+
+            let handle = if let Some(removed) = removed {
+                if close_old_streams {
+                    Self::close_replication(&prog.target, removed);
+                    None
+                } else {
+                    Some(removed)
+                }
+            } else {
+                None
+            };
+
+            let handle = if let Some(handle) = handle {
+                handle
+            } else {
+                self.spawn_replication_stream(leader_vote.clone(), prog).await
+            };
+
+            new_replications.insert(prog.target.clone(), handle);
+        }
+
+        tracing::debug!("removing unused replications");
+
+        let left = std::mem::replace(&mut self.replications, new_replications);
+
+        for (target, s) in left {
+            Self::close_replication(&target, s);
+        }
+    }
+
+    /// Run [`Command::StateMachine`], forwarding the inner command to the state machine worker.
+    async fn run_state_machine(&mut self, command: sm::Command<C, SM>) -> Result<(), StorageError<C>> {
+        let io_id = command.get_log_progress();
+
+        if let Some(io_id) = io_id {
+            self.engine.state.log_progress_mut().submit(io_id);
+        }
+
+        // If this command update the last-applied log id, mark it as submitted(to state machine).
+        if let Some(log_id) = command.get_apply_progress() {
+            self.engine.state.apply_progress_mut().submit(log_id);
+        }
+
+        if let Some(log_id) = command.get_snapshot_progress() {
+            self.engine.state.snapshot_progress_mut().submit(log_id);
+        }
+
+        // Just forward a state machine command to the worker.
+        self.sm_handle
+            .send(command)
+            .await
+            .map_err(|_e| StorageError::write_state_machine(C::err_from_string("cannot send to sm::Worker")))?;
+
+        Ok(())
+    }
 }
 
 impl<C, N, LS, SM> RaftRuntime<C, SM> for RaftCore<C, N, LS, SM>
@@ -2295,120 +2565,14 @@ where
         self.runtime_stats.record_command(cmd.name());
 
         match cmd {
-            Command::UpdateIOProgress { io_id, .. } => {
-                // Notify that I/O is about to be submitted.
-                self.io_accepted_tx.send_if_greater(io_id.clone());
-
-                self.engine.state.log_progress_mut().submit(io_id.clone());
-
-                let notify = Notification::LocalIO { io_id: io_id.clone() };
-
-                self.tx_notification.send(notify).await.ok();
-            }
+            Command::UpdateIOProgress { io_id, .. } => self.run_update_io_progress(io_id).await,
             Command::AppendEntries {
-                committed_vote: vote,
+                committed_vote,
                 entries,
-            } => {
-                let last_log_id = entries.last().unwrap().log_id();
-                let last_log_index = last_log_id.index();
-                tracing::debug!("AppendEntries: {}", entries.as_ref().display_n(10));
-
-                let entry_count = entries.len() as u64;
-
-                // Record to internal histogram
-                self.runtime_stats.append_batch.record(entry_count);
-
-                // Record to external metrics recorder
-                if let Some(r) = &self.metrics_recorder {
-                    r.record_append_batch(entry_count);
-                }
-
-                let io_id = IOId::new_log_io(vote, Some(last_log_id));
-                let callback = IOFlushed::new(io_id.clone(), self.tx_io_completed.clone());
-
-                // Notify that I/O is about to be submitted.
-                self.io_accepted_tx.send_if_greater(io_id.clone());
-
-                // Mark this IO request as submitted,
-                // other commands relying on it can then be processed.
-                // For example,
-                // `Replicate` command cannot run until this IO request is submitted(no need to be flushed),
-                // because it needs to read the log entry from the log store.
-                //
-                // The `submit` state must be updated before calling `append()`,
-                // because `append()` may call the callback before returning.
-                self.engine.state.log_progress_mut().submit(io_id.clone());
-
-                self.runtime_stats.record_log_stage_now(Stage::Submitted, last_log_index + 1);
-
-                // Submit IO request, do not wait for the response.
-                self.log_store.append(entries, callback).await.sto_write_logs()?;
-            }
-            Command::SaveVote { vote } => {
-                let io_id = IOId::new(&vote);
-
-                // Notify that vote I/O is about to be submitted.
-                self.io_accepted_tx.send_if_greater(io_id.clone());
-
-                self.engine.state.log_progress_mut().submit(io_id.clone());
-                self.log_store.save_vote(&vote).await.sto_write_vote()?;
-
-                self.tx_notification
-                    .send(Notification::LocalIO {
-                        io_id: IOId::new(&vote),
-                    })
-                    .await
-                    .ok();
-
-                // If a non-committed vote is saved,
-                // there may be a candidate waiting for the response.
-                if let VoteStatus::Pending(non_committed) = vote.clone().into_vote_status() {
-                    self.tx_notification
-                        .send(Notification::VoteResponse {
-                            target: self.id.clone(),
-                            // last_log_id is not used when sending VoteRequest to local node
-                            resp: VoteResponse::new(vote, None, true),
-                            candidate_vote: non_committed,
-                        })
-                        .await
-                        .ok();
-                }
-            }
-            Command::PurgeLog { upto } => {
-                self.log_store.purge(upto.clone()).await.sto_write_logs()?;
-
-                // A responder may still be pending for a log covered by this purge, e.g. a former
-                // leader's uncommitted log superseded by a snapshot install. That log is gone, so
-                // fail the responder with `ForwardToLeader` instead of leaving it stranded below the
-                // purge boundary (which would later panic in `apply_to_state_machine`).
-                let leader_id = self.current_leader();
-                let leader_node = self.get_leader_node(leader_id.clone());
-                for (log_index, tx) in self.client_responders.drain_upto(upto.index()) {
-                    tx.on_complete(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
-                        leader_id: leader_id.clone(),
-                        leader_node: leader_node.clone(),
-                    })));
-                    tracing::debug!("sent ForwardToLeader for purged log_index: {}", log_index);
-                }
-
-                self.engine.state.io_state_mut().update_purged(Some(upto));
-            }
-            Command::TruncateLog { after } => {
-                self.log_store.truncate_after(after.clone()).await.sto_write_logs()?;
-
-                // Inform clients waiting for logs to be applied.
-                let leader_id = self.current_leader();
-                let leader_node = self.get_leader_node(leader_id.clone());
-
-                for (log_index, tx) in self.client_responders.drain_from(after.next_index()) {
-                    tx.on_complete(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
-                        leader_id: leader_id.clone(),
-                        leader_node: leader_node.clone(),
-                    })));
-
-                    tracing::debug!("sent ForwardToLeader for log_index: {}", log_index);
-                }
-            }
+            } => self.run_append_entries(committed_vote, entries).await?,
+            Command::SaveVote { vote } => self.run_save_vote(vote).await?,
+            Command::PurgeLog { upto } => self.run_purge_log(upto).await?,
+            Command::TruncateLog { after } => self.run_truncate_log(after).await?,
             Command::SendVote { vote_req } => {
                 self.spawn_parallel_vote_requests(&vote_req, VoteRequestKind::Vote).await;
             }
@@ -2416,23 +2580,11 @@ where
                 self.spawn_parallel_vote_requests(&vote_req, VoteRequestKind::PreVote).await;
             }
             Command::ReplicateCommitted { committed } => {
-                self.committed_tx.send_if_greater(committed);
+                self.io_broadcast.committed.send_if_greater(committed);
             }
-            Command::BroadcastHeartbeat { session_id } => {
-                self.broadcast_heartbeat(session_id);
-            }
-            Command::SaveCommittedAndApply {
-                already_applied: already_committed,
-                upto,
-            } => {
-                self.runtime_stats.record_log_stage_now(Stage::Committed, upto.index() + 1);
-
-                self.engine.state.apply_progress_mut().submit(upto.clone());
-
-                self.log_store.save_committed(Some(upto.clone())).await.sto_write()?;
-
-                let first = self.engine.state.get_log_id(already_committed.next_index()).unwrap();
-                self.apply_to_state_machine(first, upto).await?;
+            Command::BroadcastHeartbeat { session_id } => self.broadcast_heartbeat(session_id),
+            Command::SaveCommittedAndApply { already_applied, upto } => {
+                self.run_save_committed_and_apply(already_applied, upto).await?
             }
             Command::Replicate { req, target } => {
                 let node = self.replications.get(&target).expect("replication to target node exists");
@@ -2442,112 +2594,18 @@ where
                 leader_vote,
                 target,
                 inflight_id,
-            } => {
-                let node = self.replications.get(&target).expect("replication to target node exists");
-
-                let snapshot_reader = self.sm_handle.new_snapshot_reader();
-                let stream_id = node.stream_id;
-                let (replication_task_context, cancel_tx) =
-                    self.new_replication_task_context(leader_vote, stream_id, target.clone());
-
-                let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap();
-                let snapshot_network = self.network_factory.new_snapshot_client(target.clone(), target_node).await;
-
-                let handle = SnapshotTransmitter::<C, N, SM>::spawn(
-                    replication_task_context,
-                    snapshot_network,
-                    snapshot_reader,
-                    inflight_id,
-                    cancel_tx,
-                );
-
-                let node = self.replications.get_mut(&target).expect("replication to target node exists");
-                // TODO: it is not cleaned when snapshot transmission is done.
-                node.snapshot_transmit_handle = Some(handle);
-            }
+            } => self.run_replicate_snapshot(leader_vote, target, inflight_id).await,
             Command::BroadcastTransferLeader { req } => self.broadcast_transfer_leader(req).await,
-
-            Command::CloseReplicationStreams => {
-                self.heartbeat_handle.close_workers();
-
-                let left = std::mem::take(&mut self.replications);
-                for (target, s) in left {
-                    Self::close_replication(&target, s);
-                }
-            }
+            Command::CloseReplicationStreams => self.run_close_replication_streams(),
             Command::RebuildReplicationStreams {
                 leader_vote,
                 targets,
                 close_old_streams,
             } => {
-                self.heartbeat_handle
-                    .spawn_workers::<N>(
-                        leader_vote.clone(),
-                        &mut self.network_factory,
-                        &self.tx_notification,
-                        &targets,
-                        close_old_streams,
-                    )
-                    .await;
-
-                let mut new_replications = BTreeMap::new();
-
-                for prog in targets.iter() {
-                    let removed = self.replications.remove(&prog.target);
-
-                    let handle = if let Some(removed) = removed {
-                        if close_old_streams {
-                            Self::close_replication(&prog.target, removed);
-                            None
-                        } else {
-                            Some(removed)
-                        }
-                    } else {
-                        None
-                    };
-
-                    let handle = if let Some(handle) = handle {
-                        handle
-                    } else {
-                        self.spawn_replication_stream(leader_vote.clone(), prog).await
-                    };
-
-                    new_replications.insert(prog.target.clone(), handle);
-                }
-
-                tracing::debug!("removing unused replications");
-
-                let left = std::mem::replace(&mut self.replications, new_replications);
-
-                for (target, s) in left {
-                    Self::close_replication(&target, s);
-                }
+                self.run_rebuild_replication_streams(leader_vote, targets, close_old_streams).await;
             }
-            Command::StateMachine { command } => {
-                let io_id = command.get_log_progress();
-
-                if let Some(io_id) = io_id {
-                    self.engine.state.log_progress_mut().submit(io_id);
-                }
-
-                // If this command update the last-applied log id, mark it as submitted(to state machine).
-                if let Some(log_id) = command.get_apply_progress() {
-                    self.engine.state.apply_progress_mut().submit(log_id);
-                }
-
-                if let Some(log_id) = command.get_snapshot_progress() {
-                    self.engine.state.snapshot_progress_mut().submit(log_id);
-                }
-
-                // Just forward a state machine command to the worker.
-                self.sm_handle
-                    .send(command)
-                    .await
-                    .map_err(|_e| StorageError::write_state_machine(C::err_from_string("cannot send to sm::Worker")))?;
-            }
-            Command::Respond { resp: send, .. } => {
-                send.send();
-            }
+            Command::StateMachine { command } => self.run_state_machine(command).await?,
+            Command::Respond { resp, .. } => resp.send(),
         }
 
         Ok(None)

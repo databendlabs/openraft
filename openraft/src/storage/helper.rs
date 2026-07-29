@@ -110,6 +110,17 @@ where
             last_log_id.display()
         );
 
+        // The stored log range is `(last_purged_log_id, last_log_id]`: an inversion means the
+        // log store is corrupted, e.g., by a snapshot inconsistent with the local logs.
+        if last_log_id < last_purged_log_id {
+            let err = C::err_from_string(format!(
+                "inverted log order in log store: last_log_id({}) < last_purged_log_id({}); the log store is corrupted",
+                last_log_id.display(),
+                last_purged_log_id.display(),
+            ));
+            return Err(StorageError::read_logs(err));
+        }
+
         // TODO: It is possible `committed < last_applied` because when installing snapshot,
         //       new committed should be saved, but not yet.
         if committed < last_applied {
@@ -151,6 +162,18 @@ where
 
         // Clean up dirty state: snapshot is installed, but logs are not cleaned.
         if last_log_id < last_applied {
+            // A genuine hole means `last_applied` is also ahead by index. If `last_applied` is
+            // greater but at a smaller index, the log contains a tail that contradicts the state
+            // machine: purging below `last_applied` would not remove it.
+            if last_log_id.next_index() > last_applied.next_index() {
+                let err = C::err_from_string(format!(
+                    "inverted log order: last_applied({}) in the state machine is greater than last_log_id({}) in the log store but at a smaller index; the store is corrupted",
+                    last_applied.display(),
+                    last_log_id.display(),
+                ));
+                return Err(StorageError::read_logs(err));
+            }
+
             tracing::info!(
                 "Clean the hole between last_log_id({}) and last_applied({}) by purging logs to {}",
                 last_log_id.display(),

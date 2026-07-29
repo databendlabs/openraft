@@ -13,9 +13,7 @@ use crate::engine::CommandKind;
 use crate::engine::CommandName;
 use crate::engine::replication_progress::TargetProgress;
 use crate::errors::InitializeError;
-use crate::errors::InstallSnapshotError;
 use crate::progress::inflight_id::InflightId;
-use crate::raft::InstallSnapshotResponse;
 use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
@@ -283,7 +281,28 @@ where
             (Command::StateMachine { command },                Command::StateMachine { command: b })                                 => command == b,
             (Command::CloseReplicationStreams,                 Command::CloseReplicationStreams)                                     => true,
             (Command::ReplicateSnapshot { leader_vote, target, inflight_id }, Command::ReplicateSnapshot { leader_vote: lb, target: tb, inflight_id: ib }) => leader_vote == lb && target == tb && inflight_id == ib,
-            _ => false,
+
+            // Two different commands are never equal. These arms are spelled out per variant
+            // instead of one `_ => false`, so that a newly added variant leaves the match
+            // non-exhaustive and fails to compile until it gets a comparison arm above. A
+            // catch-all would instead make the new variant silently unequal to itself.
+            (Command::UpdateIOProgress { .. },          _) => false,
+            (Command::AppendEntries { .. },             _) => false,
+            (Command::ReplicateCommitted { .. },        _) => false,
+            (Command::BroadcastHeartbeat { .. },        _) => false,
+            (Command::SaveCommittedAndApply { .. },     _) => false,
+            (Command::Replicate { .. },                 _) => false,
+            (Command::ReplicateSnapshot { .. },         _) => false,
+            (Command::BroadcastTransferLeader { .. },   _) => false,
+            (Command::CloseReplicationStreams,          _) => false,
+            (Command::RebuildReplicationStreams { .. }, _) => false,
+            (Command::SaveVote { .. },                  _) => false,
+            (Command::SendVote { .. },                  _) => false,
+            (Command::SendPreVote { .. },               _) => false,
+            (Command::PurgeLog { .. },                  _) => false,
+            (Command::TruncateLog { .. },               _) => false,
+            (Command::StateMachine { .. },              _) => false,
+            (Command::Respond { .. },                   _) => false,
         }
     }
 }
@@ -459,8 +478,6 @@ where C: RaftTypeConfig
 {
     Vote(ValueSender<C, VoteResponse<C>>),
     AppendEntries(ValueSender<C, StreamAppendResult<C>>),
-    ReceiveSnapshotChunk(ValueSender<C, Result<(), InstallSnapshotError>>),
-    InstallSnapshot(ValueSender<C, Result<InstallSnapshotResponse<C>, InstallSnapshotError>>),
     InstallFullSnapshot(ValueSender<C, SnapshotResponse<C>>),
     Initialize(ValueSender<C, Result<(), InitializeError<C>>>),
 }
@@ -475,14 +492,6 @@ where C: RaftTypeConfig
                 Ok(log_id) => write!(f, "AppendEntries Ok({})", log_id.display()),
                 Err(e) => write!(f, "AppendEntries Err({})", e),
             },
-            Respond::ReceiveSnapshotChunk(vs) => {
-                write!(
-                    f,
-                    "ReceiveSnapshotChunk {}",
-                    vs.value().as_ref().map(|_x| "()").display()
-                )
-            }
-            Respond::InstallSnapshot(vs) => write!(f, "InstallSnapshot {}", vs.value().display()),
             Respond::InstallFullSnapshot(vs) => write!(f, "InstallFullSnapshot {}", vs.value()),
             Respond::Initialize(vs) => write!(f, "Initialize {}", vs.value().as_ref().map(|_x| "()").display()),
         }
@@ -504,8 +513,6 @@ where C: RaftTypeConfig
         match self {
             Respond::Vote(x) => x.send(),
             Respond::AppendEntries(x) => x.send(),
-            Respond::ReceiveSnapshotChunk(x) => x.send(),
-            Respond::InstallSnapshot(x) => x.send(),
             Respond::InstallFullSnapshot(x) => x.send(),
             Respond::Initialize(x) => x.send(),
         }

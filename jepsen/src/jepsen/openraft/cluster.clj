@@ -4,6 +4,8 @@
             [jepsen.openraft.client :as client]
             [jepsen.util :as util]))
 
+;; TODO: Use an explicit node-name to OpenRaft ID mapping before introducing
+;; membership change nemeses.
 (defn node-id [test node]
   (let [index (.indexOf (:nodes test) node)]
     (when (neg? index)
@@ -20,25 +22,61 @@
 (defn- ready-state? [state]
   (#{"Leader" "Follower"} state))
 
-(defn- cluster-ready? [test]
-  (let [leader-id (node-id test (jepsen/primary test))
-        metrics (into {}
+(defn- membership-committed? [metrics]
+  (= (get-in metrics [:committed_membership_config :log_id])
+     (get-in metrics [:membership_config :log_id])))
+
+(defn- cluster-status [test]
+  (let [metrics (into {}
                       (map (fn [node]
                              [node (client/metrics!
                                      (client/api-endpoint test node))])
-                           (:nodes test)))]
-    (when (every? (fn [[_ m]]
-                    (and (= leader-id (:current_leader m))
-                         (ready-state? (:state m))))
-                  metrics)
-      metrics)))
+                           (:nodes test)))
+        leader-ids (set (map :current_leader (vals metrics)))
+        leaders (filter (fn [[_ metrics]]
+                          (= "Leader" (:state metrics)))
+                        metrics)]
+    (when (and (= 1 (count leader-ids))
+               (= 1 (count leaders))
+               (every? (comp ready-state? :state val) metrics))
+      (let [leader-id (first leader-ids)
+            [leader _] (first leaders)]
+        (when (= leader-id (node-id test leader))
+          {:leader leader
+           :metrics metrics})))))
 
 (defn await-ready! [test]
   (util/await-fn
-    #(or (cluster-ready? test)
+    #(or (cluster-status test)
          (throw (ex-info "OpenRaft cluster is not ready yet" {})))
-    {:log-message "Waiting for OpenRaft cluster to elect a leader"
+    {:log-message "Waiting for every OpenRaft node to agree on a leader"
      :timeout 60000}))
+
+(defn voter-configs
+  "Maps the effective OpenRaft voter configs to Jepsen node names."
+  [test {:keys [leader metrics]}]
+  (let [configs (get-in metrics
+                        [leader
+                         :membership_config
+                         :membership
+                         :configs])
+        voter-ids (set (mapcat identity configs))]
+    (when-not (seq configs)
+      (throw (ex-info "OpenRaft metrics contain no voter configs"
+                      {:leader leader
+                       :metrics (get metrics leader)})))
+    (let [nodes-by-id (into {}
+                            (map (fn [node]
+                                   [(node-id test node) node])
+                                 (:nodes test)))
+          unknown-ids (remove #(contains? nodes-by-id %) voter-ids)]
+      (when (seq unknown-ids)
+        (throw (ex-info "OpenRaft voter is not a Jepsen test node"
+                        {:voter-ids voter-ids
+                         :unknown-ids (vec unknown-ids)})))
+      (mapv (fn [config]
+              (set (map nodes-by-id config)))
+            configs))))
 
 (defn bootstrap! [test]
   (let [leader (jepsen/primary test)
@@ -48,13 +86,20 @@
     (info "Initializing OpenRaft cluster on" leader)
     (client/init! leader-endpoint)
 
+    ;; OpenRaft rejects a membership change until the previous membership log
+    ;; entry is committed. `init!` only waits for the initial membership entry
+    ;; to be flushed, and `current_leader` is set as soon as the vote commits,
+    ;; which is still before that entry commits. Waiting for the leader alone
+    ;; therefore races with the first add-learner, which fails with
+    ;; `ChangeMembershipError::InProgress`.
     (util/await-fn
       #(let [metrics (client/metrics! leader-endpoint)]
-         (if (= leader-id (:current_leader metrics))
+         (if (and (= leader-id (:current_leader metrics))
+                  (membership-committed? metrics))
            metrics
            (throw (ex-info "Initial OpenRaft leader is not ready yet"
                            {:metrics metrics}))))
-      {:log-message "Waiting for initial OpenRaft leader"
+      {:log-message "Waiting for initial OpenRaft leader to commit its membership"
        :timeout 60000})
 
     (doseq [node learners

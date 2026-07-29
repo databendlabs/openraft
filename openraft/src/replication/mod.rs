@@ -28,6 +28,9 @@ use payload::Payload;
 use replication_progress::ReplicationProgress;
 pub(crate) use replication_session_id::ReplicationSessionId;
 pub(crate) use response::Progress;
+
+/// Fallback delay used when a [`Backoff`](crate::network::Backoff) iterator is exhausted.
+pub(crate) const EXHAUSTED_BACKOFF_DELAY: Duration = Duration::from_millis(500);
 use response::ReplicationResult;
 use stream_state::StreamState;
 use tracing::Instrument;
@@ -61,7 +64,6 @@ use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::MutexOf;
 use crate::type_config::async_runtime::mpsc::MpscSender;
-use crate::vote::RaftVote;
 
 /// A task responsible for sending replication events to a target follower in the Raft cluster.
 ///
@@ -203,23 +205,7 @@ where
                 self.next_action
             );
 
-            let canceled = self.replication_context.cancel_rx.changed().now_or_never();
-            if canceled.map(|x| x.is_err()) == Some(true) {
-                tracing::info!("ReplicationCore: canceled, quit");
-                return Err(ReplicationClosed::new("canceled"));
-            }
-
-            let accepted_io: IOId<C> = self.event_watcher.io_accepted_rx.borrow_watched().clone();
-            let current_leader = accepted_io.leader_id().clone();
-            let belonging_leader = self.replication_context.leader_vote.leader_id().clone();
-            if current_leader != belonging_leader {
-                tracing::info!(
-                    "ReplicationCore: Leader changed from {} to {}, quit replication",
-                    belonging_leader,
-                    current_leader
-                );
-                return Err(ReplicationClosed::new("Leader changed"));
-            }
+            self.ensure_still_leading()?;
 
             // Kept separate from `on_error` because only this scope holds a reference
             // to `network`, which is needed to construct the `Backoff` iterator.
@@ -227,88 +213,132 @@ where
             let config = self.replication_context.config.clone();
             self.backoff_state.reconcile(|| network.backoff().unwrap_or_else(|| config.build_backoff()));
 
-            if self.next_action.is_none() {
-                self.drain_events().await?;
+            let mut payload = self.select_next_payload().await?;
+
+            if !self.run_stream_session(&mut network, &payload).await? {
+                continue;
+            }
+
+            // if partial success is returned, not all data is exhausted. keep sending
+            payload.update_matching(self.replication_progress.remote_matched.clone());
+            if payload.len() != Some(0) {
+                self.next_action = Some(payload);
             } else {
-                // If there is new data to send, even when the current data is not yet finished sending
-                // discard the current data, start to send the new data.
-                // When data is reverted in LogsSince mode, it needs such a mechanism.
-                //
-                // `borrow_and_update()` marks the value as seen; a plain `borrow_watched()`
-                // would leave the change notification pending, and `drain_events()` would
-                // later observe it and replay the same command, re-running an
-                // already-acknowledged payload.
-                let new_data = self.event_watcher.replicate_rx.borrow_and_update().clone();
-                if self.inflight_id != Some(new_data.inflight_id) {
-                    tracing::info!(
-                        "ReplicationCore replaced current data with inflight id {:?} with new {}",
-                        self.inflight_id,
-                        new_data.inflight_id
-                    );
-                    self.inflight_id = Some(new_data.inflight_id);
-                    self.next_action = Some(new_data.payload);
-                }
-            }
-
-            let mut payload = self.next_action.take().unwrap();
-
-            {
-                let mut stream_state = self.stream_state.lock().await;
-                stream_state.payload = Some(payload.clone());
-                stream_state.inflight_id = self.inflight_id;
-                stream_state.leader_committed = self.event_watcher.committed_rx.borrow_watched().clone()
-            }
-
-            let inflight_queue = InflightAppendQueue::new();
-            let fatal_error = Arc::new(MutexOf::<C, _>::new(None));
-
-            let stream_context = StreamContext {
-                stream_state: self.stream_state.clone(),
-                inflight_append_queue: inflight_queue.clone(),
-                fatal_error: fatal_error.clone(),
-            };
-
-            let req_strm = Self::new_request_stream(stream_context);
-
-            let rpc_timeout = Duration::from_millis(self.replication_context.config.heartbeat_interval);
-            let option = RPCOption::new(rpc_timeout);
-
-            let resp_strm_res = network.stream_append(req_strm, option).await;
-            // A custom streaming transport may poll the request stream while establishing
-            // `stream_append()` and then still return an RPC error. Check the fatal marker here too,
-            // because in that case there is no response stream for `handle_response_stream()` to
-            // consume.
-            if let Some(err) = Self::take_stream_fatal_error(&fatal_error).await {
-                return Err(err);
-            }
-
-            let resp_strm = match resp_strm_res {
-                Ok(resp_strm) => resp_strm,
-                Err(rpc_err) => {
-                    self.backoff_state.on_error(rpc_err.backoff_rank());
-                    self.send_progress_error(rpc_err, "initiate-stream-replication").await;
-
-                    continue;
-                }
-            };
-
-            let res = self.handle_response_stream(resp_strm, inflight_queue).await;
-            if let Some(err) = Self::take_stream_fatal_error(&fatal_error).await {
-                return Err(err);
-            }
-
-            // Response stream is successfully exhausted.
-            if res.is_ok() {
-                // if partial success is returned, not all data is exhausted. keep sending
-                payload.update_matching(self.replication_progress.remote_matched.clone());
-                if payload.len() != Some(0) {
-                    self.next_action = Some(payload);
-                } else {
-                    // Payload is all sent.
-                    self.inflight_id = None;
-                }
+                // Payload is all sent.
+                self.inflight_id = None;
             }
         }
+    }
+
+    /// Check the two reasons this task must stop before opening another stream: the leader
+    /// dropped its handle, or a different leader has taken over locally.
+    fn ensure_still_leading(&mut self) -> Result<(), ReplicationClosed> {
+        let canceled = self.replication_context.cancel_rx.changed().now_or_never();
+        if canceled.map(|x| x.is_err()) == Some(true) {
+            tracing::info!("ReplicationCore: canceled, quit");
+            return Err(ReplicationClosed::new("canceled"));
+        }
+
+        let accepted_io: IOId<C> = self.event_watcher.io_accepted_rx.borrow_watched().clone();
+        if self.replication_context.leader_changed(&accepted_io) {
+            return Err(ReplicationClosed::new("Leader changed"));
+        }
+
+        Ok(())
+    }
+
+    /// Decide what the next stream should carry.
+    ///
+    /// With nothing left over, block until [`RaftCore`] hands over work. With a payload still
+    /// unfinished, adopt whatever [`RaftCore`] has since published instead: in `LogsSince` mode a
+    /// reverted log makes the unfinished payload obsolete, so resuming it would send entries that
+    /// no longer exist.
+    ///
+    /// [`RaftCore`]: crate::core::RaftCore
+    async fn select_next_payload(&mut self) -> Result<Payload<C>, ReplicationClosed> {
+        if self.next_action.is_none() {
+            self.drain_events().await?;
+        } else {
+            // If there is new data to send, even when the current data is not yet finished sending
+            // discard the current data, start to send the new data.
+            // When data is reverted in LogsSince mode, it needs such a mechanism.
+            //
+            // `borrow_and_update()` marks the value as seen; a plain `borrow_watched()`
+            // would leave the change notification pending, and `drain_events()` would
+            // later observe it and replay the same command, re-running an
+            // already-acknowledged payload.
+            let new_data = self.event_watcher.replicate_rx.borrow_and_update().clone();
+            if self.inflight_id != Some(new_data.inflight_id) {
+                tracing::info!(
+                    "ReplicationCore replaced current data with inflight id {:?} with new {}",
+                    self.inflight_id,
+                    new_data.inflight_id
+                );
+                self.inflight_id = Some(new_data.inflight_id);
+                self.next_action = Some(new_data.payload);
+            }
+        }
+
+        Ok(self.next_action.take().unwrap())
+    }
+
+    /// Stream `payload` to the target and consume the responses.
+    ///
+    /// Returns whether the response stream was consumed to its end; `false` means the caller
+    /// should back off and open a new stream, leaving `payload` unacknowledged. An `Err` is fatal
+    /// and ends the task.
+    async fn run_stream_session(
+        &mut self,
+        network: &mut N::Network,
+        payload: &Payload<C>,
+    ) -> Result<bool, ReplicationClosed> {
+        {
+            let mut stream_state = self.stream_state.lock().await;
+            stream_state.payload = Some(payload.clone());
+            stream_state.inflight_id = self.inflight_id;
+            stream_state.leader_committed = self.event_watcher.committed_rx.borrow_watched().clone()
+        }
+
+        let inflight_queue = InflightAppendQueue::new();
+        let fatal_error = Arc::new(MutexOf::<C, _>::new(None));
+
+        let stream_context = StreamContext {
+            stream_state: self.stream_state.clone(),
+            inflight_append_queue: inflight_queue.clone(),
+            fatal_error: fatal_error.clone(),
+        };
+
+        let req_strm = Self::new_request_stream(stream_context);
+
+        let rpc_timeout = Duration::from_millis(self.replication_context.config.heartbeat_interval);
+        let option = RPCOption::new(rpc_timeout);
+
+        let resp_strm_res = network.stream_append(req_strm, option).await;
+        // A custom streaming transport may poll the request stream while establishing
+        // `stream_append()` and then still return an RPC error. Check the fatal marker here too,
+        // because in that case there is no response stream for `handle_response_stream()` to
+        // consume.
+        if let Some(err) = Self::take_stream_fatal_error(&fatal_error).await {
+            return Err(err);
+        }
+
+        let resp_strm = match resp_strm_res {
+            Ok(resp_strm) => resp_strm,
+            Err(rpc_err) => {
+                self.backoff_state.on_error(rpc_err.backoff_rank());
+                self.send_progress_error(rpc_err, "initiate-stream-replication").await;
+
+                return Ok(false);
+            }
+        };
+
+        let res = self.handle_response_stream(resp_strm, inflight_queue).await;
+        if let Some(err) = Self::take_stream_fatal_error(&fatal_error).await {
+            return Err(err);
+        }
+
+        // Response stream is successfully exhausted.
+        Ok(res.is_ok())
     }
 
     async fn take_stream_fatal_error(
@@ -405,19 +435,7 @@ where
         if self.inflight_id.is_none() {
             return;
         }
-        self.replication_context
-            .tx_notify
-            .send(Notification::ReplicationProgress {
-                stream_id: self.replication_context.stream_id,
-                progress: Progress {
-                    target: self.replication_context.target.clone(),
-                    result: Err(err.to_string()),
-                },
-
-                inflight_id: self.inflight_id,
-            })
-            .await
-            .ok();
+        self.replication_context.notify_progress(Err(err.to_string()), self.inflight_id).await;
     }
 
     /// A successful replication implies a successful heartbeat.
@@ -426,17 +444,7 @@ where
     /// [`RaftCore`]: crate::core::RaftCore
     async fn notify_heartbeat_progress(&mut self, sending_time: InstantOf<C>) {
         tracing::debug!("ReplicationCore notify_heartbeat_progress: {}", sending_time.display());
-        self.replication_context
-            .tx_notify
-            .send({
-                Notification::HeartbeatProgress {
-                    stream_id: self.replication_context.stream_id,
-                    target: self.replication_context.target.clone(),
-                    sending_time,
-                }
-            })
-            .await
-            .ok();
+        self.replication_context.notify_heartbeat_progress(sending_time).await;
     }
 
     /// Notify RaftCore with the success replication result (log matching or conflict).
@@ -466,21 +474,7 @@ where
 
         // always send Conflict error back, even when the inflight id is None
         // for heartbeat to detect log reversion
-        self.replication_context
-            .tx_notify
-            .send({
-                Notification::ReplicationProgress {
-                    stream_id: self.replication_context.stream_id,
-                    progress: Progress {
-                        target: self.replication_context.target.clone(),
-                        result: Ok(replication_result.clone()),
-                    },
-                    // If it is None, meaning it is not a response to a request with payload.
-                    inflight_id: self.inflight_id,
-                }
-            })
-            .await
-            .ok();
+        self.replication_context.notify_progress(Ok(replication_result), self.inflight_id).await;
     }
 
     /// Receive and process events from RaftCore and set `next_action` and `inflight_id`.

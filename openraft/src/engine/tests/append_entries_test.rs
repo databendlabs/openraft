@@ -132,9 +132,9 @@ fn test_append_entries_prev_log_id_is_applied() -> anyhow::Result<()> {
             Command::CloseReplicationStreams,
             Command::UpdateIOProgress {
                 when: Some(Condition::IOFlushed {
-                    io_id: IOId::new_log_io(Vote::new(2, 1).into_committed(), None)
+                    io_id: IOId::new_log_io(Vote::new(2, 1).to_committed(), None)
                 }),
-                io_id: IOId::new_log_io(Vote::new(2, 1).into_committed(), Some(log_id(0, 1, 0)))
+                io_id: IOId::new_log_io(Vote::new(2, 1).to_committed(), Some(log_id(0, 1, 0)))
             }
         ],
         eng.output.take_commands()
@@ -233,7 +233,7 @@ fn test_append_entries_prev_log_id_is_committed() -> anyhow::Result<()> {
                 after: Some(log_id(1, 1, 1))
             },
             Command::AppendEntries {
-                committed_vote: Vote::new(2, 1).into_committed(),
+                committed_vote: Vote::new(2, 1).to_committed(),
                 entries: Batch::of([blank_ent::<UTConfig>(2, 1, 2)])
             },
         ],
@@ -341,7 +341,7 @@ fn test_append_entries_conflict() -> anyhow::Result<()> {
                 after: Some(log_id(1, 1, 2))
             },
             Command::AppendEntries {
-                committed_vote: Vote::new(2, 1).into_committed(),
+                committed_vote: Vote::new(2, 1).to_committed(),
                 entries: Batch::of([EntryOf::<UTConfig>::new_membership(log_id(3, 1, 3), m34())])
             },
         ],

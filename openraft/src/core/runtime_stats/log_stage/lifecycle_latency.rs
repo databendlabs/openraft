@@ -43,6 +43,9 @@ where I: Instant
 }
 
 /// Stage-specific convenience methods for [`LogStages`].
+///
+/// The per-stage wrappers round out the API rather than serving a current caller; only `new` is
+/// used today.
 #[allow(dead_code)]
 impl<I> LogStages<I>
 where I: Instant

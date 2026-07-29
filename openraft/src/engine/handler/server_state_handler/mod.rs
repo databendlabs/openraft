@@ -14,9 +14,13 @@ where C: RaftTypeConfig
     pub(crate) state: &'st mut RaftState<C>,
 }
 
-impl<C> ServerStateHandler<'_, C>
+impl<'st, C> ServerStateHandler<'st, C>
 where C: RaftTypeConfig
 {
+    pub(crate) fn new(config: &'st EngineConfig<C>, state: &'st mut RaftState<C>) -> Self {
+        Self { config, state }
+    }
+
     /// Re-calculate the server-state if it changed, update the `server_state` field and dispatch
     /// commands to inform a runtime.
     pub(crate) fn update_server_state_if_changed(&mut self) {

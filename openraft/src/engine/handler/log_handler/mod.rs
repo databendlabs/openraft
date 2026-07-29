@@ -27,11 +27,19 @@ where
     pub(crate) output: &'x mut EngineOutput<C, SM>,
 }
 
-impl<C, SM> LogHandler<'_, C, SM>
+impl<'x, C, SM> LogHandler<'x, C, SM>
 where
     C: RaftTypeConfig,
     SM: RaftStateMachine<C>,
 {
+    pub(crate) fn new(
+        config: &'x mut EngineConfig<C>,
+        state: &'x mut RaftState<C>,
+        output: &'x mut EngineOutput<C, SM>,
+    ) -> Self {
+        Self { config, state, output }
+    }
+
     /// Purge log entries up to `RaftState.purge_upto()`, inclusive.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn purge_log(&mut self) {

@@ -104,6 +104,22 @@ where C: RaftTypeConfig
         })
     }
 
+    /// Invoke RaftCore with a message that carries a oneshot responder, and block waiting for the
+    /// response.
+    ///
+    /// The sender half is handed to `make_msg` and the matching receiver half is awaited here.
+    /// Prefer this over [`Self::call_core`]: `RaftMsg` does not carry the response type, so
+    /// `call_core` accepts any receiver, including one belonging to a different request.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) async fn call_core_oneshot<T, F>(&self, make_msg: F) -> Result<T, Fatal<C>>
+    where
+        T: OptionalSend,
+        F: FnOnce(OneshotSenderOf<C, T>) -> RaftMsg<C>,
+    {
+        let (tx, rx) = C::oneshot();
+        self.call_core(make_msg(tx), rx).await
+    }
+
     /// Receive a message from RaftCore, return an error if the response is not delivered.
     pub(crate) async fn recv_msg<T, E>(&self, rx: impl Future<Output = Result<T, E>>) -> Result<T, Fatal<C>>
     where

@@ -51,6 +51,9 @@ jepsen/
     client.clj
     db.clj
     cluster.clj
+    nemesis/
+      partition.clj
+      process.clj
     workload.clj
 ```
 
@@ -60,6 +63,8 @@ The `jepsen.openraft` namespace contains the OpenRaft-specific Jepsen code:
 - `client.clj`: HTTP client for the OpenRaft KV example APIs.
 - `db.clj`: Jepsen DB lifecycle for starting and stopping OpenRaft nodes.
 - `cluster.clj`: cluster bootstrap helpers.
+- `nemesis/partition.clj`: leader-aware network partition faults and recovery.
+- `nemesis/process.clj`: quorum-safe process crashes and restarts.
 - `workload.clj`: generators and checkers for client operations.
 
 ## Running
@@ -73,7 +78,7 @@ The `jepsen.openraft` namespace contains the OpenRaft-specific Jepsen code:
 From the repository root:
 
 ```bash
-# Build images, start containers, and run the linearizability test.
+# Build images, start containers, then run unit and linearizability tests.
 $ make -C jepsen jepsen
 
 # Generate the local Docker SSH key and build the Jepsen images.
@@ -85,11 +90,26 @@ $ make -C jepsen up
 # Run the linearizability test against the running containers.
 $ make -C jepsen test
 
+# Run the process crash/restart test instead of the default partition test.
+$ make -C jepsen test NEMESIS=process
+
 # Stop and remove the Jepsen containers.
 $ make -C jepsen down
 ```
 
-This starts three Docker node containers, then runs the Jepsen control process from the control container. The test bootstraps a three-node cluster and checks a concurrent mix of linearizable reads, writes, and compare-and-set operations with Knossos.
+This starts three Docker node containers, then runs the Jepsen control process
+from the control container. The test bootstraps a three-node cluster and checks
+a concurrent mix of linearizable reads, writes, and compare-and-set operations
+with Knossos. While the workload runs, Jepsen alternates between partitions
+where the current leader is in the majority and in the minority. Each partition
+lasts 10 seconds. A run is valid only if both modes occur, every node agrees on
+a leader after the final heal, client operations continue during recovery, and
+the final recovery write and read succeed.
+
+The process nemesis reads the effective voter configs from OpenRaft metrics and
+randomly stops a non-empty voter subset whose survivors still form a quorum. It
+supports both stable and joint membership, covers leader and follower-only
+crashes, and waits for every stopped node to rejoin after restart.
 
 ## TODO
 
@@ -100,7 +120,8 @@ This starts three Docker node containers, then runs the Jepsen control process f
 - [x] Add Jepsen process lifecycle management for OpenRaft nodes.
 - [x] Bootstrap a three-node OpenRaft cluster.
 - [ ] Record acknowledged write, read, and info operation counts in each run.
-- [ ] Add nemeses for network partitions and process kill/restart.
+- [x] Add a network partition nemesis.
+- [x] Add nemeses for process kill/restart.
 - [x] Add a read, write, and compare-and-set workload.
 - [x] Add linearizability checking with Knossos.
 - [ ] Add snapshot pressure and membership churn workloads.

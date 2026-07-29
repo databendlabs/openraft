@@ -1,0 +1,5 @@
+# `tokio_unstable` enables `Builder::rng_seed`, which the vendored turmoil
+# (see vendor/turmoil) uses to make tokio's `thread_rng_n` deterministic.
+# Cargo merges this array with rustflags from outer config files.
+[build]
+rustflags = ["--cfg", "tokio_unstable"]

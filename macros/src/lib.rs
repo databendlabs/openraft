@@ -10,6 +10,7 @@ compile_error!(
 mod expand;
 mod since;
 pub(crate) mod utils;
+mod variant_name;
 
 use proc_macro::TokenStream;
 use quote::quote;
@@ -246,4 +247,51 @@ fn do_since(args: TokenStream, item: TokenStream) -> Result<TokenStream, syn::Er
 pub fn expand(item: TokenStream) -> TokenStream {
     let repeat = parse_macro_input!(item as expand::Expand);
     repeat.render().into()
+}
+
+/// Derive `COUNT`, `ALL`, `index()`, `as_str()` and `Display` for an enum that names the
+/// variants of another type.
+///
+/// Such a "name" enum is used to count events into a fixed-size array, so each variant needs a
+/// stable index and the set of indices must be dense. This derive keeps the index, the variant
+/// list and the count in agreement by generating all three from the enum definition.
+///
+/// The enum must derive `Copy`, and every variant must either be a unit variant or wrap exactly
+/// one other name enum. A wrapping variant is expanded in place: it occupies as many indices as
+/// the inner enum has variants, and delegates `as_str()` to it.
+///
+/// `#[variant_name(prefix = "...")]` prepends a string to the rendering of every unit variant.
+///
+/// # Example
+///
+/// ```
+/// use openraft_macros::VariantName;
+///
+/// #[derive(Clone, Copy, VariantName)]
+/// #[variant_name(prefix = "SM::")]
+/// enum SmName {
+///     Build,
+///     Apply,
+/// }
+///
+/// #[derive(Clone, Copy, VariantName)]
+/// enum Name {
+///     Vote,
+///     StateMachine(SmName),
+///     Respond,
+/// }
+///
+/// assert_eq!(Name::COUNT, 4);
+/// assert_eq!(Name::StateMachine(SmName::Apply).index(), 2);
+/// assert_eq!(Name::Respond.index(), 3);
+/// assert_eq!(Name::StateMachine(SmName::Apply).as_str(), "SM::Apply");
+/// assert_eq!(Name::Vote.as_str(), "Vote");
+/// ```
+#[proc_macro_derive(VariantName, attributes(variant_name))]
+pub fn variant_name(item: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(item as syn::DeriveInput);
+    match variant_name::expand(input) {
+        Ok(tokens) => tokens.into(),
+        Err(e) => e.to_compile_error().into(),
+    }
 }

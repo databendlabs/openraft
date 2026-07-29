@@ -91,6 +91,24 @@ impl ClusterState {
             .map(|(id, _)| *id)
     }
 
+    /// Return the current leader together with its node id.
+    pub fn find_leader_entry(&self) -> Option<(NodeId, Arc<Raft>)> {
+        self.rafts
+            .iter()
+            .find(|(_, raft)| raft.metrics().borrow_watched().state.is_leader())
+            .map(|(id, raft)| (*id, raft.clone()))
+    }
+
+    /// Get the live Raft handle of one node, if it is running.
+    pub fn get_raft(&self, node_id: NodeId) -> Option<Arc<Raft>> {
+        self.rafts.get(&node_id).cloned()
+    }
+
+    /// Get the state machine of one node (exists even while the node is down).
+    pub fn get_state_machine(&self, node_id: NodeId) -> Option<Arc<StateMachine>> {
+        self.state_machines.get(&node_id).cloned()
+    }
+
     /// Register a freshly started Raft instance as live.
     pub fn register_raft(&mut self, node_id: NodeId, raft: Arc<Raft>) {
         self.rafts.insert(node_id, raft);

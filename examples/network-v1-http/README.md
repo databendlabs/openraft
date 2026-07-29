@@ -1,8 +1,8 @@
 # HTTP RaftNetwork V1 Example
 
 This crate is a small HTTP implementation of the legacy `RaftNetwork` V1 API.
-It uses `reqwest` for outbound node-to-node RPCs, optional Actix handlers for
-inbound RPCs, and JSON for serialization.
+It uses `reqwest` for outbound node-to-node RPCs, `hyper` for inbound RPCs, and
+JSON for serialization.
 
 For new network implementations, prefer `RaftNetworkV2`. The V2 API is the main
 network API in current OpenRaft and gives the application full control over
@@ -10,8 +10,7 @@ snapshot transfer through `full_snapshot()`.
 
 See:
 
-- [`raft-kv-memstore-network-v2`](../raft-kv-memstore-network-v2/) for a V2
-  network example.
+- [`network-v2-http`](../network-v2-http/) for the V2 counterpart of this crate.
 - [`raft-kv-memstore-grpc`](../raft-kv-memstore-grpc/) for a gRPC example that
   implements network sub-traits directly.
 - [OpenRaft network guide](../../openraft/src/docs/getting_started/getting-started.md#4-implement-raftnetwork)
@@ -22,8 +21,7 @@ See:
 `network-v1-http` shows both sides of the older V1 HTTP network:
 
 - `NetworkFactory` builds outbound clients for peer nodes.
-- `actix::configure()` registers inbound `/append`, `/vote`, and `/snapshot`
-  handlers when the `actix` feature is enabled.
+- `Server` serves the inbound `/append`, `/vote`, and `/snapshot` endpoints.
 
 The outbound side implements the older V1 trait:
 
@@ -84,7 +82,7 @@ Add the example crate:
 
 ```toml
 [dependencies]
-network-v1-http = { path = "../network-v1-http", features = ["actix"] }
+network-v1-http = { path = "../network-v1-http" }
 ```
 
 Use its factory when constructing `Raft`:
@@ -103,22 +101,15 @@ let raft = openraft::Raft::new(
 ).await?;
 ```
 
-Register the inbound handlers in an Actix application:
+Serve the inbound endpoints on the address other nodes dial:
 
 ```rust
-use actix_web::web::Data;
-
-let raft_data = Data::new(raft.clone());
-
-actix_web::App::new()
-    .app_data(raft_data)
-    .configure(network_v1_http::actix::configure::<TypeConfig, StateMachineStore>);
+network_v1_http::Server::new(raft.clone()).run(raft_addr).await?;
 ```
 
-Complete examples using this crate:
+Complete example using this crate:
 
-- [`raft-kv-memstore`](../raft-kv-memstore/)
-- [`raft-kv-rocksdb`](../raft-kv-rocksdb/)
+- [`raft-kv-memstore-network-v1`](../raft-kv-memstore-network-v1/)
 
 ## When To Use This Example
 
@@ -126,4 +117,4 @@ Read this crate if you maintain V1 network code or want to understand how the
 legacy chunked snapshot API maps into the current V2 network model.
 
 For a new HTTP network implementation, start from
-[`raft-kv-memstore-network-v2`](../raft-kv-memstore-network-v2/) instead.
+[`network-v2-http`](../network-v2-http/) instead.

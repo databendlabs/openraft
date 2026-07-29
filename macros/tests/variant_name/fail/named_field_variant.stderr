@@ -1,0 +1,5 @@
+error: VariantName variants must be a unit variant or wrap exactly one name enum
+ --> tests/variant_name/fail/named_field_variant.rs:6:11
+  |
+6 |     Named { a: u32 },
+  |           ^^^^^^^^^^

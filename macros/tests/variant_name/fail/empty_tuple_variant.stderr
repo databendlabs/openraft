@@ -1,0 +1,5 @@
+error: VariantName variants must be a unit variant or wrap exactly one name enum
+ --> tests/variant_name/fail/empty_tuple_variant.rs:6:10
+  |
+6 |     Empty(),
+  |          ^^

@@ -1,0 +1,4 @@
+# Re-include a path the repo root ignores: the lockfile pins the dependency
+# versions (including forked git revs) that bit-for-bit reproducibility
+# depends on.
+!/Cargo.lock

@@ -10,12 +10,13 @@ use openraft::OptionalSend;
 use openraft::RaftTypeConfig;
 use openraft::SnapshotId;
 use openraft::StorageError;
-use openraft::raft::InstallSnapshotRequest;
 use openraft::type_config::TypeConfigExt;
 use openraft::type_config::alias::MutexOf;
 use openraft_macros::since;
 use tokio::io::AsyncSeekExt;
 use tokio::io::AsyncWriteExt;
+
+use crate::network_v1::InstallSnapshotRequest;
 
 /// State for receiving a chunked snapshot from the leader.
 ///

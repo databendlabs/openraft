@@ -4,7 +4,6 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::Vote;
-use openraft::raft::InstallSnapshotRequest;
 use openraft::storage::SnapshotMeta;
 use openraft_legacy::prelude::*;
 

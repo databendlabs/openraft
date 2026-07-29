@@ -51,7 +51,8 @@ use openraft::Snapshot;
 use openraft::SnapshotId;
 use openraft::SnapshotMeta;
 use openraft::SnapshotPolicy;
-use openraft::SnapshotSegmentId;
+#[allow(deprecated)]
+use openraft::SnapshotSegmentId as DeprecatedSnapshotSegmentId;
 use openraft::StorageError;
 use openraft::StorageHelper;
 use openraft::StoredMembership;
@@ -130,7 +131,8 @@ use openraft::errors::ForwardToLeader;
 use openraft::errors::InProgress;
 use openraft::errors::Infallible;
 use openraft::errors::InitializeError;
-use openraft::errors::InstallSnapshotError;
+#[allow(deprecated)]
+use openraft::errors::InstallSnapshotError as DeprecatedInstallSnapshotError;
 use openraft::errors::LeaderChanged;
 use openraft::errors::LearnerNotFound;
 use openraft::errors::LinearizableReadError;
@@ -146,7 +148,8 @@ use openraft::errors::RPCError;
 use openraft::errors::RaftError;
 use openraft::errors::RemoteError;
 use openraft::errors::ReplicationClosed;
-use openraft::errors::SnapshotMismatch;
+#[allow(deprecated)]
+use openraft::errors::SnapshotMismatch as DeprecatedSnapshotMismatch;
 use openraft::errors::StreamingError;
 use openraft::errors::Timeout;
 use openraft::errors::Unreachable;
@@ -206,8 +209,10 @@ use openraft::raft::AppendEntriesResponse;
 use openraft::raft::ClientWriteResponse;
 use openraft::raft::ClientWriteResult;
 use openraft::raft::FlushPoint;
-use openraft::raft::InstallSnapshotRequest;
-use openraft::raft::InstallSnapshotResponse;
+#[allow(deprecated)]
+use openraft::raft::InstallSnapshotRequest as DeprecatedInstallSnapshotRequest;
+#[allow(deprecated)]
+use openraft::raft::InstallSnapshotResponse as DeprecatedInstallSnapshotResponse;
 use openraft::raft::Leader;
 use openraft::raft::Raft as RaftModule;
 use openraft::raft::ReadPolicy as ReadPolicyModule;
@@ -273,6 +278,14 @@ use openraft::type_config::async_runtime as type_config_async_runtime;
 use openraft::vote::RaftLeaderId;
 use openraft::vote::RaftTerm;
 use openraft::vote::Vote as VoteModule;
+// =============================================================================
+// openraft-legacy crate exports
+// =============================================================================
+use openraft_legacy::network_v1::InstallSnapshotError;
+use openraft_legacy::network_v1::InstallSnapshotRequest;
+use openraft_legacy::network_v1::InstallSnapshotResponse;
+use openraft_legacy::network_v1::SnapshotMismatch;
+use openraft_legacy::network_v1::SnapshotSegmentId;
 // =============================================================================
 // Macros
 // =============================================================================

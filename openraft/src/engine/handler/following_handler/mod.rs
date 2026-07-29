@@ -259,6 +259,31 @@ where
         // snapshot_last_log_id cannot be None
         let snap_last_log_id = snap_last_log_id.unwrap();
 
+        // A snapshot never contains a log id beyond its leader's vote: such a pair cannot be
+        // produced by a protocol-following cluster and would corrupt the log id order.
+        assert!(
+            snap_last_log_id.committed_leader_id() <= &self.leader_vote.committed_leader_id(),
+            "snapshot last log id {} can not be owned by the installing leader with vote {}: \
+             a snapshot never contains a log id beyond its leader's vote; \
+             the snapshot or the vote is corrupted, e.g., the snapshot was built by a previous incarnation of the cluster",
+            snap_last_log_id,
+            self.leader_vote,
+        );
+
+        // The snapshot is greater than local committed (checked above). If it is also at a
+        // smaller index, it claims a different history for an index range that is committed
+        // locally; installing it would leave `committed > last_log_id`.
+        if let Some(committed) = self.state.local_committed() {
+            assert!(
+                snap_last_log_id.index() >= committed.index(),
+                "snapshot last log id {} is greater than the locally committed log id {} but at a smaller index: \
+                 the snapshot contradicts locally committed logs; \
+                 the snapshot or the local store is corrupted",
+                snap_last_log_id,
+                committed,
+            );
+        }
+
         // 1. Truncate all logs if conflict.
         // 2. Install snapshot.
         // 3. Purge logs the snapshot covers.
@@ -317,24 +342,14 @@ where
     }
 
     fn log_handler(&mut self) -> LogHandler<'_, C, SM> {
-        LogHandler {
-            config: self.config,
-            state: self.state,
-            output: self.output,
-        }
+        LogHandler::new(self.config, self.state, self.output)
     }
 
     fn snapshot_handler(&mut self) -> SnapshotHandler<'_, '_, C, SM> {
-        SnapshotHandler {
-            state: self.state,
-            output: self.output,
-        }
+        SnapshotHandler::new(self.state, self.output)
     }
 
     fn server_state_handler(&mut self) -> ServerStateHandler<'_, C> {
-        ServerStateHandler {
-            config: self.config,
-            state: self.state,
-        }
+        ServerStateHandler::new(self.config, self.state)
     }
 }

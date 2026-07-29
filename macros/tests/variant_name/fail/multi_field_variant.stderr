@@ -1,0 +1,5 @@
+error: VariantName variants must be a unit variant or wrap exactly one name enum
+ --> tests/variant_name/fail/multi_field_variant.rs:6:9
+  |
+6 |     Pair(u32, u32),
+  |         ^^^^^^^^^^

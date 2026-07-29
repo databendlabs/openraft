@@ -95,18 +95,7 @@ where
     /// Enforces strict monotonicity - panics in debug mode if updates arrive out of order.
     pub(crate) fn accept(&mut self, new_accepted: T) {
         tracing::debug!("RAFT_io    {}; new_accepted: {}", self, new_accepted);
-
-        if cfg!(debug_assertions) {
-            assert!(
-                self.accepted.as_ref().is_none_or(|accepted| accepted <= &new_accepted),
-                "expect accepted:{} < new_accepted:{}",
-                self.accepted.display(),
-                new_accepted,
-            );
-        }
-
-        self.accepted = Some(new_accepted);
-
+        Self::advance(&mut self.accepted, "accepted", new_accepted);
         tracing::debug!("RAFT_io    {}", self);
     }
 
@@ -115,40 +104,36 @@ where
     /// Enforces strict monotonicity - panics in debug mode if updates arrive out of order.
     pub(crate) fn submit(&mut self, new_submitted: T) {
         tracing::debug!("RAFT_io    {}; new_submitted: {}", self, new_submitted);
-
-        if cfg!(debug_assertions) {
-            assert!(
-                self.submitted.as_ref().is_none_or(|submitted| submitted <= &new_submitted),
-                "expect submitted:{} < new_submitted:{}",
-                self.submitted.display(),
-                new_submitted,
-            );
-        }
-
-        self.submitted = Some(new_submitted);
-
+        Self::advance(&mut self.submitted, "submitted", new_submitted);
         tracing::debug!("RAFT_io    {}", self);
     }
 
     /// Update the `flush` cursor of the I/O progress.
     ///
-    /// Only updates if the new value is greater than the current value.
-    /// This allows the flush cursor to tolerate out-of-order I/O completion notifications.
+    /// Enforces strict monotonicity - panics in debug mode if updates arrive out of order.
+    /// Use [`Self::try_flush`] to tolerate out-of-order I/O completion notifications.
     pub(crate) fn flush(&mut self, new_flushed: T) {
         tracing::debug!("RAFT_io    {}; new_flushed: {}", self, new_flushed);
+        Self::advance(&mut self.flushed, "flushed", new_flushed);
+        tracing::debug!("RAFT_io    {}", self);
+    }
 
+    /// Move one cursor forward to `new_value`.
+    ///
+    /// `stage` names the cursor in the assertion message, e.g. `"accepted"`.
+    fn advance(cursor: &mut Option<T>, stage: &str, new_value: T) {
         if cfg!(debug_assertions) {
             assert!(
-                self.flushed.as_ref().is_none_or(|flushed| flushed <= &new_flushed),
-                "expect flushed:{} < new_flushed:{}",
-                self.flushed.display(),
-                new_flushed,
+                cursor.as_ref().is_none_or(|current| current <= &new_value),
+                "expect {}:{} < new_{}:{}",
+                stage,
+                cursor.display(),
+                stage,
+                new_value,
             );
         }
 
-        self.flushed = Some(new_flushed);
-
-        tracing::debug!("RAFT_io    {}", self);
+        *cursor = Some(new_value);
     }
 
     /// Conditionally update all three cursors (accepted, submitted, flushed) to the same value.
@@ -177,7 +162,6 @@ where
     pub(crate) fn try_accept(&mut self, new_accepted: T) {
         if self.accepted.as_ref() < Some(&new_accepted) {
             self.accept(new_accepted);
-            tracing::debug!("RAFT_io    {}", self);
         }
     }
 
@@ -186,16 +170,13 @@ where
     pub(crate) fn try_submit(&mut self, new_submitted: T) {
         if self.submitted.as_ref() < Some(&new_submitted) {
             self.submit(new_submitted);
-            tracing::debug!("RAFT_io    {}", self);
         }
     }
 
     /// Conditionally update the `flush` cursor if the new value is greater.
-    #[allow(dead_code)]
     pub(crate) fn try_flush(&mut self, new_flushed: T) {
         if self.flushed.as_ref() < Some(&new_flushed) {
             self.flush(new_flushed);
-            tracing::debug!("RAFT_io    {}", self);
         }
     }
 

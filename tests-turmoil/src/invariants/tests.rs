@@ -51,7 +51,7 @@ struct SnapshotBuilder {
     membership_log_id: Option<LogId>,
     membership: Vec<Vec<NodeId>>,
     sm_last_applied: Option<LogId>,
-    sm_data: std::collections::HashMap<String, String>,
+    sm_data: std::collections::BTreeMap<String, crate::store::ValueMeta>,
 }
 
 impl SnapshotBuilder {
@@ -71,7 +71,7 @@ impl SnapshotBuilder {
             membership_log_id: None,
             membership: Vec::new(),
             sm_last_applied: None,
-            sm_data: std::collections::HashMap::new(),
+            sm_data: std::collections::BTreeMap::new(),
         }
     }
 
@@ -133,7 +133,20 @@ impl SnapshotBuilder {
     }
 
     fn sm_data(mut self, k: &str, v: &str) -> Self {
-        self.sm_data.insert(k.into(), v.into());
+        self.sm_data.insert(k.into(), crate::store::ValueMeta {
+            value: v.into(),
+            serial: 0,
+            log_id: log_id(1, 1, 1),
+        });
+        self
+    }
+
+    fn sm_key_at(mut self, k: &str, lid: LogId) -> Self {
+        self.sm_data.insert(k.into(), crate::store::ValueMeta {
+            value: format!("v-{k}"),
+            serial: 0,
+            log_id: lid,
+        });
         self
     }
 
@@ -655,6 +668,71 @@ fn monotonic_applied_index_regression() {
         current: 4,
         ..
     });
+}
+
+#[test]
+fn sm_key_regression_detected() {
+    let mut checker = InvariantChecker::default();
+
+    let tick1 = vec![SnapshotBuilder::new(1).sm_key_at("k", log_id(1, 1, 5)).build()];
+    assert_no_violations!(checker.check(&tick1).violations);
+
+    // The key rolled back to an older writing log id.
+    let tick2 = vec![SnapshotBuilder::new(1).sm_key_at("k", log_id(1, 1, 3)).build()];
+    let r = checker.check(&tick2);
+    assert_variant!(r.violations, InvariantViolation::SmKeyRegressed {
+        node: 1,
+        current: Some(_),
+        ..
+    });
+}
+
+#[test]
+fn sm_key_vanished_detected() {
+    let mut checker = InvariantChecker::default();
+
+    let tick1 = vec![SnapshotBuilder::new(1).sm_key_at("k", log_id(1, 1, 5)).build()];
+    assert_no_violations!(checker.check(&tick1).violations);
+
+    // Keys are never deleted: disappearing is a rollback.
+    let tick2 = vec![SnapshotBuilder::new(1).build()];
+    let r = checker.check(&tick2);
+    assert_variant!(r.violations, InvariantViolation::SmKeyRegressed {
+        node: 1,
+        current: None,
+        ..
+    });
+}
+
+#[test]
+fn sm_key_progress_is_clean() {
+    let mut checker = InvariantChecker::default();
+
+    let tick1 = vec![SnapshotBuilder::new(1).sm_key_at("k", log_id(1, 1, 5)).build()];
+    assert_no_violations!(checker.check(&tick1).violations);
+
+    // Same position, advanced position, new keys, and a new node: all fine.
+    let tick2 = vec![
+        SnapshotBuilder::new(1).sm_key_at("k", log_id(2, 2, 8)).sm_key_at("k2", log_id(2, 2, 9)).build(),
+        SnapshotBuilder::new(2).sm_key_at("k", log_id(1, 1, 5)).build(),
+    ];
+    assert_no_violations!(checker.check(&tick2).violations);
+}
+
+#[test]
+fn sm_key_checked_across_node_downtime() {
+    let mut checker = InvariantChecker::default();
+
+    let tick1 = vec![SnapshotBuilder::new(1).sm_key_at("k", log_id(1, 1, 5)).build()];
+    assert_no_violations!(checker.check(&tick1).violations);
+
+    // Node 1 is down: it drops out of the snapshot list entirely.
+    assert_no_violations!(checker.check(&[]).violations);
+
+    // Storage is durable, so it must come back at-or-ahead of where it was.
+    let tick3 = vec![SnapshotBuilder::new(1).sm_key_at("k", log_id(1, 1, 3)).build()];
+    let r = checker.check(&tick3);
+    assert_variant!(r.violations, InvariantViolation::SmKeyRegressed { node: 1, .. });
 }
 
 #[test]

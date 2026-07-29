@@ -981,18 +981,11 @@ where
     }
 
     pub(crate) fn log_handler(&mut self) -> LogHandler<'_, C, SM> {
-        LogHandler {
-            config: &mut self.config,
-            state: &mut self.state,
-            output: &mut self.output,
-        }
+        LogHandler::new(&mut self.config, &mut self.state, &mut self.output)
     }
 
     pub(crate) fn snapshot_handler(&mut self) -> SnapshotHandler<'_, '_, C, SM> {
-        SnapshotHandler {
-            state: &mut self.state,
-            output: &mut self.output,
-        }
+        SnapshotHandler::new(&mut self.state, &mut self.output)
     }
 
     pub(crate) fn try_leader_handler(&mut self) -> Result<LeaderHandler<'_, C, SM>, ForwardToLeader<C>> {
@@ -1011,24 +1004,19 @@ where
             self.state.vote_ref()
         );
 
-        Ok(LeaderHandler {
-            config: &mut self.config,
+        Ok(LeaderHandler::new(
+            &mut self.config,
             leader,
-            state: &mut self.state,
-            output: &mut self.output,
-        })
+            &mut self.state,
+            &mut self.output,
+        ))
     }
 
     /// Return ReplicationHandler if it is Leader.
     pub(crate) fn try_replication_handler(&mut self) -> Option<ReplicationHandler<'_, C, SM>> {
         let leader = self.leader.as_mut()?;
 
-        let rh = ReplicationHandler {
-            config: &mut self.config,
-            leader,
-            state: &mut self.state,
-            output: &mut self.output,
-        };
+        let rh = ReplicationHandler::new(&mut self.config, leader, &mut self.state, &mut self.output);
 
         Some(rh)
     }
@@ -1041,12 +1029,7 @@ where
             Some(x) => x,
         };
 
-        ReplicationHandler {
-            config: &mut self.config,
-            leader,
-            state: &mut self.state,
-            output: &mut self.output,
-        }
+        ReplicationHandler::new(&mut self.config, leader, &mut self.state, &mut self.output)
     }
 
     pub(crate) fn following_handler(&mut self) -> FollowingHandler<'_, C, SM> {
@@ -1060,7 +1043,7 @@ where
         );
 
         FollowingHandler {
-            leader_vote: leader_vote.into_committed(),
+            leader_vote: leader_vote.to_committed(),
             config: &mut self.config,
             state: &mut self.state,
             output: &mut self.output,
@@ -1068,10 +1051,7 @@ where
     }
 
     pub(crate) fn server_state_handler(&mut self) -> ServerStateHandler<'_, C> {
-        ServerStateHandler {
-            config: &self.config,
-            state: &mut self.state,
-        }
+        ServerStateHandler::new(&self.config, &mut self.state)
     }
     pub(crate) fn establish_handler(&mut self) -> EstablishHandler<'_, C> {
         EstablishHandler {

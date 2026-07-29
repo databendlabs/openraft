@@ -26,7 +26,18 @@
         (let [op {:type :invoke :f :read :value nil}
               result (client/invoke! (kv-client) {} op)]
           (is (= :fail (:type result)))
-          (is (= :timeout (:error result))))))))
+          (is (= :timeout (:error result)))))
+
+      (testing "a final recovery write must complete"
+        (let [op {:type :invoke
+                  :f :write
+                  :value "recovery-value"
+                  :final? true}
+              result (client/invoke! (kv-client) {} op)]
+          (is (= :info (:type result)))
+          (is (:unexpected? result))
+          (is (= :request-timeout
+                 (-> result :exception-data :kind))))))))
 
 (deftest classifies-cas-outcomes
   (let [op {:type :invoke
@@ -158,3 +169,43 @@
           (is (:unexpected? result))
           (is (= "server error" (:exception-message result)))
           (is (= 500 (get-in result [:exception-data :status]))))))))
+
+(deftest rethrows-interruptions
+  (let [op {:type :invoke :f :write :value "value"}]
+    (testing "a wrapped interruption from send! propagates instead of completing"
+      (with-redefs [http/write! (fn [& _]
+                                  (throw (ex-info "interrupted"
+                                                  {:kind :interrupted})))]
+        (is (thrown? clojure.lang.ExceptionInfo
+                     (client/invoke! (kv-client) {} op)))))
+
+    (testing "a raw InterruptedException propagates and restores the interrupt flag"
+      (with-redefs [http/write! (fn [& _]
+                                  (throw (InterruptedException. "boom")))]
+        ;; Capture the exception and interrupt flag before any assertion runs:
+        ;; clojure.test's report machinery uses dosync, which clears the flag.
+        (Thread/interrupted)
+        (let [thrown (try
+                       (client/invoke! (kv-client) {} op)
+                       nil
+                       (catch InterruptedException e e))
+              interrupted (Thread/interrupted)]
+          (is (instance? InterruptedException thrown))
+          (is interrupted
+              "the interrupt flag is restored so Jepsen's control signals survive"))))))
+
+(deftest unexpected-errors-checker-flags-tagged-operations
+  (let [chk (#'workload/unexpected-errors-checker)]
+    (testing "a history without unexpected errors is valid"
+      (let [result (checker/check chk {} [{:type :ok :f :read}] {})]
+        (is (:valid? result))
+        (is (= 0 (:count result)))
+        (is (= [] (:errors result)))))
+
+    (testing "unexpected-tagged operations fail the check and are surfaced"
+      (let [tagged {:type :info :f :write :error [:http 500] :unexpected? true}
+            history [{:type :ok :f :read} tagged]
+            result (checker/check chk {} history {})]
+        (is (not (:valid? result)))
+        (is (= 1 (:count result)))
+        (is (= [tagged] (:errors result)))))))

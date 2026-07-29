@@ -1,63 +1,24 @@
+use openraft_macros::VariantName;
+
 /// Enum representing the name of each `sm::Command` variant.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[repr(u8)]
+#[derive(VariantName)]
+#[variant_name(prefix = "SM::")]
 pub enum SMCommandName {
-    BuildSnapshot = 0,
-    GetSnapshot = 1,
-    BeginReceivingSnapshot = 2,
-    InstallFullSnapshot = 3,
-    Apply = 4,
-    ExternalFunc = 5,
-}
-
-impl SMCommandName {
-    /// Total number of variants.
-    #[allow(dead_code)]
-    pub const COUNT: usize = 6;
-
-    /// All variants in canonical order.
-    #[allow(dead_code)]
-    pub const ALL: &'static [SMCommandName] = &[
-        SMCommandName::BuildSnapshot,
-        SMCommandName::GetSnapshot,
-        SMCommandName::BeginReceivingSnapshot,
-        SMCommandName::InstallFullSnapshot,
-        SMCommandName::Apply,
-        SMCommandName::ExternalFunc,
-    ];
-
-    /// Returns the index of this variant for array-based storage.
-    #[allow(dead_code)]
-    pub const fn index(&self) -> usize {
-        *self as usize
-    }
-
-    #[allow(dead_code)]
-    pub const fn as_str(&self) -> &'static str {
-        match self {
-            SMCommandName::BuildSnapshot => "SM::BuildSnapshot",
-            SMCommandName::GetSnapshot => "SM::GetSnapshot",
-            SMCommandName::BeginReceivingSnapshot => "SM::BeginReceivingSnapshot",
-            SMCommandName::InstallFullSnapshot => "SM::InstallFullSnapshot",
-            SMCommandName::Apply => "SM::Apply",
-            SMCommandName::ExternalFunc => "SM::ExternalFunc",
-        }
-    }
-}
-
-impl std::fmt::Display for SMCommandName {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
+    BuildSnapshot,
+    GetSnapshot,
+    BeginReceivingSnapshot,
+    InstallFullSnapshot,
+    Apply,
+    ExternalFunc,
 }
 
 /// Enum representing the name of each `Command` variant.
 ///
 /// This provides an efficient way to identify command types without
 /// string comparisons, useful for logging, metrics, and debugging.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(VariantName)]
 pub enum CommandName {
     UpdateIOProgress,
     AppendEntries,
@@ -76,93 +37,6 @@ pub enum CommandName {
     TruncateLog,
     StateMachine(SMCommandName),
     Respond,
-}
-
-impl CommandName {
-    /// Total number of variants (including expanded StateMachine variants).
-    pub const COUNT: usize = 22;
-
-    /// All variants in canonical order.
-    ///
-    /// StateMachine variants are expanded to include all SMCommandName variants.
-    #[allow(dead_code)]
-    pub const ALL: &'static [CommandName] = &[
-        CommandName::UpdateIOProgress,
-        CommandName::AppendEntries,
-        CommandName::ReplicateCommitted,
-        CommandName::BroadcastHeartbeat,
-        CommandName::SaveCommittedAndApply,
-        CommandName::Replicate,
-        CommandName::ReplicateSnapshot,
-        CommandName::BroadcastTransferLeader,
-        CommandName::CloseReplicationStreams,
-        CommandName::RebuildReplicationStreams,
-        CommandName::SaveVote,
-        CommandName::SendVote,
-        CommandName::SendPreVote,
-        CommandName::PurgeLog,
-        CommandName::TruncateLog,
-        CommandName::StateMachine(SMCommandName::BuildSnapshot),
-        CommandName::StateMachine(SMCommandName::GetSnapshot),
-        CommandName::StateMachine(SMCommandName::BeginReceivingSnapshot),
-        CommandName::StateMachine(SMCommandName::InstallFullSnapshot),
-        CommandName::StateMachine(SMCommandName::Apply),
-        CommandName::StateMachine(SMCommandName::ExternalFunc),
-        CommandName::Respond,
-    ];
-
-    /// Returns the index of this variant for array-based storage.
-    pub const fn index(&self) -> usize {
-        match self {
-            CommandName::UpdateIOProgress => 0,
-            CommandName::AppendEntries => 1,
-            CommandName::ReplicateCommitted => 2,
-            CommandName::BroadcastHeartbeat => 3,
-            CommandName::SaveCommittedAndApply => 4,
-            CommandName::Replicate => 5,
-            CommandName::ReplicateSnapshot => 6,
-            CommandName::BroadcastTransferLeader => 7,
-            CommandName::CloseReplicationStreams => 8,
-            CommandName::RebuildReplicationStreams => 9,
-            CommandName::SaveVote => 10,
-            CommandName::SendVote => 11,
-            CommandName::SendPreVote => 12,
-            CommandName::PurgeLog => 13,
-            CommandName::TruncateLog => 14,
-            CommandName::StateMachine(sm) => 15 + sm.index(),
-            CommandName::Respond => 15 + SMCommandName::COUNT,
-        }
-    }
-
-    /// Returns the string representation of the command name.
-    #[allow(dead_code)]
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            CommandName::UpdateIOProgress => "UpdateIOProgress",
-            CommandName::AppendEntries => "AppendEntries",
-            CommandName::ReplicateCommitted => "ReplicateCommitted",
-            CommandName::BroadcastHeartbeat => "BroadcastHeartbeat",
-            CommandName::SaveCommittedAndApply => "SaveCommittedAndApply",
-            CommandName::Replicate => "Replicate",
-            CommandName::ReplicateSnapshot => "ReplicateSnapshot",
-            CommandName::BroadcastTransferLeader => "BroadcastTransferLeader",
-            CommandName::CloseReplicationStreams => "CloseReplicationStreams",
-            CommandName::RebuildReplicationStreams => "RebuildReplicationStreams",
-            CommandName::SaveVote => "SaveVote",
-            CommandName::SendVote => "SendVote",
-            CommandName::SendPreVote => "SendPreVote",
-            CommandName::PurgeLog => "PurgeLog",
-            CommandName::TruncateLog => "TruncateLog",
-            CommandName::StateMachine(sm) => sm.as_str(),
-            CommandName::Respond => "Respond",
-        }
-    }
-}
-
-impl std::fmt::Display for CommandName {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
 }
 
 #[cfg(test)]
@@ -191,7 +65,7 @@ mod tests {
     type C = UTConfig;
 
     fn committed_vote(term: u64, node_id: u64) -> CommittedVote<UTLeaderId> {
-        Vote::<UTLeaderId>::new(term, node_id).into_committed()
+        Vote::<UTLeaderId>::new(term, node_id).to_committed()
     }
 
     #[test]

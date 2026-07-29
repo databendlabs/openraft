@@ -42,7 +42,9 @@ pub use message::AppendEntriesRequest;
 pub use message::AppendEntriesResponse;
 pub use message::ClientWriteResponse;
 pub use message::ClientWriteResult;
+#[allow(deprecated)]
 pub use message::InstallSnapshotRequest;
+#[allow(deprecated)]
 pub use message::InstallSnapshotResponse;
 pub use message::LogSegment;
 pub use message::SnapshotResponse;
@@ -80,6 +82,8 @@ use crate::base::BoxStream;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::ClientResponderQueue;
+use crate::core::IoBroadcast;
+use crate::core::MetricsChannels;
 use crate::core::RaftCore;
 use crate::core::SharedReplicateBatch;
 use crate::core::StepDownWatcher;
@@ -570,17 +574,19 @@ where
             tx_notification: tx_notify,
             rx_notification: rx_notify,
 
-            tx_io_completed,
+            io_broadcast: IoBroadcast {
+                completed: tx_io_completed,
+                accepted: io_accepted_tx,
+                submitted: io_submitted_tx,
+                committed: committed_tx,
+            },
 
-            io_accepted_tx,
-
-            io_submitted_tx,
-
-            committed_tx,
-            tx_metrics,
-            tx_data_metrics,
-            tx_server_metrics,
-            tx_progress,
+            metrics: MetricsChannels {
+                all: tx_metrics,
+                data: tx_data_metrics,
+                server: tx_server_metrics,
+                progress: tx_progress,
+            },
 
             runtime_stats: RuntimeStats::new(&config),
             shared_replicate_batch,
@@ -697,8 +703,7 @@ where
     /// This returns a snapshot of the stats at the time of the call.
     #[cfg(feature = "runtime-stats")]
     pub async fn runtime_stats(&self) -> Result<RuntimeStats<C>, Fatal<C>> {
-        let (tx, rx) = C::oneshot();
-        self.inner.call_core(RaftMsg::GetRuntimeStats { tx }, rx).await
+        self.inner.call_core_oneshot(|tx| RaftMsg::GetRuntimeStats { tx }).await
     }
 
     /// Check if this node is currently the leader.
@@ -1020,6 +1025,22 @@ where
     /// This method is used to implement an application defined snapshot transmission.
     /// The application receives a snapshot from the leader, in chunks or a stream, and
     /// then rebuild a snapshot, then pass the snapshot to Raft to install.
+    ///
+    /// # Panics
+    ///
+    /// If `vote` is accepted, the input must be one a protocol-following cluster can produce,
+    /// otherwise this method panics (also in release builds):
+    /// - the snapshot's last log id must not be beyond the leadership of `vote`: no leader owns a
+    ///   snapshot with a log id greater than its own vote;
+    /// - a snapshot greater than the locally committed log id must not be at a smaller index: it
+    ///   would contradict locally committed logs.
+    ///
+    /// Such input indicates a forged or corrupted snapshot, e.g., one built by a previous
+    /// incarnation of the cluster. Installing it would corrupt the log id order.
+    #[since(
+        version = "0.10.0",
+        change = "panic on a snapshot inconsistent with the vote or with locally committed logs"
+    )]
     #[since(version = "0.9.0")]
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn install_full_snapshot(

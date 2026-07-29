@@ -1,15 +1,33 @@
-FROM rust:bookworm AS builder
+# librocksdb-sys bundles RocksDB 8.10 and compiles its C++ from source, which
+# took 7m39s of the 8m13s image build. Link the system librocksdb instead;
+# ROCKSDB_INCLUDE_DIR points bindgen at the matching headers so the generated
+# bindings match the installed lib. Both stages use Ubuntu 24.04 because its
+# librocksdb is the version already proven against this crate by the
+# `examples` job in .github/workflows/ci.yaml.
+FROM ubuntu:24.04 AS builder
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       build-essential \
+      ca-certificates \
       clang \
       cmake \
+      curl \
       libclang-dev \
+      librocksdb-dev \
       libssl-dev \
       pkg-config \
       protobuf-compiler \
  && rm -rf /var/lib/apt/lists/*
+
+# No default toolchain: cargo runs under /openraft, so the root rust-toolchain
+# pin drives which toolchain rustup installs on first use.
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+      | sh -s -- -y --profile minimal --default-toolchain none
+ENV PATH=/root/.cargo/bin:$PATH
+
+ENV ROCKSDB_LIB_DIR=/usr/lib/x86_64-linux-gnu \
+    ROCKSDB_INCLUDE_DIR=/usr/include
 
 WORKDIR /openraft
 COPY . .
@@ -17,13 +35,18 @@ COPY . .
 RUN cargo build --release \
       --manifest-path examples/raft-kv-rocksdb/Cargo.toml
 
-FROM debian:bookworm-slim
+FROM ubuntu:24.04
 
+# The binary links librocksdb dynamically, so the runtime image needs it too.
+# Use the -dev package: its name is stable across RocksDB version bumps, while
+# the versioned runtime package name is not.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates \
       iproute2 \
+      iptables \
       libgcc-s1 \
+      librocksdb-dev \
       libstdc++6 \
       netcat-openbsd \
       openssh-server \

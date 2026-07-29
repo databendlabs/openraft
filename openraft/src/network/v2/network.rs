@@ -262,7 +262,6 @@ use crate::network::NetStreamAppend;
 use crate::network::NetTransferLeader;
 use crate::network::NetVote;
 
-#[allow(clippy::manual_async_fn)]
 impl<C, T> NetAppend<C> for T
 where
     C: RaftTypeConfig,
@@ -287,7 +286,6 @@ where
     }
 }
 
-#[allow(clippy::manual_async_fn)]
 impl<C, T> NetVote<C> for T
 where
     C: RaftTypeConfig,
@@ -302,7 +300,6 @@ where
     }
 }
 
-#[allow(clippy::manual_async_fn)]
 impl<C, T> NetSnapshot<C> for T
 where
     C: RaftTypeConfig,
@@ -321,7 +318,6 @@ where
     }
 }
 
-#[allow(clippy::manual_async_fn)]
 impl<C, T> NetTransferLeader<C> for T
 where
     C: RaftTypeConfig,

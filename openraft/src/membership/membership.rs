@@ -82,13 +82,7 @@ where
                 if i > 0 {
                     write!(f, ",",)?;
                 }
-                write!(f, "{node_id}:")?;
-
-                if let Some(n) = self.get_node(node_id) {
-                    write!(f, "{n:?}")?;
-                } else {
-                    write!(f, "None")?;
-                }
+                self.fmt_node(f, node_id)?;
             }
             write!(f, "}}")?;
         }
@@ -104,12 +98,7 @@ where
                 write!(f, ",")?;
             }
 
-            write!(f, "{learner_id}:")?;
-            if let Some(n) = self.get_node(learner_id) {
-                write!(f, "{n:?}")?;
-            } else {
-                write!(f, "None")?;
-            }
+            self.fmt_node(f, learner_id)?;
         }
         write!(f, "]}}")?;
         Ok(())
@@ -200,6 +189,16 @@ where
     NID: NodeId,
     N: Node,
 {
+    /// Format one node as `<node_id>:<node>`, or `<node_id>:None` if this membership has no such
+    /// node.
+    fn fmt_node(&self, f: &mut fmt::Formatter<'_>, node_id: &NID) -> fmt::Result {
+        write!(f, "{node_id}:")?;
+        match self.get_node(node_id) {
+            Some(n) => write!(f, "{n:?}"),
+            None => write!(f, "None"),
+        }
+    }
+
     /// Return true if the given node id is either a voter or a learner.
     pub(crate) fn contains(&self, node_id: &NID) -> bool {
         self.nodes.contains_key(node_id)
@@ -353,60 +352,57 @@ where
     fn compute_target_membership(mut self, change: ChangeMembers<NID, N>) -> Membership<NID, N> {
         let last = self.get_joint_config().last().cloned().unwrap_or_default();
 
-        match change {
-            ChangeMembers::AddVoterIds(add_voter_ids) => {
-                let new_voter_ids = last.union(&add_voter_ids).cloned().collect::<BTreeSet<_>>();
-                self.configs = vec![new_voter_ids];
-                self
-            }
+        // `None` means the change does not touch the voter set, only `nodes`.
+        let new_voter_ids: Option<BTreeSet<NID>> = match change {
+            ChangeMembers::AddVoterIds(add_voter_ids) => Some(last.union(&add_voter_ids).cloned().collect()),
             ChangeMembers::AddVoters(add_voters) => {
                 // Add nodes without overriding existent
                 self.nodes = Self::extend_nodes(self.nodes, &add_voters);
 
                 let add_voter_ids = add_voters.keys().cloned().collect::<BTreeSet<_>>();
-                let new_voter_ids = last.union(&add_voter_ids).cloned().collect::<BTreeSet<_>>();
-                self.configs = vec![new_voter_ids];
-                self
+                Some(last.union(&add_voter_ids).cloned().collect())
             }
             ChangeMembers::RemoveVoters(remove_voter_ids) => {
-                let new_voter_ids = last.difference(&remove_voter_ids).cloned().collect::<BTreeSet<_>>();
-                self.configs = vec![new_voter_ids];
-                self
+                Some(last.difference(&remove_voter_ids).cloned().collect())
             }
-            ChangeMembers::ReplaceAllVoters(all_voter_ids) => {
-                self.configs = vec![all_voter_ids];
-                self
-            }
+            ChangeMembers::ReplaceAllVoters(all_voter_ids) => Some(all_voter_ids),
             ChangeMembers::AddNodes(add_nodes) => {
                 // When adding nodes, do not override existing node
                 for (node_id, node) in add_nodes.into_iter() {
                     self.nodes.entry(node_id).or_insert(node);
                 }
-                self
+                None
             }
             ChangeMembers::SetNodes(set_nodes) => {
                 for (node_id, node) in set_nodes.into_iter() {
                     self.nodes.insert(node_id, node);
                 }
-                self
+                None
             }
             ChangeMembers::RemoveNodes(remove_node_ids) => {
                 for node_id in remove_node_ids.iter() {
                     self.nodes.remove(node_id);
                 }
-                self
+                None
             }
             ChangeMembers::ReplaceAllNodes(all_nodes) => {
                 self.nodes = all_nodes;
-                self
+                None
             }
             ChangeMembers::Batch(batch) => {
+                // Each nested change already updated `configs` as needed.
                 for change in batch {
                     self = self.compute_target_membership(change);
                 }
-                self
+                None
             }
+        };
+
+        if let Some(voter_ids) = new_voter_ids {
+            self.configs = vec![voter_ids];
         }
+
+        self
     }
 }
 

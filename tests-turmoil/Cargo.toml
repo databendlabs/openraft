@@ -7,6 +7,9 @@ publish = false
 
 [workspace]
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(tokio_unstable)"] }
+
 [[bin]]
 name = "fuzz"
 path = "src/bin/fuzz.rs"
@@ -20,6 +23,7 @@ clap = { version = "4", features = ["derive"] }
 bincode = "1.3"
 ctrlc = "3.4"
 futures = "0.3"
+futures-util = "0.3"
 rand = { package = "rand", version = "0.8" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -30,3 +34,37 @@ turmoil = "0.6"
 
 [dev-dependencies]
 test-harness = "0.3"
+
+# The fuzzer runs release-built so the simulation is not bottlenecked by
+# unoptimized code, but its purpose is to trip openraft's invariant checks,
+# which a stock release build would compile out.
+[profile.release]
+debug-assertions = true
+
+# Forked crates, each carrying one determinism patch on top of the upstream
+# release tag:
+#
+# - turmoil: seed tokio's runtime RNG (requires `--cfg tokio_unstable`, set in
+#   .cargo/config.toml) so that tasks waiting on the same `tokio::sync::watch`
+#   channel wake in a deterministic order.
+#   https://github.com/tokio-rs/turmoil/compare/v0.6.6...drmingdrmer:turmoil:v0.6.6-openraft.1
+# - futures-util: add a `reseed()` hook for the `select!` shuffle RNG, whose
+#   thread-local state would otherwise leak across fuzzer iterations and make
+#   in-process iterations differ from fresh-process `--reproduce` runs.
+#   https://github.com/rust-lang/futures-rs/compare/0.3.32...drmingdrmer:futures-rs:0.3.32-openraft.1
+#
+# The whole futures-* family is patched to the same tag: inside the git
+# checkout, futures-util resolves its siblings (futures-core, ...) by path,
+# so patching only futures-util would put two copies of each sibling in the
+# graph. The tag equals the 0.3.32 release, so the code is identical.
+[patch.crates-io]
+turmoil = { git = "https://github.com/drmingdrmer/turmoil", tag = "v0.6.6-openraft.1" }
+futures = { git = "https://github.com/drmingdrmer/futures-rs", tag = "0.3.32-openraft.1" }
+futures-channel = { git = "https://github.com/drmingdrmer/futures-rs", tag = "0.3.32-openraft.1" }
+futures-core = { git = "https://github.com/drmingdrmer/futures-rs", tag = "0.3.32-openraft.1" }
+futures-executor = { git = "https://github.com/drmingdrmer/futures-rs", tag = "0.3.32-openraft.1" }
+futures-io = { git = "https://github.com/drmingdrmer/futures-rs", tag = "0.3.32-openraft.1" }
+futures-macro = { git = "https://github.com/drmingdrmer/futures-rs", tag = "0.3.32-openraft.1" }
+futures-sink = { git = "https://github.com/drmingdrmer/futures-rs", tag = "0.3.32-openraft.1" }
+futures-task = { git = "https://github.com/drmingdrmer/futures-rs", tag = "0.3.32-openraft.1" }
+futures-util = { git = "https://github.com/drmingdrmer/futures-rs", tag = "0.3.32-openraft.1" }

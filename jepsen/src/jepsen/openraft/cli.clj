@@ -2,10 +2,15 @@
   (:gen-class)
   (:require [jepsen [checker :as checker]
                     [cli :as cli]
-                    [nemesis :as nemesis]
+                    [generator :as gen]
                     [tests :as tests]]
             [jepsen.openraft [db :as openraft-db]
-                             [workload :as workload]]))
+                             [workload :as workload]]
+            [jepsen.openraft.nemesis [partition :as partition]
+                                     [process :as process]]))
+
+(def nemesis-types
+  #{:partition :process})
 
 (def cli-opts
   [[nil "--api-port PORT" "OpenRaft application HTTP port."
@@ -14,18 +19,40 @@
 
    [nil "--raft-port PORT" "OpenRaft internal Raft RPC port."
     :default 22001
-    :parse-fn parse-long]])
+    :parse-fn parse-long]
+
+   [nil "--nemesis TYPE" "Fault type: partition or process."
+    :default :partition
+    :parse-fn keyword
+    :validate [nemesis-types (cli/one-of nemesis-types)]]])
 
 (defn openraft-test [opts]
-  (let [workload (workload/workload opts)]
+  (let [database (openraft-db/db opts)
+        workload (workload/workload opts)
+        nemesis-type (:nemesis opts :partition)
+        nemesis-package (case nemesis-type
+                          :partition (partition/partition-package)
+                          :process (process/process-package database))]
     (merge tests/noop-test
            opts
-           workload
-           {:name "openraft linearizable register"
-            :db (openraft-db/db opts)
-            :nemesis nemesis/noop
+           {:name (str "openraft linearizable register "
+                       (name nemesis-type))
+            :db database
+            :client (:client workload)
+            :nemesis (:nemesis nemesis-package)
+            :generator (gen/phases
+                         (gen/shortest-any
+                           (gen/nemesis
+                             (gen/phases
+                               (gen/time-limit
+                                 (:time-limit opts)
+                                 (:generator nemesis-package))
+                               (:final-generator nemesis-package)))
+                           (:generator workload))
+                         (:final-generator workload))
             :checker (checker/compose
                         {:stats (checker/stats)
+                         :nemesis (:checker nemesis-package)
                          :workload (:checker workload)})})))
 
 (defn -main [& args]

@@ -39,5 +39,10 @@ pub mod network_v1;
 pub mod prelude {
     pub use crate::network_v1::Adapter;
     pub use crate::network_v1::ChunkedSnapshotReceiver;
+    pub use crate::network_v1::InstallSnapshotError;
+    pub use crate::network_v1::InstallSnapshotRequest;
+    pub use crate::network_v1::InstallSnapshotResponse;
     pub use crate::network_v1::RaftNetwork;
+    pub use crate::network_v1::SnapshotMismatch;
+    pub use crate::network_v1::SnapshotSegmentId;
 }

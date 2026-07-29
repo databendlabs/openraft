@@ -1,6 +1,9 @@
+use openraft_macros::since;
+
 /// This helper trait extracts information from an `Option<LogIndex>`.
 ///
 /// In openraft, `LogIndex` is a `u64`.
+#[since(version = "0.10.0", change = "removed unused method `add()`")]
 pub trait LogIndexOptionExt {
     /// Return the next log index.
     ///
@@ -11,10 +14,6 @@ pub trait LogIndexOptionExt {
     ///
     /// If self is `None`, it panics.
     fn prev_index(&self) -> Self;
-
-    // TODO: unused, remove it
-    /// Performs an "add" operation.
-    fn add(&self, v: u64) -> Self;
 }
 
 impl LogIndexOptionExt for Option<u64> {
@@ -38,9 +37,5 @@ impl LogIndexOptionExt for Option<u64> {
                 }
             }
         }
-    }
-
-    fn add(&self, v: u64) -> Self {
-        Some(self.next_index() + v).prev_index()
     }
 }
