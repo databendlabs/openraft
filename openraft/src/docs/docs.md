@@ -35,6 +35,7 @@ To learn about the data structures used in Openraft and the commit protocol, see
 - [`components`](`crate::docs::components`) explains the components in Openraft;
   - [`RaftStateMachine`](`crate::docs::components::state_machine`) is the core API for managing the state machine and snapshot functionalities;
 - [`protocol`](crate::docs::protocol) :
+  - [`check_quorum`](`crate::docs::protocol::check_quorum`) explains how a leader stops accepting new proposals when its quorum lease expires;
   - [`io_ordering`](`crate::docs::protocol::io_ordering`) explains why IO re-ordering is disallowed;
   - [`read`](`crate::docs::protocol::read`) explains how to do linearizable read;
   - [`replication`](`crate::docs::protocol::replication`);

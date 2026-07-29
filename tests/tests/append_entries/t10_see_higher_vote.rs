@@ -32,12 +32,24 @@ async fn append_sees_higher_vote() -> Result<()> {
 
     let mut router = RaftRouter::new(config.clone());
 
-    let log_index = router.new_cluster(btreeset! {0,1}, btreeset! {}).await?;
+    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+
+    let n0 = router.get_raft_handle(&0)?;
+    router.set_unreachable(1, true);
 
     tracing::info!(log_index, "--- upgrade vote on node-1");
     {
         // Let leader lease expire
         TypeConfig::sleep(Duration::from_millis(800)).await;
+
+        // Re-establish node-0's quorum lease through node-2 while node-1 remains isolated.
+        let refresh_started = TypeConfig::now();
+        n0.trigger().heartbeat().await?;
+        n0.wait(timeout())
+            .leader_with_quorum_acked(Some(refresh_started), "node-0 quorum lease recovered through node-2")
+            .await?;
+
+        router.set_unreachable(1, false);
 
         let node = router.get_raft_handle(&1)?;
         let resp = node
@@ -58,7 +70,6 @@ async fn append_sees_higher_vote() -> Result<()> {
     {
         router.wait(&0, timeout()).state(ServerState::Leader, "node-0 is leader").await?;
 
-        let n0 = router.get_raft_handle(&0)?;
         TypeConfig::spawn(async move {
             let res = n0
                 .client_write(ClientRequest {

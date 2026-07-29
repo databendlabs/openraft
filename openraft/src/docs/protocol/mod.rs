@@ -4,6 +4,11 @@ pub mod commit {
     #![doc = include_str!("commit.md")]
 }
 
+#[openraft_macros::since(version = "0.10.0")]
+pub mod check_quorum {
+    #![doc = include_str!("check_quorum.md")]
+}
+
 pub mod io_ordering {
     #![doc = include_str!("io_ordering.md")]
 }

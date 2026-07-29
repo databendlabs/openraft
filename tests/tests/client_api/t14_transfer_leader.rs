@@ -258,11 +258,9 @@ async fn transfer_leader_blocks_lease_read() -> anyhow::Result<()> {
 
     let n0 = router.get_raft_handle(&0)?;
 
-    // Refresh quorum-acked time before isolating n1, so the lease is comfortably fresh
-    // and `LeaseRead` would succeed if the gate were absent.
-    n0.trigger().heartbeat().await?;
+    // Ensure the initial leader log established a quorum lease before isolating n1.
     n0.wait(Some(Duration::from_millis(500)))
-        .metrics(|m| m.last_quorum_acked.is_some(), "leader has fresh last_quorum_acked")
+        .leader_with_quorum_acked(None, "leader has last_quorum_acked")
         .await?;
 
     // Sanity: LeaseRead succeeds before the transfer.

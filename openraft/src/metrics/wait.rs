@@ -2,6 +2,7 @@ use core::time::Duration;
 use std::collections::BTreeSet;
 
 use futures_util::FutureExt;
+use openraft_macros::since;
 
 use crate::LogIdOptionExt;
 use crate::OptionalSend;
@@ -12,6 +13,7 @@ use crate::metrics::Condition;
 use crate::metrics::Metric;
 use crate::metrics::RaftMetrics;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchReceiverOf;
@@ -171,6 +173,27 @@ where C: RaftTypeConfig
         self.metrics(
             |m| m.state == want_state,
             &format!("{} .state == {:?}", msg.to_string(), want_state),
+        )
+        .await
+    }
+
+    /// Wait until this node is a leader with a quorum-acknowledged timestamp.
+    ///
+    /// If `at_least` is `Some`, the timestamp must be greater than or equal to it.
+    /// If `at_least` is `None`, any quorum-acknowledged timestamp is accepted.
+    #[since(version = "0.10.0")]
+    #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
+    pub async fn leader_with_quorum_acked(
+        &self,
+        at_least: Option<InstantOf<C>>,
+        msg: impl ToString,
+    ) -> Result<RaftMetrics<C>, WaitError> {
+        self.metrics(
+            |m| {
+                m.state == ServerState::Leader
+                    && m.last_quorum_acked.is_some_and(|acked| at_least.is_none_or(|want| acked.into_inner() >= want))
+            },
+            &format!("{} .leader_with_quorum_acked({:?})", msg.to_string(), at_least),
         )
         .await
     }

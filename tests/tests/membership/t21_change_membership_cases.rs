@@ -226,17 +226,13 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: BTreeSet<MemNo
 
     tracing::info!(log_index, "--- write another 10 logs");
     {
-        // get new leader
-
-        // TODO(xp): leader may not be stable, other node may take leadership by a higher vote.
-        //           Then client write may receive a ForwardToLeader Error with empty leader.
-        //           Need to wait for the leader become stable.
         let m = router
             .wait(new.iter().next().unwrap(), timeout())
             .metrics(|x| x.current_leader.is_some(), format!("wait for new leader, {}", mes))
             .await?;
 
         let leader = m.current_leader.unwrap();
+        wait_for_leader_lease(&router, leader, &mes).await?;
 
         router.client_request_many(leader, "client", 10).await?;
         log_index += 10;
@@ -436,15 +432,13 @@ async fn change_by_remove(old: BTreeSet<MemNodeId>, remove: &[MemNodeId]) -> any
 
     tracing::info!(log_index, "--- write another 10 logs");
     {
-        // TODO(xp): leader may not be stable, other node may take leadership by a higher vote.
-        //           Then client write may receive a ForwardToLeader Error with empty leader.
-        //           Need to wait for the leader become stable.
         let m = router
             .wait(new.iter().next().unwrap(), timeout())
             .metrics(|x| x.current_leader.is_some(), format!("wait for new leader, {}", mes))
             .await?;
 
         let leader_id = m.current_leader.unwrap();
+        wait_for_leader_lease(&router, leader_id, &mes).await?;
 
         log_index += router.client_request_many(leader_id, "client", 10).await?;
     }
@@ -470,6 +464,15 @@ async fn change_by_remove(old: BTreeSet<MemNodeId>, remove: &[MemNodeId]) -> any
             assert!(res.is_err());
         }
     }
+
+    Ok(())
+}
+
+async fn wait_for_leader_lease(router: &RaftRouter, leader_id: MemNodeId, mes: &str) -> anyhow::Result<()> {
+    router
+        .wait(&leader_id, timeout())
+        .leader_with_quorum_acked(None, format!("leader establishes its quorum lease, {}", mes))
+        .await?;
 
     Ok(())
 }

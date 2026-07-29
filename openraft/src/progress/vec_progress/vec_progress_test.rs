@@ -202,7 +202,7 @@ fn vec_progress_new() {
         vec![(0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (6, 0), (7, 0),],
         progress.entries
     );
-    assert_eq!(5, progress.voter_count);
+    assert_eq!(5, progress.voter_count());
 }
 
 #[test]

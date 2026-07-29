@@ -84,6 +84,18 @@ async fn remove_hung_follower_must_not_block_raft_core_loop_2() -> Result<()> {
     // HACK: wait for the leader to reach `close_membership()` to await the replication task.
     TypeConfig::sleep(Duration::from_millis(500)).await;
 
+    // Refresh the quorum lease after waiting for the core loop to reach the suspected blocking
+    // point. Heartbeats are disabled in this test, so the previous lease may have expired.
+    let refresh_started = TypeConfig::now();
+    router.get_raft_handle(&0)?.trigger().heartbeat().await?;
+    router
+        .wait(&0, timeout())
+        .leader_with_quorum_acked(
+            Some(refresh_started),
+            "leader lease recovered through the surviving quorum",
+        )
+        .await?;
+
     // The leader should still serve the surviving quorum.
     let write = router.client_request(0, "after-remove", 2);
     TypeConfig::timeout(Duration::from_secs(10), write)

@@ -330,17 +330,11 @@ async fn ensure_linearizable_with_lease_read() -> Result<()> {
         assert!(rst.is_err());
 
         // lease read should ok after new a round of heartbeat.
-        let old_quorum_acked = router.get_metrics(&leader)?.last_quorum_acked.unwrap().into_inner();
+        let refresh_started = TypeConfig::now();
         leader_handle.trigger().heartbeat().await?;
         leader_handle
             .wait(timeout())
-            .metrics(
-                |m| {
-                    let last_quorum_acked = m.last_quorum_acked;
-                    last_quorum_acked.is_some() && last_quorum_acked.unwrap().into_inner() > old_quorum_acked
-                },
-                "leader heartbeat acked",
-            )
+            .leader_with_quorum_acked(Some(refresh_started), "leader heartbeat acked")
             .await?;
 
         router
