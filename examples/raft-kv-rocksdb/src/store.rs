@@ -209,10 +209,6 @@ impl RaftStateMachine<TypeConfig> for StateMachineStore {
         self.clone()
     }
 
-    async fn begin_receiving_snapshot(&mut self) -> Result<Cursor<Vec<u8>>, io::Error> {
-        Ok(Cursor::new(Vec::new()))
-    }
-
     async fn install_snapshot(&mut self, meta: &SnapshotMeta, snapshot: SnapshotData) -> Result<(), io::Error> {
         let new_snapshot = StoredSnapshot {
             meta: meta.clone(),

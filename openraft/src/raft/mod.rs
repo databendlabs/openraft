@@ -134,7 +134,6 @@ use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::MpscWeakSenderOf;
 use crate::type_config::alias::NodeIdOf;
-use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::SnapshotOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchReceiverOf;
@@ -832,7 +831,6 @@ where
     /// - [`ProtocolApi::append_entries`]
     /// - [`ProtocolApi::vote`]
     /// - [`ProtocolApi::get_snapshot`]
-    /// - [`ProtocolApi::begin_receiving_snapshot`]
     /// - [`ProtocolApi::install_full_snapshot`]
     /// - [`ProtocolApi::handle_transfer_leader`]
     pub(crate) fn protocol_api(&self) -> ProtocolApi<C, SM> {
@@ -1008,16 +1006,6 @@ where
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn get_snapshot(&self) -> Result<Option<SnapshotOf<C, SM::SnapshotData>>, RaftError<C>> {
         self.protocol_api().get_snapshot().await.into_raft_result()
-    }
-
-    /// Get a snapshot data for receiving snapshot from the leader.
-    ///
-    /// It does not check `Vote` because it is a read operation and does not break raft
-    /// protocol.
-    #[since(version = "0.10.0", change = "SnapshotData without Box")]
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn begin_receiving_snapshot(&self) -> Result<SnapshotDataOf<C, SM>, RaftError<C>> {
-        self.protocol_api().begin_receiving_snapshot().await.into_raft_result()
     }
 
     /// Install a completely received snapshot to the state machine.

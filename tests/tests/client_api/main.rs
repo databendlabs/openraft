@@ -12,7 +12,6 @@ mod t10_client_write_quorum_lease;
 mod t10_client_writes;
 mod t11_client_reads;
 mod t12_trigger_purge_log;
-mod t13_begin_receiving_snapshot;
 mod t13_get_snapshot;
 mod t13_install_full_snapshot;
 mod t13_trigger_snapshot;

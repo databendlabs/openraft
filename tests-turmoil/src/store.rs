@@ -274,10 +274,6 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachine> {
         self.clone()
     }
 
-    async fn begin_receiving_snapshot(&mut self) -> Result<SnapshotData, io::Error> {
-        Ok(Cursor::new(Vec::new()))
-    }
-
     async fn install_snapshot(&mut self, meta: &SnapshotMeta, snapshot: SnapshotData) -> Result<(), io::Error> {
         let new_data: StateMachineData =
             serde_json::from_slice(snapshot.get_ref()).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;

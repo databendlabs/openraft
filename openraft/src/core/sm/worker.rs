@@ -144,14 +144,6 @@ where
                     let res = CommandResult::new(Ok(Response::InstallSnapshot((io_id, Some(meta)))));
                     self.resp_tx.send(Notification::sm(res)).await.ok();
                 }
-                Command::BeginReceivingSnapshot { tx } => {
-                    tracing::info!("{}: BeginReceivingSnapshot", func_name!());
-
-                    let snapshot_data = self.state_machine.begin_receiving_snapshot().await.sto_write_snapshot(None)?;
-
-                    tx.send(snapshot_data).ok();
-                    // No response to RaftCore
-                }
                 Command::Apply {
                     first,
                     last,

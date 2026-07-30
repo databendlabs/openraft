@@ -143,7 +143,6 @@ Follow the links to method documentations to see the details.
 |------------|--------------------------------|------------------------------|---------------------------------------|
 | SM:        | [`applied_state()`]            | [`LogId`], [`Membership`]    | get last applied log id, membership   |
 | SM:        | [`apply()`]                    | Vec of [`AppDataResponse`]   | apply logs to state machine           |
-| Snapshot:  | [`begin_receiving_snapshot()`] | `SnapshotData`               | begin to install snapshot             |
 | Snapshot:  | [`install_snapshot()`]         | ()                           | install snapshot                      |
 | Snapshot:  | [`get_current_snapshot()`]     | [`Snapshot`]                 | get current snapshot                  |
 | Snapshot:  | [`get_snapshot_builder()`]     | impl [`RaftSnapshotBuilder`] | get a snapshot builder                |
@@ -504,7 +503,6 @@ Additionally, two test scripts for setting up a cluster are available:
 [`applied_state()`]:                    `crate::storage::RaftStateMachine::applied_state`
 [`apply()`]:                            `crate::storage::RaftStateMachine::apply`
 [`get_current_snapshot()`]:             `crate::storage::RaftStateMachine::get_current_snapshot`
-[`begin_receiving_snapshot()`]:         `crate::storage::RaftStateMachine::begin_receiving_snapshot`
 [`install_snapshot()`]:                 `crate::storage::RaftStateMachine::install_snapshot`
 [`get_snapshot_builder()`]:             `crate::storage::RaftStateMachine::get_snapshot_builder`
 

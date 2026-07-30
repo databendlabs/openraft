@@ -32,7 +32,6 @@ use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::MpscWeakSenderOf;
 use crate::type_config::alias::SmSnapshotOf;
-use crate::type_config::alias::SnapshotDataOf;
 use crate::type_config::alias::VoteOf;
 use crate::vote::RaftVote;
 use crate::vote::raft_vote::RaftVoteExt;
@@ -165,16 +164,6 @@ where
 
         let (tx, rx) = C::oneshot();
         self.send_sm_command(sm::Command::get_snapshot(tx)).await?;
-        self.inner.recv_msg(rx).await
-    }
-
-    #[since(version = "0.10.0")]
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) async fn begin_receiving_snapshot(&self) -> Result<SnapshotDataOf<C, SM>, Fatal<C>> {
-        tracing::info!("Raft::begin_receiving_snapshot()");
-
-        let (tx, rx) = C::oneshot();
-        self.send_sm_command(sm::Command::begin_receiving_snapshot(tx)).await?;
         self.inner.recv_msg(rx).await
     }
 
