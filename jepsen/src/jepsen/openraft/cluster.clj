@@ -4,15 +4,31 @@
             [jepsen.openraft.client :as client]
             [jepsen.util :as util]))
 
-;; TODO: Use an explicit node-name to OpenRaft ID mapping before introducing
-;; membership change nemeses.
+(defn node-id-map [nodes]
+  (let [entries (mapv
+                  (fn [node]
+                    (let [node-name (client/node-host node)
+                          [_ id] (re-matches #"n([0-9]+)" node-name)]
+                      (when-not id
+                        (throw (ex-info
+                                 "OpenRaft node names must have the form n<ID>"
+                                 {:node node})))
+                      [node-name (parse-long id)]))
+                  nodes)
+        ids (map second entries)]
+    (when-not (= (count ids) (count (set ids)))
+      (throw (ex-info "OpenRaft node IDs must be unique"
+                      {:nodes nodes
+                       :node-ids entries})))
+    (into {} entries)))
+
 (defn node-id [test node]
-  (let [index (.indexOf (:nodes test) node)]
-    (when (neg? index)
-      (throw (ex-info "Node is not part of the test"
+  (let [node-name (client/node-host node)]
+    (if-some [id (get (:node-ids test) node-name)]
+      id
+      (throw (ex-info "Node has no OpenRaft ID"
                       {:node node
-                       :nodes (:nodes test)})))
-    (inc index)))
+                       :node-ids (:node-ids test)})))))
 
 (defn node-info [test node]
   {:node-id (node-id test node)
