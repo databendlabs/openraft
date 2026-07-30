@@ -7,11 +7,12 @@
             [jepsen.openraft [cluster :as cluster]
                              [db :as openraft-db]
                              [workload :as workload]]
-            [jepsen.openraft.nemesis [partition :as partition]
+            [jepsen.openraft.nemesis [membership :as membership]
+                                     [partition :as partition]
                                      [process :as process]]))
 
 (def nemesis-types
-  #{:partition :process})
+  #{:membership :partition :process})
 
 (def cli-opts
   [[nil "--api-port PORT" "OpenRaft application HTTP port."
@@ -22,7 +23,7 @@
     :default 22001
     :parse-fn parse-long]
 
-   [nil "--nemesis TYPE" "Fault type: partition or process."
+   [nil "--nemesis TYPE" "Fault type: membership, partition, or process."
     :default :partition
     :parse-fn keyword
     :validate [nemesis-types (cli/one-of nemesis-types)]]])
@@ -33,6 +34,7 @@
         workload (workload/workload opts)
         nemesis-type (:nemesis opts :partition)
         nemesis-package (case nemesis-type
+                          :membership (membership/membership-package database)
                           :partition (partition/partition-package)
                           :process (process/process-package database))]
     (merge tests/noop-test
