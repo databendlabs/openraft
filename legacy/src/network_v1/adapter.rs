@@ -26,8 +26,8 @@ use openraft::type_config::alias::SnapshotOf;
 use openraft::type_config::alias::VoteOf;
 use openraft_macros::since;
 
-use super::RaftNetwork;
-use super::sender::Sender;
+use crate::network_v1::RaftNetwork;
+use crate::network_v1::sender::Sender;
 
 /// Wrapper that adapts `RaftNetwork` (v1) to `RaftNetworkV2`.
 ///

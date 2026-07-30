@@ -17,13 +17,13 @@ use openraft::type_config::alias::SnapshotOf;
 use openraft_macros::since;
 use tokio::io::AsyncWriteExt;
 
-use super::streaming::Streaming;
-use super::streaming::StreamingState;
 use crate::network_v1::InstallSnapshotError;
 use crate::network_v1::InstallSnapshotRequest;
 use crate::network_v1::InstallSnapshotResponse;
 use crate::network_v1::SnapshotMismatch;
 use crate::network_v1::SnapshotSegmentId;
+use crate::network_v1::receiver::Streaming;
+use crate::network_v1::receiver::StreamingState;
 
 /// Extension trait for `Raft` to support chunk-based snapshot receiving.
 ///

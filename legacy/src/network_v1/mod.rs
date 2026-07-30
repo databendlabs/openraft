@@ -47,20 +47,17 @@
 //! ```
 
 mod adapter;
-mod install_snapshot;
-mod install_snapshot_error;
-mod network;
+mod errors;
+mod message;
+mod raft_network;
+mod receiver;
 mod sender;
-mod snapshot_mismatch;
-mod snapshot_receiver;
-mod snapshot_segment_id;
-mod streaming;
 
 pub use adapter::Adapter;
-pub use install_snapshot::InstallSnapshotRequest;
-pub use install_snapshot::InstallSnapshotResponse;
-pub use install_snapshot_error::InstallSnapshotError;
-pub use network::RaftNetwork;
-pub use snapshot_mismatch::SnapshotMismatch;
-pub use snapshot_receiver::ChunkedSnapshotReceiver;
-pub use snapshot_segment_id::SnapshotSegmentId;
+pub use errors::InstallSnapshotError;
+pub use errors::SnapshotMismatch;
+pub use errors::SnapshotSegmentId;
+pub use message::InstallSnapshotRequest;
+pub use message::InstallSnapshotResponse;
+pub use raft_network::RaftNetwork;
+pub use receiver::ChunkedSnapshotReceiver;
