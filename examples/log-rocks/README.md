@@ -4,7 +4,8 @@ A RocksDB-backed implementation of
 [`RaftLogStorage`](https://docs.rs/openraft/latest/openraft/storage/trait.RaftLogStorage.html).
 
 This crate stores Raft log entries and metadata in the `logs` and `meta` RocksDB column families.
-The caller owns the database and passes an `Arc<rocksdb::DB>` to `RocksLogStore::new()`.
+`RocksLogStore::open()` creates a standalone database. A caller that already owns a suitable
+database can instead pass an `Arc<rocksdb::DB>` to `RocksLogStore::new()`.
 
 ## Performance
 

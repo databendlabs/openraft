@@ -17,7 +17,6 @@ repository = "https://github.com/databendlabs/openraft"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-log-rocks = { path = "../log-rocks" }
 openraft = { path = "../../openraft", version = "0.10.0-alpha.36", features = ["serde", "type-alias"] }
 types-kv = { path = "../types-kv" }
 
@@ -25,10 +24,12 @@ futures    = { version = "0.3" }
 rocksdb    = { version = "0.22.0" }
 serde      = { version = "1.0.114", features = ["derive"] }
 serde_json = { version = "1.0.57" }
+tempfile   = { version = "3.4.0" }
 tracing    = { version = "0.1.40" }
 
 [dev-dependencies]
-tempfile = { version = "3.4.0" }
+dir-transfer = { path = "../dir-transfer" }
+log-rocks    = { path = "../log-rocks" }
 
 [features]
 bt = ["openraft/bt"]
