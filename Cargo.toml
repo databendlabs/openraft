@@ -88,6 +88,7 @@ exclude = [
     "examples/network-v1-http",
     "examples/network-v2-http",
 
+    "examples/dir-transfer",
     "examples/log-mem",
     "examples/log-rocks",
     "examples/mem-log",
