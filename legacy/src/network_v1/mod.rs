@@ -52,6 +52,7 @@ mod message;
 mod raft_network;
 mod receiver;
 mod sender;
+mod snapshot_receiver_factory;
 
 pub use adapter::Adapter;
 pub use errors::InstallSnapshotError;
@@ -61,3 +62,4 @@ pub use message::InstallSnapshotRequest;
 pub use message::InstallSnapshotResponse;
 pub use raft_network::RaftNetwork;
 pub use receiver::ChunkedSnapshotReceiver;
+pub use snapshot_receiver_factory::SnapshotReceiverFactory;

@@ -12,7 +12,6 @@ use crate::storage::RaftStateMachine;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::SmSnapshotOf;
-use crate::type_config::alias::SnapshotDataOf;
 
 /// The payload of a state machine command.
 pub(crate) enum Command<C, SM = ()>
@@ -26,10 +25,6 @@ where
     /// Get the latest built snapshot.
     GetSnapshot {
         tx: OneshotSenderOf<C, Option<SmSnapshotOf<C, SM>>>,
-    },
-
-    BeginReceivingSnapshot {
-        tx: OneshotSenderOf<C, SnapshotDataOf<C, SM>>,
     },
 
     InstallFullSnapshot {
@@ -70,7 +65,6 @@ where
         match self {
             Command::BuildSnapshot => SMCommandName::BuildSnapshot,
             Command::GetSnapshot { .. } => SMCommandName::GetSnapshot,
-            Command::BeginReceivingSnapshot { .. } => SMCommandName::BeginReceivingSnapshot,
             Command::InstallFullSnapshot { .. } => SMCommandName::InstallFullSnapshot,
             Command::Apply { .. } => SMCommandName::Apply,
             Command::ExternalFunc { .. } => SMCommandName::ExternalFunc,
@@ -83,10 +77,6 @@ where
 
     pub(crate) fn get_snapshot(tx: OneshotSenderOf<C, Option<SmSnapshotOf<C, SM>>>) -> Self {
         Command::GetSnapshot { tx }
-    }
-
-    pub(crate) fn begin_receiving_snapshot(tx: OneshotSenderOf<C, SnapshotDataOf<C, SM>>) -> Self {
-        Command::BeginReceivingSnapshot { tx }
     }
 
     pub(crate) fn install_full_snapshot(snapshot: SmSnapshotOf<C, SM>, log_io_id: LogIOId<C>) -> Self {
@@ -114,7 +104,6 @@ where
         match self {
             Command::BuildSnapshot => None,
             Command::GetSnapshot { .. } => None,
-            Command::BeginReceivingSnapshot { .. } => None,
             Command::InstallFullSnapshot { log_io_id, .. } => Some(IOId::Log(log_io_id.clone())),
             Command::Apply { .. } => None,
             Command::ExternalFunc { .. } => None,
@@ -130,7 +119,6 @@ where
         match self {
             Command::BuildSnapshot => None,
             Command::GetSnapshot { .. } => None,
-            Command::BeginReceivingSnapshot { .. } => None,
             Command::InstallFullSnapshot { log_io_id, .. } => log_io_id.last_log_id().cloned(),
             Command::Apply { last, .. } => Some(last.clone()),
             Command::ExternalFunc { .. } => None,
@@ -148,7 +136,6 @@ where
         match self {
             Command::BuildSnapshot => None,
             Command::GetSnapshot { .. } => None,
-            Command::BeginReceivingSnapshot { .. } => None,
             Command::InstallFullSnapshot { snapshot, .. } => snapshot.meta.last_log_id.clone(),
             Command::Apply { .. } => None,
             Command::ExternalFunc { .. } => None,
@@ -171,9 +158,6 @@ where
             } => {
                 write!(f, "InstallFullSnapshot: meta: {:?}, io_id: {:?}", snapshot.meta, io_id)
             }
-            Command::BeginReceivingSnapshot { .. } => {
-                write!(f, "BeginReceivingSnapshot")
-            }
             Command::Apply { first, last, .. } => write!(f, "Apply: [{},{}]", first, last),
             Command::ExternalFunc { .. } => write!(f, "ExternalFunc"),
         }
@@ -195,9 +179,6 @@ where
             } => {
                 write!(f, "InstallFullSnapshot: meta: {}, io_id: {}", snapshot.meta, io_id)
             }
-            Command::BeginReceivingSnapshot { .. } => {
-                write!(f, "BeginReceivingSnapshot")
-            }
             Command::Apply { first, last, .. } => write!(f, "Apply: [{},{}]", first, last),
             Command::ExternalFunc { .. } => write!(f, "ExternalFunc"),
         }
@@ -214,7 +195,6 @@ where
         match (self, other) {
             (Command::BuildSnapshot, Command::BuildSnapshot) => true,
             (Command::GetSnapshot { .. }, Command::GetSnapshot { .. }) => true,
-            (Command::BeginReceivingSnapshot { .. }, Command::BeginReceivingSnapshot { .. }) => true,
             (
                 Command::InstallFullSnapshot {
                     log_io_id: io1,

@@ -233,11 +233,6 @@ impl RaftStateMachine<TypeConfig> for Rc<StateMachineStore> {
         Ok(())
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(&mut self) -> Result<SnapshotData, io::Error> {
-        Ok(Cursor::new(Vec::new()))
-    }
-
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn install_snapshot(&mut self, meta: &SnapshotMeta, snapshot: SnapshotData) -> Result<(), io::Error> {
         tracing::info!(

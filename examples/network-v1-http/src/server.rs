@@ -20,8 +20,8 @@ use openraft::errors::decompose::DecomposeResult;
 use openraft::storage::RaftStateMachine;
 use openraft::type_config::alias::SnapshotDataOf;
 use openraft_legacy::prelude::ChunkedSnapshotReceiver;
+use openraft_legacy::prelude::SnapshotReceiverFactory;
 use serde::Serialize;
-use tokio::io::AsyncRead;
 use tokio::io::AsyncSeek;
 use tokio::io::AsyncWrite;
 use tokio::net::TcpListener;
@@ -39,10 +39,10 @@ where
 impl<C, SM> Server<C, SM>
 where
     C: RaftTypeConfig,
-    SM: RaftStateMachine<C> + 'static,
+    SM: SnapshotReceiverFactory<C, SnapshotReceiver = SnapshotDataOf<C, SM>> + 'static,
     // The chunked V1 protocol assembles a snapshot chunk by chunk, so the receiving end
     // needs a file-like snapshot to seek in and write to.
-    SnapshotDataOf<C, SM>: AsyncRead + AsyncWrite + AsyncSeek + Unpin,
+    SnapshotDataOf<C, SM>: AsyncWrite + AsyncSeek + Unpin,
 {
     pub fn new(raft: openraft::Raft<C, SM>) -> Self {
         Self { raft: Arc::new(raft) }
@@ -74,8 +74,8 @@ async fn handle<C, SM>(
 ) -> Result<Response<Full<Bytes>>, Infallible>
 where
     C: RaftTypeConfig,
-    SM: RaftStateMachine<C> + 'static,
-    SnapshotDataOf<C, SM>: AsyncRead + AsyncWrite + AsyncSeek + Unpin,
+    SM: SnapshotReceiverFactory<C, SnapshotReceiver = SnapshotDataOf<C, SM>> + 'static,
+    SnapshotDataOf<C, SM>: AsyncWrite + AsyncSeek + Unpin,
 {
     if req.method() != Method::POST {
         return Ok(error_response(StatusCode::NOT_FOUND, "not found"));
@@ -102,8 +102,8 @@ async fn handle_raft_rpc<C, SM>(
 ) -> Result<Response<Full<Bytes>>, Response<Full<Bytes>>>
 where
     C: RaftTypeConfig,
-    SM: RaftStateMachine<C>,
-    SnapshotDataOf<C, SM>: AsyncRead + AsyncWrite + AsyncSeek + Unpin,
+    SM: SnapshotReceiverFactory<C, SnapshotReceiver = SnapshotDataOf<C, SM>>,
+    SnapshotDataOf<C, SM>: AsyncWrite + AsyncSeek + Unpin,
 {
     // Every route answers with a serialized `Result<Resp, Err>`, splitting the
     // API error out of `RaftError` so the body matches what `Network` decodes.

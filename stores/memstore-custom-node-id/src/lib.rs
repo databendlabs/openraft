@@ -291,10 +291,6 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
         self.clone()
     }
 
-    async fn begin_receiving_snapshot(&mut self) -> Result<Self::SnapshotData, io::Error> {
-        Ok(Cursor::new(Vec::new()))
-    }
-
     async fn install_snapshot(
         &mut self,
         meta: &SnapshotMetaOf<TypeConfig>,

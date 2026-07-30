@@ -285,6 +285,7 @@ use openraft_legacy::network_v1::InstallSnapshotError;
 use openraft_legacy::network_v1::InstallSnapshotRequest;
 use openraft_legacy::network_v1::InstallSnapshotResponse;
 use openraft_legacy::network_v1::SnapshotMismatch;
+use openraft_legacy::network_v1::SnapshotReceiverFactory;
 use openraft_legacy::network_v1::SnapshotSegmentId;
 // =============================================================================
 // Macros

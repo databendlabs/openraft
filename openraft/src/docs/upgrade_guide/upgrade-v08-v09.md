@@ -19,7 +19,7 @@
 - New API to support generic snapshot data transfer with the following new APIs:
 
     - [`Raft::get_snapshot()`][]
-    - [`Raft::begin_receiving_snapshot()`][]
+    - `Raft::begin_receiving_snapshot()`
     - [`Raft::install_full_snapshot()`][]
     - [`RaftNetwork::full_snapshot()`][]
 
@@ -185,7 +185,6 @@ To use arbitrary snapshot data, the application needs to:
 [`Streaming`]:                        https://docs.rs/openraft-legacy/latest/openraft_legacy/struct.Streaming.html
 [`Raft::ensure_linearizable()`]:      `crate::Raft::ensure_linearizable`
 [`Raft::get_snapshot()`]:             `crate::Raft::get_snapshot`
-[`Raft::begin_receiving_snapshot()`]: `crate::Raft::begin_receiving_snapshot`
 [`Raft::install_full_snapshot()`]:    `crate::Raft::install_full_snapshot`
 
 [`RaftNetwork`]:                      `crate::network::RaftNetwork`

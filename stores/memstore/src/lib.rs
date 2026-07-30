@@ -35,6 +35,7 @@ use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftSnapshotBuilder;
 use openraft::storage::RaftStateMachine;
 use openraft::type_config::TypeConfigExt;
+use openraft_legacy::network_v1::SnapshotReceiverFactory;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::sync::RwLock;
@@ -588,11 +589,6 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
         self.clone()
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(&mut self) -> Result<Self::SnapshotData, io::Error> {
-        Ok(Cursor::new(Vec::new()))
-    }
-
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn install_snapshot(
         &mut self,
@@ -642,5 +638,14 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
             }
             None => Ok(None),
         }
+    }
+}
+
+/// Supports snapshot reception through the legacy v1 network protocol.
+impl SnapshotReceiverFactory<TypeConfig> for Arc<MemStateMachine> {
+    type SnapshotReceiver = Cursor<Vec<u8>>;
+
+    async fn begin_receiving_snapshot(&mut self) -> Result<Self::SnapshotReceiver, io::Error> {
+        Ok(Cursor::new(Vec::new()))
     }
 }

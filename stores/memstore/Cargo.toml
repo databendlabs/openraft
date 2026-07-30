@@ -15,6 +15,7 @@ repository    = { workspace = true }
 
 [dependencies]
 openraft = { path = "../../openraft", version = "0.10.0-alpha.31", features = ["serde", "type-alias"] }
+openraft-legacy = { path = "../../legacy", version = "0.10.0-alpha.31" }
 
 derive_more = { workspace = true }
 futures     = { workspace = true }

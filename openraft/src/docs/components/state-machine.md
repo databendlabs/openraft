@@ -11,7 +11,7 @@ The [`RaftStateMachine`] encapsulates several critical responsibilities:
 
 2. **Querying State and Snapshots**: [`applied_state`] allows querying the current state of the state machine.
 
-3. **Snapshot Handling**: Through methods like [`get_snapshot_builder`], [`begin_receiving_snapshot`], [`get_current_snapshot`], and [`install_snapshot`], it defines a comprehensive approach to managing snapshots. These methods cover creating snapshots, handling incoming snapshot data from the leader, and installing snapshots to bring the state machine to a specific state.
+3. **Snapshot Handling**: Through methods like [`get_snapshot_builder`], [`get_current_snapshot`], and [`install_snapshot`], it defines a comprehensive approach to creating and installing snapshots.
 
 ## State Management in Raft State Machines
 
@@ -30,6 +30,5 @@ The [`RaftStateMachine`] encapsulates several critical responsibilities:
 [`apply`]:                    `crate::storage::RaftStateMachine::apply`
 [`applied_state`]:            `crate::storage::RaftStateMachine::applied_state`
 [`get_snapshot_builder`]:     `crate::storage::RaftStateMachine::get_snapshot_builder`
-[`begin_receiving_snapshot`]: `crate::storage::RaftStateMachine::begin_receiving_snapshot`
 [`get_current_snapshot`]:     `crate::storage::RaftStateMachine::get_current_snapshot`
 [`install_snapshot`]:         `crate::storage::RaftStateMachine::install_snapshot`
