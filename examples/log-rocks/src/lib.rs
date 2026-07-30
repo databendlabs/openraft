@@ -9,6 +9,7 @@ use std::fmt::Debug;
 use std::io;
 use std::marker::PhantomData;
 use std::ops::RangeBounds;
+use std::path::Path;
 use std::sync::Arc;
 
 use byteorder::BigEndian;
@@ -27,8 +28,10 @@ use openraft::storage::IOFlushed;
 use openraft::storage::RaftLogStorage;
 use openraft::type_config::TypeConfigExt;
 use rocksdb::ColumnFamily;
+use rocksdb::ColumnFamilyDescriptor;
 use rocksdb::DB;
 use rocksdb::Direction;
+use rocksdb::Options;
 use rocksdb::WriteBatch;
 
 #[derive(Debug, Clone)]
@@ -42,6 +45,18 @@ where C: RaftTypeConfig
 impl<C> RocksLogStore<C>
 where C: RaftTypeConfig
 {
+    /// Open a standalone RocksDB log store at the provided path.
+    pub fn open<P>(db_path: P) -> Result<Self, io::Error>
+    where P: AsRef<Path> {
+        let mut options = Options::default();
+        options.create_missing_column_families(true);
+        options.create_if_missing(true);
+        let descriptors =
+            ["meta", "logs"].into_iter().map(|name| ColumnFamilyDescriptor::new(name, Options::default()));
+        let db = DB::open_cf_descriptors(&options, db_path, descriptors).map_err(io::Error::other)?;
+        Ok(Self::new(Arc::new(db)))
+    }
+
     pub fn new(db: Arc<DB>) -> Self {
         db.cf_handle("meta").expect("column family `meta` not found");
         db.cf_handle("logs").expect("column family `logs` not found");
