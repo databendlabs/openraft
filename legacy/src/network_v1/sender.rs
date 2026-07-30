@@ -22,9 +22,9 @@ use openraft::type_config::alias::VoteOf;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncSeekExt;
 
-use super::RaftNetwork;
 use crate::network_v1::InstallSnapshotError;
 use crate::network_v1::InstallSnapshotRequest;
+use crate::network_v1::RaftNetwork;
 
 /// Sends snapshots in chunks via `RaftNetwork::install_snapshot()`.
 ///

@@ -2,7 +2,6 @@
 
 use std::io::SeekFrom;
 use std::marker::PhantomData;
-use std::sync::Arc;
 
 use openraft::ErrorSubject;
 use openraft::ErrorVerb;
@@ -10,8 +9,6 @@ use openraft::OptionalSend;
 use openraft::RaftTypeConfig;
 use openraft::SnapshotId;
 use openraft::StorageError;
-use openraft::type_config::TypeConfigExt;
-use openraft::type_config::alias::MutexOf;
 use openraft_macros::since;
 use tokio::io::AsyncSeekExt;
 use tokio::io::AsyncWriteExt;
@@ -100,54 +97,5 @@ where
         self.offset += req.data.len() as u64;
 
         Ok(req.done)
-    }
-}
-
-/// Shared state for receiving snapshot chunks, stored via [`Raft::extension()`].
-///
-/// This wrapper holds the ongoing snapshot reception state and is stored
-/// via [`Raft::extension()`] to track chunk-based snapshot transfers.
-///
-/// [`Raft::extension()`]: openraft::Raft::extension
-pub struct StreamingState<C, SD>
-where
-    C: RaftTypeConfig,
-    SD: OptionalSend + 'static,
-{
-    pub(crate) streaming: Arc<MutexOf<C, Option<Streaming<C, SD>>>>,
-}
-
-impl<C, SD> Clone for StreamingState<C, SD>
-where
-    C: RaftTypeConfig,
-    SD: OptionalSend + 'static,
-{
-    fn clone(&self) -> Self {
-        Self {
-            streaming: self.streaming.clone(),
-        }
-    }
-}
-
-impl<C, SD> StreamingState<C, SD>
-where
-    C: RaftTypeConfig,
-    SD: OptionalSend + 'static,
-{
-    /// Create a new empty streaming state.
-    pub fn new() -> Self {
-        Self {
-            streaming: Arc::new(C::mutex(None)),
-        }
-    }
-}
-
-impl<C, SD> Default for StreamingState<C, SD>
-where
-    C: RaftTypeConfig,
-    SD: OptionalSend + 'static,
-{
-    fn default() -> Self {
-        Self::new()
     }
 }
