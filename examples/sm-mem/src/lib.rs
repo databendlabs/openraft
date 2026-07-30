@@ -21,6 +21,7 @@ use openraft::alias::SnapshotOf;
 use openraft::alias::StoredMembershipOf;
 use openraft::storage::EntryResponder;
 use openraft::storage::RaftStateMachine;
+use openraft_legacy::network_v1::SnapshotReceiverFactory;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -202,11 +203,6 @@ where C: RaftTypeConfig<D = types_kv::Request, R = types_kv::Response, Entry = D
         Ok(())
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(&mut self) -> Result<Self::SnapshotData, io::Error> {
-        Ok(Cursor::new(Vec::new()))
-    }
-
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn install_snapshot(
         &mut self,
@@ -254,5 +250,16 @@ where C: RaftTypeConfig<D = types_kv::Request, R = types_kv::Response, Entry = D
 
     async fn get_snapshot_builder(&mut self) -> Self::SnapshotBuilder {
         self.clone()
+    }
+}
+
+/// Supports snapshot reception through the legacy v1 network protocol.
+impl<C> SnapshotReceiverFactory<C> for StateMachineStore<C>
+where C: RaftTypeConfig<D = types_kv::Request, R = types_kv::Response, Entry = DefaultEntryOf<C>>
+{
+    type SnapshotReceiver = Cursor<Vec<u8>>;
+
+    async fn begin_receiving_snapshot(&mut self) -> Result<Self::SnapshotReceiver, io::Error> {
+        Ok(Cursor::new(Vec::new()))
     }
 }

@@ -7,7 +7,6 @@ use openraft_macros::VariantName;
 pub enum SMCommandName {
     BuildSnapshot,
     GetSnapshot,
-    BeginReceivingSnapshot,
     InstallFullSnapshot,
     Apply,
     ExternalFunc,
@@ -176,7 +175,7 @@ mod tests {
         let cmd: sm::Command<C> = sm::Command::apply(log_id(1, 0, 1), log_id(1, 0, 2), vec![]);
         assert_eq!(cmd.name(), SMCommandName::Apply);
 
-        // GetSnapshot, BeginReceivingSnapshot, InstallFullSnapshot require channels/data
+        // GetSnapshot and InstallFullSnapshot require channels/data
         // Test via StateMachine command wrapper
         let cmd: Command<C> = Command::StateMachine {
             command: sm::Command::build_snapshot(),
@@ -222,10 +221,6 @@ mod tests {
     fn test_sm_command_name_as_str() {
         assert_eq!(SMCommandName::BuildSnapshot.as_str(), "SM::BuildSnapshot");
         assert_eq!(SMCommandName::GetSnapshot.as_str(), "SM::GetSnapshot");
-        assert_eq!(
-            SMCommandName::BeginReceivingSnapshot.as_str(),
-            "SM::BeginReceivingSnapshot"
-        );
         assert_eq!(SMCommandName::InstallFullSnapshot.as_str(), "SM::InstallFullSnapshot");
         assert_eq!(SMCommandName::Apply.as_str(), "SM::Apply");
         assert_eq!(SMCommandName::ExternalFunc.as_str(), "SM::ExternalFunc");

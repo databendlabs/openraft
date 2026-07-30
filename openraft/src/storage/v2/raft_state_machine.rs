@@ -133,16 +133,6 @@ where C: RaftTypeConfig
     #[since(version = "0.10.0", change = "deprecated, use `try_create_snapshot_builder` instead")]
     async fn get_snapshot_builder(&mut self) -> Self::SnapshotBuilder;
 
-    /// Create a new blank snapshot, returning a writable handle to the snapshot object.
-    ///
-    /// Openraft will use this handle to receive snapshot data.
-    ///
-    /// See the [storage chapter of the guide][sto] for details on log compaction / snapshotting.
-    ///
-    /// [sto]: crate::docs::getting_started#3-implement-raftlogstorage-and-raftstatemachine
-    #[since(version = "0.10.0", change = "SnapshotData without Box")]
-    async fn begin_receiving_snapshot(&mut self) -> Result<Self::SnapshotData, io::Error>;
-
     /// Install a snapshot which has finished streaming from the leader.
     ///
     /// This method is called in two scenarios:
@@ -157,8 +147,8 @@ where C: RaftTypeConfig
     ///
     /// ### snapshot
     ///
-    /// A snapshot created from an earlier call to `begin_receiving_snapshot` which provided the
-    /// snapshot.
+    /// A complete snapshot to install: either received from the leader or returned by
+    /// [`Self::get_current_snapshot`] when restoring on startup.
     ///
     /// [`StorageHelper::get_initial_state()`]: crate::StorageHelper::get_initial_state
     /// [`Raft`]: crate::Raft
@@ -224,10 +214,6 @@ where C: RaftTypeConfig
     }
 
     async fn get_snapshot_builder(&mut self) -> Self::SnapshotBuilder {}
-
-    async fn begin_receiving_snapshot(&mut self) -> Result<Self::SnapshotData, io::Error> {
-        Err(unit_state_machine_error())
-    }
 
     async fn install_snapshot(
         &mut self,

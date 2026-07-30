@@ -10,8 +10,8 @@ use openraft::StorageError;
 use openraft::async_runtime::Mutex;
 use openraft::async_runtime::WatchReceiver;
 use openraft::errors::ErrorSource;
+use openraft::errors::Fatal;
 use openraft::errors::RaftError;
-use openraft::storage::RaftStateMachine;
 use openraft::type_config::alias::SnapshotDataOf;
 use openraft::type_config::alias::SnapshotOf;
 use openraft_macros::since;
@@ -21,6 +21,7 @@ use crate::network_v1::InstallSnapshotError;
 use crate::network_v1::InstallSnapshotRequest;
 use crate::network_v1::InstallSnapshotResponse;
 use crate::network_v1::SnapshotMismatch;
+use crate::network_v1::SnapshotReceiverFactory;
 use crate::network_v1::SnapshotSegmentId;
 use crate::network_v1::receiver::Streaming;
 use crate::network_v1::receiver::StreamingState;
@@ -29,6 +30,10 @@ use crate::network_v1::receiver::StreamingState;
 ///
 /// This trait adds the `install_snapshot()` method for receiving snapshot chunks
 /// via the v1 network protocol.
+///
+/// It is implemented for `Raft<C, SM>` only when the factory's `SnapshotReceiver` is the same type
+/// as the state machine's `SnapshotData`: the chunk protocol writes chunks into the receiver and
+/// installs that same object as the snapshot.
 ///
 /// The streaming state is stored via `Raft::extension()` as `StreamingState<C>`.
 ///
@@ -79,8 +84,8 @@ where C: RaftTypeConfig
 impl<C, SM> ChunkedSnapshotReceiver<C> for Raft<C, SM>
 where
     C: RaftTypeConfig,
-    SM: RaftStateMachine<C>,
-    SnapshotDataOf<C, SM>: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin,
+    SM: SnapshotReceiverFactory<C, SnapshotReceiver = SnapshotDataOf<C, SM>>,
+    SnapshotDataOf<C, SM>: tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin,
 {
     type SnapshotData = SnapshotDataOf<C, SM>;
 
@@ -124,8 +129,16 @@ where
             }
 
             // Initialize new streaming state
-            let snapshot_data =
-                self.begin_receiving_snapshot().await.map_err(|e| RaftError::Fatal(e.unwrap_fatal()))?;
+            let snapshot_data = self
+                .with_state_machine(|sm| Box::pin(async move { sm.begin_receiving_snapshot().await }))
+                .await
+                .map_err(RaftError::Fatal)?
+                .map_err(|e| {
+                    RaftError::Fatal(Fatal::from(StorageError::write_snapshot(
+                        None,
+                        C::ErrorSource::from_error(&e),
+                    )))
+                })?;
 
             *streaming = Some(Streaming::new(snapshot_id.clone(), snapshot_data));
         }
@@ -141,7 +154,7 @@ where
             let mut data = streaming.into_snapshot_data();
 
             data.shutdown().await.map_err(|e| {
-                RaftError::Fatal(openraft::errors::Fatal::from(StorageError::write_snapshot(
+                RaftError::Fatal(Fatal::from(StorageError::write_snapshot(
                     Some(snapshot_meta.signature()),
                     C::ErrorSource::from_error(&e),
                 )))
