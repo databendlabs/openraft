@@ -1,0 +1,23 @@
+[package]
+name = "dir-transfer"
+description = "Transfer a flat directory of immutable files as an ordered stream of frames."
+readme = "README.md"
+
+version = "0.1.0"
+edition = "2024"
+authors = [
+    "drdr xp <drdr.xp@gmail.com>",
+]
+categories = ["algorithms", "asynchronous", "data-structures"]
+homepage = "https://github.com/databendlabs/openraft"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/databendlabs/openraft"
+
+[dependencies]
+crc   = { version = "3.2" }
+serde = { version = "1.0.114", features = ["derive"] }
+tokio = { version = "1.0", features = ["fs", "io-util"] }
+
+[dev-dependencies]
+tempfile = { version = "3.4.0" }
+tokio    = { version = "1.0", features = ["macros", "rt-multi-thread"] }

@@ -488,6 +488,7 @@ jobs:
           - 'stable'
           - 'nightly'
         example:
+          - 'dir-transfer'
           - 'log-mem'
           - 'log-rocks'
           - 'sm-rocks'

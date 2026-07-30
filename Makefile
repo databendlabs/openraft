@@ -39,6 +39,7 @@ check-parallel:
 
 
 test-examples:
+	cargo test --manifest-path examples/dir-transfer/Cargo.toml
 	cargo test --manifest-path examples/log-mem/Cargo.toml
 	cargo test --manifest-path examples/log-rocks/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-memstore/Cargo.toml
@@ -104,6 +105,7 @@ lint:
 	cargo fmt --manifest-path examples/app-http/Cargo.toml
 	cargo fmt --manifest-path examples/network-v1-http/Cargo.toml
 	cargo fmt --manifest-path examples/network-v2-http/Cargo.toml
+	cargo fmt --manifest-path examples/dir-transfer/Cargo.toml
 	cargo fmt --manifest-path examples/log-mem/Cargo.toml
 	cargo fmt --manifest-path examples/log-rocks/Cargo.toml
 	cargo fmt --manifest-path examples/sm-mem/Cargo.toml
@@ -127,6 +129,7 @@ lint:
 	cargo clippy --no-deps --manifest-path examples/app-http/Cargo.toml                               --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/network-v1-http/Cargo.toml                         --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/network-v2-http/Cargo.toml                         --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path examples/dir-transfer/Cargo.toml                           --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/log-mem/Cargo.toml                                --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/log-rocks/Cargo.toml                              --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/sm-mem/Cargo.toml                                --all-targets -- -D warnings
