@@ -5,9 +5,6 @@
 //! The scalar value is monotonically incremental. Decreasing it is not allowed.
 //! Optimization on calculating the quorum-accepted log id is done on this assumption.
 
-#[cfg(feature = "bench")]
-#[cfg(test)]
-mod bench;
 pub(crate) mod display_vec_progress;
 pub(crate) mod entry;
 pub(crate) mod id_val;
