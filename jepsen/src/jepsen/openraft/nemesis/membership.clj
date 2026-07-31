@@ -12,7 +12,7 @@
 
 (def change-seconds 10)
 (def minimum-voters 3)
-(def learner-recovery-timeout-ms 60000)
+(def learner-wait-timeout-ms 60000)
 
 (defn- select-node [test candidates]
   (->> (:nodes test)
@@ -38,20 +38,17 @@
              (or (nil? status)
                  (<= 500 status 599))))))
 
-(defn- node-metrics! [test node]
-  (try
-    (client/metrics! (client/api-endpoint test node))
-    (catch Exception e
-      (if (= :interrupted (:kind (ex-data e)))
-        (throw (InterruptedException. (ex-message e)))
-        (throw e)))))
+(defn- membership-change-in-progress? [e]
+  (contains? (get-in (ex-data e)
+                     [:error :ChangeMembershipError])
+             :InProgress))
 
 (defn- await-reachable-learner! [test node]
   (try
     (util/await-fn
-      #(node-metrics! test node)
+      #(cluster/node-metrics! test node)
       {:log-message (str "Waiting for OpenRaft learner " node)
-       :timeout learner-recovery-timeout-ms})
+       :timeout learner-wait-timeout-ms})
     (catch InterruptedException e
       (.interrupt (Thread/currentThread))
       (throw e))
@@ -94,7 +91,20 @@
 
 (defn- change-membership-and-await!
   [test leader-endpoint target-voters]
-  (request-membership-change! test leader-endpoint target-voters)
+  (try
+    (request-membership-change! test leader-endpoint target-voters)
+    (catch Exception e
+      (when-not (membership-change-in-progress? e)
+        (throw e))
+      (info "Waiting for an in-progress OpenRaft membership change"
+            {:target-voters target-voters
+             :error (ex-message e)})
+      (let [status (stable-membership! test)]
+        (when-not (= target-voters (:voters status))
+          (request-membership-change!
+            test
+            leader-endpoint
+            target-voters)))))
   (try
     (cluster/await-stable-membership! test target-voters)
     (catch Exception e
@@ -116,7 +126,7 @@
                           :status status}))))
     {:log-message (str "Waiting for OpenRaft learner " node
                        " to appear in membership")
-     :timeout learner-recovery-timeout-ms}))
+     :timeout learner-wait-timeout-ms}))
 
 (defn- add-learner-and-confirm!
   [test leader-endpoint node node-id api-addr raft-addr]
@@ -311,7 +321,7 @@
          :observed-changes (vec (sort observed-changes))
          :missing-changes (vec (sort missing-changes))
          :restored? restored?
-         :count (count errors)
+         :error-count (count errors)
          :errors (vec (take 10 errors))}))))
 
 (defn membership-package [database test]

@@ -266,6 +266,42 @@
                 [:await target]]
                @calls))))))
 
+(deftest retries-after-an-in-progress-membership-change
+  (let [before #{"n1" "n2" "n3" "n4"}
+        target (conj before "n5")
+        calls (atom [])
+        final {:leader "n1"
+               :voters target}]
+    (with-redefs-fn
+      {#'client/change-membership!
+       (fn [_endpoint _node-ids]
+         (swap! calls conj :change-membership)
+         (when (= 1 (count @calls))
+           (throw (ex-info
+                    "in progress"
+                    {:kind :openraft-error
+                     :error {:ChangeMembershipError
+                             {:InProgress {}}}}))))
+       #'membership/stable-membership!
+       (fn [_test]
+         (swap! calls conj :complete-pending)
+         {:voters before})
+       #'cluster/await-stable-membership!
+       (fn [_test expected]
+         (swap! calls conj [:await expected])
+         final)}
+      (fn []
+        (is (= final
+               (#'membership/change-membership-and-await!
+                 test-config
+                 (atom "n1:21001")
+                 target)))
+        (is (= [:change-membership
+                :complete-pending
+                :change-membership
+                [:await target]]
+               @calls))))))
+
 (deftest rejects-an-unreachable-learner
   (let [initial {:leader "n1"
                  :voters #{"n1" "n2" "n3" "n4"}
@@ -548,4 +584,4 @@
                             :exception {:kind :learner-unreachable}})
                      {})]
         (is (false? (:valid? result)))
-        (is (= 1 (:count result)))))))
+        (is (= 1 (:error-count result)))))))

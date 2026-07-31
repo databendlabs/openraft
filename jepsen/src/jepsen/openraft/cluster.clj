@@ -71,22 +71,32 @@
 (defn- map-voter-configs [test configs]
   (mapv #(map-node-ids test %) configs))
 
+(defn node-metrics!
+  "Fetches metrics from one node while preserving thread interruption."
+  [test node]
+  (try
+    (client/metrics! (client/api-endpoint test node))
+    (catch InterruptedException e
+      (.interrupt (Thread/currentThread))
+      (throw e))
+    (catch Exception e
+      (if (= :interrupted (:kind (ex-data e)))
+        (do
+          (.interrupt (Thread/currentThread))
+          (throw (doto (InterruptedException. (ex-message e))
+                   (.initCause e))))
+        (throw e)))))
+
 (defn- collect-reachable-metrics [test]
   (into {}
         (keep
           (fn [node]
             (try
-              [node (client/metrics! (client/api-endpoint test node))]
+              [node (node-metrics! test node)]
               (catch InterruptedException e
-                (.interrupt (Thread/currentThread))
                 (throw e))
-              (catch Exception e
-                (if (= :interrupted (:kind (ex-data e)))
-                  (do
-                    (.interrupt (Thread/currentThread))
-                    (throw (doto (InterruptedException. (ex-message e))
-                             (.initCause e))))
-                  nil))))
+              (catch Exception _
+                nil)))
           (:nodes test))))
 
 (defn- cluster-status [test]
