@@ -26,10 +26,6 @@ mod membership;
 mod membership_impl_quorum_set;
 mod stored_membership;
 
-#[cfg(feature = "bench")]
-#[cfg(test)]
-mod bench;
-
 #[cfg(test)]
 mod membership_test;
 #[cfg(test)]
