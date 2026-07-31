@@ -448,8 +448,45 @@
                   :voters (set nodes)}
                  (:value result))))))))
 
+(deftest restore-fails-when-grow-cannot-progress
+  (let [partial {:leader "n1"
+                 :voters #{"n1" "n2" "n3"}}
+        subject (membership/->MembershipNemesis :database)]
+    (with-redefs-fn
+      {#'membership/stable-membership! (fn [_test] partial)
+       #'membership/grow! (fn [_database _test] :membership-full)}
+      (fn []
+        (let [error (try
+                      (nemesis/invoke!
+                        subject
+                        test-config
+                        {:type :info
+                         :f :restore-membership})
+                      nil
+                      (catch clojure.lang.ExceptionInfo e
+                        e))]
+          (is (= "Unable to restore OpenRaft membership"
+                 (ex-message error)))
+          (is (= :membership-full
+                 (:result (ex-data error)))))))))
+
+(deftest membership-package-requires-room-to-change
+  (let [three-node-test (assoc test-config
+                               :nodes ["n1" "n2" "n3"])
+        error (try
+                (membership/membership-package :database three-node-test)
+                nil
+                (catch clojure.lang.ExceptionInfo e
+                  e))]
+    (is (= "Membership nemesis requires more than three nodes"
+           (ex-message error)))
+    (is (= ["n1" "n2" "n3"]
+           (:nodes (ex-data error))))))
+
 (deftest checks-membership-coverage-and-restoration
-  (let [subject (:checker (membership/membership-package :database))
+  (let [subject (:checker (membership/membership-package
+                            :database
+                            test-config))
         all-voters (set nodes)
         four-voters #{"n1" "n2" "n3" "n4"}
         shrink {:type :info

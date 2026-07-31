@@ -11,26 +11,25 @@ This is a standalone Clojure/Leiningen project inside the OpenRaft repository. I
 The Docker test environment separates the Jepsen control plane from the OpenRaft data plane:
 
 ```text
-                         control container
-                         Jepsen + Leiningen
-                                  |
-          SSH: setup / start / stop / logs
-                                  |
-        +-------------------------+-------------------------+
-        |                         |                         |
-        v                         v                         v
-+---------------+         +---------------+         +---------------+
-| n1 db node    |         | n2 db node    |         | n3 db node    |
-| raft-kv-rocks |         | raft-kv-rocks |         | raft-kv-rocks |
-+-------+-------+         +-------+-------+         +-------+-------+
-        |                         |                         |
-        | app_http API            | app_http API            | app_http API
-        | same endpoints          | same endpoints          | same endpoints
-        |                         |                         |
-        +----------- Raft RPC: /append /vote /snapshot -----+
+                     control container
+                     Jepsen + Leiningen
+                              |
+              SSH: setup / start / stop / logs
+                              |
+          +---------+---------+---------+---------+
+          |         |         |         |         |
+          v         v         v         v         v
+         n1        n2        n3        n4        n5
+      db node   db node   db node   db node   db node
+          |         |         |         |         |
+          +------ app_http API and Raft RPC mesh --+
 ```
 
-The control container is not an OpenRaft member. It runs the Jepsen process, controls the db nodes over SSH, and sends client operations to the KV service API. Every db node exposes the same `app_http` endpoints, and the leader-aware client may contact any of them. The default OpenRaft cluster runs on `n1`, `n2`, and `n3`; those nodes communicate with each other over the Raft RPC port. Docker Compose also provides `n4` and `n5` for tests that explicitly select a five-node cluster.
+The control container is not an OpenRaft member. It runs the Jepsen process,
+controls the db nodes over SSH, and sends client operations to the KV service
+API. Every db node exposes the same `app_http` endpoints, and the leader-aware
+client may contact any of them. The default OpenRaft cluster contains all five
+Docker nodes, which communicate over the Raft RPC port.
 
 The intended layout is:
 
@@ -95,12 +94,16 @@ $ make -C jepsen test
 # Run the process crash/restart test instead of the default partition test.
 $ make -C jepsen test NEMESIS=process
 
-# Run membership changes against all five Docker nodes.
+# Run the membership change test.
 $ make -C jepsen test NEMESIS=membership
 
 # Stop and remove the Jepsen containers.
 $ make -C jepsen down
 ```
+
+Node names must use the form `n<ID>`, such as `n1` or `n5`, because the
+harness derives each numeric OpenRaft node ID from its Jepsen node name. IP
+addresses and `user@host` node specifications are not supported.
 
 This starts the five-node Docker environment, then runs the Jepsen control
 process from the control container. Every test checks a concurrent mix of
@@ -128,7 +131,7 @@ all five nodes as voters and waits for every node to agree on a leader.
 - [x] Add a multi-stage node image for the RocksDB KV example.
 - [x] Add an HTTP client for the OpenRaft KV APIs.
 - [x] Add Jepsen process lifecycle management for OpenRaft nodes.
-- [x] Bootstrap a three-node OpenRaft cluster.
+- [x] Bootstrap a five-node OpenRaft cluster.
 - [ ] Record acknowledged write, read, and info operation counts in each run.
 - [x] Add a network partition nemesis.
 - [x] Add nemeses for process kill/restart.

@@ -34,7 +34,9 @@
         workload (workload/workload opts)
         nemesis-type (:nemesis opts :partition)
         nemesis-package (case nemesis-type
-                          :membership (membership/membership-package database)
+                          :membership (membership/membership-package
+                                        database
+                                        opts)
                           :partition (partition/partition-package)
                           :process (process/process-package database))]
     (merge tests/noop-test

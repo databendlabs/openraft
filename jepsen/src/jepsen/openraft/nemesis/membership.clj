@@ -227,8 +227,12 @@
         (let [ready-status (cluster/await-ready! test)]
           {:leader (:leader ready-status)
            :voters (:voters status)})
-        (do
-          (grow! database test)
+        (let [result (grow! database test)]
+          (when (keyword? result)
+            (throw (ex-info "Unable to restore OpenRaft membership"
+                            {:result result
+                             :status status
+                             :target-voters target-voters})))
           (recur (stable-membership! test)))))))
 
 (defrecord MembershipNemesis [database]
@@ -310,7 +314,11 @@
          :count (count errors)
          :errors (vec (take 10 errors))}))))
 
-(defn membership-package [database]
+(defn membership-package [database test]
+  (when (<= (count (:nodes test)) minimum-voters)
+    (throw (ex-info "Membership nemesis requires more than three nodes"
+                    {:minimum-voters minimum-voters
+                     :nodes (:nodes test)})))
   {:nemesis (membership-nemesis database)
    :generator (membership-generator)
    :final-generator (gen/once {:type :info
