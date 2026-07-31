@@ -52,7 +52,7 @@ test-examples:
 	cargo test --manifest-path examples/multi-raft-kv/Cargo.toml
 
 bench:
-	cargo bench --features bench
+	cargo bench --features bench -p openraft
 
 # Set TOKIO_CONSOLE=1 to enable tokio-console support
 # Set FLAMEGRAPH=1 to enable flamegraph profiling
