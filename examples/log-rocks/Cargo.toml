@@ -15,7 +15,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/databendlabs/openraft"
 
 [dependencies]
-openraft = { path = "../../openraft", version = "0.10.0-alpha.31", features = ["serde", "type-alias"] }
+openraft = { path = "../../openraft", version = "0.10.0-alpha.32", features = ["serde", "type-alias"] }
 
 byteorder  = { version = "1.4.3" }
 rocksdb    = { version = "0.22.0" }
