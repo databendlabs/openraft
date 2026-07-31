@@ -45,9 +45,16 @@ peel-off        = { workspace = true }
 [dev-dependencies]
 anyhow            = { workspace = true }
 bincode           = { workspace = true }
+criterion         = { workspace = true }
 openraft-rt-tokio = { path = "../rt-tokio", version = "0.10.0-alpha.31" }
 pretty_assertions = { workspace = true }
 serde_json        = { workspace = true }
+
+
+[[bench]]
+name = "benchmark"
+harness = false
+required-features = ["bench"]
 
 
 [features]
@@ -63,11 +70,10 @@ tokio-rt = ["dep:openraft-rt-tokio"]
 # struct literal syntax).
 clap = ["dep:clap", "dep:byte-unit"]
 
-# Enables benchmarks in unittest.
+# Exposes crate internals to the criterion benchmarks in `benches/`, via
+# `openraft::bench_internals`.
 #
-# Benchmark in openraft depends on the unstable feature `test` thus it cannot be used with stable rust.
-# In order to run the benchmark with stable toolchain,
-# the unstable features have to be enabled explicitly with environment variable `RUSTC_BOOTSTRAP=1`.
+# Run the benchmarks with: `cargo bench --features bench -p openraft`
 bench = []
 
 # Enable backtrace when generating an error.
