@@ -61,7 +61,7 @@ mod tests {
 }
 #[cfg(test)]
 mod log_id_list_test;
-#[cfg(test)]
+#[cfg(any(test, feature = "bench"))]
 pub(crate) mod testing;
 
 pub(crate) use command::Command;
