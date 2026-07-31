@@ -200,6 +200,24 @@ jobs:
           RUST_BACKTRACE: full
           OPENRAFT_STORE_DEFENSIVE: on
 
+  # Unit tests plus cluster integration tests over real HTTP nodes.
+  ezraft:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup | Toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Unit Tests
+        run: cargo test --manifest-path "experimental/ezraft/Cargo.toml"
+        env:
+          RUST_LOG: debug
+          RUST_BACKTRACE: full
+
   # Test external crate.
   # benchmarks/minimal is a standalone crate for benchmarking openraft cluster.
   bench-minimal:

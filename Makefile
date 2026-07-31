@@ -119,7 +119,12 @@ lint:
 	cargo fmt --manifest-path examples/raft-kv-rocksdb/Cargo.toml
 	cargo fmt --manifest-path examples/multi-raft-kv/Cargo.toml
 	cargo fmt --manifest-path tests-turmoil/Cargo.toml
-	cargo clippy --no-deps --all-targets -- -D warnings
+	@# The three workspace clippy runs mirror the CI lint job
+	@# (.github/workflows/ci.yaml); keep them in sync so `make lint` fails
+	@# exactly where CI would, feature unification included.
+	cargo clippy --no-deps --workspace --all-targets -- -D warnings
+	cargo clippy --no-deps --workspace --all-targets --features "bt,serde,bench,compat" -- -D warnings
+	cargo clippy --no-deps --workspace --all-targets --features "metrics-logids,serde" -- -D warnings
 	cargo clippy --no-deps --manifest-path multiraft/Cargo.toml                                       --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path rt-compio/Cargo.toml                                       --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path rt-monoio/Cargo.toml                                       --all-targets -- -D warnings
@@ -171,7 +176,7 @@ unused_dep:
 
 typos:
 	# cargo install typos-cli
-	typos --write-changes openraft/ tests/ stores/memstore/ stores/memstore-custom-node-id/ stores/rocksstore examples/raft-kv-memstore/ examples/raft-kv-rocksdb/
+	typos --write-changes openraft/ experimental/ezraft/ tests/ stores/memstore/ stores/memstore-custom-node-id/ stores/rocksstore examples/raft-kv-memstore/ examples/raft-kv-rocksdb/
 	#typos --write-changes --exclude change-log/ --exclude change-log.md --exclude derived-from-async-raft.md
 	# typos
 
@@ -224,5 +229,9 @@ clean:
 	cargo clean --manifest-path examples/raft-kv-rocksdb/Cargo.toml
 	cargo clean --manifest-path examples/multi-raft-kv/Cargo.toml
 	rm -rf tests/_log
+	@# Cluster state the ezraft kvstore example writes, relative to where it ran.
+	@# A stale directory makes the next run come back with the old node id and
+	@# log instead of forming a fresh cluster. Mirrors the .gitignore entries.
+	rm -rf data experimental/ezraft/data
 
 .PHONY: test fmt lint clean doc guide detsim

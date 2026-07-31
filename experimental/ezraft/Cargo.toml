@@ -1,0 +1,32 @@
+[package]
+name = "ezraft"
+description = "A beginner-friendly Raft framework built on openraft"
+readme = "README.md"
+documentation = "https://docs.rs/ezraft"
+
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+categories.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+openraft = { path = "../../openraft", version = "0.10.0-alpha.31", features = ["serde", "type-alias"] }
+
+actix-web = "4.0"
+async-trait = "0.1"
+reqwest = { version = "0.12", features = ["json"] }
+
+derive_more = { workspace = true }
+futures = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["fs"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+clap = { workspace = true }
+tracing-subscriber = { workspace = true }

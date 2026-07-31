@@ -6,6 +6,10 @@ vendor
 .idea
 tests/_log
 
+# Cluster state written by the ezraft kvstore example, relative to where it runs
+/data
+experimental/ezraft/data
+
 # File Ignores ###############################################################
 **/*.rs.bk
 Cargo.lock
