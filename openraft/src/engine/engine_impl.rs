@@ -1062,7 +1062,7 @@ where
 }
 
 /// Supporting utilities for unit test
-#[cfg(test)]
+#[cfg(any(test, feature = "bench"))]
 mod engine_testing {
     use crate::RaftTypeConfig;
     use crate::engine::Engine;

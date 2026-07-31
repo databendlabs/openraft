@@ -117,7 +117,7 @@ where
     }
 
     /// Clear all queued commands.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "bench"))]
     pub(crate) fn clear_commands(&mut self) {
         self.commands.clear()
     }

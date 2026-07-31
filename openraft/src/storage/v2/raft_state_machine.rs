@@ -177,7 +177,7 @@ where C: RaftTypeConfig
 
 // Test-only: an unconditional impl would downgrade a missing-state-machine mistake from a compile
 // error to a runtime `Fatal`.
-#[cfg(test)]
+#[cfg(any(test, feature = "bench"))]
 fn unit_state_machine_error() -> io::Error {
     io::Error::new(
         io::ErrorKind::Unsupported,
@@ -185,7 +185,7 @@ fn unit_state_machine_error() -> io::Error {
     )
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "bench"))]
 impl<C> RaftSnapshotBuilder<C> for ()
 where C: RaftTypeConfig
 {
@@ -196,7 +196,7 @@ where C: RaftTypeConfig
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "bench"))]
 impl<C> RaftStateMachine<C> for ()
 where C: RaftTypeConfig
 {

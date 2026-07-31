@@ -78,6 +78,9 @@ pub mod vote;
 pub use errors as error;
 
 pub mod batch;
+#[cfg(feature = "bench")]
+#[doc(hidden)]
+pub mod bench_internals;
 #[cfg(test)]
 mod feature_serde_test;
 
