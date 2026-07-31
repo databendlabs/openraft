@@ -14,7 +14,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-openraft = { path = "../../openraft", version = "0.10.0-alpha.31", features = ["serde", "type-alias"] }
+openraft = { path = "../../openraft", version = "0.10.0-alpha.32", features = ["serde", "type-alias"] }
 
 actix-web = "4.0"
 async-trait = "0.1"
