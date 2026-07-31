@@ -1,7 +1,7 @@
 (ns jepsen.openraft.nemesis.process-test
   (:require [clojure.test :refer [deftest is testing]]
             [jepsen [checker :as checker]
-                    [nemesis :as nemesis]]
+             [nemesis :as nemesis]]
             [jepsen.openraft.cluster :as cluster]
             [jepsen.openraft.nemesis.process :as process]
             [jepsen.openraft.quorum :as quorum]))
@@ -14,10 +14,10 @@
     (doseq [mode [:leader-killed :leader-survives]]
       (testing (name mode)
         (let [targets (#'process/process-targets
-                        voters
-                        configs
-                        "n1"
-                        mode)]
+                       voters
+                       configs
+                       "n1"
+                       mode)]
           (is (contains? fault-sets (set targets)))
           (is (= (= mode :leader-killed)
                  (contains? (set targets) "n1"))))))))
@@ -39,16 +39,16 @@
                   cluster/voter-configs
                   (fn [_test _status] [(set (:nodes test))])]
       (let [killed (nemesis/invoke!
-                     subject
-                     test
-                     {:type :info
-                      :f :kill-process
-                      :value :leader-killed})
+                    subject
+                    test
+                    {:type :info
+                     :f :kill-process
+                     :value :leader-killed})
             restarted (nemesis/invoke!
-                        subject
-                        test
-                        {:type :info
-                         :f :restart-process})]
+                       subject
+                       test
+                       {:type :info
+                        :f :restart-process})]
         (is (= ["n1"] (get-in killed [:value :nodes])))
         (is (= ["n1"] (get-in restarted [:value :nodes])))
         (is (= [[:kill ["n1"]]

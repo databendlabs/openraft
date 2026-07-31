@@ -105,11 +105,11 @@
                   :f :read
                   :value "value"}]
         result (checker/check
-                 (checker/linearizable
-                   {:model (model/cas-register)})
-                 {}
-                 history
-                 {})]
+                (checker/linearizable
+                 {:model (model/cas-register)})
+                {}
+                history
+                {})]
     (is (:valid? result)
         "an indeterminate write may have produced the value read later")))
 

@@ -15,14 +15,14 @@
 
 (deftest finds-the-leader-agreed-on-by-all-nodes
   (let [metrics {"n1:21001" {:state "Follower"
-                              :current_leader "n2"
-                              :vote (vote 3 "n2")}
+                             :current_leader "n2"
+                             :vote (vote 3 "n2")}
                  "n2:21001" {:state "Leader"
-                              :current_leader "n2"
-                              :vote (vote 3 "n2")}
+                             :current_leader "n2"
+                             :vote (vote 3 "n2")}
                  "n3:21001" {:state "Follower"
-                              :current_leader "n2"
-                              :vote (vote 3 "n2")}}]
+                             :current_leader "n2"
+                             :vote (vote 3 "n2")}}]
     (with-redefs [client/metrics! metrics]
       (let [status (#'cluster/cluster-status test-config)]
         (is (= "n2" (:leader status)))
@@ -30,37 +30,37 @@
 
 (deftest rejects-disagreement-about-the-leader
   (let [metrics {"n1:21001" {:state "Leader"
-                              :current_leader "n1"
-                              :vote (vote 2 "n1")}
+                             :current_leader "n1"
+                             :vote (vote 2 "n1")}
                  "n2:21001" {:state "Follower"
-                              :current_leader "n1"
-                              :vote (vote 2 "n1")}
+                             :current_leader "n1"
+                             :vote (vote 2 "n1")}
                  "n3:21001" {:state "Leader"
-                              :current_leader "n3"
-                              :vote (vote 3 "n3")}}]
+                             :current_leader "n3"
+                             :vote (vote 3 "n3")}}]
     (with-redefs [client/metrics! metrics]
       (is (nil? (#'cluster/cluster-status test-config))))))
 
 (deftest rejects-a-node-without-a-known-leader
   (let [metrics {"n1:21001" {:state "Follower"
-                              :current_leader "n2"
-                              :vote (vote 3 "n2")}
+                             :current_leader "n2"
+                             :vote (vote 3 "n2")}
                  "n2:21001" {:state "Leader"
-                              :current_leader "n2"
-                              :vote (vote 3 "n2")}
+                             :current_leader "n2"
+                             :vote (vote 3 "n2")}
                  "n3:21001" {:state "Follower"
-                              :current_leader nil
-                              :vote (vote 3 "n2")}}]
+                             :current_leader nil
+                             :vote (vote 3 "n2")}}]
     (with-redefs [client/metrics! metrics]
       (is (nil? (#'cluster/cluster-status test-config))))))
 
 (deftest rejects-an-unreachable-test-node
   (let [metrics {"n1:21001" {:state "Follower"
-                              :current_leader "n2"
-                              :vote (vote 3 "n2")}
+                             :current_leader "n2"
+                             :vote (vote 3 "n2")}
                  "n2:21001" {:state "Leader"
-                              :current_leader "n2"
-                              :vote (vote 3 "n2")}}]
+                             :current_leader "n2"
+                             :vote (vote 3 "n2")}}]
     (with-redefs [client/metrics!
                   (fn [endpoint]
                     (or (get metrics endpoint)
@@ -71,7 +71,7 @@
 (deftest preserves-metrics-request-interruption
   (doseq [[label error] [[:raw #(InterruptedException. "interrupted")]
                          [:wrapped #(ex-info "interrupted"
-                                            {:kind :interrupted})]]]
+                                             {:kind :interrupted})]]]
     (let [interrupted?
           @(future
              (with-redefs [client/metrics!
@@ -117,9 +117,9 @@
 
 (deftest observes-a-stable-membership
   (let [membership (stored-membership
-                     7
-                     [["n1" "n2" "n3"]]
-                     ["n1" "n2" "n3" "n4"])
+                    7
+                    [["n1" "n2" "n3"]]
+                    ["n1" "n2" "n3" "n4"])
         responses {"n1:21001" (metrics "Leader" "n1"
                                        membership membership)
                    "n2:21001" (metrics "Follower" "n1"
@@ -144,14 +144,14 @@
 
 (deftest observes-a-joint-membership
   (let [committed (stored-membership
-                    7
-                    [["n1" "n2" "n3"]]
-                    ["n1" "n2" "n3" "n4"])
+                   7
+                   [["n1" "n2" "n3"]]
+                   ["n1" "n2" "n3" "n4"])
         effective (stored-membership
-                    8
-                    [["n1" "n2" "n3"]
-                     ["n1" "n2" "n3" "n4"]]
-                    ["n1" "n2" "n3" "n4"])
+                   8
+                   [["n1" "n2" "n3"]
+                    ["n1" "n2" "n3" "n4"]]
+                   ["n1" "n2" "n3" "n4"])
         responses {"n1:21001" (metrics "Leader" "n1"
                                        effective committed)
                    "n2:21001" (metrics "Follower" "n1"
@@ -197,9 +197,9 @@
 
 (deftest rejects-support-from-an-older-leader-term
   (let [membership (stored-membership
-                     7
-                     [["n1" "n2" "n3"]]
-                     ["n1" "n2" "n3"])
+                    7
+                    [["n1" "n2" "n3"]]
+                    ["n1" "n2" "n3"])
         responses {"n1:21001" (metrics "Leader" 3 "n1"
                                        membership membership)
                    "n2:21001" (metrics "Follower" 2 "n1"
@@ -211,13 +211,13 @@
 
 (deftest ignores-a-stale-removed-leader
   (let [old-membership (stored-membership
-                         7
-                         [["n1" "n2" "n3" "n4" "n5"]]
-                         ["n1" "n2" "n3" "n4" "n5"])
+                        7
+                        [["n1" "n2" "n3" "n4" "n5"]]
+                        ["n1" "n2" "n3" "n4" "n5"])
         membership (stored-membership
-                     9
-                     [["n2" "n3" "n4"]]
-                     ["n2" "n3" "n4"])
+                    9
+                    [["n2" "n3" "n4"]]
+                    ["n2" "n3" "n4"])
         responses {"n1:21001" (metrics "Leader" "n1"
                                        old-membership old-membership)
                    "n2:21001" (metrics "Leader" "n2"

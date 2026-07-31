@@ -66,14 +66,14 @@
 (defn- collect-reachable-metrics [test]
   (into {}
         (keep
-          (fn [node]
-            (try
-              [node (node-metrics! test node)]
-              (catch InterruptedException e
-                (throw e))
-              (catch Exception _
-                nil)))
-          (:nodes test))))
+         (fn [node]
+           (try
+             [node (node-metrics! test node)]
+             (catch InterruptedException e
+               (throw e))
+             (catch Exception _
+               nil)))
+         (:nodes test))))
 
 (defn- cluster-status [test]
   (let [metrics (collect-reachable-metrics test)
@@ -93,7 +93,7 @@
           {:leader leader
            :metrics metrics})))))
 
-(defn- supported-leader? [test metrics [leader leader-metrics]]
+(defn- supported-leader? [metrics [leader leader-metrics]]
   (let [leader-id (client/node-host leader)
         leader-vote (committed-leader-vote leader-metrics leader-id)
         configs (get-in leader-metrics
@@ -119,7 +119,7 @@
   "Returns the membership view of a leader supported by a voter quorum, or nil."
   [test]
   (let [metrics (collect-reachable-metrics test)
-        leaders (filter #(supported-leader? test metrics %) metrics)]
+        leaders (filter #(supported-leader? metrics %) metrics)]
     (when (= 1 (count leaders))
       (let [[leader leader-metrics] (first leaders)
             effective (get leader-metrics :membership_config)
@@ -128,8 +128,8 @@
             committed-configs (get-in committed [:membership :configs])
             voter-configs (voter-config-sets test effective-configs)
             committed-voter-configs (voter-config-sets
-                                      test
-                                      committed-configs)
+                                     test
+                                     committed-configs)
             voters (quorum/voter-set voter-configs)
             members (->> (get-in effective [:membership :nodes])
                          keys
@@ -152,15 +152,15 @@
   "Waits for a committed membership view from a quorum-supported leader."
   [test]
   (util/await-fn
-    #(let [status (membership-status test)]
-       (if (and status
-                (= (:effective-log-id status)
-                   (:committed-log-id status)))
-         status
-         (throw (ex-info "OpenRaft membership is not committed yet"
-                         {:status status}))))
-    {:log-message "Waiting for a committed OpenRaft membership"
-     :timeout 60000}))
+   #(let [status (membership-status test)]
+      (if (and status
+               (= (:effective-log-id status)
+                  (:committed-log-id status)))
+        status
+        (throw (ex-info "OpenRaft membership is not committed yet"
+                        {:status status}))))
+   {:log-message "Waiting for a committed OpenRaft membership"
+    :timeout 60000}))
 
 (defn await-stable-membership!
   "Waits for any stable membership, or for the expected voter set."
@@ -169,23 +169,23 @@
   ([test expected-voters]
    (let [expected-voters (some-> expected-voters set)]
      (util/await-fn
-       #(let [status (membership-status test)]
-          (if (and (:stable? status)
-                   (or (nil? expected-voters)
-                       (= expected-voters (:voters status))))
-            status
-            (throw (ex-info "OpenRaft membership is not stable yet"
-                            {:expected-voters expected-voters
-                             :status status}))))
-       {:log-message "Waiting for OpenRaft membership to become stable"
-        :timeout 60000}))))
+      #(let [status (membership-status test)]
+         (if (and (:stable? status)
+                  (or (nil? expected-voters)
+                      (= expected-voters (:voters status))))
+           status
+           (throw (ex-info "OpenRaft membership is not stable yet"
+                           {:expected-voters expected-voters
+                            :status status}))))
+      {:log-message "Waiting for OpenRaft membership to become stable"
+       :timeout 60000}))))
 
 (defn await-ready! [test]
   (util/await-fn
-    #(or (cluster-status test)
-         (throw (ex-info "OpenRaft cluster is not ready yet" {})))
-    {:log-message "Waiting for every OpenRaft node to agree on a leader"
-     :timeout 60000}))
+   #(or (cluster-status test)
+        (throw (ex-info "OpenRaft cluster is not ready yet" {})))
+   {:log-message "Waiting for every OpenRaft node to agree on a leader"
+    :timeout 60000}))
 
 (defn voter-configs
   "Maps the effective OpenRaft voter configs to Jepsen node names."
@@ -216,14 +216,14 @@
     ;; therefore races with the first add-learner, which fails with
     ;; `ChangeMembershipError::InProgress`.
     (util/await-fn
-      #(let [metrics (client/metrics! leader-endpoint)]
-         (if (and (= leader-id (:current_leader metrics))
-                  (membership-committed? metrics))
-           metrics
-           (throw (ex-info "Initial OpenRaft leader is not ready yet"
-                           {:metrics metrics}))))
-      {:log-message "Waiting for initial OpenRaft leader to commit its membership"
-       :timeout 60000})
+     #(let [metrics (client/metrics! leader-endpoint)]
+        (if (and (= leader-id (:current_leader metrics))
+                 (membership-committed? metrics))
+          metrics
+          (throw (ex-info "Initial OpenRaft leader is not ready yet"
+                          {:metrics metrics}))))
+     {:log-message "Waiting for initial OpenRaft leader to commit its membership"
+      :timeout 60000})
 
     (doseq [node learners
             :let [{:keys [node-id api-addr raft-addr]} (node-info test node)]]

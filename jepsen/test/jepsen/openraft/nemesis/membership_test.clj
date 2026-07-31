@@ -1,11 +1,11 @@
 (ns jepsen.openraft.nemesis.membership-test
   (:require [clojure.test :refer [deftest is testing]]
             [jepsen [checker :as checker]
-                    [nemesis :as nemesis]
-                    [util :as util]]
+             [nemesis :as nemesis]
+             [util :as util]]
             [jepsen.openraft [client :as client]
-                             [cluster :as cluster]
-                             [db :as openraft-db]]
+             [cluster :as cluster]
+             [db :as openraft-db]]
             [jepsen.openraft.nemesis.membership :as membership]
             [jepsen.random :as random]))
 
@@ -20,8 +20,8 @@
   (ex-info "forward"
            {:kind :openraft-error
             :error {:ForwardToLeader
-                     {:leader_id "n2"
-                      :leader_node {:data endpoint}}}}))
+                    {:leader_id "n2"
+                     :leader_node {:data endpoint}}}}))
 
 (deftest shrink-confirms-membership-before-wiping
   (let [calls (atom [])
@@ -52,10 +52,10 @@
                   (fn [database _test node]
                     (swap! calls conj [:stop-and-wipe database node]))]
       (let [result (nemesis/invoke!
-                     subject
-                     test-config
-                     {:type :info
-                      :f :shrink})]
+                    subject
+                    test-config
+                    {:type :info
+                     :f :shrink})]
         (is (= [[:await nil]
                 [:change-membership "n1:21001"
                  ["n1" "n2" "n3" "n4"]]
@@ -104,10 +104,10 @@
                     (swap! calls conj
                            [:change-membership endpoint node-ids]))]
       (let [result (nemesis/invoke!
-                     subject
-                     test-config
-                     {:type :info
-                      :f :grow})]
+                    subject
+                    test-config
+                    {:type :info
+                     :f :grow})]
         (is (= [[:await nil]
                 [:start-empty :database "n5"]
                 [:add-learner
@@ -226,10 +226,10 @@
                   (fn [_endpoint _node-ids]
                     (swap! calls conj :change-membership))]
       (let [result (nemesis/invoke!
-                     subject
-                     test-config
-                     {:type :info
-                      :f :grow})]
+                    subject
+                    test-config
+                    {:type :info
+                     :f :grow})]
         (is (= [:add-learner
                 :observe-learner
                 :change-membership
@@ -277,10 +277,10 @@
          (swap! calls conj :change-membership)
          (when (= 1 (count @calls))
            (throw (ex-info
-                    "in progress"
-                    {:kind :openraft-error
-                     :error {:ChangeMembershipError
-                             {:InProgress {}}}}))))
+                   "in progress"
+                   {:kind :openraft-error
+                    :error {:ChangeMembershipError
+                            {:InProgress {}}}}))))
        #'membership/stable-membership!
        (fn [_test]
          (swap! calls conj :complete-pending)
@@ -292,9 +292,9 @@
       (fn []
         (is (= final
                (#'membership/change-membership-and-await!
-                 test-config
-                 (atom "n1:21001")
-                 target)))
+                test-config
+                (atom "n1:21001")
+                target)))
         (is (= [:change-membership
                 :complete-pending
                 :change-membership
@@ -421,10 +421,10 @@
                     (reset! wiped? true))]
       (is (thrown? Exception
                    (nemesis/invoke!
-                     subject
-                     test-config
-                     {:type :info
-                      :f :shrink})))
+                    subject
+                    test-config
+                    {:type :info
+                     :f :shrink})))
       (is (= [[:change-membership
                "n1:21001"
                ["n1" "n2" "n3" "n4"]]
@@ -450,10 +450,10 @@
                   (fn [& _]
                     (throw (ex-info "MUST NOT wipe a voter" {})))]
       (let [result (nemesis/invoke!
-                     subject
-                     test-config
-                     {:type :info
-                      :f :shrink})]
+                    subject
+                    test-config
+                    {:type :info
+                     :f :shrink})]
         (is (= :minimum-membership (:value result)))))))
 
 (deftest restores-all-test-nodes-as-voters
@@ -480,10 +480,10 @@
          {:leader "n2"})}
       (fn []
         (let [result (nemesis/invoke!
-                       subject
-                       test-config
-                       {:type :info
-                        :f :restore-membership})]
+                      subject
+                      test-config
+                      {:type :info
+                       :f :restore-membership})]
           (is (= 2 @grow-count))
           (is (= {:leader "n2"
                   :voters (set nodes)}
@@ -499,10 +499,10 @@
       (fn []
         (let [error (try
                       (nemesis/invoke!
-                        subject
-                        test-config
-                        {:type :info
-                         :f :restore-membership})
+                       subject
+                       test-config
+                       {:type :info
+                        :f :restore-membership})
                       nil
                       (catch clojure.lang.ExceptionInfo e
                         e))]
@@ -526,8 +526,8 @@
 
 (deftest checks-membership-coverage-and-restoration
   (let [subject (:checker (membership/membership-package
-                            :database
-                            test-config))
+                           :database
+                           test-config))
         all-voters (set nodes)
         four-voters #{"n1" "n2" "n3" "n4"}
         shrink {:type :info
@@ -551,14 +551,14 @@
 
     (testing "a no-op does not count as membership change coverage"
       (let [result (checker/check
-                     subject
-                     test-config
-                     [shrink
-                      {:type :info
-                       :f :grow
-                       :value :membership-full}
-                      restore]
-                     {})]
+                    subject
+                    test-config
+                    [shrink
+                     {:type :info
+                      :f :grow
+                      :value :membership-full}
+                     restore]
+                    {})]
         (is (false? (:valid? result)))
         (is (= [:grow] (:missing-changes result)))))
 
@@ -580,13 +580,13 @@
 
     (testing "a nemesis operation error invalidates the test"
       (let [result (checker/check
-                     subject
-                     test-config
-                     (conj complete-history
-                           {:type :info
-                            :f :grow
-                            :error "learner unavailable"
-                            :exception {:kind :learner-unreachable}})
-                     {})]
+                    subject
+                    test-config
+                    (conj complete-history
+                          {:type :info
+                           :f :grow
+                           :error "learner unavailable"
+                           :exception {:kind :learner-unreachable}})
+                    {})]
         (is (false? (:valid? result)))
         (is (= 1 (:error-count result)))))))

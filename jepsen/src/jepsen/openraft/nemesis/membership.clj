@@ -1,13 +1,13 @@
 (ns jepsen.openraft.nemesis.membership
   (:require [clojure.tools.logging :refer [info]]
             [jepsen [checker :as checker]
-                    [generator :as gen]
-                    [nemesis :as nemesis]
-                    [random :as random]
-                    [util :as util]]
+             [generator :as gen]
+             [nemesis :as nemesis]
+             [random :as random]
+             [util :as util]]
             [jepsen.openraft [client :as client]
-                             [cluster :as cluster]
-                             [db :as openraft-db]]
+             [cluster :as cluster]
+             [db :as openraft-db]]
             [jepsen.openraft.quorum :as quorum]))
 
 (def change-seconds 10)
@@ -46,9 +46,9 @@
 (defn- await-reachable-learner! [test node]
   (try
     (util/await-fn
-      #(cluster/node-metrics! test node)
-      {:log-message (str "Waiting for OpenRaft learner " node)
-       :timeout learner-wait-timeout-ms})
+     #(cluster/node-metrics! test node)
+     {:log-message (str "Waiting for OpenRaft learner " node)
+      :timeout learner-wait-timeout-ms})
     (catch InterruptedException e
       (.interrupt (Thread/currentThread))
       (throw e))
@@ -62,9 +62,9 @@
   [test leader-endpoint target-voters]
   (try
     (request-leader!
-      test
-      leader-endpoint
-      #(client/change-membership! % (voter-ids test target-voters)))
+     test
+     leader-endpoint
+     #(client/change-membership! % (voter-ids test target-voters)))
     (catch Exception e
       (when-not (ambiguous-request-error? e)
         (throw e))
@@ -102,9 +102,9 @@
       (let [status (stable-membership! test)]
         (when-not (= target-voters (:voters status))
           (request-membership-change!
-            test
-            leader-endpoint
-            target-voters)))))
+           test
+           leader-endpoint
+           target-voters)))))
   (try
     (cluster/await-stable-membership! test target-voters)
     (catch Exception e
@@ -117,24 +117,24 @@
 
 (defn- await-observed-learner! [test node]
   (util/await-fn
-    #(let [status (cluster/membership-status test)]
-       (if (and (:stable? status)
-                (contains? (:learners status) node))
-         status
-         (throw (ex-info "OpenRaft learner is not committed yet"
-                         {:node node
-                          :status status}))))
-    {:log-message (str "Waiting for OpenRaft learner " node
-                       " to appear in membership")
-     :timeout learner-wait-timeout-ms}))
+   #(let [status (cluster/membership-status test)]
+      (if (and (:stable? status)
+               (contains? (:learners status) node))
+        status
+        (throw (ex-info "OpenRaft learner is not committed yet"
+                        {:node node
+                         :status status}))))
+   {:log-message (str "Waiting for OpenRaft learner " node
+                      " to appear in membership")
+    :timeout learner-wait-timeout-ms}))
 
 (defn- add-learner-and-confirm!
   [test leader-endpoint node node-id api-addr raft-addr]
   (try
     (request-leader!
-      test
-      leader-endpoint
-      #(client/add-learner! % node-id api-addr raft-addr))
+     test
+     leader-endpoint
+     #(client/add-learner! % node-id api-addr raft-addr))
     (catch Exception e
       (when-not (ambiguous-request-error? e)
         (throw e))
@@ -168,12 +168,12 @@
                :source source
                :leader leader})
         (add-learner-and-confirm!
-          test
-          leader-endpoint
-          node
-          node-id
-          api-addr
-          raft-addr)
+         test
+         leader-endpoint
+         node
+         node-id
+         api-addr
+         raft-addr)
 
         (info "Growing OpenRaft membership"
               {:node node
@@ -182,9 +182,9 @@
 
         (let [final-status
               (change-membership-and-await!
-                test
-                leader-endpoint
-                target-voters)]
+               test
+               leader-endpoint
+               target-voters)]
           {:node node
            :source source
            :leader (:leader final-status)
@@ -194,10 +194,10 @@
 (defn- shrink-candidates [{:keys [voters metrics]}]
   (let [reachable (set (keys metrics))]
     (filter
-      (fn [node]
-        (let [target-voters (disj voters node)]
-          (quorum/quorum? [target-voters] reachable)))
-      voters)))
+     (fn [node]
+       (let [target-voters (disj voters node)]
+         (quorum/quorum? [target-voters] reachable)))
+     voters)))
 
 (defn- shrink! [database test]
   (let [{:keys [leader voters learners] :as status}
@@ -220,9 +220,9 @@
 
           (let [final-status
                 (change-membership-and-await!
-                  test
-                  leader-endpoint
-                  target-voters)]
+                 test
+                 leader-endpoint
+                 target-voters)]
             (openraft-db/stop-and-wipe-node! database test node)
             {:node node
              :leader (:leader final-status)
@@ -265,20 +265,20 @@
 
 (defn membership-nemesis [database]
   (nemesis/validate
-    (MembershipNemesis. database)))
+   (MembershipNemesis. database)))
 
 (defn- membership-generator []
   (gen/stagger
-    change-seconds
-    (gen/phases
-      {:type :info
-       :f :shrink}
-      {:type :info
-       :f :grow}
-      (gen/mix [(repeat {:type :info
-                         :f :grow})
-                (repeat {:type :info
-                         :f :shrink})]))))
+   change-seconds
+   (gen/phases
+    {:type :info
+     :f :shrink}
+    {:type :info
+     :f :grow}
+    (gen/mix [(repeat {:type :info
+                       :f :grow})
+              (repeat {:type :info
+                       :f :shrink})]))))
 
 (defn- coverage-checker []
   (reify checker/Checker
@@ -287,9 +287,9 @@
             expected-voters (set (:nodes test))
             membership-history (->> history
                                     (filter
-                                      #(#{:grow
-                                          :shrink
-                                          :restore-membership} (:f %)))
+                                     #(#{:grow
+                                         :shrink
+                                         :restore-membership} (:f %)))
                                     vec)
             errors (->> membership-history
                         (filter #(or (:error %)
@@ -297,15 +297,15 @@
                         vec)
             observed-changes (->> history
                                   (filter
-                                    #(required-changes (:f %)))
+                                   #(required-changes (:f %)))
                                   (filter
-                                    (fn [op]
-                                      (let [value (:value op)]
-                                        (and (map? value)
-                                             (contains? value :before)
-                                             (contains? value :after)
-                                             (not= (:before value)
-                                                   (:after value))))))
+                                   (fn [op]
+                                     (let [value (:value op)]
+                                       (and (map? value)
+                                            (contains? value :before)
+                                            (contains? value :after)
+                                            (not= (:before value)
+                                                  (:after value))))))
                                   (map :f)
                                   set)
             missing-changes (remove observed-changes

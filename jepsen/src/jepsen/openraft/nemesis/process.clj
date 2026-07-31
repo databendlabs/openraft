@@ -1,9 +1,9 @@
 (ns jepsen.openraft.nemesis.process
   (:require [clojure.tools.logging :refer [info]]
             [jepsen [checker :as checker]
-                    [generator :as gen]
-                    [nemesis :as nemesis]
-                    [random :as random]]
+             [generator :as gen]
+             [nemesis :as nemesis]
+             [random :as random]]
             [jepsen.nemesis.combined :as combined]
             [jepsen.openraft.cluster :as cluster]
             [jepsen.openraft.quorum :as quorum]))
@@ -101,29 +101,29 @@
 
 (defn process-nemesis [db]
   (nemesis/validate
-    (ProcessNemesis. (combined/db-nemesis db) (atom nil))))
+   (ProcessNemesis. (combined/db-nemesis db) (atom nil))))
 
 (defn- process-generator []
   (gen/cycle
-    (gen/phases
-      (gen/sleep healthy-seconds)
-      {:type :info
-       :f :kill-process
-       :value :leader-survives}
-      (gen/sleep downtime-seconds)
-      {:type :info
-       :f :restart-process}
-      {:type :info
-       :f :await-recovery}
-      (gen/sleep healthy-seconds)
-      {:type :info
-       :f :kill-process
-       :value :leader-killed}
-      (gen/sleep downtime-seconds)
-      {:type :info
-       :f :restart-process}
-      {:type :info
-       :f :await-recovery})))
+   (gen/phases
+    (gen/sleep healthy-seconds)
+    {:type :info
+     :f :kill-process
+     :value :leader-survives}
+    (gen/sleep downtime-seconds)
+    {:type :info
+     :f :restart-process}
+    {:type :info
+     :f :await-recovery}
+    (gen/sleep healthy-seconds)
+    {:type :info
+     :f :kill-process
+     :value :leader-killed}
+    (gen/sleep downtime-seconds)
+    {:type :info
+     :f :restart-process}
+    {:type :info
+     :f :await-recovery})))
 
 (defn- coverage-checker []
   (reify checker/Checker
@@ -134,36 +134,36 @@
                                 set)
             missing-modes (remove observed-modes required-process-modes)
             cluster-state (reduce
-                            (fn [state op]
-                              (let [operation-error? (boolean
-                                                      (or (:error op)
-                                                          (:exception op)))]
-                                (cond
-                                  (and (= :kill-process (:f op))
-                                       operation-error?)
-                                  :unknown
+                           (fn [state op]
+                             (let [operation-error? (boolean
+                                                     (or (:error op)
+                                                         (:exception op)))]
+                               (cond
+                                 (and (= :kill-process (:f op))
+                                      operation-error?)
+                                 :unknown
 
-                                  (and (= :kill-process (:f op))
-                                       (get-in op [:value :mode]))
-                                  :degraded
+                                 (and (= :kill-process (:f op))
+                                      (get-in op [:value :mode]))
+                                 :degraded
 
-                                  (and (= :restart-process (:f op))
-                                       operation-error?)
-                                  :unknown
+                                 (and (= :restart-process (:f op))
+                                      operation-error?)
+                                 :unknown
 
-                                  (and (= :await-recovery (:f op))
-                                       (get-in op [:value :leader]))
-                                  :intact
+                                 (and (= :await-recovery (:f op))
+                                      (get-in op [:value :leader]))
+                                 :intact
 
-                                  (and (= :await-recovery (:f op))
-                                       operation-error?)
-                                  (if (= :degraded state)
-                                    :degraded
-                                    :unknown)
+                                 (and (= :await-recovery (:f op))
+                                      operation-error?)
+                                 (if (= :degraded state)
+                                   :degraded
+                                   :unknown)
 
-                                  :else state)))
-                            :intact
-                            history)
+                                 :else state)))
+                           :intact
+                           history)
             valid? (cond
                      (seq missing-modes) false
                      (= :intact cluster-state) true
@@ -178,8 +178,8 @@
   {:nemesis (process-nemesis db)
    :generator (process-generator)
    :final-generator (gen/phases
-                      (gen/once {:type :info
-                                 :f :restart-process})
-                      (gen/once {:type :info
-                                 :f :await-recovery}))
+                     (gen/once {:type :info
+                                :f :restart-process})
+                     (gen/once {:type :info
+                                :f :await-recovery}))
    :checker (coverage-checker)})

@@ -1,8 +1,8 @@
 (ns jepsen.openraft.workload
   (:require [jepsen [checker :as checker]
-                    [client :as client]
-                    [core :as jepsen]
-                    [generator :as gen]]
+             [client :as client]
+             [core :as jepsen]
+             [generator :as gen]]
             [jepsen.openraft.client :as http]
             [knossos.model :as model]))
 
@@ -219,16 +219,16 @@
                              (cas-op latest-value value-counter)])]
     {:client (client/validate (KVClient. nil nil nil latest-value))
      :generator (gen/clients
-                  (gen/phases
-                    (gen/once {:type :invoke
-                               :f :write
-                               :value (next-value! value-counter)})
-                    (gen/stagger 0.1 operations)))
+                 (gen/phases
+                  (gen/once {:type :invoke
+                             :f :write
+                             :value (next-value! value-counter)})
+                  (gen/stagger 0.1 operations)))
      :final-generator (gen/clients
-                        (gen/phases
-                          (gen/once (final-write-op value-counter))
-                          (gen/once final-read-op)))
+                       (gen/phases
+                        (gen/once (final-write-op value-counter))
+                        (gen/once final-read-op)))
      :checker (checker/compose
-                {:linearizable (checker/linearizable
-                                 {:model (model/cas-register)})
-                 :unexpected-errors (unexpected-errors-checker)})}))
+               {:linearizable (checker/linearizable
+                               {:model (model/cas-register)})
+                :unexpected-errors (unexpected-errors-checker)})}))
