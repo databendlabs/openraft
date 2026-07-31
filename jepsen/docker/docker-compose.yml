@@ -9,6 +9,8 @@ services:
       - n1
       - n2
       - n3
+      - n4
+      - n5
     volumes:
       - ../..:/openraft
       - ./ssh/openraft-jepsen:/root/.ssh/openraft-jepsen:ro
@@ -31,3 +33,11 @@ services:
   n3:
     <<: *node
     hostname: n3
+
+  n4:
+    <<: *node
+    hostname: n4
+
+  n5:
+    <<: *node
+    hostname: n5
