@@ -8,10 +8,6 @@ mod coherent_impl;
 mod quorum_set;
 mod quorum_set_impl;
 
-#[cfg(feature = "bench")]
-#[cfg(test)]
-mod bench;
-
 #[cfg(test)]
 mod coherent_test;
 #[cfg(test)]
