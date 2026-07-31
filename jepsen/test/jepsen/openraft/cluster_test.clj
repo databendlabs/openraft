@@ -6,9 +6,6 @@
 
 (def test-config
   {:nodes ["n1" "n2" "n3"]
-   :node-ids {"n1" 1
-              "n2" 2
-              "n3" 3}
    :api-port 21001})
 
 (defn- vote [term leader]
@@ -16,29 +13,16 @@
                :node_id leader}
    :committed true})
 
-(deftest node-ids-do-not-depend-on-node-order
-  (let [node-ids (cluster/node-id-map ["n3" "n1" "n2"])
-        test (assoc test-config
-                    :nodes ["n2" "n3" "n1"]
-                    :node-ids node-ids)]
-    (is (= {"n1" 1
-            "n2" 2
-            "n3" 3}
-           node-ids))
-    (is (= 1 (cluster/node-id test "n1")))
-    (is (= 2 (cluster/node-id test "n2")))
-    (is (= 3 (cluster/node-id test "n3")))))
-
 (deftest finds-the-leader-agreed-on-by-all-nodes
   (let [metrics {"n1:21001" {:state "Follower"
-                              :current_leader 2
-                              :vote (vote 3 2)}
+                              :current_leader "n2"
+                              :vote (vote 3 "n2")}
                  "n2:21001" {:state "Leader"
-                              :current_leader 2
-                              :vote (vote 3 2)}
+                              :current_leader "n2"
+                              :vote (vote 3 "n2")}
                  "n3:21001" {:state "Follower"
-                              :current_leader 2
-                              :vote (vote 3 2)}}]
+                              :current_leader "n2"
+                              :vote (vote 3 "n2")}}]
     (with-redefs [client/metrics! metrics]
       (let [status (#'cluster/cluster-status test-config)]
         (is (= "n2" (:leader status)))
@@ -46,37 +30,37 @@
 
 (deftest rejects-disagreement-about-the-leader
   (let [metrics {"n1:21001" {:state "Leader"
-                              :current_leader 1
-                              :vote (vote 2 1)}
+                              :current_leader "n1"
+                              :vote (vote 2 "n1")}
                  "n2:21001" {:state "Follower"
-                              :current_leader 1
-                              :vote (vote 2 1)}
+                              :current_leader "n1"
+                              :vote (vote 2 "n1")}
                  "n3:21001" {:state "Leader"
-                              :current_leader 3
-                              :vote (vote 3 3)}}]
+                              :current_leader "n3"
+                              :vote (vote 3 "n3")}}]
     (with-redefs [client/metrics! metrics]
       (is (nil? (#'cluster/cluster-status test-config))))))
 
 (deftest rejects-a-node-without-a-known-leader
   (let [metrics {"n1:21001" {:state "Follower"
-                              :current_leader 2
-                              :vote (vote 3 2)}
+                              :current_leader "n2"
+                              :vote (vote 3 "n2")}
                  "n2:21001" {:state "Leader"
-                              :current_leader 2
-                              :vote (vote 3 2)}
+                              :current_leader "n2"
+                              :vote (vote 3 "n2")}
                  "n3:21001" {:state "Follower"
                               :current_leader nil
-                              :vote (vote 3 2)}}]
+                              :vote (vote 3 "n2")}}]
     (with-redefs [client/metrics! metrics]
       (is (nil? (#'cluster/cluster-status test-config))))))
 
 (deftest rejects-an-unreachable-test-node
   (let [metrics {"n1:21001" {:state "Follower"
-                              :current_leader 2
-                              :vote (vote 3 2)}
+                              :current_leader "n2"
+                              :vote (vote 3 "n2")}
                  "n2:21001" {:state "Leader"
-                              :current_leader 2
-                              :vote (vote 3 2)}}]
+                              :current_leader "n2"
+                              :vote (vote 3 "n2")}}]
     (with-redefs [client/metrics!
                   (fn [endpoint]
                     (or (get metrics endpoint)
@@ -129,19 +113,21 @@
 
 (def five-node-config
   {:nodes ["n1" "n2" "n3" "n4" "n5"]
-   :node-ids {"n1" 1
-              "n2" 2
-              "n3" 3
-              "n4" 4
-              "n5" 5}
    :api-port 21001})
 
 (deftest observes-a-stable-membership
-  (let [membership (stored-membership 7 [[1 2 3]] [1 2 3 4])
-        responses {"n1:21001" (metrics "Leader" 1 membership membership)
-                   "n2:21001" (metrics "Follower" 1 membership membership)
-                   "n3:21001" (metrics "Follower" 1 membership membership)
-                   "n4:21001" (metrics "Learner" 1 membership membership)}]
+  (let [membership (stored-membership
+                     7
+                     [["n1" "n2" "n3"]]
+                     ["n1" "n2" "n3" "n4"])
+        responses {"n1:21001" (metrics "Leader" "n1"
+                                       membership membership)
+                   "n2:21001" (metrics "Follower" "n1"
+                                       membership membership)
+                   "n3:21001" (metrics "Follower" "n1"
+                                       membership membership)
+                   "n4:21001" (metrics "Learner" "n1"
+                                       membership membership)}]
     (with-redefs [client/metrics!
                   (fn [endpoint]
                     (or (get responses endpoint)
@@ -157,15 +143,23 @@
         (is (= #{"n5"} (:non-members status)))))))
 
 (deftest observes-a-joint-membership
-  (let [committed (stored-membership 7 [[1 2 3]] [1 2 3 4])
+  (let [committed (stored-membership
+                    7
+                    [["n1" "n2" "n3"]]
+                    ["n1" "n2" "n3" "n4"])
         effective (stored-membership
                     8
-                    [[1 2 3] [1 2 3 4]]
-                    [1 2 3 4])
-        responses {"n1:21001" (metrics "Leader" 1 effective committed)
-                   "n2:21001" (metrics "Follower" 1 effective committed)
-                   "n3:21001" (metrics "Follower" 1 effective committed)
-                   "n4:21001" (metrics "Follower" 1 effective committed)
+                    [["n1" "n2" "n3"]
+                     ["n1" "n2" "n3" "n4"]]
+                    ["n1" "n2" "n3" "n4"])
+        responses {"n1:21001" (metrics "Leader" "n1"
+                                       effective committed)
+                   "n2:21001" (metrics "Follower" "n1"
+                                       effective committed)
+                   "n3:21001" (metrics "Follower" "n1"
+                                       effective committed)
+                   "n4:21001" (metrics "Follower" "n1"
+                                       effective committed)
                    "n5:21001" (metrics "Learner" nil effective committed)}]
     (with-redefs [client/metrics! responses]
       (let [status (cluster/membership-status five-node-config)]
@@ -202,29 +196,37 @@
       (is (= [:retry] @attempts)))))
 
 (deftest rejects-support-from-an-older-leader-term
-  (let [membership (stored-membership 7 [[1 2 3]] [1 2 3])
-        responses {"n1:21001" (metrics "Leader" 3 1
+  (let [membership (stored-membership
+                     7
+                     [["n1" "n2" "n3"]]
+                     ["n1" "n2" "n3"])
+        responses {"n1:21001" (metrics "Leader" 3 "n1"
                                        membership membership)
-                   "n2:21001" (metrics "Follower" 2 1
+                   "n2:21001" (metrics "Follower" 2 "n1"
                                        membership membership)
-                   "n3:21001" (metrics "Follower" 2 1
+                   "n3:21001" (metrics "Follower" 2 "n1"
                                        membership membership)}]
     (with-redefs [client/metrics! responses]
       (is (nil? (cluster/membership-status test-config))))))
 
 (deftest ignores-a-stale-removed-leader
-  (let [old-membership (stored-membership 7 [[1 2 3 4 5]]
-                                          [1 2 3 4 5])
-        membership (stored-membership 9 [[2 3 4]] [2 3 4])
-        responses {"n1:21001" (metrics "Leader" 1
+  (let [old-membership (stored-membership
+                         7
+                         [["n1" "n2" "n3" "n4" "n5"]]
+                         ["n1" "n2" "n3" "n4" "n5"])
+        membership (stored-membership
+                     9
+                     [["n2" "n3" "n4"]]
+                     ["n2" "n3" "n4"])
+        responses {"n1:21001" (metrics "Leader" "n1"
                                        old-membership old-membership)
-                   "n2:21001" (metrics "Leader" 2
+                   "n2:21001" (metrics "Leader" "n2"
                                        membership membership)
-                   "n3:21001" (metrics "Follower" 2
+                   "n3:21001" (metrics "Follower" "n2"
                                        membership membership)
-                   "n4:21001" (metrics "Follower" 2
+                   "n4:21001" (metrics "Follower" "n2"
                                        membership membership)
-                   "n5:21001" (metrics "Candidate" 1
+                   "n5:21001" (metrics "Candidate" "n1"
                                        old-membership old-membership)}]
     (with-redefs [client/metrics! responses]
       (let [status (cluster/membership-status five-node-config)]
@@ -234,13 +236,10 @@
 
 (deftest maps-joint-voter-configs
   (let [test (assoc test-config
-                    :nodes ["n1" "n2" "n3" "n4"]
-                    :node-ids {"n1" 1
-                               "n2" 2
-                               "n3" 3
-                               "n4" 4})
+                    :nodes ["n1" "n2" "n3" "n4"])
         status {:leader "n2"
-                :metrics {"n2" (membership [[1 2 3] [1 2 4]])}}]
+                :metrics {"n2" (membership [["n1" "n2" "n3"]
+                                            ["n1" "n2" "n4"]])}}]
     (is (= [#{"n1" "n2" "n3"}
             #{"n1" "n2" "n4"}]
            (cluster/voter-configs test status)))))

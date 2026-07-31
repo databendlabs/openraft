@@ -1,0 +1,25 @@
+[package]
+name = "openraft-jepsen-app"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "openraft-jepsen-app"
+path = "src/bin/main.rs"
+
+[dependencies]
+app-http        = { path = "../../examples/app-http" }
+log-rocks       = { path = "../../examples/log-rocks" }
+network-v2-http = { path = "../../examples/network-v2-http" }
+openraft        = { path = "../../openraft", features = ["serde", "type-alias"] }
+types-kv        = { path = "../../examples/types-kv" }
+
+clap               = { version = "4.1.11", features = ["derive", "env"] }
+futures            = { version = "0.3" }
+rocksdb            = { version = "0.22.0" }
+serde              = { version = "1.0.114", features = ["derive"] }
+serde_json         = { version = "1.0.57" }
+tokio              = { version = "1.35.1", features = ["full"] }
+tracing            = { version = "0.1.40" }
+tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }

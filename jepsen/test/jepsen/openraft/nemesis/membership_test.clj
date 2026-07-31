@@ -13,11 +13,6 @@
 
 (def test-config
   {:nodes nodes
-   :node-ids {"n1" 1
-              "n2" 2
-              "n3" 3
-              "n4" 4
-              "n5" 5}
    :api-port 21001
    :raft-port 22001})
 
@@ -25,8 +20,8 @@
   (ex-info "forward"
            {:kind :openraft-error
             :error {:ForwardToLeader
-                    {:leader_id 2
-                     :leader_node {:data endpoint}}}}))
+                     {:leader_id "n2"
+                      :leader_node {:data endpoint}}}}))
 
 (deftest shrink-confirms-membership-before-wiping
   (let [calls (atom [])
@@ -62,7 +57,8 @@
                      {:type :info
                       :f :shrink})]
         (is (= [[:await nil]
-                [:change-membership "n1:21001" [1 2 3 4]]
+                [:change-membership "n1:21001"
+                 ["n1" "n2" "n3" "n4"]]
                 [:await after]
                 [:stop-and-wipe :database "n5"]]
                @calls))
@@ -116,10 +112,11 @@
                 [:start-empty :database "n5"]
                 [:add-learner
                  "n1:21001"
-                 5
+                 "n5"
                  "n5:21001"
                  "n5:22001"]
-                [:change-membership "n1:21001" [1 2 3 4 5]]
+                [:change-membership "n1:21001"
+                 ["n1" "n2" "n3" "n4" "n5"]]
                 [:await after]]
                @calls))
         (is (= {:node "n5"
@@ -262,7 +259,9 @@
       (fn []
         (is (= stable
                (#'membership/stable-membership! test-config)))
-        (is (= [[:change-membership "n1:21001" [1 2 3 4]]
+        (is (= [[:change-membership
+                 "n1:21001"
+                 ["n1" "n2" "n3" "n4"]]
                 [:await target]]
                @calls))))))
 
@@ -383,9 +382,13 @@
                        test-config
                        {:type :info
                         :f :shrink})
-      (is (= [[:change-membership "n1:21001" [1 2 3 4]]
+      (is (= [[:change-membership
+               "n1:21001"
+               ["n1" "n2" "n3" "n4"]]
               [:await after]
-              [:change-membership "n1:21001" [1 2 3 4]]
+              [:change-membership
+               "n1:21001"
+               ["n1" "n2" "n3" "n4"]]
               [:await after]
               [:stop-and-wipe "n5"]]
              @calls)))))
@@ -422,7 +425,9 @@
                      test-config
                      {:type :info
                       :f :shrink})))
-      (is (= [[:change-membership "n1:21001" [1 2 3 4]]
+      (is (= [[:change-membership
+               "n1:21001"
+               ["n1" "n2" "n3" "n4"]]
               [:await after]]
              @calls))
       (is (false? @wiped?)))))

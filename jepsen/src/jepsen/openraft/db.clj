@@ -7,8 +7,8 @@
             [jepsen.openraft.client :as client]
             [jepsen.openraft.cluster :as cluster]))
 
-(def binary "/usr/local/bin/raft-key-value-rocks")
-(def process-name "raft-key-value-rocks")
+(def binary "/usr/local/bin/openraft-jepsen-app")
+(def process-name "openraft-jepsen-app")
 (def data-dir "/var/lib/openraft")
 (def log-dir "/var/log/openraft")
 (def log-file (str log-dir "/openraft.log"))
@@ -54,7 +54,7 @@
     db/Kill
     (start! [_ test node]
       (prepare-dirs!)
-      (let [node-id (cluster/node-id test node)
+      (let [node-id (client/node-host node)
             api-addr (client/api-endpoint test node)
             raft-addr (client/raft-addr test node)]
         (info node "starting OpenRaft" {:id node-id

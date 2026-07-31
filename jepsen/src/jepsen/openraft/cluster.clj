@@ -6,34 +6,8 @@
             [jepsen.openraft.quorum :as quorum]
             [jepsen.util :as util]))
 
-(defn node-id-map [nodes]
-  (let [entries (mapv
-                  (fn [node]
-                    (let [node-name (client/node-host node)
-                          [_ id] (re-matches #"n([0-9]+)" node-name)]
-                      (when-not id
-                        (throw (ex-info
-                                 "OpenRaft node names must have the form n<ID>"
-                                 {:node node})))
-                      [node-name (parse-long id)]))
-                  nodes)
-        ids (map second entries)]
-    (when-not (= (count ids) (count (set ids)))
-      (throw (ex-info "OpenRaft node IDs must be unique"
-                      {:nodes nodes
-                       :node-ids entries})))
-    (into {} entries)))
-
-(defn node-id [test node]
-  (let [node-name (client/node-host node)]
-    (if-some [id (get (:node-ids test) node-name)]
-      id
-      (throw (ex-info "Node has no OpenRaft ID"
-                      {:node node
-                       :node-ids (:node-ids test)})))))
-
 (defn node-info [test node]
-  {:node-id (node-id test node)
+  {:node-id (client/node-host node)
    :api-addr (client/api-endpoint test node)
    :raft-addr (client/raft-addr test node)})
 
@@ -56,20 +30,22 @@
   (= (get-in metrics [:committed_membership_config :log_id])
      (get-in metrics [:membership_config :log_id])))
 
-(defn- nodes-by-id [test]
-  (set/map-invert (:node-ids test)))
+(defn- test-node-ids [test]
+  (set (map client/node-host (:nodes test))))
 
-(defn- map-node-ids [test ids]
-  (let [nodes (nodes-by-id test)
-        unknown-ids (remove #(contains? nodes %) ids)]
+(defn- validate-node-ids! [test ids]
+  (let [ids (set ids)
+        unknown-ids (set/difference ids (test-node-ids test))]
     (when (seq unknown-ids)
       (throw (ex-info "OpenRaft member is not a Jepsen test node"
-                      {:member-ids (set ids)
+                      {:member-ids ids
                        :unknown-ids (vec unknown-ids)})))
-    (set (map nodes ids))))
+    ids))
 
-(defn- map-voter-configs [test configs]
-  (mapv #(map-node-ids test %) configs))
+(defn- voter-config-sets [test configs]
+  (let [configs (mapv set configs)]
+    (validate-node-ids! test (quorum/voter-set configs))
+    configs))
 
 (defn node-metrics!
   "Fetches metrics from one node while preserving thread interruption."
@@ -108,7 +84,7 @@
                (= 1 (count leaders))
                (every? (comp ready-state? :state val) metrics))
       (let [[leader leader-metrics] (first leaders)
-            leader-id (node-id test leader)
+            leader-id (client/node-host leader)
             leader-vote (committed-leader-vote leader-metrics leader-id)]
         (when (and leader-vote
                    (every? #(and (= leader-id (:current_leader %))
@@ -118,7 +94,7 @@
            :metrics metrics})))))
 
 (defn- supported-leader? [test metrics [leader leader-metrics]]
-  (let [leader-id (node-id test leader)
+  (let [leader-id (client/node-host leader)
         leader-vote (committed-leader-vote leader-metrics leader-id)
         configs (get-in leader-metrics
                         [:membership_config :membership :configs])
@@ -127,7 +103,7 @@
                                 (when (and (= leader-id
                                               (:current_leader metrics))
                                            (= leader-vote (:vote metrics)))
-                                  (node-id test node))))
+                                  (client/node-host node))))
                         set)]
     (and leader-vote
          (= "Leader" (:state leader-metrics))
@@ -135,11 +111,9 @@
          (quorum/quorum? configs supporters))))
 
 (defn- serialized-node-id [id]
-  (cond
-    (integer? id) id
-    (keyword? id) (parse-long (name id))
-    (string? id) (parse-long id)
-    :else nil))
+  (if (keyword? id)
+    (name id)
+    id))
 
 (defn membership-status
   "Returns the membership view of a leader supported by a voter quorum, or nil."
@@ -152,15 +126,15 @@
             committed (get leader-metrics :committed_membership_config)
             effective-configs (get-in effective [:membership :configs])
             committed-configs (get-in committed [:membership :configs])
-            voter-configs (map-voter-configs test effective-configs)
-            committed-voter-configs (map-voter-configs
+            voter-configs (voter-config-sets test effective-configs)
+            committed-voter-configs (voter-config-sets
                                       test
                                       committed-configs)
             voters (quorum/voter-set voter-configs)
-            member-ids (->> (get-in effective [:membership :nodes])
-                            keys
-                            (map serialized-node-id))
-            members (map-node-ids test member-ids)]
+            members (->> (get-in effective [:membership :nodes])
+                         keys
+                         (map serialized-node-id)
+                         (validate-node-ids! test))]
         {:leader leader
          :metrics metrics
          :effective-log-id (:log_id effective)
@@ -169,7 +143,7 @@
          :committed-voter-configs committed-voter-configs
          :voters voters
          :learners (set/difference members voters)
-         :non-members (set/difference (set (:nodes test)) members)
+         :non-members (set/difference (test-node-ids test) members)
          :stable? (and (= 1 (count effective-configs))
                        (= effective-configs committed-configs)
                        (membership-committed? leader-metrics))}))))
@@ -225,11 +199,11 @@
       (throw (ex-info "OpenRaft metrics contain no voter configs"
                       {:leader leader
                        :metrics (get metrics leader)})))
-    (map-voter-configs test configs)))
+    (voter-config-sets test configs)))
 
 (defn bootstrap! [test]
   (let [leader (jepsen/primary test)
-        leader-id (node-id test leader)
+        leader-id (client/node-host leader)
         leader-endpoint (client/api-endpoint test leader)
         learners (remove #{leader} (:nodes test))]
     (info "Initializing OpenRaft cluster on" leader)
@@ -258,6 +232,6 @@
 
     (info "Changing OpenRaft membership to" (:nodes test))
     (client/change-membership! leader-endpoint
-                               (mapv #(node-id test %) (:nodes test)))
+                               (mapv client/node-host (:nodes test)))
 
     (await-ready! test)))

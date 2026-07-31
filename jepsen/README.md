@@ -1,12 +1,19 @@
 # OpenRaft Jepsen Tests
 
-This directory contains Jepsen black-box tests for OpenRaft. The tests target the runnable OpenRaft key-value example service, rather than OpenRaft's internal Rust APIs, so they can validate externally observable behavior through real client requests, process lifecycle, and network behavior.
+This directory contains Jepsen black-box tests for OpenRaft and the dedicated
+RocksDB-backed application they exercise. The tests target the application
+through its external APIs rather than OpenRaft's internal Rust APIs, so they
+can validate externally observable behavior through real client requests,
+process lifecycle, and network behavior.
 
 These tests cover a different layer from OpenRaft's deterministic simulation tests. Simulation tests run inside a controlled Rust environment. Jepsen drives a running KV service through its external API and records a client history for later checking. Jepsen runs are not deterministic, and a Jepsen failure is not expected to replay directly in the simulation harness.
 
 ## Organization
 
-This is a standalone Clojure/Leiningen project inside the OpenRaft repository. It is not part of the Cargo workspace and should not be required for normal Rust builds or tests.
+The Clojure/Leiningen harness and its Rust test application are self-contained
+inside the OpenRaft repository. The Rust crate is excluded from the root Cargo
+workspace, so normal Rust builds and tests do not depend on Jepsen. The Jepsen
+Docker environment builds the application explicitly from its own manifest.
 
 The Docker test environment separates the Jepsen control plane from the OpenRaft data plane:
 
@@ -38,6 +45,9 @@ jepsen/
   Makefile
   project.clj
   README.md
+  openraft-test-app/
+    Cargo.toml
+    src/
   docker/
     docker-compose.yml
     control.Dockerfile
@@ -56,6 +66,11 @@ jepsen/
       process.clj
     workload.clj
 ```
+
+The `openraft-test-app` crate is derived from the RocksDB example but belongs to
+the Jepsen harness. It uses string node IDs so each Docker hostname can also be
+the corresponding OpenRaft node ID. Test-specific application changes can be
+made there without increasing the complexity of the general-purpose example.
 
 The `jepsen.openraft` namespace contains the OpenRaft-specific Jepsen code:
 
@@ -79,6 +94,9 @@ The `jepsen.openraft` namespace contains the OpenRaft-specific Jepsen code:
 From the repository root:
 
 ```bash
+# Format and lint the dedicated Rust test application.
+$ make -C jepsen app-lint
+
 # Build images, start containers, then run unit and linearizability tests.
 $ make -C jepsen jepsen
 
@@ -101,9 +119,8 @@ $ make -C jepsen test NEMESIS=membership
 $ make -C jepsen down
 ```
 
-Node names must use the form `n<ID>`, such as `n1` or `n5`, because the
-harness derives each numeric OpenRaft node ID from its Jepsen node name. IP
-addresses and `user@host` node specifications are not supported.
+The harness uses each Jepsen node's container hostname, such as `n1`, directly
+as its OpenRaft node ID.
 
 This starts the five-node Docker environment, then runs the Jepsen control
 process from the control container. Every test checks a concurrent mix of
@@ -128,7 +145,7 @@ all five nodes as voters and waits for every node to agree on a leader.
 
 - [x] Add the Leiningen project definition and CLI skeleton.
 - [x] Add Docker-based Jepsen control and node containers.
-- [x] Add a multi-stage node image for the RocksDB KV example.
+- [x] Add a multi-stage node image for the RocksDB KV test application.
 - [x] Add an HTTP client for the OpenRaft KV APIs.
 - [x] Add Jepsen process lifecycle management for OpenRaft nodes.
 - [x] Bootstrap a five-node OpenRaft cluster.
