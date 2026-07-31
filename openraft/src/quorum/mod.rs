@@ -15,4 +15,4 @@ mod quorum_set_test;
 
 pub(crate) use coherent::Coherent;
 pub(crate) use coherent::FindCoherent;
-pub(crate) use quorum_set::QuorumSet;
+pub use quorum_set::QuorumSet;

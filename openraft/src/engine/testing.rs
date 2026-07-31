@@ -13,7 +13,7 @@ use crate::vote::RaftLeaderIdExt;
 /// with an optional custom node type `N` for the Node type.
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-pub(crate) struct UTConfig<N = ()> {
+pub struct UTConfig<N = ()> {
     _p: std::marker::PhantomData<N>,
 }
 
@@ -55,11 +55,13 @@ where N: Node + Ord
 }
 
 /// Type alias for the LeaderId used in unit tests.
+#[cfg(test)]
 pub(crate) type UTLeaderId = crate::impls::leader_id_adv::LeaderId<u64, u64>;
 
 /// Type alias for the CommittedLeaderId used in unit tests.
 ///
 /// For `leader_id_adv`, `Committed = Self`, so this is the same as `UTLeaderId`.
+#[cfg(test)]
 pub(crate) type UtClid = UTLeaderId;
 
 /// Builds a log id, for testing purposes.

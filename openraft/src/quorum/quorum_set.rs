@@ -6,7 +6,7 @@ use std::sync::Arc;
 /// contact. See: <http://web.mit.edu/6.033/2005/wwwdocs/quorum_note.html>
 ///
 /// Implementations must be upward-closed: adding more IDs to a quorum must still be a quorum.
-pub(crate) trait QuorumSet {
+pub trait QuorumSet {
     type Id: 'static;
 
     type Iter: Iterator<Item = Self::Id>;
