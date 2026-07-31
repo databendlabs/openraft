@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::process::Child;
 use std::process::Command;
 use std::process::Stdio;
+use std::sync::LazyLock;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -32,21 +33,30 @@ impl Drop for Node {
     }
 }
 
-/// The example binary, which `cargo test` builds alongside the tests.
-fn kvstore_bin() -> PathBuf {
-    // current_exe is target/debug/deps/kvstore_example-<hash>
-    let mut path = std::env::current_exe().unwrap();
-    path.pop();
-    path.pop();
-    path.push("examples");
-    path.push(format!("kvstore{}", std::env::consts::EXE_SUFFIX));
-    assert!(
-        path.is_file(),
-        "kvstore example not built at {}; run a full `cargo test -p ezraft`",
-        path.display()
-    );
-    path
-}
+/// The example binary, built by this test and located from cargo's own report.
+///
+/// The test cannot assume the example is already built: `cargo test --tests`,
+/// which `cargo llvm-cov` runs, builds test targets only. Nor can it derive the
+/// path from its own executable, because cargo has more than one target
+/// directory layout. Cargo offers no `CARGO_BIN_EXE_*` for examples, so ask it.
+static KVSTORE_BIN: LazyLock<PathBuf> = LazyLock::new(|| {
+    let cargo = std::env::var_os("CARGO").expect("cargo sets CARGO for the tests it runs");
+    let out = Command::new(cargo)
+        .args(["build", "--package", "ezraft", "--example", "kvstore"])
+        .arg("--message-format=json-render-diagnostics")
+        .stderr(Stdio::inherit())
+        .output()
+        .expect("failed to run cargo");
+    assert!(out.status.success(), "building the kvstore example failed");
+
+    String::from_utf8(out.stdout)
+        .expect("cargo emits UTF-8")
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .find(|msg| msg["reason"] == "compiler-artifact" && msg["target"]["name"] == "kvstore")
+        .and_then(|msg| msg["executable"].as_str().map(PathBuf::from))
+        .expect("cargo reported no executable for the kvstore example")
+});
 
 /// Grab a free port; the listener is dropped so the child process can bind it.
 fn free_addr() -> String {
@@ -57,7 +67,7 @@ fn free_addr() -> String {
 /// Spawn one kvstore node; its `./data/<addr>` dir and log land in `work_dir`.
 fn spawn_node(work_dir: &Path, addr: &str, seed: Option<&str>) -> io::Result<Node> {
     let log = File::create(work_dir.join(format!("node-{}.log", addr.replace(':', "-"))))?;
-    let mut cmd = Command::new(kvstore_bin());
+    let mut cmd = Command::new(&*KVSTORE_BIN);
     cmd.current_dir(work_dir)
         .args(["--addr", addr])
         .stdout(log.try_clone()?)
