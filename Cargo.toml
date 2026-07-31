@@ -106,6 +106,8 @@ exclude = [
     "examples/raft-kv-rocksdb",
     "examples/multi-raft-kv",
 
+    "jepsen/openraft-test-app",
+
     "rt-monoio",
     "rt-compio",
     "rt-tokio",

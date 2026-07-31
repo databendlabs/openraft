@@ -23,7 +23,7 @@
 (defn- voter-ids [test voters]
   (->> (:nodes test)
        (filter (set voters))
-       (mapv #(cluster/node-id test %))))
+       (mapv client/node-host)))
 
 (defn- request-leader! [test leader-endpoint request]
   (client/with-leader!

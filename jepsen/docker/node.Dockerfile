@@ -33,7 +33,7 @@ WORKDIR /openraft
 COPY . .
 
 RUN cargo build --release \
-      --manifest-path examples/raft-kv-rocksdb/Cargo.toml
+      --manifest-path jepsen/openraft-test-app/Cargo.toml
 
 FROM ubuntu:24.04
 
@@ -64,8 +64,8 @@ COPY jepsen/docker/ssh/openraft-jepsen.pub /root/.ssh/authorized_keys
 RUN chmod 600 /root/.ssh/authorized_keys
 
 COPY --from=builder \
-  /openraft/examples/raft-kv-rocksdb/target/release/raft-key-value-rocks \
-  /usr/local/bin/raft-key-value-rocks
+  /openraft/jepsen/openraft-test-app/target/release/openraft-jepsen-app \
+  /usr/local/bin/openraft-jepsen-app
 
 EXPOSE 22 21001 22001
 

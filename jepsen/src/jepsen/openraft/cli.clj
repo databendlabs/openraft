@@ -4,8 +4,7 @@
                     [cli :as cli]
                     [generator :as gen]
                     [tests :as tests]]
-            [jepsen.openraft [cluster :as cluster]
-                             [db :as openraft-db]
+            [jepsen.openraft [db :as openraft-db]
                              [workload :as workload]]
             [jepsen.openraft.nemesis [membership :as membership]
                                      [partition :as partition]
@@ -29,8 +28,7 @@
     :validate [nemesis-types (cli/one-of nemesis-types)]]])
 
 (defn openraft-test [opts]
-  (let [opts (assoc opts :node-ids (cluster/node-id-map (:nodes opts)))
-        database (openraft-db/db opts)
+  (let [database (openraft-db/db opts)
         workload (workload/workload opts)
         nemesis-type (:nemesis opts :partition)
         nemesis-package (case nemesis-type

@@ -1,0 +1,74 @@
+#![allow(clippy::uninlined_format_args)]
+#![deny(unused_qualifications)]
+
+use std::path::Path;
+use std::sync::Arc;
+
+use openraft::Config;
+use openraft::NodeInfo as Node;
+
+use crate::app::App;
+use crate::store::new_storage;
+
+pub mod app;
+pub mod http_api;
+pub mod store;
+
+pub type NodeId = String;
+pub type SnapshotData = std::io::Cursor<Vec<u8>>;
+
+openraft::declare_raft_types!(
+    pub TypeConfig:
+        D = types_kv::Request,
+        R = types_kv::Response,
+        NodeId = NodeId,
+        Node = Node,
+);
+
+pub type LogStore = log_rocks::RocksLogStore<TypeConfig>;
+pub type StateMachineStore = store::StateMachineStore;
+pub type Raft = openraft::Raft<TypeConfig, StateMachineStore>;
+
+#[path = "../../../examples/utils/declare_types.rs"]
+pub mod typ;
+
+pub async fn start_raft_node<P>(node_id: NodeId, dir: P, api_addr: String, raft_addr: String) -> std::io::Result<()>
+where P: AsRef<Path> {
+    // Create a configuration for the raft instance.
+    let config = Config {
+        heartbeat_interval: 50,
+        election_timeout_min: 299,
+        ..Default::default()
+    };
+
+    let config = Arc::new(config.validate().unwrap());
+
+    let (log_store, state_machine_store) = new_storage(&dir).await;
+
+    let kvs = state_machine_store.data.kvs.clone();
+
+    let network = network_v2_http::NetworkFactory::new();
+
+    // Create a local raft instance.
+    let raft = openraft::Raft::new(node_id.clone(), config.clone(), network, log_store, state_machine_store)
+        .await
+        .unwrap();
+
+    let app = Arc::new(App {
+        id: node_id,
+        api_addr: api_addr.clone(),
+        raft_addr: raft_addr.clone(),
+        raft,
+        data: kvs,
+    });
+
+    let raft_server = network_v2_http::Server::new(app.raft.clone()).run(raft_addr);
+    let app_server = app_http::Server::new(app)
+        .add_openraft_routes()
+        .post("/read", http_api::read)
+        .post("/linearizable_read", http_api::linearizable_read)
+        .run(api_addr);
+
+    tokio::try_join!(raft_server, app_server)?;
+    Ok(())
+}

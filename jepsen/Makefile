@@ -1,9 +1,14 @@
 COMPOSE := docker compose -f docker/docker-compose.yml
+APP_MANIFEST := openraft-test-app/Cargo.toml
 NODES ?= n1,n2,n3,n4,n5
 CONCURRENCY ?= 3
 NEMESIS ?= partition
 SSH_KEY ?= /root/.ssh/openraft-jepsen
 ARGS ?= --nodes $(NODES) --concurrency $(CONCURRENCY) --nemesis $(NEMESIS) --ssh-private-key $(SSH_KEY)
+
+app-lint:
+	cargo fmt --manifest-path $(APP_MANIFEST)
+	cargo clippy --no-deps --manifest-path $(APP_MANIFEST) --all-targets -- -D warnings
 
 jepsen: build
 	@echo "[jepsen] starting containers"
@@ -33,4 +38,4 @@ down:
 	@echo "[jepsen] stopping containers"
 	@$(COMPOSE) down
 
-.PHONY: jepsen key build up test down
+.PHONY: app-lint jepsen key build up test down
