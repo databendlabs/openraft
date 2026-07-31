@@ -3,113 +3,67 @@
 // Run with:
 //   cargo bench --features bench -p openraft -- leader_append
 
-extern crate test;
-
-use std::sync::Arc;
+use std::hint::black_box;
 use std::time::Duration;
+use std::time::Instant;
 
-use maplit::btreeset;
-use test::Bencher;
-use test::black_box;
+use criterion::Criterion;
+use criterion::criterion_group;
+use openraft::bench_internals::BenchEngine;
+use openraft::bench_internals::UTConfig;
+use openraft::type_config::alias::EntryPayloadOf;
 
-use crate::Membership;
-use crate::MembershipState;
-use crate::Vote;
-use crate::engine::Engine;
-use crate::engine::testing::UTConfig;
-use crate::engine::testing::log_id;
-use crate::entry::payload::EntryPayload;
-use crate::type_config::TypeConfigExt;
-use crate::type_config::alias::StoredMembershipOf;
-use crate::utime::Leased;
+type Payload = EntryPayloadOf<UTConfig>;
 
-fn setup_leader_engine() -> Engine<UTConfig> {
-    let mut eng = Engine::testing_default(0);
-    eng.state.enable_validation(false);
+/// How many appends to time before draining the engine's command buffer.
+///
+/// Appending queues a command, so the buffer has to be drained or it grows without bound.
+/// Draining is bookkeeping rather than work under test, so it happens between timed batches. The
+/// batch also amortizes the two `Instant` reads over 64 appends.
+const DRAIN_INTERVAL: u64 = 64;
 
-    eng.config.id = 1;
-    eng.state.apply_progress_mut().accept(log_id(0, 1, 0));
-    eng.state.vote = Leased::new(
-        UTConfig::<()>::now(),
-        Duration::from_millis(500),
-        Vote::new_committed(3, 1),
-    );
-    eng.state.log_ids.append(log_id(1, 1, 1));
-    eng.state.log_ids.append(log_id(2, 1, 3));
-    eng.state.membership_state = MembershipState::new(
-        Arc::new(StoredMembershipOf::<UTConfig>::new(
-            Some(log_id(1, 1, 1)),
-            Membership::<u64, ()>::new_with_defaults(vec![btreeset! {0, 1}], []),
-        )),
-        Arc::new(StoredMembershipOf::<UTConfig>::new(
-            Some(log_id(2, 1, 3)),
-            Membership::<u64, ()>::new_with_defaults(vec![btreeset! {2, 3}], btreeset! {1, 2, 3}),
-        )),
-    );
-    eng.testing_new_leader();
-    eng.state.server_state = eng.calc_server_state();
-    eng.output.clear_commands();
+fn bench_append<const N: usize>(c: &mut Criterion, name: &str) {
+    let mut eng = BenchEngine::new_leader();
 
-    eng
-}
+    c.bench_function(name, |b| {
+        b.iter_custom(|iters| {
+            let mut elapsed = Duration::ZERO;
+            let mut remaining = iters;
 
-#[bench]
-fn leader_append_1_entry(b: &mut Bencher) {
-    let mut eng = setup_leader_engine();
-    let mut i = 0u64;
+            while remaining > 0 {
+                let batch = remaining.min(DRAIN_INTERVAL);
 
-    b.iter(|| {
-        eng.try_leader_handler().unwrap().leader_append_entries(black_box([EntryPayload::Blank]));
+                let start = Instant::now();
+                for _ in 0..batch {
+                    let payloads: [Payload; N] = std::array::from_fn(|_| Payload::Blank);
+                    eng.append(black_box(payloads));
+                }
+                elapsed += start.elapsed();
 
-        // Drain the command buffer periodically to avoid unbounded growth.
-        i += 1;
-        if i.is_multiple_of(64) {
-            eng.output.clear_commands();
-        }
+                eng.clear_commands();
+                remaining -= batch;
+            }
+
+            elapsed
+        })
     });
 }
 
-#[bench]
-fn leader_append_3_entries(b: &mut Bencher) {
-    let mut eng = setup_leader_engine();
-    let mut i = 0u64;
-
-    b.iter(|| {
-        eng.try_leader_handler().unwrap().leader_append_entries(black_box([
-            EntryPayload::Blank,
-            EntryPayload::Blank,
-            EntryPayload::Blank,
-        ]));
-
-        i += 1;
-        if i.is_multiple_of(64) {
-            eng.output.clear_commands();
-        }
-    });
+fn bench_leader_append_1_entry(c: &mut Criterion) {
+    bench_append::<1>(c, "leader_append_1_entry");
 }
 
-#[bench]
-fn leader_append_10_entries(b: &mut Bencher) {
-    let mut eng = setup_leader_engine();
-    let mut i = 0u64;
-
-    b.iter(|| {
-        eng.try_leader_handler().unwrap().leader_append_entries(black_box([
-            EntryPayload::Blank,
-            EntryPayload::Blank,
-            EntryPayload::Blank,
-            EntryPayload::Blank,
-            EntryPayload::Blank,
-            EntryPayload::Blank,
-            EntryPayload::Blank,
-            EntryPayload::Blank,
-            EntryPayload::Blank,
-            EntryPayload::Blank,
-        ]));
-
-        i += 1;
-        if i.is_multiple_of(64) {
-            eng.output.clear_commands();
-        }
-    });
+fn bench_leader_append_3_entries(c: &mut Criterion) {
+    bench_append::<3>(c, "leader_append_3_entries");
 }
+
+fn bench_leader_append_10_entries(c: &mut Criterion) {
+    bench_append::<10>(c, "leader_append_10_entries");
+}
+
+criterion_group!(
+    benches,
+    bench_leader_append_1_entry,
+    bench_leader_append_3_entries,
+    bench_leader_append_10_entries,
+);
