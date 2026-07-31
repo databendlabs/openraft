@@ -1,9 +1,9 @@
 (ns jepsen.openraft.nemesis.partition
   (:require [clojure.tools.logging :refer [info]]
             [jepsen [checker :as checker]
-                    [generator :as gen]
-                    [nemesis :as nemesis]
-                    [random :as random]]
+             [generator :as gen]
+             [nemesis :as nemesis]
+             [random :as random]]
             [jepsen.openraft.cluster :as cluster]
             [jepsen.openraft.quorum :as quorum]))
 
@@ -89,25 +89,25 @@
 
 (defn partition-nemesis []
   (nemesis/validate
-    (PartitionNemesis. (nemesis/partitioner))))
+   (PartitionNemesis. (nemesis/partitioner))))
 
 (defn- partition-generator []
   (gen/cycle
-    (gen/phases
-      (gen/sleep recovery-seconds)
-      {:type :info
-       :f :start-partition
-       :value :leader-in-majority}
-      (gen/sleep partition-seconds)
-      {:type :info
-       :f :stop-partition}
-      (gen/sleep recovery-seconds)
-      {:type :info
-       :f :start-partition
-       :value :leader-in-minority}
-      (gen/sleep partition-seconds)
-      {:type :info
-       :f :stop-partition})))
+   (gen/phases
+    (gen/sleep recovery-seconds)
+    {:type :info
+     :f :start-partition
+     :value :leader-in-majority}
+    (gen/sleep partition-seconds)
+    {:type :info
+     :f :stop-partition}
+    (gen/sleep recovery-seconds)
+    {:type :info
+     :f :start-partition
+     :value :leader-in-minority}
+    (gen/sleep partition-seconds)
+    {:type :info
+     :f :stop-partition})))
 
 (defn- next-cluster-state
   "Applies one nemesis operation to the partition lifecycle state.
@@ -167,8 +167,8 @@
   {:nemesis (partition-nemesis)
    :generator (partition-generator)
    :final-generator (gen/phases
-                      (gen/once {:type :info
-                                 :f :stop-partition})
-                      (gen/once {:type :info
-                                 :f :await-recovery}))
+                     (gen/once {:type :info
+                                :f :stop-partition})
+                     (gen/once {:type :info
+                                :f :await-recovery}))
    :checker (coverage-checker)})

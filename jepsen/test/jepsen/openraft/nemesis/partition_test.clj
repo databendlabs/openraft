@@ -2,7 +2,7 @@
   (:require [clojure.set :as set]
             [clojure.test :refer [deftest is testing]]
             [jepsen [checker :as checker]
-                    [nemesis :as nemesis]]
+             [nemesis :as nemesis]]
             [jepsen.openraft.cluster :as cluster]
             [jepsen.openraft.nemesis.partition :as partition]
             [jepsen.openraft.quorum :as quorum]))
@@ -16,10 +16,10 @@
       (testing (name mode)
         (let [[leader-side other-side]
               (#'partition/partition-components
-                nodes
-                configs
-                "n1"
-                mode)
+               nodes
+               configs
+               "n1"
+               mode)
               quorum-side (if (= mode :leader-in-majority)
                             leader-side
                             other-side)]

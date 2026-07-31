@@ -7,8 +7,14 @@ SSH_KEY ?= /root/.ssh/openraft-jepsen
 ARGS ?= --nodes $(NODES) --concurrency $(CONCURRENCY) --nemesis $(NEMESIS) --ssh-private-key $(SSH_KEY)
 
 app-lint:
-	cargo fmt --manifest-path $(APP_MANIFEST)
+	cargo fmt --check --manifest-path $(APP_MANIFEST)
 	cargo clippy --no-deps --manifest-path $(APP_MANIFEST) --all-targets -- -D warnings
+
+clojure-lint:
+	clj-kondo --lint src test
+	cljfmt check src test
+
+lint: app-lint clojure-lint
 
 jepsen: build
 	@echo "[jepsen] starting containers"
@@ -38,4 +44,4 @@ down:
 	@echo "[jepsen] stopping containers"
 	@$(COMPOSE) down
 
-.PHONY: app-lint jepsen key build up test down
+.PHONY: app-lint clojure-lint lint jepsen key build up test down
