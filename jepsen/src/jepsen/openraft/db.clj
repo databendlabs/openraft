@@ -18,11 +18,15 @@
   (c/su
     (c/exec :mkdir :-p data-dir log-dir)))
 
-(defn- wipe! []
+(defn- wipe-data! []
   (c/su
     (c/exec :rm :-rf data-dir)
-    (c/exec :rm :-f log-file)
     (c/exec :mkdir :-p data-dir log-dir)))
+
+(defn- wipe! []
+  (wipe-data!)
+  (c/su
+    (c/exec :rm :-f log-file)))
 
 (defn db [_opts]
   (reify
@@ -71,3 +75,26 @@
     (kill! [_ _ node]
       (c/su
         (cu/stop-daemon! process-name pid-file)))))
+
+(defn start-empty-node! [database test node]
+  (c/on-nodes
+    test
+    [node]
+    (fn [test node]
+      (info node "starting an empty OpenRaft node")
+      (db/kill! database test node)
+      (wipe-data!)
+      (db/start! database test node)
+      (cu/await-tcp-port
+        (client/node-host node)
+        (:api-port test client/default-api-port)
+        {:timeout 60000}))))
+
+(defn stop-and-wipe-node! [database test node]
+  (c/on-nodes
+    test
+    [node]
+    (fn [test node]
+      (info node "stopping and wiping the removed OpenRaft node")
+      (db/kill! database test node)
+      (wipe-data!))))

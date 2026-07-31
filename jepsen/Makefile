@@ -1,5 +1,5 @@
 COMPOSE := docker compose -f docker/docker-compose.yml
-NODES ?= n1,n2,n3
+NODES ?= n1,n2,n3,n4,n5
 CONCURRENCY ?= 3
 NEMESIS ?= partition
 SSH_KEY ?= /root/.ssh/openraft-jepsen

@@ -11,26 +11,25 @@ This is a standalone Clojure/Leiningen project inside the OpenRaft repository. I
 The Docker test environment separates the Jepsen control plane from the OpenRaft data plane:
 
 ```text
-                         control container
-                         Jepsen + Leiningen
-                                  |
-          SSH: setup / start / stop / logs
-                                  |
-        +-------------------------+-------------------------+
-        |                         |                         |
-        v                         v                         v
-+---------------+         +---------------+         +---------------+
-| n1 db node    |         | n2 db node    |         | n3 db node    |
-| raft-kv-rocks |         | raft-kv-rocks |         | raft-kv-rocks |
-+-------+-------+         +-------+-------+         +-------+-------+
-        |                         |                         |
-        | app_http API            | app_http API            | app_http API
-        | same endpoints          | same endpoints          | same endpoints
-        |                         |                         |
-        +----------- Raft RPC: /append /vote /snapshot -----+
+                     control container
+                     Jepsen + Leiningen
+                              |
+              SSH: setup / start / stop / logs
+                              |
+          +---------+---------+---------+---------+
+          |         |         |         |         |
+          v         v         v         v         v
+         n1        n2        n3        n4        n5
+      db node   db node   db node   db node   db node
+          |         |         |         |         |
+          +------ app_http API and Raft RPC mesh --+
 ```
 
-The control container is not an OpenRaft member. It runs the Jepsen process, controls the db nodes over SSH, and sends client operations to the KV service API. Every db node exposes the same `app_http` endpoints, and the leader-aware client may contact any of them. The OpenRaft cluster itself runs on `n1`, `n2`, and `n3`; those nodes communicate with each other over the Raft RPC port.
+The control container is not an OpenRaft member. It runs the Jepsen process,
+controls the db nodes over SSH, and sends client operations to the KV service
+API. Every db node exposes the same `app_http` endpoints, and the leader-aware
+client may contact any of them. The default OpenRaft cluster contains all five
+Docker nodes, which communicate over the Raft RPC port.
 
 The intended layout is:
 
@@ -52,6 +51,7 @@ jepsen/
     db.clj
     cluster.clj
     nemesis/
+      membership.clj
       partition.clj
       process.clj
     workload.clj
@@ -63,6 +63,7 @@ The `jepsen.openraft` namespace contains the OpenRaft-specific Jepsen code:
 - `client.clj`: HTTP client for the OpenRaft KV example APIs.
 - `db.clj`: Jepsen DB lifecycle for starting and stopping OpenRaft nodes.
 - `cluster.clj`: cluster bootstrap helpers.
+- `nemesis/membership.clj`: membership growth, shrink, and final restoration.
 - `nemesis/partition.clj`: leader-aware network partition faults and recovery.
 - `nemesis/process.clj`: quorum-safe process crashes and restarts.
 - `workload.clj`: generators and checkers for client operations.
@@ -93,23 +94,35 @@ $ make -C jepsen test
 # Run the process crash/restart test instead of the default partition test.
 $ make -C jepsen test NEMESIS=process
 
+# Run the membership change test.
+$ make -C jepsen test NEMESIS=membership
+
 # Stop and remove the Jepsen containers.
 $ make -C jepsen down
 ```
 
-This starts three Docker node containers, then runs the Jepsen control process
-from the control container. The test bootstraps a three-node cluster and checks
-a concurrent mix of linearizable reads, writes, and compare-and-set operations
-with Knossos. While the workload runs, Jepsen alternates between partitions
-where the current leader is in the majority and in the minority. Each partition
-lasts 10 seconds. A run is valid only if both modes occur, every node agrees on
-a leader after the final heal, client operations continue during recovery, and
-the final recovery write and read succeed.
+Node names must use the form `n<ID>`, such as `n1` or `n5`, because the
+harness derives each numeric OpenRaft node ID from its Jepsen node name. IP
+addresses and `user@host` node specifications are not supported.
+
+This starts the five-node Docker environment, then runs the Jepsen control
+process from the control container. Every test checks a concurrent mix of
+linearizable reads, writes, and compare-and-set operations with Knossos. While
+the partition workload runs, Jepsen alternates between partitions where the
+current leader is in the majority and in the minority. Each partition lasts 10
+seconds. A run is valid only if both modes occur, every node agrees on a leader
+after the final heal, client operations continue during recovery, and the final
+recovery write and read succeed.
 
 The process nemesis reads the effective voter configs from OpenRaft metrics and
 randomly stops a non-empty voter subset whose survivors still form a quorum. It
 supports both stable and joint membership, covers leader and follower-only
 crashes, and waits for every stopped node to rejoin after restart.
+
+The membership nemesis starts with a shrink and grow for deterministic coverage,
+then randomly mixes additional membership changes. Removed nodes are stopped
+and wiped only after the new voter set is committed. The final recovery restores
+all five nodes as voters and waits for every node to agree on a leader.
 
 ## TODO
 
@@ -118,10 +131,11 @@ crashes, and waits for every stopped node to rejoin after restart.
 - [x] Add a multi-stage node image for the RocksDB KV example.
 - [x] Add an HTTP client for the OpenRaft KV APIs.
 - [x] Add Jepsen process lifecycle management for OpenRaft nodes.
-- [x] Bootstrap a three-node OpenRaft cluster.
+- [x] Bootstrap a five-node OpenRaft cluster.
 - [ ] Record acknowledged write, read, and info operation counts in each run.
 - [x] Add a network partition nemesis.
 - [x] Add nemeses for process kill/restart.
+- [x] Add a membership grow/shrink nemesis.
 - [x] Add a read, write, and compare-and-set workload.
 - [x] Add linearizability checking with Knossos.
-- [ ] Add snapshot pressure and membership churn workloads.
+- [ ] Add snapshot pressure workloads.
