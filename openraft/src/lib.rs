@@ -3,7 +3,6 @@
 // These features are stabilized in recent nightly but still needed on older toolchains.
 #![allow(unused_features)]
 #![cfg_attr(feature = "bt", feature(error_generic_member_access))]
-#![cfg_attr(feature = "bench", feature(test))]
 #![allow(clippy::bool_assert_comparison)]
 #![allow(clippy::bool_comparison)]
 // TODO: `clippy::result-large-err`: StorageError is 136 bytes, try to reduce the size.
@@ -79,6 +78,9 @@ pub mod vote;
 pub use errors as error;
 
 pub mod batch;
+#[cfg(feature = "bench")]
+#[doc(hidden)]
+pub mod bench_internals;
 #[cfg(test)]
 mod feature_serde_test;
 
