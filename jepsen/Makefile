@@ -2,7 +2,7 @@ COMPOSE := docker compose -f docker/docker-compose.yml
 APP_MANIFEST := openraft-test-app/Cargo.toml
 NODES ?= n1,n2,n3,n4,n5
 CONCURRENCY ?= 3
-NEMESIS ?= partition
+NEMESIS ?= chaos
 SSH_KEY ?= /root/.ssh/openraft-jepsen
 ARGS ?= --nodes $(NODES) --concurrency $(CONCURRENCY) --nemesis $(NEMESIS) --ssh-private-key $(SSH_KEY)
 

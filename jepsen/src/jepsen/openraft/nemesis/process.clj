@@ -9,7 +9,6 @@
             [jepsen.openraft.quorum :as quorum]))
 
 (def downtime-seconds 10)
-(def healthy-seconds 5)
 (def required-process-modes
   #{:leader-killed :leader-survives})
 (def required-pause-modes
@@ -58,11 +57,6 @@
      :voter-configs configs
      :survivors survivors}))
 
-(defn- await-recovery [test op]
-  (let [status (cluster/await-ready! test)]
-    (info "OpenRaft cluster recovered with leader" (:leader status))
-    (assoc op :value {:leader (:leader status)})))
-
 (defrecord ProcessNemesis [delegate killed]
   nemesis/Nemesis
   (setup! [_ test]
@@ -100,17 +94,17 @@
                                   :value nodes))
           (reset! killed nil)
           (assoc op :value disruption))
-        (assoc op :value :no-processes-killed))
-
-      :await-recovery
-      (await-recovery test op)))
+        (assoc op :value :no-processes-killed))))
 
   (teardown! [_ test]
-    (nemesis/teardown! delegate test)))
+    (nemesis/teardown! delegate test))
+
+  nemesis/Reflection
+  (fs [_]
+    #{:kill-process :restart-process}))
 
 (defn process-nemesis [db]
-  (nemesis/validate
-   (ProcessNemesis. (combined/db-nemesis db) (atom nil))))
+  (ProcessNemesis. (combined/db-nemesis db) (atom nil)))
 
 (defrecord PauseNemesis [delegate paused]
   nemesis/Nemesis
@@ -147,10 +141,7 @@
                                 :f :resume
                                 :value (:nodes test)))
         (reset! paused nil)
-        (assoc op :value (or disruption :all-processes-resumed)))
-
-      :await-recovery
-      (await-recovery test op)))
+        (assoc op :value (or disruption :all-processes-resumed)))))
 
   (teardown! [_ test]
     (try
@@ -159,47 +150,46 @@
                         :f :resume
                         :value (:nodes test)})
       (finally
-        (nemesis/teardown! delegate test)))))
+        (nemesis/teardown! delegate test))))
+
+  nemesis/Reflection
+  (fs [_]
+    #{:pause-process :resume-process}))
 
 (defn pause-nemesis [db]
-  (nemesis/validate
-   (PauseNemesis. (combined/db-nemesis db) (atom nil))))
+  (PauseNemesis. (combined/db-nemesis db) (atom nil)))
 
 (defn- process-generator []
-  (gen/cycle
-   (gen/phases
-    (gen/sleep healthy-seconds)
-    {:type :info
-     :f :kill-process
-     :value :leader-survives}
-    (gen/sleep downtime-seconds)
-    {:type :info
-     :f :restart-process}
-    (gen/sleep healthy-seconds)
-    {:type :info
-     :f :kill-process
-     :value :leader-killed}
-    (gen/sleep downtime-seconds)
-    {:type :info
-     :f :restart-process})))
+  (gen/delay
+    downtime-seconds
+    (gen/cycle
+     (gen/phases
+      {:type :info
+       :f :kill-process
+       :value :leader-survives}
+      {:type :info
+       :f :restart-process}
+      {:type :info
+       :f :kill-process
+       :value :leader-killed}
+      {:type :info
+       :f :restart-process}))))
 
 (defn- pause-generator []
-  (gen/cycle
-   (gen/phases
-    (gen/sleep healthy-seconds)
-    {:type :info
-     :f :pause-process
-     :value :leader-unpaused}
-    (gen/sleep downtime-seconds)
-    {:type :info
-     :f :resume-process}
-    (gen/sleep healthy-seconds)
-    {:type :info
-     :f :pause-process
-     :value :leader-paused}
-    (gen/sleep downtime-seconds)
-    {:type :info
-     :f :resume-process})))
+  (gen/delay
+    downtime-seconds
+    (gen/cycle
+     (gen/phases
+      {:type :info
+       :f :pause-process
+       :value :leader-unpaused}
+      {:type :info
+       :f :resume-process}
+      {:type :info
+       :f :pause-process
+       :value :leader-paused}
+      {:type :info
+       :f :resume-process}))))
 
 (defn- coverage-checker []
   (reify checker/Checker
@@ -251,13 +241,11 @@
          :cluster-state cluster-state}))))
 
 (defn process-package [db]
-  {:nemesis (process-nemesis db)
+  {:name :process
+   :nemesis (process-nemesis db)
    :generator (process-generator)
-   :final-generator (gen/phases
-                     (gen/once {:type :info
-                                :f :restart-process})
-                     (gen/once {:type :info
-                                :f :await-recovery}))
+   :final-generator {:type :info
+                     :f :restart-process}
    :checker (coverage-checker)})
 
 (defn- next-pause-state [state op]
@@ -307,11 +295,9 @@
          :cluster-state cluster-state}))))
 
 (defn pause-package [db]
-  {:nemesis (pause-nemesis db)
+  {:name :pause
+   :nemesis (pause-nemesis db)
    :generator (pause-generator)
-   :final-generator (gen/phases
-                     (gen/once {:type :info
-                                :f :resume-process})
-                     (gen/once {:type :info
-                                :f :await-recovery}))
+   :final-generator {:type :info
+                     :f :resume-process}
    :checker (pause-coverage-checker)})
