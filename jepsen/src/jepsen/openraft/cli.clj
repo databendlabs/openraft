@@ -1,22 +1,60 @@
 (ns jepsen.openraft.cli
   (:gen-class)
-  (:require [jepsen [checker :as checker]
+  (:require [clojure.string :as str]
+            [jepsen [checker :as checker]
              [cli :as cli]
              [generator :as gen]
              [random :as random]
              [tests :as tests]]
             [jepsen.store :as store]
             [jepsen.openraft [db :as openraft-db]
+             [nemesis :as openraft-nemesis]
              [workload :as workload]]
             [jepsen.openraft.nemesis [membership :as membership]
              [partition :as partition]
              [process :as process]]))
 
+(def ^:private non-membership-nemesis-types
+  [:partition :process :pause])
+
+(def ^:private concrete-nemesis-types
+  (into [:membership] non-membership-nemesis-types))
+
 (def nemesis-types
-  #{:membership :partition :pause :process})
+  (conj (set concrete-nemesis-types) :chaos))
 
 (def ^:private node-crash-pattern
   #"(panicked at|fatal runtime error)")
+
+(defn- parse-nemeses [value]
+  (mapv (comp keyword str/trim)
+        (str/split value #",")))
+
+(defn- normalize-nemeses [selection]
+  (let [requested (if (coll? selection)
+                    (set selection)
+                    #{(or selection :chaos)})
+        unknown (remove nemesis-types requested)]
+    (when (or (empty? requested) (seq unknown))
+      (throw (ex-info "Unknown nemesis selection"
+                      {:selection selection
+                       :unknown (vec unknown)})))
+    (let [expanded (cond-> (disj requested :chaos)
+                     (contains? requested :chaos)
+                     (into non-membership-nemesis-types))
+          selected (filterv expanded concrete-nemesis-types)]
+      (when (and (contains? expanded :membership)
+                 (< 1 (count expanded)))
+        (throw (ex-info "Membership cannot be combined with other nemeses yet"
+                        {:selection selection})))
+      selected)))
+
+(defn- valid-nemeses? [selection]
+  (try
+    (normalize-nemeses selection)
+    true
+    (catch Exception _
+      false)))
 
 (def cli-opts
   [[nil "--api-port PORT" "OpenRaft application HTTP port."
@@ -34,11 +72,12 @@
     :validate [#(and (some? %) (pos? %))
                "Must be a positive integer."]]
 
-   [nil "--nemesis TYPE"
-    "Fault type: membership, partition, pause, or process."
-    :default :partition
-    :parse-fn keyword
-    :validate [nemesis-types (cli/one-of nemesis-types)]]
+   [nil "--nemesis TYPES"
+    "Comma-separated faults: membership, partition, process, pause, or chaos."
+    :default [:chaos]
+    :parse-fn parse-nemeses
+    :validate [valid-nemeses?
+               "Unknown fault, or membership combined with another fault."]]
 
    [nil "--seed SEED" "Seed for Jepsen random choices."
     :parse-fn parse-long
@@ -86,18 +125,25 @@
 (defn openraft-test [opts]
   (let [database (openraft-db/db opts)
         workload (workload/workload opts)
-        nemesis-type (:nemesis opts :partition)
-        nemesis-package (case nemesis-type
-                          :membership (membership/membership-package
-                                       database
-                                       opts)
-                          :partition (partition/partition-package)
-                          :pause (process/pause-package database)
-                          :process (process/process-package database))]
+        nemesis-types (normalize-nemeses (:nemesis opts))
+        nemesis-package (if (= [:membership] nemesis-types)
+                          (membership/membership-package database opts)
+                          (openraft-nemesis/compose-packages
+                           (mapv (fn [nemesis-type]
+                                   (case nemesis-type
+                                     :partition
+                                     (partition/partition-package)
+
+                                     :process
+                                     (process/process-package database)
+
+                                     :pause
+                                     (process/pause-package database)))
+                                 nemesis-types)))]
     (merge tests/noop-test
            opts
            {:name (str "openraft linearizable register "
-                       (name nemesis-type))
+                       (str/join "," (map name nemesis-types)))
             :db database
             :client (:client workload)
             :nemesis (:nemesis nemesis-package)

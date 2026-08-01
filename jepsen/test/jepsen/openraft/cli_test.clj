@@ -51,6 +51,30 @@
         (is (some #(re-find #"Must be a positive integer" %)
                   (:errors parsed)))))))
 
+(deftest selects-composable-nemeses
+  (testing "chaos is the default"
+    (is (= [:partition :process :pause]
+           (#'cli/normalize-nemeses nil))))
+
+  (testing "comma-separated faults are parsed and canonically ordered"
+    (is (= [:partition :process]
+           (#'cli/normalize-nemeses
+            (#'cli/parse-nemeses "process, partition")))))
+
+  (testing "chaos expands to every composable fault without duplicates"
+    (is (= [:partition :process :pause]
+           (#'cli/normalize-nemeses [:chaos :partition]))))
+
+  (testing "membership remains standalone"
+    (is (false? (#'cli/valid-nemeses? [:membership :partition])))))
+
+(deftest composes-selected-nemesis-checkers
+  (let [test (cli/openraft-test {:nemesis [:process :partition]
+                                 :time-limit 10})
+        checkers (get-in test [:checker :checkers :nemesis :checkers])]
+    (is (= #{:partition :process}
+           (set (keys checkers))))))
+
 (deftest configures-worker-exception-and-node-crash-checkers
   (let [checkers (-> (cli/openraft-test {:nemesis :partition
                                          :seed 41

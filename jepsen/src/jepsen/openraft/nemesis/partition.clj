@@ -8,7 +8,6 @@
             [jepsen.openraft.quorum :as quorum]))
 
 (def partition-seconds 10)
-(def recovery-seconds 5)
 (def required-partition-modes
   #{:leader-in-majority :leader-in-minority})
 
@@ -81,37 +80,33 @@
                          (assoc op
                                 :f :stop
                                 :value nil))
-        (assoc op :value :network-healed))
-
-      :await-recovery
-      (let [{:keys [leader]} (cluster/await-ready! test)]
-        (info "OpenRaft cluster recovered with leader" leader)
-        (assoc op :value {:leader leader}))))
+        (assoc op :value :network-healed))))
 
   (teardown! [_ test]
-    (nemesis/teardown! partitioner test)))
+    (nemesis/teardown! partitioner test))
+
+  nemesis/Reflection
+  (fs [_]
+    #{:start-partition :stop-partition}))
 
 (defn partition-nemesis []
-  (nemesis/validate
-   (PartitionNemesis. (nemesis/partitioner))))
+  (PartitionNemesis. (nemesis/partitioner)))
 
 (defn- partition-generator []
-  (gen/cycle
-   (gen/phases
-    (gen/sleep recovery-seconds)
-    {:type :info
-     :f :start-partition
-     :value :leader-in-majority}
-    (gen/sleep partition-seconds)
-    {:type :info
-     :f :stop-partition}
-    (gen/sleep recovery-seconds)
-    {:type :info
-     :f :start-partition
-     :value :leader-in-minority}
-    (gen/sleep partition-seconds)
-    {:type :info
-     :f :stop-partition})))
+  (gen/delay
+    partition-seconds
+    (gen/cycle
+     (gen/phases
+      {:type :info
+       :f :start-partition
+       :value :leader-in-majority}
+      {:type :info
+       :f :stop-partition}
+      {:type :info
+       :f :start-partition
+       :value :leader-in-minority}
+      {:type :info
+       :f :stop-partition}))))
 
 (defn- next-cluster-state
   "Applies one nemesis operation to the partition lifecycle state.
@@ -168,11 +163,9 @@
          :cluster-state cluster-state}))))
 
 (defn partition-package []
-  {:nemesis (partition-nemesis)
+  {:name :partition
+   :nemesis (partition-nemesis)
    :generator (partition-generator)
-   :final-generator (gen/phases
-                     (gen/once {:type :info
-                                :f :stop-partition})
-                     (gen/once {:type :info
-                                :f :await-recovery}))
+   :final-generator {:type :info
+                     :f :stop-partition}
    :checker (coverage-checker)})
