@@ -3,8 +3,13 @@ APP_MANIFEST := openraft-test-app/Cargo.toml
 NODES ?= n1,n2,n3,n4,n5
 CONCURRENCY ?= 3
 NEMESIS ?= partition
+SEED ?=
 SSH_KEY ?= /root/.ssh/openraft-jepsen
 ARGS ?= --nodes $(NODES) --concurrency $(CONCURRENCY) --nemesis $(NEMESIS) --ssh-private-key $(SSH_KEY)
+
+ifneq ($(SEED),)
+ARGS += --seed $(SEED)
+endif
 
 app-lint:
 	cargo fmt --check --manifest-path $(APP_MANIFEST)
