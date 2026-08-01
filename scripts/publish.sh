@@ -27,7 +27,6 @@ CRATES=(
     multiraft
     stores/memstore
     metrics-otel
-    experimental/ezraft
 )
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
