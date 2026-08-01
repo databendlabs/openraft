@@ -176,7 +176,7 @@ unused_dep:
 
 typos:
 	# cargo install typos-cli
-	typos --write-changes openraft/ experimental/ezraft/ tests/ stores/memstore/ stores/memstore-custom-node-id/ stores/rocksstore examples/raft-kv-memstore/ examples/raft-kv-rocksdb/
+	typos --write-changes openraft/ tests/ stores/memstore/ stores/memstore-custom-node-id/ stores/rocksstore examples/raft-kv-memstore/ examples/raft-kv-rocksdb/
 	#typos --write-changes --exclude change-log/ --exclude change-log.md --exclude derived-from-async-raft.md
 	# typos
 
@@ -229,9 +229,5 @@ clean:
 	cargo clean --manifest-path examples/raft-kv-rocksdb/Cargo.toml
 	cargo clean --manifest-path examples/multi-raft-kv/Cargo.toml
 	rm -rf tests/_log
-	@# Cluster state the ezraft kvstore example writes, relative to where it ran.
-	@# A stale directory makes the next run come back with the old node id and
-	@# log instead of forming a fresh cluster. Mirrors the .gitignore entries.
-	rm -rf data experimental/ezraft/data
 
 .PHONY: test fmt lint clean doc guide detsim
