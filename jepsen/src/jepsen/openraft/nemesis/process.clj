@@ -75,17 +75,20 @@
         (when @killed
           (throw (ex-info "Processes are already stopped"
                           {:killed @killed})))
-        (let [status (cluster/await-ready! test)
-              mode (:value op)
-              disruption (process-disruption test status mode)
-              targets (:nodes disruption)]
-          (info "Killing OpenRaft processes" disruption)
-          (nemesis/invoke! delegate test
-                           (assoc op
-                                  :f :kill
-                                  :value targets))
-          (reset! killed disruption)
-          (assoc op :value disruption)))
+        (if-let [status (cluster/membership-status test)]
+          (let [mode (:value op)
+                disruption (process-disruption test status mode)
+                targets (:nodes disruption)]
+            (info "Killing OpenRaft processes" disruption)
+            (nemesis/invoke! delegate test
+                             (assoc op
+                                    :f :kill
+                                    :value targets))
+            (reset! killed disruption)
+            (assoc op :value disruption))
+          (do
+            (info "Skipping process kill without a quorum-supported leader")
+            (assoc op :value :no-supported-leader))))
 
       :restart-process
       (if-let [{:keys [nodes] :as disruption} @killed]
@@ -121,17 +124,20 @@
         (when @paused
           (throw (ex-info "Processes are already paused"
                           {:paused @paused})))
-        (let [status (cluster/await-ready! test)
-              mode (:value op)
-              disruption (process-disruption test status mode)
-              targets (:nodes disruption)]
-          (info "Pausing OpenRaft processes" disruption)
-          (nemesis/invoke! delegate test
-                           (assoc op
-                                  :f :pause
-                                  :value targets))
-          (reset! paused disruption)
-          (assoc op :value disruption)))
+        (if-let [status (cluster/membership-status test)]
+          (let [mode (:value op)
+                disruption (process-disruption test status mode)
+                targets (:nodes disruption)]
+            (info "Pausing OpenRaft processes" disruption)
+            (nemesis/invoke! delegate test
+                             (assoc op
+                                    :f :pause
+                                    :value targets))
+            (reset! paused disruption)
+            (assoc op :value disruption))
+          (do
+            (info "Skipping process pause without a quorum-supported leader")
+            (assoc op :value :no-supported-leader))))
 
       :resume-process
       (let [disruption @paused]
@@ -169,17 +175,13 @@
     (gen/sleep downtime-seconds)
     {:type :info
      :f :restart-process}
-    {:type :info
-     :f :await-recovery}
     (gen/sleep healthy-seconds)
     {:type :info
      :f :kill-process
      :value :leader-killed}
     (gen/sleep downtime-seconds)
     {:type :info
-     :f :restart-process}
-    {:type :info
-     :f :await-recovery})))
+     :f :restart-process})))
 
 (defn- pause-generator []
   (gen/cycle
@@ -191,17 +193,13 @@
     (gen/sleep downtime-seconds)
     {:type :info
      :f :resume-process}
-    {:type :info
-     :f :await-recovery}
     (gen/sleep healthy-seconds)
     {:type :info
      :f :pause-process
      :value :leader-paused}
     (gen/sleep downtime-seconds)
     {:type :info
-     :f :resume-process}
-    {:type :info
-     :f :await-recovery})))
+     :f :resume-process})))
 
 (defn- coverage-checker []
   (reify checker/Checker
