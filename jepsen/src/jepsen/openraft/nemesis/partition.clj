@@ -48,27 +48,31 @@
   (invoke! [_ test op]
     (case (:f op)
       :start-partition
-      (let [{:keys [leader] :as status} (cluster/await-ready! test)
-            configs (cluster/voter-configs test status)
-            mode (:value op)
-            components (partition-components (:nodes test)
-                                             configs
-                                             leader
-                                             mode)
-            grudge (nemesis/complete-grudge components)]
-        (info "Partitioning OpenRaft nodes"
-              {:mode mode
-               :leader leader
-               :components components})
-        (nemesis/invoke! partitioner test
-                         (assoc op
-                                :f :start
-                                :value grudge))
-        (assoc op
-               :value {:mode mode
-                       :leader leader
-                       :voter-configs configs
-                       :components components}))
+      (if-let [{:keys [leader] :as status}
+               (cluster/membership-status test)]
+        (let [configs (cluster/voter-configs test status)
+              mode (:value op)
+              components (partition-components (:nodes test)
+                                               configs
+                                               leader
+                                               mode)
+              grudge (nemesis/complete-grudge components)]
+          (info "Partitioning OpenRaft nodes"
+                {:mode mode
+                 :leader leader
+                 :components components})
+          (nemesis/invoke! partitioner test
+                           (assoc op
+                                  :f :start
+                                  :value grudge))
+          (assoc op
+                 :value {:mode mode
+                         :leader leader
+                         :voter-configs configs
+                         :components components}))
+        (do
+          (info "Skipping partition without a quorum-supported leader")
+          (assoc op :value :no-supported-leader)))
 
       :stop-partition
       (do

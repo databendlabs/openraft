@@ -8,6 +8,16 @@
 
 (def voters ["n1" "n2" "n3" "n4" "n5"])
 
+(defn- recording-nemesis [invocations]
+  (reify nemesis/Nemesis
+    (setup! [this _test]
+      this)
+    (invoke! [_ _test op]
+      (swap! invocations conj op)
+      op)
+    (teardown! [this _test]
+      this)))
+
 (deftest selects-fault-set-for-leader-mode
   (let [configs [(set voters)]
         fault-sets (set (quorum/fault-sets configs))]
@@ -27,18 +37,11 @@
 
 (deftest restarts-the-processes-that-were-killed
   (let [invocations (atom [])
-        delegate (reify nemesis/Nemesis
-                   (setup! [this _test]
-                     this)
-                   (invoke! [_ _test op]
-                     (swap! invocations conj op)
-                     op)
-                   (teardown! [this _test]
-                     this))
+        delegate (recording-nemesis invocations)
         subject (process/->ProcessNemesis delegate (atom nil))
         test {:nodes ["n1" "n2" "n3"]}
         status {:leader "n1"}]
-    (with-redefs [cluster/await-ready! (fn [_test] status)
+    (with-redefs [cluster/membership-status (fn [_test] status)
                   cluster/voter-configs
                   (fn [_test _status] [(set (:nodes test))])]
       (let [killed (nemesis/invoke!
@@ -60,14 +63,7 @@
 
 (deftest resumes-all-processes-after-a-pause
   (let [invocations (atom [])
-        delegate (reify nemesis/Nemesis
-                   (setup! [this _test]
-                     this)
-                   (invoke! [_ _test op]
-                     (swap! invocations conj op)
-                     op)
-                   (teardown! [this _test]
-                     this))
+        delegate (recording-nemesis invocations)
         paused {:nodes ["n1"]}
         subject (process/->PauseNemesis delegate (atom paused))
         test {:nodes ["n1" "n2" "n3"]}]
@@ -77,6 +73,24 @@
                       :f :resume-process})
     (is (= [[:resume ["n1" "n2" "n3"]]]
            (mapv (juxt :f :value) @invocations)))))
+
+(deftest skips-disruptions-without-a-supported-leader
+  (let [invocations (atom [])
+        delegate (recording-nemesis invocations)
+        test {:nodes ["n1" "n2" "n3"]}
+        operations [[(process/->ProcessNemesis delegate (atom nil))
+                     {:type :info
+                      :f :kill-process
+                      :value :leader-killed}]
+                    [(process/->PauseNemesis delegate (atom nil))
+                     {:type :info
+                      :f :pause-process
+                      :value :leader-paused}]]]
+    (with-redefs [cluster/membership-status (constantly nil)]
+      (doseq [[subject op] operations]
+        (is (= :no-supported-leader
+               (:value (nemesis/invoke! subject test op))))))
+    (is (empty? @invocations))))
 
 (deftest requires-both-process-modes-and-an-intact-cluster
   (let [subject (#'process/coverage-checker)
@@ -89,7 +103,9 @@
                           {:f :await-recovery
                            :value {:leader "n2"}}]
         missing-mode-history [{:f :kill-process
-                               :value {:mode :leader-survives}}]
+                               :value {:mode :leader-survives}}
+                              {:f :kill-process
+                               :value :no-supported-leader}]
         unrecovered-history [{:f :kill-process
                               :value {:mode :leader-survives}}
                              {:f :await-recovery
@@ -154,7 +170,9 @@
                               {:f :resume-process
                                :value :all-processes-resumed}
                               {:f :await-recovery
-                               :value {:leader "n1"}}]
+                               :value {:leader "n1"}}
+                              {:f :pause-process
+                               :value :no-supported-leader}]
         unrecovered-history (-> complete-history
                                 pop
                                 (conj {:f :await-recovery

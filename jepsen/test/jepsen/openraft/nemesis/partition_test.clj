@@ -31,7 +31,7 @@
                                         (set other-side))))
           (is (seq other-side)))))))
 
-(deftest resolves-leader-when-partition-starts
+(deftest starts-partition-only-with-a-supported-leader
   (let [invocations (atom [])
         partitioner (reify nemesis/Nemesis
                       (setup! [this _test]
@@ -46,19 +46,29 @@
             :process :nemesis
             :f :start-partition
             :value :leader-in-minority}]
-    (with-redefs [cluster/await-ready! (fn [_test]
-                                         {:leader "n2"})
-                  cluster/voter-configs (fn [_test _status]
-                                          [(set nodes)])]
-      (let [result (nemesis/invoke! subject {:nodes nodes} op)
-            delegated (first @invocations)]
-        (is (= :start (:f delegated)))
-        (is (= #{"n2"}
-               (-> result :value :components first set)))
-        (is (= :leader-in-minority
-               (-> result :value :mode)))
-        (is (= "n2"
-               (-> result :value :leader)))))))
+    (testing "a quorum-supported leader determines the partition"
+      (with-redefs [cluster/membership-status
+                    (fn [_test]
+                      {:leader "n2"})
+                    cluster/voter-configs
+                    (fn [_test _status]
+                      [(set nodes)])]
+        (let [result (nemesis/invoke! subject {:nodes nodes} op)
+              delegated (first @invocations)]
+          (is (= :start (:f delegated)))
+          (is (= #{"n2"}
+                 (-> result :value :components first set)))
+          (is (= :leader-in-minority
+                 (-> result :value :mode)))
+          (is (= "n2"
+                 (-> result :value :leader))))))
+
+    (testing "no partition is installed without a supported leader"
+      (reset! invocations [])
+      (with-redefs [cluster/membership-status (constantly nil)]
+        (is (= :no-supported-leader
+               (:value (nemesis/invoke! subject {:nodes nodes} op))))
+        (is (empty? @invocations))))))
 
 (deftest requires-both-partitions-and-an-intact-cluster
   (let [subject (#'partition/coverage-checker)
@@ -77,8 +87,7 @@
                               {:f :stop-partition
                                :value :network-healed}
                               {:f :start-partition
-                               :value :leader-in-minority
-                               :error :partition-failed}
+                               :value :no-supported-leader}
                               {:f :stop-partition
                                :value :network-healed}
                               {:f :await-recovery
@@ -97,7 +106,7 @@
       (let [result (checker/check subject {} complete-history {})]
         (is (:valid? result))
         (is (= :intact (:cluster-state result)))))
-    (testing "a failed partition does not count toward coverage"
+    (testing "a skipped partition does not count toward coverage"
       (let [result (checker/check subject {} missing-mode-history {})]
         (is (false? (:valid? result)))
         (is (= [:leader-in-minority] (:missing-modes result)))
