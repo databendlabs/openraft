@@ -149,7 +149,7 @@ all five nodes as voters and waits for every node to agree on a leader.
 - [x] Add an HTTP client for the OpenRaft KV APIs.
 - [x] Add Jepsen process lifecycle management for OpenRaft nodes.
 - [x] Bootstrap a five-node OpenRaft cluster.
-- [ ] Record acknowledged write, read, and info operation counts in each run.
+- [x] Record phase-aware ok, fail, and info counts for read, write, and CAS.
 - [x] Add a network partition nemesis.
 - [x] Add nemeses for process kill/restart.
 - [x] Add a membership grow/shrink nemesis.

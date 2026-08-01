@@ -8,6 +8,15 @@
 
 (def key-name "jepsen-key")
 
+(def ^:private operation-phases
+  [:bootstrap :main :final])
+
+(def ^:private required-main-operations
+  [:read :write :cas])
+
+(def ^:private completion-types
+  [:ok :fail :info])
+
 (defn- remember-latest! [latest-value value]
   (when value
     (swap! latest-value
@@ -27,21 +36,33 @@
 (defn- read-op [_test _process]
   {:type :invoke
    :f :read
+   :phase :main
    :value nil})
 
 (defn- write-op [value-counter]
   (fn [_test _process]
     {:type :invoke
      :f :write
+     :phase :main
      :value (next-value! value-counter)}))
 
+(defn- bootstrap-write-op [value-counter]
+  {:type :invoke
+   :f :write
+   :phase :bootstrap
+   :value (next-value! value-counter)})
+
 (defn- final-read-op [test process]
-  (assoc (read-op test process) :final? true))
+  (assoc (read-op test process)
+         :phase :final
+         :final? true))
 
 (defn- final-write-op [value-counter]
   (let [write (write-op value-counter)]
     (fn [test process]
-      (assoc (write test process) :final? true))))
+      (assoc (write test process)
+             :phase :final
+             :final? true))))
 
 (defn- cas-op
   "Generates a CAS against the latest known value, falling back to a write until
@@ -65,12 +86,14 @@
       (if expected
         {:type :invoke
          :f :cas
+         :phase :main
          ;; Knossos models logical values. The version is request metadata for
          ;; OpenRaft's version-based CAS and is not part of the model value.
          :value [(:value expected) new-value]
          :expected-version (:version expected)}
         {:type :invoke
          :f :write
+         :phase :main
          :value new-value}))))
 
 (defn- mutation? [op]
@@ -152,6 +175,36 @@
          :count (count errors)
          :errors (vec (take 10 errors))}))))
 
+(defn- empty-operation-counts []
+  (into {}
+        (map (fn [phase]
+               [phase
+                (into {}
+                      (map (fn [f]
+                             [f (zipmap completion-types (repeat 0))])
+                           required-main-operations))])
+             operation-phases)))
+
+(defn- meaningful-operations-checker []
+  (reify checker/Checker
+    (check [_ _test history _opts]
+      (let [counts (reduce
+                    (fn [counts {:keys [phase f type]}]
+                      (if (and (some #{phase} operation-phases)
+                               (some #{f} required-main-operations)
+                               (some #{type} completion-types))
+                        (update-in counts [phase f type] inc)
+                        counts))
+                    (empty-operation-counts)
+                    history)
+            missing-ok (->> required-main-operations
+                            (filter #(zero? (get-in counts
+                                                    [:main % :ok])))
+                            vec)]
+        {:valid? (if (seq missing-ok) :unknown true)
+         :missing-ok missing-ok
+         :counts counts}))))
+
 ;; KVClient is the Jepsen client. Jepsen workers call invoke! with logical
 ;; operations from the generator, and this record translates them into OpenRaft
 ;; KV HTTP requests through jepsen.openraft.client.
@@ -220,9 +273,7 @@
     {:client (client/validate (KVClient. nil nil nil latest-value))
      :generator (gen/clients
                  (gen/phases
-                  (gen/once {:type :invoke
-                             :f :write
-                             :value (next-value! value-counter)})
+                  (gen/once (bootstrap-write-op value-counter))
                   (gen/stagger 0.1 operations)))
      :final-generator (gen/clients
                        (gen/phases
@@ -231,4 +282,5 @@
      :checker (checker/compose
                {:linearizable (checker/linearizable
                                {:model (model/cas-register)})
+                :meaningful-operations (meaningful-operations-checker)
                 :unexpected-errors (unexpected-errors-checker)})}))
