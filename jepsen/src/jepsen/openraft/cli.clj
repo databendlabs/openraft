@@ -13,6 +13,9 @@
 (def nemesis-types
   #{:membership :partition :process})
 
+(def ^:private node-crash-pattern
+  #"(panicked at|fatal runtime error)")
+
 (def cli-opts
   [[nil "--api-port PORT" "OpenRaft application HTTP port."
     :default 21001
@@ -56,6 +59,10 @@
                         (:final-generator workload))
             :checker (checker/compose
                       {:stats (checker/stats)
+                       :exceptions (checker/unhandled-exceptions)
+                       :crash (checker/log-file-pattern
+                               node-crash-pattern
+                               "openraft.log")
                        :nemesis (:checker nemesis-package)
                        :workload (:checker workload)})})))
 
