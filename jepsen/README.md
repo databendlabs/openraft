@@ -115,6 +115,9 @@ $ make -C jepsen test NEMESIS=process
 # Run the membership change test.
 $ make -C jepsen test NEMESIS=membership
 
+# Reuse a recorded seed for Jepsen random choices.
+$ make -C jepsen test NEMESIS=partition SEED=123456
+
 # Stop and remove the Jepsen containers.
 $ make -C jepsen down
 ```
@@ -140,6 +143,15 @@ The membership nemesis starts with a shrink and grow for deterministic coverage,
 then randomly mixes additional membership changes. Removed nodes are stopped
 and wiped only after the new voter set is committed. The final recovery restores
 all five nodes as voters and waits for every node to agree on a leader.
+
+Every run records a `:seed` in its stored Jepsen test data. Supplying that seed
+again repeats choices made through `jepsen.random`, including the random node
+selection used by the partition, process, and membership nemeses. It does not
+make the whole run deterministic: client operation mixing and timing use
+separate generator randomness, and thread, network, and election timing can
+still differ. The recorded history and Nemesis operations are therefore the
+authoritative account of the fault schedule; the seed is only an aid for
+rerunning similar conditions.
 
 ## TODO
 

@@ -3,6 +3,7 @@
   (:require [jepsen [checker :as checker]
              [cli :as cli]
              [generator :as gen]
+             [random :as random]
              [tests :as tests]]
             [jepsen.openraft [db :as openraft-db]
              [workload :as workload]]
@@ -28,9 +29,21 @@
    [nil "--nemesis TYPE" "Fault type: membership, partition, or process."
     :default :partition
     :parse-fn keyword
-    :validate [nemesis-types (cli/one-of nemesis-types)]]])
+    :validate [nemesis-types (cli/one-of nemesis-types)]]
+
+   [nil "--seed SEED" "Seed for Jepsen random choices."
+    :parse-fn parse-long]])
+
+(defn- ensure-random-seed [parsed]
+  (update parsed :options
+          (fn [options]
+            (if (:seed options)
+              options
+              (assoc options :seed (random/long Long/MAX_VALUE))))))
 
 (defn openraft-test [opts]
+  (when-some [seed (:seed opts)]
+    (random/set-seed! seed))
   (let [database (openraft-db/db opts)
         workload (workload/workload opts)
         nemesis-type (:nemesis opts :partition)
@@ -68,6 +81,7 @@
 
 (defn -main [& args]
   (cli/run! (cli/single-test-cmd {:test-fn openraft-test
+                                  :opt-fn ensure-random-seed
                                   :opt-spec cli-opts
                                   :usage (cli/test-usage)})
             args))
