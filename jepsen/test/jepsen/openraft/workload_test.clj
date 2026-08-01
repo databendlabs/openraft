@@ -113,11 +113,29 @@
     (is (:valid? result)
         "an indeterminate write may have produced the value read later")))
 
+(deftest tags-operations-by-workload-phase
+  (testing "the bootstrap write is tagged separately"
+    (is (= :bootstrap
+           (:phase (#'workload/bootstrap-write-op (atom 0))))))
+
+  (testing "ordinary client operations are tagged as main"
+    (let [read (#'workload/read-op nil nil)
+          write ((#'workload/write-op (atom 0)) nil nil)]
+      (is (= :main (:phase read)))
+      (is (= :main (:phase write)))))
+
+  (testing "final recovery operations are tagged as final"
+    (let [write ((#'workload/final-write-op (atom 0)) nil nil)
+          read (#'workload/final-read-op nil nil)]
+      (is (= :final (:phase write)))
+      (is (= :final (:phase read))))))
+
 (deftest generates-cas-only-with-a-known-version
   (testing "an unknown version produces a write"
     (let [generate (#'workload/cas-op (atom nil) (atom 0))
           op (generate nil nil)]
       (is (= :write (:f op)))
+      (is (= :main (:phase op)))
       (is (= "value-1" (:value op)))
       (is (not (contains? op :expected-version)))))
 
@@ -126,6 +144,7 @@
           generate (#'workload/cas-op latest-value (atom 0))
           op (generate nil nil)]
       (is (= :cas (:f op)))
+      (is (= :main (:phase op)))
       (is (= ["old" "value-1"] (:value op)))
       (is (= 7 (:expected-version op))))))
 
@@ -209,3 +228,76 @@
         (is (not (:valid? result)))
         (is (= 1 (:count result)))
         (is (= [tagged] (:errors result)))))))
+
+(deftest requires-successful-main-phase-operations
+  (let [chk (#'workload/meaningful-operations-checker)
+        history [{:type :invoke :f :write :phase :bootstrap}
+                 {:type :ok :f :write :phase :bootstrap}
+                 {:type :invoke :f :read :phase :main}
+                 {:type :ok :f :read :phase :main}
+                 {:type :invoke :f :write :phase :main}
+                 {:type :ok :f :write :phase :main}
+                 {:type :invoke :f :cas :phase :main}
+                 {:type :ok :f :cas :phase :main}
+                 {:type :invoke :f :write :phase :final}
+                 {:type :ok :f :write :phase :final}
+                 {:type :invoke :f :read :phase :final}
+                 {:type :ok :f :read :phase :final}]]
+    (testing "all required main operations succeeded"
+      (let [result (checker/check chk {} history {})]
+        (is (true? (:valid? result)))
+        (is (empty? (:missing-ok result)))
+        (is (= 1 (get-in result [:counts :main :read :ok])))
+        (is (= 1 (get-in result [:counts :main :write :ok])))
+        (is (= 1 (get-in result [:counts :main :cas :ok])))
+        (is (= 1 (get-in result [:counts :bootstrap :write :ok])))
+        (is (= 1 (get-in result [:counts :final :write :ok])))))
+
+    (testing "non-ok results cannot be hidden by bootstrap or final operations"
+      (doseq [[f completion-type] [[:read :fail]
+                                   [:write :info]
+                                   [:cas :fail]]]
+        (let [incomplete-history
+              (mapv (fn [op]
+                      (if (and (= :main (:phase op))
+                               (= f (:f op))
+                               (= :ok (:type op)))
+                        (assoc op :type completion-type)
+                        op))
+                    history)
+              result (checker/check chk {} incomplete-history {})]
+          (is (= :unknown (:valid? result)))
+          (is (= [f] (:missing-ok result)))
+          (is (= 0 (get-in result [:counts :main f :ok])))
+          (is (= 1 (get-in result
+                           [:counts :main f completion-type]))))))))
+
+(deftest workload-checker-requires-meaningful-main-traffic
+  (let [history [{:process 0
+                  :type :invoke
+                  :f :write
+                  :phase :bootstrap
+                  :value "initial"}
+                 {:process 0
+                  :type :ok
+                  :f :write
+                  :phase :bootstrap
+                  :value "initial"}
+                 {:process 1
+                  :type :invoke
+                  :f :read
+                  :phase :main
+                  :value nil}
+                 {:process 1
+                  :type :ok
+                  :f :read
+                  :phase :main
+                  :value "initial"}]
+        chk (:checker (workload/workload {}))
+        result (checker/check chk {} history {})]
+    (is (true? (get-in result [:linearizable :valid?])))
+    (is (= :unknown
+           (get-in result [:meaningful-operations :valid?])))
+    (is (= [:write :cas]
+           (get-in result [:meaningful-operations :missing-ok])))
+    (is (= :unknown (:valid? result)))))
