@@ -27,6 +27,12 @@
     :default 22001
     :parse-fn parse-long]
 
+   [nil "--snapshot-threshold COUNT"
+    "Committed logs between snapshots."
+    :default openraft-db/default-snapshot-threshold
+    :parse-fn parse-long
+    :validate [pos? "Must be positive."]]
+
    [nil "--nemesis TYPE" "Fault type: membership, partition, or process."
     :default :partition
     :parse-fn keyword
