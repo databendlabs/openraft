@@ -78,7 +78,16 @@
 
     (kill! [_ _ _node]
       (c/su
-       (cu/stop-daemon! process-name pid-file)))))
+       (cu/stop-daemon! process-name pid-file)))
+
+    db/Pause
+    (pause! [_ _ _node]
+      (c/su
+       (cu/grepkill! :stop process-name)))
+
+    (resume! [_ _ _node]
+      (c/su
+       (cu/grepkill! :cont process-name)))))
 
 (defn start-empty-node! [database test node]
   (c/on-nodes
