@@ -18,6 +18,9 @@ pub struct Opt {
 
     #[clap(long, value_name = "PATH")]
     pub data_dir: Option<PathBuf>,
+
+    #[clap(long)]
+    pub snapshot_threshold: Option<u64>,
 }
 
 #[tokio::main]
@@ -35,5 +38,12 @@ async fn main() -> std::io::Result<()> {
     let options = Opt::parse();
     let data_dir = options.data_dir.unwrap_or_else(|| PathBuf::from(format!("{}.db", options.api_addr)));
 
-    start_raft_node(options.id, data_dir, options.api_addr, options.raft_addr).await
+    start_raft_node(
+        options.id,
+        data_dir,
+        options.api_addr,
+        options.raft_addr,
+        options.snapshot_threshold,
+    )
+    .await
 }
