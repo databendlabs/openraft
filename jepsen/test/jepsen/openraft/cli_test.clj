@@ -53,7 +53,7 @@
 
 (deftest selects-composable-nemeses
   (testing "chaos is the default"
-    (is (= [:partition :process :pause]
+    (is (= [:partition :process :pause :membership]
            (#'cli/normalize-nemeses nil))))
 
   (testing "comma-separated faults are parsed and canonically ordered"
@@ -62,17 +62,18 @@
             (#'cli/parse-nemeses "process, partition")))))
 
   (testing "chaos expands to every composable fault without duplicates"
-    (is (= [:partition :process :pause]
+    (is (= [:partition :process :pause :membership]
            (#'cli/normalize-nemeses [:chaos :partition]))))
 
-  (testing "membership remains standalone"
-    (is (false? (#'cli/valid-nemeses? [:membership :partition])))))
+  (testing "membership can be combined with another fault"
+    (is (#'cli/valid-nemeses? [:membership :partition]))))
 
 (deftest composes-selected-nemesis-checkers
-  (let [test (cli/openraft-test {:nemesis [:process :partition]
+  (let [test (cli/openraft-test {:nemesis [:membership :partition]
+                                 :nodes ["n1" "n2" "n3" "n4" "n5"]
                                  :time-limit 10})
         checkers (get-in test [:checker :checkers :nemesis :checkers])]
-    (is (= #{:partition :process}
+    (is (= #{:partition :membership}
            (set (keys checkers))))))
 
 (deftest configures-worker-exception-and-node-crash-checkers

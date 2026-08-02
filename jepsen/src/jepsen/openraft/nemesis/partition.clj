@@ -93,20 +93,18 @@
   (PartitionNemesis. (nemesis/partitioner)))
 
 (defn- partition-generator []
-  (gen/delay
-    partition-seconds
-    (gen/cycle
-     (gen/phases
-      {:type :info
-       :f :start-partition
-       :value :leader-in-majority}
-      {:type :info
-       :f :stop-partition}
-      {:type :info
-       :f :start-partition
-       :value :leader-in-minority}
-      {:type :info
-       :f :stop-partition}))))
+  (gen/cycle
+   (gen/phases
+    {:type :info
+     :f :start-partition
+     :value :leader-in-majority}
+    {:type :info
+     :f :stop-partition}
+    {:type :info
+     :f :start-partition
+     :value :leader-in-minority}
+    {:type :info
+     :f :stop-partition})))
 
 (defn- next-cluster-state
   "Applies one nemesis operation to the partition lifecycle state.
@@ -164,6 +162,7 @@
 
 (defn partition-package []
   {:name :partition
+   :interval partition-seconds
    :nemesis (partition-nemesis)
    :generator (partition-generator)
    :final-generator {:type :info

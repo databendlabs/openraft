@@ -471,11 +471,10 @@
         target-voters (set (:nodes test))]
     (loop [status (stable-membership! test)]
       (if (= target-voters (:voters status))
-        (let [ready-status (cluster/await-ready! test)]
-          (cond-> {:leader (:leader ready-status)
-                   :voters (:voters status)}
-            resolved-change
-            (assoc :resolved-change resolved-change)))
+        (cond-> {:leader (:leader status)
+                 :voters (:voters status)}
+          resolved-change
+          (assoc :resolved-change resolved-change))
         (let [result (grow! database test)]
           (when (keyword? result)
             (throw (ex-info "Unable to restore OpenRaft membership"
@@ -511,24 +510,25 @@
                         pending-change
                         test))))
 
-  (teardown! [_ _test]))
+  (teardown! [_ _test])
+
+  nemesis/Reflection
+  (fs [_]
+    #{:grow :shrink :restore-membership}))
 
 (defn membership-nemesis [database]
-  (nemesis/validate
-   (MembershipNemesis. database (atom nil))))
+  (MembershipNemesis. database (atom nil)))
 
 (defn- membership-generator []
-  (gen/stagger
-   change-seconds
-   (gen/phases
-    {:type :info
-     :f :shrink}
-    {:type :info
-     :f :grow}
-    (gen/mix [(repeat {:type :info
-                       :f :grow})
-              (repeat {:type :info
-                       :f :shrink})]))))
+  (gen/phases
+   {:type :info
+    :f :shrink}
+   {:type :info
+    :f :grow}
+   (gen/mix [(repeat {:type :info
+                      :f :grow})
+             (repeat {:type :info
+                      :f :shrink})])))
 
 (defn- coverage-checker []
   (reify checker/Checker
@@ -568,13 +568,20 @@
             restored? (and (= :restore-membership (:f final-operation))
                            (= expected-voters
                               (get-in final-operation
-                                      [:value :voters])))]
+                                      [:value :voters])))
+            final-recovery (->> history
+                                (filter #(= :await-recovery (:f %)))
+                                last)
+            recovered? (boolean (get-in final-recovery
+                                        [:value :leader]))]
         {:valid? (and (empty? errors)
                       (empty? missing-changes)
-                      restored?)
+                      restored?
+                      recovered?)
          :observed-changes (vec (sort observed-changes))
          :missing-changes (vec (sort missing-changes))
          :restored? restored?
+         :recovered? recovered?
          :error-count (count errors)
          :errors (vec (take 10 errors))}))))
 
@@ -583,8 +590,10 @@
     (throw (ex-info "Membership nemesis requires more than three nodes"
                     {:minimum-voters minimum-voters
                      :nodes (:nodes test)})))
-  {:nemesis (membership-nemesis database)
+  {:name :membership
+   :interval change-seconds
+   :nemesis (membership-nemesis database)
    :generator (membership-generator)
-   :final-generator (gen/once {:type :info
-                               :f :restore-membership})
+   :final-generator {:type :info
+                     :f :restore-membership}
    :checker (coverage-checker)})

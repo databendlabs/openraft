@@ -288,7 +288,7 @@
                 :target target}
                (select-keys (:value result) [:status :target])))))))
 
-(deftest final-recovery-resolves-a-pending-removal
+(deftest final-restoration-resolves-a-pending-removal
   (let [before (set nodes)
         after (disj before "n5")
         restored {:leader "n1" :voters before}
@@ -316,11 +316,7 @@
          (swap! calls conj :grow))
        #'openraft-db/stop-and-wipe-node!
        (fn [_database _test node]
-         (swap! calls conj [:stop-and-wipe node]))
-       #'cluster/await-ready!
-       (fn [_test]
-         (swap! calls conj :await-ready)
-         {:leader "n2"})}
+         (swap! calls conj [:stop-and-wipe node]))}
       (fn []
         (let [result (nemesis/invoke! subject
                                       test-config
@@ -328,10 +324,9 @@
                                        :f :restore-membership})]
           (is (= [[:complete-removal after]
                   [:stop-and-wipe "n5"]
-                  :grow
-                  :await-ready]
+                  :grow]
                  @calls))
-          (is (= {:leader "n2"
+          (is (= {:leader "n1"
                   :voters before
                   :resolved-change {:change :shrink
                                     :node "n5"
@@ -341,7 +336,7 @@
                  (:value result)))
           (is (nil? @pending)))))))
 
-(deftest final-recovery-confirms-a-completed-grow
+(deftest final-restoration-confirms-a-completed-grow
   (let [before #{"n1" "n2" "n3" "n4"}
         after (conj before "n5")
         pending (atom {:change :grow
@@ -354,9 +349,7 @@
       {#'membership/stable-membership! (fn [_test]
                                          (stable-status after))
        #'membership/grow! (fn [& _]
-                            (throw (ex-info "MUST NOT grow again" {})))
-       #'cluster/await-ready! (fn [_test]
-                                {:leader "n1"})}
+                            (throw (ex-info "MUST NOT grow again" {})))}
       (fn []
         (let [result (nemesis/invoke! subject
                                       test-config
@@ -417,11 +410,14 @@
         restore {:type :info
                  :f :restore-membership
                  :value {:leader "n1"
-                         :voters all-voters}}]
+                         :voters all-voters}}
+        recovery {:type :info
+                  :f :await-recovery
+                  :value {:leader "n1"}}]
     (testing "a resolved change is attributed to its actual fault class"
       (is (:valid? (checker/check subject
                                   test-config
-                                  [shrink grow restore]
+                                  [shrink grow restore recovery]
                                   {}))))
 
     (testing "an indeterminate request does not count as coverage"
@@ -434,7 +430,8 @@
                                     :before all-voters
                                     :target four-voters})
                      grow
-                     restore]
+                     restore
+                     recovery]
                     {})]
         (is (false? (:valid? result)))
         (is (= [:shrink] (:missing-changes result)))))
@@ -451,9 +448,33 @@
                      grow
                      (assoc-in restore
                                [:value :resolved-change]
-                               (:value shrink))]
+                               (:value shrink))
+                     recovery]
                     {})]
         (is (:valid? result))))
+
+    (testing "final restoration must be followed by cluster recovery"
+      (let [result (checker/check subject
+                                  test-config
+                                  [shrink grow restore]
+                                  {})]
+        (is (false? (:valid? result)))
+        (is (:restored? result))
+        (is (false? (:recovered? result)))))
+
+    (testing "a later failed recovery supersedes an earlier success"
+      (let [result (checker/check subject
+                                  test-config
+                                  [shrink
+                                   grow
+                                   restore
+                                   recovery
+                                   (assoc recovery
+                                          :value nil
+                                          :error :timeout)]
+                                  {})]
+        (is (false? (:valid? result)))
+        (is (false? (:recovered? result)))))
 
     (testing "the final membership must be restored"
       (let [result (checker/check subject

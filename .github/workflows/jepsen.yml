@@ -71,6 +71,7 @@ jobs:
           - partition
           - pause
           - process
+          - chaos
 
     steps:
       - name: Setup | Checkout
