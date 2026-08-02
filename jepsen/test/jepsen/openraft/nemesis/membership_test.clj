@@ -1,8 +1,7 @@
 (ns jepsen.openraft.nemesis.membership-test
   (:require [clojure.test :refer [deftest is testing]]
             [jepsen [checker :as checker]
-             [nemesis :as nemesis]
-             [util :as util]]
+             [nemesis :as nemesis]]
             [jepsen.openraft [client :as client]
              [cluster :as cluster]
              [db :as openraft-db]]
@@ -16,33 +15,188 @@
    :api-port 21001
    :raft-port 22001})
 
-(defn- forward-error [endpoint]
-  (ex-info "forward"
-           {:kind :openraft-error
-            :error {:ForwardToLeader
-                    {:leader_id "n2"
-                     :leader_node {:data endpoint}}}}))
+(defn- membership-nemesis []
+  (membership/->MembershipNemesis :database (atom nil)))
 
-(deftest shrink-confirms-membership-before-wiping
+(defn- stable-status [voters]
+  {:leader "n1"
+   :voters voters
+   :learners #{}
+   :non-members (set (remove voters nodes))
+   :stable? true
+   :metrics (zipmap voters (repeat {}))})
+
+(deftest grows-without-waiting-for-stable-membership
   (let [calls (atom [])
-        before #{"n1" "n2" "n3" "n4" "n5"}
-        after #{"n1" "n2" "n3" "n4"}
-        initial {:leader "n1"
-                 :voters before
-                 :learners #{}
-                 :stable? true
-                 :metrics (zipmap nodes (repeat {}))}
-        final {:leader "n1"
-               :voters after}
-        subject (membership/->MembershipNemesis :database)]
-    (with-redefs [cluster/await-committed-membership!
+        before #{"n1" "n2" "n3" "n4"}
+        after (conj before "n5")
+        statuses (atom [(stable-status before)
+                        (update (stable-status before)
+                                :metrics
+                                assoc
+                                "n5"
+                                {})])]
+    (with-redefs [cluster/membership-status
                   (fn [_test]
-                    (swap! calls conj [:await nil])
-                    initial)
+                    (let [status (first @statuses)]
+                      (swap! statuses subvec 1)
+                      status))
                   cluster/await-stable-membership!
-                  (fn [_test expected]
-                    (swap! calls conj [:await expected])
-                    final)
+                  (fn [& _]
+                    (throw (ex-info "runtime grow must not wait" {})))
+                  openraft-db/start-empty-node-without-wait!
+                  (fn [database _test node]
+                    (swap! calls conj [:start-empty database node]))
+                  client/add-learner!
+                  (fn [endpoint node-id api-addr raft-addr]
+                    (swap! calls conj
+                           [:add-learner endpoint node-id api-addr raft-addr]))
+                  client/change-membership!
+                  (fn [endpoint node-ids]
+                    (swap! calls conj
+                           [:change-membership endpoint node-ids]))]
+      (let [subject (membership-nemesis)
+            starting (nemesis/invoke! subject
+                                      test-config
+                                      {:type :info
+                                       :f :grow})
+            result (nemesis/invoke! subject
+                                    test-config
+                                    {:type :info
+                                     :f :grow})]
+        (is (= :node-starting (get-in starting [:value :status])))
+        (is (= [[:start-empty :database "n5"]
+                [:add-learner
+                 "n1:21001"
+                 "n5"
+                 "n5:21001"
+                 "n5:22001"]
+                [:change-membership
+                 "n1:21001"
+                 ["n1" "n2" "n3" "n4" "n5"]]]
+               @calls))
+        (is (= {:change :grow
+                :node "n5"
+                :source :non-member
+                :before before
+                :after after}
+               (select-keys (:value result)
+                            [:change :node :source :before :after])))))))
+
+(deftest handles-an-existing-learner
+  (let [before #{"n1" "n2" "n3" "n4"}
+        after (conj before "n5")
+        calls (atom [])
+        reachable (assoc (stable-status before)
+                         :learners #{"n5"}
+                         :non-members #{}
+                         :metrics {"n1" {} "n2" {} "n3" {}
+                                   "n4" {} "n5" {}})
+        unreachable (update reachable :metrics dissoc "n5")]
+    (testing "a reachable learner is promoted without resetting its data"
+      (with-redefs [cluster/membership-status (constantly reachable)
+                    openraft-db/start-empty-node!
+                    (fn [& _]
+                      (throw (ex-info "MUST NOT reset a learner" {})))
+                    client/add-learner!
+                    (fn [& _]
+                      (swap! calls conj :add-learner))
+                    client/change-membership!
+                    (fn [& _]
+                      (swap! calls conj :change-membership))]
+        (let [result (nemesis/invoke! (membership-nemesis)
+                                      test-config
+                                      {:type :info
+                                       :f :grow})]
+          (is (= [:add-learner :change-membership] @calls))
+          (is (= after (get-in result [:value :after]))))))
+
+    (testing "an unreachable learner is reported without blocking"
+      (reset! calls [])
+      (with-redefs [cluster/membership-status (constantly unreachable)
+                    client/add-learner!
+                    (fn [& _]
+                      (swap! calls conj :add-learner))]
+        (let [result (nemesis/invoke! (membership-nemesis)
+                                      test-config
+                                      {:type :info
+                                       :f :grow})]
+          (is (= :learner-unreachable
+                 (get-in result [:value :status])))
+          (is (empty? @calls)))))))
+
+(deftest defers-an-indeterminate-learner-addition
+  (let [before #{"n1" "n2" "n3" "n4"}
+        changed? (atom false)
+        status (update (stable-status before)
+                       :metrics
+                       assoc
+                       "n5"
+                       {})]
+    (with-redefs [cluster/membership-status
+                  (constantly status)
+                  client/add-learner!
+                  (fn [& _]
+                    (throw (ex-info "timeout"
+                                    {:kind :request-timeout})))
+                  client/change-membership!
+                  (fn [& _]
+                    (reset! changed? true))]
+      (let [result (nemesis/invoke! (membership-nemesis)
+                                    test-config
+                                    {:type :info
+                                     :f :grow})]
+        (is (= :indeterminate (get-in result [:value :status])))
+        (is (false? @changed?))))))
+
+(deftest confirms-an-indeterminate-grow-from-membership-state
+  (let [before #{"n1" "n2" "n3" "n4"}
+        after (conj before "n5")
+        statuses (atom [(update (stable-status before)
+                                :metrics
+                                assoc
+                                "n5"
+                                {})
+                        (stable-status after)])
+        change-attempts (atom 0)
+        subject (membership-nemesis)]
+    (with-redefs [cluster/membership-status
+                  (fn [_test]
+                    (let [status (first @statuses)]
+                      (swap! statuses subvec 1)
+                      status))
+                  client/add-learner! (fn [& _])
+                  client/change-membership!
+                  (fn [& _]
+                    (swap! change-attempts inc)
+                    (throw (ex-info "timeout"
+                                    {:kind :request-timeout})))]
+      (let [pending (nemesis/invoke! subject
+                                     test-config
+                                     {:type :info
+                                      :f :grow})]
+        (is (= :indeterminate (get-in pending [:value :status]))))
+
+      (let [resolved (nemesis/invoke! subject
+                                      test-config
+                                      {:type :info
+                                       :f :shrink})]
+        (is (= 1 @change-attempts))
+        (is (= {:change :grow
+                :before before
+                :after after}
+               (select-keys (:value resolved)
+                            [:change :before :after])))))))
+
+(deftest shrinks-without-waiting-before-cleanup
+  (let [calls (atom [])
+        before (set nodes)
+        after (disj before "n5")]
+    (with-redefs [cluster/membership-status
+                  (constantly (stable-status before))
+                  cluster/await-stable-membership!
+                  (fn [& _]
+                    (throw (ex-info "runtime shrink must not wait" {})))
                   random/shuffle reverse
                   client/change-membership!
                   (fn [endpoint node-ids]
@@ -51,465 +205,185 @@
                   openraft-db/stop-and-wipe-node!
                   (fn [database _test node]
                     (swap! calls conj [:stop-and-wipe database node]))]
-      (let [result (nemesis/invoke!
-                    subject
-                    test-config
-                    {:type :info
-                     :f :shrink})]
-        (is (= [[:await nil]
-                [:change-membership "n1:21001"
+      (let [result (nemesis/invoke! (membership-nemesis)
+                                    test-config
+                                    {:type :info
+                                     :f :shrink})]
+        (is (= [[:change-membership
+                 "n1:21001"
                  ["n1" "n2" "n3" "n4"]]
-                [:await after]
                 [:stop-and-wipe :database "n5"]]
                @calls))
-        (is (= {:node "n5"
-                :leader "n1"
+        (is (= {:change :shrink
+                :node "n5"
                 :before before
                 :after after}
-               (:value result)))))))
+               (select-keys (:value result)
+                            [:change :node :before :after])))))))
 
-(deftest grow-starts-empty-node-before-adding-it
+(deftest defers-cleanup-after-an-indeterminate-shrink
   (let [calls (atom [])
-        before #{"n1" "n2" "n3" "n4"}
-        after #{"n1" "n2" "n3" "n4" "n5"}
-        initial {:leader "n1"
-                 :voters before
-                 :learners #{}
-                 :stable? true
-                 :non-members #{"n5"}}
-        final {:leader "n1"
-               :voters after}
-        subject (membership/->MembershipNemesis :database)]
-    (with-redefs [cluster/await-committed-membership!
+        before (set nodes)
+        after (disj before "n5")
+        statuses (atom [(stable-status before)
+                        (stable-status after)])
+        subject (membership-nemesis)]
+    (with-redefs [cluster/membership-status
                   (fn [_test]
-                    (swap! calls conj [:await nil])
-                    initial)
+                    (let [status (first @statuses)]
+                      (swap! statuses subvec 1)
+                      status))
+                  random/shuffle reverse
+                  client/change-membership!
+                  (fn [& _]
+                    (swap! calls conj :change-membership)
+                    (throw (ex-info "timeout"
+                                    {:kind :request-timeout})))
+                  openraft-db/stop-and-wipe-node!
+                  (fn [_database _test node]
+                    (swap! calls conj [:stop-and-wipe node]))]
+      (let [pending (nemesis/invoke! subject
+                                     test-config
+                                     {:type :info
+                                      :f :shrink})]
+        (is (= :indeterminate (get-in pending [:value :status])))
+        (is (= [:change-membership] @calls)))
+
+      (let [resolved (nemesis/invoke! subject
+                                      test-config
+                                      {:type :info
+                                       :f :grow})]
+        (is (= [:change-membership [:stop-and-wipe "n5"]] @calls))
+        (is (= {:change :shrink
+                :before before
+                :after after}
+               (select-keys (:value resolved)
+                            [:change :before :after])))))))
+
+(deftest advances-a-joint-membership-without-waiting
+  (let [before #{"n1" "n2" "n3"}
+        target (conj before "n4")
+        joint {:leader "n1"
+               :stable? false
+               :effective-voter-configs [before target]}
+        calls (atom [])]
+    (with-redefs [cluster/membership-status (constantly joint)
                   cluster/await-stable-membership!
-                  (fn [_test expected]
-                    (swap! calls conj [:await expected])
-                    final)
-                  openraft-db/start-empty-node!
-                  (fn [database _test node]
-                    (swap! calls conj [:start-empty database node]))
-                  client/add-learner!
-                  (fn [endpoint node-id api-addr raft-addr]
-                    (swap! calls conj
-                           [:add-learner
-                            endpoint
-                            node-id
-                            api-addr
-                            raft-addr]))
+                  (fn [& _]
+                    (throw (ex-info "runtime joint completion must not wait"
+                                    {})))
                   client/change-membership!
                   (fn [endpoint node-ids]
                     (swap! calls conj
                            [:change-membership endpoint node-ids]))]
-      (let [result (nemesis/invoke!
-                    subject
-                    test-config
-                    {:type :info
-                     :f :grow})]
-        (is (= [[:await nil]
-                [:start-empty :database "n5"]
-                [:add-learner
-                 "n1:21001"
-                 "n5"
-                 "n5:21001"
-                 "n5:22001"]
-                [:change-membership "n1:21001"
-                 ["n1" "n2" "n3" "n4" "n5"]]
-                [:await after]]
-               @calls))
-        (is (= {:node "n5"
-                :source :non-member
-                :leader "n1"
-                :before before
-                :after after}
-               (:value result)))))))
-
-(deftest grow-promotes-an-existing-learner
-  (let [calls (atom [])
-        before #{"n1" "n2" "n3" "n4"}
-        after #{"n1" "n2" "n3" "n4" "n5"}
-        initial {:leader "n1"
-                 :voters before
-                 :learners #{"n5"}
-                 :non-members #{}
-                 :stable? true
-                 :metrics {"n5" {}}}
-        final {:leader "n1"
-               :voters after}
-        subject (membership/->MembershipNemesis :database)]
-    (with-redefs [cluster/await-committed-membership! (fn [_test] initial)
-                  cluster/await-stable-membership!
-                  (fn [_test _expected] final)
-                  openraft-db/start-empty-node!
-                  (fn [& _]
-                    (throw (ex-info "MUST NOT reset a learner" {})))
-                  client/add-learner!
-                  (fn [& _]
-                    (swap! calls conj :add-learner))
-                  client/change-membership!
-                  (fn [& _]
-                    (swap! calls conj :change-membership))]
-      (nemesis/invoke! subject
-                       test-config
-                       {:type :info
-                        :f :grow})
-      (is (= [:add-learner :change-membership] @calls)))))
-
-(deftest grow-follows-a-new-leader
-  (let [calls (atom [])
-        before #{"n1" "n2" "n3" "n4"}
-        after #{"n1" "n2" "n3" "n4" "n5"}
-        initial {:leader "n1"
-                 :voters before
-                 :learners #{}
-                 :stable? true
-                 :non-members #{"n5"}}
-        final {:leader "n2"
-               :voters after}
-        subject (membership/->MembershipNemesis :database)]
-    (with-redefs [cluster/await-committed-membership! (fn [_test] initial)
-                  cluster/await-stable-membership!
-                  (fn [_test _expected] final)
-                  openraft-db/start-empty-node! (fn [& _])
-                  client/add-learner!
-                  (fn [endpoint & _]
-                    (swap! calls conj [:add-learner endpoint])
-                    (when (= "n1:21001" endpoint)
-                      (throw (forward-error "n2:21001"))))
-                  client/change-membership!
-                  (fn [endpoint _node-ids]
-                    (swap! calls conj [:change-membership endpoint]))]
-      (nemesis/invoke! subject
-                       test-config
-                       {:type :info
-                        :f :grow})
-      (is (= [[:add-learner "n1:21001"]
-              [:add-learner "n2:21001"]
-              [:change-membership "n2:21001"]]
-             @calls)))))
-
-(deftest ambiguous-add-learner-uses-observed-membership
-  (let [calls (atom [])
-        before #{"n1" "n2" "n3" "n4"}
-        after (conj before "n5")
-        initial {:leader "n1"
-                 :voters before
-                 :learners #{}
-                 :non-members #{"n5"}
-                 :stable? true}
-        learner-added {:leader "n1"
-                       :voters before
-                       :learners #{"n5"}
-                       :effective-log-id {:index 7}
-                       :stable? true}
-        final {:leader "n1"
-               :voters after}
-        subject (membership/->MembershipNemesis :database)]
-    (with-redefs [cluster/await-committed-membership! (fn [_test] initial)
-                  cluster/membership-status
-                  (fn [_test]
-                    (swap! calls conj :observe-learner)
-                    learner-added)
-                  cluster/await-stable-membership!
-                  (fn [_test expected]
-                    (swap! calls conj [:await expected])
-                    final)
-                  openraft-db/start-empty-node! (fn [& _])
-                  client/add-learner!
-                  (fn [& _]
-                    (swap! calls conj :add-learner)
-                    (throw (ex-info "timeout"
-                                    {:kind :request-timeout})))
-                  client/change-membership!
-                  (fn [_endpoint _node-ids]
-                    (swap! calls conj :change-membership))]
-      (let [result (nemesis/invoke!
-                    subject
-                    test-config
-                    {:type :info
-                     :f :grow})]
-        (is (= [:add-learner
-                :observe-learner
-                :change-membership
-                [:await after]]
-               @calls))
-        (is (= after (get-in result [:value :after])))))))
-
-(deftest completes-an-existing-joint-membership
-  (let [before #{"n1" "n2" "n3"}
-        target #{"n1" "n2" "n3" "n4"}
-        joint {:leader "n1"
-               :stable? false
-               :effective-voter-configs [before target]}
-        stable {:leader "n1"
-                :voters target
-                :stable? true}
-        calls (atom [])]
-    (with-redefs-fn
-      {#'cluster/await-committed-membership! (fn [_test] joint)
-       #'client/change-membership!
-       (fn [endpoint node-ids]
-         (swap! calls conj [:change-membership endpoint node-ids]))
-       #'cluster/await-stable-membership!
-       (fn [_test expected]
-         (swap! calls conj [:await expected])
-         stable)}
-      (fn []
-        (is (= stable
-               (#'membership/stable-membership! test-config)))
+      (let [result (nemesis/invoke! (membership-nemesis)
+                                    test-config
+                                    {:type :info
+                                     :f :grow})]
         (is (= [[:change-membership
                  "n1:21001"
-                 ["n1" "n2" "n3" "n4"]]
-                [:await target]]
-               @calls))))))
+                 ["n1" "n2" "n3" "n4"]]]
+               @calls))
+        (is (= {:status :completed
+                :target target}
+               (select-keys (:value result) [:status :target])))))))
 
-(deftest retries-after-an-in-progress-membership-change
-  (let [before #{"n1" "n2" "n3" "n4"}
-        target (conj before "n5")
-        calls (atom [])
-        final {:leader "n1"
-               :voters target}]
-    (with-redefs-fn
-      {#'client/change-membership!
-       (fn [_endpoint _node-ids]
-         (swap! calls conj :change-membership)
-         (when (= 1 (count @calls))
-           (throw (ex-info
-                   "in progress"
-                   {:kind :openraft-error
-                    :error {:ChangeMembershipError
-                            {:InProgress {}}}}))))
-       #'membership/stable-membership!
-       (fn [_test]
-         (swap! calls conj :complete-pending)
-         {:voters before})
-       #'cluster/await-stable-membership!
-       (fn [_test expected]
-         (swap! calls conj [:await expected])
-         final)}
-      (fn []
-        (is (= final
-               (#'membership/change-membership-and-await!
-                test-config
-                (atom "n1:21001")
-                target)))
-        (is (= [:change-membership
-                :complete-pending
-                :change-membership
-                [:await target]]
-               @calls))))))
-
-(deftest rejects-an-unreachable-learner
-  (let [initial {:leader "n1"
-                 :voters #{"n1" "n2" "n3" "n4"}
-                 :learners #{"n5"}
-                 :non-members #{}
-                 :stable? true
-                 :metrics {"n1" {}
-                           "n2" {}
-                           "n3" {}
-                           "n4" {}}}
-        subject (membership/->MembershipNemesis :database)]
-    (with-redefs [cluster/await-committed-membership! (fn [_test] initial)
-                  util/await-fn (fn [f _opts] (f))
-                  client/metrics!
-                  (fn [_endpoint]
-                    (throw (ex-info "unreachable"
-                                    {:kind :unreachable})))
-                  openraft-db/start-empty-node!
-                  (fn [& _]
-                    (throw (ex-info "MUST NOT restart a learner" {})))
-                  client/add-learner!
-                  (fn [& _]
-                    (throw (ex-info "MUST NOT add an unreachable learner" {})))]
-      (let [error (try
-                    (nemesis/invoke! subject
-                                     test-config
-                                     {:type :info
-                                      :f :grow})
-                    nil
-                    (catch Exception e
-                      e))]
-        (is (= :learner-unreachable (:kind (ex-data error))))
-        (is (= "n5" (:node (ex-data error))))))))
-
-(deftest ambiguous-shrink-completes-joint-before-cleanup
-  (let [calls (atom [])
-        before #{"n1" "n2" "n3" "n4" "n5"}
-        after #{"n1" "n2" "n3" "n4"}
-        initial {:leader "n1"
-                 :voters before
-                 :learners #{}
-                 :stable? true
-                 :metrics (zipmap nodes (repeat {}))}
-        joint {:leader "n1"
-               :voters before
-               :stable? false
-               :effective-voter-configs [before after]}
-        final {:leader "n1"
-               :voters after
-               :stable? true}
-        committed-statuses (atom [initial joint])
-        stable-attempts (atom 0)
-        change-attempts (atom 0)
-        subject (membership/->MembershipNemesis :database)]
-    (with-redefs [cluster/await-committed-membership!
-                  (fn [_test]
-                    (let [status (first @committed-statuses)]
-                      (swap! committed-statuses subvec 1)
-                      status))
-                  cluster/await-stable-membership!
-                  (fn [_test expected]
-                    (swap! calls conj [:await expected])
-                    (if (= 1 (swap! stable-attempts inc))
-                      (throw (ex-info "not stable yet"
-                                      {:type :timeout}))
-                      final))
-                  random/shuffle reverse
-                  client/change-membership!
-                  (fn [endpoint node-ids]
-                    (swap! calls conj
-                           [:change-membership endpoint node-ids])
-                    (when (= 1 (swap! change-attempts inc))
-                      (throw (ex-info "timeout"
-                                      {:kind :request-timeout}))))
-                  openraft-db/stop-and-wipe-node!
-                  (fn [_database _test node]
-                    (swap! calls conj [:stop-and-wipe node]))]
-      (nemesis/invoke! subject
-                       test-config
-                       {:type :info
-                        :f :shrink})
-      (is (= [[:change-membership
-               "n1:21001"
-               ["n1" "n2" "n3" "n4"]]
-              [:await after]
-              [:change-membership
-               "n1:21001"
-               ["n1" "n2" "n3" "n4"]]
-              [:await after]
-              [:stop-and-wipe "n5"]]
-             @calls)))))
-
-(deftest ambiguous-shrink-does-not-clean-up-without-confirmation
-  (let [calls (atom [])
-        wiped? (atom false)
-        before #{"n1" "n2" "n3" "n4" "n5"}
-        after #{"n1" "n2" "n3" "n4"}
-        initial {:leader "n1"
-                 :voters before
-                 :learners #{}
-                 :stable? true
-                 :metrics (zipmap nodes (repeat {}))}
-        subject (membership/->MembershipNemesis :database)]
-    (with-redefs [cluster/await-committed-membership! (fn [_test] initial)
-                  cluster/await-stable-membership!
-                  (fn [_test expected]
-                    (swap! calls conj [:await expected])
-                    (throw (ex-info "not committed" {:type :timeout})))
-                  random/shuffle reverse
-                  client/change-membership!
-                  (fn [endpoint node-ids]
-                    (swap! calls conj
-                           [:change-membership endpoint node-ids])
-                    (throw (ex-info "timeout"
-                                    {:kind :request-timeout})))
-                  openraft-db/stop-and-wipe-node!
-                  (fn [& _]
-                    (reset! wiped? true))]
-      (is (thrown? Exception
-                   (nemesis/invoke!
-                    subject
-                    test-config
-                    {:type :info
-                     :f :shrink})))
-      (is (= [[:change-membership
-               "n1:21001"
-               ["n1" "n2" "n3" "n4"]]
-              [:await after]]
-             @calls))
-      (is (false? @wiped?)))))
-
-(deftest shrink-preserves-the-minimum-membership
-  (let [status {:leader "n1"
-                :voters #{"n1" "n2" "n3"}
-                :learners #{}
-                :stable? true
-                :metrics {"n1" {}
-                          "n2" {}
-                          "n3" {}}}
-        subject (membership/->MembershipNemesis :database)]
-    (with-redefs [cluster/await-committed-membership!
-                  (fn [_test] status)
-                  client/change-membership!
-                  (fn [& _]
-                    (throw (ex-info "MUST NOT change membership" {})))
-                  openraft-db/stop-and-wipe-node!
-                  (fn [& _]
-                    (throw (ex-info "MUST NOT wipe a voter" {})))]
-      (let [result (nemesis/invoke!
-                    subject
-                    test-config
-                    {:type :info
-                     :f :shrink})]
-        (is (= :minimum-membership (:value result)))))))
-
-(deftest restores-all-test-nodes-as-voters
-  (let [partial {:leader "n1"
-                 :voters #{"n1" "n2" "n3"}}
-        growing {:leader "n1"
-                 :voters #{"n1" "n2" "n3" "n4"}}
-        restored {:leader "n1"
-                  :voters (set nodes)}
-        statuses (atom [partial growing restored])
-        grow-count (atom 0)
-        subject (membership/->MembershipNemesis :database)]
+(deftest final-recovery-resolves-a-pending-removal
+  (let [before (set nodes)
+        after (disj before "n5")
+        restored {:leader "n1" :voters before}
+        statuses (atom [(stable-status before)
+                        (stable-status after)
+                        restored])
+        pending (atom {:change :shrink
+                       :node "n5"
+                       :before before
+                       :target after})
+        subject (membership/->MembershipNemesis :database pending)
+        calls (atom [])]
     (with-redefs-fn
       {#'membership/stable-membership!
        (fn [_test]
          (let [status (first @statuses)]
            (swap! statuses subvec 1)
            status))
+       #'membership/change-membership-and-await!
+       (fn [_test _leader-endpoint target]
+         (swap! calls conj [:complete-removal target])
+         (stable-status after))
        #'membership/grow!
        (fn [_database _test]
-         (swap! grow-count inc))
+         (swap! calls conj :grow))
+       #'openraft-db/stop-and-wipe-node!
+       (fn [_database _test node]
+         (swap! calls conj [:stop-and-wipe node]))
        #'cluster/await-ready!
        (fn [_test]
+         (swap! calls conj :await-ready)
          {:leader "n2"})}
       (fn []
-        (let [result (nemesis/invoke!
-                      subject
-                      test-config
-                      {:type :info
-                       :f :restore-membership})]
-          (is (= 2 @grow-count))
+        (let [result (nemesis/invoke! subject
+                                      test-config
+                                      {:type :info
+                                       :f :restore-membership})]
+          (is (= [[:complete-removal after]
+                  [:stop-and-wipe "n5"]
+                  :grow
+                  :await-ready]
+                 @calls))
           (is (= {:leader "n2"
-                  :voters (set nodes)}
-                 (:value result))))))))
+                  :voters before
+                  :resolved-change {:change :shrink
+                                    :node "n5"
+                                    :before before
+                                    :leader "n1"
+                                    :after after}}
+                 (:value result)))
+          (is (nil? @pending)))))))
 
-(deftest restore-fails-when-grow-cannot-progress
-  (let [partial {:leader "n1"
-                 :voters #{"n1" "n2" "n3"}}
-        subject (membership/->MembershipNemesis :database)]
+(deftest final-recovery-confirms-a-completed-grow
+  (let [before #{"n1" "n2" "n3" "n4"}
+        after (conj before "n5")
+        pending (atom {:change :grow
+                       :node "n5"
+                       :source :non-member
+                       :before before
+                       :target after})
+        subject (membership/->MembershipNemesis :database pending)]
     (with-redefs-fn
-      {#'membership/stable-membership! (fn [_test] partial)
-       #'membership/grow! (fn [_database _test] :membership-full)}
+      {#'membership/stable-membership! (fn [_test]
+                                         (stable-status after))
+       #'membership/grow! (fn [& _]
+                            (throw (ex-info "MUST NOT grow again" {})))
+       #'cluster/await-ready! (fn [_test]
+                                {:leader "n1"})}
       (fn []
-        (let [error (try
-                      (nemesis/invoke!
-                       subject
-                       test-config
-                       {:type :info
-                        :f :restore-membership})
-                      nil
-                      (catch clojure.lang.ExceptionInfo e
-                        e))]
-          (is (= "Unable to restore OpenRaft membership"
-                 (ex-message error)))
-          (is (= :membership-full
-                 (:result (ex-data error)))))))))
+        (let [result (nemesis/invoke! subject
+                                      test-config
+                                      {:type :info
+                                       :f :restore-membership})]
+          (is (= {:change :grow
+                  :node "n5"
+                  :source :non-member
+                  :before before
+                  :leader "n1"
+                  :after after}
+                 (get-in result [:value :resolved-change])))
+          (is (nil? @pending)))))))
+
+(deftest preserves-the-minimum-membership
+  (let [changed? (atom false)
+        status (stable-status #{"n1" "n2" "n3"})]
+    (with-redefs [cluster/membership-status (constantly status)
+                  client/change-membership!
+                  (fn [& _]
+                    (reset! changed? true))]
+      (let [result (nemesis/invoke! (membership-nemesis)
+                                    test-config
+                                    {:type :info
+                                     :f :shrink})]
+        (is (= :minimum-membership (:value result)))
+        (is (false? @changed?))))))
 
 (deftest membership-package-requires-room-to-change
   (let [three-node-test (assoc test-config
@@ -529,38 +403,57 @@
                            :database
                            test-config))
         all-voters (set nodes)
-        four-voters #{"n1" "n2" "n3" "n4"}
+        four-voters (disj all-voters "n5")
         shrink {:type :info
-                :f :shrink
-                :value {:before all-voters
+                :f :grow
+                :value {:change :shrink
+                        :before all-voters
                         :after four-voters}}
         grow {:type :info
               :f :grow
-              :value {:before four-voters
+              :value {:change :grow
+                      :before four-voters
                       :after all-voters}}
         restore {:type :info
                  :f :restore-membership
                  :value {:leader "n1"
-                         :voters all-voters}}
-        complete-history [shrink grow restore]]
-    (testing "both changes ran and the full membership was restored"
+                         :voters all-voters}}]
+    (testing "a resolved change is attributed to its actual fault class"
       (is (:valid? (checker/check subject
                                   test-config
-                                  complete-history
+                                  [shrink grow restore]
                                   {}))))
 
-    (testing "a no-op does not count as membership change coverage"
+    (testing "an indeterminate request does not count as coverage"
       (let [result (checker/check
                     subject
                     test-config
-                    [shrink
-                     {:type :info
-                      :f :grow
-                      :value :membership-full}
+                    [(assoc shrink
+                            :value {:change :shrink
+                                    :status :indeterminate
+                                    :before all-voters
+                                    :target four-voters})
+                     grow
                      restore]
                     {})]
         (is (false? (:valid? result)))
-        (is (= [:grow] (:missing-changes result)))))
+        (is (= [:shrink] (:missing-changes result)))))
+
+    (testing "final recovery can confirm an indeterminate change"
+      (let [result (checker/check
+                    subject
+                    test-config
+                    [(assoc shrink
+                            :value {:change :shrink
+                                    :status :indeterminate
+                                    :before all-voters
+                                    :target four-voters})
+                     grow
+                     (assoc-in restore
+                               [:value :resolved-change]
+                               (:value shrink))]
+                    {})]
+        (is (:valid? result))))
 
     (testing "the final membership must be restored"
       (let [result (checker/check subject
@@ -568,25 +461,4 @@
                                   [shrink grow]
                                   {})]
         (is (false? (:valid? result)))
-        (is (false? (:restored? result)))))
-
-    (testing "a later change invalidates an earlier restoration"
-      (let [result (checker/check subject
-                                  test-config
-                                  (conj complete-history shrink)
-                                  {})]
-        (is (false? (:valid? result)))
-        (is (false? (:restored? result)))))
-
-    (testing "a nemesis operation error invalidates the test"
-      (let [result (checker/check
-                    subject
-                    test-config
-                    (conj complete-history
-                          {:type :info
-                           :f :grow
-                           :error "learner unavailable"
-                           :exception {:kind :learner-unreachable}})
-                    {})]
-        (is (false? (:valid? result)))
-        (is (= 1 (:error-count result)))))))
+        (is (false? (:restored? result)))))))

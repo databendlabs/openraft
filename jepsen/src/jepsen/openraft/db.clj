@@ -87,15 +87,25 @@
       (c/su
        (cu/grepkill! :cont process-name)))))
 
+(defn- start-empty-node-on-current-node! [database test node]
+  (info node "starting an empty OpenRaft node")
+  (db/kill! database test node)
+  (wipe-data!)
+  (db/start! database test node))
+
+(defn start-empty-node-without-wait! [database test node]
+  (c/on-nodes
+   test
+   [node]
+   (fn [test node]
+     (start-empty-node-on-current-node! database test node))))
+
 (defn start-empty-node! [database test node]
   (c/on-nodes
    test
    [node]
    (fn [test node]
-     (info node "starting an empty OpenRaft node")
-     (db/kill! database test node)
-     (wipe-data!)
-     (db/start! database test node)
+     (start-empty-node-on-current-node! database test node)
      (cu/await-tcp-port
       (client/node-host node)
       (:api-port test client/default-api-port)
