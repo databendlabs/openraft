@@ -1,5 +1,6 @@
 (ns jepsen.openraft.cli-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.java.io :as io]
+            [clojure.test :refer [deftest is testing]]
             [clojure.tools.cli :as tools-cli]
             [jepsen.checker :as checker]
             [jepsen.history :as history]
@@ -76,7 +77,7 @@
     (is (= #{:partition :membership}
            (set (keys checkers))))))
 
-(deftest configures-worker-exception-and-node-crash-checkers
+(deftest configures-seed-and-worker-exception-checkers
   (let [checkers (-> (cli/openraft-test {:nemesis :partition
                                          :seed 41
                                          :time-limit 10})
@@ -106,23 +107,53 @@
         (is (true? (:valid? (checker/check (:exceptions checkers)
                                            {}
                                            (history/history [])
-                                           {}))))))
+                                           {}))))))))
 
-    (testing "node panic and fatal messages are matched"
-      (let [pattern @#'cli/node-crash-pattern]
-        (is (re-find pattern
-                     "thread 'main' panicked at src/main.rs:10:5"))
-        (is (re-find pattern "fatal runtime error: stack overflow"))
-        (is (not (re-find pattern "INFO openraft::raft: vote committed")))))
+(deftest checks-downloaded-logs-for-node-panics
+  (let [^java.io.File temp-dir
+        (.toFile
+         (java.nio.file.Files/createTempDirectory
+          "openraft-jepsen-checker"
+          (make-array java.nio.file.attribute.FileAttribute 0)))
+        test {:name "panic-checker-test"
+              :start-time "run"
+              :nodes ["n1" "n2"]}
+        crash (-> (cli/openraft-test {:nemesis :partition
+                                      :time-limit 10})
+                  :checker
+                  :checkers
+                  :crash)]
+    (try
+      (with-redefs [store/base-dir (.getPath temp-dir)]
+        (let [write-log! (fn [node content]
+                           (let [file (store/path test node "openraft.log")]
+                             (io/make-parents file)
+                             (spit file content)))
+              check #(checker/check crash test (history/history []) {})]
+          (write-log! "n1" "INFO node started\n")
+          (write-log! "n2" "INFO vote committed\n")
+          (testing "clean logs pass"
+            (is (= {:valid? true
+                    :count 0
+                    :missing-nodes []}
+                   (select-keys (check)
+                                [:valid? :count :missing-nodes]))))
 
-    (testing "missing node logs make the crash result indeterminate"
-      (with-redefs [store/path
-                    (fn [_test _node _filename]
-                      (java.io.File.
-                       (str "/tmp/missing-openraft-log-" (random-uuid))))]
-        (let [result (checker/check (:crash checkers)
-                                    {:nodes [:n1]}
-                                    (history/history [])
-                                    {})]
-          (is (= :unknown (:valid? result)))
-          (is (= [:n1] (:missing-nodes result))))))))
+          (write-log! "n2" "INFO before panic\nOPENRAFT_JEPSEN_PANIC\n")
+          (testing "a panic marker fails the check"
+            (is (= {:valid? false
+                    :count 1
+                    :matches [{:node "n2"
+                               :line "OPENRAFT_JEPSEN_PANIC"}]}
+                   (select-keys (check) [:valid? :count :matches]))))
+
+          (io/delete-file (store/path test "n2" "openraft.log"))
+          (testing "a missing node log is indeterminate"
+            (is (= {:valid? :unknown
+                    :count 0
+                    :missing-nodes ["n2"]}
+                   (select-keys (check)
+                                [:valid? :count :missing-nodes]))))))
+      (finally
+        (doseq [file (reverse (file-seq temp-dir))]
+          (io/delete-file file true))))))
