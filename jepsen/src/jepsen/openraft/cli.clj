@@ -5,6 +5,7 @@
              [generator :as gen]
              [random :as random]
              [tests :as tests]]
+            [jepsen.store :as store]
             [jepsen.openraft [db :as openraft-db]
              [workload :as workload]]
             [jepsen.openraft.nemesis [membership :as membership]
@@ -32,18 +33,49 @@
     :validate [nemesis-types (cli/one-of nemesis-types)]]
 
    [nil "--seed SEED" "Seed for Jepsen random choices."
-    :parse-fn parse-long]])
+    :parse-fn parse-long
+    :validate [some? "Must be an integer."]]])
 
 (defn- ensure-random-seed [parsed]
   (update parsed :options
           (fn [options]
-            (if (:seed options)
-              options
-              (assoc options :seed (random/long Long/MAX_VALUE))))))
+            (let [seed (or (:seed options)
+                           (random/long Long/MAX_VALUE))]
+              (random/set-seed! seed)
+              (assoc options :seed seed)))))
+
+(defn- random-seed-checker []
+  (reify checker/Checker
+    (check [_ test _history _opts]
+      {:valid? true
+       :seed (:seed test)})))
+
+(defn- strict-unhandled-exceptions []
+  (let [delegate (checker/unhandled-exceptions)]
+    (reify checker/Checker
+      (check [_ test history opts]
+        (let [result (checker/check delegate test history opts)]
+          (if (seq (:exceptions result))
+            (assoc result :valid? :unknown)
+            result))))))
+
+(defn- required-log-file-pattern [pattern filename]
+  (let [delegate (checker/log-file-pattern pattern filename)]
+    (reify checker/Checker
+      (check [_ test history opts]
+        (let [missing-nodes (->> (:nodes test)
+                                 (remove (fn [node]
+                                           (.isFile
+                                            ^java.io.File
+                                            (store/path test node filename))))
+                                 vec)]
+          (if (seq missing-nodes)
+            {:valid? :unknown
+             :filename filename
+             :missing-nodes missing-nodes}
+            (checker/check delegate test history opts)))))))
 
 (defn openraft-test [opts]
-  (when-some [seed (:seed opts)]
-    (random/set-seed! seed))
   (let [database (openraft-db/db opts)
         workload (workload/workload opts)
         nemesis-type (:nemesis opts :partition)
@@ -71,9 +103,10 @@
                          (:generator workload))
                         (:final-generator workload))
             :checker (checker/compose
-                      {:stats (checker/stats)
-                       :exceptions (checker/unhandled-exceptions)
-                       :crash (checker/log-file-pattern
+                      {:seed (random-seed-checker)
+                       :stats (checker/stats)
+                       :exceptions (strict-unhandled-exceptions)
+                       :crash (required-log-file-pattern
                                node-crash-pattern
                                "openraft.log")
                        :nemesis (:checker nemesis-package)
