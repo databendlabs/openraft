@@ -14,11 +14,8 @@
              [partition :as partition]
              [process :as process]]))
 
-(def ^:private non-membership-nemesis-types
-  [:partition :process :pause])
-
 (def ^:private concrete-nemesis-types
-  (into [:membership] non-membership-nemesis-types))
+  [:partition :process :pause :membership])
 
 (def nemesis-types
   (conj (set concrete-nemesis-types) :chaos))
@@ -41,13 +38,8 @@
                        :unknown (vec unknown)})))
     (let [expanded (cond-> (disj requested :chaos)
                      (contains? requested :chaos)
-                     (into non-membership-nemesis-types))
-          selected (filterv expanded concrete-nemesis-types)]
-      (when (and (contains? expanded :membership)
-                 (< 1 (count expanded)))
-        (throw (ex-info "Membership cannot be combined with other nemeses yet"
-                        {:selection selection})))
-      selected)))
+                     (into concrete-nemesis-types))]
+      (filterv expanded concrete-nemesis-types))))
 
 (defn- valid-nemeses? [selection]
   (try
@@ -76,8 +68,7 @@
     "Comma-separated faults: membership, partition, process, pause, or chaos."
     :default [:chaos]
     :parse-fn parse-nemeses
-    :validate [valid-nemeses?
-               "Unknown fault, or membership combined with another fault."]]
+    :validate [valid-nemeses? "Unknown fault."]]
 
    [nil "--seed SEED" "Seed for Jepsen random choices."
     :parse-fn parse-long
@@ -126,20 +117,22 @@
   (let [database (openraft-db/db opts)
         workload (workload/workload opts)
         nemesis-types (normalize-nemeses (:nemesis opts))
-        nemesis-package (if (= [:membership] nemesis-types)
-                          (membership/membership-package database opts)
-                          (openraft-nemesis/compose-packages
-                           (mapv (fn [nemesis-type]
-                                   (case nemesis-type
-                                     :partition
-                                     (partition/partition-package)
+        nemesis-package
+        (openraft-nemesis/compose-packages
+         (mapv (fn [nemesis-type]
+                 (case nemesis-type
+                   :partition
+                   (partition/partition-package)
 
-                                     :process
-                                     (process/process-package database)
+                   :process
+                   (process/process-package database)
 
-                                     :pause
-                                     (process/pause-package database)))
-                                 nemesis-types)))]
+                   :pause
+                   (process/pause-package database)
+
+                   :membership
+                   (membership/membership-package database opts)))
+               nemesis-types))]
     (merge tests/noop-test
            opts
            {:name (str "openraft linearizable register "

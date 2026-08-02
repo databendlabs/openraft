@@ -160,36 +160,32 @@
   (PauseNemesis. (combined/db-nemesis db) (atom nil)))
 
 (defn- process-generator []
-  (gen/delay
-    downtime-seconds
-    (gen/cycle
-     (gen/phases
-      {:type :info
-       :f :kill-process
-       :value :leader-survives}
-      {:type :info
-       :f :restart-process}
-      {:type :info
-       :f :kill-process
-       :value :leader-killed}
-      {:type :info
-       :f :restart-process}))))
+  (gen/cycle
+   (gen/phases
+    {:type :info
+     :f :kill-process
+     :value :leader-survives}
+    {:type :info
+     :f :restart-process}
+    {:type :info
+     :f :kill-process
+     :value :leader-killed}
+    {:type :info
+     :f :restart-process})))
 
 (defn- pause-generator []
-  (gen/delay
-    downtime-seconds
-    (gen/cycle
-     (gen/phases
-      {:type :info
-       :f :pause-process
-       :value :leader-unpaused}
-      {:type :info
-       :f :resume-process}
-      {:type :info
-       :f :pause-process
-       :value :leader-paused}
-      {:type :info
-       :f :resume-process}))))
+  (gen/cycle
+   (gen/phases
+    {:type :info
+     :f :pause-process
+     :value :leader-unpaused}
+    {:type :info
+     :f :resume-process}
+    {:type :info
+     :f :pause-process
+     :value :leader-paused}
+    {:type :info
+     :f :resume-process})))
 
 (defn- coverage-checker []
   (reify checker/Checker
@@ -242,6 +238,7 @@
 
 (defn process-package [db]
   {:name :process
+   :interval downtime-seconds
    :nemesis (process-nemesis db)
    :generator (process-generator)
    :final-generator {:type :info
@@ -296,6 +293,7 @@
 
 (defn pause-package [db]
   {:name :pause
+   :interval downtime-seconds
    :nemesis (pause-nemesis db)
    :generator (pause-generator)
    :final-generator {:type :info
