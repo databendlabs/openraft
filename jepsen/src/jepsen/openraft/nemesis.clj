@@ -2,11 +2,88 @@
   (:require [clojure.tools.logging :refer [info]]
             [jepsen [checker :as checker]
              [generator :as gen]
-             [nemesis :as nemesis]]
+             [nemesis :as nemesis]
+             [random :as random]]
             [jepsen.nemesis.combined :as combined]
             [jepsen.openraft.cluster :as cluster]))
 
 (def ^:private initial-healthy-seconds 5)
+
+(defn- jittered-interval [interval]
+  (long (random/double (* 0.5 interval)
+                       (* 1.5 interval))))
+
+(defrecord IntervalSchedule
+           [interval next-time generator retry-generator
+            stage operation-f operation-time]
+  gen/Generator
+  (op [_ test context]
+    (when-let [[operation generator'] (gen/op generator test context)]
+      (if (= :pending operation)
+        [operation (IntervalSchedule. interval
+                                      next-time
+                                      generator'
+                                      retry-generator
+                                      stage
+                                      operation-f
+                                      operation-time)]
+        (let [operation (update operation :time max next-time)]
+          [operation
+           (IntervalSchedule. interval
+                              next-time
+                              generator'
+                              generator
+                              :invocation
+                              (:f operation)
+                              (:time operation))]))))
+
+  (update [_ test context event]
+    (let [generator' (gen/update generator test context event)
+          retry-generator' (some-> retry-generator
+                                   (gen/update test context event))
+          operation-event? (and stage
+                                (= :nemesis (:process event))
+                                (= operation-f (:f event)))]
+      (cond
+        (and operation-event? (= :invocation stage))
+        (IntervalSchedule. interval
+                           next-time
+                           generator'
+                           retry-generator'
+                           :completion
+                           operation-f
+                           operation-time)
+
+        (and operation-event? (= :completion stage))
+        (IntervalSchedule. interval
+                           (+ operation-time
+                              (jittered-interval interval))
+                           (if (= :no-supported-leader (:value event))
+                             retry-generator'
+                             generator')
+                           nil
+                           nil
+                           nil
+                           nil)
+
+        :else
+        (IntervalSchedule. interval
+                           next-time
+                           generator'
+                           retry-generator'
+                           stage
+                           operation-f
+                           operation-time)))))
+
+(defn- interval-schedule
+  [interval-seconds initial-delay-seconds generator]
+  (IntervalSchedule. (gen/secs->nanos interval-seconds)
+                     (gen/secs->nanos initial-delay-seconds)
+                     generator
+                     nil
+                     nil
+                     nil
+                     nil))
 
 (defrecord RecoveryNemesis []
   nemesis/Nemesis
@@ -35,35 +112,55 @@
   (reify checker/Checker
     (check [_ test history opts]
       (let [result (checker/check fault-checker test history opts)
-            executed? (boolean (seq (:observed-modes result)))
+            observed (or (:observed-modes result)
+                         (:observed-changes result))
+            executed? (boolean (seq observed))
             cluster-state (:cluster-state result)
             valid? (cond
                      (not executed?) false
+                     (pos? (or (:error-count result) 0)) false
+                     (contains? result :restored?)
+                     (and (:restored? result)
+                          (:recovered? result))
                      (= :intact cluster-state) true
                      (= :unknown cluster-state) :unknown
                      :else false)]
         (-> result
-            (dissoc :missing-modes)
+            (dissoc :missing-modes :missing-changes)
             (assoc :valid? valid?
                    :fault-class-executed? executed?))))))
 
+(defn- cleanup-order [packages]
+  (let [membership? #(= :membership (:name %))]
+    (vec (concat (remove membership? packages)
+                 (filter membership? packages)))))
+
+(defn- schedule-package [package]
+  (let [interval (:interval package)]
+    (update package
+            :generator
+            #(interval-schedule
+              interval
+              (+ initial-healthy-seconds
+                 (random/double interval))
+              %))))
+
 (defn compose-packages
-  "Composes fault packages, then confirms recovery after all cleanup."
+  "Composes interval-bearing fault packages and confirms final recovery."
   [packages]
   (when-not (seq packages)
     (throw (ex-info "At least one nemesis package is required" {})))
-  (let [packages (mapv #(assoc % :perf (or (:perf %) #{})) packages)
+  (let [packages (->> packages
+                      (mapv #(assoc % :perf (or (:perf %) #{})))
+                      cleanup-order
+                      (mapv schedule-package))
         composed (combined/compose-packages
                   (conj packages (recovery-package)))
-        generator (gen/phases
-                   (gen/sleep initial-healthy-seconds)
-                   (:generator composed))
         checkers (into {}
                        (map (fn [{:keys [name checker]}]
                               [name (fault-class-checker checker)])
                             packages))]
     (assoc composed
-           :generator generator
            :nemesis (nemesis/validate (:nemesis composed))
            :checker (if (= 1 (count packages))
                       (:checker (first packages))
