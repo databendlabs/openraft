@@ -162,12 +162,12 @@ where
 
         // Clean up dirty state: snapshot is installed, but logs are not cleaned.
         if last_log_id < last_applied {
-            // A genuine hole means `last_applied` is also ahead by index. If `last_applied` is
-            // greater but at a smaller index, the log contains a tail that contradicts the state
-            // machine: purging below `last_applied` would not remove it.
-            if last_log_id.next_index() > last_applied.next_index() {
+            // A genuine hole means `last_applied` is strictly ahead by index. An equal index means
+            // the state machine and log store contain different entries in the same slot; a smaller
+            // applied index leaves a conflicting log tail that purging cannot remove.
+            if last_log_id.next_index() >= last_applied.next_index() {
                 let err = C::err_from_string(format!(
-                    "inverted log order: last_applied({}) in the state machine is greater than last_log_id({}) in the log store but at a smaller index; the store is corrupted",
+                    "inverted log order: last_applied({}) in the state machine is greater than last_log_id({}) in the log store but not at a greater index; the store is corrupted",
                     last_applied.display(),
                     last_log_id.display(),
                 ));

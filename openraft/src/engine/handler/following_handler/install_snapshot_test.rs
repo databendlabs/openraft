@@ -527,3 +527,24 @@ fn test_install_snapshot_conflict_with_committed() {
         snapshot: (),
     });
 }
+
+#[test]
+#[should_panic(expected = "contradicts locally committed logs")]
+fn test_install_snapshot_conflict_at_committed_index() {
+    let mut eng = eng();
+    eng.state.vote.update(
+        UTConfig::<()>::now(),
+        Duration::from_millis(500),
+        Vote::new_committed(5, 1),
+    );
+
+    let _ = eng.following_handler().install_full_snapshot(SnapshotOf::<UTConfig, ()> {
+        meta: SnapshotMetaOf::<UTConfig> {
+            // A greater log id at the committed index identifies a different committed entry.
+            last_log_id: Some(log_id(5, 1, 5)),
+            last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
+            snapshot_id: "1-2-3-4".to_string(),
+        },
+        snapshot: (),
+    });
+}

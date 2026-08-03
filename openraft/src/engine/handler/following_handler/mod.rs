@@ -270,13 +270,13 @@ where
             self.leader_vote,
         );
 
-        // The snapshot is greater than local committed (checked above). If it is also at a
-        // smaller index, it claims a different history for an index range that is committed
-        // locally; installing it would leave `committed > last_log_id`.
+        // The snapshot is greater than local committed (checked above), so it must also be at a
+        // strictly greater index. An equal index means two different committed entries occupy the
+        // same slot; a smaller index contradicts a committed suffix.
         if let Some(committed) = self.state.local_committed() {
             assert!(
-                snap_last_log_id.index() >= committed.index(),
-                "snapshot last log id {} is greater than the locally committed log id {} but at a smaller index: \
+                snap_last_log_id.index() > committed.index(),
+                "snapshot last log id {} is greater than the locally committed log id {} but not at a greater index: \
                  the snapshot contradicts locally committed logs; \
                  the snapshot or the local store is corrupted",
                 snap_last_log_id,

@@ -1020,8 +1020,9 @@ where
     /// otherwise this method panics (also in release builds):
     /// - the snapshot's last log id must not be beyond the leadership of `vote`: no leader owns a
     ///   snapshot with a log id greater than its own vote;
-    /// - a snapshot greater than the locally committed log id must not be at a smaller index: it
-    ///   would contradict locally committed logs.
+    /// - a snapshot greater than the locally committed log id must be at a strictly greater index:
+    ///   an equal index identifies a different entry in an already committed slot, while a smaller
+    ///   index contradicts a committed suffix.
     ///
     /// Such input indicates a forged or corrupted snapshot, e.g., one built by a previous
     /// incarnation of the cluster. Installing it would corrupt the log id order.
