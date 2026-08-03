@@ -27,6 +27,7 @@ use tokio::io::AsyncSeekExt;
 use crate::network_v1::InstallSnapshotError;
 use crate::network_v1::InstallSnapshotRequest;
 use crate::network_v1::RaftNetwork;
+use crate::network_v1::SnapshotMeta;
 
 /// Sends snapshots in chunks via `RaftNetwork::install_snapshot()`.
 ///
@@ -62,20 +63,17 @@ where
     where
         Net: RaftNetwork<C> + ?Sized,
     {
-        // Generate a unique snapshot_id for this transfer session
+        // One id per transfer session: a retransmitted snapshot must not be mistaken for a
+        // continuation of an earlier aborted transfer.
         let snapshot_id = format!(
             "{}-{}-{}",
             snapshot.meta.last_log_id.as_ref().map(|l| l.index()).unwrap_or(0),
             std::process::id(),
             SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
         );
+        let meta = SnapshotMeta::new(snapshot.meta.clone(), snapshot_id);
 
-        let subject_verb = || {
-            (
-                ErrorSubject::Snapshot(Some(snapshot.meta.signature().with_snapshot_id(snapshot_id.clone()))),
-                ErrorVerb::Read,
-            )
-        };
+        let subject_verb = || (ErrorSubject::Snapshot(Some(meta.signature())), ErrorVerb::Read);
 
         let mut offset = 0;
         let end = snapshot.snapshot.seek(SeekFrom::End(0)).await.sto_res(subject_verb)?;
@@ -109,8 +107,7 @@ where
             let done = (offset + n_read as u64) == end;
             let req = InstallSnapshotRequest {
                 vote: vote.clone(),
-                meta: snapshot.meta.clone(),
-                snapshot_id: snapshot_id.clone(),
+                meta: meta.clone(),
                 offset,
                 data: buf,
                 done,

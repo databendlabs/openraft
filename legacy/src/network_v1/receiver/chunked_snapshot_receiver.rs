@@ -94,7 +94,7 @@ where
         req: InstallSnapshotRequest<C>,
     ) -> Result<InstallSnapshotResponse<C>, RaftError<C, InstallSnapshotError>> {
         let vote = req.vote.clone();
-        let snapshot_id = req.snapshot_id.clone();
+        let snapshot_id = req.meta.snapshot_id.clone();
         let snapshot_meta = req.meta.clone();
         let done = req.done;
 
@@ -155,7 +155,7 @@ where
 
             data.shutdown().await.map_err(|e| {
                 RaftError::Fatal(Fatal::from(StorageError::write_snapshot(
-                    Some(snapshot_meta.signature().with_snapshot_id(snapshot_id.clone())),
+                    Some(snapshot_meta.signature()),
                     C::ErrorSource::from_error(&e),
                 )))
             })?;
@@ -163,7 +163,7 @@ where
             tracing::info!(snapshot_meta = debug(&snapshot_meta), "Finished streaming snapshot");
 
             let snapshot = SnapshotOf::<C, Self::SnapshotData> {
-                meta: snapshot_meta,
+                meta: snapshot_meta.into_meta(),
                 snapshot: data,
             };
 

@@ -20,7 +20,8 @@ use crate::vote::RaftCommittedLeaderId;
 /// Before 0.10.0 this type also carried a `snapshot_id`, declared last. It identified a transfer,
 /// not the snapshot: two snapshots at the same `last_log_id` cover the same state, even when they
 /// differ in bytes. The id now lives on the wire, in
-/// `openraft_legacy::network_v1::InstallSnapshotRequest::snapshot_id`.
+/// `openraft_legacy::network_v1::SnapshotMeta`, the metadata type of the chunked v1 protocol,
+/// which keeps the full 0.9 layout.
 ///
 /// Dropping it from the serialized form as well would have broken stored 0.9 data. A positional
 /// format (`bincode`, `postcard`, `rmp-serde::to_vec`) encodes a struct as a bare sequence with no

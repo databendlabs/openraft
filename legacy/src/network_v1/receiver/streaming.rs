@@ -78,7 +78,7 @@ where
         if req.offset != self.offset {
             if let Err(err) = self.snapshot_data.seek(SeekFrom::Start(req.offset)).await {
                 return Err(StorageError::from_io_error(
-                    ErrorSubject::Snapshot(Some(req.meta.signature().with_snapshot_id(req.snapshot_id.clone()))),
+                    ErrorSubject::Snapshot(Some(req.meta.signature())),
                     ErrorVerb::Seek,
                     err,
                 ));
@@ -89,7 +89,7 @@ where
         // Write the chunk data.
         if let Err(err) = self.snapshot_data.write_all(&req.data).await {
             return Err(StorageError::from_io_error(
-                ErrorSubject::Snapshot(Some(req.meta.signature().with_snapshot_id(req.snapshot_id.clone()))),
+                ErrorSubject::Snapshot(Some(req.meta.signature())),
                 ErrorVerb::Write,
                 err,
             ));
