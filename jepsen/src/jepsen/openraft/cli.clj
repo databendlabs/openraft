@@ -1,14 +1,13 @@
 (ns jepsen.openraft.cli
   (:gen-class)
-  (:require [clojure.java.io :as io]
-            [clojure.string :as str]
+  (:require [clojure.string :as str]
             [jepsen [checker :as checker]
              [cli :as cli]
              [generator :as gen]
              [random :as random]
              [tests :as tests]]
-            [jepsen.store :as store]
-            [jepsen.openraft [db :as openraft-db]
+            [jepsen.openraft [checker :as openraft-checker]
+             [db :as openraft-db]
              [nemesis :as openraft-nemesis]
              [workload :as workload]]
             [jepsen.openraft.nemesis [membership :as membership]
@@ -20,10 +19,6 @@
 
 (def nemesis-types
   (conj (set concrete-nemesis-types) :chaos))
-
-;; Emitted by openraft-test-app's panic hook.
-(def ^:private node-panic-pattern
-  #"OPENRAFT_JEPSEN_PANIC")
 
 (defn- parse-nemeses [value]
   (mapv (comp keyword str/trim)
@@ -84,56 +79,6 @@
               (random/set-seed! seed)
               (assoc options :seed seed)))))
 
-(defn- random-seed-checker []
-  (reify checker/Checker
-    (check [_ test _history _opts]
-      {:valid? true
-       :seed (:seed test)})))
-
-(defn- strict-unhandled-exceptions []
-  (let [delegate (checker/unhandled-exceptions)]
-    (reify checker/Checker
-      (check [_ test history opts]
-        (let [result (checker/check delegate test history opts)]
-          (if (seq (:exceptions result))
-            (assoc result :valid? :unknown)
-            result))))))
-
-(defn- log-matches [pattern node file]
-  (with-open [reader (io/reader file)]
-    (into []
-          (comp (filter #(re-find pattern %))
-                (map (fn [line]
-                       {:node node
-                        :line line})))
-          (line-seq reader))))
-
-(defn- required-log-file-pattern [pattern filename]
-  (reify checker/Checker
-    (check [_ test _history _opts]
-      (let [node-files (mapv (fn [node]
-                               [node (store/path test node filename)])
-                             (:nodes test))
-            missing-nodes (->> node-files
-                               (remove (fn [[_ file]]
-                                         (.isFile ^java.io.File file)))
-                               (mapv first))
-            matches (->> node-files
-                         (filter (fn [[_ file]]
-                                   (.isFile ^java.io.File file)))
-                         (mapcat (fn [[node file]]
-                                   (log-matches pattern node file)))
-                         vec)
-            valid? (cond
-                     (seq matches) false
-                     (seq missing-nodes) :unknown
-                     :else true)]
-        {:valid? valid?
-         :filename filename
-         :missing-nodes missing-nodes
-         :count (count matches)
-         :matches matches}))))
-
 (defn openraft-test [opts]
   (let [database (openraft-db/db opts)
         workload (workload/workload opts)
@@ -172,11 +117,11 @@
                          (:generator workload))
                         (:final-generator workload))
             :checker (checker/compose
-                      {:seed (random-seed-checker)
+                      {:seed (openraft-checker/random-seed-checker)
                        :stats (checker/stats)
-                       :exceptions (strict-unhandled-exceptions)
-                       :crash (required-log-file-pattern
-                               node-panic-pattern
+                       :exceptions (openraft-checker/strict-unhandled-exceptions)
+                       :crash (openraft-checker/required-log-file-pattern
+                               openraft-checker/node-panic-pattern
                                "openraft.log")
                        :nemesis (:checker nemesis-package)
                        :workload (:checker workload)})})))
