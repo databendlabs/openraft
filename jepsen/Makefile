@@ -20,6 +20,9 @@ clojure-lint:
 
 lint: app-lint clojure-lint
 
+unit-test:
+	lein test
+
 jepsen: build
 	@echo "[jepsen] starting containers"
 	@$(COMPOSE) up -d --force-recreate
@@ -48,4 +51,4 @@ down:
 	@echo "[jepsen] stopping containers"
 	@$(COMPOSE) down
 
-.PHONY: app-lint clojure-lint lint jepsen key build up test down
+.PHONY: app-lint clojure-lint lint unit-test jepsen key build up test down
