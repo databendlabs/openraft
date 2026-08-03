@@ -85,10 +85,13 @@ impl RocksStateMachine {
     ///
     /// [`Self::get_current_snapshot()`] picks the greatest file name, thus every writer
     /// ([`RaftSnapshotBuilder::build_snapshot()`] and [`RaftStateMachine::install_snapshot()`])
-    /// must name files with this same scheme.
+    /// must name files with this same scheme, and names must sort in position order: the
+    /// zero-padded log index leads, so that lexicographic order equals numeric order.
+    /// Committed log ids are totally ordered by index alone, so the leader id is a
+    /// readability suffix that never decides the comparison.
     fn snapshot_filename(meta: &SnapshotMetaOf<TypeConfig>) -> String {
         match &meta.last_log_id {
-            Some(last) => format!("{}-{}", last.committed_leader_id(), last.index()),
+            Some(last) => format!("{:020}-{}", last.index(), last.committed_leader_id()),
             None => "--".to_string(),
         }
     }
@@ -444,6 +447,28 @@ mod tests {
 
             assert_eq!("B", value.value);
             assert!(value.version > initial_value.version);
+        });
+    }
+
+    #[test]
+    fn get_current_snapshot_returns_greatest_position() {
+        TypeConfig::run(async {
+            let td = TempDir::new().unwrap();
+            let (_, mut state_machine) = crate::new::<TypeConfig, _>(td.path()).await.unwrap();
+
+            let empty_data = || Cursor::new(serialize(&Vec::<(Vec<u8>, Vec<u8>)>::new()).unwrap());
+            let meta = |index: u64| SnapshotMetaOf::<TypeConfig> {
+                last_log_id: Some(openraft::testing::log_id::<TypeConfig>(1, 1, index)),
+                last_membership: Default::default(),
+            };
+
+            // Index 9 vs 10 exposes lexicographic-vs-numeric filename ordering.
+            state_machine.install_snapshot(&meta(9), empty_data()).await.unwrap();
+            state_machine.install_snapshot(&meta(10), empty_data()).await.unwrap();
+
+            let current = state_machine.get_current_snapshot().await.unwrap().unwrap();
+            assert_eq!(meta(10), current.meta);
+            assert_eq!(b"[]".to_vec(), current.snapshot.into_inner());
         });
     }
 }
