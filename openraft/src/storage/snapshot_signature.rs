@@ -47,6 +47,7 @@ impl<CLID> SnapshotSignature<CLID>
 where CLID: RaftCommittedLeaderId
 {
     /// Attach the id of the transfer this snapshot is part of.
+    #[since(version = "0.10.0")]
     pub fn with_snapshot_id(mut self, snapshot_id: SnapshotId) -> Self {
         self.snapshot_id = Some(snapshot_id);
         self

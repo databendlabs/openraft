@@ -7,6 +7,7 @@ use openraft::type_config::alias::VoteOf;
 use openraft_macros::since;
 
 /// An RPC sent by the Raft leader to send chunks of a snapshot to a follower (§7).
+#[since(version = "0.10.0", change = "added `snapshot_id`, moved out of `SnapshotMeta`")]
 #[since(version = "0.10.0", change = "moved from `openraft::raft::InstallSnapshotRequest`")]
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
