@@ -40,11 +40,19 @@ jobs:
           docker compose -f jepsen/docker/docker-compose.yml logs --no-color \
             | tee jepsen/docker-compose.log
 
-      - name: Debug | Upload Jepsen results
-        if: failure()
+      - name: Results | Upload Jepsen results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: jepsen-results-${{ matrix.nemesis }}
+          path: jepsen/store/**/results.edn
+          if-no-files-found: ignore
+
+      - name: Debug | Upload Jepsen diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jepsen-debug-${{ matrix.nemesis }}
           path: |
             jepsen/store/
             jepsen/docker-compose.log
