@@ -21,6 +21,12 @@ use crate::vote::RaftCommittedLeaderId;
 /// removed: this type serializes as three fields, the third being an always-empty
 /// `snapshot_id`, and ignores that field when reading. 0.9 and 0.10 signatures are therefore
 /// interchangeable in both directions, under named and positional formats alike.
+///
+/// The guarantee covers this type alone. [`StorageError`](crate::StorageError), which carries
+/// the signature, was an enum in 0.9 and is a struct in 0.10, so a whole 0.10 error is not
+/// parseable by a 0.9 peer regardless. Reserving the slot means the signature is never the
+/// incompatibility; peers of a different version should treat error bodies as diagnostic
+/// rather than parse them.
 #[since(version = "0.10.0", change = "removed `snapshot_id`")]
 #[since(
     version = "0.10.0",
