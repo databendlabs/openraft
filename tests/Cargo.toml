@@ -21,16 +21,18 @@ repository    = { workspace = true }
 [dev-dependencies]
 openraft           = { path = "../openraft", version = "0.10.0-alpha.32", features = ["type-alias"] }
 openraft-memstore  = { path = "../stores/memstore" }
-openraft-legacy    = { path = "../legacy" }
+openraft-legacy    = { path = "../legacy", features = ["serde"] }
 
 anyerror           = { workspace = true }
 anyhow             = { workspace = true }
+bincode            = { workspace = true }
 derive_more        = { workspace = true }
 futures            = { workspace = true }
 lazy_static        = { workspace = true }
 maplit             = { workspace = true }
 pretty_assertions  = { workspace = true }
 rand               = { workspace = true }
+serde              = { workspace = true }
 test-harness       = { workspace = true }
 tracing            = { workspace = true }
 tracing-appender   = { workspace = true }
