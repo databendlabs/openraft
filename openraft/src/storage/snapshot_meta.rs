@@ -83,7 +83,6 @@ where
         SnapshotSignature {
             last_log_id: self.last_log_id.clone(),
             last_membership_log_id: self.last_membership.log_id().as_ref().map(|x| Box::new(x.clone())),
-            snapshot_id: self.snapshot_id.clone(),
         }
     }
 
