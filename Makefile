@@ -119,6 +119,7 @@ lint:
 	cargo fmt --manifest-path examples/raft-kv-rocksdb/Cargo.toml
 	cargo fmt --manifest-path examples/multi-raft-kv/Cargo.toml
 	cargo fmt --manifest-path tests-turmoil/Cargo.toml
+	cargo fmt --manifest-path jepsen/openraft-test-app/Cargo.toml
 	@# The three workspace clippy runs mirror the CI lint job
 	@# (.github/workflows/ci.yaml); keep them in sync so `make lint` fails
 	@# exactly where CI would, feature unification included.
@@ -151,6 +152,7 @@ lint:
 	@# which supplies `--cfg tokio_unstable`; `--manifest-path` from the repo
 	@# root would not pick it up.
 	cd tests-turmoil && cargo clippy --no-deps --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path jepsen/openraft-test-app/Cargo.toml                        --all-targets -- -D warnings
 	@# Bug: clippy --all-targets reports false warning about unused dep in
 	@# `[dev-dependencies]`:
 	@# https://github.com/rust-lang/rust/issues/72686#issuecomment-635539688
@@ -228,6 +230,7 @@ clean:
 	cargo clean --manifest-path examples/raft-kv-memstore/Cargo.toml
 	cargo clean --manifest-path examples/raft-kv-rocksdb/Cargo.toml
 	cargo clean --manifest-path examples/multi-raft-kv/Cargo.toml
+	cargo clean --manifest-path jepsen/openraft-test-app/Cargo.toml
 	rm -rf tests/_log
 
 .PHONY: test fmt lint clean doc guide detsim
