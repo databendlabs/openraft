@@ -23,7 +23,6 @@ fn eng() -> Engine<UTConfig> {
     eng.state.snapshot_meta = SnapshotMetaOf::<UTConfig> {
         last_log_id: Some(log_id(2, 1, 2)),
         last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m12()),
-        snapshot_id: "1-2-3-4".to_string(),
     };
     eng
 }
@@ -36,7 +35,6 @@ fn test_update_snapshot_no_update() -> anyhow::Result<()> {
     let got = eng.snapshot_handler().update_snapshot(SnapshotMetaOf::<UTConfig> {
         last_log_id: Some(log_id(2, 1, 2)),
         last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
-        snapshot_id: "1-2-3-4".to_string(),
     });
 
     assert_eq!(false, got);
@@ -45,7 +43,6 @@ fn test_update_snapshot_no_update() -> anyhow::Result<()> {
         SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(2, 1, 2)),
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m12()),
-            snapshot_id: "1-2-3-4".to_string(),
         },
         eng.state.snapshot_meta
     );
@@ -63,7 +60,6 @@ fn test_update_snapshot_updated() -> anyhow::Result<()> {
     let got = eng.snapshot_handler().update_snapshot(SnapshotMetaOf::<UTConfig> {
         last_log_id: Some(log_id(2, 1, 3)),
         last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(2, 1, 2)), m1234()),
-        snapshot_id: "1-2-3-4".to_string(),
     });
 
     assert_eq!(true, got);
@@ -72,7 +68,6 @@ fn test_update_snapshot_updated() -> anyhow::Result<()> {
         SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(2, 1, 3)),
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(2, 1, 2)), m1234()),
-            snapshot_id: "1-2-3-4".to_string(),
         },
         eng.state.snapshot_meta
     );

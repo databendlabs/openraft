@@ -94,12 +94,12 @@ where
         req: InstallSnapshotRequest<C>,
     ) -> Result<InstallSnapshotResponse<C>, RaftError<C, InstallSnapshotError>> {
         let vote = req.vote.clone();
-        let snapshot_id = &req.meta.snapshot_id;
+        let snapshot_id = req.meta.snapshot_id.clone();
         let snapshot_meta = req.meta.clone();
         let done = req.done;
 
         tracing::info!(
-            snapshot_id = display(snapshot_id),
+            snapshot_id = display(&snapshot_id),
             offset = req.offset,
             done,
             "ChunkedSnapshotReceiver::install_snapshot"
@@ -112,7 +112,7 @@ where
         // Check if this is a new snapshot or continuation
         let curr_id = streaming.as_ref().map(|s| s.snapshot_id());
 
-        if curr_id != Some(snapshot_id) {
+        if curr_id != Some(&snapshot_id) {
             // New snapshot - must start at offset 0
             if req.offset != 0 {
                 let mismatch = InstallSnapshotError::SnapshotMismatch(SnapshotMismatch {
@@ -163,7 +163,7 @@ where
             tracing::info!(snapshot_meta = debug(&snapshot_meta), "Finished streaming snapshot");
 
             let snapshot = SnapshotOf::<C, Self::SnapshotData> {
-                meta: snapshot_meta,
+                meta: snapshot_meta.into_meta(),
                 snapshot: data,
             };
 

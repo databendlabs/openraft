@@ -22,7 +22,6 @@ use openraft::entry::RaftEntry;
 use openraft::storage::EntryResponder;
 use openraft::storage::RaftStateMachine;
 use openraft::type_config::TypeConfigExt;
-use rand::Rng;
 use rocksdb::DB;
 use serde::Deserialize;
 use serde::Serialize;
@@ -81,6 +80,21 @@ impl RocksStateMachine {
 
         Ok((last_applied_log, last_membership))
     }
+
+    /// The file name a snapshot is stored under, derived from the position it covers.
+    ///
+    /// [`Self::get_current_snapshot()`] picks the greatest file name, thus every writer
+    /// ([`RaftSnapshotBuilder::build_snapshot()`] and [`RaftStateMachine::install_snapshot()`])
+    /// must name files with this same scheme, and names must sort in position order: the
+    /// zero-padded log index leads, so that lexicographic order equals numeric order.
+    /// Committed log ids are totally ordered by index alone, so the leader id is a
+    /// readability suffix that never decides the comparison.
+    fn snapshot_filename(meta: &SnapshotMetaOf<TypeConfig>) -> String {
+        match &meta.last_log_id {
+            Some(last) => format!("{:020}-{}", last.index(), last.committed_leader_id()),
+            None => "--".to_string(),
+        }
+    }
 }
 
 fn serialize<T: Serialize>(value: &T) -> Result<Vec<u8>, StorageError<TypeConfig>> {
@@ -105,19 +119,9 @@ impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
     async fn build_snapshot(&mut self) -> Result<SnapshotOf<TypeConfig, Cursor<Vec<u8>>>, io::Error> {
         let (last_applied_log, last_membership) = self.get_meta()?;
 
-        // Generate a random snapshot index.
-        let snapshot_idx: u64 = rand::rng().random_range(0..1000);
-
-        let snapshot_id = if let Some(last) = last_applied_log {
-            format!("{}-{}-{}", last.committed_leader_id(), last.index(), snapshot_idx)
-        } else {
-            format!("--{}", snapshot_idx)
-        };
-
         let meta = SnapshotMetaOf::<TypeConfig> {
             last_log_id: last_applied_log,
             last_membership,
-            snapshot_id: snapshot_id.clone(),
         };
 
         // Use RocksDB snapshot for consistent point-in-time view
@@ -150,7 +154,7 @@ impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
         })?;
 
         // Write complete snapshot to file
-        let snapshot_path = self.snapshot_dir.join(&snapshot_id);
+        let snapshot_path = self.snapshot_dir.join(Self::snapshot_filename(&meta));
         fs::write(&snapshot_path, &file_bytes).map_err(|e| {
             StorageError::<TypeConfig>::write_snapshot(Some(meta.signature()), TypeConfig::err_from_error(&e))
         })?;
@@ -342,7 +346,7 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
         let file_bytes =
             serialize(&snapshot_file).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
 
-        let snapshot_path = self.snapshot_dir.join(&meta.snapshot_id);
+        let snapshot_path = self.snapshot_dir.join(Self::snapshot_filename(meta));
         fs::write(&snapshot_path, &file_bytes)?;
 
         Ok(())
@@ -443,6 +447,28 @@ mod tests {
 
             assert_eq!("B", value.value);
             assert!(value.version > initial_value.version);
+        });
+    }
+
+    #[test]
+    fn get_current_snapshot_returns_greatest_position() {
+        TypeConfig::run(async {
+            let td = TempDir::new().unwrap();
+            let (_, mut state_machine) = crate::new::<TypeConfig, _>(td.path()).await.unwrap();
+
+            let empty_data = || Cursor::new(serialize(&Vec::<(Vec<u8>, Vec<u8>)>::new()).unwrap());
+            let meta = |index: u64| SnapshotMetaOf::<TypeConfig> {
+                last_log_id: Some(openraft::testing::log_id::<TypeConfig>(1, 1, index)),
+                last_membership: Default::default(),
+            };
+
+            // Index 9 vs 10 exposes lexicographic-vs-numeric filename ordering.
+            state_machine.install_snapshot(&meta(9), empty_data()).await.unwrap();
+            state_machine.install_snapshot(&meta(10), empty_data()).await.unwrap();
+
+            let current = state_machine.get_current_snapshot().await.unwrap().unwrap();
+            assert_eq!(meta(10), current.meta);
+            assert_eq!(b"[]".to_vec(), current.snapshot.into_inner());
         });
     }
 }

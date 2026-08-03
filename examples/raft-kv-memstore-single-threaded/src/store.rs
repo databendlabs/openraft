@@ -103,8 +103,6 @@ pub struct StateMachineStore {
     /// The Raft state machine.
     pub state_machine: RefCell<StateMachineData>,
 
-    snapshot_idx: RefCell<u64>,
-
     /// The last received snapshot.
     current_snapshot: RefCell<Option<StoredSnapshot>>,
 }
@@ -155,22 +153,9 @@ impl RaftSnapshotBuilder<TypeConfig> for Rc<StateMachineStore> {
             last_membership = state_machine.last_membership.clone();
         }
 
-        let snapshot_idx = {
-            let mut l = self.snapshot_idx.borrow_mut();
-            *l += 1;
-            *l
-        };
-
-        let snapshot_id = if let Some(last) = last_applied_log {
-            format!("{}-{}-{}", last.committed_leader_id(), last.index(), snapshot_idx)
-        } else {
-            format!("--{}", snapshot_idx)
-        };
-
         let meta = SnapshotMeta {
             last_log_id: last_applied_log,
             last_membership,
-            snapshot_id,
         };
 
         let snapshot = StoredSnapshot {

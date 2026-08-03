@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use openraft::Config;
 use openraft::NodeInfo as Node;
+use openraft::SnapshotPolicy;
 
 use crate::app::App;
 use crate::store::new_storage;
@@ -32,14 +33,26 @@ pub type Raft = openraft::Raft<TypeConfig, StateMachineStore>;
 #[path = "../../../examples/utils/declare_types.rs"]
 pub mod typ;
 
-pub async fn start_raft_node<P>(node_id: NodeId, dir: P, api_addr: String, raft_addr: String) -> std::io::Result<()>
-where P: AsRef<Path> {
+pub async fn start_raft_node<P>(
+    node_id: NodeId,
+    dir: P,
+    api_addr: String,
+    raft_addr: String,
+    snapshot_threshold: Option<u64>,
+) -> std::io::Result<()>
+where
+    P: AsRef<Path>,
+{
     // Create a configuration for the raft instance.
-    let config = Config {
+    let mut config = Config {
         heartbeat_interval: 50,
         election_timeout_min: 299,
         ..Default::default()
     };
+
+    if let Some(threshold) = snapshot_threshold {
+        config.snapshot_policy = SnapshotPolicy::LogsSinceLast(threshold);
+    }
 
     let config = Arc::new(config.validate().unwrap());
 

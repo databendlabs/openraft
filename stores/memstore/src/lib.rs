@@ -216,8 +216,6 @@ pub struct MemStateMachine {
 
     allow_build_snapshot: Arc<AtomicBool>,
 
-    snapshot_idx: Arc<Mutex<u64>>,
-
     /// The current snapshot.
     current_snapshot: RwLock<Option<MemStoreSnapshot>>,
 
@@ -240,7 +238,6 @@ impl MemStateMachine {
         Self {
             sm,
             allow_build_snapshot: Arc::new(AtomicBool::new(true)),
-            snapshot_idx: Arc::new(Mutex::new(0)),
             current_snapshot,
             block,
             try_create_snapshot_builder_count: Arc::new(AtomicU64::new(0)),
@@ -365,22 +362,9 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<MemStateMachine> {
 
         let snapshot_size = data.len();
 
-        let snapshot_idx = {
-            let mut l = self.snapshot_idx.lock().unwrap();
-            *l += 1;
-            *l
-        };
-
-        let snapshot_id = if let Some(last) = last_applied_log {
-            format!("{}-{}-{}", last.committed_leader_id(), last.index(), snapshot_idx)
-        } else {
-            format!("--{}", snapshot_idx)
-        };
-
         let meta = SnapshotMetaOf::<TypeConfig> {
             last_log_id: last_applied_log,
             last_membership,
-            snapshot_id,
         };
 
         let snapshot = MemStoreSnapshot {

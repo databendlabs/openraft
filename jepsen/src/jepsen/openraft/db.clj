@@ -13,6 +13,7 @@
 (def log-dir "/var/log/openraft")
 (def log-file (str log-dir "/openraft.log"))
 (def pid-file (str data-dir "/openraft.pid"))
+(def default-snapshot-threshold 100)
 
 (defn- prepare-dirs! []
   (c/su
@@ -70,11 +71,23 @@
           binary
           :--id node-id
           :--api-addr api-addr
-          :--raft-addr raft-addr))))
+          :--raft-addr raft-addr
+          :--snapshot-threshold (get test
+                                     :snapshot-threshold
+                                     default-snapshot-threshold)))))
 
     (kill! [_ _ _node]
       (c/su
-       (cu/stop-daemon! process-name pid-file)))))
+       (cu/stop-daemon! process-name pid-file)))
+
+    db/Pause
+    (pause! [_ _ _node]
+      (c/su
+       (cu/grepkill! :stop process-name)))
+
+    (resume! [_ _ _node]
+      (c/su
+       (cu/grepkill! :cont process-name)))))
 
 (defn start-empty-node! [database test node]
   (c/on-nodes

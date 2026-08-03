@@ -188,7 +188,6 @@ impl NetSnapshot<TypeConfig> for NetworkConnection {
                 last_log_id: meta.last_log_id.map(|log_id| log_id.into()),
                 last_membership_log_id: meta.last_membership.log_id().map(|log_id| log_id.into()),
                 last_membership: Some(meta.last_membership.membership().clone().into()),
-                snapshot_id: meta.snapshot_id.to_string(),
             })),
         };
 

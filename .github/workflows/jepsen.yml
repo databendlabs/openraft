@@ -25,6 +25,7 @@ jobs:
         nemesis:
           - membership
           - partition
+          - pause
           - process
 
     steps:
