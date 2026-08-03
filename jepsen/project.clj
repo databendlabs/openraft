@@ -4,6 +4,7 @@
   :license {:name "Apache License 2.0"
             :url "https://www.apache.org/licenses/LICENSE-2.0"}
   :dependencies [[org.clojure/clojure "1.12.5"]
+                 [org.clojure/tools.cli "1.4.256"]
                  [jepsen "0.3.12-SNAPSHOT"]
                  [cheshire "5.6.3"]]
   :jvm-opts ["-Djava.awt.headless=true"
