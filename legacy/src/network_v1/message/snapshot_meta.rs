@@ -63,9 +63,12 @@ where C: RaftTypeConfig
         }
     }
 
-    /// Get the signature of this snapshot metadata, which carries the transfer id.
+    /// Get the signature of this snapshot metadata for comparison and identification.
+    ///
+    /// The transfer id is not part of it: a signature identifies the snapshot, and the id
+    /// identifies a transfer session.
     pub fn signature(&self) -> SnapshotSignatureOf<C> {
-        self.clone().into_meta().signature().with_snapshot_id(self.snapshot_id.clone())
+        self.clone().into_meta().signature()
     }
 }
 

@@ -153,15 +153,10 @@ where
     N: Node,
 {
     /// Get the signature of this snapshot metadata for comparison and identification.
-    ///
-    /// The returned signature carries no `snapshot_id`; a caller that is transferring this
-    /// snapshot attaches one with
-    /// [`SnapshotSignature::with_snapshot_id()`](SnapshotSignature::with_snapshot_id).
     pub fn signature(&self) -> SnapshotSignature<CLID> {
         SnapshotSignature {
             last_log_id: self.last_log_id.clone(),
             last_membership_log_id: self.last_membership.log_id().as_ref().map(|x| Box::new(x.clone())),
-            snapshot_id: None,
         }
     }
 
