@@ -13,7 +13,7 @@
              [process :as process]]))
 
 (def nemesis-types
-  #{:membership :partition :process})
+  #{:membership :partition :pause :process})
 
 (def ^:private node-crash-pattern
   #"(panicked at|fatal runtime error)")
@@ -27,7 +27,14 @@
     :default 22001
     :parse-fn parse-long]
 
-   [nil "--nemesis TYPE" "Fault type: membership, partition, or process."
+   [nil "--snapshot-threshold COUNT"
+    "Committed logs between snapshots."
+    :default openraft-db/default-snapshot-threshold
+    :parse-fn parse-long
+    :validate [pos? "Must be positive."]]
+
+   [nil "--nemesis TYPE"
+    "Fault type: membership, partition, pause, or process."
     :default :partition
     :parse-fn keyword
     :validate [nemesis-types (cli/one-of nemesis-types)]]
@@ -84,6 +91,7 @@
                                        database
                                        opts)
                           :partition (partition/partition-package)
+                          :pause (process/pause-package database)
                           :process (process/process-package database))]
     (merge tests/noop-test
            opts

@@ -60,6 +60,7 @@ pub use errors::SnapshotMismatch;
 pub use errors::SnapshotSegmentId;
 pub use message::InstallSnapshotRequest;
 pub use message::InstallSnapshotResponse;
+pub use message::SnapshotMeta;
 pub use raft_network::RaftNetwork;
 pub use receiver::ChunkedSnapshotReceiver;
 pub use snapshot_receiver_factory::SnapshotReceiverFactory;
