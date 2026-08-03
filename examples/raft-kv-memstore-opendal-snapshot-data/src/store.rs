@@ -50,7 +50,6 @@ pub struct StateMachineStore {
     /// The Raft state machine.
     pub state_machine: Mutex<StateMachineData>,
 
-    snapshot_idx: StdMutex<u64>,
     storage: Operator,
 
     /// The last received snapshot.
@@ -61,7 +60,6 @@ impl StateMachineStore {
     pub fn new(storage: Operator) -> Self {
         Self {
             state_machine: Mutex::new(StateMachineData::default()),
-            snapshot_idx: StdMutex::new(0),
             storage,
             current_snapshot: StdMutex::new(None),
         }
@@ -86,33 +84,26 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
             data = state_machine;
         }
 
-        let snapshot_idx = {
-            let mut l = self.snapshot_idx.lock().unwrap();
-            *l += 1;
-            *l
-        };
-
-        let snapshot_id = if let Some(last) = last_applied_log {
-            format!("{}-{}-{}", last.committed_leader_id(), last.index(), snapshot_idx)
+        // Generate a unique path to store the snapshot at.
+        // Users can design their own logic for this like using uuid.
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let snapshot_filename = if let Some(last) = last_applied_log {
+            format!("{}-{}-{}", last.committed_leader_id(), last.index(), nanos)
         } else {
-            format!("--{}", snapshot_idx)
+            format!("--{}", nanos)
         };
 
         // Save the snapshot to the storage.
-        //
-        // In this example, we use `snapshot_id` as the snapshot store path.
-        // Users can design their own logic for this like using uuid.
-        self.storage.write(&snapshot_id, encode(&data)).await.unwrap();
+        self.storage.write(&snapshot_filename, encode(&data)).await.unwrap();
 
         let meta = SnapshotMeta {
             last_log_id: last_applied_log,
             last_membership,
-            snapshot_id: snapshot_id.clone(),
         };
 
         let snapshot = StoredSnapshot {
             meta: meta.clone(),
-            data: snapshot_id.clone(),
+            data: snapshot_filename.clone(),
         };
 
         {
@@ -122,7 +113,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
 
         Ok(Snapshot {
             meta,
-            snapshot: snapshot_id,
+            snapshot: snapshot_filename,
         })
     }
 }

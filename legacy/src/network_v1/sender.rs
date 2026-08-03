@@ -3,6 +3,8 @@
 use std::future::Future;
 use std::io::SeekFrom;
 use std::time::Duration;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 use futures::FutureExt;
 use openraft::ErrorSubject;
@@ -60,7 +62,20 @@ where
     where
         Net: RaftNetwork<C> + ?Sized,
     {
-        let subject_verb = || (ErrorSubject::Snapshot(Some(snapshot.meta.signature())), ErrorVerb::Read);
+        // Generate a unique snapshot_id for this transfer session
+        let snapshot_id = format!(
+            "{}-{}-{}",
+            snapshot.meta.last_log_id.as_ref().map(|l| l.index()).unwrap_or(0),
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        );
+
+        let subject_verb = || {
+            (
+                ErrorSubject::Snapshot(Some(snapshot.meta.signature().with_snapshot_id(snapshot_id.clone()))),
+                ErrorVerb::Read,
+            )
+        };
 
         let mut offset = 0;
         let end = snapshot.snapshot.seek(SeekFrom::End(0)).await.sto_res(subject_verb)?;
@@ -95,6 +110,7 @@ where
             let req = InstallSnapshotRequest {
                 vote: vote.clone(),
                 meta: snapshot.meta.clone(),
+                snapshot_id: snapshot_id.clone(),
                 offset,
                 data: buf,
                 done,

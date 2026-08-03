@@ -4,8 +4,6 @@ use std::collections::BTreeMap;
 use std::io;
 use std::io::Cursor;
 use std::sync::Arc;
-use std::sync::atomic::AtomicU64;
-use std::sync::atomic::Ordering;
 
 use futures::Stream;
 use futures::TryStreamExt;
@@ -50,9 +48,6 @@ pub struct StateMachineStoreInner<C: RaftTypeConfig> {
     /// The Raft state machine.
     pub state_machine: StateMachineData,
 
-    /// Used in identifier for snapshot.
-    snapshot_idx: AtomicU64,
-
     /// The last received snapshot.
     pub current_snapshot: Option<StoredSnapshot<C>>,
 }
@@ -63,15 +58,8 @@ impl<C: RaftTypeConfig> Default for StateMachineStoreInner<C> {
             last_applied_log: None,
             last_membership: StoredMembershipOf::<C>::default(),
             state_machine: StateMachineData::default(),
-            snapshot_idx: AtomicU64::new(0),
             current_snapshot: None,
         }
-    }
-}
-
-impl<C: RaftTypeConfig> StateMachineStoreInner<C> {
-    fn next_snapshot_idx(&self) -> u64 {
-        self.snapshot_idx.fetch_add(1, Ordering::Relaxed) + 1
     }
 }
 
@@ -108,17 +96,9 @@ where C: RaftTypeConfig<D = types_kv::Request, R = types_kv::Response, Entry = D
         let data =
             serde_json::to_vec(&inner.state_machine.data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
-        let snapshot_idx = inner.next_snapshot_idx();
-        let snapshot_id = if let Some(last) = inner.last_applied_log.clone() {
-            format!("{}-{}-{}", last.committed_leader_id(), last.index(), snapshot_idx)
-        } else {
-            format!("--{}", snapshot_idx)
-        };
-
         let meta = SnapshotMetaOf::<C> {
             last_log_id: inner.last_applied_log.clone(),
             last_membership: inner.last_membership.clone(),
-            snapshot_id,
         };
 
         let snapshot = StoredSnapshot {

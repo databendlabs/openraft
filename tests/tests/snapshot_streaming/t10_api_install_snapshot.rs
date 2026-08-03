@@ -41,10 +41,10 @@ async fn snapshot_arguments() -> Result<()> {
         // force it to be a follower
         vote: Vote::new_committed(2, 1),
         meta: SnapshotMeta {
-            snapshot_id: "ss1".into(),
             last_log_id: Some(log_id(1, 0, 0)),
             last_membership: Default::default(),
         },
+        snapshot_id: "ss1".into(),
         offset: 0,
         data: vec![1, 2, 3],
         done: false,
@@ -70,7 +70,7 @@ async fn snapshot_arguments() -> Result<()> {
     {
         let mut req = make_req();
         req.offset = 3;
-        req.meta.snapshot_id = "ss2".into();
+        req.snapshot_id = "ss2".into();
         let res = raft.install_snapshot(req).await;
         assert_eq!(
             "snapshot segment id mismatch, expect: ss2+0, got: ss2+3",
@@ -82,12 +82,12 @@ async fn snapshot_arguments() -> Result<()> {
     {
         let mut req = make_req();
         req.offset = 0;
-        req.meta.snapshot_id = "ss2".into();
+        req.snapshot_id = "ss2".into();
         raft.install_snapshot(req).await?;
 
         let mut req = make_req();
         req.offset = 3;
-        req.meta.snapshot_id = "ss2".into();
+        req.snapshot_id = "ss2".into();
         raft.install_snapshot(req).await?;
     }
 
@@ -95,7 +95,7 @@ async fn snapshot_arguments() -> Result<()> {
     {
         let mut req = make_req();
         req.offset = 8;
-        req.meta.snapshot_id = "ss2".into();
+        req.snapshot_id = "ss2".into();
         raft.install_snapshot(req).await?;
     }
     Ok(())

@@ -1,6 +1,7 @@
 use std::fmt;
 
 use openraft::RaftTypeConfig;
+use openraft::SnapshotId;
 use openraft::type_config::alias::SnapshotMetaOf;
 use openraft::type_config::alias::VoteOf;
 use openraft_macros::since;
@@ -16,8 +17,14 @@ where C: RaftTypeConfig
     /// The leader's current vote.
     pub vote: VoteOf<C>,
 
-    /// Metadata of a snapshot: snapshot_id, last_log_ed membership, etc.
+    /// Metadata of a snapshot: last_log_id, membership, etc.
     pub meta: SnapshotMetaOf<C>,
+
+    /// To identify a snapshot when transferring.
+    ///
+    /// Caveat: even when two snapshots are built with the same `last_log_id`,
+    /// they could still be different in bytes.
+    pub snapshot_id: SnapshotId,
 
     /// The byte offset where this chunk of data is positioned in the snapshot file.
     pub offset: u64,
@@ -34,9 +41,10 @@ where C: RaftTypeConfig
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "InstallSnapshotRequest {{ vote:{}, meta:{}, offset:{}, len:{}, done:{} }}",
+            "InstallSnapshotRequest {{ vote:{}, meta:{}, snapshot_id:{}, offset:{}, len:{}, done:{} }}",
             self.vote,
             self.meta,
+            self.snapshot_id,
             self.offset,
             self.data.len(),
             self.done

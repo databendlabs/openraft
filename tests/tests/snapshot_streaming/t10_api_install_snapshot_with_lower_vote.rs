@@ -38,10 +38,10 @@ async fn install_snapshot_lower_vote() -> Result<()> {
     let make_req = || InstallSnapshotRequest {
         vote: Vote::new_committed(2, 1),
         meta: SnapshotMetaOf::<openraft_memstore::TypeConfig> {
-            snapshot_id: "ss1".into(),
             last_log_id: Some(log_id(1, 0, 0)),
             last_membership: Default::default(),
         },
+        snapshot_id: "ss1".into(),
         offset: 0,
         data: vec![1, 2, 3],
         done: false,

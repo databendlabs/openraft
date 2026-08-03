@@ -118,8 +118,6 @@ message SnapshotRequestMeta {
   LogId last_membership_log_id = 3;
 
   Membership last_membership = 4;
-
-  string snapshot_id = 5;
 }
 
 // The item of snapshot chunk stream.

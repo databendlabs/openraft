@@ -22,7 +22,6 @@ openraft = { path = "../../openraft", version = "0.10.0-alpha.32", features = ["
 types-kv = { path = "../types-kv" }
 
 futures    = { version = "0.3" }
-rand       = { version = "0.9" }
 rocksdb    = { version = "0.22.0" }
 serde      = { version = "1.0.114", features = ["derive"] }
 serde_json = { version = "1.0.57" }

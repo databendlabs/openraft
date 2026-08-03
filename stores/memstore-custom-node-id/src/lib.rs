@@ -8,7 +8,6 @@ use std::io;
 use std::io::Cursor;
 use std::ops::RangeBounds;
 use std::sync::Arc;
-use std::sync::Mutex;
 
 use futures::Stream;
 use openraft::EntryPayload;
@@ -94,7 +93,6 @@ struct StateMachine {
 
 pub struct MemStateMachine {
     sm: RwLock<StateMachine>,
-    snapshot_idx: Mutex<u64>,
     current_snapshot: RwLock<Option<(SnapshotMetaOf<TypeConfig>, Vec<u8>)>>,
 }
 
@@ -102,7 +100,6 @@ impl MemStateMachine {
     fn new() -> Self {
         Self {
             sm: RwLock::new(StateMachine::default()),
-            snapshot_idx: Mutex::new(0),
             current_snapshot: RwLock::new(None),
         }
     }
@@ -230,21 +227,9 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<MemStateMachine> {
         let sm = self.sm.read().await;
         let data = serde_json::to_vec(&*sm).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
-        let snapshot_idx = {
-            let mut idx = self.snapshot_idx.lock().unwrap();
-            *idx += 1;
-            *idx
-        };
-
-        let snapshot_id = match sm.last_applied_log {
-            Some(last) => format!("{}-{}-{}", last.committed_leader_id(), last.index(), snapshot_idx),
-            None => format!("--{}", snapshot_idx),
-        };
-
         let meta = SnapshotMetaOf::<TypeConfig> {
             last_log_id: sm.last_applied_log,
             last_membership: sm.last_membership.clone(),
-            snapshot_id,
         };
 
         *self.current_snapshot.write().await = Some((meta.clone(), data.clone()));
