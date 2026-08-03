@@ -52,7 +52,6 @@ fn test_trigger_purge_log_already_scheduled() -> anyhow::Result<()> {
     eng.state.snapshot_meta = SnapshotMeta {
         last_log_id: Some(log_id(1, 0, 3)),
         last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 0, 1)), m12()),
-        snapshot_id: "1".to_string(),
     };
     eng.state.purge_upto = Some(log_id(1, 0, 2));
     eng.state.io_state.purged = Some(log_id(1, 0, 2));
@@ -72,7 +71,6 @@ fn test_trigger_purge_log_delete_only_in_snapshot_logs() -> anyhow::Result<()> {
     eng.state.snapshot_meta = SnapshotMeta {
         last_log_id: Some(log_id(1, 0, 3)),
         last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 0, 1)), m12()),
-        snapshot_id: "1".to_string(),
     };
     eng.state.purge_upto = Some(log_id(1, 0, 2));
     eng.state.io_state.purged = Some(log_id(1, 0, 2));
@@ -100,7 +98,6 @@ fn test_trigger_purge_log_in_used_wont_be_delete() -> anyhow::Result<()> {
     eng.state.snapshot_meta = SnapshotMeta {
         last_log_id: Some(log_id(1, 0, 3)),
         last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 0, 1)), m12()),
-        snapshot_id: "1".to_string(),
     };
     eng.state.purge_upto = Some(log_id(1, 0, 2));
     eng.state.io_state.purged = Some(log_id(1, 0, 2));

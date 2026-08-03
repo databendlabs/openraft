@@ -198,15 +198,9 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachine> {
         let data = self.data.lock().unwrap();
         let snapshot_data = serde_json::to_vec(&*data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
-        let snapshot_idx = {
-            let snap = self.snapshot.lock().unwrap();
-            snap.as_ref().map(|(m, _)| m.snapshot_id.parse::<u64>().unwrap_or(0) + 1).unwrap_or(1)
-        };
-
         let meta = SnapshotMeta {
             last_log_id: data.last_applied,
             last_membership: data.last_membership.clone(),
-            snapshot_id: snapshot_idx.to_string(),
         };
 
         *self.snapshot.lock().unwrap() = Some((meta.clone(), snapshot_data.clone()));

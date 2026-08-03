@@ -48,7 +48,6 @@ fn eng() -> Engine<UTConfig> {
     eng.state.snapshot_meta = SnapshotMetaOf::<UTConfig> {
         last_log_id: Some(log_id(2, 1, 2)),
         last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m12()),
-        snapshot_id: "1-2-3-4".to_string(),
     };
     eng.state.server_state = eng.calc_server_state();
 
@@ -74,7 +73,6 @@ fn test_handle_install_full_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
             meta: SnapshotMetaOf::<UTConfig> {
                 last_log_id: Some(log_id(1, 1, 2)),
                 last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
-                snapshot_id: "1-2-3-4".to_string(),
             },
             snapshot: (),
         },
@@ -85,7 +83,6 @@ fn test_handle_install_full_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
         SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(2, 1, 2)),
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m12()),
-            snapshot_id: "1-2-3-4".to_string(),
         },
         eng.state.snapshot_meta
     );
@@ -119,7 +116,6 @@ fn test_handle_install_full_snapshot_no_conflict() -> anyhow::Result<()> {
             meta: SnapshotMetaOf::<UTConfig> {
                 last_log_id: Some(log_id(4, 1, 6)),
                 last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
-                snapshot_id: "1-2-3-4".to_string(),
             },
             snapshot: (),
         },
@@ -130,7 +126,6 @@ fn test_handle_install_full_snapshot_no_conflict() -> anyhow::Result<()> {
         SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(4, 1, 6)),
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
-            snapshot_id: "1-2-3-4".to_string(),
         },
         eng.state.snapshot_meta
     );
@@ -144,7 +139,6 @@ fn test_handle_install_full_snapshot_no_conflict() -> anyhow::Result<()> {
                     meta: SnapshotMetaOf::<UTConfig> {
                         last_log_id: Some(log_id(4, 1, 6)),
                         last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
-                        snapshot_id: "1-2-3-4".to_string(),
                     },
                     snapshot: (),
                 },

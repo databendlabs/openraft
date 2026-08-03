@@ -7,8 +7,6 @@ use std::io;
 use std::io::Cursor;
 use std::ops::RangeBounds;
 use std::sync::Arc;
-use std::sync::atomic::AtomicU64;
-use std::sync::atomic::Ordering;
 
 use futures::Stream;
 use openraft::EntryPayload;
@@ -123,7 +121,6 @@ impl Default for LogStore {
 
 pub struct StateMachineStore {
     sm: RwLock<StateMachine>,
-    snapshot_idx: AtomicU64,
     current_snapshot: RwLock<Option<StoredSnapshot>>,
 }
 
@@ -131,7 +128,6 @@ impl StateMachineStore {
     pub fn new() -> Self {
         Self {
             sm: RwLock::new(StateMachine::default()),
-            snapshot_idx: AtomicU64::new(0),
             current_snapshot: RwLock::new(None),
         }
     }
@@ -184,18 +180,9 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
 
         let snapshot_size = data.len();
 
-        let snapshot_idx = self.snapshot_idx.fetch_add(1, Ordering::Relaxed);
-
-        let snapshot_id = if let Some(last) = last_applied_log {
-            format!("{}-{}-{}", last.committed_leader_id(), last.index(), snapshot_idx)
-        } else {
-            format!("--{}", snapshot_idx)
-        };
-
         let meta = SnapshotMetaOf::<TypeConfig> {
             last_log_id: last_applied_log,
             last_membership,
-            snapshot_id,
         };
 
         let snapshot = StoredSnapshot {

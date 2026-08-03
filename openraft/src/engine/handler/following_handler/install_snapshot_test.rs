@@ -49,7 +49,6 @@ fn eng() -> Engine<UTConfig> {
     eng.state.snapshot_meta = SnapshotMetaOf::<UTConfig> {
         last_log_id: Some(log_id(2, 1, 2)),
         last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m12()),
-        snapshot_id: "1-2-3-4".to_string(),
     };
     eng.state.server_state = eng.calc_server_state();
 
@@ -66,7 +65,6 @@ fn test_install_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
         meta: SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(2, 1, 2)),
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
-            snapshot_id: "1-2-3-4".to_string(),
         },
         snapshot: (),
     });
@@ -77,7 +75,6 @@ fn test_install_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
         SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(2, 1, 2)),
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m12()),
-            snapshot_id: "1-2-3-4".to_string(),
         },
         eng.state.snapshot_meta
     );
@@ -98,7 +95,6 @@ fn test_install_snapshot_lt_committed() -> anyhow::Result<()> {
         meta: SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(4, 1, 5)),
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
-            snapshot_id: "1-2-3-4".to_string(),
         },
         snapshot: (),
     });
@@ -109,7 +105,6 @@ fn test_install_snapshot_lt_committed() -> anyhow::Result<()> {
         SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(2, 1, 2)),
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m12()),
-            snapshot_id: "1-2-3-4".to_string(),
         },
         eng.state.snapshot_meta
     );
@@ -135,7 +130,6 @@ fn test_install_snapshot_not_conflict() -> anyhow::Result<()> {
         meta: SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(4, 1, 6)),
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
-            snapshot_id: "1-2-3-4".to_string(),
         },
         snapshot: (),
     });
@@ -151,7 +145,6 @@ fn test_install_snapshot_not_conflict() -> anyhow::Result<()> {
         SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(4, 1, 6)),
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
-            snapshot_id: "1-2-3-4".to_string(),
         },
         eng.state.snapshot_meta
     );
@@ -170,7 +163,6 @@ fn test_install_snapshot_not_conflict() -> anyhow::Result<()> {
                     meta: SnapshotMetaOf::<UTConfig> {
                         last_log_id: Some(log_id(4, 1, 6)),
                         last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
-                        snapshot_id: "1-2-3-4".to_string(),
                     },
                     snapshot: (),
                 },
@@ -206,7 +198,6 @@ fn test_install_snapshot_resets_purged_effective_membership() -> anyhow::Result<
         meta: SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(5, 1, 9)),
             last_membership: snapshot_membership.clone(),
-            snapshot_id: "1-2-3-4".to_string(),
         },
         snapshot: (),
     });
@@ -254,7 +245,6 @@ fn test_install_snapshot_resets_purged_effective_without_truncating() -> anyhow:
         meta: SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(5, 1, 9)),
             last_membership: snapshot_membership.clone(),
-            snapshot_id: "1-2-3-4".to_string(),
         },
         snapshot: (),
     });
@@ -278,7 +268,6 @@ fn test_install_snapshot_resets_purged_effective_without_truncating() -> anyhow:
                     meta: SnapshotMetaOf::<UTConfig> {
                         last_log_id: Some(log_id(5, 1, 9)),
                         last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(5, 1, 4)), m12()),
-                        snapshot_id: "1-2-3-4".to_string(),
                     },
                     snapshot: (),
                 },
@@ -316,7 +305,6 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
         eng.state.snapshot_meta = SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(2, 1, 2)),
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m12()),
-            snapshot_id: "1-2-3-4".to_string(),
         };
 
         eng.state.server_state = eng.calc_server_state();
@@ -328,7 +316,6 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
         meta: SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(5, 1, 6)),
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
-            snapshot_id: "1-2-3-4".to_string(),
         },
         snapshot: (),
     });
@@ -344,7 +331,6 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
         SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(5, 1, 6)),
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
-            snapshot_id: "1-2-3-4".to_string(),
         },
         eng.state.snapshot_meta
     );
@@ -367,7 +353,6 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
                     meta: SnapshotMetaOf::<UTConfig> {
                         last_log_id: Some(log_id(5, 1, 6)),
                         last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
-                        snapshot_id: "1-2-3-4".to_string(),
                     },
                     snapshot: (),
                 },
@@ -396,7 +381,6 @@ fn test_install_snapshot_advance_last_log_id() -> anyhow::Result<()> {
         meta: SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(100, 1, 100)),
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
-            snapshot_id: "1-2-3-4".to_string(),
         },
         snapshot: (),
     });
@@ -412,7 +396,6 @@ fn test_install_snapshot_advance_last_log_id() -> anyhow::Result<()> {
         SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(100, 1, 100)),
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
-            snapshot_id: "1-2-3-4".to_string(),
         },
         eng.state.snapshot_meta
     );
@@ -435,7 +418,6 @@ fn test_install_snapshot_advance_last_log_id() -> anyhow::Result<()> {
                     meta: SnapshotMetaOf::<UTConfig> {
                         last_log_id: Some(log_id(100, 1, 100)),
                         last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
-                        snapshot_id: "1-2-3-4".to_string(),
                     },
                     snapshot: (),
                 },
@@ -466,7 +448,6 @@ fn test_install_snapshot_update_accepted() -> anyhow::Result<()> {
         meta: SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(100, 1, 100)),
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
-            snapshot_id: "1-2-3-4".to_string(),
         },
         snapshot: (),
     });
@@ -499,7 +480,6 @@ fn test_install_snapshot_beyond_leader_vote() {
         meta: SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(4, 1, 6)),
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
-            snapshot_id: "1-2-3-4".to_string(),
         },
         snapshot: (),
     });
@@ -522,7 +502,6 @@ fn test_install_snapshot_conflict_with_committed() {
         meta: SnapshotMetaOf::<UTConfig> {
             last_log_id: Some(log_id(5, 1, 3)),
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
-            snapshot_id: "1-2-3-4".to_string(),
         },
         snapshot: (),
     });
@@ -543,7 +522,6 @@ fn test_install_snapshot_conflict_at_committed_index() {
             // A greater log id at the committed index identifies a different committed entry.
             last_log_id: Some(log_id(5, 1, 5)),
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
-            snapshot_id: "1-2-3-4".to_string(),
         },
         snapshot: (),
     });

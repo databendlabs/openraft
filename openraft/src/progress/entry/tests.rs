@@ -106,7 +106,6 @@ fn new_raft_state(purge_upto: u64, snap_last: u64, last: u64) -> RaftState<UTCon
     st.snapshot_meta = SnapshotMetaOf::<UTConfig> {
         last_log_id: Some(log_id(snap_last)),
         last_membership: StoredMembershipOf::<UTConfig>::default(),
-        snapshot_id: "".to_string(),
     };
 
     st.log_ids = LogIdList::new(None, [log_id(purge_upto - 1), log_id(last)]);
