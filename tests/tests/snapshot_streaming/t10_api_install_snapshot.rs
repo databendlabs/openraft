@@ -4,7 +4,6 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::Vote;
-use openraft::storage::SnapshotMeta;
 use openraft_legacy::prelude::*;
 
 use crate::fixtures::RaftRouter;
@@ -41,9 +40,9 @@ async fn snapshot_arguments() -> Result<()> {
         // force it to be a follower
         vote: Vote::new_committed(2, 1),
         meta: SnapshotMeta {
-            snapshot_id: "ss1".into(),
             last_log_id: Some(log_id(1, 0, 0)),
             last_membership: Default::default(),
+            snapshot_id: "ss1".into(),
         },
         offset: 0,
         data: vec![1, 2, 3],

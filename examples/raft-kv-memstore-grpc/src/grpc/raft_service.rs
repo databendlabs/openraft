@@ -130,7 +130,6 @@ impl RaftService for RaftServiceImpl {
                     meta.last_membership_log_id.map(|x| x.into()),
                     meta.last_membership.unwrap().into(),
                 ),
-                snapshot_id: meta.snapshot_id,
             };
         }
 

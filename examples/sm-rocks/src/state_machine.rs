@@ -22,7 +22,6 @@ use openraft::entry::RaftEntry;
 use openraft::storage::EntryResponder;
 use openraft::storage::RaftStateMachine;
 use openraft::type_config::TypeConfigExt;
-use rand::Rng;
 use rocksdb::DB;
 use serde::Deserialize;
 use serde::Serialize;
@@ -81,6 +80,18 @@ impl RocksStateMachine {
 
         Ok((last_applied_log, last_membership))
     }
+
+    /// The file name a snapshot is stored under, derived from the position it covers.
+    ///
+    /// [`Self::get_current_snapshot()`] picks the greatest file name, thus every writer
+    /// ([`RaftSnapshotBuilder::build_snapshot()`] and [`RaftStateMachine::install_snapshot()`])
+    /// must name files with this same scheme.
+    fn snapshot_filename(meta: &SnapshotMetaOf<TypeConfig>) -> String {
+        match &meta.last_log_id {
+            Some(last) => format!("{}-{}", last.committed_leader_id(), last.index()),
+            None => "--".to_string(),
+        }
+    }
 }
 
 fn serialize<T: Serialize>(value: &T) -> Result<Vec<u8>, StorageError<TypeConfig>> {
@@ -105,19 +116,9 @@ impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
     async fn build_snapshot(&mut self) -> Result<SnapshotOf<TypeConfig, Cursor<Vec<u8>>>, io::Error> {
         let (last_applied_log, last_membership) = self.get_meta()?;
 
-        // Generate a random snapshot index.
-        let snapshot_idx: u64 = rand::rng().random_range(0..1000);
-
-        let snapshot_id = if let Some(last) = last_applied_log {
-            format!("{}-{}-{}", last.committed_leader_id(), last.index(), snapshot_idx)
-        } else {
-            format!("--{}", snapshot_idx)
-        };
-
         let meta = SnapshotMetaOf::<TypeConfig> {
             last_log_id: last_applied_log,
             last_membership,
-            snapshot_id: snapshot_id.clone(),
         };
 
         // Use RocksDB snapshot for consistent point-in-time view
@@ -150,7 +151,7 @@ impl RaftSnapshotBuilder<TypeConfig> for RocksStateMachine {
         })?;
 
         // Write complete snapshot to file
-        let snapshot_path = self.snapshot_dir.join(&snapshot_id);
+        let snapshot_path = self.snapshot_dir.join(Self::snapshot_filename(&meta));
         fs::write(&snapshot_path, &file_bytes).map_err(|e| {
             StorageError::<TypeConfig>::write_snapshot(Some(meta.signature()), TypeConfig::err_from_error(&e))
         })?;
@@ -342,7 +343,7 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
         let file_bytes =
             serialize(&snapshot_file).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
 
-        let snapshot_path = self.snapshot_dir.join(&meta.snapshot_id);
+        let snapshot_path = self.snapshot_dir.join(Self::snapshot_filename(meta));
         fs::write(&snapshot_path, &file_bytes)?;
 
         Ok(())

@@ -119,7 +119,8 @@ message SnapshotRequestMeta {
 
   Membership last_membership = 4;
 
-  string snapshot_id = 5;
+  // Was `snapshot_id`; keep the tag from being reused with a different meaning.
+  reserved 5;
 }
 
 // The item of snapshot chunk stream.

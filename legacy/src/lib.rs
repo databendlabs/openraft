@@ -29,6 +29,9 @@
 
 pub mod network_v1;
 
+#[cfg(test)]
+mod testing;
+
 /// Prelude for convenient imports of commonly used legacy types.
 ///
 /// # Usage
@@ -43,6 +46,7 @@ pub mod prelude {
     pub use crate::network_v1::InstallSnapshotRequest;
     pub use crate::network_v1::InstallSnapshotResponse;
     pub use crate::network_v1::RaftNetwork;
+    pub use crate::network_v1::SnapshotMeta;
     pub use crate::network_v1::SnapshotMismatch;
     pub use crate::network_v1::SnapshotReceiverFactory;
     pub use crate::network_v1::SnapshotSegmentId;
