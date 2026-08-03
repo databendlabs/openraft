@@ -147,6 +147,7 @@ where
         run_test(builder, Self::get_initial_state_last_log_gt_sm).await?;
         run_test(builder, Self::get_initial_state_last_log_lt_sm).await?;
         run_test(builder, Self::get_initial_state_inverted_log_order).await?;
+        run_test(builder, Self::get_initial_state_conflict_at_same_index).await?;
         run_test(builder, Self::get_initial_state_log_ids).await?;
         run_test(builder, Self::get_initial_state_re_apply_committed).await?;
         run_test(builder, Self::save_vote).await?;
@@ -661,6 +662,22 @@ where
         assert!(
             err.to_string().contains("inverted log order"),
             "expect inverted-log-order error, got: {}",
+            err
+        );
+        Ok(())
+    }
+
+    pub async fn get_initial_state_conflict_at_same_index(mut store: LS, mut sm: SM) -> Result<(), io::Error> {
+        Self::default_vote(&mut store).await?;
+        append(&mut store, [blank_ent_0::<C>(1, 2)]).await?;
+        apply(&mut sm, [blank_ent_0::<C>(3, 2)]).await?;
+
+        let res = StorageHelper::new(&mut store, &mut sm).with_id(NODE_ID.into()).get_initial_state().await;
+
+        let err = res.unwrap_err();
+        assert!(
+            err.to_string().contains("inverted log order"),
+            "expect same-index conflict error, got: {}",
             err
         );
         Ok(())
