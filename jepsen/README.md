@@ -144,14 +144,39 @@ then randomly mixes additional membership changes. Removed nodes are stopped
 and wiped only after the new voter set is committed. The final recovery restores
 all five nodes as voters and waits for every node to agree on a leader.
 
-Every run records a `:seed` in its stored Jepsen test data. Supplying that seed
-again repeats choices made through `jepsen.random`, including the random node
-selection used by the partition, process, and membership nemeses. It does not
-make the whole run deterministic: client operation mixing and timing use
-separate generator randomness, and thread, network, and election timing can
-still differ. The recorded history and Nemesis operations are therefore the
-authoritative account of the fault schedule; the seed is only an aid for
-rerunning similar conditions.
+### Interpreting Results
+
+Each run writes its checker output to
+`jepsen/store/<test-name>/<timestamp>/results.edn`. The top-level `:valid?` has
+three possible values:
+
+- `true` exits with status 0. Every checker accepted the run.
+- `false` exits with status 1. At least one checker established a failing
+  condition. Inspect `:workload`, `:nemesis`, `:crash`, and `:stats` to identify
+  it. Only `[:workload :linearizable :valid?]` being `false` means the register
+  history was not linearizable.
+- `:unknown` exits with status 2. The harness could not establish a conclusive
+  result, so the run must not be treated as passing. Unhandled worker or Nemesis
+  exceptions appear at `[:exceptions :exceptions]`. Missing node logs appear at
+  `[:crash :missing-nodes]`. Individual workload and Nemesis checkers may also
+  report `:unknown`; locate the nested checker with that validity for its
+  diagnostic fields.
+
+Every run also records its random seed in `results.edn`, in a checker result of
+the following form:
+
+```clojure
+:seed {:valid? true, :seed 123456}
+```
+
+The original test map in `test.jepsen` is the fallback when `results.edn` is not
+available. Supplying the seed again repeats choices made through
+`jepsen.random`, including the random node selection used by the partition,
+process, and membership nemeses. It does not make the whole run deterministic:
+client operation mixing and timing use separate generator randomness, and
+thread, network, and election timing can still differ. The recorded history and
+Nemesis operations are therefore the authoritative account of the fault
+schedule; the seed is only an aid for rerunning similar conditions.
 
 ## TODO
 
