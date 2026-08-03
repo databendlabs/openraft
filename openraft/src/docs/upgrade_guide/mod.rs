@@ -12,3 +12,6 @@ pub mod upgrade_083_084 {
 pub mod upgrade_08_09 {
     #![doc = include_str!("upgrade-v08-v09.md")]
 }
+pub mod upgrade_09_10 {
+    #![doc = include_str!("upgrade-v09-v10.md")]
+}
