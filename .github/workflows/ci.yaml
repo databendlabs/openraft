@@ -561,3 +561,34 @@ jobs:
         run: |
           cd examples/${{ matrix.example }}
           cargo clippy --no-deps --all-targets -- -D warnings
+
+  # The jepsen test app is a standalone workspace built only inside the jepsen
+  # workflow's docker image, and that workflow runs on push to main only.
+  # Check the crate here so a pull request cannot silently break it.
+  jepsen-app:
+    name: jepsen app
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Same system-RocksDB shortcut as the examples job: link the system
+    # librocksdb instead of compiling the bundled RocksDB C++ from source.
+    env:
+      ROCKSDB_LIB_DIR: /usr/lib/x86_64-linux-gnu
+      ROCKSDB_INCLUDE_DIR: /usr/include
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt, clippy
+          # The app is excluded from the root workspace, so the default cache
+          # misses its target dir. Cache its own workspace.
+          cache-workspaces: jepsen/openraft-test-app
+
+      - name: Install system RocksDB
+        run: sudo apt-get update && sudo apt-get install -y librocksdb-dev
+
+      - name: Format
+        run: cargo fmt --manifest-path jepsen/openraft-test-app/Cargo.toml -- --check
+
+      - name: Clippy
+        run: cargo clippy --no-deps --manifest-path jepsen/openraft-test-app/Cargo.toml --all-targets -- -D warnings
