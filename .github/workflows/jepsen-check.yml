@@ -1,0 +1,50 @@
+name: jepsen-check
+
+on:
+  pull_request:
+    paths:
+      - 'jepsen/**'
+      - '.github/workflows/jepsen.yml'
+      - '.github/workflows/jepsen-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Jepsen lint and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup | Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: jepsen/project.clj
+
+      - name: Setup | Clojure tools
+        uses: DeLaGuardo/setup-clojure@13.6.1
+        with:
+          lein: 2.12.0
+          clj-kondo: 2026.07.24
+          cljfmt: 0.16.5
+
+      - name: Setup | Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt, clippy
+
+      - name: Check | Clojure
+        run: make -C jepsen clojure-lint
+
+      - name: Check | Test app
+        run: make -C jepsen app-lint
+
+      - name: Test | Clojure
+        run: make -C jepsen unit-test
