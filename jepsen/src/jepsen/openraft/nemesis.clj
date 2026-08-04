@@ -8,6 +8,8 @@
             [jepsen.openraft.cluster :as cluster]))
 
 (def ^:private initial-healthy-seconds 5)
+(def ^:private retryable-skip-results
+  #{:no-reachable-pause-target :no-supported-leader})
 
 (defn- jittered-interval [interval]
   (long (random/double (* 0.5 interval)
@@ -58,7 +60,7 @@
         (IntervalSchedule. interval
                            (+ operation-time
                               (jittered-interval interval))
-                           (if (= :no-supported-leader (:value event))
+                           (if (contains? retryable-skip-results (:value event))
                              retry-generator'
                              generator')
                            nil

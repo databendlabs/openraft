@@ -1,7 +1,8 @@
 (ns jepsen.openraft.nemesis.process-test
   (:require [clojure.test :refer [deftest is testing]]
             [jepsen [checker :as checker]
-             [nemesis :as nemesis]]
+             [nemesis :as nemesis]
+             [random :as random]]
             [jepsen.openraft.cluster :as cluster]
             [jepsen.openraft.nemesis.process :as process]
             [jepsen.openraft.quorum :as quorum]))
@@ -73,6 +74,69 @@
                       :f :resume-process})
     (is (= [[:resume ["n1" "n2" "n3"]]]
            (mapv (juxt :f :value) @invocations)))))
+
+(deftest pauses-only-reachable-voters-after-a-process-kill
+  (let [invocations (atom [])
+        delegate (recording-nemesis invocations)
+        process-nemesis (process/->ProcessNemesis delegate (atom nil))
+        pause-nemesis (process/->PauseNemesis delegate (atom nil))
+        test {:nodes voters}
+        metrics (atom (zipmap voters (repeat {})))
+        prefer-n2 (fn [candidates]
+                    (let [candidates (vec candidates)
+                          preferred #{"n2"}]
+                      (if (some #{preferred} candidates)
+                        (cons preferred (remove #{preferred} candidates))
+                        candidates)))]
+    (with-redefs [cluster/membership-status (fn [_test]
+                                              {:leader "n1"
+                                               :metrics @metrics})
+                  cluster/voter-configs (fn [_test _status]
+                                          [(set voters)])
+                  random/shuffle prefer-n2]
+      (let [killed (nemesis/invoke! process-nemesis
+                                    test
+                                    {:type :info
+                                     :f :kill-process
+                                     :value :leader-survives})
+            killed-nodes (set (get-in killed [:value :nodes]))]
+        (is (= #{"n2"} killed-nodes))
+        (swap! metrics #(apply dissoc % killed-nodes))
+        (let [paused (nemesis/invoke! pause-nemesis
+                                      test
+                                      {:type :info
+                                       :f :pause-process
+                                       :value :leader-unpaused})
+              paused-nodes (get-in paused [:value :nodes])
+              delegated-pause (first (filter #(= :pause (:f %))
+                                             @invocations))]
+          (is (seq paused-nodes))
+          (is (every? (set (keys @metrics)) paused-nodes))
+          (is (= paused-nodes (:value delegated-pause))))))))
+
+(deftest skips-a-pause-without-a-reachable-target
+  (let [invocations (atom [])
+        subject (process/->PauseNemesis
+                 (recording-nemesis invocations)
+                 (atom nil))
+        test {:nodes ["n1"]}
+        status {:leader "n1"
+                :metrics {"n1" {}}}]
+    (with-redefs [cluster/membership-status (constantly status)
+                  cluster/voter-configs (fn [_test _status]
+                                          [#{"n1"}])]
+      (let [completion (nemesis/invoke! subject
+                                        test
+                                        {:type :info
+                                         :f :pause-process
+                                         :value :leader-unpaused})
+            result (checker/check (#'process/pause-coverage-checker)
+                                  test
+                                  [completion]
+                                  {})]
+        (is (= :no-reachable-pause-target (:value completion)))
+        (is (empty? @invocations))
+        (is (empty? (:observed-modes result)))))))
 
 (deftest skips-disruptions-without-a-supported-leader
   (let [invocations (atom [])
