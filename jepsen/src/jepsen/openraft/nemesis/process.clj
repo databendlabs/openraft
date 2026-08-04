@@ -14,48 +14,47 @@
 (def required-pause-modes
   #{:leader-paused :leader-unpaused})
 
-(defn- process-targets [nodes configs leader mode]
+(defn- process-targets [eligible-nodes configs leader mode]
   (let [voters (quorum/voter-set configs)]
     (when-not (contains? voters leader)
       (throw (ex-info "The current leader is not a voter"
                       {:leader leader
                        :configs configs})))
-    (let [fault-sets (quorum/fault-sets configs)
-          candidates (cond
-                       (#{:leader-killed :leader-paused} mode)
-                       (filter #(contains? % leader) fault-sets)
+    (let [eligible-node-set (set eligible-nodes)
+          fault-sets (quorum/fault-sets configs)
+          candidates (->> (cond
+                            (#{:leader-killed :leader-paused} mode)
+                            (filter #(contains? % leader) fault-sets)
 
-                       (#{:leader-survives :leader-unpaused} mode)
-                       (remove #(contains? % leader) fault-sets)
+                            (#{:leader-survives :leader-unpaused} mode)
+                            (remove #(contains? % leader) fault-sets)
 
-                       :else
-                       (throw (ex-info "Unknown process nemesis mode"
-                                       {:mode mode})))
+                            :else
+                            (throw (ex-info "Unknown process nemesis mode"
+                                            {:mode mode})))
+                          (filter #(every? eligible-node-set %)))
           target-set (first (random/shuffle candidates))]
-      (when-not target-set
-        (throw (ex-info "Membership has no quorum-safe process targets"
-                        {:leader leader
-                         :mode mode
-                         :configs configs})))
-      (->> nodes
-           (filter target-set)
-           vec))))
+      (when target-set
+        (->> eligible-nodes
+             (filter target-set)
+             vec)))))
 
-(defn- process-disruption [test status mode]
+(defn- process-disruption [test status mode eligible-nodes]
   (let [leader (:leader status)
         configs (cluster/voter-configs test status)
-        targets (process-targets (:nodes test) configs leader mode)
-        voters (quorum/voter-set configs)
-        target-set (set targets)
-        survivors (->> (:nodes test)
-                       (filter voters)
-                       (remove target-set)
-                       vec)]
-    {:mode mode
-     :leader leader
-     :nodes targets
-     :voter-configs configs
-     :survivors survivors}))
+        targets (process-targets eligible-nodes configs leader mode)]
+    (when targets
+      (let [voters (quorum/voter-set configs)
+            target-set (set targets)
+            survivors (->> (:nodes test)
+                           (filter voters)
+                           (remove target-set)
+                           vec)]
+        {:mode mode
+         :leader leader
+         :nodes targets
+         :voter-configs configs
+         :survivors survivors}))))
 
 (defrecord ProcessNemesis [delegate killed]
   nemesis/Nemesis
@@ -71,8 +70,18 @@
                           {:killed @killed})))
         (if-let [status (cluster/membership-status test)]
           (let [mode (:value op)
-                disruption (process-disruption test status mode)
+                disruption (process-disruption test
+                                               status
+                                               mode
+                                               (:nodes test))
                 targets (:nodes disruption)]
+            (when-not disruption
+              (throw (ex-info "Membership has no quorum-safe process targets"
+                              {:leader (:leader status)
+                               :mode mode
+                               :voter-configs (cluster/voter-configs
+                                               test
+                                               status)})))
             (info "Killing OpenRaft processes" disruption)
             (nemesis/invoke! delegate test
                              (assoc op
@@ -120,15 +129,26 @@
                           {:paused @paused})))
         (if-let [status (cluster/membership-status test)]
           (let [mode (:value op)
-                disruption (process-disruption test status mode)
-                targets (:nodes disruption)]
-            (info "Pausing OpenRaft processes" disruption)
-            (nemesis/invoke! delegate test
-                             (assoc op
-                                    :f :pause
-                                    :value targets))
-            (reset! paused disruption)
-            (assoc op :value disruption))
+                reachable-nodes (->> (:nodes test)
+                                     (filter (set (keys (:metrics status))))
+                                     vec)]
+            (if-let [disruption (process-disruption test
+                                                    status
+                                                    mode
+                                                    reachable-nodes)]
+              (let [targets (:nodes disruption)]
+                (info "Pausing OpenRaft processes" disruption)
+                (nemesis/invoke! delegate test
+                                 (assoc op
+                                        :f :pause
+                                        :value targets))
+                (reset! paused disruption)
+                (assoc op :value disruption))
+              (do
+                (info "Skipping process pause without a reachable target"
+                      {:mode mode
+                       :reachable-nodes reachable-nodes})
+                (assoc op :value :no-reachable-pause-target))))
           (do
             (info "Skipping process pause without a quorum-supported leader")
             (assoc op :value :no-supported-leader))))

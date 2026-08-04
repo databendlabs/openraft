@@ -13,32 +13,35 @@
   {:nodes ["n1" "n2" "n3" "n4" "n5"]})
 
 (deftest schedules-and-retries-skipped-faults
-  (let [faults (#'openraft-nemesis/interval-schedule
-                10
-                3
-                (gen/cycle [{:type :info :f :first}
-                            {:type :info :f :second}]))
-        generator (gen/shortest-any
-                   (gen/nemesis (gen/time-limit 40 faults))
-                   (gen/clients
-                    (gen/stagger 0.1 (repeat {:f :read}))))
-        first-attempt? (atom true)
-        history (gen-test/simulate
-                 generator
-                 (fn [_ operation]
-                   (cond-> (assoc operation :type :ok)
-                     (and (= :first (:f operation))
-                          (compare-and-set! first-attempt? true false))
-                     (assoc :value :no-supported-leader))))
-        fault-ops (->> history
-                       (filter #(and (= :nemesis (:process %))
-                                     (= :info (:type %))))
-                       (take 3))]
-    (is (= [:first :first :second] (mapv :f fault-ops)))
-    (is (= (gen/secs->nanos 3) (:time (first fault-ops))))
-    (is (<= (gen/secs->nanos 8)
-            (:time (second fault-ops))
-            (gen/secs->nanos 18)))))
+  (doseq [skip-result [:no-supported-leader
+                       :no-reachable-pause-target]]
+    (testing (name skip-result)
+      (let [faults (#'openraft-nemesis/interval-schedule
+                    10
+                    3
+                    (gen/cycle [{:type :info :f :first}
+                                {:type :info :f :second}]))
+            generator (gen/shortest-any
+                       (gen/nemesis (gen/time-limit 40 faults))
+                       (gen/clients
+                        (gen/stagger 0.1 (repeat {:f :read}))))
+            first-attempt? (atom true)
+            history (gen-test/simulate
+                     generator
+                     (fn [_ operation]
+                       (cond-> (assoc operation :type :ok)
+                         (and (= :first (:f operation))
+                              (compare-and-set! first-attempt? true false))
+                         (assoc :value skip-result))))
+            fault-ops (->> history
+                           (filter #(and (= :nemesis (:process %))
+                                         (= :info (:type %))))
+                           (take 3))]
+        (is (= [:first :first :second] (mapv :f fault-ops)))
+        (is (= (gen/secs->nanos 3) (:time (first fault-ops))))
+        (is (<= (gen/secs->nanos 8)
+                (:time (second fault-ops))
+                (gen/secs->nanos 18)))))))
 
 (deftest cleans-up-all-faults-before-confirming-recovery
   (let [database (db/db {})
