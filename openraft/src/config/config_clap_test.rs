@@ -5,9 +5,27 @@
 
 use core::time::Duration;
 
+use super::error::ConfigError;
+use super::parser::parse_bytes_with_unit;
 use crate::Config;
 use crate::SnapshotPolicy;
 use crate::StepDownPolicy;
+
+#[test]
+fn test_parse_bytes_with_unit() -> anyhow::Result<()> {
+    assert_eq!(204, parse_bytes_with_unit("204")?);
+    assert_eq!(3 * 1024 * 1024, parse_bytes_with_unit("3MiB")?);
+    assert_eq!(5_300, parse_bytes_with_unit("5.3 KB")?);
+    assert_eq!(
+        Err(ConfigError::InvalidNumber {
+            invalid: "invalid".to_string(),
+            reason: "invalid digit found in string".to_string(),
+        }),
+        parse_bytes_with_unit("invalid")
+    );
+
+    Ok(())
+}
 
 #[test]
 fn test_build() -> anyhow::Result<()> {

@@ -3,8 +3,6 @@
 //! Gated behind `feature = "clap"` in [`super`]; functions and the
 //! [`Config::build`] method here are only compiled when that feature is on.
 
-use std::str::FromStr;
-
 use anyerror::AnyError;
 use clap::Parser;
 
@@ -15,12 +13,10 @@ use crate::config::error::ConfigError;
 
 /// Parse number with unit such as 5.3 KB
 pub(super) fn parse_bytes_with_unit(src: &str) -> Result<u64, ConfigError> {
-    let res = byte_unit::Byte::from_str(src).map_err(|e| ConfigError::InvalidNumber {
+    parse_size::parse_size(src).map_err(|e| ConfigError::InvalidNumber {
         invalid: src.to_string(),
         reason: e.to_string(),
-    })?;
-
-    Ok(res.as_u64())
+    })
 }
 
 pub(super) fn parse_snapshot_policy(src: &str) -> Result<SnapshotPolicy, ConfigError> {
