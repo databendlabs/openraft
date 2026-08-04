@@ -20,6 +20,17 @@
     (teardown! [this _test]
       this)))
 
+(defn- failing-resume-nemesis [events error]
+  (reify nemesis/Nemesis
+    (setup! [this _test]
+      this)
+    (invoke! [_ _test op]
+      (swap! events conj [(:f op) (:value op)])
+      (throw error))
+    (teardown! [this _test]
+      (swap! events conj :teardown)
+      this)))
+
 (deftest selects-fault-set-for-leader-mode
   (let [configs [(set voters)]
         fault-sets (set (quorum/fault-sets configs))]
@@ -189,7 +200,40 @@
         (is (= :no-reachable-pause-target (:value completion)))
         (is (empty? @invocations))
         (is (empty? (:observed-modes result)))))))
+(deftest teardown-cleanup-failure-does-not-mask-analysis
+  (let [events (atom [])
+        delegate (failing-resume-nemesis
+                  events
+                  (ex-info "unreachable" {:kind :unreachable}))
+        subject (process/->PauseNemesis delegate (atom nil))
+        test {:nodes ["n1" "n2" "n3"]}]
+    (nemesis/teardown! subject test)
+    (is (= [[:resume (:nodes test)] :teardown]
+           @events))))
 
+(deftest teardown-preserves-interruptions
+  (doseq [[label error] [[:raw (InterruptedException. "interrupted")]
+                         [:wrapped (ex-info "interrupted"
+                                            {:kind :interrupted})]]]
+    (testing (name label)
+      (Thread/interrupted)
+      (let [events (atom [])
+            delegate (failing-resume-nemesis events error)
+            subject (process/->PauseNemesis delegate (atom nil))
+            test {:nodes ["n1" "n2" "n3"]}]
+        (try
+          (let [thrown (try
+                         (nemesis/teardown! subject test)
+                         nil
+                         (catch Exception e
+                           e))
+                interrupted? (.isInterrupted (Thread/currentThread))]
+            (is (identical? error thrown))
+            (is interrupted?)
+            (is (= [[:resume (:nodes test)] :teardown]
+                   @events)))
+          (finally
+            (Thread/interrupted)))))))
 (deftest skips-disruptions-without-a-supported-leader
   (let [invocations (atom [])
         delegate (recording-nemesis invocations)

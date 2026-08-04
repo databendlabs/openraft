@@ -1,5 +1,5 @@
 (ns jepsen.openraft.nemesis.process
-  (:require [clojure.tools.logging :refer [info]]
+  (:require [clojure.tools.logging :refer [info warn]]
             [jepsen [checker :as checker]
              [generator :as gen]
              [nemesis :as nemesis]
@@ -170,6 +170,17 @@
                        {:type :info
                         :f :resume
                         :value (:nodes test)})
+      (catch InterruptedException e
+        (.interrupt (Thread/currentThread))
+        (throw e))
+      (catch Exception e
+        (if (= :interrupted (:kind (ex-data e)))
+          (do
+            (.interrupt (Thread/currentThread))
+            (throw e))
+          (warn e
+                "Failed to resume OpenRaft processes during teardown"
+                {:nodes (:nodes test)})))
       (finally
         (nemesis/teardown! delegate test))))
 
