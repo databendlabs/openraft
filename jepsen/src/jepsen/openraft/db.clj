@@ -72,9 +72,7 @@
           :--id node-id
           :--api-addr api-addr
           :--raft-addr raft-addr
-          :--snapshot-threshold (get test
-                                     :snapshot-threshold
-                                     default-snapshot-threshold)))))
+          :--snapshot-threshold (:snapshot-threshold test)))))
 
     (kill! [_ _ _node]
       (c/su
