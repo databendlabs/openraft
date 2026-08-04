@@ -115,6 +115,18 @@
   {:nodes ["n1" "n2" "n3" "n4" "n5"]
    :api-port 21001})
 
+(defn- stable-status [leader metrics voters]
+  {:leader leader
+   :metrics metrics
+   :effective-log-id {:index 7}
+   :committed-log-id {:index 7}
+   :effective-voter-configs [voters]
+   :committed-voter-configs [voters]
+   :voters voters
+   :learners #{}
+   :non-members #{}
+   :stable? true})
+
 (deftest observes-a-stable-membership
   (let [membership (stored-membership
                     7
@@ -141,6 +153,110 @@
         (is (= #{"n1" "n2" "n3"} (:voters status)))
         (is (= #{"n4"} (:learners status)))
         (is (= #{"n5"} (:non-members status)))))))
+
+(deftest refreshes-reachable-metrics-after-an-election
+  (let [membership (stored-membership
+                    7
+                    [["n1" "n2" "n3" "n4" "n5"]]
+                    ["n1" "n2" "n3" "n4" "n5"])
+        leader-metrics (metrics "Leader" 18 "n1"
+                                membership membership)
+        follower-metrics (metrics "Follower" 18 "n1"
+                                  membership membership)
+        current {"n1:21001" leader-metrics
+                 "n4:21001" follower-metrics
+                 "n5:21001" follower-metrics}
+        stale (metrics "Follower" 17 "n3" membership membership)
+        voters #{"n1" "n2" "n3" "n4" "n5"}
+        attempts (atom {})]
+    (with-redefs [client/metrics!
+                  (fn [endpoint]
+                    (let [counts (swap! attempts update endpoint
+                                        (fnil inc 0))]
+                      (cond
+                        (#{"n2:21001" "n3:21001"} endpoint)
+                        (throw (ex-info "unreachable" {:kind :unreachable}))
+
+                        (and (= "n1:21001" endpoint)
+                             (= 1 (get counts endpoint)))
+                        stale
+
+                        :else
+                        (get current endpoint))))]
+      (is (= (stable-status "n1"
+                            {"n1" leader-metrics
+                             "n4" follower-metrics
+                             "n5" follower-metrics}
+                            voters)
+             (cluster/membership-status five-node-config)))
+      (is (= {"n1:21001" 2
+              "n2:21001" 1
+              "n3:21001" 1
+              "n4:21001" 2
+              "n5:21001" 2}
+             @attempts)))))
+
+(deftest refreshes-a-stale-quorum-behind-a-newer-committed-vote
+  (let [membership (stored-membership
+                    7
+                    [["n1" "n2" "n3" "n4" "n5"]]
+                    ["n1" "n2" "n3" "n4" "n5"])
+        old-leader (metrics "Leader" 17 "n1" membership membership)
+        old-follower (metrics "Follower" 17 "n1" membership membership)
+        new-leader (metrics "Leader" 18 "n4" membership membership)
+        new-follower (metrics "Follower" 18 "n4" membership membership)
+        first-scan {"n1:21001" old-leader
+                    "n2:21001" old-follower
+                    "n3:21001" old-follower
+                    "n4:21001" new-leader
+                    "n5:21001" new-follower}
+        current-scan {"n1:21001" new-follower
+                      "n2:21001" new-follower
+                      "n3:21001" new-follower
+                      "n4:21001" new-leader
+                      "n5:21001" new-follower}
+        voters #{"n1" "n2" "n3" "n4" "n5"}
+        attempts (atom {})]
+    (with-redefs [client/metrics!
+                  (fn [endpoint]
+                    (let [counts (swap! attempts update endpoint
+                                        (fnil inc 0))]
+                      (get (if (= 1 (get counts endpoint))
+                             first-scan
+                             current-scan)
+                           endpoint)))]
+      (is (= (stable-status "n4"
+                            {"n1" new-follower
+                             "n2" new-follower
+                             "n3" new-follower
+                             "n4" new-leader
+                             "n5" new-follower}
+                            voters)
+             (cluster/membership-status five-node-config)))
+      (is (= {"n1:21001" 2
+              "n2:21001" 2
+              "n3:21001" 2
+              "n4:21001" 2
+              "n5:21001" 2}
+             @attempts)))))
+
+(deftest accepts-a-supported-leader-despite-a-newer-uncommitted-vote
+  (let [membership (stored-membership
+                    7
+                    [["n1" "n2" "n3"]]
+                    ["n1" "n2" "n3"])
+        leader-metrics (metrics "Leader" 17 "n1"
+                                membership membership)
+        follower-metrics (metrics "Follower" 17 "n1"
+                                  membership membership)
+        candidate-metrics (-> (metrics "Candidate" 18 "n3"
+                                       membership membership)
+                              (assoc-in [:vote :committed] false))
+        observed {"n1" leader-metrics
+                  "n2" follower-metrics
+                  "n3" candidate-metrics}]
+    (is (= ["n1" leader-metrics]
+           (#'cluster/supported-leader observed)))))
 
 (deftest observes-a-joint-membership
   (let [committed (stored-membership
