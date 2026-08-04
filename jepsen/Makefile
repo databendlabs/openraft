@@ -10,6 +10,10 @@ ifneq ($(SEED),)
 override ARGS += --seed $(SEED)
 endif
 
+ifneq ($(SNAPSHOT_THRESHOLD),)
+override ARGS += --snapshot-threshold $(SNAPSHOT_THRESHOLD)
+endif
+
 app-lint:
 	cargo fmt --check --manifest-path $(APP_MANIFEST)
 	cargo clippy --no-deps --manifest-path $(APP_MANIFEST) --all-targets -- -D warnings

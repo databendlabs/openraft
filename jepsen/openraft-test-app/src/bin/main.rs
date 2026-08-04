@@ -1,27 +1,7 @@
-use std::path::PathBuf;
-
 use clap::Parser;
+use openraft_jepsen_app::Opt;
 use openraft_jepsen_app::start_raft_node;
 use tracing_subscriber::EnvFilter;
-
-#[derive(Parser, Clone, Debug)]
-#[clap(author, version, about, long_about = None)]
-pub struct Opt {
-    #[clap(long)]
-    pub id: String,
-
-    #[clap(long)]
-    pub api_addr: String,
-
-    #[clap(long)]
-    pub raft_addr: String,
-
-    #[clap(long, value_name = "PATH")]
-    pub data_dir: Option<PathBuf>,
-
-    #[clap(long)]
-    pub snapshot_threshold: Option<u64>,
-}
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
@@ -36,14 +16,5 @@ async fn main() -> std::io::Result<()> {
 
     // Parse the parameters passed by arguments.
     let options = Opt::parse();
-    let data_dir = options.data_dir.unwrap_or_else(|| PathBuf::from(format!("{}.db", options.api_addr)));
-
-    start_raft_node(
-        options.id,
-        data_dir,
-        options.api_addr,
-        options.raft_addr,
-        options.snapshot_threshold,
-    )
-    .await
+    start_raft_node(options).await
 }
