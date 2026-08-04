@@ -4,6 +4,7 @@
             [jepsen.checker :as checker]
             [jepsen.history :as history]
             [jepsen.openraft.cli :as cli]
+            [jepsen.openraft.db :as openraft-db]
             [jepsen.random :as random]
             [jepsen.store :as store]))
 
@@ -36,6 +37,19 @@
 
   (testing "the seed remains optional"
     (is (empty? (:errors (tools-cli/parse-opts [] cli/cli-opts))))))
+
+(deftest validates-the-snapshot-threshold
+  (testing "the default applies snapshot pressure"
+    (is (= openraft-db/default-snapshot-threshold
+           (get-in (tools-cli/parse-opts [] cli/cli-opts)
+                   [:options :snapshot-threshold]))))
+
+  (testing "malformed and zero thresholds are rejected"
+    (doseq [value ["abc" "0"]]
+      (let [parsed (tools-cli/parse-opts ["--snapshot-threshold" value]
+                                         cli/cli-opts)]
+        (is (some #(re-find #"Must be a positive integer" %)
+                  (:errors parsed)))))))
 
 (deftest configures-worker-exception-and-node-crash-checkers
   (let [checkers (-> (cli/openraft-test {:nemesis :partition

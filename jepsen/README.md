@@ -118,6 +118,9 @@ $ make -C jepsen test NEMESIS=membership
 # Reuse a recorded seed for Jepsen random choices.
 $ make -C jepsen test NEMESIS=partition SEED=123456
 
+# Override the committed-log threshold that triggers snapshots.
+$ make -C jepsen test SNAPSHOT_THRESHOLD=250
+
 # Stop and remove the Jepsen containers.
 $ make -C jepsen down
 ```
@@ -143,6 +146,11 @@ The membership nemesis starts with a shrink and grow for deterministic coverage,
 then randomly mixes additional membership changes. Removed nodes are stopped
 and wiped only after the new voter set is committed. The final recovery restores
 all five nodes as voters and waits for every node to agree on a leader.
+
+Every Jepsen node builds a snapshot after 100 newly committed logs by default.
+The regular write workload therefore exercises snapshot construction during
+short fault tests without a snapshot-specific Nemesis. Set
+`SNAPSHOT_THRESHOLD` to override the threshold for a run.
 
 ### Interpreting Results
 
@@ -192,4 +200,4 @@ schedule; the seed is only an aid for rerunning similar conditions.
 - [x] Add a membership grow/shrink nemesis.
 - [x] Add a read, write, and compare-and-set workload.
 - [x] Add linearizability checking with Knossos.
-- [ ] Add snapshot pressure workloads.
+- [x] Exercise snapshot construction during ordinary workloads.

@@ -31,7 +31,8 @@
     "Committed logs between snapshots."
     :default openraft-db/default-snapshot-threshold
     :parse-fn parse-long
-    :validate [pos? "Must be positive."]]
+    :validate [#(and (some? %) (pos? %))
+               "Must be a positive integer."]]
 
    [nil "--nemesis TYPE"
     "Fault type: membership, partition, pause, or process."
