@@ -142,6 +142,55 @@
         (is (= #{"n4"} (:learners status)))
         (is (= #{"n5"} (:non-members status)))))))
 
+(deftest refreshes-reachable-metrics-after-an-election
+  (let [membership (stored-membership
+                    7
+                    [["n1" "n2" "n3" "n4" "n5"]]
+                    ["n1" "n2" "n3" "n4" "n5"])
+        leader-metrics (metrics "Leader" 18 "n1"
+                                membership membership)
+        follower-metrics (metrics "Follower" 18 "n1"
+                                  membership membership)
+        current {"n1:21001" leader-metrics
+                 "n4:21001" follower-metrics
+                 "n5:21001" follower-metrics}
+        stale (metrics "Follower" 17 "n3" membership membership)
+        voters #{"n1" "n2" "n3" "n4" "n5"}
+        attempts (atom {})]
+    (with-redefs [client/metrics!
+                  (fn [endpoint]
+                    (let [counts (swap! attempts update endpoint
+                                        (fnil inc 0))]
+                      (cond
+                        (#{"n2:21001" "n3:21001"} endpoint)
+                        (throw (ex-info "unreachable" {:kind :unreachable}))
+
+                        (and (= "n1:21001" endpoint)
+                             (= 1 (get counts endpoint)))
+                        stale
+
+                        :else
+                        (get current endpoint))))]
+      (is (= {:leader "n1"
+              :metrics {"n1" leader-metrics
+                        "n4" follower-metrics
+                        "n5" follower-metrics}
+              :effective-log-id {:index 7}
+              :committed-log-id {:index 7}
+              :effective-voter-configs [voters]
+              :committed-voter-configs [voters]
+              :voters voters
+              :learners #{}
+              :non-members #{}
+              :stable? true}
+             (cluster/membership-status five-node-config)))
+      (is (= {"n1:21001" 2
+              "n2:21001" 1
+              "n3:21001" 1
+              "n4:21001" 2
+              "n5:21001" 2}
+             @attempts)))))
+
 (deftest observes-a-joint-membership
   (let [committed (stored-membership
                    7

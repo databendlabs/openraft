@@ -63,7 +63,7 @@
                    (.initCause e))))
         (throw e)))))
 
-(defn- collect-reachable-metrics [test]
+(defn- collect-reachable-metrics-from [test nodes]
   (into {}
         (keep
          (fn [node]
@@ -73,7 +73,10 @@
                (throw e))
              (catch Exception _
                nil)))
-         (:nodes test))))
+         nodes)))
+
+(defn- collect-reachable-metrics [test]
+  (collect-reachable-metrics-from test (:nodes test)))
 
 (defn- cluster-status [test]
   (let [metrics (collect-reachable-metrics test)
@@ -110,6 +113,18 @@
          (seq configs)
          (quorum/quorum? configs supporters))))
 
+(defn- supported-leader [metrics]
+  (let [leaders (filter #(supported-leader? metrics %) metrics)]
+    (when (= 1 (count leaders))
+      (first leaders))))
+
+(defn- membership-metrics [test]
+  (let [metrics (collect-reachable-metrics test)]
+    (if (supported-leader metrics)
+      metrics
+      ;; Timeouts can make the first scan straddle a leader election.
+      (collect-reachable-metrics-from test (keys metrics)))))
+
 (defn- serialized-node-id [id]
   (if (keyword? id)
     (name id)
@@ -118,11 +133,9 @@
 (defn membership-status
   "Returns the membership view of a leader supported by a voter quorum, or nil."
   [test]
-  (let [metrics (collect-reachable-metrics test)
-        leaders (filter #(supported-leader? metrics %) metrics)]
-    (when (= 1 (count leaders))
-      (let [[leader leader-metrics] (first leaders)
-            effective (get leader-metrics :membership_config)
+  (let [metrics (membership-metrics test)]
+    (when-let [[leader leader-metrics] (supported-leader metrics)]
+      (let [effective (get leader-metrics :membership_config)
             committed (get leader-metrics :committed_membership_config)
             effective-configs (get-in effective [:membership :configs])
             committed-configs (get-in committed [:membership :configs])
