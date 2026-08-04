@@ -161,7 +161,8 @@
                                 :f :resume
                                 :value (:nodes test)))
         (reset! paused nil)
-        (assoc op :value (or disruption :all-processes-resumed)))))
+        (assoc op :value {:paused disruption
+                          :resumed (:nodes test)}))))
 
   (teardown! [_ test]
     (try
@@ -265,9 +266,10 @@
                      :f :restart-process}
    :checker (coverage-checker)})
 
-(defn- next-pause-state [state op]
+(defn- next-pause-state [expected-nodes state op]
   (let [operation-error? (boolean (or (:error op)
-                                      (:exception op)))]
+                                      (:exception op)))
+        resumed-nodes (get-in op [:value :resumed])]
     (case (:f op)
       :pause-process
       (cond
@@ -277,14 +279,17 @@
 
       :resume-process
       (cond
+        (= :invoke (:type op)) state
         operation-error? :unknown
-        (or (= :all-processes-resumed (:value op))
-            (get-in op [:value :mode])) :recovery-pending
-        :else state)
+        (and (coll? resumed-nodes)
+             (= expected-nodes (set resumed-nodes))) :recovery-pending
+        :else :unknown)
 
       :await-recovery
       (cond
-        (get-in op [:value :leader]) :intact
+        (get-in op [:value :leader]) (if (= :recovery-pending state)
+                                       :intact
+                                       :unknown)
         operation-error? (if (#{:paused :recovery-pending} state)
                            state
                            :unknown)
@@ -294,13 +299,16 @@
 
 (defn- pause-coverage-checker []
   (reify checker/Checker
-    (check [_ _test history _opts]
-      (let [observed-modes (->> history
+    (check [_ test history _opts]
+      (let [expected-nodes (set (:nodes test))
+            observed-modes (->> history
                                 (filter #(= :pause-process (:f %)))
                                 (keep #(get-in % [:value :mode]))
                                 set)
             missing-modes (remove observed-modes required-pause-modes)
-            cluster-state (reduce next-pause-state :intact history)
+            cluster-state (reduce (partial next-pause-state expected-nodes)
+                                  :intact
+                                  history)
             valid? (cond
                      (seq missing-modes) false
                      (= :intact cluster-state) true
