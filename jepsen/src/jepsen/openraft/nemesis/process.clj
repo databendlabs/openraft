@@ -56,6 +56,69 @@
          :voter-configs configs
          :survivors survivors}))))
 
+(def ^:private disruption-start-specs
+  {:process {:delegate-f :kill
+             :active-key :killed
+             :active-message "Processes are already stopped"
+             :start-message "Killing OpenRaft processes"
+             :skip-message
+             "Skipping process kill without a quorum-supported leader"}
+   :pause {:delegate-f :pause
+           :active-key :paused
+           :active-message "Processes are already paused"
+           :start-message "Pausing OpenRaft processes"
+           :skip-message
+           "Skipping process pause without a quorum-supported leader"}})
+
+(defn- disruption-spec [kind]
+  (or (get disruption-start-specs kind)
+      (throw (ex-info "Unknown process disruption kind"
+                      {:kind kind}))))
+
+(defn- start-disruption! [delegate active kind test op]
+  (let [{:keys [delegate-f active-key active-message
+                start-message skip-message]}
+        (disruption-spec kind)]
+    (when @active
+      (throw (ex-info active-message
+                      {active-key @active})))
+    (if-let [status (cluster/membership-status test)]
+      (let [mode (:value op)
+            eligible-nodes (if (= :pause kind)
+                             (->> (:nodes test)
+                                  (filter (set (keys (:metrics status))))
+                                  vec)
+                             (:nodes test))]
+        (if-let [disruption (process-disruption test
+                                                status
+                                                mode
+                                                eligible-nodes)]
+          (let [targets (:nodes disruption)]
+            (info start-message disruption)
+            (nemesis/invoke! delegate test
+                             (assoc op
+                                    :f delegate-f
+                                    :value targets))
+            (reset! active disruption)
+            (assoc op :value disruption))
+          (case kind
+            :process
+            (throw (ex-info "Membership has no quorum-safe process targets"
+                            {:leader (:leader status)
+                             :mode mode
+                             :voter-configs (cluster/voter-configs test
+                                                                   status)}))
+
+            :pause
+            (do
+              (info "Skipping process pause without a reachable target"
+                    {:mode mode
+                     :reachable-nodes eligible-nodes})
+              (assoc op :value :no-reachable-pause-target)))))
+      (do
+        (info skip-message)
+        (assoc op :value :no-supported-leader)))))
+
 (defrecord ProcessNemesis [delegate killed]
   nemesis/Nemesis
   (setup! [_ test]
@@ -64,34 +127,7 @@
   (invoke! [_ test op]
     (case (:f op)
       :kill-process
-      (do
-        (when @killed
-          (throw (ex-info "Processes are already stopped"
-                          {:killed @killed})))
-        (if-let [status (cluster/membership-status test)]
-          (let [mode (:value op)
-                disruption (process-disruption test
-                                               status
-                                               mode
-                                               (:nodes test))
-                targets (:nodes disruption)]
-            (when-not disruption
-              (throw (ex-info "Membership has no quorum-safe process targets"
-                              {:leader (:leader status)
-                               :mode mode
-                               :voter-configs (cluster/voter-configs
-                                               test
-                                               status)})))
-            (info "Killing OpenRaft processes" disruption)
-            (nemesis/invoke! delegate test
-                             (assoc op
-                                    :f :kill
-                                    :value targets))
-            (reset! killed disruption)
-            (assoc op :value disruption))
-          (do
-            (info "Skipping process kill without a quorum-supported leader")
-            (assoc op :value :no-supported-leader))))
+      (start-disruption! delegate killed :process test op)
 
       :restart-process
       (if-let [{:keys [nodes] :as disruption} @killed]
@@ -123,35 +159,7 @@
   (invoke! [_ test op]
     (case (:f op)
       :pause-process
-      (do
-        (when @paused
-          (throw (ex-info "Processes are already paused"
-                          {:paused @paused})))
-        (if-let [status (cluster/membership-status test)]
-          (let [mode (:value op)
-                reachable-nodes (->> (:nodes test)
-                                     (filter (set (keys (:metrics status))))
-                                     vec)]
-            (if-let [disruption (process-disruption test
-                                                    status
-                                                    mode
-                                                    reachable-nodes)]
-              (let [targets (:nodes disruption)]
-                (info "Pausing OpenRaft processes" disruption)
-                (nemesis/invoke! delegate test
-                                 (assoc op
-                                        :f :pause
-                                        :value targets))
-                (reset! paused disruption)
-                (assoc op :value disruption))
-              (do
-                (info "Skipping process pause without a reachable target"
-                      {:mode mode
-                       :reachable-nodes reachable-nodes})
-                (assoc op :value :no-reachable-pause-target))))
-          (do
-            (info "Skipping process pause without a quorum-supported leader")
-            (assoc op :value :no-supported-leader))))
+      (start-disruption! delegate paused :pause test op)
 
       :resume-process
       (let [disruption @paused]
@@ -219,22 +227,36 @@
     {:type :info
      :f :resume-process})))
 
+(defn- operation-error? [op]
+  (boolean (or (:error op)
+               (:exception op))))
+
+(defn- coverage-result
+  [required-modes operation-f invalid-states history cluster-state]
+  (let [observed-modes (->> history
+                            (filter #(= operation-f (:f %)))
+                            (keep #(get-in % [:value :mode]))
+                            set)
+        missing-modes (remove observed-modes required-modes)
+        valid? (cond
+                 (seq missing-modes) false
+                 (= :intact cluster-state) true
+                 (contains? invalid-states cluster-state) false
+                 :else :unknown)]
+    {:valid? valid?
+     :observed-modes (vec (sort observed-modes))
+     :missing-modes (vec (sort missing-modes))
+     :cluster-state cluster-state}))
+
 (defn- coverage-checker []
   (reify checker/Checker
     (check [_ _test history _opts]
-      (let [observed-modes (->> history
-                                (filter #(= :kill-process (:f %)))
-                                (keep #(get-in % [:value :mode]))
-                                set)
-            missing-modes (remove observed-modes required-process-modes)
-            cluster-state (reduce
+      (let [cluster-state (reduce
                            (fn [state op]
-                             (let [operation-error? (boolean
-                                                     (or (:error op)
-                                                         (:exception op)))]
+                             (let [error? (operation-error? op)]
                                (cond
                                  (and (= :kill-process (:f op))
-                                      operation-error?)
+                                      error?)
                                  :unknown
 
                                  (and (= :kill-process (:f op))
@@ -242,7 +264,7 @@
                                  :degraded
 
                                  (and (= :restart-process (:f op))
-                                      operation-error?)
+                                      error?)
                                  :unknown
 
                                  (and (= :await-recovery (:f op))
@@ -250,23 +272,19 @@
                                  :intact
 
                                  (and (= :await-recovery (:f op))
-                                      operation-error?)
+                                      error?)
                                  (if (= :degraded state)
                                    :degraded
                                    :unknown)
 
                                  :else state)))
                            :intact
-                           history)
-            valid? (cond
-                     (seq missing-modes) false
-                     (= :intact cluster-state) true
-                     (= :degraded cluster-state) false
-                     :else :unknown)]
-        {:valid? valid?
-         :observed-modes (vec (sort observed-modes))
-         :missing-modes (vec (sort missing-modes))
-         :cluster-state cluster-state}))))
+                           history)]
+        (coverage-result required-process-modes
+                         :kill-process
+                         #{:degraded}
+                         history
+                         cluster-state)))))
 
 (defn process-package [db]
   {:name :process
@@ -278,20 +296,19 @@
    :checker (coverage-checker)})
 
 (defn- next-pause-state [expected-nodes state op]
-  (let [operation-error? (boolean (or (:error op)
-                                      (:exception op)))
+  (let [error? (operation-error? op)
         resumed-nodes (get-in op [:value :resumed])]
     (case (:f op)
       :pause-process
       (cond
-        operation-error? :unknown
+        error? :unknown
         (get-in op [:value :mode]) :paused
         :else state)
 
       :resume-process
       (cond
         (= :invoke (:type op)) state
-        operation-error? :unknown
+        error? :unknown
         (and (coll? resumed-nodes)
              (= expected-nodes (set resumed-nodes))) :recovery-pending
         :else :unknown)
@@ -301,9 +318,9 @@
         (get-in op [:value :leader]) (if (= :recovery-pending state)
                                        :intact
                                        :unknown)
-        operation-error? (if (#{:paused :recovery-pending} state)
-                           state
-                           :unknown)
+        error? (if (#{:paused :recovery-pending} state)
+                 state
+                 :unknown)
         :else state)
 
       state)))
@@ -312,23 +329,14 @@
   (reify checker/Checker
     (check [_ test history _opts]
       (let [expected-nodes (set (:nodes test))
-            observed-modes (->> history
-                                (filter #(= :pause-process (:f %)))
-                                (keep #(get-in % [:value :mode]))
-                                set)
-            missing-modes (remove observed-modes required-pause-modes)
             cluster-state (reduce (partial next-pause-state expected-nodes)
                                   :intact
-                                  history)
-            valid? (cond
-                     (seq missing-modes) false
-                     (= :intact cluster-state) true
-                     (#{:paused :recovery-pending} cluster-state) false
-                     :else :unknown)]
-        {:valid? valid?
-         :observed-modes (vec (sort observed-modes))
-         :missing-modes (vec (sort missing-modes))
-         :cluster-state cluster-state}))))
+                                  history)]
+        (coverage-result required-pause-modes
+                         :pause-process
+                         #{:paused :recovery-pending}
+                         history
+                         cluster-state)))))
 
 (defn pause-package [db]
   {:name :pause
