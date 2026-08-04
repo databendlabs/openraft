@@ -4,6 +4,7 @@
              [nemesis :as nemesis]
              [random :as random]]
             [jepsen.openraft.cluster :as cluster]
+            [jepsen.openraft.nemesis :as openraft-nemesis]
             [jepsen.openraft.nemesis.process :as process]
             [jepsen.openraft.quorum :as quorum]))
 
@@ -62,18 +63,69 @@
                 [:start ["n1"]]]
                (mapv (juxt :f :value) @invocations)))))))
 
-(deftest resumes-all-processes-after-a-pause
+(deftest records-pause-recovery-history
   (let [invocations (atom [])
         delegate (recording-nemesis invocations)
-        paused {:nodes ["n1"]}
-        subject (process/->PauseNemesis delegate (atom paused))
-        test {:nodes ["n1" "n2" "n3"]}]
-    (nemesis/invoke! subject
-                     test
-                     {:type :info
-                      :f :resume-process})
-    (is (= [[:resume ["n1" "n2" "n3"]]]
-           (mapv (juxt :f :value) @invocations)))))
+        subject (process/->PauseNemesis delegate (atom nil))
+        recovery (openraft-nemesis/->RecoveryNemesis)
+        test {:nodes ["n1" "n2" "n3"]}
+        status {:leader "n1"
+                :metrics (zipmap (:nodes test) (repeat {}))}
+        coverage-checker (#'process/pause-coverage-checker)
+        invoke! (fn
+                  ([f]
+                   (nemesis/invoke! subject test {:type :info :f f}))
+                  ([f value]
+                   (nemesis/invoke! subject test {:type :info
+                                                  :f f
+                                                  :value value})))
+        recover! #(nemesis/invoke! recovery
+                                   test
+                                   {:type :info
+                                    :f :await-recovery})]
+    (with-redefs [cluster/membership-status (fn [_test] status)
+                  cluster/await-ready! (fn [_test] status)
+                  cluster/voter-configs
+                  (fn [_test _status] [(set (:nodes test))])]
+      (let [leader-pause (invoke! :pause-process :leader-paused)
+            _ (is (thrown-with-msg?
+                   clojure.lang.ExceptionInfo
+                   #"Processes are already paused"
+                   (invoke! :pause-process :leader-unpaused)))
+            leader-resume (invoke! :resume-process)
+            leader-recovery (recover!)
+            follower-pause (invoke! :pause-process :leader-unpaused)
+            follower-resume (invoke! :resume-process)
+            follower-recovery (recover!)
+            cleanup-resume (invoke! :resume-process)
+            cleanup-recovery (recover!)
+            history [leader-pause
+                     leader-resume
+                     leader-recovery
+                     follower-pause
+                     follower-resume
+                     follower-recovery
+                     cleanup-resume
+                     cleanup-recovery]
+            result (checker/check coverage-checker test history {})]
+        (is (= {:paused (:value leader-pause)
+                :resumed (:nodes test)}
+               (:value leader-resume)))
+        (is (= {:paused (:value follower-pause)
+                :resumed (:nodes test)}
+               (:value follower-resume)))
+        (is (= {:paused nil
+                :resumed (:nodes test)}
+               (:value cleanup-resume)))
+        (is (= [[:pause (get-in leader-pause [:value :nodes])]
+                [:resume (:nodes test)]
+                [:pause (get-in follower-pause [:value :nodes])]
+                [:resume (:nodes test)]
+                [:resume (:nodes test)]]
+               (mapv (juxt :f :value) @invocations)))
+        (is (= {:valid? true
+                :cluster-state :intact}
+               (select-keys result [:valid? :cluster-state])))))))
 
 (deftest pauses-only-reachable-voters-after-a-process-kill
   (let [invocations (atom [])
@@ -216,23 +268,26 @@
 
 (deftest checks-pause-coverage-and-recovery-state
   (let [subject (#'process/pause-coverage-checker)
-        check #(checker/check subject {} % {})
+        test {:nodes voters}
+        check #(checker/check subject test % {})
+        resumed-all {:paused nil
+                     :resumed voters}
         complete-history [{:f :pause-process
                            :value {:mode :leader-unpaused}}
                           {:f :resume-process
-                           :value :all-processes-resumed}
+                           :value resumed-all}
                           {:f :await-recovery
                            :value {:leader "n1"}}
                           {:f :pause-process
                            :value {:mode :leader-paused}}
                           {:f :resume-process
-                           :value :all-processes-resumed}
+                           :value resumed-all}
                           {:f :await-recovery
                            :value {:leader "n2"}}]
         missing-mode-history [{:f :pause-process
                                :value {:mode :leader-unpaused}}
                               {:f :resume-process
-                               :value :all-processes-resumed}
+                               :value resumed-all}
                               {:f :await-recovery
                                :value {:leader "n1"}}
                               {:f :pause-process
@@ -250,9 +305,12 @@
                                 :f :resume-process})
         recovered-history (into resuming-history
                                 [{:f :resume-process
-                                  :value :all-processes-resumed}
+                                  :value resumed-all}
                                  {:f :await-recovery
-                                  :value {:leader "n2"}}])]
+                                  :value {:leader "n2"}}])
+        partial-resume-history (assoc-in complete-history
+                                         [4 :value :resumed]
+                                         ["n1"])]
     (testing "both pause modes complete and recover"
       (is (= {:valid? true
               :cluster-state :intact}
@@ -283,6 +341,12 @@
       (is (= {:valid? :unknown
               :cluster-state :unknown}
              (select-keys (check resuming-history)
+                          [:valid? :cluster-state]))))
+
+    (testing "a partial resume remains indeterminate after recovery"
+      (is (= {:valid? :unknown
+              :cluster-state :unknown}
+             (select-keys (check partial-resume-history)
                           [:valid? :cluster-state]))))
 
     (testing "global resume and recovery resolve an indeterminate pause"
