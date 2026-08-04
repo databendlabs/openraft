@@ -80,7 +80,7 @@ The `jepsen.openraft` namespace contains the OpenRaft-specific Jepsen code:
 - `cluster.clj`: cluster bootstrap helpers.
 - `nemesis/membership.clj`: membership growth, shrink, and final restoration.
 - `nemesis/partition.clj`: leader-aware network partition faults and recovery.
-- `nemesis/process.clj`: quorum-safe process crashes and restarts.
+- `nemesis/process.clj`: quorum-safe process kill/restart and pause/resume faults.
 - `workload.clj`: generators and checkers for client operations.
 
 ## Running
@@ -97,7 +97,7 @@ From the repository root:
 # Format and lint the dedicated Rust test application.
 $ make -C jepsen app-lint
 
-# Build images, start containers, then run unit and linearizability tests.
+# Build images, start containers, then run unit and default chaos tests.
 $ make -C jepsen jepsen
 
 # Generate the local Docker SSH key and build the Jepsen images.
@@ -106,14 +106,23 @@ $ make -C jepsen build
 # Start or recreate the Jepsen containers.
 $ make -C jepsen up
 
-# Run the linearizability test against the running containers.
+# Run the default chaos test against the running containers.
 $ make -C jepsen test
 
-# Run the process crash/restart test instead of the default partition test.
+# Run only the network partition test.
+$ make -C jepsen test NEMESIS=partition
+
+# Run only the process crash/restart test.
 $ make -C jepsen test NEMESIS=process
 
-# Run the membership change test.
+# Run only the process pause/resume test.
+$ make -C jepsen test NEMESIS=pause
+
+# Run only the membership change test.
 $ make -C jepsen test NEMESIS=membership
+
+# Compose selected fault classes with overlapping schedules.
+$ make -C jepsen test NEMESIS=partition,process,pause
 
 # Reuse a recorded seed for Jepsen random choices.
 $ make -C jepsen test NEMESIS=partition SEED=123456
@@ -130,17 +139,27 @@ as its OpenRaft node ID.
 
 This starts the five-node Docker environment, then runs the Jepsen control
 process from the control container. Every test checks a concurrent mix of
-linearizable reads, writes, and compare-and-set operations with Knossos. While
-the partition workload runs, Jepsen alternates between partitions where the
-current leader is in the majority and in the minority. Each partition lasts 10
-seconds. A run is valid only if both modes occur, every node agrees on a leader
-after the final heal, client operations continue during recovery, and the final
-recovery write and read succeed.
+linearizable reads, writes, and compare-and-set operations with Knossos. The
+default `chaos` profile independently schedules partition, process, pause, and
+membership faults, so their active intervals can overlap. `NEMESIS` accepts a
+comma-separated subset when a narrower combination is needed.
+
+The partition nemesis alternates between partitions where the current leader is
+in the majority and in the minority. A focused partition run requires both
+modes to occur.
 
 The process nemesis reads the effective voter configs from OpenRaft metrics and
 randomly stops a non-empty voter subset whose survivors still form a quorum. It
-supports both stable and joint membership, covers leader and follower-only
-crashes, and waits for every stopped node to rejoin after restart.
+supports both stable and joint membership and covers leader and follower-only
+crashes.
+
+The pause nemesis uses the same quorum-safe target selection, but suspends the
+selected processes without terminating them. Their in-memory state and open TCP
+connections remain in place, so peers observe an unresponsive process rather
+than a closed connection. It covers pauses that include and exclude the current
+leader. Resume operations target every test node as an idempotent cleanup and
+record both the preceding disruption and the complete resumed node set in the
+Jepsen history.
 
 The membership nemesis starts with a shrink and grow for deterministic coverage,
 then randomly mixes additional membership changes. Removed nodes are stopped
@@ -151,6 +170,11 @@ Every Jepsen node builds a snapshot after 100 newly committed logs by default.
 The regular write workload therefore exercises snapshot construction during
 short fault tests without a snapshot-specific Nemesis. Set
 `SNAPSHOT_THRESHOLD` to override the threshold for a run.
+
+After the fault schedule ends, Jepsen heals partitions, restarts killed
+processes, resumes paused processes, restores membership, and then performs one
+shared readiness check. Client operations continue while faults are active and
+during recovery. The final recovery write and read must also succeed.
 
 ### Interpreting Results
 
@@ -180,11 +204,11 @@ the following form:
 The original test map in `test.jepsen` is the fallback when `results.edn` is not
 available. Supplying the seed again repeats choices made through
 `jepsen.random`, including the random node selection used by the partition,
-process, and membership nemeses. It does not make the whole run deterministic:
-client operation mixing and timing use separate generator randomness, and
-thread, network, and election timing can still differ. The recorded history and
-Nemesis operations are therefore the authoritative account of the fault
-schedule; the seed is only an aid for rerunning similar conditions.
+process, pause, and membership nemeses. It does not make the whole run
+deterministic: client operation mixing and timing use separate generator
+randomness, and thread, network, and election timing can still differ. The
+recorded history and Nemesis operations are therefore the authoritative account
+of the fault schedule; the seed is only an aid for rerunning similar conditions.
 
 ## TODO
 
@@ -196,7 +220,7 @@ schedule; the seed is only an aid for rerunning similar conditions.
 - [x] Bootstrap a five-node OpenRaft cluster.
 - [x] Record phase-aware ok, fail, and info counts for read, write, and CAS.
 - [x] Add a network partition nemesis.
-- [x] Add nemeses for process kill/restart.
+- [x] Add nemeses for process kill/restart and pause/resume.
 - [x] Add a membership grow/shrink nemesis.
 - [x] Add a read, write, and compare-and-set workload.
 - [x] Add linearizability checking with Knossos.
