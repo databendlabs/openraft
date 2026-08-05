@@ -25,14 +25,18 @@
                        (gen/nemesis (gen/time-limit 40 faults))
                        (gen/clients
                         (gen/stagger 0.1 (repeat {:f :read}))))
+            completion-latency (gen/secs->nanos 2)
             first-attempt? (atom true)
             history (gen-test/simulate
                      generator
                      (fn [_ operation]
-                       (cond-> (assoc operation :type :ok)
-                         (and (= :first (:f operation))
-                              (compare-and-set! first-attempt? true false))
-                         (assoc :value skip-result))))
+                       (let [skip? (and (= :first (:f operation))
+                                        (compare-and-set! first-attempt?
+                                                          true
+                                                          false))]
+                         (cond-> (assoc operation :type :ok)
+                           skip? (assoc :value skip-result)
+                           skip? (update :time + completion-latency)))))
             fault-ops (->> history
                            (filter #(and (= :nemesis (:process %))
                                          (= :info (:type %))))
@@ -40,9 +44,9 @@
             [_ retry next-fault] fault-ops]
         (is (= [:first :first :second] (mapv :f fault-ops)))
         (is (= (gen/secs->nanos 3) (:time (first fault-ops))))
-        (is (<= (gen/secs->nanos 3.5)
+        (is (<= (gen/secs->nanos 5.5)
                 (:time retry)
-                (gen/secs->nanos 4.5)))
+                (gen/secs->nanos 6.5)))
         (is (<= (+ (:time retry) (gen/secs->nanos 5))
                 (:time next-fault)
                 (+ (:time retry) (gen/secs->nanos 15))))))))
