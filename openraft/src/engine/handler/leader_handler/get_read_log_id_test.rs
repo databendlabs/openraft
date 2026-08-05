@@ -10,6 +10,7 @@ use crate::Vote;
 use crate::engine::Engine;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
+use crate::raft::linearizable_read::ReadLogId;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::StoredMembershipOf;
 use crate::utime::Leased;
@@ -50,14 +51,16 @@ fn test_get_read_log_id() -> anyhow::Result<()> {
     let mut eng = eng();
 
     eng.state.apply_progress_mut().accept(log_id(0, 1, 0));
-    eng.leader.as_mut().unwrap().noop_log_id = log_id(1, 1, 2);
+    let noop = log_id(3, 1, 4);
+    eng.leader.as_mut().unwrap().noop_log_id = noop;
 
     let got = eng.try_leader_handler()?.get_read_log_id();
-    assert_eq!(log_id(1, 1, 2), got);
+    assert_eq!(ReadLogId::new(noop, None), got);
 
-    eng.state.apply_progress_mut().accept(log_id(2, 1, 3));
+    let committed = log_id(3, 1, 5);
+    eng.state.apply_progress_mut().accept(committed);
     let got = eng.try_leader_handler()?.get_read_log_id();
-    assert_eq!(log_id(2, 1, 3), got);
+    assert_eq!(ReadLogId::new(noop, Some(committed)), got);
 
     Ok(())
 }

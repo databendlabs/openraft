@@ -9,6 +9,7 @@ use crate::async_runtime::watch::WatchReceiver;
 use crate::errors::Fatal;
 use crate::metrics::WaitError;
 use crate::raft::linearizable_read::LinearizeState;
+use crate::raft::linearizable_read::ReadLogId;
 use crate::storage::RaftStateMachine;
 use crate::type_config::alias::LogIdOf;
 
@@ -49,8 +50,9 @@ where C: RaftTypeConfig
 impl<C> Linearizer<C>
 where C: RaftTypeConfig
 {
+    #[since(version = "0.10.0", change = "accept ReadLogId instead of LogId")]
     #[since(version = "0.10.0")]
-    pub fn new(node_id: C::NodeId, read_log_id: LogIdOf<C>, applied: Option<LogIdOf<C>>) -> Self {
+    pub fn new(node_id: C::NodeId, read_log_id: ReadLogId<C>, applied: Option<LogIdOf<C>>) -> Self {
         Self {
             state: LinearizeState::new(node_id, read_log_id, applied),
         }

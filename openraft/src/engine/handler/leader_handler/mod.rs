@@ -9,6 +9,7 @@ use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
+use crate::raft::linearizable_read::ReadLogId;
 use crate::raft::message::TransferLeaderRequest;
 use crate::raft_state::IOId;
 use crate::replication::ReplicationSessionId;
@@ -16,7 +17,6 @@ use crate::storage::RaftStateMachine;
 use crate::type_config::alias::BatchOf;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::EntryPayloadOf;
-use crate::type_config::alias::LogIdOf;
 
 #[cfg(test)]
 mod append_entries_test;
@@ -138,14 +138,8 @@ where
     /// Get the log id for a linearizable read.
     ///
     /// See: [Read Operation](crate::docs::protocol::read)
-    pub(crate) fn get_read_log_id(&self) -> LogIdOf<C> {
-        let committed = self.state.local_committed().cloned();
-        let Some(committed) = committed else {
-            return self.leader.noop_log_id.clone();
-        };
-
-        // noop log id is the first log this leader proposed.
-        std::cmp::max(self.leader.noop_log_id.clone(), committed)
+    pub(crate) fn get_read_log_id(&self) -> ReadLogId<C> {
+        ReadLogId::new(self.leader.noop_log_id.clone(), self.state.local_committed().cloned())
     }
 
     /// Disable proposing new logs for this Leader and transfer Leader to another node

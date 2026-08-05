@@ -38,6 +38,7 @@ use core_state::CoreState;
 use derive_more::Display;
 use futures_util::FutureExt;
 use linearizable_read::Linearizer;
+use linearizable_read::ReadLogId;
 pub use message::AppendEntriesRequest;
 pub use message::AppendEntriesResponse;
 pub use message::ClientWriteResponse;
@@ -1084,17 +1085,18 @@ where
     /// // Then proceed with the state machine read
     /// ```
     /// Read more about how it works: [Read Operation](crate::docs::protocol::read)
+    #[since(version = "0.10.0", change = "return ReadLogId instead of Option<LogId>")]
     #[since(version = "0.9.0")]
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn ensure_linearizable(
         &self,
         read_policy: ReadPolicy,
-    ) -> Result<Option<LogIdOf<C>>, RaftError<C, LinearizableReadError<C>>> {
+    ) -> Result<ReadLogId<C>, RaftError<C, LinearizableReadError<C>>> {
         let linearizer = self.app_api().get_read_linearizer(read_policy).await.into_raft_result()?;
 
         // Safe unwrap: it never times out.
         let state = linearizer.await_ready(self).await?;
-        Ok(Some(state.read_log_id().clone()))
+        Ok(state.read_log_id().clone())
     }
 
     /// Legacy method that returns log IDs directly. Use
@@ -1115,7 +1117,7 @@ where
         let read_log_id = linearizer.read_log_id();
         let applied = linearizer.applied();
 
-        Ok((Some(read_log_id.clone()), applied.cloned()))
+        Ok((Some(read_log_id.log_id().clone()), applied.cloned()))
     }
 
     /// Ensures this node is leader and returns a [`Linearizer`] to linearize reads.
