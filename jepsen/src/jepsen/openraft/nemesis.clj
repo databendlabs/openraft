@@ -60,7 +60,7 @@
 
         (and operation-event? (= :completion stage))
         (IntervalSchedule. interval
-                           (+ operation-time
+                           (+ (if retry? (:time event) operation-time)
                               (jittered-interval
                                (if retry?
                                  (gen/secs->nanos retry-interval-seconds)
