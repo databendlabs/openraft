@@ -54,6 +54,7 @@ use openraft::raft::TransferLeaderRequest;
 use openraft::raft::TransferLeaderResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
+use openraft::raft::linearizable_read::ReadLogId;
 use openraft::type_config::TypeConfigExt;
 use openraft::type_config::alias::MutexOf;
 use openraft::vote::RaftLeaderId;
@@ -712,12 +713,12 @@ impl TypedRaftRouter {
         Ok(())
     }
 
-    /// Get `read_log_id` and last `applied` log
+    /// Get the `ReadLogId` and last applied log ID.
     pub async fn get_read_log_id(
         &self,
         target: MemNodeId,
         read_policy: ReadPolicy,
-    ) -> Result<(Option<LogIdOf<MemConfig>>, Option<LogIdOf<MemConfig>>), LinearizableReadError<MemConfig>> {
+    ) -> Result<(ReadLogId<MemConfig>, Option<LogIdOf<MemConfig>>), LinearizableReadError<MemConfig>> {
         let n = self.get_raft_handle(&target).unwrap();
         n.get_read_log_id(read_policy).await.map_err(|e| e.into_api_error().unwrap())
     }
