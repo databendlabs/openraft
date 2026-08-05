@@ -8,6 +8,7 @@
             [jepsen.openraft.cluster :as cluster]))
 
 (def ^:private initial-healthy-seconds 5)
+(def ^:private retry-interval-seconds 1)
 (def ^:private retryable-skip-results
   #{:no-reachable-pause-target :no-supported-leader})
 
@@ -43,6 +44,7 @@
     (let [generator' (gen/update generator test context event)
           retry-generator' (some-> retry-generator
                                    (gen/update test context event))
+          retry? (contains? retryable-skip-results (:value event))
           operation-event? (and stage
                                 (= :nemesis (:process event))
                                 (= operation-f (:f event)))]
@@ -59,8 +61,11 @@
         (and operation-event? (= :completion stage))
         (IntervalSchedule. interval
                            (+ operation-time
-                              (jittered-interval interval))
-                           (if (contains? retryable-skip-results (:value event))
+                              (jittered-interval
+                               (if retry?
+                                 (gen/secs->nanos retry-interval-seconds)
+                                 interval)))
+                           (if retry?
                              retry-generator'
                              generator')
                            nil
