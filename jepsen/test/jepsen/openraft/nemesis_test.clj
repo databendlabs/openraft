@@ -36,12 +36,16 @@
             fault-ops (->> history
                            (filter #(and (= :nemesis (:process %))
                                          (= :info (:type %))))
-                           (take 3))]
+                           (take 3))
+            [_ retry next-fault] fault-ops]
         (is (= [:first :first :second] (mapv :f fault-ops)))
         (is (= (gen/secs->nanos 3) (:time (first fault-ops))))
-        (is (<= (gen/secs->nanos 8)
-                (:time (second fault-ops))
-                (gen/secs->nanos 18)))))))
+        (is (<= (gen/secs->nanos 3.5)
+                (:time retry)
+                (gen/secs->nanos 4.5)))
+        (is (<= (+ (:time retry) (gen/secs->nanos 5))
+                (:time next-fault)
+                (+ (:time retry) (gen/secs->nanos 15))))))))
 
 (deftest cleans-up-all-faults-before-confirming-recovery
   (let [database (db/db {})
