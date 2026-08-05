@@ -18,6 +18,9 @@ app-lint:
 	cargo fmt --check --manifest-path $(APP_MANIFEST)
 	cargo clippy --no-deps --manifest-path $(APP_MANIFEST) --all-targets -- -D warnings
 
+app-test:
+	cargo test --manifest-path $(APP_MANIFEST)
+
 clojure-lint:
 	clj-kondo --lint src test
 	cljfmt check src test
@@ -55,4 +58,4 @@ down:
 	@echo "[jepsen] stopping containers"
 	@$(COMPOSE) down
 
-.PHONY: app-lint clojure-lint lint unit-test jepsen key build up test down
+.PHONY: app-lint app-test clojure-lint lint unit-test jepsen key build up test down

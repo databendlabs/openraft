@@ -54,6 +54,9 @@ jobs:
       - name: Check | Test app
         run: make -C jepsen app-lint
 
+      - name: Test | Test app
+        run: make -C jepsen app-test
+
       - name: Test | Clojure
         run: make -C jepsen unit-test
 
