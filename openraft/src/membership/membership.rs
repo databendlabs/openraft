@@ -325,11 +325,12 @@ where
 
         let Membership { mut configs, nodes } = self.clone().compute_target_membership(change);
 
-        // Safe unwrap(): `calculate_goal()` yields a uniform config.
-        let target_voter_ids = configs.pop().unwrap();
-
-        self.nodes = nodes;
-        let new_membership = self.next_coherent(target_voter_ids, retain);
+        let new_membership = if let Some(target_voter_ids) = configs.pop() {
+            self.nodes = nodes;
+            self.next_coherent(target_voter_ids, retain)
+        } else {
+            Membership { configs, nodes }
+        };
 
         tracing::debug!("new membership: {}", new_membership);
 
@@ -426,6 +427,19 @@ mod tests {
             nodes: btreemap! {1=>()},
         };
         assert_eq!(Err(2), m.ensure_voter_nodes());
+        Ok(())
+    }
+
+    #[test]
+    fn test_add_nodes_to_empty_membership() -> anyhow::Result<()> {
+        let res = Membership::<u64, ()>::default().change(ChangeMembers::AddNodes(btreemap! {1=>()}), true)?;
+        assert_eq!(
+            Membership {
+                configs: vec![],
+                nodes: btreemap! {1=>()},
+            },
+            res
+        );
         Ok(())
     }
 
