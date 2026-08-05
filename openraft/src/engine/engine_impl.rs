@@ -26,6 +26,7 @@ use crate::entry::RaftEntry;
 use crate::entry::payload::EntryPayload;
 use crate::errors::ForwardToLeader;
 use crate::errors::InitializeError;
+use crate::errors::InitializeSnapshotError;
 use crate::errors::NotAllowed;
 use crate::errors::NotInMembers;
 use crate::errors::RejectAppendEntries;
@@ -44,6 +45,7 @@ use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
 use crate::storage::RaftStateMachine;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
@@ -245,6 +247,48 @@ where
         self.following_handler().do_append_entries(vec![entry]);
 
         Ok(())
+    }
+
+    /// Initialize a pristine node from a snapshot without establishing a leader.
+    pub(crate) fn initialize_from_snapshot(
+        &mut self,
+        vote: VoteOf<C>,
+        snapshot: SmSnapshotOf<C, SM>,
+    ) -> Result<Condition<C>, InitializeSnapshotError<C>> {
+        self.check_initialize()?;
+
+        let last_log_id = snapshot.meta.last_log_id.clone().ok_or(InitializeSnapshotError::MissingLastLogId)?;
+        self.check_members_contain_me(snapshot.meta.last_membership.membership())?;
+
+        if vote.is_committed() {
+            return Err(InitializeSnapshotError::CommittedVote { vote });
+        }
+
+        if vote.leader_node_id() != &self.config.id {
+            return Err(InitializeSnapshotError::VoteForAnotherNode {
+                node_id: self.config.id.clone(),
+                vote,
+            });
+        }
+
+        let committed_vote = vote.clone().to_committed();
+        if &committed_vote.committed_leader_id() <= last_log_id.committed_leader_id() {
+            return Err(InitializeSnapshotError::VoteNotAboveSnapshot { vote, last_log_id });
+        }
+
+        if self.vote_handler().update_vote(&vote).is_err() {
+            return Err(InitializeSnapshotError::VoteRejected {
+                vote,
+                current_vote: self.state.vote_ref().clone(),
+            });
+        }
+
+        let condition = self
+            .following_handler_for_recovery(committed_vote)
+            .install_full_snapshot(snapshot)
+            .expect("a positioned snapshot is newer than a pristine node");
+
+        Ok(condition)
     }
 
     /// Start to elect this node as leader
@@ -1044,6 +1088,17 @@ where
 
         FollowingHandler {
             leader_vote: leader_vote.to_committed(),
+            config: &mut self.config,
+            state: &mut self.state,
+            output: &mut self.output,
+        }
+    }
+
+    fn following_handler_for_recovery(&mut self, leader_vote: CommittedVoteOf<C>) -> FollowingHandler<'_, C, SM> {
+        debug_assert!(self.leader.is_none());
+
+        FollowingHandler {
+            leader_vote,
             config: &mut self.config,
             state: &mut self.state,
             output: &mut self.output,

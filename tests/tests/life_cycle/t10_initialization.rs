@@ -1,5 +1,7 @@
 #![allow(clippy::single_element_loop)]
 
+use std::collections::HashMap;
+use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -9,12 +11,15 @@ use openraft::EntryPayload;
 use openraft::Membership;
 use openraft::RaftLogReader;
 use openraft::ServerState;
+use openraft::Snapshot;
+use openraft::SnapshotMeta;
 use openraft::Vote;
 use openraft::alias::StoredMembershipOf;
 use openraft::errors::InitializeError;
 use openraft::errors::NotAllowed;
 use openraft::errors::NotInMembers;
 use openraft::storage::RaftStateMachine;
+use openraft_memstore::MemStoreStateMachine;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
@@ -178,6 +183,50 @@ async fn initialization() -> anyhow::Result<()> {
     }
     assert!(found_leader);
     assert_eq!(2, follower_count);
+
+    Ok(())
+}
+
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn initialize_from_snapshot() -> anyhow::Result<()> {
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            enable_tick: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
+    let mut router = RaftRouter::new(config);
+    router.new_raft_node(0).await;
+
+    let last_log_id = log_id(4, 9, 42);
+    let membership = Membership::new_with_defaults(vec![btreeset! {0}], []);
+    let last_membership = StoredMembershipOf::<openraft_memstore::TypeConfig>::new(Some(last_log_id), membership);
+    let restored = MemStoreStateMachine {
+        last_applied_log: Some(last_log_id),
+        last_membership: last_membership.clone(),
+        client_status: HashMap::from([("client".to_string(), "restored".to_string())]),
+    };
+    let snapshot = Snapshot {
+        meta: SnapshotMeta {
+            last_log_id: Some(last_log_id),
+            last_membership,
+        },
+        snapshot: Cursor::new(serde_json::to_vec(&restored)?),
+    };
+
+    let raft = router.get_raft_handle(&0)?;
+    raft.initialize_from_snapshot(Vote::new(5, 0), snapshot).await?;
+
+    router.wait(&0, timeout()).state(ServerState::Leader, "recovered leader").await?;
+    router.wait(&0, timeout()).applied_index(Some(43), "post-recovery blank log").await?;
+
+    let (_, state_machine) = router.get_storage_handle(&0)?;
+    let state = state_machine.get_state_machine().await;
+    assert_eq!(Some(&"restored".to_string()), state.client_status.get("client"));
 
     Ok(())
 }

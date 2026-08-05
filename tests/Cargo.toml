@@ -33,6 +33,7 @@ maplit             = { workspace = true }
 pretty_assertions  = { workspace = true }
 rand               = { workspace = true }
 serde              = { workspace = true }
+serde_json         = { workspace = true }
 test-harness       = { workspace = true }
 tracing            = { workspace = true }
 tracing-appender   = { workspace = true }
