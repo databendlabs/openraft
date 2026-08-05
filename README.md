@@ -178,6 +178,7 @@ What sets OpenRaft apart from a standard Raft implementation:
 - [raymondshe/matchengine-raft](https://github.com/raymondshe/matchengine-raft) - A example to demonstrate how openraft persists snapshots/logs to disk. <!-- ★56 -->
 - [tsoracle](https://github.com/prisma-risk/tsoracle) - Distributed timestamp and sequence oracle serving strictly monotonic, gapless IDs. <!-- ★55 -->
 - [yuyang0/rrqlite](https://github.com/yuyang0/rrqlite) - A rust implementation of [rqlite](https://github.com/rqlite/rqlite). <!-- ★21 -->
+- [KalamDB](https://github.com/kalamdb/KalamDB) - A SQL-first realtime backend for agent-native apps. <!-- ★47 -->
 
 📣 Using openraft in your project? We'd love to feature it here — [open an issue](https://github.com/databendlabs/openraft/issues/new) to let us know, or skip the wait and [submit a pull request directly](https://github.com/databendlabs/openraft/edit/main/README.md).
 
