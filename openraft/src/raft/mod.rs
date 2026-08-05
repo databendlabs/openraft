@@ -112,6 +112,7 @@ use crate::errors::ClientWriteError;
 use crate::errors::Fatal;
 use crate::errors::ForwardToLeader;
 use crate::errors::InitializeError;
+use crate::errors::InitializeSnapshotError;
 use crate::errors::LinearizableReadError;
 use crate::errors::RaftError;
 use crate::errors::into_raft_result::IntoRaftResult;
@@ -1395,6 +1396,31 @@ where
     pub async fn initialize<T>(&self, members: T) -> Result<(), RaftError<C, InitializeError<C>>>
     where T: IntoNodes<C::NodeId, C::Node> + Debug {
         self.management_api().initialize(members).await.into_raft_result()
+    }
+
+    /// Initialize a pristine node from a snapshot and start an election.
+    ///
+    /// This operation forms a new cluster lineage from existing state. It is not
+    /// a replacement for receiving a snapshot from a current leader; use
+    /// [`Raft::install_full_snapshot`] for protocol snapshot transfer.
+    ///
+    /// `vote` establishes a term floor for the new lineage. It must be
+    /// uncommitted, name this node, and be greater than the snapshot's last log
+    /// leader. The snapshot membership must include this node as a voter.
+    ///
+    /// The node must satisfy the same pristine-state precondition as
+    /// [`Raft::initialize`]. The snapshot and vote are made durable before a
+    /// normal election is triggered at the next term.
+    #[since(version = "0.10.0", change = "added snapshot initialization")]
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub async fn initialize_from_snapshot(
+        &self,
+        vote: VoteOf<C>,
+        snapshot: SnapshotOf<C, SM::SnapshotData>,
+    ) -> Result<(), RaftError<C, InitializeSnapshotError<C>>> {
+        self.protocol_api().initialize_from_snapshot(vote, snapshot).await.into_raft_result()?;
+        self.trigger().elect(false).await?;
+        Ok(())
     }
 
     /// Provides read-only access to [`RaftState`] through a user-provided function.

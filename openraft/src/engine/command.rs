@@ -13,6 +13,7 @@ use crate::engine::CommandKind;
 use crate::engine::CommandName;
 use crate::engine::replication_progress::TargetProgress;
 use crate::errors::InitializeError;
+use crate::errors::InitializeSnapshotError;
 use crate::progress::inflight_id::InflightId;
 use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
@@ -480,6 +481,7 @@ where C: RaftTypeConfig
     AppendEntries(ValueSender<C, StreamAppendResult<C>>),
     InstallFullSnapshot(ValueSender<C, SnapshotResponse<C>>),
     Initialize(ValueSender<C, Result<(), InitializeError<C>>>),
+    InitializeFromSnapshot(ValueSender<C, Result<(), InitializeSnapshotError<C>>>),
 }
 
 impl<C> fmt::Display for Respond<C>
@@ -494,6 +496,13 @@ where C: RaftTypeConfig
             },
             Respond::InstallFullSnapshot(vs) => write!(f, "InstallFullSnapshot {}", vs.value()),
             Respond::Initialize(vs) => write!(f, "Initialize {}", vs.value().as_ref().map(|_x| "()").display()),
+            Respond::InitializeFromSnapshot(vs) => {
+                write!(
+                    f,
+                    "InitializeFromSnapshot {}",
+                    vs.value().as_ref().map(|_x| "()").display()
+                )
+            }
         }
     }
 }
@@ -515,6 +524,7 @@ where C: RaftTypeConfig
             Respond::AppendEntries(x) => x.send(),
             Respond::InstallFullSnapshot(x) => x.send(),
             Respond::Initialize(x) => x.send(),
+            Respond::InitializeFromSnapshot(x) => x.send(),
         }
     }
 }
