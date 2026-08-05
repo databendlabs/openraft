@@ -601,6 +601,11 @@ where
         retain: bool,
         tx: ProgressResponder<C, ClientWriteResult<C>>,
     ) {
+        if let Err(e) = self.ensure_leader_handler() {
+            tx.on_complete(Err(ClientWriteError::ForwardToLeader(e)));
+            return;
+        }
+
         let res = self.engine.state.membership_state.change_handler().apply(changes, retain);
         let new_membership = match res {
             Ok(x) => x,

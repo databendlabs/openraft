@@ -1,18 +1,19 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use maplit::btreemap;
-use openraft::ChangeMembers;
 use openraft::Config;
+use openraft::errors::ClientWriteError;
+use openraft::errors::ForwardToLeader;
+use openraft::errors::RaftError;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::ut_harness;
 
-/// Call `Raft::change_membership()` on an uninitialized node should not panic due to empty
+/// A membership request to an uninitialized node should be rejected before inspecting its empty
 /// membership.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
-async fn change_membership_on_uninitialized_node() -> Result<()> {
+async fn add_learner_on_uninitialized_node() -> Result<()> {
     let config = Arc::new(
         Config {
             enable_heartbeat: false,
@@ -25,13 +26,11 @@ async fn change_membership_on_uninitialized_node() -> Result<()> {
     router.new_raft_node(0).await;
 
     let n0 = router.get_raft_handle(&0)?;
-    let res = n0.change_membership(ChangeMembers::AddVoters(btreemap! {0=>()}), false).await;
-    tracing::info!("{:?}", res);
-
-    let err = res.unwrap_err();
-    tracing::info!("{}", err);
-
-    assert!(err.to_string().contains("forward request to"));
+    let err = n0.add_learner(0, (), false).await.unwrap_err();
+    assert_eq!(
+        RaftError::APIError(ClientWriteError::ForwardToLeader(ForwardToLeader::empty())),
+        err
+    );
 
     Ok(())
 }

@@ -325,7 +325,7 @@ where
 
         let Membership { mut configs, nodes } = self.clone().compute_target_membership(change);
 
-        // Safe unwrap(): `calculate_goal()` yields a uniform config.
+        // Safe unwrap(): membership changes are only evaluated on an initialized leader.
         let target_voter_ids = configs.pop().unwrap();
 
         self.nodes = nodes;
