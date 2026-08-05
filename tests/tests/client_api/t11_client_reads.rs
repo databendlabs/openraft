@@ -13,6 +13,7 @@ use openraft::base::BoxFuture;
 use openraft::errors::NetworkError;
 use openraft::errors::RPCError;
 use openraft::type_config::TypeConfigExt;
+use openraft::vote::RaftLeaderId;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
@@ -80,6 +81,7 @@ async fn client_reads() -> Result<()> {
 /// - A leader that has not yet committed any log entries returns leader initialization log id(blank
 ///   log id).
 /// - Return the last committed log id if the leader has committed any log entries.
+/// - The returned read log ID contains the current leadership.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn get_read_log_id() -> Result<()> {
@@ -140,6 +142,8 @@ async fn get_read_log_id() -> Result<()> {
 
     n1.wait(timeout()).state(ServerState::Leader, "node 1 becomes leader").await?;
 
+    let leadership = n1.metrics().borrow_watched().vote.leader_id().to_committed();
+
     tracing::info!(log_index = log_index, "--- node 1 appends blank log but cannot commit");
     {
         let res = n1.wait(timeout()).applied_index_at_least(Some(log_index + 1), "blank log cannot commit").await;
@@ -152,9 +156,9 @@ async fn get_read_log_id() -> Result<()> {
     {
         let (read_log_id, applied) = n1.get_read_log_id(ReadPolicy::ReadIndex).await?;
         assert_eq!(
-            read_log_id.index(),
-            Some(blank_log_index),
-            "read-log-id is the blank log"
+            (&leadership, blank_log_index),
+            (read_log_id.committed_leader_id(), read_log_id.index()),
+            "read-log-id is the blank log from the current leader"
         );
         assert_eq!(applied.index(), Some(log_index));
     }
@@ -170,7 +174,11 @@ async fn get_read_log_id() -> Result<()> {
         n1.wait(timeout()).applied_index(Some(log_index), "log applied to state-machine").await?;
 
         let (read_log_id, applied) = n1.get_read_log_id(ReadPolicy::ReadIndex).await?;
-        assert_eq!(read_log_id.index(), Some(log_index), "read-log-id is the committed log");
+        assert_eq!(
+            (&leadership, log_index),
+            (read_log_id.committed_leader_id(), read_log_id.index()),
+            "read-log-id is the current leader's committed log"
+        );
         assert_eq!(applied.index(), Some(log_index));
     }
 
@@ -193,9 +201,9 @@ async fn get_read_log_id() -> Result<()> {
 
         let (read_log_id, _applied) = n1.get_read_log_id(ReadPolicy::ReadIndex).await?;
         assert_eq!(
-            read_log_id.index(),
-            Some(last_committed),
-            "read-log-id is the committed log"
+            (&leadership, last_committed),
+            (read_log_id.committed_leader_id(), read_log_id.index()),
+            "read-log-id is the current leader's committed log"
         );
     };
 
