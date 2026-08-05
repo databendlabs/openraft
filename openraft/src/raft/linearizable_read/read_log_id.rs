@@ -59,6 +59,19 @@ where C: RaftTypeConfig
         Self { log_id }
     }
 
+    /// Rebuild a `ReadLogId` from a log ID previously produced by a leader.
+    ///
+    /// Use this on a follower to reconstruct the read log ID received through an
+    /// application-defined wire format when implementing follower reads. The caller is
+    /// responsible for the value originating from a leader, such as via
+    /// [`LinearizeState::read_log_id()`]; this method does not verify it.
+    ///
+    /// [`LinearizeState::read_log_id()`]: crate::raft::linearizable_read::LinearizeState::read_log_id
+    #[since(version = "0.10.0")]
+    pub fn from_log_id(log_id: LogIdOf<C>) -> Self {
+        Self { log_id }
+    }
+
     /// Return the underlying log ID.
     #[since(version = "0.10.0")]
     pub fn log_id(&self) -> &LogIdOf<C> {
@@ -97,6 +110,13 @@ mod tests {
         let committed = log_id(2, 1, 4);
         let got = ReadLogId::<UTConfig>::new(noop, Some(committed));
         assert_eq!(ReadLogId { log_id: committed }, got);
+    }
+
+    #[test]
+    fn test_from_log_id() {
+        let log_id = log_id(2, 1, 3);
+        let got = ReadLogId::<UTConfig>::from_log_id(log_id);
+        assert_eq!(ReadLogId { log_id }, got);
     }
 
     #[test]
