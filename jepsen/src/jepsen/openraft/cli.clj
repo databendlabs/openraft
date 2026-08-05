@@ -21,9 +21,10 @@
 (def nemesis-types
   (conj (set concrete-nemesis-types) :chaos))
 
-;; Emitted by openraft-test-app's panic hook.
-(def ^:private node-panic-pattern
-  #"OPENRAFT_JEPSEN_PANIC")
+;; The app marker covers panics; the runtime message covers fatal aborts such
+;; as stack overflows, which bypass the panic hook.
+(def ^:private node-crash-pattern
+  #"(OPENRAFT_JEPSEN_PANIC|fatal runtime error)")
 
 (defn- parse-nemeses [value]
   (mapv (comp keyword str/trim)
@@ -176,7 +177,7 @@
                        :stats (checker/stats)
                        :exceptions (strict-unhandled-exceptions)
                        :crash (required-log-file-pattern
-                               node-panic-pattern
+                               node-crash-pattern
                                "openraft.log")
                        :nemesis (:checker nemesis-package)
                        :workload (:checker workload)})})))

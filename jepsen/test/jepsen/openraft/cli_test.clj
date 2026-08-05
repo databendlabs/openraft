@@ -109,13 +109,13 @@
                                            (history/history [])
                                            {}))))))))
 
-(deftest checks-downloaded-logs-for-node-panics
+(deftest checks-downloaded-logs-for-node-crashes
   (let [^java.io.File temp-dir
         (.toFile
          (java.nio.file.Files/createTempDirectory
           "openraft-jepsen-checker"
           (make-array java.nio.file.attribute.FileAttribute 0)))
-        test {:name "panic-checker-test"
+        test {:name "crash-checker-test"
               :start-time "run"
               :nodes ["n1" "n2"]}
         crash (-> (cli/openraft-test {:nemesis :partition
@@ -145,6 +145,14 @@
                     :count 1
                     :matches [{:node "n2"
                                :line "OPENRAFT_JEPSEN_PANIC"}]}
+                   (select-keys (check) [:valid? :count :matches]))))
+
+          (write-log! "n2" "fatal runtime error: stack overflow\n")
+          (testing "a fatal runtime error fails the check"
+            (is (= {:valid? false
+                    :count 1
+                    :matches [{:node "n2"
+                               :line "fatal runtime error: stack overflow"}]}
                    (select-keys (check) [:valid? :count :matches]))))
 
           (io/delete-file (store/path test "n2" "openraft.log"))
