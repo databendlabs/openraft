@@ -38,6 +38,7 @@ use core_state::CoreState;
 use derive_more::Display;
 use futures_util::FutureExt;
 use linearizable_read::Linearizer;
+use linearizable_read::ReadLogId;
 pub use message::AppendEntriesRequest;
 pub use message::AppendEntriesResponse;
 pub use message::ClientWriteResponse;
@@ -1084,38 +1085,45 @@ where
     /// // Then proceed with the state machine read
     /// ```
     /// Read more about how it works: [Read Operation](crate::docs::protocol::read)
+    #[since(version = "0.10.0", change = "return ReadLogId instead of Option<LogId>")]
     #[since(version = "0.9.0")]
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn ensure_linearizable(
         &self,
         read_policy: ReadPolicy,
-    ) -> Result<Option<LogIdOf<C>>, RaftError<C, LinearizableReadError<C>>> {
+    ) -> Result<ReadLogId<C>, RaftError<C, LinearizableReadError<C>>> {
         let linearizer = self.app_api().get_read_linearizer(read_policy).await.into_raft_result()?;
 
         // Safe unwrap: it never times out.
         let state = linearizer.await_ready(self).await?;
-        Ok(Some(state.read_log_id().clone()))
+        Ok(state.read_log_id().clone())
     }
 
-    /// Legacy method that returns log IDs directly. Use
+    /// Legacy method that returns read state as a tuple. Use
     /// [`Raft::get_read_linearizer`] instead.
     ///
-    /// This method extracts log IDs from a [`Linearizer`] and returns them as a tuple.
+    /// This method extracts the read log ID and applied log ID from a [`Linearizer`] and returns
+    /// them as a tuple.
+    ///
+    /// The [`ReadLogId`] contains the current leadership and the inclusive log boundary the state
+    /// machine must apply through before serving the read. The applied log ID is the last value
+    /// known to have been applied when the linearizer was created.
     /// **For new code, use [`Raft::get_read_linearizer`]** which provides a better API.
     ///
     /// See [`Raft::get_read_linearizer`] for full documentation.
+    #[since(version = "0.10.0", change = "return ReadLogId instead of Option<LogId>")]
     #[since(version = "0.9.0")]
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn get_read_log_id(
         &self,
         read_policy: ReadPolicy,
-    ) -> Result<(Option<LogIdOf<C>>, Option<LogIdOf<C>>), RaftError<C, LinearizableReadError<C>>> {
+    ) -> Result<(ReadLogId<C>, Option<LogIdOf<C>>), RaftError<C, LinearizableReadError<C>>> {
         let linearizer = self.app_api().get_read_linearizer(read_policy).await.into_raft_result()?;
 
         let read_log_id = linearizer.read_log_id();
         let applied = linearizer.applied();
 
-        Ok((Some(read_log_id.clone()), applied.cloned()))
+        Ok((read_log_id.clone(), applied.cloned()))
     }
 
     /// Ensures this node is leader and returns a [`Linearizer`] to linearize reads.

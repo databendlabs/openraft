@@ -17,6 +17,7 @@ use openraft::errors::LinearizableReadError;
 use openraft::errors::decompose::DecomposeResult;
 use openraft::raft::ClientWriteResponse;
 use openraft::raft::linearizable_read::Linearizer;
+use openraft::raft::linearizable_read::ReadLogId;
 use openraft::storage::RaftStateMachine;
 use serde::Deserialize;
 use serde::Serialize;
@@ -45,15 +46,12 @@ pub struct AddLearnerRequest<NID = u64> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(bound(
-    serialize = "C::NodeId: Serialize, LogIdOf<C>: Serialize",
-    deserialize = "C::NodeId: Deserialize<'de>, LogIdOf<C>: Deserialize<'de>"
-))]
+#[serde(bound = "")]
 pub struct LinearizerData<C>
 where C: RaftTypeConfig
 {
     pub node_id: C::NodeId,
-    pub read_log_id: LogIdOf<C>,
+    pub read_log_id: ReadLogId<C>,
     pub applied: Option<LogIdOf<C>>,
 }
 

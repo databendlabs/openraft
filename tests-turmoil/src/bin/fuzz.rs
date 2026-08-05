@@ -1115,7 +1115,7 @@ async fn read_client_loop(
                         barrier
                     );
                 }
-                history.lock().unwrap().record_read(&key, observed.as_ref(), floor, barrier);
+                history.lock().unwrap().record_read(&key, observed.as_ref(), floor, Some(*barrier.log_id()));
             }
             _ => {
                 if dbg_ops() {
