@@ -53,26 +53,40 @@
           (write-log! "n2" "INFO vote committed\n")
           (testing "clean logs pass"
             (is (= {:valid? true
+                    :filename "openraft.log"
+                    :missing-nodes []
                     :count 0
-                    :missing-nodes []}
-                   (select-keys (check)
-                                [:valid? :count :missing-nodes]))))
+                    :matches []}
+                   (check))))
 
           (write-log! "n2" "INFO before panic\nOPENRAFT_JEPSEN_PANIC\n")
           (testing "a panic marker fails the check"
             (is (= {:valid? false
+                    :filename "openraft.log"
+                    :missing-nodes []
                     :count 1
                     :matches [{:node "n2"
                                :line "OPENRAFT_JEPSEN_PANIC"}]}
-                   (select-keys (check) [:valid? :count :matches]))))
+                   (check))))
 
           (io/delete-file (store/path test "n2" "openraft.log"))
           (testing "a missing node log is indeterminate"
             (is (= {:valid? :unknown
+                    :filename "openraft.log"
+                    :missing-nodes ["n2"]
                     :count 0
-                    :missing-nodes ["n2"]}
-                   (select-keys (check)
-                                [:valid? :count :missing-nodes]))))))
+                    :matches []}
+                   (check))))
+
+          (write-log! "n1" "INFO before panic\nOPENRAFT_JEPSEN_PANIC\n")
+          (testing "a panic marker takes precedence over a missing log"
+            (is (= {:valid? false
+                    :filename "openraft.log"
+                    :missing-nodes ["n2"]
+                    :count 1
+                    :matches [{:node "n1"
+                               :line "OPENRAFT_JEPSEN_PANIC"}]}
+                   (check))))))
       (finally
         (doseq [file (reverse (file-seq temp-dir))]
           (io/delete-file file true))))))
