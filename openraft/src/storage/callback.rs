@@ -101,12 +101,28 @@ where C: RaftTypeConfig
                     if current.is_err() {
                         // Already in error state, don't modify
                         tracing::debug!("IO completion ignored: already in error state");
-                        false
-                    } else {
-                        // Update to new value
-                        *current = new_value;
-                        true
+                        return false;
                     }
+
+                    // `RaftLogStorage::append()` may complete out of order: it is allowed to
+                    // flush on its own task, so two appends race and the older one may report
+                    // last. This value is a watermark that is only ever read as "the latest
+                    // completed IO", and the reader keeps no history, so letting an older
+                    // `IOId` overwrite a newer one silently discards the newer completion.
+                    if let (Ok(new_io_id), Ok(current_io_id)) = (&new_value, &*current)
+                        && new_io_id <= current_io_id
+                    {
+                        tracing::debug!(
+                            "IO completion ignored: {} is not newer than the flushed {}",
+                            new_io_id,
+                            current_io_id
+                        );
+                        return false;
+                    }
+
+                    // Update to new value
+                    *current = new_value;
+                    true
                 });
 
                 if !modified {
@@ -171,8 +187,12 @@ where C: RaftTypeConfig
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Vote;
+    use crate::async_runtime::watch::WatchReceiver;
     use crate::engine::testing::UTConfig;
+    use crate::engine::testing::log_id;
     use crate::type_config::TypeConfigExt;
+    use crate::vote::raft_vote::RaftVoteExt;
 
     #[test]
     fn test_io_flushed_noop() {
@@ -220,6 +240,43 @@ mod tests {
             let io_result = result.unwrap();
             assert!(io_result.is_err());
             assert_eq!(io_result.unwrap_err().kind(), io::ErrorKind::Other);
+        });
+    }
+
+    /// `RaftLogStorage::append()` may report completions out of order, and the watched value
+    /// keeps no history, so an older `IOId` must not replace a newer one.
+    #[test]
+    fn test_io_flushed_notify_keeps_the_newest_io_id() {
+        UTConfig::<()>::run(async {
+            let term1 = IOId::<UTConfig>::new_log_io(Vote::new_committed(1, 1).to_committed(), Some(log_id(1, 1, 1)));
+            let term2 = IOId::<UTConfig>::new_log_io(Vote::new_committed(2, 1).to_committed(), Some(log_id(2, 1, 2)));
+
+            let (tx, rx) = UTConfig::<()>::watch_channel(Ok(term1.clone()));
+
+            IOFlushed::new(term2.clone(), tx.clone()).io_completed(Ok(()));
+            assert_eq!(Ok(term2.clone()), *rx.borrow_watched());
+
+            // The term-1 append finishes last; it must not roll the watermark back.
+            IOFlushed::new(term1, tx).io_completed(Ok(()));
+            assert_eq!(Ok(term2), *rx.borrow_watched());
+        });
+    }
+
+    /// A storage error must override a newer successful completion, so that a failed node
+    /// never reports progress.
+    #[test]
+    fn test_io_flushed_notify_keeps_the_error() {
+        UTConfig::<()>::run(async {
+            let term1 = IOId::<UTConfig>::new_log_io(Vote::new_committed(1, 1).to_committed(), Some(log_id(1, 1, 1)));
+            let term2 = IOId::<UTConfig>::new_log_io(Vote::new_committed(2, 1).to_committed(), Some(log_id(2, 1, 2)));
+
+            let (tx, rx) = UTConfig::<()>::watch_channel(Ok(term1.clone()));
+
+            IOFlushed::new(term1, tx.clone()).io_completed(Err(io::Error::other("test error")));
+            assert!(rx.borrow_watched().is_err());
+
+            IOFlushed::new(term2, tx).io_completed(Ok(()));
+            assert!(rx.borrow_watched().is_err());
         });
     }
 
