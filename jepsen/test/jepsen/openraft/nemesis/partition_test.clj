@@ -9,6 +9,15 @@
 
 (def nodes ["n1" "n2" "n3"])
 
+(defn- teardown-partitioner [teardown]
+  (reify nemesis/Nemesis
+    (setup! [this _test]
+      this)
+    (invoke! [_ _test op]
+      op)
+    (teardown! [_ _test]
+      (teardown))))
+
 (deftest places-leader-in-requested-component
   (let [configs [(set nodes)]
         quorums (set (quorum/quorum-sets configs))]
@@ -69,6 +78,38 @@
         (is (= :no-supported-leader
                (:value (nemesis/invoke! subject {:nodes nodes} op))))
         (is (empty? @invocations))))))
+
+(deftest preserves-analysis-after-partition-cleanup-failure
+  (testing "ordinary cleanup failures do not escape teardown"
+    (let [attempted? (atom false)
+          partitioner (teardown-partitioner
+                       #(do
+                          (reset! attempted? true)
+                          (throw (ex-info "unreachable"
+                                          {:kind :unreachable}))))]
+      (nemesis/teardown! (partition/->PartitionNemesis partitioner)
+                         {:nodes nodes})
+      (is @attempted?)))
+
+  (testing "interruptions still stop the test"
+    (doseq [[label error] [[:raw (InterruptedException. "interrupted")]
+                           [:wrapped (ex-info "interrupted"
+                                              {:kind :interrupted})]]]
+      (testing (name label)
+        (Thread/interrupted)
+        (let [partitioner (teardown-partitioner #(throw error))
+              subject (partition/->PartitionNemesis partitioner)]
+          (try
+            (let [thrown (try
+                           (nemesis/teardown! subject {:nodes nodes})
+                           nil
+                           (catch Exception e
+                             e))
+                  interrupted? (.isInterrupted (Thread/currentThread))]
+              (is (identical? error thrown))
+              (is interrupted?))
+            (finally
+              (Thread/interrupted))))))))
 
 (deftest requires-both-partitions-and-an-intact-cluster
   (let [subject (#'partition/coverage-checker)
