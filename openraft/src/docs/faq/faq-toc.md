@@ -34,6 +34,7 @@
   * [Write returns `ForwardToLeader` but leader info is missing](#write-returns-forwardtoleader-but-leader-info-is-missing)
   * [Error logs after `raft.shutdown()` completes](#error-logs-after-raftshutdown-completes)
   * [Why can a Leader reject a client write?](#why-can-a-leader-reject-a-client-write)
+  * [How to restore a cluster from a snapshot backup?](#how-to-restore-a-cluster-from-a-snapshot-backup)
 - [Troubleshooting & Safety](#troubleshooting--safety)
   * [Panic: "assertion failed: self.internal_server_state.is_following()"](#panic-assertion-failed-selfinternal_server_stateis_following)
   * [Holding `Raft::metrics()` reference blocks the Raft node](#holding-raftmetrics-reference-blocks-the-raft-node)
