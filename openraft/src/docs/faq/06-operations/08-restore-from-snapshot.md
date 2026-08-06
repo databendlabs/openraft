@@ -44,7 +44,13 @@ Notes:
   then trigger an election on one of them.
 - A node that is not in the snapshot's membership can be restored the same
   way; it just remains a learner.
+- This recipe targets rebuilding a cluster whose nodes are all lost. To
+  restore a single damaged follower or learner while the cluster is still
+  running, wipe the node and let the leader re-replicate to it, with
+  [`Config::allow_log_reversion`][] enabled so that the leader accepts the
+  node's log reversion (see the FAQ entry about wiping the data of one node).
 
 [`Raft::install_full_snapshot()`]: `crate::Raft::install_full_snapshot`
+[`Config::allow_log_reversion`]: `crate::config::Config::allow_log_reversion`
 [`CommittedLeaderId`]: `crate::vote::RaftCommittedLeaderId`
 [`leader_id_std`]: `crate::impls::leader_id_std`
