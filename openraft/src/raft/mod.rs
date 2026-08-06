@@ -500,11 +500,8 @@ where
         let (tx_progress, progress_watcher) = IoProgressWatcher::new();
         let (tx_shutdown, rx_shutdown) = C::oneshot();
 
-        let tick_handle = Tick::spawn(
-            Duration::from_millis(config.heartbeat_interval * 3 / 2),
-            tx_notify.clone(),
-            config.enable_tick,
-        );
+        let tick_period = Duration::from_millis(config.heartbeat_interval * 3 / 2);
+        let tick_handle = Tick::spawn(tick_period, tx_notify.clone(), config.enable_tick);
 
         let runtime_config = Arc::new(RuntimeConfig::new(&config));
 

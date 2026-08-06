@@ -7,13 +7,16 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use futures_util::future::Either;
+use rand::RngExt;
 use tracing::Instrument;
 use tracing::Level;
 use tracing::Span;
 
+use crate::AsyncRuntime;
 use crate::RaftTypeConfig;
 use crate::core::notification::Notification;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::OneshotReceiverOf;
@@ -21,11 +24,12 @@ use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::async_runtime::mpsc::MpscSender;
 use crate::type_config::async_runtime::oneshot::OneshotSender;
 
-/// Emit RaftMsg::Tick event at regular `interval`.
+/// Emit RaftMsg::Tick events at a regular `period` after a randomized first wait.
 pub(crate) struct Tick<C>
 where C: RaftTypeConfig
 {
-    interval: Duration,
+    period: Duration,
+    first_wait: Duration,
 
     tx: MpscSenderOf<C, Notification<C>>,
 
@@ -56,10 +60,11 @@ where C: RaftTypeConfig
 impl<C> Tick<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn spawn(interval: Duration, tx: MpscSenderOf<C, Notification<C>>, enabled: bool) -> TickHandle<C> {
+    pub(crate) fn spawn(period: Duration, tx: MpscSenderOf<C, Notification<C>>, enabled: bool) -> TickHandle<C> {
         let enabled = Arc::new(AtomicBool::from(enabled));
         let this = Self {
-            interval,
+            period,
+            first_wait: Self::sample_first_wait(period),
             enabled: enabled.clone(),
             tx,
         };
@@ -81,13 +86,24 @@ where C: RaftTypeConfig
         }
     }
 
+    /// Add a random phase offset from `[0, period)` to the first wait.
+    fn sample_first_wait(period: Duration) -> Duration {
+        if period.is_zero() {
+            return period;
+        }
+        AsyncRuntimeOf::<C>::thread_rng().random_range(period..period * 2)
+    }
+
     pub(crate) async fn tick_loop(self, cancel_rx: OneshotReceiverOf<C, ()>) {
         let mut i = 0;
 
         let mut cancel = std::pin::pin!(cancel_rx);
 
+        let period = self.period;
+        let mut delay = self.first_wait;
+
         loop {
-            let at = C::now() + self.interval;
+            let at = C::now() + delay;
             let sleep_fut = std::pin::pin!(C::sleep_until(at));
             let cancel_fut = cancel.as_mut();
 
@@ -100,6 +116,8 @@ where C: RaftTypeConfig
                     // sleep done
                 }
             }
+
+            delay = period;
 
             if !self.enabled.load(Ordering::Relaxed) {
                 continue;
@@ -152,15 +170,21 @@ where C: RaftTypeConfig
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
     use std::time::Duration;
 
+    use openraft_rt::deterministic_rng::DeterministicRng;
     use openraft_rt_tokio::TokioRuntime;
+    use rand::RngExt;
 
+    use crate::AsyncRuntime;
     use crate::OptionalSend;
     use crate::RaftTypeConfig;
     use crate::async_runtime::MpscReceiver;
     use crate::core::Tick;
+    use crate::core::notification::Notification;
     use crate::type_config::TypeConfigExt;
+    use crate::type_config::alias::MpscReceiverOf;
 
     #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Ord, PartialOrd)]
     #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -185,26 +209,132 @@ mod tests {
         type ErrorSource = anyerror::AnyError;
     }
 
+    /// A runtime whose `thread_rng()` is seeded, so sampled first waits are reproducible.
+    type SeededRuntime = DeterministicRng<TokioRuntime>;
+
+    crate::declare_raft_types!(
+        SeededTickConfig:
+            D = u64,
+            R = (),
+            Node = (),
+            AsyncRuntime = SeededRuntime,
+    );
+
+    /// Run `future` with `seed` installed as the deterministic RNG seed.
+    fn run_seeded<F, T>(seed: u64, future: F) -> T
+    where
+        F: Future<Output = T>,
+        T: Send,
+    {
+        let mut runtime = TokioRuntime::new(1);
+        runtime.block_on(SeededRuntime::scope(seed, future))
+    }
+
     #[test]
-    fn test_shutdown() {
+    fn test_sample_first_wait_preserves_duration_precision() {
+        const SEED: u64 = 7;
+        const SAMPLES: usize = 8;
+
+        let periods = [
+            Duration::from_millis(100),
+            Duration::from_micros(100),
+            Duration::from_secs(10),
+        ];
+
+        for period in periods {
+            let sampled = run_seeded(SEED, async {
+                (0..SAMPLES).map(|_| Tick::<SeededTickConfig>::sample_first_wait(period)).collect::<Vec<_>>()
+            });
+
+            let expected = run_seeded(SEED, async {
+                (0..SAMPLES)
+                    .map(|_| SeededRuntime::thread_rng().random_range(period..period * 2))
+                    .collect::<Vec<_>>()
+            });
+
+            assert_eq!(
+                expected, sampled,
+                "the whole sequence must be reproducible; period={period:?}"
+            );
+            assert!(
+                sampled.iter().all(|d| (period..period * 2).contains(d)),
+                "{sampled:?} must all fall inside the first-wait range for {period:?}"
+            );
+            assert!(
+                sampled.iter().any(|d| *d != period),
+                "draws must not collapse to the period: {sampled:?}"
+            );
+        }
+
+        let sampled = run_seeded(SEED, async {
+            Tick::<SeededTickConfig>::sample_first_wait(Duration::ZERO)
+        });
+        assert_eq!(Duration::ZERO, sampled);
+    }
+
+    /// Receive the next notification, asserting it is a tick, and return its number.
+    async fn recv_tick<C>(rx: &mut MpscReceiverOf<C, Notification<C>>) -> u64
+    where C: RaftTypeConfig {
+        match rx.recv().await {
+            Some(Notification::Tick { i }) => i,
+            Some(other) => unreachable!("expect a Tick notification, got: {other}"),
+            None => unreachable!("the tick channel closed before a tick arrived"),
+        }
+    }
+
+    #[test]
+    fn test_shutdown_interrupts_first_wait() {
         TickUTConfig::run(async {
             let (tx, mut rx) = TickUTConfig::mpsc(1024);
-            let th = Tick::<TickUTConfig>::spawn(Duration::from_millis(100), tx, true);
 
-            TickUTConfig::sleep(Duration::from_millis(500)).await;
-            th.shutdown().unwrap().await.ok();
-            TickUTConfig::sleep(Duration::from_millis(500)).await;
+            // A first wait far longer than this test's own timeout: the loop can only finish by
+            // observing the shutdown signal.
+            let th = Tick::<TickUTConfig>::spawn(Duration::from_secs(10), tx, true);
 
-            let mut received = vec![];
-            while let Some(x) = rx.recv().await {
-                received.push(x);
-            }
+            TickUTConfig::sleep(Duration::from_millis(50)).await;
+            let join_handle = th.shutdown().unwrap();
 
+            TickUTConfig::timeout(Duration::from_millis(500), join_handle)
+                .await
+                .expect("tick loop must stop while still inside the first wait")
+                .expect("tick loop must not panic");
+            assert!(rx.recv().await.is_none(), "no tick should precede the first wait");
+        });
+    }
+
+    #[test]
+    fn test_only_first_wait_is_randomized() {
+        const SEED: u64 = 0;
+
+        let period = Duration::from_millis(200);
+        let margin = Duration::from_millis(25);
+        let first_wait = run_seeded(SEED, async { Tick::<SeededTickConfig>::sample_first_wait(period) });
+        assert!(
+            first_wait - period > margin * 2,
+            "seed must provide a measurable phase offset: {first_wait:?}"
+        );
+
+        run_seeded(SEED, async {
+            let (tx, mut rx) = SeededTickConfig::mpsc(1024);
+            let th = Tick::<SeededTickConfig>::spawn(period, tx, true);
+
+            let early_first =
+                SeededTickConfig::timeout(first_wait - margin, recv_tick::<SeededTickConfig>(&mut rx)).await;
             assert!(
-                received.len() < 10,
-                "no more tick will be received after shutdown: {}",
-                received.len()
+                early_first.is_err(),
+                "the first tick must include the sampled phase offset"
             );
+            let first = SeededTickConfig::timeout(margin * 2, recv_tick::<SeededTickConfig>(&mut rx)).await.unwrap();
+
+            let early_second = SeededTickConfig::timeout(period - margin, recv_tick::<SeededTickConfig>(&mut rx)).await;
+            assert!(early_second.is_err(), "the second tick must wait for a full period");
+            let second = SeededTickConfig::timeout(margin * 2, recv_tick::<SeededTickConfig>(&mut rx)).await.unwrap();
+
+            assert_eq!(1, first);
+            assert_eq!(2, second);
+
+            th.shutdown().unwrap().await.unwrap();
+            assert!(rx.recv().await.is_none(), "the channel must close after shutdown");
         });
     }
 }
