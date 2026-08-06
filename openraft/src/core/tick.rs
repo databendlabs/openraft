@@ -1,6 +1,5 @@
 //! tick emitter emits a `RaftMsg::Tick` event at a certain interval.
 
-use std::ops::Range;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
@@ -25,14 +24,12 @@ use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::async_runtime::mpsc::MpscSender;
 use crate::type_config::async_runtime::oneshot::OneshotSender;
 
-/// Percentage of the tick interval that the first tick may be delayed by.
-pub(crate) const TICK_JITTER_PERCENT: u32 = 20;
-
-/// Emit RaftMsg::Tick events at regular `interval.start`.
+/// Emit RaftMsg::Tick events at a regular `period` after a randomized first wait.
 pub(crate) struct Tick<C>
 where C: RaftTypeConfig
 {
-    interval: Range<Duration>,
+    period: Duration,
+    first_wait: Duration,
 
     tx: MpscSenderOf<C, Notification<C>>,
 
@@ -63,14 +60,11 @@ where C: RaftTypeConfig
 impl<C> Tick<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn spawn(
-        interval: Range<Duration>,
-        tx: MpscSenderOf<C, Notification<C>>,
-        enabled: bool,
-    ) -> TickHandle<C> {
+    pub(crate) fn spawn(period: Duration, tx: MpscSenderOf<C, Notification<C>>, enabled: bool) -> TickHandle<C> {
         let enabled = Arc::new(AtomicBool::from(enabled));
         let this = Self {
-            interval,
+            period,
+            first_wait: Self::sample_first_wait(period),
             enabled: enabled.clone(),
             tx,
         };
@@ -92,12 +86,12 @@ where C: RaftTypeConfig
         }
     }
 
-    /// Sample the first wait from the configured interval range.
-    fn sample_first_wait(interval: Range<Duration>) -> Duration {
-        if interval.is_empty() {
-            return interval.start;
+    /// Add a random phase offset from `[0, period)` to the first wait.
+    fn sample_first_wait(period: Duration) -> Duration {
+        if period.is_zero() {
+            return period;
         }
-        AsyncRuntimeOf::<C>::thread_rng().random_range(interval)
+        AsyncRuntimeOf::<C>::thread_rng().random_range(period..period * 2)
     }
 
     pub(crate) async fn tick_loop(self, cancel_rx: OneshotReceiverOf<C, ()>) {
@@ -105,8 +99,8 @@ where C: RaftTypeConfig
 
         let mut cancel = std::pin::pin!(cancel_rx);
 
-        let period = self.interval.start;
-        let mut delay = Self::sample_first_wait(self.interval);
+        let period = self.period;
+        let mut delay = self.first_wait;
 
         loop {
             let at = C::now() + delay;
@@ -176,6 +170,7 @@ where C: RaftTypeConfig
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
     use std::time::Duration;
 
     use openraft_rt::deterministic_rng::DeterministicRng;
@@ -214,7 +209,7 @@ mod tests {
         type ErrorSource = anyerror::AnyError;
     }
 
-    /// A runtime whose `thread_rng()` is seeded, so sampled jitter is reproducible.
+    /// A runtime whose `thread_rng()` is seeded, so sampled first waits are reproducible.
     type SeededRuntime = DeterministicRng<TokioRuntime>;
 
     crate::declare_raft_types!(
@@ -225,60 +220,61 @@ mod tests {
             AsyncRuntime = SeededRuntime,
     );
 
-    /// Run `test` with `seed` installed as the deterministic RNG seed.
-    fn run_seeded<F, T>(seed: u64, test: F) -> T
+    /// Run `future` with `seed` installed as the deterministic RNG seed.
+    fn run_seeded<F, T>(seed: u64, future: F) -> T
     where
-        F: FnOnce() -> T,
+        F: Future<Output = T>,
         T: Send,
     {
         let mut runtime = TokioRuntime::new(1);
-        runtime.block_on(SeededRuntime::scope(seed, async move { test() }))
+        runtime.block_on(SeededRuntime::scope(seed, future))
     }
 
-    /// `sample_first_wait()` draws reproducible delays without rounding away precision.
     #[test]
-    fn test_sample_first_wait() {
+    fn test_sample_first_wait_preserves_duration_precision() {
         const SEED: u64 = 7;
         const SAMPLES: usize = 8;
 
-        let intervals = [
-            Duration::from_millis(100)..Duration::from_millis(200),
-            Duration::from_millis(100)..Duration::from_micros(100_001),
-            Duration::from_secs(10)..Duration::from_secs(11),
+        let periods = [
+            Duration::from_millis(100),
+            Duration::from_micros(100),
+            Duration::from_secs(10),
         ];
 
-        for interval in intervals {
-            let sampled = run_seeded(SEED, || {
-                (0..SAMPLES)
-                    .map(|_| Tick::<SeededTickConfig>::sample_first_wait(interval.clone()))
-                    .collect::<Vec<_>>()
+        for period in periods {
+            let sampled = run_seeded(SEED, async {
+                (0..SAMPLES).map(|_| Tick::<SeededTickConfig>::sample_first_wait(period)).collect::<Vec<_>>()
             });
 
-            let expected = run_seeded(SEED, || {
-                (0..SAMPLES).map(|_| SeededRuntime::thread_rng().random_range(interval.clone())).collect::<Vec<_>>()
+            let expected = run_seeded(SEED, async {
+                (0..SAMPLES)
+                    .map(|_| SeededRuntime::thread_rng().random_range(period..period * 2))
+                    .collect::<Vec<_>>()
             });
 
             assert_eq!(
                 expected, sampled,
-                "the whole sequence must be reproducible; interval={interval:?}"
+                "the whole sequence must be reproducible; period={period:?}"
             );
             assert!(
-                sampled.iter().all(|d| interval.contains(d)),
-                "{sampled:?} must all fall inside {interval:?}"
+                sampled.iter().all(|d| (period..period * 2).contains(d)),
+                "{sampled:?} must all fall inside the first-wait range for {period:?}"
             );
             assert!(
-                sampled.iter().any(|d| *d != interval.start),
-                "draws must not collapse to the range start: {sampled:?}"
+                sampled.iter().any(|d| *d != period),
+                "draws must not collapse to the period: {sampled:?}"
             );
         }
 
-        let interval = Duration::from_secs(1)..Duration::from_secs(1);
-        let sampled = run_seeded(SEED, || Tick::<SeededTickConfig>::sample_first_wait(interval));
-        assert_eq!(Duration::from_secs(1), sampled);
+        let sampled = run_seeded(SEED, async {
+            Tick::<SeededTickConfig>::sample_first_wait(Duration::ZERO)
+        });
+        assert_eq!(Duration::ZERO, sampled);
     }
 
     /// Receive the next notification, asserting it is a tick, and return its number.
-    async fn recv_tick(rx: &mut MpscReceiverOf<TickUTConfig, Notification<TickUTConfig>>) -> u64 {
+    async fn recv_tick<C>(rx: &mut MpscReceiverOf<C, Notification<C>>) -> u64
+    where C: RaftTypeConfig {
         match rx.recv().await {
             Some(Notification::Tick { i }) => i,
             Some(other) => unreachable!("expect a Tick notification, got: {other}"),
@@ -286,16 +282,14 @@ mod tests {
         }
     }
 
-    /// Cancelling during the first wait stops the loop at once and emits nothing; shutdown must
-    /// not have to wait that first delay out.
     #[test]
-    fn test_shutdown_during_first_wait() {
+    fn test_shutdown_interrupts_first_wait() {
         TickUTConfig::run(async {
             let (tx, mut rx) = TickUTConfig::mpsc(1024);
 
             // A first wait far longer than this test's own timeout: the loop can only finish by
             // observing the shutdown signal.
-            let th = Tick::<TickUTConfig>::spawn(Duration::from_secs(10)..Duration::from_secs(11), tx, true);
+            let th = Tick::<TickUTConfig>::spawn(Duration::from_secs(10), tx, true);
 
             TickUTConfig::sleep(Duration::from_millis(50)).await;
             let join_handle = th.shutdown().unwrap();
@@ -309,18 +303,34 @@ mod tests {
     }
 
     #[test]
-    fn test_period_after_first_wait() {
-        TickUTConfig::run(async {
-            let (tx, mut rx) = TickUTConfig::mpsc(1024);
-            let interval = Duration::from_millis(100);
-            let th = Tick::<TickUTConfig>::spawn(interval..interval * 2, tx, true);
+    fn test_only_first_wait_is_randomized() {
+        const SEED: u64 = 0;
 
-            let first = TickUTConfig::timeout(interval * 3, recv_tick(&mut rx)).await.unwrap();
-            let early_second = TickUTConfig::timeout(interval / 2, recv_tick(&mut rx)).await;
-            let second = TickUTConfig::timeout(interval, recv_tick(&mut rx)).await.unwrap();
+        let period = Duration::from_millis(200);
+        let margin = Duration::from_millis(25);
+        let first_wait = run_seeded(SEED, async { Tick::<SeededTickConfig>::sample_first_wait(period) });
+        assert!(
+            first_wait - period > margin * 2,
+            "seed must provide a measurable phase offset: {first_wait:?}"
+        );
+
+        run_seeded(SEED, async {
+            let (tx, mut rx) = SeededTickConfig::mpsc(1024);
+            let th = Tick::<SeededTickConfig>::spawn(period, tx, true);
+
+            let early_first =
+                SeededTickConfig::timeout(first_wait - margin, recv_tick::<SeededTickConfig>(&mut rx)).await;
+            assert!(
+                early_first.is_err(),
+                "the first tick must include the sampled phase offset"
+            );
+            let first = SeededTickConfig::timeout(margin * 2, recv_tick::<SeededTickConfig>(&mut rx)).await.unwrap();
+
+            let early_second = SeededTickConfig::timeout(period - margin, recv_tick::<SeededTickConfig>(&mut rx)).await;
+            assert!(early_second.is_err(), "the second tick must wait for a full period");
+            let second = SeededTickConfig::timeout(margin * 2, recv_tick::<SeededTickConfig>(&mut rx)).await.unwrap();
 
             assert_eq!(1, first);
-            assert!(early_second.is_err(), "the second tick must wait for a full period");
             assert_eq!(2, second);
 
             th.shutdown().unwrap().await.unwrap();

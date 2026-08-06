@@ -88,7 +88,6 @@ use crate::core::MetricsChannels;
 use crate::core::RaftCore;
 use crate::core::SharedReplicateBatch;
 use crate::core::StepDownWatcher;
-use crate::core::TICK_JITTER_PERCENT;
 use crate::core::Tick;
 use crate::core::heartbeat::handle::HeartbeatWorkersHandle;
 use crate::core::io_flush_tracking::AppliedProgress;
@@ -501,12 +500,8 @@ where
         let (tx_progress, progress_watcher) = IoProgressWatcher::new();
         let (tx_shutdown, rx_shutdown) = C::oneshot();
 
-        let tick_interval = Duration::from_millis(config.heartbeat_interval * 3 / 2);
-        let tick_handle = Tick::spawn(
-            tick_interval..tick_interval + tick_interval * TICK_JITTER_PERCENT / 100,
-            tx_notify.clone(),
-            config.enable_tick,
-        );
+        let tick_period = Duration::from_millis(config.heartbeat_interval * 3 / 2);
+        let tick_handle = Tick::spawn(tick_period, tx_notify.clone(), config.enable_tick);
 
         let runtime_config = Arc::new(RuntimeConfig::new(&config));
 

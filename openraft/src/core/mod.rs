@@ -55,6 +55,5 @@ pub(crate) use replication_state::replication_lag;
 pub use server_state::ServerState;
 pub(crate) use shared_replicate_batch::SharedReplicateBatch;
 pub(crate) use step_down_watcher::StepDownWatcher;
-pub(crate) use tick::TICK_JITTER_PERCENT;
 pub(crate) use tick::Tick;
 pub(crate) use tick::TickHandle;
