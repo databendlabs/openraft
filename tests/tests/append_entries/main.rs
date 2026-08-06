@@ -16,6 +16,7 @@ mod t11_append_inconsistent_log;
 mod t11_append_updates_membership;
 mod t30_replication_1_voter_to_isolated_learner;
 mod t60_enable_heartbeat;
+mod t60_heartbeat_jitter;
 mod t61_heartbeat_reject_vote;
 mod t61_large_heartbeat;
 mod t90_issue_216_stale_last_log_id;

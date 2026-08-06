@@ -503,6 +503,7 @@ where
             Duration::from_millis(config.heartbeat_interval * 3 / 2),
             tx_notify.clone(),
             config.enable_tick,
+            true,
         );
 
         let runtime_config = Arc::new(RuntimeConfig::new(&config));

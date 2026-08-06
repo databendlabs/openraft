@@ -31,6 +31,9 @@ where C: RaftTypeConfig
 
     /// Emit event or not
     enabled: Arc<AtomicBool>,
+
+    /// Whether to apply random jitter before the first tick
+    jitter: bool,
 }
 
 pub(crate) struct TickHandle<C>
@@ -56,12 +59,18 @@ where C: RaftTypeConfig
 impl<C> Tick<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn spawn(interval: Duration, tx: MpscSenderOf<C, Notification<C>>, enabled: bool) -> TickHandle<C> {
+    pub(crate) fn spawn(
+        interval: Duration,
+        tx: MpscSenderOf<C, Notification<C>>,
+        enabled: bool,
+        jitter: bool,
+    ) -> TickHandle<C> {
         let enabled = Arc::new(AtomicBool::from(enabled));
         let this = Self {
             interval,
             enabled: enabled.clone(),
             tx,
+            jitter,
         };
 
         let (shutdown, shutdown_rx) = C::oneshot();
@@ -82,6 +91,18 @@ where C: RaftTypeConfig
     }
 
     pub(crate) async fn tick_loop(self, cancel_rx: OneshotReceiverOf<C, ()>) {
+        if self.jitter {
+            use rand::RngExt;
+
+            use crate::async_runtime::AsyncRuntime;
+
+            let interval_ms = self.interval.as_millis() as u64;
+            if interval_ms > 0 {
+                let jitter_ms = C::AsyncRuntime::thread_rng().random_range(0..interval_ms);
+                C::sleep(Duration::from_millis(jitter_ms)).await;
+            }
+        }
+
         let mut i = 0;
 
         let mut cancel = std::pin::pin!(cancel_rx);
@@ -189,7 +210,7 @@ mod tests {
     fn test_shutdown() {
         TickUTConfig::run(async {
             let (tx, mut rx) = TickUTConfig::mpsc(1024);
-            let th = Tick::<TickUTConfig>::spawn(Duration::from_millis(100), tx, true);
+            let th = Tick::<TickUTConfig>::spawn(Duration::from_millis(100), tx, true, true);
 
             TickUTConfig::sleep(Duration::from_millis(500)).await;
             th.shutdown().unwrap().await.ok();
@@ -204,6 +225,102 @@ mod tests {
                 received.len() < 10,
                 "no more tick will be received after shutdown: {}",
                 received.len()
+            );
+        });
+    }
+
+    /// Collect first-tick arrivals from `n` Tick instances into 5ms buckets
+    /// and return (max_bucket_count, non_empty_bucket_count).
+    async fn measure_tick_clustering(n: usize, interval: Duration, jitter: bool) -> (usize, usize) {
+        use openraft_rt_tokio::TokioRuntime as RT;
+
+        use crate::async_runtime::AsyncRuntime;
+
+        let (tx, mut rx) = TickUTConfig::mpsc(n * 4);
+
+        let handles: Vec<_> = (0..n).map(|_| Tick::<TickUTConfig>::spawn(interval, tx.clone(), true, jitter)).collect();
+        drop(tx);
+
+        let bucket_width = Duration::from_millis(5);
+        let n_buckets = (interval.as_millis() as usize / bucket_width.as_millis() as usize) + 1;
+        let mut buckets = vec![0usize; n_buckets];
+
+        let mut total_received = 0usize;
+        let start = std::time::Instant::now();
+
+        while total_received < n {
+            let sleep = std::pin::pin!(RT::sleep(bucket_width));
+            let recv = std::pin::pin!(rx.recv());
+
+            match futures_util::future::select(recv, sleep).await {
+                futures_util::future::Either::Left((Some(_), _)) => {
+                    let elapsed = start.elapsed();
+                    let offset = elapsed.as_millis().saturating_sub(interval.as_millis()) as usize;
+                    let bucket_idx = (offset / bucket_width.as_millis() as usize).min(n_buckets - 1);
+                    buckets[bucket_idx] += 1;
+                    total_received += 1;
+                }
+                futures_util::future::Either::Left((None, _)) => break,
+                futures_util::future::Either::Right(_) => {
+                    if start.elapsed() > interval * 3 {
+                        break;
+                    }
+                }
+            }
+        }
+
+        for h in &handles {
+            h.shutdown();
+        }
+
+        let max_bucket = *buckets.iter().max().unwrap_or(&0);
+        let non_empty_buckets = buckets.iter().filter(|&&b| b > 0).count();
+        (max_bucket, non_empty_buckets)
+    }
+
+    /// Verify that without jitter all ticks cluster into a few buckets,
+    /// and with jitter they spread across many buckets.
+    #[test]
+    fn test_tick_jitter_comparison() {
+        TickUTConfig::run(async {
+            let n = 64;
+            let interval = Duration::from_millis(100);
+
+            let (no_jitter_max, no_jitter_buckets) = measure_tick_clustering(n, interval, false).await;
+            let (jitter_max, jitter_buckets) = measure_tick_clustering(n, interval, true).await;
+
+            // Without jitter: all 64 ticks fire at the same time → land in 1-2 buckets
+            assert!(
+                no_jitter_buckets <= 3,
+                "Without jitter ticks should cluster into very few buckets, got {}",
+                no_jitter_buckets
+            );
+            assert!(
+                no_jitter_max >= n / 2,
+                "Without jitter the peak bucket should hold most ticks, got {}/{}",
+                no_jitter_max,
+                n
+            );
+
+            // With jitter: ticks spread across many buckets
+            assert!(
+                jitter_max < n / 2,
+                "With jitter no single bucket should hold half the ticks, got {}/{}",
+                jitter_max,
+                n
+            );
+            assert!(
+                jitter_buckets >= 4,
+                "With jitter ticks should spread across many buckets, got {}",
+                jitter_buckets
+            );
+
+            // The jitter run must be significantly less clustered than the no-jitter run
+            assert!(
+                jitter_max < no_jitter_max,
+                "Jitter should reduce peak clustering: jitter_max={} should be < no_jitter_max={}",
+                jitter_max,
+                no_jitter_max
             );
         });
     }
