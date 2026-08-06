@@ -1,29 +1,59 @@
 (ns jepsen.openraft.workload-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.java.io :as io]
+            [clojure.test :refer [deftest is testing]]
             [jepsen.checker :as checker]
             [jepsen.client :as client]
+            [jepsen.generator :as gen]
+            [jepsen.generator.test :as gen-test]
+            [jepsen.history :as history]
+            [jepsen.independent :as independent]
             [jepsen.openraft.client :as http]
             [jepsen.openraft.workload :as workload]
-            [knossos.model :as model]))
+            [jepsen.random :as random]
+            [jepsen.store :as store]))
+
+(def test-key "key-1")
+(def other-key "key-2")
+
+(defn- keyed
+  ([value]
+   (keyed test-key value))
+  ([k value]
+   (independent/tuple k value)))
+
+(defn- check-in-temp-store [subject ops]
+  (let [^java.io.File temp-dir
+        (.toFile
+         (java.nio.file.Files/createTempDirectory
+          "openraft-workload-checker"
+          (make-array java.nio.file.attribute.FileAttribute 0)))
+        test {:name "workload-checker-test"
+              :start-time "run"}]
+    (try
+      (with-redefs [store/base-dir (.getPath temp-dir)]
+        (checker/check subject test (history/history ops) {}))
+      (finally
+        (doseq [file (reverse (file-seq temp-dir))]
+          (io/delete-file file true))))))
 
 (defn- kv-client []
   (workload/->KVClient nil
                        (atom "n1:21001")
                        ["n1:21001"]
-                       (atom nil)))
+                       (atom {})))
 
 (deftest classifies-timeouts-by-operation
   (let [timeout (ex-info "timeout" {:kind :request-timeout})]
     (with-redefs [http/write! (fn [& _] (throw timeout))
                   http/linearizable-read! (fn [& _] (throw timeout))]
       (testing "a write timeout is indeterminate"
-        (let [op {:type :invoke :f :write :value "value"}
+        (let [op {:type :invoke :f :write :value (keyed "value")}
               result (client/invoke! (kv-client) {} op)]
           (is (= :info (:type result)))
           (is (= :timeout (:error result)))))
 
       (testing "a read timeout has no state-machine effect"
-        (let [op {:type :invoke :f :read :value nil}
+        (let [op {:type :invoke :f :read :value (keyed nil)}
               result (client/invoke! (kv-client) {} op)]
           (is (= :fail (:type result)))
           (is (= :timeout (:error result)))))
@@ -31,7 +61,7 @@
       (testing "a final recovery write must complete"
         (let [op {:type :invoke
                   :f :write
-                  :value "recovery-value"
+                  :value (keyed "recovery-value")
                   :final? true}
               result (client/invoke! (kv-client) {} op)]
           (is (= :info (:type result)))
@@ -42,18 +72,19 @@
 (deftest classifies-cas-outcomes
   (let [op {:type :invoke
             :f :cas
-            :value ["old" "new"]
+            :value (keyed ["old" "new"])
             :expected-version 1}]
     (testing "a successful CAS keeps its logical model value"
       (let [request (atom nil)
             versioned {:value "new" :version 2}]
-        (with-redefs [http/cas! (fn [_endpoint _key expected-version new-value]
-                                  (reset! request [expected-version new-value])
+        (with-redefs [http/cas! (fn [_endpoint key expected-version new-value]
+                                  (reset! request
+                                          [key expected-version new-value])
                                   versioned)]
           (let [result (client/invoke! (kv-client) {} op)]
             (is (= :ok (:type result)))
-            (is (= ["old" "new"] (:value result)))
-            (is (= [1 "new"] @request))))))
+            (is (= ["old" "new"] (val (:value result))))
+            (is (= [test-key 1 "new"] @request))))))
 
     (testing "a version mismatch is a definite failure"
       (with-redefs [http/cas! (fn [& _] nil)]
@@ -71,81 +102,145 @@
 
 (deftest keeps-versioned-values-out-of-model-history
   (let [client (kv-client)
+        request (atom nil)
         versioned {:value "value" :version 1}]
     (testing "writes keep their logical invocation value"
-      (with-redefs [http/write! (fn [& _] versioned)]
-        (let [op {:type :invoke :f :write :value "value"}
+      (with-redefs [http/write! (fn [_endpoint k value]
+                                  (reset! request [k value])
+                                  versioned)]
+        (let [op {:type :invoke :f :write :value (keyed "value")}
               result (client/invoke! client {} op)]
           (is (= :ok (:type result)))
-          (is (= "value" (:value result))))))
+          (is (= [test-key "value"] @request))
+          (is (= "value" (val (:value result)))))))
 
     (testing "reads expose only the logical value"
-      (with-redefs [http/linearizable-read! (fn [& _] versioned)]
-        (let [op {:type :invoke :f :read :value nil}
+      (with-redefs [http/linearizable-read! (fn [_endpoint k]
+                                              (reset! request [k])
+                                              versioned)]
+        (let [op {:type :invoke :f :read :value (keyed nil)}
               result (client/invoke! client {} op)]
           (is (= :ok (:type result)))
-          (is (= "value" (:value result))))))))
+          (is (= [test-key] @request))
+          (is (= test-key (key (:value result))))
+          (is (= "value" (val (:value result)))))))))
 
 (deftest timed-out-write-can-explain-a-later-read
   (let [history [{:process 0
                   :type :invoke
                   :f :write
-                  :value "value"}
+                  :value (keyed "value")}
                  {:process 0
                   :type :info
                   :f :write
-                  :value "value"
+                  :value (keyed "value")
                   :error :timeout}
                  {:process 1
                   :type :invoke
                   :f :read
-                  :value nil}
+                  :value (keyed nil)}
                  {:process 1
                   :type :ok
                   :f :read
-                  :value "value"}]
-        result (checker/check
-                (checker/linearizable
-                 {:model (model/cas-register)})
-                {}
-                history
-                {})]
+                  :value (keyed "value")}]
+        subject (get-in (workload/workload {})
+                        [:checker :checkers :linearizable])
+        result (check-in-temp-store subject history)]
     (is (:valid? result)
         "an indeterminate write may have produced the value read later")))
 
-(deftest tags-operations-by-workload-phase
-  (testing "the bootstrap write is tagged separately"
-    (is (= :bootstrap
-           (:phase (#'workload/bootstrap-write-op (atom 0))))))
+(deftest checks-registers-independently
+  (let [ops [{:process 0
+              :type :invoke
+              :f :write
+              :value (keyed test-key "a")}
+             {:process 0
+              :type :ok
+              :f :write
+              :value (keyed test-key "a")}
+             {:process 1
+              :type :invoke
+              :f :read
+              :value (keyed test-key nil)}
+             {:process 1
+              :type :ok
+              :f :read
+              :value (keyed test-key "a")}
+             {:process 0
+              :type :invoke
+              :f :write
+              :value (keyed other-key "x")}
+             {:process 0
+              :type :ok
+              :f :write
+              :value (keyed other-key "x")}
+             {:process 1
+              :type :invoke
+              :f :read
+              :value (keyed other-key nil)}
+             {:process 1
+              :type :ok
+              :f :read
+              :value (keyed other-key "not-x")}]
+        subject (get-in (workload/workload {})
+                        [:checker :checkers :linearizable])
+        result (check-in-temp-store subject ops)]
+    (is (false? (:valid? result)))
+    (is (= [other-key] (:failures result)))
+    (is (true? (get-in result [:results test-key :valid?])))
+    (is (false? (get-in result [:results other-key :valid?])))))
 
-  (testing "ordinary client operations are tagged as main"
-    (let [read (#'workload/read-op nil nil)
-          write ((#'workload/write-op (atom 0)) nil nil)]
-      (is (= :main (:phase read)))
-      (is (= :main (:phase write)))))
+(deftest generates-multiple-independent-registers
+  (let [invocations
+        (random/with-seed 41
+          (->> (gen-test/simulate
+                (gen/limit 20 (:generator (workload/workload {})))
+                (fn [_test op]
+                  (assoc op :type :ok)))
+               (filter #(= :invoke (:type %)))
+               vec))
+        bootstrap (take 5 invocations)
+        main (drop 5 invocations)
+        bootstrap-keys (set (map (comp key :value) bootstrap))
+        main-keys (set (map (comp key :value) main))]
+    (is (= (repeat 5 [:bootstrap :write])
+           (map (juxt :phase :f) bootstrap)))
+    (is (= 5 (count bootstrap-keys)))
+    (is (every? #(independent/tuple? (:value %)) invocations))
+    (is (< 1 (count main-keys)))
+    (is (every? bootstrap-keys main-keys))))
 
-  (testing "final recovery operations are tagged as final"
-    (let [write ((#'workload/final-write-op (atom 0)) nil nil)
-          read (#'workload/final-read-op nil nil)]
-      (is (= :final (:phase write)))
-      (is (= :final (:phase read))))))
+(deftest tags-final-recovery-operations
+  (let [write ((#'workload/final-write-op test-key (atom 0)) nil nil)
+        read ((#'workload/final-read-op test-key) nil nil)]
+    (is (= :final (:phase write)))
+    (is (= :final (:phase read)))))
 
 (deftest generates-cas-only-with-a-known-version
-  (testing "an unknown version produces a write"
-    (let [generate (#'workload/cas-op (atom nil) (atom 0))
+  (testing "a version observed for another key still produces a write"
+    (let [latest-values (atom {other-key {:value "other" :version 6}})
+          generate (#'workload/cas-op
+                    [test-key]
+                    latest-values
+                    (atom 0))
           op (generate nil nil)]
       (is (= :write (:f op)))
       (is (= :main (:phase op)))
-      (is (= "value-1" (:value op)))
+      (is (= test-key (key (:value op))))
+      (is (= "value-1" (val (:value op))))
       (is (not (contains? op :expected-version)))))
 
   (testing "a known version is captured separately from the model value"
-    (let [latest-value (atom {:value "old" :version 7})
-          generate (#'workload/cas-op latest-value (atom 0))
+    (let [latest-values (atom {test-key {:value "old" :version 7}})
+          generate (#'workload/cas-op
+                    [test-key]
+                    latest-values
+                    (atom 0))
           op (generate nil nil)]
       (is (= :cas (:f op)))
       (is (= :main (:phase op)))
-      (is (= ["old" "value-1"] (:value op)))
+      (is (= test-key (key (:value op))))
+      (is (= ["old" "value-1"] (val (:value op))))
       (is (= 7 (:expected-version op))))))
 
 (deftest classifies-server-errors
@@ -155,7 +250,7 @@
                                  :error {:QuorumNotEnough {}}})]
       (with-redefs [http/linearizable-read! (fn [& _]
                                               (throw quorum-error))]
-        (let [op {:type :invoke :f :read :value nil}
+        (let [op {:type :invoke :f :read :value (keyed nil)}
               result (client/invoke! (kv-client) {} op)]
           (is (= :fail (:type result)))
           (is (= :quorum-not-enough (:error result)))
@@ -167,7 +262,7 @@
                                 :status 400})]
       (with-redefs [http/write! (fn [& _]
                                   (throw bad-request))]
-        (let [op {:type :invoke :f :write :value "value"}
+        (let [op {:type :invoke :f :write :value (keyed "value")}
               result (client/invoke! (kv-client) {} op)]
           (is (= :fail (:type result)))
           (is (= [:http 400] (:error result)))
@@ -181,7 +276,7 @@
                                  :status 500})]
       (with-redefs [http/write! (fn [& _]
                                   (throw server-error))]
-        (let [op {:type :invoke :f :write :value "value"}
+        (let [op {:type :invoke :f :write :value (keyed "value")}
               result (client/invoke! (kv-client) {} op)]
           (is (= :info (:type result)))
           (is (= [:http 500] (:error result)))
@@ -190,7 +285,7 @@
           (is (= 500 (get-in result [:exception-data :status]))))))))
 
 (deftest rethrows-interruptions
-  (let [op {:type :invoke :f :write :value "value"}]
+  (let [op {:type :invoke :f :write :value (keyed "value")}]
     (testing "a wrapped interruption from send! propagates instead of completing"
       (with-redefs [http/write! (fn [& _]
                                   (throw (ex-info "interrupted"
@@ -277,24 +372,24 @@
                   :type :invoke
                   :f :write
                   :phase :bootstrap
-                  :value "initial"}
+                  :value (keyed "initial")}
                  {:process 0
                   :type :ok
                   :f :write
                   :phase :bootstrap
-                  :value "initial"}
+                  :value (keyed "initial")}
                  {:process 1
                   :type :invoke
                   :f :read
                   :phase :main
-                  :value nil}
+                  :value (keyed nil)}
                  {:process 1
                   :type :ok
                   :f :read
                   :phase :main
-                  :value "initial"}]
+                  :value (keyed "initial")}]
         chk (:checker (workload/workload {}))
-        result (checker/check chk {} history {})]
+        result (check-in-temp-store chk history)]
     (is (true? (get-in result [:linearizable :valid?])))
     (is (= :unknown
            (get-in result [:meaningful-operations :valid?])))

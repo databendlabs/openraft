@@ -2,11 +2,14 @@
   (:require [jepsen [checker :as checker]
              [client :as client]
              [core :as jepsen]
-             [generator :as gen]]
+             [generator :as gen]
+             [independent :as independent]
+             [random :as random]]
             [jepsen.openraft.client :as http]
             [knossos.model :as model]))
 
-(def key-name "jepsen-key")
+(def ^:private key-names
+  (mapv #(str "jepsen-key-" %) (range 5)))
 
 (def ^:private operation-phases
   [:bootstrap :main :final])
@@ -17,9 +20,11 @@
 (def ^:private completion-types
   [:ok :fail :info])
 
-(defn- remember-latest! [latest-value value]
+(defn- remember-latest! [latest-values k value]
   (when value
-    (swap! latest-value
+    (swap! latest-values
+           update
+           k
            (fn [current]
              (if (or (nil? current)
                      (< (:version current) (:version value)))
@@ -29,36 +34,39 @@
 
 (defn- next-value!
   "Returns a globally unique value. Uniqueness lets Knossos treat logical values
-  as a faithful stand-in for server versions; see cas-op."
+  as stable identifiers independent of server versions; see cas-op."
   [value-counter]
   (str "value-" (swap! value-counter inc)))
 
-(defn- read-op [_test _process]
-  {:type :invoke
-   :f :read
-   :phase :main
-   :value nil})
-
-(defn- write-op [value-counter]
-  (fn [_test _process]
+(defn- read-op [keys _test _process]
+  (let [k (random/nth keys)]
     {:type :invoke
-     :f :write
+     :f :read
      :phase :main
-     :value (next-value! value-counter)}))
+     :value (independent/tuple k nil)}))
 
-(defn- bootstrap-write-op [value-counter]
+(defn- write-op [keys value-counter]
+  (fn [_test _process]
+    (let [k (random/nth keys)]
+      {:type :invoke
+       :f :write
+       :phase :main
+       :value (independent/tuple k (next-value! value-counter))})))
+
+(defn- bootstrap-write-op [k value-counter]
   {:type :invoke
    :f :write
    :phase :bootstrap
-   :value (next-value! value-counter)})
+   :value (independent/tuple k (next-value! value-counter))})
 
-(defn- final-read-op [test process]
-  (assoc (read-op test process)
-         :phase :final
-         :final? true))
+(defn- final-read-op [k]
+  (fn [test process]
+    (assoc (read-op [k] test process)
+           :phase :final
+           :final? true)))
 
-(defn- final-write-op [value-counter]
-  (let [write (write-op value-counter)]
+(defn- final-write-op [k value-counter]
+  (let [write (write-op [k] value-counter)]
     (fn [test process]
       (assoc (write test process)
              :phase :final
@@ -69,19 +77,20 @@
   a version is observed.
 
   Knossos checks linearizability over the logical string values only. This is
-  sound because logical values and server versions are in bijection:
+  sound because every applied logical value identifies one server version:
 
     1. next-value! never repeats a value, so every mutation is globally unique.
     2. with-leader! retries a mutation only after a failure proving it was not
        applied, never after an ambiguous outcome, so each unique value is
        applied at most once.
 
-  Breaking either invariant (reusing a value, or retrying a mutation with an
-  ambiguous outcome) would map one logical value onto two versions and could
-  mask a real violation."
-  [latest-value value-counter]
+  Server versions need not be contiguous: other keys and Raft-internal entries
+  can consume log indexes. Breaking either invariant above would map one logical
+  value onto two versions and could mask a real violation."
+  [keys latest-values value-counter]
   (fn [_test _process]
-    (let [expected @latest-value
+    (let [k (random/nth keys)
+          expected (get @latest-values k)
           new-value (next-value! value-counter)]
       (if expected
         {:type :invoke
@@ -89,12 +98,12 @@
          :phase :main
          ;; Knossos models logical values. The version is request metadata for
          ;; OpenRaft's version-based CAS and is not part of the model value.
-         :value [(:value expected) new-value]
+         :value (independent/tuple k [(:value expected) new-value])
          :expected-version (:version expected)}
         {:type :invoke
          :f :write
          :phase :main
-         :value new-value}))))
+         :value (independent/tuple k new-value)}))))
 
 (defn- mutation? [op]
   (#{:write :cas} (:f op)))
@@ -208,7 +217,7 @@
 ;; KVClient is the Jepsen client. Jepsen workers call invoke! with logical
 ;; operations from the generator, and this record translates them into OpenRaft
 ;; KV HTTP requests through jepsen.openraft.client.
-(defrecord KVClient [node leader-endpoint endpoints latest-value]
+(defrecord KVClient [node leader-endpoint endpoints latest-values]
   client/Client
   (open! [this test node]
     (assoc this
@@ -222,41 +231,43 @@
 
   (invoke! [_ _test op]
     (try
-      (case (:f op)
-        :write
-        (let [value (http/with-leader!
-                      leader-endpoint
-                      endpoints
-                      #(http/write! % key-name (:value op)))]
-          (remember-latest! latest-value value)
-          (assoc op :type :ok))
+      (let [k (key (:value op))
+            op-value (val (:value op))]
+        (case (:f op)
+          :write
+          (let [value (http/with-leader!
+                        leader-endpoint
+                        endpoints
+                        #(http/write! % k op-value))]
+            (remember-latest! latest-values k value)
+            (assoc op :type :ok))
 
-        :read
-        (let [value (->> (http/with-leader!
-                           leader-endpoint
-                           endpoints
-                           #(http/linearizable-read! % key-name)
-                           http/retryable-read-error?)
-                         (remember-latest! latest-value))]
-          (assoc op
-                 :type :ok
-                 :value (:value value)))
-
-        :cas
-        (let [[_expected new-value] (:value op)
-              value (->> (http/with-leader!
-                           leader-endpoint
-                           endpoints
-                           #(http/cas! %
-                                       key-name
-                                       (:expected-version op)
-                                       new-value))
-                         (remember-latest! latest-value))]
-          (if value
-            (assoc op :type :ok)
+          :read
+          (let [value (http/with-leader!
+                        leader-endpoint
+                        endpoints
+                        #(http/linearizable-read! % k)
+                        http/retryable-read-error?)]
+            (remember-latest! latest-values k value)
             (assoc op
-                   :type :fail
-                   :error :version-mismatch))))
+                   :type :ok
+                   :value (independent/tuple k (:value value))))
+
+          :cas
+          (let [[_expected new-value] op-value
+                value (http/with-leader!
+                        leader-endpoint
+                        endpoints
+                        #(http/cas! %
+                                    k
+                                    (:expected-version op)
+                                    new-value))]
+            (remember-latest! latest-values k value)
+            (if value
+              (assoc op :type :ok)
+              (assoc op
+                     :type :fail
+                     :error :version-mismatch)))))
       (catch Exception e
         (handle-operation-exception op e))))
 
@@ -265,22 +276,28 @@
   (close! [_ _test]))
 
 (defn workload [_opts]
-  (let [latest-value (atom nil)
+  (let [latest-values (atom {})
         value-counter (atom 0)
-        operations (gen/mix [read-op
-                             (write-op value-counter)
-                             (cas-op latest-value value-counter)])]
-    {:client (client/validate (KVClient. nil nil nil latest-value))
+        operations (gen/mix [(partial read-op key-names)
+                             (write-op key-names value-counter)
+                             (cas-op key-names latest-values value-counter)])
+        bootstrap (apply gen/phases
+                         (map #(gen/once
+                                (bootstrap-write-op % value-counter))
+                              key-names))
+        final-key (first key-names)]
+    {:client (client/validate (KVClient. nil nil nil latest-values))
      :generator (gen/clients
                  (gen/phases
-                  (gen/once (bootstrap-write-op value-counter))
+                  bootstrap
                   (gen/stagger 0.1 operations)))
      :final-generator (gen/clients
                        (gen/phases
-                        (gen/once (final-write-op value-counter))
-                        (gen/once final-read-op)))
+                        (gen/once (final-write-op final-key value-counter))
+                        (gen/once (final-read-op final-key))))
      :checker (checker/compose
-               {:linearizable (checker/linearizable
-                               {:model (model/cas-register)})
+               {:linearizable (independent/checker
+                               (checker/linearizable
+                                {:model (model/cas-register)}))
                 :meaningful-operations (meaningful-operations-checker)
                 :unexpected-errors (unexpected-errors-checker)})}))
