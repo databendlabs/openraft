@@ -11,6 +11,7 @@ use crate::core::raft_msg::ResultSender;
 use crate::errors::AllowNextRevertError;
 use crate::metrics::MetricsRecorder;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::TermOf;
 use crate::type_config::alias::VoteOf;
 
 /// Application-triggered Raft actions for testing and administration.
@@ -35,6 +36,9 @@ where C: RaftTypeConfig
     /// holds its lease — leaves the term untouched, so an incautious trigger does not disrupt a
     /// live leader.
     Elect { pre_vote: bool },
+
+    /// Initiate a real election whose term is at least `min_term`.
+    ElectAtLeast { min_term: TermOf<C> },
 
     /// Send a heartbeat message, only if the node is leader, or it will be ignored.
     Heartbeat,
@@ -93,7 +97,7 @@ where C: RaftTypeConfig
     /// Returns the name of this command variant.
     pub fn name(&self) -> ExternalCommandName {
         match self {
-            ExternalCommand::Elect { .. } => ExternalCommandName::Elect,
+            ExternalCommand::Elect { .. } | ExternalCommand::ElectAtLeast { .. } => ExternalCommandName::Elect,
             ExternalCommand::Heartbeat => ExternalCommandName::Heartbeat,
             ExternalCommand::Snapshot => ExternalCommandName::Snapshot,
             ExternalCommand::PurgeLog { .. } => ExternalCommandName::PurgeLog,
@@ -120,6 +124,9 @@ where C: RaftTypeConfig
         match self {
             ExternalCommand::Elect { pre_vote } => {
                 write!(f, "Elect{{pre_vote={pre_vote}}}")
+            }
+            ExternalCommand::ElectAtLeast { min_term } => {
+                write!(f, "ElectAtLeast{{min_term={min_term}}}")
             }
             ExternalCommand::Heartbeat => {
                 write!(f, "Heartbeat")

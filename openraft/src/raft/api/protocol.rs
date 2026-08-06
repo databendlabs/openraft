@@ -14,7 +14,6 @@ use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::install_full_snapshot_request::InstallFullSnapshotRequest;
 use crate::core::sm;
 use crate::errors::Fatal;
-use crate::errors::InitializeSnapshotError;
 #[cfg(doc)]
 use crate::errors::into_raft_result::IntoRaftResult;
 use crate::raft::AppendEntriesRequest;
@@ -178,25 +177,7 @@ where
         tracing::info!("Raft::install_full_snapshot()");
 
         let (tx, rx) = C::oneshot();
-        let req = InstallFullSnapshotRequest::Install { vote, snapshot, tx };
-
-        let send_res = self.install_snapshot_tx.send(req).await;
-        if send_res.is_err() {
-            return Err(self.inner.get_core_stop_error().await);
-        }
-
-        self.inner.recv_msg(rx).await
-    }
-
-    pub(in crate::raft) async fn initialize_from_snapshot(
-        &self,
-        vote: VoteOf<C>,
-        snapshot: SmSnapshotOf<C, SM>,
-    ) -> Result<Result<(), InitializeSnapshotError<C>>, Fatal<C>> {
-        tracing::info!("Raft::initialize_from_snapshot()");
-
-        let (tx, rx) = C::oneshot();
-        let req = InstallFullSnapshotRequest::Initialize { vote, snapshot, tx };
+        let req = InstallFullSnapshotRequest { vote, snapshot, tx };
 
         let send_res = self.install_snapshot_tx.send(req).await;
         if send_res.is_err() {

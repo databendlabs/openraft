@@ -26,7 +26,6 @@ use crate::entry::RaftEntry;
 use crate::entry::payload::EntryPayload;
 use crate::errors::ForwardToLeader;
 use crate::errors::InitializeError;
-use crate::errors::InitializeSnapshotError;
 use crate::errors::NotAllowed;
 use crate::errors::NotInMembers;
 use crate::errors::RejectAppendEntries;
@@ -45,7 +44,6 @@ use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
 use crate::storage::RaftStateMachine;
 use crate::type_config::TypeConfigExt;
-use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
@@ -249,52 +247,16 @@ where
         Ok(())
     }
 
-    /// Initialize a pristine node from a snapshot without establishing a leader.
-    pub(crate) fn initialize_from_snapshot(
-        &mut self,
-        vote: VoteOf<C>,
-        snapshot: SmSnapshotOf<C, SM>,
-    ) -> Result<Condition<C>, InitializeSnapshotError<C>> {
-        self.check_initialize()?;
-
-        let last_log_id = snapshot.meta.last_log_id.clone().ok_or(InitializeSnapshotError::MissingLastLogId)?;
-        self.check_members_contain_me(snapshot.meta.last_membership.membership())?;
-
-        if vote.is_committed() {
-            return Err(InitializeSnapshotError::CommittedVote { vote });
-        }
-
-        if vote.leader_node_id() != &self.config.id {
-            return Err(InitializeSnapshotError::VoteForAnotherNode {
-                node_id: self.config.id.clone(),
-                vote,
-            });
-        }
-
-        let committed_vote = vote.clone().to_committed();
-        if &committed_vote.committed_leader_id() <= last_log_id.committed_leader_id() {
-            return Err(InitializeSnapshotError::VoteNotAboveSnapshot { vote, last_log_id });
-        }
-
-        if self.vote_handler().update_vote(&vote).is_err() {
-            return Err(InitializeSnapshotError::VoteRejected {
-                vote,
-                current_vote: self.state.vote_ref().clone(),
-            });
-        }
-
-        let condition = self
-            .following_handler_for_recovery(committed_vote)
-            .install_full_snapshot(snapshot)
-            .expect("a positioned snapshot is newer than a pristine node");
-
-        Ok(condition)
-    }
-
     /// Start to elect this node as leader
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn elect(&mut self) {
-        self.do_elect(false);
+        self.do_elect(false, None);
+    }
+
+    /// Start an election whose term is at least `min_term`.
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub(crate) fn elect_at_least(&mut self, min_term: TermOf<C>) {
+        self.do_elect(false, Some(min_term));
     }
 
     /// Start an election as part of a leadership transfer.
@@ -303,23 +265,29 @@ where
     /// has not expired. See: Raft dissertation, section 4.2.3.
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn elect_by_leadership_transfer(&mut self) {
-        self.do_elect(true);
+        self.do_elect(true, None);
     }
 
-    fn do_elect(&mut self, leadership_transfer: bool) {
+    fn do_elect(&mut self, leadership_transfer: bool, min_term: Option<TermOf<C>>) {
         // An election attempt supersedes any in-flight Pre-Vote round.
         self.pre_candidate = None;
 
         if self.leader.is_some() {
-            tracing::info!("skip election, already a leader");
-            return;
+            if min_term.is_none_or(|t| self.state.vote.term() >= t) {
+                tracing::info!("skip election, already a leader");
+                return;
+            }
+
+            self.leader = None;
+            self.output.push_command(Command::CloseReplicationStreams);
         }
 
         // A real campaign consumes the timeout selected before it. Sample the
         // timeout that will gate the next campaign before entering this one.
         self.config.resample_election_timeout();
 
-        let new_term = self.state.vote.term().next();
+        let next_term = self.state.vote.term().next();
+        let new_term = min_term.map(|t| next_term.max(t)).unwrap_or(next_term);
         let leader_id = LeaderIdOf::<C>::new(new_term, self.config.id.clone());
         let new_vote = VoteOf::<C>::from_leader_id(leader_id, false);
 
@@ -1088,17 +1056,6 @@ where
 
         FollowingHandler {
             leader_vote: leader_vote.to_committed(),
-            config: &mut self.config,
-            state: &mut self.state,
-            output: &mut self.output,
-        }
-    }
-
-    fn following_handler_for_recovery(&mut self, leader_vote: CommittedVoteOf<C>) -> FollowingHandler<'_, C, SM> {
-        debug_assert!(self.leader.is_none());
-
-        FollowingHandler {
-            leader_vote,
             config: &mut self.config,
             state: &mut self.state,
             output: &mut self.output,

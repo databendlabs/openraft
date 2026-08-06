@@ -71,6 +71,37 @@ async fn elect_on_leader_is_ignored() -> Result<()> {
     Ok(())
 }
 
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn elect_at_least_moves_a_single_node_leader_to_the_floor() -> Result<()> {
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            enable_elect: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
+    let mut router = RaftRouter::new(config);
+    router.new_cluster(btreeset! {0}, btreeset! {}).await?;
+
+    let n0 = router.get_raft_handle(&0)?;
+    n0.wait(timeout()).state(ServerState::Leader, "node 0 is leader").await?;
+
+    let min_term = n0.metrics().borrow_watched().current_term + 10;
+    n0.trigger().elect_at_least(min_term).await?;
+
+    n0.wait(timeout())
+        .metrics(
+            |m| m.state == ServerState::Leader && m.current_term == min_term,
+            "node 0 is leader at the requested term floor",
+        )
+        .await?;
+
+    Ok(())
+}
+
 fn timeout() -> Option<Duration> {
     Some(Duration::from_millis(2000))
 }

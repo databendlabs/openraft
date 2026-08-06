@@ -1,8 +1,6 @@
 use std::fmt;
 
 use crate::RaftTypeConfig;
-use crate::core::raft_msg::ResultSender;
-use crate::errors::InitializeSnapshotError;
 use crate::raft::SnapshotResponse;
 use crate::storage::RaftStateMachine;
 use crate::type_config::alias::OneshotSenderOf;
@@ -16,21 +14,14 @@ use crate::type_config::alias::VoteOf;
 ///
 /// [`RaftCore`]: crate::core::RaftCore
 /// [`RaftMsg`]: crate::core::raft_msg::RaftMsg
-pub(crate) enum InstallFullSnapshotRequest<C, SM>
+pub(crate) struct InstallFullSnapshotRequest<C, SM>
 where
     C: RaftTypeConfig,
     SM: RaftStateMachine<C>,
 {
-    Install {
-        vote: VoteOf<C>,
-        snapshot: SmSnapshotOf<C, SM>,
-        tx: OneshotSenderOf<C, SnapshotResponse<C>>,
-    },
-    Initialize {
-        vote: VoteOf<C>,
-        snapshot: SmSnapshotOf<C, SM>,
-        tx: ResultSender<C, (), InitializeSnapshotError<C>>,
-    },
+    pub(crate) vote: VoteOf<C>,
+    pub(crate) snapshot: SmSnapshotOf<C, SM>,
+    pub(crate) tx: OneshotSenderOf<C, SnapshotResponse<C>>,
 }
 
 impl<C, SM> fmt::Display for InstallFullSnapshotRequest<C, SM>
@@ -39,13 +30,10 @@ where
     SM: RaftStateMachine<C>,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Install { vote, snapshot, .. } => {
-                write!(f, "InstallFullSnapshot: vote: {vote}, snapshot: {snapshot}")
-            }
-            Self::Initialize { vote, snapshot, .. } => {
-                write!(f, "InitializeFromSnapshot: vote: {vote}, snapshot: {snapshot}")
-            }
-        }
+        write!(
+            f,
+            "InstallFullSnapshot: vote: {}, snapshot: {}",
+            self.vote, self.snapshot
+        )
     }
 }

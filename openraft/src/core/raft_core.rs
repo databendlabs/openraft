@@ -1658,22 +1658,9 @@ where
     pub(crate) fn handle_install_full_snapshot_request(&mut self, req: InstallFullSnapshotRequest<C, SM>) {
         tracing::debug!("RAFT_event id={:<2}  input: {}", self.id, req);
 
-        match req {
-            InstallFullSnapshotRequest::Install { vote, snapshot, tx } => {
-                self.runtime_stats.record_raft_msg(RaftMsgName::InstallSnapshot);
-                self.engine.handle_install_full_snapshot(vote, snapshot, tx);
-            }
-            InstallFullSnapshotRequest::Initialize { vote, snapshot, tx } => {
-                self.runtime_stats.record_raft_msg(RaftMsgName::Initialize);
-                let result = self.engine.initialize_from_snapshot(vote, snapshot);
-                let condition = result.as_ref().ok().cloned();
-                let result = result.map(|_| ());
-                self.engine.output.push_command(Command::Respond {
-                    when: condition,
-                    resp: Respond::new(result, tx),
-                });
-            }
-        }
+        self.runtime_stats.record_raft_msg(RaftMsgName::InstallSnapshot);
+
+        self.engine.handle_install_full_snapshot(req.vote, req.snapshot, req.tx);
     }
 
     // TODO: Make this method non-async. It does not need to run any async command in it.
@@ -1818,6 +1805,14 @@ where
                     } else {
                         // Node is switched to learner.
                     }
+                }
+            }
+            ExternalCommand::ElectAtLeast { min_term } => {
+                if self.engine.state.membership_state.effective().is_voter(&self.id) {
+                    self.engine.elect_at_least(min_term);
+                    tracing::debug!(%min_term, "ExternalCommand: triggered election with minimum term");
+                } else {
+                    // Node is switched to learner.
                 }
             }
             ExternalCommand::Heartbeat => {
