@@ -200,6 +200,7 @@
         (is (= :no-reachable-pause-target (:value completion)))
         (is (empty? @invocations))
         (is (empty? (:observed-modes result)))))))
+
 (deftest teardown-cleanup-failure-does-not-mask-analysis
   (let [events (atom [])
         delegate (failing-resume-nemesis
@@ -234,6 +235,7 @@
                    @events)))
           (finally
             (Thread/interrupted)))))))
+
 (deftest skips-disruptions-without-a-supported-leader
   (let [invocations (atom [])
         delegate (recording-nemesis invocations)
@@ -344,8 +346,11 @@
                                     {:f :pause-process
                                      :value :leader-paused
                                      :error :pause-failed})
-        resuming-history (conj indeterminate-history
-                               {:type :invoke
+        paused-history (conj complete-history
+                             {:f :pause-process
+                              :value {:mode :leader-paused}})
+        resuming-history (conj paused-history
+                               {:type :info
                                 :f :resume-process})
         recovered-history (into resuming-history
                                 [{:f :resume-process
@@ -381,7 +386,7 @@
              (select-keys (check indeterminate-history)
                           [:valid? :cluster-state]))))
 
-    (testing "a resume invocation does not resolve an indeterminate pause"
+    (testing "a resume invocation makes a paused state indeterminate"
       (is (= {:valid? :unknown
               :cluster-state :unknown}
              (select-keys (check resuming-history)
@@ -393,7 +398,7 @@
              (select-keys (check partial-resume-history)
                           [:valid? :cluster-state]))))
 
-    (testing "global resume and recovery resolve an indeterminate pause"
+    (testing "resume completion and recovery resolve an in-flight resume"
       (is (= {:valid? true
               :cluster-state :intact}
              (select-keys (check recovered-history)
