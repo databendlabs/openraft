@@ -1,5 +1,5 @@
 (ns jepsen.openraft.nemesis.partition
-  (:require [clojure.tools.logging :refer [info]]
+  (:require [clojure.tools.logging :refer [info warn]]
             [jepsen [checker :as checker]
              [generator :as gen]
              [nemesis :as nemesis]
@@ -83,7 +83,19 @@
         (assoc op :value :network-healed))))
 
   (teardown! [_ test]
-    (nemesis/teardown! partitioner test))
+    (try
+      (nemesis/teardown! partitioner test)
+      (catch InterruptedException e
+        (.interrupt (Thread/currentThread))
+        (throw e))
+      (catch Exception e
+        (if (= :interrupted (:kind (ex-data e)))
+          (do
+            (.interrupt (Thread/currentThread))
+            (throw e))
+          (warn e
+                "Failed to heal network partition during teardown"
+                {:nodes (:nodes test)})))))
 
   nemesis/Reflection
   (fs [_]
