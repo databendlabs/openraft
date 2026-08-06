@@ -307,7 +307,6 @@
 
       :resume-process
       (cond
-        (= :invoke (:type op)) state
         error? :unknown
         (and (coll? resumed-nodes)
              (= expected-nodes (set resumed-nodes))) :recovery-pending
