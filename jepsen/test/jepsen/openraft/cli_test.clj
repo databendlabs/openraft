@@ -69,6 +69,9 @@
   (let [test (cli/openraft-test {:nemesis [:membership :partition]
                                  :nodes ["n1" "n2" "n3" "n4" "n5"]
                                  :time-limit 10})
-        checkers (get-in test [:checker :checkers :nemesis :checkers])]
+        checkers (get-in test [:checker :checkers])
+        nemesis-checkers (get-in checkers [:nemesis :checkers])]
+    (is (= #{:seed :stats :exceptions :crash :nemesis :workload}
+           (set (keys checkers))))
     (is (= #{:partition :membership}
-           (set (keys checkers))))))
+           (set (keys nemesis-checkers))))))
