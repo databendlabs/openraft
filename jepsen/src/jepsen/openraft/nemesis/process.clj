@@ -96,11 +96,16 @@
                                                 eligible-nodes)]
           (let [targets (:nodes disruption)]
             (info start-message disruption)
+            ;; A multi-node kill may partially succeed before the delegate
+            ;; reports an error, so retain every node that may need restarting.
+            (when (= :process kind)
+              (reset! active disruption))
             (nemesis/invoke! delegate test
                              (assoc op
                                     :f delegate-f
                                     :value targets))
-            (reset! active disruption)
+            (when (= :pause kind)
+              (reset! active disruption))
             (assoc op :value disruption))
           (case kind
             :process
