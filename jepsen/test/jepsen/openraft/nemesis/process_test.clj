@@ -74,6 +74,40 @@
                 [:start ["n1"]]]
                (mapv (juxt :f :value) @invocations)))))))
 
+(deftest restarts-all-planned-processes-after-a-kill-error
+  (let [invocations (atom [])
+        delegate (reify nemesis/Nemesis
+                   (setup! [this _test]
+                     this)
+                   (invoke! [_ _test op]
+                     (swap! invocations conj op)
+                     (when (= :kill (:f op))
+                       (throw (ex-info "kill failed" {})))
+                     op)
+                   (teardown! [this _test]
+                     this))
+        subject (process/->ProcessNemesis delegate (atom nil))
+        test {:nodes voters}
+        planned #{"n2" "n3"}
+        prefer-planned (fn [candidates]
+                         (cons planned (remove #{planned} candidates)))]
+    (with-redefs [cluster/membership-status (constantly {:leader "n1"})
+                  cluster/voter-configs (fn [_test _status]
+                                          [(set voters)])
+                  random/shuffle prefer-planned]
+      (is (thrown-with-msg?
+           clojure.lang.ExceptionInfo
+           #"kill failed"
+           (nemesis/invoke! subject
+                            test
+                            {:type :info
+                             :f :kill-process
+                             :value :leader-survives})))
+      (nemesis/invoke! subject test {:type :info :f :restart-process})
+      (is (= [[:kill ["n2" "n3"]]
+              [:start ["n2" "n3"]]]
+             (mapv (juxt :f :value) @invocations))))))
+
 (deftest records-pause-recovery-history
   (let [invocations (atom [])
         delegate (recording-nemesis invocations)
