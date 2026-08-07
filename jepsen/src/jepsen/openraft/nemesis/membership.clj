@@ -38,6 +38,11 @@
              (or (nil? status)
                  (<= 500 status 599))))))
 
+(defn- leader-routing-error? [e]
+  (let [{:keys [kind error]} (ex-data e)]
+    (or (= :unreachable kind)
+        (contains? error :ForwardToLeader))))
+
 (defn- membership-change-in-progress? [e]
   (contains? (get-in (ex-data e)
                      [:error :ChangeMembershipError])
@@ -68,6 +73,9 @@
     :completed
     (catch Exception e
       (cond
+        (leader-routing-error? e)
+        :no-supported-leader
+
         (ambiguous-request-error? e)
         (do
           (info "OpenRaft membership change result is indeterminate"
@@ -144,12 +152,19 @@
      #(client/add-learner! % node-id api-addr raft-addr))
     :completed
     (catch Exception e
-      (when-not (ambiguous-request-error? e)
-        (throw e))
-      (info "OpenRaft learner addition result is indeterminate"
-            {:node node
-             :error (ex-message e)})
-      :indeterminate)))
+      (cond
+        (leader-routing-error? e)
+        :no-supported-leader
+
+        (ambiguous-request-error? e)
+        (do
+          (info "OpenRaft learner addition result is indeterminate"
+                {:node node
+                 :error (ex-message e)})
+          :indeterminate)
+
+        :else
+        (throw e)))))
 
 (defn- add-learner-and-confirm!
   [test leader-endpoint node node-id api-addr raft-addr]
