@@ -101,7 +101,7 @@
                nemesis-types))]
     (merge tests/noop-test
            opts
-           {:name (str "openraft linearizable register "
+           {:name (str "openraft linearizable registers "
                        (str/join "," (map name nemesis-types)))
             :db database
             :client (:client workload)

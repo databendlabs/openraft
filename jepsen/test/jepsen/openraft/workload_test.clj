@@ -191,30 +191,58 @@
     (is (false? (get-in result [:results other-key :valid?])))))
 
 (deftest generates-multiple-independent-registers
-  (let [invocations
-        (random/with-seed 41
-          (->> (gen-test/simulate
-                (gen/limit 20 (:generator (workload/workload {})))
-                (fn [_test op]
-                  (assoc op :type :ok)))
-               (filter #(= :invoke (:type %)))
-               vec))
-        bootstrap (take 5 invocations)
-        main (drop 5 invocations)
+  (let [workload (workload/workload {})
+        version (atom 0)
+        values (atom {})
+        store! (fn [k value]
+                 (let [versioned {:value value
+                                  :version (swap! version inc)}]
+                   (swap! values assoc k versioned)
+                   versioned))
+        test {:nodes ["n1"]}
+        subject (client/open! (:client workload) test "n1")
+        invocations
+        (with-redefs [http/write! (fn [_endpoint k value]
+                                    (store! k value))
+                      http/linearizable-read! (fn [_endpoint k]
+                                                (get @values k))
+                      http/cas! (fn [_endpoint k _expected-version new-value]
+                                  (store! k new-value))]
+          (random/with-seed 41
+            (->> (gen-test/simulate
+                  (gen/limit 20 (:generator workload))
+                  (fn [_test op]
+                    (client/invoke! subject test op)))
+                 (filter #(= :invoke (:type %)))
+                 vec)))
+        expected-keys (set @#'workload/key-names)
+        bootstrap (take (count expected-keys) invocations)
+        main (drop (count expected-keys) invocations)
         bootstrap-keys (set (map (comp key :value) bootstrap))
-        main-keys (set (map (comp key :value) main))]
-    (is (= (repeat 5 [:bootstrap :write])
+        main-keys (set (map (comp key :value) main))
+        cas-keys (->> main
+                      (filter #(= :cas (:f %)))
+                      (map (comp key :value))
+                      set)]
+    (is (= (repeat (count expected-keys) [:bootstrap :write])
            (map (juxt :phase :f) bootstrap)))
-    (is (= 5 (count bootstrap-keys)))
+    (is (= expected-keys bootstrap-keys main-keys))
+    (is (= #{:main} (set (map :phase main))))
+    (is (<= 2 (count cas-keys)))
     (is (every? #(independent/tuple? (:value %)) invocations))
-    (is (< 1 (count main-keys)))
-    (is (every? bootstrap-keys main-keys))))
+    (client/close! subject test)))
 
-(deftest tags-final-recovery-operations
-  (let [write ((#'workload/final-write-op test-key (atom 0)) nil nil)
-        read ((#'workload/final-read-op test-key) nil nil)]
-    (is (= :final (:phase write)))
-    (is (= :final (:phase read)))))
+(deftest final-recovery-checks-every-register
+  (let [keys @#'workload/key-names
+        invocations (->> (gen-test/simulate
+                          (:final-generator (workload/workload {}))
+                          (fn [_test op]
+                            (assoc op :type :ok)))
+                         (filter #(= :invoke (:type %))))]
+    (is (= (concat (map #(vector :write :final true %) keys)
+                   (map #(vector :read :final true %) keys))
+           (map (juxt :f :phase :final? (comp key :value))
+                invocations)))))
 
 (deftest generates-cas-only-with-a-known-version
   (testing "a version observed for another key still produces a write"
