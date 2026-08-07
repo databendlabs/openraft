@@ -139,8 +139,8 @@ as its OpenRaft node ID.
 
 This starts the five-node Docker environment, then runs the Jepsen control
 process from the control container. Every test checks a concurrent mix of
-linearizable reads, writes, and compare-and-set operations across five
-independent registers with Knossos. The default `chaos` profile independently
+linearizable reads, writes, and compare-and-set operations across independent
+registers with Knossos. The default `chaos` profile independently
 schedules partition, process, pause, and membership faults, so their active
 intervals can overlap. `NEMESIS` accepts a comma-separated subset when a
 narrower combination is needed.
@@ -175,8 +175,8 @@ short fault tests without a snapshot-specific Nemesis. Set
 After the fault schedule ends, Jepsen heals partitions, restarts killed
 processes, resumes paused processes, restores membership, and then performs one
 shared readiness check. Client operations continue while faults are active and
-during recovery. Final recovery writes and then reads every register; all ten
-operations must succeed.
+during recovery. Final recovery performs one write and one read per register;
+every operation must succeed.
 
 ### Interpreting Results
 
