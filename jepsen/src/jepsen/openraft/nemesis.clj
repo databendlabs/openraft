@@ -44,7 +44,11 @@
     (let [generator' (gen/update generator test context event)
           retry-generator' (some-> retry-generator
                                    (gen/update test context event))
-          retry? (contains? retryable-skip-results (:value event))
+          completion-value (:value event)
+          retry-result (if (map? completion-value)
+                         (:status completion-value)
+                         completion-value)
+          retry? (contains? retryable-skip-results retry-result)
           operation-event? (and stage
                                 (= :nemesis (:process event))
                                 (= operation-f (:f event)))]

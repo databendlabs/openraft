@@ -149,6 +149,38 @@
         (is (= :indeterminate (get-in result [:value :status])))
         (is (false? @changed?))))))
 
+(deftest defers-a-grow-when-leader-routing-is-exhausted
+  (let [before #{"n1" "n2" "n3" "n4"}
+        status (update (stable-status before) :metrics assoc "n5" {})
+        attempts (atom [])]
+    (with-redefs [cluster/membership-status (constantly status)
+                  client/add-learner!
+                  (fn [endpoint node-id api-addr raft-addr]
+                    (swap! attempts conj
+                           [endpoint node-id api-addr raft-addr])
+                    (throw (ex-info "unreachable" {:kind :unreachable})))
+                  client/change-membership!
+                  (fn [& _]
+                    (throw (ex-info "MUST NOT change membership" {})))]
+      (let [result (nemesis/invoke! (membership-nemesis)
+                                    test-config
+                                    {:type :info
+                                     :f :grow})]
+        (is (= (mapv #(vector % "n5" "n5:21001" "n5:22001")
+                     ["n1:21001" "n2:21001" "n3:21001"
+                      "n4:21001" "n5:21001"])
+               @attempts))
+        (is (= {:type :info
+                :f :grow
+                :value {:change :grow
+                        :node "n5"
+                        :source :non-member
+                        :leader "n1"
+                        :before before
+                        :target (conj before "n5")
+                        :status :no-supported-leader}}
+               result))))))
+
 (deftest confirms-an-indeterminate-grow-from-membership-state
   (let [before #{"n1" "n2" "n3" "n4"}
         after (conj before "n5")
@@ -259,6 +291,43 @@
                 :after after}
                (select-keys (:value resolved)
                             [:change :before :after])))))))
+
+(deftest defers-a-shrink-when-leader-routing-is-exhausted
+  (let [before (set nodes)
+        after (disj before "n5")
+        attempts (atom [])]
+    (with-redefs [cluster/membership-status
+                  (constantly (stable-status before))
+                  random/shuffle reverse
+                  client/change-membership!
+                  (fn [endpoint node-ids]
+                    (swap! attempts conj [endpoint node-ids])
+                    (throw (ex-info
+                            "forward"
+                            {:kind :openraft-error
+                             :error {:ForwardToLeader
+                                     {:leader_id nil
+                                      :leader_node nil}}})))
+                  openraft-db/stop-and-wipe-node!
+                  (fn [& _]
+                    (throw (ex-info "MUST NOT clean up" {})))]
+      (let [result (nemesis/invoke! (membership-nemesis)
+                                    test-config
+                                    {:type :info
+                                     :f :shrink})]
+        (is (= (mapv #(vector % ["n1" "n2" "n3" "n4"])
+                     ["n1:21001" "n2:21001" "n3:21001"
+                      "n4:21001" "n5:21001"])
+               @attempts))
+        (is (= {:type :info
+                :f :shrink
+                :value {:change :shrink
+                        :node "n5"
+                        :leader "n1"
+                        :before before
+                        :target after
+                        :status :no-supported-leader}}
+               result))))))
 
 (deftest advances-a-joint-membership-without-waiting
   (let [before #{"n1" "n2" "n3"}

@@ -14,8 +14,9 @@
 
 (deftest schedules-and-retries-skipped-faults
   (doseq [skip-result [:no-supported-leader
-                       :no-reachable-pause-target]]
-    (testing (name skip-result)
+                       :no-reachable-pause-target
+                       {:status :no-supported-leader}]]
+    (testing (str skip-result)
       (let [faults (#'openraft-nemesis/interval-schedule
                     10
                     3
