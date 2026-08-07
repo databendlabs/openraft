@@ -272,6 +272,33 @@ mod tests {
         assert_eq!(Duration::ZERO, sampled);
     }
 
+    #[test]
+    fn test_sample_first_wait_is_uniformly_distributed() {
+        const SEED: u64 = 11;
+        const BUCKETS: usize = 10;
+        const SAMPLES_PER_BUCKET: usize = 1_000;
+        const MAX_DEVIATION: usize = SAMPLES_PER_BUCKET / 10;
+
+        let period = Duration::from_millis(100);
+        let sampled = run_seeded(SEED, async {
+            (0..BUCKETS * SAMPLES_PER_BUCKET)
+                .map(|_| Tick::<SeededTickConfig>::sample_first_wait(period))
+                .collect::<Vec<_>>()
+        });
+
+        let mut counts = [0_usize; BUCKETS];
+        for first_wait in sampled {
+            let offset = first_wait - period;
+            let bucket = (offset.as_nanos() * BUCKETS as u128 / period.as_nanos()) as usize;
+            counts[bucket] += 1;
+        }
+
+        assert!(
+            counts.iter().all(|count| count.abs_diff(SAMPLES_PER_BUCKET) <= MAX_DEVIATION),
+            "each bucket must be within 10% of the expected count {SAMPLES_PER_BUCKET}: {counts:?}"
+        );
+    }
+
     /// Receive the next notification, asserting it is a tick, and return its number.
     async fn recv_tick<C>(rx: &mut MpscReceiverOf<C, Notification<C>>) -> u64
     where C: RaftTypeConfig {
