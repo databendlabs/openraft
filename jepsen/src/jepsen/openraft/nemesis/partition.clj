@@ -5,6 +5,7 @@
              [nemesis :as nemesis]
              [random :as random]]
             [jepsen.openraft.cluster :as cluster]
+            [jepsen.openraft.interruption :as interruption]
             [jepsen.openraft.quorum :as quorum]))
 
 (def partition-seconds 10)
@@ -85,11 +86,8 @@
   (teardown! [_ test]
     (try
       (nemesis/teardown! partitioner test)
-      (catch InterruptedException e
-        (.interrupt (Thread/currentThread))
-        (throw e))
       (catch Exception e
-        (if (= :interrupted (:kind (ex-data e)))
+        (if (interruption/interruption? e)
           (do
             (.interrupt (Thread/currentThread))
             (throw e))

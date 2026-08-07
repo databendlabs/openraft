@@ -69,9 +69,15 @@
       (is (nil? (#'cluster/cluster-status test-config))))))
 
 (deftest preserves-metrics-request-interruption
-  (doseq [[label error] [[:raw #(InterruptedException. "interrupted")]
-                         [:wrapped #(ex-info "interrupted"
-                                             {:kind :interrupted})]]]
+  (doseq [[label error]
+          [[:interrupted-exception
+            #(InterruptedException. "interrupted")]
+           [:interrupted-io
+            #(java.io.InterruptedIOException. "interrupted")]
+           [:closed-by-interrupt
+            #(java.nio.channels.ClosedByInterruptException.)]
+           [:wrapped
+            #(ex-info "interrupted" {:kind :interrupted})]]]
     (let [interrupted?
           @(future
              (with-redefs [client/metrics!

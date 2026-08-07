@@ -3,6 +3,7 @@
             [clojure.tools.logging :refer [info]]
             [jepsen.core :as jepsen]
             [jepsen.openraft.client :as client]
+            [jepsen.openraft.interruption :as interruption]
             [jepsen.openraft.quorum :as quorum]
             [jepsen.util :as util]))
 
@@ -64,15 +65,15 @@
   [test node]
   (try
     (client/metrics! (client/api-endpoint test node))
-    (catch InterruptedException e
-      (.interrupt (Thread/currentThread))
-      (throw e))
     (catch Exception e
-      (if (= :interrupted (:kind (ex-data e)))
-        (do
+      (if (interruption/interruption? e)
+        (let [interrupted-exception
+              (if (instance? InterruptedException e)
+                e
+                (doto (InterruptedException. (ex-message e))
+                  (.initCause e)))]
           (.interrupt (Thread/currentThread))
-          (throw (doto (InterruptedException. (ex-message e))
-                   (.initCause e))))
+          (throw interrupted-exception))
         (throw e)))))
 
 (defn- collect-reachable-metrics-from [test nodes]

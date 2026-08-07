@@ -6,6 +6,7 @@
              [random :as random]]
             [jepsen.nemesis.combined :as combined]
             [jepsen.openraft.cluster :as cluster]
+            [jepsen.openraft.interruption :as interruption]
             [jepsen.openraft.quorum :as quorum]))
 
 (def downtime-seconds 10)
@@ -178,11 +179,8 @@
                        {:type :info
                         :f :resume
                         :value (:nodes test)})
-      (catch InterruptedException e
-        (.interrupt (Thread/currentThread))
-        (throw e))
       (catch Exception e
-        (if (= :interrupted (:kind (ex-data e)))
+        (if (interruption/interruption? e)
           (do
             (.interrupt (Thread/currentThread))
             (throw e))

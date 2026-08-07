@@ -79,37 +79,42 @@
                (:value (nemesis/invoke! subject {:nodes nodes} op))))
         (is (empty? @invocations))))))
 
-(deftest preserves-analysis-after-partition-cleanup-failure
-  (testing "ordinary cleanup failures do not escape teardown"
-    (let [attempted? (atom false)
-          partitioner (teardown-partitioner
-                       #(do
-                          (reset! attempted? true)
-                          (throw (ex-info "unreachable"
-                                          {:kind :unreachable}))))]
-      (nemesis/teardown! (partition/->PartitionNemesis partitioner)
-                         {:nodes nodes})
-      (is @attempted?)))
+(deftest partition-cleanup-failure-does-not-mask-analysis
+  (let [attempted? (atom false)
+        partitioner (teardown-partitioner
+                     #(do
+                        (reset! attempted? true)
+                        (throw (ex-info "unreachable"
+                                        {:kind :unreachable}))))]
+    (nemesis/teardown! (partition/->PartitionNemesis partitioner)
+                       {:nodes nodes})
+    (is @attempted?)))
 
-  (testing "interruptions still stop the test"
-    (doseq [[label error] [[:raw (InterruptedException. "interrupted")]
-                           [:wrapped (ex-info "interrupted"
-                                              {:kind :interrupted})]]]
-      (testing (name label)
-        (Thread/interrupted)
-        (let [partitioner (teardown-partitioner #(throw error))
-              subject (partition/->PartitionNemesis partitioner)]
-          (try
-            (let [thrown (try
-                           (nemesis/teardown! subject {:nodes nodes})
-                           nil
-                           (catch Exception e
-                             e))
-                  interrupted? (.isInterrupted (Thread/currentThread))]
-              (is (identical? error thrown))
-              (is interrupted?))
-            (finally
-              (Thread/interrupted))))))))
+(deftest partition-cleanup-preserves-interruptions
+  (doseq [[label error]
+          [[:interrupted-exception
+            (InterruptedException. "interrupted")]
+           [:interrupted-io
+            (java.io.InterruptedIOException. "interrupted")]
+           [:closed-by-interrupt
+            (java.nio.channels.ClosedByInterruptException.)]
+           [:wrapped
+            (ex-info "interrupted" {:kind :interrupted})]]]
+    (testing (name label)
+      (Thread/interrupted)
+      (let [partitioner (teardown-partitioner #(throw error))
+            subject (partition/->PartitionNemesis partitioner)]
+        (try
+          (let [thrown (try
+                         (nemesis/teardown! subject {:nodes nodes})
+                         nil
+                         (catch Exception e
+                           e))
+                interrupted? (.isInterrupted (Thread/currentThread))]
+            (is (identical? error thrown))
+            (is interrupted?))
+          (finally
+            (Thread/interrupted)))))))
 
 (deftest requires-both-partitions-and-an-intact-cluster
   (let [subject (#'partition/coverage-checker)

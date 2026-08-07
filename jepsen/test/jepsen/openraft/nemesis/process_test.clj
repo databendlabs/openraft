@@ -213,9 +213,15 @@
            @events))))
 
 (deftest teardown-preserves-interruptions
-  (doseq [[label error] [[:raw (InterruptedException. "interrupted")]
-                         [:wrapped (ex-info "interrupted"
-                                            {:kind :interrupted})]]]
+  (doseq [[label error]
+          [[:interrupted-exception
+            (InterruptedException. "interrupted")]
+           [:interrupted-io
+            (java.io.InterruptedIOException. "interrupted")]
+           [:closed-by-interrupt
+            (java.nio.channels.ClosedByInterruptException.)]
+           [:wrapped
+            (ex-info "interrupted" {:kind :interrupted})]]]
     (testing (name label)
       (Thread/interrupted)
       (let [events (atom [])
