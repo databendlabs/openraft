@@ -285,16 +285,18 @@
                          (map #(gen/once
                                 (bootstrap-write-op % value-counter))
                               key-names))
-        final-key (first key-names)]
+        final (apply gen/phases
+                     (concat
+                      (map #(gen/once
+                             (final-write-op % value-counter))
+                           key-names)
+                      (map #(gen/once (final-read-op %)) key-names)))]
     {:client (client/validate (KVClient. nil nil nil latest-values))
      :generator (gen/clients
                  (gen/phases
                   bootstrap
                   (gen/stagger 0.1 operations)))
-     :final-generator (gen/clients
-                       (gen/phases
-                        (gen/once (final-write-op final-key value-counter))
-                        (gen/once (final-read-op final-key))))
+     :final-generator (gen/clients final)
      :checker (checker/compose
                {:linearizable (independent/checker
                                (checker/linearizable

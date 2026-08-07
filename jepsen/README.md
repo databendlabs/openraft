@@ -139,10 +139,11 @@ as its OpenRaft node ID.
 
 This starts the five-node Docker environment, then runs the Jepsen control
 process from the control container. Every test checks a concurrent mix of
-linearizable reads, writes, and compare-and-set operations with Knossos. The
-default `chaos` profile independently schedules partition, process, pause, and
-membership faults, so their active intervals can overlap. `NEMESIS` accepts a
-comma-separated subset when a narrower combination is needed.
+linearizable reads, writes, and compare-and-set operations across five
+independent registers with Knossos. The default `chaos` profile independently
+schedules partition, process, pause, and membership faults, so their active
+intervals can overlap. `NEMESIS` accepts a comma-separated subset when a
+narrower combination is needed.
 
 The partition nemesis alternates between partitions where the current leader is
 in the majority and in the minority. A focused partition run requires both
@@ -174,7 +175,8 @@ short fault tests without a snapshot-specific Nemesis. Set
 After the fault schedule ends, Jepsen heals partitions, restarts killed
 processes, resumes paused processes, restores membership, and then performs one
 shared readiness check. Client operations continue while faults are active and
-during recovery. The final recovery write and read must also succeed.
+during recovery. Final recovery writes and then reads every register; all ten
+operations must succeed.
 
 ### Interpreting Results
 
@@ -185,14 +187,21 @@ three possible values:
 - `true` exits with status 0. Every checker accepted the run.
 - `false` exits with status 1. At least one checker established a failing
   condition. Inspect `:workload`, `:nemesis`, `:crash`, and `:stats` to identify
-  it. Only `[:workload :linearizable :valid?]` being `false` means the register
-  history was not linearizable.
+  it. Only `[:workload :linearizable :valid?]` being `false` means one or more
+  register histories were not linearizable.
 - `:unknown` exits with status 2. The harness could not establish a conclusive
   result, so the run must not be treated as passing. Unhandled worker or Nemesis
   exceptions appear at `[:exceptions :exceptions]`. Missing node logs appear at
   `[:crash :missing-nodes]`. Individual workload and Nemesis checkers may also
   report `:unknown`; locate the nested checker with that validity for its
   diagnostic fields.
+
+The test name begins with `openraft linearizable registers`, which also names
+its directory under `jepsen/store`. The independent linearizability checker
+lists failing keys at `[:workload :linearizable :failures]` and stores each
+key's result at `[:workload :linearizable :results <key>]`. Per-key histories
+and checker output are written under
+`jepsen/store/<test-name>/<timestamp>/independent/<key>/`.
 
 Every run also records its random seed in `results.edn`, in a checker result of
 the following form:
