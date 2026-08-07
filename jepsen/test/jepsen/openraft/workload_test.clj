@@ -125,6 +125,19 @@
           (is (= test-key (key (:value result))))
           (is (= "value" (val (:value result)))))))))
 
+(deftest tracks-latest-values-independently
+  (let [latest-values (atom {})
+        newer {:value "newer" :version 2}
+        stale {:value "stale" :version 1}
+        other {:value "other" :version 3}]
+    (#'workload/remember-latest! latest-values test-key newer)
+    (#'workload/remember-latest! latest-values other-key other)
+    (#'workload/remember-latest! latest-values test-key stale)
+    (#'workload/remember-latest! latest-values test-key nil)
+    (is (= {test-key newer
+            other-key other}
+           @latest-values))))
+
 (deftest timed-out-write-can-explain-a-later-read
   (let [history [{:process 0
                   :type :invoke
@@ -194,6 +207,7 @@
   (let [workload (workload/workload {})
         version (atom 0)
         values (atom {})
+        cas-observations (atom [])
         store! (fn [k value]
                  (let [versioned {:value value
                                   :version (swap! version inc)}]
@@ -206,12 +220,25 @@
                                     (store! k value))
                       http/linearizable-read! (fn [_endpoint k]
                                                 (get @values k))
-                      http/cas! (fn [_endpoint k _expected-version new-value]
-                                  (store! k new-value))]
+                      http/cas! (fn [_endpoint k expected-version new-value]
+                                  (when (= expected-version
+                                           (:version (get @values k)))
+                                    (store! k new-value)))]
           (random/with-seed 41
             (->> (gen-test/simulate
                   (gen/limit 20 (:generator workload))
                   (fn [_test op]
+                    (when (and (= :invoke (:type op))
+                               (= :cas (:f op)))
+                      (let [k (key (:value op))
+                            [expected-value _] (val (:value op))
+                            current (get @values k)]
+                        (swap! cas-observations conj
+                               {:key k
+                                :from-op [(:expected-version op)
+                                          expected-value]
+                                :from-store [(:version current)
+                                             (:value current)]})))
                     (client/invoke! subject test op)))
                  (filter #(= :invoke (:type %)))
                  vec)))
@@ -219,16 +246,14 @@
         bootstrap (take (count expected-keys) invocations)
         main (drop (count expected-keys) invocations)
         bootstrap-keys (set (map (comp key :value) bootstrap))
-        main-keys (set (map (comp key :value) main))
-        cas-keys (->> main
-                      (filter #(= :cas (:f %)))
-                      (map (comp key :value))
-                      set)]
+        main-keys (set (map (comp key :value) main))]
     (is (= (repeat (count expected-keys) [:bootstrap :write])
            (map (juxt :phase :f) bootstrap)))
     (is (= expected-keys bootstrap-keys main-keys))
     (is (= #{:main} (set (map :phase main))))
-    (is (<= 2 (count cas-keys)))
+    (is (seq @cas-observations))
+    (is (every? #(= (:from-op %) (:from-store %))
+                @cas-observations))
     (is (every? #(independent/tuple? (:value %)) invocations))
     (client/close! subject test)))
 
