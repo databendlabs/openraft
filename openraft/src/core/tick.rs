@@ -100,11 +100,10 @@ where C: RaftTypeConfig
         let mut cancel = std::pin::pin!(cancel_rx);
 
         let period = self.period;
-        let mut delay = self.first_wait;
+        let mut next_at = C::now() + self.first_wait;
 
         loop {
-            let at = C::now() + delay;
-            let sleep_fut = std::pin::pin!(C::sleep_until(at));
+            let sleep_fut = std::pin::pin!(C::sleep_until(next_at));
             let cancel_fut = cancel.as_mut();
 
             match futures_util::future::select(cancel_fut, sleep_fut).await {
@@ -117,7 +116,7 @@ where C: RaftTypeConfig
                 }
             }
 
-            delay = period;
+            next_at += period;
 
             if !self.enabled.load(Ordering::Relaxed) {
                 continue;
@@ -362,6 +361,42 @@ mod tests {
 
             th.shutdown().unwrap().await.unwrap();
             assert!(rx.recv().await.is_none(), "the channel must close after shutdown");
+        });
+    }
+
+    /// Ticks use fixed-rate scheduling: `next_at += period` rather than
+    /// `now() + period`. This means the Nth tick always fires at
+    /// `first_wait + N * period` regardless of processing delays, preventing
+    /// phase collapse when multiple instances share a runtime.
+    #[test]
+    fn test_tick_cadence_is_fixed_rate() {
+        const SEED: u64 = 42;
+
+        let period = Duration::from_millis(200);
+        let margin = Duration::from_millis(25);
+        let first_wait = run_seeded(SEED, async { Tick::<SeededTickConfig>::sample_first_wait(period) });
+
+        run_seeded(SEED, async {
+            let (tx, mut rx) = SeededTickConfig::mpsc(1024);
+            let th = Tick::<SeededTickConfig>::spawn(period, tx, true);
+
+            // First tick arrives at first_wait.
+            let early = SeededTickConfig::timeout(first_wait - margin, recv_tick::<SeededTickConfig>(&mut rx)).await;
+            assert!(early.is_err(), "first tick must not arrive before first_wait");
+            recv_tick::<SeededTickConfig>(&mut rx).await;
+
+            // Subsequent ticks arrive at exact multiples of period from first_wait.
+            // Verify ticks 2 through 5 each take exactly one period.
+            for n in 2..=5 {
+                let early =
+                    SeededTickConfig::timeout(period - margin, recv_tick::<SeededTickConfig>(&mut rx)).await;
+                assert!(early.is_err(), "tick {n} must not arrive before one full period");
+                SeededTickConfig::timeout(margin * 2, recv_tick::<SeededTickConfig>(&mut rx))
+                    .await
+                    .unwrap_or_else(|_| panic!("tick {n} must arrive within margin after the period"));
+            }
+
+            th.shutdown().unwrap().await.unwrap();
         });
     }
 }
