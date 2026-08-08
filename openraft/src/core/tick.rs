@@ -102,6 +102,12 @@ where C: RaftTypeConfig
         let period = self.period;
         let mut delay = self.first_wait;
 
+        tracing::debug!(
+            "tick_loop starting: first_wait={:?}, period={:?}",
+            self.first_wait,
+            period
+        );
+
         loop {
             let at = C::now() + delay;
             let sleep_fut = std::pin::pin!(C::sleep_until(at));
@@ -297,6 +303,104 @@ mod tests {
             counts.iter().all(|count| count.abs_diff(SAMPLES_PER_BUCKET) <= MAX_DEVIATION),
             "each bucket must be within 10% of the expected count {SAMPLES_PER_BUCKET}: {counts:?}"
         );
+
+        // Verify the distribution is preserved over time with real Tick instances
+        // on a multi-threaded runtime (not just the sampled values).
+        #[cfg(not(feature = "singlethreaded"))]
+        {
+            use std::sync::Arc;
+
+            const NUM_TICKS: usize = 50;
+            const RT_PERIOD: Duration = Duration::from_millis(20);
+            const ITERATIONS: usize = 200;
+
+            let mut runtime = TokioRuntime::new(2);
+            runtime.block_on(async {
+                let fire_times: Vec<Arc<std::sync::Mutex<Vec<std::time::Instant>>>> =
+                    (0..NUM_TICKS)
+                        .map(|_| Arc::new(std::sync::Mutex::new(Vec::with_capacity(ITERATIONS))))
+                        .collect();
+
+                let first_waits: Arc<std::sync::Mutex<Vec<Duration>>> =
+                    Arc::new(std::sync::Mutex::new(Vec::with_capacity(NUM_TICKS)));
+
+                let mut handles = Vec::new();
+                for i in 0..NUM_TICKS {
+                    let ft = fire_times[i].clone();
+                    let fws = first_waits.clone();
+                    handles.push(TickUTConfig::spawn(async move {
+                        let (tx, mut rx) = TickUTConfig::mpsc(1024);
+                        let start = std::time::Instant::now();
+                        let _th = Tick::<TickUTConfig>::spawn(RT_PERIOD, tx, true);
+
+                        recv_tick::<TickUTConfig>(&mut rx).await;
+                        let first_tick_at = std::time::Instant::now();
+                        fws.lock().unwrap().push(first_tick_at.duration_since(start));
+                        ft.lock().unwrap().push(first_tick_at);
+
+                        for _ in 1..ITERATIONS {
+                            recv_tick::<TickUTConfig>(&mut rx).await;
+                            ft.lock().unwrap().push(std::time::Instant::now());
+                            TickUTConfig::yield_now().await;
+                        }
+                    }));
+                }
+
+                for h in handles {
+                    let _ = h.await;
+                }
+
+                // Step 1: confirm initial distribution is uniform.
+                let fws = first_waits.lock().unwrap();
+                let mut offsets_ms: Vec<f64> = fws
+                    .iter()
+                    .map(|d| d.as_micros() as f64 / 1000.0 - RT_PERIOD.as_millis() as f64)
+                    .collect();
+                offsets_ms.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                let spread = offsets_ms.last().unwrap() - offsets_ms.first().unwrap();
+                eprintln!(
+                    "[step 1] initial first_wait offsets span {spread:.1}ms \
+                     (period={p}ms, expect ~{p}ms spread)",
+                    p = RT_PERIOD.as_millis()
+                );
+                assert!(
+                    spread > RT_PERIOD.as_millis() as f64 * 0.5,
+                    "initial distribution broken: span only {spread:.1}ms"
+                );
+
+                // Step 2: check if distribution holds after many iterations.
+                let mut all_last: Vec<std::time::Instant> = Vec::new();
+                for ft_entry in &fire_times {
+                    let times = ft_entry.lock().unwrap();
+                    let start = times.len().saturating_sub(10);
+                    all_last.extend_from_slice(&times[start..]);
+                }
+                all_last.sort();
+
+                let mut max_cluster = 0usize;
+                let mut left = 0;
+                let window = Duration::from_millis(1);
+                for right in 0..all_last.len() {
+                    while all_last[right].duration_since(all_last[left]) > window {
+                        left += 1;
+                    }
+                    max_cluster = max_cluster.max(right - left + 1);
+                }
+
+                eprintln!(
+                    "[step 2] after {ITERATIONS} iters: max cluster = {max_cluster}/{NUM_TICKS} within 1ms"
+                );
+                if max_cluster > 20 {
+                    eprintln!(
+                        "  => PHASE COLLAPSE: uniform initial distribution did NOT hold over time"
+                    );
+                }
+                assert!(
+                    max_cluster <= 20,
+                    "phase collapse: {max_cluster}/{NUM_TICKS} ticks within 1ms after {ITERATIONS} iters"
+                );
+            });
+        }
     }
 
     /// Receive the next notification, asserting it is a tick, and return its number.
@@ -364,4 +468,5 @@ mod tests {
             assert!(rx.recv().await.is_none(), "the channel must close after shutdown");
         });
     }
+
 }
