@@ -9,6 +9,7 @@ use crate::errors::Fatal;
 use crate::raft::RaftInner;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::TermOf;
 use crate::type_config::alias::VoteOf;
 
 /// Trigger is an interface to trigger an action to RaftCore by external caller.
@@ -63,6 +64,22 @@ where C: RaftTypeConfig
     /// [`Config::enable_pre_vote`]: crate::Config::enable_pre_vote
     pub async fn elect(&self, pre_vote: bool) -> Result<(), Fatal<C>> {
         self.raft_inner.send_external_command(ExternalCommand::Elect { pre_vote }).await
+    }
+
+    /// Trigger a real election whose term is at least `min_term` and return at once.
+    ///
+    /// If this node is already leader at or above `min_term`, this is a no-op. Otherwise, it
+    /// leaves any current leadership and starts a campaign at
+    /// `max(current_term.next(), min_term)`. This bypasses both `enable_elect` and Pre-Vote.
+    ///
+    /// This is intended for administrative operations that must move a cluster beyond an
+    /// application-defined term floor. It can disrupt a running cluster and should not be used
+    /// for routine elections.
+    ///
+    /// Returns error when RaftCore has [`Fatal`] error, e.g., shut down or having storage error.
+    #[since(version = "0.10.0", change = "added election with a minimum term")]
+    pub async fn elect_at_least(&self, min_term: TermOf<C>) -> Result<(), Fatal<C>> {
+        self.raft_inner.send_external_command(ExternalCommand::ElectAtLeast { min_term }).await
     }
 
     /// Trigger a heartbeat at once and return at once.

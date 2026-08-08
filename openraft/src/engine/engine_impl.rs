@@ -250,7 +250,13 @@ where
     /// Start to elect this node as leader
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn elect(&mut self) {
-        self.do_elect(false);
+        self.do_elect(false, None);
+    }
+
+    /// Start an election whose term is at least `min_term`.
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub(crate) fn elect_at_least(&mut self, min_term: TermOf<C>) {
+        self.do_elect(false, Some(min_term));
     }
 
     /// Start an election as part of a leadership transfer.
@@ -259,23 +265,29 @@ where
     /// has not expired. See: Raft dissertation, section 4.2.3.
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn elect_by_leadership_transfer(&mut self) {
-        self.do_elect(true);
+        self.do_elect(true, None);
     }
 
-    fn do_elect(&mut self, leadership_transfer: bool) {
+    fn do_elect(&mut self, leadership_transfer: bool, min_term: Option<TermOf<C>>) {
         // An election attempt supersedes any in-flight Pre-Vote round.
         self.pre_candidate = None;
 
         if self.leader.is_some() {
-            tracing::info!("skip election, already a leader");
-            return;
+            if min_term.is_none_or(|t| self.state.vote.term() >= t) {
+                tracing::info!("skip election, already a leader");
+                return;
+            }
+
+            self.leader = None;
+            self.output.push_command(Command::CloseReplicationStreams);
         }
 
         // A real campaign consumes the timeout selected before it. Sample the
         // timeout that will gate the next campaign before entering this one.
         self.config.resample_election_timeout();
 
-        let new_term = self.state.vote.term().next();
+        let next_term = self.state.vote.term().next();
+        let new_term = min_term.map(|t| next_term.max(t)).unwrap_or(next_term);
         let leader_id = LeaderIdOf::<C>::new(new_term, self.config.id.clone());
         let new_vote = VoteOf::<C>::from_leader_id(leader_id, false);
 

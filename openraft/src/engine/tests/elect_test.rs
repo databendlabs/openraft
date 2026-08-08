@@ -239,6 +239,37 @@ fn test_elect_single_node() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_elect_at_least_uses_term_floor() -> anyhow::Result<()> {
+    let mut eng = eng();
+    eng.config.id = 1;
+    eng.state.membership_state.set_effective(Arc::new(StoredMembershipOf::<UTConfig>::new(
+        Some(log_id(0, 1, 1)),
+        m12(),
+    )));
+
+    eng.elect_at_least(5);
+
+    assert_eq!(Vote::new(5, 1), *eng.state.vote_ref());
+    assert_eq!(Vote::new(5, 1), *eng.candidate_ref().unwrap().vote_ref());
+    assert_eq!(ServerState::Candidate, eng.state.server_state);
+    assert_eq!(
+        vec![Command::SaveVote { vote: Vote::new(5, 1) }, Command::SendVote {
+            vote_req: VoteRequest::new(Vote::new(5, 1), Some(log_id(0, 0, 0))),
+        },],
+        eng.output.take_commands()
+    );
+
+    eng.elect_at_least(3);
+    assert_eq!(
+        Vote::new(6, 1),
+        *eng.state.vote_ref(),
+        "a lower floor does not reuse the current term"
+    );
+
+    Ok(())
+}
+
+#[test]
 fn test_elect_by_leadership_transfer_sets_flag() -> anyhow::Result<()> {
     // An election started by a leadership transfer marks the vote request, so that voters
     // grant it even when the leader lease has not expired.
@@ -336,6 +367,7 @@ fn test_election_on_leader_is_ignored() -> anyhow::Result<()> {
 
     eng.elect();
     eng.elect_by_leadership_transfer();
+    eng.elect_at_least(1);
 
     assert_eq!(Vote::new_committed(1, 1), *eng.state.vote_ref());
     assert!(eng.leader.is_some(), "leadership is preserved");
@@ -343,6 +375,40 @@ fn test_election_on_leader_is_ignored() -> anyhow::Result<()> {
     assert!(eng.pre_candidate_ref().is_none(), "no pre-vote is retained");
     assert_eq!(ServerState::Leader, eng.state.server_state);
     assert_eq!(Vec::<Command<UTConfig>>::new(), eng.output.take_commands());
+
+    Ok(())
+}
+
+#[test]
+fn test_elect_at_least_moves_leader_above_floor() -> anyhow::Result<()> {
+    let mut eng = eng();
+    eng.config.id = 1;
+    eng.state.membership_state.set_effective(Arc::new(StoredMembershipOf::<UTConfig>::new(
+        Some(log_id(0, 1, 1)),
+        m12(),
+    )));
+
+    eng.elect();
+    eng.candidate_mut().unwrap().grant_by(&1);
+    eng.handle_vote_resp(2, VoteResponse::new(Vote::new(1, 1), Some(log_id(0, 0, 0)), true));
+    eng.output.take_commands();
+
+    eng.elect_at_least(5);
+
+    assert!(eng.leader.is_none(), "old leadership is left");
+    assert_eq!(Vote::new(5, 1), *eng.state.vote_ref());
+    assert_eq!(Vote::new(5, 1), *eng.candidate_ref().unwrap().vote_ref());
+    assert_eq!(ServerState::Candidate, eng.state.server_state);
+    assert_eq!(
+        vec![
+            Command::CloseReplicationStreams,
+            Command::SaveVote { vote: Vote::new(5, 1) },
+            Command::SendVote {
+                vote_req: VoteRequest::new(Vote::new(5, 1), Some(log_id(1, 1, 1))),
+            },
+        ],
+        eng.output.take_commands()
+    );
 
     Ok(())
 }

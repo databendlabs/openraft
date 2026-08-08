@@ -1807,6 +1807,14 @@ where
                     }
                 }
             }
+            ExternalCommand::ElectAtLeast { min_term } => {
+                if self.engine.state.membership_state.effective().is_voter(&self.id) {
+                    self.engine.elect_at_least(min_term);
+                    tracing::debug!(%min_term, "ExternalCommand: triggered election with minimum term");
+                } else {
+                    // Node is switched to learner.
+                }
+            }
             ExternalCommand::Heartbeat => {
                 self.send_heartbeat("ExternalCommand");
             }

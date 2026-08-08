@@ -891,11 +891,19 @@ let last = snapshot.meta.last_log_id.clone().unwrap();
 // The exact committed vote of the leader that proposed `last`.
 let leader = last.committed_leader_id();
 let vote = Vote::new_committed(leader.term(), leader.node_id().clone());
+let next_term = leader.term().next();
 
 raft.install_full_snapshot(vote, snapshot).await?;
 
-// Become leader in the next term and continue as a new cluster lineage.
-raft.trigger().elect(false).await?;
+// Leave the historical leadership and continue as a new cluster lineage.
+raft.trigger().elect_at_least(next_term).await?;
+```
+
+The election floor also permits applications that associate external state
+with Raft terms to advance beyond every term used by the previous lineage:
+
+```rust,ignore
+raft.trigger().elect_at_least(highest_external_term.next()).await?;
 ```
 
 With [`leader_id_std`][] mode, the committed leader id keeps only the term,
@@ -1069,5 +1077,4 @@ return [`Unreachable`][] error instead of [`NetworkError`][]. Openraft backs off
 [`RaftNetworkV2`]: `crate::network::RaftNetworkV2`
 [`Unreachable`]: `crate::error::Unreachable`
 [`NetworkError`]: `crate::error::NetworkError`
-
 
