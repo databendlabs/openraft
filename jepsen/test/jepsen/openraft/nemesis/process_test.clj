@@ -103,10 +103,13 @@
                             {:type :info
                              :f :kill-process
                              :value :leader-survives})))
-      (nemesis/invoke! subject test {:type :info :f :restart-process})
-      (is (= [[:kill ["n2" "n3"]]
-              [:start ["n2" "n3"]]]
-             (mapv (juxt :f :value) @invocations))))))
+      (let [restarted (nemesis/invoke! subject
+                                       test
+                                       {:type :info :f :restart-process})]
+        (is (= ["n2" "n3"] (get-in restarted [:value :nodes])))
+        (is (= [[:kill ["n2" "n3"]]
+                [:start ["n2" "n3"]]]
+               (mapv (juxt :f :value) @invocations)))))))
 
 (deftest records-pause-recovery-history
   (let [invocations (atom [])
