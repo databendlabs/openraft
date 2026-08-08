@@ -56,14 +56,18 @@ jepsen/
     node.Dockerfile.dockerignore
     init-ssh-key.sh
   src/jepsen/openraft/
+    checker.clj
     cli.clj
     client.clj
     db.clj
     cluster.clj
+    interruption.clj
+    nemesis.clj
     nemesis/
       membership.clj
       partition.clj
       process.clj
+    quorum.clj
     workload.clj
 ```
 
@@ -74,13 +78,17 @@ made there without increasing the complexity of the general-purpose example.
 
 The `jepsen.openraft` namespace contains the OpenRaft-specific Jepsen code:
 
+- `checker.clj`: run metadata, unhandled exception, and node log checkers.
 - `cli.clj`: command-line entry point.
 - `client.clj`: HTTP client for the OpenRaft KV example APIs.
 - `db.clj`: Jepsen DB lifecycle for starting and stopping OpenRaft nodes.
 - `cluster.clj`: cluster bootstrap helpers.
+- `interruption.clj`: shared thread-interruption classification.
+- `nemesis.clj`: fault scheduling, composition, and final recovery.
 - `nemesis/membership.clj`: membership growth, shrink, and final restoration.
 - `nemesis/partition.clj`: leader-aware network partition faults and recovery.
 - `nemesis/process.clj`: quorum-safe process kill/restart and pause/resume faults.
+- `quorum.clj`: stable and joint-consensus quorum calculations.
 - `workload.clj`: generators and checkers for client operations.
 
 ## Running
