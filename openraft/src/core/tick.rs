@@ -102,6 +102,12 @@ where C: RaftTypeConfig
         let period = self.period;
         let mut delay = self.first_wait;
 
+        let wall_start = std::time::Instant::now();
+        eprintln!(
+            "[tick] start: first_wait={:?}, period={:?}",
+            self.first_wait, period
+        );
+
         loop {
             let at = C::now() + delay;
             let sleep_fut = std::pin::pin!(C::sleep_until(at));
@@ -116,6 +122,12 @@ where C: RaftTypeConfig
                     // sleep done
                 }
             }
+
+            eprintln!(
+                "[tick] fired i={}: wall={:?}",
+                i + 1,
+                wall_start.elapsed()
+            );
 
             delay = period;
 
@@ -297,6 +309,32 @@ mod tests {
             counts.iter().all(|count| count.abs_diff(SAMPLES_PER_BUCKET) <= MAX_DEVIATION),
             "each bucket must be within 10% of the expected count {SAMPLES_PER_BUCKET}: {counts:?}"
         );
+
+        // Spawn 5 real Tick instances to confirm subsequent ticks stay spread.
+        // The eprintln! in tick_loop prints wall-clock elapsed for each fire.
+        // If phases collapse, all 5 instances will show the same elapsed times.
+        #[cfg(not(feature = "singlethreaded"))]
+        {
+            let mut runtime = TokioRuntime::new(2);
+            runtime.block_on(async {
+                eprintln!("\n--- 20 ticks, period=20ms, 50 iterations each ---");
+
+                let mut handles = Vec::new();
+                for _ in 0..20 {
+                    handles.push(TickUTConfig::spawn(async {
+                        let (tx, mut rx) = TickUTConfig::mpsc(1024);
+                        let _th = Tick::<TickUTConfig>::spawn(Duration::from_millis(20), tx, true);
+                        for _ in 0..200 {
+                            recv_tick::<TickUTConfig>(&mut rx).await;
+                            TickUTConfig::yield_now().await;
+                        }
+                    }));
+                }
+                for h in handles {
+                    let _ = h.await;
+                }
+            });
+        }
     }
 
     /// Receive the next notification, asserting it is a tick, and return its number.
@@ -363,5 +401,7 @@ mod tests {
             th.shutdown().unwrap().await.unwrap();
             assert!(rx.recv().await.is_none(), "the channel must close after shutdown");
         });
+
     }
+
 }
