@@ -111,6 +111,43 @@
                 [:start ["n2" "n3"]]]
                (mapv (juxt :f :value) @invocations)))))))
 
+(deftest rejects-a-pause-after-a-pause-error
+  (let [invocations (atom [])
+        delegate (reify nemesis/Nemesis
+                   (setup! [this _test]
+                     this)
+                   (invoke! [_ _test op]
+                     (swap! invocations conj [(:f op) (:value op)])
+                     (when (= :pause (:f op))
+                       (throw (ex-info "pause failed" {})))
+                     op)
+                   (teardown! [this _test]
+                     this))
+        subject (process/->PauseNemesis delegate (atom nil))
+        test {:nodes ["n1" "n2" "n3"]}
+        status {:leader "n1"
+                :metrics (zipmap (:nodes test) (repeat {}))}]
+    (with-redefs [cluster/membership-status (fn [_test] status)
+                  cluster/voter-configs (fn [_test _status]
+                                          [(set (:nodes test))])]
+      (is (thrown-with-msg?
+           clojure.lang.ExceptionInfo
+           #"pause failed"
+           (nemesis/invoke! subject test {:type :info
+                                          :f :pause-process
+                                          :value :leader-paused})))
+      (is (thrown-with-msg?
+           clojure.lang.ExceptionInfo
+           #"Processes are already paused"
+           (nemesis/invoke! subject test {:type :info
+                                          :f :pause-process
+                                          :value :leader-unpaused})))
+      (is (= [[:pause ["n1"]]] @invocations))
+      (let [resumed (nemesis/invoke! subject
+                                     test
+                                     {:type :info :f :resume-process})]
+        (is (= ["n1"] (get-in resumed [:value :paused :nodes])))))))
+
 (deftest records-pause-recovery-history
   (let [invocations (atom [])
         delegate (recording-nemesis invocations)
