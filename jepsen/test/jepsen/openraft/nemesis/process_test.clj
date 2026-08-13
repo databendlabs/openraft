@@ -20,6 +20,18 @@
     (teardown! [this _test]
       this)))
 
+(defn- failing-nemesis [invocations failing-f error]
+  (reify nemesis/Nemesis
+    (setup! [this _test]
+      this)
+    (invoke! [_ _test op]
+      (swap! invocations conj op)
+      (when (= failing-f (:f op))
+        (throw error))
+      op)
+    (teardown! [this _test]
+      this)))
+
 (defn- failing-resume-nemesis [events error]
   (reify nemesis/Nemesis
     (setup! [this _test]
@@ -76,16 +88,9 @@
 
 (deftest restarts-all-planned-processes-after-a-kill-error
   (let [invocations (atom [])
-        delegate (reify nemesis/Nemesis
-                   (setup! [this _test]
-                     this)
-                   (invoke! [_ _test op]
-                     (swap! invocations conj op)
-                     (when (= :kill (:f op))
-                       (throw (ex-info "kill failed" {})))
-                     op)
-                   (teardown! [this _test]
-                     this))
+        delegate (failing-nemesis invocations
+                                  :kill
+                                  (ex-info "kill failed" {}))
         subject (process/->ProcessNemesis delegate (atom nil))
         test {:nodes voters}
         planned #{"n2" "n3"}
@@ -113,16 +118,9 @@
 
 (deftest rejects-a-pause-after-a-pause-error
   (let [invocations (atom [])
-        delegate (reify nemesis/Nemesis
-                   (setup! [this _test]
-                     this)
-                   (invoke! [_ _test op]
-                     (swap! invocations conj [(:f op) (:value op)])
-                     (when (= :pause (:f op))
-                       (throw (ex-info "pause failed" {})))
-                     op)
-                   (teardown! [this _test]
-                     this))
+        delegate (failing-nemesis invocations
+                                  :pause
+                                  (ex-info "pause failed" {}))
         subject (process/->PauseNemesis delegate (atom nil))
         test {:nodes ["n1" "n2" "n3"]}
         status {:leader "n1"
@@ -142,11 +140,17 @@
            (nemesis/invoke! subject test {:type :info
                                           :f :pause-process
                                           :value :leader-unpaused})))
-      (is (= [[:pause ["n1"]]] @invocations))
+      (is (= [[:pause ["n1"]]]
+             (mapv (juxt :f :value) @invocations)))
       (let [resumed (nemesis/invoke! subject
                                      test
                                      {:type :info :f :resume-process})]
-        (is (= ["n1"] (get-in resumed [:value :paused :nodes])))))))
+        (is (= {:mode :leader-paused
+                :leader "n1"
+                :nodes ["n1"]
+                :voter-configs [#{"n1" "n2" "n3"}]
+                :survivors ["n2" "n3"]}
+               (get-in resumed [:value :paused])))))))
 
 (deftest records-pause-recovery-history
   (let [invocations (atom [])
