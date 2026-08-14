@@ -6,6 +6,7 @@ use openraft_macros::since;
 use crate::AppData;
 use crate::EntryPayload;
 use crate::Membership;
+use crate::MembershipMetadata;
 use crate::base::OptionalFeatures;
 use crate::base::finalized::Final;
 use crate::entry::RaftPayload;
@@ -22,7 +23,7 @@ use crate::vote::RaftCommittedLeaderId;
 pub trait RaftEntry
 where
     Self: OptionalFeatures + Debug + Display,
-    Self: RaftPayload<Self::NodeId, Self::Node>,
+    Self: RaftPayload<Self::NodeId, Self::Node, Self::MembershipMetadata>,
 {
     /// The committed leader ID type used in log IDs.
     #[since(version = "0.10.0")]
@@ -40,9 +41,16 @@ where
     #[since(version = "0.10.0")]
     type Node: Node;
 
+    /// Application-defined metadata attached to a membership configuration as a whole.
+    #[since(version = "0.10.0")]
+    type MembershipMetadata: MembershipMetadata;
+
     /// Create a new log entry with log id and payload of application data or membership config.
     #[since(version = "0.10.0")]
-    fn new(log_id: LogId<Self::CommittedLeaderId>, payload: EntryPayload<Self::D, Self::NodeId, Self::Node>) -> Self;
+    fn new(
+        log_id: LogId<Self::CommittedLeaderId>,
+        payload: EntryPayload<Self::D, Self::NodeId, Self::Node, Self::MembershipMetadata>,
+    ) -> Self;
 
     /// Returns references to the components of this entry's log ID: the committed leader ID and
     /// index.
@@ -79,7 +87,10 @@ where
     ///
     /// The returned instance must return `Some()` for `Self::get_membership()`.
     #[since(version = "0.10.0", change = "become a default method")]
-    fn new_membership(log_id: LogId<Self::CommittedLeaderId>, m: Membership<Self::NodeId, Self::Node>) -> Self
+    fn new_membership(
+        log_id: LogId<Self::CommittedLeaderId>,
+        m: Membership<Self::NodeId, Self::Node, Self::MembershipMetadata>,
+    ) -> Self
     where Self: Final + Sized {
         Self::new(log_id, EntryPayload::Membership(m))
     }

@@ -3,6 +3,7 @@ use std::fmt;
 use display_more::DisplayOptionExt;
 use openraft_macros::since;
 
+use crate::MembershipMetadata;
 use crate::StoredMembership;
 use crate::log_id::LogId;
 use crate::node::Node;
@@ -32,6 +33,7 @@ use crate::vote::RaftCommittedLeaderId;
 /// So the slot is reserved rather than removed. This type serializes as three fields, the third
 /// being an always-empty `snapshot_id`, and ignores that field when reading. 0.9 and 0.10 data are
 /// therefore interchangeable in both directions, under named and positional formats alike.
+#[since(version = "0.10.0", change = "added membership-wide metadata type `M`")]
 #[since(version = "0.10.0", change = "removed `snapshot_id`")]
 #[since(
     version = "0.10.0",
@@ -41,19 +43,20 @@ use crate::vote::RaftCommittedLeaderId;
 #[cfg_attr(
     feature = "serde",
     derive(serde::Deserialize),
-    serde(bound = "", from = "SnapshotMetaWire<CLID, NID, N>")
+    serde(bound = "", from = "SnapshotMetaWire<CLID, NID, N, M>")
 )]
-pub struct SnapshotMeta<CLID, NID, N>
+pub struct SnapshotMeta<CLID, NID, N, M = ()>
 where
     CLID: RaftCommittedLeaderId,
     NID: NodeId,
     N: Node,
+    M: MembershipMetadata,
 {
     /// Log entries up to which this snapshot includes, inclusive.
     pub last_log_id: Option<LogId<CLID>>,
 
     /// The last applied membership config.
-    pub last_membership: StoredMembership<CLID, NID, N>,
+    pub last_membership: StoredMembership<CLID, NID, N, M>,
 }
 
 /// The serialized layout of [`SnapshotMeta`], which still carries the 0.9 `snapshot_id` slot.
@@ -62,15 +65,16 @@ where
 #[cfg(feature = "serde")]
 #[derive(serde::Deserialize)]
 #[serde(bound = "")]
-struct SnapshotMetaWire<CLID, NID, N>
+struct SnapshotMetaWire<CLID, NID, N, M>
 where
     CLID: RaftCommittedLeaderId,
     NID: NodeId,
     N: Node,
+    M: MembershipMetadata,
 {
     last_log_id: Option<LogId<CLID>>,
 
-    last_membership: StoredMembership<CLID, NID, N>,
+    last_membership: StoredMembership<CLID, NID, N, M>,
 
     /// Reserved. Cannot be [`serde::de::IgnoredAny`]: that requires `deserialize_any`, which a
     /// positional format cannot provide.
@@ -80,13 +84,14 @@ where
 }
 
 #[cfg(feature = "serde")]
-impl<CLID, NID, N> From<SnapshotMetaWire<CLID, NID, N>> for SnapshotMeta<CLID, NID, N>
+impl<CLID, NID, N, M> From<SnapshotMetaWire<CLID, NID, N, M>> for SnapshotMeta<CLID, NID, N, M>
 where
     CLID: RaftCommittedLeaderId,
     NID: NodeId,
     N: Node,
+    M: MembershipMetadata,
 {
-    fn from(wire: SnapshotMetaWire<CLID, NID, N>) -> Self {
+    fn from(wire: SnapshotMetaWire<CLID, NID, N, M>) -> Self {
         SnapshotMeta {
             last_log_id: wire.last_log_id,
             last_membership: wire.last_membership,
@@ -97,11 +102,12 @@ where
 /// Hand-written rather than `#[serde(into = "SnapshotMetaWire<CLID, NID, N>")]`, which would
 /// require `Self: Clone` and thus narrow this impl to `N: Clone`.
 #[cfg(feature = "serde")]
-impl<CLID, NID, N> serde::Serialize for SnapshotMeta<CLID, NID, N>
+impl<CLID, NID, N, M> serde::Serialize for SnapshotMeta<CLID, NID, N, M>
 where
     CLID: RaftCommittedLeaderId,
     NID: NodeId,
     N: Node,
+    M: MembershipMetadata,
 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where S: serde::Serializer {
@@ -116,11 +122,12 @@ where
     }
 }
 
-impl<CLID, NID, N> Default for SnapshotMeta<CLID, NID, N>
+impl<CLID, NID, N, M> Default for SnapshotMeta<CLID, NID, N, M>
 where
     CLID: RaftCommittedLeaderId,
     NID: NodeId,
     N: Node,
+    M: MembershipMetadata,
 {
     fn default() -> Self {
         Self {
@@ -130,11 +137,12 @@ where
     }
 }
 
-impl<CLID, NID, N> fmt::Display for SnapshotMeta<CLID, NID, N>
+impl<CLID, NID, N, M> fmt::Display for SnapshotMeta<CLID, NID, N, M>
 where
     CLID: RaftCommittedLeaderId,
     NID: NodeId,
     N: Node,
+    M: MembershipMetadata,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -146,11 +154,12 @@ where
     }
 }
 
-impl<CLID, NID, N> SnapshotMeta<CLID, NID, N>
+impl<CLID, NID, N, M> SnapshotMeta<CLID, NID, N, M>
 where
     CLID: RaftCommittedLeaderId,
     NID: NodeId,
     N: Node,
+    M: MembershipMetadata,
 {
     /// Get the signature of this snapshot metadata for comparison and identification.
     pub fn signature(&self) -> SnapshotSignature<CLID> {

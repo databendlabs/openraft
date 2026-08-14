@@ -473,7 +473,7 @@ where C: RaftTypeConfig
     /// The node ID that is not in the membership.
     pub node_id: C::NodeId,
     /// The current cluster membership.
-    pub membership: Membership<C::NodeId, C::Node>,
+    pub membership: Membership<C::NodeId, C::Node, C::MembershipMetadata>,
 }
 
 /// Error indicating an empty membership configuration was provided.

@@ -7,21 +7,24 @@ use openraft_macros::since;
 
 use crate::AppData;
 use crate::Membership;
+use crate::MembershipMetadata;
 use crate::node::Node;
 use crate::node::NodeId;
 
 /// Log entry payload variants.
+#[since(version = "0.10.0", change = "added membership-wide metadata type `M`")]
 #[since(
     version = "0.10.0",
     change = "from `EntryPayload<C: RaftTypeConfig>` to `EntryPayload<D, NID, N>`"
 )]
 #[derive(PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum EntryPayload<D, NID, N>
+pub enum EntryPayload<D, NID, N, M = ()>
 where
     D: AppData,
     NID: NodeId,
     N: Node,
+    M: MembershipMetadata,
 {
     /// An empty payload committed by a new cluster leader.
     Blank,
@@ -30,14 +33,15 @@ where
     Normal(D),
 
     /// A change-membership log entry.
-    Membership(Membership<NID, N>),
+    Membership(Membership<NID, N, M>),
 }
 
-impl<D, NID, N> Clone for EntryPayload<D, NID, N>
+impl<D, NID, N, M> Clone for EntryPayload<D, NID, N, M>
 where
     D: AppData + Clone,
     NID: NodeId,
     N: Node,
+    M: MembershipMetadata,
 {
     fn clone(&self) -> Self {
         match self {
@@ -48,11 +52,12 @@ where
     }
 }
 
-impl<D, NID, N> fmt::Debug for EntryPayload<D, NID, N>
+impl<D, NID, N, M> fmt::Debug for EntryPayload<D, NID, N, M>
 where
     D: AppData,
     NID: NodeId,
     N: Node,
+    M: MembershipMetadata,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -67,11 +72,12 @@ where
     }
 }
 
-impl<D, NID, N> fmt::Display for EntryPayload<D, NID, N>
+impl<D, NID, N, M> fmt::Display for EntryPayload<D, NID, N, M>
 where
     D: AppData,
     NID: NodeId,
     N: Node,
+    M: MembershipMetadata,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -86,11 +92,12 @@ where
     }
 }
 
-impl<D, NID, N> EntryPayload<D, NID, N>
+impl<D, NID, N, M> EntryPayload<D, NID, N, M>
 where
     D: AppData,
     NID: NodeId,
     N: Node,
+    M: MembershipMetadata,
 {
     pub fn type_str(&self) -> &'static str {
         match self {
@@ -101,13 +108,14 @@ where
     }
 }
 
-impl<D, NID, N> crate::entry::raft_payload::RaftPayload<NID, N> for EntryPayload<D, NID, N>
+impl<D, NID, N, M> crate::entry::raft_payload::RaftPayload<NID, N, M> for EntryPayload<D, NID, N, M>
 where
     D: AppData,
     NID: NodeId,
     N: Node,
+    M: MembershipMetadata,
 {
-    fn get_membership(&self) -> Option<Membership<NID, N>> {
+    fn get_membership(&self) -> Option<Membership<NID, N, M>> {
         if let EntryPayload::Membership(m) = self {
             Some(m.clone())
         } else {
@@ -136,7 +144,7 @@ mod tests {
         ));
         assert_eq!(
             format!("{:?}", membership),
-            "membership:Membership { configs: [{1, 2}], nodes: {1: (), 2: ()} }"
+            "membership:Membership { configs: [{1, 2}], nodes: {1: (), 2: ()}, metadata: () }"
         );
     }
 

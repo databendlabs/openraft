@@ -597,7 +597,7 @@ where
     #[tracing::instrument(level = "debug", skip(self, tx))]
     pub(super) fn change_membership(
         &mut self,
-        changes: ChangeMembers<C::NodeId, C::Node>,
+        changes: ChangeMembers<C::NodeId, C::Node, C::MembershipMetadata>,
         retain: bool,
         tx: ProgressResponder<C, ClientWriteResult<C>>,
     ) {
@@ -908,11 +908,12 @@ where
     pub(crate) fn handle_initialize(
         &mut self,
         member_nodes: BTreeMap<C::NodeId, C::Node>,
+        metadata: C::MembershipMetadata,
         tx: ResultSender<C, (), InitializeError<C>>,
     ) {
         tracing::debug!("{}: member_nodes: {:?}", func_name!(), member_nodes);
 
-        let membership = Membership::from(member_nodes);
+        let membership = Membership::<C::NodeId, C::Node>::from(member_nodes).with_metadata(metadata);
 
         let res = self.engine.initialize(membership);
 
@@ -1725,10 +1726,10 @@ where
                     proposed_at,
                 );
             }
-            RaftMsg::Initialize { members, tx } => {
+            RaftMsg::Initialize { members, metadata, tx } => {
                 tracing::info!("received RaftMsg::Initialize: {}, members: {:?}", func_name!(), members);
 
-                self.handle_initialize(members, tx);
+                self.handle_initialize(members, metadata, tx);
             }
             RaftMsg::ChangeMembership { changes, retain, tx } => {
                 tracing::info!(

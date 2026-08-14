@@ -15,6 +15,7 @@ pub use util::TypeConfigExt;
 
 use crate::AppData;
 use crate::AppDataResponse;
+use crate::MembershipMetadata;
 use crate::Node;
 use crate::NodeId;
 use crate::OptionalSend;
@@ -58,6 +59,7 @@ use crate::vote::raft_vote::RaftVote;
 ///         R                = ClientResponse,
 ///         NodeId           = u64,
 ///         Node             = openraft::impls::BasicNode,
+///         MembershipMetadata   = MyMembershipMetadata,
 ///         Term             = u64,
 ///         LeaderId         = openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>,
 ///         Vote             = openraft::impls::Vote<Self::LeaderId>,
@@ -96,6 +98,10 @@ pub trait RaftTypeConfig:
     /// Raft application level node data
     type Node: Node;
 
+    /// Application-defined metadata attached to a membership configuration as a whole.
+    #[since(version = "0.10.0")]
+    type MembershipMetadata: MembershipMetadata;
+
     /// Type representing a Raft term number.
     ///
     /// A term is a logical clock in Raft that is used to detect obsolete information,
@@ -128,6 +134,7 @@ pub trait RaftTypeConfig:
             D = Self::D,
             NodeId = Self::NodeId,
             Node = Self::Node,
+            MembershipMetadata = Self::MembershipMetadata,
         >;
 
     /// Asynchronous runtime type.
@@ -189,6 +196,7 @@ pub mod alias {
     pub type AppResponseOf<C> = <C as RaftTypeConfig>::R;
     pub type NodeIdOf<C> = <C as RaftTypeConfig>::NodeId;
     pub type NodeOf<C> = <C as RaftTypeConfig>::Node;
+    pub type MembershipMetadataOf<C> = <C as RaftTypeConfig>::MembershipMetadata;
     pub type TermOf<C> = <C as RaftTypeConfig>::Term;
     pub type LeaderIdOf<C> = <C as RaftTypeConfig>::LeaderId;
     pub type VoteOf<C> = <C as RaftTypeConfig>::Vote;
@@ -233,14 +241,19 @@ pub mod alias {
     pub type LogIdOf<C> = LogId<CommittedLeaderIdOf<C>>;
     pub type CommittedLeaderIdOf<C> = <LeaderIdOf<C> as RaftLeaderId>::Committed;
     pub(crate) type RefLogIdOf<'a, C> = crate::log_id::ref_log_id::RefLogId<'a, CommittedLeaderIdOf<C>>;
-    pub type EntryPayloadOf<C> = EntryPayload<DOf<C>, NodeIdOf<C>, NodeOf<C>>;
-    pub type DefaultEntryOf<C> = crate::Entry<CommittedLeaderIdOf<C>, DOf<C>, NodeIdOf<C>, NodeOf<C>>;
-    pub type StoredMembershipOf<C> = crate::StoredMembership<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>>;
+    pub type EntryPayloadOf<C> = EntryPayload<DOf<C>, NodeIdOf<C>, NodeOf<C>, MembershipMetadataOf<C>>;
+    pub type DefaultEntryOf<C> =
+        crate::Entry<CommittedLeaderIdOf<C>, DOf<C>, NodeIdOf<C>, NodeOf<C>, MembershipMetadataOf<C>>;
+    pub type StoredMembershipOf<C> =
+        crate::StoredMembership<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>, MembershipMetadataOf<C>>;
     pub type SnapshotSignatureOf<C> = crate::storage::SnapshotSignature<CommittedLeaderIdOf<C>>;
-    pub type SnapshotMetaOf<C> = crate::storage::SnapshotMeta<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>>;
-    pub type SnapshotOf<C, SD> = crate::storage::Snapshot<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>, SD>;
+    pub type SnapshotMetaOf<C> =
+        crate::storage::SnapshotMeta<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>, MembershipMetadataOf<C>>;
+    pub type SnapshotOf<C, SD> =
+        crate::storage::Snapshot<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>, SD, MembershipMetadataOf<C>>;
     pub type SmSnapshotOf<C, SM> = SnapshotOf<C, SnapshotDataOf<C, SM>>;
-    pub type MembershipStateOf<C> = crate::MembershipState<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>>;
+    pub type MembershipStateOf<C> =
+        crate::MembershipState<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>, MembershipMetadataOf<C>>;
     pub type ChangeMembershipErrorOf<C> = crate::errors::ChangeMembershipError<CommittedLeaderIdOf<C>, NodeIdOf<C>>;
     pub type InProgressOf<C> = crate::errors::InProgress<CommittedLeaderIdOf<C>>;
     pub type SerdeInstantOf<C> = crate::metrics::SerdeInstant<InstantOf<C>>;
