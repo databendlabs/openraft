@@ -1,0 +1,183 @@
+9413	databendlabs/databend	Data Agent Ready Warehouse : One for Analytics, Search, AI, Python Sandbox. — rebuilt from scratch. Unified architecture on your S3.
+2022	databendlabs/openraft	rust raft with improvements
+1772	robustmq/robustmq	Communication infrastructure for the AI era — one binary, one broker, one storage layer, any protocol
+1757	cnosdb/cnosdb	A cloud-native open source distributed time series database with high performance, high compression ratio and high availability.
+1503	mxsm/rocketmq-rust	🚀Apache RocketMQ build in Rust🦀. Faster, safer, and with lower memory usage. ⭐ Star to support our work❤️!
+1272	sebadob/rauthy	Single Sign-On Identity & Access Management via OpenID Connect, OAuth 2, PAM
+477	sebadob/hiqlite	Hiqlite - highly-available, embeddable, raft-based SQLite + cache
+254	renegade-fi/renegade	On-chain dark pool. MPC for anonymous crosses at midpoint prices.
+243	deven96/ahnlich	Suite of tools containing an in-memory vector datastore and AI proxy
+203	lanpishu6300/multiraft	Thin Multi-Raft library for matching HA (openraft + openraft-multi).
+172	danube-messaging/danube	Danube - Distributed Messaging Broker Platform
+170	cloudwalk/stratus	An EVM compatible ledger with a focus on performance and observability. Suited for in house use.
+114	nambok/mentedb	A cognition aware database engine for AI agent memory. Purpose built in Rust with WAL, HNSW, knowledge graphs, and speculative context pre assembly. Not a wrapper, a ground up storage engine that thinks.
+107	ROCm/spur	spur your compute
+59	robustmq/robustmq-geek	
+58	arana-db/kiwi	a high-performance, large-capacity, multi-tenant, data-persistent, strong data consistency based on raft, Redis-compatible elastic KV data storage system based on RocksDB
+54	prisma-risk/tsoracle	Distributed timestamp & sequence oracle for Rust — strictly monotonic timestamps and gapless, dense ID sequences over gRPC, replicated with pluggable consensus.
+49	kalamdb/KalamDB	KalamDB — a lightweight, real-time, storage-efficient SQL database. Designed for per-user data isolation and scalable performance — ideal for the AI era.
+47	getong/rust_example	
+39	svix/diom	💎 Diom - components platform for robust services
+37	openstack-experimental/keystone	OpenStack Keystone in Rust
+31	bit2swaz/engram	a distributed memory and retrieval system for autonomous entities :)
+30	rjwalters/vibesql	Vibe-coded NIST compatible database in Rust
+27	hivellm/vectorizer	A high-performance, in-memory vector database written in Rust, designed for semantic search and top-k nearest neighbor queries in AI-driven applications, with binary file persistence for durability.
+26	kacy/ember	Ember is a low-latency, memory-efficient, distributed cache written in Rust. A drop-in redis replacement with a small, elegant codebase. Protobuf storage, encryption at rest, prometheus, raft consensus, and swim gossip all built in
+23	buckyos/buckyos	BuckyOS is an open-source Personal AI OS for building your own distributed private cloud. It turns your devices into a secure Zone where apps, data, services, and AI agents run under your control—local-first, privacy-first, and ready for the next generation of AI-native applications.
+21	yuyang0/rrqlite	
+18	HaHa421/rxqlite	Distributed SQLite
+18	varshith-Git/Valori-Kernel	Valori is a Deterministic Memory OS that sits between intelligence (LLMs) and reality (devices, products, decisions).
+15	matter-labs/zksync-os-server	New server implementation for zksync-os
+10	OmniCloudOrg/OmniCloud-Full	
+9	brittonr/aspen	hybrid-consensus distributed systems framework in Rust built on Iroh, using local-first Raft coordination with eventual peer-to-peer convergence and federated cluster replication.
+9	ferrosadb/ferrosa	Cassandra-compatible distributed database in Rust with S3-backed storage. Developer preview.
+8	fenquen/graph	a RDBMS flavored graph database under developing made by bare hand for studying
+8	slow2342/aether	A lightweight, high-performance distributed coordination system built in Rust
+7	dgate-io/dgate-api	Function Native API Gateway
+7	frogdb/frogdb	Fully Redis 8.x compatible database complete with replication, clustering, persistance, and hot/warm tiering.
+7	hyperiondb/hyperiondb	Easily scalable global Postgres
+6	structured-world/coordinode	The graph-native hybrid retrieval engine for AI and GraphRAG. Graph + Vector + Full-Text in a single transactional engine.
+5	404-Repo/gateway-rs	
+5	ApiliumCode/aingle	The verifiable memory cortex for AI agents: a semantic graph and vector search with zero-knowledge provenance.
+5	ferres-db/ferres-db	
+5	proven-network/proven-node	Proven is a novel TEE-based platform designed to complement blockchains
+5	sunormesky-max/TetraMem-XL-v12	TetraMem-XL v12.0 — 7D Dark Universe Memory System | 19 modules | 227 tests | strict energy conservation
+4	George-Miao/UpGrid	Distributed uptime monitoring that stays available with your infrastructure.
+4	SSL-ACTX/chronos-db	An experimental distributed database built in Rust. It uniquely combines Vector Similarity Search (for AI applications) with Bi-Temporal Data Management (Time Travel) and Distributed Consensus (Raft).
+4	vijayanant/Confer	Building Confer - a platform for building consistent and fault tolerant distributed applications.
+4	wsrer/rs-openraft-kv	ntex + openraft + volo-thrift + sled
+3	NethermindEth/tee-kms	Distributed TEE-Based Key Management Service
+3	Xuanwo/databend	An elastic and reliable Serverless Data Warehouse, offers Blazing Fast Query and combines Elasticity, Simplicity, Low cost of the Cloud, built to make the Data Cloud easy
+3	decodeRing-core/dcdr	decodeRing Server & CLI
+3	drmingdrmer/openraft	An implementation of the Raft distributed consensus protocol using the Tokio framework.
+3	dywongcloud/shadow	a sorta open source (Open BSL) local first, serverless private/public cloud/edge compute implementation of vercel's underlying platform and infrastructure including fluid compute using microVMs
+3	houseme/openraft-surrealkv	A distributed key-value project built with OpenRaft and SurrealKV.
+3	inferadb/control	InferaDB control plane — multi-tenant administration with WebAuthn
+3	protojour/authly	Digital Identity Platform
+3	visorcraft/MongrelDB	A fast embedded+server columnar database with SQL, vector search, full-text search, and AI-native retrieval. Dozens of languages supported. Written in Rust.
+3	wubx/databend	Modern Real-Time Data Processing & Analytics DBMS with Cloud-Native Architecture, written in Rust
+2	OmniCloudOrg/Lodestone	A rust-based service discovery, and registry with a built in load balancer and proxy
+2	OpenRTMP/librtmp2-server	Open-source Rust RTMP/RTMPS media server for OBS and FFmpeg with stream-key auth, live stats, REST API, SQLite and Docker support.
+2	ZerosAndOnesLLC/rAMQP	Async AMQP 1.0 client for Rust on Tokio — RabbitMQ 4.x, ActiveMQ Artemis & other AMQP 1.0 brokers. Zero-copy framing, transparent reconnect, TLS (custom CA + mTLS), WebSocket, SASL/SCRAM. #![forbid(unsafe_code)]. MIT.
+2	achref-soua/quiver	Security-first, memory-frugal vector database in Rust with a retro terminal cockpit.
+2	incredlabs/ormdb	The database that speaks ORM natively.
+2	inferadb/engine	The Authorization Database. High-performance, fine-grained access control at scale.
+2	jeffmoss/disco	A lightweight cluster orchestration daemon implementing the Raft protocol
+2	mesquitte/mesquitte	
+2	mojtaba-motevali/idempotent-transformer	This project is a library that transforms a given block of code into an idempotent function that works within distributed systems.
+2	pawissanutt/oaas-rs	
+2	ratoru/distrib-kv-store	Distributed key-value store with sharding and fault tolerance.
+2	seanwevans/an-ki	Distributed neural network project built with Rust that supports task scheduling, load balancing, and fault tolerance across a network of nodes. It leverages asynchronous operations, leader election, and health monitoring to ensure high availability and scalability for secure inter-node communication.
+2	seraphico/pg-ha	PostgreSQL High Availability with built-in Raft consensus and load balancing.
+2	xudong963/databend	A modern Elasticity and Performance Cloud Data Warehouse, activate your object storage for big data analytics.
+1	ANT0071/databend	𝗔𝗜-𝗡𝗮𝘁𝗶𝘃𝗲 𝗗𝗮𝘁𝗮 𝗪𝗮𝗿𝗲𝗵𝗼𝘂𝘀𝗲. Open-source Snowflake alternative. Proven at petabyte scale with enterprise performance. Built for multimodal analytics. https://databend.com
+1	DASTOVEK/databend	𝗔𝗜-𝗡𝗮𝘁𝗶𝘃𝗲 𝗗𝗮𝘁𝗮 𝗪𝗮𝗿𝗲𝗵𝗼𝘂𝘀𝗲. Open-source Snowflake alternative. Proven at petabyte scale with enterprise performance. Built for multimodal analytics. https://databend.com
+1	Konstantin-Sh/PassMgrPrototype	Yet Another Password Manager with raft consensus on the server side
+1	NethermindEth/tee-guardian	Distributed Key-Management & Identity service for Confidential Computing
+1	PsiACE/databend	A Modern Real-Time Data Processing & Analytics DBMS with Cloud-Native Architecture, written in Rust
+1	ZhiHanZ/databend	An elastic and reliable Cloud Warehouse, offers Blazing Fast Query and combines Elasticity, Simplicity, Low cost of the Cloud, built to make the Data Cloud easy
+1	aaronwu667/RepQueue-RSS	
+1	allamiro/vtop-engine	Verified Telemetry Object Protocol Engine — a replay-safe, manifest-driven telemetry object transfer engine: Kafka / file / syslog → S3-compatible object storage with verification-before-commit, bound manifests, and crash-safe replay.
+1	antonhagser/pulsedb	An in-memory distributed database with volatile data storage
+1	bwalia/nebuladb	
+1	croit/keepAfloatD	keepAfloatD uses RAFT consensus to provide high availability for virtual IPs. Unlike classic active/passive failover, it supports multi-active clusters where multiple nodes simultaneously host services and IPs, automatically maintaining quorum and failover across the cluster.
+1	danthegoodman1/learningRust	
+1	dmitryro/graphdb-rs	Open-source graph engine for healthcare and analytics | Rust | RocksDB | Sled | FHIR | Decision Support
+1	dotindustries/warpgrid	an experiment
+1	evotech-bg/royak	A swarm of containers. One tiny binary. Container orchestrator in ~5 MB of Rust — deployments, rolling updates, services, RBAC, kubectl compatible. Public beta.
+1	inferadb/ledger	InferaDB Ledger — distributed database purpose-built for authorization.
+1	louloulin/actix-pura	基于actix实现分布式actor
+1	matter-labs/zksync-os-integration-tests	Integration tests for zksync-os
+1	moolen/neuwerk-rs	🛡️ Cloud Native Egress Firewall
+1	reliaburger/reliaburger	The Batteries-Included Container Orchestrator
+1	schreter/openraft	rust raft with improvements
+1	tediou5/im-gateway	
+1	wsrer/rs-openraft-s3	
+1	yufan022/databend	A Modern Real-Time Data Processing & Analytics DBMS with Cloud-Native Architecture, written in Rust
+0	Aarogaming/aaroneous	Aaroneous - Synth DNA Agentic Tech: Federated specialist hive with autonomous learning, distributed consensus, and adaptive intelligence
+0	Abinandhini-cpu/RobustRust	
+0	Bisque-IO/bop	
+0	Cameron-Lyons/rdfs	
+0	ClSlaid/databend	An elastic and reliable Serverless Data Warehouse, offers Blazing Fast Query and combines Elasticity, Simplicity, Low cost of the Cloud, built to make the Data Cloud easy
+0	CyberFlameGO/databend	An elastic and reliable Serverless Data Warehouse, offers Blazing Fast Query and combines Elasticity, Simplicity, Low cost of the Cloud, built to make the Data Cloud easy
+0	JonathanMcCormickJr/infovulcan	
+0	Leozki/databend	An elastic and reliable Serverless Data Warehouse, offers Blazing Fast Query and combines Elasticity, Simplicity, Low cost of the Cloud, built to make the Data Cloud easy
+0	Lum0s-Solutions/CoM-Syn_OS-Public	Temporary mirror of the Church of Malware / Syn_OS community source (churchofmalware ISO — build your own: just iso churchofmalware). Master-only capabilities excluded.
+0	Ma233/databend	An elastic and reliable Serverless Data Warehouse, offers Blazing Fast Query and combines Elasticity, Simplicity, Low cost of the Cloud, built to make the Data Cloud easy
+0	Rmulorm/openraft-compaction-styles-tests	
+0	RustWorks/databend-poem	An elastic and reliable Serverless Data Warehouse, offers Blazing Fast Query and combines Elasticity, Simplicity, Low cost of the Cloud, built to make the Data Cloud easy
+0	SINHASantos/databend	A modern Elasticity and Performance cloud data warehouse, activate your object storage for sub-second analytics.
+0	ShabbirHasan1/databend	An elastic and reliable Cloud Warehouse, offers Blazing Fast Query and combines Elasticity, Simplicity, Low cost of the Cloud, built to make the Data Cloud easy
+0	TCeason/datafuse	Datafuse is a free Cloud-Native Analytics DBMS(Inspired by ClickHouse) implemented in Rust
+0	TihayaKousaka/rosDB	
+0	TongkunZhang/cdb-mw	
+0	Xuanwo/databend-cola	
+0	Xuanwo/openraft	rust raft with improvements
+0	YangKian/openraft	rust raft with improvements
+0	all-is-to-be-dared/orrery	Distributed Deterministic NoSQL Database
+0	anacronic-io/stract	web search done right
+0	ariesdevil/openraft	rust raft with improvements
+0	artorias1024/databend	A modern Elasticity and Performance cloud data warehouse, activate your object storage for sub-second analytics.
+0	b41sh/databend	A modern Elasticity and Performance cloud data warehouse, activate your object storage for real-time analytics. Cloud at https://app.databend.com/
+0	cacafuty/all4one	
+0	codacy-open-source-projects-scans/databend	This is frozen/no-commits mirror of the https://github.com/datafuselabs/databend
+0	codeironman/Key-Value-Database	
+0	dbowm91/synvoid	Distributed WAF built in rust
+0	drmingdrmer/databend	FuseQuery is a real-time Cloud Distributed Query Engine(Inspired by ClickHouse) at scale
+0	drmingdrmer/tmpl-rs	repo template for rust
+0	earth-sol/robustmq	RobustMQ is a next-generation, high-performance, cloud-native, converged message queue that is compatible with multiple mainstream message queuing protocols and has complete Serveless capabilities.
+0	egoavara/overlay-mcp	
+0	egolessengineer/renegade_pool	
+0	eliasyaoyc/openraft	rust raft with improvements
+0	everpcpc/databend	An elastic and reliable Serverless Data Warehouse, offers Blazing Fast Query and combines Elasticity, Simplicity, Low cost of the Cloud, built to make the Data Cloud easy
+0	getong/databend	A Modern Real-Time Data Processing & Analytics DBMS with Cloud-Native Architecture, written in Rust
+0	hearth-auth/hearth	Identity database
+0	hunjixin/raft-kv	
+0	ibaryshnikov/raft-example	An example of using raft
+0	ideal-world/asteroid-mq	
+0	jdcasale/url-shortener	
+0	jeremyhahn/go-quicraft	High performance multi-group raft engine over HTTP/3 Quic transport
+0	keirsalterego/raftkit-mini	a minimal raft kv store — openraft + sled + lease-based reads. built as a proof of concept for gsoc 2026 dora-rs project #3.
+0	leiysky/databend	FuseQuery is a Distributed SQL Query Engine at scale
+0	lichuang/openraft	rust raft with improvements
+0	liikeuforever/cnosdb	A cloud-native open source distributed time series database with high performance, high compression ratio and high availability. http://www.cnosdb.cloud
+0	linyihai/databend	An elastic and reliable Serverless Data Warehouse, offers Blazing Fast Query and combines Elasticity, Simplicity, Low cost of the Cloud, built to make the Data Cloud easy
+0	maackle/p2p-raft	Raft consensus for P2P apps
+0	mapbased/openraft	rust raft with improvements
+0	mfrw/kvs	
+0	misselvexu/mixmicro-databend	A modern Elasticity and Performance cloud data warehouse, activate your object storage for sub-second analytics.
+0	mrchypark/rhiza	
+0	mrchypark/velorix	The database that lives in object storage.
+0	nange/databend	An elastic and reliable Serverless Data Warehouse, offers Blazing Fast Query and combines Elasticity, Simplicity, Low cost of the Cloud, built to make the Data Cloud easy
+0	nomlab/aizumi	
+0	nu1lspaxe/kv-store	
+0	ockhamlabsinc/indexify	A realtime and indexing and structured extraction engine for Unstructured Data to build Generative AI Applications
+0	ockhamlabsinc/indexify1	A realtime and indexing and structured extraction engine for Unstructured Data to build Generative AI Applications
+0	openraftlabs/openraft	rust raft with improvements
+0	pleme-io/caixa	tatara-lisp package ecosystem: CLI (feira), operator, Helm, GitOps
+0	pleme-io/engenho	Typed, attested, Rust-native Kubernetes runtime — engine that runs the land (terreno). Single-binary, wire-compatible with kubectl/CRI/CNI/etcd-v3; resource catalog generated from upstream OpenAPI v3. Pillar 7 runtime; sibling to magma. Bootstrap cluster — rio homelab. Spec — theory/ENGENHO.md.
+0	pleme-io/nami-core	Shared browser core — HTML parsing, CSS cascade, layout, DOM, content blocking, bookmarks, history
+0	pleme-io/tatara	tatara — Nix-native workload orchestrator
+0	powdrr-io/powdrr-engine	
+0	psykomal/kvrs	
+0	rhanka/opendb	OpenDB Rust database engine
+0	robot-head/crabgresql	Rust Postgres
+0	rust-benchmark1/stract	
+0	sahil2832005/MiceDB-v1	A lightweight, distributed database system built with Rust and managed with Turborepo
+0	sajjadanwar0/sbus	
+0	sarvex/databend	A powerful cloud data warehouse. Built for elasticity and efficiency. Open source alternative to Snowflake. Also available in the cloud: https://app.databend.com
+0	semtexzv/movable	
+0	silenecapensis/libslinkynet	A Novel Construction of a Peer-2-Peer Decentralized Network For An Opennet/Darknet With Many Features.
+0	snowdamiz/mesh-lang	Expressive, readable concurrency. Elixir-style syntax. Static type inference. Native single binaries.
+0	structured-world/coordinode-python	Python SDK + LangChain GraphStore & LlamaIndex PropertyGraphStore for CoordiNode — AI-native graph + vector + full-text database
+0	tommasoprandin/platoon	
+0	unrouted/disty	
+0	visorcraft/MongrelDB-Kit	MongrelDB Kit is the application-facing persistence layer for MongrelDB, giving TypeScript, Rust, and Python apps a schema-aware query builder, migrations, and relational constraints. Use it to build durable application data models on MongrelDB with consistent behavior across languages.
+0	witlox/hpc-core	Core crates for shared hpc components (raft quorum, scheduler, auth, etc.) for pact and lattice
+0	wuchunfu/databend	An elastic and reliable Serverless Data Warehouse, offers Blazing Fast Query and combines Elasticity, Simplicity, Low cost of the Cloud, built to make the Data Cloud easy
+0	x0VIER/xai-systems-engineer-showcase	A comprehensive demonstration of systems engineering expertise through three interconnected Rust-based tools designed for security, reliability, and observability.
+0	xiaoyuz/mapuche	
+0	yeheng/conflux	
+0	yoreai/aresadb	
+0	youngsofun/databend	An elastic and reliable Cloud Data Warehouse, offers Blazing Fast Query and combines Elasticity, Simplicity, Low cost of the Cloud, built to make the Data Cloud easy
+0	zhyass/databend	An elastic and reliable Cloud Data Warehouse, offers Blazing Fast Query and combines Elasticity, Simplicity, Low cost of the Cloud, built to make the Data Cloud easy
