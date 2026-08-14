@@ -65,6 +65,7 @@ impl RaftTypeConfig for TypeConfig {
     type R = ClientResponse;
     type NodeId = u64;
     type Node = ();
+    type MembershipMetadata = ();
     type Term = u64;
     type LeaderId = LeaderId;
     type Vote = Vote<Self::LeaderId>;
