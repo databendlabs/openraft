@@ -10,12 +10,10 @@ compile:
 # Read-only completion gate: it never writes to the worktree, so a
 # human-reviewed diff stays exactly as reviewed. `make fix` is the mutating
 # counterpart.
-verify: fmt_check clippy
+verify: fmt_check clippy docs-check
 	cargo test --lib
 	cargo test --test '*'
 	# cargo test --features single-threaded --lib
-	cargo test --doc --all
-	RUSTDOCFLAGS="-D warnings" cargo doc --document-private-items --all --no-deps
 	# test result in different output on CI are ignored and only run locally
 	cargo test -p openraft-macros -- --ignored
 
@@ -88,6 +86,14 @@ doc:
 	make -C openraft/src/docs/faq
 	make -C openraft/src/docs/feature_flags
 	RUSTDOCFLAGS="-D warnings" cargo doc --document-private-items --all --no-deps
+
+# Read-only counterpart of `doc`: it builds the documentation, runs the
+# doctests, and checks that repository links still resolve, without
+# regenerating any file. The CI lint job runs this same target.
+docs-check:
+	RUSTDOCFLAGS="-D warnings" cargo doc --document-private-items --all --no-deps
+	cargo test --doc --all
+	./scripts/check-doc-links.py
 
 check_missing_doc:
 	# Warn about missing doc for public API
@@ -251,4 +257,4 @@ clean:
 	cargo clean --manifest-path jepsen/openraft-test-app/Cargo.toml
 	rm -rf tests/_log
 
-.PHONY: test verify basic_check fmt fmt_check fix clippy lint clean doc guide detsim typos
+.PHONY: test verify basic_check fmt fmt_check fix clippy lint clean doc docs-check guide detsim typos

@@ -28,13 +28,15 @@ Read-only:
 
 - `make verify`: format check, Clippy, tests, doctests, and documentation build
 - `make test`: run all tests
-- `make doc`: build documentation
+- `make docs-check`: documentation build, doctests, and repository-link check;
+  both `make verify` and the CI lint job run it
 
 Modifies files:
 
 - `make fix`: apply Clippy fixes, typo fixes, and formatting
 - `make fmt`: format all crates
 - `make lint`: format all crates and run Clippy
+- `make doc`: regenerate the FAQ and feature-flag pages, then build documentation
 
 ## Rust Style
 

@@ -452,13 +452,10 @@ jobs:
         env:
           RUSTFLAGS: --cfg tokio_unstable
 
-      - name: Build-doc
-        run: cargo doc --all --no-deps
-        env:
-          RUSTDOCFLAGS: '-D warnings'
-
-      - name: Doc tests
-        run: cargo test --doc --all
+      # Documentation build, doctests, and the repository-link check. Run
+      # through the Make target so contributors gate on the same command.
+      - name: Docs
+        run: make docs-check
 
       - name: Install cargo-audit
         uses: taiki-e/install-action@v2
