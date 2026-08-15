@@ -14,6 +14,8 @@ use openraft::errors::ChangeMembershipError;
 use openraft::errors::ClientWriteError;
 use openraft::errors::InProgress;
 use openraft::type_config::TypeConfigExt;
+use openraft_memstore::ClientRequest;
+use openraft_memstore::IntoMemClientRequest;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
@@ -257,14 +259,10 @@ async fn add_learner_when_previous_membership_not_committed() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn check_learner_after_leader_transferred() -> Result<()> {
-    // TODO(1): flaky with --features single-term-leader
-
     // Setup test dependencies.
     let config = Arc::new(
         Config {
-            election_timeout_min: 200,
-            election_timeout_max: 250,
-            enable_heartbeat: false,
+            enable_elect: false,
             ..Default::default()
         }
         .validate()?,
@@ -341,8 +339,11 @@ async fn check_learner_after_leader_transferred() -> Result<()> {
         // committed vote pointing to itself, so we must not rely on it.
         let metrics = router.wait(&1, timeout()).metrics(|m| m.current_leader.is_some(), "wait for new leader").await?;
         let new_leader = metrics.current_leader.unwrap();
-        router.client_request_many(new_leader, "0", 1).await?;
-        log_index += 1;
+
+        let request = ClientRequest::make_request("0", 0);
+        let node = router.get_raft_handle(&new_leader)?;
+        let response = node.client_write(request).await?;
+        log_index = response.log_id.index();
 
         for i in [1, 2, 3, 4] {
             router.wait(&i, timeout()).applied_index_at_least(Some(log_index), "learner recv new log").await?;
