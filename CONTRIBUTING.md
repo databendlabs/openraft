@@ -2,7 +2,9 @@
 
 ## Validate your changes
 
-Run `make basic_check` before opening a pull request. It runs the project's formatting, lint, test, and documentation checks.
+Run `make verify` before opening a pull request. It runs the project's formatting, lint, test, and documentation checks, and never modifies your worktree, so what you reviewed is what you submit.
+
+`make fix` is the mutating counterpart: it applies Clippy fixes, typo fixes, and formatting.
 
 ## Code style
 
@@ -34,6 +36,6 @@ PRs that read as unreviewed AI output will be sent back for a cleanup pass befor
 
 ## Release checklist
 
-- `make basic_check` passes.
+- `make verify` passes.
 - The `[workspace.package]` version in the root `Cargo.toml` and every sibling `path` dependency that pins it are updated. Use a prior `chore: bump version` commit as the complete reference.
 - After release CI finishes, open the release page, update the release notes, and publish.
