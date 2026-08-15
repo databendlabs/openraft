@@ -5,24 +5,36 @@
 Always use `make` targets for checking and linting:
 
 ```bash
-# Format and lint
-make lint
+# Completion gate: check format, Clippy, tests, doctests, and doc.
+# Never writes to the worktree.
+make verify
 
-# Full check: format, lint, tests, doc
-make basic_check
+# Rewrite the worktree: Clippy fixes, typo fixes, formatting
+make fix
 
 # Run all tests
 make test
 ```
 
+Finish a change with `make verify`. Run `make fix` only when the change is
+yours to rewrite: it edits files in place, so it must never run on a diff
+someone else has already reviewed.
+
 Do not run `cargo clippy` or `cargo fmt` directly. The Makefile targets apply the same settings across every workspace crate.
 
 ## Key Makefile Targets
 
-- `make lint`: format all crates and run Clippy
-- `make basic_check`: run linting, tests, and documentation checks
+Read-only:
+
+- `make verify`: format check, Clippy, tests, doctests, and documentation build
 - `make test`: run all tests
 - `make doc`: build documentation
+
+Modifies files:
+
+- `make fix`: apply Clippy fixes, typo fixes, and formatting
+- `make fmt`: format all crates
+- `make lint`: format all crates and run Clippy
 
 ## Rust Style
 

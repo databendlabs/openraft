@@ -1,22 +1,25 @@
 all: test defensive_test send_delay_test check_all
 
-check_all: lint fmt doc unused_dep typos detsim
+check_all: lint doc unused_dep typos detsim
 
 compile:
 	cargo test --lib
 	cargo test --test '*'
 	cargo test --features single-threaded --lib
 
-basic_check:
-	cargo fmt
-	cargo clippy --no-deps --all-targets --fix --allow-dirty --allow-staged
+# Read-only completion gate: it never writes to the worktree, so a
+# human-reviewed diff stays exactly as reviewed. `make fix` is the mutating
+# counterpart.
+verify: fmt_check clippy
 	cargo test --lib
 	cargo test --test '*'
 	# cargo test --features single-threaded --lib
-	cargo clippy --no-deps --all-targets -- -D warnings
+	cargo test --doc --all
 	RUSTDOCFLAGS="-D warnings" cargo doc --document-private-items --all --no-deps
 	# test result in different output on CI are ignored and only run locally
 	cargo test -p openraft-macros -- --ignored
+
+basic_check: verify
 
 defensive_test:
 	OPENRAFT_STORE_DEFENSIVE=on cargo test
@@ -71,11 +74,15 @@ bench_cluster_of_3:
 bench_cluster_of_5:
 	$(BENCH_RUSTFLAGS) cargo run --manifest-path benchmarks/minimal/Cargo.toml --release --bin bench $(BENCH_FEATURES_FLAG) -- -m 5
 
-fmt:
-	cargo fmt
+fmt_check:
+	$(MAKE) fmt FMT_ARGS='-- --check'
 
+# Apply every automatic rewrite: Clippy fixes first, then typo fixes, then
+# formatting last so it also formats what the two fixers produced.
 fix:
-	cargo fix --allow-staged
+	cargo clippy --no-deps --all-targets --fix --allow-dirty --allow-staged
+	$(MAKE) typos
+	$(MAKE) fmt
 
 doc:
 	make -C openraft/src/docs/faq
@@ -94,32 +101,38 @@ guide:
 detsim:
 	cd tests-turmoil && cargo run --bin fuzz -- --iterations 5 --max-steps 10000
 
-lint:
-	cargo fmt
-	cargo fmt --manifest-path multiraft/Cargo.toml
-	cargo fmt --manifest-path rt-compio/Cargo.toml
-	cargo fmt --manifest-path rt-monoio/Cargo.toml
-	cargo fmt --manifest-path rt-tokio/Cargo.toml
-	cargo fmt --manifest-path metrics-otel/Cargo.toml
-	cargo fmt --manifest-path benchmarks/minimal/Cargo.toml
-	cargo fmt --manifest-path examples/app-http/Cargo.toml
-	cargo fmt --manifest-path examples/network-v1-http/Cargo.toml
-	cargo fmt --manifest-path examples/network-v2-http/Cargo.toml
-	cargo fmt --manifest-path examples/dir-transfer/Cargo.toml
-	cargo fmt --manifest-path examples/log-mem/Cargo.toml
-	cargo fmt --manifest-path examples/log-rocks/Cargo.toml
-	cargo fmt --manifest-path examples/sm-mem/Cargo.toml
-	cargo fmt --manifest-path examples/sm-rocks/Cargo.toml
-	cargo fmt --manifest-path examples/types-kv/Cargo.toml
-	cargo fmt --manifest-path examples/raft-kv-memstore-grpc/Cargo.toml
-	cargo fmt --manifest-path examples/raft-kv-memstore-network-v1/Cargo.toml
-	cargo fmt --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml
-	cargo fmt --manifest-path examples/raft-kv-memstore-single-threaded/Cargo.toml
-	cargo fmt --manifest-path examples/raft-kv-memstore/Cargo.toml
-	cargo fmt --manifest-path examples/raft-kv-rocksdb/Cargo.toml
-	cargo fmt --manifest-path examples/multi-raft-kv/Cargo.toml
-	cargo fmt --manifest-path tests-turmoil/Cargo.toml
-	cargo fmt --manifest-path jepsen/openraft-test-app/Cargo.toml
+# Extra arguments passed to every `cargo fmt` below. Empty rewrites the files;
+# `fmt_check` overrides it with `-- --check` to report without rewriting.
+FMT_ARGS ?=
+
+fmt:
+	cargo fmt $(FMT_ARGS)
+	cargo fmt --manifest-path multiraft/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path rt-compio/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path rt-monoio/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path rt-tokio/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path metrics-otel/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path benchmarks/minimal/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path examples/app-http/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path examples/network-v1-http/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path examples/network-v2-http/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path examples/dir-transfer/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path examples/log-mem/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path examples/log-rocks/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path examples/sm-mem/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path examples/sm-rocks/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path examples/types-kv/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path examples/raft-kv-memstore-grpc/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path examples/raft-kv-memstore-network-v1/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path examples/raft-kv-memstore-single-threaded/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path examples/raft-kv-memstore/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path examples/raft-kv-rocksdb/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path examples/multi-raft-kv/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path tests-turmoil/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path jepsen/openraft-test-app/Cargo.toml $(FMT_ARGS)
+
+clippy:
 	@# The three workspace clippy runs mirror the CI lint job
 	@# (.github/workflows/ci.yaml); keep them in sync so `make lint` fails
 	@# exactly where CI would, feature unification included.
@@ -158,6 +171,8 @@ lint:
 	@# https://github.com/rust-lang/rust/issues/72686#issuecomment-635539688
 	@# Thus we only check unused deps for lib
 	RUSTFLAGS=-Wunused-crate-dependencies cargo clippy --no-deps  --lib -- -D warnings
+
+lint: fmt clippy
 
 unused_dep:
 	cargo machete
@@ -236,4 +251,4 @@ clean:
 	cargo clean --manifest-path jepsen/openraft-test-app/Cargo.toml
 	rm -rf tests/_log
 
-.PHONY: test fmt lint clean doc guide detsim
+.PHONY: test verify basic_check fmt fmt_check fix clippy lint clean doc guide detsim typos
