@@ -35,7 +35,8 @@ repository's workspace, so the feature list above is enough by itself.
 - **Production**: every example is a demonstration. Its storage keeps data in
   memory or in a store wired for clarity rather than durability, and its HTTP
   transport has no authentication, retry budget, or backpressure. The traits
-  are the product; the examples show how to satisfy them.
+  are the product; the examples show how to satisfy them. Section 7 lists the
+  obligations a deployment carries beyond what an example demonstrates.
 
 [examples/raft-kv-memstore](https://github.com/databendlabs/openraft/tree/main/examples/raft-kv-memstore)
 is the canonical example application: a complete server, client, and demo
@@ -533,9 +534,83 @@ Additionally, two test scripts for setting up a cluster are available:
   Its sibling tests in the same directory cover membership changes, snapshots,
   and the three read modes.
 
+## 7. Production checklist
+
+A cluster built from the steps above runs, but running is not the same as being
+correct under crash and partition. Each item below is one obligation the
+examples do not carry for an application, with the authority that defines it.
+
+- **Durable, ordered vote and log writes.** [`save_vote()`] must return only
+  after the vote is on disk, and [`append()`] must call its callback only after
+  the entries are on disk. The two must never be reordered against each other,
+  because a reorder can lose committed data:
+  [IO ordering in Raft][`docs::io-ordering`]. [`append()`], [`truncate_after()`]
+  and [`purge()`] must also leave no hole in the log, since Raft examines only
+  the last log id.
+
+- **Storage conformance.** Run `Suite::test_all(builder)` from the
+  [storage test suite][`LogSuite`] against the store the deployment actually
+  uses, with a [`StoreBuilder`] that builds it, as the
+  [`sm-rocks` test](https://github.com/databendlabs/openraft/blob/main/examples/sm-rocks/src/test.rs)
+  does.
+
+- **Snapshot persistence and restart recovery.** After a restart,
+  [`get_current_snapshot()`] must return the snapshot the node last built or
+  installed, and [`applied_state()`] must not report a log id whose effect is
+  not durable in the state machine, because Openraft never re-applies below the
+  reported id. [`install_snapshot()`] replaces the state machine wholesale; a
+  half-installed snapshot must not survive a crash. See
+  [snapshot replication][`docs::snapshot-replication`].
+
+- **Peer identity and RPC timeouts.** A [`RaftNetworkV2`] implementation must
+  confirm it reached the node it addressed rather than whichever node now holds
+  that address ([why][`docs::connect-to-correct-node`]), must honor the
+  deadlines in [`RPCOption`], and must report a peer it cannot reach as
+  [`Unreachable`] so Openraft backs off instead of retrying immediately.
+
+- **Cluster initialization and membership changes.** Call [`Raft::initialize()`]
+  once, on one pristine node
+  ([cluster formation][`docs::cluster-formation`]). A new voter then joins in two
+  steps: [`Raft::add_learner()`] with `blocking = true`, which returns once that
+  node has caught up, and then [`Raft::change_membership()`], which promotes it.
+  Promoting a learner that is still far behind places a member in the new quorum
+  that cannot acknowledge yet, which stalls commits until it catches up
+  ([dynamic membership][`docs::dynamic-membership`]).
+
+- **Read semantics.** A read served straight from the local state machine is not
+  linearizable: it can return stale data from a deposed leader. A linearizable
+  read calls [`Raft::ensure_linearizable()`] on the leader, or
+  [`Raft::get_read_linearizer()`] on the leader followed by
+  [`Linearizer::await_ready()`] on the follower that serves it. The
+  [`ReadPolicy`] chooses what the guarantee rests on: [`ReadPolicy::ReadIndex`]
+  on a quorum round-trip, [`ReadPolicy::LeaseRead`] on bounded clock drift. See
+  [read operations][`docs::read`]; the canonical example implements all three
+  modes in
+  [http_api.rs](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/src/http_api.rs).
+
+- **Metrics, fatal errors and shutdown.** Watch [`Raft::metrics()`] for
+  leadership, replication lag and membership
+  ([monitoring and maintenance][`docs::monitoring-maintenance`]). A [`Fatal`]
+  error means the Raft core has stopped and will not recover on its own: take
+  the node out of service instead of retrying against it. Call
+  [`Raft::shutdown()`] and await it before the process exits.
+
+- **On-disk compatibility before an upgrade.** Data written by one Openraft
+  version is not automatically readable by the next. Before upgrading, read the
+  [upgrade guide][`docs::upgrade`]: a `DataChange:` entry in the change log for
+  the target version means the stored format changed and a migration is
+  required.
+
 
 [`declare_raft_types!`]:                `crate::declare_raft_types`
 [`Raft`]:                               `crate::Raft`
+[`Raft::initialize()`]:                 `crate::Raft::initialize`
+[`Raft::add_learner()`]:                `crate::Raft::add_learner`
+[`Raft::change_membership()`]:          `crate::Raft::change_membership`
+[`Raft::ensure_linearizable()`]:        `crate::Raft::ensure_linearizable`
+[`Raft::get_read_linearizer()`]:        `crate::Raft::get_read_linearizer`
+[`Raft::metrics()`]:                    `crate::Raft::metrics`
+[`Raft::shutdown()`]:                   `crate::Raft::shutdown`
 [`Raft::append_entries()`]:             `crate::Raft::append_entries`
 [`Raft::stream_append()`]:              `crate::Raft::stream_append`
 [`Raft::vote()`]:                       `crate::Raft::vote`
@@ -590,6 +665,11 @@ Additionally, two test scripts for setting up a cluster are available:
 [`install_snapshot()`]:                 `crate::storage::RaftStateMachine::install_snapshot`
 [`get_snapshot_builder()`]:             `crate::storage::RaftStateMachine::get_snapshot_builder`
 
+[`Linearizer::await_ready()`]:          `crate::raft::linearizable_read::Linearizer::await_ready`
+[`ReadPolicy`]:                         `crate::ReadPolicy`
+[`ReadPolicy::ReadIndex`]:              `crate::ReadPolicy::ReadIndex`
+[`ReadPolicy::LeaseRead`]:              `crate::ReadPolicy::LeaseRead`
+
 [`RaftNetworkFactory`]:                 `crate::network::RaftNetworkFactory`
 [`RaftNetworkFactory::new_client()`]:   `crate::network::RaftNetworkFactory::new_client`
 [`RaftNetworkV2`]:                      `crate::network::RaftNetworkV2`
@@ -597,6 +677,7 @@ Additionally, two test scripts for setting up a cluster are available:
 [`stream_append()`]:                    `crate::network::RaftNetworkV2::stream_append`
 [`vote()`]:                             `crate::network::RaftNetworkV2::vote`
 [`full_snapshot()`]:                    `crate::network::RaftNetworkV2::full_snapshot`
+[`RPCOption`]:                          `crate::network::RPCOption`
 
 
 [`RaftSnapshotBuilder`]:                `crate::storage::RaftSnapshotBuilder`
@@ -606,8 +687,15 @@ Additionally, two test scripts for setting up a cluster are available:
 [`StoreBuilder`]:                       `crate::testing::log::StoreBuilder`
 [`LogSuite`]:                              `crate::testing::log::Suite`
 
-[`Fatal`]:                              `crate::error::Fatal`
-[`Unreachable`]:                        `crate::error::Unreachable`
+[`Fatal`]:                              `crate::errors::Fatal`
+[`Unreachable`]:                        `crate::errors::Unreachable`
 
 [`docs::connect-to-correct-node`]:      `crate::docs::cluster_control::dynamic_membership#ensure-connection-to-the-correct-node`
 [`docs::node-id-reuse`]:                `crate::docs::cluster_control::dynamic_membership#node-ids-must-not-be-reused`
+[`docs::io-ordering`]:                  `crate::docs::protocol::io_ordering`
+[`docs::snapshot-replication`]:         `crate::docs::protocol::replication::snapshot_replication`
+[`docs::read`]:                         `crate::docs::protocol::read`
+[`docs::cluster-formation`]:            `crate::docs::cluster_control::cluster_formation`
+[`docs::dynamic-membership`]:           `crate::docs::cluster_control::dynamic_membership`
+[`docs::monitoring-maintenance`]:       `crate::docs::cluster_control::monitoring_maintenance`
+[`docs::upgrade`]:                      `crate::docs::upgrade_guide`
