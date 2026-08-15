@@ -26,6 +26,7 @@ use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::async_runtime::MpscReceiver;
+use crate::async_runtime::Mutex;
 use crate::async_runtime::OneshotSender;
 use crate::async_runtime::TryRecvError;
 use crate::async_runtime::watch::WatchSender;
@@ -132,6 +133,7 @@ use crate::type_config::alias::JoinErrorOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscReceiverOf;
 use crate::type_config::alias::MpscSenderOf;
+use crate::type_config::alias::MutexOf;
 use crate::type_config::alias::NodeIdOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::StoredMembershipOf;
@@ -192,7 +194,7 @@ where
     pub(crate) core_state: CoreState<C>,
 
     /// The `RaftNetworkFactory` implementation.
-    pub(crate) network_factory: NF,
+    pub(crate) network_factory: Arc<MutexOf<C, NF>>,
 
     /// The [`RaftLogStorage`] implementation.
     pub(crate) log_store: LS,
@@ -351,7 +353,7 @@ where
     /// leadership to guarantee that all the committed entries proposed before `T1` are present in
     /// this node.
     #[tracing::instrument(level = "trace", skip(self, tx))]
-    pub(super) async fn handle_ensure_linearizable_read(&mut self, read_policy: ReadPolicy, tx: ClientReadTx<C>) {
+    pub(super) fn handle_ensure_linearizable_read(&mut self, read_policy: ReadPolicy, tx: ClientReadTx<C>) {
         // Setup sentinel values to track when we've received majority confirmation of leadership.
 
         let resp = {
@@ -395,7 +397,7 @@ where
             return;
         }
 
-        let pending = self.spawn_leadership_probes(&my_vote, &eff_mem).await;
+        let pending = self.spawn_leadership_probes(&my_vote, &eff_mem);
 
         // TODO: do not spawn, manage read requests with a queue by RaftCore
 
@@ -409,7 +411,7 @@ where
     /// Probe every other voter with an empty AppendEntries, to confirm this node is still leading.
     ///
     /// The returned probes complete in arrival order; joining one may fail if its task panicked.
-    async fn spawn_leadership_probes(
+    fn spawn_leadership_probes(
         &mut self,
         my_vote: &VoteOf<C>,
         eff_mem: &StoredMembershipOf<C>,
@@ -442,15 +444,20 @@ where
 
             // Safe unwrap(): target is in membership
             let target_node = eff_mem.get_node(&target).unwrap().clone();
-            let mut client = self.network_factory.new_heartbeat_client(target.clone(), &target_node).await;
 
             let option = RPCOption::new(ttl);
 
             let fu = {
                 let my_id = my_id.clone();
+                let network_factory = self.network_factory.clone();
                 let target = target.clone();
 
                 async move {
+                    let mut client = {
+                        let mut factory = network_factory.lock().await;
+                        factory.new_heartbeat_client(target.clone(), &target_node).await
+                    };
+
                     let input_stream = Box::pin(futures_util::stream::once(async { rpc }));
 
                     let outer_res = C::timeout(ttl, async {
@@ -1099,7 +1106,10 @@ where
         leader_vote: CommittedVoteOf<C>,
         prog: &TargetProgress<C>,
     ) -> ReplicationHandle<C> {
-        let network = self.network_factory.new_client(prog.target.clone(), &prog.target_node).await;
+        let network = {
+            let mut factory = self.network_factory.lock().await;
+            factory.new_client(prog.target.clone(), &prog.target_node).await
+        };
 
         let (replicate_tx, replicate_rx) = C::watch_channel(Replicate::default());
 
@@ -1376,7 +1386,7 @@ where
                 break;
             };
 
-            self.handle_api_msg(msg).await;
+            self.handle_api_msg(msg);
             processed += 1;
             total += 1;
 
@@ -1589,7 +1599,10 @@ where
 
             // Safe unwrap(): target must be in membership
             let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap().clone();
-            let client = self.network_factory.new_client(target.clone(), &target_node).await;
+            let client = {
+                let mut factory = self.network_factory.lock().await;
+                factory.new_client(target.clone(), &target_node).await
+            };
 
             let fut = make_rpc(target, client, RPCOption::new(ttl));
 
@@ -1659,10 +1672,9 @@ where
         self.engine.handle_install_full_snapshot(req.vote, req.snapshot, req.tx);
     }
 
-    // TODO: Make this method non-async. It does not need to run any async command in it.
     #[tracing::instrument(level = "debug", skip(self, msg), fields(state = debug(self.engine.state.server_state), id=display(&self.id)
     ))]
-    pub(crate) async fn handle_api_msg(&mut self, msg: RaftMsg<C>) {
+    pub(crate) fn handle_api_msg(&mut self, msg: RaftMsg<C>) {
         tracing::debug!("RAFT_event id={:<2}  input: {}", self.id, msg);
 
         self.runtime_stats.record_raft_msg(msg.name());
@@ -1688,7 +1700,7 @@ where
                 self.handle_pre_vote_request(rpc, tx);
             }
             RaftMsg::GetLinearizer { read_policy, tx } => {
-                self.handle_ensure_linearizable_read(read_policy, tx).await;
+                self.handle_ensure_linearizable_read(read_policy, tx);
             }
             RaftMsg::ClientWrite {
                 payloads,
@@ -2436,7 +2448,10 @@ where
             self.new_replication_task_context(leader_vote, stream_id, target.clone());
 
         let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap();
-        let snapshot_network = self.network_factory.new_snapshot_client(target.clone(), target_node).await;
+        let snapshot_network = {
+            let mut factory = self.network_factory.lock().await;
+            factory.new_snapshot_client(target.clone(), target_node).await
+        };
 
         let handle = SnapshotTransmitter::<C, NF, SM>::spawn(
             replication_task_context,
@@ -2468,15 +2483,18 @@ where
         targets: Vec<TargetProgress<C>>,
         close_old_streams: bool,
     ) {
-        self.heartbeat_handle
-            .spawn_workers::<NF>(
-                leader_vote.clone(),
-                &mut self.network_factory,
-                &self.tx_notification,
-                &targets,
-                close_old_streams,
-            )
-            .await;
+        {
+            let mut factory = self.network_factory.lock().await;
+            self.heartbeat_handle
+                .spawn_workers::<NF>(
+                    leader_vote.clone(),
+                    &mut *factory,
+                    &self.tx_notification,
+                    &targets,
+                    close_old_streams,
+                )
+                .await;
+        }
 
         let mut new_replications = BTreeMap::new();
 
