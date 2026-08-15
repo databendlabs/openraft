@@ -85,9 +85,9 @@ let val = my_raft.with_state_machine(|sm| { sm.read("foo") }).await?;
 ```
 
 See a complete implementation in the [raft-kv-memstore example](https://github.com/databendlabs/openraft/tree/main/examples/raft-kv-memstore):
-- [`/get_linearizer` endpoint](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/src/network/management.rs) - Leader provides linearizer data
-- [`/follower_read` endpoint](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/src/network/api.rs) - Follower read implementation
-- [Test coverage](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/tests/cluster/test_follower_read.rs)
+- [`/get_linearizer` endpoint](https://github.com/databendlabs/openraft/blob/main/examples/app-http/src/app.rs) - `App::get_linearizer()`, where the leader provides linearizer data
+- [`/follower_read` endpoint](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/src/http_api.rs) - Follower read implementation
+- [Test coverage](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/tests/cluster/test_read_modes.rs)
 
 
 ## Ensuring Linearizability with `read_log_id`

@@ -2,14 +2,17 @@
 
 In this chapter, we will build a key-value store cluster using Openraft.
 
-1. [examples/raft-kv-memstore](https://github.com/databendlabs/openraft/tree/main/examples/raft-kv-memstore)
-   is a complete example application that includes the server, client, and a demo cluster. This example uses an in-memory store for data storage.
+[examples/raft-kv-memstore](https://github.com/databendlabs/openraft/tree/main/examples/raft-kv-memstore)
+is the canonical example application: a complete server, client, and demo
+cluster that keeps its data in memory. This chapter follows that example, and
+every code link below points into it or into the helper crates it uses, so the
+guide and a compiling application describe the same wiring. Its
+[README](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/README.md)
+maps each component to the file that implements it.
 
-1. [examples/raft-kv-rocksdb](https://github.com/databendlabs/openraft/tree/main/examples/raft-kv-rocksdb)
-   is another complete example application that includes the server, client, and a demo cluster. This example uses RocksDB for persistent storage.
-
-You can use these examples as a starting point for building your own key-value
-store cluster with Openraft.
+[examples/raft-kv-rocksdb](https://github.com/databendlabs/openraft/tree/main/examples/raft-kv-rocksdb)
+is the same application with RocksDB persistent storage. Read it as a storage
+variation of the canonical example, not as a second starting point.
 
 ---
 
@@ -71,27 +74,10 @@ This macro call adds the above `Request` and `Response` to the `TypeConfig` stru
 - `R = Response` is the response that the state machine returns to the client after applying a `Request`.
 
 There are several more generic types that could be defined in [`RaftTypeConfig`].
-The above macro call sets these absent types to the default values,
-and it generates the following type definitions:
+The above macro call sets these absent types to the default values;
+[`declare_raft_types!`] documents the complete default list. The types the
+declaration fills in for you are:
 
-```ignore
-pub struct TypeConfig {}
-
-impl openraft::RaftTypeConfig for TypeConfig {
-    type D                = Request;
-    type R                = Response;
-
-    // Following are absent in `declare_raft_types` and filled with default values:
-    type NodeId           = u64;
-    type Node             = openraft::impls::BasicNode;
-    type Entry            = openraft::impls::Entry<TypeConfig>;
-    type Responder<T>     = openraft::impls::OneshotResponder<TypeConfig, T>
-        where T: openraft::OptionalSend + 'static;
-    type AsyncRuntime     = openraft::impls::TokioRuntime;
-}
-```
-
-> In the above `TypeConfig` declaration,
 > - `NodeId` is the identifier of a node in the cluster, which implements
 >   [`NodeId`] trait. A node ID identifies one node, holding one log, for the
 >   lifetime of the cluster: never give the ID of a removed node to a node that
@@ -107,12 +93,24 @@ impl openraft::RaftTypeConfig for TypeConfig {
 >   instance, which implements [`AsyncRuntime`] trait.
 
 Openraft provides default implementations for mostly used types:
-- `Node`: [`EmptyNode`] and [`BasicNode`],
+- `Node`: [`EmptyNode`], [`BasicNode`] and [`NodeInfo`],
 - log `Entry`: [`Entry`],
 - `AsyncRuntime`: [`TokioRuntime`], which is a wrapper of tokio runtime,
-- `Responder`: [`OneshotResponder`], which is a wrapper of oneshot sender and receiver provided by [`AsyncRuntime`].
+- `Responder`: [`ProgressResponder`], the default, which notifies the caller both when the entry is committed and when it is applied;
+  and [`OneshotResponder`], which is a wrapper of oneshot sender and receiver provided by [`AsyncRuntime`].
 
 You can use these implementations directly or define your own custom types.
+The canonical example overrides just one of them, `Node`, because each of its
+nodes carries two addresses:
+
+```ignore
+openraft::declare_raft_types!(
+    pub TypeConfig:
+        D = types_kv::Request,
+        R = types_kv::Response,
+        Node = openraft::NodeInfo,
+);
+```
 
 A [`RaftTypeConfig`] is also used by other components such as [`RaftLogStorage`], [`RaftStateMachine`],
 [`RaftNetworkFactory`] and [`RaftNetworkV2`].
@@ -251,12 +249,13 @@ response stream.
 |--------------------------|----------------------------|-----------------------------------------------|
 | [`stream_append()`]      | [`AppendEntriesRequest`] stream | remote node [`Raft::stream_append()`]    |
 
-[Mem KV Network](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/src/network/raft_network_impl.rs)
+The canonical example gets both sides from the [`network-v2-http`](https://github.com/databendlabs/openraft/tree/main/examples/network-v2-http)
+crate. Its [client](https://github.com/databendlabs/openraft/blob/main/examples/network-v2-http/src/client.rs)
 demonstrates how to forward messages to other Raft nodes using [`reqwest`](https://docs.rs/reqwest/latest/reqwest/) as network transport layer.
 
 To receive and handle these requests, there should be a server endpoint for each of these RPCs.
 When the server receives a Raft RPC, it simply passes it to its `raft` instance and replies with the returned result:
-[Mem KV Server](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/src/network/raft.rs).
+[network-v2-http server](https://github.com/databendlabs/openraft/blob/main/examples/network-v2-http/src/server.rs).
 
 For a real-world implementation, you may want to use [Tonic gRPC](https://github.com/hyperium/tonic) to handle gRPC-based communication between Raft nodes. The [databend-meta](https://github.com/databendlabs/databend/blob/6603392a958ba8593b1f4b01410bebedd484c6a9/metasrv/src/network.rs#L89) project provides an excellent real-world example of a Tonic gRPC-based Raft network implementation.
 
@@ -367,71 +366,53 @@ See: [Ensure connection to the correct node][`docs::connect-to-correct-node`]
 
 ## 5. Put everything together
 
-Finally, we put these parts together and boot up a raft node
-[lib.rs](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/src/lib.rs):
+Finally, we put these parts together and boot up a raft node in
+[lib.rs](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/src/lib.rs).
+A node listens on two addresses: `raft_addr` serves the Raft RPCs that peers
+send, `api_addr` serves client and admin requests. Openraft's single requirement
+here is that inbound Raft RPCs reach the [`Raft`] methods; serving them from two
+listeners is the example's own choice, explained in
+[Two servers per node](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/README.md#two-servers-per-node).
 
 ```ignore
-openraft::declare_raft_types!(
-    pub TypeConfig:
-        D = Request,
-        R = Response,
-);
-
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
-
-    let node_id = 1;
+pub async fn start_example_raft_node(node_id: NodeId, api_addr: String, raft_addr: String) -> std::io::Result<()> {
     let config = Arc::new(Config::default().validate().unwrap());
 
     let log_store = LogStore::default();
-    let state_machine_store = Arc::new(StateMachineStore::default());
-    let network = Network {};
+    let state_machine_store = StateMachineStore::default();
+    let network = network_v2_http::NetworkFactory::new();
 
-    let raft = openraft::Raft::new(
-        node_id,
-        config.clone(),
-        network,
-        log_store.clone(),
-        state_machine_store.clone(),
-    )
-    .await
-    .unwrap();
+    let raft = openraft::Raft::new(node_id, config, network, log_store, state_machine_store.clone()).await.unwrap();
 
-    let app_data = Data::new(App {
+    let app = Arc::new(App {
         id: node_id,
-        addr: "127.0.0.1:9999".to_string(),
+        api_addr: api_addr.clone(),
+        raft_addr: raft_addr.clone(),
         raft,
-        log_store,
-        state_machine_store,
-        config,
+        data: state_machine_store,
     });
 
-    HttpServer::new(move || {
-      App::new()
-              .wrap(Logger::default())
-              .wrap(Logger::new("%a %{User-Agent}i"))
-              .wrap(middleware::Compress::default())
-              .app_data(app.clone())
+    // Raft RPCs from peer nodes: `/append`, `/vote`, `/snapshot`, ...
+    let raft_server = network_v2_http::Server::new(app.raft.clone()).run(raft_addr);
 
-              // raft internal RPC
-              .service(raft::append).service(raft::snapshot).service(raft::vote)
+    // Client and admin API: `/init`, `/add-learner`, `/write`, `/read`, ...
+    let app_server = app_http::Server::new(app)
+        .add_openraft_routes()
+        .post("/read", http_api::read)
+        .post("/linearizable_read", http_api::linearizable_read)
+        .post("/follower_read", http_api::follower_read)
+        .run(api_addr);
 
-              // admin API
-              .service(management::init)
-              .service(management::add_learner)
-              .service(management::change_membership)
-              .service(management::metrics)
-              .service(management::list_nodes)
-
-              // application API
-              .service(api::write).service(api::read)
-    })
-    .bind(options.http_addr)?
-    .run()
-    .await
+    tokio::try_join!(raft_server, app_server)?;
+    Ok(())
 }
-
 ```
+
+`add_openraft_routes()` registers the admin and write endpoints that every
+example shares, defined in
+[app-http](https://github.com/databendlabs/openraft/blob/main/examples/app-http/src/app.rs);
+the three `post()` calls add this application's own read endpoints from
+[http_api.rs](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/src/http_api.rs).
 
 ## 6. Run the cluster
 
@@ -451,8 +432,10 @@ Additionally, two test scripts for setting up a cluster are available:
   is a minimal Bash script that uses `curl` to communicate with the Raft
   cluster. It demonstrates the plain HTTP messages being sent and received.
 
-- [test_cluster.rs](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/tests/cluster/test_cluster.rs)
+- [test_basic.rs](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/tests/cluster/test_basic.rs)
   uses `app_http::Client` to set up a cluster, write data, and read it back.
+  Its sibling tests in the same directory cover membership changes, snapshots,
+  and the three read modes.
 
 
 [`declare_raft_types!`]:                `crate::declare_raft_types`
@@ -476,11 +459,13 @@ Additionally, two test scripts for setting up a cluster are available:
 
 [`TokioRuntime`]:                       `crate::impls::TokioRuntime`
 [`OneshotResponder`]:                   `crate::impls::OneshotResponder`
+[`ProgressResponder`]:                  `crate::impls::ProgressResponder`
 
 [`LogId`]:                              `crate::LogId`
 [`Membership`]:                         `crate::Membership`
 [`EmptyNode`]:                          `crate::EmptyNode`
 [`BasicNode`]:                          `crate::BasicNode`
+[`NodeInfo`]:                           `crate::NodeInfo`
 [`Entry`]:                              `crate::entry::Entry`
 [`Vote`]:                               `crate::vote::Vote`
 [`LogState`]:                           `crate::storage::LogState`
