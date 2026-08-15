@@ -227,7 +227,7 @@ randomness, and thread, network, and election timing can still differ. The
 recorded history and Nemesis operations are therefore the authoritative account
 of the fault schedule; the seed is only an aid for rerunning similar conditions.
 
-## TODO
+## Implemented coverage
 
 - [x] Add the Leiningen project definition and CLI skeleton.
 - [x] Add Docker-based Jepsen control and node containers.

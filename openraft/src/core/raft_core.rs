@@ -350,8 +350,6 @@ where
     /// To ensure linearizability, a read request proposed at time `T1` confirms this node's
     /// leadership to guarantee that all the committed entries proposed before `T1` are present in
     /// this node.
-    // TODO: the second condition is such a read request can only read from state machine only when the last log it sees
-    //       at `T1` is committed.
     #[tracing::instrument(level = "trace", skip(self, tx))]
     pub(super) async fn handle_ensure_linearizable_read(&mut self, read_policy: ReadPolicy, tx: ClientReadTx<C>) {
         // Setup sentinel values to track when we've received majority confirmation of leadership.
@@ -691,8 +689,6 @@ where
             }
         };
 
-        // TODO: it should returns membership config error etc. currently this is done by the
-        //       caller.
         let entry_count = payloads.len() as u64;
         let log_ids = lh.leader_append_entries(payloads)?;
 
