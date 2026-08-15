@@ -36,13 +36,31 @@ A response is some data that the Raft state machine returns to the client.
 
 Request and response can be any types that implement [`AppData`] and [`AppDataResponse`], for example:
 
-```ignore
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Request {key: String}
+```rust
+use std::fmt;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Response(Result<Option<String>, ClientError>);
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Request {
+    pub key: String,
+}
+
+// `AppData` requires `Display` in addition to `Debug`.
+impl fmt::Display for Request {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Set({})", self.key)
+    }
+}
+
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Response {
+    pub value: Option<String>,
+}
 ```
+
+The `serde` derives are required when Openraft is built with its `serde`
+feature, which is what [`AppData`]'s `OptionalFeatures` bound expands to.
 
 These two types are entirely application-specific and are mainly related to the
 state machine implementation in [`RaftStateMachine`].
@@ -52,16 +70,26 @@ state machine implementation in [`RaftStateMachine`].
 
 Openraft is a generic implementation of Raft. It requires the application to define
 concrete types for its generic arguments. Most types are parameterized by
-[`RaftTypeConfig`] and will be used to create a `Raft` instance.
+[`RaftTypeConfig`], as [`Raft`] itself is:
 
-```ignore
-pub struct Raft<C: RaftTypeConfig> {}
+```text
+pub struct Raft<C: RaftTypeConfig> { .. }
 ```
 
 The simplest way to define your types config for example `TypeConfig`
 is using [`declare_raft_types!`] macro:
 
-```ignore
+```rust
+# use std::fmt;
+# #[derive(Clone, Debug)]
+# #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+# pub struct Request { pub key: String }
+# impl fmt::Display for Request {
+#     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "Set({})", self.key) }
+# }
+# #[derive(Clone, Debug)]
+# #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+# pub struct Response { pub value: Option<String> }
 openraft::declare_raft_types!(
    pub TypeConfig: D = Request, R = Response
 );
@@ -101,13 +129,25 @@ Openraft provides default implementations for mostly used types:
 
 You can use these implementations directly or define your own custom types.
 The canonical example overrides just one of them, `Node`, because each of its
-nodes carries two addresses:
+nodes carries two addresses; its `D` and `R` come from the shared
+[`types-kv`](https://github.com/databendlabs/openraft/blob/main/examples/types-kv/src/lib.rs)
+crate instead of the `Request`/`Response` declared above:
 
-```ignore
+```rust
+# use std::fmt;
+# #[derive(Clone, Debug)]
+# #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+# pub struct Request { pub key: String }
+# impl fmt::Display for Request {
+#     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "Set({})", self.key) }
+# }
+# #[derive(Clone, Debug)]
+# #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+# pub struct Response { pub value: Option<String> }
 openraft::declare_raft_types!(
     pub TypeConfig:
-        D = types_kv::Request,
-        R = types_kv::Response,
+        D = Request,
+        R = Response,
         Node = openraft::NodeInfo,
 );
 ```
@@ -154,7 +194,8 @@ Most of the APIs are quite straightforward, except two indirect APIs:
 -   Read logs:
     [`RaftLogStorage`] defines a method [`get_log_reader()`] to get log reader [`RaftLogReader`] :
 
-    ```ignore
+    ```text
+    // Abbreviated; see `RaftLogStorage` for the full signature.
     trait RaftLogStorage<C: RaftTypeConfig> {
         type LogReader: RaftLogReader<C>;
         async fn get_log_reader(&mut self) -> Self::LogReader;
@@ -165,10 +206,11 @@ Most of the APIs are quite straightforward, except two indirect APIs:
     - [`try_get_log_entries()`] get log entries in a range;
     - [`read_vote()`] read vote;
 
-    ```ignore
+    ```text
+    // Abbreviated; see `RaftLogReader` for the full signature.
     trait RaftLogReader<C: RaftTypeConfig> {
-        async fn try_get_log_entries<RB: RangeBounds<u64>>(&mut self, range: RB) -> Result<Vec<C::Entry>, ...>;
-        async fn read_vote(&mut self) -> Result<Option<Vote<C::NodeId>>, ...>>;
+        async fn try_get_log_entries<RB: RangeBounds<u64>>(&mut self, range: RB) -> Result<Vec<C::Entry>, ..>;
+        async fn read_vote(&mut self) -> Result<Option<Vote<C::NodeId>>, ..>;
     }
     ```
 
@@ -200,13 +242,14 @@ The raft correctness highly depends on a reliable store.
 Raft nodes communicate with each other to achieve consensus about the logs.
 The trait [`RaftNetworkV2`] defines the data transmission protocol.
 
-```ignore
+```text
+// Abbreviated; see `RaftNetworkV2` for the full signature.
 pub trait RaftNetworkV2<C: RaftTypeConfig>: Send + Sync + 'static {
     type SnapshotData: OptionalSend + 'static;
 
-    async fn append_entries(&mut self, rpc: AppendEntriesRequest<C>, option: RPCOption) -> Result<...>;
-    async fn vote(&mut self, rpc: VoteRequest<C>, option: RPCOption) -> Result<...>;
-    async fn full_snapshot(&mut self, vote: Vote<C::NodeId>, snapshot: SnapshotOf<C, Self::SnapshotData>, cancel: impl Future<...>, option: RPCOption) -> Result<...>;
+    async fn append_entries(&mut self, rpc: AppendEntriesRequest<C>, option: RPCOption) -> Result<..>;
+    async fn vote(&mut self, rpc: VoteRequest<C>, option: RPCOption) -> Result<..>;
+    async fn full_snapshot(&mut self, vote: Vote<C::NodeId>, snapshot: SnapshotOf<C, Self::SnapshotData>, cancel: impl Future<..>, option: RPCOption) -> Result<..>;
 
     // Optional: override for pipelined replication
     fn stream_append(&mut self, input: impl Stream<Item = AppendEntriesRequest<C>>, option: RPCOption) -> BoxFuture<Result<BoxStream<StreamAppendResult<C>>>>;
@@ -264,7 +307,8 @@ For a real-world implementation, you may want to use [Tonic gRPC](https://github
 
 [`RaftNetworkFactory`] is a singleton responsible for creating [`RaftNetworkV2`] instances for each replication target node.
 
-```ignore
+```text
+// Abbreviated; see `RaftNetworkFactory` for the full signature.
 pub trait RaftNetworkFactory<C: RaftTypeConfig>: Send + Sync + 'static {
     type Network: RaftNetworkV2<C>;
     async fn new_client(&mut self, target: C::NodeId, node: &C::Node) -> Self::Network;
@@ -321,13 +365,15 @@ Flow:
 
 The same pattern applies to other RPC methods: [`vote()`], [`full_snapshot()`].
 
-**Example server implementation**:
+**Example server implementation**, in the shape a handler takes; the tested one
+is [`network-v2-http`'s `/append` route](https://github.com/databendlabs/openraft/blob/main/examples/network-v2-http/src/server.rs):
 
-```rust,ignore
+```text
+// Pseudocode: `ServerError` stands for the application's own error type.
 async fn handle_append_entries(
     raft: Arc<Raft<TypeConfig, StateMachineStore>>,
     req: AppendEntriesRequest<TypeConfig>,
-) -> Result<AppendEntriesResponse, ServerError> {
+) -> Result<AppendEntriesResponse<TypeConfig>, ServerError> {
     let resp = raft.append_entries(req).await?;
     Ok(resp)
 }
@@ -338,12 +384,23 @@ async fn handle_append_entries(
 
 In Openraft, an implementation of [`RaftNetworkV2`] needs to connect to remote Raft peers. To store additional information about each peer, you need to specify the `Node` type in `RaftTypeConfig`:
 
-```ignore
-pub struct TypeConfig {}
-impl openraft::RaftTypeConfig for TypeConfig {
-   // ...
-   type Node = BasicNode;
-}
+```rust
+# use std::fmt;
+# #[derive(Clone, Debug)]
+# #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+# pub struct Request { pub key: String }
+# impl fmt::Display for Request {
+#     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "Set({})", self.key) }
+# }
+# #[derive(Clone, Debug)]
+# #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+# pub struct Response { pub value: Option<String> }
+openraft::declare_raft_types!(
+    pub TypeConfig:
+        D = Request,
+        R = Response,
+        Node = openraft::BasicNode,
+);
 ```
 
 Then use `Raft::add_learner(node_id, BasicNode::new("127.0.0.1"), ...)` to instruct Openraft to store node information in [`Membership`]. This information is then consistently replicated across all nodes, and will be passed to [`RaftNetworkFactory::new_client()`] to connect to remote Raft peers:
@@ -374,7 +431,11 @@ here is that inbound Raft RPCs reach the [`Raft`] methods; serving them from two
 listeners is the example's own choice, explained in
 [Two servers per node](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/README.md#two-servers-per-node).
 
-```ignore
+The following is an excerpt of that file, abridged for reading. It compiles as
+part of the example crate, which CI builds and tests; it does not compile on
+its own, because the types it names live in the example's sibling crates.
+
+```rust,ignore
 pub async fn start_example_raft_node(node_id: NodeId, api_addr: String, raft_addr: String) -> std::io::Result<()> {
     let config = Arc::new(Config::default().validate().unwrap());
 
