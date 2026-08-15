@@ -4,6 +4,12 @@ This directory contains example applications demonstrating different implementat
 
 ## Complete Applications
 
+Start with [raft-kv-memstore], the canonical example application: the
+[getting-started guide](https://docs.rs/openraft/latest/openraft/docs/getting_started/index.html)
+follows it step by step. Every other row in the table below is that same
+application with one component swapped — storage, network interface, transport,
+or runtime.
+
 ### Component Overview
 
 - **Log**: LogStore implementation for storing raft logs
@@ -16,8 +22,8 @@ This directory contains example applications demonstrating different implementat
 
 | Example | Log | State Machine | RaftNetwork Impl | RaftNetwork | Client | Server | Special Features |
 |---------|-----|---------------|------------------|-------------|--------|--------|------------------|
-| [raft-kv-memstore] | [log-mem] | [sm-mem] | HTTP/reqwest([network-v2]) | RaftNetworkV2 | [app-http] | [app-http] | Basic example |
-| [raft-kv-rocksdb] | [log-rocks] | RocksDB | HTTP/reqwest([network-v2]) | RaftNetworkV2 | [app-http] | [app-http] | Persistent storage |
+| [raft-kv-memstore] | [log-mem] | [sm-mem] | HTTP/reqwest([network-v2]) | RaftNetworkV2 | [app-http] | [app-http] | Canonical example — start here |
+| [raft-kv-rocksdb] | [log-rocks] | RocksDB | HTTP/reqwest([network-v2]) | RaftNetworkV2 | [app-http] | [app-http] | [raft-kv-memstore] with persistent storage |
 | [raft-kv-memstore-network-v1] | [log-mem] | [sm-mem] | HTTP/reqwest([network-v1]) | RaftNetwork | [app-http] | [app-http] | Legacy V1 network + chunked snapshot replication |
 | [multi-raft-kv] | [log-mem] | [sm-mem] | HTTP/channel | GroupRouter | channel | in-memory | Multi-Raft groups |
 | [raft-kv-memstore-grpc] | [log-mem] | in-memory | gRPC/tonic | RaftNetworkV2 sub-traits | tonic | tonic | gRPC transport |
