@@ -14,6 +14,22 @@ If `./change-log/<version>.md` exists, it skips re-building it from git-log.
 Thus you can generate semi-automatic change-logs by editing `./change-log/<version>.md` and running the script again, which will just only the `./change-log.md`.
 
 
+### `build_version_contract.py`
+
+Generate the version contract at the top of the getting-started guide.
+
+- Usage: `./scripts/build_version_contract.py`: rewrite the generated block.
+- Usage: `./scripts/build_version_contract.py --check`: fail if it is stale.
+- Install: standard library only (needs Python 3.11 for `tomllib`).
+
+The block states the release line and the dependency declaration an application
+copies. Its version comes from `[workspace.package]` in the root `Cargo.toml`,
+and its crate name and feature list from `tests-consumer/Cargo.toml`, the
+fixture that compiles that declaration outside the root workspace. Generating
+from the fixture is what keeps the documented declaration buildable. `make doc`
+regenerates it; `make docs-check` and the CI lint job check it.
+
+
 ### `check-doc-links.py`
 
 Check that markdown links pointing into this repository resolve to a file.

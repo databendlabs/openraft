@@ -2,6 +2,41 @@
 
 In this chapter, we will build a key-value store cluster using Openraft.
 
+## What this chapter targets
+
+<!-- BEGIN GENERATED VERSION CONTRACT: scripts/build_version_contract.py -->
+This chapter describes Openraft `0.10.0-alpha.34`, the 0.10 prerelease line,
+developed on branch `main`. An application depends on it with:
+
+```toml
+[dependencies]
+openraft = { version = "0.10.0-alpha.34", features = ["serde"] }
+```
+
+`tests-consumer/Cargo.toml` compiles this declaration on its own, outside this
+repository's workspace, so the feature list above is enough by itself.
+<!-- END GENERATED VERSION CONTRACT -->
+
+- **Network API**: implement [`RaftNetworkV2`]. Its predecessor `RaftNetwork`
+  lives in the separate `openraft-legacy` crate, for applications migrating
+  from 0.9.
+- **Runtime**: tokio, supplied by the default `tokio-rt` feature, which is why
+  the dependency declaration names no runtime. Another runtime plugs in through
+  [`AsyncRuntime`].
+- **`serde`**: the feature adds `Serialize`/`Deserialize` bounds to the types
+  that cross the network, so an application replicating over a network
+  transport enables it.
+- **Examples**: `raft-kv-memstore` is the canonical one, and
+  `raft-kv-rocksdb` is its persistent-storage variation. The gRPC,
+  single-threaded, OpenDAL-snapshot, and multi-Raft examples each vary one
+  component; `raft-kv-memstore-network-v1` is legacy, kept for the v1 network
+  trait. [examples/README.md](https://github.com/databendlabs/openraft/blob/main/examples/README.md)
+  maps each one to the components it swaps.
+- **Production**: every example is a demonstration. Its storage keeps data in
+  memory or in a store wired for clarity rather than durability, and its HTTP
+  transport has no authentication, retry budget, or backpressure. The traits
+  are the product; the examples show how to satisfy them.
+
 [examples/raft-kv-memstore](https://github.com/databendlabs/openraft/tree/main/examples/raft-kv-memstore)
 is the canonical example application: a complete server, client, and demo
 cluster that keeps its data in memory. This chapter follows that example, and

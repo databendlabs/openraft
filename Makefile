@@ -85,15 +85,18 @@ fix:
 doc:
 	make -C openraft/src/docs/faq
 	make -C openraft/src/docs/feature_flags
+	./scripts/build_version_contract.py
 	RUSTDOCFLAGS="-D warnings" cargo doc --document-private-items --all --no-deps
 
 # Read-only counterpart of `doc`: it builds the documentation, runs the
-# doctests, and checks that repository links still resolve, without
-# regenerating any file. The CI lint job runs this same target.
+# doctests, and checks that repository links still resolve and that the
+# generated version contract is current, without regenerating any file. The CI
+# lint job runs this same target.
 docs-check:
 	RUSTDOCFLAGS="-D warnings" cargo doc --document-private-items --all --no-deps
 	cargo test --doc --all
 	./scripts/check-doc-links.py
+	./scripts/build_version_contract.py --check
 
 check_missing_doc:
 	# Warn about missing doc for public API
@@ -136,6 +139,7 @@ fmt:
 	cargo fmt --manifest-path examples/raft-kv-rocksdb/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path examples/multi-raft-kv/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path tests-turmoil/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path tests-consumer/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path jepsen/openraft-test-app/Cargo.toml $(FMT_ARGS)
 
 clippy:
@@ -172,6 +176,10 @@ clippy:
 	@# root would not pick it up.
 	cd tests-turmoil && cargo clippy --no-deps --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path jepsen/openraft-test-app/Cargo.toml                        --all-targets -- -D warnings
+	@# The fixture that compiles the dependency declaration documented in the
+	@# getting-started guide, outside the workspace so no feature unification
+	@# hides a missing feature.
+	cargo clippy --no-deps --manifest-path tests-consumer/Cargo.toml                                  --all-targets -- -D warnings
 	@# Bug: clippy --all-targets reports false warning about unused dep in
 	@# `[dev-dependencies]`:
 	@# https://github.com/rust-lang/rust/issues/72686#issuecomment-635539688
@@ -228,6 +236,7 @@ check:
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/raft-kv-memstore/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/raft-kv-rocksdb/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/multi-raft-kv/Cargo.toml
+	RUSTFLAGS="-D warnings" cargo check --manifest-path tests-consumer/Cargo.toml
 
 clean:
 	cargo clean
@@ -238,6 +247,7 @@ clean:
 	cargo clean --manifest-path metrics-otel/Cargo.toml
 	cargo clean --manifest-path benchmarks/minimal/Cargo.toml
 	cargo clean --manifest-path tests-turmoil/Cargo.toml
+	cargo clean --manifest-path tests-consumer/Cargo.toml
 	cargo clean --manifest-path examples/app-http/Cargo.toml
 	cargo clean --manifest-path examples/network-v1-http/Cargo.toml
 	cargo clean --manifest-path examples/network-v2-http/Cargo.toml

@@ -1,0 +1,22 @@
+[package]
+name = "openraft-consumer-fixture"
+description = "Compiles the dependency declaration and wiring that the getting-started guide documents"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Its own workspace on purpose: an application outside this repository does not
+# get the root workspace's unified feature set, so this fixture must not either.
+# It is what proves the documented feature list is sufficient on its own.
+[workspace]
+
+[dependencies]
+# The declaration `openraft/src/docs/getting_started/getting-started.md`
+# documents, plus `path` so this checkout is what gets compiled. An application
+# outside this repository keeps `version` and `features`, and drops `path`.
+#
+# `scripts/build_version_contract.py` generates that documented block from this
+# line, and fails when the two disagree.
+openraft = { path = "../openraft", version = "0.10.0-alpha.34", features = ["serde"] }
+
+serde = { version = "1.0", features = ["derive"] }
