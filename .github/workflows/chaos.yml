@@ -29,8 +29,6 @@ jobs:
           toolchain: "${{ matrix.toolchain }}"
           components: rustfmt, clippy
 
-
-        # TODO: unit test should be replaced
       - name: Unit Tests, with and without defensive store
         run: cargo test
         env:
