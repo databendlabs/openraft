@@ -547,7 +547,7 @@ where
             config: config.clone(),
             runtime_config: runtime_config.clone(),
             core_state: Default::default(),
-            network_factory: network,
+            network_factory: Arc::new(C::mutex(network)),
             log_store,
             sm_handle,
 
