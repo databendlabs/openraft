@@ -14,6 +14,21 @@ If `./change-log/<version>.md` exists, it skips re-building it from git-log.
 Thus you can generate semi-automatic change-logs by editing `./change-log/<version>.md` and running the script again, which will just only the `./change-log.md`.
 
 
+### `check-doc-links.py`
+
+Check that markdown links pointing into this repository resolve to a file.
+
+- Usage: `./scripts/check-doc-links.py`: check every tracked markdown file.
+- Usage: `./scripts/check-doc-links.py openraft/`: check one subtree.
+- Install: standard library only.
+
+It resolves relative links against the file that contains them, and translates
+`https://github.com/databendlabs/openraft/{blob,tree}/main/...` URLs back into
+working-tree paths. It skips links to other hosts, links pinned to a commit or
+tag, and Rustdoc intra-doc targets such as `crate::docs::getting_started`.
+Both `make docs-check` and the CI lint job run it.
+
+
 ### `check.kdl`
 
 Run daily tests in parallel:
