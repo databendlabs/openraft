@@ -16,48 +16,9 @@ use crate::storage::RaftStateMachine;
 ///
 /// A `RaftRuntime` talks to `RaftLogStorage` and `RaftNetworkV2` to get things done.
 ///
-/// The workflow of writing something through raft protocol with engine and runtime would be like
-/// this:
+/// See the [Engine and Runtime Architecture guide] for the write flow and command/event loop.
 ///
-/// ```text
-/// Client                    Engine                         Runtime      Storage      Network
-///   |                         |      write x=1                |            |            |
-///   |-------------------------------------------------------->|            |            |
-///   |        event:write      |                               |            |            |
-///   |        .------------------------------------------------|            |            |
-///   |        '--------------->|                               |            |            |
-///   |                         |      cmd:append-log-1         |            |            |
-///   |                         |--+--------------------------->|   append   |            |
-///   |                         |  |                            |----------->|            |
-///   |                         |  |                            |<-----------|            |
-///   |                         |  |   cmd:replicate-log-1      |   ok       |            |
-///   |                         |  '--------------------------->|            |            |
-///   |                         |                               |            |   send     |
-///   |                         |                               |------------------------>|
-///   |                         |                               |            |   send     |
-///   |                         |                               |------------------------>|
-///   |                         |                               |            |            |
-///   |                         |                               |<------------------------|
-///   |         event:ok        |                               |   ok       |            |
-///   |        .------------------------------------------------|            |            |
-///   |        '--------------->|                               |            |            |
-///   |                         |                               |<------------------------|
-///   |         event:ok        |                               |   ok       |            |
-///   |        .------------------------------------------------|            |            |
-///   |        '--------------->|                               |            |            |
-///   |                         |     cmd:commit-log-1          |            |            |
-///   |                         |------------------------------>|            |            |
-///   |                         |     cmd:apply-log-1           |            |            |
-///   |                         |------------------------------>|            |            |
-///   |                         |                               |   apply    |            |
-///   |                         |                               |----------->|            |
-///   |                         |                               |<-----------|            |
-///   |                         |                               |   ok       |            |
-///   |<--------------------------------------------------------|            |            |
-///   |        response         |                               |            |            |
-/// ```
-///
-/// TODO: add this diagram to guides/
+/// [Engine and Runtime Architecture guide]: crate::docs::components::engine_runtime
 #[add_async_trait]
 pub(crate) trait RaftRuntime<C, SM = ()>
 where

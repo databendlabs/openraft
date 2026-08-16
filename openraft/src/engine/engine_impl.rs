@@ -64,7 +64,9 @@ use crate::vote::raft_vote::RaftVoteExt;
 ///
 /// This structure only contains necessary information to run raft algorithm,
 /// but none of the application specific data.
-/// TODO: make the fields private
+///
+/// Fields are crate-visible because `RaftCore` executes this engine's output and advances its
+/// I/O progress. Protocol state transitions should still go through `Engine` or its handlers.
 #[derive(Debug)]
 pub(crate) struct Engine<C, SM = ()>
 where
