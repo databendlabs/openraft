@@ -402,6 +402,10 @@ where
         new_prog
     }
 
+    pub(crate) fn quorum_set(&self) -> &QS {
+        &self.quorum_set
+    }
+
     /// Replace the entry for the same ID and update quorum-accepted progress.
     fn replace(&mut self, entry: Entry) -> Result<&Entry::Progress, &Entry::Progress> {
         self.stat.update_count += 1;

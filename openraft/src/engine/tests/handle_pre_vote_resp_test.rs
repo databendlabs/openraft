@@ -164,6 +164,7 @@ fn test_handle_pre_vote_resp_reject_adopts_higher_vote() -> anyhow::Result<()> {
 
     assert_eq!(
         vec![
+            Command::FailPendingReads,
             Command::SaveVote { vote: Vote::new(10, 2) },
             Command::CloseReplicationStreams,
         ],

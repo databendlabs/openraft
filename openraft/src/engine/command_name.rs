@@ -28,6 +28,7 @@ pub enum CommandName {
     ReplicateSnapshot,
     BroadcastTransferLeader,
     CloseReplicationStreams,
+    FailPendingReads,
     RebuildReplicationStreams,
     SaveVote,
     SendVote,
@@ -92,6 +93,7 @@ mod tests {
         // BroadcastHeartbeat
         let cmd: Command<C> = Command::BroadcastHeartbeat {
             session_id: ReplicationSessionId::new(cv.clone(), None),
+            bypass_min_interval: false,
         };
         assert_eq!(cmd.name(), CommandName::BroadcastHeartbeat);
 
@@ -129,6 +131,10 @@ mod tests {
         // CloseReplicationStreams
         let cmd: Command<C> = Command::CloseReplicationStreams;
         assert_eq!(cmd.name(), CommandName::CloseReplicationStreams);
+
+        // FailPendingReads
+        let cmd: Command<C> = Command::FailPendingReads;
+        assert_eq!(cmd.name(), CommandName::FailPendingReads);
 
         // RebuildReplicationStreams
         let cmd: Command<C> = Command::RebuildReplicationStreams {
@@ -199,6 +205,7 @@ mod tests {
         assert_eq!(CommandName::ReplicateSnapshot.as_str(), "ReplicateSnapshot");
         assert_eq!(CommandName::BroadcastTransferLeader.as_str(), "BroadcastTransferLeader");
         assert_eq!(CommandName::CloseReplicationStreams.as_str(), "CloseReplicationStreams");
+        assert_eq!(CommandName::FailPendingReads.as_str(), "FailPendingReads");
         assert_eq!(
             CommandName::RebuildReplicationStreams.as_str(),
             "RebuildReplicationStreams"

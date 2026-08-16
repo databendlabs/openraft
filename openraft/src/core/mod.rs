@@ -36,6 +36,7 @@ pub(crate) mod sm;
 pub(crate) mod stage;
 
 mod client_responder_queue;
+mod linearizable_read;
 mod metrics_channels;
 mod notification_name;
 mod raft_core;
@@ -47,6 +48,9 @@ mod tick;
 
 pub(crate) use client_responder_queue::ClientResponderQueue;
 pub(crate) use io_broadcast::IoBroadcast;
+pub(crate) use linearizable_read::PendingRead;
+pub(crate) use linearizable_read::PendingReadDeadlineNotifier;
+pub(crate) use linearizable_read::PendingReadQueue;
 pub(crate) use metrics_channels::MetricsChannels;
 pub use notification_name::NotificationName;
 pub(crate) use raft_core::ApplyResult;
