@@ -248,6 +248,7 @@ where
         *self.candidate = None;
         *self.pre_candidate = None;
 
+        self.output.prepend_command(Command::FailPendingReads);
         self.output.push_command(Command::CloseReplicationStreams);
 
         self.server_state_handler().update_server_state_if_changed();

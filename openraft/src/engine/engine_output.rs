@@ -59,6 +59,11 @@ where
         self.commands.push_back(cmd)
     }
 
+    pub(crate) fn prepend_command(&mut self, cmd: Command<C, SM>) {
+        tracing::debug!("push front command: {:?}", cmd);
+        self.commands.push_front(cmd)
+    }
+
     /// Put the command to the head of the queue or to a separate pending queue.
     ///
     /// This will be used when the command is not ready to be executed.

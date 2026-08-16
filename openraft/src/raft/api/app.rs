@@ -3,7 +3,6 @@ use std::sync::Arc;
 use openraft_macros::since;
 
 use crate::RaftTypeConfig;
-use crate::ReadPolicy;
 use crate::base::BoxStream;
 use crate::batch::Batch;
 use crate::core::raft_msg::RaftMsg;
@@ -14,6 +13,7 @@ use crate::impls::ProgressResponder;
 use crate::raft::ClientWriteResponse;
 use crate::raft::ClientWriteResult;
 use crate::raft::linearizable_read::Linearizer;
+use crate::raft::linearizable_read::LinearizerOption;
 use crate::raft::message::WriteResult;
 use crate::raft::message::into_write_result;
 use crate::raft::raft_inner::RaftInner;
@@ -48,9 +48,9 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) async fn get_read_linearizer(
         &self,
-        read_policy: ReadPolicy,
+        linearizer_option: LinearizerOption,
     ) -> Result<Result<Linearizer<C>, LinearizableReadError<C>>, Fatal<C>> {
-        self.inner.call_core_oneshot(|tx| RaftMsg::GetLinearizer { read_policy, tx }).await
+        self.inner.call_core_oneshot(|tx| RaftMsg::GetLinearizer { linearizer_option, tx }).await
     }
 
     #[since(version = "0.10.0")]

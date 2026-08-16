@@ -107,7 +107,10 @@ fn test_refresh_server_state_removed_leader_uncommitted_membership() -> anyhow::
 
     assert!(eng.leader.is_none());
     assert_eq!(ServerState::Learner, eng.state.server_state);
-    assert_eq!(vec![Command::CloseReplicationStreams], eng.output.take_commands());
+    assert_eq!(
+        vec![Command::FailPendingReads, Command::CloseReplicationStreams,],
+        eng.output.take_commands()
+    );
 
     Ok(())
 }
@@ -121,7 +124,10 @@ fn test_refresh_server_state_removed_leader_committed_membership() -> anyhow::Re
 
     assert!(eng.leader.is_none());
     assert_eq!(ServerState::Learner, eng.state.server_state);
-    assert_eq!(vec![Command::CloseReplicationStreams], eng.output.take_commands());
+    assert_eq!(
+        vec![Command::FailPendingReads, Command::CloseReplicationStreams,],
+        eng.output.take_commands()
+    );
 
     Ok(())
 }
