@@ -72,7 +72,10 @@ where
     ReplicateCommitted { committed: Option<LogIdOf<C>> },
 
     /// Broadcast heartbeat to all other nodes.
-    BroadcastHeartbeat { session_id: ReplicationSessionId<C> },
+    BroadcastHeartbeat {
+        session_id: ReplicationSessionId<C>,
+        bypass_min_interval: bool,
+    },
 
     /// Save the committed log id `upto` to [`RaftLogStorage`].
     ///
@@ -111,6 +114,9 @@ where
 
     /// Close replication streams and heartbeat streams.
     CloseReplicationStreams,
+
+    /// Fail all pending linearizable reads after losing leadership.
+    FailPendingReads,
 
     /// Membership config changed, need to update replication streams.
     /// The Runtime has to close all old replications and start new ones.
@@ -196,8 +202,15 @@ where
             Command::ReplicateCommitted { committed } => {
                 write!(f, "ReplicateCommitted: {}", committed.display())
             }
-            Command::BroadcastHeartbeat { session_id } => {
-                write!(f, "BroadcastHeartbeat: session_id:{}", session_id)
+            Command::BroadcastHeartbeat {
+                session_id,
+                bypass_min_interval,
+            } => {
+                write!(
+                    f,
+                    "BroadcastHeartbeat: session_id:{}, bypass_min_interval:{}",
+                    session_id, bypass_min_interval
+                )
             }
             Command::SaveCommittedAndApply {
                 already_applied: already_committed,
@@ -219,6 +232,7 @@ where
             }
             Command::BroadcastTransferLeader { req } => write!(f, "TransferLeader: {}", req),
             Command::CloseReplicationStreams => write!(f, "CloseReplicationStreams"),
+            Command::FailPendingReads => write!(f, "FailPendingReads"),
             Command::RebuildReplicationStreams {
                 leader_vote,
                 targets,
@@ -267,7 +281,7 @@ where
             (Command::UpdateIOProgress { when, io_id },        Command::UpdateIOProgress { when: wb, io_id: ab }, )                  => when == wb && io_id == ab,
             (Command::AppendEntries { committed_vote: vote, entries },    Command::AppendEntries { committed_vote: vb, entries: b }, )               => vote == vb && entries == b,
             (Command::ReplicateCommitted { committed },        Command::ReplicateCommitted { committed: b }, )                       =>  committed == b,
-            (Command::BroadcastHeartbeat { session_id },       Command::BroadcastHeartbeat { session_id: sb }, )                     => session_id == sb,
+            (Command::BroadcastHeartbeat { session_id, bypass_min_interval },       Command::BroadcastHeartbeat { session_id: sb, bypass_min_interval: ib }, ) => session_id == sb && bypass_min_interval == ib,
             (Command::SaveCommittedAndApply { already_applied: already_committed, upto, },      Command::SaveCommittedAndApply { already_applied: b_committed, upto: b_upto, }, )  => already_committed == b_committed && upto == b_upto,
             (Command::Replicate { target, req },               Command::Replicate { target: b_target, req: other_req, }, )           => target == b_target && req == other_req,
             (Command::BroadcastTransferLeader { req },         Command::BroadcastTransferLeader { req: b, }, )                       => req == b,
@@ -280,6 +294,7 @@ where
             (Command::Respond { when, resp: send },            Command::Respond { when: b_when, resp: b })                           => send == b && when == b_when,
             (Command::StateMachine { command },                Command::StateMachine { command: b })                                 => command == b,
             (Command::CloseReplicationStreams,                 Command::CloseReplicationStreams)                                     => true,
+            (Command::FailPendingReads,                        Command::FailPendingReads)                                            => true,
             (Command::ReplicateSnapshot { leader_vote, target, inflight_id }, Command::ReplicateSnapshot { leader_vote: lb, target: tb, inflight_id: ib }) => leader_vote == lb && target == tb && inflight_id == ib,
 
             // Two different commands are never equal. These arms are spelled out per variant
@@ -295,6 +310,7 @@ where
             (Command::ReplicateSnapshot { .. },         _) => false,
             (Command::BroadcastTransferLeader { .. },   _) => false,
             (Command::CloseReplicationStreams,          _) => false,
+            (Command::FailPendingReads,                 _) => false,
             (Command::RebuildReplicationStreams { .. }, _) => false,
             (Command::SaveVote { .. },                  _) => false,
             (Command::SendVote { .. },                  _) => false,
@@ -325,6 +341,7 @@ where
             Command::ReplicateSnapshot { .. }         => CommandName::ReplicateSnapshot,
             Command::BroadcastTransferLeader { .. }   => CommandName::BroadcastTransferLeader,
             Command::CloseReplicationStreams          => CommandName::CloseReplicationStreams,
+            Command::FailPendingReads                 => CommandName::FailPendingReads,
             Command::RebuildReplicationStreams { .. } => CommandName::RebuildReplicationStreams,
             Command::SaveVote { .. }                  => CommandName::SaveVote,
             Command::SendVote { .. }                  => CommandName::SendVote,
@@ -341,6 +358,7 @@ where
     pub(crate) fn kind(&self) -> CommandKind {
         match self {
             Command::CloseReplicationStreams          => CommandKind::Main,
+            Command::FailPendingReads                 => CommandKind::Main,
             Command::RebuildReplicationStreams { .. } => CommandKind::Main,
             Command::Respond { .. }                   => CommandKind::Respond,
             // Apply is firstly handled by RaftCore, then forwarded to state machine worker.
@@ -371,6 +389,7 @@ where
     pub(crate) fn condition(&self) -> Option<Condition<C>> {
         match self {
             Command::CloseReplicationStreams          => None,
+            Command::FailPendingReads                 => None,
             Command::RebuildReplicationStreams { .. } => None,
             Command::Respond { when, .. }             => when.clone(),
 

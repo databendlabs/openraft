@@ -17,10 +17,10 @@ use crate::errors::LinearizableReadError;
 use crate::impls::ProgressResponder;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::ClientWriteResult;
-use crate::raft::ReadPolicy;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft::linearizable_read::Linearizer;
+use crate::raft::linearizable_read::LinearizerOption;
 use crate::raft::responder::core_responder::CoreResponder;
 use crate::raft::stream_append::StreamAppendResult;
 use crate::type_config::alias::BatchOf;
@@ -82,7 +82,7 @@ where C: RaftTypeConfig
     },
 
     GetLinearizer {
-        read_policy: ReadPolicy,
+        linearizer_option: LinearizerOption,
         tx: ClientReadTx<C>,
     },
 
@@ -168,8 +168,8 @@ where C: RaftTypeConfig
                 write!(f, "RequestPreVote: {}", rpc)
             }
             RaftMsg::ClientWrite { .. } => write!(f, "ClientWrite"),
-            RaftMsg::GetLinearizer { read_policy, .. } => {
-                write!(f, "GetLinearizer: {}", read_policy)
+            RaftMsg::GetLinearizer { linearizer_option, .. } => {
+                write!(f, "GetLinearizer: {}", linearizer_option)
             }
             RaftMsg::Initialize { members, .. } => {
                 write!(f, "Initialize: {}", members.display())

@@ -38,6 +38,7 @@ use core_state::CoreState;
 use derive_more::Display;
 use futures_util::FutureExt;
 use linearizable_read::Linearizer;
+use linearizable_read::LinearizerOption;
 use linearizable_read::ReadLogId;
 pub use message::AppendEntriesRequest;
 pub use message::AppendEntriesResponse;
@@ -85,6 +86,8 @@ use crate::config::RuntimeConfig;
 use crate::core::ClientResponderQueue;
 use crate::core::IoBroadcast;
 use crate::core::MetricsChannels;
+use crate::core::PendingReadDeadlineNotifier;
+use crate::core::PendingReadQueue;
 use crate::core::RaftCore;
 use crate::core::SharedReplicateBatch;
 use crate::core::StepDownWatcher;
@@ -556,6 +559,8 @@ where
             // initially, allocate for 8 kilo outstanding requests.
             client_responders: ClientResponderQueue::with_capacity(1024 * 8),
 
+            pending_reads: PendingReadQueue::default(),
+            pending_read_deadline_notifier: PendingReadDeadlineNotifier::spawn(tx_notify.clone()),
             replications: Default::default(),
 
             heartbeat_handle: HeartbeatWorkersHandle::new(id.clone(), config.clone()),
@@ -1049,7 +1054,7 @@ where
     }
 
     /// Ensures reads performed after this method are linearizable across the cluster
-    /// using an explicitly provided policy. This method is just a shorthand for calling
+    /// using explicitly provided options. This method is just a shorthand for calling
     /// [`get_read_log_id()`](Raft::get_read_log_id) and then calling [Raft::wait].
     ///
     /// This method is just a shorthand for combining calling
@@ -1063,7 +1068,8 @@ where
     /// To support follower read, i.e., get `read_log_id` on a remote leader then read on local
     /// state machine, see [`Raft::get_read_linearizer`].
     ///
-    /// The `read_policy` defines the policy to ensure leadership. See: [`ReadPolicy`].
+    /// The option defines how to ensure leadership. It may be a [`LinearizerOption`] or a
+    /// [`ReadPolicy`], which is converted into one.
     ///
     /// Returns:
     /// - `Ok(read_log_id)` on successful confirmation that the node is the leader. `read_log_id`
@@ -1082,14 +1088,18 @@ where
     /// // Then proceed with the state machine read
     /// ```
     /// Read more about how it works: [Read Operation](crate::docs::protocol::read)
+    #[since(
+        version = "0.10.0",
+        change = "accept `impl Into<LinearizerOption>` instead of `ReadPolicy`"
+    )]
     #[since(version = "0.10.0", change = "return ReadLogId instead of Option<LogId>")]
     #[since(version = "0.9.0")]
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "debug", skip_all)]
     pub async fn ensure_linearizable(
         &self,
-        read_policy: ReadPolicy,
+        linearizer_option: impl Into<LinearizerOption>,
     ) -> Result<ReadLogId<C>, RaftError<C, LinearizableReadError<C>>> {
-        let linearizer = self.app_api().get_read_linearizer(read_policy).await.into_raft_result()?;
+        let linearizer = self.app_api().get_read_linearizer(linearizer_option.into()).await.into_raft_result()?;
 
         // Safe unwrap: it never times out.
         let state = linearizer.await_ready(self).await?;
@@ -1108,14 +1118,18 @@ where
     /// **For new code, use [`Raft::get_read_linearizer`]** which provides a better API.
     ///
     /// See [`Raft::get_read_linearizer`] for full documentation.
+    #[since(
+        version = "0.10.0",
+        change = "accept `impl Into<LinearizerOption>` instead of `ReadPolicy`"
+    )]
     #[since(version = "0.10.0", change = "return ReadLogId instead of Option<LogId>")]
     #[since(version = "0.9.0")]
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "debug", skip_all)]
     pub async fn get_read_log_id(
         &self,
-        read_policy: ReadPolicy,
+        linearizer_option: impl Into<LinearizerOption>,
     ) -> Result<(ReadLogId<C>, Option<LogIdOf<C>>), RaftError<C, LinearizableReadError<C>>> {
-        let linearizer = self.app_api().get_read_linearizer(read_policy).await.into_raft_result()?;
+        let linearizer = self.app_api().get_read_linearizer(linearizer_option.into()).await.into_raft_result()?;
 
         let read_log_id = linearizer.read_log_id();
         let applied = linearizer.applied();
@@ -1127,7 +1141,8 @@ where
     ///
     /// This method confirms leadership and provides the necessary information to linearize reads
     /// across the cluster. The leadership is ensured by sending heartbeats or by lease according
-    /// to the specified policy. See: [`ReadPolicy`].
+    /// to the specified [`LinearizerOption`]. [`ReadPolicy`] is also accepted and converted into
+    /// an option.
     ///
     /// Returns:
     /// - `Ok(Linearizer<C>)` on successful confirmation that the node is the leader. The
@@ -1167,13 +1182,18 @@ where
     /// ```
     ///
     /// See: [Read Operation](crate::docs::protocol::read)
+    #[since(
+        version = "0.10.0",
+        change = "accept `impl Into<LinearizerOption>` instead of `ReadPolicy`"
+    )]
     #[since(version = "0.10.0")]
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn get_read_linearizer(
         &self,
-        read_policy: ReadPolicy,
+        linearizer_option: impl Into<LinearizerOption>,
     ) -> Result<Linearizer<C>, RaftError<C, LinearizableReadError<C>>> {
-        self.app_api().get_read_linearizer(read_policy).await.into_raft_result()
+        let linearizer_option = linearizer_option.into();
+        self.app_api().get_read_linearizer(linearizer_option).await.into_raft_result()
     }
 
     /// Submit a mutating client request to Raft to update the state of the system (§5.1).

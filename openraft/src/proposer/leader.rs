@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fmt;
 use std::time::Duration;
 
@@ -5,6 +6,7 @@ use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 use crate::base::shared_id_generator::SharedIdGenerator;
 use crate::engine::leader_log_ids::LeaderLogIds;
+use crate::errors::QuorumNotEnough;
 use crate::progress::VecProgress;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::id_val::IdVal;
@@ -216,6 +218,36 @@ where
         *self.clock_progress.quorum_accepted()
     }
 
+    /// Report the clock progress as a [`QuorumNotEnough`] error.
+    ///
+    /// The reported `got` set names the voters whose last acknowledged RPC was sent after
+    /// `min_acked_at`, so the caller can see how far the clock is from a quorum. Learners are left
+    /// out because they never grant a value. This leader is always included when it is a voter: it
+    /// grants its own RPCs, while [`Self::update_clock`] records that grant only once a follower
+    /// responds.
+    pub(crate) fn clock_quorum_not_enough(&self, min_acked_at: InstantOf<C>) -> QuorumNotEnough<C>
+    where QS: fmt::Display {
+        let voter_count = self.clock_progress.voter_count();
+
+        let mut got: BTreeSet<C::NodeId> = self
+            .clock_progress
+            .iter()
+            .take(voter_count)
+            .filter(|entry| entry.val.is_some_and(|acked_at| acked_at > min_acked_at))
+            .map(|entry| entry.id.clone())
+            .collect();
+
+        let leader_node_id = self.committed_vote.to_leader_node_id();
+        if self.clock_progress.is_voter(&leader_node_id) == Some(true) {
+            got.insert(leader_node_id);
+        }
+
+        QuorumNotEnough {
+            cluster: self.clock_progress.quorum_set().to_string(),
+            got,
+        }
+    }
+
     /// Return whether this leader's lease is valid.
     pub(crate) fn is_lease_valid(&self, leader_lease: Duration) -> bool {
         if self.is_self_quorum() {
@@ -273,10 +305,12 @@ where
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
+    use std::sync::Arc;
     use std::time::Duration;
 
     use maplit::btreeset;
 
+    use crate::Membership;
     use crate::Vote;
     use crate::base::shared_id_generator::SharedIdGenerator;
     use crate::engine::leader_log_ids::LeaderLogIds;
@@ -466,6 +500,47 @@ mod tests {
         leading.update_clock(&3, t3);
         let t = leading.last_quorum_acked_time();
         assert_eq!(Some(t2), t, "n2 and n3 acked");
+    }
+
+    #[test]
+    fn test_clock_quorum_not_enough() {
+        // Voters {1,2,3} with learner {4}; node 1 is the leader.
+        let membership = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1, 2, 3}], [4]);
+        let quorum_set = Arc::new(membership);
+        let mut leading = Leader::<UTConfig, _>::new(
+            Vote::new(2, 1).to_committed(),
+            quorum_set.clone(),
+            [4],
+            None,
+            SharedIdGenerator::new(),
+        );
+
+        let t1 = UTConfig::<()>::now();
+        let t2 = t1 + Duration::from_millis(10);
+
+        let err = leading.clock_quorum_not_enough(t1);
+        assert_eq!(
+            btreeset! {1},
+            err.got,
+            "the leader grants its own RPCs before any response"
+        );
+        assert_eq!(quorum_set.to_string(), err.cluster);
+
+        leading.update_clock(&2, t1);
+        let err = leading.clock_quorum_not_enough(t1);
+        assert_eq!(btreeset! {1}, err.got, "an RPC sent at t1 is not newer than t1");
+
+        leading.update_clock(&2, t2);
+        let err = leading.clock_quorum_not_enough(t1);
+        assert_eq!(btreeset! {1, 2}, err.got, "n2 acked an RPC sent after t1");
+
+        leading.update_clock(&4, t2);
+        let err = leading.clock_quorum_not_enough(t2);
+        assert_eq!(
+            btreeset! {1},
+            err.got,
+            "learner n4 is not counted, and n2's ack is too old"
+        );
     }
 
     #[test]

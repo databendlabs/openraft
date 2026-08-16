@@ -24,6 +24,7 @@ use openraft::EntryPayload;
 use openraft::ErrorSubject;
 use openraft::ErrorVerb;
 use openraft::Instant;
+use openraft::LinearizerOption;
 use openraft::LogId;
 use openraft::LogIdOptionExt;
 use openraft::LogIndexOptionExt;
@@ -296,5 +297,6 @@ use openraft_legacy::network_v1::SnapshotSegmentId;
 
 #[test]
 fn test_public_api_accessible() {
-    // This test just needs to compile to verify all paths are publicly accessible
+    let age = std::time::Duration::from_millis(100);
+    let _linearizer_option = LinearizerOption::new(Some(age), true);
 }

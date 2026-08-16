@@ -126,6 +126,7 @@ fn test_append_entries_prev_log_id_is_applied() -> anyhow::Result<()> {
     assert_eq!(ServerState::Follower, eng.state.server_state);
     assert_eq!(
         vec![
+            Command::FailPendingReads,
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
             },
@@ -178,6 +179,7 @@ fn test_append_entries_prev_log_id_conflict() -> anyhow::Result<()> {
     assert_eq!(ServerState::Learner, eng.state.server_state);
     assert_eq!(
         vec![
+            Command::FailPendingReads,
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
             },
@@ -225,6 +227,7 @@ fn test_append_entries_prev_log_id_is_committed() -> anyhow::Result<()> {
     assert_eq!(ServerState::Learner, eng.state.server_state);
     assert_eq!(
         vec![
+            Command::FailPendingReads,
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
             },
@@ -284,6 +287,7 @@ fn test_append_entries_prev_log_id_not_exists() -> anyhow::Result<()> {
     assert_eq!(ServerState::Follower, eng.state.server_state);
     assert_eq!(
         vec![
+            Command::FailPendingReads,
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
             },
@@ -333,6 +337,7 @@ fn test_append_entries_conflict() -> anyhow::Result<()> {
     assert_eq!(ServerState::Learner, eng.state.server_state);
     assert_eq!(
         vec![
+            Command::FailPendingReads,
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
             },

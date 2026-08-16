@@ -128,11 +128,14 @@ where
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn send_heartbeat(&mut self) {
+    pub(crate) fn send_heartbeat(&mut self, bypass_min_interval: bool) {
         let membership_log_id = self.state.membership_state.effective().log_id();
         let session_id = ReplicationSessionId::new(self.leader.committed_vote.clone(), membership_log_id.clone());
 
-        self.output.push_command(Command::BroadcastHeartbeat { session_id });
+        self.output.push_command(Command::BroadcastHeartbeat {
+            session_id,
+            bypass_min_interval,
+        });
     }
 
     /// Get the log id for a linearizable read.

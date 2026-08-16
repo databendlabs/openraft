@@ -87,6 +87,7 @@ fn test_handle_message_vote_committed_vote() -> anyhow::Result<()> {
     assert!(eng.state.vote_last_modified() <= Some(now + Duration::from_millis(20)));
     assert_eq!(
         vec![
+            Command::FailPendingReads,
             Command::SaveVote {
                 vote: Vote::new_committed(3, 2)
             },
@@ -118,7 +119,10 @@ fn test_handle_message_vote_granted_equal_vote() -> anyhow::Result<()> {
     assert!(Some(now) <= eng.state.vote_last_modified());
     assert!(eng.state.vote_last_modified() <= Some(now + Duration::from_millis(20)));
 
-    assert_eq!(vec![Command::CloseReplicationStreams], eng.output.take_commands());
+    assert_eq!(
+        vec![Command::FailPendingReads, Command::CloseReplicationStreams,],
+        eng.output.take_commands()
+    );
     Ok(())
 }
 
@@ -139,6 +143,7 @@ fn test_handle_message_vote_granted_greater_vote() -> anyhow::Result<()> {
     assert_eq!(ServerState::Follower, eng.state.server_state);
     assert_eq!(
         vec![
+            Command::FailPendingReads,
             Command::SaveVote { vote: Vote::new(3, 1) },
             Command::CloseReplicationStreams,
         ],
@@ -168,6 +173,7 @@ fn test_handle_message_vote_granted_follower_learner_does_not_emit_update_server
         assert_eq!(st, eng.state.server_state);
         assert_eq!(
             vec![
+                Command::FailPendingReads,
                 Command::SaveVote { vote: Vote::new(3, 1) },
                 Command::CloseReplicationStreams,
             ],
@@ -191,6 +197,7 @@ fn test_handle_message_vote_granted_follower_learner_does_not_emit_update_server
         assert_eq!(st, eng.state.server_state);
         assert_eq!(
             vec![
+                Command::FailPendingReads,
                 Command::SaveVote { vote: Vote::new(3, 1) },
                 Command::CloseReplicationStreams,
             ],
