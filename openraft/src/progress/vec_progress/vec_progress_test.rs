@@ -241,12 +241,11 @@ fn vec_progress_get() {
     let mut progress = VecProgress::<(u64, u64), _>::new(quorum_set, [6, 7], |id| (id, 0));
 
     progress.update(&6, 5).ok();
-    assert_eq!(&5, &progress.get(&6).1);
-    assert_eq!(Some(&5), progress.try_get(&6).map(|x| &x.1));
+    assert_eq!(Some(&(6, 5)), progress.try_get(&6));
     assert_eq!(None, progress.try_get(&9));
 
     progress.update(&6, 10).ok();
-    assert_eq!(Some(&10), progress.try_get(&6).map(|x| &x.1));
+    assert_eq!(Some(&(6, 10)), progress.try_get(&6));
 }
 
 #[test]
@@ -511,12 +510,12 @@ fn vec_progress_update_with() {
     assert_eq!(Ok(&4), got, "case 6: id:1, *=2");
 
     // Verify final values
-    assert_eq!(&4, &progress.get(&0).1);
-    assert_eq!(&4, &progress.get(&1).1);
-    assert_eq!(&3, &progress.get(&2).1);
-    assert_eq!(&2, &progress.get(&3).1);
-    assert_eq!(&5, &progress.get(&4).1);
-    assert_eq!(&0, &progress.get(&6).1);
+    assert_eq!(Some(&(0, 4)), progress.try_get(&0));
+    assert_eq!(Some(&(1, 4)), progress.try_get(&1));
+    assert_eq!(Some(&(2, 3)), progress.try_get(&2));
+    assert_eq!(Some(&(3, 2)), progress.try_get(&3));
+    assert_eq!(Some(&(4, 5)), progress.try_get(&4));
+    assert_eq!(Some(&(6, 0)), progress.try_get(&6));
 
     // Test nonexistent id returns Err with current quorum-accepted
     let got = progress.update_with(&9, |x| *x = 10);
@@ -597,7 +596,7 @@ fn vec_progress_upgrade_quorum_set() {
         p012_345.quorum_accepted(),
         "quorum extended from 012 to 012_345, quorum-accepted falls back"
     );
-    assert_eq!(&9, &p012_345.get(&5).1, "inherit learner progress");
+    assert_eq!(Some(&(5, 9)), p012_345.try_get(&5), "inherit learner progress");
 
     // When quorum set shrinks, quorum-accepted becomes greater.
 
@@ -612,7 +611,7 @@ fn vec_progress_upgrade_quorum_set() {
         p345.quorum_accepted(),
         "shrink quorum set, greater value becomes quorum-accepted"
     );
-    assert_eq!(&6, &p345.get(&1).1, "inherit voter progress");
+    assert_eq!(Some(&(1, 6)), p345.try_get(&1), "inherit voter progress");
 }
 
 #[test]
@@ -687,9 +686,9 @@ fn vec_progress_iter_mut_without_reorder() {
         }
     }
 
-    assert_eq!(&10, &progress.get(&1).1);
-    assert_eq!(&0, &progress.get(&0).1);
-    assert_eq!(&0, &progress.get(&2).1);
+    assert_eq!(Some(&(1, 10)), progress.try_get(&1));
+    assert_eq!(Some(&(0, 0)), progress.try_get(&0));
+    assert_eq!(Some(&(2, 0)), progress.try_get(&2));
 }
 
 #[test]
@@ -778,15 +777,15 @@ fn vec_progress_increase_to() {
 
     // Increase from 0 to 5
     progress.increase_to(&1, 5).ok();
-    assert_eq!(&5, &progress.get(&1).1);
+    assert_eq!(Some(&(1, 5)), progress.try_get(&1));
 
     // Try to decrease from 5 to 3 - should not change
     progress.increase_to(&1, 3).ok();
-    assert_eq!(&5, &progress.get(&1).1);
+    assert_eq!(Some(&(1, 5)), progress.try_get(&1));
 
     // Increase from 5 to 7
     progress.increase_to(&1, 7).ok();
-    assert_eq!(&7, &progress.get(&1).1);
+    assert_eq!(Some(&(1, 7)), progress.try_get(&1));
 
     // Try with nonexistent id
     let result = progress.increase_to(&9, 10);
