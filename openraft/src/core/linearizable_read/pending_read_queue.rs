@@ -99,7 +99,7 @@ where C: RaftTypeConfig
         self.debug_assert_indexes_agree();
     }
 
-    pub(crate) fn drain_with_error(&mut self, err: LinearizableReadError<C>) {
+    pub(crate) fn drain_all_with_error(&mut self, err: LinearizableReadError<C>) {
         self.deadlines.clear();
         let pending_reads = std::mem::take(&mut self.reads);
         for pending_read in pending_reads.into_values() {

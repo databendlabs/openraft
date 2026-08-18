@@ -39,7 +39,7 @@ fn assert_linearizer(rx: &mut ReadRx, node_id: u64, read_log_id: &ReadLogId<C>) 
 }
 
 #[test]
-fn test_drain_with_error() {
+fn test_drain_all_with_error() {
     let mut queue = PendingReadQueue::<C>::default();
     let read_log_id = ReadLogId::from_log_id(log_id(1, 1, 1));
     let linearizer = Linearizer::new(1, read_log_id, None);
@@ -55,7 +55,7 @@ fn test_drain_with_error() {
 
     let want = ForwardToLeader::new(2, ());
     let err = LinearizableReadError::ForwardToLeader(want.clone());
-    queue.drain_with_error(err);
+    queue.drain_all_with_error(err);
 
     assert!(queue.is_empty());
     for receiver in &mut receivers {

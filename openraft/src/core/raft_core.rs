@@ -854,7 +854,7 @@ where
             }
             Err(forward) => {
                 let err = LinearizableReadError::ForwardToLeader(forward);
-                self.pending_reads.drain_with_error(err);
+                self.pending_reads.drain_all_with_error(err);
             }
         }
 
@@ -864,7 +864,7 @@ where
     fn fail_pending_reads(&mut self) {
         let forward = self.engine.state.forward_to_leader();
         let err = LinearizableReadError::ForwardToLeader(forward);
-        self.pending_reads.drain_with_error(err);
+        self.pending_reads.drain_all_with_error(err);
         self.reschedule_pending_read_check();
     }
 
