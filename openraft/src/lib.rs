@@ -5,8 +5,6 @@
 #![cfg_attr(feature = "bt", feature(error_generic_member_access))]
 #![allow(clippy::bool_assert_comparison)]
 #![allow(clippy::bool_comparison)]
-// TODO: `clippy::result-large-err`: StorageError is 136 bytes, try to reduce the size.
-#![allow(clippy::result_large_err)]
 #![allow(clippy::type_complexity)]
 #![allow(clippy::uninlined_format_args)]
 #![deny(unused_qualifications)]
