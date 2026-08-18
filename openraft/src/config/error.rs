@@ -1,6 +1,7 @@
-use anyerror::AnyError;
 use backoff_series::ParseError as BackoffParseError;
 use openraft_macros::since;
+
+use crate::impls::BoxedErrorSource;
 
 /// Error variants related to configuration.
 #[since]
@@ -8,10 +9,11 @@ use openraft_macros::since;
 #[derive(PartialEq, Eq)]
 pub enum ConfigError {
     /// Failed to parse configuration from command-line arguments.
+    #[since(version = "0.10.0", change = "`source` from `AnyError` to `BoxedErrorSource`")]
     #[error("ParseError: {source} while parsing ({args:?})")]
     ParseError {
         /// The underlying parse error.
-        source: AnyError,
+        source: BoxedErrorSource,
         /// The arguments that failed to parse.
         args: Vec<String>,
     },
