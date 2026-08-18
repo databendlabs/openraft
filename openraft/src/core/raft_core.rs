@@ -387,22 +387,10 @@ where
             return;
         }
 
-        if !linearizer_option.heartbeat_if_quorum_ack_stale {
-            let acked = last_quorum_acked_at.as_ref().map(|t| t.display());
-            tracing::debug!(
-                "{}: lease expired: now: {}, last_quorum_acked_at: {}, required age: {max_quorum_ack_age:?}",
-                self.id,
-                now.display(),
-                acked.display()
-            );
-            tx.send(Err(ForwardToLeader::empty().into())).ok();
-            return;
-        }
-
         let min_quorum_acked_at = now - max_quorum_ack_age;
         let wait_timeout = linearizer_option.effective_wait_timeout(leader_lease);
 
-        // A read that will not wait for the round cannot benefit from it.
+        // A read that will not wait cannot benefit from a newer quorum acknowledgement.
         if wait_timeout.is_zero() {
             let quorum_not_enough = lh.leader.clock_quorum_not_enough(min_quorum_acked_at);
             let err = LinearizableReadError::QuorumNotEnough(quorum_not_enough);
@@ -410,7 +398,9 @@ where
             return;
         }
 
-        lh.send_heartbeat(true);
+        if linearizer_option.heartbeat_if_quorum_ack_stale {
+            lh.send_heartbeat(true);
+        }
 
         let deadline = now + wait_timeout;
         let pending_read = PendingRead::new(deadline, linearizer, tx);
@@ -863,8 +853,8 @@ where
                 self.pending_reads.drain_expired(now, make_error);
             }
             Err(forward) => {
-                let make_error = |_| LinearizableReadError::ForwardToLeader(forward.clone());
-                self.pending_reads.drain_expired(now, make_error);
+                let err = LinearizableReadError::ForwardToLeader(forward);
+                self.pending_reads.drain_with_error(err);
             }
         }
 

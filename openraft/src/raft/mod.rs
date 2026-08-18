@@ -253,6 +253,7 @@ pub enum ReadPolicy {
     /// With `LeaseRead`, the leader can serve reads locally without contacting followers
     /// as long as it believes its leadership lease is still valid. This provides better
     /// performance compared to `ReadIndex` but assumes clock drift between nodes is negligible.
+    /// It returns an error immediately when the lease is stale.
     ///
     /// Note: This offers slightly weaker consistency guarantees than `ReadIndex` in exchange
     /// for lower latency.

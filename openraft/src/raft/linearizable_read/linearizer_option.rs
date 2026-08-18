@@ -20,13 +20,12 @@ use crate::raft::ReadPolicy;
 /// recent quorum acknowledgement to be reused as a leader lease.
 ///
 /// `heartbeat_if_quorum_ack_stale` controls whether [`RaftCore`] immediately broadcasts heartbeats
-/// when the recorded acknowledgement is missing or reaches the effective age limit. The age limit
-/// and heartbeat behavior are independent, so a read can reuse a qualifying acknowledgement and
-/// fall back to a heartbeat round when it becomes too old.
+/// when the recorded acknowledgement is missing or reaches the effective age limit. It does not
+/// control whether the read waits: a stale read may also be satisfied by a periodic heartbeat or
+/// replication acknowledgement.
 ///
-/// `wait_timeout` bounds how long such a read waits for the heartbeat round to produce a
-/// qualifying acknowledgement. The leader lease bounds `max_quorum_ack_age` only; it is the
-/// default wait, not a limit on it.
+/// `wait_timeout` bounds how long such a read waits for a qualifying acknowledgement. The leader
+/// lease bounds `max_quorum_ack_age` only; it is the default wait, not a limit on it.
 ///
 /// [`RaftCore`]: crate::core::RaftCore
 #[since(version = "0.10.0", change = "renamed from `LinearizableReadRequest`")]
@@ -49,8 +48,8 @@ pub struct LinearizerOption {
 
     /// The maximum time this read waits for a qualifying quorum acknowledgement.
     ///
-    /// The wait applies only to a read that cannot be answered from the recorded acknowledgement
-    /// and is queued for a heartbeat round. `None` uses the configured leader lease.
+    /// The wait applies only to a read that cannot be answered from the recorded acknowledgement.
+    /// `None` uses the configured leader lease.
     /// `Some(Duration::ZERO)` fails the read at once instead of queueing it.
     ///
     /// The wait starts when [`RaftCore`] begins handling the request rather than when the caller
@@ -78,9 +77,9 @@ impl LinearizerOption {
     /// `None` uses the configured leader lease. Values exceeding the leader lease are capped at
     /// the leader lease when the option is handled.
     ///
-    /// If `heartbeat_if_quorum_ack_stale` is `true`, the leader broadcasts heartbeats when its
-    /// latest quorum acknowledgement is too old for this read. Otherwise, the read fails
-    /// immediately.
+    /// If `heartbeat_if_quorum_ack_stale` is `true`, the leader immediately broadcasts heartbeats
+    /// when its latest quorum acknowledgement is too old for this read. Otherwise, the read waits
+    /// for a periodic heartbeat or replication acknowledgement without initiating one.
     #[since(version = "0.10.0")]
     pub fn new(max_quorum_ack_age: Option<Duration>, heartbeat_if_quorum_ack_stale: bool) -> Self {
         Self {
@@ -92,10 +91,10 @@ impl LinearizerOption {
 
     /// Sets how long this read waits for a qualifying quorum acknowledgement.
     ///
-    /// The wait applies only to a read that is queued for a heartbeat round, and it replaces the
-    /// default wait of one leader lease. `Duration::ZERO` fails such a read at once instead of
-    /// queueing it. The value is not capped, so a long wait keeps the read in memory on the
-    /// leader until it elapses or the leader steps down.
+    /// The wait applies only to a read that needs a newer quorum acknowledgement, and it replaces
+    /// the default wait of one leader lease. `Duration::ZERO` fails such a read at once instead of
+    /// queueing it. The value is not capped, so a long wait keeps the read in memory on the leader
+    /// until it elapses or the leader steps down.
     #[since(version = "0.10.0")]
     pub fn with_wait_timeout(mut self, wait_timeout: Duration) -> Self {
         self.wait_timeout = Some(wait_timeout);
@@ -113,7 +112,7 @@ impl LinearizerOption {
 
     pub(crate) fn from_read_policy(read_policy: ReadPolicy) -> Self {
         match read_policy {
-            ReadPolicy::LeaseRead => Self::new(None, false),
+            ReadPolicy::LeaseRead => Self::new(None, false).with_wait_timeout(Duration::ZERO),
             ReadPolicy::ReadIndex => Self::new(Some(Duration::ZERO), true),
         }
     }
@@ -173,7 +172,7 @@ mod tests {
         let lease_read = LinearizerOption::from_read_policy(ReadPolicy::LeaseRead);
         assert_eq!(None, lease_read.max_quorum_ack_age);
         assert!(!lease_read.heartbeat_if_quorum_ack_stale);
-        assert_eq!(None, lease_read.wait_timeout);
+        assert_eq!(Some(Duration::ZERO), lease_read.wait_timeout);
 
         let read_index = LinearizerOption::from_read_policy(ReadPolicy::ReadIndex);
         assert_eq!(Some(Duration::ZERO), read_index.max_quorum_ack_age);

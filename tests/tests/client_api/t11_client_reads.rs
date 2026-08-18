@@ -440,14 +440,13 @@ async fn ensure_linearizable_with_lease_read() -> Result<()> {
             before, after
         );
 
-        // lease time elapsed, lease read will return error.
+        // LeaseRead fails immediately after the lease expires.
         TypeConfig::sleep(Duration::from_millis(config.election_timeout_max)).await;
-        let rst = router.ensure_linearizable(leader, ReadPolicy::LeaseRead).await;
-        tracing::debug!(?rst, "ensure_linearizable with LeaseRead after lease expired");
+        let rst = leader_handle.get_read_linearizer(ReadPolicy::LeaseRead).await;
+        let got = expect_quorum_not_enough(rst.unwrap_err());
+        assert_eq!(btreeset! {0}, got);
 
-        assert!(rst.is_err());
-
-        // lease read should ok after new a round of heartbeat.
+        // A new heartbeat round refreshes the lease.
         let refresh_started = TypeConfig::now();
         leader_handle.trigger().heartbeat().await?;
         leader_handle
@@ -476,6 +475,78 @@ async fn ensure_linearizable_with_lease_read() -> Result<()> {
         router.set_network_error(2, true);
         router.ensure_linearizable(leader, ReadPolicy::LeaseRead).await?;
     }
+
+    Ok(())
+}
+
+/// A stale read waits for a periodic heartbeat when it is configured not to send one immediately.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn linearizer_waits_for_periodic_heartbeat_when_immediate_heartbeat_disabled() -> Result<()> {
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            enable_elect: false,
+            heartbeat_interval: 100,
+            election_timeout_min: 1001,
+            election_timeout_max: 1002,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
+    let mut router = RaftRouter::new(config.clone());
+    router.network_send_delay(0);
+
+    tracing::info!("--- initializing cluster");
+    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+
+    let leader = router.leader().expect("leader not found");
+    assert_eq!(0, leader);
+
+    TypeConfig::sleep(Duration::from_millis(300)).await;
+
+    let leader_handle = router.get_raft_handle(&leader).unwrap();
+    let metrics = leader_handle.metrics().borrow_watched().clone();
+    let expected_leader_id = metrics.vote.leader_id().to_committed();
+    let expected_applied = metrics.last_applied;
+
+    TypeConfig::sleep(Duration::from_millis(config.election_timeout_max)).await;
+
+    let rpc_count_before = router.get_rpc_count();
+    let before = *rpc_count_before.get(&RPCTypes::AppendEntries).unwrap_or(&0);
+
+    let option = LinearizerOption::new(None, false);
+    let mut read_future = Box::pin(leader_handle.get_read_linearizer(option));
+    let submitted_status = futures::poll!(read_future.as_mut());
+    assert!(
+        submitted_status.is_pending(),
+        "the read should be submitted asynchronously"
+    );
+
+    leader_handle.with_raft_state(|_| ()).await?;
+    let queued_status = futures::poll!(read_future.as_mut());
+    assert!(queued_status.is_pending(), "the read should remain queued");
+
+    let rpc_count_after = router.get_rpc_count();
+    let after = *rpc_count_after.get(&RPCTypes::AppendEntries).unwrap_or(&0);
+    assert_eq!(before, after, "the read should not send an immediate heartbeat");
+
+    leader_handle.runtime_config().heartbeat(true);
+    let heartbeat_wait = Duration::from_millis(config.heartbeat_interval * 5);
+    let heartbeat_result = TypeConfig::timeout(heartbeat_wait, read_future).await;
+    leader_handle.runtime_config().heartbeat(false);
+
+    let linearizer = heartbeat_result.expect("periodic heartbeat should complete the queued read")?;
+    assert_eq!(
+        (&leader, &expected_leader_id, log_index, expected_applied.as_ref()),
+        (
+            linearizer.node_id(),
+            linearizer.read_log_id().committed_leader_id(),
+            linearizer.read_log_id().index(),
+            linearizer.applied()
+        )
+    );
 
     Ok(())
 }
