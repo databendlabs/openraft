@@ -39,6 +39,8 @@ use crate::vote::raft_vote::RaftVoteExt;
 #[cfg(test)]
 mod append_membership_test;
 #[cfg(test)]
+mod try_purge_log_test;
+#[cfg(test)]
 mod update_matching_test;
 
 /// Handle replication operations.
@@ -449,9 +451,6 @@ where
     /// Therefore, it is a method of ReplicationHandler.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn try_purge_log(&mut self) {
-        // TODO refactor this
-        // TODO: test
-
         tracing::debug!(
             "try_purge_log: last_purged_log_id: {}, purge_upto: {}",
             self.state.last_purged_log_id().display(),
