@@ -205,36 +205,36 @@ where C: RaftTypeConfig
 
     /// Update inflight state when a conflicting log id is responded by a follower/learner.
     ///
-    /// If `from_inflight_id` doesn't match the current `InflightId`,
-    /// the conflict is ignored as a stale response.
-    pub(crate) fn conflict(&mut self, _conflict: u64, from_inflight_id: InflightId) {
+    /// Returns `true` if the conflict matched the current inflight request and was applied;
+    /// `false` if it was stale and ignored.
+    pub(crate) fn conflict(&mut self, _conflict: u64, from_inflight_id: InflightId) -> bool {
         match self {
-            Inflight::None => {
-                // with LogsSince, there might be duplicated conflict message received.
-            }
+            Inflight::None => false,
             Inflight::Logs {
                 log_id_range: _,
                 inflight_id,
             } => {
                 if *inflight_id != from_inflight_id {
-                    return;
+                    return false;
                 }
 
-                *self = Inflight::None
+                *self = Inflight::None;
+                true
             }
             Inflight::Snapshot { inflight_id } => {
                 if *inflight_id != from_inflight_id {
-                    return;
+                    return false;
                 }
 
                 unreachable!("sending snapshot should not conflict");
             }
             Inflight::LogsSince { prev: _, inflight_id } => {
                 if *inflight_id != from_inflight_id {
-                    return;
+                    return false;
                 }
 
-                *self = Inflight::None
+                *self = Inflight::None;
+                true
             }
         }
     }
