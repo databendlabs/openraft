@@ -59,6 +59,14 @@ A moved test module stays a child of the module it tests, so it keeps access to 
 
 Both layouts are in use, and the choice follows test size, so a directory containing a mix of inline and separate test modules is expected rather than something to normalize.
 
+## Test Style
+
+- Keep short setup and action sequences inline, even when they occur in one or two tests. Extract a helper only when substantial reuse outweighs the extra abstraction level.
+- Write each test as one linear sequence of purpose-driven phases.
+- Introduce an independent phase with `tracing::info!` that states why the following actions are performed and includes useful runtime context such as the log index, node, or term.
+- Put the phase in a scoped `{ ... }` block after its log entry so temporary values stay local and the phase boundary is visible. Use a block expression when a phase must return a value to later phases; phase blocks may be nested.
+- Prefer runtime logging over standalone comments for explaining test actions.
+
 ## Project Structure
 
 - `openraft/` - Core Raft implementation
