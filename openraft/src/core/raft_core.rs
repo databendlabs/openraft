@@ -1861,8 +1861,6 @@ where
 
         self.handle_tick_election();
 
-        // TODO: test: fixture: make isolated_nodes a single-way isolating.
-
         // Leader send heartbeat
         let heartbeat_at = self.engine.leader_ref().map(|l| l.next_heartbeat);
         if let Some(t) = heartbeat_at
