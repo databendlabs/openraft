@@ -122,7 +122,8 @@ fn test_inflight_ack() -> anyhow::Result<()> {
 fn test_inflight_conflict() -> anyhow::Result<()> {
     {
         let mut f = Inflight::<UTConfig>::logs(Some(log_id(5)), Some(log_id(10)), InflightId::new(1));
-        f.conflict(5, InflightId::new(1));
+        let applied = f.conflict(5, InflightId::new(1));
+        assert!(applied, "matching conflict should be applied");
         assert_eq!(Inflight::<UTConfig>::None, f, "valid conflict");
     }
 
@@ -174,12 +175,22 @@ fn test_inflight_ack_none_is_stale() -> anyhow::Result<()> {
 
 #[test]
 fn test_inflight_conflict_inflight_id_mismatch() -> anyhow::Result<()> {
+    // None: there is no request to match
+    {
+        let mut f = Inflight::<UTConfig>::None;
+
+        let applied = f.conflict(7, InflightId::new(1));
+        assert!(!applied, "conflict without an inflight request is stale");
+        assert_eq!(Inflight::<UTConfig>::None, f);
+    }
+
     // Logs: mismatched inflight_id should be ignored
     {
         let mut f = Inflight::<UTConfig>::logs(Some(log_id(5)), Some(log_id(10)), InflightId::new(1));
         let original = f;
 
-        f.conflict(7, InflightId::new(2));
+        let applied = f.conflict(7, InflightId::new(2));
+        assert!(!applied, "conflict with mismatched inflight_id is stale");
         assert_eq!(original, f, "conflict with mismatched inflight_id should be ignored");
     }
 
@@ -252,7 +263,8 @@ fn test_inflight_logs_since_conflict() -> anyhow::Result<()> {
     {
         let mut f = Inflight::<UTConfig>::logs_since(Some(log_id(5)), InflightId::new(1));
 
-        f.conflict(5, InflightId::new(1));
+        let applied = f.conflict(5, InflightId::new(1));
+        assert!(applied, "matching conflict should be applied");
         assert_eq!(Inflight::<UTConfig>::None, f, "conflict should reset to None");
     }
 
@@ -261,7 +273,8 @@ fn test_inflight_logs_since_conflict() -> anyhow::Result<()> {
         let mut f = Inflight::<UTConfig>::logs_since(Some(log_id(5)), InflightId::new(1));
         let original = f;
 
-        f.conflict(5, InflightId::new(2));
+        let applied = f.conflict(5, InflightId::new(2));
+        assert!(!applied, "conflict with mismatched inflight_id is stale");
         assert_eq!(original, f, "conflict with mismatched inflight_id should be ignored");
     }
 
