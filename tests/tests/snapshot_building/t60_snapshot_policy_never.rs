@@ -47,33 +47,37 @@ async fn snapshot_policy_never() -> Result<()> {
     tracing::info!("--- initializing cluster");
     let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
 
-    let mut clients = futures::stream::FuturesUnordered::new();
+    tracing::info!(n_logs, "--- write enough logs to exceed the default snapshot threshold");
+    {
+        let mut clients = futures::stream::FuturesUnordered::new();
+        let n_clients = 20;
+        for i in 0..n_clients {
+            let per_client = n_logs / n_clients;
+            let r = router.clone();
+            clients.push(async move {
+                let client_id = format!("{}", i);
+                r.client_request_many(0, &client_id, per_client as usize).await
+            });
+            log_index += per_client;
+        }
 
-    let n_clients = 20;
-    for i in 0..n_clients {
-        let per_client = n_logs / n_clients;
-        let r = router.clone();
-        clients.push(async move {
-            let client_id = format!("{}", i);
-            r.client_request_many(0, &client_id, per_client as usize).await
-        });
-        log_index += per_client;
+        while clients.next().await.is_some() {}
     }
 
-    while clients.next().await.is_some() {}
+    tracing::info!(log_index, "--- verify all logs apply without building a snapshot");
+    {
+        router
+            .wait(&0, timeout())
+            .applied_index(Some(log_index), format_args!("write log up to {}", log_index))
+            .await?;
 
-    tracing::info!(log_index, "--- log_index: {}", log_index);
-    router
-        .wait(&0, timeout())
-        .applied_index(Some(log_index), format_args!("write log up to {}", log_index))
-        .await?;
+        let wait_snapshot_res = router
+            .wait(&0, Some(Duration::from_millis(3_000)))
+            .metrics(|m| m.snapshot.is_some(), "no snapshot will be built")
+            .await;
 
-    let wait_snapshot_res = router
-        .wait(&0, Some(Duration::from_millis(3_000)))
-        .metrics(|m| m.snapshot.is_some(), "no snapshot will be built")
-        .await;
-
-    assert!(wait_snapshot_res.is_err(), "no snapshot should be built");
+        assert!(wait_snapshot_res.is_err(), "no snapshot should be built");
+    }
 
     Ok(())
 }
