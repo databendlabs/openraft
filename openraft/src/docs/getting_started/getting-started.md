@@ -93,7 +93,10 @@ impl openraft::RaftTypeConfig for TypeConfig {
 
 > In the above `TypeConfig` declaration,
 > - `NodeId` is the identifier of a node in the cluster, which implements
->   [`NodeId`] trait.
+>   [`NodeId`] trait. A node ID identifies one node, holding one log, for the
+>   lifetime of the cluster: never give the ID of a removed node to a node that
+>   starts from an empty log, otherwise the cluster may split-brain. See:
+>   [Node IDs must not be reused][`docs::node-id-reuse`].
 > - `Node` is the node type that contains the node's address, etc., which
 >   implements [`Node`] trait.
 > - `Entry` is the log entry type that will be stored in the raft log,
@@ -526,3 +529,4 @@ Additionally, two test scripts for setting up a cluster are available:
 [`Unreachable`]:                        `crate::error::Unreachable`
 
 [`docs::connect-to-correct-node`]:      `crate::docs::cluster_control::dynamic_membership#ensure-connection-to-the-correct-node`
+[`docs::node-id-reuse`]:                `crate::docs::cluster_control::dynamic_membership#node-ids-must-not-be-reused`

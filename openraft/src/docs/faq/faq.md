@@ -710,6 +710,10 @@ Call `Raft::change_membership(btreeset!{1, 3})` to exclude node-2 from
 the cluster. Then wipe out node-2 data.
 **NEVER** modify/erase the data of any node that is still in a raft cluster, unless you know what you are doing.
 
+Do not give node-2's ID to a different node afterwards: reusing an ID can cause
+split-brain. See:
+[Can I reuse the ID of a removed node for a new node?](#can-i-reuse-the-id-of-a-removed-node-for-a-new-node)
+
 
 ### Does OpenRaft support calling `change_membership` in parallel?
 
@@ -932,6 +936,38 @@ Notes:
 [`Config::allow_log_reversion`]: `crate::config::Config::allow_log_reversion`
 
 
+### Can I reuse the ID of a removed node for a new node?
+
+No. A node ID must identify the same node, holding the same log, for the entire
+lifetime of the cluster. Assigning the ID of a removed node to a node that
+starts from an empty log is equivalent to letting that node revert its log, and
+it can split the cluster into two independent quorums. Restarting a node with
+its data intact is not reuse; it keeps the same ID and the same log.
+
+The hazard is that the new node replays the log from the beginning and passes
+through every **historical** membership config on its way to the current one,
+adopting each as its effective membership as soon as it is appended. If a
+historical config contains the reused ID with a small quorum, for example the
+single-node config `{n3}` a cluster started from, the new node becomes a quorum
+of one under that config and can elect itself leader while the rest of the
+cluster still forms a quorum of its own.
+
+Openraft cannot detect this, because removing a node discards the leader's
+replication progress for it: the empty log of the re-added node does not look
+like a [log reversion][`Config::allow_log_reversion`]. Allocate a fresh,
+never-before-used ID for every node that joins the cluster. A good way to do so
+is to let the cluster's own log allocate it: propose a blank log entry with
+[`Raft::client_write()`] and use the index of that entry as the new node's ID.
+Log indices strictly increase and no committed index is ever assigned twice, so
+the ID is one that no node has ever held.
+
+See: [Node IDs Must Not Be Reused][`dynamic_membership`] for the full scenario.
+
+[`Config::allow_log_reversion`]: `crate::config::Config::allow_log_reversion`
+[`Raft::client_write()`]: `crate::Raft::client_write`
+[`dynamic_membership`]: `crate::docs::cluster_control::dynamic_membership#node-ids-must-not-be-reused`
+
+
 ## Troubleshooting & Safety
 
 ### Panic: "assertion failed: self.internal_server_state.is_following()"
@@ -1028,6 +1064,10 @@ N5 |                 elect  L2
 But for even number nodes cluster, Erasing **exactly one** node won't cause data loss.
 Thus, in a special scenario like this, or for testing purpose, you can use
 [`Config::allow_log_reversion`] to permit erasing a node.
+
+Removing the node from the membership before wiping it does not make the
+sequence safe either, as long as the wiped node rejoins under its old ID. See:
+[Can I reuse the ID of a removed node for a new node?](#can-i-reuse-the-id-of-a-removed-node-for-a-new-node)
 
 [`Config::allow_log_reversion`]: `crate::config::Config::allow_log_reversion`
 

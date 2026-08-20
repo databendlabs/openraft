@@ -85,6 +85,70 @@ need to roll back. For permanent removal in a single call, prefer
 from the cluster without an intermediate learner state.
 
 
+## Node IDs Must Not Be Reused
+
+A node ID identifies one node, holding one log, for the entire lifetime of the
+cluster. Once a node is removed, never assign its ID to a node that starts from
+a different log, typically an empty one. Restarting a node with its data intact
+is not reuse: the ID still designates the same log.
+
+Reusing an ID is equivalent to letting that node revert its log, and it can
+split the cluster into two independent quorums. The reason is that a node
+replaying the log from an empty state passes through every **historical**
+membership config on its way to the current one, and a membership config takes
+effect as soon as it is appended, without waiting to be committed. A historical
+config that contains the reused ID therefore becomes the effective membership
+of the fresh node for a while.
+
+Consider a cluster whose membership was once the single node `{n3}` and is now
+`{n1, n2, n3}` with `n1` as the leader:
+
+1. `n1` calls `change_membership({n1, n2})`, removing `n3`.
+2. `n3` observes its removal and wipes its disk.
+3. `n1` calls `add_learner(n3, ..)` and `change_membership({n1, n2, n3})`,
+   giving the ID `n3` to the wiped node.
+4. The wiped `n3` replays the log from the beginning. Partway through, it
+   appends the historical membership entry `{n3}` and adopts it as its
+   effective membership, in which `n3` alone is a quorum.
+5. If replication to `n3` stalls before it catches up, because the leader
+   crashed or the network partitioned, `n3`'s election timer fires. It elects
+   itself with its own vote under config `{n3}` and commits writes, while
+   `{n1, n2}` is still a quorum under the current config and commits writes of
+   its own. The two quorums are split-brained.
+
+```text
+membership: {n3}      {n1,n2,n3}   {n1,n2}   {n1,n2,n3}
+n1        |  ...  ------------------------------------->  quorum {n1,n2}
+n2        |  ...  ------------------------------------->
+n3        |  ...  --------------------------X  erased
+n3(new)   |                                    {n3} -->   quorum {n3}
+----------+------------------------------------------------------> time
+```
+
+Openraft cannot detect this. Removing a node discards the leader's replication
+progress for it, so the empty log of the re-added `n3` does not look like a
+[log reversion][`Config::allow_log_reversion`]; the caller must guarantee ID
+uniqueness.
+
+**Recommendation:** allocate a fresh, never-before-used ID for every node that
+joins the cluster. A good way to do so is to let the cluster's own log allocate
+it: when a node joins, the leader proposes a blank log entry and uses the index
+of that entry as the new node's ID.
+
+```ignore
+// `Request::blank()` is an application request that changes nothing.
+let resp = raft.client_write(Request::blank()).await?;
+let node_id = resp.log_id.index();
+
+raft.add_learner(node_id, node, true).await?;
+```
+
+Log indices strictly increase and no committed index is ever assigned twice, so
+every ID obtained this way is one that no node has ever held, and no external ID
+service is needed. If the blank write fails, no node has taken that index yet,
+so retrying is safe.
+
+
 ## Updating Node Metadata
 
 To update node metadata (e.g., network address), use `ChangeMembers::SetNodes`.
@@ -143,6 +207,7 @@ Exercise additional care when:
 [`Raft::change_membership()`]: `crate::Raft::change_membership`
 [`ChangeMembers::SetNodes`]: `crate::change_members::ChangeMembers::SetNodes`
 [`ChangeMembers::RemoveNodes`]: `crate::change_members::ChangeMembers::RemoveNodes`
+[`Config::allow_log_reversion`]: `crate::config::Config::allow_log_reversion`
 [`RaftNetworkFactory`]: `crate::network::RaftNetworkFactory`
 [`RaftNetworkV2`]: `crate::network::RaftNetworkV2`
 [`joint_consensus`]: `crate::docs::cluster_control::joint_consensus`

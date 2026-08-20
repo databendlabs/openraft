@@ -30,4 +30,8 @@ But for even number nodes cluster, Erasing **exactly one** node won't cause data
 Thus, in a special scenario like this, or for testing purpose, you can use
 [`Config::allow_log_reversion`] to permit erasing a node.
 
+Removing the node from the membership before wiping it does not make the
+sequence safe either, as long as the wiped node rejoins under its old ID. See:
+[Can I reuse the ID of a removed node for a new node?](#can-i-reuse-the-id-of-a-removed-node-for-a-new-node)
+
 [`Config::allow_log_reversion`]: `crate::config::Config::allow_log_reversion`
