@@ -1,9 +1,8 @@
 <div align="center">
     <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/databendlabs/openraft/main/assets/logo/openraft-mark-dark.svg">
-        <img src="https://raw.githubusercontent.com/databendlabs/openraft/main/assets/logo/openraft-mark.svg" alt="OpenRaft" width="140" height="140">
+        <source media="(prefers-color-scheme: dark)" srcset="assets/logo/openraft-banner-dark.svg">
+        <img src="assets/logo/openraft-banner.svg" alt="OpenRaft">
     </picture>
-    <h1>OpenRaft</h1>
     <h4>
         Advanced <a href="https://raft.github.io/">Raft</a> in 🦀 Rust on any async runtime. Please ⭐ on <a href="https://github.com/databendlabs/openraft">GitHub</a>!
     </h4>
