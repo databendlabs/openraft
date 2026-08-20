@@ -216,6 +216,9 @@ where
             let mut payload = self.select_next_payload().await?;
 
             if !self.run_stream_session(&mut network, &payload).await? {
+                // The transport may have dropped a request after polling it. Force the next
+                // stream to include the current commit again.
+                self.stream_state.lock().await.last_included_committed = None;
                 continue;
             }
 
@@ -296,9 +299,6 @@ where
             let mut stream_state = self.stream_state.lock().await;
             stream_state.payload = Some(payload.clone());
             stream_state.inflight_id = self.inflight_id;
-            // A new transport stream must include the current commit at least once. Resetting this
-            // cursor also makes a retry resend a commit that may have been lost with the old stream.
-            stream_state.last_included_committed = None;
         }
 
         let inflight_queue = InflightAppendQueue::new();

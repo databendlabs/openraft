@@ -127,10 +127,8 @@ where
 
     /// Return None if no more data to send.
     ///
-    /// A newly committed log id always produces a request, so the follower can apply without
-    /// waiting for the next write. The range is built from the latest submitted log id, which lets
-    /// the commit ride along with entries that became available meanwhile rather than sending an
-    /// empty request followed immediately by the entries.
+    /// A new commit is piggybacked when submitted logs are available. If only the commit advanced,
+    /// this returns an empty range so the follower can apply without waiting for the next write.
     async fn get_log_id_range(&mut self) -> Option<LogIdRange<C>> {
         let payload = self.payload.as_ref()?;
 
@@ -177,10 +175,8 @@ where
                     }
                     _committed_change = committed_change.fuse() => {
                         tracing::debug!("committed_rx changed");
-                        // Mark the notification as seen, then let the loop re-read both the
-                        // submitted cursor and committed log id. A stale notification may remain
-                        // after a data request already carried the same commit.
-                        let _ = self.event_watcher.committed_rx.borrow_and_update();
+                        // `changed()` marked the notified value as seen. Re-read both the submitted
+                        // cursor and committed log id at the top of the loop.
                         // Continue
                     }
                     cancel_res = cancel.fuse() => {
