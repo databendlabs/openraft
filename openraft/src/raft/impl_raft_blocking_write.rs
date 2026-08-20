@@ -2,9 +2,12 @@
 //! Blocking-mode write API blocks until the write operation is completed,
 //! where [`RaftTypeConfig::Responder`] is a [`OneshotResponder`].
 
+use openraft_macros::since;
+
 use crate::ChangeMembers;
 use crate::Raft;
 use crate::RaftTypeConfig;
+use crate::batch::Batch;
 use crate::errors::ClientWriteError;
 use crate::errors::RaftError;
 use crate::errors::into_raft_result::IntoRaftResult;
@@ -13,7 +16,9 @@ use crate::impls::OneshotResponder;
 use crate::raft::ClientWriteResponse;
 #[cfg(doc)]
 use crate::raft::ManagementApi;
+use crate::raft::Precondition;
 use crate::storage::RaftStateMachine;
+use crate::type_config::alias::BatchOf;
 
 /// Implement blocking mode write operations those reply on oneshot channel for communication
 /// between Raft core and client.
@@ -71,7 +76,33 @@ where
         members: impl Into<ChangeMembers<C::NodeId, C::Node>>,
         retain: bool,
     ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
-        self.management_api().change_membership(members, retain).await.into_raft_result()
+        self.management_api()
+            .change_membership(members, retain, BatchOf::<C, _>::of([]))
+            .await
+            .into_raft_result()
+    }
+
+    /// Propose a cluster configuration change only if every [`Precondition`] is satisfied.
+    ///
+    /// This is [`Self::change_membership()`] with a compare-and-set guard: the Raft core checks
+    /// every precondition against its state before proposing the change, and fails with
+    /// [`ClientWriteError::PreconditionFailed`] if any of them does not hold.
+    ///
+    /// Passing [`Precondition::LastMembershipLogId`] serializes concurrent membership changes:
+    /// the change is proposed only while the effective membership is still the one the caller
+    /// based its decision on.
+    #[since(version = "0.10.0")]
+    #[tracing::instrument(level = "info", skip_all)]
+    pub async fn change_membership_if(
+        &self,
+        members: impl Into<ChangeMembers<C::NodeId, C::Node>>,
+        retain: bool,
+        preconditions: impl IntoIterator<Item = Precondition<C>>,
+    ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
+        self.management_api()
+            .change_membership(members, retain, BatchOf::<C, _>::of(preconditions))
+            .await
+            .into_raft_result()
     }
 
     /// Add a new learner raft node, optionally, blocking until up-to-speed.

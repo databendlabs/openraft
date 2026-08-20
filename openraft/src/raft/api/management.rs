@@ -8,6 +8,7 @@ use crate::ChangeMembers;
 use crate::LogIdOptionExt;
 use crate::RaftMetrics;
 use crate::RaftTypeConfig;
+use crate::batch::Batch;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::replication_lag;
 use crate::errors::Fatal;
@@ -15,7 +16,9 @@ use crate::errors::InitializeError;
 use crate::impls::ProgressResponder;
 use crate::membership::IntoNodes;
 use crate::raft::ClientWriteResult;
+use crate::raft::Precondition;
 use crate::raft::raft_inner::RaftInner;
+use crate::type_config::alias::BatchOf;
 use crate::type_config::alias::LogIdOf;
 
 /// Provides management APIs for the Raft system.
@@ -54,6 +57,7 @@ where C: RaftTypeConfig
         &self,
         members: impl Into<ChangeMembers<C::NodeId, C::Node>>,
         retain: bool,
+        preconditions: BatchOf<C, Precondition<C>>,
     ) -> Result<ClientWriteResult<C>, Fatal<C>> {
         let changes: ChangeMembers<C::NodeId, C::Node> = members.into();
 
@@ -75,6 +79,7 @@ where C: RaftTypeConfig
                 RaftMsg::ChangeMembership {
                     changes: changes.clone(),
                     retain,
+                    preconditions: Batch::of(preconditions.as_ref().iter().cloned()),
                     tx,
                 },
                 rx,
@@ -105,11 +110,39 @@ where C: RaftTypeConfig
         tracing::debug!("committed a joint config: {} {:?}", log_id, joint);
         tracing::debug!("the second step is to change to uniform config: {:?}", changes);
 
+        // The last membership config log ID is changed because we have proposed a new membership config
+        // log. Therefore, we need to remove the previous membership log ID precondition and add a new
+        // condition.
+        // For the same reason, LastLogId is changed and the assertion must be removed.
+        let preconditions = preconditions
+            .into_iter()
+            .filter_map(|x| match x {
+                Precondition::LastMembershipLogId { .. } => None,
+                Precondition::LastLogId { .. } => None,
+                // A leader change between the two steps must still abort the second step.
+                Precondition::CommittedLeaderId { .. } => Some(x),
+            })
+            .chain([Precondition::LastMembershipLogId {
+                last_membership_log_id: Some(log_id.clone()),
+            }]);
+        let preconditions = Batch::of(preconditions);
+
         let (tx, rx) = ProgressResponder::<C, _>::complete_only();
 
         // The second step, send a NOOP change to flatten the joint config.
         let changes = ChangeMembers::AddVoterIds(Default::default());
-        let client_write_result = self.inner.call_core(RaftMsg::ChangeMembership { changes, retain, tx }, rx).await?;
+        let client_write_result = self
+            .inner
+            .call_core(
+                RaftMsg::ChangeMembership {
+                    changes,
+                    retain,
+                    preconditions,
+                    tx,
+                },
+                rx,
+            )
+            .await?;
 
         tracing::info!(
             "result of second step of change_membership: {}",
@@ -136,6 +169,7 @@ where C: RaftTypeConfig
         let msg = RaftMsg::ChangeMembership {
             changes: ChangeMembers::AddNodes(btreemap! {id.clone()=>node}),
             retain: true,
+            preconditions: Batch::of([]),
             tx,
         };
 

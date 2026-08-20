@@ -13,6 +13,7 @@ mod linearizable_read_error;
 mod membership_error;
 mod node_not_found;
 mod operation;
+mod precondition_failed;
 mod raft_error;
 mod reject_append_entries;
 mod reject_vote;
@@ -39,6 +40,7 @@ pub use self::linearizable_read_error::LinearizableReadError;
 pub use self::membership_error::MembershipError;
 pub use self::node_not_found::NodeNotFound;
 pub use self::operation::Operation;
+pub use self::precondition_failed::PreconditionFailed;
 pub use self::raft_error::RaftError;
 pub(crate) use self::reject_append_entries::RejectAppendEntries;
 pub use self::reject_vote::RejectVote;
@@ -86,6 +88,7 @@ pub type CheckIsLeaderError<C> = LinearizableReadError<C>;
 pub enum InstallSnapshotError {}
 
 /// An error related to a client write request.
+#[since]
 #[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
@@ -99,6 +102,13 @@ where C: RaftTypeConfig
     /// When writing a change-membership entry.
     #[error(transparent)]
     ChangeMembershipError(#[from] ChangeMembershipError<CommittedLeaderIdOf<C>, C::NodeId>),
+
+    /// A [`Precondition`] attached to the request is not satisfied.
+    ///
+    /// [`Precondition`]: `crate::raft::Precondition`
+    #[since(version = "0.10.0")]
+    #[error(transparent)]
+    PreconditionFailed(#[from] PreconditionFailed<C>),
 }
 
 impl<C> TryAsRef<ForwardToLeader<C>> for ClientWriteError<C>
