@@ -32,6 +32,14 @@ use crate::base::OptionalFeatures;
 /// A Raft node's ID.
 ///
 /// A `NodeId` uniquely identifies a node in the Raft cluster.
+///
+/// A node ID identifies one node, holding one log, for the entire lifetime of the cluster. Never
+/// give the ID of a removed node to a node that starts from an empty log: such reuse is equivalent
+/// to reverting that node's log and can split the cluster into two independent quorums.
+///
+/// See: [Node IDs must not be reused][node-id-reuse]
+///
+/// [node-id-reuse]: crate::docs::cluster_control::dynamic_membership#node-ids-must-not-be-reused
 pub trait NodeId
 where Self: Sized + OptionalFeatures + Eq + PartialEq + Ord + PartialOrd + Debug + Display + Hash + Clone + 'static
 {
