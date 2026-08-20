@@ -1,3 +1,5 @@
+#![doc(html_logo_url = "https://raw.githubusercontent.com/databendlabs/openraft/main/assets/logo/openraft-mark.svg")]
+#![doc(html_favicon_url = "https://raw.githubusercontent.com/databendlabs/openraft/main/assets/logo/openraft-mark.svg")]
 #![doc = include_str!("lib_readme.md")]
 #![doc = include_str!("docs/docs.md")]
 // These features are stabilized in recent nightly but still needed on older toolchains.
