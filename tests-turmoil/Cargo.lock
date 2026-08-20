@@ -698,7 +698,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "openraft"
-version = "0.10.0-alpha.33"
+version = "0.10.0-alpha.34"
 dependencies = [
  "anyerror",
  "backoff-series",
@@ -725,7 +725,7 @@ dependencies = [
 
 [[package]]
 name = "openraft-macros"
-version = "0.10.0-alpha.33"
+version = "0.10.0-alpha.34"
 dependencies = [
  "chrono",
  "proc-macro2",
@@ -736,7 +736,7 @@ dependencies = [
 
 [[package]]
 name = "openraft-rt"
-version = "0.10.0-alpha.33"
+version = "0.10.0-alpha.34"
 dependencies = [
  "futures-channel",
  "futures-util",
@@ -747,7 +747,7 @@ dependencies = [
 
 [[package]]
 name = "openraft-rt-tokio"
-version = "0.10.0-alpha.33"
+version = "0.10.0-alpha.34"
 dependencies = [
  "futures-util",
  "openraft-rt",

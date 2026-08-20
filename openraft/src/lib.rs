@@ -1,3 +1,5 @@
+#![doc(html_logo_url = "https://raw.githubusercontent.com/databendlabs/openraft/main/assets/logo/openraft-mark.svg")]
+#![doc(html_favicon_url = "https://raw.githubusercontent.com/databendlabs/openraft/main/assets/logo/openraft-mark.svg")]
 #![doc = include_str!("lib_readme.md")]
 #![doc = include_str!("docs/docs.md")]
 // These features are stabilized in recent nightly but still needed on older toolchains.
@@ -5,8 +7,6 @@
 #![cfg_attr(feature = "bt", feature(error_generic_member_access))]
 #![allow(clippy::bool_assert_comparison)]
 #![allow(clippy::bool_comparison)]
-// TODO: `clippy::result-large-err`: StorageError is 136 bytes, try to reduce the size.
-#![allow(clippy::result_large_err)]
 #![allow(clippy::type_complexity)]
 #![allow(clippy::uninlined_format_args)]
 #![deny(unused_qualifications)]
@@ -146,6 +146,7 @@ pub use crate::node::NodeInfo;
 pub use crate::raft::Raft;
 pub use crate::raft::ReadPolicy;
 pub use crate::raft::WatchChangeHandle;
+pub use crate::raft::linearizable_read::LinearizerOption;
 pub use crate::raft_state::MembershipState;
 pub use crate::raft_state::RaftState;
 pub use crate::raft_types::SnapshotId;

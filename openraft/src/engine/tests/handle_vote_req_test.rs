@@ -94,6 +94,7 @@ fn test_handle_vote_req_leadership_transfer_overrides_leader_lease() -> anyhow::
     assert_eq!(ServerState::Follower, eng.state.server_state);
     assert_eq!(
         vec![
+            Command::FailPendingReads,
             Command::SaveVote { vote: Vote::new(3, 2) },
             Command::CloseReplicationStreams,
         ],
@@ -170,7 +171,7 @@ fn test_handle_vote_req_granted_equal_vote_and_last_log_id() -> anyhow::Result<(
     assert!(eng.leader.is_none());
 
     assert_eq!(ServerState::Follower, eng.state.server_state);
-    assert_eq!(vec![Command::CloseReplicationStreams], eng.output.take_commands());
+    assert_eq!(vec![Command::FailPendingReads], eng.output.take_commands());
     Ok(())
 }
 
@@ -199,10 +200,7 @@ fn test_handle_vote_req_granted_greater_vote() -> anyhow::Result<()> {
 
     assert_eq!(ServerState::Follower, eng.state.server_state);
     assert_eq!(
-        vec![
-            Command::SaveVote { vote: Vote::new(3, 1) },
-            Command::CloseReplicationStreams,
-        ],
+        vec![Command::FailPendingReads, Command::SaveVote { vote: Vote::new(3, 1) },],
         eng.output.take_commands()
     );
     Ok(())
@@ -230,10 +228,7 @@ fn test_handle_vote_req_granted_follower_learner_does_not_emit_update_server_sta
 
         assert_eq!(st, eng.state.server_state);
         assert_eq!(
-            vec![
-                Command::SaveVote { vote: Vote::new(3, 1) },
-                Command::CloseReplicationStreams,
-            ],
+            vec![Command::FailPendingReads, Command::SaveVote { vote: Vote::new(3, 1) },],
             eng.output.take_commands()
         );
     }
@@ -255,10 +250,7 @@ fn test_handle_vote_req_granted_follower_learner_does_not_emit_update_server_sta
 
         assert_eq!(st, eng.state.server_state);
         assert_eq!(
-            vec![
-                Command::SaveVote { vote: Vote::new(3, 1) },
-                Command::CloseReplicationStreams,
-            ],
+            vec![Command::FailPendingReads, Command::SaveVote { vote: Vote::new(3, 1) },],
             eng.output.take_commands()
         );
     }

@@ -58,6 +58,17 @@ where C: RaftTypeConfig
         }
     }
 
+    /// Replace the last applied log id this linearizer reports.
+    ///
+    /// A queued read observes the applied log id when it is created, which may lag by a heartbeat
+    /// round when the read is finally answered. Refreshing it lets the caller skip waiting for
+    /// apply progress the leader has already made.
+    pub(crate) fn with_applied(self, applied: Option<LogIdOf<C>>) -> Self {
+        let node_id = self.state.node_id().clone();
+        let state = self.state.with_applied(node_id, applied);
+        Self { state }
+    }
+
     /// Waits indefinitely for the state machine to apply all required log entries for linearizable
     /// reads.
     ///

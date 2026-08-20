@@ -95,6 +95,9 @@ where C: RaftTypeConfig
         /// ith tick
         i: u64,
     },
+
+    /// The earliest pending linearizable read reached its deadline.
+    PendingReadDeadlineReached,
 }
 
 impl<C> Notification<C>
@@ -116,6 +119,7 @@ where C: RaftTypeConfig
             Self::HeartbeatProgress { .. } => NotificationName::HeartbeatProgress,
             Self::StateMachine { .. } => NotificationName::StateMachine,
             Self::Tick { .. } => NotificationName::Tick,
+            Self::PendingReadDeadlineReached => NotificationName::PendingReadDeadlineReached,
         }
     }
 }
@@ -191,6 +195,9 @@ where C: RaftTypeConfig
             }
             Self::Tick { i } => {
                 write!(f, "Tick {}", i)
+            }
+            Self::PendingReadDeadlineReached => {
+                write!(f, "PendingReadDeadlineReached")
             }
         }
     }

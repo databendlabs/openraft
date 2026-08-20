@@ -15,6 +15,7 @@ use crate::engine::LogIdList;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::errors::RejectVote;
+use crate::proposer::Candidate;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::StoredMembershipOf;
 use crate::utime::Leased;
@@ -37,6 +38,12 @@ fn eng() -> Engine<UTConfig> {
 
     eng.output.take_commands();
     eng
+}
+
+fn assert_no_leading_state(eng: &Engine<UTConfig>) {
+    assert!(eng.leader.is_none());
+    assert!(eng.candidate.is_none());
+    assert!(eng.pre_candidate.is_none());
 }
 
 #[test]
@@ -86,12 +93,9 @@ fn test_handle_message_vote_committed_vote() -> anyhow::Result<()> {
     assert!(Some(now) <= eng.state.vote_last_modified());
     assert!(eng.state.vote_last_modified() <= Some(now + Duration::from_millis(20)));
     assert_eq!(
-        vec![
-            Command::SaveVote {
-                vote: Vote::new_committed(3, 2)
-            },
-            Command::CloseReplicationStreams,
-        ],
+        vec![Command::FailPendingReads, Command::SaveVote {
+            vote: Vote::new_committed(3, 2)
+        },],
         eng.output.take_commands()
     );
 
@@ -118,7 +122,7 @@ fn test_handle_message_vote_granted_equal_vote() -> anyhow::Result<()> {
     assert!(Some(now) <= eng.state.vote_last_modified());
     assert!(eng.state.vote_last_modified() <= Some(now + Duration::from_millis(20)));
 
-    assert_eq!(vec![Command::CloseReplicationStreams], eng.output.take_commands());
+    assert_eq!(vec![Command::FailPendingReads], eng.output.take_commands());
     Ok(())
 }
 
@@ -138,10 +142,7 @@ fn test_handle_message_vote_granted_greater_vote() -> anyhow::Result<()> {
 
     assert_eq!(ServerState::Follower, eng.state.server_state);
     assert_eq!(
-        vec![
-            Command::SaveVote { vote: Vote::new(3, 1) },
-            Command::CloseReplicationStreams,
-        ],
+        vec![Command::FailPendingReads, Command::SaveVote { vote: Vote::new(3, 1) },],
         eng.output.take_commands()
     );
     Ok(())
@@ -167,10 +168,7 @@ fn test_handle_message_vote_granted_follower_learner_does_not_emit_update_server
 
         assert_eq!(st, eng.state.server_state);
         assert_eq!(
-            vec![
-                Command::SaveVote { vote: Vote::new(3, 1) },
-                Command::CloseReplicationStreams,
-            ],
+            vec![Command::FailPendingReads, Command::SaveVote { vote: Vote::new(3, 1) },],
             eng.output.take_commands()
         );
     }
@@ -190,12 +188,156 @@ fn test_handle_message_vote_granted_follower_learner_does_not_emit_update_server
 
         assert_eq!(st, eng.state.server_state);
         assert_eq!(
-            vec![
-                Command::SaveVote { vote: Vote::new(3, 1) },
-                Command::CloseReplicationStreams,
-            ],
+            vec![Command::FailPendingReads, Command::SaveVote { vote: Vote::new(3, 1) },],
             eng.output.take_commands()
         );
     }
+    Ok(())
+}
+
+#[test]
+fn test_become_following_with_no_leading_state_only_fails_pending_reads() -> anyhow::Result<()> {
+    let mut eng = eng();
+
+    eng.vote_handler().become_following();
+
+    assert_eq!(ServerState::Follower, eng.state.server_state);
+    assert_eq!(vec![Command::FailPendingReads], eng.output.take_commands());
+
+    Ok(())
+}
+
+#[test]
+fn test_become_following_with_no_leading_state_and_membership_demotion() -> anyhow::Result<()> {
+    let mut eng = eng();
+    eng.config.id = 2;
+    eng.state.server_state = ServerState::Follower;
+    eng.state.membership_state.set_effective(Arc::new(StoredMembershipOf::<UTConfig>::new(
+        Some(log_id(2, 1, 3)),
+        Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1, 3}], vec![1, 2, 3]),
+    )));
+
+    eng.vote_handler().become_following();
+
+    assert_eq!(ServerState::Learner, eng.state.server_state);
+    assert_eq!(vec![Command::FailPendingReads], eng.output.take_commands());
+
+    Ok(())
+}
+
+#[test]
+fn test_become_following_active_leader_emits_close() -> anyhow::Result<()> {
+    let mut eng = eng();
+    eng.testing_new_leader();
+    eng.state.server_state = ServerState::Leader;
+
+    eng.vote_handler().become_following();
+
+    assert_eq!(ServerState::Follower, eng.state.server_state);
+    assert_no_leading_state(&eng);
+    assert_eq!(
+        vec![Command::FailPendingReads, Command::CloseReplicationStreams],
+        eng.output.take_commands()
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_become_following_active_candidate_emits_close() -> anyhow::Result<()> {
+    let mut eng = eng();
+    eng.candidate = Some(Candidate::new(
+        UTConfig::<()>::now(),
+        Vote::new(3, 0),
+        None,
+        Arc::new(m01()),
+        vec![],
+        eng.state.progress_id_gen.clone(),
+    ));
+    eng.state.server_state = ServerState::Candidate;
+
+    eng.vote_handler().become_following();
+
+    assert_eq!(ServerState::Follower, eng.state.server_state);
+    assert_no_leading_state(&eng);
+    assert_eq!(
+        vec![Command::FailPendingReads, Command::CloseReplicationStreams],
+        eng.output.take_commands()
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_become_following_active_pre_candidate_emits_close() -> anyhow::Result<()> {
+    let mut eng = eng();
+    eng.pre_candidate = Some(Candidate::new(
+        UTConfig::<()>::now(),
+        Vote::new(3, 0),
+        None,
+        Arc::new(m01()),
+        vec![],
+        eng.state.progress_id_gen.clone(),
+    ));
+    eng.state.server_state = ServerState::Candidate;
+
+    eng.vote_handler().become_following();
+
+    assert_eq!(ServerState::Follower, eng.state.server_state);
+    assert_no_leading_state(&eng);
+    assert_eq!(
+        vec![Command::FailPendingReads, Command::CloseReplicationStreams],
+        eng.output.take_commands()
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_become_following_invalid_role_combination_emits_single_close() -> anyhow::Result<()> {
+    let mut eng = eng();
+    eng.testing_new_leader();
+    eng.candidate = Some(Candidate::new(
+        UTConfig::<()>::now(),
+        Vote::new(3, 0),
+        None,
+        Arc::new(m01()),
+        vec![],
+        eng.state.progress_id_gen.clone(),
+    ));
+    eng.state.server_state = ServerState::Leader;
+
+    eng.vote_handler().become_following();
+
+    assert_eq!(ServerState::Follower, eng.state.server_state);
+    assert_no_leading_state(&eng);
+    assert_eq!(
+        vec![Command::FailPendingReads, Command::CloseReplicationStreams],
+        eng.output.take_commands()
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_become_following_twice_emits_one_close() -> anyhow::Result<()> {
+    let mut eng = eng();
+    eng.testing_new_leader();
+    eng.state.server_state = ServerState::Leader;
+
+    eng.vote_handler().become_following();
+    eng.vote_handler().become_following();
+
+    assert_eq!(ServerState::Follower, eng.state.server_state);
+    assert_no_leading_state(&eng);
+    assert_eq!(
+        vec![
+            Command::FailPendingReads,
+            Command::FailPendingReads,
+            Command::CloseReplicationStreams,
+        ],
+        eng.output.take_commands()
+    );
+
     Ok(())
 }

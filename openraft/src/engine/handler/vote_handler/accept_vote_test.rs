@@ -83,10 +83,7 @@ fn test_accept_vote_granted_greater_vote() -> anyhow::Result<()> {
     assert!(resp.is_some());
 
     assert_eq!(
-        vec![
-            Command::SaveVote { vote: Vote::new(3, 3) },
-            Command::CloseReplicationStreams,
-        ],
+        vec![Command::FailPendingReads, Command::SaveVote { vote: Vote::new(3, 3) },],
         eng.output.take_commands()
     );
 

@@ -57,8 +57,30 @@ fn test_update_server_state_if_changed() -> anyhow::Result<()> {
         assert_eq!(ServerState::Follower, ssh.state.server_state);
     }
 
-    // TODO(3): add more test,
-    //          after migrating to the no-step-down leader:
-    //          A leader keeps working after it is removed from the voters.
+    // A leader kept after it is removed from voters but kept as learner.
+    {
+        let effective = Arc::new(StoredMembershipOf::<UTConfig>::new(
+            Some(log_id(3, 1, 4)),
+            Membership::new_with_defaults(vec![btreeset! {1, 3}], [2]),
+        ));
+        ssh.state.vote = Leased::new(
+            UTConfig::<()>::now(),
+            Duration::from_millis(500),
+            Vote::new_committed(2, 2),
+        );
+        ssh.state.server_state = ServerState::Follower;
+        ssh.state.membership_state.set_effective(effective.clone());
+        ssh.update_server_state_if_changed();
+
+        assert_eq!(
+            (ServerState::Leader, &Vote::new_committed(2, 2), effective.as_ref(),),
+            (
+                ssh.state.server_state,
+                ssh.state.vote_ref(),
+                ssh.state.membership_state.effective().as_ref(),
+            )
+        );
+    }
+
     Ok(())
 }

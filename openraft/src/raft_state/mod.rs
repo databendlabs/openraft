@@ -19,7 +19,6 @@ use crate::utime::Leased;
 pub(crate) mod io_state;
 mod log_state_reader;
 mod membership_state;
-mod vote_state_reader;
 
 pub(crate) use io_state::IOState;
 #[allow(unused)]
@@ -37,7 +36,6 @@ mod tests {
 use display_more::DisplayOptionExt;
 pub(crate) use log_state_reader::LogStateReader;
 pub use membership_state::MembershipState;
-pub(crate) use vote_state_reader::VoteStateReader;
 
 use crate::base::shared_id_generator::SharedIdGenerator;
 use crate::entry::RaftEntry;
@@ -141,14 +139,6 @@ where C: RaftTypeConfig
 
     fn last_purged_log_id(&self) -> Option<&LogIdOf<C>> {
         self.log_ids.purged()
-    }
-}
-
-impl<C> VoteStateReader<C> for RaftState<C>
-where C: RaftTypeConfig
-{
-    fn vote_ref(&self) -> &VoteOf<C> {
-        self.vote.deref()
     }
 }
 

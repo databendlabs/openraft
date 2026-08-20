@@ -1,6 +1,7 @@
-use anyerror::AnyError;
 use backoff_series::ParseError as BackoffParseError;
 use openraft_macros::since;
+
+use crate::impls::BoxedErrorSource;
 
 /// Error variants related to configuration.
 #[since]
@@ -8,10 +9,11 @@ use openraft_macros::since;
 #[derive(PartialEq, Eq)]
 pub enum ConfigError {
     /// Failed to parse configuration from command-line arguments.
+    #[since(version = "0.10.0", change = "`source` from `AnyError` to `BoxedErrorSource`")]
     #[error("ParseError: {source} while parsing ({args:?})")]
     ParseError {
         /// The underlying parse error.
-        source: AnyError,
+        source: BoxedErrorSource,
         /// The arguments that failed to parse.
         args: Vec<String>,
     },
@@ -41,7 +43,7 @@ pub enum ConfigError {
     /// Heartbeat suppression must not delay a heartbeat past a follower's election timeout.
     #[since(version = "0.10.0")]
     #[error(
-        "heartbeat_interval({heartbeat_interval}) + heartbeat_min_interval({heartbeat_min_interval}) must be < election_timeout_min({election_timeout_min})"
+        "heartbeat_interval({heartbeat_interval}) + heartbeat_min_interval({heartbeat_min_interval}) + tick interval(heartbeat_interval * 13 / 64) must be < election_timeout_min({election_timeout_min})"
     )]
     HeartbeatMinIntervalTooLarge {
         /// Minimum election timeout value.

@@ -262,10 +262,16 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
             batch.put_cf(cf_meta, "last_membership", serialize(membership)?);
         }
 
-        // Atomic write of all data + metadata - fail fast before sending any responses
-        self.db.write(batch).map_err(|e| io::Error::other(e.to_string()))?;
+        // Persist data and metadata atomically before acknowledging the applied entries.
+        let db = self.db.clone();
+        TypeConfig::spawn_blocking(move || {
+            let mut write_options = rocksdb::WriteOptions::default();
+            write_options.set_sync(true);
+            db.write_opt(batch, &write_options).map_err(io::Error::other)
+        })
+        .await??;
 
-        // Only send responses after successful write
+        // Only send responses after the write is durable.
         for (responder, response) in responses {
             responder.send(response);
         }

@@ -29,6 +29,7 @@ use openraft::type_config::TypeConfigExt;
 use rocksdb::ColumnFamily;
 use rocksdb::DB;
 use rocksdb::Direction;
+use rocksdb::WriteBatch;
 
 #[derive(Debug, Clone)]
 pub struct RocksLogStore<C>
@@ -168,20 +169,17 @@ where C: RaftTypeConfig
 
     async fn append<I>(&mut self, entries: I, callback: IOFlushed<C>) -> Result<(), io::Error>
     where I: IntoIterator<Item = EntryOf<C>> + Send {
+        let mut batch = WriteBatch::default();
         for entry in entries {
             let id = id_to_bin(entry.index());
-            self.db
-                .put_cf(
-                    self.cf_logs(),
-                    id,
-                    serde_json::to_vec(&entry).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?,
-                )
-                .map_err(|e| io::Error::other(e.to_string()))?;
+            let value = serde_json::to_vec(&entry).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+            batch.put_cf(self.cf_logs(), id, value);
         }
+        self.db.write(batch).map_err(|e| io::Error::other(e.to_string()))?;
 
         // Make sure the logs are persisted to disk before invoking the callback.
         //
-        // But the above `pub_cf()` must be called in this function, not in another task.
+        // But the above `write()` must be called in this function, not in another task.
         // Because when the function returns, it requires the log entries can be read.
         let db = self.db.clone();
         std::thread::spawn(move || {

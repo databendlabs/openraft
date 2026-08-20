@@ -1,0 +1,14 @@
+9413	databendlabs/databend	Data Agent Ready Warehouse : One for Analytics, Search, AI, Python Sandbox. — rebuilt from scratch. Unified architecture on your S3.
+2022	databendlabs/openraft	rust raft with improvements
+1772	robustmq/robustmq	Communication infrastructure for the AI era — one binary, one broker, one storage layer, any protocol
+1757	cnosdb/cnosdb	A cloud-native open source distributed time series database with high performance, high compression ratio and high availability.
+1503	mxsm/rocketmq-rust	🚀Apache RocketMQ build in Rust🦀. Faster, safer, and with lower memory usage. ⭐ Star to support our work❤️!
+1272	sebadob/rauthy	Single Sign-On Identity & Access Management via OpenID Connect, OAuth 2, PAM
+477	sebadob/hiqlite	Hiqlite - highly-available, embeddable, raft-based SQLite + cache
+254	renegade-fi/renegade	On-chain dark pool. MPC for anonymous crosses at midpoint prices.
+243	deven96/ahnlich	Suite of tools containing an in-memory vector datastore and AI proxy
+203	lanpishu6300/multiraft	Thin Multi-Raft library for matching HA (openraft + openraft-multi).
+172	danube-messaging/danube	Danube - Distributed Messaging Broker Platform
+170	cloudwalk/stratus	An EVM compatible ledger with a focus on performance and observability. Suited for in house use.
+114	nambok/mentedb	A cognition aware database engine for AI agent memory. Purpose built in Rust with WAL, HNSW, knowledge graphs, and speculative context pre assembly. Not a wrapper, a ground up storage engine that thinks.
+107	ROCm/spur	spur your compute

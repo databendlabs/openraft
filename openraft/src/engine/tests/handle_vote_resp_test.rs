@@ -130,6 +130,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         assert_eq!(
             eng.output.take_commands(),
             vec![
+                Command::FailPendingReads,
                 Command::SaveVote { vote: Vote::new(3, 2) },
                 Command::CloseReplicationStreams,
             ],

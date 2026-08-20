@@ -105,8 +105,6 @@ where C: RaftTypeConfig
     where
         RB: RangeBounds<u64> + Clone + Debug + OptionalSend,
     {
-        // TODO: complete the test that ensures when the vote is changed, stream should be stopped.
-
         use futures_util::stream;
 
         let changed_err = |leader, vote| {
@@ -291,5 +289,73 @@ where C: RaftTypeConfig
         LogIdList::<CommittedLeaderIdOf<C>>::get_key_log_ids(range, self)
             .await
             .map_err(|e| io::Error::other(e.to_string()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::VecDeque;
+
+    use futures_util::StreamExt;
+
+    use super::LeaderBoundedStreamError;
+    use super::RaftLogReader;
+    use crate::engine::testing::UTConfig;
+    use crate::engine::testing::log_id;
+    use crate::entry::RaftEntry;
+    use crate::errors::LeaderChanged;
+    use crate::type_config::TypeConfigExt;
+    use crate::type_config::alias::EntryOf;
+    use crate::type_config::alias::VoteOf;
+
+    struct ChangingVoteReader {
+        votes: VecDeque<Option<VoteOf<UTConfig>>>,
+        entries: Vec<EntryOf<UTConfig>>,
+        calls: Vec<&'static str>,
+    }
+
+    impl ChangingVoteReader {
+        fn new(votes: [Option<VoteOf<UTConfig>>; 2], entries: Vec<EntryOf<UTConfig>>) -> Self {
+            Self {
+                votes: VecDeque::from(votes),
+                entries,
+                calls: vec![],
+            }
+        }
+    }
+
+    impl RaftLogReader<UTConfig> for ChangingVoteReader {
+        async fn try_get_log_entries<RB>(&mut self, _range: RB) -> Result<Vec<EntryOf<UTConfig>>, std::io::Error>
+        where RB: std::ops::RangeBounds<u64> + Clone + std::fmt::Debug + crate::OptionalSend {
+            self.calls.push("read_entries");
+            Ok(self.entries.clone())
+        }
+
+        async fn read_vote(&mut self) -> Result<Option<VoteOf<UTConfig>>, std::io::Error> {
+            self.calls.push("read_vote");
+            Ok(self.votes.pop_front().unwrap_or(None))
+        }
+    }
+
+    #[test]
+    fn leader_bounded_stream_stops_when_vote_changes_between_reads() {
+        UTConfig::<()>::run(async {
+            let expected = VoteOf::<UTConfig>::new_committed(3, 1);
+            let changed = VoteOf::<UTConfig>::new(4, 2);
+            let leader = *expected.leader_id();
+            let entry = EntryOf::<UTConfig>::new_blank(log_id(3, 1, 7));
+
+            let mut reader = ChangingVoteReader::new([Some(expected), Some(changed)], vec![entry]);
+
+            let stream = reader.leader_bounded_stream(leader, 7..8).await;
+            let items: Vec<_> = stream.collect().await;
+
+            let [Err(LeaderBoundedStreamError::LeaderChanged(actual))] = items.as_slice() else {
+                panic!("expected one LeaderChanged item, got: {items:?}");
+            };
+
+            assert_eq!(&LeaderChanged::new(leader, Some(changed)), actual);
+            assert_eq!(vec!["read_vote", "read_entries", "read_vote"], reader.calls);
+        })
     }
 }

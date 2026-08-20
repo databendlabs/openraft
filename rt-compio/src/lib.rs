@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Error;
@@ -9,6 +8,7 @@ use std::task::Context;
 use std::task::Poll;
 
 pub use compio;
+use compio_executor::JoinError;
 pub use futures;
 use futures::FutureExt;
 use openraft_rt::AsyncRuntime;
@@ -37,7 +37,7 @@ impl Debug for CompioRuntime {
 }
 
 #[derive(Debug)]
-pub struct CompioJoinError(#[allow(dead_code)] Box<dyn Any + Send>);
+pub struct CompioJoinError(#[allow(dead_code)] JoinError);
 
 impl Display for CompioJoinError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
@@ -64,7 +64,7 @@ impl<T> Future for CompioJoinHandle<T> {
         let task = this.0.as_mut().expect("Task has been cancelled");
         match task.poll_unpin(cx) {
             Poll::Ready(Ok(v)) => Poll::Ready(Ok(v)),
-            Poll::Ready(Err(e)) => Poll::Ready(Err(CompioJoinError(Box::new(e)))),
+            Poll::Ready(Err(e)) => Poll::Ready(Err(CompioJoinError(e))),
             Poll::Pending => Poll::Pending,
         }
     }

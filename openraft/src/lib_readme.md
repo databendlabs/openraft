@@ -1,6 +1,10 @@
 <!-- This page is rendered by docs.rs -->
 
 <div align="center">
+    <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/databendlabs/openraft/main/assets/logo/openraft-mark-dark.svg">
+        <img src="https://raw.githubusercontent.com/databendlabs/openraft/main/assets/logo/openraft-mark.svg" alt="OpenRaft" width="140" height="140">
+    </picture>
     <h1>Openraft</h1>
 </div>
 

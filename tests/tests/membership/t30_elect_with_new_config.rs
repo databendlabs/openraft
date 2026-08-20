@@ -38,44 +38,51 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
     tracing::info!("--- initializing cluster");
     let mut log_index = router.new_cluster(btreeset! {0,1,2,3,4}, btreeset! {}).await?;
 
-    // Isolate old leader and assert that a new leader takes over.
-    tracing::info!(log_index, "--- isolating leader node 0");
-    router.set_network_error(0, true);
+    tracing::info!(
+        log_index,
+        "--- isolate node 0 and elect node 1 under the new membership"
+    );
+    {
+        router.set_network_error(0, true);
+        TypeConfig::sleep(Duration::from_millis(700)).await;
 
-    // Wait for leader lease to expire
-    TypeConfig::sleep(Duration::from_millis(700)).await;
+        let node_1 = router.get_raft_handle(&1)?;
+        node_1.trigger().elect(false).await?;
+        log_index += 1;
 
-    // Let node-1 become leader.
-    let node_1 = router.get_raft_handle(&1)?;
-    node_1.trigger().elect(false).await?;
-    log_index += 1; // leader initial blank log
+        router.wait(&1, timeout()).metrics(|x| x.current_leader == Some(1), "wait for new leader").await?;
 
-    router.wait(&1, timeout()).metrics(|x| x.current_leader == Some(1), "wait for new leader").await?;
-
-    for node_id in [1, 2, 3, 4] {
-        router
-            .wait(&node_id, timeout())
-            .applied_index(Some(log_index), "replicate and apply log to every node")
-            .await?;
+        for node_id in [1, 2, 3, 4] {
+            router
+                .wait(&node_id, timeout())
+                .applied_index(Some(log_index), "replicate and apply log to every node")
+                .await?;
+        }
     }
 
     let leader_id = 1;
 
-    tracing::info!(log_index, "--- restore node 0, log_index:{}", log_index);
-    router.set_network_error(0, false);
-    router
-        .wait(&0, timeout())
-        .metrics(
-            |x| x.current_leader == Some(leader_id) && x.last_applied.index() == Some(log_index),
-            "wait for restored node-0 to sync",
-        )
-        .await?;
-
-    let current_leader = router.leader().expect("expected to find current leader");
-    assert_eq!(
-        leader_id, current_leader,
-        "expected cluster leadership to stay the same"
+    tracing::info!(
+        log_index,
+        leader_id,
+        "--- restore node 0 and verify leadership stays stable"
     );
+    {
+        router.set_network_error(0, false);
+        router
+            .wait(&0, timeout())
+            .metrics(
+                |x| x.current_leader == Some(leader_id) && x.last_applied.index() == Some(log_index),
+                "wait for restored node-0 to sync",
+            )
+            .await?;
+
+        let current_leader = router.leader().expect("expected to find current leader");
+        assert_eq!(
+            leader_id, current_leader,
+            "expected cluster leadership to stay the same"
+        );
+    }
 
     Ok(())
 }

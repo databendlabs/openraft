@@ -1,5 +1,8 @@
 <div align="center">
-    <h1>OpenRaft</h1>
+    <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="assets/logo/openraft-banner-dark.svg">
+        <img src="assets/logo/openraft-banner.svg" alt="OpenRaft">
+    </picture>
     <h4>
         Advanced <a href="https://raft.github.io/">Raft</a> in 🦀 Rust on any async runtime. Please ⭐ on <a href="https://github.com/databendlabs/openraft">GitHub</a>!
     </h4>
@@ -8,7 +11,7 @@
 [![Crates.io](https://img.shields.io/crates/v/openraft.svg)](https://crates.io/crates/openraft)
 [![docs.rs](https://docs.rs/openraft/badge.svg)](https://docs.rs/openraft)
 [![DeepWiki](https://img.shields.io/badge/DeepWiki-openraft-blue.svg?logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACwAAAAyCAYAAAAnWDnqAAAAAXNSR0IArs4c6QAAA05JREFUaEPtmUtyEzEQhtWTQyQLHNak2AB7ZnyXZMEjXMGeK/AIi+QuHrMnbChYY7MIh8g01fJoopFb0uhhEqqcbWTp06/uv1saEDv4O3n3dV60RfP947Mm9/SQc0ICFQgzfc4CYZoTPAswgSJCCUJUnAAoRHOAUOcATwbmVLWdGoH//PB8mnKqScAhsD0kYP3j/Yt5LPQe2KvcXmGvRHcDnpxfL2zOYJ1mFwrryWTz0advv1Ut4CJgf5uhDuDj5eUcAUoahrdY/56ebRWeraTjMt/00Sh3UDtjgHtQNHwcRGOC98BJEAEymycmYcWwOprTgcB6VZ5JK5TAJ+fXGLBm3FDAmn6oPPjR4rKCAoJCal2eAiQp2x0vxTPB3ALO2CRkwmDy5WohzBDwSEFKRwPbknEggCPB/imwrycgxX2NzoMCHhPkDwqYMr9tRcP5qNrMZHkVnOjRMWwLCcr8ohBVb1OMjxLwGCvjTikrsBOiA6fNyCrm8V1rP93iVPpwaE+gO0SsWmPiXB+jikdf6SizrT5qKasx5j8ABbHpFTx+vFXp9EnYQmLx02h1QTTrl6eDqxLnGjporxl3NL3agEvXdT0WmEost648sQOYAeJS9Q7bfUVoMGnjo4AZdUMQku50McDcMWcBPvr0SzbTAFDfvJqwLzgxwATnCgnp4wDl6Aa+Ax283gghmj+vj7feE2KBBRMW3FzOpLOADl0Isb5587h/U4gGvkt5v60Z1VLG8BhYjbzRwyQZemwAd6cCR5/XFWLYZRIMpX39AR0tjaGGiGzLVyhse5C9RKC6ai42ppWPKiBagOvaYk8lO7DajerabOZP46Lby5wKjw1HCRx7p9sVMOWGzb/vA1hwiWc6jm3MvQDTogQkiqIhJV0nBQBTU+3okKCFDy9WwferkHjtxib7t3xIUQtHxnIwtx4mpg26/HfwVNVDb4oI9RHmx5WGelRVlrtiw43zboCLaxv46AZeB3IlTkwouebTr1y2NjSpHz68WNFjHvupy3q8TFn3Hos2IAk4Ju5dCo8B3wP7VPr/FGaKiG+T+v+TQqIrOqMTL1VdWV1DdmcbO8KXBz6esmYWYKPwDL5b5FA1a0hwapHiom0r/cKaoqr+27/XcrS5UwSMbQAAAABJRU5ErkJggg==)](https://deepwiki.com/databendlabs/openraft)
-[![guides](https://img.shields.io/badge/guide-%E2%86%97-brightgreen)](https://docs.rs/openraft/0.10.0-alpha.33/openraft/docs/index.html)
+[![guides](https://img.shields.io/badge/guide-%E2%86%97-brightgreen)](https://docs.rs/openraft/0.10.0-alpha.34/openraft/docs/index.html)
 [![Discord Chat](https://img.shields.io/discord/1015845055434588200?logo=discord)](https://discord.gg/ZKw3WG7FQ9)
 <br/>
 [![CI](https://github.com/databendlabs/openraft/actions/workflows/ci.yaml/badge.svg)](https://github.com/databendlabs/openraft/actions/workflows/ci.yaml)
@@ -25,18 +28,18 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
 
 
 - 🚀 **Get started**:
-    - [OpenRaft guide](https://docs.rs/openraft/0.10.0-alpha.33/openraft/docs/getting_started/index.html) is the best place to get started,
-    - [OpenRaft docs](https://docs.rs/openraft/0.10.0-alpha.33/openraft/docs/index.html) for more in-depth details,
-    - [OpenRaft FAQ](https://docs.rs/openraft/0.10.0-alpha.33/openraft/docs/faq/index.html) explains some common questions.
+    - [OpenRaft guide](https://docs.rs/openraft/0.10.0-alpha.34/openraft/docs/getting_started/index.html) is the best place to get started,
+    - [OpenRaft docs](https://docs.rs/openraft/0.10.0-alpha.34/openraft/docs/index.html) for more in-depth details,
+    - [OpenRaft FAQ](https://docs.rs/openraft/0.10.0-alpha.34/openraft/docs/faq/index.html) explains some common questions.
     - [OpenRaft on DeepWiki](https://deepwiki.com/databendlabs/openraft) provides detailed architectural documentation to help understand OpenRaft internals.
 
 - 💡 **Example Applications**:
 
-    - [Examples with OpenRaft 0.10](https://github.com/databendlabs/openraft/tree/release-0.10/examples) require OpenRaft `0.10.0-alpha.33` (alpha) on [crates.io/openraft](https://crates.io/crates/openraft);
+    - [Examples with OpenRaft 0.10](https://github.com/databendlabs/openraft/tree/release-0.10/examples) require OpenRaft `0.10.0-alpha.34` (alpha) on [crates.io/openraft](https://crates.io/crates/openraft);
     - [Examples with OpenRaft 0.9](https://github.com/databendlabs/openraft/tree/release-0.9/examples) require OpenRaft 0.9 on [crates.io/openraft](https://crates.io/crates/openraft).
 
 - 🙌 **Questions**?
-    - Why not take a peek at our [FAQ](https://docs.rs/openraft/0.10.0-alpha.33/openraft/docs/faq/index.html)? You might find just what you need.
+    - Why not take a peek at our [FAQ](https://docs.rs/openraft/0.10.0-alpha.34/openraft/docs/faq/index.html)? You might find just what you need.
     - Wanna chat? Come hang out with us on [Discord](https://discord.gg/ZKw3WG7FQ9)!
     - Or start a new discussion over on [GitHub](https://github.com/databendlabs/openraft/discussions/new).
     - Or join our [Feishu group](https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=d20l9084-6d36-4470-bac5-4bad7378d003).
@@ -69,7 +72,7 @@ Whatever your style, we're here to support you. 🚀 Let's make something awesom
 
 - **Branch main** has been under active development.
     The main branch is for the [release-0.10](https://github.com/databendlabs/openraft/tree/release-0.10).
-    Latest alpha on crates.io: [v0.10.0-alpha.33](https://crates.io/crates/openraft/0.10.0-alpha.33).
+    Latest alpha on crates.io: [v0.10.0-alpha.34](https://crates.io/crates/openraft/0.10.0-alpha.34).
     The `0.10` line is in **alpha** — the API may still change before the final `0.10.0` release.
 
 - **Branch [release-0.9](https://github.com/databendlabs/openraft/tree/release-0.9)**:
@@ -93,10 +96,10 @@ Whatever your style, we're here to support you. 🚀 Let's make something awesom
 
 # Roadmap
 
-- [x] **2022-10-31** [Extended joint membership](https://docs.rs/openraft/0.10.0-alpha.33/openraft/docs/data/extended_membership/index.html)
+- [x] **2022-10-31** [Extended joint membership](https://docs.rs/openraft/0.10.0-alpha.34/openraft/docs/data/extended_membership/index.html)
 - [x] **2023-02-14** Minimize confliction rate when electing;
-  See: [OpenRaft Vote design](https://docs.rs/openraft/0.10.0-alpha.33/openraft/docs/data/vote/index.html);
-  Or use [standard Raft leader-ID mode](https://docs.rs/openraft/0.10.0-alpha.33/openraft/docs/data/leader_id/index.html).
+  See: [OpenRaft Vote design](https://docs.rs/openraft/0.10.0-alpha.34/openraft/docs/data/vote/index.html);
+  Or use [standard Raft leader-ID mode](https://docs.rs/openraft/0.10.0-alpha.34/openraft/docs/data/leader_id/index.html).
 - [x] **2023-04-26** Goal performance is 1,000,000 put/sec.
 - [ ] Reduce the complexity of vote and pre-vote: [get rid of pre-vote RPC](https://github.com/databendlabs/openraft/discussions/15);
 - [ ] Support flexible quorum, e.g.: [Hierarchical Quorums](https://zookeeper.apache.org/doc/r3.5.9/zookeeperHierarchicalQuorums.html)
@@ -137,8 +140,8 @@ For benchmark detail, go to the [./benchmarks/minimal](./benchmarks/minimal) fol
 
 What sets OpenRaft apart from a standard Raft implementation:
 
-- **Generalized membership change**: [extended joint membership](https://docs.rs/openraft/0.10.0-alpha.33/openraft/docs/data/extended_membership/index.html) changes an arbitrary set of nodes in a single operation; standard Raft's one-node-at-a-time change is a restricted special case.
-- **Fewer election conflicts**: the redesigned [Vote](https://docs.rs/openraft/0.10.0-alpha.33/openraft/docs/data/vote/index.html) minimizes election conflict rate — a split vote does not force a new term; the [standard Raft leader-ID mode](https://docs.rs/openraft/0.10.0-alpha.33/openraft/docs/data/leader_id/index.html) is also supported.
+- **Generalized membership change**: [extended joint membership](https://docs.rs/openraft/0.10.0-alpha.34/openraft/docs/data/extended_membership/index.html) changes an arbitrary set of nodes in a single operation; standard Raft's one-node-at-a-time change is a restricted special case.
+- **Fewer election conflicts**: the redesigned [Vote](https://docs.rs/openraft/0.10.0-alpha.34/openraft/docs/data/vote/index.html) minimizes election conflict rate — a split vote does not force a new term; the [standard Raft leader-ID mode](https://docs.rs/openraft/0.10.0-alpha.34/openraft/docs/data/leader_id/index.html) is also supported.
 - **Async and event-driven**: state transitions are driven by Raft events without periodic ticks; messages are batched, reaching millions of writes/sec in the [framework benchmark](#performance).
 - **Fully pluggable**: storage (`RaftLogStorage`, `RaftStateMachine`), networking (`RaftNetworkV2`, including application-defined snapshot transport), and every core type — node ID, node, term, vote, log entry — via `RaftTypeConfig`.
 - **Runtime-agnostic**: tokio by default, [compio](./rt-compio) and [monoio](./rt-monoio) via the `AsyncRuntime` trait, and a `single-threaded` mode that removes `Send` bounds.
@@ -153,10 +156,10 @@ What sets OpenRaft apart from a standard Raft implementation:
 - ✅ **Non-voter(learner) Role**: refer to [`add_learner()`][].
 - ✅ **Log Compaction**(snapshot of state machine): by policy or manually ([`Trigger::snapshot()`][]).
 - ✅ **Snapshot replication**.
-- ✅ **Dynamic Membership**: using joint membership config change. Refer to [dynamic membership](https://docs.rs/openraft/0.10.0-alpha.33/openraft/docs/cluster_control/dynamic_membership/index.html)
+- ✅ **Dynamic Membership**: using joint membership config change. Refer to [dynamic membership](https://docs.rs/openraft/0.10.0-alpha.34/openraft/docs/cluster_control/dynamic_membership/index.html)
 - ✅ **Linearizable read**: [`ensure_linearizable()`][].
 - ✅ **Metrics**: [`Raft::metrics()`][], [`Raft::data_metrics()`][], and [`Raft::server_metrics()`][].
-- ⛔️ **Won't support**: Single-step config change. Single-step membership change is a restricted subset of joint consensus that only allows changing one node at a time. Openraft uses the more general [joint consensus](https://docs.rs/openraft/0.10.0-alpha.33/openraft/docs/cluster_control/dynamic_membership/index.html) approach which supports arbitrary membership changes in a single operation.
+- ⛔️ **Won't support**: Single-step config change. Single-step membership change is a restricted subset of joint consensus that only allows changing one node at a time. Openraft uses the more general [joint consensus](https://docs.rs/openraft/0.10.0-alpha.34/openraft/docs/cluster_control/dynamic_membership/index.html) approach which supports arbitrary membership changes in a single operation.
 - ✅ Toggle heartbeat / election: [`RuntimeConfigHandle::heartbeat()`][] / [`RuntimeConfigHandle::elect()`][].
 - ✅ Trigger snapshot / election manually: [`Trigger::snapshot()`][] / [`Trigger::elect()`][].
 - ✅ Purge log by policy or manually: [`Trigger::purge_log()`][].
@@ -207,6 +210,7 @@ Thanks to everyone who contributes to OpenRaft:
 [<img src="assets/contributors/svg/devillove084.svg" alt="@devillove084"/>](https://github.com/devillove084)
 [<img src="assets/contributors/svg/Diggsey.svg" alt="@Diggsey"/>](https://github.com/Diggsey)
 [<img src="assets/contributors/svg/diptanu.svg" alt="@diptanu"/>](https://github.com/diptanu)
+[<img src="assets/contributors/svg/DRMacIver.svg" alt="@DRMacIver"/>](https://github.com/DRMacIver)
 [<img src="assets/contributors/svg/drmingdrmer.svg" alt="@drmingdrmer"/>](https://github.com/drmingdrmer)
 [<img src="assets/contributors/svg/eliasyaoyc.svg" alt="@eliasyaoyc"/>](https://github.com/eliasyaoyc)
 [<img src="assets/contributors/svg/emmanuel-ferdman.svg" alt="@emmanuel-ferdman"/>](https://github.com/emmanuel-ferdman)
@@ -223,6 +227,7 @@ Thanks to everyone who contributes to OpenRaft:
 [<img src="assets/contributors/svg/homa31.svg" alt="@homa31"/>](https://github.com/homa31)
 [<img src="assets/contributors/svg/iamazy.svg" alt="@iamazy"/>](https://github.com/iamazy)
 [<img src="assets/contributors/svg/iMashtak.svg" alt="@iMashtak"/>](https://github.com/iMashtak)
+[<img src="assets/contributors/svg/jamals86.svg" alt="@jamals86"/>](https://github.com/jamals86)
 [<img src="assets/contributors/svg/Jason5Lee.svg" alt="@Jason5Lee"/>](https://github.com/Jason5Lee)
 [<img src="assets/contributors/svg/jdockerty.svg" alt="@jdockerty"/>](https://github.com/jdockerty)
 [<img src="assets/contributors/svg/jgrund.svg" alt="@jgrund"/>](https://github.com/jgrund)
@@ -249,6 +254,7 @@ Thanks to everyone who contributes to OpenRaft:
 [<img src="assets/contributors/svg/MrCroxx.svg" alt="@MrCroxx"/>](https://github.com/MrCroxx)
 [<img src="assets/contributors/svg/nasuiyile.svg" alt="@nasuiyile"/>](https://github.com/nasuiyile)
 [<img src="assets/contributors/svg/Nicholas-Ball.svg" alt="@Nicholas-Ball"/>](https://github.com/Nicholas-Ball)
+[<img src="assets/contributors/svg/othmanekn.svg" alt="@othmanekn"/>](https://github.com/othmanekn)
 [<img src="assets/contributors/svg/penghs520.svg" alt="@penghs520"/>](https://github.com/penghs520)
 [<img src="assets/contributors/svg/PeterKnego.svg" alt="@PeterKnego"/>](https://github.com/PeterKnego)
 [<img src="assets/contributors/svg/pfwang80s.svg" alt="@pfwang80s"/>](https://github.com/pfwang80s)
@@ -259,6 +265,7 @@ Thanks to everyone who contributes to OpenRaft:
 [<img src="assets/contributors/svg/Qian-Cheng-nju.svg" alt="@Qian-Cheng-nju"/>](https://github.com/Qian-Cheng-nju)
 [<img src="assets/contributors/svg/rvielma.svg" alt="@rvielma"/>](https://github.com/rvielma)
 [<img src="assets/contributors/svg/sainad2222.svg" alt="@sainad2222"/>](https://github.com/sainad2222)
+[<img src="assets/contributors/svg/SAY-5.svg" alt="@SAY-5"/>](https://github.com/SAY-5)
 [<img src="assets/contributors/svg/schreter.svg" alt="@schreter"/>](https://github.com/schreter)
 [<img src="assets/contributors/svg/SebastianThiebaud.svg" alt="@SebastianThiebaud"/>](https://github.com/SebastianThiebaud)
 [<img src="assets/contributors/svg/shuoli84.svg" alt="@shuoli84"/>](https://github.com/shuoli84)
@@ -276,6 +283,7 @@ Thanks to everyone who contributes to OpenRaft:
 [<img src="assets/contributors/svg/tvsfx.svg" alt="@tvsfx"/>](https://github.com/tvsfx)
 [<img src="assets/contributors/svg/undecidedapollo.svg" alt="@undecidedapollo"/>](https://github.com/undecidedapollo)
 [<img src="assets/contributors/svg/Veeupup.svg" alt="@Veeupup"/>](https://github.com/Veeupup)
+[<img src="assets/contributors/svg/VerifiedOrganic.svg" alt="@VerifiedOrganic"/>](https://github.com/VerifiedOrganic)
 [<img src="assets/contributors/svg/vigith.svg" alt="@vigith"/>](https://github.com/vigith)
 [<img src="assets/contributors/svg/wvwwvwwv.svg" alt="@wvwwvwwv"/>](https://github.com/wvwwvwwv)
 [<img src="assets/contributors/svg/xu-cheng.svg" alt="@xu-cheng"/>](https://github.com/xu-cheng)
@@ -292,18 +300,18 @@ OpenRaft is licensed under the terms of the [MIT License](https://en.wikipedia.o
 or the [Apache License 2.0](http://www.apache.org/licenses/LICENSE-2.0), at your choosing.
 
 
-[`change_membership()`]: https://docs.rs/openraft/0.10.0-alpha.33/openraft/raft/struct.Raft.html#method.change_membership
-[`add_learner()`]: https://docs.rs/openraft/0.10.0-alpha.33/openraft/raft/struct.Raft.html#method.add_learner
-[`Trigger::purge_log()`]: https://docs.rs/openraft/0.10.0-alpha.33/openraft/raft/trigger/struct.Trigger.html#method.purge_log
+[`change_membership()`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/raft/struct.Raft.html#method.change_membership
+[`add_learner()`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/raft/struct.Raft.html#method.add_learner
+[`Trigger::purge_log()`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/raft/trigger/struct.Trigger.html#method.purge_log
 
-[`RuntimeConfigHandle::heartbeat()`]: https://docs.rs/openraft/0.10.0-alpha.33/openraft/raft/struct.RuntimeConfigHandle.html#method.heartbeat
-[`RuntimeConfigHandle::elect()`]: https://docs.rs/openraft/0.10.0-alpha.33/openraft/raft/struct.RuntimeConfigHandle.html#method.elect
+[`RuntimeConfigHandle::heartbeat()`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/raft/struct.RuntimeConfigHandle.html#method.heartbeat
+[`RuntimeConfigHandle::elect()`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/raft/struct.RuntimeConfigHandle.html#method.elect
 
-[`Trigger::elect()`]: https://docs.rs/openraft/0.10.0-alpha.33/openraft/raft/trigger/struct.Trigger.html#method.elect
-[`Trigger::snapshot()`]: https://docs.rs/openraft/0.10.0-alpha.33/openraft/raft/trigger/struct.Trigger.html#method.snapshot
-[`Trigger::transfer_leader()`]: https://docs.rs/openraft/0.10.0-alpha.33/openraft/raft/trigger/struct.Trigger.html#method.transfer_leader
-[`Config::enable_pre_vote`]: https://docs.rs/openraft/0.10.0-alpha.33/openraft/struct.Config.html#structfield.enable_pre_vote
-[`Raft::metrics()`]: https://docs.rs/openraft/0.10.0-alpha.33/openraft/raft/struct.Raft.html#method.metrics
-[`Raft::data_metrics()`]: https://docs.rs/openraft/0.10.0-alpha.33/openraft/raft/struct.Raft.html#method.data_metrics
-[`Raft::server_metrics()`]: https://docs.rs/openraft/0.10.0-alpha.33/openraft/raft/struct.Raft.html#method.server_metrics
-[`ensure_linearizable()`]: https://docs.rs/openraft/0.10.0-alpha.33/openraft/raft/struct.Raft.html#method.ensure_linearizable
+[`Trigger::elect()`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/raft/trigger/struct.Trigger.html#method.elect
+[`Trigger::snapshot()`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/raft/trigger/struct.Trigger.html#method.snapshot
+[`Trigger::transfer_leader()`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/raft/trigger/struct.Trigger.html#method.transfer_leader
+[`Config::enable_pre_vote`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/struct.Config.html#structfield.enable_pre_vote
+[`Raft::metrics()`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/raft/struct.Raft.html#method.metrics
+[`Raft::data_metrics()`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/raft/struct.Raft.html#method.data_metrics
+[`Raft::server_metrics()`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/raft/struct.Raft.html#method.server_metrics
+[`ensure_linearizable()`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/raft/struct.Raft.html#method.ensure_linearizable

@@ -64,11 +64,14 @@ fn test_invalid_election_timeout_config_produces_expected_error() {
 
 #[test]
 fn test_invalid_heartbeat_min_interval_produces_expected_error() {
+    // The tick interval is `heartbeat_interval * 13 / 64` == 101, so the greatest accepted
+    // `heartbeat_min_interval` is `election_timeout_min - heartbeat_interval - 101 - 1` == 398.
+
     let config = Config {
         election_timeout_min: 1000,
         election_timeout_max: 2000,
         heartbeat_interval: 500,
-        heartbeat_min_interval: Some(500),
+        heartbeat_min_interval: Some(399),
         ..Default::default()
     };
 
@@ -77,14 +80,28 @@ fn test_invalid_heartbeat_min_interval_produces_expected_error() {
     assert_eq!(err, ConfigError::HeartbeatMinIntervalTooLarge {
         election_timeout_min: 1000,
         heartbeat_interval: 500,
-        heartbeat_min_interval: 500,
+        heartbeat_min_interval: 399,
     });
 
     let config = Config {
         election_timeout_min: 1000,
         election_timeout_max: 2000,
         heartbeat_interval: 500,
-        heartbeat_min_interval: Some(499),
+        heartbeat_min_interval: Some(398),
+        ..Default::default()
+    };
+    assert!(config.validate().is_ok());
+}
+
+/// Suppression disabled leaves the heartbeat cadence unchanged, so `election_timeout_min` only has
+/// to exceed `heartbeat_interval`, not the tick interval.
+#[test]
+fn test_disabled_heartbeat_min_interval_ignores_tick_interval() {
+    let config = Config {
+        election_timeout_min: 101,
+        election_timeout_max: 200,
+        heartbeat_interval: 100,
+        heartbeat_min_interval: None,
         ..Default::default()
     };
     assert!(config.validate().is_ok());

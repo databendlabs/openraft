@@ -354,14 +354,6 @@ where
         self.voter_count
     }
 
-    // TODO: merge `get` and `try_get`
-    /// Get the value by `id`.
-    #[cfg(test)]
-    pub(crate) fn get(&self, id: &Entry::Id) -> &Entry {
-        let index = self.index(id).unwrap();
-        &self.entries[index]
-    }
-
     /// Get the greatest value that is accepted by the quorum set.
     ///
     /// In raft or other distributed consensus,
@@ -400,6 +392,10 @@ where
             new_prog.replace(item).ok();
         }
         new_prog
+    }
+
+    pub(crate) fn quorum_set(&self) -> &QS {
+        &self.quorum_set
     }
 
     /// Replace the entry for the same ID and update quorum-accepted progress.

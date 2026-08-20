@@ -39,6 +39,10 @@ use crate::vote::raft_vote::RaftVoteExt;
 #[cfg(test)]
 mod append_membership_test;
 #[cfg(test)]
+mod try_purge_log_test;
+#[cfg(test)]
+mod update_conflicting_test;
+#[cfg(test)]
 mod update_matching_test;
 
 /// Handle replication operations.
@@ -252,8 +256,10 @@ where
     /// Update progress when replicated data(logs or snapshot) does not match the follower/learner
     /// state and is rejected.
     ///
-    /// If `has_payload` is true, the `inflight` state is reset because AppendEntries RPC
-    /// manages the inflight state.
+    /// If `inflight_id` is `Some`, the inflight state is reset because the response corresponds
+    /// to a replication request with log payload; a stale inflight ID leaves the progress entry
+    /// unchanged. If `None`, the response is from an RPC without payload (e.g., heartbeat), and
+    /// inflight state is not modified.
     ///
     /// This method intentionally bypasses `VecProgress::update_entry_with()`: when log
     /// reversion is explicitly allowed, [`Updater::update_conflicting()`] may reset
@@ -267,8 +273,6 @@ where
         conflict: LogIdOf<C>,
         inflight_id: Option<InflightId>,
     ) {
-        // TODO(2): test it?
-
         self.leader.progress.reset_entry_with(&target, |entry| {
             let mut updater = Updater::new(&*self.config, entry);
             updater.update_conflicting(conflict.index(), inflight_id);
@@ -449,9 +453,6 @@ where
     /// Therefore, it is a method of ReplicationHandler.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn try_purge_log(&mut self) {
-        // TODO refactor this
-        // TODO: test
-
         tracing::debug!(
             "try_purge_log: last_purged_log_id: {}, purge_upto: {}",
             self.state.last_purged_log_id().display(),
