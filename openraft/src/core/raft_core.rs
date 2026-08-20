@@ -69,6 +69,7 @@ use crate::errors::ForwardToLeader;
 use crate::errors::Infallible;
 use crate::errors::InitializeError;
 use crate::errors::LinearizableReadError;
+use crate::errors::PreconditionFailed;
 use crate::errors::StorageIOResult;
 use crate::errors::Timeout;
 use crate::impls::ProgressResponder;
@@ -92,6 +93,7 @@ use crate::progress::stream_id::StreamId;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::ClientWriteResult;
 use crate::raft::LogSegment;
+use crate::raft::Precondition;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft::linearizable_read::Linearizer;
@@ -333,6 +335,17 @@ where
         self.runtime_loop(rx_shutdown).await
     }
 
+    fn ensure_preconditions_satisfied(
+        &self,
+        preconditions: BatchOf<C, Precondition<C>>,
+    ) -> Result<(), PreconditionFailed<C>> {
+        for c in preconditions {
+            c.ensure_satisfied(&self.engine.state)?;
+        }
+
+        Ok(())
+    }
+
     /// Handle `is_leader` requests.
     ///
     /// Send heartbeat to all voters. We respond once we have
@@ -425,15 +438,21 @@ where
     //       Because allowing this requires the engine to be able to store more than 2
     //       membership logs. And it does not need to wait for the previous membership log to commit
     //       to propose the new membership log.
-    #[tracing::instrument(level = "debug", skip(self, tx))]
+    #[tracing::instrument(level = "debug", skip(self, tx, preconditions))]
     pub(super) fn change_membership(
         &mut self,
         changes: ChangeMembers<C::NodeId, C::Node>,
         retain: bool,
+        preconditions: BatchOf<C, Precondition<C>>,
         tx: ProgressResponder<C, ClientWriteResult<C>>,
     ) {
         if let Err(e) = self.ensure_leader_handler() {
             tx.on_complete(Err(ClientWriteError::ForwardToLeader(e)));
+            return;
+        }
+
+        if let Err(e) = self.ensure_preconditions_satisfied(preconditions) {
+            tx.on_complete(Err(e.into()));
             return;
         }
 
@@ -1608,15 +1627,21 @@ where
 
                 self.handle_initialize(members, tx);
             }
-            RaftMsg::ChangeMembership { changes, retain, tx } => {
+            RaftMsg::ChangeMembership {
+                changes,
+                retain,
+                preconditions,
+                tx,
+            } => {
                 tracing::info!(
-                    "received RaftMsg::ChangeMembership: {}, members: {:?}, retain: {:?}",
+                    "received RaftMsg::ChangeMembership: {}, members: {:?}, retain: {:?}, preconditions: {}",
                     func_name!(),
                     changes,
-                    retain
+                    retain,
+                    preconditions.as_ref().display()
                 );
 
-                self.change_membership(changes, retain, tx);
+                self.change_membership(changes, retain, preconditions, tx);
             }
             RaftMsg::WithRaftState { req } => {
                 req(&self.engine.state);

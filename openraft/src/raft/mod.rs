@@ -49,6 +49,7 @@ pub use message::InstallSnapshotRequest;
 #[allow(deprecated)]
 pub use message::InstallSnapshotResponse;
 pub use message::LogSegment;
+pub use message::Precondition;
 pub use message::SnapshotResponse;
 pub use message::StreamAppendError;
 pub use message::TransferLeaderError;
