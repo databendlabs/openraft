@@ -49,7 +49,10 @@ where
 
     pub(crate) inflight_id: Option<InflightId>,
 
-    /// The last `leader_commit` included in a request generated for the current stream.
+    /// The last `leader_commit` included in a generated AppendEntries request.
+    ///
+    /// Preserved across healthy transport sessions and reset after a transport failure, when a
+    /// polled request may not have reached the follower.
     pub(crate) last_included_committed: Option<LogIdOf<C>>,
 
     /// Read-only handle to the shared backoff state, sampled before each request.
