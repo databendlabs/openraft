@@ -49,8 +49,8 @@ where
 
     pub(crate) inflight_id: Option<InflightId>,
 
-    /// The leader_commit value to send in AppendEntries requests.
-    pub(crate) leader_committed: Option<LogIdOf<C>>,
+    /// The last `leader_commit` included in a request generated for the current stream.
+    pub(crate) last_included_committed: Option<LogIdOf<C>>,
 
     /// Read-only handle to the shared backoff state, sampled before each request.
     ///
@@ -94,12 +94,16 @@ where
 
         self.update_log_id_range(sending_range.last);
 
+        // The request carries the latest commit, so consume its pending notification. A newer
+        // commit arriving after this read remains pending and will produce another request.
+        let leader_commit = self.event_watcher.committed_rx.borrow_and_update().clone();
         let payload: AppendEntriesRequest<C> = AppendEntriesRequest {
             vote: self.replication_context.leader_vote.clone().into_vote(),
             prev_log_id: sending_range.prev.clone(),
-            leader_commit: self.event_watcher.committed_rx.borrow_watched().clone(),
+            leader_commit: leader_commit.clone(),
             entries,
         };
+        self.last_included_committed = leader_commit;
 
         if let Some(first) = payload.entries.first() {
             debug_assert_eq!(
@@ -122,6 +126,11 @@ where
     }
 
     /// Return None if no more data to send.
+    ///
+    /// A newly committed log id always produces a request, so the follower can apply without
+    /// waiting for the next write. The range is built from the latest submitted log id, which lets
+    /// the commit ride along with entries that became available meanwhile rather than sending an
+    /// empty request followed immediately by the entries.
     async fn get_log_id_range(&mut self) -> Option<LogIdRange<C>> {
         let payload = self.payload.as_ref()?;
 
@@ -146,8 +155,7 @@ where
                 committed.display()
             );
 
-            if last_log_id > prev || committed > self.leader_committed {
-                self.leader_committed = committed;
+            if last_log_id > prev || committed > self.last_included_committed {
                 return Some(non_reversed_log_id_range(prev, last_log_id));
             } else {
                 let data_change = self.event_watcher.replicate_rx.changed();
@@ -169,10 +177,11 @@ where
                     }
                     _committed_change = committed_change.fuse() => {
                         tracing::debug!("committed_rx changed");
-                        // A notification may force an RPC even if no new readable logs are available.
-                        // This read delivers the event, thus it marks the value as seen.
-                        self.leader_committed = self.event_watcher.committed_rx.borrow_and_update().clone();
-                        return Some(non_reversed_log_id_range(prev, last_log_id));
+                        // Mark the notification as seen, then let the loop re-read both the
+                        // submitted cursor and committed log id. A stale notification may remain
+                        // after a data request already carried the same commit.
+                        let _ = self.event_watcher.committed_rx.borrow_and_update();
+                        // Continue
                     }
                     cancel_res = cancel.fuse() => {
                         tracing::info!("Replication Stream is canceled, res: {:?}, when:(get_log_id_range:wait-for-changed)", cancel_res);
