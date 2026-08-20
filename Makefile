@@ -171,6 +171,7 @@ unused_dep:
 	cargo machete examples/multi-raft-kv
 	cargo machete examples/sm-rocks
 	cargo machete examples/log-rocks
+	cargo machete examples/dir-transfer
 	cargo machete multiraft
 	cargo machete rt-compio
 	cargo machete rt-monoio
@@ -193,6 +194,7 @@ check:
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/app-http/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/network-v1-http/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/network-v2-http/Cargo.toml
+	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/dir-transfer/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/log-mem/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/log-rocks/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/sm-mem/Cargo.toml
@@ -218,6 +220,7 @@ clean:
 	cargo clean --manifest-path examples/app-http/Cargo.toml
 	cargo clean --manifest-path examples/network-v1-http/Cargo.toml
 	cargo clean --manifest-path examples/network-v2-http/Cargo.toml
+	cargo clean --manifest-path examples/dir-transfer/Cargo.toml
 	cargo clean --manifest-path examples/log-mem/Cargo.toml
 	cargo clean --manifest-path examples/log-rocks/Cargo.toml
 	cargo clean --manifest-path examples/sm-mem/Cargo.toml
