@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use display_more::DisplayOptionExt;
+use display_more::DisplaySliceExt;
 
 use crate::ChangeMembers;
 use crate::RaftState;
@@ -17,6 +18,7 @@ use crate::errors::LinearizableReadError;
 use crate::impls::ProgressResponder;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::ClientWriteResult;
+use crate::raft::Precondition;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft::linearizable_read::Linearizer;
@@ -98,6 +100,8 @@ where C: RaftTypeConfig
         /// config will be converted into learners, otherwise they will be removed.
         retain: bool,
 
+        preconditions: BatchOf<C, Precondition<C>>,
+
         tx: ProgressResponder<C, ClientWriteResult<C>>,
     },
 
@@ -174,8 +178,19 @@ where C: RaftTypeConfig
             RaftMsg::Initialize { members, .. } => {
                 write!(f, "Initialize: {}", members.display())
             }
-            RaftMsg::ChangeMembership { changes, retain, .. } => {
-                write!(f, "ChangeMembership: {}, retain: {}", changes, retain)
+            RaftMsg::ChangeMembership {
+                changes,
+                retain,
+                preconditions,
+                ..
+            } => {
+                write!(
+                    f,
+                    "ChangeMembership: {}, retain: {}, preconditions: {}",
+                    changes,
+                    retain,
+                    preconditions.as_ref().display()
+                )
             }
             RaftMsg::WithRaftState { .. } => write!(f, "WithRaftState"),
             RaftMsg::HandleTransferLeader { from, to, last_log_id } => {

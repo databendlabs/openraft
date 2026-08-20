@@ -51,5 +51,8 @@ pub(crate) fn into_write_result<C: RaftTypeConfig>(result: ClientWriteResult<C>)
         Err(ClientWriteError::ChangeMembershipError(_)) => {
             unreachable!("ChangeMembershipError should not occur for normal writes")
         }
+        Err(ClientWriteError::PreconditionFailed(_)) => {
+            unreachable!("PreconditionFailed should not occur for normal writes")
+        }
     }
 }

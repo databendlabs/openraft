@@ -48,6 +48,10 @@ use crate::errors::into_ok::into_ok;
 ///             // Recoverable: membership change in progress, retry later
 ///             Err(AppError::RetryLater)
 ///         }
+///         Ok(Err(ClientWriteError::PreconditionFailed(_))) => {
+///             // Recoverable: only `change_membership_if()` fails this way, re-read and retry
+///             Err(AppError::RetryLater)
+///         }
 ///         Err(RaftError::Fatal(fatal)) => {
 ///             // Fatal: Raft node is shutting down or storage failed
 ///             Err(AppError::RaftStopped(fatal))
