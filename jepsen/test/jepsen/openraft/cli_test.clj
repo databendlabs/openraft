@@ -102,6 +102,7 @@
                   (fn [state packages]
                     (swap! composition-states conj state)
                     (compose-packages state packages))
+                  worker/wrap-db (wrap :db)
                   worker/wrap-client (wrap :client)
                   worker/wrap-nemesis (wrap :nemesis)
                   openraft-checker/reject-harness-failures
@@ -113,7 +114,7 @@
       (cli/openraft-test {:nemesis :partition
                           :nodes ["n1" "n2" "n3"]
                           :time-limit 10}))
-    (is (= [:client :nemesis] (mapv first @wrapped-states)))
+    (is (= [:db :client :nemesis] (mapv first @wrapped-states)))
     (is (every? #(identical? failure-state (second %))
                 @wrapped-states))
     (is (= 1 (count @generator-states)))
