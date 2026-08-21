@@ -1,5 +1,7 @@
 (ns jepsen.openraft.workload-test
-  (:require [clojure.java.io :as io]
+  (:require [cheshire.core :as json]
+            [cheshire.parse :as json-parse]
+            [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing]]
             [jepsen.checker :as checker]
             [jepsen.client :as client]
@@ -8,6 +10,8 @@
             [jepsen.history :as history]
             [jepsen.independent :as independent]
             [jepsen.openraft.client :as http]
+            [jepsen.openraft.harness :as harness]
+            [jepsen.openraft.worker :as worker]
             [jepsen.openraft.workload :as workload]
             [jepsen.random :as random]
             [jepsen.store :as store]))
@@ -36,11 +40,27 @@
         (doseq [file (reverse (file-seq temp-dir))]
           (io/delete-file file true))))))
 
-(defn- kv-client []
-  (workload/->KVClient nil
-                       (atom "n1:21001")
-                       ["n1:21001"]
-                       (atom {})))
+(defn- kv-client
+  ([]
+   (kv-client (atom {})))
+  ([latest-values]
+   (workload/->KVClient nil
+                        (atom "n1:21001")
+                        ["n1:21001"]
+                        latest-values)))
+
+(defn- raw-http-response [body]
+  {:method "POST"
+   :uri "http://n1:21001/write"
+   :status 200
+   :body body})
+
+(defn- http-response [body]
+  (raw-http-response (json/generate-string body)))
+
+(defn- invoke-with-response [subject op body]
+  (with-redefs [http/post! (fn [& _] (http-response body))]
+    (client/invoke! subject {} op)))
 
 (deftest classifies-timeouts-by-operation
   (let [timeout (ex-info "timeout" {:kind :request-timeout})]
@@ -50,13 +70,15 @@
         (let [op {:type :invoke :f :write :value (keyed "value")}
               result (client/invoke! (kv-client) {} op)]
           (is (= :info (:type result)))
-          (is (= :timeout (:error result)))))
+          (is (= :timeout (:error result)))
+          (is (not (contains? result :unexpected-sut-response?)))))
 
       (testing "a read timeout has no state-machine effect"
         (let [op {:type :invoke :f :read :value (keyed nil)}
               result (client/invoke! (kv-client) {} op)]
           (is (= :fail (:type result)))
-          (is (= :timeout (:error result)))))
+          (is (= :timeout (:error result)))
+          (is (not (contains? result :unexpected-sut-response?)))))
 
       (testing "a final recovery write must complete"
         (let [op {:type :invoke
@@ -65,7 +87,7 @@
                   :final? true}
               result (client/invoke! (kv-client) {} op)]
           (is (= :info (:type result)))
-          (is (:unexpected? result))
+          (is (not (contains? result :unexpected-sut-response?)))
           (is (= :request-timeout
                  (-> result :exception-data :kind))))))))
 
@@ -84,14 +106,16 @@
           (let [result (client/invoke! (kv-client) {} op)]
             (is (= :ok (:type result)))
             (is (= ["old" "new"] (val (:value result))))
-            (is (= [test-key 1 "new"] @request))))))
+            (is (= [test-key 1 "new"] @request))
+            (is (not (contains? result :unexpected-sut-response?)))))))
 
     (testing "a version mismatch is a definite failure"
       (with-redefs [http/cas! (fn [& _] nil)]
         (let [result (client/invoke! (kv-client) {} op)]
           (is (= :fail (:type result)))
           (is (= :version-mismatch (:error result)))
-          (is (= (:value op) (:value result))))))
+          (is (= (:value op) (:value result)))
+          (is (not (contains? result :unexpected-sut-response?))))))
 
     (testing "a CAS timeout is indeterminate"
       (let [timeout (ex-info "timeout" {:kind :request-timeout})]
@@ -307,59 +331,286 @@
               result (client/invoke! (kv-client) {} op)]
           (is (= :fail (:type result)))
           (is (= :quorum-not-enough (:error result)))
-          (is (not (:unexpected? result)))))))
+          (is (not (contains? result :unexpected-sut-response?)))))))
 
   (testing "HTTP 400 is fail because app-http rejects it before handler execution"
     (let [bad-request (ex-info "bad request"
                                {:kind :http-error
-                                :status 400})]
+                                :method "POST"
+                                :uri "http://n1:21001/write"
+                                :status 400
+                                :body "bad request"})]
       (with-redefs [http/write! (fn [& _]
                                   (throw bad-request))]
         (let [op {:type :invoke :f :write :value (keyed "value")}
               result (client/invoke! (kv-client) {} op)]
           (is (= :fail (:type result)))
           (is (= [:http 400] (:error result)))
-          (is (:unexpected? result))
+          (is (true? (:unexpected-sut-response? result)))
           (is (= "bad request" (:exception-message result)))
-          (is (= 400 (get-in result [:exception-data :status])))))))
+          (is (= 400 (get-in result [:exception-data :status])))
+          (is (= "bad request" (get-in result [:exception-data :body])))))))
 
   (testing "HTTP 500 is info because response serialization follows handler execution"
     (let [server-error (ex-info "server error"
                                 {:kind :http-error
-                                 :status 500})]
+                                 :method "POST"
+                                 :uri "http://n1:21001/write"
+                                 :status 500
+                                 :body "server error"})]
       (with-redefs [http/write! (fn [& _]
                                   (throw server-error))]
         (let [op {:type :invoke :f :write :value (keyed "value")}
               result (client/invoke! (kv-client) {} op)]
           (is (= :info (:type result)))
           (is (= [:http 500] (:error result)))
-          (is (:unexpected? result))
+          (is (true? (:unexpected-sut-response? result)))
           (is (= "server error" (:exception-message result)))
           (is (= 500 (get-in result [:exception-data :status]))))))))
 
-(deftest rethrows-interruptions
-  (let [op {:type :invoke :f :write :value (keyed "value")}]
-    (testing "a wrapped interruption from send! propagates instead of completing"
-      (with-redefs [http/write! (fn [& _]
-                                  (throw (ex-info "interrupted"
-                                                  {:kind :interrupted})))]
-        (is (thrown? clojure.lang.ExceptionInfo
-                     (client/invoke! (kv-client) {} op)))))
+(deftest records-clearly-unexpected-sut-responses
+  (testing "invalid JSON is a marked Outcome, not a Harness failure"
+    (let [failure-state (harness/failure-state)
+          response {:method "POST"
+                    :uri "http://n1:21001/write"
+                    :status 200
+                    :body "not-json"}
+          invalid-json (ex-info "invalid JSON"
+                                {:kind :invalid-json
+                                 :response response})
+          subject (worker/wrap-client failure-state (kv-client))]
+      (with-redefs [http/write! (fn [& _] (throw invalid-json))]
+        (let [op {:type :invoke :f :write :value (keyed "value")}
+              result (client/invoke! subject {} op)]
+          (is (= :info (:type result)))
+          (is (= :invalid-json (:error result)))
+          (is (true? (:unexpected-sut-response? result)))
+          (is (= response (get-in result [:exception-data :response])))
+          (is (nil? (harness/primary-failure failure-state)))))))
 
-    (testing "a raw InterruptedException propagates and restores the interrupt flag"
-      (with-redefs [http/write! (fn [& _]
-                                  (throw (InterruptedException. "boom")))]
-        ;; Capture the exception and interrupt flag before any assertion runs:
-        ;; clojure.test's report machinery uses dosync, which clears the flag.
-        (Thread/interrupted)
-        (let [thrown (try
-                       (client/invoke! (kv-client) {} op)
+  (testing "an unmodeled OpenRaft Err variant is marked"
+    (let [error {:UnexpectedError {:message "unsupported"}}
+          openraft-error (ex-info "unexpected OpenRaft error"
+                                  {:kind :openraft-error
+                                   :error error
+                                   :response {:status 200
+                                              :body "Err"}})]
+      (with-redefs [http/write! (fn [& _] (throw openraft-error))]
+        (let [op {:type :invoke :f :write :value (keyed "value")}
+              result (client/invoke! (kv-client) {} op)]
+          (is (= :info (:type result)))
+          (is (= :openraft-error (:error result)))
+          (is (true? (:unexpected-sut-response? result)))
+          (is (= error (get-in result [:exception-data :error]))))))))
+
+(deftest leaves-modeled-sut-outcomes-unmarked
+  (doseq [[description throwable expected-type expected-error]
+          [["connection failure"
+            (ex-info "unreachable" {:kind :unreachable})
+            :fail
+            :unreachable]
+           ["transport failure"
+            (ex-info "transport" {:kind :transport-error})
+            :info
+            :transport-error]
+           ["leader redirect without a target"
+            (ex-info "not leader"
+                     {:kind :openraft-error
+                      :error {:ForwardToLeader {}}})
+            :fail
+            :not-leader]
+           ["quorum failure"
+            (ex-info "no quorum"
+                     {:kind :openraft-error
+                      :error {:QuorumNotEnough {}}})
+            :fail
+            :quorum-not-enough]]]
+    (testing description
+      (with-redefs [http/write! (fn [& _] (throw throwable))]
+        (let [op {:type :invoke :f :write :value (keyed "value")}
+              result (client/invoke! (kv-client) {} op)]
+          (is (= expected-type (:type result)))
+          (is (= expected-error (:error result)))
+          (is (not (contains? result :unexpected-sut-response?))))))))
+
+(deftest validates-http-200-application-responses
+  (testing "a valid Ok payload completes successfully"
+    (let [op {:type :invoke :f :write :value (keyed "value")}
+          body {:Ok {:data {:value {:value "value" :version 1}}}}
+          result (invoke-with-response (kv-client) op body)]
+      (is (= :ok (:type result)))
+      (is (not (contains? result :unexpected-sut-response?)))))
+
+  (testing "a known Err remains a modeled Outcome"
+    (let [op {:type :invoke :f :read :value (keyed nil)}
+          body {:Err {:QuorumNotEnough {:cluster "n1,n2,n3"
+                                        :got ["n1"]}}}
+          result (invoke-with-response (kv-client) op body)]
+      (is (= :fail (:type result)))
+      (is (= :quorum-not-enough (:error result)))
+      (is (not (contains? result :unexpected-sut-response?)))))
+
+  (testing "invalid response unions are unexpected Outcomes"
+    (doseq [[label body reason]
+            [["missing arm" {} :missing-response-arm]
+             ["ambiguous arms"
+              {:Ok {:data {:value {:value "value" :version 1}}}
+               :Err {:ForwardToLeader {}}}
+              :ambiguous-response-arms]
+             ["unknown arm" {:Result {}} :unknown-response-arm]]]
+      (testing label
+        (let [failure-state (harness/failure-state)
+              subject (worker/wrap-client failure-state (kv-client))
+              op {:type :invoke :f :write :value (keyed "value")}
+              result (invoke-with-response subject op body)]
+          (is (= :info (:type result)))
+          (is (= :invalid-response (:error result)))
+          (is (true? (:unexpected-sut-response? result)))
+          (is (= reason (get-in result [:exception-data :reason])))
+          (is (= (json/generate-string body)
+                 (get-in result
+                         [:exception-data :response :body-preview])))
+          (is (= (count (json/generate-string body))
+                 (get-in result
+                         [:exception-data
+                          :response
+                          :body-character-count])))
+          (is (nil? (harness/primary-failure failure-state)))))))
+
+  (testing "malformed successful payloads are unexpected Outcomes"
+    (doseq [[label op body expected-type path]
+            [["write nil"
+              {:type :invoke :f :write :value (keyed "value")}
+              {:Ok {:data {:value nil}}}
+              :info
+              [:data :value]]
+             ["CAS missing value"
+              {:type :invoke
+               :f :cas
+               :value (keyed ["old" "new"])
+               :expected-version 1}
+              {:Ok {:data {}}}
+              :info
+              [:data :value]]
+             ["read malformed value"
+              {:type :invoke :f :read :value (keyed nil)}
+              {:Ok {:value {:value 1 :version 2}}}
+              :fail
+              [:value]]]]
+      (testing label
+        (let [result (invoke-with-response (kv-client) op body)]
+          (is (= expected-type (:type result)))
+          (is (= :invalid-response (:error result)))
+          (is (true? (:unexpected-sut-response? result)))
+          (is (= path (get-in result [:exception-data :payload-path])))))))
+
+  (testing "malformed modeled Err payloads are unexpected Outcomes"
+    (doseq [[label op body expected-type variant]
+            [["ForwardToLeader payload"
+              {:type :invoke :f :write :value (keyed "value")}
+              {:Err {:ForwardToLeader "not-an-object"}}
+              :info
+              :ForwardToLeader]
+             ["QuorumNotEnough payload"
+              {:type :invoke :f :read :value (keyed nil)}
+              {:Err {:QuorumNotEnough ["not" "an" "object"]}}
+              :fail
+              :QuorumNotEnough]]]
+      (testing label
+        (let [failure-state (harness/failure-state)
+              subject (worker/wrap-client failure-state (kv-client))
+              result (invoke-with-response subject op body)]
+          (is (= expected-type (:type result)))
+          (is (= :invalid-response (:error result)))
+          (is (true? (:unexpected-sut-response? result)))
+          (is (= :invalid-error-payload
+                 (get-in result [:exception-data :reason])))
+          (is (= variant
+                 (get-in result [:exception-data :error-variant])))
+          (is (nil? (harness/primary-failure failure-state))))))))
+
+(deftest rejects-invalid-json-documents-as-workload-outcomes
+  (let [failure-state (harness/failure-state)
+        subject (worker/wrap-client failure-state (kv-client))
+        op {:type :invoke :f :write :value (keyed "value")}
+        response (raw-http-response
+                  (str "{\"Ok\":{\"data\":{\"value\":"
+                       "{\"value\":\"value\",\"version\":1}}},"
+                       "\"Ok\":{\"data\":{\"value\":"
+                       "{\"value\":\"other\",\"version\":2}}}}"))
+        result (with-redefs [http/post! (fn [& _] response)]
+                 (client/invoke! subject {} op))]
+    (is (= :info (:type result)))
+    (is (= :invalid-json (:error result)))
+    (is (true? (:unexpected-sut-response? result)))
+    (is (= (count (:body response))
+           (get-in result
+                   [:exception-data :response :body-character-count])))
+    (is (nil? (harness/primary-failure failure-state)))))
+
+(deftest unexpected-mutation-responses-do-not-poison-latest-values
+  (let [original {test-key {:value "old" :version 1}}
+        latest-values (atom original)
+        failure-state (harness/failure-state)
+        subject (worker/wrap-client failure-state
+                                    (kv-client latest-values))]
+    (doseq [[label op body reason]
+            [["write"
+              {:type :invoke :f :write :value (keyed "value")}
+              {:Ok {:data {:value {:value "other" :version 2}}}}
+              :unexpected-payload-value]
+             ["CAS value"
+              {:type :invoke
+               :f :cas
+               :value (keyed ["old" "new"])
+               :expected-version 1}
+              {:Ok {:data {:value {:value "other" :version 2}}}}
+              :unexpected-payload-value]
+             ["CAS version"
+              {:type :invoke
+               :f :cas
+               :value (keyed ["old" "new"])
+               :expected-version 1}
+              {:Ok {:data {:value {:value "new" :version 1}}}}
+              :non-increasing-cas-version]]]
+      (testing label
+        (let [result (invoke-with-response subject op body)]
+          (is (= :info (:type result)))
+          (is (= :invalid-response (:error result)))
+          (is (true? (:unexpected-sut-response? result)))
+          (is (= reason
+                 (get-in result [:exception-data :reason])))
+          (is (= original @latest-values)))))
+    (is (nil? (harness/primary-failure failure-state)))))
+
+(deftest rethrows-interruptions
+  (doseq [[label throwable]
+          [["InterruptedException"
+            (InterruptedException. "interrupted")]
+           ["InterruptedIOException"
+            (java.io.InterruptedIOException. "interrupted")]
+           ["ClosedByInterruptException"
+            (java.nio.channels.ClosedByInterruptException.)]
+           ["tagged interruption"
+            (ex-info "interrupted" {:kind :interrupted})]]]
+    (testing label
+      ;; Capture the exception and interrupt flag before any assertion runs:
+      ;; clojure.test's report machinery uses dosync, which clears the flag.
+      (Thread/interrupted)
+      (let [failure-state (harness/failure-state)
+            subject (worker/wrap-client failure-state (kv-client))
+            op {:type :invoke :f :write :value (keyed "value")}
+            thrown (with-redefs [http/write! (fn [& _] (throw throwable))]
+                     (try
+                       (client/invoke! subject {} op)
                        nil
-                       (catch InterruptedException e e))
-              interrupted (Thread/interrupted)]
-          (is (instance? InterruptedException thrown))
-          (is interrupted
-              "the interrupt flag is restored so Jepsen's control signals survive"))))))
+                       (catch Throwable e
+                         e)))
+            interrupted (Thread/interrupted)]
+        (is (identical? throwable thrown))
+        (is interrupted
+            "the interrupt flag is restored so Jepsen's control signals survive")
+        (is (nil? (harness/primary-failure failure-state)))))))
 
 (deftest rethrows-unknown-client-exceptions
   (let [op {:type :invoke :f :write :value (keyed "value")}
@@ -372,21 +623,78 @@
                        e))]
         (is (identical? throwable thrown))))))
 
-(deftest unexpected-errors-checker-flags-tagged-operations
-  (let [chk (#'workload/unexpected-errors-checker)]
-    (testing "a history without unexpected errors is valid"
-      (let [result (checker/check chk {} [{:type :ok :f :read}] {})]
-        (is (:valid? result))
-        (is (= 0 (:count result)))
-        (is (= [] (:errors result)))))
+(deftest records-unknown-parser-exceptions-as-harness-failures
+  (let [failure-state (harness/failure-state)
+        subject (worker/wrap-client failure-state (kv-client))
+        op {:type :invoke :f :write :value (keyed "value")}
+        response (http-response
+                  {:Ok {:data {:value {:value "value" :version 1}}}})
+        throwable (RuntimeException. "parser bug")
+        thrown (with-redefs [http/post! (fn [& _] response)
+                             json-parse/parse-strict (fn [& _]
+                                                       (throw throwable))]
+                 (try
+                   (client/invoke! subject {} op)
+                   nil
+                   (catch RuntimeException e
+                     e)))
+        failure (harness/primary-failure failure-state)]
+    (is (identical? throwable thrown))
+    (is (= :client (:source failure)))
+    (is (= op (get-in failure [:context :operation])))
+    (is (identical? throwable (:throwable failure)))))
 
-    (testing "unexpected-tagged operations fail the check and are surfaced"
-      (let [tagged {:type :info :f :write :error [:http 500] :unexpected? true}
-            history [{:type :ok :f :read} tagged]
+(deftest unexpected-sut-responses-checker-aggregates-marked-outcomes
+  (let [chk (#'workload/unexpected-sut-responses-checker)]
+    (testing "a history without unexpected SUT responses is valid"
+      (let [result (checker/check chk {} [{:type :ok :f :read}] {})]
+        (is (true? (:valid? result)))
+        (is (= 0 (:count result)))
+        (is (= [] (:responses result)))))
+
+    (testing "marked outcomes fail the check and are aggregated"
+      (let [first-response {:type :info
+                            :f :write
+                            :error [:http 500]
+                            :unexpected-sut-response? true}
+            second-response {:type :fail
+                             :f :read
+                             :error :invalid-json
+                             :unexpected-sut-response? true}
+            history [{:type :ok :f :read}
+                     first-response
+                     {:type :info :f :write :error :timeout}
+                     second-response]
             result (checker/check chk {} history {})]
-        (is (not (:valid? result)))
-        (is (= 1 (:count result)))
-        (is (= [tagged] (:errors result)))))))
+        (is (false? (:valid? result)))
+        (is (= 2 (:count result)))
+        (is (= [first-response second-response]
+               (:responses result)))))))
+
+(deftest workload-checker-rejects-unsuccessful-final-operations
+  (let [invocation {:process 0
+                    :type :invoke
+                    :f :write
+                    :phase :final
+                    :final? true
+                    :value (keyed "value")}
+        timeout (assoc invocation
+                       :type :info
+                       :error :timeout)
+        chk (:checker (workload/workload {}))
+        result (check-in-temp-store chk [invocation timeout])]
+    (is (false? (:valid? result)))
+    (is (false? (get-in result [:final-workload :valid?])))
+    (is (= (select-keys timeout
+                        [:process :type :f :phase :final? :value :error])
+           (-> result
+               (get-in [:final-workload :failures])
+               first
+               (select-keys
+                [:process :type :f :phase :final? :value :error]))))
+    (is (true? (get-in result [:unexpected-sut-responses :valid?])))
+    (is (contains? result :linearizable))
+    (is (contains? result :meaningful-operations))))
 
 (deftest requires-successful-main-phase-operations
   (let [chk (#'workload/meaningful-operations-checker)
@@ -455,6 +763,8 @@
         chk (:checker (workload/workload {}))
         result (check-in-temp-store chk history)]
     (is (true? (get-in result [:linearizable :valid?])))
+    (is (true? (get-in result [:final-workload :valid?])))
+    (is (true? (get-in result [:unexpected-sut-responses :valid?])))
     (is (= :unknown
            (get-in result [:meaningful-operations :valid?])))
     (is (= [:write :cas]

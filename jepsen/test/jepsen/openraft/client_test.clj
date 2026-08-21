@@ -1,6 +1,29 @@
 (ns jepsen.openraft.client-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [cheshire.core :as json]
+            [cheshire.parse :as json-parse]
+            [clojure.test :refer [deftest is testing]]
             [jepsen.openraft.client :as client]))
+
+(defn- raw-http-response [body]
+  {:method "POST"
+   :uri "http://n1:21001/write"
+   :status 200
+   :body body})
+
+(defn- http-response [body]
+  (raw-http-response (json/generate-string body)))
+
+(defn- caught [f]
+  (try
+    (f)
+    nil
+    (catch Throwable throwable
+      throwable)))
+
+(defn- throwing-http-client [throwable]
+  (proxy [java.net.http.HttpClient] []
+    (send [_request _handler]
+      (throw throwable))))
 
 (defn- forward-error
   ([]
@@ -130,3 +153,294 @@
     (is (= ["n1:21001" "n2:21001" "n3:21001"] @attempts))
     (is (= "n1:21001" @leader)
         "a retry candidate becomes the cached leader only after it succeeds")))
+
+(deftest accepts-valid-workload-responses
+  (testing "write returns a versioned value, including an empty string"
+    (let [versioned {:value "" :version 0}]
+      (with-redefs [client/post! (fn [& _]
+                                   (http-response
+                                    {:Ok {:data {:value versioned}}}))]
+        (is (= versioned (client/write! "n1:21001" "key" ""))))))
+
+  (testing "write accepts the largest u64 version"
+    (let [versioned {:value "value" :version 18446744073709551615N}]
+      (with-redefs [client/post! (fn [& _]
+                                   (http-response
+                                    {:Ok {:data {:value versioned}}}))]
+        (is (= versioned
+               (client/write! "n1:21001" "key" "value"))))))
+
+  (testing "CAS accepts an explicit nil value as a version mismatch"
+    (with-redefs [client/post! (fn [& _]
+                                 (http-response
+                                  {:Ok {:data {:value nil}}}))]
+      (is (nil? (client/cas! "n1:21001" "key" 1 "value")))))
+
+  (testing "CAS accepts a matching non-nil value"
+    (let [versioned {:value "new" :version 2}]
+      (with-redefs [client/post! (fn [& _]
+                                   (http-response
+                                    {:Ok {:data {:value versioned}}}))]
+        (is (= versioned
+               (client/cas! "n1:21001" "key" 1 "new"))))))
+
+  (testing "read accepts an explicit nil value for a missing key"
+    (with-redefs [client/post! (fn [& _]
+                                 (http-response {:Ok {:value nil}}))]
+      (is (nil? (client/linearizable-read! "n1:21001" "key")))))
+
+  (testing "additive response fields do not invalidate the Ok arm"
+    (let [versioned {:value "value" :version 1}]
+      (with-redefs [client/post! (fn [& _]
+                                   (http-response
+                                    {:Ok {:data {:value versioned}}
+                                     :trace "diagnostic"}))]
+        (is (= versioned
+               (client/write! "n1:21001" "key" "value")))))))
+
+(deftest preserves-known-application-errors
+  (let [error {:QuorumNotEnough {:cluster "n1,n2,n3"
+                                 :got ["n1"]}}
+        response (http-response {:Err error})
+        thrown (with-redefs [client/post! (fn [& _] response)]
+                 (caught #(client/linearizable-read! "n1:21001" "key")))]
+    (is (= :openraft-error (:kind (ex-data thrown))))
+    (is (= error (:error (ex-data thrown))))
+    (is (= response (:response (ex-data thrown))))))
+
+(deftest rejects-invalid-application-response-unions
+  (doseq [[label body reason]
+          [["missing arm" {} :missing-response-arm]
+           ["ambiguous arms"
+            {:Ok {:data {:value {:value "value" :version 1}}}
+             :Err {:ForwardToLeader {}}}
+            :ambiguous-response-arms]
+           ["unknown arm" {:Result {}} :unknown-response-arm]
+           ["non-object union" [] :response-union-not-map]]]
+    (testing label
+      (let [response (http-response body)
+            thrown (with-redefs [client/post! (fn [& _] response)]
+                     (caught #(client/write! "n1:21001" "key" "value")))
+            data (ex-data thrown)]
+        (is (= :invalid-response (:kind data)))
+        (is (= reason (:reason data)))
+        (is (= (when (map? body)
+                 (count (filter #{:Ok :Err} (keys body))))
+               (:response-arm-count data)))
+        (is (= (select-keys response [:method :uri :status])
+               (select-keys (:response data) [:method :uri :status])))
+        (is (= (count (:body response))
+               (get-in data [:response :body-character-count])))
+        (is (= (:body response)
+               (get-in data [:response :body-preview])))
+        (is (not (contains? data :decoded-response))))))
+
+  (testing "Err contains exactly one error variant"
+    (let [body {:Err {:ForwardToLeader {}
+                      :QuorumNotEnough {}}}
+          response (http-response body)
+          thrown (with-redefs [client/post! (fn [& _] response)]
+                   (caught #(client/write! "n1:21001" "key" "value")))
+          data (ex-data thrown)]
+      (is (= :invalid-response (:kind data)))
+      (is (= :invalid-error-union (:reason data)))
+      (is (= 2 (:error-arm-count data)))
+      (is (= (:body response)
+             (get-in data [:response :body-preview])))))
+
+  (testing "a non-object root is rejected without materializing it"
+    (let [decoded? (atom false)
+          response (http-response [])
+          thrown (with-redefs [client/post! (fn [& _] response)
+                               json-parse/parse-strict
+                               (fn [& _]
+                                 (reset! decoded? true)
+                                 (throw (RuntimeException.
+                                         "unexpected full decode")))]
+                   (caught #(client/write! "n1:21001" "key" "value")))]
+      (is (= :invalid-response (:kind (ex-data thrown))))
+      (is (= :response-union-not-map (:reason (ex-data thrown))))
+      (is (false? @decoded?)))))
+
+(deftest rejects-incomplete-or-ambiguous-json-documents
+  (let [valid-ok
+        "{\"Ok\":{\"data\":{\"value\":{\"value\":\"value\",\"version\":1}}}}"]
+    (doseq [[label body]
+            [["duplicate top-level key"
+              (str "{\"Ok\":{\"data\":{\"value\":"
+                   "{\"value\":\"value\",\"version\":1}}},"
+                   "\"Ok\":{\"data\":{\"value\":"
+                   "{\"value\":\"value\",\"version\":2}}}}")]
+             ["duplicate nested key"
+              "{\"Err\":{\"ForwardToLeader\":{},\"ForwardToLeader\":[]}}"]
+             ["second root document"
+              (str valid-ok " {\"Err\":{\"ForwardToLeader\":{}}}")]
+             ["trailing garbage" (str valid-ok " garbage")]
+             ["empty body" ""]
+             ["whitespace-only body" " \n\t"]]]
+      (testing label
+        (let [response (raw-http-response body)
+              thrown (with-redefs [client/post! (fn [& _] response)]
+                       (caught #(client/write! "n1:21001" "key" "value")))]
+          (is (= :invalid-json (:kind (ex-data thrown))))
+          (is (= (select-keys response [:method :uri :status])
+                 (select-keys (:response (ex-data thrown))
+                              [:method :uri :status])))
+          (is (= (count body)
+                 (get-in (ex-data thrown)
+                         [:response :body-character-count]))))))
+
+    (testing "trailing whitespace is part of one complete document"
+      (let [response (raw-http-response (str valid-ok " \n\t"))]
+        (with-redefs [client/post! (fn [& _] response)]
+          (is (= {:value "value" :version 1}
+                 (client/write! "n1:21001" "key" "value"))))))))
+
+(deftest validates-modeled-error-payload-containers
+  (testing "an empty ForwardToLeader object remains modeled"
+    (let [error {:ForwardToLeader {}}
+          thrown (with-redefs [client/post! (fn [& _]
+                                              (http-response {:Err error}))]
+                   (caught #(client/write! "n1:21001" "key" "value")))]
+      (is (= :openraft-error (:kind (ex-data thrown))))
+      (is (= error (:error (ex-data thrown))))))
+
+  (doseq [[variant payload]
+          [[:ForwardToLeader "not-an-object"]
+           [:QuorumNotEnough ["not" "an" "object"]]]]
+    (testing (name variant)
+      (let [thrown (with-redefs [client/post! (fn [& _]
+                                                (http-response
+                                                 {:Err {variant payload}}))]
+                     (caught #(client/write! "n1:21001" "key" "value")))
+            data (ex-data thrown)]
+        (is (= :invalid-response (:kind data)))
+        (is (= :invalid-error-payload (:reason data)))
+        (is (= variant (:error-variant data)))))))
+
+(deftest bounds-invalid-response-evidence
+  (let [body {:Unknown (apply str (repeat 2048 "x"))}
+        response (http-response body)
+        thrown (with-redefs [client/post! (fn [& _] response)]
+                 (caught #(client/write! "n1:21001" "key" "value")))
+        data (ex-data thrown)
+        evidence (:response data)]
+    (is (= :invalid-response (:kind data)))
+    (is (= :unknown-response-arm (:reason data)))
+    (is (= (count (:body response)) (:body-character-count evidence)))
+    (is (= 1024 (count (:body-preview evidence))))
+    (is (not (contains? data :decoded-response)))
+    (is (not (contains? data :payload)))))
+
+(deftest rejects-malformed-workload-payloads
+  (doseq [[label invoke body reason path]
+          [["write nil"
+            #(client/write! "n1:21001" "key" "value")
+            {:Ok {:data {:value nil}}}
+            :nil-payload-field
+            [:data :value]]
+           ["write missing data"
+            #(client/write! "n1:21001" "key" "value")
+            {:Ok {}}
+            :missing-payload-field
+            [:data :value]]
+           ["CAS missing value"
+            #(client/cas! "n1:21001" "key" 1 "value")
+            {:Ok {:data {}}}
+            :missing-payload-field
+            [:data :value]]
+           ["read malformed value"
+            #(client/linearizable-read! "n1:21001" "key")
+            {:Ok {:value {:value 1 :version 2}}}
+            :invalid-versioned-value
+            [:value]]
+           ["write version exceeds u64"
+            #(client/write! "n1:21001" "key" "value")
+            {:Ok {:data {:value {:value "value"
+                                 :version 18446744073709551616N}}}}
+            :invalid-versioned-value
+            [:data :value]]
+           ["write returns a different logical value"
+            #(client/write! "n1:21001" "key" "value")
+            {:Ok {:data {:value {:value "other" :version 1}}}}
+            :unexpected-payload-value
+            [:data :value :value]]
+           ["CAS returns a different logical value"
+            #(client/cas! "n1:21001" "key" 1 "new")
+            {:Ok {:data {:value {:value "other" :version 2}}}}
+            :unexpected-payload-value
+            [:data :value :value]]
+           ["CAS returns a non-increasing version"
+            #(client/cas! "n1:21001" "key" 2 "new")
+            {:Ok {:data {:value {:value "new" :version 2}}}}
+            :non-increasing-cas-version
+            [:data :value :version]]]]
+    (testing label
+      (let [response (http-response body)
+            thrown (with-redefs [client/post! (fn [& _] response)]
+                     (caught invoke))
+            data (ex-data thrown)]
+        (is (= :invalid-response (:kind data)))
+        (is (= reason (:reason data)))
+        (is (= path (:payload-path data)))
+        (is (= (count (:body response))
+               (get-in data [:response :body-character-count])))
+        (is (= (:body response)
+               (get-in data [:response :body-preview])))
+        (is (not (contains? data :payload)))))))
+
+(deftest distinguishes-invalid-json-from-parser-failures
+  (testing "malformed JSON is a SUT response error"
+    (let [response (assoc (http-response {}) :body "{")
+          thrown (with-redefs [client/post! (fn [& _] response)]
+                   (caught #(client/write! "n1:21001" "key" "value")))]
+      (is (= :invalid-json (:kind (ex-data thrown))))
+      (is (= (select-keys response [:method :uri :status])
+             (select-keys (:response (ex-data thrown))
+                          [:method :uri :status])))
+      (is (= 1 (get-in (ex-data thrown)
+                       [:response :body-character-count])))
+      (is (= "{" (get-in (ex-data thrown)
+                         [:response :body-preview])))))
+
+  (testing "an unknown parser exception escapes unchanged"
+    (let [throwable (RuntimeException. "parser bug")
+          response (http-response
+                    {:Ok {:data {:value {:value "value" :version 1}}}})
+          thrown (with-redefs [client/post! (fn [& _] response)
+                               json-parse/parse-strict (fn [& _]
+                                                         (throw throwable))]
+                   (caught #(client/write! "n1:21001" "key" "value")))]
+      (is (identical? throwable thrown)))))
+
+(deftest propagates-http-client-interruptions
+  (doseq [[label throwable]
+          [["InterruptedException" (InterruptedException. "interrupted")]
+           ["InterruptedIOException"
+            (java.io.InterruptedIOException. "interrupted")]
+           ["ClosedByInterruptException"
+            (java.nio.channels.ClosedByInterruptException.)]]]
+    (testing label
+      (Thread/interrupted)
+      (let [fake-client (throwing-http-client throwable)
+            thrown (with-redefs-fn
+                     {(ns-resolve 'jepsen.openraft.client 'http-client)
+                      fake-client}
+                     #(caught
+                       (fn []
+                         (client/post! "n1:21001" "/write" {}))))
+            interrupted (Thread/interrupted)]
+        (is (identical? throwable thrown))
+        (is interrupted))))
+
+  (testing "ordinary I/O remains a transport error"
+    (let [throwable (java.io.IOException. "broken pipe")
+          fake-client (throwing-http-client throwable)
+          thrown (with-redefs-fn
+                   {(ns-resolve 'jepsen.openraft.client 'http-client)
+                    fake-client}
+                   #(caught
+                     (fn []
+                       (client/post! "n1:21001" "/write" {}))))]
+      (is (= :transport-error (:kind (ex-data thrown))))
+      (is (identical? throwable (ex-cause thrown))))))
