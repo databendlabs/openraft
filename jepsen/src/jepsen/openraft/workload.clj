@@ -6,6 +6,7 @@
              [independent :as independent]
              [random :as random]]
             [jepsen.openraft.client :as http]
+            [jepsen.openraft.interruption :as interruption]
             [knossos.model :as model]))
 
 (def ^:private key-names
@@ -108,81 +109,87 @@
 (defn- mutation? [op]
   (#{:write :cas} (:f op)))
 
-(defn- complete-with-error [op type error unexpected?]
+(defn- complete-with-error [op type error unexpected-sut-response?]
   (cond-> (assoc op
                  :type type
                  :error error)
-    unexpected? (assoc :unexpected? true)))
+    unexpected-sut-response? (assoc :unexpected-sut-response? true)))
 
 (defn- complete-with-ambiguous-outcome
   "Marks an ambiguous mutation as info and a read as failed."
-  [op error unexpected?]
+  [op error unexpected-sut-response?]
   (complete-with-error op
                        (if (mutation? op) :info :fail)
                        error
-                       unexpected?))
+                       unexpected-sut-response?))
 
 (defn- handle-operation-exception
   "Classifies a client exception and returns a completed Jepsen operation.
   Thread interruptions are rethrown so Jepsen's control signals survive."
   [op e]
-  ;; A raw InterruptedException (thrown outside send!, which clears the interrupt
-  ;; flag) would otherwise fall through to the :client-error default and be
-  ;; swallowed. Restore the flag and rethrow so the interrupt is not lost.
-  (when (instance? InterruptedException e)
+  (when (interruption/interruption? e)
     (.interrupt (Thread/currentThread))
     (throw e))
-  (let [{:keys [kind status error]} (ex-data e)]
-    ;; send! already re-interrupted the thread for wrapped interruptions.
-    (if (= :interrupted kind)
-      (throw e)
-      (let [result
-            (case kind
-              :unreachable
-              (complete-with-error op :fail :unreachable false)
+  (let [{:keys [kind status error]} (ex-data e)
+        result
+        (case kind
+          :unreachable
+          (complete-with-error op :fail :unreachable false)
 
-              :request-timeout
-              (complete-with-ambiguous-outcome op :timeout false)
+          :request-timeout
+          (complete-with-ambiguous-outcome op :timeout false)
 
-              :transport-error
-              (complete-with-ambiguous-outcome op :transport-error false)
+          :transport-error
+          (complete-with-ambiguous-outcome op :transport-error false)
 
-              :http-error
-              ;; app-http returns 4xx before invoking a handler, while a 5xx
-              ;; may occur while serializing a response after a mutation has
-              ;; completed.
-              (if (and status (<= 400 status 499))
-                (complete-with-error op :fail [:http status] true)
-                (complete-with-ambiguous-outcome op [:http status] true))
+          :http-error
+            ;; app-http returns 4xx before invoking a handler, while a 5xx
+            ;; may occur while serializing a response after a mutation has
+            ;; completed.
+          (if (and status (<= 400 status 499))
+            (complete-with-error op :fail [:http status] true)
+            (complete-with-ambiguous-outcome op [:http status] true))
 
-              :invalid-json
-              (complete-with-ambiguous-outcome op :invalid-json true)
+          :invalid-json
+          (complete-with-ambiguous-outcome op :invalid-json true)
 
-              :openraft-error
-              (cond
-                (contains? error :ForwardToLeader)
-                (complete-with-error op :fail :not-leader false)
+          :invalid-response
+          (complete-with-ambiguous-outcome op :invalid-response true)
 
-                (contains? error :QuorumNotEnough)
-                (complete-with-error op :fail :quorum-not-enough false)
+          :openraft-error
+          (cond
+            (contains? error :ForwardToLeader)
+            (complete-with-error op :fail :not-leader false)
 
-                :else
-                (complete-with-ambiguous-outcome op :openraft-error true))
+            (contains? error :QuorumNotEnough)
+            (complete-with-error op :fail :quorum-not-enough false)
 
-              (throw e))]
-        (cond-> result
-          (or (:unexpected? result) (:final? op))
-          (assoc :exception-message (ex-message e)
-                 :exception-data (ex-data e)
-                 :unexpected? true))))))
+            :else
+            (complete-with-ambiguous-outcome op :openraft-error true))
 
-(defn- unexpected-errors-checker []
+          (throw e))]
+    (cond-> result
+      (or (:unexpected-sut-response? result) (:final? op))
+      (assoc :exception-message (ex-message e)
+             :exception-data (ex-data e)))))
+
+(defn- unexpected-sut-responses-checker []
   (reify checker/Checker
     (check [_ _test history _opts]
-      (let [errors (filter :unexpected? history)]
-        {:valid? (empty? errors)
-         :count (count errors)
-         :errors (vec (take 10 errors))}))))
+      (let [responses (filter :unexpected-sut-response? history)]
+        {:valid? (empty? responses)
+         :count (count responses)
+         :responses (vec (take 10 responses))}))))
+
+(defn- final-workload-checker []
+  (reify checker/Checker
+    (check [_ _test history _opts]
+      (let [failures (filter #(and (:final? %)
+                                   (#{:fail :info} (:type %)))
+                             history)]
+        {:valid? (empty? failures)
+         :count (count failures)
+         :failures (vec (take 10 failures))}))))
 
 (defn- empty-operation-counts []
   (into {}
@@ -302,4 +309,6 @@
                                (checker/linearizable
                                 {:model (model/cas-register)}))
                 :meaningful-operations (meaningful-operations-checker)
-                :unexpected-errors (unexpected-errors-checker)})}))
+                :final-workload (final-workload-checker)
+                :unexpected-sut-responses
+                (unexpected-sut-responses-checker)})}))
