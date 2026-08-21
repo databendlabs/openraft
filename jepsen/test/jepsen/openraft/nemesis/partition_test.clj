@@ -107,16 +107,28 @@
           (is (= :no-safe-partition-target (:reason value)))
           (is (empty? @invocations)))))))
 
-(deftest partition-cleanup-failure-does-not-mask-analysis
-  (let [attempted? (atom false)
+(deftest partition-cleanup-failure-records-a-harness-failure
+  (let [failure-state (harness/failure-state)
+        error (ex-info "unreachable" {:kind :unreachable})
+        attempted? (atom false)
         partitioner (teardown-partitioner
                      #(do
                         (reset! attempted? true)
-                        (throw (ex-info "unreachable"
-                                        {:kind :unreachable}))))]
-    (nemesis/teardown! (partition/->PartitionNemesis partitioner)
+                        (throw error)))
+        subject (worker/wrap-nemesis-teardown
+                 failure-state
+                 :partition
+                 (partition/->PartitionNemesis partitioner))]
+    (nemesis/teardown! subject
                        {:nodes nodes})
-    (is @attempted?)))
+    (is @attempted?)
+    (let [failure (harness/primary-failure failure-state)]
+      (is (= :nemesis (:source failure)))
+      (is (= {:phase :teardown
+              :component :partition
+              :nodes nodes}
+             (:context failure)))
+      (is (identical? error (:throwable failure))))))
 
 (deftest partition-control-failures-take-the-harness-path
   (let [error (ex-info "SSH failed" {:kind :ssh})
