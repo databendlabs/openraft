@@ -1,8 +1,13 @@
 (ns jepsen.openraft.cli-test
   (:require [clojure.test :refer [deftest is testing]]
             [clojure.tools.cli :as tools-cli]
+            [jepsen.generator :as gen]
+            [jepsen.generator.test :as gen-test]
             [jepsen.openraft.cli :as cli]
             [jepsen.openraft.db :as openraft-db]
+            [jepsen.openraft.generator :as openraft-generator]
+            [jepsen.openraft.harness :as harness]
+            [jepsen.openraft.worker :as worker]
             [jepsen.random :as random]))
 
 (deftest records-and-applies-the-random-seed
@@ -75,3 +80,109 @@
            (set (keys checkers))))
     (is (= #{:partition :membership}
            (set (keys nemesis-checkers))))))
+
+(deftest shares-one-harness-state-across-workers-and-generators
+  (let [failure-state (harness/failure-state)
+        wrapped-states (atom [])
+        generator-states (atom [])
+        wrap (fn [source]
+               (fn [state delegate]
+                 (swap! wrapped-states conj [source state])
+                 delegate))
+        stop (fn [state generator]
+               (swap! generator-states conj state)
+               generator)]
+    (with-redefs [harness/failure-state (constantly failure-state)
+                  worker/wrap-client (wrap :client)
+                  worker/wrap-nemesis (wrap :nemesis)
+                  openraft-generator/stop-on-harness-failure stop]
+      (cli/openraft-test {:nemesis :partition
+                          :nodes ["n1" "n2" "n3"]
+                          :time-limit 10}))
+    (is (= [:client :nemesis] (mapv first @wrapped-states)))
+    (is (every? #(identical? failure-state (second %))
+                @wrapped-states))
+    (is (= 1 (count @generator-states)))
+    (is (identical? failure-state (first @generator-states)))))
+
+(defn- lifecycle-test-generator [failure-state]
+  (#'cli/lifecycle-generator
+   failure-state
+   0.3
+   {:generator (gen/clients
+                (gen/delay 0.1 (repeat {:f :ordinary-workload})))
+    :final-generator (gen/clients [{:f :final-workload-1}
+                                   {:f :final-workload-2}])}
+   {:generator (gen/delay
+                 0.1
+                 (repeat {:type :info :f :ordinary-nemesis}))
+    :final-generator {:type :info :f :final-nemesis}}))
+
+(defn- simulate-lifecycle [failure-state failure-operation]
+  (let [operations (atom [])
+        failure-recorded? (atom false)
+        history (gen-test/simulate
+                 (lifecycle-test-generator failure-state)
+                 (fn [_context operation]
+                   (swap! operations conj (:f operation))
+                   (when (and (= failure-operation (:f operation))
+                              (compare-and-set! failure-recorded? false true))
+                     (harness/record-failure!
+                      failure-state
+                      :client
+                      {:operation operation}
+                      (RuntimeException. "client failed")))
+                   (-> operation
+                       (assoc :type (if (= :nemesis (:process operation))
+                                      :info
+                                      :ok))
+                       (update :time + 10))))]
+    {:history history
+     :operations @operations}))
+
+(deftest runs-the-full-lifecycle-without-a-harness-failure
+  (let [{:keys [operations]}
+        (simulate-lifecycle (harness/failure-state) nil)]
+    (is (some #{:ordinary-workload} operations))
+    (is (some #{:ordinary-nemesis} operations))
+    (is (= [:final-nemesis :final-workload-1 :final-workload-2]
+           (filter #{:final-nemesis
+                     :final-workload-1
+                     :final-workload-2}
+                   operations)))))
+
+(deftest recovers-and-skips-final-workload-after-a-harness-failure
+  (let [failure-state (harness/failure-state)
+        {:keys [history operations]}
+        (simulate-lifecycle failure-state :ordinary-workload)
+        workload-completion-index
+        (first (keep-indexed (fn [index operation]
+                               (when (and (= :ordinary-workload
+                                             (:f operation))
+                                          (= :ok (:type operation)))
+                                 index))
+                             history))
+        recovery-index
+        (first (keep-indexed (fn [index operation]
+                               (when (= :final-nemesis (:f operation))
+                                 index))
+                             history))]
+    (is (some? (harness/primary-failure failure-state)))
+    (is (< workload-completion-index recovery-index))
+    (is (= 1 (count (filter #{:ordinary-workload} operations))))
+    (is (= [:final-nemesis]
+           (filter #{:final-nemesis
+                     :final-workload-1
+                     :final-workload-2}
+                   operations)))))
+
+(deftest stops-final-workload-after-a-harness-failure
+  (let [failure-state (harness/failure-state)
+        {:keys [operations]}
+        (simulate-lifecycle failure-state :final-workload-1)]
+    (is (some? (harness/primary-failure failure-state)))
+    (is (= [:final-nemesis :final-workload-1]
+           (filter #{:final-nemesis
+                     :final-workload-1
+                     :final-workload-2}
+                   operations)))))

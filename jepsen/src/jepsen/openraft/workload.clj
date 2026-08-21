@@ -169,7 +169,7 @@
                 :else
                 (complete-with-ambiguous-outcome op :openraft-error true))
 
-              (complete-with-ambiguous-outcome op :client-error true))]
+              (throw e))]
         (cond-> result
           (or (:unexpected? result) (:final? op))
           (assoc :exception-message (ex-message e)

@@ -8,7 +8,10 @@
              [tests :as tests]]
             [jepsen.openraft [checker :as openraft-checker]
              [db :as openraft-db]
+             [generator :as openraft-generator]
+             [harness :as harness]
              [nemesis :as openraft-nemesis]
+             [worker :as worker]
              [workload :as workload]]
             [jepsen.openraft.nemesis [membership :as membership]
              [partition :as partition]
@@ -79,8 +82,25 @@
               (random/set-seed! seed)
               (assoc options :seed seed)))))
 
+(defn- lifecycle-generator
+  [failure-state time-limit workload nemesis-package]
+  (gen/phases
+   (openraft-generator/stop-on-harness-failure
+    failure-state
+    (gen/shortest-any
+     (gen/nemesis
+      (gen/time-limit time-limit (:generator nemesis-package)))
+     (:generator workload)))
+   (gen/nemesis (:final-generator nemesis-package))
+   (delay
+     (when-not (harness/primary-failure failure-state)
+       (openraft-generator/stop-on-harness-failure
+        failure-state
+        (:final-generator workload))))))
+
 (defn openraft-test [opts]
-  (let [database (openraft-db/db opts)
+  (let [failure-state (harness/failure-state)
+        database (openraft-db/db opts)
         workload (workload/workload opts)
         nemesis-types (normalize-nemeses (:nemesis opts))
         nemesis-package
@@ -104,18 +124,13 @@
            {:name (str "openraft linearizable registers "
                        (str/join "," (map name nemesis-types)))
             :db database
-            :client (:client workload)
-            :nemesis (:nemesis nemesis-package)
-            :generator (gen/phases
-                        (gen/shortest-any
-                         (gen/nemesis
-                          (gen/phases
-                           (gen/time-limit
-                            (:time-limit opts)
-                            (:generator nemesis-package))
-                           (:final-generator nemesis-package)))
-                         (:generator workload))
-                        (:final-generator workload))
+            :client (worker/wrap-client failure-state (:client workload))
+            :nemesis (worker/wrap-nemesis failure-state
+                                          (:nemesis nemesis-package))
+            :generator (lifecycle-generator failure-state
+                                            (:time-limit opts)
+                                            workload
+                                            nemesis-package)
             :checker (checker/compose
                       {:seed (openraft-checker/random-seed-checker)
                        :stats (checker/stats)

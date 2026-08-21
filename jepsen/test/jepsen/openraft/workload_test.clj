@@ -361,6 +361,17 @@
           (is interrupted
               "the interrupt flag is restored so Jepsen's control signals survive"))))))
 
+(deftest rethrows-unknown-client-exceptions
+  (let [op {:type :invoke :f :write :value (keyed "value")}
+        throwable (RuntimeException. "client bug")]
+    (with-redefs [http/write! (fn [& _] (throw throwable))]
+      (let [thrown (try
+                     (client/invoke! (kv-client) {} op)
+                     nil
+                     (catch RuntimeException e
+                       e))]
+        (is (identical? throwable thrown))))))
+
 (deftest unexpected-errors-checker-flags-tagged-operations
   (let [chk (#'workload/unexpected-errors-checker)]
     (testing "a history without unexpected errors is valid"
