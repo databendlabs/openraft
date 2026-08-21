@@ -84,26 +84,33 @@
 (deftest shares-one-harness-state-across-workers-and-generators
   (let [failure-state (harness/failure-state)
         wrapped-states (atom [])
-        generator-states (atom [])
+        stopped-states (atom [])
+        pending-states (atom [])
         wrap (fn [source]
                (fn [state delegate]
                  (swap! wrapped-states conj [source state])
                  delegate))
         stop (fn [state generator]
-               (swap! generator-states conj state)
+               (swap! stopped-states conj state)
                generator)]
     (with-redefs [harness/failure-state (constantly failure-state)
                   worker/wrap-client (wrap :client)
                   worker/wrap-nemesis (wrap :nemesis)
-                  openraft-generator/stop-on-harness-failure stop]
+                  openraft-generator/stop-on-harness-failure stop
+                  openraft-generator/pending-on-harness-failure
+                  (fn [state generator]
+                    (swap! pending-states conj state)
+                    generator)]
       (cli/openraft-test {:nemesis :partition
                           :nodes ["n1" "n2" "n3"]
                           :time-limit 10}))
     (is (= [:client :nemesis] (mapv first @wrapped-states)))
     (is (every? #(identical? failure-state (second %))
                 @wrapped-states))
-    (is (= 1 (count @generator-states)))
-    (is (identical? failure-state (first @generator-states)))))
+    (is (= 1 (count @stopped-states)))
+    (is (identical? failure-state (first @stopped-states)))
+    (is (= 1 (count @pending-states)))
+    (is (identical? failure-state (first @pending-states)))))
 
 (defn- lifecycle-test-generator [failure-state]
   (#'cli/lifecycle-generator
@@ -116,7 +123,10 @@
    {:generator (gen/delay
                  0.1
                  (repeat {:type :info :f :ordinary-nemesis}))
-    :final-generator {:type :info :f :final-nemesis}}))
+    :final-generator (gen/delay
+                       0.3
+                       [{:type :info :f :final-nemesis-1}
+                        {:type :info :f :final-nemesis-2}])}))
 
 (defn- simulate-lifecycle [failure-state failure-operation]
   (let [operations (atom [])
@@ -141,12 +151,20 @@
      :operations @operations}))
 
 (deftest runs-the-full-lifecycle-without-a-harness-failure
-  (let [{:keys [operations]}
-        (simulate-lifecycle (harness/failure-state) nil)]
+  (let [{:keys [history operations]}
+        (simulate-lifecycle (harness/failure-state) nil)
+        recovery-start (first (filter #(= :final-nemesis-1 (:f %)) history))
+        recovery-end (first (filter #(= :final-nemesis-2 (:f %)) history))]
     (is (some #{:ordinary-workload} operations))
     (is (some #{:ordinary-nemesis} operations))
-    (is (= [:final-nemesis :final-workload-1 :final-workload-2]
-           (filter #{:final-nemesis
+    (is (some (fn [operation]
+                (and (= :ordinary-workload (:f operation))
+                     (> (:time operation) (:time recovery-start))
+                     (< (:time operation) (:time recovery-end))))
+              history))
+    (is (= [:final-nemesis-1 :final-nemesis-2
+            :final-workload-1 :final-workload-2]
+           (filter #{:final-nemesis-1 :final-nemesis-2
                      :final-workload-1
                      :final-workload-2}
                    operations)))))
@@ -164,14 +182,14 @@
                              history))
         recovery-index
         (first (keep-indexed (fn [index operation]
-                               (when (= :final-nemesis (:f operation))
+                               (when (= :final-nemesis-1 (:f operation))
                                  index))
                              history))]
     (is (some? (harness/primary-failure failure-state)))
     (is (< workload-completion-index recovery-index))
     (is (= 1 (count (filter #{:ordinary-workload} operations))))
-    (is (= [:final-nemesis]
-           (filter #{:final-nemesis
+    (is (= [:final-nemesis-1 :final-nemesis-2]
+           (filter #{:final-nemesis-1 :final-nemesis-2
                      :final-workload-1
                      :final-workload-2}
                    operations)))))
@@ -181,8 +199,8 @@
         {:keys [operations]}
         (simulate-lifecycle failure-state :final-workload-1)]
     (is (some? (harness/primary-failure failure-state)))
-    (is (= [:final-nemesis :final-workload-1]
-           (filter #{:final-nemesis
+    (is (= [:final-nemesis-1 :final-nemesis-2 :final-workload-1]
+           (filter #{:final-nemesis-1 :final-nemesis-2
                      :final-workload-1
                      :final-workload-2}
                    operations)))))
