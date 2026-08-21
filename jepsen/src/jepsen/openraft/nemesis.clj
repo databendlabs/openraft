@@ -5,12 +5,18 @@
              [nemesis :as nemesis]
              [random :as random]]
             [jepsen.nemesis.combined :as combined]
-            [jepsen.openraft.cluster :as cluster]))
+            [jepsen.openraft.await :as await]
+            [jepsen.openraft.cluster :as cluster]
+            [jepsen.openraft.interruption :as interruption]
+            [jepsen.openraft.nemesis.outcome :as outcome]))
 
 (def ^:private initial-healthy-seconds 5)
 (def ^:private retry-interval-seconds 1)
-(def ^:private retryable-skip-results
-  #{:no-reachable-pause-target :no-supported-leader})
+(def ^:private retryable-skip-reasons
+  #{:no-quorum-safe-process-target
+    :no-reachable-pause-target
+    :no-safe-partition-target
+    :no-supported-leader})
 
 (defn- jittered-interval [interval]
   (long (random/double (* 0.5 interval)
@@ -45,10 +51,17 @@
           retry-generator' (some-> retry-generator
                                    (gen/update test context event))
           completion-value (:value event)
-          retry-result (if (map? completion-value)
+          retry-reason (cond
+                         (= :skipped (:status completion-value))
+                         (:reason completion-value)
+
+                         (and (map? completion-value)
+                              (contains? completion-value :status))
                          (:status completion-value)
+
+                         :else
                          completion-value)
-          retry? (contains? retryable-skip-results retry-result)
+          retry? (contains? retryable-skip-reasons retry-reason)
           operation-event? (and stage
                                 (= :nemesis (:process event))
                                 (= operation-f (:f event)))]
@@ -102,9 +115,28 @@
     this)
 
   (invoke! [_ test op]
-    (let [{:keys [leader]} (cluster/await-ready! test)]
-      (info "OpenRaft cluster recovered with leader" leader)
-      (assoc op :value {:leader leader})))
+    (try
+      (let [{:keys [leader]} (cluster/await-ready! test)]
+        (info "OpenRaft cluster recovered with leader" leader)
+        (assoc op :value (outcome/installed {:leader leader})))
+      (catch Exception e
+        (cond
+          (interruption/interruption? e)
+          (do
+            (.interrupt (Thread/currentThread))
+            (throw e))
+
+          (await/condition-timeout? e :cluster-ready)
+          (do
+            (info "OpenRaft cluster recovery is indeterminate"
+                  {:error (ex-message e)})
+            (assoc op
+                   :value (outcome/indeterminate
+                           :recovery-timeout
+                           {:message (ex-message e)})))
+
+          :else
+          (throw e)))))
 
   (teardown! [this _test]
     this)

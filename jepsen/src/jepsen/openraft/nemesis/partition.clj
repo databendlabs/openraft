@@ -6,6 +6,7 @@
              [random :as random]]
             [jepsen.openraft.cluster :as cluster]
             [jepsen.openraft.interruption :as interruption]
+            [jepsen.openraft.nemesis.outcome :as outcome]
             [jepsen.openraft.quorum :as quorum]))
 
 (def partition-seconds 10)
@@ -30,15 +31,21 @@
                        (throw (ex-info "Unknown partition mode"
                                        {:mode mode})))
           quorum-side (first (random/shuffle candidates))]
-      (when-not quorum-side
-        (throw (ex-info "Membership has no partition for the requested mode"
-                        {:leader leader
-                         :mode mode
-                         :configs configs})))
-      (let [other-side (remove quorum-side nodes)]
-        (if (contains? quorum-side leader)
-          [(vec (filter quorum-side nodes)) (vec other-side)]
-          [(vec other-side) (vec (filter quorum-side nodes))])))))
+      (when quorum-side
+        (let [other-side (remove quorum-side nodes)]
+          (if (contains? quorum-side leader)
+            [(vec (filter quorum-side nodes)) (vec other-side)]
+            [(vec other-side) (vec (filter quorum-side nodes))]))))))
+
+(defn- invoke-delegate! [delegate test op]
+  (try
+    (nemesis/invoke! delegate test op)
+    (catch Exception e
+      ;; Partition control runs multi-node operations on real-pmap workers.
+      ;; Restore the interrupt flag on the receiving Nemesis thread too.
+      (when (interruption/interruption? e)
+        (.interrupt (Thread/currentThread)))
+      (throw e))))
 
 (defrecord PartitionNemesis [partitioner]
   nemesis/Nemesis
@@ -51,37 +58,50 @@
       (if-let [{:keys [leader] :as status}
                (cluster/membership-status test)]
         (let [configs (cluster/voter-configs test status)
-              mode (:value op)
-              components (partition-components (:nodes test)
-                                               configs
-                                               leader
-                                               mode)
-              grudge (nemesis/complete-grudge components)]
-          (info "Partitioning OpenRaft nodes"
-                {:mode mode
-                 :leader leader
-                 :components components})
-          (nemesis/invoke! partitioner test
-                           (assoc op
-                                  :f :start
-                                  :value grudge))
-          (assoc op
-                 :value {:mode mode
-                         :leader leader
-                         :voter-configs configs
-                         :components components}))
+              mode (:value op)]
+          (if-let [components (partition-components (:nodes test)
+                                                    configs
+                                                    leader
+                                                    mode)]
+            (let [grudge (nemesis/complete-grudge components)]
+              (info "Partitioning OpenRaft nodes"
+                    {:mode mode
+                     :leader leader
+                     :components components})
+              (invoke-delegate! partitioner test
+                                (assoc op
+                                       :f :start
+                                       :value grudge))
+              (assoc op
+                     :value (outcome/installed
+                             {:mode mode
+                              :leader leader
+                              :voter-configs configs
+                              :components components})))
+            (do
+              (info "Skipping partition without a safe target"
+                    {:mode mode
+                     :leader leader
+                     :voter-configs configs})
+              (assoc op
+                     :value (outcome/skipped
+                             :no-safe-partition-target
+                             {:mode mode
+                              :leader leader
+                              :voter-configs configs})))))
         (do
           (info "Skipping partition without a quorum-supported leader")
-          (assoc op :value :no-supported-leader)))
+          (assoc op
+                 :value (outcome/skipped :no-supported-leader {}))))
 
       :stop-partition
       (do
         (info "Healing OpenRaft network partition")
-        (nemesis/invoke! partitioner test
-                         (assoc op
-                                :f :stop
-                                :value nil))
-        (assoc op :value :network-healed))))
+        (invoke-delegate! partitioner test
+                          (assoc op
+                                 :f :stop
+                                 :value nil))
+        (assoc op :value (outcome/installed {})))))
 
   (teardown! [_ test]
     (try
@@ -101,6 +121,27 @@
 
 (defn partition-nemesis []
   (PartitionNemesis. (nemesis/partitioner)))
+
+(defn- legacy-partition-start-installed? [value]
+  (and (map? value)
+       (required-partition-modes (:mode value))
+       (:leader value)
+       (coll? (:voter-configs value))
+       (coll? (:components value))))
+
+(defn- partition-start-installed? [value]
+  (and (outcome/installed-or-legacy? value
+                                     legacy-partition-start-installed?)
+       (required-partition-modes (:mode value))))
+
+(defn- partition-stop-installed? [value]
+  (outcome/installed-or-legacy? value #{:network-healed}))
+
+(defn- recovery-installed? [value]
+  (and (outcome/installed-or-legacy?
+        value
+        #(and (map? %) (:leader %)))
+       (:leader value)))
 
 (defn- partition-generator []
   (gen/cycle
@@ -128,25 +169,30 @@
   that every node follows one leader, while leftover rules from an
   indeterminate heal may still cut follower-to-follower links."
   [state op]
-  (let [operation-error? (boolean (or (:error op)
-                                      (:exception op)))]
+  (let [status (get-in op [:value :status])
+        operation-error? (boolean (or (:error op)
+                                      (:exception op)
+                                      (= :indeterminate status)))]
     (case (:f op)
       :start-partition
       (cond
         operation-error? :unknown
-        (get-in op [:value :mode]) :recovery-pending
+        (partition-start-installed? (:value op)) :recovery-pending
         :else state)
 
       :stop-partition
       (cond
         operation-error? :unknown
-        (= :network-healed (:value op)) :recovery-pending
+        (partition-stop-installed? (:value op)) :recovery-pending
         :else state)
 
       :await-recovery
       (cond
+        operation-error? (if (= :recovery-pending state)
+                           :recovery-pending
+                           :unknown)
         (= :unknown state) :unknown
-        (get-in op [:value :leader]) :intact
+        (recovery-installed? (:value op)) :intact
         :else state)
 
       state)))
@@ -156,6 +202,8 @@
     (check [_ _test history _opts]
       (let [observed-modes (->> history
                                 (filter #(= :start-partition (:f %)))
+                                (filter #(partition-start-installed?
+                                          (:value %)))
                                 (keep #(get-in % [:value :mode]))
                                 set)
             missing-modes (remove observed-modes required-partition-modes)

@@ -122,7 +122,8 @@
         nemesis-outcome {:type :info
                          :process :nemesis
                          :f :start-partition
-                         :value :no-supported-leader}
+                         :value {:status :skipped
+                                 :reason :no-supported-leader}}
         client-subject (worker/wrap-client
                         failure-state
                         (test-client {:invoke-f (fn [& _] client-outcome)}))
