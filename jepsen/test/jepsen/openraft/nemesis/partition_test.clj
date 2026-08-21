@@ -2,12 +2,24 @@
   (:require [clojure.set :as set]
             [clojure.test :refer [deftest is testing]]
             [jepsen [checker :as checker]
+             [control :as c]
              [nemesis :as nemesis]]
-            [jepsen.openraft.cluster :as cluster]
+            [jepsen.openraft [cluster :as cluster]
+             [harness :as harness]
+             [worker :as worker]]
             [jepsen.openraft.nemesis.partition :as partition]
             [jepsen.openraft.quorum :as quorum]))
 
 (def nodes ["n1" "n2" "n3"])
+
+(defn- installed [details]
+  (assoc details :status :installed))
+
+(defn- skipped [reason details]
+  (assoc details :status :skipped :reason reason))
+
+(defn- indeterminate [reason details]
+  (assoc details :status :indeterminate :reason reason))
 
 (defn- teardown-partitioner [teardown]
   (reify nemesis/Nemesis
@@ -70,14 +82,30 @@
           (is (= :leader-in-minority
                  (-> result :value :mode)))
           (is (= "n2"
-                 (-> result :value :leader))))))
+                 (-> result :value :leader)))
+          (is (= :installed (get-in result [:value :status]))))))
 
     (testing "no partition is installed without a supported leader"
       (reset! invocations [])
       (with-redefs [cluster/membership-status (constantly nil)]
-        (is (= :no-supported-leader
+        (is (= (skipped :no-supported-leader {})
                (:value (nemesis/invoke! subject {:nodes nodes} op))))
-        (is (empty? @invocations))))))
+        (is (empty? @invocations))))
+
+    (testing "no partition is installed without a safe target"
+      (reset! invocations [])
+      (with-redefs [cluster/membership-status
+                    (constantly {:leader "n1"})
+                    cluster/voter-configs
+                    (fn [_test _status] [#{"n1"}])]
+        (let [value (:value (nemesis/invoke! subject
+                                             {:nodes ["n1"]}
+                                             (assoc op
+                                                    :value
+                                                    :leader-in-majority)))]
+          (is (= :skipped (:status value)))
+          (is (= :no-safe-partition-target (:reason value)))
+          (is (empty? @invocations)))))))
 
 (deftest partition-cleanup-failure-does-not-mask-analysis
   (let [attempted? (atom false)
@@ -89,6 +117,96 @@
     (nemesis/teardown! (partition/->PartitionNemesis partitioner)
                        {:nodes nodes})
     (is @attempted?)))
+
+(deftest partition-control-failures-take-the-harness-path
+  (let [error (ex-info "SSH failed" {:kind :ssh})
+        partitioner (reify nemesis/Nemesis
+                      (setup! [this _test]
+                        this)
+                      (invoke! [_ _test _op]
+                        (throw error))
+                      (teardown! [this _test]
+                        this))
+        failure-state (harness/failure-state)
+        subject (worker/wrap-nemesis
+                 failure-state
+                 (partition/->PartitionNemesis partitioner))
+        setup-subject (nemesis/setup! subject {:nodes nodes})
+        op {:type :info
+            :process :nemesis
+            :f :start-partition
+            :value :leader-in-minority}
+        thrown (with-redefs [cluster/membership-status
+                             (constantly {:leader "n1"})
+                             cluster/voter-configs
+                             (fn [_test _status] [(set nodes)])]
+                 (try
+                   (nemesis/invoke! setup-subject {:nodes nodes} op)
+                   nil
+                   (catch Exception e
+                     e)))]
+    (is (identical? error thrown))
+    (is (identical? error
+                    (:throwable (harness/primary-failure failure-state))))))
+
+(deftest runtime-partition-control-restores-receiving-thread-interruption
+  (let [test {:nodes nodes
+              :sessions (zipmap nodes (repeat :unused-session))}
+        cases [[:interrupted-exception
+                #(InterruptedException. "interrupted")]
+               [:interrupted-io
+                #(java.io.InterruptedIOException. "interrupted")]
+               [:closed-by-interrupt
+                #(java.nio.channels.ClosedByInterruptException.)]
+               [:wrapped
+                #(ex-info "interrupted" {:kind :interrupted})]]
+        operations [[:start
+                     {:type :info
+                      :process :nemesis
+                      :f :start-partition
+                      :value :leader-in-minority}]
+                    [:stop
+                     {:type :info
+                      :process :nemesis
+                      :f :stop-partition}]]]
+    (doseq [[operation op] operations
+            [interruption make-error] cases]
+      (testing (str (name operation) " " (name interruption))
+        (Thread/interrupted)
+        (try
+          (let [error (make-error)
+                partitioner
+                (reify nemesis/Nemesis
+                  (setup! [this _test]
+                    this)
+                  (invoke! [_ test _op]
+                    (c/on-nodes test
+                                (fn [_test node]
+                                  (if (= "n2" node)
+                                    (throw error)
+                                    :ok))))
+                  (teardown! [this _test]
+                    this))
+                failure-state (harness/failure-state)
+                subject (->> partitioner
+                             partition/->PartitionNemesis
+                             (worker/wrap-nemesis failure-state))
+                setup-subject (nemesis/setup! subject test)
+                [thrown interrupted?]
+                (with-redefs [cluster/membership-status
+                              (constantly {:leader "n1"})
+                              cluster/voter-configs
+                              (fn [_test _status] [(set nodes)])]
+                  (try
+                    (nemesis/invoke! setup-subject test op)
+                    [nil (.isInterrupted (Thread/currentThread))]
+                    (catch Exception e
+                      [e (.isInterrupted (Thread/currentThread))])))]
+            (is (identical? error thrown))
+            (is interrupted?)
+            (is (nil? (harness/primary-failure failure-state))))
+          (finally
+            (Thread/interrupted)))))))
 
 (deftest partition-cleanup-preserves-interruptions
   (doseq [[label error]
@@ -119,35 +237,40 @@
 (deftest requires-both-partitions-and-an-intact-cluster
   (let [subject (#'partition/coverage-checker)
         complete-history [{:f :start-partition
-                           :value {:mode :leader-in-majority}}
+                           :value (installed {:mode :leader-in-majority})}
                           {:f :stop-partition
-                           :value :network-healed}
+                           :value (installed {})}
                           {:f :start-partition
-                           :value {:mode :leader-in-minority}}
+                           :value (installed {:mode :leader-in-minority})}
                           {:f :stop-partition
-                           :value :network-healed}
+                           :value (installed {})}
                           {:f :await-recovery
-                           :value {:leader "n2"}}]
+                           :value (installed {:leader "n2"})}]
         missing-mode-history [{:f :start-partition
-                               :value {:mode :leader-in-majority}}
+                               :value (installed
+                                       {:mode :leader-in-majority})}
                               {:f :stop-partition
-                               :value :network-healed}
+                               :value (installed {})}
                               {:f :start-partition
-                               :value :no-supported-leader}
+                               :value (skipped :no-supported-leader {})}
                               {:f :stop-partition
-                               :value :network-healed}
+                               :value (installed {})}
                               {:f :await-recovery
-                               :value {:leader "n2"}}]
+                               :value (installed {:leader "n2"})}]
         unrecovered-history [{:f :start-partition
-                              :value {:mode :leader-in-majority}}
+                              :value (installed
+                                      {:mode :leader-in-majority})}
                              {:f :stop-partition
-                              :value :network-healed}
+                              :value (installed {})}
                              {:f :start-partition
-                              :value {:mode :leader-in-minority}}
+                              :value (installed
+                                      {:mode :leader-in-minority})}
                              {:f :stop-partition
-                              :value :network-healed}
+                              :value (installed {})}
                              {:f :await-recovery
-                              :error :timeout}]]
+                              :value (indeterminate
+                                      :recovery-timeout
+                                      {})}]]
     (testing "both modes complete and the cluster recovers"
       (let [result (checker/check subject {} complete-history {})]
         (is (:valid? result))
@@ -172,8 +295,8 @@
                  {:type :info
                   :process :nemesis
                   :f :start-partition
-                  :value {:mode :leader-in-majority
-                          :leader "n1"}}
+                  :value (installed {:mode :leader-in-majority
+                                     :leader "n1"})}
                  {:type :info
                   :process :nemesis
                   :f :stop-partition
@@ -181,7 +304,7 @@
                  {:type :info
                   :process :nemesis
                   :f :stop-partition
-                  :value :network-healed}
+                  :value (installed {})}
                  {:type :info
                   :process :nemesis
                   :f :start-partition
@@ -189,8 +312,8 @@
                  {:type :info
                   :process :nemesis
                   :f :start-partition
-                  :value {:mode :leader-in-minority
-                          :leader "n1"}}
+                  :value (installed {:mode :leader-in-minority
+                                     :leader "n1"})}
                  {:type :info
                   :process :nemesis
                   :f :stop-partition
@@ -198,7 +321,7 @@
                  {:type :info
                   :process :nemesis
                   :f :stop-partition
-                  :value :network-healed}
+                  :value (installed {})}
                  {:type :info
                   :process :nemesis
                   :f :await-recovery
@@ -206,7 +329,7 @@
                  {:type :info
                   :process :nemesis
                   :f :await-recovery
-                  :value {:leader "n2"}}
+                  :value (installed {:leader "n2"})}
                  {:type :info
                   :process :nemesis
                   :f :await-recovery
@@ -214,33 +337,65 @@
                  {:type :info
                   :process :nemesis
                   :f :await-recovery
-                  :value {:leader "n2"}}]
+                  :value (installed {:leader "n2"})}]
         result (checker/check subject {} history {})]
     (is (:valid? result))
     (is (= [:leader-in-majority :leader-in-minority]
            (:observed-modes result)))
     (is (= :intact (:cluster-state result)))))
 
+(deftest reanalyzes-exact-legacy-partition-history
+  (let [subject (#'partition/coverage-checker)
+        start (fn [mode]
+                {:f :start-partition
+                 :value {:mode mode
+                         :leader "n1"
+                         :voter-configs [(set nodes)]
+                         :components [["n1" "n2"] ["n3"]]}})
+        history [(start :leader-in-majority)
+                 {:f :stop-partition :value :network-healed}
+                 (start :leader-in-minority)
+                 {:f :stop-partition :value :network-healed}
+                 {:f :await-recovery :value {:leader "n2"}}]]
+    (testing "the exact pre-status success shapes remain valid"
+      (let [result (checker/check subject {} history {})]
+        (is (true? (:valid? result)))
+        (is (= :intact (:cluster-state result)))))
+
+    (testing "an explicit status is authoritative over legacy-looking fields"
+      (doseq [status [:skipped :indeterminate]]
+        (let [changed (assoc-in history [0 :value :status] status)
+              result (checker/check subject {} changed {})]
+          (is (false? (:valid? result)) (name status))
+          (is (= [:leader-in-majority]
+                 (:missing-modes result)) (name status))))
+
+      (doseq [status [:skipped :indeterminate]]
+        (let [changed (assoc-in history [4 :value :status] status)
+              result (checker/check subject {} changed {})]
+          (is (false? (:valid? result)) (name status))
+          (is (= :recovery-pending
+                 (:cluster-state result)) (name status)))))))
+
 (deftest reports-an-indeterminate-partition-state
   (let [subject (#'partition/coverage-checker)
         covered-history [{:f :start-partition
-                          :value {:mode :leader-in-majority}}
+                          :value (installed {:mode :leader-in-majority})}
                          {:f :stop-partition
-                          :value :network-healed}
+                          :value (installed {})}
                          {:f :start-partition
-                          :value {:mode :leader-in-minority}}
+                          :value (installed {:mode :leader-in-minority})}
                          {:f :stop-partition
-                          :value :network-healed}
+                          :value (installed {})}
                          {:f :await-recovery
-                          :value {:leader "n2"}}]
+                          :value (installed {:leader "n2"})}]
         indeterminate-history
         (conj covered-history
               {:type :info
                :process :nemesis
                :f :start-partition
-               :value :leader-in-majority
-               :error "indeterminate: partition failed"
-               :exception (ex-info "partition failed" {})})
+               :value (indeterminate :effect-unknown
+                                     {:mode :leader-in-majority})})
         result (checker/check subject {} indeterminate-history {})]
     (is (= :unknown (:valid? result)))
     (is (= :unknown (:cluster-state result)))))
@@ -248,21 +403,25 @@
 (deftest reports-an-indeterminate-heal-state
   (let [subject (#'partition/coverage-checker)
         history-before-heal [{:f :start-partition
-                              :value {:mode :leader-in-majority}}
+                              :value (installed
+                                      {:mode :leader-in-majority})}
                              {:f :stop-partition
-                              :value :network-healed}
+                              :value (installed {})}
                              {:f :start-partition
-                              :value {:mode :leader-in-minority}}
+                              :value (installed
+                                      {:mode :leader-in-minority})}
                              {:f :stop-partition
-                              :error :heal-failed}]
+                              :value (indeterminate
+                                      :effect-unknown
+                                      {})}]
         indeterminate-history (conj history-before-heal
                                     {:f :await-recovery
-                                     :value {:leader "n2"}})
+                                     :value (installed {:leader "n2"})})
         recovered-history (into history-before-heal
                                 [{:f :stop-partition
-                                  :value :network-healed}
+                                  :value (installed {})}
                                  {:f :await-recovery
-                                  :value {:leader "n2"}}])]
+                                  :value (installed {:leader "n2"})}])]
     (testing "a successful readiness check cannot prove that a failed heal completed"
       (let [result (checker/check subject {} indeterminate-history {})]
         (is (= :unknown (:valid? result)))

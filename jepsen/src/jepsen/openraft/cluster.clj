@@ -2,10 +2,10 @@
   (:require [clojure.set :as set]
             [clojure.tools.logging :refer [info]]
             [jepsen.core :as jepsen]
+            [jepsen.openraft.await :as await]
             [jepsen.openraft.client :as client]
             [jepsen.openraft.interruption :as interruption]
-            [jepsen.openraft.quorum :as quorum]
-            [jepsen.util :as util]))
+            [jepsen.openraft.quorum :as quorum]))
 
 (defn node-info [test node]
   {:node-id (client/node-host node)
@@ -67,14 +67,22 @@
     (client/metrics! (client/api-endpoint test node))
     (catch Exception e
       (if (interruption/interruption? e)
-        (let [interrupted-exception
-              (if (instance? InterruptedException e)
-                e
-                (doto (InterruptedException. (ex-message e))
-                  (.initCause e)))]
+        (do
           (.interrupt (Thread/currentThread))
-          (throw interrupted-exception))
+          (throw e))
         (throw e)))))
+
+(def ^:private modeled-metrics-failure-kinds
+  #{:http-error
+    :invalid-json
+    :invalid-response
+    :openraft-error
+    :request-timeout
+    :transport-error
+    :unreachable})
+
+(defn- modeled-metrics-failure? [e]
+  (contains? modeled-metrics-failure-kinds (:kind (ex-data e))))
 
 (defn- collect-reachable-metrics-from [test nodes]
   (into {}
@@ -84,8 +92,10 @@
              [node (node-metrics! test node)]
              (catch InterruptedException e
                (throw e))
-             (catch Exception _
-               nil)))
+             (catch Exception e
+               (if (modeled-metrics-failure? e)
+                 nil
+                 (throw e)))))
          nodes)))
 
 (defn- collect-reachable-metrics [test]
@@ -179,14 +189,14 @@
 (defn await-committed-membership!
   "Waits for a committed membership view from a quorum-supported leader."
   [test]
-  (util/await-fn
+  (await/until!
+   :committed-membership
    #(let [status (membership-status test)]
       (if (and status
                (= (:effective-log-id status)
                   (:committed-log-id status)))
         status
-        (throw (ex-info "OpenRaft membership is not committed yet"
-                        {:status status}))))
+        (await/retry! :committed-membership {:status status})))
    {:log-message "Waiting for a committed OpenRaft membership"
     :timeout 60000}))
 
@@ -196,24 +206,58 @@
    (await-stable-membership! test nil))
   ([test expected-voters]
    (let [expected-voters (some-> expected-voters set)]
-     (util/await-fn
+     (await/until!
+      :stable-membership
       #(let [status (membership-status test)]
          (if (and (:stable? status)
                   (or (nil? expected-voters)
                       (= expected-voters (:voters status))))
            status
-           (throw (ex-info "OpenRaft membership is not stable yet"
-                           {:expected-voters expected-voters
-                            :status status}))))
+           (await/retry! :stable-membership
+                         {:expected-voters expected-voters
+                          :status status})))
       {:log-message "Waiting for OpenRaft membership to become stable"
        :timeout 60000}))))
 
 (defn await-ready! [test]
-  (util/await-fn
+  (await/until!
+   :cluster-ready
    #(or (cluster-status test)
-        (throw (ex-info "OpenRaft cluster is not ready yet" {})))
+        (await/retry! :cluster-ready {}))
    {:log-message "Waiting for every OpenRaft node to agree on a leader"
     :timeout 60000}))
+
+(defn await-node-metrics!
+  "Waits for modeled SUT availability while preserving Harness exceptions."
+  [test node timeout-ms]
+  (await/until!
+   :node-metrics
+   #(try
+      (node-metrics! test node)
+      (catch Exception e
+        (if (modeled-metrics-failure? e)
+          (await/retry! :node-metrics
+                        {:node node
+                         :failure-kind (:kind (ex-data e))})
+          (throw e))))
+   {:log-message (str "Waiting for OpenRaft node " node " metrics")
+    :timeout timeout-ms}))
+
+(defn await-observed-learner!
+  "Waits for a learner in committed membership without retrying Harness errors."
+  [test node timeout-ms]
+  (await/until!
+   :learner-observed
+   #(let [status (membership-status test)]
+      (if (and (:stable? status)
+               (contains? (:learners status) node))
+        status
+        (await/retry! :learner-observed
+                      {:node node
+                       :status status})))
+   {:log-message (str "Waiting for OpenRaft learner " node
+                      " to appear in membership")
+    :timeout timeout-ms}))
 
 (defn voter-configs
   "Maps the effective OpenRaft voter configs to Jepsen node names."
@@ -243,13 +287,19 @@
     ;; which is still before that entry commits. Waiting for the leader alone
     ;; therefore races with the first add-learner, which fails with
     ;; `ChangeMembershipError::InProgress`.
-    (util/await-fn
-     #(let [metrics (client/metrics! leader-endpoint)]
-        (if (and (= leader-id (:current_leader metrics))
-                 (membership-committed? metrics))
-          metrics
-          (throw (ex-info "Initial OpenRaft leader is not ready yet"
-                          {:metrics metrics}))))
+    (await/until!
+     :bootstrap-membership
+     #(try
+        (let [metrics (client/metrics! leader-endpoint)]
+          (if (and (= leader-id (:current_leader metrics))
+                   (membership-committed? metrics))
+            metrics
+            (await/retry! :bootstrap-membership {:metrics metrics})))
+        (catch Exception e
+          (if (modeled-metrics-failure? e)
+            (await/retry! :bootstrap-membership
+                          {:failure-kind (:kind (ex-data e))})
+            (throw e))))
      {:log-message "Waiting for initial OpenRaft leader to commit its membership"
       :timeout 60000})
 

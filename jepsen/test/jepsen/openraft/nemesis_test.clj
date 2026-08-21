@@ -3,8 +3,13 @@
             [jepsen.checker :as checker]
             [jepsen.generator :as gen]
             [jepsen.generator.test :as gen-test]
-            [jepsen.openraft.db :as db]
-            [jepsen.openraft.nemesis :as openraft-nemesis]
+            [jepsen.nemesis :as nemesis]
+            [jepsen.openraft [await :as await]
+             [cluster :as cluster]
+             [db :as db]
+             [harness :as harness]
+             [nemesis :as openraft-nemesis]
+             [worker :as worker]]
             [jepsen.openraft.nemesis.membership :as membership]
             [jepsen.openraft.nemesis.partition :as partition]
             [jepsen.openraft.nemesis.process :as process]))
@@ -13,9 +18,16 @@
   {:nodes ["n1" "n2" "n3" "n4" "n5"]})
 
 (deftest schedules-and-retries-skipped-faults
-  (doseq [skip-result [:no-supported-leader
-                       :no-reachable-pause-target
-                       {:status :no-supported-leader}]]
+  (doseq [skip-result (concat
+                       (map (fn [reason]
+                              {:status :skipped
+                               :reason reason})
+                            [:no-quorum-safe-process-target
+                             :no-reachable-pause-target
+                             :no-safe-partition-target
+                             :no-supported-leader])
+                       [{:status :no-supported-leader}
+                        :no-supported-leader])]
     (testing (str skip-result)
       (let [faults (#'openraft-nemesis/interval-schedule
                     10
@@ -82,21 +94,38 @@
                                history
                                {}))
         history [{:f :start-partition
-                  :value {:mode :leader-in-majority}}
+                  :value {:status :installed
+                          :mode :leader-in-majority}}
                  {:f :stop-partition
-                  :value :network-healed}
+                  :value {:status :installed}}
                  {:f :pause-process
-                  :value {:mode :leader-unpaused}}
+                  :value {:status :installed
+                          :mode :leader-unpaused
+                          :leader "n1"
+                          :nodes ["n2"]
+                          :voter-configs [all-voters]
+                          :survivors (vec (disj all-voters "n2"))
+                          :pause-results {"n2" :paused}}}
                  {:f :resume-process
-                  :value {:mode :leader-unpaused}}
+                  :value {:status :installed
+                          :paused nil
+                          :resumed (:nodes test-config)
+                          :resume-results
+                          (zipmap (:nodes test-config) (repeat :resumed))}}
                  {:f :shrink
-                  :value {:change :shrink
+                  :value {:status :installed
+                          :change :shrink
+                          :node "n5"
+                          :leader "n1"
                           :before all-voters
                           :after fewer-voters}}
                  {:f :restore-membership
-                  :value {:voters all-voters}}
+                  :value {:status :installed
+                          :leader "n1"
+                          :voters all-voters}}
                  {:f :await-recovery
-                  :value {:leader "n1"}}]]
+                  :value {:status :installed
+                          :leader "n1"}}]]
     (testing "one successful mode covers each fault class in chaos"
       (let [result (check history)]
         (is (:valid? result))
@@ -107,8 +136,103 @@
 
     (testing "a skipped fault does not count as execution"
       (let [result (check (mapv #(if (= :pause-process (:f %))
-                                   (assoc % :value :no-supported-leader)
+                                   (assoc % :value
+                                          {:status :skipped
+                                           :reason :no-supported-leader})
                                    %)
                                 history))]
         (is (false? (:valid? result)))
         (is (false? (get-in result [:pause :fault-class-executed?])))))))
+
+(defn- condition-timeout [condition]
+  (try
+    (await/until! condition
+                  #(await/retry! condition {})
+                  {:timeout 0
+                   :retry-interval 0})
+    nil
+    (catch Exception e
+      e)))
+
+(deftest classifies-recovery-outcomes
+  (let [op {:type :info
+            :process :nemesis
+            :f :await-recovery}
+        subject (openraft-nemesis/->RecoveryNemesis)]
+    (testing "confirmed recovery is installed"
+      (with-redefs [cluster/await-ready! (constantly {:leader "n2"})]
+        (is (= {:status :installed
+                :leader "n2"}
+               (:value (nemesis/invoke! subject test-config op))))))
+
+    (testing "a modeled readiness timeout is indeterminate"
+      (let [error (condition-timeout :cluster-ready)]
+        (with-redefs [cluster/await-ready! (fn [_test] (throw error))]
+          (let [value (:value (nemesis/invoke! subject test-config op))]
+            (is (= :indeterminate (:status value)))
+            (is (= :recovery-timeout (:reason value)))))))
+
+    (testing "an unexpected recovery exception takes the Harness path"
+      (let [failure-state (harness/failure-state)
+            error (RuntimeException. "recovery bug")
+            wrapped (worker/wrap-nemesis failure-state subject)
+            setup-subject (nemesis/setup! wrapped test-config)
+            thrown (with-redefs [cluster/await-ready! (fn [_test]
+                                                        (throw error))]
+                     (try
+                       (nemesis/invoke! setup-subject test-config op)
+                       nil
+                       (catch Exception e
+                         e)))]
+        (is (identical? error thrown))
+        (is (identical? error
+                        (:throwable
+                         (harness/primary-failure failure-state))))))
+
+    (testing "an unrelated timeout tag takes the Harness path"
+      (let [failure-state (harness/failure-state)
+            error (ex-info "unknown timeout" {:type :timeout})
+            wrapped (worker/wrap-nemesis failure-state subject)
+            setup-subject (nemesis/setup! wrapped test-config)
+            thrown (with-redefs [cluster/await-ready! (fn [_test]
+                                                        (throw error))]
+                     (try
+                       (nemesis/invoke! setup-subject test-config op)
+                       nil
+                       (catch Exception e
+                         e)))]
+        (is (identical? error thrown))
+        (is (identical? error
+                        (:throwable
+                         (harness/primary-failure failure-state))))))
+
+    (testing "interruption takes priority over timeout classification"
+      (doseq [[label make-error]
+              [[:interrupted #(InterruptedException. "interrupted")]
+               [:interrupted-io
+                #(java.io.InterruptedIOException. "interrupted")]
+               [:closed-by-interrupt
+                #(java.nio.channels.ClosedByInterruptException.)]
+               [:wrapped
+                #(ex-info "interrupted"
+                          {:kind :interrupted
+                           :type :timeout})]]]
+        (Thread/interrupted)
+        (try
+          (let [failure-state (harness/failure-state)
+                error (make-error)
+                wrapped (worker/wrap-nemesis failure-state subject)
+                setup-subject (nemesis/setup! wrapped test-config)
+                [thrown interrupted?]
+                (with-redefs [cluster/await-ready!
+                              (fn [_test] (throw error))]
+                  (try
+                    (nemesis/invoke! setup-subject test-config op)
+                    [nil (.isInterrupted (Thread/currentThread))]
+                    (catch Exception e
+                      [e (.isInterrupted (Thread/currentThread))])))]
+            (is (identical? error thrown) (name label))
+            (is interrupted? (name label))
+            (is (nil? (harness/primary-failure failure-state)) (name label)))
+          (finally
+            (Thread/interrupted)))))))
