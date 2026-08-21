@@ -6,6 +6,7 @@
              [random :as random]]
             [jepsen.nemesis.combined :as combined]
             [jepsen.openraft.cluster :as cluster]
+            [jepsen.openraft.checker :as openraft-checker]
             [jepsen.openraft.interruption :as interruption]
             [jepsen.openraft.nemesis.outcome :as outcome]
             [jepsen.openraft.quorum :as quorum]
@@ -492,7 +493,8 @@
    :generator (process-generator)
    :final-generator {:type :info
                      :f :restart-process}
-   :checker (coverage-checker)})
+   :checker (openraft-checker/reject-checker-exceptions
+             (coverage-checker))})
 
 (defn- next-pause-state [expected-nodes state op]
   (let [error? (operation-error? op)
@@ -545,4 +547,5 @@
    :generator (pause-generator)
    :final-generator {:type :info
                      :f :resume-process}
-   :checker (pause-coverage-checker)})
+   :checker (openraft-checker/reject-checker-exceptions
+             (pause-coverage-checker))})

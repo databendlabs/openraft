@@ -6,6 +6,7 @@
              [independent :as independent]
              [random :as random]]
             [jepsen.openraft.client :as http]
+            [jepsen.openraft.checker :as openraft-checker]
             [jepsen.openraft.interruption :as interruption]
             [knossos.model :as model]))
 
@@ -304,11 +305,19 @@
                   bootstrap
                   (gen/stagger 0.1 operations)))
      :final-generator (gen/clients final)
-     :checker (checker/compose
-               {:linearizable (independent/checker
-                               (checker/linearizable
-                                {:model (model/cas-register)}))
-                :meaningful-operations (meaningful-operations-checker)
-                :final-workload (final-workload-checker)
-                :unexpected-sut-responses
-                (unexpected-sut-responses-checker)})}))
+     :checker (openraft-checker/reject-checker-exceptions
+               (checker/compose
+                {:linearizable
+                 (openraft-checker/reject-checker-exceptions
+                  (independent/checker
+                   (checker/linearizable
+                    {:model (model/cas-register)})))
+                 :meaningful-operations
+                 (openraft-checker/reject-checker-exceptions
+                  (meaningful-operations-checker))
+                 :final-workload
+                 (openraft-checker/reject-checker-exceptions
+                  (final-workload-checker))
+                 :unexpected-sut-responses
+                 (openraft-checker/reject-checker-exceptions
+                  (unexpected-sut-responses-checker))}))}))

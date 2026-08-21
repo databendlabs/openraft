@@ -132,18 +132,22 @@
                                             (:time-limit opts)
                                             workload
                                             nemesis-package)
-            :checker (openraft-checker/reject-harness-failures
-                      failure-state
-                      (checker/compose
-                       {:seed (openraft-checker/random-seed-checker)
-                        :stats (checker/stats)
-                        :exceptions (openraft-checker/strict-unhandled-exceptions)
-                        :crash (openraft-checker/required-log-file-pattern
-                                openraft-checker/node-panic-pattern
-                                "openraft.log")
-                        :nemesis (:checker nemesis-package)
-                        :workload (:checker workload)})
-                      :exceptions)})))
+            :checker (openraft-checker/reject-checker-exceptions
+                      (openraft-checker/reject-harness-failures
+                       failure-state
+                       (openraft-checker/reject-checker-exceptions
+                        (checker/compose
+                         {:seed (openraft-checker/random-seed-checker)
+                          :stats (openraft-checker/reject-checker-exceptions
+                                  (checker/stats))
+                          :exceptions
+                          (openraft-checker/strict-unhandled-exceptions)
+                          :crash (openraft-checker/required-log-file-pattern
+                                  openraft-checker/node-panic-pattern
+                                  "openraft.log")
+                          :nemesis (:checker nemesis-package)
+                          :workload (:checker workload)}))
+                       :exceptions))})))
 
 (defn -main [& args]
   (cli/run! (cli/single-test-cmd {:test-fn openraft-test
