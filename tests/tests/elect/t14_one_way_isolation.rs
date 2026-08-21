@@ -7,7 +7,7 @@ use openraft::Config;
 use openraft::Instant;
 use openraft::ServerState;
 use openraft::TokioInstant;
-use openraft::Vote;
+use openraft::alias::VoteOf;
 use openraft::async_runtime::WatchReceiver;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
@@ -118,8 +118,14 @@ async fn inbound_heartbeats_prevent_election_when_outbound_rpcs_fail() -> Result
 /// A follower must campaign when it cannot receive heartbeats but can still send outbound RPCs.
 ///
 /// `NetRecv` on node 1 blocks `AppendEntries` from node 0 without blocking node 1's own Vote RPCs.
-/// With Pre-Vote disabled, the first expired leader lease starts a real election: node 1 must
-/// enter `Candidate` with a higher-term, uncommitted vote for itself and no known leader.
+/// With Pre-Vote disabled, the first expired leader lease starts a real election: node 1 advances
+/// its term and votes for itself.
+///
+/// The test asserts the term and the vote, not the `Candidate` state. Node 0 never renews the
+/// lease on its own vote, so node 0 grants the vote request at once and node 1 becomes Leader
+/// about a millisecond after campaigning. `Candidate` is transient and the metrics watch channel
+/// may skip it. The higher term and the self-vote persist, because every RPC that could move node
+/// 1's vote is blocked.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn missing_inbound_heartbeats_start_election() -> Result<()> {
@@ -161,31 +167,19 @@ async fn missing_inbound_heartbeats_start_election() -> Result<()> {
 
     tracing::info!(log_index, "--- node 1 misses heartbeats and starts a direct election");
     {
-        let candidate = router
+        let campaigned = router
             .wait(&1, Some(WAIT_TIMEOUT))
-            .state(
-                ServerState::Candidate,
-                "node 1 becomes a candidate after its leader lease expires",
+            .metrics(
+                |metrics| metrics.current_term > before.current_term,
+                "node 1 advances its term after its leader lease expires",
             )
             .await?;
 
-        let expected_vote = Vote::new(candidate.current_term, 1);
-        assert!(
-            candidate.current_term > before.current_term,
-            "node 1 must advance its term"
-        );
+        let expected_vote = VoteOf::<TypeConfig>::new(campaigned.current_term, 1);
         assert_eq!(
-            expected_vote, candidate.vote,
-            "node 1 must install its uncommitted self-vote"
-        );
-        assert_eq!(
-            None, candidate.current_leader,
-            "node 1 must no longer recognize a leader"
-        );
-        assert_eq!(
-            ServerState::Candidate,
-            candidate.state,
-            "node 1 must enter candidate state"
+            expected_vote.leader_id(),
+            campaigned.vote.leader_id(),
+            "node 1 must install its self-vote"
         );
     }
 
