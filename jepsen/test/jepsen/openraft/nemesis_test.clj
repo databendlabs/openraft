@@ -65,8 +65,10 @@
                 (+ (:time retry) (gen/secs->nanos 15))))))))
 
 (deftest cleans-up-all-faults-before-confirming-recovery
-  (let [database (db/db {})
+  (let [failure-state (harness/failure-state)
+        database (db/db {})
         package (openraft-nemesis/compose-packages
+                 failure-state
                  [(membership/membership-package
                    database
                    test-config)
@@ -81,10 +83,12 @@
            (mapv :f (:final-generator package))))))
 
 (deftest requires-each-composed-fault-class-to-execute
-  (let [database (db/db {})
+  (let [failure-state (harness/failure-state)
+        database (db/db {})
         all-voters (set (:nodes test-config))
         fewer-voters (disj all-voters "n5")
         package (openraft-nemesis/compose-packages
+                 failure-state
                  [(partition/partition-package)
                   (process/pause-package database)
                   (membership/membership-package database test-config)])
@@ -143,6 +147,115 @@
                                 history))]
         (is (false? (:valid? result)))
         (is (false? (get-in result [:pause :fault-class-executed?])))))))
+
+(defn- teardown-package [package-name events throwable]
+  {:name package-name
+   :interval 1
+   :nemesis
+   (reify nemesis/Nemesis
+     (setup! [this _test]
+       this)
+
+     (invoke! [_ _test op]
+       op)
+
+     (teardown! [this _test]
+       (swap! events conj package-name)
+       (when throwable
+         (throw throwable))
+       this)
+
+     nemesis/Reflection
+     (fs [_]
+       #{package-name}))
+   :generator {:type :info
+               :f package-name}
+   :final-generator nil
+   :checker (reify checker/Checker
+              (check [_ _test _history _opts]
+                {:valid? true}))
+   :perf #{}})
+
+(deftest composed-teardown-records-failures-and-continues
+  (let [failure-state (harness/failure-state)
+        events (atom [])
+        first-error (RuntimeException. "partition cleanup failed")
+        second-error (RuntimeException. "pause cleanup failed")
+        package (openraft-nemesis/compose-packages
+                 failure-state
+                 [(teardown-package :partition events first-error)
+                  (teardown-package :pause events second-error)
+                  (teardown-package :process events nil)])
+        subject (nemesis/setup! (:nemesis package) test-config)]
+    (nemesis/teardown! subject test-config)
+    (swap! events conj :analysis)
+    (is (= [:partition :pause :process :analysis] @events))
+    (let [primary (harness/primary-failure failure-state)
+          [secondary] (harness/secondary-failures failure-state)]
+      (is (= :nemesis (:source primary)))
+      (is (= {:phase :teardown
+              :component :partition
+              :nodes (:nodes test-config)}
+             (:context primary)))
+      (is (identical? first-error (:throwable primary)))
+      (is (= :nemesis (:source secondary)))
+      (is (= {:phase :teardown
+              :component :pause
+              :nodes (:nodes test-config)}
+             (:context secondary)))
+      (is (identical? second-error (:throwable secondary))))))
+
+(deftest retains-legacy-compose-packages-arity
+  (let [events (atom [])
+        failure (RuntimeException. "legacy teardown failure")
+        package (openraft-nemesis/compose-packages
+                 [(teardown-package :partition events failure)])
+        subject (nemesis/setup! (:nemesis package) test-config)
+        thrown (try
+                 (nemesis/teardown! subject test-config)
+                 nil
+                 (catch Throwable throwable
+                   throwable))]
+    (is (identical? failure thrown))
+    (is (= [:partition] @events))))
+
+(deftest composed-teardown-preserves-clean-behavior
+  (let [failure-state (harness/failure-state)
+        events (atom [])
+        package (openraft-nemesis/compose-packages
+                 failure-state
+                 [(teardown-package :partition events nil)
+                  (teardown-package :process events nil)])
+        subject (nemesis/setup! (:nemesis package) test-config)]
+    (nemesis/teardown! subject test-config)
+    (is (= [:partition :process] @events))
+    (is (nil? (harness/primary-failure failure-state)))
+    (is (empty? (harness/secondary-failures failure-state)))))
+
+(deftest composed-teardown-propagates-interruption
+  (Thread/interrupted)
+  (let [failure-state (harness/failure-state)
+        events (atom [])
+        interruption (InterruptedException. "stop teardown")
+        package (openraft-nemesis/compose-packages
+                 failure-state
+                 [(teardown-package :partition events interruption)
+                  (teardown-package :process events nil)])
+        subject (nemesis/setup! (:nemesis package) test-config)]
+    (try
+      (let [[thrown interrupted?]
+            (try
+              (nemesis/teardown! subject test-config)
+              [nil (.isInterrupted (Thread/currentThread))]
+              (catch Throwable throwable
+                [throwable (.isInterrupted (Thread/currentThread))]))]
+        (is (identical? interruption thrown))
+        (is interrupted?)
+        (is (= [:partition] @events))
+        (is (nil? (harness/primary-failure failure-state)))
+        (is (empty? (harness/secondary-failures failure-state))))
+      (finally
+        (Thread/interrupted)))))
 
 (defn- condition-timeout [condition]
   (try
