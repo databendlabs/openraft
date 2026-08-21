@@ -127,7 +127,7 @@
            opts
            {:name (str "openraft linearizable registers "
                        (str/join "," (map name nemesis-types)))
-            :db database
+            :db (worker/wrap-db failure-state database)
             :client (worker/wrap-client failure-state (:client workload))
             :nemesis (worker/wrap-nemesis failure-state
                                           (:nemesis nemesis-package))
