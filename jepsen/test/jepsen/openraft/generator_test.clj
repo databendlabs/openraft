@@ -53,3 +53,30 @@
       (is (nil? (gen/op after-completion
                         gen-test/default-test
                         gen-test/default-context))))))
+
+(deftest keeps-a-parent-generator-alive-after-a-harness-failure
+  (let [failure-state (harness/failure-state)
+        generator (openraft-generator/pending-on-harness-failure
+                   failure-state
+                   [{:f :ordinary-workload}])
+        [operation generator'] (gen/op generator
+                                       gen-test/default-test
+                                       gen-test/default-context)]
+    (is (= :ordinary-workload (:f operation)))
+    (harness/record-failure! failure-state
+                             :client
+                             {:operation operation}
+                             (RuntimeException. "client failed"))
+    (let [[pending generator''] (gen/op generator'
+                                        gen-test/default-test
+                                        gen-test/default-context)]
+      (is (= :pending pending))
+      (is (some? generator''))
+      (let [after-completion (gen/update generator''
+                                         gen-test/default-test
+                                         gen-test/default-context
+                                         (assoc operation :type :ok))
+            [pending _] (gen/op after-completion
+                                gen-test/default-test
+                                gen-test/default-context)]
+        (is (= :pending pending))))))

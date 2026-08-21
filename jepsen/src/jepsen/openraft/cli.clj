@@ -85,13 +85,16 @@
 (defn- lifecycle-generator
   [failure-state time-limit workload nemesis-package]
   (gen/phases
-   (openraft-generator/stop-on-harness-failure
-    failure-state
-    (gen/shortest-any
-     (gen/nemesis
-      (gen/time-limit time-limit (:generator nemesis-package)))
+   (gen/shortest-any
+    (gen/nemesis
+     (gen/phases
+      (openraft-generator/stop-on-harness-failure
+       failure-state
+       (gen/time-limit time-limit (:generator nemesis-package)))
+      (:final-generator nemesis-package)))
+    (openraft-generator/pending-on-harness-failure
+     failure-state
      (:generator workload)))
-   (gen/nemesis (:final-generator nemesis-package))
    (delay
      (when-not (harness/primary-failure failure-state)
        (openraft-generator/stop-on-harness-failure
