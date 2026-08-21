@@ -1,6 +1,7 @@
 (ns jepsen.openraft.worker
   (:require [clojure.tools.logging :refer [error]]
             [jepsen [client :as client]
+             [db :as db]
              [nemesis :as nemesis]]
             [jepsen.openraft.harness :as harness]
             [jepsen.openraft.interruption :as interruption]))
@@ -10,7 +11,9 @@
   (try
     (f)
     (catch Throwable throwable
-      (harness/record-failure! failure-state source context throwable)
+      (if (interruption/interruption? throwable)
+        (.interrupt (Thread/currentThread))
+        (harness/record-failure! failure-state source context throwable))
       (throw throwable))))
 
 (def ^:dynamic ^:private *teardown-failure-handler* nil)
@@ -81,7 +84,12 @@
                                #(client/open! delegate test node))))
 
     (setup! [_ test]
-      (wrap-client failure-state (client/setup! delegate test)))
+      (wrap-client
+       failure-state
+       (call-recording-failure failure-state
+                               :client
+                               {:phase :setup}
+                               #(client/setup! delegate test))))
 
     (invoke! [_ test op]
       (call-recording-failure failure-state
@@ -108,7 +116,12 @@
   [failure-state delegate]
   (reify nemesis/Nemesis
     (setup! [_ test]
-      (wrap-nemesis failure-state (nemesis/setup! delegate test)))
+      (wrap-nemesis
+       failure-state
+       (call-recording-failure failure-state
+                               :nemesis
+                               {:phase :setup}
+                               #(nemesis/setup! delegate test))))
 
     (invoke! [_ test op]
       (call-recording-failure failure-state
@@ -123,6 +136,42 @@
                                 :component :composed-nemesis
                                 :nodes (:nodes test)}
                                #(nemesis/teardown! delegate test)))))
+
+(defn wrap-db
+  "Records failures from the OpenRaft DB lifecycle and control boundaries."
+  [failure-state delegate]
+  (reify db/DB
+    (setup! [_ test node]
+      (call-recording-failure failure-state
+                              :db
+                              {:phase :setup
+                               :node node}
+                              #(db/setup! delegate test node)))
+
+    (teardown! [_ test node]
+      (call-recording-failure failure-state
+                              :db
+                              {:phase :teardown
+                               :node node}
+                              #(db/teardown! delegate test node)))
+
+    db/Kill
+    (kill! [_ test node]
+      (db/kill! delegate test node))
+
+    (start! [_ test node]
+      (db/start! delegate test node))
+
+    db/Pause
+    (pause! [_ test node]
+      (db/pause! delegate test node))
+
+    (resume! [_ test node]
+      (db/resume! delegate test node))
+
+    db/LogFiles
+    (log-files [_ test node]
+      (db/log-files delegate test node))))
 
 (defn wrap-nemesis-teardown
   "Records and contains a package's non-interruption teardown failures."

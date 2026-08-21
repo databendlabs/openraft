@@ -1,21 +1,23 @@
 (ns jepsen.openraft.worker-test
   (:require [clojure.test :refer [deftest is testing]]
             [jepsen [client :as client]
+             [db :as db]
              [nemesis :as nemesis]]
             [jepsen.openraft [harness :as harness]
              [worker :as worker]]))
 
 (defn- test-client
-  [{:keys [open-f invoke-f close-f]
+  [{:keys [open-f setup-f invoke-f close-f]
     :or {open-f (fn [this _test _node] this)
+         setup-f (fn [this _test] this)
          invoke-f (fn [_test op] (assoc op :type :ok))
          close-f (fn [_test])}}]
   (reify client/Client
     (open! [this test node]
       (open-f this test node))
 
-    (setup! [this _test]
-      this)
+    (setup! [this test]
+      (setup-f this test))
 
     (invoke! [_ test op]
       (invoke-f test op))
@@ -27,17 +29,39 @@
 
 (defn- test-nemesis
   ([invoke-f]
-   (test-nemesis invoke-f (fn [_test])))
+   (test-nemesis invoke-f (fn [this _test] this) (fn [_test])))
   ([invoke-f teardown-f]
+   (test-nemesis invoke-f (fn [this _test] this) teardown-f))
+  ([invoke-f setup-f teardown-f]
    (reify nemesis/Nemesis
-     (setup! [this _test]
-       this)
+     (setup! [this test]
+       (setup-f this test))
 
      (invoke! [_ test op]
        (invoke-f test op))
 
      (teardown! [_ test]
        (teardown-f test)))))
+
+(defn- test-db
+  [setup-f]
+  (reify db/DB
+    (setup! [_ test node]
+      (setup-f test node))
+
+    (teardown! [_ _test _node])
+
+    db/Kill
+    (kill! [_ _test _node])
+    (start! [_ _test _node])
+
+    db/Pause
+    (pause! [_ _test _node])
+    (resume! [_ _test _node])
+
+    db/LogFiles
+    (log-files [_ _test _node]
+      {})))
 
 (defn- thrown-by [f]
   (try
@@ -54,6 +78,19 @@
     (is (identical? throwable (:throwable failure)))))
 
 (deftest records-client-worker-failures
+  (testing "setup"
+    (let [failure-state (harness/failure-state)
+          throwable (RuntimeException. "setup failed")
+          subject (worker/wrap-client
+                   failure-state
+                   (test-client {:setup-f (fn [& _] (throw throwable))}))
+          thrown (thrown-by #(client/setup! subject {}))]
+      (is (identical? throwable thrown))
+      (assert-primary-failure failure-state
+                              :client
+                              {:phase :setup}
+                              throwable)))
+
   (testing "open"
     (let [failure-state (harness/failure-state)
           throwable (RuntimeException. "open failed")
@@ -100,6 +137,21 @@
                               throwable))))
 
 (deftest records-nemesis-worker-failures
+  (testing "setup"
+    (let [failure-state (harness/failure-state)
+          throwable (RuntimeException. "nemesis setup failed")
+          subject (worker/wrap-nemesis
+                   failure-state
+                   (test-nemesis (fn [& _] nil)
+                                 (fn [& _] (throw throwable))
+                                 (fn [& _] nil)))
+          thrown (thrown-by #(nemesis/setup! subject {}))]
+      (is (identical? throwable thrown))
+      (assert-primary-failure failure-state
+                              :nemesis
+                              {:phase :setup}
+                              throwable)))
+
   (let [failure-state (harness/failure-state)
         throwable (RuntimeException. "nemesis failed")
         op {:type :info
@@ -115,6 +167,20 @@
                             :nemesis
                             {:phase :invoke
                              :operation op}
+                            throwable)))
+
+(deftest records-db-setup-failures
+  (let [failure-state (harness/failure-state)
+        throwable (RuntimeException. "database setup failed")
+        subject (worker/wrap-db
+                 failure-state
+                 (test-db (fn [& _] (throw throwable))))
+        thrown (thrown-by #(db/setup! subject {} "n1"))]
+    (is (identical? throwable thrown))
+    (assert-primary-failure failure-state
+                            :db
+                            {:phase :setup
+                             :node "n1"}
                             throwable)))
 
 (deftest modeled-outcomes-do-not-record-failures
