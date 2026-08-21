@@ -2,17 +2,57 @@
   (:require [clojure.java.io :as io]
             [jepsen.checker :as checker]
             [jepsen.openraft.harness :as harness]
+            [jepsen.openraft.interruption :as interruption]
             [jepsen.store :as store]))
 
 ;; Emitted by openraft-test-app's panic hook.
 (def node-panic-pattern
   #"OPENRAFT_JEPSEN_PANIC")
 
+(defn- fatal-throwable? [throwable]
+  (or (instance? ThreadDeath throwable)
+      (instance? VirtualMachineError throwable)))
+
+(defn- checker-exception-evidence [throwable]
+  {:class (.getName (class throwable))
+   :message (ex-message throwable)})
+
+(defn reject-checker-exceptions
+  "Turns non-interruption checker exceptions into Harness evidence.
+
+  The wrapper is suitable for both standalone and composed checkers."
+  [delegate]
+  (reify
+    clojure.lang.ILookup
+    (valAt [_ key]
+      (get delegate key))
+    (valAt [_ key not-found]
+      (get delegate key not-found))
+
+    checker/Checker
+    (check [_ test history opts]
+      (try
+        (checker/check delegate test history opts)
+        (catch Throwable throwable
+          (cond
+            (interruption/interruption? throwable)
+            (do
+              (.interrupt (Thread/currentThread))
+              (throw throwable))
+
+            (fatal-throwable? throwable)
+            (throw throwable)
+
+            :else
+            {:valid? false
+             :checker-exception (checker-exception-evidence throwable)}))))))
+
 (defn random-seed-checker []
-  (reify checker/Checker
-    (check [_ test _history _opts]
-      {:valid? true
-       :seed (:seed test)})))
+  (reject-checker-exceptions
+   (reify checker/Checker
+     (check [_ test _history _opts]
+       {:valid? true
+        :seed (:seed test)}))))
 
 (defn- escaped-worker-evidence [exceptions]
   (mapv (fn [exception]
@@ -21,15 +61,16 @@
 
 (defn strict-unhandled-exceptions []
   (let [delegate (checker/unhandled-exceptions)]
-    (reify checker/Checker
-      (check [_ test history opts]
-        (let [result (checker/check delegate test history opts)]
-          (if (seq (:exceptions result))
-            (assoc result
-                   :valid? false
-                   :escaped-worker-exceptions
-                   (escaped-worker-evidence (:exceptions result)))
-            result))))))
+    (reject-checker-exceptions
+     (reify checker/Checker
+       (check [_ test history opts]
+         (let [result (checker/check delegate test history opts)]
+           (if (seq (:exceptions result))
+             (assoc result
+                    :valid? false
+                    :escaped-worker-exceptions
+                    (escaped-worker-evidence (:exceptions result)))
+             result)))))))
 
 (defn- failure-evidence [{:keys [source context throwable]}]
   {:source source
@@ -81,27 +122,28 @@
           (line-seq reader))))
 
 (defn required-log-file-pattern [pattern filename]
-  (reify checker/Checker
-    (check [_ test _history _opts]
-      (let [node-files (mapv (fn [node]
-                               [node (store/path test node filename)])
-                             (:nodes test))
-            missing-nodes (->> node-files
-                               (remove (fn [[_ file]]
-                                         (.isFile ^java.io.File file)))
-                               (mapv first))
-            matches (->> node-files
-                         (filter (fn [[_ file]]
-                                   (.isFile ^java.io.File file)))
-                         (mapcat (fn [[node file]]
-                                   (log-matches pattern node file)))
-                         vec)
-            valid? (cond
-                     (seq matches) false
-                     (seq missing-nodes) :unknown
-                     :else true)]
-        {:valid? valid?
-         :filename filename
-         :missing-nodes missing-nodes
-         :count (count matches)
-         :matches matches}))))
+  (reject-checker-exceptions
+   (reify checker/Checker
+     (check [_ test _history _opts]
+       (let [node-files (mapv (fn [node]
+                                [node (store/path test node filename)])
+                              (:nodes test))
+             missing-nodes (->> node-files
+                                (remove (fn [[_ file]]
+                                          (.isFile ^java.io.File file)))
+                                (mapv first))
+             matches (->> node-files
+                          (filter (fn [[_ file]]
+                                    (.isFile ^java.io.File file)))
+                          (mapcat (fn [[node file]]
+                                    (log-matches pattern node file)))
+                          vec)
+             valid? (cond
+                      (seq matches) false
+                      (seq missing-nodes) :unknown
+                      :else true)]
+         {:valid? valid?
+          :filename filename
+          :missing-nodes missing-nodes
+          :count (count matches)
+          :matches matches})))))

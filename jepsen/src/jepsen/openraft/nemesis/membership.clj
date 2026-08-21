@@ -6,6 +6,7 @@
              [random :as random]]
             [jepsen.openraft.await :as await]
             [jepsen.openraft [client :as client]
+             [checker :as openraft-checker]
              [cluster :as cluster]
              [db :as openraft-db]]
             [jepsen.openraft.nemesis.outcome :as outcome]
@@ -1070,4 +1071,5 @@
    :generator (membership-generator)
    :final-generator {:type :info
                      :f :restore-membership}
-   :checker (coverage-checker)})
+   :checker (openraft-checker/reject-checker-exceptions
+             (coverage-checker))})

@@ -6,6 +6,7 @@
              [random :as random]]
             [jepsen.nemesis.combined :as combined]
             [jepsen.openraft.await :as await]
+            [jepsen.openraft.checker :as openraft-checker]
             [jepsen.openraft.cluster :as cluster]
             [jepsen.openraft.interruption :as interruption]
             [jepsen.openraft.nemesis.outcome :as outcome]
@@ -153,26 +154,27 @@
    :perf #{}})
 
 (defn- fault-class-checker [fault-checker]
-  (reify checker/Checker
-    (check [_ test history opts]
-      (let [result (checker/check fault-checker test history opts)
-            observed (or (:observed-modes result)
-                         (:observed-changes result))
-            executed? (boolean (seq observed))
-            cluster-state (:cluster-state result)
-            valid? (cond
-                     (not executed?) false
-                     (pos? (or (:error-count result) 0)) false
-                     (contains? result :restored?)
-                     (and (:restored? result)
-                          (:recovered? result))
-                     (= :intact cluster-state) true
-                     (= :unknown cluster-state) :unknown
-                     :else false)]
-        (-> result
-            (dissoc :missing-modes :missing-changes)
-            (assoc :valid? valid?
-                   :fault-class-executed? executed?))))))
+  (openraft-checker/reject-checker-exceptions
+   (reify checker/Checker
+     (check [_ test history opts]
+       (let [result (checker/check fault-checker test history opts)
+             observed (or (:observed-modes result)
+                          (:observed-changes result))
+             executed? (boolean (seq observed))
+             cluster-state (:cluster-state result)
+             valid? (cond
+                      (not executed?) false
+                      (pos? (or (:error-count result) 0)) false
+                      (contains? result :restored?)
+                      (and (:restored? result)
+                           (:recovered? result))
+                      (= :intact cluster-state) true
+                      (= :unknown cluster-state) :unknown
+                      :else false)]
+         (-> result
+             (dissoc :missing-modes :missing-changes)
+             (assoc :valid? valid?
+                    :fault-class-executed? executed?)))))))
 
 (defn- cleanup-order [packages]
   (let [membership? #(= :membership (:name %))]
@@ -219,4 +221,5 @@
             :nemesis (nemesis/validate (:nemesis composed))
             :checker (if (= 1 (count packages))
                        (:checker (first packages))
-                       (checker/compose checkers))))))
+                       (openraft-checker/reject-checker-exceptions
+                        (checker/compose checkers)))))))
