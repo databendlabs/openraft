@@ -7,6 +7,7 @@
             [jepsen.nemesis.combined :as combined]
             [jepsen.openraft.cluster :as cluster]
             [jepsen.openraft.interruption :as interruption]
+            [jepsen.openraft.nemesis.outcome :as outcome]
             [jepsen.openraft.quorum :as quorum]))
 
 (def downtime-seconds 10)
@@ -60,12 +61,14 @@
 (def ^:private disruption-start-specs
   {:process {:delegate-f :kill
              :active-key :killed
+             :active-reason :processes-already-killed
              :active-message "Processes are already stopped"
              :start-message "Killing OpenRaft processes"
              :skip-message
              "Skipping process kill without a quorum-supported leader"}
    :pause {:delegate-f :pause
            :active-key :paused
+           :active-reason :processes-already-paused
            :active-message "Processes are already paused"
            :start-message "Pausing OpenRaft processes"
            :skip-message
@@ -76,51 +79,157 @@
       (throw (ex-info "Unknown process disruption kind"
                       {:kind kind}))))
 
+(def ^:private stop-results
+  #{:killed :target-absent :target-already-exited})
+
+(def ^:private start-results
+  #{:already-running :start-confirmed})
+
+(def ^:private pause-results
+  #{:paused :target-absent :target-already-exited})
+
+(def ^:private resume-results
+  #{:resumed :target-absent :target-already-exited})
+
+(defn- invoke-delegate! [delegate test op]
+  (try
+    (nemesis/invoke! delegate test op)
+    (catch Exception e
+      ;; c/on-nodes runs multi-node control operations on worker threads.
+      ;; Restore the interrupt flag on the receiving Nemesis thread too.
+      (when (interruption/interruption? e)
+        (.interrupt (Thread/currentThread)))
+      (throw e))))
+
+(defn- delegate-results!
+  [completion targets allowed-results operation]
+  (let [results (:value completion)
+        expected-targets (set targets)]
+    (when-not (and (map? results)
+                   (= expected-targets (set (keys results)))
+                   (= (count expected-targets) (count results))
+                   (every? allowed-results (vals results)))
+      (throw (ex-info "Unexpected process control result"
+                      {:kind :unexpected-process-control-result
+                       :operation operation
+                       :expected-targets expected-targets
+                       :allowed-results allowed-results
+                       :result results})))
+    results))
+
+(defn- control-outcome
+  [details completion targets allowed-results operation result-key
+   confirmed-result]
+  (let [results (delegate-results! completion
+                                   targets
+                                   allowed-results
+                                   operation)
+        details (assoc details result-key results)]
+    [details
+     (cond
+       (some #{confirmed-result} (vals results))
+       (outcome/installed details)
+
+       (every? #{:target-absent} (vals results))
+       (outcome/skipped :target-absent details)
+
+       :else
+       (outcome/skipped :target-already-exited details))]))
+
+(defn- stop-outcome [disruption completion]
+  (control-outcome disruption
+                   completion
+                   (:nodes disruption)
+                   stop-results
+                   :kill
+                   :stop-results
+                   :killed))
+
+(defn- pause-outcome [disruption completion]
+  (control-outcome disruption
+                   completion
+                   (:nodes disruption)
+                   pause-results
+                   :pause
+                   :pause-results
+                   :paused))
+
+(defn- resume-outcome [disruption completion targets]
+  (control-outcome {:paused disruption
+                    :resumed targets}
+                   completion
+                   targets
+                   resume-results
+                   :resume
+                   :resume-results
+                   :resumed))
+
 (defn- start-disruption! [delegate active kind test op]
-  (let [{:keys [delegate-f active-key active-message
+  (let [{:keys [delegate-f active-key active-reason active-message
                 start-message skip-message]}
         (disruption-spec kind)]
-    (when @active
-      (throw (ex-info active-message
-                      {active-key @active})))
-    (if-let [status (cluster/membership-status test)]
-      (let [mode (:value op)
-            eligible-nodes (if (= :pause kind)
-                             (->> (:nodes test)
-                                  (filter (set (keys (:metrics status))))
-                                  vec)
-                             (:nodes test))]
-        (if-let [disruption (process-disruption test
-                                                status
-                                                mode
-                                                eligible-nodes)]
-          (let [targets (:nodes disruption)]
-            (info start-message disruption)
-            ;; A multi-node disruption may partially succeed before the delegate
-            ;; reports an error, so retain every node that may need recovering.
-            (reset! active disruption)
-            (nemesis/invoke! delegate test
-                             (assoc op
-                                    :f delegate-f
-                                    :value targets))
-            (assoc op :value disruption))
-          (case kind
-            :process
-            (throw (ex-info "Membership has no quorum-safe process targets"
-                            {:leader (:leader status)
+    (if-let [active-disruption @active]
+      (do
+        (info active-message {active-key active-disruption})
+        (assoc op
+               :value (outcome/skipped
+                       active-reason
+                       {:kind kind
+                        active-key active-disruption})))
+      (if-let [status (cluster/membership-status test)]
+        (let [mode (:value op)
+              eligible-nodes (if (= :pause kind)
+                               (->> (:nodes test)
+                                    (filter (set (keys (:metrics status))))
+                                    vec)
+                               (:nodes test))]
+          (if-let [disruption (process-disruption test
+                                                  status
+                                                  mode
+                                                  eligible-nodes)]
+            (let [targets (:nodes disruption)]
+              (info start-message disruption)
+              ;; A multi-node disruption may partially succeed before the
+              ;; delegate reports an error, so retain every node that may need
+              ;; recovering.
+              (reset! active disruption)
+              (let [completion (invoke-delegate! delegate
+                                                 test
+                                                 (assoc op
+                                                        :f delegate-f
+                                                        :value targets))
+                    [active-disruption value]
+                    (case kind
+                      :process (stop-outcome disruption completion)
+                      :pause (pause-outcome disruption completion))]
+                (reset! active active-disruption)
+                (assoc op :value value)))
+            (case kind
+              :process
+              (let [details {:leader (:leader status)
                              :mode mode
                              :voter-configs (cluster/voter-configs test
-                                                                   status)}))
+                                                                   status)}]
+                (info "Skipping process kill without a quorum-safe target"
+                      details)
+                (assoc op
+                       :value (outcome/skipped
+                               :no-quorum-safe-process-target
+                               details)))
 
-            :pause
-            (do
-              (info "Skipping process pause without a reachable target"
-                    {:mode mode
-                     :reachable-nodes eligible-nodes})
-              (assoc op :value :no-reachable-pause-target)))))
-      (do
-        (info skip-message)
-        (assoc op :value :no-supported-leader)))))
+              :pause
+              (let [details {:mode mode
+                             :reachable-nodes eligible-nodes}]
+                (info "Skipping process pause without a reachable target"
+                      details)
+                (assoc op
+                       :value (outcome/skipped
+                               :no-reachable-pause-target
+                               details))))))
+        (do
+          (info skip-message)
+          (assoc op
+                 :value (outcome/skipped :no-supported-leader {})))))))
 
 (defrecord ProcessNemesis [delegate killed]
   nemesis/Nemesis
@@ -134,15 +243,23 @@
 
       :restart-process
       (if-let [{:keys [nodes] :as disruption} @killed]
-        (do
-          (info "Restarting OpenRaft processes" {:nodes nodes})
-          (nemesis/invoke! delegate test
-                           (assoc op
-                                  :f :start
-                                  :value nodes))
+        (let [_ (info "Restarting OpenRaft processes" {:nodes nodes})
+              completion
+              (invoke-delegate! delegate
+                                test
+                                (assoc op
+                                       :f :start
+                                       :value nodes))
+              results (delegate-results! completion
+                                         nodes
+                                         start-results
+                                         :start)
+              value (outcome/installed
+                     (assoc disruption :start-results results))]
           (reset! killed nil)
-          (assoc op :value disruption))
-        (assoc op :value :no-processes-killed))))
+          (assoc op :value value))
+        (assoc op
+               :value (outcome/skipped :no-processes-killed {})))))
 
   (teardown! [_ test]
     (nemesis/teardown! delegate test))
@@ -165,15 +282,16 @@
       (start-disruption! delegate paused :pause test op)
 
       :resume-process
-      (let [disruption @paused]
+      (let [disruption @paused
+            targets (:nodes test)]
         (info "Resuming all OpenRaft processes" {:nodes (:nodes test)})
-        (nemesis/invoke! delegate test
-                         (assoc op
-                                :f :resume
-                                :value (:nodes test)))
-        (reset! paused nil)
-        (assoc op :value {:paused disruption
-                          :resumed (:nodes test)}))))
+        (let [completion (invoke-delegate! delegate test
+                                           (assoc op
+                                                  :f :resume
+                                                  :value targets))
+              [_ value] (resume-outcome disruption completion targets)]
+          (reset! paused nil)
+          (assoc op :value value)))))
 
   (teardown! [_ test]
     (try
@@ -198,6 +316,80 @@
 
 (defn pause-nemesis [db]
   (PauseNemesis. (combined/db-nemesis db) (atom nil)))
+
+(defn- legacy-disruption-installed? [required-modes value]
+  (and (map? value)
+       (required-modes (:mode value))
+       (:leader value)
+       (coll? (:nodes value))
+       (coll? (:voter-configs value))
+       (coll? (:survivors value))))
+
+(defn- disruption-installed? [required-modes value]
+  (and (outcome/installed-or-legacy?
+        value
+        (partial legacy-disruption-installed? required-modes))
+       (required-modes (:mode value))))
+
+(defn- pause-installed? [value]
+  (if (and (map? value) (contains? value :status))
+    (let [targets (:nodes value)
+          target-set (set targets)
+          results (:pause-results value)
+          mode (:mode value)
+          leader (:leader value)]
+      (and (= :installed (:status value))
+           (required-pause-modes mode)
+           (seq targets)
+           (map? results)
+           (= (set targets) (set (keys results)))
+           (case mode
+             :leader-paused
+             (and (contains? target-set leader)
+                  (= :paused (get results leader)))
+
+             :leader-unpaused
+             (and (not (contains? target-set leader))
+                  (some #{:paused} (vals results)))
+
+             false)))
+    (legacy-disruption-installed? required-pause-modes value)))
+
+(defn- actual-pause-installed? [value]
+  (if (and (map? value) (contains? value :status))
+    (let [targets (:nodes value)
+          results (:pause-results value)]
+      (and (= :installed (:status value))
+           (seq targets)
+           (map? results)
+           (= (set targets) (set (keys results)))
+           (every? pause-results (vals results))
+           (some #{:paused} (vals results))))
+    (legacy-disruption-installed? required-pause-modes value)))
+
+(defn- legacy-resume-installed? [expected-nodes value]
+  (and (map? value)
+       (contains? value :paused)
+       (coll? (:resumed value))
+       (= expected-nodes (set (:resumed value)))))
+
+(defn- resume-installed? [expected-nodes value]
+  (if (and (map? value) (contains? value :status))
+    (let [results (:resume-results value)]
+      (and (= :installed (:status value))
+           (contains? value :paused)
+           (coll? (:resumed value))
+           (= expected-nodes (set (:resumed value)))
+           (map? results)
+           (= expected-nodes (set (keys results)))
+           (every? #(= :resumed (get results %)) expected-nodes)))
+    (legacy-resume-installed? expected-nodes value)))
+
+(defn- recovery-installed? [value]
+  (and (outcome/installed-or-legacy?
+        value
+        #(and (map? %) (:leader %)))
+       (:leader value)))
 
 (defn- process-generator []
   (gen/cycle
@@ -229,12 +421,14 @@
 
 (defn- operation-error? [op]
   (boolean (or (:error op)
-               (:exception op))))
+               (:exception op)
+               (= :indeterminate (get-in op [:value :status])))))
 
 (defn- coverage-result
-  [required-modes operation-f invalid-states history cluster-state]
+  [required-modes operation-f installed? invalid-states history cluster-state]
   (let [observed-modes (->> history
                             (filter #(= operation-f (:f %)))
+                            (filter #(installed? (:value %)))
                             (keep #(get-in % [:value :mode]))
                             set)
         missing-modes (remove observed-modes required-modes)
@@ -260,7 +454,9 @@
                                  :unknown
 
                                  (and (= :kill-process (:f op))
-                                      (get-in op [:value :mode]))
+                                      (disruption-installed?
+                                       required-process-modes
+                                       (:value op)))
                                  :degraded
 
                                  (and (= :restart-process (:f op))
@@ -268,7 +464,7 @@
                                  :unknown
 
                                  (and (= :await-recovery (:f op))
-                                      (get-in op [:value :leader]))
+                                      (recovery-installed? (:value op)))
                                  :intact
 
                                  (and (= :await-recovery (:f op))
@@ -282,6 +478,8 @@
                            history)]
         (coverage-result required-process-modes
                          :kill-process
+                         (partial disruption-installed?
+                                  required-process-modes)
                          #{:degraded}
                          history
                          cluster-state)))))
@@ -297,29 +495,30 @@
 
 (defn- next-pause-state [expected-nodes state op]
   (let [error? (operation-error? op)
-        resumed-nodes (get-in op [:value :resumed])]
+        status (get-in op [:value :status])]
     (case (:f op)
       :pause-process
       (cond
         error? :unknown
-        (get-in op [:value :mode]) :paused
+        (actual-pause-installed? (:value op)) :paused
         :else state)
 
       :resume-process
       (cond
         error? :unknown
-        (and (coll? resumed-nodes)
-             (= expected-nodes (set resumed-nodes))) :recovery-pending
+        (resume-installed? expected-nodes (:value op)) :recovery-pending
+        (= :skipped status) state
         :else :unknown)
 
       :await-recovery
       (cond
-        (get-in op [:value :leader]) (if (= :recovery-pending state)
-                                       :intact
-                                       :unknown)
         error? (if (#{:paused :recovery-pending} state)
                  state
                  :unknown)
+        (recovery-installed? (:value op)) (if (#{:intact
+                                                 :recovery-pending} state)
+                                            :intact
+                                            :unknown)
         :else state)
 
       state)))
@@ -333,6 +532,7 @@
                                   history)]
         (coverage-result required-pause-modes
                          :pause-process
+                         pause-installed?
                          #{:paused :recovery-pending}
                          history
                          cluster-state)))))

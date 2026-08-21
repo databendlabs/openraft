@@ -1,5 +1,5 @@
 (ns jepsen.openraft.cluster-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [clojure.test :refer [deftest is testing]]
             [jepsen.openraft.client :as client]
             [jepsen.openraft.cluster :as cluster]
             [jepsen.util :as util]))
@@ -68,8 +68,44 @@
                                         {:kind :unreachable}))))]
       (is (nil? (#'cluster/cluster-status test-config))))))
 
+(deftest distinguishes-modeled-metrics-failures-from-harness-errors
+  (testing "recognized SUT observations make a node unavailable"
+    (doseq [kind [:http-error
+                  :invalid-json
+                  :invalid-response
+                  :openraft-error
+                  :request-timeout
+                  :transport-error
+                  :unreachable]]
+      (with-redefs [client/metrics!
+                    (fn [_endpoint]
+                      (throw (ex-info "unavailable" {:kind kind})))]
+        (is (nil? (#'cluster/cluster-status test-config)) (name kind)))))
+
+  (testing "unknown implementation exceptions propagate"
+    (let [error (RuntimeException. "metrics bug")
+          thrown (with-redefs [client/metrics! (fn [_endpoint]
+                                                 (throw error))]
+                   (try
+                     (#'cluster/cluster-status test-config)
+                     nil
+                     (catch Exception e
+                       e)))]
+      (is (identical? error thrown))))
+
+  (testing "the readiness wait preserves the unknown exception"
+    (let [error (RuntimeException. "readiness bug")
+          thrown (with-redefs [client/metrics! (fn [_endpoint]
+                                                 (throw error))]
+                   (try
+                     (cluster/await-ready! test-config)
+                     nil
+                     (catch Exception e
+                       e)))]
+      (is (identical? error thrown)))))
+
 (deftest preserves-metrics-request-interruption
-  (doseq [[label error]
+  (doseq [[label make-error]
           [[:interrupted-exception
             #(InterruptedException. "interrupted")]
            [:interrupted-io
@@ -78,19 +114,20 @@
             #(java.nio.channels.ClosedByInterruptException.)]
            [:wrapped
             #(ex-info "interrupted" {:kind :interrupted})]]]
-    (let [interrupted?
+    (let [error (make-error)
+          [thrown interrupted?]
           @(future
-             (with-redefs [client/metrics!
-                           (fn [_endpoint]
-                             (throw (error)))]
-               (try
+             (try
+               (with-redefs [client/metrics!
+                             (fn [_endpoint]
+                               (throw error))]
                  (#'cluster/cluster-status test-config)
-                 false
-                 (catch InterruptedException _
-                   (let [interrupted? (.isInterrupted
-                                       (Thread/currentThread))]
-                     (Thread/interrupted)
-                     interrupted?)))))]
+                 [nil (.isInterrupted (Thread/currentThread))])
+               (catch Exception e
+                 [e (.isInterrupted (Thread/currentThread))])
+               (finally
+                 (Thread/interrupted))))]
+      (is (identical? error thrown) (name label))
       (is interrupted? (name label)))))
 
 (defn- membership [configs]
@@ -316,6 +353,44 @@
       (is (= committed
              (cluster/await-committed-membership! test-config)))
       (is (= [:retry] @attempts)))))
+
+(deftest membership-waits-do-not-retry-harness-exceptions
+  (doseq [[label wait!]
+          [[:committed #(cluster/await-committed-membership! test-config)]
+           [:stable #(cluster/await-stable-membership! test-config)]
+           [:learner #(cluster/await-observed-learner!
+                       test-config
+                       "n4"
+                       100)]]]
+    (testing (name label)
+      (let [attempts (atom 0)
+            error (RuntimeException. "membership wait bug")
+            thrown (with-redefs [cluster/membership-status
+                                 (fn [_test]
+                                   (swap! attempts inc)
+                                   (throw error))]
+                     (try
+                       (wait!)
+                       nil
+                       (catch Exception e
+                         e)))]
+        (is (identical? error thrown))
+        (is (= 1 @attempts)))))
+
+  (testing "node metrics retries only modeled SUT availability"
+    (let [attempts (atom 0)
+          error (RuntimeException. "node metrics bug")
+          thrown (with-redefs [cluster/node-metrics!
+                               (fn [_test _node]
+                                 (swap! attempts inc)
+                                 (throw error))]
+                   (try
+                     (cluster/await-node-metrics! test-config "n4" 100)
+                     nil
+                     (catch Exception e
+                       e)))]
+      (is (identical? error thrown))
+      (is (= 1 @attempts)))))
 
 (deftest rejects-support-from-an-older-leader-term
   (let [membership (stored-membership
