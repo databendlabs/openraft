@@ -3,10 +3,12 @@
             [clojure.tools.cli :as tools-cli]
             [jepsen.generator :as gen]
             [jepsen.generator.test :as gen-test]
+            [jepsen.openraft.checker :as openraft-checker]
             [jepsen.openraft.cli :as cli]
             [jepsen.openraft.db :as openraft-db]
             [jepsen.openraft.generator :as openraft-generator]
             [jepsen.openraft.harness :as harness]
+            [jepsen.openraft.nemesis :as openraft-nemesis]
             [jepsen.openraft.worker :as worker]
             [jepsen.random :as random]))
 
@@ -74,7 +76,7 @@
   (let [test (cli/openraft-test {:nemesis [:membership :partition]
                                  :nodes ["n1" "n2" "n3" "n4" "n5"]
                                  :time-limit 10})
-        checkers (get-in test [:checker :checkers])
+        checkers (get-in test [:checker :delegate :checkers])
         nemesis-checkers (get-in checkers [:nemesis :checkers])]
     (is (= #{:seed :stats :exceptions :crash :nemesis :workload}
            (set (keys checkers))))
@@ -85,6 +87,9 @@
   (let [failure-state (harness/failure-state)
         wrapped-states (atom [])
         generator-states (atom [])
+        composition-states (atom [])
+        checker-states (atom [])
+        compose-packages openraft-nemesis/compose-packages
         wrap (fn [source]
                (fn [state delegate]
                  (swap! wrapped-states conj [source state])
@@ -93,8 +98,17 @@
                (swap! generator-states conj state)
                generator)]
     (with-redefs [harness/failure-state (constantly failure-state)
+                  openraft-nemesis/compose-packages
+                  (fn [state packages]
+                    (swap! composition-states conj state)
+                    (compose-packages state packages))
                   worker/wrap-client (wrap :client)
                   worker/wrap-nemesis (wrap :nemesis)
+                  openraft-checker/reject-harness-failures
+                  (fn [state delegate strict-checker-key]
+                    (swap! checker-states conj
+                           [state strict-checker-key])
+                    delegate)
                   openraft-generator/stop-on-harness-failure stop]
       (cli/openraft-test {:nemesis :partition
                           :nodes ["n1" "n2" "n3"]
@@ -103,7 +117,12 @@
     (is (every? #(identical? failure-state (second %))
                 @wrapped-states))
     (is (= 1 (count @generator-states)))
-    (is (identical? failure-state (first @generator-states)))))
+    (is (identical? failure-state (first @generator-states)))
+    (is (= 1 (count @composition-states)))
+    (is (identical? failure-state (first @composition-states)))
+    (is (= 1 (count @checker-states)))
+    (is (identical? failure-state (ffirst @checker-states)))
+    (is (= :exceptions (second (first @checker-states))))))
 
 (defn- lifecycle-test-generator [failure-state]
   (#'cli/lifecycle-generator

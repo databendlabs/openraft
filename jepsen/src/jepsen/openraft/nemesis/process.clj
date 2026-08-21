@@ -1,5 +1,5 @@
 (ns jepsen.openraft.nemesis.process
-  (:require [clojure.tools.logging :refer [info warn]]
+  (:require [clojure.tools.logging :refer [info]]
             [jepsen [checker :as checker]
              [generator :as gen]
              [nemesis :as nemesis]
@@ -8,7 +8,8 @@
             [jepsen.openraft.cluster :as cluster]
             [jepsen.openraft.interruption :as interruption]
             [jepsen.openraft.nemesis.outcome :as outcome]
-            [jepsen.openraft.quorum :as quorum]))
+            [jepsen.openraft.quorum :as quorum]
+            [jepsen.openraft.worker :as worker]))
 
 (def downtime-seconds 10)
 (def required-process-modes
@@ -299,16 +300,16 @@
                        {:type :info
                         :f :resume
                         :value (:nodes test)})
-      (catch Exception e
-        (if (interruption/interruption? e)
-          (do
-            (.interrupt (Thread/currentThread))
-            (throw e))
-          (warn e
-                "Failed to resume OpenRaft processes during teardown"
-                {:nodes (:nodes test)})))
-      (finally
-        (nemesis/teardown! delegate test))))
+      (catch Throwable throwable
+        (worker/handle-teardown-failure!
+         {:action :resume-processes}
+         throwable)))
+    (try
+      (nemesis/teardown! delegate test)
+      (catch Throwable throwable
+        (worker/handle-teardown-failure!
+         {:action :delegate-teardown}
+         throwable))))
 
   nemesis/Reflection
   (fs [_]

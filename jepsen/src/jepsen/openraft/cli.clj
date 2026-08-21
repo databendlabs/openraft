@@ -105,6 +105,7 @@
         nemesis-types (normalize-nemeses (:nemesis opts))
         nemesis-package
         (openraft-nemesis/compose-packages
+         failure-state
          (mapv (fn [nemesis-type]
                  (case nemesis-type
                    :partition
@@ -131,15 +132,18 @@
                                             (:time-limit opts)
                                             workload
                                             nemesis-package)
-            :checker (checker/compose
-                      {:seed (openraft-checker/random-seed-checker)
-                       :stats (checker/stats)
-                       :exceptions (openraft-checker/strict-unhandled-exceptions)
-                       :crash (openraft-checker/required-log-file-pattern
-                               openraft-checker/node-panic-pattern
-                               "openraft.log")
-                       :nemesis (:checker nemesis-package)
-                       :workload (:checker workload)})})))
+            :checker (openraft-checker/reject-harness-failures
+                      failure-state
+                      (checker/compose
+                       {:seed (openraft-checker/random-seed-checker)
+                        :stats (checker/stats)
+                        :exceptions (openraft-checker/strict-unhandled-exceptions)
+                        :crash (openraft-checker/required-log-file-pattern
+                                openraft-checker/node-panic-pattern
+                                "openraft.log")
+                        :nemesis (:checker nemesis-package)
+                        :workload (:checker workload)})
+                      :exceptions)})))
 
 (defn -main [& args]
   (cli/run! (cli/single-test-cmd {:test-fn openraft-test

@@ -5,9 +5,11 @@
              [nemesis :as nemesis]
              [random :as random]]
             [jepsen.openraft.cluster :as cluster]
+            [jepsen.openraft.harness :as harness]
             [jepsen.openraft.nemesis :as openraft-nemesis]
             [jepsen.openraft.nemesis.process :as process]
-            [jepsen.openraft.quorum :as quorum]))
+            [jepsen.openraft.quorum :as quorum]
+            [jepsen.openraft.worker :as worker]))
 
 (def voters ["n1" "n2" "n3" "n4" "n5"])
 
@@ -51,16 +53,32 @@
     (teardown! [this _test]
       this)))
 
-(defn- failing-resume-nemesis [events error]
+(defn- failing-resume-nemesis
+  ([events resume-error]
+   (failing-resume-nemesis events resume-error nil))
+  ([events resume-error teardown-error]
+   (reify nemesis/Nemesis
+     (setup! [this _test]
+       this)
+     (invoke! [_ _test op]
+       (swap! events conj [(:f op) (:value op)])
+       (throw resume-error))
+     (teardown! [this _test]
+       (swap! events conj :teardown)
+       (when teardown-error
+         (throw teardown-error))
+       this))))
+
+(defn- failing-teardown-nemesis [events error]
   (reify nemesis/Nemesis
     (setup! [this _test]
       this)
     (invoke! [_ _test op]
       (swap! events conj [(:f op) (:value op)])
-      (throw error))
-    (teardown! [this _test]
+      (delegate-completion op))
+    (teardown! [_ _test]
       (swap! events conj :teardown)
-      this)))
+      (throw error))))
 
 (deftest selects-fault-set-for-leader-mode
   (let [configs [(set voters)]
@@ -613,16 +631,52 @@
         (is (empty? @invocations))
         (is (empty? (:observed-modes result)))))))
 
-(deftest teardown-cleanup-failure-does-not-mask-analysis
-  (let [events (atom [])
+(deftest teardown-cleanup-failure-records-a-harness-failure
+  (let [failure-state (harness/failure-state)
+        events (atom [])
+        error (ex-info "unreachable" {:kind :unreachable})
         delegate (failing-resume-nemesis
                   events
-                  (ex-info "unreachable" {:kind :unreachable}))
-        subject (process/->PauseNemesis delegate (atom nil))
+                  error)
+        subject (worker/wrap-nemesis-teardown
+                 failure-state
+                 :pause
+                 (process/->PauseNemesis delegate (atom nil)))
         test {:nodes ["n1" "n2" "n3"]}]
     (nemesis/teardown! subject test)
     (is (= [[:resume (:nodes test)] :teardown]
-           @events))))
+           @events))
+    (let [failure (harness/primary-failure failure-state)]
+      (is (= :nemesis (:source failure)))
+      (is (= {:phase :teardown
+              :component :pause
+              :action :resume-processes
+              :nodes (:nodes test)}
+             (:context failure)))
+      (is (identical? error (:throwable failure))))))
+
+(deftest teardown-retains-each-stage-failure
+  (let [failure-state (harness/failure-state)
+        events (atom [])
+        resume-error (RuntimeException. "resume failed")
+        teardown-error (RuntimeException. "delegate teardown failed")
+        delegate (failing-resume-nemesis
+                  events
+                  resume-error
+                  teardown-error)
+        subject (worker/wrap-nemesis-teardown
+                 failure-state
+                 :pause
+                 (process/->PauseNemesis delegate (atom nil)))
+        test {:nodes ["n1" "n2" "n3"]}]
+    (nemesis/teardown! subject test)
+    (is (= [[:resume (:nodes test)] :teardown] @events))
+    (let [primary (harness/primary-failure failure-state)
+          [secondary] (harness/secondary-failures failure-state)]
+      (is (= :resume-processes (get-in primary [:context :action])))
+      (is (identical? resume-error (:throwable primary)))
+      (is (= :delegate-teardown (get-in secondary [:context :action])))
+      (is (identical? teardown-error (:throwable secondary))))))
 
 (deftest teardown-preserves-interruptions
   (doseq [[label error]
@@ -649,8 +703,42 @@
                 interrupted? (.isInterrupted (Thread/currentThread))]
             (is (identical? error thrown))
             (is interrupted?)
-            (is (= [[:resume (:nodes test)] :teardown]
+            (is (= [[:resume (:nodes test)]]
                    @events)))
+          (finally
+            (Thread/interrupted)))))))
+
+(deftest delegate-teardown-preserves-interruptions
+  (doseq [[label error]
+          [[:interrupted-exception
+            (InterruptedException. "interrupted")]
+           [:interrupted-io
+            (java.io.InterruptedIOException. "interrupted")]
+           [:closed-by-interrupt
+            (java.nio.channels.ClosedByInterruptException.)]
+           [:wrapped
+            (ex-info "interrupted" {:kind :interrupted})]]]
+    (testing (name label)
+      (Thread/interrupted)
+      (let [failure-state (harness/failure-state)
+            events (atom [])
+            delegate (failing-teardown-nemesis events error)
+            subject (worker/wrap-nemesis-teardown
+                     failure-state
+                     :pause
+                     (process/->PauseNemesis delegate (atom nil)))
+            test {:nodes ["n1" "n2" "n3"]}]
+        (try
+          (let [[thrown interrupted?]
+                (try
+                  (nemesis/teardown! subject test)
+                  [nil (.isInterrupted (Thread/currentThread))]
+                  (catch Throwable throwable
+                    [throwable (.isInterrupted (Thread/currentThread))]))]
+            (is (identical? error thrown))
+            (is interrupted?)
+            (is (= [[:resume (:nodes test)] :teardown] @events))
+            (is (nil? (harness/primary-failure failure-state))))
           (finally
             (Thread/interrupted)))))))
 

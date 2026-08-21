@@ -25,15 +25,19 @@
     (close! [_ test]
       (close-f test))))
 
-(defn- test-nemesis [invoke-f]
-  (reify nemesis/Nemesis
-    (setup! [this _test]
-      this)
+(defn- test-nemesis
+  ([invoke-f]
+   (test-nemesis invoke-f (fn [_test])))
+  ([invoke-f teardown-f]
+   (reify nemesis/Nemesis
+     (setup! [this _test]
+       this)
 
-    (invoke! [_ test op]
-      (invoke-f test op))
+     (invoke! [_ test op]
+       (invoke-f test op))
 
-    (teardown! [_ _test])))
+     (teardown! [_ test]
+       (teardown-f test)))))
 
 (defn- thrown-by [f]
   (try
@@ -167,3 +171,36 @@
             thrown (thrown-by #(invoke failure-state throwable))]
         (is (identical? throwable thrown))
         (is (nil? (harness/primary-failure failure-state)))))))
+
+(deftest teardown-logging-failures-do-not-escape
+  (let [failure-state (harness/failure-state)
+        teardown-error (RuntimeException. "teardown failed")
+        logging-error (RuntimeException. "logging failed")
+        subject (worker/wrap-nemesis-teardown
+                 failure-state
+                 :partition
+                 (test-nemesis identity
+                               (fn [_test] (throw teardown-error))))]
+    (with-redefs-fn {#'worker/log-teardown-failure
+                     (fn [_context _throwable]
+                       (throw logging-error))}
+      #(nemesis/teardown! subject {:nodes ["n1" "n2" "n3"]}))
+    (is (identical? teardown-error
+                    (:throwable
+                     (harness/primary-failure failure-state))))
+    (let [[failure] (harness/secondary-failures failure-state)]
+      (is (= :failure-log (get-in failure [:context :diagnostic])))
+      (is (identical? logging-error (:throwable failure))))))
+
+(deftest fatal-teardown-errors-propagate
+  (let [failure-state (harness/failure-state)
+        fatal-error (StackOverflowError. "fatal")
+        subject (worker/wrap-nemesis-teardown
+                 failure-state
+                 :partition
+                 (test-nemesis identity
+                               (fn [_test] (throw fatal-error))))
+        thrown (thrown-by #(nemesis/teardown! subject {}))]
+    (is (identical? fatal-error thrown))
+    (is (nil? (harness/primary-failure failure-state)))
+    (is (empty? (harness/secondary-failures failure-state)))))
