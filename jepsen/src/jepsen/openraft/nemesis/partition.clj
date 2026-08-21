@@ -5,6 +5,7 @@
              [nemesis :as nemesis]
              [random :as random]]
             [jepsen.openraft.cluster :as cluster]
+            [jepsen.openraft.checker :as openraft-checker]
             [jepsen.openraft.interruption :as interruption]
             [jepsen.openraft.nemesis.outcome :as outcome]
             [jepsen.openraft.quorum :as quorum]))
@@ -221,4 +222,5 @@
    :generator (partition-generator)
    :final-generator {:type :info
                      :f :stop-partition}
-   :checker (coverage-checker)})
+   :checker (openraft-checker/reject-checker-exceptions
+             (coverage-checker))})

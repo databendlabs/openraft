@@ -14,6 +14,11 @@
       (swap! calls inc)
       result)))
 
+(defn- throwing-checker [throwable]
+  (reify checker/Checker
+    (check [_ _test _history _opts]
+      (throw throwable))))
+
 (def ^:private escaped-worker-op
   {:type :info
    :f :read
@@ -26,6 +31,37 @@
                         {:seed 41}
                         (history/history [])
                         {}))))
+
+(deftest checker-exceptions-reject-standalone-and-composed-checkers
+  (let [throwable (RuntimeException. "checker failed")
+        subject (openraft-checker/reject-checker-exceptions
+                 (throwing-checker throwable))
+        expected {:valid? false
+                  :checker-exception
+                  {:class "java.lang.RuntimeException"
+                   :message "checker failed"}}
+        standalone (checker/check subject {} (history/history []) {})
+        composed (checker/check (checker/compose {:subject subject})
+                                {}
+                                (history/history [])
+                                {})]
+    (is (= expected standalone))
+    (is (= expected (:subject composed)))
+    (is (false? (:valid? composed)))))
+
+(deftest checker-interruptions-propagate
+  (let [throwable (InterruptedException. "cancelled")
+        subject (openraft-checker/reject-checker-exceptions
+                 (throwing-checker throwable))]
+    (try
+      (let [thrown (try
+                     (checker/check subject {} (history/history []) {})
+                     nil
+                     (catch Throwable throwable
+                       throwable))]
+        (is (identical? throwable thrown)))
+      (finally
+        (Thread/interrupted)))))
 
 (deftest reports-unhandled-worker-exceptions
   (let [subject (openraft-checker/strict-unhandled-exceptions)
