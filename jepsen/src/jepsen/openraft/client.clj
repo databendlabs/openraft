@@ -1,7 +1,14 @@
 (ns jepsen.openraft.client
   (:require [cheshire.core :as json]
-            [clojure.string :as str])
-  (:import (java.net ConnectException URI)
+            [cheshire.factory :as json-factory]
+            [cheshire.parse :as json-parse]
+            [clojure.string :as str]
+            [jepsen.openraft.interruption :as interruption])
+  (:import (com.fasterxml.jackson.core JsonFactory
+                                       JsonParseException
+                                       JsonParser$Feature
+                                       JsonToken)
+           (java.net ConnectException URI)
            (java.net.http HttpClient
                           HttpConnectTimeoutException
                           HttpRequest
@@ -12,6 +19,18 @@
 
 (def default-api-port 21001)
 (def default-raft-port 22001)
+
+(def ^:private max-u64 18446744073709551615N)
+(def ^:private response-body-preview-limit 1024)
+(def ^:private modeled-error-variants
+  #{:ForwardToLeader :QuorumNotEnough})
+
+(def ^:private ^JsonFactory preflight-json-factory
+  (json-factory/make-json-factory {}))
+
+(def ^:private ^JsonFactory strict-json-factory
+  (doto (json-factory/make-json-factory {})
+    (.enable JsonParser$Feature/STRICT_DUPLICATE_DETECTION)))
 
 (def ^:private http-client
   (-> (HttpClient/newBuilder)
@@ -42,6 +61,11 @@
   (doto (HttpRequest/newBuilder (URI/create (node-url endpoint path)))
     (.timeout (Duration/ofSeconds 5))))
 
+(defn- propagate-interruption! [e]
+  (when (interruption/interruption? e)
+    (.interrupt (Thread/currentThread))
+    (throw e)))
+
 (defn- send! [request]
   (let [request-info {:method (.method request)
                       :uri (str (.uri request))}
@@ -60,14 +84,12 @@
                                      (assoc request-info :kind :request-timeout)
                                      e)))
                    (catch java.io.IOException e
+                     (propagate-interruption! e)
                      (throw (ex-info "HTTP request failed"
                                      (assoc request-info :kind :transport-error)
                                      e)))
                    (catch InterruptedException e
-                     (.interrupt (Thread/currentThread))
-                     (throw (ex-info "HTTP request interrupted"
-                                     (assoc request-info :kind :interrupted)
-                                     e))))
+                     (propagate-interruption! e)))
         status (.statusCode response)
         body (.body response)
         result (assoc request-info
@@ -78,24 +100,149 @@
                       (assoc result :kind :http-error))))
     result))
 
+(defn- response-evidence [response]
+  (let [body (:body response)]
+    (cond-> (select-keys response [:method :uri :status])
+      (string? body)
+      (assoc :body-character-count (count body)
+             :body-preview (subs body
+                                 0
+                                 (min response-body-preview-limit
+                                      (count body)))))))
+
+(defn- invalid-response! [response reason details]
+  (throw (ex-info "OpenRaft API returned an invalid response"
+                  (merge {:kind :invalid-response
+                          :reason reason
+                          :response (response-evidence response)}
+                         details))))
+
 (defn- parse-body [response]
   (try
-    (json/parse-string (:body response) true)
-    (catch Exception e
+    (with-open [parser (.createParser preflight-json-factory
+                                      ^String (:body response))]
+      (let [token (.nextToken parser)]
+        (when (nil? token)
+          (throw (JsonParseException.
+                  parser
+                  "OpenRaft API response has no JSON document")))
+        (when-not (= JsonToken/START_OBJECT token)
+          (.skipChildren parser)
+          (when (.nextToken parser)
+            (throw (JsonParseException.
+                    parser
+                    "Trailing content after OpenRaft API response")))
+          (invalid-response! response
+                             :response-union-not-map
+                             {:response-arm-count nil}))))
+    (with-open [parser (.createParser strict-json-factory
+                                      ^String (:body response))]
+      (let [body (json-parse/parse-strict parser
+                                          true
+                                          ::missing-json-root
+                                          nil)]
+        (when (= ::missing-json-root body)
+          (throw (JsonParseException.
+                  parser
+                  "OpenRaft API response has no JSON document")))
+        (when (.nextToken parser)
+          (throw (JsonParseException.
+                  parser
+                  "Trailing content after OpenRaft API response")))
+        body))
+    (catch JsonParseException e
       (throw (ex-info "Failed to parse OpenRaft API response"
                       {:kind :invalid-json
-                       :response response}
+                       :response (response-evidence response)}
                       e)))))
 
+(defn- invalid-union-reason [body]
+  (cond
+    (not (map? body)) :response-union-not-map
+    (empty? body) :missing-response-arm
+    (and (contains? body :Ok)
+         (contains? body :Err)) :ambiguous-response-arms
+    (not-any? #{:Ok :Err} (keys body)) :unknown-response-arm
+    :else :invalid-response-union))
+
 (defn- ok-value [response]
-  (let [body (parse-body response)]
+  (let [body (parse-body response)
+        arms (when (map? body)
+               (set (filter #{:Ok :Err} (keys body))))]
     (cond
-      (contains? body :Ok) (:Ok body)
-      (contains? body :Err) (throw (ex-info "OpenRaft API returned Err"
-                                            {:kind :openraft-error
-                                             :error (:Err body)
-                                             :response response}))
-      :else body)))
+      (= #{:Ok} arms)
+      (:Ok body)
+
+      (= #{:Err} arms)
+      (let [error (:Err body)]
+        (if (and (map? error) (= 1 (count error)))
+          (let [[variant payload] (first error)]
+            (if (and (modeled-error-variants variant)
+                     (not (map? payload)))
+              (invalid-response! response
+                                 :invalid-error-payload
+                                 {:error-variant variant})
+              (throw (ex-info "OpenRaft API returned Err"
+                              {:kind :openraft-error
+                               :error error
+                               :response response}))))
+          (invalid-response! response
+                             :invalid-error-union
+                             {:error-arm-count (when (map? error)
+                                                 (count error))})))
+
+      :else
+      (invalid-response! response
+                         (invalid-union-reason body)
+                         {:response-arm-count (when arms
+                                                (count arms))}))))
+
+(defn- versioned-value? [value]
+  (and (map? value)
+       (contains? value :value)
+       (string? (:value value))
+       (contains? value :version)
+       (integer? (:version value))
+       (<= 0 (:version value) max-u64)))
+
+(defn- response-value [response payload path allow-nil?]
+  (let [value (get-in payload path ::missing)]
+    (cond
+      (= ::missing value)
+      (invalid-response! response
+                         :missing-payload-field
+                         {:payload-path path})
+
+      (nil? value)
+      (if allow-nil?
+        nil
+        (invalid-response! response
+                           :nil-payload-field
+                           {:payload-path path}))
+
+      (versioned-value? value)
+      value
+
+      :else
+      (invalid-response! response
+                         :invalid-versioned-value
+                         {:payload-path path}))))
+
+(defn- require-echoed-value [response versioned-value expected]
+  (when (and versioned-value
+             (not= expected (:value versioned-value)))
+    (invalid-response! response
+                       :unexpected-payload-value
+                       {:payload-path [:data :value :value]}))
+  versioned-value)
+
+(defn- require-newer-cas-version [response versioned-value expected-version]
+  (when (and versioned-value
+             (<= (:version versioned-value) expected-version))
+    (invalid-response! response
+                       :non-increasing-cas-version
+                       {:payload-path [:data :value :version]}))
+  versioned-value)
 
 (defn- forward-to-leader? [e]
   ;; contains? returns false for a nil map, so no nil guard is needed.
@@ -195,23 +342,34 @@
 ;; These functions make one HTTP attempt. KVClient performs leader routing and
 ;; classifies errors based on whether the operation may have taken effect.
 (defn write! [endpoint key value]
-  (-> (post! endpoint "/write"
-             {:Set {:key key
-                    :value value}})
-      ok-value
-      :data
-      :value))
+  (let [response (post! endpoint "/write"
+                        {:Set {:key key
+                               :value value}})
+        payload (ok-value response)
+        versioned-value (response-value response
+                                        payload
+                                        [:data :value]
+                                        false)]
+    (require-echoed-value response versioned-value value)))
 
 (defn cas! [endpoint key expected-version value]
-  (-> (post! endpoint "/write"
-             {:CompareAndSet {:key key
-                              :expected_version expected-version
-                              :value value}})
-      ok-value
-      :data
-      :value))
+  (let [response (post! endpoint "/write"
+                        {:CompareAndSet {:key key
+                                         :expected_version expected-version
+                                         :value value}})
+        payload (ok-value response)
+        versioned-value (response-value response
+                                        payload
+                                        [:data :value]
+                                        true)
+        versioned-value (require-echoed-value response
+                                              versioned-value
+                                              value)]
+    (require-newer-cas-version response
+                               versioned-value
+                               expected-version)))
 
 (defn linearizable-read! [endpoint key]
-  (-> (post! endpoint "/linearizable_read" key)
-      ok-value
-      :value))
+  (let [response (post! endpoint "/linearizable_read" key)
+        payload (ok-value response)]
+    (response-value response payload [:value] true)))
