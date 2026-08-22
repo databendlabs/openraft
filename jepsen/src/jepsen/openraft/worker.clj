@@ -18,10 +18,6 @@
 
 (def ^:dynamic ^:private *teardown-failure-handler* nil)
 
-(defn- fatal-throwable? [throwable]
-  (or (instance? ThreadDeath throwable)
-      (instance? VirtualMachineError throwable)))
-
 (defn handle-teardown-failure!
   "Records a teardown stage failure when a package guard is active.
 
@@ -33,7 +29,7 @@
       (.interrupt (Thread/currentThread))
       (throw throwable))
 
-    (fatal-throwable? throwable)
+    (interruption/fatal-throwable? throwable)
     (throw throwable)
 
     *teardown-failure-handler*
@@ -58,7 +54,7 @@
                   (log-teardown-failure context throwable)
                   (catch Throwable logging-failure
                     (if (or (interruption/interruption? logging-failure)
-                            (fatal-throwable? logging-failure))
+                            (interruption/fatal-throwable? logging-failure))
                       (handle-teardown-failure! {} logging-failure)
                       (harness/record-failure!
                        failure-state
@@ -71,25 +67,18 @@
         (handle-teardown-failure! {} throwable)))))
 
 (defn wrap-client
-  "Records failures from Client worker lifecycle and invocation boundaries."
+  "Records failures from Client invocation boundaries."
   [failure-state delegate]
   (reify client/Client
     (open! [_ test node]
       (wrap-client
        failure-state
-       (call-recording-failure failure-state
-                               :client
-                               {:phase :open
-                                :node node}
-                               #(client/open! delegate test node))))
+       (client/open! delegate test node)))
 
     (setup! [_ test]
       (wrap-client
        failure-state
-       (call-recording-failure failure-state
-                               :client
-                               {:phase :setup}
-                               #(client/setup! delegate test))))
+       (client/setup! delegate test)))
 
     (invoke! [_ test op]
       (call-recording-failure failure-state
@@ -102,26 +91,20 @@
       (client/teardown! delegate test))
 
     (close! [_ test]
-      (call-recording-failure failure-state
-                              :client
-                              {:phase :close}
-                              #(client/close! delegate test)))
+      (client/close! delegate test))
 
     client/Reusable
     (reusable? [_ test]
       (client/is-reusable? delegate test))))
 
 (defn wrap-nemesis
-  "Records failures from Nemesis worker and teardown boundaries."
+  "Records failures from Nemesis invocation and teardown boundaries."
   [failure-state delegate]
   (reify nemesis/Nemesis
     (setup! [_ test]
       (wrap-nemesis
        failure-state
-       (call-recording-failure failure-state
-                               :nemesis
-                               {:phase :setup}
-                               #(nemesis/setup! delegate test))))
+       (nemesis/setup! delegate test)))
 
     (invoke! [_ test op]
       (call-recording-failure failure-state
@@ -138,22 +121,14 @@
                                #(nemesis/teardown! delegate test)))))
 
 (defn wrap-db
-  "Records failures from the OpenRaft DB lifecycle and control boundaries."
-  [failure-state delegate]
+  "Delegates Jepsen-managed DB lifecycle and control boundaries."
+  [_failure-state delegate]
   (reify db/DB
     (setup! [_ test node]
-      (call-recording-failure failure-state
-                              :db
-                              {:phase :setup
-                               :node node}
-                              #(db/setup! delegate test node)))
+      (db/setup! delegate test node))
 
     (teardown! [_ test node]
-      (call-recording-failure failure-state
-                              :db
-                              {:phase :teardown
-                               :node node}
-                              #(db/teardown! delegate test node)))
+      (db/teardown! delegate test node))
 
     db/Kill
     (kill! [_ test node]

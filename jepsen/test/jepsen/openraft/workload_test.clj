@@ -180,10 +180,9 @@
                   :type :ok
                   :f :read
                   :value (keyed "value")}]
-        subject (get-in (workload/workload {})
-                        [:checker :checkers :linearizable])
+        subject (:checker (workload/workload {}))
         result (check-in-temp-store subject history)]
-    (is (:valid? result)
+    (is (true? (get-in result [:linearizable :valid?]))
         "an indeterminate write may have produced the value read later")))
 
 (deftest checks-registers-independently
@@ -219,9 +218,8 @@
               :type :ok
               :f :read
               :value (keyed other-key "not-x")}]
-        subject (get-in (workload/workload {})
-                        [:checker :checkers :linearizable])
-        result (check-in-temp-store subject ops)]
+        subject (:checker (workload/workload {}))
+        result (get (check-in-temp-store subject ops) :linearizable)]
     (is (false? (:valid? result)))
     (is (= [other-key] (:failures result)))
     (is (true? (get-in result [:results test-key :valid?])))

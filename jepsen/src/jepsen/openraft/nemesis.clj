@@ -193,33 +193,31 @@
 
 (defn compose-packages
   "Composes interval-bearing fault packages and confirms final recovery."
-  ([packages]
-   (compose-packages nil packages))
-  ([failure-state packages]
-   (when-not (seq packages)
-     (throw (ex-info "At least one nemesis package is required" {})))
-   (let [packages (->> packages
-                       (mapv (fn [{:keys [name] :as package}]
-                               (cond-> (assoc package
-                                              :perf
-                                              (or (:perf package) #{}))
-                                 failure-state
-                                 (update :nemesis
-                                         #(worker/wrap-nemesis-teardown
-                                           failure-state
-                                           name
-                                           %)))))
-                       cleanup-order
-                       (mapv schedule-package))
-         composed (combined/compose-packages
-                   (conj packages (recovery-package)))
-         checkers (into {}
-                        (map (fn [{:keys [name checker]}]
-                               [name (fault-class-checker checker)])
-                             packages))]
-     (assoc composed
-            :nemesis (nemesis/validate (:nemesis composed))
-            :checker (if (= 1 (count packages))
-                       (:checker (first packages))
-                       (openraft-checker/reject-checker-exceptions
-                        (checker/compose checkers)))))))
+  [failure-state packages]
+  (when-not (seq packages)
+    (throw (ex-info "At least one nemesis package is required" {})))
+  (let [packages (->> packages
+                      (mapv (fn [{:keys [name] :as package}]
+                              (cond-> (assoc package
+                                             :perf
+                                             (or (:perf package) #{}))
+                                failure-state
+                                (update :nemesis
+                                        #(worker/wrap-nemesis-teardown
+                                          failure-state
+                                          name
+                                          %)))))
+                      cleanup-order
+                      (mapv schedule-package))
+        composed (combined/compose-packages
+                  (conj packages (recovery-package)))
+        checkers (into {}
+                       (map (fn [{:keys [name checker]}]
+                              [name (fault-class-checker checker)])
+                            packages))]
+    (assoc composed
+           :nemesis (nemesis/validate (:nemesis composed))
+           :checker (if (= 1 (count packages))
+                      (:checker (first packages))
+                      (openraft-checker/reject-checker-exceptions
+                       (checker/compose checkers))))))

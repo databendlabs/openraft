@@ -11,3 +11,7 @@
            (not (instance? java.net.SocketTimeoutException e)))
       (instance? java.nio.channels.ClosedByInterruptException e)
       (= :interrupted (:kind (ex-data e)))))
+
+(defn fatal-throwable? [throwable]
+  (or (instance? ThreadDeath throwable)
+      (instance? VirtualMachineError throwable)))

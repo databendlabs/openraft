@@ -25,3 +25,8 @@
             (java.io.IOException. "broken pipe")]]]
     (testing (name label)
       (is (not (interruption/interruption? error))))))
+
+(deftest recognizes-fatal-throwables
+  (is (interruption/fatal-throwable? (ThreadDeath.)))
+  (is (interruption/fatal-throwable? (StackOverflowError.)))
+  (is (not (interruption/fatal-throwable? (RuntimeException.)))))

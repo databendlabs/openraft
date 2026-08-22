@@ -72,17 +72,6 @@
   (testing "membership can be combined with another fault"
     (is (#'cli/valid-nemeses? [:membership :partition]))))
 
-(deftest composes-selected-nemesis-checkers
-  (let [test (cli/openraft-test {:nemesis [:membership :partition]
-                                 :nodes ["n1" "n2" "n3" "n4" "n5"]
-                                 :time-limit 10})
-        checkers (get-in test [:checker :delegate :checkers])
-        nemesis-checkers (get-in checkers [:nemesis :checkers])]
-    (is (= #{:seed :stats :exceptions :crash :nemesis :workload}
-           (set (keys checkers))))
-    (is (= #{:partition :membership}
-           (set (keys nemesis-checkers))))))
-
 (deftest shares-one-harness-state-across-workers-and-generators
   (let [failure-state (harness/failure-state)
         wrapped-states (atom [])

@@ -44,12 +44,15 @@
        (teardown-f test)))))
 
 (defn- test-db
-  [setup-f]
+  [{:keys [setup-f teardown-f]
+    :or {setup-f (fn [& _])
+         teardown-f (fn [& _])}}]
   (reify db/DB
     (setup! [_ test node]
       (setup-f test node))
 
-    (teardown! [_ _test _node])
+    (teardown! [_ test node]
+      (teardown-f test node))
 
     db/Kill
     (kill! [_ _test _node])
@@ -78,33 +81,6 @@
     (is (identical? throwable (:throwable failure)))))
 
 (deftest records-client-worker-failures
-  (testing "setup"
-    (let [failure-state (harness/failure-state)
-          throwable (RuntimeException. "setup failed")
-          subject (worker/wrap-client
-                   failure-state
-                   (test-client {:setup-f (fn [& _] (throw throwable))}))
-          thrown (thrown-by #(client/setup! subject {}))]
-      (is (identical? throwable thrown))
-      (assert-primary-failure failure-state
-                              :client
-                              {:phase :setup}
-                              throwable)))
-
-  (testing "open"
-    (let [failure-state (harness/failure-state)
-          throwable (RuntimeException. "open failed")
-          subject (worker/wrap-client
-                   failure-state
-                   (test-client {:open-f (fn [& _] (throw throwable))}))
-          thrown (thrown-by #(client/open! subject {} "n1"))]
-      (is (identical? throwable thrown))
-      (assert-primary-failure failure-state
-                              :client
-                              {:phase :open
-                               :node "n1"}
-                              throwable)))
-
   (testing "invoke"
     (let [failure-state (harness/failure-state)
           throwable (RuntimeException. "invoke failed")
@@ -121,37 +97,9 @@
                               :client
                               {:phase :invoke
                                :operation op}
-                              throwable)))
-
-  (testing "close"
-    (let [failure-state (harness/failure-state)
-          throwable (RuntimeException. "close failed")
-          subject (worker/wrap-client
-                   failure-state
-                   (test-client {:close-f (fn [& _] (throw throwable))}))
-          thrown (thrown-by #(client/close! subject {}))]
-      (is (identical? throwable thrown))
-      (assert-primary-failure failure-state
-                              :client
-                              {:phase :close}
                               throwable))))
 
 (deftest records-nemesis-worker-failures
-  (testing "setup"
-    (let [failure-state (harness/failure-state)
-          throwable (RuntimeException. "nemesis setup failed")
-          subject (worker/wrap-nemesis
-                   failure-state
-                   (test-nemesis (fn [& _] nil)
-                                 (fn [& _] (throw throwable))
-                                 (fn [& _] nil)))
-          thrown (thrown-by #(nemesis/setup! subject {}))]
-      (is (identical? throwable thrown))
-      (assert-primary-failure failure-state
-                              :nemesis
-                              {:phase :setup}
-                              throwable)))
-
   (let [failure-state (harness/failure-state)
         throwable (RuntimeException. "nemesis failed")
         op {:type :info
@@ -169,19 +117,46 @@
                              :operation op}
                             throwable)))
 
-(deftest records-db-setup-failures
-  (let [failure-state (harness/failure-state)
-        throwable (RuntimeException. "database setup failed")
-        subject (worker/wrap-db
-                 failure-state
-                 (test-db (fn [& _] (throw throwable))))
-        thrown (thrown-by #(db/setup! subject {} "n1"))]
-    (is (identical? throwable thrown))
-    (assert-primary-failure failure-state
-                            :db
-                            {:phase :setup
-                             :node "n1"}
-                            throwable)))
+(deftest core-lifecycle-failures-propagate-without-recording
+  (doseq [[label wrapper invoke delegate]
+          [[:client-setup
+            worker/wrap-client
+            #(client/setup! % {})
+            (test-client {:setup-f (fn [& _]
+                                     (throw (RuntimeException. "setup failed")))})]
+           [:client-open
+            worker/wrap-client
+            #(client/open! % {} "n1")
+            (test-client {:open-f (fn [& _]
+                                    (throw (RuntimeException. "open failed")))})]
+           [:client-close
+            worker/wrap-client
+            #(client/close! % {})
+            (test-client {:close-f (fn [& _]
+                                     (throw (RuntimeException. "close failed")))})]
+           [:nemesis-setup
+            worker/wrap-nemesis
+            #(nemesis/setup! % {})
+            (test-nemesis (fn [& _] nil)
+                          (fn [& _]
+                            (throw (RuntimeException. "setup failed")))
+                          (fn [& _] nil))]
+           [:db-setup
+            worker/wrap-db
+            #(db/setup! % {} "n1")
+            (test-db {:setup-f (fn [& _]
+                                 (throw (RuntimeException. "setup failed")))})]
+           [:db-teardown
+            worker/wrap-db
+            #(db/teardown! % {} "n1")
+            (test-db {:teardown-f (fn [& _]
+                                    (throw (RuntimeException. "teardown failed")))})]]]
+    (testing (name label)
+      (let [failure-state (harness/failure-state)
+            subject (wrapper failure-state delegate)
+            thrown (thrown-by #(invoke subject))]
+        (is (instance? RuntimeException thrown))
+        (is (nil? (harness/primary-failure failure-state)))))))
 
 (deftest modeled-outcomes-do-not-record-failures
   (let [failure-state (harness/failure-state)
