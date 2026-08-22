@@ -18,6 +18,16 @@
 
 (def ^:private membership-error-arm-limit 8)
 (def ^:private membership-error-arm-name-limit 128)
+(def ^:private evidence-keys
+  [:error-variant :error-shape :error-arm-count :error-arm-names])
+(def ^:private status-reasons
+  {:indeterminate :request-result-unknown
+   :in-progress :membership-change-in-progress
+   :learner-unreachable :learner-unreachable
+   :no-supported-leader :no-supported-leader
+   :node-starting :node-starting})
+(def ^:private clearable-pending-keys
+  (into [:target :status :reason :stage] evidence-keys))
 
 (defn- select-node [test candidates]
   (->> (:nodes test)
@@ -130,21 +140,15 @@
   (contains? #{:installed :skipped :indeterminate} (:status value)))
 
 (defn- restoration-context [pending]
-  (atom
-   (cond-> (merge {:attempted? (= :indeterminate (:status pending))}
-                  (select-keys pending
-                               [:stage
-                                :error-variant
-                                :error-shape
-                                :error-arm-count
-                                :error-arm-names]))
-     (= :indeterminate (:status pending))
-     (assoc :reason (or (:reason pending) :request-result-unknown))
-     (= :in-progress (:status pending))
-     (assoc :skip-reason :membership-change-in-progress)
-     (#{:learner-unreachable :no-supported-leader :node-starting}
-      (:status pending))
-     (assoc :skip-reason (:status pending)))))
+  (let [status (:status pending)
+        reason (get status-reasons status)]
+    (atom
+     (cond-> (merge {:attempted? (= :indeterminate status)}
+                    (select-keys pending (into [:stage] evidence-keys)))
+       (= :indeterminate status)
+       (assoc :reason (or (:reason pending) reason))
+       (and reason (not= :indeterminate status))
+       (assoc :skip-reason reason)))))
 
 (defn- return-restoration-outcome! [value]
   (throw (ex-info "OpenRaft membership restoration has a modeled outcome"
@@ -155,12 +159,7 @@
   [context stage result details]
   (let [status (if (map? result) (:status result) result)
         evidence (when (map? result)
-                   (select-keys result
-                                [:reason
-                                 :error-variant
-                                 :error-shape
-                                 :error-arm-count
-                                 :error-arm-names]))]
+                   (select-keys result (into [:reason] evidence-keys)))]
     (case status
       :completed
       (swap! context assoc
@@ -173,12 +172,12 @@
                      evidence
                      {:attempted? true
                       :reason (or (:reason evidence)
-                                  :request-result-unknown)
+                                  (get status-reasons status))
                       :stage stage}))
 
       :in-progress
       (swap! context assoc
-             :skip-reason :membership-change-in-progress
+             :skip-reason (get status-reasons status)
              :stage stage)
 
       :no-supported-leader
@@ -190,7 +189,7 @@
            (outcome/indeterminate
             (or reason :membership-recovery-unconfirmed)
             details)
-           (outcome/skipped :no-supported-leader details))))
+           (outcome/skipped (get status-reasons status) details))))
 
       nil))
   result)
@@ -200,11 +199,7 @@
         details (merge {:condition (:condition (ex-data e))
                         :message (ex-message e)}
                        (select-keys state
-                                    [:stage
-                                     :error-variant
-                                     :error-shape
-                                     :error-arm-count
-                                     :error-arm-names]))]
+                                    (into [:stage] evidence-keys)))]
     (if attempted?
       (outcome/indeterminate
        (or reason :membership-recovery-unconfirmed)
@@ -270,14 +265,12 @@
       (cluster/await-stable-membership! test target-voters))))
 
 (defn- stable-membership!
-  ([test]
-   (stable-membership! test (restoration-context nil)))
-  ([test context]
-   (let [{:keys [stable?] :as status}
-         (cluster/await-committed-membership! test)]
-     (if stable?
-       status
-       (complete-joint-membership! test status context)))))
+  [test context]
+  (let [{:keys [stable?] :as status}
+        (cluster/await-committed-membership! test)]
+    (if stable?
+      status
+      (complete-joint-membership! test status context))))
 
 (defn- change-membership-and-await!
   [test leader-endpoint target-voters context]
@@ -300,73 +293,56 @@
 (defn- await-observed-learner! [test node]
   (cluster/await-observed-learner! test node learner-wait-timeout-ms))
 
-(defn- validate-add-learner-request!
-  [test node node-id api-addr raft-addr]
-  (let [configured? (contains? (set (:nodes test)) node)
-        expected {:node-id (client/node-host node)
-                  :api-addr (client/api-endpoint test node)
-                  :raft-addr (client/raft-addr test node)}
-        actual {:node-id node-id
-                :api-addr api-addr
-                :raft-addr raft-addr}]
-    (when-not (and configured? (= expected actual))
-      (throw (ex-info "Invalid OpenRaft add-learner request"
-                      {:kind :invalid-add-learner-request
-                       :node node
-                       :configured? configured?
-                       :expected expected
-                       :actual actual})))))
-
 (defn- unexpected-add-learner-error-variant [e]
   (let [variant (membership-error-variant e)]
     (when (#{:LearnerNotFound :EmptyMembership} variant)
       variant)))
 
 (defn- request-add-learner!
-  [test leader-endpoint node node-id api-addr raft-addr]
-  (validate-add-learner-request! test node node-id api-addr raft-addr)
-  (try
-    (request-leader!
-     test
-     leader-endpoint
-     #(client/add-learner! % node-id api-addr raft-addr))
-    :completed
-    (catch Exception e
-      (let [unexpected (unexpected-membership-error-outcome e)]
-        (cond
-          (leader-routing-error? e)
-          :no-supported-leader
+  [test leader-endpoint node]
+  (let [{:keys [node-id api-addr raft-addr]} (cluster/node-info test node)]
+    (try
+      (request-leader!
+       test
+       leader-endpoint
+       #(client/add-learner! % node-id api-addr raft-addr))
+      :completed
+      (catch Exception e
+        (let [unexpected (unexpected-membership-error-outcome e)]
+          (cond
+            (leader-routing-error? e)
+            :no-supported-leader
 
-          unexpected
-          unexpected
+            unexpected
+            unexpected
 
-          (ambiguous-request-error? e)
-          (do
-            (info "OpenRaft learner addition result is indeterminate"
-                  {:node node
-                   :error (ex-message e)})
-            :indeterminate)
+            (ambiguous-request-error? e)
+            (do
+              (info "OpenRaft learner addition result is indeterminate"
+                    {:node node
+                     :error (ex-message e)})
+              :indeterminate)
 
-          (membership-change-in-progress? e)
-          (do
-            (info "OpenRaft learner addition found a membership change in progress"
-                  {:node node
-                   :error (ex-message e)})
-            :in-progress)
+            (membership-change-in-progress? e)
+            (do
+              (info "OpenRaft learner addition found a membership change in progress"
+                    {:node node
+                     :error (ex-message e)})
+              :in-progress)
 
-          (unexpected-add-learner-error-variant e)
-          (let [variant (unexpected-add-learner-error-variant e)]
-            (info "OpenRaft learner addition returned an unexpected error"
-                  {:node node
-                   :error-variant variant})
-            (outcome/indeterminate :unexpected-sut-response
-                                   {:error-variant variant}))
+            (unexpected-add-learner-error-variant e)
+            (let [variant (unexpected-add-learner-error-variant e)]
+              (info "OpenRaft learner addition returned an unexpected error"
+                    {:node node
+                     :error-variant variant})
+              (outcome/indeterminate :unexpected-sut-response
+                                     {:error-variant variant}))
 
-          :else
-          (throw e))))))
+            :else
+            (throw e)))))))
 
 (defn- request-add-learner-when-ready!
-  [test leader-endpoint node node-id api-addr raft-addr context]
+  [test leader-endpoint node context]
   (let [waiting-for-stable? (atom false)]
     (await/until!
      :add-learner-request-ready
@@ -388,10 +364,7 @@
             (reset! waiting-for-stable? false)
             (let [result (request-add-learner! test
                                                leader-endpoint
-                                               node
-                                               node-id
-                                               api-addr
-                                               raft-addr)]
+                                               node)]
               (note-restoration-request! context
                                          :add-learner
                                          result
@@ -413,13 +386,10 @@
       :timeout learner-wait-timeout-ms})))
 
 (defn- add-learner-and-confirm!
-  [test leader-endpoint node node-id api-addr raft-addr context]
+  [test leader-endpoint node context]
   (let [result (request-add-learner-when-ready! test
                                                 leader-endpoint
                                                 node
-                                                node-id
-                                                api-addr
-                                                raft-addr
                                                 context)]
     (if (= :indeterminate result)
       (await-observed-learner! test node)
@@ -436,8 +406,6 @@
     (if-not node
       :membership-full
       (let [leader-endpoint (atom (client/api-endpoint test leader))
-            {:keys [node-id api-addr raft-addr]}
-            (cluster/node-info test node)
             target-voters (conj voters node)]
         (when (= :non-member source)
           (openraft-db/start-empty-node! database test node))
@@ -454,9 +422,6 @@
                test
                leader-endpoint
                node
-               node-id
-               api-addr
-               raft-addr
                context)]
 
           (info "Growing OpenRaft membership"
@@ -490,26 +455,9 @@
 (defn- complete-pending-change!
   [pending-change pending leader]
   (reset! pending-change nil)
-  (-> pending
-      (dissoc :target
-              :status
-              :reason
-              :stage
-              :error-variant
-              :error-shape
-              :error-arm-count
-              :error-arm-names)
+  (-> (apply dissoc pending clearable-pending-keys)
       (assoc :leader leader
              :after (:target pending))))
-
-(defn- retained-status-reason [status]
-  (case status
-    :indeterminate :request-result-unknown
-    :in-progress :membership-change-in-progress
-    :learner-unreachable :learner-unreachable
-    :no-supported-leader :no-supported-leader
-    :node-starting :node-starting
-    nil))
 
 (defn- retain-pending-change!
   [pending-change pending result]
@@ -517,13 +465,9 @@
         status (if (map? result) (:status result) result)
         reason (if (map? result)
                  (:reason result)
-                 (retained-status-reason status))
+                 (get status-reasons status))
         evidence (when (map? result)
-                   (select-keys result
-                                [:error-variant
-                                 :error-shape
-                                 :error-arm-count
-                                 :error-arm-names]))
+                   (select-keys result evidence-keys))
         retained (if (= :indeterminate (:status current))
                    current
                    (cond-> (merge pending evidence {:status status})
@@ -544,7 +488,6 @@
 (defn- request-grow-change!
   [pending-change test status pending]
   (let [{:keys [node target]} pending
-        {:keys [node-id api-addr raft-addr]} (cluster/node-info test node)
         leader-endpoint (atom (client/api-endpoint test (:leader status)))]
     (info "Adding OpenRaft learner"
           {:node node
@@ -553,25 +496,18 @@
     (let [learner-result (request-add-learner!
                           test
                           leader-endpoint
-                          node
-                          node-id
-                          api-addr
-                          raft-addr)]
+                          node)]
       (if-not (= :completed learner-result)
         (retain-pending-change! pending-change
                                 (assoc pending :stage :add-learner)
                                 learner-result)
         (let [current @pending-change
-              pending (cond-> (assoc pending
-                                     :stage :change-membership)
-                        (and (= :indeterminate (:status current))
-                             (= :add-learner (:stage current)))
-                        (dissoc :status
-                                :reason
-                                :error-variant
-                                :error-shape
-                                :error-arm-count
-                                :error-arm-names))]
+              pending (assoc pending :stage :change-membership)
+              pending (if (and (= :indeterminate (:status current))
+                               (= :add-learner (:stage current)))
+                        (apply dissoc pending
+                               (into [:status :reason] evidence-keys))
+                        pending)]
           (when current
             (reset! pending-change pending))
           (info "Growing OpenRaft membership"
@@ -645,10 +581,12 @@
       (request-grow-change! pending-change test status pending)
 
       :else
-      (assoc pending
-             :status (if (contains? (:learners status) node)
-                       :learner-unreachable
-                       :node-starting)))))
+      (retain-pending-change!
+       pending-change
+       pending
+       (if (contains? (:learners status) node)
+         :learner-unreachable
+         :node-starting)))))
 
 (defn- request-shrink! [database pending-change test status]
   (let [{:keys [leader voters learners]} status]
@@ -748,16 +686,10 @@
     :no-quorum-safe-shrink
     :no-supported-leader})
 
-(def ^:private skipped-status-reasons
-  {:in-progress :membership-change-in-progress
-   :learner-unreachable :learner-unreachable
-   :no-supported-leader :no-supported-leader
-   :node-starting :node-starting})
-
 (defn- normalize-membership-result [result]
   (cond
     (= :indeterminate result)
-    (outcome/indeterminate :request-result-unknown {})
+    (outcome/indeterminate (get status-reasons result) {})
 
     (contains? skipped-results result)
     (outcome/skipped result {})
@@ -771,11 +703,11 @@
 
         (= :indeterminate status)
         (outcome/indeterminate (or (:reason result)
-                                   :request-result-unknown)
+                                   (get status-reasons status))
                                details)
 
-        (contains? skipped-status-reasons status)
-        (outcome/skipped (get skipped-status-reasons status) details)
+        (contains? status-reasons status)
+        (outcome/skipped (get status-reasons status) details)
 
         (contains? result :after)
         (outcome/installed (dissoc result :reason))
@@ -851,15 +783,7 @@
     (when (and (= :grow change)
                (= target (:voters status)))
       (reset! pending-change nil)
-      (-> pending
-          (dissoc :target
-                  :status
-                  :reason
-                  :stage
-                  :error-variant
-                  :error-shape
-                  :error-arm-count
-                  :error-arm-names)
+      (-> (apply dissoc pending clearable-pending-keys)
           (assoc :leader (:leader status)
                  :after target)))))
 
@@ -915,13 +839,7 @@
           (= restoration-outcome-kind (:kind (ex-data e)))
           (:outcome (ex-data e))
 
-          (some #(await/condition-timeout? e %)
-                [:add-learner-request-ready
-                 :committed-membership
-                 :learner-observed
-                 :membership-change-request-ready
-                 :node-metrics
-                 :stable-membership])
+          (await/condition-timeout? e)
           (restoration-timeout-outcome context e)
 
           :else
