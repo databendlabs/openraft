@@ -32,10 +32,20 @@ a Pre-Vote request to its peers asking: *"would you grant me a vote at
 `term + 1`?"* The request carries a hypothetical next-term vote and the
 candidate's last log id.
 
+The round starts only when the node's own leader lease has expired: while the
+lease is valid, a live leader is serving it, and every peer applying the same
+rule would reject, so the node refuses to start even the Pre-Vote round. This
+makes a manually triggered election
+([`Trigger::elect`](`crate::raft::trigger::Trigger::elect`) with
+`pre_vote = true`) safe to fire against a healthy cluster.
+
 A peer answers with the same rules it uses for a real vote request:
 
 - If it has a committed vote whose [leader lease](`crate::docs::protocol::replication::leader_lease`)
   has not expired, it would not grant — there is a live leader.
+- If it is itself a leader that a quorum keeps acking, it would not grant. A
+  leader never renews the lease on its own vote — heartbeat replies renew that
+  lease only on followers — so it consults its quorum-ack lease instead.
 - If the candidate's last log id is behind its own, it would not grant.
 - Otherwise it would grant.
 
