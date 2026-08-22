@@ -978,15 +978,7 @@
                       :f :shrink})])))
 
 (defn- membership-change-installed? [required-changes change]
-  (and (outcome/installed-or-legacy?
-        change
-        #(and (map? %)
-              (required-changes (:change %))
-              (:node %)
-              (:leader %)
-              (coll? (:before %))
-              (coll? (:after %))
-              (not= (:before %) (:after %))))
+  (and (= :installed (:status change))
        (required-changes (:change change))
        (:node change)
        (:leader change)
@@ -995,18 +987,12 @@
        (not= (:before change) (:after change))))
 
 (defn- membership-restored? [expected-voters value]
-  (and (outcome/installed-or-legacy?
-        value
-        #(and (map? %)
-              (:leader %)
-              (= expected-voters (:voters %))))
+  (and (= :installed (:status value))
        (:leader value)
        (= expected-voters (:voters value))))
 
 (defn- recovery-installed? [value]
-  (and (outcome/installed-or-legacy?
-        value
-        #(and (map? %) (:leader %)))
+  (and (= :installed (:status value))
        (:leader value)))
 
 (defn- coverage-checker []

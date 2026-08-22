@@ -13,7 +13,6 @@
 (def data-dir "/var/lib/openraft")
 (def log-dir "/var/log/openraft")
 (def log-file (str log-dir "/openraft.log"))
-(def pid-file (str data-dir "/openraft.pid"))
 (def default-snapshot-threshold 100)
 
 (def ^:private process-confirm-timeout-ms 30000)
@@ -98,9 +97,6 @@
                 (rethrow-control! e)))
             (recur)))))))
 
-(defn- remove-pid-file! []
-  (control-exec! :rm :-f pid-file))
-
 (defn- no-such-process-race? [e]
   (let [{:keys [type exit err]} (ex-data e)
         binary-name-pattern (str "(?:"
@@ -137,9 +133,7 @@
           result)))))
 
 (defn- stop-process! []
-  (let [result (signal-and-confirm! 9 :absent :killed)]
-    (remove-pid-file!)
-    result))
+  (signal-and-confirm! 9 :absent :killed))
 
 (defn- pause-process! []
   (signal-and-confirm! "STOP" :paused :paused))
@@ -157,9 +151,7 @@
    :--oknodo
    :--background
    :--no-close
-   :--make-pidfile
    :--exec binary
-   :--pidfile pid-file
    :--chdir data-dir
    :--startas binary
    :--
@@ -179,7 +171,6 @@
 
       :absent
       (do
-        (remove-pid-file!)
         ;; --oknodo makes a start race succeed without broadly suppressing exit
         ;; status 1, which may instead mean a control or permission failure.
         (start-command! node-id api-addr raft-addr snapshot-threshold)

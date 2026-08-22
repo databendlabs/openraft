@@ -16,7 +16,6 @@
                                    9 :kill
                                    "STOP" :pause
                                    "CONT" :resume)
-    (= :rm (first command)) :remove
     (= :mkdir (first command)) :mkdir
     (some #{:start-stop-daemon} command) :start))
 
@@ -223,7 +222,7 @@
                           :probe "absent"
                           ""))]
           (is (= :target-absent (db/kill! database {} "n1"))))
-        (is (= [:probe :remove]
+        (is (= [:probe]
                (mapv command-kind @calls)))))
 
     (testing "a successful kill is confirmed absent"
@@ -237,7 +236,7 @@
                           :kill (do (reset! running? false) "")
                           ""))]
           (is (= :killed (db/kill! database {} "n1"))))
-        (is (= [:probe :kill :probe :remove]
+        (is (= [:probe :kill :probe]
                (mapv command-kind @calls)))))
 
     (testing "an explicit exit race is skipped without polling"
@@ -255,7 +254,7 @@
                           ""))]
           (is (= :target-already-exited
                  (db/kill! database {} "n1"))))
-        (is (= [:probe :kill :remove]
+        (is (= [:probe :kill]
                (mapv command-kind @calls)))))
 
     (testing "permission failures are never treated as absence"
@@ -348,14 +347,7 @@
 (deftest every-process-control-stage-preserves-interruptions
   (let [database (openraft-db/db {})
         stages
-        [{:label :remove-pid
-          :operation #(db/kill! database {} "n1")
-          :exec (fn [error command]
-                  (case (command-kind command)
-                    :probe "absent"
-                    :remove (throw error)
-                    ""))}
-         {:label :kill-signal
+        [{:label :kill-signal
           :operation #(db/kill! database {} "n1")
           :exec (fn [error command]
                   (case (command-kind command)

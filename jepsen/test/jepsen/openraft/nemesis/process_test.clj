@@ -863,70 +863,8 @@
       (is (= :unknown (:valid? result)))
       (is (= :unknown (:cluster-state result))))
     (let [result (checker/check subject {} recovered-history {})]
-      (is (:valid? result))
-      (is (= :intact (:cluster-state result))))))
-
-(deftest reanalyzes-exact-legacy-process-history
-  (let [process-checker (#'process/coverage-checker)
-        disruption (fn [mode nodes]
-                     {:mode mode
-                      :leader "n1"
-                      :nodes nodes
-                      :voter-configs [(set voters)]
-                      :survivors (vec (remove (set nodes) voters))})
-        process-history [{:f :kill-process
-                          :value (disruption :leader-survives ["n2" "n3"])}
-                         {:f :await-recovery :value {:leader "n1"}}
-                         {:f :kill-process
-                          :value (disruption :leader-killed ["n1" "n2"])}
-                         {:f :await-recovery :value {:leader "n3"}}]
-        pause-checker (#'process/pause-coverage-checker)
-        resumed {:paused nil :resumed voters}
-        pause-history [{:f :pause-process
-                        :value (disruption :leader-unpaused ["n2" "n3"])}
-                       {:f :resume-process :value resumed}
-                       {:f :await-recovery :value {:leader "n1"}}
-                       {:f :pause-process
-                        :value (disruption :leader-paused ["n1" "n2"])}
-                       {:f :resume-process :value resumed}
-                       {:f :await-recovery :value {:leader "n3"}}]
-        process-check #(checker/check process-checker {} % {})
-        pause-check #(checker/check pause-checker {:nodes voters} % {})]
-    (testing "exact pre-status process and pause shapes remain valid"
-      (is (true? (:valid? (process-check process-history))))
-      (is (true? (:valid? (pause-check pause-history)))))
-
-    (testing "explicit disruption status overrides legacy-looking evidence"
-      (doseq [status [:skipped :indeterminate]]
-        (let [process-result
-              (process-check (assoc-in process-history
-                                       [0 :value :status]
-                                       status))
-              pause-result
-              (pause-check (assoc-in pause-history
-                                     [0 :value :status]
-                                     status))]
-          (is (false? (:valid? process-result)) (name status))
-          (is (= [:leader-survives]
-                 (:missing-modes process-result)) (name status))
-          (is (false? (:valid? pause-result)) (name status))
-          (is (= [:leader-unpaused]
-                 (:missing-modes pause-result)) (name status)))))
-
-    (testing "explicit recovery and resume statuses are authoritative"
-      (doseq [status [:skipped :indeterminate]]
-        (is (false?
-             (:valid? (process-check
-                       (assoc-in process-history
-                                 [3 :value :status]
-                                 status))))
-            (name status))
-        (is (not (true?
-                  (:valid? (pause-check
-                            (assoc-in pause-history
-                                      [4 :value :status]
-                                      status)))))
-            (name status))))))
+      (is (= :unknown (:valid? result)))
+      (is (= :unknown (:cluster-state result))))))
 
 (deftest checks-pause-coverage-and-recovery-state
   (let [subject (#'process/pause-coverage-checker)
