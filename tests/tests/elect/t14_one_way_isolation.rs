@@ -121,11 +121,9 @@ async fn inbound_heartbeats_prevent_election_when_outbound_rpcs_fail() -> Result
 /// With Pre-Vote disabled, the first expired leader lease starts a real election: node 1 advances
 /// its term and votes for itself.
 ///
-/// The test asserts the term and the vote, not the `Candidate` state. Node 0 never renews the
-/// lease on its own vote, so node 0 grants the vote request at once and node 1 becomes Leader
-/// about a millisecond after campaigning. `Candidate` is transient and the metrics watch channel
-/// may skip it. The higher term and the self-vote persist, because every RPC that could move node
-/// 1's vote is blocked.
+/// The campaign cannot win: node 0's quorum-ack lease is kept fresh by node 2, so node 0
+/// rejects the vote, and node 2 rejects it by its own leader lease. Node 1 stays a `Candidate`
+/// holding its self-vote, because every RPC that could move its vote is blocked.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn missing_inbound_heartbeats_start_election() -> Result<()> {
@@ -175,11 +173,15 @@ async fn missing_inbound_heartbeats_start_election() -> Result<()> {
             )
             .await?;
 
-        let expected_vote = VoteOf::<TypeConfig>::new(campaigned.current_term, 1);
         assert_eq!(
-            expected_vote.leader_id(),
-            campaigned.vote.leader_id(),
+            VoteOf::<TypeConfig>::new(campaigned.current_term, 1),
+            campaigned.vote,
             "node 1 must install its self-vote"
+        );
+        assert_eq!(
+            ServerState::Candidate,
+            campaigned.state,
+            "node 1 campaigns but cannot win: node 0 is quorum-acked and node 2's lease is fresh"
         );
     }
 

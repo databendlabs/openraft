@@ -69,6 +69,37 @@ fn test_handle_pre_vote_req_rejected_by_leader_lease() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_handle_pre_vote_req_rejected_by_quorum_ack_lease() -> anyhow::Result<()> {
+    // A Leader never renews the lease on its own `state.vote`, so that lease is expired here.
+    // A quorum keeps acking it, and the quorum-ack lease alone rejects the pre-vote.
+    let mut eng = eng();
+    eng.state.vote = Leased::new(
+        UTConfig::<()>::now() - Duration::from_secs(1),
+        Duration::from_millis(500),
+        Vote::new_committed(2, 1),
+    );
+    eng.testing_new_leader().update_clock(&0, UTConfig::<()>::now());
+    let vote_before = *eng.state.vote_ref();
+
+    let resp = eng.handle_pre_vote_req(VoteRequest {
+        vote: Vote::new(3, 2),
+        last_log_id: Some(log_id(2, 1, 3)),
+        leadership_transfer: false,
+    });
+
+    assert_eq!(
+        VoteResponse::new(Vote::new_committed(2, 1), Some(log_id(1, 1, 1)), false),
+        resp
+    );
+    // A pre-vote must not mutate any state.
+    assert_eq!(vote_before, *eng.state.vote_ref());
+    assert!(eng.leader.is_some(), "the Leader stays");
+    assert_eq!(0, eng.output.take_commands().len());
+
+    Ok(())
+}
+
+#[test]
 fn test_handle_pre_vote_req_reject_smaller_last_log_id() -> anyhow::Result<()> {
     let mut eng = eng();
     let vote_before = *eng.state.vote_ref();
