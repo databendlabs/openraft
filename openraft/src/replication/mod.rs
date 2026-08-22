@@ -144,7 +144,7 @@ where
                 log_reader,
                 payload: None,
                 inflight_id: None,
-                leader_committed: None,
+                last_included_committed: None,
                 backoff_consumer: backoff_state.consumer(),
             })),
             inflight_id: None,
@@ -216,6 +216,9 @@ where
             let mut payload = self.select_next_payload().await?;
 
             if !self.run_stream_session(&mut network, &payload).await? {
+                // The transport may have dropped a request after polling it. Force the next
+                // stream to include the current commit again.
+                self.stream_state.lock().await.last_included_committed = None;
                 continue;
             }
 
@@ -296,7 +299,6 @@ where
             let mut stream_state = self.stream_state.lock().await;
             stream_state.payload = Some(payload.clone());
             stream_state.inflight_id = self.inflight_id;
-            stream_state.leader_committed = self.event_watcher.committed_rx.borrow_watched().clone()
         }
 
         let inflight_queue = InflightAppendQueue::new();
