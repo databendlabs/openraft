@@ -109,8 +109,9 @@ async fn without_pre_vote_term_inflates() -> Result<()> {
     Ok(())
 }
 
-/// A manual `trigger().elect(true)` runs a Pre-Vote round first: against a healthy leader it is
-/// declined, so the follower's term is left untouched and the leader is not disrupted.
+/// A manual `trigger().elect(true)` is cautious: while the follower's own leader lease is valid,
+/// `pre_elect` refuses to even start the Pre-Vote round, so the follower's term is left untouched
+/// and the leader is not disrupted.
 ///
 /// This is the administrative-safety scenario: an operator triggering an election on a node that
 /// cannot currently win must not inflate the cluster term. Pre-Vote is requested per call here — it
@@ -136,7 +137,7 @@ async fn manual_elect_with_pre_vote_does_not_disrupt_leader() -> Result<()> {
     tracing::info!("--- node 1 manually triggers a cautious (pre-vote) election");
     n1.trigger().elect(true).await?;
 
-    tracing::info!("--- give the Pre-Vote round time to be declined by the healthy peers");
+    tracing::info!("--- the round is refused locally; wait to observe no disruption");
     TypeConfig::sleep(Duration::from_millis(500)).await;
 
     tracing::info!("--- node 1's term is untouched and it stays a follower");

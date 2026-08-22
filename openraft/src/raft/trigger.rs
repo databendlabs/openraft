@@ -52,10 +52,11 @@ where C: RaftTypeConfig
     /// healthy leader of a lower term.
     ///
     /// With `pre_vote = true`, a Pre-Vote round runs first and the real election proceeds only if a
-    /// quorum would grant a vote. A live leader holding its lease causes the Pre-Vote to be
-    /// declined, leaving the term untouched — use this to avoid disrupting a healthy leader
-    /// with a manual trigger. It does not require [`Config::enable_pre_vote`]; the caller opts
-    /// in per call.
+    /// quorum would grant a vote. While this node's own leader lease is still valid, the round is
+    /// refused locally and nothing is sent; a leader that a quorum keeps acking also rejects the
+    /// Pre-Vote — either way the term is left untouched. Use this to avoid disrupting a healthy
+    /// leader with a manual trigger. It does not require [`Config::enable_pre_vote`]; the caller
+    /// opts in per call.
     ///
     /// Returns error when RaftCore has [`Fatal`] error, e.g., shut down or having storage error.
     /// It is not affected by `Raft::enable_elect(false)`.
