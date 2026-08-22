@@ -1978,8 +1978,6 @@ where
 
         tracing::debug!("try to trigger election, now: {}", now.display());
 
-        // TODO: leader lease should be extended. Or it has to examine if it is leader
-        //       before electing.
         if self.engine.state.server_state == ServerState::Leader {
             tracing::debug!("skip election, already a leader");
             return;
