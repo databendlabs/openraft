@@ -41,6 +41,7 @@
                   (catch Exception e
                     e))]
       (is (await/condition-timeout? error :test-condition))
+      (is (await/condition-timeout? error))
       (is (false? (await/condition-timeout? error :other-condition))))))
 
 (deftest preserves-wait-interruptions

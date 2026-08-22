@@ -15,11 +15,12 @@
                          :condition condition))))
 
 (defn condition-timeout?
-  "True when e is a timeout produced while waiting for condition."
-  [e condition]
-  (let [data (ex-data e)]
-    (and (= condition-timeout-kind (:kind data))
-         (= condition (:condition data)))))
+  "True when e is a modeled condition timeout, optionally for condition."
+  ([e]
+   (= condition-timeout-kind (:kind (ex-data e))))
+  ([e condition]
+   (and (condition-timeout? e)
+        (= condition (:condition (ex-data e))))))
 
 (defn- retry-exception? [e condition]
   (let [data (ex-data e)]

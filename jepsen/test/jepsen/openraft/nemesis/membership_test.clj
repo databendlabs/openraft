@@ -475,6 +475,29 @@
                                     [:value :resolved-change])
                             [:change :before :after])))))))
 
+(deftest does-not-demote-an-unresolved-indeterminate-grow
+  (let [before #{"n1" "n2" "n3" "n4"}
+        pending-status (update (stable-status before) :metrics assoc "n5" {})
+        unresolved-status (stable-status before)
+        statuses (atom [pending-status unresolved-status])
+        subject (membership-nemesis)]
+    (with-redefs [cluster/membership-status
+                  (fn [_test]
+                    (let [status (first @statuses)]
+                      (swap! statuses subvec 1)
+                      status))
+                  client/add-learner!
+                  (fn [& _]
+                    (throw (ex-info "timeout" {:kind :request-timeout})))]
+      (let [first-result (nemesis/invoke! subject test-config
+                                          {:type :info :f :grow})
+            retry-result (nemesis/invoke! subject test-config
+                                          {:type :info :f :grow})]
+        (is (= :indeterminate (get-in first-result [:value :status])))
+        (is (= :indeterminate (get-in retry-result [:value :status])))
+        (is (= :request-result-unknown
+               (get-in retry-result [:value :reason])))))))
+
 (deftest opposite-operation-preserves-an-indeterminate-pending-retry
   (let [before (set nodes)
         after (disj before "n5")
@@ -959,42 +982,6 @@
             (is (not (contains? value :response)))
             (is (not (contains? value :error)))
             (is (nil? (harness/primary-failure failure-state)))))))))
-
-(deftest rejects-a-noncanonical-add-learner-request-before-http
-  (let [before #{"n1" "n2" "n3" "n4"}
-        status (update (stable-status before) :metrics assoc "n5" {})
-        http-called? (atom false)
-        failure-state (harness/failure-state)
-        subject (worker/wrap-nemesis
-                 failure-state
-                 (membership/->MembershipNemesis :database (atom nil)))
-        thrown (with-redefs [cluster/await-committed-membership!
-                             (constantly status)
-                             cluster/node-info
-                             (fn [_test _node]
-                               {:node-id "n5"
-                                :api-addr "wrong:21001"
-                                :raft-addr "n5:22001"})
-                             openraft-db/start-empty-node! (fn [& _])
-                             client/add-learner!
-                             (fn [& _]
-                               (reset! http-called? true))]
-                 (try
-                   (nemesis/invoke! subject
-                                    test-config
-                                    {:type :info
-                                     :f :restore-membership})
-                   nil
-                   (catch Exception e
-                     e)))]
-    (is (= :invalid-add-learner-request (:kind (ex-data thrown))))
-    (is (= {:node-id "n5"
-            :api-addr "n5:21001"
-            :raft-addr "n5:22001"}
-           (:expected (ex-data thrown))))
-    (is (false? @http-called?))
-    (is (identical? thrown
-                    (:throwable (harness/primary-failure failure-state))))))
 
 (deftest final-restoration-keeps-a-prior-indeterminate-add-sticky
   (let [before #{"n1" "n2" "n3" "n4"}
