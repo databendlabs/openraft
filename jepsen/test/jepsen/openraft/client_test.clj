@@ -25,6 +25,20 @@
     (send [_request _handler]
       (throw throwable))))
 
+(defn- responding-http-client [status body]
+  (let [response (proxy [java.net.http.HttpResponse] []
+                   (statusCode [] status)
+                   (body [] body)
+                   (request [] nil)
+                   (previousResponse [] nil)
+                   (headers [] nil)
+                   (sslSession [] nil)
+                   (uri [] nil)
+                   (version [] nil))]
+    (proxy [java.net.http.HttpClient] []
+      (send [_request _handler]
+        response))))
+
 (defn- forward-error
   ([]
    (forward-error nil))
@@ -206,7 +220,12 @@
                  (caught #(client/linearizable-read! "n1:21001" "key")))]
     (is (= :openraft-error (:kind (ex-data thrown))))
     (is (= error (:error (ex-data thrown))))
-    (is (= response (:response (ex-data thrown))))))
+    (is (= (select-keys response [:method :uri :status])
+           (select-keys (:response (ex-data thrown)) [:method :uri :status])))
+    (is (= (count (:body response))
+           (get-in (ex-data thrown) [:response :body-character-count])))
+    (is (= (:body response)
+           (get-in (ex-data thrown) [:response :body-preview])))))
 
 (deftest rejects-invalid-application-response-unions
   (doseq [[label body reason]
@@ -318,19 +337,44 @@
         (is (= :invalid-error-payload (:reason data)))
         (is (= variant (:error-variant data)))))))
 
-(deftest bounds-invalid-response-evidence
-  (let [body {:Unknown (apply str (repeat 2048 "x"))}
-        response (http-response body)
-        thrown (with-redefs [client/post! (fn [& _] response)]
-                 (caught #(client/write! "n1:21001" "key" "value")))
-        data (ex-data thrown)
-        evidence (:response data)]
-    (is (= :invalid-response (:kind data)))
-    (is (= :unknown-response-arm (:reason data)))
-    (is (= (count (:body response)) (:body-character-count evidence)))
-    (is (= 1024 (count (:body-preview evidence))))
-    (is (not (contains? data :decoded-response)))
-    (is (not (contains? data :payload)))))
+(deftest bounds-response-error-evidence
+  (testing "an invalid response"
+    (let [body {:Unknown (apply str (repeat 2048 "x"))}
+          response (http-response body)
+          thrown (with-redefs [client/post! (fn [& _] response)]
+                   (caught #(client/write! "n1:21001" "key" "value")))
+          data (ex-data thrown)
+          evidence (:response data)]
+      (is (= :invalid-response (:kind data)))
+      (is (= :unknown-response-arm (:reason data)))
+      (is (= (count (:body response)) (:body-character-count evidence)))
+      (is (= 1024 (count (:body-preview evidence))))
+      (is (not (contains? data :decoded-response)))
+      (is (not (contains? data :payload)))))
+
+  (testing "an unmodeled OpenRaft error"
+    (let [body {:FutureError (apply str (repeat 2048 "x"))}
+          response (http-response {:Err body})
+          thrown (with-redefs [client/post! (fn [& _] response)]
+                   (caught #(client/write! "n1:21001" "key" "value")))
+          evidence (:response (ex-data thrown))]
+      (is (= :openraft-error (:kind (ex-data thrown))))
+      (is (= (count (:body response)) (:body-character-count evidence)))
+      (is (= 1024 (count (:body-preview evidence))))
+      (is (not (contains? evidence :body)))))
+
+  (testing "a non-200 response"
+    (let [body (apply str (repeat 2048 "x"))
+          thrown (with-redefs-fn
+                   {(ns-resolve 'jepsen.openraft.client 'http-client)
+                    (responding-http-client 500 body)}
+                   #(caught (fn [] (client/post! "n1:21001" "/write" {}))))
+          data (ex-data thrown)]
+      (is (= :http-error (:kind data)))
+      (is (= 500 (:status data)))
+      (is (= (count body) (:body-character-count data)))
+      (is (= 1024 (count (:body-preview data))))
+      (is (not (contains? data :body))))))
 
 (deftest rejects-malformed-workload-payloads
   (doseq [[label invoke body reason path]
