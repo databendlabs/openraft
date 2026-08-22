@@ -27,13 +27,15 @@ use crate::type_config::alias::LogIdOf;
 /// membership changes and node additions.
 #[since(version = "0.10.0")]
 pub(crate) struct ManagementApi<'a, C>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
 {
     inner: &'a RaftInner<C>,
 }
 
 impl<'a, C> ManagementApi<'a, C>
-where C: RaftTypeConfig
+where
+    C: RaftTypeConfig,
 {
     pub(in crate::raft) fn new(inner: &'a RaftInner<C>) -> Self {
         Self { inner }
@@ -42,10 +44,26 @@ where C: RaftTypeConfig
     #[since(version = "0.10.0")]
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) async fn initialize<T>(&self, members: T) -> Result<Result<(), InitializeError<C>>, Fatal<C>>
-    where T: IntoNodes<C::NodeId, C::Node> + Debug {
+    where
+        T: IntoNodes<C::NodeId, C::Node> + Debug,
+    {
+        self.initialize_with_metadata(members, C::MembershipMetadata::default()).await
+    }
+
+    #[since(version = "0.10.0")]
+    #[tracing::instrument(level = "debug", skip(self, metadata))]
+    pub(crate) async fn initialize_with_metadata<T>(
+        &self,
+        members: T,
+        metadata: C::MembershipMetadata,
+    ) -> Result<Result<(), InitializeError<C>>, Fatal<C>>
+    where
+        T: IntoNodes<C::NodeId, C::Node> + Debug,
+    {
         self.inner
             .call_core_oneshot(|tx| RaftMsg::Initialize {
                 members: members.into_nodes(),
+                metadata,
                 tx,
             })
             .await
@@ -55,11 +73,11 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "info", skip_all)]
     pub(crate) async fn change_membership(
         &self,
-        members: impl Into<ChangeMembers<C::NodeId, C::Node>>,
+        members: impl Into<ChangeMembers<C::NodeId, C::Node, C::MembershipMetadata>>,
         retain: bool,
         preconditions: BatchOf<C, Precondition<C>>,
     ) -> Result<ClientWriteResult<C>, Fatal<C>> {
-        let changes: ChangeMembers<C::NodeId, C::Node> = members.into();
+        let changes: ChangeMembers<C::NodeId, C::Node, C::MembershipMetadata> = members.into();
 
         tracing::info!(
             "change_membership: start to commit joint config: changes: {:?}, retain: {}",

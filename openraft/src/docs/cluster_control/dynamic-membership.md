@@ -62,6 +62,72 @@ raft.change_membership(btreeset!{1,2,3}, false).await?;
 
 See [cluster example](https://github.com/databendlabs/openraft/blob/d041202a9f30b704116c324a6adc4f2ec28029fa/examples/raft-kv-memstore/tests/cluster/test_cluster.rs#L75-L103) for complete code.
 
+## Membership-wide metadata
+
+Membership-wide metadata is application-defined data attached to the entire
+membership configuration. It is distinct from the `Node` value associated with
+each node ID.
+
+The application selects its metadata type with
+[`RaftTypeConfig::MembershipMetadata`]. Use
+[`ChangeMembers::SetMetadata`] to replace the current value:
+
+```ignore
+let metadata = ClusterMetadata {
+    generation: 2,
+    region: "us-west".to_string(),
+};
+
+raft.change_membership(ChangeMembers::SetMetadata(metadata), true).await?;
+```
+
+`SetMetadata` replaces the complete metadata value. Build the new value from
+the current value first if the application needs merge semantics. For a
+uniform membership, the `retain` argument has no effect when only metadata is
+changed.
+
+Use [`ChangeMembers::Batch`] to commit metadata together with other membership
+changes. Batch elements are evaluated in order; if a batch contains more than
+one `SetMetadata`, the last value wins.
+
+```ignore
+let changes = ChangeMembers::Batch(vec![
+    ChangeMembers::ReplaceAllVoters(BTreeSet::from([1, 2, 3])),
+    ChangeMembers::SetMetadata(ClusterMetadata {
+        generation: 3,
+        region: "us-west".to_string(),
+    }),
+]);
+
+raft.change_membership(changes, true).await?;
+```
+
+A membership-changing response contains the resulting membership, including
+its metadata:
+
+```ignore
+let response = raft
+    .change_membership(ChangeMembers::SetMetadata(metadata), true)
+    .await?;
+
+let metadata = response
+    .membership()
+    .as_ref()
+    .expect("membership change returns a membership")
+    .metadata();
+```
+
+To query the presently effective membership independently of a response, use
+[`Raft::membership_metadata()`]:
+
+```ignore
+let metadata = raft.membership_metadata();
+```
+
+The metadata is replicated as part of membership log entries and is retained
+in stored memberships and snapshot metadata. Applications that do not need it
+can leave `MembershipMetadata` at its default type, `()`.
+
 ### Removing a retained learner
 
 `change_membership(..., retain=true)` only demotes a voter to a learner; the
@@ -205,6 +271,10 @@ Exercise additional care when:
 
 [`Raft::add_learner()`]: `crate::Raft::add_learner`
 [`Raft::change_membership()`]: `crate::Raft::change_membership`
+[`Raft::membership_metadata()`]: `crate::Raft::membership_metadata`
+[`RaftTypeConfig::MembershipMetadata`]: `crate::RaftTypeConfig::MembershipMetadata`
+[`ChangeMembers::Batch`]: `crate::change_members::ChangeMembers::Batch`
+[`ChangeMembers::SetMetadata`]: `crate::change_members::ChangeMembers::SetMetadata`
 [`ChangeMembers::SetNodes`]: `crate::change_members::ChangeMembers::SetNodes`
 [`ChangeMembers::RemoveNodes`]: `crate::change_members::ChangeMembers::RemoveNodes`
 [`Config::allow_log_reversion`]: `crate::config::Config::allow_log_reversion`

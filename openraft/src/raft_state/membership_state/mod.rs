@@ -15,6 +15,7 @@ mod membership_state_test;
 
 pub(crate) use change_handler::ChangeHandler;
 
+use crate::MembershipMetadata;
 use crate::log_id::LogId;
 use crate::membership::StoredMembership;
 use crate::node::Node;
@@ -48,29 +49,32 @@ use crate::vote::RaftCommittedLeaderId;
 /// From (2), a follower only needs to revert at most one membership log.
 ///
 /// Thus, a raft node will only need to store at most two recent membership logs.
+#[since(version = "0.10.0", change = "added membership-wide metadata type `M`")]
 #[since(
     version = "0.10.0",
     change = "from `MembershipState<C>` to `MembershipState<CLID, NID, N>`"
 )]
 #[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
-pub struct MembershipState<CLID, NID, N>
+pub struct MembershipState<CLID, NID, N, M = ()>
 where
     CLID: RaftCommittedLeaderId,
     NID: NodeId,
     N: Node,
+    M: MembershipMetadata,
 {
-    committed: Arc<StoredMembership<CLID, NID, N>>,
+    committed: Arc<StoredMembership<CLID, NID, N, M>>,
 
     // Using `Arc` because the effective membership will be copied to RaftMetrics frequently.
-    effective: Arc<StoredMembership<CLID, NID, N>>,
+    effective: Arc<StoredMembership<CLID, NID, N, M>>,
 }
 
-impl<CLID, NID, N> Default for MembershipState<CLID, NID, N>
+impl<CLID, NID, N, M> Default for MembershipState<CLID, NID, N, M>
 where
     CLID: RaftCommittedLeaderId,
     NID: NodeId,
     N: Node,
+    M: MembershipMetadata,
 {
     fn default() -> Self {
         Self {
@@ -80,11 +84,12 @@ where
     }
 }
 
-impl<CLID, NID, N> fmt::Display for MembershipState<CLID, NID, N>
+impl<CLID, NID, N, M> fmt::Display for MembershipState<CLID, NID, N, M>
 where
     CLID: RaftCommittedLeaderId,
     NID: NodeId,
     N: Node,
+    M: MembershipMetadata,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -95,15 +100,16 @@ where
     }
 }
 
-impl<CLID, NID, N> MembershipState<CLID, NID, N>
+impl<CLID, NID, N, M> MembershipState<CLID, NID, N, M>
 where
     CLID: RaftCommittedLeaderId,
     NID: NodeId,
     N: Node,
+    M: MembershipMetadata,
 {
     pub(crate) fn new(
-        committed: Arc<StoredMembership<CLID, NID, N>>,
-        effective: Arc<StoredMembership<CLID, NID, N>>,
+        committed: Arc<StoredMembership<CLID, NID, N, M>>,
+        effective: Arc<StoredMembership<CLID, NID, N, M>>,
     ) -> Self {
         Self { committed, effective }
     }
@@ -142,7 +148,7 @@ where
     /// corresponding local membership.
     pub(crate) fn install_membership_snapshot(
         &mut self,
-        membership_snapshot: Arc<StoredMembership<CLID, NID, N>>,
+        membership_snapshot: Arc<StoredMembership<CLID, NID, N, M>>,
         snapshot_last_log_index: u64,
     ) {
         // Snapshot install purges every log entry up to snapshot_last_log_index.
@@ -182,7 +188,7 @@ where
     /// - Leader appends a new membership,
     /// - Or a follower has confirmed preceding logs matches the leaders' and appends membership
     ///   received from the leader.
-    pub(crate) fn append(&mut self, m: Arc<StoredMembership<CLID, NID, N>>) {
+    pub(crate) fn append(&mut self, m: Arc<StoredMembership<CLID, NID, N, M>>) {
         debug_assert!(
             m.log_id() > self.effective.log_id(),
             "new membership has to have a greater log_id"
@@ -216,7 +222,7 @@ where
     /// |                                    last membership      // before deleting since..
     /// last membership                                           // after  deleting since..
     /// ```
-    pub(crate) fn truncate(&mut self, since: u64) -> Option<Arc<StoredMembership<CLID, NID, N>>> {
+    pub(crate) fn truncate(&mut self, since: u64) -> Option<Arc<StoredMembership<CLID, NID, N, M>>> {
         debug_assert!(
             since >= self.committed().log_id().next_index(),
             "committed log should never be truncated: committed membership cannot conflict with the leader"
@@ -237,14 +243,14 @@ where
 
     // This method is only used by tests
     #[cfg(test)]
-    pub(crate) fn set_effective(&mut self, e: Arc<StoredMembership<CLID, NID, N>>) {
+    pub(crate) fn set_effective(&mut self, e: Arc<StoredMembership<CLID, NID, N, M>>) {
         self.effective = e
     }
 
     /// Returns a reference to the last committed membership config.
     ///
     /// A committed membership config may or may not be the same as the effective one.
-    pub fn committed(&self) -> &Arc<StoredMembership<CLID, NID, N>> {
+    pub fn committed(&self) -> &Arc<StoredMembership<CLID, NID, N, M>> {
         &self.committed
     }
 
@@ -254,20 +260,21 @@ where
     /// one.
     ///
     /// A committed membership config may or may not be the same as the effective one.
-    pub fn effective(&self) -> &Arc<StoredMembership<CLID, NID, N>> {
+    pub fn effective(&self) -> &Arc<StoredMembership<CLID, NID, N, M>> {
         &self.effective
     }
 
-    pub(crate) fn change_handler(&self) -> ChangeHandler<'_, CLID, NID, N> {
+    pub(crate) fn change_handler(&self) -> ChangeHandler<'_, CLID, NID, N, M> {
         ChangeHandler { state: self }
     }
 }
 
-impl<CLID, NID, N> Validate for MembershipState<CLID, NID, N>
+impl<CLID, NID, N, M> Validate for MembershipState<CLID, NID, N, M>
 where
     CLID: RaftCommittedLeaderId,
     NID: NodeId,
     N: Node,
+    M: MembershipMetadata,
 {
     fn validate(&self) -> Result<(), Box<dyn Error>> {
         validit::less_equal!(self.committed.log_id(), self.effective.log_id());

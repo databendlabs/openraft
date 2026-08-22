@@ -30,6 +30,73 @@ impl Display for TestNode {
         Ok(())
     }
 }
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+struct TestMembershipMetadata {
+    generation: u64,
+}
+
+#[test]
+fn test_membership_metadata_is_preserved_by_change() -> anyhow::Result<()> {
+    let membership = Membership::<u64, (), TestMembershipMetadata>::new_with_metadata(
+        vec![btreeset! {1}],
+        btreemap! {1 => (), 2 => ()},
+        TestMembershipMetadata { generation: 7 },
+    )?;
+
+    let changed = membership.change(ChangeMembers::AddVoterIds(btreeset! {2}), true)?;
+
+    assert_eq!(&TestMembershipMetadata { generation: 7 }, changed.metadata());
+    Ok(())
+}
+
+#[test]
+fn test_membership_metadata_in_batch() -> anyhow::Result<()> {
+    let membership = Membership::<u64, (), TestMembershipMetadata>::new_with_metadata(
+        vec![btreeset! {1}],
+        btreemap! {1 => (), 2 => ()},
+        TestMembershipMetadata { generation: 7 },
+    )?;
+
+    let changed = membership.change(
+        ChangeMembers::Batch(vec![
+            ChangeMembers::AddNodes(btreemap! {3 => ()}),
+            ChangeMembers::SetMetadata(TestMembershipMetadata { generation: 8 }),
+            ChangeMembers::SetMetadata(TestMembershipMetadata { generation: 9 }),
+        ]),
+        true,
+    )?;
+
+    assert_eq!(&TestMembershipMetadata { generation: 9 }, changed.metadata());
+    assert_eq!(btreeset! {2, 3}, changed.learner_ids().collect());
+    Ok(())
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn test_membership_metadata_serde_compatibility() -> anyhow::Result<()> {
+    let old_json = r#"{"configs":[[1]],"nodes":{"1":null}}"#;
+
+    let old: Membership<u64, (), TestMembershipMetadata> = serde_json::from_str(old_json)?;
+    assert_eq!(&TestMembershipMetadata::default(), old.metadata());
+
+    let unit = Membership::<u64, ()>::new(vec![btreeset! {1}], btreemap! {1 => ()})?;
+    assert_eq!(old_json, serde_json::to_string(&unit)?);
+
+    assert_eq!(
+        r#"{"configs":[[1]],"nodes":{"1":null},"metadata":{"generation":0}}"#,
+        serde_json::to_string(&old)?
+    );
+
+    let with_metadata = old.with_metadata(TestMembershipMetadata { generation: 9 });
+    assert_eq!(
+        r#"{"configs":[[1]],"nodes":{"1":null},"metadata":{"generation":9}}"#,
+        serde_json::to_string(&with_metadata)?
+    );
+
+    Ok(())
+}
 #[test]
 fn test_membership_summary() -> anyhow::Result<()> {
     let node = |addr: &str, k: &str| TestNode {

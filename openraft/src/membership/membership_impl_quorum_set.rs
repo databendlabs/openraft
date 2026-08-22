@@ -1,14 +1,16 @@
 use std::collections::BTreeSet;
 
 use crate::Membership;
+use crate::membership::MembershipMetadata;
 use crate::node::Node;
 use crate::node::NodeId;
 use crate::quorum::QuorumSet;
 
-impl<NID, N> QuorumSet for Membership<NID, N>
+impl<NID, N, M> QuorumSet for Membership<NID, N, M>
 where
     NID: NodeId,
     N: Node,
+    M: MembershipMetadata,
 {
     type Id = NID;
     type Iter = std::collections::btree_set::IntoIter<NID>;
@@ -50,6 +52,7 @@ mod tests {
             let m12345 = Membership::<u64, ()> {
                 configs: vec![btreeset! {1,2,3,4,5}],
                 nodes: btreemap! {},
+                metadata: (),
             };
 
             assert!(!m12345.is_quorum([0].iter()));
@@ -65,6 +68,7 @@ mod tests {
             let m12345_678 = Membership::<u64, ()> {
                 configs: vec![btreeset! {1,2,3,4,5}, btreeset! {6,7,8}],
                 nodes: btreemap! {},
+                metadata: (),
             };
 
             assert!(!m12345_678.is_quorum([0].iter()));
@@ -83,6 +87,7 @@ mod tests {
         let m12345_678 = Membership::<u64, ()> {
             configs: vec![btreeset! {1,2,3,4,5}, btreeset! {4,5,6,7,8}],
             nodes: btreemap! {},
+            metadata: (),
         };
 
         assert_eq!(btreeset! {1,2,3,4,5,6,7,8}, m12345_678.ids().collect());

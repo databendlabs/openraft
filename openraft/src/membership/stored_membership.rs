@@ -6,6 +6,7 @@ use display_more::DisplayOptionExt;
 use openraft_macros::since;
 
 use crate::Membership;
+use crate::MembershipMetadata;
 use crate::log_id::LogId;
 use crate::node::Node;
 use crate::node::NodeId;
@@ -21,6 +22,7 @@ use crate::vote::RaftCommittedLeaderId;
 ///
 /// It derives `Default` for building an uninitialized membership state, e.g., when a raft-node is
 /// just created.
+#[since(version = "0.10.0", change = "added membership-wide metadata type `M`")]
 #[since(
     version = "0.10.0",
     change = "from `StoredMembership<C>` to `StoredMembership<CLID, NID, N>`"
@@ -29,24 +31,26 @@ use crate::vote::RaftCommittedLeaderId;
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct StoredMembership<CLID, NID, N>
+pub struct StoredMembership<CLID, NID, N, M = ()>
 where
     CLID: RaftCommittedLeaderId,
     NID: NodeId,
     N: Node,
+    M: MembershipMetadata,
 {
     /// The id of the log that stores this membership config
     log_id: Option<LogId<CLID>>,
 
     /// Membership config
-    membership: Membership<NID, N>,
+    membership: Membership<NID, N, M>,
 }
 
-impl<CLID, NID, N> Default for StoredMembership<CLID, NID, N>
+impl<CLID, NID, N, M> Default for StoredMembership<CLID, NID, N, M>
 where
     CLID: RaftCommittedLeaderId,
     NID: NodeId,
     N: Node,
+    M: MembershipMetadata,
 {
     fn default() -> Self {
         Self {
@@ -56,18 +60,19 @@ where
     }
 }
 
-impl<CLID, NID, N> StoredMembership<CLID, NID, N>
+impl<CLID, NID, N, M> StoredMembership<CLID, NID, N, M>
 where
     CLID: RaftCommittedLeaderId,
     NID: NodeId,
     N: Node,
+    M: MembershipMetadata,
 {
     /// Create a new StoredMembership with the given log ID and membership configuration.
-    pub fn new(log_id: Option<LogId<CLID>>, membership: Membership<NID, N>) -> Self {
+    pub fn new(log_id: Option<LogId<CLID>>, membership: Membership<NID, N, M>) -> Self {
         Self { log_id, membership }
     }
 
-    pub(crate) fn new_arc(log_id: Option<LogId<CLID>>, membership: Membership<NID, N>) -> Arc<Self> {
+    pub(crate) fn new_arc(log_id: Option<LogId<CLID>>, membership: Membership<NID, N, M>) -> Arc<Self> {
         Arc::new(Self::new(log_id, membership))
     }
 
@@ -77,7 +82,7 @@ where
     }
 
     /// Get the membership configuration.
-    pub fn membership(&self) -> &Membership<NID, N> {
+    pub fn membership(&self) -> &Membership<NID, N, M> {
         &self.membership
     }
 
@@ -117,11 +122,12 @@ where
     }
 }
 
-impl<CLID, NID, N> fmt::Display for StoredMembership<CLID, NID, N>
+impl<CLID, NID, N, M> fmt::Display for StoredMembership<CLID, NID, N, M>
 where
     CLID: RaftCommittedLeaderId,
     NID: NodeId,
     N: Node,
+    M: MembershipMetadata,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{{log_id:{}, {}}}", self.log_id.display(), self.membership)
@@ -129,11 +135,12 @@ where
 }
 
 /// Implement node-id joint quorum set.
-impl<CLID, NID, N> QuorumSet for StoredMembership<CLID, NID, N>
+impl<CLID, NID, N, M> QuorumSet for StoredMembership<CLID, NID, N, M>
 where
     CLID: RaftCommittedLeaderId,
     NID: NodeId,
     N: Node,
+    M: MembershipMetadata,
 {
     type Id = NID;
     type Iter = std::collections::btree_set::IntoIter<NID>;

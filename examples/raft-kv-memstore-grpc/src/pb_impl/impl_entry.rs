@@ -26,6 +26,7 @@ impl RaftEntry for pb::Entry {
     type D = pb::SetRequest;
     type NodeId = u64;
     type Node = pb::Node;
+    type MembershipMetadata = ();
 
     fn new(log_id: LogIdOf<TypeConfig>, payload: EntryPayload<pb::SetRequest, u64, pb::Node>) -> Self {
         let mut app_data = None;

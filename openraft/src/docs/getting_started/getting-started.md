@@ -154,6 +154,35 @@ openraft::declare_raft_types!(
 );
 ```
 
+### Membership-wide metadata
+
+Applications can attach their own metadata to a membership configuration as a
+whole. This is separate from `Node`, which stores information about an
+individual node such as its network address.
+
+Define the metadata type with `MembershipMetadata` in [`declare_raft_types!`]:
+
+```ignore
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterMetadata {
+    pub generation: u64,
+    pub region: String,
+}
+
+openraft::declare_raft_types!(
+    pub TypeConfig:
+        D = Request,
+        R = Response,
+        MembershipMetadata = ClusterMetadata,
+);
+```
+
+The type must implement [`MembershipMetadata`], whose required traits include
+`Clone`, `Debug`, `Default`, and `Eq`. When the `serde` feature is enabled, it
+must also support the serialization format used for log entries and snapshots.
+
+If an application does not configure this type, it defaults to `()`.
+
 A [`RaftTypeConfig`] is also used by other components such as [`RaftLogStorage`], [`RaftStateMachine`],
 [`RaftNetworkFactory`] and [`RaftNetworkV2`].
 
@@ -597,6 +626,7 @@ and links the trait, protocol page, or test suite that defines it.
 [`Node`]:                               `crate::node::Node`
 [`NodeId`]:                             `crate::node::NodeId`
 [`Responder`]:                          `crate::raft::responder::Responder`
+[`MembershipMetadata`]:                  `crate::MembershipMetadata`
 
 [`TokioRuntime`]:                       `crate::impls::TokioRuntime`
 [`OneshotResponder`]:                   `crate::impls::OneshotResponder`

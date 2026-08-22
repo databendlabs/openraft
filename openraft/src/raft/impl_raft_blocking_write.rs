@@ -73,7 +73,7 @@ where
     #[tracing::instrument(level = "info", skip_all)]
     pub async fn change_membership(
         &self,
-        members: impl Into<ChangeMembers<C::NodeId, C::Node>>,
+        members: impl Into<ChangeMembers<C::NodeId, C::Node, C::MembershipMetadata>>,
         retain: bool,
     ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
         self.management_api()

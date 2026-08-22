@@ -1,5 +1,6 @@
 use crate::ChangeMembers;
 use crate::Membership;
+use crate::MembershipMetadata;
 use crate::MembershipState;
 use crate::errors::ChangeMembershipError;
 use crate::errors::InProgress;
@@ -10,20 +11,22 @@ use crate::vote::RaftCommittedLeaderId;
 /// This struct handles change-membership requests, validating them and applying the changes if
 /// the necessary conditions are met. It operates at the `Engine` and `RaftState` level and
 /// serves as the outermost API for a consensus engine.
-pub(crate) struct ChangeHandler<'m, CLID, NID, N>
+pub(crate) struct ChangeHandler<'m, CLID, NID, N, M>
 where
     CLID: RaftCommittedLeaderId,
     NID: NodeId,
     N: Node,
+    M: MembershipMetadata,
 {
-    pub(crate) state: &'m MembershipState<CLID, NID, N>,
+    pub(crate) state: &'m MembershipState<CLID, NID, N, M>,
 }
 
-impl<CLID, NID, N> ChangeHandler<'_, CLID, NID, N>
+impl<CLID, NID, N, M> ChangeHandler<'_, CLID, NID, N, M>
 where
     CLID: RaftCommittedLeaderId,
     NID: NodeId,
     N: Node,
+    M: MembershipMetadata,
 {
     /// Builds a new membership configuration by applying changes to the current configuration.
     ///
@@ -38,9 +41,9 @@ where
     /// configuration.
     pub(crate) fn apply(
         &self,
-        change: ChangeMembers<NID, N>,
+        change: ChangeMembers<NID, N, M>,
         retain: bool,
-    ) -> Result<Membership<NID, N>, ChangeMembershipError<CLID, NID>> {
+    ) -> Result<Membership<NID, N, M>, ChangeMembershipError<CLID, NID>> {
         self.ensure_committed()?;
 
         let new_membership = self.state.effective().membership().clone().change(change, retain)?;

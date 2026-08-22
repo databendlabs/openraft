@@ -34,6 +34,24 @@ that only one leader will be elected.
 However, calling `initialize()` with **different configurations** on different nodes
 may lead to a split-brain condition and must be avoided.
 
+### Initialize with membership metadata
+
+Use [`Raft::initialize_with_metadata()`] to attach application-defined metadata
+to the initial membership configuration:
+
+```ignore
+let metadata = ClusterMetadata {
+    generation: 1,
+    region: "us-west".to_string(),
+};
+
+raft.initialize_with_metadata(nodes, metadata).await?;
+```
+
+The same initialization safety requirements apply: initialize one node, or
+ensure every node initialized independently uses identical voters, nodes, and
+membership metadata.
+
 ### Errors and Failures
 
 - If this method is called on a node that has already been initialized, it will simply return an error and remain safe,
@@ -60,4 +78,5 @@ For these two reasons, appending the first log is only allowed if:
 `vote==(0,0)`. This is why the initial value of `vote` must be `(0,0)`.
 
 [`Raft::initialize()`]: `crate::Raft::initialize`
+[`Raft::initialize_with_metadata()`]: `crate::Raft::initialize_with_metadata`
 [`Raft::new()`]:        `crate::Raft::new`

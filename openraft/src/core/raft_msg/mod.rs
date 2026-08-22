@@ -90,11 +90,12 @@ where C: RaftTypeConfig
 
     Initialize {
         members: BTreeMap<C::NodeId, C::Node>,
+        metadata: C::MembershipMetadata,
         tx: ResultSender<C, (), InitializeError<C>>,
     },
 
     ChangeMembership {
-        changes: ChangeMembers<C::NodeId, C::Node>,
+        changes: ChangeMembers<C::NodeId, C::Node, C::MembershipMetadata>,
 
         /// If `retain` is `true`, then the voters that are not in the new
         /// config will be converted into learners, otherwise they will be removed.
