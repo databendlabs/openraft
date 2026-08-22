@@ -119,25 +119,15 @@
 (defn partition-nemesis []
   (PartitionNemesis. (nemesis/partitioner)))
 
-(defn- legacy-partition-start-installed? [value]
-  (and (map? value)
-       (required-partition-modes (:mode value))
-       (:leader value)
-       (coll? (:voter-configs value))
-       (coll? (:components value))))
-
 (defn- partition-start-installed? [value]
-  (and (outcome/installed-or-legacy? value
-                                     legacy-partition-start-installed?)
+  (and (= :installed (:status value))
        (required-partition-modes (:mode value))))
 
 (defn- partition-stop-installed? [value]
-  (outcome/installed-or-legacy? value #{:network-healed}))
+  (= :installed (:status value)))
 
 (defn- recovery-installed? [value]
-  (and (outcome/installed-or-legacy?
-        value
-        #(and (map? %) (:leader %)))
+  (and (= :installed (:status value))
        (:leader value)))
 
 (defn- partition-generator []

@@ -356,39 +356,6 @@
            (:observed-modes result)))
     (is (= :intact (:cluster-state result)))))
 
-(deftest reanalyzes-exact-legacy-partition-history
-  (let [subject (#'partition/coverage-checker)
-        start (fn [mode]
-                {:f :start-partition
-                 :value {:mode mode
-                         :leader "n1"
-                         :voter-configs [(set nodes)]
-                         :components [["n1" "n2"] ["n3"]]}})
-        history [(start :leader-in-majority)
-                 {:f :stop-partition :value :network-healed}
-                 (start :leader-in-minority)
-                 {:f :stop-partition :value :network-healed}
-                 {:f :await-recovery :value {:leader "n2"}}]]
-    (testing "the exact pre-status success shapes remain valid"
-      (let [result (checker/check subject {} history {})]
-        (is (true? (:valid? result)))
-        (is (= :intact (:cluster-state result)))))
-
-    (testing "an explicit status is authoritative over legacy-looking fields"
-      (doseq [status [:skipped :indeterminate]]
-        (let [changed (assoc-in history [0 :value :status] status)
-              result (checker/check subject {} changed {})]
-          (is (false? (:valid? result)) (name status))
-          (is (= [:leader-in-majority]
-                 (:missing-modes result)) (name status))))
-
-      (doseq [status [:skipped :indeterminate]]
-        (let [changed (assoc-in history [4 :value :status] status)
-              result (checker/check subject {} changed {})]
-          (is (false? (:valid? result)) (name status))
-          (is (= :recovery-pending
-                 (:cluster-state result)) (name status)))))))
-
 (deftest reports-an-indeterminate-partition-state
   (let [subject (#'partition/coverage-checker)
         covered-history [{:f :start-partition

@@ -325,75 +325,51 @@
 (defn pause-nemesis [db]
   (PauseNemesis. (combined/db-nemesis db) (atom nil)))
 
-(defn- legacy-disruption-installed? [required-modes value]
-  (and (map? value)
-       (required-modes (:mode value))
-       (:leader value)
-       (coll? (:nodes value))
-       (coll? (:voter-configs value))
-       (coll? (:survivors value))))
-
 (defn- disruption-installed? [required-modes value]
-  (and (outcome/installed-or-legacy?
-        value
-        (partial legacy-disruption-installed? required-modes))
+  (and (= :installed (:status value))
        (required-modes (:mode value))))
 
 (defn- pause-installed? [value]
-  (if (and (map? value) (contains? value :status))
-    (let [targets (:nodes value)
-          target-set (set targets)
-          results (:pause-results value)
-          mode (:mode value)
-          leader (:leader value)]
-      (and (= :installed (:status value))
-           (required-pause-modes mode)
-           (seq targets)
-           (map? results)
-           (= (set targets) (set (keys results)))
-           (case mode
-             :leader-paused
-             (and (contains? target-set leader)
-                  (= :paused (get results leader)))
+  (let [targets (:nodes value)
+        target-set (set targets)
+        results (:pause-results value)
+        mode (:mode value)
+        leader (:leader value)]
+    (and (= :installed (:status value))
+         (required-pause-modes mode)
+         (seq targets)
+         (map? results)
+         (= (set targets) (set (keys results)))
+         (case mode
+           :leader-paused
+           (and (contains? target-set leader)
+                (= :paused (get results leader)))
 
-             :leader-unpaused
-             (and (not (contains? target-set leader))
-                  (some #{:paused} (vals results)))
+           :leader-unpaused
+           (and (not (contains? target-set leader))
+                (some #{:paused} (vals results)))
 
-             false)))
-    (legacy-disruption-installed? required-pause-modes value)))
+           false))))
 
-(defn- actual-pause-installed? [value]
-  (if (and (map? value) (contains? value :status))
-    (let [targets (:nodes value)
-          results (:pause-results value)]
-      (and (= :installed (:status value))
-           (seq targets)
-           (complete-control-results? (set targets) pause-results results)
-           (some #{:paused} (vals results))))
-    (legacy-disruption-installed? required-pause-modes value)))
-
-(defn- legacy-resume-installed? [expected-nodes value]
-  (and (map? value)
-       (contains? value :paused)
-       (coll? (:resumed value))
-       (= expected-nodes (set (:resumed value)))))
+(defn- any-node-paused? [value]
+  (let [targets (:nodes value)
+        results (:pause-results value)]
+    (and (= :installed (:status value))
+         (seq targets)
+         (complete-control-results? (set targets) pause-results results)
+         (some #{:paused} (vals results)))))
 
 (defn- resume-installed? [expected-nodes value]
-  (if (and (map? value) (contains? value :status))
-    (let [results (:resume-results value)]
-      (and (= :installed (:status value))
-           (contains? value :paused)
-           (coll? (:resumed value))
-           (= expected-nodes (set (:resumed value)))
-           (complete-control-results? expected-nodes resume-results results)
-           (some #{:resumed} (vals results))))
-    (legacy-resume-installed? expected-nodes value)))
+  (let [results (:resume-results value)]
+    (and (= :installed (:status value))
+         (contains? value :paused)
+         (coll? (:resumed value))
+         (= expected-nodes (set (:resumed value)))
+         (complete-control-results? expected-nodes resume-results results)
+         (some #{:resumed} (vals results)))))
 
 (defn- recovery-installed? [value]
-  (and (outcome/installed-or-legacy?
-        value
-        #(and (map? %) (:leader %)))
+  (and (= :installed (:status value))
        (:leader value)))
 
 (defn- process-generator []
@@ -470,7 +446,7 @@
 
                                  (and (= :await-recovery (:f op))
                                       (recovery-installed? (:value op)))
-                                 :intact
+                                 (if (= :unknown state) :unknown :intact)
 
                                  (and (= :await-recovery (:f op))
                                       error?)
@@ -506,7 +482,7 @@
       :pause-process
       (cond
         error? :unknown
-        (actual-pause-installed? (:value op)) :paused
+        (any-node-paused? (:value op)) :paused
         :else state)
 
       :resume-process

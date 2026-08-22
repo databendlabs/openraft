@@ -18,10 +18,3 @@
   (assoc details
          :status :indeterminate
          :reason reason))
-
-(defn installed-or-legacy?
-  "Checks an installed outcome, or an exact legacy success without status."
-  [value legacy-installed?]
-  (if (and (map? value) (contains? value :status))
-    (= :installed (:status value))
-    (boolean (legacy-installed? value))))
