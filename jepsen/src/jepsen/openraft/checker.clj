@@ -9,10 +9,6 @@
 (def node-panic-pattern
   #"OPENRAFT_JEPSEN_PANIC")
 
-(defn- fatal-throwable? [throwable]
-  (or (instance? ThreadDeath throwable)
-      (instance? VirtualMachineError throwable)))
-
 (defn- checker-exception-evidence [throwable]
   {:class (.getName (class throwable))
    :message (ex-message throwable)})
@@ -23,12 +19,6 @@
   The wrapper is suitable for both standalone and composed checkers."
   [delegate]
   (reify
-    clojure.lang.ILookup
-    (valAt [_ key]
-      (get delegate key))
-    (valAt [_ key not-found]
-      (get delegate key not-found))
-
     checker/Checker
     (check [_ test history opts]
       (try
@@ -40,7 +30,7 @@
               (.interrupt (Thread/currentThread))
               (throw throwable))
 
-            (fatal-throwable? throwable)
+            (interruption/fatal-throwable? throwable)
             (throw throwable)
 
             :else

@@ -1,9 +1,9 @@
 # Jepsen Error-Handling Semantics
 
 This document defines the agreed error-handling contract for OpenRaft Jepsen
-runs. It specifies the target behavior. Current implementation notes may
-describe gaps, but Client, Nemesis, lifecycle, and checker code must preserve
-these boundaries.
+runs. It specifies the behavior controlled by this suite. Current
+implementation notes may describe gaps, but Client, Nemesis, and checker code
+must preserve these boundaries.
 
 ## Classification Model
 
@@ -59,7 +59,7 @@ exception or execution failure is a Harness failure.
 The modeled `skipped` reasons assume a functioning control plane. Failure to
 find or control a target because SSH failed is a Harness failure.
 
-## Harness Failures
+## Suite Harness Failures
 
 Harness failures include:
 
@@ -69,6 +69,10 @@ Harness failures include:
 - command construction, permission, and environment-execution failures; and
 - unexpected teardown or recovery failures.
 
+This class covers boundaries where the OpenRaft suite can record a failure,
+control subsequent work, and reach its aggregate checker. It does not include
+Jepsen core-managed lifecycle failures.
+
 SSH carries controller-to-node management traffic for setup, fault control,
 recovery, and artifact collection. It is separate from Client traffic through
 the SUT API and from node-to-node Raft traffic. An SSH authentication,
@@ -77,9 +81,9 @@ failure, including when it occurs during a Nemesis operation. Uncertainty after
 an SSH command was dispatched does not turn that failure into a Nemesis
 `indeterminate` outcome.
 
-## Controlled Stop After the First Harness Failure
+## Controlled Stop After the First Suite Harness Failure
 
-The first Harness failure starts a controlled stop:
+The first suite Harness failure starts a controlled stop:
 
 1. Record the first failure as run-level state, including its source and
    original exception. Later failures must not replace it.
@@ -96,8 +100,9 @@ The first Harness failure starts a controlled stop:
 
 The generator gate does not throw and does not perform cleanup. Returning `nil`
 means normal generator exhaustion. It is neither an exception nor an
-interruption. Existing lifecycle handling drains in-flight operations and then
-runs final recovery, teardown, artifact collection, and applicable analysis.
+interruption. For a run that reaches normal generator completion, lifecycle
+handling drains in-flight operations and then runs final recovery, suite
+teardown, artifact collection, and applicable analysis.
 
 ## Teardown, Recovery, and Interruption
 
@@ -105,7 +110,8 @@ Membership and Recovery Nemeses have empty `teardown!` methods. Their formal
 recovery belongs in final Nemesis operations.
 
 Other Nemeses may perform cleanup during teardown. A failure in a non-empty
-teardown is a Harness failure. Record it, then continue independent cleanup,
+suite-controlled teardown is a Harness failure. Record it, then continue
+independent cleanup,
 artifact collection, and applicable analysis. Teardown must not exit early
 because one cleanup failed, and the failure must not be reduced to a warning.
 
@@ -147,16 +153,21 @@ original runtime context.
 
 ## Run Acceptance
 
-Any Harness failure makes the whole run unacceptable and requires a nonzero
+Any suite Harness failure makes the whole run unacceptable and requires a nonzero
 exit. It does not erase recorded history, logs, nested checker results, or an
 existing counterexample. A Harness failure does not by itself prove a SUT
 property violation, and it does not invalidate a property violation that a
 checker already established from retained evidence.
 
-## Jepsen Core Artifact Lifecycle
+## Jepsen Core Lifecycle
 
-Jepsen core owns test-store creation, history and result persistence, Harness
-log persistence, and remote artifact download. This suite declares OpenRaft
-artifacts but does not wrap or replace that lifecycle. Consequently, artifact
-persistence failures are not suite-level Harness failures specified here;
-their handling belongs to Jepsen core.
+Jepsen core owns OS and DB setup and teardown, Client and Nemesis lifecycle
+setup, Client open and close, test-store creation, history and result
+persistence, Harness log persistence, and remote artifact download. This suite
+declares OpenRaft artifacts but does not wrap or replace that lifecycle.
+
+An exception from a Jepsen core-managed lifecycle boundary propagates according
+to Jepsen's native lifecycle semantics. It may stop the run before aggregate
+analysis, so the suite does not record it as a suite Harness failure or promise
+a checker verdict or `results.edn`. Artifact persistence failures follow the
+same rule. Their handling belongs to Jepsen core.

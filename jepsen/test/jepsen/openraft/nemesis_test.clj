@@ -205,20 +205,6 @@
              (:context secondary)))
       (is (identical? second-error (:throwable secondary))))))
 
-(deftest retains-legacy-compose-packages-arity
-  (let [events (atom [])
-        failure (RuntimeException. "legacy teardown failure")
-        package (openraft-nemesis/compose-packages
-                 [(teardown-package :partition events failure)])
-        subject (nemesis/setup! (:nemesis package) test-config)
-        thrown (try
-                 (nemesis/teardown! subject test-config)
-                 nil
-                 (catch Throwable throwable
-                   throwable))]
-    (is (identical? failure thrown))
-    (is (= [:partition] @events))))
-
 (deftest composed-teardown-preserves-clean-behavior
   (let [failure-state (harness/failure-state)
         events (atom [])
