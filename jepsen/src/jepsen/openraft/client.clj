@@ -61,10 +61,15 @@
   (doto (HttpRequest/newBuilder (URI/create (node-url endpoint path)))
     (.timeout (Duration/ofSeconds 5))))
 
-(defn- propagate-interruption! [e]
-  (when (interruption/interruption? e)
-    (.interrupt (Thread/currentThread))
-    (throw e)))
+(defn- response-evidence [response]
+  (let [body (:body response)]
+    (cond-> (select-keys response [:method :uri :status])
+      (string? body)
+      (assoc :body-character-count (count body)
+             :body-preview (subs body
+                                 0
+                                 (min response-body-preview-limit
+                                      (count body)))))))
 
 (defn- send! [request]
   (let [request-info {:method (.method request)
@@ -84,12 +89,15 @@
                                      (assoc request-info :kind :request-timeout)
                                      e)))
                    (catch java.io.IOException e
-                     (propagate-interruption! e)
+                     (when (interruption/interruption? e)
+                       (.interrupt (Thread/currentThread))
+                       (throw e))
                      (throw (ex-info "HTTP request failed"
                                      (assoc request-info :kind :transport-error)
                                      e)))
                    (catch InterruptedException e
-                     (propagate-interruption! e)))
+                     (.interrupt (Thread/currentThread))
+                     (throw e)))
         status (.statusCode response)
         body (.body response)
         result (assoc request-info
@@ -97,18 +105,8 @@
                       :body body)]
     (when-not (= 200 status)
       (throw (ex-info (str "HTTP request failed with status " status)
-                      (assoc result :kind :http-error))))
+                      (assoc (response-evidence result) :kind :http-error))))
     result))
-
-(defn- response-evidence [response]
-  (let [body (:body response)]
-    (cond-> (select-keys response [:method :uri :status])
-      (string? body)
-      (assoc :body-character-count (count body)
-             :body-preview (subs body
-                                 0
-                                 (min response-body-preview-limit
-                                      (count body)))))))
 
 (defn- invalid-response! [response reason details]
   (throw (ex-info "OpenRaft API returned an invalid response"
@@ -158,7 +156,6 @@
 
 (defn- invalid-union-reason [body]
   (cond
-    (not (map? body)) :response-union-not-map
     (empty? body) :missing-response-arm
     (and (contains? body :Ok)
          (contains? body :Err)) :ambiguous-response-arms
@@ -167,8 +164,7 @@
 
 (defn- ok-value [response]
   (let [body (parse-body response)
-        arms (when (map? body)
-               (set (filter #{:Ok :Err} (keys body))))]
+        arms (set (filter #{:Ok :Err} (keys body)))]
     (cond
       (= #{:Ok} arms)
       (:Ok body)
@@ -185,7 +181,7 @@
               (throw (ex-info "OpenRaft API returned Err"
                               {:kind :openraft-error
                                :error error
-                               :response response}))))
+                               :response (response-evidence response)}))))
           (invalid-response! response
                              :invalid-error-union
                              {:error-arm-count (when (map? error)
@@ -194,8 +190,7 @@
       :else
       (invalid-response! response
                          (invalid-union-reason body)
-                         {:response-arm-count (when arms
-                                                (count arms))}))))
+                         {:response-arm-count (count arms)}))))
 
 (defn- versioned-value? [value]
   (and (map? value)

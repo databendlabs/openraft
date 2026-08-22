@@ -204,6 +204,9 @@ required Nemesis modes and successful main-phase operations. Nemesis checkers
 also verify a separate lifecycle postcondition: after fault cleanup, the cluster
 must return to the required state within the recovery deadline.
 
+The `final-workload` checker separately rejects a run when its final reads or
+writes fail. These modeled failures are not unexpected-SUT-response markers.
+
 A coverage failure rejects the run but does not by itself identify an OpenRaft
 failure or its root cause. For example, `:missing-modes` is written to
 `results.edn`; the mode may be absent from `history.edn`, skipped by an outcome
