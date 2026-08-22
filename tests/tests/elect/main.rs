@@ -12,3 +12,4 @@ mod t11_elect_seize_leadership;
 mod t12_pre_vote;
 mod t13_elect_while_leader;
 mod t14_one_way_isolation;
+mod t15_lease_gates;
