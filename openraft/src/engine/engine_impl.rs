@@ -308,8 +308,25 @@ where
     /// no term bump, no persisted vote, no server-state change. If a quorum grants (tallied by
     /// [`handle_pre_vote_resp`](Self::handle_pre_vote_resp)), a real [`elect`](Self::elect)
     /// follows.
+    ///
+    /// While this node's own leader lease is still valid, the round is refused as a complete
+    /// no-op: a live Leader is serving this node, and every peer applying the same lease rule
+    /// would reject. [`elect`](Self::elect) remains the forced override.
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn pre_elect(&mut self) {
+        let now = C::now();
+        let leased_vote = &self.state.vote;
+
+        // Refuse to disturb a live Leader: the same lease rule as `handle_pre_vote_req`.
+        // Return before resampling the election timeout so a refused round changes nothing.
+        if leased_vote.is_committed() && !leased_vote.is_expired(now, Duration::from_millis(0)) {
+            tracing::info!(
+                "skip pre-elect: leader lease has not yet expired: {}",
+                leased_vote.display_lease_info(now)
+            );
+            return;
+        }
+
         // Pre-Vote does not advance the persisted vote timestamp. Give every
         // new Pre-Vote round a fresh timeout instead of retaining one sample.
         self.config.resample_election_timeout();
@@ -392,6 +409,18 @@ where
             }
         }
 
+        // A Leader never renews the lease on its own `state.vote`: heartbeat replies renew that
+        // lease only on followers. The Leader's live lease is the quorum-ack lease, so while a
+        // quorum keeps acking this Leader, reject the vote. A leadership-transfer election is
+        // authorized by this very Leader, so it proceeds.
+        if !req.leadership_transfer
+            && let Some(leader) = self.leader.as_deref()
+            && leader.is_lease_valid(self.config.timer_config.leader_lease)
+        {
+            tracing::info!("reject vote-request: quorum-ack lease has not yet expired");
+            return VoteResponse::new(self.state.vote_ref(), self.state.last_log_id().cloned(), false);
+        }
+
         // The first step is to check log. If the candidate has less log, nothing needs to be done.
 
         if req.last_log_id.as_ref() >= self.state.last_log_id() {
@@ -445,6 +474,15 @@ where
         // would not grant a vote, so it would not grant a Pre-Vote either.
         if local_leased_vote.is_committed() && !local_leased_vote.is_expired(now, Duration::from_millis(0)) {
             tracing::info!("reject pre-vote-request: leader lease has not yet expired");
+            return VoteResponse::new(self.state.vote_ref(), self.state.last_log_id().cloned(), false);
+        }
+
+        // A Leader never renews the lease on its own `state.vote`; its live lease is the
+        // quorum-ack lease. While a quorum keeps acking this Leader, it would not grant.
+        if let Some(leader) = self.leader.as_deref()
+            && leader.is_lease_valid(self.config.timer_config.leader_lease)
+        {
+            tracing::info!("reject pre-vote-request: quorum-ack lease has not yet expired");
             return VoteResponse::new(self.state.vote_ref(), self.state.last_log_id().cloned(), false);
         }
 

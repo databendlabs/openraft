@@ -105,6 +105,59 @@ fn test_handle_vote_req_leadership_transfer_overrides_leader_lease() -> anyhow::
 }
 
 #[test]
+fn test_handle_vote_req_rejected_by_quorum_ack_lease() -> anyhow::Result<()> {
+    // A Leader never renews the lease on its own `state.vote`, so that lease is expired here.
+    // A quorum keeps acking it, and the quorum-ack lease alone rejects the vote.
+    let mut eng = eng();
+    eng.state.vote = Leased::new(
+        UTConfig::<()>::now() - Duration::from_secs(1),
+        Duration::from_millis(500),
+        Vote::new_committed(2, 1),
+    );
+    eng.testing_new_leader().update_clock(&0, UTConfig::<()>::now());
+
+    let resp = eng.handle_vote_req(VoteRequest {
+        vote: Vote::new(3, 2),
+        last_log_id: Some(log_id(2, 1, 3)),
+        leadership_transfer: false,
+    });
+
+    assert_eq!(VoteResponse::new(Vote::new_committed(2, 1), None, false), resp);
+
+    assert_eq!(Vote::new_committed(2, 1), *eng.state.vote_ref());
+    assert!(eng.leader.is_some(), "the Leader stays");
+    assert_eq!(0, eng.output.take_commands().len());
+
+    Ok(())
+}
+
+#[test]
+fn test_handle_vote_req_leadership_transfer_overrides_quorum_ack_lease() -> anyhow::Result<()> {
+    // Same quorum-acked Leader as above, but the election is authorized by this very Leader
+    // (leadership transfer), so it is granted.
+    let mut eng = eng();
+    eng.state.vote = Leased::new(
+        UTConfig::<()>::now() - Duration::from_secs(1),
+        Duration::from_millis(500),
+        Vote::new_committed(2, 1),
+    );
+    eng.testing_new_leader().update_clock(&0, UTConfig::<()>::now());
+
+    let resp = eng.handle_vote_req(VoteRequest {
+        vote: Vote::new(3, 2),
+        last_log_id: Some(log_id(2, 1, 3)),
+        leadership_transfer: true,
+    });
+
+    assert_eq!(VoteResponse::new(Vote::new(3, 2), None, true), resp);
+
+    assert_eq!(Vote::new(3, 2), *eng.state.vote_ref());
+    assert!(eng.leader.is_none(), "voting for another node steps the Leader down");
+
+    Ok(())
+}
+
+#[test]
 fn test_handle_vote_req_reject_smaller_vote() -> anyhow::Result<()> {
     let mut eng = eng();
 
