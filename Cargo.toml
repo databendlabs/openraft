@@ -1,6 +1,7 @@
 [workspace.package]
 version = "0.10.0-alpha.34"
 edition = "2024"
+rust-version = "1.88"
 authors = [
     "Databend Authors <opensource@datafuselabs.com>",
     "Anthony Dodd <Dodd.AnthonyJosiah@gmail.com>",
@@ -59,7 +60,7 @@ tokio              = { version = "1.39", default-features = false, features = [
 tracing            = { version = "0.1.40" }
 tracing-appender   = { version = "0.2.0" }
 tracing-subscriber = { version = "0.3.3", features = ["env-filter"] }
-validit            = { version = "0.2.5" }
+validit            = { version = "0.2.6" }
 
 
 [profile.release]
