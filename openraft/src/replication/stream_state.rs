@@ -49,9 +49,6 @@ where
 
     pub(crate) inflight_id: Option<InflightId>,
 
-    /// The leader_commit value to send in AppendEntries requests.
-    pub(crate) leader_committed: Option<LogIdOf<C>>,
-
     /// Read-only handle to the shared backoff state, sampled before each request.
     ///
     /// The consumer can only query the next delay; only `ReplicationCore` (via its
@@ -97,7 +94,10 @@ where
         let payload: AppendEntriesRequest<C> = AppendEntriesRequest {
             vote: self.replication_context.leader_vote.clone().into_vote(),
             prev_log_id: sending_range.prev.clone(),
-            leader_commit: self.event_watcher.committed_rx.borrow_watched().clone(),
+            // Marking the commit as seen keeps the pending `committed_rx.changed()` from forcing a
+            // second, entry-less request that carries this same commit. A commit that advances
+            // after this read stays unseen and gets a request of its own.
+            leader_commit: self.event_watcher.committed_rx.borrow_and_update().clone(),
             entries,
         };
 
@@ -138,16 +138,12 @@ where
             let current: IOId<C> = self.event_watcher.io_submitted_rx.borrow_watched().clone();
             let last_log_id = current.last_log_id().cloned();
 
-            let committed: Option<LogIdOf<C>> = self.event_watcher.committed_rx.borrow_watched().clone();
-
             tracing::debug!(
-                "building next entries range to replicate: current last_log_id: {}, current committed: {}",
-                last_log_id.display(),
-                committed.display()
+                "building next entries range to replicate: current last_log_id: {}",
+                last_log_id.display()
             );
 
-            if last_log_id > prev || committed > self.leader_committed {
-                self.leader_committed = committed;
+            if last_log_id > prev {
                 return Some(non_reversed_log_id_range(prev, last_log_id));
             } else {
                 let data_change = self.event_watcher.replicate_rx.changed();
@@ -169,9 +165,9 @@ where
                     }
                     _committed_change = committed_change.fuse() => {
                         tracing::debug!("committed_rx changed");
-                        // A notification may force an RPC even if no new readable logs are available.
-                        // This read delivers the event, thus it marks the value as seen.
-                        self.leader_committed = self.event_watcher.committed_rx.borrow_and_update().clone();
+                        // Only a commit that no request has carried is still unseen here, because
+                        // `next_request()` marks every commit it sends. With no new logs to
+                        // piggyback on, an entry-less request is the only way to deliver it.
                         return Some(non_reversed_log_id_range(prev, last_log_id));
                     }
                     cancel_res = cancel.fuse() => {

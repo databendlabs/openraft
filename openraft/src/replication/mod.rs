@@ -144,7 +144,6 @@ where
                 log_reader,
                 payload: None,
                 inflight_id: None,
-                leader_committed: None,
                 backoff_consumer: backoff_state.consumer(),
             })),
             inflight_id: None,
@@ -296,7 +295,6 @@ where
             let mut stream_state = self.stream_state.lock().await;
             stream_state.payload = Some(payload.clone());
             stream_state.inflight_id = self.inflight_id;
-            stream_state.leader_committed = self.event_watcher.committed_rx.borrow_watched().clone()
         }
 
         let inflight_queue = InflightAppendQueue::new();
