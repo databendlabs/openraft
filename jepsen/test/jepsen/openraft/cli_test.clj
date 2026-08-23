@@ -1,8 +1,10 @@
 (ns jepsen.openraft.cli-test
   (:require [clojure.test :refer [deftest is testing]]
             [clojure.tools.cli :as tools-cli]
+            [jepsen.checker :as checker]
             [jepsen.generator :as gen]
             [jepsen.generator.test :as gen-test]
+            [jepsen.history :as history]
             [jepsen.openraft.checker :as openraft-checker]
             [jepsen.openraft.cli :as cli]
             [jepsen.openraft.db :as openraft-db]
@@ -92,7 +94,6 @@
                   (fn [state packages]
                     (swap! composition-states conj state)
                     (compose-packages state packages))
-                  worker/wrap-db (wrap :db)
                   worker/wrap-client (wrap :client)
                   worker/wrap-nemesis (wrap :nemesis)
                   openraft-checker/reject-harness-failures
@@ -108,7 +109,7 @@
       (cli/openraft-test {:nemesis :partition
                           :nodes ["n1" "n2" "n3"]
                           :time-limit 10}))
-    (is (= [:db :client :nemesis] (mapv first @wrapped-states)))
+    (is (= [:client :nemesis] (mapv first @wrapped-states)))
     (is (every? #(identical? failure-state (second %))
                 @wrapped-states))
     (is (= 1 (count @stopped-states)))
@@ -120,6 +121,16 @@
     (is (= 1 (count @checker-states)))
     (is (identical? failure-state (ffirst @checker-states)))
     (is (= :exceptions (second (first @checker-states))))))
+
+(deftest reports-every-configured-checker
+  (let [test (cli/openraft-test {:nemesis [:membership :partition]
+                                 :nodes ["n1" "n2" "n3" "n4" "n5"]
+                                 :time-limit 10})
+        result (checker/check (:checker test) test (history/history []) {})]
+    (is (every? #(contains? result %)
+                #{:seed :stats :exceptions :crash :nemesis :workload}))
+    (is (every? #(contains? (:nemesis result) %)
+                #{:partition :membership}))))
 
 (defn- lifecycle-test-generator [failure-state]
   (#'cli/lifecycle-generator

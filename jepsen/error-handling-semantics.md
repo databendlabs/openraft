@@ -111,9 +111,9 @@ recovery belongs in final Nemesis operations.
 
 Other Nemeses may perform cleanup during teardown. A failure in a non-empty
 suite-controlled teardown is a Harness failure. Record it, then continue
-independent cleanup,
-artifact collection, and applicable analysis. Teardown must not exit early
-because one cleanup failed, and the failure must not be reduced to a warning.
+independent cleanup, artifact collection, and applicable analysis. Teardown
+must not exit early because one cleanup failed, and the failure must not be
+reduced to a warning.
 
 A modeled final-recovery outcome remains a Nemesis outcome, and a failed
 recovery postcondition remains a checker verdict. An unexpected execution

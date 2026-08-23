@@ -1,7 +1,6 @@
 (ns jepsen.openraft.worker-test
   (:require [clojure.test :refer [deftest is testing]]
             [jepsen [client :as client]
-             [db :as db]
              [nemesis :as nemesis]]
             [jepsen.openraft [harness :as harness]
              [worker :as worker]]))
@@ -42,29 +41,6 @@
 
      (teardown! [_ test]
        (teardown-f test)))))
-
-(defn- test-db
-  [{:keys [setup-f teardown-f]
-    :or {setup-f (fn [& _])
-         teardown-f (fn [& _])}}]
-  (reify db/DB
-    (setup! [_ test node]
-      (setup-f test node))
-
-    (teardown! [_ test node]
-      (teardown-f test node))
-
-    db/Kill
-    (kill! [_ _test _node])
-    (start! [_ _test _node])
-
-    db/Pause
-    (pause! [_ _test _node])
-    (resume! [_ _test _node])
-
-    db/LogFiles
-    (log-files [_ _test _node]
-      {})))
 
 (defn- thrown-by [f]
   (try
@@ -140,17 +116,7 @@
             (test-nemesis (fn [& _] nil)
                           (fn [& _]
                             (throw (RuntimeException. "setup failed")))
-                          (fn [& _] nil))]
-           [:db-setup
-            worker/wrap-db
-            #(db/setup! % {} "n1")
-            (test-db {:setup-f (fn [& _]
-                                 (throw (RuntimeException. "setup failed")))})]
-           [:db-teardown
-            worker/wrap-db
-            #(db/teardown! % {} "n1")
-            (test-db {:teardown-f (fn [& _]
-                                    (throw (RuntimeException. "teardown failed")))})]]]
+                          (fn [& _] nil))]]]
     (testing (name label)
       (let [failure-state (harness/failure-state)
             subject (wrapper failure-state delegate)
