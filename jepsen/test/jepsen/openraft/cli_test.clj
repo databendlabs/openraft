@@ -59,7 +59,7 @@
 
 (deftest selects-composable-nemeses
   (testing "chaos is the default"
-    (is (= [:partition :process :pause :membership]
+    (is (= [:partition :process :pause :membership :packet]
            (#'cli/normalize-nemeses nil))))
 
   (testing "comma-separated faults are parsed and canonically ordered"
@@ -68,13 +68,13 @@
             (#'cli/parse-nemeses "process, partition")))))
 
   (testing "chaos expands to every composable fault without duplicates"
-    (is (= [:partition :process :pause :membership]
+    (is (= [:partition :process :pause :membership :packet]
            (#'cli/normalize-nemeses [:chaos :partition]))))
 
   (testing "membership can be combined with another fault"
     (is (#'cli/valid-nemeses? [:membership :partition])))
 
-  (testing "packet is selectable without joining chaos yet"
+  (testing "packet is selectable by itself"
     (is (= [:packet]
            (#'cli/normalize-nemeses :packet)))))
 
@@ -104,6 +104,19 @@
            (:name (cli/openraft-test {:nemesis :packet
                                       :packet-mode :slow
                                       :nodes ["n1" "n2" "n3"]
+                                      :time-limit 10}))))))
+
+(deftest chaos-selects-packet-modes-internally
+  (testing "the default chaos profile does not require --packet-mode"
+    (is (= "openraft linearizable registers partition,process,pause,membership,packet"
+           (:name (cli/openraft-test {:nodes ["n1" "n2" "n3" "n4" "n5"]
+                                      :time-limit 10})))))
+
+  (testing "an explicit packet mode does not lock chaos"
+    (is (= "openraft linearizable registers partition,process,pause,membership,packet"
+           (:name (cli/openraft-test {:nemesis :chaos
+                                      :packet-mode :slow
+                                      :nodes ["n1" "n2" "n3" "n4" "n5"]
                                       :time-limit 10}))))))
 
 (deftest shares-one-harness-state-across-workers-and-generators

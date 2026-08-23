@@ -1,7 +1,9 @@
 (ns jepsen.openraft.nemesis.packet-test
   (:require [clojure.test :refer [deftest is testing]]
             [jepsen [checker :as checker]
+             [generator :as gen]
              [nemesis :as nemesis]]
+            [jepsen.generator.test :as gen-test]
             [jepsen.openraft [cluster :as cluster]
              [harness :as harness]
              [worker :as worker]]
@@ -209,3 +211,25 @@
   (is (thrown-with-msg? clojure.lang.ExceptionInfo
                         #"Unknown packet mode"
                         (packet/packet-nemesis nil :drop))))
+
+(deftest chaos-packet-generator-selects-one-mode-per-episode
+  (is (= :slow (#'packet/select-packet-mode :slow)))
+  (is (every? packet/packet-modes
+              (repeatedly 20
+                          (fn []
+                            (#'packet/select-packet-mode nil))))))
+
+(deftest packet-generator-advances-through-an-episode
+  (let [invocations (atom [])]
+    (gen-test/simulate
+     (gen/limit 4 (#'packet/packet-generator :slow))
+     (fn [_context operation]
+       (swap! invocations conj operation)
+       (assoc operation :type :info)))
+    (is (= [[:start-packet :leader-included]
+            [:stop-packet nil]
+            [:start-packet :leader-excluded]
+            [:stop-packet nil]]
+           (mapv (fn [op]
+                   [(:f op) (get-in op [:value :target-role])])
+                 @invocations)))))

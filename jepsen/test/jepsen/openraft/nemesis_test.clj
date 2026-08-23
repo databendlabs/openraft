@@ -11,6 +11,7 @@
              [nemesis :as openraft-nemesis]
              [worker :as worker]]
             [jepsen.openraft.nemesis.membership :as membership]
+            [jepsen.openraft.nemesis.packet :as packet]
             [jepsen.openraft.nemesis.partition :as partition]
             [jepsen.openraft.nemesis.process :as process]))
 
@@ -24,6 +25,7 @@
                                :reason reason})
                             [:no-quorum-safe-process-target
                              :no-reachable-pause-target
+                             :no-safe-packet-target
                              :no-safe-partition-target
                              :no-supported-leader])
                        [{:status :no-supported-leader}
@@ -74,10 +76,12 @@
                    test-config)
                   (partition/partition-package)
                   (process/process-package database)
-                  (process/pause-package database)])]
+                  (process/pause-package database)
+                  (packet/packet-package database nil)])]
     (is (= [:stop-partition
             :restart-process
             :resume-process
+            :stop-packet
             :restore-membership
             :await-recovery]
            (mapv :f (:final-generator package))))))
