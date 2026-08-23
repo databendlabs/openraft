@@ -61,7 +61,7 @@ jobs:
         run: make -C jepsen unit-test
 
   jepsen:
-    name: Jepsen (${{ matrix.nemesis }})
+    name: Jepsen (${{ matrix.name }})
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -69,19 +69,33 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        nemesis:
-          - membership
-          - partition
-          - pause
-          - process
-          - chaos
+        include:
+          - name: membership
+            nemesis: membership
+          - name: partition
+            nemesis: partition
+          - name: pause
+            nemesis: pause
+          - name: process
+            nemesis: process
+          - name: packet-slow
+            nemesis: packet
+            packet_mode: slow
+          - name: packet-flaky
+            nemesis: packet
+            packet_mode: flaky
+          - name: chaos
+            nemesis: chaos
 
     steps:
       - name: Setup | Checkout
         uses: actions/checkout@v4
 
       - name: Test | Jepsen
-        run: make -C jepsen jepsen NEMESIS=${{ matrix.nemesis }}
+        run: >-
+          make -C jepsen jepsen
+          NEMESIS=${{ matrix.nemesis }}
+          PACKET_MODE=${{ matrix.packet_mode }}
 
       - name: Debug | Docker logs
         if: failure()
@@ -93,7 +107,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: jepsen-results-${{ matrix.nemesis }}
+          name: jepsen-results-${{ matrix.name }}
           path: jepsen/store/**/results.edn
           if-no-files-found: ignore
 
@@ -101,7 +115,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: jepsen-debug-${{ matrix.nemesis }}
+          name: jepsen-debug-${{ matrix.name }}
           path: |
             jepsen/store/
             jepsen/docker-compose.log
