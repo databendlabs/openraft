@@ -198,15 +198,14 @@
     (throw (ex-info "At least one nemesis package is required" {})))
   (let [packages (->> packages
                       (mapv (fn [{:keys [name] :as package}]
-                              (cond-> (assoc package
+                              (update (assoc package
                                              :perf
                                              (or (:perf package) #{}))
-                                failure-state
-                                (update :nemesis
-                                        #(worker/wrap-nemesis-teardown
-                                          failure-state
-                                          name
-                                          %)))))
+                                      :nemesis
+                                      #(worker/wrap-nemesis-teardown
+                                        failure-state
+                                        name
+                                        %))))
                       cleanup-order
                       (mapv schedule-package))
         composed (combined/compose-packages

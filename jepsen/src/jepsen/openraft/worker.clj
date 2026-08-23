@@ -1,7 +1,6 @@
 (ns jepsen.openraft.worker
   (:require [clojure.tools.logging :refer [error]]
             [jepsen [client :as client]
-             [db :as db]
              [nemesis :as nemesis]]
             [jepsen.openraft.harness :as harness]
             [jepsen.openraft.interruption :as interruption]))
@@ -119,34 +118,6 @@
                                 :component :composed-nemesis
                                 :nodes (:nodes test)}
                                #(nemesis/teardown! delegate test)))))
-
-(defn wrap-db
-  "Delegates Jepsen-managed DB lifecycle and control boundaries."
-  [_failure-state delegate]
-  (reify db/DB
-    (setup! [_ test node]
-      (db/setup! delegate test node))
-
-    (teardown! [_ test node]
-      (db/teardown! delegate test node))
-
-    db/Kill
-    (kill! [_ test node]
-      (db/kill! delegate test node))
-
-    (start! [_ test node]
-      (db/start! delegate test node))
-
-    db/Pause
-    (pause! [_ test node]
-      (db/pause! delegate test node))
-
-    (resume! [_ test node]
-      (db/resume! delegate test node))
-
-    db/LogFiles
-    (log-files [_ test node]
-      (db/log-files delegate test node))))
 
 (defn wrap-nemesis-teardown
   "Records and contains a package's non-interruption teardown failures."
