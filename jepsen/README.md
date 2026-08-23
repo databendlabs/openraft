@@ -148,32 +148,126 @@ as its OpenRaft node ID.
 This starts the five-node Docker environment, then runs the Jepsen control
 process from the control container. Every test checks a concurrent mix of
 linearizable reads, writes, and compare-and-set operations across independent
-registers with Knossos. The default `chaos` profile independently
-schedules partition, process, pause, and membership faults, so their active
-intervals can overlap. `NEMESIS` accepts a comma-separated subset when a
+registers with Knossos. `NEMESIS` accepts a comma-separated subset when a
 narrower combination is needed.
 
-The partition nemesis alternates between partitions where the current leader is
-in the majority and in the minority. A focused partition run requires both
-modes to occur.
+### Nemesis Design
 
-The process nemesis reads the effective voter configs from OpenRaft metrics and
-randomly stops a non-empty voter subset whose survivors still form a quorum. It
-supports both stable and joint membership and covers leader and follower-only
-crashes.
+A standalone Nemesis selects each target so the surviving voters still contain
+a quorum in every effective voter configuration. This applies to both stable
+and joint membership. A focused run can therefore exercise one fault class and
+its recovery while retaining a component that can make progress.
 
-The pause nemesis uses the same quorum-safe target selection, but suspends the
-selected processes without terminating them. Their in-memory state and open TCP
-connections remain in place, so peers observe an unresponsive process rather
-than a closed connection. It covers pauses that include and exclude the current
-leader. Resume operations target every test node as an idempotent cleanup and
-record both the preceding disruption and the complete resumed node set in the
-Jepsen history.
+The `chaos` profile composes individually quorum-safe faults without reserving
+one common survivor quorum across fault classes. Their active intervals may
+overlap and temporarily remove the global quorum. Safety and eventual recovery
+remain mandatory in that case, but continuous availability does not.
 
-The membership nemesis starts with a shrink and grow for deterministic coverage,
-then randomly mixes additional membership changes. Removed nodes are stopped
-and wiped only after the new voter set is committed. The final recovery restores
-all five nodes as voters and waits for every node to agree on a leader.
+#### Network Partition Nemesis
+
+The partition Nemesis installs a hard network partition between two components.
+It exercises two leader-aware cases:
+
+- `leader-in-majority`: the current quorum-supported leader remains with a
+  majority of the voters;
+- `leader-in-minority`: the leader is isolated with a minority while the other
+  component retains a quorum and can elect a replacement.
+
+A focused partition run requires both cases to be installed and healed. If no
+quorum-supported leader or safe partition target is observable, the operation
+is skipped and retried later without counting as coverage.
+
+#### Process Kill Nemesis
+
+The process Nemesis reads the effective voter configurations from OpenRaft
+metrics and randomly stops a non-empty voter subset whose survivors still form
+a quorum. It exercises two target cases:
+
+- `leader-killed`: the selected processes include the current
+  quorum-supported leader, so the survivors must elect a replacement;
+- `leader-survives`: only non-leader voters are selected, so the existing leader
+  remains with a quorum.
+
+The target set is fixed for one fault episode. Recovery restarts the selected
+processes and waits for them to rejoin the healthy cluster.
+
+#### Process Pause Nemesis
+
+The pause Nemesis uses the same quorum-safe target selection as process kill,
+but suspends the selected processes without terminating them. It covers:
+
+- `leader-paused`: the selected set includes the supported leader;
+- `leader-unpaused`: only non-leader voters are suspended.
+
+Paused processes retain their memory and open TCP connections, so peers observe
+unresponsive processes rather than closed connections. Resume operations target
+every test node as an idempotent cleanup and record the complete resumed node
+set in history.
+
+#### Membership Nemesis
+
+The membership Nemesis exercises two membership-change cases:
+
+- `shrink`: remove a voter only when the resulting configuration retains a
+  quorum;
+- `grow`: add a non-voter back through learner initialization and committed
+  membership change.
+
+It starts with one shrink and grow for deterministic coverage, then randomly
+mixes additional membership changes. Removed nodes are stopped and wiped only
+after the new voter set is committed. Final recovery restores all five nodes as
+voters and waits for every node to agree on a leader.
+
+#### Packet Nemesis
+
+The planned packet Nemesis models traffic that remains reachable but is
+degraded. Hard packet drops that create a partition remain the responsibility
+of the Network Partition Nemesis. Packet provides two mutually exclusive
+modes:
+
+- `slow`: 300 ms latency with 50 ms jitter;
+- `flaky`: Jepsen's default 20% packet loss with 75% correlation.
+
+The `slow` parameters are derived from the test application's timing
+configuration. Its election timeout is approximately 299 ms and its heartbeat
+interval is 50 ms. A 300 ms base delay with 50 ms jitter therefore spans roughly
+250--350 ms: from about one heartbeat interval before the election threshold to
+about one heartbeat interval after it. This deliberately exercises the boundary
+where some messages arrive before an election timeout and others arrive after
+it, without requiring every fault episode to trigger an election.
+
+A focused run explicitly selects one mode. Within that mode it exercises two
+quorum-safe target cases:
+
+- `leader-included`: the fixed target set includes the quorum-supported leader;
+- `leader-excluded`: the fixed target set contains only non-leader voters.
+
+Targets are selected once per fault episode and do not follow a newly elected
+leader. If no supported leader or safe target for the requested case is
+observable, the operation is skipped and retried without counting as coverage.
+
+Both modes use Jepsen's `shape!` wrapper around Linux `tc netem`. The first
+version applies one mode in both directions across the selected target boundary,
+at node-IP granularity and across DB-to-DB ports. It does not provide one-way,
+per-RPC, or per-port shaping. Because both modes own the same root qdisc, they
+are never active at the same time.
+
+The same Packet package and checker are used in focused and chaos runs. Packet
+coverage requires the selected mode and both leader-target cases to be installed
+and later cleared successfully. It does not require an election, timeout, or
+indeterminate mutation, because those observations depend on timing, TCP
+retransmission, and kernel packet selection. Partial installation or cleanup is
+a Harness failure; final recovery and teardown must attempt idempotent cleanup
+on every node.
+
+#### Chaos Composition
+
+The default `chaos` profile independently schedules partition, process, pause,
+membership, and, once implemented, packet faults. It composes the package,
+generator, final recovery, and checker supplied by each Nemesis rather than
+defining separate Chaos-only checker semantics. Packet chooses one of `slow` or
+`flaky` for each independent Packet episode, and never overlaps those two modes
+with each other. Different fault classes may remain active at the same time.
 
 Every Jepsen node builds a snapshot after 100 newly committed logs by default.
 The regular write workload therefore exercises snapshot construction during
