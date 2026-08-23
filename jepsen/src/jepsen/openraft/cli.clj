@@ -22,7 +22,7 @@
   [:partition :process :pause :membership :packet])
 
 (def ^:private chaos-nemesis-types
-  [:partition :process :pause :membership])
+  concrete-nemesis-types)
 
 (def nemesis-types
   (conj (set concrete-nemesis-types) :chaos))
@@ -51,6 +51,13 @@
     true
     (catch Exception _
       false)))
+
+(defn- chaos-selection? [selection]
+  (or (nil? selection)
+      (contains? (set (if (coll? selection)
+                        selection
+                        [selection]))
+                 :chaos)))
 
 (def cli-opts
   [[nil "--api-port PORT" "OpenRaft application HTTP port."
@@ -113,6 +120,7 @@
   (let [failure-state (harness/failure-state)
         database (openraft-db/db opts)
         workload (workload/workload opts)
+        chaos? (chaos-selection? (:nemesis opts))
         nemesis-types (normalize-nemeses (:nemesis opts))
         nemesis-package
         (openraft-nemesis/compose-packages
@@ -132,8 +140,9 @@
                    (membership/membership-package database opts)
 
                    :packet
-                   (let [packet-mode (:packet-mode opts)]
-                     (when-not packet-mode
+                   (let [packet-mode (when-not chaos?
+                                       (:packet-mode opts))]
+                     (when-not (or chaos? packet-mode)
                        (throw (ex-info
                                "--packet-mode is required for Packet Nemesis"
                                {:nemesis nemesis-types})))

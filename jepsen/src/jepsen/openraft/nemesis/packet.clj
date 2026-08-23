@@ -60,12 +60,16 @@
       (if-let [{:keys [leader] :as status}
                (cluster/membership-status test)]
         (let [configs (cluster/voter-configs test status)
-              target-role (:value op)]
+              request (:value op)
+              mode (or (:mode request) packet-mode)
+              target-role (or (:target-role request) request)]
+          (when-not (packet-modes mode)
+            (throw (ex-info "Unknown packet mode" {:mode mode})))
           (if-let [targets (packet-targets configs leader target-role)]
             (let [targets (vec (filter targets (:nodes test)))
-                  behavior (get packet-behaviors packet-mode)]
+                  behavior (get packet-behaviors mode)]
               (info "Degrading OpenRaft packet delivery"
-                    {:mode packet-mode
+                    {:mode mode
                      :target-role target-role
                      :leader leader
                      :targets targets
@@ -76,7 +80,7 @@
                                        :value [targets behavior]))
               (assoc op
                      :value (outcome/installed
-                             {:mode packet-mode
+                             {:mode mode
                               :target-role target-role
                               :leader leader
                               :voter-configs configs
@@ -84,14 +88,14 @@
                               :behavior behavior})))
             (do
               (info "Skipping packet degradation without a safe target"
-                    {:mode packet-mode
+                    {:mode mode
                      :target-role target-role
                      :leader leader
                      :voter-configs configs})
               (assoc op
                      :value (outcome/skipped
                              :no-safe-packet-target
-                             {:mode packet-mode
+                             {:mode mode
                               :target-role target-role
                               :leader leader
                               :voter-configs configs})))))
@@ -100,8 +104,9 @@
           (assoc op
                  :value (outcome/skipped
                          :no-supported-leader
-                         {:mode packet-mode
-                          :target-role (:value op)}))))
+                         {:mode (or (:mode (:value op)) packet-mode)
+                          :target-role (or (:target-role (:value op))
+                                           (:value op))}))))
 
       :stop-packet
       (do
@@ -122,7 +127,8 @@
     #{:start-packet :stop-packet}))
 
 (defn packet-nemesis [database packet-mode]
-  (when-not (packet-modes packet-mode)
+  (when-not (or (nil? packet-mode)
+                (packet-modes packet-mode))
     (throw (ex-info "Unknown packet mode" {:mode packet-mode})))
   (PacketNemesis. (combined/packet-nemesis database) packet-mode))
 
@@ -138,19 +144,25 @@
   (and (= :installed (:status value))
        (:leader value)))
 
-(defn- packet-generator []
-  (gen/cycle
-   (gen/phases
-    {:type :info
-     :f :start-packet
-     :value :leader-included}
-    {:type :info
-     :f :stop-packet}
-    {:type :info
-     :f :start-packet
-     :value :leader-excluded}
-    {:type :info
-     :f :stop-packet})))
+(defn- select-packet-mode [packet-mode]
+  (or packet-mode
+      (first (random/shuffle packet-modes))))
+
+(defn- packet-generator [packet-mode]
+  (let [start (fn [target-role]
+                (fn [_test _context]
+                  {:type :info
+                   :f :start-packet
+                   :value {:mode (select-packet-mode packet-mode)
+                           :target-role target-role}}))
+        stop {:type :info
+              :f :stop-packet}]
+    (gen/cycle
+     (gen/phases
+      (gen/once (start :leader-included))
+      stop
+      (gen/once (start :leader-excluded))
+      stop))))
 
 (defn- next-cluster-state [state op]
   (let [status (get-in op [:value :status])
@@ -187,8 +199,9 @@
       (let [observed-roles (->> history
                                 (filter #(= :start-packet (:f %)))
                                 (filter #(packet-start-installed? (:value %)))
-                                (filter #(= packet-mode
-                                            (get-in % [:value :mode])))
+                                (filter #(or (nil? packet-mode)
+                                             (= packet-mode
+                                                (get-in % [:value :mode]))))
                                 (keep #(get-in % [:value :target-role]))
                                 set)
             missing-roles (remove observed-roles required-target-roles)
@@ -199,7 +212,7 @@
                      (= :recovery-pending cluster-state) false
                      :else :unknown)]
         {:valid? valid?
-         :mode packet-mode
+         :mode (or packet-mode :mixed)
          :observed-modes (vec (sort observed-roles))
          :missing-modes (vec (sort missing-roles))
          :cluster-state cluster-state}))))
@@ -208,7 +221,7 @@
   {:name :packet
    :interval packet-seconds
    :nemesis (packet-nemesis database packet-mode)
-   :generator (packet-generator)
+   :generator (packet-generator packet-mode)
    :final-generator {:type :info
                      :f :stop-packet}
    :checker (openraft-checker/reject-checker-exceptions
