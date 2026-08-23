@@ -32,28 +32,9 @@ async fn commit_joint_config_during_0_to_012() -> Result<()> {
     );
 
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0).await;
 
-    // Initialize the cluster, then assert that a stable cluster was formed & held.
-    tracing::info!("--- initializing cluster");
-    router.initialize(0).await?;
-    // Assert all nodes are in learner state & have no entries.
-    let mut log_index = 1;
-
-    router.wait(&0, timeout()).applied_index(Some(log_index), "init node 0").await?;
-
-    // Sync some new nodes.
-    router.new_raft_node(1).await;
-    router.new_raft_node(2).await;
-
-    tracing::info!(log_index, "--- adding new nodes 1,2 to cluster");
-    {
-        router.add_learner(0, 1).await?;
-        router.add_learner(0, 2).await?;
-    }
-    log_index += 2;
-
-    router.wait(&0, timeout()).applied_index(Some(log_index), "init node 0").await?;
+    tracing::info!("--- bring up node 0 as leader, with node 1,2 as learners");
+    let log_index = router.new_cluster(btreeset! {0}, btreeset! {1,2}).await?;
 
     tracing::info!(
         log_index,

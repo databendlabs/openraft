@@ -7,7 +7,6 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::LogIdOptionExt;
 use openraft::ServerState;
-use openraft::Vote;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
 use tracing::Instrument;
@@ -53,38 +52,8 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
     );
     let mut router = RaftRouter::new(config.clone());
 
-    router.new_raft_node(0).await;
-
-    let mut log_index;
-
-    tracing::info!("--- initializing cluster of 1 node");
-    {
-        router.initialize(0).await?;
-        log_index = 1;
-
-        wait_log(&router, &btreeset![0], log_index).await?;
-    }
-
-    tracing::info!(log_index, "--- adding two candidate nodes");
-    {
-        // Sync some new nodes.
-        router.new_raft_node(1).await;
-        router.new_raft_node(2).await;
-        router.add_learner(0, 1).await?;
-        router.add_learner(0, 2).await?;
-        log_index += 2; // two add_learner logs
-
-        tracing::info!(log_index, "--- changing cluster config");
-
-        let node = router.get_raft_handle(&0)?;
-        node.change_membership(candidates.clone(), false).await?;
-        log_index += 2; // Tow member change logs
-
-        wait_log(&router, &candidates, log_index).await?;
-        for id in [0, 1, 2] {
-            router.wait(&id, timeout()).vote(Vote::new_committed(1, 0), "after changing membership").await?;
-        }
-    }
+    tracing::info!("--- bring up a cluster of the 3 candidates");
+    let mut log_index = router.new_cluster(candidates.clone(), btreeset! {}).await?;
 
     let leader = router.leader().unwrap();
 
