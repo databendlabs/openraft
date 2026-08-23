@@ -4,7 +4,6 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
-use openraft::ServerState;
 use openraft::metrics::WaitError;
 
 use crate::fixtures::RaftRouter;
@@ -30,21 +29,14 @@ async fn metrics_wait() -> Result<()> {
     );
     let mut router = RaftRouter::new(config.clone());
 
-    let cluster = btreeset![0];
-    router.new_raft_node(0).await;
-    {
-        let n0 = router.get_raft_handle(&0)?;
-        n0.initialize(cluster.clone()).await?;
+    tracing::info!("--- bring up a single node cluster");
+    let log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
 
-        router.wait(&0, timeout()).state(ServerState::Leader, "n0 -> leader").await?;
-    }
+    tracing::info!(log_index, "--- wait for a log that is never written, expect timeout");
 
-    router.wait(&0, None).current_leader(0, "become leader").await?;
-    router.wait(&0, None).applied_index(Some(1), "initial log").await?;
-
-    tracing::info!("--- wait and timeout");
-
-    let rst = router.wait(&0, timeout()).applied_index(Some(2), "timeout waiting for log 2").await;
+    let never_written = log_index + 1;
+    let msg = format!("timeout waiting for log {}", never_written);
+    let rst = router.wait(&0, timeout()).applied_index(Some(never_written), msg).await;
 
     match rst {
         Ok(_) => {

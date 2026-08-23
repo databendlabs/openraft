@@ -4,6 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
+use openraft::RaftMetrics;
 use openraft::ServerState;
 use openraft::Vote;
 use openraft::async_runtime::WatchReceiver;
@@ -96,15 +97,11 @@ async fn without_pre_vote_term_inflates() -> Result<()> {
 
     tracing::info!("--- isolate node 1 and let many election timeouts pass");
     router.set_network_error(1, true);
-    TypeConfig::sleep(Duration::from_secs(2)).await;
 
-    let follower_term_after = n1.metrics().borrow_watched().current_term;
-    assert!(
-        follower_term_after > follower_term_before,
-        "without Pre-Vote the isolated follower inflates its term, was {}, now {}",
-        follower_term_before,
-        follower_term_after
-    );
+    let inflated = |x: &RaftMetrics<TypeConfig>| x.current_term > follower_term_before;
+    n1.wait(Some(Duration::from_secs(2)))
+        .metrics(inflated, "without Pre-Vote the isolated follower inflates its term")
+        .await?;
 
     Ok(())
 }

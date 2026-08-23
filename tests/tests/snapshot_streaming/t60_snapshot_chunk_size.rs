@@ -2,9 +2,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
+use maplit::btreeset;
 use openraft::Config;
 use openraft::RaftLogReader;
-use openraft::ServerState;
 use openraft::SnapshotPolicy;
 use openraft::Vote;
 use openraft::storage::RaftLogStorage;
@@ -38,20 +38,8 @@ async fn snapshot_chunk_size() -> Result<()> {
     );
     let mut router = RaftRouter::new(config.clone());
 
-    let mut log_index = 0;
-
-    tracing::info!(log_index, "--- initializing cluster");
-    {
-        router.new_raft_node(0).await;
-
-        router.wait(&0, timeout()).applied_index(None, "empty").await?;
-        router.wait(&0, timeout()).state(ServerState::Learner, "empty").await?;
-
-        router.initialize(0).await?;
-        log_index += 1;
-
-        router.wait(&0, timeout()).applied_index(Some(log_index), "init leader").await?;
-    }
+    tracing::info!("--- bring up a single node cluster");
+    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
 
     tracing::info!(log_index, "--- send just enough logs to trigger snapshot");
     {
