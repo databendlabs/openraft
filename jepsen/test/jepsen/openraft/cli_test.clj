@@ -127,10 +127,10 @@
                                  :nodes ["n1" "n2" "n3" "n4" "n5"]
                                  :time-limit 10})
         result (checker/check (:checker test) test (history/history []) {})]
-    (is (every? #(contains? result %)
-                #{:seed :stats :exceptions :crash :nemesis :workload}))
-    (is (every? #(contains? (:nemesis result) %)
-                #{:partition :membership}))))
+    (is (= #{:valid? :seed :stats :exceptions :crash :nemesis :workload}
+           (set (keys result))))
+    (is (= #{:valid? :partition :membership}
+           (set (keys (:nemesis result)))))))
 
 (defn- lifecycle-test-generator [failure-state]
   (#'cli/lifecycle-generator

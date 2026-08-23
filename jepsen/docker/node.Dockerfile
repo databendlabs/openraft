@@ -40,6 +40,23 @@ FROM ubuntu:24.04
 # The binary links librocksdb dynamically, so the runtime image needs it too.
 # Use the -dev package: its name is stable across RocksDB version bumps, while
 # the versioned runtime package name is not.
+#
+# `jepsen.openraft.db` controls the test app through the process tools below
+# and depends on three of their behaviors. `db_test.clj` redefines `c/exec`,
+# so it covers the Clojure decision logic and never these behaviors; the only
+# real check is the post-merge `process` job in .github/workflows/jepsen.yml,
+# which reports a break as a Jepsen run failure rather than a named test.
+# Re-verify all three when moving off Ubuntu 24.04:
+#
+# - `pgrep --ignore-ancestors` needs procps-ng 4.0 or later; this image has
+#   procps 4.0.4. Under procps 3.3.17, as in Debian bullseye, every process
+#   probe exits non-zero.
+# - psmisc's `killall` reports a missing target as `<name>: no process found`.
+#   `no-such-process-race?` matches that exact wording, so a reworded message
+#   turns a benign exit race into a Harness failure.
+# - `start-stop-daemon --oknodo`, which the base image provides rather than
+#   the list below, converts only the nothing-to-do case to exit 0, so a real
+#   start failure still exits non-zero.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates \
