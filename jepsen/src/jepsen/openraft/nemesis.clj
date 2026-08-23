@@ -17,6 +17,7 @@
 (def ^:private retryable-skip-reasons
   #{:no-quorum-safe-process-target
     :no-reachable-pause-target
+    :no-safe-packet-target
     :no-safe-partition-target
     :no-supported-leader})
 

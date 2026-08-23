@@ -225,16 +225,18 @@ degraded. Hard packet drops that create a partition remain the responsibility
 of the Network Partition Nemesis. Packet provides two mutually exclusive
 modes:
 
-- `slow`: 300 ms latency with 50 ms jitter;
+- `slow`: 300 ms latency with 50 ms normally distributed jitter;
 - `flaky`: Jepsen's default 20% packet loss with 75% correlation.
 
 The `slow` parameters are derived from the test application's timing
 configuration. Its election timeout is approximately 299 ms and its heartbeat
-interval is 50 ms. A 300 ms base delay with 50 ms jitter therefore spans roughly
-250--350 ms: from about one heartbeat interval before the election threshold to
-about one heartbeat interval after it. This deliberately exercises the boundary
-where some messages arrive before an election timeout and others arrive after
-it, without requiring every fault episode to trigger an election.
+interval is 50 ms. A 300 ms base delay with a 50 ms normal jitter scale therefore
+concentrates delays around the election threshold, with substantial probability
+on either side of it. This deliberately exercises the boundary where some
+messages arrive before an election timeout and others arrive after it, without
+requiring every fault episode to trigger an election. The distribution is not
+bounded to 250--350 ms; values farther from the base delay are less likely but
+possible.
 
 A focused run explicitly selects one mode. Within that mode it exercises two
 quorum-safe target cases:

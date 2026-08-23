@@ -14,10 +14,14 @@
              [worker :as worker]
              [workload :as workload]]
             [jepsen.openraft.nemesis [membership :as membership]
+             [packet :as packet]
              [partition :as partition]
              [process :as process]]))
 
 (def ^:private concrete-nemesis-types
+  [:partition :process :pause :membership :packet])
+
+(def ^:private chaos-nemesis-types
   [:partition :process :pause :membership])
 
 (def nemesis-types
@@ -38,7 +42,7 @@
                        :unknown (vec unknown)})))
     (let [expanded (cond-> (disj requested :chaos)
                      (contains? requested :chaos)
-                     (into concrete-nemesis-types))]
+                     (into chaos-nemesis-types))]
       (filterv expanded concrete-nemesis-types))))
 
 (defn- valid-nemeses? [selection]
@@ -65,10 +69,14 @@
                "Must be a positive integer."]]
 
    [nil "--nemesis TYPES"
-    "Comma-separated faults: membership, partition, process, pause, or chaos."
+    "Comma-separated faults: membership, packet, partition, process, pause, or chaos."
     :default [:chaos]
     :parse-fn parse-nemeses
     :validate [valid-nemeses? "Unknown fault."]]
+
+   [nil "--packet-mode MODE" "Packet mode: slow or flaky."
+    :parse-fn keyword
+    :validate [packet/packet-modes "Must be slow or flaky."]]
 
    [nil "--seed SEED" "Seed for Jepsen random choices."
     :parse-fn parse-long
@@ -121,7 +129,15 @@
                    (process/pause-package database)
 
                    :membership
-                   (membership/membership-package database opts)))
+                   (membership/membership-package database opts)
+
+                   :packet
+                   (let [packet-mode (:packet-mode opts)]
+                     (when-not packet-mode
+                       (throw (ex-info
+                               "--packet-mode is required for Packet Nemesis"
+                               {:nemesis nemesis-types})))
+                     (packet/packet-package database packet-mode))))
                nemesis-types))]
     (merge tests/noop-test
            opts
