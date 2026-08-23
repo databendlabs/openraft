@@ -72,7 +72,39 @@
            (#'cli/normalize-nemeses [:chaos :partition]))))
 
   (testing "membership can be combined with another fault"
-    (is (#'cli/valid-nemeses? [:membership :partition]))))
+    (is (#'cli/valid-nemeses? [:membership :partition])))
+
+  (testing "packet is selectable without joining chaos yet"
+    (is (= [:packet]
+           (#'cli/normalize-nemeses :packet)))))
+
+(deftest validates-focused-packet-mode
+  (testing "slow and flaky are accepted"
+    (doseq [mode ["slow" "flaky"]]
+      (is (empty? (:errors
+                   (tools-cli/parse-opts ["--packet-mode" mode]
+                                         cli/cli-opts))))))
+
+  (testing "unknown packet modes are rejected"
+    (let [parsed (tools-cli/parse-opts ["--packet-mode" "drop"]
+                                       cli/cli-opts)]
+      (is (some #(re-find #"Must be slow or flaky" %)
+                (:errors parsed)))))
+
+  (testing "focused packet runs require an explicit mode"
+    (is (thrown-with-msg?
+         clojure.lang.ExceptionInfo
+         #"--packet-mode is required"
+         (cli/openraft-test {:nemesis :packet
+                             :nodes ["n1" "n2" "n3"]
+                             :time-limit 10}))))
+
+  (testing "focused packet runs accept an explicit mode"
+    (is (= "openraft linearizable registers packet"
+           (:name (cli/openraft-test {:nemesis :packet
+                                      :packet-mode :slow
+                                      :nodes ["n1" "n2" "n3"]
+                                      :time-limit 10}))))))
 
 (deftest shares-one-harness-state-across-workers-and-generators
   (let [failure-state (harness/failure-state)
