@@ -21,6 +21,7 @@ use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::batch::Batch;
 use crate::entry::RaftEntry;
+use crate::entry::RaftPayload;
 use crate::errors::ErrorSource;
 use crate::raft::responder::Responder;
 use crate::vote::RaftLeaderId;
@@ -61,6 +62,7 @@ use crate::vote::raft_vote::RaftVote;
 ///         Term             = u64,
 ///         LeaderId         = openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>,
 ///         Vote             = openraft::impls::Vote<Self::LeaderId>,
+///         Payload          = openraft::EntryPayload<Self::D, Self::NodeId, Self::Node>,
 ///         Entry            = openraft::impls::Entry<Self>,
 ///         Responder<T>     = openraft::impls::OneshotResponder<Self, T>,
 ///         AsyncRuntime     = openraft::impls::TokioRuntime,
@@ -81,6 +83,7 @@ use crate::vote::raft_vote::RaftVote;
 ///
 /// [`Raft`]: crate::Raft
 /// [`declare_raft_types!`]: crate::declare_raft_types
+#[since(version = "0.10.0", change = "added `Payload` associated type")]
 pub trait RaftTypeConfig:
     Sized + OptionalSend + OptionalSync + Debug + Clone + Copy + Default + Eq + PartialEq + Ord + PartialOrd + 'static
 {
@@ -117,6 +120,10 @@ pub trait RaftTypeConfig:
         change = "from `RaftVote<Self>` to `RaftVote<LeaderId = Self::LeaderId>`"
     )]
     type Vote: RaftVote<LeaderId = Self::LeaderId>;
+
+    /// Raft log entry payload.
+    #[since(version = "0.10.0", change = "added configurable log payload type")]
+    type Payload: RaftPayload<D = Self::D, NodeId = Self::NodeId, Node = Self::Node>;
 
     /// Raft log entry, which can be built from an AppData.
     #[since(
@@ -172,6 +179,8 @@ pub trait RaftTypeConfig:
 ///
 /// [`type-alias`]: crate::docs::feature_flags#feature-flag-type-alias
 pub mod alias {
+    use openraft_macros::since;
+
     use crate::EntryPayload;
     use crate::LogId;
     use crate::RaftTypeConfig;
@@ -192,6 +201,8 @@ pub mod alias {
     pub type TermOf<C> = <C as RaftTypeConfig>::Term;
     pub type LeaderIdOf<C> = <C as RaftTypeConfig>::LeaderId;
     pub type VoteOf<C> = <C as RaftTypeConfig>::Vote;
+    #[since(version = "0.10.0")]
+    pub type PayloadOf<C> = <C as RaftTypeConfig>::Payload;
     pub type EntryOf<C> = <C as RaftTypeConfig>::Entry;
     pub type SnapshotDataOf<C, SM> = <SM as RaftStateMachine<C>>::SnapshotData;
     pub type AsyncRuntimeOf<C> = <C as RaftTypeConfig>::AsyncRuntime;

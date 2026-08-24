@@ -169,6 +169,7 @@ use crate::vote::raft_vote::RaftVoteExt;
 ///        Term         = u64,
 ///        LeaderId     = openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>,
 ///        Vote           = openraft::impls::Vote<Self::LeaderId>,
+///        Payload        = openraft::EntryPayload<Self::D, Self::NodeId, Self::Node>,
 ///        Entry          = openraft::Entry<Self>,
 ///        Responder<T>   = openraft::impls::OneshotResponder<Self, T>,
 ///        AsyncRuntime   = openraft::TokioRuntime,
@@ -183,6 +184,7 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// - `Term`:         `u64`
 /// - `LeaderId`:     `::openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>`
 /// - `Vote`:           `::openraft::impls::Vote<Self::LeaderId>`
+/// - `Payload`:        `::openraft::EntryPayload<Self::D, Self::NodeId, Self::Node>`
 /// - `Entry`:          `::openraft::impls::Entry<Self>`
 /// - `Responder<T>`:   `::openraft::impls::OneshotResponder<Self, T>`
 /// - `AsyncRuntime`:   `::openraft::impls::TokioRuntime`
@@ -232,6 +234,7 @@ macro_rules! declare_raft_types {
                 (Term         , , u64                                          ),
                 (LeaderId     , , $crate::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId> ),
                 (Vote           , , $crate::impls::Vote<Self::LeaderId>            ),
+                (Payload        , , $crate::EntryPayload<Self::D, Self::NodeId, Self::Node> ),
                 (Entry          , , $crate::Entry<<Self::LeaderId as $crate::vote::RaftLeaderId>::Committed, Self::D, Self::NodeId, Self::Node> ),
                 (Responder<T>   , , $crate::impls::ProgressResponder<Self, T> where T: $crate::OptionalSend + 'static     ),
                 (Batch<T>       , , $crate::impls::InlineBatch<T> where T: $crate::OptionalSend + 'static     ),

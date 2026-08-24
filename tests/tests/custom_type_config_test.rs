@@ -67,6 +67,7 @@ impl RaftTypeConfig for CustomConfig {
     type Term = u64;
     type LeaderId = openraft::impls::leader_id_adv::LeaderId<u64, u64>;
     type Vote = openraft::impls::Vote<Self::LeaderId>;
+    type Payload = openraft::EntryPayload<Self::D, Self::NodeId, Self::Node>;
     type Entry = Entry<<Self::LeaderId as openraft::vote::RaftLeaderId>::Committed, Self::D, Self::NodeId, Self::Node>;
     type AsyncRuntime = TokioRuntime;
     type Responder<T>
