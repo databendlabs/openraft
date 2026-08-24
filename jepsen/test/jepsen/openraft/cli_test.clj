@@ -93,6 +93,15 @@
       (is (some #(re-find #"Must be slow or flaky" %)
                 (:errors parsed)))))
 
+  (testing "unrelated parse errors do not add Packet selection errors"
+    (let [parsed (#'cli/prepare-options
+                  (tools-cli/parse-opts ["--nemesis" "packet"
+                                         "--packet-mode" "slow"
+                                         "--seed" "bad"]
+                                        cli/cli-opts))]
+      (is (= ["Failed to validate \"--seed bad\": Must be an integer."]
+             (:errors parsed)))))
+
   (testing "option parsing requires an explicit mode"
     (let [parsed (#'cli/prepare-options
                   (tools-cli/parse-opts ["--nemesis" "packet"]

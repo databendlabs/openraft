@@ -91,17 +91,18 @@
         nemesis-types (when-not (seq (:errors parsed))
                         (normalize-nemeses (:nemesis options)))
         packet-mode-error
-        (cond
-          (and (:packet-mode options)
-               (or (chaos-selection? (:nemesis options))
-                   (not (some #{:packet} nemesis-types))))
-          "--packet-mode requires an explicit Packet Nemesis."
+        (when nemesis-types
+          (cond
+            (and (:packet-mode options)
+                 (or (chaos-selection? (:nemesis options))
+                     (not (some #{:packet} nemesis-types))))
+            "--packet-mode requires an explicit Packet Nemesis."
 
-          (and (= [:packet] nemesis-types)
-               (nil? (:packet-mode options)))
-          "--packet-mode is required for Packet Nemesis."
+            (and (= [:packet] nemesis-types)
+                 (nil? (:packet-mode options)))
+            "--packet-mode is required for Packet Nemesis."
 
-          :else nil)
+            :else nil))
         seed (or (:seed options)
                  (random/long Long/MAX_VALUE))]
     (random/set-seed! seed)
