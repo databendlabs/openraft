@@ -96,6 +96,7 @@ where C: RaftTypeConfig
     ChangeMembership {
         changes: ChangeMembers<C::NodeId, C::Node>,
 
+        /// Payload whose membership OpenRaft replaces with the computed membership.
         payload: C::Payload,
 
         /// If `retain` is `true`, then the voters that are not in the new

@@ -34,6 +34,9 @@ where Self: OptionalFeatures + Debug + Display + Sized + 'static
     type Node: Node;
 
     /// Create a blank payload.
+    ///
+    /// OpenRaft uses a new blank payload as the base of a membership-change entry when the
+    /// application does not supply a payload.
     #[since(version = "0.10.0")]
     fn blank() -> Self;
 
@@ -42,6 +45,9 @@ where Self: OptionalFeatures + Debug + Display + Sized + 'static
     fn with_normal(self, data: Self::D) -> Self;
 
     /// Replace the membership in this payload.
+    ///
+    /// OpenRaft calls this method for every physical membership-change entry. An implementation
+    /// may preserve other application fields.
     #[since(version = "0.10.0")]
     fn with_membership(self, membership: Membership<Self::NodeId, Self::Node>) -> Self;
 
