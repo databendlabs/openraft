@@ -21,9 +21,6 @@
 (def ^:private concrete-nemesis-types
   [:partition :process :pause :membership :packet])
 
-(def ^:private chaos-nemesis-types
-  concrete-nemesis-types)
-
 (def nemesis-types
   (conj (set concrete-nemesis-types) :chaos))
 
@@ -42,7 +39,7 @@
                        :unknown (vec unknown)})))
     (let [expanded (cond-> (disj requested :chaos)
                      (contains? requested :chaos)
-                     (into chaos-nemesis-types))]
+                     (into concrete-nemesis-types))]
       (filterv expanded concrete-nemesis-types))))
 
 (defn- valid-nemeses? [selection]
@@ -89,13 +86,16 @@
     :parse-fn parse-long
     :validate [some? "Must be an integer."]]])
 
-(defn- ensure-random-seed [parsed]
-  (update parsed :options
-          (fn [options]
-            (let [seed (or (:seed options)
-                           (random/long Long/MAX_VALUE))]
-              (random/set-seed! seed)
-              (assoc options :seed seed)))))
+(defn- prepare-options [parsed]
+  (let [options (:options parsed)
+        seed (or (:seed options)
+                 (random/long Long/MAX_VALUE))]
+    (random/set-seed! seed)
+    (cond-> (assoc-in parsed [:options :seed] seed)
+      (and (chaos-selection? (:nemesis options))
+           (:packet-mode options))
+      (update :errors (fnil conj [])
+              "--packet-mode cannot be used with Chaos."))))
 
 (defn- lifecycle-generator
   [failure-state time-limit workload nemesis-package]
@@ -179,7 +179,7 @@
 
 (defn -main [& args]
   (cli/run! (cli/single-test-cmd {:test-fn openraft-test
-                                  :opt-fn ensure-random-seed
+                                  :opt-fn prepare-options
                                   :opt-spec cli-opts
                                   :usage (cli/test-usage)})
             args))

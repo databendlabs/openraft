@@ -179,7 +179,7 @@
                                    recovered]
                                   {})]
         (is (false? (:valid? result)))
-        (is (= [:leader-excluded] (:missing-modes result)))
+        (is (= [:leader-excluded] (:missing-target-roles result)))
         (is (= :intact (:cluster-state result)))))
 
     (testing "both target roles and final recovery pass"
@@ -192,9 +192,9 @@
                                    recovered]
                                   {})]
         (is (true? (:valid? result)))
-        (is (empty? (:missing-modes result)))
+        (is (empty? (:missing-target-roles result)))
         (is (= [:leader-excluded :leader-included]
-               (:observed-modes result)))))
+               (:observed-target-roles result)))))
 
     (testing "cleanup without confirmed recovery fails"
       (let [result (checker/check subject

@@ -95,6 +95,7 @@
                  failure-state
                  [(partition/partition-package)
                   (process/pause-package database)
+                  (packet/packet-package database nil)
                   (membership/membership-package database test-config)])
         check (fn [history]
                 (checker/check (:checker package)
@@ -120,6 +121,13 @@
                           :resumed (:nodes test-config)
                           :resume-results
                           (zipmap (:nodes test-config) (repeat :resumed))}}
+                 {:f :start-packet
+                  :value {:status :installed
+                          :mode :slow
+                          :target-role :leader-included}}
+                 {:f :stop-packet
+                  :value {:status :installed
+                          :mode :slow}}
                  {:f :shrink
                   :value {:status :installed
                           :change :shrink
@@ -139,6 +147,7 @@
         (is (:valid? result))
         (is (true? (get-in result [:partition :fault-class-executed?])))
         (is (true? (get-in result [:pause :fault-class-executed?])))
+        (is (true? (get-in result [:packet :fault-class-executed?])))
         (is (true? (get-in result
                            [:membership :fault-class-executed?])))))
 

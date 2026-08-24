@@ -160,6 +160,7 @@
      (check [_ test history opts]
        (let [result (checker/check fault-checker test history opts)
              observed (or (:observed-modes result)
+                          (:observed-target-roles result)
                           (:observed-changes result))
              executed? (boolean (seq observed))
              cluster-state (:cluster-state result)
@@ -173,7 +174,9 @@
                       (= :unknown cluster-state) :unknown
                       :else false)]
          (-> result
-             (dissoc :missing-modes :missing-changes)
+             (dissoc :missing-modes
+                     :missing-target-roles
+                     :missing-changes)
              (assoc :valid? valid?
                     :fault-class-executed? executed?)))))))
 

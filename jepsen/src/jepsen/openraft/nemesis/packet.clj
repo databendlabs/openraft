@@ -164,7 +164,17 @@
       (gen/once (start :leader-excluded))
       stop))))
 
-(defn- next-cluster-state [state op]
+(defn- next-cluster-state
+  "Applies one Packet operation to the lifecycle state.
+
+  :intact means packet shaping is cleared and the cluster is ready.
+  :recovery-pending means shaping changed or cleanup ran, but final readiness
+  has not been confirmed. :unknown means installation or cleanup was
+  indeterminate.
+
+  A successful await-recovery does not clear :unknown. Cluster readiness
+  cannot prove that no tc qdisc remains installed."
+  [state op]
   (let [status (get-in op [:value :status])
         operation-error? (boolean (or (:error op)
                                       (:exception op)
@@ -213,8 +223,8 @@
                      :else :unknown)]
         {:valid? valid?
          :mode (or packet-mode :mixed)
-         :observed-modes (vec (sort observed-roles))
-         :missing-modes (vec (sort missing-roles))
+         :observed-target-roles (vec (sort observed-roles))
+         :missing-target-roles (vec (sort missing-roles))
          :cluster-state cluster-state}))))
 
 (defn packet-package [database packet-mode]
