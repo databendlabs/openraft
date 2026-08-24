@@ -21,9 +21,9 @@ use crate::raft::responder::core_responder::CoreResponder;
 #[cfg(feature = "runtime-stats")]
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::BatchOf;
-use crate::type_config::alias::EntryPayloadOf;
 #[cfg(feature = "runtime-stats")]
 use crate::type_config::alias::InstantOf;
+use crate::type_config::alias::PayloadOf;
 use crate::type_config::alias::WriteResponderOf;
 
 /// Provides application-facing APIs for interacting with the Raft system.
@@ -57,7 +57,7 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip(self, payload))]
     pub(crate) async fn client_write(
         &self,
-        payload: EntryPayloadOf<C>,
+        payload: PayloadOf<C>,
         // TODO: ClientWriteError can only be ForwardToLeader Error
     ) -> Result<Result<ClientWriteResponse<C>, ClientWriteError<C>>, Fatal<C>> {
         let (responder, complete_rx) = ProgressResponder::complete_only();
@@ -77,7 +77,7 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) async fn client_write_ff(
         &self,
-        payload: EntryPayloadOf<C>,
+        payload: PayloadOf<C>,
         responder: Option<WriteResponderOf<C>>,
     ) -> Result<(), Fatal<C>> {
         self.do_client_write_ff(
@@ -91,7 +91,7 @@ where C: RaftTypeConfig
     #[since(version = "0.10.0")]
     async fn do_client_write_ff(
         &self,
-        payloads: BatchOf<C, EntryPayloadOf<C>>,
+        payloads: BatchOf<C, PayloadOf<C>>,
         responders: BatchOf<C, Option<CoreResponder<C>>>,
     ) -> Result<(), Fatal<C>> {
         self.inner
@@ -118,9 +118,9 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) async fn client_write_many(
         &self,
-        payloads: impl IntoIterator<Item = EntryPayloadOf<C>>,
+        payloads: impl IntoIterator<Item = PayloadOf<C>>,
     ) -> Result<BoxStream<'static, Result<WriteResult<C>, Fatal<C>>>, Fatal<C>> {
-        let payloads: Vec<EntryPayloadOf<C>> = payloads.into_iter().collect();
+        let payloads: Vec<PayloadOf<C>> = payloads.into_iter().collect();
 
         let mut responders = Vec::with_capacity(payloads.len());
         let mut receivers = Vec::with_capacity(payloads.len());

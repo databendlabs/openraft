@@ -1,6 +1,5 @@
 use crate::RaftTypeConfig;
 use crate::entry::RaftEntry;
-use crate::entry::RaftPayload;
 use crate::raft::responder::core_responder::CoreResponder;
 use crate::storage::v2::apply_responder::ApplyResponder;
 use crate::storage::v2::apply_responder_inner::ApplyResponderInner;

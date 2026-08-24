@@ -6,7 +6,7 @@ use crate::RaftTypeConfig;
 use crate::base::BoxFuture;
 use crate::batch::Batch;
 use crate::core::raft_msg::RaftMsg;
-use crate::entry::EntryPayload;
+use crate::entry::RaftPayload;
 use crate::errors::Fatal;
 #[cfg(feature = "runtime-stats")]
 use crate::raft::api::app::propose_at_now;
@@ -140,7 +140,7 @@ where C: RaftTypeConfig
         Box::pin(async move {
             self.inner
                 .send_msg(RaftMsg::ClientWrite {
-                    payloads: Batch::of([EntryPayload::Normal(self.app_data)]),
+                    payloads: Batch::of([C::Payload::normal(self.app_data)]),
                     responders: Batch::of([self.responder]),
                     expected_leader: self.expected_leader,
                     #[cfg(feature = "runtime-stats")]

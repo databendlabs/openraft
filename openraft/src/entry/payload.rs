@@ -101,12 +101,28 @@ where
     }
 }
 
-impl<D, NID, N> crate::entry::raft_payload::RaftPayload<NID, N> for EntryPayload<D, NID, N>
+impl<AppData, NID, N> crate::entry::raft_payload::RaftPayload for EntryPayload<AppData, NID, N>
 where
-    D: AppData,
+    AppData: crate::AppData,
     NID: NodeId,
     N: Node,
 {
+    type D = AppData;
+    type NodeId = NID;
+    type Node = N;
+
+    fn blank() -> Self {
+        EntryPayload::Blank
+    }
+
+    fn with_normal(self, data: AppData) -> Self {
+        EntryPayload::Normal(data)
+    }
+
+    fn with_membership(self, membership: Membership<NID, N>) -> Self {
+        EntryPayload::Membership(membership)
+    }
+
     fn get_membership(&self) -> Option<Membership<NID, N>> {
         if let EntryPayload::Membership(m) = self {
             Some(m.clone())
@@ -120,7 +136,43 @@ where
 mod tests {
     use std::collections::BTreeSet;
 
+    use crate::entry::RaftPayload;
     use crate::entry::payload::EntryPayload;
+
+    #[test]
+    fn test_constructors() {
+        let actual = EntryPayload::<u64, u64, ()>::blank();
+        assert_eq!(actual, EntryPayload::Blank);
+
+        let actual = EntryPayload::<u64, u64, ()>::normal(3);
+        assert_eq!(actual, EntryPayload::Normal(3));
+
+        let membership = crate::Membership::new_with_defaults(vec![BTreeSet::from([1, 2])], []);
+        let actual = EntryPayload::<u64, u64, ()>::membership(membership.clone());
+        assert_eq!(actual, EntryPayload::Membership(membership));
+    }
+
+    #[test]
+    fn test_with_membership_replaces_normal() {
+        let membership = crate::Membership::new_with_defaults(vec![BTreeSet::from([1, 2])], []);
+        let payload = EntryPayload::<u64, u64, ()>::Normal(3);
+
+        let actual = payload.with_membership(membership.clone());
+
+        let expected = EntryPayload::<u64, u64, ()>::Membership(membership);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_with_normal_replaces_membership() {
+        let membership = crate::Membership::new_with_defaults(vec![BTreeSet::from([1, 2])], []);
+        let payload = EntryPayload::<u64, u64, ()>::Membership(membership);
+
+        let actual = payload.with_normal(3);
+
+        let expected = EntryPayload::<u64, u64, ()>::Normal(3);
+        assert_eq!(actual, expected);
+    }
 
     #[test]
     fn test_debug() {

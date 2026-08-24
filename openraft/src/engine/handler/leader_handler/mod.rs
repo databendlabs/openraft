@@ -6,7 +6,6 @@ use crate::engine::EngineOutput;
 use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::entry::RaftEntry;
-use crate::entry::RaftPayload;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::raft::linearizable_read::ReadLogId;
@@ -16,7 +15,7 @@ use crate::replication::ReplicationSessionId;
 use crate::storage::RaftStateMachine;
 use crate::type_config::alias::BatchOf;
 use crate::type_config::alias::CommittedLeaderIdOf;
-use crate::type_config::alias::EntryPayloadOf;
+use crate::type_config::alias::PayloadOf;
 
 #[cfg(test)]
 mod append_entries_test;
@@ -78,7 +77,7 @@ where
     /// TODO(xp): if vote indicates this node is not the leader, refuse append
     #[tracing::instrument(level = "debug", skip(self, payloads))]
     pub(crate) fn leader_append_entries<I>(&mut self, payloads: I) -> Option<LeaderLogIds<CommittedLeaderIdOf<C>>>
-    where I: IntoIterator<Item = EntryPayloadOf<C>> + AsRef<[EntryPayloadOf<C>]> {
+    where I: IntoIterator<Item = PayloadOf<C>> + AsRef<[PayloadOf<C>]> {
         let log_ids = self.leader.assign_log_ids(payloads.as_ref().len())?;
 
         self.state.extend_log_ids_from_same_leader(log_ids.clone());

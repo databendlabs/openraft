@@ -3,7 +3,6 @@ use std::fmt;
 use openraft::EntryPayload;
 use openraft::alias::LogIdOf;
 use openraft::entry::RaftEntry;
-use openraft::entry::RaftPayload;
 
 use crate::TypeConfig;
 use crate::protobuf as pb;
@@ -15,19 +14,11 @@ impl fmt::Display for pb::Entry {
     }
 }
 
-impl RaftPayload<crate::NodeId, pb::Node> for pb::Entry {
-    fn get_membership(&self) -> Option<typ::Membership> {
-        self.membership.clone().map(Into::into)
-    }
-}
-
 impl RaftEntry for pb::Entry {
     type CommittedLeaderId = u64;
-    type D = pb::SetRequest;
-    type NodeId = u64;
-    type Node = pb::Node;
+    type Payload = EntryPayload<pb::SetRequest, u64, pb::Node>;
 
-    fn new(log_id: LogIdOf<TypeConfig>, payload: EntryPayload<pb::SetRequest, u64, pb::Node>) -> Self {
+    fn new(log_id: LogIdOf<TypeConfig>, payload: Self::Payload) -> Self {
         let mut app_data = None;
         let mut membership = None;
         match payload {
@@ -51,5 +42,9 @@ impl RaftEntry for pb::Entry {
     fn set_log_id(&mut self, new: LogIdOf<TypeConfig>) {
         self.term = new.leader_id;
         self.index = new.index;
+    }
+
+    fn get_membership(&self) -> Option<typ::Membership> {
+        self.membership.clone().map(Into::into)
     }
 }

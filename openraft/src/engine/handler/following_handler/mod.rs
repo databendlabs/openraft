@@ -15,7 +15,6 @@ use crate::engine::handler::log_handler::LogHandler;
 use crate::engine::handler::server_state_handler::ServerStateHandler;
 use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::entry::RaftEntry;
-use crate::entry::RaftPayload;
 use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::errors::ConflictingLogId;
 use crate::errors::RejectAppendEntries;

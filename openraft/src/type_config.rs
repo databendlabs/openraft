@@ -21,6 +21,7 @@ use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::batch::Batch;
 use crate::entry::RaftEntry;
+use crate::entry::RaftPayload;
 use crate::errors::ErrorSource;
 use crate::raft::responder::Responder;
 use crate::vote::RaftLeaderId;
@@ -61,7 +62,11 @@ use crate::vote::raft_vote::RaftVote;
 ///         Term             = u64,
 ///         LeaderId         = openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>,
 ///         Vote             = openraft::impls::Vote<Self::LeaderId>,
-///         Entry            = openraft::impls::Entry<Self>,
+///         Payload          = openraft::EntryPayload<Self::D, Self::NodeId, Self::Node>,
+///         Entry            = openraft::impls::Entry<
+///             <Self::LeaderId as openraft::vote::RaftLeaderId>::Committed,
+///             Self::Payload,
+///         >,
 ///         Responder<T>     = openraft::impls::OneshotResponder<Self, T>,
 ///         AsyncRuntime     = openraft::impls::TokioRuntime,
 /// );
@@ -81,6 +86,7 @@ use crate::vote::raft_vote::RaftVote;
 ///
 /// [`Raft`]: crate::Raft
 /// [`declare_raft_types!`]: crate::declare_raft_types
+#[since(version = "0.10.0", change = "added `Payload` associated type")]
 pub trait RaftTypeConfig:
     Sized + OptionalSend + OptionalSync + Debug + Clone + Copy + Default + Eq + PartialEq + Ord + PartialOrd + 'static
 {
@@ -118,17 +124,17 @@ pub trait RaftTypeConfig:
     )]
     type Vote: RaftVote<LeaderId = Self::LeaderId>;
 
-    /// Raft log entry, which can be built from an AppData.
+    /// Raft log entry payload.
+    #[since(version = "0.10.0", change = "added configurable log payload type")]
+    type Payload: RaftPayload<D = Self::D, NodeId = Self::NodeId, Node = Self::Node>;
+
+    /// Raft log entry with the configured payload.
+    #[since(version = "0.10.0", change = "link entry payload to configured `Payload`")]
     #[since(
         version = "0.10.0",
         change = "from `RaftEntry<Self>` to `RaftEntry` with associated type constraints"
     )]
-    type Entry: RaftEntry<
-            CommittedLeaderId = <Self::LeaderId as RaftLeaderId>::Committed,
-            D = Self::D,
-            NodeId = Self::NodeId,
-            Node = Self::Node,
-        >;
+    type Entry: RaftEntry<CommittedLeaderId = <Self::LeaderId as RaftLeaderId>::Committed, Payload = Self::Payload>;
 
     /// Asynchronous runtime type.
     type AsyncRuntime: AsyncRuntime;
@@ -172,6 +178,8 @@ pub trait RaftTypeConfig:
 ///
 /// [`type-alias`]: crate::docs::feature_flags#feature-flag-type-alias
 pub mod alias {
+    use openraft_macros::since;
+
     use crate::EntryPayload;
     use crate::LogId;
     use crate::RaftTypeConfig;
@@ -192,6 +200,8 @@ pub mod alias {
     pub type TermOf<C> = <C as RaftTypeConfig>::Term;
     pub type LeaderIdOf<C> = <C as RaftTypeConfig>::LeaderId;
     pub type VoteOf<C> = <C as RaftTypeConfig>::Vote;
+    #[since(version = "0.10.0")]
+    pub type PayloadOf<C> = <C as RaftTypeConfig>::Payload;
     pub type EntryOf<C> = <C as RaftTypeConfig>::Entry;
     pub type SnapshotDataOf<C, SM> = <SM as RaftStateMachine<C>>::SnapshotData;
     pub type AsyncRuntimeOf<C> = <C as RaftTypeConfig>::AsyncRuntime;
@@ -234,7 +244,8 @@ pub mod alias {
     pub type CommittedLeaderIdOf<C> = <LeaderIdOf<C> as RaftLeaderId>::Committed;
     pub(crate) type RefLogIdOf<'a, C> = crate::log_id::ref_log_id::RefLogId<'a, CommittedLeaderIdOf<C>>;
     pub type EntryPayloadOf<C> = EntryPayload<DOf<C>, NodeIdOf<C>, NodeOf<C>>;
-    pub type DefaultEntryOf<C> = crate::Entry<CommittedLeaderIdOf<C>, DOf<C>, NodeIdOf<C>, NodeOf<C>>;
+    #[since(version = "0.10.0", change = "use configured payload type")]
+    pub type DefaultEntryOf<C> = crate::Entry<CommittedLeaderIdOf<C>, PayloadOf<C>>;
     pub type StoredMembershipOf<C> = crate::StoredMembership<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>>;
     pub type SnapshotSignatureOf<C> = crate::storage::SnapshotSignature<CommittedLeaderIdOf<C>>;
     pub type SnapshotMetaOf<C> = crate::storage::SnapshotMeta<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>>;

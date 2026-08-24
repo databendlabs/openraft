@@ -11,6 +11,7 @@ use crate::RaftTypeConfig;
 use crate::batch::Batch;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::replication_lag;
+use crate::entry::RaftPayload;
 use crate::errors::Fatal;
 use crate::errors::InitializeError;
 use crate::impls::ProgressResponder;
@@ -78,6 +79,7 @@ where C: RaftTypeConfig
             .call_core(
                 RaftMsg::ChangeMembership {
                     changes: changes.clone(),
+                    payload: C::Payload::blank(),
                     retain,
                     preconditions: Batch::of(preconditions.as_ref().iter().cloned()),
                     tx,
@@ -136,6 +138,7 @@ where C: RaftTypeConfig
             .call_core(
                 RaftMsg::ChangeMembership {
                     changes,
+                    payload: C::Payload::blank(),
                     retain,
                     preconditions,
                     tx,
@@ -168,6 +171,7 @@ where C: RaftTypeConfig
 
         let msg = RaftMsg::ChangeMembership {
             changes: ChangeMembers::AddNodes(btreemap! {id.clone()=>node}),
+            payload: C::Payload::blank(),
             retain: true,
             preconditions: Batch::of([]),
             tx,

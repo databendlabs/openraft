@@ -15,7 +15,6 @@ use crate::StorageError;
 use crate::base::shared_id_generator::SharedIdGenerator;
 use crate::engine::LogIdList;
 use crate::entry::RaftEntry;
-use crate::entry::RaftPayload;
 use crate::errors::StorageIOResult;
 use crate::raft_state::IOState;
 use crate::storage::RaftLogStorage;
