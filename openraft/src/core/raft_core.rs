@@ -118,10 +118,12 @@ use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::BatchOf;
+use crate::type_config::alias::ChangeMembershipErrorOf;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::MembershipStateOf;
 use crate::type_config::alias::MpscReceiverOf;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::MutexOf;
@@ -161,6 +163,19 @@ impl<C: RaftTypeConfig> fmt::Display for ApplyResult<C> {
             self.since, self.end, self.last_applied,
         )
     }
+}
+
+fn apply_membership_to_payload<C>(
+    membership_state: &MembershipStateOf<C>,
+    changes: ChangeMembers<C::NodeId, C::Node>,
+    retain: bool,
+    payload: C::Payload,
+) -> Result<C::Payload, ChangeMembershipErrorOf<C>>
+where
+    C: RaftTypeConfig,
+{
+    let membership = membership_state.change_handler().apply(changes, retain)?;
+    Ok(payload.with_membership(membership))
 }
 
 /// The core type implementing the Raft protocol.
@@ -438,12 +453,13 @@ where
     //       Because allowing this requires the engine to be able to store more than 2
     //       membership logs. And it does not need to wait for the previous membership log to commit
     //       to propose the new membership log.
-    #[tracing::instrument(level = "debug", skip(self, tx, preconditions))]
+    #[tracing::instrument(level = "debug", skip(self, payload, tx, preconditions))]
     pub(super) fn change_membership(
         &mut self,
         changes: ChangeMembers<C::NodeId, C::Node>,
         retain: bool,
         preconditions: BatchOf<C, Precondition<C>>,
+        payload: C::Payload,
         tx: ProgressResponder<C, ClientWriteResult<C>>,
     ) {
         if let Err(e) = self.ensure_leader_handler() {
@@ -456,8 +472,8 @@ where
             return;
         }
 
-        let res = self.engine.state.membership_state.change_handler().apply(changes, retain);
-        let new_membership = match res {
+        let res = apply_membership_to_payload::<C>(&self.engine.state.membership_state, changes, retain, payload);
+        let payload = match res {
             Ok(x) => x,
             Err(e) => {
                 tx.on_complete(Err(ClientWriteError::ChangeMembershipError(e)));
@@ -466,7 +482,7 @@ where
         };
 
         self.write_entries(
-            Batch::of([C::Payload::membership(new_membership)]),
+            Batch::of([payload]),
             Batch::of([Some(CoreResponder::Progress(tx))]),
             #[cfg(feature = "runtime-stats")]
             C::now(),
@@ -1629,6 +1645,7 @@ where
             }
             RaftMsg::ChangeMembership {
                 changes,
+                payload,
                 retain,
                 preconditions,
                 tx,
@@ -1641,7 +1658,7 @@ where
                     preconditions.as_ref().display()
                 );
 
-                self.change_membership(changes, retain, preconditions, tx);
+                self.change_membership(changes, retain, preconditions, payload, tx);
             }
             RaftMsg::WithRaftState { req } => {
                 req(&self.engine.state);
@@ -2528,5 +2545,94 @@ where
         }
 
         Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fmt;
+    use std::sync::Arc;
+
+    use maplit::btreemap;
+    use maplit::btreeset;
+    use openraft_rt_tokio::TokioRuntime;
+
+    use super::apply_membership_to_payload;
+    use crate::ChangeMembers;
+    use crate::Membership;
+    use crate::entry::RaftPayload;
+    use crate::type_config::alias::MembershipStateOf;
+    use crate::type_config::alias::StoredMembershipOf;
+
+    #[derive(Debug, PartialEq)]
+    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+    struct TestPayload {
+        normal: Option<u64>,
+        membership: Option<Membership<u64, ()>>,
+    }
+
+    impl fmt::Display for TestPayload {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "normal={:?}, membership={:?}", self.normal, self.membership)
+        }
+    }
+
+    impl RaftPayload for TestPayload {
+        type D = u64;
+        type NodeId = u64;
+        type Node = ();
+
+        fn blank() -> Self {
+            Self {
+                normal: None,
+                membership: None,
+            }
+        }
+
+        fn with_normal(mut self, data: u64) -> Self {
+            self.normal = Some(data);
+            self
+        }
+
+        fn with_membership(mut self, membership: Membership<u64, ()>) -> Self {
+            self.membership = Some(membership);
+            self
+        }
+
+        fn get_membership(&self) -> Option<Membership<u64, ()>> {
+            self.membership.clone()
+        }
+    }
+
+    crate::declare_raft_types!(
+        TestConfig:
+            D = u64,
+            R = (),
+            Node = (),
+            Payload = TestPayload,
+            AsyncRuntime = TokioRuntime,
+    );
+
+    #[test]
+    fn membership_change_replaces_payload_membership() {
+        let current = Membership::new_with_defaults(vec![btreeset! {1}], []);
+        let stored = Arc::new(StoredMembershipOf::<TestConfig>::new(None, current));
+        let membership_state = MembershipStateOf::<TestConfig>::new(stored.clone(), stored);
+
+        let input_membership = Membership::new_with_defaults(vec![btreeset! {9}], []);
+        let payload = TestPayload {
+            normal: Some(7),
+            membership: Some(input_membership),
+        };
+
+        let changes = ChangeMembers::AddNodes(btreemap! {2 => ()});
+        let actual = apply_membership_to_payload::<TestConfig>(&membership_state, changes, false, payload).unwrap();
+
+        let expected_membership = Membership::new_with_defaults(vec![btreeset! {1}], btreeset! {2});
+        let expected = TestPayload {
+            normal: Some(7),
+            membership: Some(expected_membership),
+        };
+        assert_eq!(expected, actual);
     }
 }
