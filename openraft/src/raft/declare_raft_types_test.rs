@@ -11,6 +11,7 @@ use crate::Membership;
 use crate::RaftTypeConfig;
 use crate::declare_raft_types;
 use crate::entry::RaftPayload;
+use crate::raft::ChangeMembershipRequest;
 
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -105,4 +106,18 @@ fn test_payload_type() {
 
     assert_payload::<WithCustomPayload, CustomPayload>();
     assert_payload::<Empty, EntryPayload<String, u64, crate::impls::BasicNode>>();
+}
+
+#[test]
+fn test_change_membership_request_accepts_distinct_non_clone_payloads() {
+    let first_payload = CustomPayload(EntryPayload::Normal(1));
+    let uniform_payload = CustomPayload(EntryPayload::Normal(2));
+    let request =
+        ChangeMembershipRequest::<WithCustomPayload>::new([1], false).with_payload(first_payload, uniform_payload);
+
+    let (_, _, _, payloads) = request.into_parts();
+    let (first_payload, uniform_payload) = payloads.unwrap();
+    let actual = (first_payload.0, uniform_payload.0);
+    let expected = (EntryPayload::Normal(1), EntryPayload::Normal(2));
+    assert_eq!(expected, actual);
 }

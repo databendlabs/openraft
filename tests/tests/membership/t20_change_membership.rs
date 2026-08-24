@@ -4,11 +4,13 @@ use std::time::Duration;
 
 use maplit::btreeset;
 use openraft::Config;
+use openraft::EntryPayload;
 use openraft::LogIdOptionExt;
 use openraft::RaftLogReader;
 use openraft::ServerState;
 use openraft::errors::ChangeMembershipError;
 use openraft::errors::ClientWriteError;
+use openraft::raft::ChangeMembershipRequest;
 use openraft_memstore::MemNodeId;
 
 use crate::fixtures::RaftRouter;
@@ -32,10 +34,44 @@ async fn update_membership_state() -> anyhow::Result<()> {
     tracing::info!(log_index, "--- change membership from 012 to 01234");
     {
         let leader = router.get_raft_handle(&0)?;
-        let res = leader.change_membership([0, 1, 2, 3, 4], false).await?;
-        log_index += 2;
+        let request = ChangeMembershipRequest::new([0, 1, 2, 3, 4], false);
+        let change = leader.change_membership_with_payload(request);
+        let outcome = change.await?;
 
-        tracing::info!(log_index, "--- change_membership blocks until success: {:?}", res);
+        let first_log_index = log_index + 1;
+        assert_eq!(first_log_index, outcome.first.log_id.index);
+
+        let uniform = outcome.uniform.as_ref().expect("voter change should enter joint consensus");
+        let uniform_log_index = log_index + 2;
+        assert_eq!(uniform_log_index, uniform.log_id.index);
+
+        tracing::info!(
+            first_log_index,
+            uniform_log_index,
+            "--- inspect membership log payloads"
+        );
+        {
+            let first_membership = outcome.first.membership.clone().unwrap();
+            let uniform_membership = uniform.membership.clone().unwrap();
+            let expected_memberships = vec![first_membership, uniform_membership];
+
+            let (mut log_store, _) = router.get_storage_handle(&0)?;
+            let entries = log_store.try_get_log_entries(first_log_index..=uniform_log_index).await?;
+            let mut actual_memberships = Vec::new();
+            for entry in entries {
+                let membership = match entry.payload {
+                    EntryPayload::Membership(membership) => membership,
+                    payload => panic!("expected membership payload, got: {payload:?}"),
+                };
+                actual_memberships.push(membership);
+            }
+
+            assert_eq!(expected_memberships, actual_memberships);
+        }
+
+        log_index = uniform_log_index;
+
+        tracing::info!(log_index, "--- change_membership blocks until success: {:?}", outcome);
 
         for node_id in [0, 1, 2, 3, 4] {
             router

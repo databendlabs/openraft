@@ -175,7 +175,8 @@ where
     C: RaftTypeConfig,
 {
     let membership = membership_state.change_handler().apply(changes, retain)?;
-    Ok(payload.with_membership(membership))
+    let payload = payload.with_membership(membership);
+    Ok(payload)
 }
 
 /// The core type implementing the Raft protocol.
@@ -2626,11 +2627,30 @@ mod tests {
         };
 
         let changes = ChangeMembers::AddNodes(btreemap! {2 => ()});
-        let actual = apply_membership_to_payload::<TestConfig>(&membership_state, changes, false, payload).unwrap();
+        let result = apply_membership_to_payload::<TestConfig>(&membership_state, changes, false, payload);
+        let actual = result.unwrap();
 
         let expected_membership = Membership::new_with_defaults(vec![btreeset! {1}], btreeset! {2});
         let expected = TestPayload {
             normal: Some(7),
+            membership: Some(expected_membership),
+        };
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn membership_change_from_blank_payload_creates_membership_payload() {
+        let current = Membership::new_with_defaults(vec![btreeset! {1}], []);
+        let stored = Arc::new(StoredMembershipOf::<TestConfig>::new(None, current));
+        let membership_state = MembershipStateOf::<TestConfig>::new(stored.clone(), stored);
+
+        let changes = ChangeMembers::AddNodes(btreemap! {2 => ()});
+        let result = apply_membership_to_payload::<TestConfig>(&membership_state, changes, false, TestPayload::blank());
+        let actual = result.unwrap();
+
+        let expected_membership = Membership::new_with_defaults(vec![btreeset! {1}], btreeset! {2});
+        let expected = TestPayload {
+            normal: None,
             membership: Some(expected_membership),
         };
         assert_eq!(expected, actual);

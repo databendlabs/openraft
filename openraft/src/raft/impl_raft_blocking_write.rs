@@ -13,6 +13,8 @@ use crate::errors::RaftError;
 use crate::errors::into_raft_result::IntoRaftResult;
 #[cfg(doc)]
 use crate::impls::OneshotResponder;
+use crate::raft::ChangeMembershipOutcome;
+use crate::raft::ChangeMembershipRequest;
 use crate::raft::ClientWriteResponse;
 #[cfg(doc)]
 use crate::raft::ManagementApi;
@@ -80,6 +82,43 @@ where
             .change_membership(members, retain, BatchOf::<C, _>::of([]))
             .await
             .into_raft_result()
+    }
+
+    /// Propose a cluster configuration change from a [`ChangeMembershipRequest`].
+    ///
+    /// A request without an application-defined payload starts each physical log entry from a
+    /// separate `C::Payload::blank()`. [`ChangeMembershipRequest::with_payload()`] supplies
+    /// separate application-defined bases instead. OpenRaft calls `with_membership()` on each
+    /// base payload with the membership computed for that physical log entry.
+    ///
+    /// Request preconditions follow the same two-step rules as [`Self::change_membership_if()`].
+    /// They guard the first proposal. OpenRaft updates the membership-log precondition for a
+    /// possible uniform proposal and carries over only the committed-leader precondition.
+    ///
+    /// A voter change may append a joint entry followed by a uniform entry. `with_payload()`
+    /// accepts one payload for the requested change and another for the possible uniform entry.
+    /// If `with_membership()` preserves application data, the state machine applies each
+    /// payload at its corresponding log ID.
+    ///
+    /// Both supplied payloads are serialized, stored, and replicated when the change requires two
+    /// physical entries.
+    ///
+    /// If the uniform proposal fails, the joint entry is already committed. A retry must build a
+    /// new request with the original payloads and preconditions based on the current joint state.
+    ///
+    /// The returned [`ChangeMembershipOutcome`] contains the first response and the uniform
+    /// response when the change entered joint consensus.
+    #[since(
+        version = "0.10.0",
+        change = "accept a request with an optional payload and preconditions"
+    )]
+    #[since(version = "0.10.0", change = "added payload-aware membership change API")]
+    #[tracing::instrument(level = "info", skip_all)]
+    pub async fn change_membership_with_payload(
+        &self,
+        request: ChangeMembershipRequest<C>,
+    ) -> Result<ChangeMembershipOutcome<C>, RaftError<C, ClientWriteError<C>>> {
+        self.management_api().change_membership_with_payload(request).await.into_raft_result()
     }
 
     /// Propose a cluster configuration change only if every [`Precondition`] is satisfied.
