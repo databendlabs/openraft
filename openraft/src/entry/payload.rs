@@ -101,13 +101,13 @@ where
     }
 }
 
-impl<D, NID, N> crate::entry::raft_payload::RaftPayload for EntryPayload<D, NID, N>
+impl<AppData, NID, N> crate::entry::raft_payload::RaftPayload for EntryPayload<AppData, NID, N>
 where
-    D: AppData,
+    AppData: crate::AppData,
     NID: NodeId,
     N: Node,
 {
-    type D = D;
+    type D = AppData;
     type NodeId = NID;
     type Node = N;
 
@@ -115,7 +115,7 @@ where
         EntryPayload::Blank
     }
 
-    fn with_normal(self, data: D) -> Self {
+    fn with_normal(self, data: AppData) -> Self {
         EntryPayload::Normal(data)
     }
 
