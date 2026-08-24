@@ -63,7 +63,10 @@ use crate::vote::raft_vote::RaftVote;
 ///         LeaderId         = openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>,
 ///         Vote             = openraft::impls::Vote<Self::LeaderId>,
 ///         Payload          = openraft::EntryPayload<Self::D, Self::NodeId, Self::Node>,
-///         Entry            = openraft::impls::Entry<Self>,
+///         Entry            = openraft::impls::Entry<
+///             <Self::LeaderId as openraft::vote::RaftLeaderId>::Committed,
+///             Self::Payload,
+///         >,
 ///         Responder<T>     = openraft::impls::OneshotResponder<Self, T>,
 ///         AsyncRuntime     = openraft::impls::TokioRuntime,
 /// );
@@ -125,17 +128,13 @@ pub trait RaftTypeConfig:
     #[since(version = "0.10.0", change = "added configurable log payload type")]
     type Payload: RaftPayload<D = Self::D, NodeId = Self::NodeId, Node = Self::Node>;
 
-    /// Raft log entry, which can be built from an AppData.
+    /// Raft log entry with the configured payload.
+    #[since(version = "0.10.0", change = "link entry payload to configured `Payload`")]
     #[since(
         version = "0.10.0",
         change = "from `RaftEntry<Self>` to `RaftEntry` with associated type constraints"
     )]
-    type Entry: RaftEntry<
-            CommittedLeaderId = <Self::LeaderId as RaftLeaderId>::Committed,
-            D = Self::D,
-            NodeId = Self::NodeId,
-            Node = Self::Node,
-        >;
+    type Entry: RaftEntry<CommittedLeaderId = <Self::LeaderId as RaftLeaderId>::Committed, Payload = Self::Payload>;
 
     /// Asynchronous runtime type.
     type AsyncRuntime: AsyncRuntime;
@@ -245,7 +244,8 @@ pub mod alias {
     pub type CommittedLeaderIdOf<C> = <LeaderIdOf<C> as RaftLeaderId>::Committed;
     pub(crate) type RefLogIdOf<'a, C> = crate::log_id::ref_log_id::RefLogId<'a, CommittedLeaderIdOf<C>>;
     pub type EntryPayloadOf<C> = EntryPayload<DOf<C>, NodeIdOf<C>, NodeOf<C>>;
-    pub type DefaultEntryOf<C> = crate::Entry<CommittedLeaderIdOf<C>, DOf<C>, NodeIdOf<C>, NodeOf<C>>;
+    #[since(version = "0.10.0", change = "use configured payload type")]
+    pub type DefaultEntryOf<C> = crate::Entry<CommittedLeaderIdOf<C>, PayloadOf<C>>;
     pub type StoredMembershipOf<C> = crate::StoredMembership<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>>;
     pub type SnapshotSignatureOf<C> = crate::storage::SnapshotSignature<CommittedLeaderIdOf<C>>;
     pub type SnapshotMetaOf<C> = crate::storage::SnapshotMeta<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>>;

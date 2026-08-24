@@ -23,6 +23,7 @@ use crate::engine::handler::server_state_handler::ServerStateHandler;
 use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::engine::handler::vote_handler::VoteHandler;
 use crate::entry::RaftEntry;
+use crate::entry::RaftPayload;
 use crate::entry::payload::EntryPayload;
 use crate::errors::ForwardToLeader;
 use crate::errors::InitializeError;
@@ -243,7 +244,8 @@ where
 
         // The very first log id
         let log_id = LogIdOf::<C>::new(leader_id.to_committed(), 0);
-        let entry = C::Entry::new(log_id, EntryPayload::Membership(membership));
+        let payload = C::Payload::membership(membership);
+        let entry = C::Entry::new(log_id, payload);
         self.following_handler().do_append_entries(vec![entry]);
 
         Ok(())

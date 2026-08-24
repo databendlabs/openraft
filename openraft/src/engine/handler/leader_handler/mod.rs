@@ -5,7 +5,9 @@ use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
 use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::engine::leader_log_ids::LeaderLogIds;
+use crate::entry::EntryPayload;
 use crate::entry::RaftEntry;
+use crate::entry::RaftPayload;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::raft::linearizable_read::ReadLogId;
@@ -88,6 +90,11 @@ where
             .zip(log_ids.clone())
             .map(|(payload, log_id)| {
                 tracing::debug!("assign log id: {}", log_id);
+                let payload = match payload {
+                    EntryPayload::Blank => C::Payload::blank(),
+                    EntryPayload::Normal(data) => C::Payload::normal(data),
+                    EntryPayload::Membership(membership) => C::Payload::membership(membership),
+                };
                 let entry = C::Entry::new(log_id, payload);
                 if let Some(m) = entry.get_membership() {
                     debug_assert!(

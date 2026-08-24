@@ -3,17 +3,18 @@ use std::fmt::Display;
 
 use openraft_macros::since;
 
-use crate::AppData;
-use crate::EntryPayload;
 use crate::Membership;
 use crate::base::OptionalFeatures;
 use crate::base::finalized::Final;
+use crate::entry::RaftPayload;
 use crate::log_id::LogId;
-use crate::node::Node;
-use crate::node::NodeId;
 use crate::vote::RaftCommittedLeaderId;
 
 /// Defines operations on an entry.
+#[since(
+    version = "0.10.0",
+    change = "replaced `D`, `NodeId`, and `Node` associated types with `Payload`"
+)]
 #[since(
     version = "0.10.0",
     change = "moved membership inspection from `RaftPayload` to `RaftEntry`"
@@ -29,21 +30,14 @@ where Self: OptionalFeatures + Debug + Display
     #[since(version = "0.10.0")]
     type CommittedLeaderId: RaftCommittedLeaderId;
 
-    /// Application-specific data type stored in log entries.
+    /// The payload stored in log entries.
     #[since(version = "0.10.0")]
-    type D: AppData;
+    type Payload: RaftPayload;
 
-    /// The node ID type.
+    /// Create a new log entry with a log ID and configured payload.
+    #[since(version = "0.10.0", change = "accept configured payload type")]
     #[since(version = "0.10.0")]
-    type NodeId: NodeId;
-
-    /// The node type.
-    #[since(version = "0.10.0")]
-    type Node: Node;
-
-    /// Create a new log entry with log id and payload of application data or membership config.
-    #[since(version = "0.10.0")]
-    fn new(log_id: LogId<Self::CommittedLeaderId>, payload: EntryPayload<Self::D, Self::NodeId, Self::Node>) -> Self;
+    fn new(log_id: LogId<Self::CommittedLeaderId>, payload: Self::Payload) -> Self;
 
     /// Returns references to the components of this entry's log ID: the committed leader ID and
     /// index.
@@ -63,30 +57,41 @@ where Self: OptionalFeatures + Debug + Display
     fn set_log_id(&mut self, new: LogId<Self::CommittedLeaderId>);
 
     /// Return `Some(Membership)` if this entry contains a membership payload.
+    #[since(version = "0.10.0", change = "derive membership type from `Payload`")]
     #[since(version = "0.10.0")]
-    fn get_membership(&self) -> Option<Membership<Self::NodeId, Self::Node>>;
+    fn get_membership(
+        &self,
+    ) -> Option<Membership<<Self::Payload as RaftPayload>::NodeId, <Self::Payload as RaftPayload>::Node>>;
 
     /// Create a new blank log entry.
+    #[since(version = "0.10.0", change = "construct configured payload type")]
     #[since(version = "0.10.0", change = "become a default method")]
     fn new_blank(log_id: LogId<Self::CommittedLeaderId>) -> Self
     where Self: Final + Sized {
-        Self::new(log_id, EntryPayload::Blank)
+        Self::new(log_id, Self::Payload::blank())
     }
 
     /// Create a new normal log entry that contains application data.
+    #[since(version = "0.10.0", change = "construct configured payload type")]
     #[since(version = "0.10.0", change = "become a default method")]
-    fn new_normal(log_id: LogId<Self::CommittedLeaderId>, data: Self::D) -> Self
+    fn new_normal(log_id: LogId<Self::CommittedLeaderId>, data: <Self::Payload as RaftPayload>::D) -> Self
     where Self: Final + Sized {
-        Self::new(log_id, EntryPayload::Normal(data))
+        Self::new(log_id, Self::Payload::normal(data))
     }
 
     /// Create a new membership log entry.
     ///
     /// The returned instance must return `Some()` for `Self::get_membership()`.
+    #[since(version = "0.10.0", change = "construct configured payload type")]
     #[since(version = "0.10.0", change = "become a default method")]
-    fn new_membership(log_id: LogId<Self::CommittedLeaderId>, m: Membership<Self::NodeId, Self::Node>) -> Self
-    where Self: Final + Sized {
-        Self::new(log_id, EntryPayload::Membership(m))
+    fn new_membership(
+        log_id: LogId<Self::CommittedLeaderId>,
+        m: Membership<<Self::Payload as RaftPayload>::NodeId, <Self::Payload as RaftPayload>::Node>,
+    ) -> Self
+    where
+        Self: Final + Sized,
+    {
+        Self::new(log_id, Self::Payload::membership(m))
     }
 
     /// Returns the `LogId` of this entry.

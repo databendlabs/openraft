@@ -56,7 +56,7 @@ declare_raft_types!(
         R = (),
         Term = u64,
         LeaderId = crate::impls::leader_id_std::LeaderId<u64, u64>,
-        Entry = crate::Entry<<Self::LeaderId as crate::vote::RaftLeaderId>::Committed, Self::D, Self::NodeId, Self::Node>,
+        Entry = crate::Entry<<Self::LeaderId as crate::vote::RaftLeaderId>::Committed, Self::Payload>,
         Vote = crate::impls::Vote<Self::LeaderId>,
         AsyncRuntime = TokioRuntime,
         // Responder<T> is not supported by  declare_raft_types
@@ -68,7 +68,7 @@ declare_raft_types!(
         R = (),
         NodeId = u64,
         Node = (),
-        Entry = crate::Entry<<Self::LeaderId as crate::vote::RaftLeaderId>::Committed, Self::D, Self::NodeId, Self::Node>,
+        Entry = crate::Entry<<Self::LeaderId as crate::vote::RaftLeaderId>::Committed, Self::Payload>,
         AsyncRuntime = TokioRuntime,
 );
 
@@ -77,7 +77,7 @@ declare_raft_types!(
         D = u64,
         NodeId = u64,
         Node = (),
-        Entry = crate::Entry<<Self::LeaderId as crate::vote::RaftLeaderId>::Committed, Self::D, Self::NodeId, Self::Node>,
+        Entry = crate::Entry<<Self::LeaderId as crate::vote::RaftLeaderId>::Committed, Self::Payload>,
         AsyncRuntime = TokioRuntime,
 );
 

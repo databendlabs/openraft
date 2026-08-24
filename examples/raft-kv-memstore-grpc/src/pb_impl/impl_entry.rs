@@ -16,11 +16,9 @@ impl fmt::Display for pb::Entry {
 
 impl RaftEntry for pb::Entry {
     type CommittedLeaderId = u64;
-    type D = pb::SetRequest;
-    type NodeId = u64;
-    type Node = pb::Node;
+    type Payload = EntryPayload<pb::SetRequest, u64, pb::Node>;
 
-    fn new(log_id: LogIdOf<TypeConfig>, payload: EntryPayload<pb::SetRequest, u64, pb::Node>) -> Self {
+    fn new(log_id: LogIdOf<TypeConfig>, payload: Self::Payload) -> Self {
         let mut app_data = None;
         let mut membership = None;
         match payload {
