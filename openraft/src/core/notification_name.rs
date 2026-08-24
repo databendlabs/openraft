@@ -1,4 +1,5 @@
 use openraft_macros::VariantName;
+use openraft_macros::since;
 
 /// Enum representing the name of each `Notification` variant.
 ///
@@ -7,6 +8,10 @@ use openraft_macros::VariantName;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[derive(VariantName)]
 #[variant_name(prefix = "Notify::")]
+#[since(
+    version = "0.10.0",
+    change = "renamed from `CheckPendingLinearizableReads` to `PendingReadDeadlineReached`"
+)]
 pub enum NotificationName {
     VoteResponse,
     PreVoteResponse,
@@ -17,6 +22,7 @@ pub enum NotificationName {
     HeartbeatProgress,
     StateMachine,
     Tick,
+    PendingReadDeadlineReached,
 }
 
 #[cfg(test)]

@@ -3,13 +3,14 @@
 //! Gated behind `feature = "clap"` in [`super`]; functions and the
 //! [`Config::build`] method here are only compiled when that feature is on.
 
-use anyerror::AnyError;
 use clap::Parser;
 
 use crate::Config;
 use crate::SnapshotPolicy;
 use crate::StepDownPolicy;
 use crate::config::error::ConfigError;
+use crate::errors::ErrorSource;
+use crate::impls::BoxedErrorSource;
 
 /// Parse number with unit such as 5.3 KB
 pub(super) fn parse_bytes_with_unit(src: &str) -> Result<u64, ConfigError> {
@@ -83,7 +84,7 @@ impl Config {
     /// ```
     pub fn build(args: &[&str]) -> Result<Config, ConfigError> {
         let config = <Self as Parser>::try_parse_from(args).map_err(|e| ConfigError::ParseError {
-            source: AnyError::from(&e),
+            source: BoxedErrorSource::from_error(&e),
             args: args.iter().map(|x| x.to_string()).collect(),
         })?;
         config.validate()

@@ -30,7 +30,8 @@ where C: RaftTypeConfig
     ///
     /// If `inflight_id` is `Some`, the inflight state is reset because the response corresponds
     /// to a replication request with log payload. If `None`, the response is from an RPC without
-    /// payload (e.g., heartbeat), and inflight state is not modified.
+    /// payload (e.g., heartbeat), and inflight state is not modified. A payload response with a
+    /// stale inflight ID leaves the entire progress entry unchanged.
     ///
     /// Normally, the `conflict` index should be greater than or equal to the `matching` index
     /// when follower data is intact. However, for testing purposes, a follower may clean its
@@ -54,7 +55,10 @@ where C: RaftTypeConfig
 
         // The inflight may be None if the conflict is caused by a heartbeat response.
         if let Some(inflight_id) = inflight_id {
-            self.entry.data.inflight.conflict(conflict, inflight_id);
+            let applied = self.entry.data.inflight.conflict(conflict, inflight_id);
+            if !applied {
+                return;
+            }
         }
 
         if conflict >= self.entry.data.searching_end {

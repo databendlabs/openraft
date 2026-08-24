@@ -44,39 +44,47 @@ async fn client_writes() -> Result<()> {
     tracing::info!("--- initializing cluster");
     let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
 
-    // Write a bunch of data and assert that the cluster stayes stable.
-    let leader = router.leader().expect("leader not found");
-    let mut clients = futures::stream::FuturesUnordered::new();
-    clients.push(router.client_request_many(leader, "0", 100));
-    clients.push(router.client_request_many(leader, "1", 100));
-    clients.push(router.client_request_many(leader, "2", 100));
-    clients.push(router.client_request_many(leader, "3", 100));
-    clients.push(router.client_request_many(leader, "4", 100));
-    clients.push(router.client_request_many(leader, "5", 100));
-    while clients.next().await.is_some() {}
+    tracing::info!(log_index, "--- run concurrent writes while the cluster remains stable");
+    {
+        let leader = router.leader().expect("leader not found");
+        let mut clients = futures::stream::FuturesUnordered::new();
+        clients.push(router.client_request_many(leader, "0", 100));
+        clients.push(router.client_request_many(leader, "1", 100));
+        clients.push(router.client_request_many(leader, "2", 100));
+        clients.push(router.client_request_many(leader, "3", 100));
+        clients.push(router.client_request_many(leader, "4", 100));
+        clients.push(router.client_request_many(leader, "5", 100));
+        while clients.next().await.is_some() {}
 
-    log_index += 100 * 6;
-    for id in [0, 1, 2] {
-        router.wait(&id, None).applied_index(Some(log_index), "sync logs").await?;
+        log_index += 100 * 6;
+        for id in [0, 1, 2] {
+            router.wait(&id, None).applied_index(Some(log_index), "sync logs").await?;
+        }
     }
 
-    for id in [0, 1, 2] {
-        let (mut sto, mut sm) = router.get_storage_handle(&id)?;
+    tracing::info!(
+        log_index,
+        "--- verify every node persisted and applied the complete workload"
+    );
+    {
+        for id in [0, 1, 2] {
+            let (mut sto, mut sm) = router.get_storage_handle(&id)?;
 
-        let last_log_id = sto.get_log_state().await?.last_log_id;
-        assert_eq!(last_log_id, Some(log_id(1, 0, log_index)));
+            let last_log_id = sto.get_log_state().await?.last_log_id;
+            assert_eq!(Some(log_id(1, 0, log_index)), last_log_id);
 
-        let vote = sto.read_vote().await?.unwrap();
-        assert_eq!(vote, Vote::new_committed(1, 0));
+            let vote = sto.read_vote().await?.unwrap();
+            assert_eq!(Vote::new_committed(1, 0), vote);
 
-        let (last_applied, _) = sm.applied_state().await?;
-        assert_eq!(last_applied, Some(log_id(1, 0, log_index)));
+            let (last_applied, _) = sm.applied_state().await?;
+            assert_eq!(Some(log_id(1, 0, log_index)), last_applied);
 
-        let snap = sm.get_current_snapshot().await?.unwrap();
-        let snap_log_id = snap.meta.last_log_id.unwrap();
-        assert!(snap_log_id.index() >= 450);
-        assert!(snap_log_id.index() < 600);
-        assert_eq!(snap_log_id.committed_leader_id().term, 1);
+            let snap = sm.get_current_snapshot().await?.unwrap();
+            let snap_log_id = snap.meta.last_log_id.unwrap();
+            assert!(snap_log_id.index() >= 450);
+            assert!(snap_log_id.index() < 600);
+            assert_eq!(1, snap_log_id.committed_leader_id().term);
+        }
     }
 
     Ok(())
@@ -109,13 +117,15 @@ async fn client_write_ff() -> Result<()> {
     let got: ClientWriteResponse<TypeConfig> = complete_rx.await??;
     assert_eq!(None, got.response().0.as_deref());
 
-    // Deliberately set the responder to None and do not wait for the result.
-    n0.client_write_ff(ClientRequest::make_request("foo", 3), None).await?;
+    tracing::info!("--- omit one responder and observe that write through the next response");
+    {
+        n0.client_write_ff(ClientRequest::make_request("foo", 3), None).await?;
 
-    let (responder, complete_rx) = ProgressResponder::complete_only();
-    n0.client_write_ff(ClientRequest::make_request("foo", 4), Some(responder)).await?;
-    let got: ClientWriteResponse<TypeConfig> = complete_rx.await??;
-    assert_eq!(Some("request-3"), got.response().0.as_deref());
+        let (responder, complete_rx) = ProgressResponder::complete_only();
+        n0.client_write_ff(ClientRequest::make_request("foo", 4), Some(responder)).await?;
+        let got: ClientWriteResponse<TypeConfig> = complete_rx.await??;
+        assert_eq!(Some("request-3"), got.response().0.as_deref());
+    }
 
     Ok(())
 }
@@ -253,37 +263,36 @@ async fn write_blank() -> Result<()> {
 
     let n0 = router.get_raft_handle(&0)?;
 
-    // Write a blank entry
     tracing::info!("--- write blank entry");
-    let resp = n0.write_blank().await?;
-    log_index += 1;
+    {
+        let resp = n0.write_blank().await?;
+        log_index += 1;
+        assert_eq!(&log_id(1, 0, log_index), resp.log_id());
 
-    assert_eq!(&log_id(1, 0, log_index), resp.log_id());
+        for id in [0, 1, 2] {
+            router.wait(&id, None).applied_index(Some(log_index), "blank entry applied").await?;
+        }
 
-    // Wait for all nodes to apply the blank entry
-    for id in [0, 1, 2] {
-        router.wait(&id, None).applied_index(Some(log_index), "blank entry applied").await?;
+        let (mut sto, _sm) = router.get_storage_handle(&0)?;
+        let entries = sto.try_get_log_entries(log_index..=log_index).await?;
+        assert_eq!(1, entries.len());
+
+        let entry = &entries[0];
+        assert!(
+            entry.payload.is_empty(),
+            "Expected Blank payload, got: {:?}",
+            entry.payload
+        );
     }
 
-    // Verify the log contains a blank entry
-    let (mut sto, _sm) = router.get_storage_handle(&0)?;
-    let entries = sto.try_get_log_entries(log_index..=log_index).await?;
-    assert_eq!(1, entries.len());
-
-    let entry = &entries[0];
-    assert!(
-        entry.payload.is_empty(),
-        "Expected Blank payload, got: {:?}",
-        entry.payload
-    );
-
-    // Write another normal entry to verify blank didn't break anything
     tracing::info!("--- write normal entry after blank");
-    n0.client_write(ClientRequest::make_request("after_blank", 1)).await?;
-    log_index += 1;
+    {
+        n0.client_write(ClientRequest::make_request("after_blank", 1)).await?;
+        log_index += 1;
 
-    for id in [0, 1, 2] {
-        router.wait(&id, None).applied_index(Some(log_index), "normal entry after blank").await?;
+        for id in [0, 1, 2] {
+            router.wait(&id, None).applied_index(Some(log_index), "normal entry after blank").await?;
+        }
     }
 
     Ok(())

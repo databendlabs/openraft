@@ -63,6 +63,7 @@ async fn sm_can_refuse_snapshot_building() -> Result<()> {
     );
     {
         let n0 = router.get_raft_handle(&0)?;
+        let snapshot_progress = n0.watch_snapshot_progress();
         n0.trigger().snapshot().await?;
 
         // Wait a bit to ensure the snapshot building attempt completes
@@ -83,7 +84,7 @@ async fn sm_can_refuse_snapshot_building() -> Result<()> {
             state.snapshot_meta,
             "snapshot_meta should remain default when building is disabled"
         );
-        // TODO: verify io_snapshot_last_log_id is None; require public method to access it.
+        assert_eq!(None, snapshot_progress.get());
     }
 
     tracing::info!(

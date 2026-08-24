@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::collections::BTreeSet;
 use std::fmt;
 use std::fmt::Debug;
 use std::future::Future;
@@ -10,11 +9,6 @@ use std::time::Duration;
 use display_more::DisplayOptionExt;
 use display_more::DisplaySliceExt;
 use futures_util::FutureExt;
-use futures_util::Stream;
-use futures_util::StreamExt;
-use futures_util::TryFutureExt;
-use futures_util::stream::FuturesUnordered;
-use maplit::btreeset;
 use tracing::Instrument;
 use tracing::Level;
 use tracing::Span;
@@ -26,6 +20,7 @@ use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::async_runtime::MpscReceiver;
+use crate::async_runtime::Mutex;
 use crate::async_runtime::OneshotSender;
 use crate::async_runtime::TryRecvError;
 use crate::async_runtime::watch::WatchSender;
@@ -35,6 +30,9 @@ use crate::config::RuntimeConfig;
 use crate::core::ClientResponderQueue;
 use crate::core::IoBroadcast;
 use crate::core::MetricsChannels;
+use crate::core::PendingRead;
+use crate::core::PendingReadDeadlineNotifier;
+use crate::core::PendingReadQueue;
 use crate::core::ServerState;
 use crate::core::SharedReplicateBatch;
 use crate::core::balancer::Balancer;
@@ -70,9 +68,7 @@ use crate::errors::Fatal;
 use crate::errors::ForwardToLeader;
 use crate::errors::Infallible;
 use crate::errors::InitializeError;
-use crate::errors::NetworkError;
-use crate::errors::QuorumNotEnough;
-use crate::errors::RPCError;
+use crate::errors::LinearizableReadError;
 use crate::errors::StorageIOResult;
 use crate::errors::Timeout;
 use crate::impls::ProgressResponder;
@@ -85,7 +81,6 @@ use crate::metrics::RaftServerMetrics;
 use crate::metrics::ReplicationMetrics;
 use crate::metrics::SerdeInstant;
 use crate::network::NetSnapshot;
-use crate::network::NetStreamAppend;
 use crate::network::NetTransferLeader;
 use crate::network::NetVote;
 use crate::network::RPCOption;
@@ -94,16 +89,13 @@ use crate::network::RaftNetworkFactory;
 use crate::progress::VecProgressEntry;
 use crate::progress::inflight_id::InflightId;
 use crate::progress::stream_id::StreamId;
-use crate::quorum::QuorumSet;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::ClientWriteResult;
 use crate::raft::LogSegment;
-use crate::raft::ReadPolicy;
-use crate::raft::StreamAppendError;
-use crate::raft::StreamAppendResult;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft::linearizable_read::Linearizer;
+use crate::raft::linearizable_read::LinearizerOption;
 use crate::raft::message::TransferLeaderRequest;
 use crate::raft::responder::Responder;
 use crate::raft::responder::core_responder::CoreResponder;
@@ -128,13 +120,11 @@ use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::EntryPayloadOf;
 use crate::type_config::alias::InstantOf;
-use crate::type_config::alias::JoinErrorOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscReceiverOf;
 use crate::type_config::alias::MpscSenderOf;
-use crate::type_config::alias::NodeIdOf;
+use crate::type_config::alias::MutexOf;
 use crate::type_config::alias::OneshotReceiverOf;
-use crate::type_config::alias::StoredMembershipOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::alias::WatchSenderOf;
@@ -192,7 +182,7 @@ where
     pub(crate) core_state: CoreState<C>,
 
     /// The `RaftNetworkFactory` implementation.
-    pub(crate) network_factory: NF,
+    pub(crate) network_factory: Arc<MutexOf<C, NF>>,
 
     /// The [`RaftLogStorage`] implementation.
     pub(crate) log_store: LS,
@@ -206,6 +196,12 @@ where
 
     /// Responders to send result back to client when logs are applied.
     pub(crate) client_responders: ClientResponderQueue<CoreResponder<C>>,
+
+    /// Linearizable reads waiting for the quorum acknowledgement clock to exceed their thresholds.
+    pub(crate) pending_reads: PendingReadQueue<C>,
+
+    /// Wakes this core when a pending linearizable read reaches its deadline.
+    pub(crate) pending_read_deadline_notifier: PendingReadDeadlineNotifier<C>,
 
     /// A mapping of node IDs the replication state of the target node.
     pub(crate) replications: BTreeMap<C::NodeId, ReplicationHandle<C>>,
@@ -283,10 +279,6 @@ impl VoteRequestKind {
     }
 }
 
-/// The outcome of one leadership probe sent by [`RaftCore::spawn_leadership_probes`]: the target
-/// that answered and its append result, or the target that did not and the error that stopped it.
-type ProbeResult<C> = Result<(NodeIdOf<C>, StreamAppendResult<C>), (NodeIdOf<C>, RPCError<C>)>;
-
 impl<C, NF, LS, SM> RaftCore<C, NF, LS, SM>
 where
     C: RaftTypeConfig,
@@ -350,231 +342,70 @@ where
     /// To ensure linearizability, a read request proposed at time `T1` confirms this node's
     /// leadership to guarantee that all the committed entries proposed before `T1` are present in
     /// this node.
-    // TODO: the second condition is such a read request can only read from state machine only when the last log it sees
-    //       at `T1` is committed.
+    ///
+    /// Both the fast path and the queue require `now < acked + age`; an acknowledgement at the
+    /// exact threshold is not fresh enough.
+    ///
+    /// Broadcasting a heartbeat per read does not amplify RPCs: heartbeat events reach each target
+    /// through a watch channel, so a burst coalesces to the latest event, and a heartbeat sent
+    /// later also satisfies the thresholds of the reads queued before it.
     #[tracing::instrument(level = "trace", skip(self, tx))]
-    pub(super) async fn handle_ensure_linearizable_read(&mut self, read_policy: ReadPolicy, tx: ClientReadTx<C>) {
+    pub(super) fn handle_get_linearizer(&mut self, linearizer_option: LinearizerOption, tx: ClientReadTx<C>) {
         // Setup sentinel values to track when we've received majority confirmation of leadership.
 
-        let resp = {
-            let lh = match self.ensure_leader_handler() {
-                Ok(leading_handler) => leading_handler,
-                Err(forward) => {
-                    tx.send(Err(forward.into())).ok();
-                    return;
-                }
-            };
+        let now = C::now();
+        let leader_lease = self.engine.config.timer_config.leader_lease;
+        let max_quorum_ack_age = linearizer_option.effective_max_quorum_ack_age(leader_lease);
+        let applied = self.engine.state.io_applied().cloned();
+        let id = self.id.clone();
 
-            if read_policy == ReadPolicy::LeaseRead && !lh.is_lease_valid() {
-                tracing::debug!("{}: lease expired during lease read", self.id);
-                tx.send(Err(ForwardToLeader::empty().into())).ok();
+        let mut lh = match self.ensure_leader_handler() {
+            Ok(leading_handler) => leading_handler,
+            Err(forward) => {
+                tx.send(Err(forward.into())).ok();
                 return;
             }
-
-            let read_log_id = lh.get_read_log_id();
-
-            // TODO: this applied is a little stale when being returned to client.
-            //       Fix this when the following heartbeats are replaced with calling RaftNetwork.
-            let applied = self.engine.state.io_applied().cloned();
-
-            Linearizer::new(self.id.clone(), read_log_id, applied)
         };
 
-        if read_policy == ReadPolicy::LeaseRead {
-            tx.send(Ok(resp)).ok();
+        let read_log_id = lh.get_read_log_id();
+
+        let linearizer = Linearizer::new(id, read_log_id, applied);
+
+        if lh.leader.is_self_quorum() {
+            tx.send(Ok(linearizer)).ok();
             return;
         }
 
-        let my_vote = self.engine.state.vote_ref().clone();
-        let eff_mem = self.engine.state.membership_state.effective().clone();
-        let core_tx = self.tx_notification.clone();
+        let last_quorum_acked_at = lh.leader.last_quorum_acked_time();
 
-        let granted = btreeset! {self.id.clone()};
-
-        // single-node quorum, fast path, return quickly.
-        if eff_mem.is_quorum(granted.iter()) {
-            tx.send(Ok(resp)).ok();
+        // This comparison must remain strict. A zero `max_quorum_ack_age` selects ReadIndex,
+        // which requires a fresh heartbeat round to be acknowledged by a quorum. It must not reuse
+        // a recorded acknowledgement, even when its timestamp equals `now`; using `<=` would take
+        // this fast path and skip the new quorum confirmation.
+        if last_quorum_acked_at.is_some_and(|last_quorum_acked_at| now < last_quorum_acked_at + max_quorum_ack_age) {
+            tx.send(Ok(linearizer)).ok();
             return;
         }
 
-        let pending = self.spawn_leadership_probes(&my_vote, &eff_mem).await;
+        let min_quorum_acked_at = now - max_quorum_ack_age;
+        let wait_timeout = linearizer_option.effective_wait_timeout(leader_lease);
 
-        // TODO: do not spawn, manage read requests with a queue by RaftCore
-
-        let waiting_fu = Self::wait_for_leadership_quorum(pending, my_vote, eff_mem, granted, core_tx, resp, tx);
-
-        // False positive lint warning(`non-binding `let` on a future`): https://github.com/rust-lang/rust-clippy/issues/9932
-        #[allow(clippy::let_underscore_future)]
-        let _ = C::spawn(waiting_fu.instrument(tracing::debug_span!("spawn_is_leader_waiting")));
-    }
-
-    /// Probe every other voter with an empty AppendEntries, to confirm this node is still leading.
-    ///
-    /// The returned probes complete in arrival order; joining one may fail if its task panicked.
-    async fn spawn_leadership_probes(
-        &mut self,
-        my_vote: &VoteOf<C>,
-        eff_mem: &StoredMembershipOf<C>,
-    ) -> impl Stream<Item = Result<ProbeResult<C>, (NodeIdOf<C>, JoinErrorOf<C>)>> + Unpin + use<C, NF, LS, SM> {
-        let my_id = self.id.clone();
-        let ttl = Duration::from_millis(self.config.heartbeat_interval);
-
-        // Spawn parallel requests, all with the standard timeout for heartbeats.
-        let pending = FuturesUnordered::new();
-
-        let voter_progresses = {
-            let l = &self.engine.leader.as_ref().unwrap();
-            l.progress.iter().filter(|item| l.progress.is_voter(&item.id) == Some(true))
-        };
-
-        for item in voter_progresses {
-            let target = item.id.clone();
-            let progress = item;
-
-            if target == my_id {
-                continue;
-            }
-
-            let rpc = AppendEntriesRequest {
-                vote: my_vote.clone(),
-                prev_log_id: progress.matching().cloned(),
-                entries: vec![],
-                leader_commit: self.engine.state.cluster_committed().cloned(),
-            };
-
-            // Safe unwrap(): target is in membership
-            let target_node = eff_mem.get_node(&target).unwrap().clone();
-            let mut client = self.network_factory.new_heartbeat_client(target.clone(), &target_node).await;
-
-            let option = RPCOption::new(ttl);
-
-            let fu = {
-                let my_id = my_id.clone();
-                let target = target.clone();
-
-                async move {
-                    let input_stream = Box::pin(futures_util::stream::once(async { rpc }));
-
-                    let outer_res = C::timeout(ttl, async {
-                        let mut output = client.stream_append(input_stream, option).await?;
-                        output.next().await.transpose()
-                    })
-                    .await;
-
-                    match outer_res {
-                        Ok(Ok(Some(stream_result))) => Ok((target, stream_result)),
-                        Ok(Ok(None)) => {
-                            // Stream returned no response - treat as network error
-                            Err((
-                                target,
-                                RPCError::Network(NetworkError::from_string("stream_append returned no response")),
-                            ))
-                        }
-                        Ok(Err(rpc_err)) => Err((target, rpc_err)),
-                        Err(_timeout) => {
-                            let timeout_err = Timeout {
-                                action: RPCTypes::AppendEntries,
-                                id: my_id,
-                                target: target.clone(),
-                                timeout: ttl,
-                            };
-
-                            Err((target, RPCError::Timeout(timeout_err)))
-                        }
-                    }
-                }
-            };
-
-            let fu = fu.instrument(tracing::debug_span!("spawn_is_leader", target = target.to_string()));
-            let task = C::spawn(fu).map_err(move |err| (target, err));
-
-            pending.push(task);
+        // A read that will not wait cannot benefit from a newer quorum acknowledgement.
+        if wait_timeout.is_zero() {
+            let quorum_not_enough = lh.leader.clock_quorum_not_enough(min_quorum_acked_at);
+            let err = LinearizableReadError::QuorumNotEnough(quorum_not_enough);
+            tx.send(Err(err)).ok();
+            return;
         }
 
-        pending
-    }
-
-    /// Answer a read request as soon as a quorum of `pending` probes confirms this node still
-    /// leads.
-    ///
-    /// A probe reporting a higher vote ends the request immediately: the vote is forwarded to
-    /// [`RaftCore`] and the caller is told to look for the new leader. Exhausting the probes
-    /// without reaching a quorum yields [`QuorumNotEnough`].
-    async fn wait_for_leadership_quorum<S>(
-        mut pending: S,
-        my_vote: VoteOf<C>,
-        eff_mem: Arc<StoredMembershipOf<C>>,
-        mut granted: BTreeSet<NodeIdOf<C>>,
-        core_tx: MpscSenderOf<C, Notification<C>>,
-        resp: Linearizer<C>,
-        tx: ClientReadTx<C>,
-    ) where
-        S: Stream<Item = Result<ProbeResult<C>, (NodeIdOf<C>, JoinErrorOf<C>)>> + Unpin,
-    {
-        // Handle responses as they return.
-        while let Some(res) = pending.next().await {
-            let (target, stream_result) = match res {
-                Ok(Ok(res)) => res,
-                Ok(Err((target, err))) => {
-                    tracing::error!(
-                        "timeout while confirming leadership for read request, target: {}, error: {}",
-                        target,
-                        err
-                    );
-                    continue;
-                }
-                Err((target, err)) => {
-                    tracing::error!("failed to join task: {}, target: {}", err, target);
-                    continue;
-                }
-            };
-
-            // If we receive a response with a greater vote, then revert to follower and abort this
-            // request.
-            if let Err(StreamAppendError::HigherVote(vote)) = stream_result {
-                debug_assert!(
-                    vote.as_ref_vote() > my_vote.as_ref_vote(),
-                    "committed vote({}) has total order relation with other votes({})",
-                    my_vote,
-                    vote
-                );
-
-                let send_res = core_tx
-                    .send(Notification::HigherVote {
-                        target,
-                        higher: vote,
-                        leader_vote: my_vote.to_committed(),
-                    })
-                    .await;
-
-                if let Err(_e) = send_res {
-                    tracing::error!("failed to send HigherVote to RaftCore");
-                }
-
-                // we are no longer leader so error out early
-                let err = ForwardToLeader::empty();
-                tx.send(Err(err.into())).ok();
-                return;
-            }
-
-            // Success or Conflict both confirm leadership (got valid response from follower)
-            granted.insert(target);
-
-            if eff_mem.is_quorum(granted.iter()) {
-                tx.send(Ok(resp)).ok();
-                return;
-            }
+        if linearizer_option.heartbeat_if_quorum_ack_stale {
+            lh.send_heartbeat(true);
         }
 
-        // If we've hit this location, then we've failed to gather needed confirmations due to
-        // request failures.
-
-        tx.send(Err(QuorumNotEnough {
-            cluster: eff_mem.membership().to_string(),
-            got: granted,
-        }
-        .into()))
-            .ok();
+        let deadline = now + wait_timeout;
+        let pending_read = PendingRead::new(deadline, linearizer, tx);
+        self.pending_reads.push(min_quorum_acked_at, pending_read);
+        self.reschedule_pending_read_check();
     }
 
     /// Submit change-membership by writing a Membership log entry.
@@ -692,8 +523,6 @@ where
             }
         };
 
-        // TODO: it should returns membership config error etc. currently this is done by the
-        //       caller.
         let entry_count = payloads.len() as u64;
         let log_ids = lh.leader_append_entries(payloads)?;
 
@@ -743,7 +572,7 @@ where
             return false;
         }
 
-        lh.send_heartbeat();
+        lh.send_heartbeat(false);
 
         // Record heartbeat to external metrics recorder
         if let Some(r) = &self.metrics_recorder {
@@ -999,6 +828,50 @@ where
         if let Some(submitted) = self.engine.state.log_progress().submitted().cloned() {
             self.io_broadcast.submitted.send_if_greater(submitted);
         }
+
+        self.process_pending_reads();
+    }
+
+    fn process_pending_reads(&mut self) {
+        let now = C::now();
+        let applied = self.engine.state.io_applied().cloned();
+
+        let lh_res = self.engine.try_leader_handler();
+        match lh_res {
+            Ok(lh) => {
+                // Quorum satisfaction takes precedence over a delayed timeout wake-up.
+                let quorum_acked_at = lh.leader.last_quorum_acked_time();
+                if let Some(quorum_acked_at) = quorum_acked_at {
+                    self.pending_reads.drain_satisfied(quorum_acked_at, applied);
+                }
+
+                let leader = &*lh.leader;
+                let make_error = |min_quorum_acked_at| {
+                    let quorum_not_enough = leader.clock_quorum_not_enough(min_quorum_acked_at);
+                    LinearizableReadError::QuorumNotEnough(quorum_not_enough)
+                };
+
+                self.pending_reads.drain_expired(now, make_error);
+            }
+            Err(forward) => {
+                let err = LinearizableReadError::ForwardToLeader(forward);
+                self.pending_reads.drain_all_with_error(err);
+            }
+        }
+
+        self.reschedule_pending_read_check();
+    }
+
+    fn fail_pending_reads(&mut self) {
+        let forward = self.engine.state.forward_to_leader();
+        let err = LinearizableReadError::ForwardToLeader(forward);
+        self.pending_reads.drain_all_with_error(err);
+        self.reschedule_pending_read_check();
+    }
+
+    fn reschedule_pending_read_check(&self) {
+        let deadline = self.pending_reads.earliest_deadline();
+        self.pending_read_deadline_notifier.set_deadline(deadline);
     }
 
     /// Return the current leader node ID based on the committed vote.
@@ -1104,7 +977,10 @@ where
         leader_vote: CommittedVoteOf<C>,
         prog: &TargetProgress<C>,
     ) -> ReplicationHandle<C> {
-        let network = self.network_factory.new_client(prog.target.clone(), &prog.target_node).await;
+        let network = {
+            let mut factory = self.network_factory.lock().await;
+            factory.new_client(prog.target.clone(), &prog.target_node).await
+        };
 
         let (replicate_tx, replicate_rx) = C::watch_channel(Replicate::default());
 
@@ -1381,7 +1257,7 @@ where
                 break;
             };
 
-            self.handle_api_msg(msg).await;
+            self.handle_api_msg(msg);
             processed += 1;
             total += 1;
 
@@ -1594,7 +1470,10 @@ where
 
             // Safe unwrap(): target must be in membership
             let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap().clone();
-            let client = self.network_factory.new_client(target.clone(), &target_node).await;
+            let client = {
+                let mut factory = self.network_factory.lock().await;
+                factory.new_client(target.clone(), &target_node).await
+            };
 
             let fut = make_rpc(target, client, RPCOption::new(ttl));
 
@@ -1664,10 +1543,9 @@ where
         self.engine.handle_install_full_snapshot(req.vote, req.snapshot, req.tx);
     }
 
-    // TODO: Make this method non-async. It does not need to run any async command in it.
     #[tracing::instrument(level = "debug", skip(self, msg), fields(state = debug(self.engine.state.server_state), id=display(&self.id)
     ))]
-    pub(crate) async fn handle_api_msg(&mut self, msg: RaftMsg<C>) {
+    pub(crate) fn handle_api_msg(&mut self, msg: RaftMsg<C>) {
         tracing::debug!("RAFT_event id={:<2}  input: {}", self.id, msg);
 
         self.runtime_stats.record_raft_msg(msg.name());
@@ -1692,8 +1570,8 @@ where
 
                 self.handle_pre_vote_request(rpc, tx);
             }
-            RaftMsg::GetLinearizer { read_policy, tx } => {
-                self.handle_ensure_linearizable_read(read_policy, tx).await;
+            RaftMsg::GetLinearizer { linearizer_option, tx } => {
+                self.handle_get_linearizer(linearizer_option, tx);
             }
             RaftMsg::ClientWrite {
                 payloads,
@@ -1969,6 +1847,7 @@ where
             }
 
             Notification::StateMachine { command_result } => self.handle_state_machine_result(command_result)?,
+            Notification::PendingReadDeadlineReached => self.process_pending_reads(),
         };
         Ok(())
     }
@@ -1982,8 +1861,6 @@ where
         tracing::debug!("received tick: {}, now: {}", i, now.display());
 
         self.handle_tick_election();
-
-        // TODO: test: fixture: make isolated_nodes a single-way isolating.
 
         // Leader send heartbeat
         let heartbeat_at = self.engine.leader_ref().map(|l| l.next_heartbeat);
@@ -2196,7 +2073,7 @@ where
     ///
     /// This method validates the session and sends heartbeat events only if the current
     /// session matches the requested session (no leader change or membership change).
-    fn broadcast_heartbeat(&mut self, session_id: ReplicationSessionId<C>) {
+    fn broadcast_heartbeat(&mut self, session_id: ReplicationSessionId<C>, bypass_min_interval: bool) {
         // Lazy get the progress data for heartbeat. If the leader changes or replication
         // config changes, no need to send heartbeat.
         let Ok(lh) = self.engine.try_leader_handler() else {
@@ -2221,7 +2098,9 @@ where
             .progress
             .iter()
             .filter(|progress_entry| progress_entry.id != self.id)
-            .filter(|progress_entry| leader.need_heartbeat(&progress_entry.id, now, min_interval))
+            .filter(|progress_entry| {
+                bypass_min_interval || leader.need_heartbeat(&progress_entry.id, now, min_interval)
+            })
             .map(|progress_entry| {
                 (progress_entry.id.clone(), HeartbeatEvent {
                     time: now,
@@ -2441,7 +2320,10 @@ where
             self.new_replication_task_context(leader_vote, stream_id, target.clone());
 
         let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap();
-        let snapshot_network = self.network_factory.new_snapshot_client(target.clone(), target_node).await;
+        let snapshot_network = {
+            let mut factory = self.network_factory.lock().await;
+            factory.new_snapshot_client(target.clone(), target_node).await
+        };
 
         let handle = SnapshotTransmitter::<C, NF, SM>::spawn(
             replication_task_context,
@@ -2473,15 +2355,18 @@ where
         targets: Vec<TargetProgress<C>>,
         close_old_streams: bool,
     ) {
-        self.heartbeat_handle
-            .spawn_workers::<NF>(
-                leader_vote.clone(),
-                &mut self.network_factory,
-                &self.tx_notification,
-                &targets,
-                close_old_streams,
-            )
-            .await;
+        {
+            let mut factory = self.network_factory.lock().await;
+            self.heartbeat_handle
+                .spawn_workers::<NF>(
+                    leader_vote.clone(),
+                    &mut *factory,
+                    &self.tx_notification,
+                    &targets,
+                    close_old_streams,
+                )
+                .await;
+        }
 
         let mut new_replications = BTreeMap::new();
 
@@ -2590,7 +2475,10 @@ where
             Command::ReplicateCommitted { committed } => {
                 self.io_broadcast.committed.send_if_greater(committed);
             }
-            Command::BroadcastHeartbeat { session_id } => self.broadcast_heartbeat(session_id),
+            Command::BroadcastHeartbeat {
+                session_id,
+                bypass_min_interval,
+            } => self.broadcast_heartbeat(session_id, bypass_min_interval),
             Command::SaveCommittedAndApply { already_applied, upto } => {
                 self.run_save_committed_and_apply(already_applied, upto).await?
             }
@@ -2605,6 +2493,7 @@ where
             } => self.run_replicate_snapshot(leader_vote, target, inflight_id).await,
             Command::BroadcastTransferLeader { req } => self.broadcast_transfer_leader(req).await,
             Command::CloseReplicationStreams => self.run_close_replication_streams(),
+            Command::FailPendingReads => self.fail_pending_reads(),
             Command::RebuildReplicationStreams {
                 leader_vote,
                 targets,

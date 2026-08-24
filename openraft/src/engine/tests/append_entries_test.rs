@@ -126,10 +126,10 @@ fn test_append_entries_prev_log_id_is_applied() -> anyhow::Result<()> {
     assert_eq!(ServerState::Follower, eng.state.server_state);
     assert_eq!(
         vec![
+            Command::FailPendingReads,
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
             },
-            Command::CloseReplicationStreams,
             Command::UpdateIOProgress {
                 when: Some(Condition::IOFlushed {
                     io_id: IOId::new_log_io(Vote::new(2, 1).to_committed(), None)
@@ -178,10 +178,10 @@ fn test_append_entries_prev_log_id_conflict() -> anyhow::Result<()> {
     assert_eq!(ServerState::Learner, eng.state.server_state);
     assert_eq!(
         vec![
+            Command::FailPendingReads,
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
             },
-            Command::CloseReplicationStreams,
             Command::TruncateLog {
                 after: Some(log_id(1, 1, 1))
             },
@@ -225,10 +225,10 @@ fn test_append_entries_prev_log_id_is_committed() -> anyhow::Result<()> {
     assert_eq!(ServerState::Learner, eng.state.server_state);
     assert_eq!(
         vec![
+            Command::FailPendingReads,
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
             },
-            Command::CloseReplicationStreams,
             Command::TruncateLog {
                 after: Some(log_id(1, 1, 1))
             },
@@ -283,12 +283,9 @@ fn test_append_entries_prev_log_id_not_exists() -> anyhow::Result<()> {
     );
     assert_eq!(ServerState::Follower, eng.state.server_state);
     assert_eq!(
-        vec![
-            Command::SaveVote {
-                vote: Vote::new_committed(2, 1)
-            },
-            Command::CloseReplicationStreams,
-        ],
+        vec![Command::FailPendingReads, Command::SaveVote {
+            vote: Vote::new_committed(2, 1)
+        },],
         eng.output.take_commands()
     );
 
@@ -333,10 +330,10 @@ fn test_append_entries_conflict() -> anyhow::Result<()> {
     assert_eq!(ServerState::Learner, eng.state.server_state);
     assert_eq!(
         vec![
+            Command::FailPendingReads,
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
             },
-            Command::CloseReplicationStreams,
             Command::TruncateLog {
                 after: Some(log_id(1, 1, 2))
             },

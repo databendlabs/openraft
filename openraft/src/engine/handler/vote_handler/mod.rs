@@ -237,18 +237,22 @@ where
     ///
     /// This node then becomes raft-follower or raft-learner.
     pub(crate) fn become_following(&mut self) {
-        // TODO: if it is already in following state, nothing to do.
         debug_assert!(
             self.state.vote_ref().to_leader_id().node_id() != &self.config.id
                 || !self.state.membership_state.effective().membership().is_voter(&self.config.id),
             "It must hold: vote is not mine, or I am not a voter(leader just left the cluster)"
         );
 
+        let had_leading_state = self.leader.is_some() || self.candidate.is_some() || self.pre_candidate.is_some();
+
         *self.leader = None;
         *self.candidate = None;
         *self.pre_candidate = None;
 
-        self.output.push_command(Command::CloseReplicationStreams);
+        self.output.prepend_command(Command::FailPendingReads);
+        if had_leading_state {
+            self.output.push_command(Command::CloseReplicationStreams);
+        }
 
         self.server_state_handler().update_server_state_if_changed();
     }
