@@ -88,14 +88,26 @@
 
 (defn- prepare-options [parsed]
   (let [options (:options parsed)
+        nemesis-types (when-not (seq (:errors parsed))
+                        (normalize-nemeses (:nemesis options)))
+        packet-mode-error
+        (cond
+          (and (:packet-mode options)
+               (or (chaos-selection? (:nemesis options))
+                   (not (some #{:packet} nemesis-types))))
+          "--packet-mode requires an explicit Packet Nemesis."
+
+          (and (= [:packet] nemesis-types)
+               (nil? (:packet-mode options)))
+          "--packet-mode is required for Packet Nemesis."
+
+          :else nil)
         seed (or (:seed options)
                  (random/long Long/MAX_VALUE))]
     (random/set-seed! seed)
     (cond-> (assoc-in parsed [:options :seed] seed)
-      (and (chaos-selection? (:nemesis options))
-           (:packet-mode options))
-      (update :errors (fnil conj [])
-              "--packet-mode cannot be used with Chaos."))))
+      packet-mode-error
+      (update :errors (fnil conj []) packet-mode-error))))
 
 (defn- lifecycle-generator
   [failure-state time-limit workload nemesis-package]
@@ -120,7 +132,6 @@
   (let [failure-state (harness/failure-state)
         database (openraft-db/db opts)
         workload (workload/workload opts)
-        chaos? (chaos-selection? (:nemesis opts))
         nemesis-types (normalize-nemeses (:nemesis opts))
         nemesis-package
         (openraft-nemesis/compose-packages
@@ -140,9 +151,9 @@
                    (membership/membership-package database opts)
 
                    :packet
-                   (let [packet-mode (when-not chaos?
-                                       (:packet-mode opts))]
-                     (when-not (or chaos? packet-mode)
+                   (let [packet-mode (:packet-mode opts)]
+                     (when (and (= [:packet] nemesis-types)
+                                (nil? packet-mode))
                        (throw (ex-info
                                "--packet-mode is required for Packet Nemesis"
                                {:nemesis nemesis-types})))

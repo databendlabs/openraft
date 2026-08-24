@@ -223,10 +223,9 @@ voters and waits for every node to agree on a leader.
 
 #### Packet Nemesis
 
-The Packet Nemesis models traffic that remains reachable but is
-degraded. Hard packet drops that create a partition remain the responsibility
-of the Network Partition Nemesis. Packet provides two mutually exclusive
-modes:
+The Packet Nemesis models traffic that remains reachable but is degraded. Hard
+packet drops that create a partition remain the responsibility of the Network
+Partition Nemesis. Packet provides two mutually exclusive modes:
 
 - `slow`: 300 ms latency with 50 ms normally distributed jitter;
 - `flaky`: Jepsen's default 20% packet loss with 75% correlation.
@@ -268,11 +267,11 @@ on every node.
 #### Chaos Composition
 
 The default `chaos` profile independently schedules partition, process, pause,
-membership, and packet faults. It composes the package,
-generator, final recovery, and checker supplied by each Nemesis rather than
-defining separate Chaos-only checker semantics. Packet chooses one of `slow` or
-`flaky` for each independent Packet episode, and never overlaps those two modes
-with each other. Different fault classes may remain active at the same time.
+membership, and packet faults. It composes the package, generator, final
+recovery, and checker supplied by each Nemesis rather than defining separate
+Chaos-only checker semantics. Packet chooses one of `slow` or `flaky` for each
+independent Packet episode, and never overlaps those two modes with each other.
+Different fault classes may remain active at the same time.
 
 Every Jepsen node builds a snapshot after 100 newly committed logs by default.
 The regular write workload therefore exercises snapshot construction during
@@ -307,10 +306,10 @@ The `final-workload` checker separately rejects a run when its final reads or
 writes fail. These modeled failures are not unexpected-SUT-response markers.
 
 A coverage failure rejects the run but does not by itself identify an OpenRaft
-failure or its root cause. For example, `:missing-modes` or
-`:missing-target-roles` is written to
-`results.edn`; the mode may be absent from `history.edn`, skipped by an outcome
-such as `:no-supported-leader`, or blocked by a Harness failure recorded in
+failure or its root cause. Missing coverage is recorded in `results.edn` under
+fields such as `:missing-modes` or `:missing-target-roles`. The mode or target
+role may be absent from `history.edn`, skipped by an outcome such as
+`:no-supported-leader`, or blocked by a Harness failure recorded in
 `jepsen.log`. Start with the nested checker result, inspect the corresponding
 operations in `history.edn`, and then use `jepsen.log` for Harness diagnostics.
 
