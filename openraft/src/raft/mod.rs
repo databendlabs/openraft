@@ -111,7 +111,7 @@ use crate::core::sm;
 use crate::core::sm::worker;
 use crate::engine::Engine;
 use crate::engine::EngineConfig;
-use crate::entry::EntryPayload;
+use crate::entry::RaftPayload;
 use crate::errors::ClientWriteError;
 use crate::errors::Fatal;
 use crate::errors::ForwardToLeader;
@@ -169,7 +169,11 @@ use crate::vote::raft_vote::RaftVoteExt;
 ///        Term         = u64,
 ///        LeaderId     = openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>,
 ///        Vote           = openraft::impls::Vote<Self::LeaderId>,
-///        Entry          = openraft::Entry<Self>,
+///        Payload        = openraft::EntryPayload<Self::D, Self::NodeId, Self::Node>,
+///        Entry          = openraft::Entry<
+///            <Self::LeaderId as openraft::vote::RaftLeaderId>::Committed,
+///            Self::Payload,
+///        >,
 ///        Responder<T>   = openraft::impls::OneshotResponder<Self, T>,
 ///        AsyncRuntime   = openraft::TokioRuntime,
 /// );
@@ -183,7 +187,8 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// - `Term`:         `u64`
 /// - `LeaderId`:     `::openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>`
 /// - `Vote`:           `::openraft::impls::Vote<Self::LeaderId>`
-/// - `Entry`:          `::openraft::impls::Entry<Self>`
+/// - `Payload`:        `::openraft::EntryPayload<Self::D, Self::NodeId, Self::Node>`
+/// - `Entry`:          `::openraft::impls::Entry<CommittedLeaderId, Self::Payload>`
 /// - `Responder<T>`:   `::openraft::impls::OneshotResponder<Self, T>`
 /// - `AsyncRuntime`:   `::openraft::impls::TokioRuntime`
 /// - `ErrorSource`:    `::anyerror::AnyError`
@@ -232,7 +237,8 @@ macro_rules! declare_raft_types {
                 (Term         , , u64                                          ),
                 (LeaderId     , , $crate::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId> ),
                 (Vote           , , $crate::impls::Vote<Self::LeaderId>            ),
-                (Entry          , , $crate::Entry<<Self::LeaderId as $crate::vote::RaftLeaderId>::Committed, Self::D, Self::NodeId, Self::Node> ),
+                (Payload        , , $crate::EntryPayload<Self::D, Self::NodeId, Self::Node> ),
+                (Entry          , , $crate::Entry<<Self::LeaderId as $crate::vote::RaftLeaderId>::Committed, Self::Payload> ),
                 (Responder<T>   , , $crate::impls::ProgressResponder<Self, T> where T: $crate::OptionalSend + 'static     ),
                 (Batch<T>       , , $crate::impls::InlineBatch<T> where T: $crate::OptionalSend + 'static     ),
                 (AsyncRuntime   , , $crate::impls::TokioRuntime                  ),
@@ -1230,7 +1236,7 @@ where
         &self,
         app_data: C::D,
     ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
-        self.app_api().client_write(EntryPayload::Normal(app_data)).await.into_raft_result()
+        self.app_api().client_write(C::Payload::normal(app_data)).await.into_raft_result()
     }
 
     /// Write a blank log entry to the Raft log.
@@ -1244,7 +1250,7 @@ where
     #[since(version = "0.10.0")]
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn write_blank(&self) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
-        self.app_api().client_write(EntryPayload::Blank).await.into_raft_result()
+        self.app_api().client_write(C::Payload::blank()).await.into_raft_result()
     }
 
     /// Submit a mutating client request to Raft to update the state machine, returns an application
@@ -1260,7 +1266,7 @@ where
         app_data: C::D,
         responder: Option<WriteResponderOf<C>>,
     ) -> Result<(), Fatal<C>> {
-        self.app_api().client_write_ff(EntryPayload::Normal(app_data), responder).await
+        self.app_api().client_write_ff(C::Payload::normal(app_data), responder).await
     }
 
     /// Write multiple application data payloads in a single batch.
@@ -1290,7 +1296,7 @@ where
         &self,
         app_data: impl IntoIterator<Item = C::D>,
     ) -> Result<BoxStream<'static, Result<WriteResult<C>, Fatal<C>>>, Fatal<C>> {
-        self.app_api().client_write_many(app_data.into_iter().map(EntryPayload::Normal)).await
+        self.app_api().client_write_many(app_data.into_iter().map(C::Payload::normal)).await
     }
 
     /// Submit a write request to Raft.

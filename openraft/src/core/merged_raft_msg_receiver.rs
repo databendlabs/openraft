@@ -245,7 +245,7 @@ mod tests {
     use crate::type_config::TypeConfigExt;
     use crate::type_config::alias::BatchOf;
     use crate::type_config::alias::CommittedLeaderIdOf;
-    use crate::type_config::alias::EntryPayloadOf;
+    use crate::type_config::alias::PayloadOf;
 
     type C = UTConfig<()>;
 
@@ -267,7 +267,7 @@ mod tests {
         }
     }
 
-    fn extract_payload_data(payloads: &BatchOf<C, EntryPayloadOf<C>>) -> Vec<u64> {
+    fn extract_payload_data(payloads: &BatchOf<C, PayloadOf<C>>) -> Vec<u64> {
         payloads
             .as_ref()
             .iter()

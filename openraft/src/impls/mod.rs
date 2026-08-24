@@ -6,6 +6,7 @@
 //! ## Key Types
 //!
 //! - [`Entry`] - Default log entry implementation
+//! - [`EntryPayload`] - Default log entry payload implementation
 //! - [`LogId`] - Default log identifier
 //! - [`Vote`] - Default vote implementation
 //! - [`BasicNode`] - Simple node information with address
@@ -28,11 +29,14 @@
 mod boxed_error_source;
 
 pub use boxed_error_source::BoxedErrorSource;
+use openraft_macros::since;
 #[cfg(feature = "tokio-rt")]
 #[deprecated(since = "0.10.0", note = "use `openraft_rt_tokio::TokioRuntime` directly")]
 pub use openraft_rt_tokio::TokioRuntime;
 
 pub use crate::entry::Entry;
+#[since(version = "0.10.0", change = "re-exported from `impls`")]
+pub use crate::entry::EntryPayload;
 pub use crate::node::BasicNode;
 pub use crate::node::EmptyNode;
 pub use crate::node::NodeInfo;

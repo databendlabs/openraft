@@ -23,7 +23,7 @@ use crate::engine::handler::server_state_handler::ServerStateHandler;
 use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::engine::handler::vote_handler::VoteHandler;
 use crate::entry::RaftEntry;
-use crate::entry::payload::EntryPayload;
+use crate::entry::RaftPayload;
 use crate::errors::ForwardToLeader;
 use crate::errors::InitializeError;
 use crate::errors::NotAllowed;
@@ -243,7 +243,8 @@ where
 
         // The very first log id
         let log_id = LogIdOf::<C>::new(leader_id.to_committed(), 0);
-        let entry = C::Entry::new(log_id, EntryPayload::Membership(membership));
+        let payload = C::Payload::membership(membership);
+        let entry = C::Entry::new(log_id, payload);
         self.following_handler().do_append_entries(vec![entry]);
 
         Ok(())
@@ -947,7 +948,7 @@ where
         // No need to submit UpdateIOProgress command,
         // IO progress is updated by the new blank log
 
-        self.try_leader_handler().unwrap().leader_append_entries([EntryPayload::Blank]);
+        self.try_leader_handler().unwrap().leader_append_entries([C::Payload::blank()]);
     }
 
     /// Check if a raft node is in a state that allows to initialize.

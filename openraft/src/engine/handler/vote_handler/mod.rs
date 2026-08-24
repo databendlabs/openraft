@@ -16,7 +16,7 @@ use crate::engine::ValueSender;
 use crate::engine::handler::leader_handler::LeaderHandler;
 use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::engine::handler::server_state_handler::ServerStateHandler;
-use crate::entry::payload::EntryPayload;
+use crate::entry::RaftPayload;
 use crate::errors::RejectVote;
 use crate::proposer::CandidateState;
 use crate::proposer::LeaderState;
@@ -227,7 +227,7 @@ where
         // If the leader has not yet proposed any log, propose a blank log and initiate replication;
         // Otherwise, just initiate replication.
         if last_log_id.as_ref() < Some(&noop_log_id) {
-            self.leader_handler().leader_append_entries([EntryPayload::Blank]);
+            self.leader_handler().leader_append_entries([C::Payload::blank()]);
         } else {
             self.replication_handler().initiate_replication();
         }

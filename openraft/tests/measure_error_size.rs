@@ -11,7 +11,7 @@ openraft::declare_raft_types!(
     pub TestConfig:
         NodeId = u64,
         Node = BasicNode,
-        Entry = openraft::Entry<<Self::LeaderId as openraft::vote::RaftLeaderId>::Committed, Self::D, Self::NodeId, Self::Node>,
+        Entry = openraft::Entry<<Self::LeaderId as openraft::vote::RaftLeaderId>::Committed, Self::Payload>,
         AsyncRuntime = openraft::impls::TokioRuntime
 );
 

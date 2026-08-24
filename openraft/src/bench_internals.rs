@@ -21,7 +21,7 @@ use crate::engine::testing::log_id;
 use crate::progress::VecProgress;
 pub use crate::quorum::QuorumSet;
 use crate::type_config::TypeConfigExt;
-use crate::type_config::alias::EntryPayloadOf;
+use crate::type_config::alias::PayloadOf;
 use crate::type_config::alias::StoredMembershipOf;
 use crate::utime::Leased;
 
@@ -63,7 +63,7 @@ impl BenchEngine {
     /// Append `payloads` as the leader.
     #[inline]
     pub fn append<I>(&mut self, payloads: I)
-    where I: IntoIterator<Item = EntryPayloadOf<UTConfig>> + AsRef<[EntryPayloadOf<UTConfig>]> {
+    where I: IntoIterator<Item = PayloadOf<UTConfig>> + AsRef<[PayloadOf<UTConfig>]> {
         self.0.try_leader_handler().unwrap().leader_append_entries(payloads);
     }
 

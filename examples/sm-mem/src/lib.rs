@@ -13,6 +13,7 @@ use openraft::OptionalSend;
 use openraft::RaftSnapshotBuilder;
 use openraft::RaftTypeConfig;
 use openraft::alias::DefaultEntryOf;
+use openraft::alias::EntryPayloadOf;
 use openraft::alias::LogIdOf;
 use openraft::alias::SnapshotMetaOf;
 use openraft::alias::SnapshotOf;
@@ -85,7 +86,12 @@ impl<C: RaftTypeConfig> StateMachineStore<C> {
 }
 
 impl<C> RaftSnapshotBuilder<C> for StateMachineStore<C>
-where C: RaftTypeConfig<D = types_kv::Request, R = types_kv::Response, Entry = DefaultEntryOf<C>>
+where C: RaftTypeConfig<
+            D = types_kv::Request,
+            R = types_kv::Response,
+            Payload = EntryPayloadOf<C>,
+            Entry = DefaultEntryOf<C>,
+        >
 {
     type SnapshotData = Cursor<Vec<u8>>;
 
@@ -116,7 +122,12 @@ where C: RaftTypeConfig<D = types_kv::Request, R = types_kv::Response, Entry = D
 }
 
 impl<C> RaftStateMachine<C> for StateMachineStore<C>
-where C: RaftTypeConfig<D = types_kv::Request, R = types_kv::Response, Entry = DefaultEntryOf<C>>
+where C: RaftTypeConfig<
+            D = types_kv::Request,
+            R = types_kv::Response,
+            Payload = EntryPayloadOf<C>,
+            Entry = DefaultEntryOf<C>,
+        >
 {
     type SnapshotData = Cursor<Vec<u8>>;
 
@@ -235,7 +246,12 @@ where C: RaftTypeConfig<D = types_kv::Request, R = types_kv::Response, Entry = D
 
 /// Supports snapshot reception through the legacy v1 network protocol.
 impl<C> SnapshotReceiverFactory<C> for StateMachineStore<C>
-where C: RaftTypeConfig<D = types_kv::Request, R = types_kv::Response, Entry = DefaultEntryOf<C>>
+where C: RaftTypeConfig<
+            D = types_kv::Request,
+            R = types_kv::Response,
+            Payload = EntryPayloadOf<C>,
+            Entry = DefaultEntryOf<C>,
+        >
 {
     type SnapshotReceiver = Cursor<Vec<u8>>;
 

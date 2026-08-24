@@ -11,9 +11,9 @@ use criterion::Criterion;
 use criterion::criterion_group;
 use openraft::bench_internals::BenchEngine;
 use openraft::bench_internals::UTConfig;
-use openraft::type_config::alias::EntryPayloadOf;
+use openraft::type_config::alias::PayloadOf;
 
-type Payload = EntryPayloadOf<UTConfig>;
+type Payload = PayloadOf<UTConfig>;
 
 /// How many appends to time before draining the engine's command buffer.
 ///

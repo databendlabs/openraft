@@ -68,6 +68,7 @@ impl RaftTypeConfig for TypeConfig {
     type Term = u64;
     type LeaderId = LeaderId;
     type Vote = Vote<Self::LeaderId>;
+    type Payload = EntryPayload<Self::D, Self::NodeId, Self::Node>;
     type Entry = DefaultEntryOf<Self>;
     type Responder<T>
         = openraft::impls::OneshotResponder<Self, T>
