@@ -11,7 +11,6 @@ use display_more::DisplayBTreeSetExt;
 use display_more::DisplaySliceExt;
 use openraft_macros::since;
 
-use crate::MembershipMetadata;
 use crate::display_ext::DisplayBTreeMapDebugValueExt;
 use crate::node::Node;
 use crate::node::NodeId;
@@ -20,17 +19,16 @@ use crate::node::NodeId;
 /// voters.
 #[since(
     version = "0.10.0",
-    change = "replaced `C: RaftTypeConfig` with `NID: NodeId, N: Node, M: MembershipMetadata`"
+    change = "replaced `C: RaftTypeConfig` with `NID: NodeId, N: Node`"
 )]
 #[since(version = "0.8.0")]
 #[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum ChangeMembers<NID, N, M = ()>
+pub enum ChangeMembers<NID, N>
 where
     NID: NodeId,
     N: Node,
-    M: MembershipMetadata,
 {
     /// Upgrade learners to voters.
     ///
@@ -77,24 +75,19 @@ where
     /// set, otherwise it returns [`error::LearnerNotFound`](`crate::error::LearnerNotFound`) error.
     ReplaceAllNodes(BTreeMap<NID, N>),
 
-    /// Replace the application-defined metadata attached to the membership configuration.
-    #[since(version = "0.10.0")]
-    SetMetadata(M),
-
     /// Apply multiple changes to membership config.
     ///
     /// The changes are applied in the order they are given.
     /// And it still finishes in a two-step joint config change.
     #[since(version = "0.10.0")]
-    Batch(Vec<ChangeMembers<NID, N, M>>),
+    Batch(Vec<ChangeMembers<NID, N>>),
 }
 
 /// Convert a series of ids to a `Replace` operation.
-impl<NID, N, M, I> From<I> for ChangeMembers<NID, N, M>
+impl<NID, N, I> From<I> for ChangeMembers<NID, N>
 where
     NID: NodeId,
     N: Node,
-    M: MembershipMetadata,
     I: IntoIterator<Item = NID>,
 {
     fn from(r: I) -> Self {
@@ -103,11 +96,10 @@ where
     }
 }
 
-impl<NID, N, M> fmt::Display for ChangeMembers<NID, N, M>
+impl<NID, N> fmt::Display for ChangeMembers<NID, N>
 where
     NID: NodeId,
     N: Node,
-    M: MembershipMetadata,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -134,9 +126,6 @@ where
             }
             ChangeMembers::ReplaceAllNodes(nodes) => {
                 write!(f, "ReplaceAllNodes({})", nodes.display())
-            }
-            ChangeMembers::SetMetadata(metadata) => {
-                write!(f, "SetMetadata({metadata:?})")
             }
             ChangeMembers::Batch(changes) => {
                 write!(f, "Batch({})", changes.as_slice().display_n(1024))

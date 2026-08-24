@@ -5,7 +5,6 @@ use std::time::Duration;
 
 use maplit::btreeset;
 use openraft::Config;
-use openraft::EntryPayload;
 use openraft::Membership;
 use openraft::RaftLogReader;
 use openraft::ServerState;
@@ -137,12 +136,7 @@ async fn initialization() -> anyhow::Result<()> {
             i,
             first
         );
-        let mem = match first.unwrap().payload {
-            EntryPayload::Membership(ref x) => x.clone(),
-            _ => {
-                panic!("expect Membership payload")
-            }
-        };
+        let mem = first.unwrap().payload.membership.expect("expect Membership payload");
         assert_eq!(btreeset![0, 1, 2], mem.get_joint_config()[0].clone());
 
         let sm_mem = sm.applied_state().await?.1;

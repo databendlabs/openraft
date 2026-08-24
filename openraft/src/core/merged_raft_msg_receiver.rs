@@ -259,7 +259,7 @@ mod tests {
 
     fn client_write(data: u64, leader: Option<CommittedLeaderIdOf<C>>) -> RaftMsg<C> {
         RaftMsg::ClientWrite {
-            payloads: Batch::of([EntryPayload::Normal(data)]),
+            payloads: Batch::of([EntryPayload::normal(data)]),
             responders: Batch::of([None]),
             expected_leader: leader,
             #[cfg(feature = "runtime-stats")]
@@ -272,7 +272,10 @@ mod tests {
             .as_ref()
             .iter()
             .map(|p| match p {
-                EntryPayload::Normal(d) => *d,
+                EntryPayload {
+                    normal: Some(d),
+                    membership: None,
+                } => *d,
                 _ => panic!("expected Normal payload"),
             })
             .collect()

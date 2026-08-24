@@ -80,7 +80,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
                 prev_log_id: None,
                 entries: vec![blank_ent::<openraft_memstore::TypeConfig>(0, 0, 0), Entry {
                     log_id: log_id(1, 0, 1),
-                    payload: EntryPayload::Membership(Membership::new_with_defaults(vec![btreeset! {2,3}], [])),
+                    payload: EntryPayload::membership(Membership::new_with_defaults(vec![btreeset! {2,3}], [])),
                 }],
                 leader_commit: Some(log_id(0, 0, 0)),
             };

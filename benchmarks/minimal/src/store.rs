@@ -9,7 +9,6 @@ use std::ops::RangeBounds;
 use std::sync::Arc;
 
 use futures::Stream;
-use openraft::EntryPayload;
 use openraft::OptionalSend;
 use openraft::RaftTypeConfig;
 use openraft::Vote;
@@ -65,7 +64,6 @@ impl RaftTypeConfig for TypeConfig {
     type R = ClientResponse;
     type NodeId = u64;
     type Node = ();
-    type MembershipMetadata = ();
     type Term = u64;
     type LeaderId = LeaderId;
     type Vote = Vote<Self::LeaderId>;
@@ -290,12 +288,9 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
         while let Some((entry, responder)) = entries.try_next().await? {
             sm.last_applied_log = Some(entry.log_id);
 
-            match entry.payload {
-                EntryPayload::Blank | EntryPayload::Normal(_) => {}
-                EntryPayload::Membership(ref mem) => {
+            if let Some(ref mem) = entry.payload.membership {
                     sm.last_membership = StoredMembershipOf::<TypeConfig>::new(Some(entry.log_id), mem.clone());
                 }
-            };
 
             if let Some(responder) = responder {
                 responder.send(ClientResponse {});

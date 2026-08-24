@@ -5,26 +5,6 @@
 use openraft_rt_tokio::TokioRuntime;
 
 use crate::declare_raft_types;
-use crate::type_config::alias::MembershipMetadataOf;
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-struct ClusterMetadata {
-    generation: u64,
-}
-
-declare_raft_types!(WithMembershipMetadata:
-    D = u64,
-    R = (),
-    Node = (),
-    MembershipMetadata = ClusterMetadata,
-);
-
-#[test]
-fn test_membership_metadata_type() {
-    let metadata = MembershipMetadataOf::<WithMembershipMetadata> { generation: 3 };
-    assert_eq!(3, metadata.generation);
-}
 
 declare_raft_types!(
     All:

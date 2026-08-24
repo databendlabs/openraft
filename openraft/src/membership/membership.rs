@@ -10,35 +10,24 @@ use crate::errors::MembershipError;
 use crate::errors::NodeNotFound;
 use crate::errors::Operation;
 use crate::membership::IntoNodes;
-use crate::membership::MembershipMetadata;
 use crate::node::Node;
 use crate::node::NodeId;
 use crate::quorum::FindCoherent;
-
-#[cfg(feature = "serde")]
-fn metadata_is_unit<M>(_: &M) -> bool
-where
-    M: 'static,
-{
-    std::any::TypeId::of::<M>() == std::any::TypeId::of::<()>()
-}
 
 /// The membership configuration of the cluster.
 ///
 /// It could be a joint of one, two or more configs, i.e., a quorum is a node set that is superset
 /// of a majority of every config.
-#[since(version = "0.10.0", change = "added membership-wide metadata type `M`")]
 #[since(
     version = "0.10.0",
     change = "replaced `C: RaftTypeConfig` with `NID: NodeId, N: Node`"
 )]
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct Membership<NID, N, M = ()>
+pub struct Membership<NID, N>
 where
     NID: NodeId,
     N: Node,
-    M: MembershipMetadata,
 {
     /// Multi configs of members.
     ///
@@ -49,32 +38,25 @@ where
     ///
     /// A node-id key that is in `nodes` but is not in `configs` is a **learner**.
     pub(crate) nodes: BTreeMap<NID, N>,
-
-    /// Application-defined metadata for this membership configuration as a whole.
-    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "metadata_is_unit"))]
-    pub(crate) metadata: M,
 }
 
-impl<NID, N, M> Default for Membership<NID, N, M>
+impl<NID, N> Default for Membership<NID, N>
 where
     NID: NodeId,
     N: Node,
-    M: MembershipMetadata,
 {
     fn default() -> Self {
         Membership {
             configs: vec![],
             nodes: BTreeMap::new(),
-            metadata: M::default(),
         }
     }
 }
 
-impl<NID, N, M> From<BTreeMap<NID, N>> for Membership<NID, N, M>
+impl<NID, N> From<BTreeMap<NID, N>> for Membership<NID, N>
 where
     NID: NodeId,
     N: Node,
-    M: MembershipMetadata,
 {
     fn from(b: BTreeMap<NID, N>) -> Self {
         let member_ids = b.keys().cloned().collect::<BTreeSet<NID>>();
@@ -82,11 +64,10 @@ where
     }
 }
 
-impl<NID, N, M> fmt::Display for Membership<NID, N, M>
+impl<NID, N> fmt::Display for Membership<NID, N>
 where
     NID: NodeId,
     N: Node,
-    M: MembershipMetadata,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{{voters:[",)?;
@@ -125,11 +106,10 @@ where
 }
 
 // Public APIs
-impl<NID, N, M> Membership<NID, N, M>
+impl<NID, N> Membership<NID, N>
 where
     NID: NodeId,
     N: Node,
-    M: MembershipMetadata,
 {
     /// Create a new Membership from a joint config of voter-ids and a collection of all
     /// `Node` (voter nodes and learner nodes).
@@ -145,23 +125,6 @@ where
         let m = Membership {
             configs: config,
             nodes: nodes.into_nodes(),
-            metadata: M::default(),
-        };
-
-        m.ensure_valid()?;
-        Ok(m)
-    }
-
-    /// Create a membership with application-defined metadata for the configuration as a whole.
-    #[since(version = "0.10.0")]
-    pub fn new_with_metadata<T>(config: Vec<BTreeSet<NID>>, nodes: T, metadata: M) -> Result<Self, MembershipError<NID>>
-    where
-        T: IntoNodes<NID, N>,
-    {
-        let m = Membership {
-            configs: config,
-            nodes: nodes.into_nodes(),
-            metadata,
         };
 
         m.ensure_valid()?;
@@ -186,11 +149,7 @@ where
 
         let nodes = Self::extend_nodes(nodes.into_iter().map(|x| (x, N::default())).collect(), &voter_nodes);
 
-        Membership {
-            configs: config,
-            nodes,
-            metadata: M::default(),
-        }
+        Membership { configs: config, nodes }
     }
 
     /// Returns reference to the joint config.
@@ -214,25 +173,6 @@ where
         self.nodes.get(node_id)
     }
 
-    /// Return the application-defined metadata for this membership configuration.
-    #[since(version = "0.10.0")]
-    pub fn metadata(&self) -> &M {
-        &self.metadata
-    }
-
-    /// Replace the application-defined metadata and return the updated membership.
-    #[since(version = "0.10.0")]
-    pub fn with_metadata<M2>(self, metadata: M2) -> Membership<NID, N, M2>
-    where
-        M2: MembershipMetadata,
-    {
-        Membership {
-            configs: self.configs,
-            nodes: self.nodes,
-            metadata,
-        }
-    }
-
     /// Returns an Iterator of all voter node ids. Learners are not included.
     pub fn voter_ids(&self) -> impl Iterator<Item = NID> {
         self.configs.iter().flatten().cloned().collect::<BTreeSet<_>>().into_iter()
@@ -244,11 +184,10 @@ where
     }
 }
 
-impl<NID, N, M> Membership<NID, N, M>
+impl<NID, N> Membership<NID, N>
 where
     NID: NodeId,
     N: Node,
-    M: MembershipMetadata,
 {
     /// Format one node as `<node_id>:<node>`, or `<node_id>:None` if this membership has no such
     /// node.
@@ -281,11 +220,7 @@ where
     pub(crate) fn new_unchecked<T>(configs: Vec<BTreeSet<NID>>, nodes: T) -> Self
     where T: IntoNodes<NID, N> {
         let nodes = nodes.into_nodes();
-        Membership {
-            configs,
-            nodes,
-            metadata: M::default(),
-        }
+        Membership { configs, nodes }
     }
 
     /// Extends nodes btreemap with another.
@@ -376,11 +311,7 @@ where
             }
         };
 
-        Membership {
-            configs: config,
-            nodes,
-            metadata: self.metadata.clone(),
-        }
+        Membership::new_unchecked(config, nodes)
     }
 
     /// Apply a change-membership request and return a new instance.
@@ -389,24 +320,15 @@ where
     ///
     /// `retain` specifies whether to retain the removed voters as learners, i.e., nodes that
     /// continue to receive log replication from the leader.
-    pub(crate) fn change(
-        mut self,
-        change: ChangeMembers<NID, N, M>,
-        retain: bool,
-    ) -> Result<Self, MembershipError<NID>> {
+    pub(crate) fn change(mut self, change: ChangeMembers<NID, N>, retain: bool) -> Result<Self, MembershipError<NID>> {
         tracing::debug!("{}: change: {:?}", func_name!(), change);
 
-        let Membership {
-            mut configs,
-            nodes,
-            metadata,
-        } = self.clone().compute_target_membership(change);
+        let Membership { mut configs, nodes } = self.clone().compute_target_membership(change);
 
         // Safe unwrap(): membership changes are only evaluated on an initialized leader.
         let target_voter_ids = configs.pop().unwrap();
 
         self.nodes = nodes;
-        self.metadata = metadata;
         let new_membership = self.next_coherent(target_voter_ids, retain);
 
         tracing::debug!("new membership: {}", new_membership);
@@ -427,7 +349,7 @@ where
     ///
     /// Note: This is an intermediate step in membership changes. The result may need to be
     /// transformed into a coherent configuration before being applied.
-    fn compute_target_membership(mut self, change: ChangeMembers<NID, N, M>) -> Membership<NID, N, M> {
+    fn compute_target_membership(mut self, change: ChangeMembers<NID, N>) -> Membership<NID, N> {
         let last = self.get_joint_config().last().cloned().unwrap_or_default();
 
         // `None` means the change does not touch the voter set, only `nodes`.
@@ -467,10 +389,6 @@ where
                 self.nodes = all_nodes;
                 None
             }
-            ChangeMembers::SetMetadata(metadata) => {
-                self.metadata = metadata;
-                None
-            }
             ChangeMembers::Batch(batch) => {
                 // Each nested change already updated `configs` as needed.
                 for change in batch {
@@ -506,7 +424,6 @@ mod tests {
         let m = Membership::<u64, ()> {
             configs: vec![btreeset! {1,2}],
             nodes: btreemap! {1=>()},
-            metadata: (),
         };
         assert_eq!(Err(2), m.ensure_voter_nodes());
         Ok(())
@@ -517,7 +434,6 @@ mod tests {
         let m = || Membership::<u64, ()> {
             configs: vec![btreeset! {1,2}],
             nodes: btreemap! {1=>(),2=>(),3=>()},
-            metadata: (),
         };
 
         // Add: no such learner
@@ -536,8 +452,7 @@ mod tests {
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {1,2}, btreeset! {1,2,3}],
-                    nodes: btreemap! {1=>(),2=>(),3=>()},
-                    metadata: ()
+                    nodes: btreemap! {1=>(),2=>(),3=>()}
                 }),
                 res
             );
@@ -549,8 +464,7 @@ mod tests {
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {1,2}, btreeset! {1,2,5}],
-                    nodes: btreemap! {1=>(),2=>(),3=>(),5=>()},
-                    metadata: ()
+                    nodes: btreemap! {1=>(),2=>(),3=>(),5=>()}
                 }),
                 res
             );
@@ -562,8 +476,7 @@ mod tests {
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {1,2}],
-                    nodes: btreemap! {1=>(),2=>(),3=>()},
-                    metadata: ()
+                    nodes: btreemap! {1=>(),2=>(),3=>()}
                 }),
                 res
             );
@@ -581,8 +494,7 @@ mod tests {
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {1,2}, btreeset! {2}],
-                    nodes: btreemap! {1=>(),2=>(),3=>()},
-                    metadata: ()
+                    nodes: btreemap! {1=>(),2=>(),3=>()}
                 }),
                 res
             );
@@ -594,8 +506,7 @@ mod tests {
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {1,2}, btreeset! {2}],
-                    nodes: btreemap! {1=>(),2=>(),3=>()},
-                    metadata: ()
+                    nodes: btreemap! {1=>(),2=>(),3=>()}
                 }),
                 res
             );
@@ -606,14 +517,12 @@ mod tests {
             let mem = Membership::<u64, ()> {
                 configs: vec![btreeset! {1,2}, btreeset! {2}],
                 nodes: btreemap! {1=>(),2=>(),3=>()},
-                metadata: (),
             };
             let res = mem.change(ChangeMembers::RemoveVoters(btreeset! {1}), false);
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {2}],
-                    nodes: btreemap! {2=>(),3=>()},
-                    metadata: ()
+                    nodes: btreemap! {2=>(),3=>()}
                 }),
                 res
             );
@@ -625,8 +534,7 @@ mod tests {
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {1,2}, btreeset! {2}],
-                    nodes: btreemap! {1=>(),2=>(),3=>()},
-                    metadata: ()
+                    nodes: btreemap! {1=>(),2=>(),3=>()}
                 }),
                 res
             );
@@ -638,8 +546,7 @@ mod tests {
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {1,2}],
-                    nodes: btreemap! {1=>(),2=>(),3=>()},
-                    metadata: ()
+                    nodes: btreemap! {1=>(),2=>(),3=>()}
                 }),
                 res
             );
@@ -651,8 +558,7 @@ mod tests {
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {1,2}],
-                    nodes: btreemap! {1=>(),2=>(),3=>()},
-                    metadata: ()
+                    nodes: btreemap! {1=>(),2=>(),3=>()}
                 }),
                 res
             );
@@ -664,8 +570,7 @@ mod tests {
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {1,2}],
-                    nodes: btreemap! {1=>(),2=>(),3=>(), 4=>()},
-                    metadata: ()
+                    nodes: btreemap! {1=>(),2=>(),3=>(), 4=>()}
                 }),
                 res
             );
@@ -676,15 +581,13 @@ mod tests {
             let m = || Membership::<u64, u64> {
                 configs: vec![btreeset! {1,2}],
                 nodes: btreemap! {1=>1,2=>2,3=>3},
-                metadata: (),
             };
 
             let res = m().change(ChangeMembers::SetNodes(btreemap! {3=>30, 4=>40}), false);
             assert_eq!(
                 Ok(Membership::<u64, u64> {
                     configs: vec![btreeset! {1,2}],
-                    nodes: btreemap! {1=>1,2=>2,3=>30, 4=>40},
-                    metadata: ()
+                    nodes: btreemap! {1=>1,2=>2,3=>30, 4=>40}
                 }),
                 res
             );
@@ -706,8 +609,7 @@ mod tests {
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {1,2}],
-                    nodes: btreemap! {1=>(),2=>()},
-                    metadata: ()
+                    nodes: btreemap! {1=>(),2=>()}
                 }),
                 res
             );
@@ -719,8 +621,7 @@ mod tests {
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {1,2}],
-                    nodes: btreemap! {1=>(),2=>(),4=>()},
-                    metadata: ()
+                    nodes: btreemap! {1=>(),2=>(),4=>()}
                 }),
                 res
             );
@@ -738,7 +639,6 @@ mod tests {
         let m = || Membership::<u64, ()> {
             configs: vec![btreeset! {1,2}],
             nodes: btreemap! {1=>(),2=>(),3=>()},
-            metadata: (),
         };
 
         let rm_2_add_5 = || {
@@ -752,16 +652,14 @@ mod tests {
 
         assert_eq!(step1, Membership::<u64, ()> {
             configs: vec![btreeset! {1,2}, btreeset! {1,5}],
-            nodes: btreemap! {1=>(),2=>(),3=>(),5=>()},
-            metadata: ()
+            nodes: btreemap! {1=>(),2=>(),3=>(),5=>()}
         });
 
         let step2 = step1.change(rm_2_add_5(), false)?;
 
         assert_eq!(step2, Membership::<u64, ()> {
             configs: vec![btreeset! {1,5}],
-            nodes: btreemap! {1=>(),3=>(), 5=>()},
-            metadata: ()
+            nodes: btreemap! {1=>(),3=>(), 5=>()}
         });
 
         Ok(())

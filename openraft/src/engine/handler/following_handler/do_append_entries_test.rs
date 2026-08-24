@@ -109,7 +109,7 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
 
     eng.following_handler().do_append_entries(vec![blank_ent::<UTConfig>(3, 1, 4), EntryOf::<UTConfig> {
         log_id: log_id(3, 1, 5),
-        payload: EntryPayload::<u64, u64, ()>::Membership(m34()),
+        payload: EntryPayload::<u64, u64, ()>::membership(m34()),
     }]);
 
     assert_eq!(None, eng.state.log_ids.purged());
@@ -143,7 +143,7 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
                 blank_ent::<UTConfig>(3, 1, 4),
                 EntryOf::<UTConfig> {
                     log_id: log_id(3, 1, 5),
-                    payload: EntryPayload::<u64, u64, ()>::Membership(m34()),
+                    payload: EntryPayload::<u64, u64, ()>::membership(m34()),
                 },
             ])
         },],

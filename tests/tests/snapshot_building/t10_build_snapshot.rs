@@ -76,7 +76,7 @@ async fn build_snapshot() -> Result<()> {
     let (mut sto1, sm1) = router.new_store();
     sto1.blocking_append([blank_ent::<openraft_memstore::TypeConfig>(0, 0, 0), Entry {
         log_id: log_id(1, 0, 1),
-        payload: EntryPayload::Membership(Membership::new_with_defaults(vec![btreeset! {0}], [])),
+        payload: EntryPayload::membership(Membership::new_with_defaults(vec![btreeset! {0}], [])),
     }])
     .await?;
 

@@ -6,7 +6,7 @@
 //! ## Key Types
 //!
 //! - [`Entry`] - Default log entry implementation containing log ID and payload
-//! - [`EntryPayload`] - Payload types: application data, membership config, or blank
+//! - [`EntryPayload`] - Optional application data and membership configuration
 //! - [`RaftEntry`] - Trait that log entries must implement
 //! - [`RaftPayload`] - Trait for entry payload types
 //!
@@ -14,7 +14,7 @@
 //!
 //! Each log entry contains:
 //! - **Log ID**: `(term, node_id, index)` uniquely identifying the entry
-//! - **Payload**: Either application data, membership change, or blank (noop)
+//! - **Payload**: Application data, a membership change, both, or blank (noop)
 //!
 //! ## Entry Types
 //!

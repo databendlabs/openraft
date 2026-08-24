@@ -24,15 +24,13 @@ use crate::type_config::alias::LogIdOf;
 /// membership changes and node additions.
 #[since(version = "0.10.0")]
 pub(crate) struct ManagementApi<'a, C>
-where
-    C: RaftTypeConfig,
+where C: RaftTypeConfig
 {
     inner: &'a RaftInner<C>,
 }
 
 impl<'a, C> ManagementApi<'a, C>
-where
-    C: RaftTypeConfig,
+where C: RaftTypeConfig
 {
     pub(in crate::raft) fn new(inner: &'a RaftInner<C>) -> Self {
         Self { inner }
@@ -41,26 +39,10 @@ where
     #[since(version = "0.10.0")]
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) async fn initialize<T>(&self, members: T) -> Result<Result<(), InitializeError<C>>, Fatal<C>>
-    where
-        T: IntoNodes<C::NodeId, C::Node> + Debug,
-    {
-        self.initialize_with_metadata(members, C::MembershipMetadata::default()).await
-    }
-
-    #[since(version = "0.10.0")]
-    #[tracing::instrument(level = "debug", skip(self, metadata))]
-    pub(crate) async fn initialize_with_metadata<T>(
-        &self,
-        members: T,
-        metadata: C::MembershipMetadata,
-    ) -> Result<Result<(), InitializeError<C>>, Fatal<C>>
-    where
-        T: IntoNodes<C::NodeId, C::Node> + Debug,
-    {
+    where T: IntoNodes<C::NodeId, C::Node> + Debug {
         self.inner
             .call_core_oneshot(|tx| RaftMsg::Initialize {
                 members: members.into_nodes(),
-                metadata,
                 tx,
             })
             .await
@@ -70,10 +52,22 @@ where
     #[tracing::instrument(level = "info", skip_all)]
     pub(crate) async fn change_membership(
         &self,
-        members: impl Into<ChangeMembers<C::NodeId, C::Node, C::MembershipMetadata>>,
+        members: impl Into<ChangeMembers<C::NodeId, C::Node>>,
         retain: bool,
     ) -> Result<ClientWriteResult<C>, Fatal<C>> {
-        let changes: ChangeMembers<C::NodeId, C::Node, C::MembershipMetadata> = members.into();
+        self.change_membership_with_data(members, retain, None).await
+    }
+
+    #[since(version = "0.10.0")]
+    #[tracing::instrument(level = "info", skip_all)]
+    pub(crate) async fn change_membership_with_data(
+        &self,
+        members: impl Into<ChangeMembers<C::NodeId, C::Node>>,
+        retain: bool,
+        app_data: Option<C::D>,
+    ) -> Result<ClientWriteResult<C>, Fatal<C>> {
+        let changes: ChangeMembers<C::NodeId, C::Node> = members.into();
+        let has_app_data = app_data.is_some();
 
         tracing::info!(
             "change_membership: start to commit joint config: changes: {:?}, retain: {}",
@@ -92,6 +86,7 @@ where
             .call_core(
                 RaftMsg::ChangeMembership {
                     changes: changes.clone(),
+                    app_data,
                     retain,
                     tx,
                 },
@@ -127,7 +122,7 @@ where
 
         // The second step, send a NOOP change to flatten the joint config.
         let changes = ChangeMembers::AddVoterIds(Default::default());
-        let client_write_result = self.inner.call_core(RaftMsg::ChangeMembership { changes, retain, tx }, rx).await?;
+        let client_write_result = self.inner.call_core(RaftMsg::ChangeMembership { changes, app_data: None, retain, tx }, rx).await?;
 
         tracing::info!(
             "result of second step of change_membership: {}",
@@ -138,7 +133,10 @@ where
             tracing::error!("the second step error: {}", e);
         }
 
-        Ok(client_write_result)
+        match client_write_result {
+            Ok(_) if has_app_data => Ok(Ok(resp)),
+            other => Ok(other),
+        }
     }
 
     #[since(version = "0.10.0")]
@@ -153,6 +151,7 @@ where
 
         let msg = RaftMsg::ChangeMembership {
             changes: ChangeMembers::AddNodes(btreemap! {id.clone()=>node}),
+            app_data: None,
             retain: true,
             tx,
         };

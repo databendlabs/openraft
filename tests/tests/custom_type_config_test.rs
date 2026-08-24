@@ -64,7 +64,6 @@ impl RaftTypeConfig for CustomConfig {
     type R = u64;
     type NodeId = u64;
     type Node = openraft::BasicNode;
-    type MembershipMetadata = ();
     type Term = u64;
     type LeaderId = openraft::impls::leader_id_adv::LeaderId<u64, u64>;
     type Vote = openraft::impls::Vote<Self::LeaderId>;

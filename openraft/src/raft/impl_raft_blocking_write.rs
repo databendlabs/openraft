@@ -2,6 +2,8 @@
 //! Blocking-mode write API blocks until the write operation is completed,
 //! where [`RaftTypeConfig::Responder`] is a [`OneshotResponder`].
 
+use openraft_macros::since;
+
 use crate::ChangeMembers;
 use crate::Raft;
 use crate::RaftTypeConfig;
@@ -68,10 +70,36 @@ where
     #[tracing::instrument(level = "info", skip_all)]
     pub async fn change_membership(
         &self,
-        members: impl Into<ChangeMembers<C::NodeId, C::Node, C::MembershipMetadata>>,
+        members: impl Into<ChangeMembers<C::NodeId, C::Node>>,
         retain: bool,
     ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
         self.management_api().change_membership(members, retain).await.into_raft_result()
+    }
+
+    /// Propose a cluster configuration change and atomically apply application data at the same
+    /// log index as the first membership entry.
+    ///
+    /// For a voter change that enters joint consensus, `app_data` is attached to the joint
+    /// configuration entry. The automatically proposed uniform configuration entry contains no
+    /// application data, so the command is applied exactly once. The method waits for the uniform
+    /// configuration to commit, then returns the response produced by applying the combined first
+    /// entry; consequently its log ID and membership describe that first entry.
+    ///
+    /// If committing the subsequent uniform configuration fails, this method returns that error
+    /// even though the combined entry may already have been applied. As with [`Raft::client_write`],
+    /// applications should make retried commands idempotent.
+    #[since(version = "0.10.0")]
+    #[tracing::instrument(level = "info", skip_all)]
+    pub async fn change_membership_with_data(
+        &self,
+        members: impl Into<ChangeMembers<C::NodeId, C::Node>>,
+        retain: bool,
+        app_data: C::D,
+    ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
+        self.management_api()
+            .change_membership_with_data(members, retain, Some(app_data))
+            .await
+            .into_raft_result()
     }
 
     /// Add a new learner raft node, optionally, blocking until up-to-speed.

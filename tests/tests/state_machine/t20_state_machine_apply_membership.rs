@@ -5,8 +5,10 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::LogIdOptionExt;
 use openraft::Membership;
+use openraft::RaftLogReader;
 use openraft::alias::StoredMembershipOf;
 use openraft::storage::RaftStateMachine;
+use openraft_memstore::ClientRequest;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
@@ -92,6 +94,53 @@ async fn state_machine_apply_membership() -> Result<()> {
             ),
             last_membership
         );
+    }
+
+    tracing::info!(log_index, "--- establish application state");
+    node.client_write(ClientRequest {
+        client: "membership-controller".to_string(),
+        serial: 1,
+        status: "topology-generation-0".to_string(),
+    })
+    .await?;
+    log_index += 1;
+
+    tracing::info!(log_index, "--- applying app data and membership atomically");
+    let response = node
+        .change_membership_with_data(
+            [0, 1],
+            false,
+            ClientRequest {
+                client: "membership-controller".to_string(),
+                serial: 2,
+                status: "topology-generation-1".to_string(),
+            },
+        )
+        .await?;
+    log_index += 2;
+
+    assert!(response.membership().is_some());
+    assert_eq!(log_index - 1, response.log_id().index());
+    assert_eq!(Some("topology-generation-0"), response.response().0.as_deref());
+
+    let (mut log_store, _sm) = router.get_storage_handle(&0)?;
+    let entries = log_store.try_get_log_entries(response.log_id().index()..=response.log_id().index()).await?;
+    assert!(entries[0].payload.normal.is_some());
+    assert!(entries[0].payload.membership.is_some());
+
+    for i in 0..2 {
+        router
+            .wait(&i, None)
+            .metrics(|x| x.last_applied.index() == Some(log_index), "combined entry applied")
+            .await?;
+
+        let (_sto, sm) = router.get_storage_handle(&i)?;
+        let state_machine = sm.get_state_machine().await;
+        assert_eq!(
+            Some("topology-generation-1"),
+            state_machine.client_status.get("membership-controller").map(String::as_str)
+        );
+        assert_eq!(Some(log_index), state_machine.last_membership.log_id().index());
     }
 
     Ok(())

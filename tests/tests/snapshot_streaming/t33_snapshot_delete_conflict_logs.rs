@@ -91,7 +91,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
                 // conflict membership will be replaced with membership in snapshot
                 Entry {
                     log_id: log_id(1, 0, 2),
-                    payload: EntryPayload::Membership(Membership::new_with_defaults(vec![btreeset! {2,3}], [])),
+                    payload: EntryPayload::membership(Membership::new_with_defaults(vec![btreeset! {2,3}], [])),
                 },
                 blank_ent::<openraft_memstore::TypeConfig>(1, 0, 3),
                 blank_ent::<openraft_memstore::TypeConfig>(1, 0, 4),
@@ -104,7 +104,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
                 // another conflict membership, will be removed
                 Entry {
                     log_id: log_id(1, 0, 11),
-                    payload: EntryPayload::Membership(Membership::new_with_defaults(vec![btreeset! {4,5}], [])),
+                    payload: EntryPayload::membership(Membership::new_with_defaults(vec![btreeset! {4,5}], [])),
                 },
             ],
             leader_commit: Some(log_id(1, 0, 2)),

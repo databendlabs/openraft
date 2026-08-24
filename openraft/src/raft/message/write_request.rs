@@ -140,7 +140,7 @@ where C: RaftTypeConfig
         Box::pin(async move {
             self.inner
                 .send_msg(RaftMsg::ClientWrite {
-                    payloads: Batch::of([EntryPayload::Normal(self.app_data)]),
+                    payloads: Batch::of([EntryPayload::normal(self.app_data)]),
                     responders: Batch::of([self.responder]),
                     expected_leader: self.expected_leader,
                     #[cfg(feature = "runtime-stats")]

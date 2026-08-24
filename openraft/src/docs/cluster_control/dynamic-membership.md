@@ -62,71 +62,46 @@ raft.change_membership(btreeset!{1,2,3}, false).await?;
 
 See [cluster example](https://github.com/databendlabs/openraft/blob/d041202a9f30b704116c324a6adc4f2ec28029fa/examples/raft-kv-memstore/tests/cluster/test_cluster.rs#L75-L103) for complete code.
 
-## Membership-wide metadata
+### Applying application data with a membership change
 
-Membership-wide metadata is application-defined data attached to the entire
-membership configuration. It is distinct from the `Node` value associated with
-each node ID.
-
-The application selects its metadata type with
-[`RaftTypeConfig::MembershipMetadata`]. Use
-[`ChangeMembers::SetMetadata`] to replace the current value:
+[`EntryPayload`] stores application data and membership independently. An entry can therefore
+contain either one or both. Use [`Raft::change_membership_with_data()`] when application state must
+be updated atomically with a membership change:
 
 ```ignore
-let metadata = ClusterMetadata {
-    generation: 2,
-    region: "us-west".to_string(),
+let audit_record = Request::RecordMembershipChange {
+    generation: 3,
+    reason: "replace node 2".to_string(),
 };
 
-raft.change_membership(ChangeMembers::SetMetadata(metadata), true).await?;
+raft.change_membership_with_data(
+    btreeset! {1, 3, 4},
+    false,
+    audit_record,
+).await?;
 ```
 
-`SetMetadata` replaces the complete metadata value. Build the new value from
-the current value first if the application needs merge semantics. For a
-uniform membership, the `retain` argument has no effect when only metadata is
-changed.
+The application data and the first membership configuration produced by the operation share one
+log entry and one log index. For voter changes, that first configuration is the joint
+configuration. OpenRaft subsequently commits the uniform configuration without applying the
+application data again. The method waits for the uniform configuration to commit and then returns
+the application response, log ID, and membership from the combined first entry.
 
-Use [`ChangeMembers::Batch`] to commit metadata together with other membership
-changes. Batch elements are evaluated in order; if a batch contains more than
-one `SetMetadata`, the last value wins.
+If that subsequent uniform-configuration step fails, the method returns the error even though the
+combined joint entry may already have been applied. Application commands should therefore retain
+the same idempotency guarantees as commands submitted through [`Raft::client_write()`].
+
+State machines must inspect both fields independently because both may be present:
 
 ```ignore
-let changes = ChangeMembers::Batch(vec![
-    ChangeMembers::ReplaceAllVoters(BTreeSet::from([1, 2, 3])),
-    ChangeMembers::SetMetadata(ClusterMetadata {
-        generation: 3,
-        region: "us-west".to_string(),
-    }),
-]);
+if let Some(data) = &entry.payload.normal {
+    state_machine.apply(data)?;
+}
 
-raft.change_membership(changes, true).await?;
+if let Some(membership) = &entry.payload.membership {
+    state_machine.set_membership(membership.clone());
+}
 ```
-
-A membership-changing response contains the resulting membership, including
-its metadata:
-
-```ignore
-let response = raft
-    .change_membership(ChangeMembers::SetMetadata(metadata), true)
-    .await?;
-
-let metadata = response
-    .membership()
-    .as_ref()
-    .expect("membership change returns a membership")
-    .metadata();
-```
-
-To query the presently effective membership independently of a response, use
-[`Raft::membership_metadata()`]:
-
-```ignore
-let metadata = raft.membership_metadata();
-```
-
-The metadata is replicated as part of membership log entries and is retained
-in stored memberships and snapshot metadata. Applications that do not need it
-can leave `MembershipMetadata` at its default type, `()`.
 
 ### Removing a retained learner
 
@@ -207,10 +182,9 @@ Exercise additional care when:
 
 [`Raft::add_learner()`]: `crate::Raft::add_learner`
 [`Raft::change_membership()`]: `crate::Raft::change_membership`
-[`Raft::membership_metadata()`]: `crate::Raft::membership_metadata`
-[`RaftTypeConfig::MembershipMetadata`]: `crate::RaftTypeConfig::MembershipMetadata`
-[`ChangeMembers::Batch`]: `crate::change_members::ChangeMembers::Batch`
-[`ChangeMembers::SetMetadata`]: `crate::change_members::ChangeMembers::SetMetadata`
+[`Raft::change_membership_with_data()`]: `crate::Raft::change_membership_with_data`
+[`Raft::client_write()`]: `crate::Raft::client_write`
+[`EntryPayload`]: `crate::EntryPayload`
 [`ChangeMembers::SetNodes`]: `crate::change_members::ChangeMembers::SetNodes`
 [`ChangeMembers::RemoveNodes`]: `crate::change_members::ChangeMembers::RemoveNodes`
 [`RaftNetworkFactory`]: `crate::network::RaftNetworkFactory`

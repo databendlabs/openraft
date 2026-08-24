@@ -42,7 +42,7 @@ async fn new_leader_auto_commit_uniform_config() -> Result<()> {
     {
         sto.blocking_append([Entry {
             log_id: log_id(1, 0, log_index + 1),
-            payload: EntryPayload::Membership(Membership::new_with_defaults(
+            payload: EntryPayload::membership(Membership::new_with_defaults(
                 vec![btreeset! {0}, btreeset! {0,1,2}],
                 btreeset! {},
             )),
@@ -72,12 +72,7 @@ async fn new_leader_auto_commit_uniform_config() -> Result<()> {
     //
     // let final_log = StorageHelper::new(&mut sto).get_log_entries(want..=want).await?[0].clone();
     //
-    // let m = match final_log.payload {
-    //     EntryPayload::Membership(ref m) => m.membership.clone(),
-    //     _ => {
-    //         panic!("expect membership config log")
-    //     }
-    // };
+    // let m = final_log.payload.membership.expect("expect membership config log");
     //
     // assert_eq!(
     //     MembershipConfig {

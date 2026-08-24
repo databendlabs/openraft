@@ -9,7 +9,6 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use futures::Stream;
-use openraft::EntryPayload;
 use openraft::OptionalSend;
 use openraft::alias::LogIdListOf;
 use openraft::storage::EntryResponder;
@@ -240,9 +239,9 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachine> {
         for (entry, responder) in collected {
             data.last_applied = Some(entry.log_id);
 
-            let response = match entry.payload {
-                EntryPayload::Blank => Response { prev: None },
-                EntryPayload::Normal(ref req) => {
+            let response = match entry.payload.normal {
+                None => Response { prev: None },
+                Some(ref req) => {
                     let prev = data.data.insert(req.key.clone(), ValueMeta {
                         value: req.value.clone(),
                         serial: req.serial,
@@ -250,11 +249,11 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachine> {
                     });
                     Response { prev }
                 }
-                EntryPayload::Membership(ref mem) => {
-                    data.last_membership = StoredMembership::new(Some(entry.log_id), mem.clone());
-                    Response { prev: None }
-                }
             };
+
+            if let Some(ref mem) = entry.payload.membership {
+                    data.last_membership = StoredMembership::new(Some(entry.log_id), mem.clone());
+            }
 
             if let Some(responder) = responder {
                 responder.send(response);

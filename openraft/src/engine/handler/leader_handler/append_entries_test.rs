@@ -114,9 +114,9 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
     eng.output.take_commands();
 
     let got = eng.try_leader_handler()?.leader_append_entries([
-        EntryPayload::Blank,
-        EntryPayload::Blank,
-        EntryPayload::Blank,
+        EntryPayload::blank(),
+        EntryPayload::blank(),
+        EntryPayload::blank(),
     ]);
 
     assert_eq!(
@@ -182,9 +182,9 @@ fn test_leader_append_entries_single_node_leader() -> anyhow::Result<()> {
     eng.output.clear_commands();
 
     let got = eng.try_leader_handler()?.leader_append_entries([
-        EntryPayload::Blank,
-        EntryPayload::Blank,
-        EntryPayload::Blank,
+        EntryPayload::blank(),
+        EntryPayload::blank(),
+        EntryPayload::blank(),
     ]);
 
     assert_eq!(
@@ -242,9 +242,9 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
     eng.output.clear_commands();
 
     let got = eng.try_leader_handler()?.leader_append_entries([
-        EntryPayload::Blank,
-        EntryPayload::Membership(m1_2()),
-        EntryPayload::Blank,
+        EntryPayload::blank(),
+        EntryPayload::membership(m1_2()),
+        EntryPayload::blank(),
     ]);
 
     assert_eq!(

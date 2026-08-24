@@ -83,11 +83,7 @@ where
     ///
     /// It is called by the leader when a new membership log is appended to the log store.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn append_membership(
-        &mut self,
-        log_id: &LogIdOf<C>,
-        m: &Membership<C::NodeId, C::Node, C::MembershipMetadata>,
-    ) {
+    pub(crate) fn append_membership(&mut self, log_id: &LogIdOf<C>, m: &Membership<C::NodeId, C::Node>) {
         tracing::debug!("update effective membership: log_id:{} {}", log_id, m);
 
         debug_assert!(

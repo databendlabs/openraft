@@ -162,7 +162,6 @@ use crate::vote::raft_vote::RaftVoteExt;
 ///        R            = ClientResponse,
 ///        NodeId       = u64,
 ///        Node         = openraft::BasicNode,
-///        MembershipMetadata = MyMembershipMetadata,
 ///        Term         = u64,
 ///        LeaderId     = openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>,
 ///        Vote           = openraft::impls::Vote<Self::LeaderId>,
@@ -177,7 +176,6 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// - `R`:            `String`
 /// - `NodeId`:       `u64`
 /// - `Node`:         `::openraft::impls::BasicNode`
-/// - `MembershipMetadata`: `()`
 /// - `Term`:         `u64`
 /// - `LeaderId`:     `::openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>`
 /// - `Vote`:           `::openraft::impls::Vote<Self::LeaderId>`
@@ -227,11 +225,10 @@ macro_rules! declare_raft_types {
                 (R            , , String                                       ),
                 (NodeId       , , u64                                          ),
                 (Node         , , $crate::impls::BasicNode                     ),
-                (MembershipMetadata, , ()                                           ),
                 (Term         , , u64                                          ),
                 (LeaderId     , , $crate::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId> ),
                 (Vote           , , $crate::impls::Vote<Self::LeaderId>            ),
-                (Entry          , , $crate::Entry<<Self::LeaderId as $crate::vote::RaftLeaderId>::Committed, Self::D, Self::NodeId, Self::Node, Self::MembershipMetadata> ),
+                (Entry          , , $crate::Entry<<Self::LeaderId as $crate::vote::RaftLeaderId>::Committed, Self::D, Self::NodeId, Self::Node> ),
                 (Responder<T>   , , $crate::impls::ProgressResponder<Self, T> where T: $crate::OptionalSend + 'static     ),
                 (Batch<T>       , , $crate::impls::InlineBatch<T> where T: $crate::OptionalSend + 'static     ),
                 (AsyncRuntime   , , $crate::impls::TokioRuntime                  ),
@@ -693,9 +690,7 @@ where
     /// ```
     #[since(version = "0.10.0")]
     pub fn extension<T>(&self) -> T
-    where
-        T: OptionalSend + Clone + Default + 'static,
-    {
+    where T: OptionalSend + Clone + Default + 'static {
         self.inner.extensions.get::<T>()
     }
 
@@ -826,12 +821,6 @@ where
         // Clone and collect immediately to release the lock quickly.
         let membership = self.inner.rx_metrics.borrow_watched().membership_config.clone();
         membership.membership().learner_ids().collect::<Vec<_>>().into_iter()
-    }
-
-    /// Return metadata from the presently effective membership configuration.
-    #[since(version = "0.10.0")]
-    pub fn membership_metadata(&self) -> C::MembershipMetadata {
-        self.inner.rx_metrics.borrow_watched().membership_config.membership().metadata().clone()
     }
 
     /// Create a new [`ProtocolApi`] to handle Raft protocol RPCs received by this Raft node.
@@ -1219,7 +1208,7 @@ where
         &self,
         app_data: C::D,
     ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
-        self.app_api().client_write(EntryPayload::Normal(app_data)).await.into_raft_result()
+        self.app_api().client_write(EntryPayload::normal(app_data)).await.into_raft_result()
     }
 
     /// Write a blank log entry to the Raft log.
@@ -1233,7 +1222,7 @@ where
     #[since(version = "0.10.0")]
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn write_blank(&self) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
-        self.app_api().client_write(EntryPayload::Blank).await.into_raft_result()
+        self.app_api().client_write(EntryPayload::blank()).await.into_raft_result()
     }
 
     /// Submit a mutating client request to Raft to update the state machine, returns an application
@@ -1249,7 +1238,7 @@ where
         app_data: C::D,
         responder: Option<WriteResponderOf<C>>,
     ) -> Result<(), Fatal<C>> {
-        self.app_api().client_write_ff(EntryPayload::Normal(app_data), responder).await
+        self.app_api().client_write_ff(EntryPayload::normal(app_data), responder).await
     }
 
     /// Write multiple application data payloads in a single batch.
@@ -1279,7 +1268,7 @@ where
         &self,
         app_data: impl IntoIterator<Item = C::D>,
     ) -> Result<BoxStream<'static, Result<WriteResult<C>, Fatal<C>>>, Fatal<C>> {
-        self.app_api().client_write_many(app_data.into_iter().map(EntryPayload::Normal)).await
+        self.app_api().client_write_many(app_data.into_iter().map(EntryPayload::normal)).await
     }
 
     /// Submit a write request to Raft.
@@ -1401,24 +1390,8 @@ where
     /// ```
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn initialize<T>(&self, members: T) -> Result<(), RaftError<C, InitializeError<C>>>
-    where
-        T: IntoNodes<C::NodeId, C::Node> + Debug,
-    {
+    where T: IntoNodes<C::NodeId, C::Node> + Debug {
         self.management_api().initialize(members).await.into_raft_result()
-    }
-
-    /// Initialize a cluster with metadata attached to the membership configuration as a whole.
-    #[since(version = "0.10.0")]
-    #[tracing::instrument(level = "debug", skip(self, metadata))]
-    pub async fn initialize_with_metadata<T>(
-        &self,
-        members: T,
-        metadata: C::MembershipMetadata,
-    ) -> Result<(), RaftError<C, InitializeError<C>>>
-    where
-        T: IntoNodes<C::NodeId, C::Node> + Debug,
-    {
-        self.management_api().initialize_with_metadata(members, metadata).await.into_raft_result()
     }
 
     /// Provides read-only access to [`RaftState`] through a user-provided function.
@@ -1480,9 +1453,7 @@ where
     /// - Raft core task is panicked due to programming error.
     /// - Raft core task is encountered a storage error.
     pub async fn external_request<F>(&self, req: F) -> Result<(), Fatal<C>>
-    where
-        F: FnOnce(&RaftState<C>) + OptionalSend + 'static,
-    {
+    where F: FnOnce(&RaftState<C>) + OptionalSend + 'static {
         let req: BoxOnce<'static, RaftState<C>> = Box::new(req);
         self.inner.send_msg(RaftMsg::WithRaftState { req }).await
     }

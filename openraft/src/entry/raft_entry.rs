@@ -6,7 +6,6 @@ use openraft_macros::since;
 use crate::AppData;
 use crate::EntryPayload;
 use crate::Membership;
-use crate::MembershipMetadata;
 use crate::base::OptionalFeatures;
 use crate::base::finalized::Final;
 use crate::entry::RaftPayload;
@@ -23,7 +22,7 @@ use crate::vote::RaftCommittedLeaderId;
 pub trait RaftEntry
 where
     Self: OptionalFeatures + Debug + Display,
-    Self: RaftPayload<Self::NodeId, Self::Node, Self::MembershipMetadata>,
+    Self: RaftPayload<Self::NodeId, Self::Node>,
 {
     /// The committed leader ID type used in log IDs.
     #[since(version = "0.10.0")]
@@ -41,16 +40,10 @@ where
     #[since(version = "0.10.0")]
     type Node: Node;
 
-    /// Application-defined metadata attached to a membership configuration as a whole.
+    /// Create a new log entry with a log ID and a payload that may contain application data,
+    /// a membership configuration, or both.
     #[since(version = "0.10.0")]
-    type MembershipMetadata: MembershipMetadata;
-
-    /// Create a new log entry with log id and payload of application data or membership config.
-    #[since(version = "0.10.0")]
-    fn new(
-        log_id: LogId<Self::CommittedLeaderId>,
-        payload: EntryPayload<Self::D, Self::NodeId, Self::Node, Self::MembershipMetadata>,
-    ) -> Self;
+    fn new(log_id: LogId<Self::CommittedLeaderId>, payload: EntryPayload<Self::D, Self::NodeId, Self::Node>) -> Self;
 
     /// Returns references to the components of this entry's log ID: the committed leader ID and
     /// index.
@@ -73,26 +66,23 @@ where
     #[since(version = "0.10.0", change = "become a default method")]
     fn new_blank(log_id: LogId<Self::CommittedLeaderId>) -> Self
     where Self: Final + Sized {
-        Self::new(log_id, EntryPayload::Blank)
+        Self::new(log_id, EntryPayload::blank())
     }
 
     /// Create a new normal log entry that contains application data.
     #[since(version = "0.10.0", change = "become a default method")]
     fn new_normal(log_id: LogId<Self::CommittedLeaderId>, data: Self::D) -> Self
     where Self: Final + Sized {
-        Self::new(log_id, EntryPayload::Normal(data))
+        Self::new(log_id, EntryPayload::normal(data))
     }
 
     /// Create a new membership log entry.
     ///
     /// The returned instance must return `Some()` for `Self::get_membership()`.
     #[since(version = "0.10.0", change = "become a default method")]
-    fn new_membership(
-        log_id: LogId<Self::CommittedLeaderId>,
-        m: Membership<Self::NodeId, Self::Node, Self::MembershipMetadata>,
-    ) -> Self
+    fn new_membership(log_id: LogId<Self::CommittedLeaderId>, m: Membership<Self::NodeId, Self::Node>) -> Self
     where Self: Final + Sized {
-        Self::new(log_id, EntryPayload::Membership(m))
+        Self::new(log_id, EntryPayload::membership(m))
     }
 
     /// Returns the `LogId` of this entry.

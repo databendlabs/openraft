@@ -594,10 +594,11 @@ where
     //       Because allowing this requires the engine to be able to store more than 2
     //       membership logs. And it does not need to wait for the previous membership log to commit
     //       to propose the new membership log.
-    #[tracing::instrument(level = "debug", skip(self, tx))]
+    #[tracing::instrument(level = "debug", skip(self, app_data, tx))]
     pub(super) fn change_membership(
         &mut self,
-        changes: ChangeMembers<C::NodeId, C::Node, C::MembershipMetadata>,
+        changes: ChangeMembers<C::NodeId, C::Node>,
+        app_data: Option<C::D>,
         retain: bool,
         tx: ProgressResponder<C, ClientWriteResult<C>>,
     ) {
@@ -616,7 +617,7 @@ where
         };
 
         self.write_entries(
-            Batch::of([EntryPayload::Membership(new_membership)]),
+            Batch::of([EntryPayload::new(app_data, Some(new_membership))]),
             Batch::of([Some(CoreResponder::Progress(tx))]),
             #[cfg(feature = "runtime-stats")]
             C::now(),
@@ -908,12 +909,11 @@ where
     pub(crate) fn handle_initialize(
         &mut self,
         member_nodes: BTreeMap<C::NodeId, C::Node>,
-        metadata: C::MembershipMetadata,
         tx: ResultSender<C, (), InitializeError<C>>,
     ) {
         tracing::debug!("{}: member_nodes: {:?}", func_name!(), member_nodes);
 
-        let membership = Membership::<C::NodeId, C::Node>::from(member_nodes).with_metadata(metadata);
+        let membership = Membership::from(member_nodes);
 
         let res = self.engine.initialize(membership);
 
@@ -1726,12 +1726,12 @@ where
                     proposed_at,
                 );
             }
-            RaftMsg::Initialize { members, metadata, tx } => {
+            RaftMsg::Initialize { members, tx } => {
                 tracing::info!("received RaftMsg::Initialize: {}, members: {:?}", func_name!(), members);
 
-                self.handle_initialize(members, metadata, tx);
+                self.handle_initialize(members, tx);
             }
-            RaftMsg::ChangeMembership { changes, retain, tx } => {
+            RaftMsg::ChangeMembership { changes, app_data, retain, tx } => {
                 tracing::info!(
                     "received RaftMsg::ChangeMembership: {}, members: {:?}, retain: {:?}",
                     func_name!(),
@@ -1739,7 +1739,7 @@ where
                     retain
                 );
 
-                self.change_membership(changes, retain, tx);
+                self.change_membership(changes, app_data, retain, tx);
             }
             RaftMsg::WithRaftState { req } => {
                 req(&self.engine.state);

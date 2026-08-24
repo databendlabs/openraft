@@ -24,7 +24,6 @@ mod into_nodes;
 #[allow(clippy::module_inception)]
 mod membership;
 mod membership_impl_quorum_set;
-mod membership_metadata;
 mod stored_membership;
 
 #[cfg(test)]
@@ -34,5 +33,4 @@ mod stored_membership_test;
 
 pub use into_nodes::IntoNodes;
 pub use membership::Membership;
-pub use membership_metadata::MembershipMetadata;
 pub use stored_membership::StoredMembership;

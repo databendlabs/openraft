@@ -272,7 +272,7 @@ async fn write_blank() -> Result<()> {
 
     let entry = &entries[0];
     assert!(
-        matches!(entry.payload, openraft::entry::EntryPayload::Blank),
+        entry.payload.is_empty(),
         "Expected Blank payload, got: {:?}",
         entry.payload
     );

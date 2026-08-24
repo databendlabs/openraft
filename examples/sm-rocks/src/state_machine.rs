@@ -10,7 +10,6 @@ use std::sync::Arc;
 
 use futures::Stream;
 use futures::TryStreamExt;
-use openraft::EntryPayload;
 use openraft::OptionalSend;
 use openraft::RaftSnapshotBuilder;
 use openraft::StorageError;
@@ -196,9 +195,9 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
             let version = entry.log_id().index();
             last_applied_log = Some(entry.log_id());
 
-            let response = match entry.payload {
-                EntryPayload::Blank => types_kv::Response::none(),
-                EntryPayload::Normal(ref req) => match req {
+            let response = match entry.payload.normal {
+                None => types_kv::Response::none(),
+                Some(ref req) => match req {
                     types_kv::Request::Set { key, value } => {
                         let cf_data = self.cf_sm_data();
                         let versioned_value = types_kv::VersionedValue {
@@ -240,11 +239,11 @@ impl RaftStateMachine<TypeConfig> for RocksStateMachine {
                         }
                     }
                 },
-                EntryPayload::Membership(ref mem) => {
-                    last_membership = Some(StoredMembershipOf::<TypeConfig>::new(Some(entry.log_id), mem.clone()));
-                    types_kv::Response::none()
-                }
             };
+
+            if let Some(ref mem) = entry.payload.membership {
+                    last_membership = Some(StoredMembershipOf::<TypeConfig>::new(Some(entry.log_id), mem.clone()));
+                }
 
             if let Some(responder) = responder {
                 responses.push((responder, response));

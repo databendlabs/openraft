@@ -10,7 +10,6 @@ use std::ops::RangeBounds;
 use std::sync::Arc;
 
 use futures::Stream;
-use openraft::EntryPayload;
 use openraft::OptionalSend;
 use openraft::Vote;
 use openraft::alias::EntryOf;
@@ -262,7 +261,7 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
         let mut sm = self.sm.write().await;
         while let Some((entry, responder)) = entries.try_next().await? {
             sm.last_applied_log = Some(entry.log_id);
-            if let EntryPayload::Membership(ref mem) = entry.payload {
+            if let Some(ref mem) = entry.payload.membership {
                 sm.last_membership = StoredMembershipOf::<TypeConfig>::new(Some(entry.log_id), mem.clone());
             }
             if let Some(r) = responder {

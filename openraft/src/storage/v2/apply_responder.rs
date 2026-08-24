@@ -27,18 +27,16 @@ use crate::storage::v2::apply_responder_inner::ApplyResponderInner;
 ///     I::IntoIter: Send,
 /// {
 ///     for (entry, responder) in entries {
-///         // Compute response based on entry type
-///         let response = match entry.payload {
-///             EntryPayload::Blank => Response::default(),
-///             EntryPayload::Normal(ref data) => {
+///         let response = if let Some(data) = &entry.payload.normal {
 ///                 self.apply_normal_entry(data)?;
 ///                 self.compute_response(data)?
-///             }
-///             EntryPayload::Membership(ref mem) => {
-///                 self.apply_membership_change(mem)?;
+///         } else {
 ///                 Response::default()
-///             }
 ///         };
+///
+///         if let Some(membership) = &entry.payload.membership {
+///             self.apply_membership_change(membership)?;
+///         }
 ///
 ///         // Send response only when there's a client waiting (leader entries)
 ///         if let Some(responder) = responder {

@@ -70,7 +70,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
             blank_ent::<openraft_memstore::TypeConfig>(1, 0, 1),
             Entry {
                 log_id: log_id(1, 0, 2),
-                payload: EntryPayload::Normal(ClientRequest {
+                payload: EntryPayload::normal(ClientRequest {
                     client: "foo".to_string(),
                     serial: 1,
                     status: "bar".to_string(),

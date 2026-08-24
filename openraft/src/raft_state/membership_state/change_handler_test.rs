@@ -4,8 +4,6 @@ use maplit::btreeset;
 
 use crate::ChangeMembers;
 use crate::Membership;
-use crate::MembershipState;
-use crate::StoredMembership;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::errors::ChangeMembershipError;
@@ -90,20 +88,5 @@ fn test_apply_retain_learner() -> anyhow::Result<()> {
         res
     );
 
-    Ok(())
-}
-
-#[test]
-fn test_set_metadata_only() -> anyhow::Result<()> {
-    let membership =
-        Membership::<u64, (), u64>::new_with_defaults(vec![btreeset! {1}, btreeset! {2}], []).with_metadata(7);
-    let stored = Arc::new(StoredMembership::new(Some(log_id(3, 1, 4)), membership));
-    let state = MembershipState::new(stored.clone(), stored);
-
-    let updated = state.change_handler().apply(ChangeMembers::SetMetadata(8), false)?;
-
-    assert_eq!(&8, updated.metadata());
-    assert_eq!(&vec![btreeset! {2}], updated.get_joint_config());
-    assert_eq!(Vec::<u64>::new(), updated.learner_ids().collect::<Vec<_>>());
     Ok(())
 }

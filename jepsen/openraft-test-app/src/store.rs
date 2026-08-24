@@ -8,7 +8,6 @@ use futures::Stream;
 use futures::TryStreamExt;
 use futures::lock::Mutex;
 use log_rocks::RocksLogStore;
-use openraft::EntryPayload;
 use openraft::OptionalSend;
 use openraft::RaftSnapshotBuilder;
 use openraft::storage::EntryResponder;
@@ -147,9 +146,9 @@ impl RaftStateMachine<TypeConfig> for StateMachineStore {
             let version = entry.log_id.index();
             self.data.last_applied_log_id = Some(entry.log_id.clone());
 
-            let response = match entry.payload {
-                EntryPayload::Blank => types_kv::Response::none(),
-                EntryPayload::Normal(req) => match req {
+            let response = match entry.payload.normal {
+                None => types_kv::Response::none(),
+                Some(req) => match req {
                     types_kv::Request::Set { key, value } => {
                         let mut st = self.data.kvs.lock().await;
                         st.insert(key, types_kv::VersionedValue {
@@ -177,11 +176,11 @@ impl RaftStateMachine<TypeConfig> for StateMachineStore {
                         }
                     }
                 },
-                EntryPayload::Membership(mem) => {
-                    self.data.last_membership = StoredMembership::new(Some(entry.log_id), mem);
-                    types_kv::Response::none()
-                }
             };
+
+            if let Some(mem) = entry.payload.membership {
+                    self.data.last_membership = StoredMembership::new(Some(entry.log_id), mem);
+            }
 
             if let Some(responder) = responder {
                 responder.send(response);

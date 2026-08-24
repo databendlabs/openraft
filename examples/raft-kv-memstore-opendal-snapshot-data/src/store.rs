@@ -139,9 +139,9 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
             let version = entry.log_id.index();
             sm.last_applied = Some(entry.log_id);
 
-            let response = match entry.payload {
-                EntryPayload::Blank => types_kv::Response::none(),
-                EntryPayload::Normal(ref req) => match req {
+            let response = match entry.payload.normal {
+                None => types_kv::Response::none(),
+                Some(ref req) => match req {
                     types_kv::Request::Set { key, value, .. } => {
                         sm.data.insert(key.clone(), types_kv::VersionedValue {
                             value: value.clone(),
@@ -167,11 +167,11 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
                         }
                     }
                 },
-                EntryPayload::Membership(ref mem) => {
-                    sm.last_membership = StoredMembership::new(Some(entry.log_id), mem.clone());
-                    types_kv::Response::none()
-                }
             };
+
+            if let Some(ref mem) = entry.payload.membership {
+                    sm.last_membership = StoredMembership::new(Some(entry.log_id), mem.clone());
+                }
 
             if let Some(responder) = responder {
                 responder.send(response);

@@ -18,7 +18,6 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use futures::Stream;
-use openraft::EntryPayload;
 use openraft::OptionalSend;
 use openraft::Vote;
 use openraft::alias::EntryOf;
@@ -540,17 +539,17 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
 
             sm.last_applied_log = Some(entry.log_id);
 
-            let response = match entry.payload {
-                EntryPayload::Blank => ClientResponse(None),
-                EntryPayload::Normal(ref data) => {
+            let response = match entry.payload.normal {
+                None => ClientResponse(None),
+                Some(ref data) => {
                     let previous = sm.client_status.insert(data.client.clone(), data.status.clone());
                     ClientResponse(previous)
                 }
-                EntryPayload::Membership(ref mem) => {
-                    sm.last_membership = StoredMembershipOf::<TypeConfig>::new(Some(entry.log_id), mem.clone());
-                    ClientResponse(None)
-                }
             };
+
+            if let Some(ref mem) = entry.payload.membership {
+                    sm.last_membership = StoredMembershipOf::<TypeConfig>::new(Some(entry.log_id), mem.clone());
+                }
 
             if let Some(responder) = responder {
                 responder.send(response);
