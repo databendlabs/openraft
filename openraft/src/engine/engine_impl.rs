@@ -24,7 +24,6 @@ use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::engine::handler::vote_handler::VoteHandler;
 use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
-use crate::entry::payload::EntryPayload;
 use crate::errors::ForwardToLeader;
 use crate::errors::InitializeError;
 use crate::errors::NotAllowed;
@@ -949,7 +948,7 @@ where
         // No need to submit UpdateIOProgress command,
         // IO progress is updated by the new blank log
 
-        self.try_leader_handler().unwrap().leader_append_entries([EntryPayload::Blank]);
+        self.try_leader_handler().unwrap().leader_append_entries([C::Payload::blank()]);
     }
 
     /// Check if a raft node is in a state that allows to initialize.

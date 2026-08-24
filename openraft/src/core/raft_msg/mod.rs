@@ -27,11 +27,11 @@ use crate::raft::responder::core_responder::CoreResponder;
 use crate::raft::stream_append::StreamAppendResult;
 use crate::type_config::alias::BatchOf;
 use crate::type_config::alias::CommittedLeaderIdOf;
-use crate::type_config::alias::EntryPayloadOf;
 #[cfg(feature = "runtime-stats")]
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
+use crate::type_config::alias::PayloadOf;
 use crate::type_config::alias::VoteOf;
 
 pub(crate) mod external_command;
@@ -76,7 +76,7 @@ where C: RaftTypeConfig
     },
 
     ClientWrite {
-        payloads: BatchOf<C, EntryPayloadOf<C>>,
+        payloads: BatchOf<C, PayloadOf<C>>,
         responders: BatchOf<C, Option<CoreResponder<C>>>,
         expected_leader: Option<CommittedLeaderIdOf<C>>,
         #[cfg(feature = "runtime-stats")]

@@ -61,7 +61,7 @@ use crate::engine::TargetProgress;
 use crate::engine::handler::leader_handler::LeaderHandler;
 use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::entry::RaftEntry;
-use crate::entry::payload::EntryPayload;
+use crate::entry::RaftPayload;
 use crate::errors::AllowNextRevertError;
 use crate::errors::ClientWriteError;
 use crate::errors::Fatal;
@@ -120,13 +120,13 @@ use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::BatchOf;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::CommittedVoteOf;
-use crate::type_config::alias::EntryPayloadOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscReceiverOf;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::MutexOf;
 use crate::type_config::alias::OneshotReceiverOf;
+use crate::type_config::alias::PayloadOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::alias::WatchSenderOf;
@@ -466,7 +466,7 @@ where
         };
 
         self.write_entries(
-            Batch::of([EntryPayload::Membership(new_membership)]),
+            Batch::of([C::Payload::membership(new_membership)]),
             Batch::of([Some(CoreResponder::Progress(tx))]),
             #[cfg(feature = "runtime-stats")]
             C::now(),
@@ -518,7 +518,7 @@ where
     #[tracing::instrument(level = "debug", skip_all, fields(id = display(&self.id)))]
     pub fn write_entries(
         &mut self,
-        payloads: BatchOf<C, EntryPayloadOf<C>>,
+        payloads: BatchOf<C, PayloadOf<C>>,
         responders: BatchOf<C, Option<CoreResponder<C>>>,
         #[cfg(feature = "runtime-stats")] proposed_at: InstantOf<C>,
     ) -> Option<LeaderLogIds<CommittedLeaderIdOf<C>>> {
