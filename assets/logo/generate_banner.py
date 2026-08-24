@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the OpenRaft banner: the mark centred, with the wordmark to its right.
+"""Generate the OpenRaft banner: a centred mark-and-wordmark lockup.
 
 GitHub lays out a README heading and an inline image on separate lines, so the
 lockup cannot be built from HTML. This banner is one image instead, drawn at the
@@ -37,10 +37,11 @@ INK_ON_DARK = "#b2b8bf"
 
 
 def render(neutral, ink):
-    mark_x = (WIDTH - MARK_SIZE) / 2
-    mark_y = (HEIGHT - MARK_SIZE) / 2
     mark_scale = MARK_SIZE / generate_mark.VIEW
     word_scale = WORD_SIZE / 1000
+    lockup_width = MARK_SIZE + GAP + WORD_ADVANCE * word_scale
+    mark_x = (WIDTH - lockup_width) / 2
+    mark_y = (HEIGHT - MARK_SIZE) / 2
     word_x = mark_x + MARK_SIZE + GAP
     # sit the word so its capitals centre on the same line as the mark
     word_baseline = HEIGHT / 2 + WORD_CAP_HEIGHT * word_scale / 2
