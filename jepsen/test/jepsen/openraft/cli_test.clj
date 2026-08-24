@@ -81,9 +81,11 @@
 (deftest validates-focused-packet-mode
   (testing "slow and flaky are accepted"
     (doseq [mode ["slow" "flaky"]]
-      (is (empty? (:errors
-                   (tools-cli/parse-opts ["--packet-mode" mode]
-                                         cli/cli-opts))))))
+      (let [parsed (#'cli/prepare-options
+                    (tools-cli/parse-opts ["--nemesis" "packet"
+                                           "--packet-mode" mode]
+                                          cli/cli-opts))]
+        (is (empty? (:errors parsed))))))
 
   (testing "unknown packet modes are rejected"
     (let [parsed (tools-cli/parse-opts ["--packet-mode" "drop"]
@@ -91,7 +93,14 @@
       (is (some #(re-find #"Must be slow or flaky" %)
                 (:errors parsed)))))
 
-  (testing "focused packet runs require an explicit mode"
+  (testing "option parsing requires an explicit mode"
+    (let [parsed (#'cli/prepare-options
+                  (tools-cli/parse-opts ["--nemesis" "packet"]
+                                        cli/cli-opts))]
+      (is (some #(re-find #"--packet-mode is required" %)
+                (:errors parsed)))))
+
+  (testing "direct test construction retains its guard"
     (is (thrown-with-msg?
          clojure.lang.ExceptionInfo
          #"--packet-mode is required"
@@ -106,19 +115,36 @@
                                       :nodes ["n1" "n2" "n3"]
                                       :time-limit 10}))))))
 
-(deftest chaos-selects-packet-modes-internally
+(deftest validates-packet-mode-selection
   (testing "the default chaos profile does not require --packet-mode"
     (is (= "openraft linearizable registers partition,process,pause,membership,packet"
            (:name (cli/openraft-test {:nodes ["n1" "n2" "n3" "n4" "n5"]
                                       :time-limit 10})))))
 
-  (testing "an explicit packet mode is rejected during option parsing"
-    (let [parsed (#'cli/prepare-options
-                  (tools-cli/parse-opts ["--nemesis" "chaos"
-                                         "--packet-mode" "slow"]
-                                        cli/cli-opts))]
-      (is (some #(re-find #"--packet-mode cannot be used with Chaos" %)
-                (:errors parsed))))))
+  (testing "explicit Packet compositions accept an optional mode"
+    (doseq [args [["--nemesis" "packet,partition"]
+                  ["--nemesis" "packet,partition"
+                   "--packet-mode" "slow"]]]
+      (let [parsed (#'cli/prepare-options
+                    (tools-cli/parse-opts args cli/cli-opts))]
+        (is (empty? (:errors parsed)))))
+    (doseq [opts [{:nemesis [:packet :partition]}
+                  {:nemesis [:packet :partition]
+                   :packet-mode :slow}]]
+      (is (= "openraft linearizable registers partition,packet"
+             (:name (cli/openraft-test
+                     (merge {:nodes ["n1" "n2" "n3" "n4" "n5"]
+                             :time-limit 10}
+                            opts)))))))
+
+  (testing "packet mode is rejected without an explicit Packet selection"
+    (doseq [nemesis ["chaos" "partition"]]
+      (let [parsed (#'cli/prepare-options
+                    (tools-cli/parse-opts ["--nemesis" nemesis
+                                           "--packet-mode" "slow"]
+                                          cli/cli-opts))]
+        (is (some #(re-find #"--packet-mode requires an explicit Packet" %)
+                  (:errors parsed)))))))
 
 (deftest shares-one-harness-state-across-workers-and-generators
   (let [failure-state (harness/failure-state)
