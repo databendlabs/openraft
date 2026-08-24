@@ -13,6 +13,7 @@ use crate::errors::RaftError;
 use crate::errors::into_raft_result::IntoRaftResult;
 #[cfg(doc)]
 use crate::impls::OneshotResponder;
+use crate::raft::ChangeMembershipOutcome;
 use crate::raft::ClientWriteResponse;
 #[cfg(doc)]
 use crate::raft::ManagementApi;
@@ -80,6 +81,46 @@ where
             .change_membership(members, retain, BatchOf::<C, _>::of([]))
             .await
             .into_raft_result()
+    }
+
+    /// Propose a cluster configuration change with an application-defined payload.
+    ///
+    /// OpenRaft replaces any membership already stored in `payload` with the membership computed
+    /// for each physical log entry.
+    ///
+    /// A voter change may append a joint entry followed by a uniform entry. This method clones
+    /// `payload` before the first proposal, so both entries start from the same application
+    /// payload. If `with_membership()` preserves application data, the state machine applies that
+    /// data at two different log IDs. Non-idempotent data therefore needs an application-level
+    /// change identifier or deduplication.
+    ///
+    /// Each physical entry serializes, stores, and replicates its payload. A large payload may use
+    /// log and network space twice.
+    ///
+    /// If the uniform proposal fails, the joint entry is already committed. A retry must call this
+    /// method again with the original payload.
+    ///
+    /// The returned [`ChangeMembershipOutcome`] contains the first response and the uniform
+    /// response when the change entered joint consensus.
+    #[since(version = "0.10.0", change = "added payload-aware membership change API")]
+    #[tracing::instrument(level = "info", skip_all)]
+    pub async fn change_membership_with_payload(
+        &self,
+        members: impl Into<ChangeMembers<C::NodeId, C::Node>>,
+        retain: bool,
+        payload: C::Payload,
+    ) -> Result<ChangeMembershipOutcome<C>, RaftError<C, ClientWriteError<C>>>
+    where
+        C::Payload: Clone,
+    {
+        let first_payload = payload.clone();
+        let uniform_payload = move || payload;
+        let preconditions = BatchOf::<C, _>::of([]);
+        let api = self.management_api();
+        let result = api
+            .change_membership_with_payloads(members, retain, preconditions, first_payload, uniform_payload)
+            .await;
+        result.into_raft_result()
     }
 
     /// Propose a cluster configuration change only if every [`Precondition`] is satisfied.

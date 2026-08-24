@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use maplit::btreeset;
 use openraft::Config;
+use openraft::EntryPayload;
 use openraft::LogIdOptionExt;
 use openraft::RaftLogReader;
 use openraft::ServerState;
@@ -32,10 +33,19 @@ async fn update_membership_state() -> anyhow::Result<()> {
     tracing::info!(log_index, "--- change membership from 012 to 01234");
     {
         let leader = router.get_raft_handle(&0)?;
-        let res = leader.change_membership([0, 1, 2, 3, 4], false).await?;
-        log_index += 2;
+        let change = leader.change_membership_with_payload([0, 1, 2, 3, 4], false, EntryPayload::Blank);
+        let outcome = change.await?;
 
-        tracing::info!(log_index, "--- change_membership blocks until success: {:?}", res);
+        let first_log_index = log_index + 1;
+        assert_eq!(first_log_index, outcome.first.log_id.index);
+
+        let uniform = outcome.uniform.as_ref().expect("voter change should enter joint consensus");
+        let uniform_log_index = log_index + 2;
+        assert_eq!(uniform_log_index, uniform.log_id.index);
+
+        log_index = uniform_log_index;
+
+        tracing::info!(log_index, "--- change_membership blocks until success: {:?}", outcome);
 
         for node_id in [0, 1, 2, 3, 4] {
             router
