@@ -3,7 +3,6 @@ use std::fmt;
 use openraft::EntryPayload;
 use openraft::alias::LogIdOf;
 use openraft::entry::RaftEntry;
-use openraft::entry::RaftPayload;
 
 use crate::TypeConfig;
 use crate::protobuf as pb;
@@ -12,12 +11,6 @@ use crate::typ;
 impl fmt::Display for pb::Entry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Entry{{term={},index={}}}", self.term, self.index)
-    }
-}
-
-impl RaftPayload<crate::NodeId, pb::Node> for pb::Entry {
-    fn get_membership(&self) -> Option<typ::Membership> {
-        self.membership.clone().map(Into::into)
     }
 }
 
@@ -51,5 +44,9 @@ impl RaftEntry for pb::Entry {
     fn set_log_id(&mut self, new: LogIdOf<TypeConfig>) {
         self.term = new.leader_id;
         self.index = new.index;
+    }
+
+    fn get_membership(&self) -> Option<typ::Membership> {
+        self.membership.clone().map(Into::into)
     }
 }

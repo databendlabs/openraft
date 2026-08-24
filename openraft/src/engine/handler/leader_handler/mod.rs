@@ -6,7 +6,6 @@ use crate::engine::EngineOutput;
 use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::entry::RaftEntry;
-use crate::entry::RaftPayload;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::raft::linearizable_read::ReadLogId;

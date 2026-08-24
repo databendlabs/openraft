@@ -92,18 +92,6 @@ where
     }
 }
 
-impl<CLID, D, NID, N> RaftPayload<NID, N> for Entry<CLID, D, NID, N>
-where
-    CLID: RaftCommittedLeaderId,
-    D: AppData,
-    NID: NodeId,
-    N: Node,
-{
-    fn get_membership(&self) -> Option<Membership<NID, N>> {
-        self.payload.get_membership()
-    }
-}
-
 impl<CLID, D, NID, N> RaftEntry for Entry<CLID, D, NID, N>
 where
     CLID: RaftCommittedLeaderId,
@@ -126,5 +114,9 @@ where
 
     fn set_log_id(&mut self, new: LogId<CLID>) {
         self.log_id = new;
+    }
+
+    fn get_membership(&self) -> Option<Membership<NID, N>> {
+        self.payload.get_membership()
     }
 }

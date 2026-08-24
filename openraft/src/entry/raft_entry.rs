@@ -8,7 +8,6 @@ use crate::EntryPayload;
 use crate::Membership;
 use crate::base::OptionalFeatures;
 use crate::base::finalized::Final;
-use crate::entry::RaftPayload;
 use crate::log_id::LogId;
 use crate::node::Node;
 use crate::node::NodeId;
@@ -17,12 +16,14 @@ use crate::vote::RaftCommittedLeaderId;
 /// Defines operations on an entry.
 #[since(
     version = "0.10.0",
+    change = "moved membership inspection from `RaftPayload` to `RaftEntry`"
+)]
+#[since(
+    version = "0.10.0",
     change = "removed `C: RaftTypeConfig` generic parameter, added associated types"
 )]
 pub trait RaftEntry
-where
-    Self: OptionalFeatures + Debug + Display,
-    Self: RaftPayload<Self::NodeId, Self::Node>,
+where Self: OptionalFeatures + Debug + Display
 {
     /// The committed leader ID type used in log IDs.
     #[since(version = "0.10.0")]
@@ -60,6 +61,10 @@ where
     /// Set the log ID of this entry.
     #[since(version = "0.10.0", change = "use owned argument log id")]
     fn set_log_id(&mut self, new: LogId<Self::CommittedLeaderId>);
+
+    /// Return `Some(Membership)` if this entry contains a membership payload.
+    #[since(version = "0.10.0")]
+    fn get_membership(&self) -> Option<Membership<Self::NodeId, Self::Node>>;
 
     /// Create a new blank log entry.
     #[since(version = "0.10.0", change = "become a default method")]
