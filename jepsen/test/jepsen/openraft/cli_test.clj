@@ -19,7 +19,7 @@
     (let [applied-seeds (atom [])
           parsed (with-redefs [random/set-seed!
                                #(swap! applied-seeds conj %)]
-                   (#'cli/ensure-random-seed {:options {}}))]
+                   (#'cli/prepare-options {:options {}}))]
       (is (integer? (get-in parsed [:options :seed])))
       (is (= [(get-in parsed [:options :seed])]
              @applied-seeds))))
@@ -30,7 +30,7 @@
                 :seed 41
                 :time-limit 10}]
       (with-redefs [random/set-seed! #(swap! applied-seeds conj %)]
-        (let [parsed (#'cli/ensure-random-seed {:options opts})]
+        (let [parsed (#'cli/prepare-options {:options opts})]
           (cli/openraft-test (:options parsed))
           (cli/openraft-test (:options parsed))))
       (is (= [41] @applied-seeds)))))
@@ -112,12 +112,13 @@
            (:name (cli/openraft-test {:nodes ["n1" "n2" "n3" "n4" "n5"]
                                       :time-limit 10})))))
 
-  (testing "an explicit packet mode does not lock chaos"
-    (is (= "openraft linearizable registers partition,process,pause,membership,packet"
-           (:name (cli/openraft-test {:nemesis :chaos
-                                      :packet-mode :slow
-                                      :nodes ["n1" "n2" "n3" "n4" "n5"]
-                                      :time-limit 10}))))))
+  (testing "an explicit packet mode is rejected during option parsing"
+    (let [parsed (#'cli/prepare-options
+                  (tools-cli/parse-opts ["--nemesis" "chaos"
+                                         "--packet-mode" "slow"]
+                                        cli/cli-opts))]
+      (is (some #(re-find #"--packet-mode cannot be used with Chaos" %)
+                (:errors parsed))))))
 
 (deftest shares-one-harness-state-across-workers-and-generators
   (let [failure-state (harness/failure-state)

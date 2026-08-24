@@ -129,6 +129,9 @@ $ make -C jepsen test NEMESIS=pause
 # Run only the membership change test.
 $ make -C jepsen test NEMESIS=membership
 
+# Run only one Packet mode; MODE must be slow or flaky.
+$ make -C jepsen test NEMESIS=packet PACKET_MODE=slow
+
 # Compose selected fault classes with overlapping schedules.
 $ make -C jepsen test NEMESIS=partition,process,pause
 
@@ -220,7 +223,7 @@ voters and waits for every node to agree on a leader.
 
 #### Packet Nemesis
 
-The planned packet Nemesis models traffic that remains reachable but is
+The Packet Nemesis models traffic that remains reachable but is
 degraded. Hard packet drops that create a partition remain the responsibility
 of the Network Partition Nemesis. Packet provides two mutually exclusive
 modes:
@@ -265,7 +268,7 @@ on every node.
 #### Chaos Composition
 
 The default `chaos` profile independently schedules partition, process, pause,
-membership, and, once implemented, packet faults. It composes the package,
+membership, and packet faults. It composes the package,
 generator, final recovery, and checker supplied by each Nemesis rather than
 defining separate Chaos-only checker semantics. Packet chooses one of `slow` or
 `flaky` for each independent Packet episode, and never overlaps those two modes
@@ -304,7 +307,8 @@ The `final-workload` checker separately rejects a run when its final reads or
 writes fail. These modeled failures are not unexpected-SUT-response markers.
 
 A coverage failure rejects the run but does not by itself identify an OpenRaft
-failure or its root cause. For example, `:missing-modes` is written to
+failure or its root cause. For example, `:missing-modes` or
+`:missing-target-roles` is written to
 `results.edn`; the mode may be absent from `history.edn`, skipped by an outcome
 such as `:no-supported-leader`, or blocked by a Harness failure recorded in
 `jepsen.log`. Start with the nested checker result, inspect the corresponding
@@ -392,6 +396,7 @@ of the fault schedule; the seed is only an aid for rerunning similar conditions.
 - [x] Add a network partition nemesis.
 - [x] Add nemeses for process kill/restart and pause/resume.
 - [x] Add a membership grow/shrink nemesis.
+- [x] Add a Packet nemesis for delay and probabilistic loss.
 - [x] Add a read, write, and compare-and-set workload.
 - [x] Add linearizability checking with Knossos.
 - [x] Exercise snapshot construction during ordinary workloads.
