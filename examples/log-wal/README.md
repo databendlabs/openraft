@@ -20,6 +20,9 @@ let log_store = WalLogStore::<TypeConfig>::open("/path/to/raft-log-dir")?;
 `WalLogStore::open_with_config` takes a `raft_log::Config` instead of a directory, which sets the
 chunk size limits and the size of the payload cache that serves reads without touching disk.
 
+[raft-kv-log-wal-sm-mem](../raft-kv-log-wal-sm-mem/) is a runnable key-value application built on
+this log store.
+
 ## Adapting openraft to raft-log
 
 Two pieces of glue sit between the two crates.
