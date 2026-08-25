@@ -34,13 +34,14 @@
         (is (= true (get-in result [:value :leader-included])))
         (is (= #{"n1" "n2"} (set (get-in result [:value :targets]))))))))
 
-(deftest clock-checker-requires-bump-rates-and-final-reset
+(deftest clock-checker-requires-all-faults-and-final-reset
   (let [subject (:checker (clock-nemesis/clock-package))
         installed (fn [f] {:type :info :f f :value {:status :installed}})]
     (testing "complete coverage"
       (is (true? (:valid? (checker/check subject
                                          test-config
                                          [(installed :bump-clock)
+                                          (installed :strobe-clock)
                                           {:type :info
                                            :f :rate-clock
                                            :value {:status :installed
@@ -63,3 +64,12 @@
           slow (#'clock-nemesis/random-rate :slow)]
       (is (<= 1.0 fast 2.0))
       (is (<= 0.5 slow 1.0)))))
+
+(deftest strobe-parameters-stay-in-approved-ranges
+  (dotimes [_ 100]
+    (let [delta-ms (#'clock-nemesis/random-strobe-delta-ms)
+          period-ms (#'clock-nemesis/random-strobe-period-ms)
+          duration-ms (#'clock-nemesis/random-strobe-duration-ms)]
+      (is (<= 4 delta-ms 262144))
+      (is (<= 64 period-ms 1024))
+      (is (<= 0 duration-ms 32000)))))

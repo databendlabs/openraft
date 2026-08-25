@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+control_file=$1
+offset_setting=$2
+period_seconds=$3
+transitions=$4
+normal_setting='+0 x1'
+
+write_setting() {
+    printf '%s\n' "$1" > "${control_file}.$$"
+    mv "${control_file}.$$" "$control_file"
+}
+
+trap 'write_setting "$normal_setting"' EXIT
+
+for ((i = 0; i < transitions; i++)); do
+    if ((i % 2 == 0)); then
+        write_setting "$offset_setting"
+    else
+        write_setting "$normal_setting"
+    fi
+
+    if ((i + 1 < transitions)); then
+        sleep "$period_seconds"
+    fi
+done
+
+printf '%s\n' "$transitions"

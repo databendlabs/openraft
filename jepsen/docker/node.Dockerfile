@@ -86,6 +86,9 @@ RUN mkdir -p /run/sshd /var/lib/openraft /var/log/openraft /root/.ssh \
 COPY jepsen/docker/ssh/openraft-jepsen.pub /root/.ssh/authorized_keys
 RUN chmod 600 /root/.ssh/authorized_keys
 
+COPY jepsen/docker/strobe-faketime /usr/local/bin/strobe-faketime
+RUN chmod 755 /usr/local/bin/strobe-faketime
+
 COPY --from=builder \
   /openraft/jepsen/openraft-test-app/target/release/openraft-jepsen-app \
   /usr/local/bin/openraft-jepsen-app

@@ -15,6 +15,7 @@
 (def ^:private application-pattern
   "^/usr/local/bin/openraft-jepsen-app([[:space:]].*)?$")
 (def ^:private offset-tolerance-ms 1000)
+(def ^:private strobe-command "/usr/local/bin/strobe-faketime")
 
 (defn- offset-setting [offset-ms]
   (String/format Locale/ROOT
@@ -35,6 +36,15 @@
               :slow (random/double -1.0 0.0)
               (throw (ex-info "Unknown clock-rate direction"
                               {:direction direction})))))
+
+(defn- random-strobe-delta-ms []
+  (long (Math/pow 2.0 (random/double 2.0 18.0))))
+
+(defn- random-strobe-period-ms []
+  (long (Math/pow 2.0 (random/double 6.0 10.0))))
+
+(defn- random-strobe-duration-ms []
+  (long (random/double 0.0 32000.0)))
 
 (defn- random-targets [test]
   (vec (random/nonempty-subset (:nodes test))))
@@ -101,6 +111,43 @@
                           :observed written})))
        {:setting (clock/read-setting!)
         :rate rate}))))
+
+(defn- strobe-node! [{:keys [delta-ms period-ms duration-ms]}]
+  (let [setting (offset-setting delta-ms)
+        transitions (max 1 (inc (quot duration-ms period-ms)))
+        period-seconds (String/format Locale/ROOT
+                                      "%.3f"
+                                      (to-array [(/ period-ms 1000.0)]))
+        observed (Long/parseLong
+                  (c/exec strobe-command
+                          clock/control-file
+                          setting
+                          period-seconds
+                          transitions))]
+    (when-not (= transitions observed)
+      (throw (ex-info "Clock strobe transition count mismatch"
+                      {:kind :clock-strobe-transition-count-mismatch
+                       :expected transitions
+                       :observed observed})))
+    (when-not (= clock/normal-setting (clock/read-setting!))
+      (throw (ex-info "Clock strobe did not restore normal time"
+                      {:kind :clock-strobe-not-restored
+                       :observed (clock/read-setting!)})))
+    {:delta-ms delta-ms
+     :period-ms period-ms
+     :duration-ms duration-ms
+     :transitions observed
+     :setting setting
+     :final-setting clock/normal-setting}))
+
+(defn- apply-strobes! [test strobes]
+  (try
+    (c/on-nodes test
+                (keys strobes)
+                (fn [_test node]
+                  (strobe-node! (get strobes node))))
+    (finally
+      (reset-targets! test (keys strobes)))))
 
 (defn- leader-evidence [test targets]
   (let [leader (:leader (cluster/membership-status test))]
@@ -172,6 +219,27 @@
                                :evidence evidence}
                               (leader-evidence test targets)))))
 
+      :strobe-clock
+      (let [strobes (:value op)
+            targets (vec (keys strobes))
+            previous (select-keys @settings targets)
+            evidence (apply-strobes! test strobes)]
+        (swap! settings merge
+               (zipmap targets (repeat clock/normal-setting)))
+        (info "Strobed OpenRaft wall clocks" {:strobes strobes})
+        (assoc op
+               :value (outcome/installed
+                       (merge {:mode :strobe
+                               :targets targets
+                               :target-category (target-category
+                                                 (count (:nodes test))
+                                                 (count targets))
+                               :strobes strobes
+                               :previous-settings previous
+                               :setting clock/normal-setting
+                               :evidence evidence}
+                              (leader-evidence test targets)))))
+
       :reset-clock
       (let [targets (or (:value op) (:nodes test))
             previous (select-keys @settings targets)
@@ -190,7 +258,7 @@
 
   nemesis/Reflection
   (fs [_]
-    #{:check-clock :bump-clock :rate-clock :reset-clock}))
+    #{:check-clock :bump-clock :rate-clock :strobe-clock :reset-clock}))
 
 (defn clock-nemesis []
   (ClockNemesis. (atom {})))
@@ -215,6 +283,17 @@
                :rates (zipmap targets
                               (repeatedly #(random-rate direction)))}})))
 
+(defn- strobe-op [test _context]
+  (let [targets (random-targets test)]
+    {:type :info
+     :f :strobe-clock
+     :value (into {}
+                  (map (fn [node]
+                         [node {:delta-ms (random-strobe-delta-ms)
+                                :period-ms (random-strobe-period-ms)
+                                :duration-ms (random-strobe-duration-ms)}]))
+                  targets)}))
+
 (defn- clock-generator []
   (gen/phases
    {:type :info :f :check-clock}
@@ -223,6 +302,7 @@
      (gen/once bump-op)
      (gen/once (rate-op :fast))
      (gen/once (rate-op :slow))
+     (gen/once strobe-op)
      (gen/once reset-op)))))
 
 (defn- installed? [op]
@@ -232,6 +312,8 @@
   (reify checker/Checker
     (check [_ _test history _opts]
       (let [bump? (some #(and (= :bump-clock (:f %)) (installed? %)) history)
+            strobe? (some #(and (= :strobe-clock (:f %)) (installed? %))
+                          history)
             rate-directions (->> history
                                  (filter #(and (= :rate-clock (:f %))
                                                (installed? %)))
@@ -240,9 +322,11 @@
             final-reset (last (filter #(= :reset-clock (:f %)) history))
             recovered? (and final-reset (installed? final-reset))]
         {:valid? (boolean (and bump?
+                               strobe?
                                (= #{:fast :slow} rate-directions)
                                recovered?))
          :bump-installed (boolean bump?)
+         :strobe-installed (boolean strobe?)
          :rate-directions (vec (sort rate-directions))
          :final-reset-installed (boolean recovered?)}))))
 
