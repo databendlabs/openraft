@@ -84,6 +84,8 @@ jobs:
           - name: packet-flaky
             nemesis: packet
             packet_mode: flaky
+          - name: clock
+            nemesis: clock
           - name: chaos
             nemesis: chaos
 
