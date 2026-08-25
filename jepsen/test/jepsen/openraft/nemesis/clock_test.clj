@@ -34,13 +34,21 @@
         (is (= true (get-in result [:value :leader-included])))
         (is (= #{"n1" "n2"} (set (get-in result [:value :targets]))))))))
 
-(deftest clock-checker-requires-bump-and-final-reset
+(deftest clock-checker-requires-bump-rates-and-final-reset
   (let [subject (:checker (clock-nemesis/clock-package))
         installed (fn [f] {:type :info :f f :value {:status :installed}})]
     (testing "complete coverage"
       (is (true? (:valid? (checker/check subject
                                          test-config
                                          [(installed :bump-clock)
+                                          {:type :info
+                                           :f :rate-clock
+                                           :value {:status :installed
+                                                   :direction :fast}}
+                                          {:type :info
+                                           :f :rate-clock
+                                           :value {:status :installed
+                                                   :direction :slow}}
                                           (installed :reset-clock)]
                                          {})))))
     (testing "missing bump"
@@ -48,3 +56,10 @@
                                           test-config
                                           [(installed :reset-clock)]
                                           {})))))))
+
+(deftest rate-settings-cover-both-directions
+  (dotimes [_ 100]
+    (let [fast (#'clock-nemesis/random-rate :fast)
+          slow (#'clock-nemesis/random-rate :slow)]
+      (is (<= 1.0 fast 2.0))
+      (is (<= 0.5 slow 1.0)))))
