@@ -169,13 +169,17 @@ fn apply_membership_to_payload<C>(
     membership_state: &MembershipStateOf<C>,
     changes: ChangeMembers<C::NodeId, C::Node>,
     retain: bool,
-    payload: C::Payload,
+    payload: Option<C::Payload>,
 ) -> Result<C::Payload, ChangeMembershipErrorOf<C>>
 where
     C: RaftTypeConfig,
 {
     let membership = membership_state.change_handler().apply(changes, retain)?;
-    Ok(payload.with_membership(membership))
+    let payload = match payload {
+        Some(payload) => payload.with_membership(membership),
+        None => C::Payload::membership(membership),
+    };
+    Ok(payload)
 }
 
 /// The core type implementing the Raft protocol.
@@ -459,7 +463,7 @@ where
         changes: ChangeMembers<C::NodeId, C::Node>,
         retain: bool,
         preconditions: BatchOf<C, Precondition<C>>,
-        payload: C::Payload,
+        payload: Option<C::Payload>,
         tx: ProgressResponder<C, ClientWriteResult<C>>,
     ) {
         if let Err(e) = self.ensure_leader_handler() {
@@ -2626,11 +2630,30 @@ mod tests {
         };
 
         let changes = ChangeMembers::AddNodes(btreemap! {2 => ()});
-        let actual = apply_membership_to_payload::<TestConfig>(&membership_state, changes, false, payload).unwrap();
+        let result = apply_membership_to_payload::<TestConfig>(&membership_state, changes, false, Some(payload));
+        let actual = result.unwrap();
 
         let expected_membership = Membership::new_with_defaults(vec![btreeset! {1}], btreeset! {2});
         let expected = TestPayload {
             normal: Some(7),
+            membership: Some(expected_membership),
+        };
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn membership_change_without_payload_creates_membership_payload() {
+        let current = Membership::new_with_defaults(vec![btreeset! {1}], []);
+        let stored = Arc::new(StoredMembershipOf::<TestConfig>::new(None, current));
+        let membership_state = MembershipStateOf::<TestConfig>::new(stored.clone(), stored);
+
+        let changes = ChangeMembers::AddNodes(btreemap! {2 => ()});
+        let result = apply_membership_to_payload::<TestConfig>(&membership_state, changes, false, None);
+        let actual = result.unwrap();
+
+        let expected_membership = Membership::new_with_defaults(vec![btreeset! {1}], btreeset! {2});
+        let expected = TestPayload {
+            normal: None,
             membership: Some(expected_membership),
         };
         assert_eq!(expected, actual);

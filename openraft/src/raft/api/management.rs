@@ -11,7 +11,6 @@ use crate::RaftTypeConfig;
 use crate::batch::Batch;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::replication_lag;
-use crate::entry::RaftPayload;
 use crate::errors::ClientWriteError;
 use crate::errors::Fatal;
 use crate::errors::InitializeError;
@@ -75,8 +74,8 @@ where C: RaftTypeConfig
     ) -> Result<Result<ChangeMembershipOutcome<C>, ClientWriteError<C>>, Fatal<C>> {
         let (changes, retain, preconditions, payload) = request.into_parts();
         let (first_payload, uniform_payload) = match payload {
-            Some((first, uniform)) => (first, Some(uniform)),
-            None => (C::Payload::blank(), None),
+            Some((first, uniform)) => (Some(first), Some(uniform)),
+            None => (None, None),
         };
 
         tracing::info!(
@@ -154,10 +153,6 @@ where C: RaftTypeConfig
 
         // The second step, send a NOOP change to flatten the joint config.
         let changes = ChangeMembers::AddVoterIds(Default::default());
-        let uniform_payload = match uniform_payload {
-            Some(payload) => payload,
-            None => C::Payload::blank(),
-        };
         let client_write_result = self
             .inner
             .call_core(
@@ -200,7 +195,7 @@ where C: RaftTypeConfig
 
         let msg = RaftMsg::ChangeMembership {
             changes: ChangeMembers::AddNodes(btreemap! {id.clone()=>node}),
-            payload: C::Payload::blank(),
+            payload: None,
             retain: true,
             preconditions: Batch::of([]),
             tx,
