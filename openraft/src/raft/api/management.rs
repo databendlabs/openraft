@@ -18,6 +18,7 @@ use crate::errors::InitializeError;
 use crate::impls::ProgressResponder;
 use crate::membership::IntoNodes;
 use crate::raft::ChangeMembershipOutcome;
+use crate::raft::ChangeMembershipRequest;
 use crate::raft::ClientWriteResult;
 use crate::raft::Precondition;
 use crate::raft::raft_inner::RaftInner;
@@ -62,26 +63,21 @@ where C: RaftTypeConfig
         retain: bool,
         preconditions: BatchOf<C, Precondition<C>>,
     ) -> Result<ClientWriteResult<C>, Fatal<C>> {
-        let first_payload = C::Payload::blank();
-        let result = self
-            .change_membership_with_payloads(members, retain, preconditions, first_payload, C::Payload::blank)
-            .await?;
+        let request = ChangeMembershipRequest::new(members, retain).with_preconditions(preconditions);
+        let result = self.change_membership_with_payload(request).await?;
         let result = result.map(|outcome| outcome.uniform.unwrap_or(outcome.first));
         Ok(result)
     }
 
-    pub(crate) async fn change_membership_with_payloads<F>(
+    pub(crate) async fn change_membership_with_payload(
         &self,
-        members: impl Into<ChangeMembers<C::NodeId, C::Node>>,
-        retain: bool,
-        preconditions: BatchOf<C, Precondition<C>>,
-        first_payload: C::Payload,
-        uniform_payload: F,
-    ) -> Result<Result<ChangeMembershipOutcome<C>, ClientWriteError<C>>, Fatal<C>>
-    where
-        F: FnOnce() -> C::Payload,
-    {
-        let changes: ChangeMembers<C::NodeId, C::Node> = members.into();
+        request: ChangeMembershipRequest<C>,
+    ) -> Result<Result<ChangeMembershipOutcome<C>, ClientWriteError<C>>, Fatal<C>> {
+        let (changes, retain, preconditions, payload) = request.into_parts();
+        let (first_payload, uniform_payload) = match payload {
+            Some((first, uniform)) => (first, Some(uniform)),
+            None => (C::Payload::blank(), None),
+        };
 
         tracing::info!(
             "change_membership: start to commit joint config: changes: {:?}, retain: {}",
@@ -158,7 +154,10 @@ where C: RaftTypeConfig
 
         // The second step, send a NOOP change to flatten the joint config.
         let changes = ChangeMembers::AddVoterIds(Default::default());
-        let uniform_payload = uniform_payload();
+        let uniform_payload = match uniform_payload {
+            Some(payload) => payload,
+            None => C::Payload::blank(),
+        };
         let client_write_result = self
             .inner
             .call_core(

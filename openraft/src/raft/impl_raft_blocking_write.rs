@@ -8,7 +8,6 @@ use crate::ChangeMembers;
 use crate::Raft;
 use crate::RaftTypeConfig;
 use crate::batch::Batch;
-use crate::entry::RaftPayload;
 use crate::errors::ClientWriteError;
 use crate::errors::RaftError;
 use crate::errors::into_raft_result::IntoRaftResult;
@@ -120,20 +119,7 @@ where
         &self,
         request: ChangeMembershipRequest<C>,
     ) -> Result<ChangeMembershipOutcome<C>, RaftError<C, ClientWriteError<C>>> {
-        let (members, retain, preconditions, payload) = request.into_parts();
-        let (first_payload, uniform_payload) = match payload {
-            Some((first, uniform)) => (first, Some(uniform)),
-            None => (C::Payload::blank(), None),
-        };
-        let uniform_payload = move || match uniform_payload {
-            Some(payload) => payload,
-            None => C::Payload::blank(),
-        };
-        let api = self.management_api();
-        let result = api
-            .change_membership_with_payloads(members, retain, preconditions, first_payload, uniform_payload)
-            .await;
-        result.into_raft_result()
+        self.management_api().change_membership_with_payload(request).await.into_raft_result()
     }
 
     /// Propose a cluster configuration change only if every [`Precondition`] is satisfied.
