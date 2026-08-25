@@ -5,6 +5,7 @@
              [db :as db]]
             [jepsen.control.util :as cu]
             [jepsen.openraft.client :as client]
+            [jepsen.openraft.clock :as clock]
             [jepsen.openraft.cluster :as cluster]
             [jepsen.openraft.interruption :as interruption]))
 
@@ -144,8 +145,9 @@
 (defn- start-command!
   [node-id api-addr raft-addr snapshot-threshold]
   (control-exec!
-   (c/env {:RUST_BACKTRACE "1"
-           :RUST_LOG "info"})
+   (c/env (merge clock/application-env
+                 {:RUST_BACKTRACE "1"
+                  :RUST_LOG "info"}))
    :start-stop-daemon
    :--start
    :--oknodo
@@ -221,6 +223,7 @@
     db/Kill
     (start! [_ test node]
       (prepare-dirs!)
+      (clock/prepare!)
       (let [node-id (client/node-host node)
             api-addr (client/api-endpoint test node)
             raft-addr (client/raft-addr test node)]
