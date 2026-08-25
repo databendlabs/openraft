@@ -33,12 +33,14 @@ where C: RaftTypeConfig
         }
     }
 
-    /// Use the same application-defined payload for both steps of a voter change.
+    /// Use separate application-defined payloads for the membership-change steps.
+    ///
+    /// `first_payload` is used for the requested change. `uniform_payload` is used only when a
+    /// second entry is needed to flatten a joint membership.
+    #[since(version = "0.10.0", change = "accept separate payloads for membership change steps")]
     #[since(version = "0.10.0", change = "added optional membership change payload")]
-    pub fn with_payload(mut self, payload: C::Payload) -> Self
-    where C::Payload: Clone {
-        let first_payload = payload.clone();
-        self.payload = Some((first_payload, payload));
+    pub fn with_payload(mut self, first_payload: C::Payload, uniform_payload: C::Payload) -> Self {
+        self.payload = Some((first_payload, uniform_payload));
         self
     }
 
@@ -58,6 +60,11 @@ where C: RaftTypeConfig
         BatchOf<C, Precondition<C>>,
         Option<(C::Payload, C::Payload)>,
     ) {
-        (self.members, self.retain_removed_as_learners, self.preconditions, self.payload)
+        (
+            self.members,
+            self.retain_removed_as_learners,
+            self.preconditions,
+            self.payload,
+        )
     }
 }

@@ -54,7 +54,7 @@ async fn matching_membership_log_id_completes_joint_change() -> Result<()> {
             last_membership_log_id: membership_log_id,
         };
         let request = ChangeMembershipRequest::<TypeConfig>::new([0, 1, 2, 3], false)
-            .with_payload(EntryPayload::Blank)
+            .with_payload(EntryPayload::Blank, EntryPayload::Blank)
             .with_preconditions([precondition]);
         let change = leader.change_membership_with_payload(request);
         let outcome = change.await?;

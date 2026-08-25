@@ -87,25 +87,24 @@ where
     /// Propose a cluster configuration change from a [`ChangeMembershipRequest`].
     ///
     /// A request without an application-defined payload starts each physical log entry from a
-    /// separate `C::Payload::blank()`. [`ChangeMembershipRequest::with_payload()`] supplies an
-    /// application-defined base instead. OpenRaft calls `with_membership()` on each base payload
-    /// with the membership computed for that physical log entry.
+    /// separate `C::Payload::blank()`. [`ChangeMembershipRequest::with_payload()`] supplies
+    /// separate application-defined bases instead. OpenRaft calls `with_membership()` on each
+    /// base payload with the membership computed for that physical log entry.
     ///
     /// Request preconditions follow the same two-step rules as [`Self::change_membership_if()`].
     /// They guard the first proposal. OpenRaft updates the membership-log precondition for a
     /// possible uniform proposal and carries over only the committed-leader precondition.
     ///
-    /// A voter change may append a joint entry followed by a uniform entry. `with_payload()` clones
-    /// the payload before the first proposal, so both entries start from the same application
-    /// payload. If `with_membership()` preserves application data, the state machine applies that
-    /// data at two different log IDs. Non-idempotent data therefore needs an application-level
-    /// change identifier or deduplication.
+    /// A voter change may append a joint entry followed by a uniform entry. `with_payload()`
+    /// accepts one payload for the requested change and another for the possible uniform entry.
+    /// If `with_membership()` preserves application data, the state machine applies each
+    /// payload at its corresponding log ID.
     ///
-    /// Each physical entry serializes, stores, and replicates its payload. A large payload may use
-    /// log and network space twice.
+    /// Both supplied payloads are serialized, stored, and replicated when the change requires two
+    /// physical entries.
     ///
     /// If the uniform proposal fails, the joint entry is already committed. A retry must build a
-    /// new request with the original payload and preconditions based on the current joint state.
+    /// new request with the original payloads and preconditions based on the current joint state.
     ///
     /// The returned [`ChangeMembershipOutcome`] contains the first response and the uniform
     /// response when the change entered joint consensus.
