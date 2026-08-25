@@ -10,6 +10,7 @@
              [harness :as harness]
              [nemesis :as openraft-nemesis]
              [worker :as worker]]
+            [jepsen.openraft.nemesis.clock :as clock]
             [jepsen.openraft.nemesis.membership :as membership]
             [jepsen.openraft.nemesis.packet :as packet]
             [jepsen.openraft.nemesis.partition :as partition]
@@ -77,11 +78,13 @@
                   (partition/partition-package)
                   (process/process-package database)
                   (process/pause-package database)
-                  (packet/packet-package database nil)])]
+                  (packet/packet-package database nil)
+                  (clock/clock-package)])]
     (is (= [:stop-partition
             :restart-process
             :resume-process
             :stop-packet
+            :reset-clock
             :restore-membership
             :await-recovery]
            (mapv :f (:final-generator package))))))
@@ -96,6 +99,7 @@
                  [(partition/partition-package)
                   (process/pause-package database)
                   (packet/packet-package database nil)
+                  (clock/clock-package)
                   (membership/membership-package database test-config)])
         check (fn [history]
                 (checker/check (:checker package)
@@ -128,6 +132,11 @@
                  {:f :stop-packet
                   :value {:status :installed
                           :mode :slow}}
+                 {:f :bump-clock
+                  :value {:status :installed
+                          :mode :bump}}
+                 {:f :reset-clock
+                  :value {:status :installed}}
                  {:f :shrink
                   :value {:status :installed
                           :change :shrink
@@ -148,6 +157,7 @@
         (is (true? (get-in result [:partition :fault-class-executed?])))
         (is (true? (get-in result [:pause :fault-class-executed?])))
         (is (true? (get-in result [:packet :fault-class-executed?])))
+        (is (true? (get-in result [:clock :fault-class-executed?])))
         (is (true? (get-in result
                            [:membership :fault-class-executed?])))))
 

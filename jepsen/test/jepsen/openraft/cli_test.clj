@@ -59,7 +59,7 @@
 
 (deftest selects-composable-nemeses
   (testing "chaos is the default"
-    (is (= [:partition :process :pause :membership :packet]
+    (is (= [:partition :process :pause :membership :packet :clock]
            (#'cli/normalize-nemeses nil))))
 
   (testing "comma-separated faults are parsed and canonically ordered"
@@ -68,7 +68,7 @@
             (#'cli/parse-nemeses "process, partition")))))
 
   (testing "chaos expands to every composable fault without duplicates"
-    (is (= [:partition :process :pause :membership :packet]
+    (is (= [:partition :process :pause :membership :packet :clock]
            (#'cli/normalize-nemeses [:chaos :partition]))))
 
   (testing "membership can be combined with another fault"
@@ -78,9 +78,9 @@
     (is (= [:packet]
            (#'cli/normalize-nemeses :packet)))))
 
-(deftest selects-focused-clock-without-changing-chaos
+(deftest selects-clock-in-focused-and-chaos-runs
   (is (= [:clock] (#'cli/normalize-nemeses :clock)))
-  (is (= [:partition :process :pause :membership :packet]
+  (is (= [:partition :process :pause :membership :packet :clock]
          (#'cli/normalize-nemeses :chaos))))
 
 (deftest validates-focused-packet-mode
@@ -131,7 +131,7 @@
 
 (deftest validates-packet-mode-selection
   (testing "the default chaos profile does not require --packet-mode"
-    (is (= "openraft linearizable registers partition,process,pause,membership,packet"
+    (is (= "openraft linearizable registers partition,process,pause,membership,packet,clock"
            (:name (cli/openraft-test {:nodes ["n1" "n2" "n3" "n4" "n5"]
                                       :time-limit 10})))))
 

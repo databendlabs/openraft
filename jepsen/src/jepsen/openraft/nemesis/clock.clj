@@ -314,6 +314,14 @@
       (let [bump? (some #(and (= :bump-clock (:f %)) (installed? %)) history)
             strobe? (some #(and (= :strobe-clock (:f %)) (installed? %))
                           history)
+            observed-modes (->> history
+                                (filter installed?)
+                                (keep #(case (:f %)
+                                         :bump-clock :bump
+                                         :rate-clock :rate
+                                         :strobe-clock :strobe
+                                         nil))
+                                set)
             rate-directions (->> history
                                  (filter #(and (= :rate-clock (:f %))
                                                (installed? %)))
@@ -327,8 +335,10 @@
                                recovered?))
          :bump-installed (boolean bump?)
          :strobe-installed (boolean strobe?)
+         :observed-modes observed-modes
          :rate-directions (vec (sort rate-directions))
-         :final-reset-installed (boolean recovered?)}))))
+         :final-reset-installed (boolean recovered?)
+         :cluster-state (if recovered? :intact :unknown)}))))
 
 (defn clock-package []
   {:name :clock

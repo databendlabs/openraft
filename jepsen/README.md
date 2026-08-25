@@ -129,6 +129,9 @@ $ make -C jepsen test NEMESIS=pause
 # Run only the membership change test.
 $ make -C jepsen test NEMESIS=membership
 
+# Run only the wall-clock fault test.
+$ make -C jepsen test NEMESIS=clock
+
 # Run only one Packet mode; MODE must be slow or flaky.
 $ make -C jepsen test NEMESIS=packet PACKET_MODE=slow
 
@@ -156,15 +159,18 @@ narrower combination is needed.
 
 ### Nemesis Design
 
-A standalone Nemesis selects each target so the surviving voters still contain
-a quorum in every effective voter configuration. This applies to both stable
-and joint membership. A focused run can therefore exercise one fault class and
-its recovery while retaining a component that can make progress.
+Partition, process, pause, and packet standalone Nemeses select targets so the
+surviving voters retain a quorum in every effective voter configuration. Clock
+faults deliberately allow any non-empty node subset, including a majority or
+all nodes; their focused run does not require progress while no quorum is
+available, but safety and final recovery remain mandatory.
 
-The `chaos` profile composes individually quorum-safe faults without reserving
-one common survivor quorum across fault classes. Their active intervals may
-overlap and temporarily remove the global quorum. Safety and eventual recovery
-remain mandatory in that case, but continuous availability does not.
+The `chaos` profile composes fault packages without reserving one common
+survivor quorum across fault classes. Most focused fault packages select
+quorum-safe targets, while Clock may target a majority or all nodes. Active
+fault intervals may overlap and temporarily remove the global quorum. Safety
+and eventual recovery remain mandatory in that case, but continuous
+availability does not.
 
 #### Network Partition Nemesis
 
@@ -264,10 +270,25 @@ retransmission, and kernel packet selection. Partial installation or cleanup is
 a Harness failure; final recovery and teardown must attempt idempotent cleanup
 on every node.
 
+#### Clock Nemesis
+
+The Clock Nemesis changes only the wall clock observed by OpenRaft application
+processes. It uses node-local `libfaketime` control files and never changes the
+container or host clock. A focused run mixes multi-scale forward and backward
+jumps, rates sampled between 0.5x and 2x, rapid strobe jumps, and resets. Each
+operation replaces the complete clock state, and final cleanup restores every
+node to `+0 x1`.
+
+Targets are arbitrary non-empty subsets and can include a minority, majority,
+or every node. History records the targets, generated parameters, initial
+leader, and whether that leader was selected. The Clock checker validates fault
+coverage and cleanup; the common workload checker remains responsible for
+linearizability and final data recovery.
+
 #### Chaos Composition
 
 The default `chaos` profile independently schedules partition, process, pause,
-membership, and packet faults. It composes the package, generator, final
+membership, packet, and clock faults. It composes the package, generator, final
 recovery, and checker supplied by each Nemesis rather than defining separate
 Chaos-only checker semantics. Packet chooses one of `slow` or `flaky` for each
 independent Packet episode, and never overlaps those two modes with each other.

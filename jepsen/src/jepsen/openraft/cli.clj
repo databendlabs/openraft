@@ -20,10 +20,10 @@
              [process :as process]]))
 
 (def ^:private chaos-nemesis-types
-  [:partition :process :pause :membership :packet])
+  [:partition :process :pause :membership :packet :clock])
 
 (def ^:private concrete-nemesis-types
-  (conj chaos-nemesis-types :clock))
+  chaos-nemesis-types)
 
 (def nemesis-types
   (conj (set concrete-nemesis-types) :chaos))
