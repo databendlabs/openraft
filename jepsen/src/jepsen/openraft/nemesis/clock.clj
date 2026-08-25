@@ -25,6 +25,17 @@
   (long (* (random/nth [-1 1])
            (Math/pow 1.5 (+ 6 (random/double 25))))))
 
+(defn- rate-setting [rate]
+  (String/format Locale/ROOT "+0 x%.6f" (to-array [rate])))
+
+(defn- random-rate [direction]
+  (Math/pow 2.0
+            (case direction
+              :fast (random/double 0.0 1.0)
+              :slow (random/double -1.0 0.0)
+              (throw (ex-info "Unknown clock-rate direction"
+                              {:direction direction})))))
+
 (defn- random-targets [test]
   (vec (random/nonempty-subset (:nodes test))))
 
@@ -75,6 +86,22 @@
      (clock/reset-clock!)
      (verify-offset! 0))))
 
+(defn- apply-rates! [test rates]
+  (c/on-nodes
+   test
+   (keys rates)
+   (fn [_test node]
+     (let [rate (get rates node)
+           setting (rate-setting rate)
+           written (clock/write-setting! setting)]
+       (when-not (= setting written)
+         (throw (ex-info "Clock setting readback failed"
+                         {:kind :clock-setting-readback-failed
+                          :expected setting
+                          :observed written})))
+       {:setting (clock/read-setting!)
+        :rate rate}))))
+
 (defn- leader-evidence [test targets]
   (let [leader (:leader (cluster/membership-status test))]
     {:initial-leader leader
@@ -120,6 +147,31 @@
                                :evidence evidence}
                               (leader-evidence test targets)))))
 
+      :rate-clock
+      (let [{:keys [direction rates]} (:value op)
+            targets (vec (keys rates))
+            previous (select-keys @settings targets)
+            evidence (apply-rates! test rates)
+            new-settings (into {} (map (fn [[node rate]]
+                                         [node (rate-setting rate)]))
+                               rates)]
+        (swap! settings merge new-settings)
+        (info "Changed OpenRaft wall-clock rates"
+              {:direction direction :rates rates})
+        (assoc op
+               :value (outcome/installed
+                       (merge {:mode :rate
+                               :direction direction
+                               :targets targets
+                               :target-category (target-category
+                                                 (count (:nodes test))
+                                                 (count targets))
+                               :rates rates
+                               :previous-settings previous
+                               :settings new-settings
+                               :evidence evidence}
+                              (leader-evidence test targets)))))
+
       :reset-clock
       (let [targets (or (:value op) (:nodes test))
             previous (select-keys @settings targets)
@@ -138,7 +190,7 @@
 
   nemesis/Reflection
   (fs [_]
-    #{:check-clock :bump-clock :reset-clock}))
+    #{:check-clock :bump-clock :rate-clock :reset-clock}))
 
 (defn clock-nemesis []
   (ClockNemesis. (atom {})))
@@ -154,12 +206,23 @@
    :f :reset-clock
    :value (random-targets test)})
 
+(defn- rate-op [direction]
+  (fn [test _context]
+    (let [targets (random-targets test)]
+      {:type :info
+       :f :rate-clock
+       :value {:direction direction
+               :rates (zipmap targets
+                              (repeatedly #(random-rate direction)))}})))
+
 (defn- clock-generator []
   (gen/phases
    {:type :info :f :check-clock}
    (gen/cycle
     (gen/phases
      (gen/once bump-op)
+     (gen/once (rate-op :fast))
+     (gen/once (rate-op :slow))
      (gen/once reset-op)))))
 
 (defn- installed? [op]
@@ -169,10 +232,18 @@
   (reify checker/Checker
     (check [_ _test history _opts]
       (let [bump? (some #(and (= :bump-clock (:f %)) (installed? %)) history)
+            rate-directions (->> history
+                                 (filter #(and (= :rate-clock (:f %))
+                                               (installed? %)))
+                                 (keep #(get-in % [:value :direction]))
+                                 set)
             final-reset (last (filter #(= :reset-clock (:f %)) history))
             recovered? (and final-reset (installed? final-reset))]
-        {:valid? (boolean (and bump? recovered?))
+        {:valid? (boolean (and bump?
+                               (= #{:fast :slow} rate-directions)
+                               recovered?))
          :bump-installed (boolean bump?)
+         :rate-directions (vec (sort rate-directions))
          :final-reset-installed (boolean recovered?)}))))
 
 (defn clock-package []
