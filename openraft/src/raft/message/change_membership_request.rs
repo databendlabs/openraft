@@ -12,7 +12,7 @@ pub struct ChangeMembershipRequest<C>
 where C: RaftTypeConfig
 {
     members: ChangeMembers<C::NodeId, C::Node>,
-    retain: bool,
+    retain_removed_as_learners: bool,
     preconditions: BatchOf<C, Precondition<C>>,
     payload: Option<(C::Payload, C::Payload)>,
 }
@@ -27,7 +27,7 @@ where C: RaftTypeConfig
         let members = members.into();
         Self {
             members,
-            retain,
+            retain_removed_as_learners: retain,
             preconditions: BatchOf::<C, _>::of([]),
             payload: None,
         }
@@ -58,6 +58,6 @@ where C: RaftTypeConfig
         BatchOf<C, Precondition<C>>,
         Option<(C::Payload, C::Payload)>,
     ) {
-        (self.members, self.retain, self.preconditions, self.payload)
+        (self.members, self.retain_removed_as_learners, self.preconditions, self.payload)
     }
 }
