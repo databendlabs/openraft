@@ -43,6 +43,7 @@ test-examples:
 	cargo test --manifest-path examples/dir-transfer/Cargo.toml
 	cargo test --manifest-path examples/log-mem/Cargo.toml
 	cargo test --manifest-path examples/log-rocks/Cargo.toml
+	cargo test --manifest-path examples/log-wal/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-memstore/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-memstore-grpc/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-memstore-network-v1/Cargo.toml
@@ -125,6 +126,7 @@ fmt:
 	cargo fmt --manifest-path examples/dir-transfer/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path examples/log-mem/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path examples/log-rocks/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path examples/log-wal/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path examples/sm-mem/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path examples/sm-rocks/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path examples/types-kv/Cargo.toml $(FMT_ARGS)
@@ -157,6 +159,7 @@ clippy:
 	cargo clippy --no-deps --manifest-path examples/dir-transfer/Cargo.toml                           --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/log-mem/Cargo.toml                                --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/log-rocks/Cargo.toml                              --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path examples/log-wal/Cargo.toml                                --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/sm-mem/Cargo.toml                                --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/sm-rocks/Cargo.toml                                --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/types-kv/Cargo.toml                               --all-targets -- -D warnings
@@ -192,6 +195,7 @@ unused_dep:
 	cargo machete examples/multi-raft-kv
 	cargo machete examples/sm-rocks
 	cargo machete examples/log-rocks
+	cargo machete examples/log-wal
 	cargo machete examples/dir-transfer
 	cargo machete multiraft
 	cargo machete rt-compio
@@ -218,6 +222,7 @@ check:
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/dir-transfer/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/log-mem/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/log-rocks/Cargo.toml
+	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/log-wal/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/sm-mem/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/sm-rocks/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/types-kv/Cargo.toml
@@ -244,6 +249,7 @@ clean:
 	cargo clean --manifest-path examples/dir-transfer/Cargo.toml
 	cargo clean --manifest-path examples/log-mem/Cargo.toml
 	cargo clean --manifest-path examples/log-rocks/Cargo.toml
+	cargo clean --manifest-path examples/log-wal/Cargo.toml
 	cargo clean --manifest-path examples/sm-mem/Cargo.toml
 	cargo clean --manifest-path examples/sm-rocks/Cargo.toml
 	cargo clean --manifest-path examples/types-kv/Cargo.toml

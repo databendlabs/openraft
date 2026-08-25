@@ -93,6 +93,7 @@ exclude = [
     "examples/dir-transfer",
     "examples/log-mem",
     "examples/log-rocks",
+    "examples/log-wal",
     "examples/mem-log",
     "examples/memstore",
     "examples/rocksstore",
