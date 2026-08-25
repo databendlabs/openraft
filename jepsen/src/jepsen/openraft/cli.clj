@@ -14,12 +14,16 @@
              [worker :as worker]
              [workload :as workload]]
             [jepsen.openraft.nemesis [membership :as membership]
+             [clock :as clock]
              [packet :as packet]
              [partition :as partition]
              [process :as process]]))
 
-(def ^:private concrete-nemesis-types
+(def ^:private chaos-nemesis-types
   [:partition :process :pause :membership :packet])
+
+(def ^:private concrete-nemesis-types
+  (conj chaos-nemesis-types :clock))
 
 (def nemesis-types
   (conj (set concrete-nemesis-types) :chaos))
@@ -39,7 +43,7 @@
                        :unknown (vec unknown)})))
     (let [expanded (cond-> (disj requested :chaos)
                      (contains? requested :chaos)
-                     (into concrete-nemesis-types))]
+                     (into chaos-nemesis-types))]
       (filterv expanded concrete-nemesis-types))))
 
 (defn- valid-nemeses? [selection]
@@ -73,7 +77,7 @@
                "Must be a positive integer."]]
 
    [nil "--nemesis TYPES"
-    "Comma-separated faults: membership, packet, partition, process, pause, or chaos."
+    "Comma-separated faults: clock, membership, packet, partition, process, pause, or chaos."
     :default [:chaos]
     :parse-fn parse-nemeses
     :validate [valid-nemeses? "Unknown fault."]]
@@ -150,6 +154,9 @@
 
                    :membership
                    (membership/membership-package database opts)
+
+                   :clock
+                   (clock/clock-package)
 
                    :packet
                    (let [packet-mode (:packet-mode opts)]

@@ -78,6 +78,11 @@
     (is (= [:packet]
            (#'cli/normalize-nemeses :packet)))))
 
+(deftest selects-focused-clock-without-changing-chaos
+  (is (= [:clock] (#'cli/normalize-nemeses :clock)))
+  (is (= [:partition :process :pause :membership :packet]
+         (#'cli/normalize-nemeses :chaos))))
+
 (deftest validates-focused-packet-mode
   (testing "slow and flaky are accepted"
     (doseq [mode ["slow" "flaky"]]

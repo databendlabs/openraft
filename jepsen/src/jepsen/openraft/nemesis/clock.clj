@@ -1,0 +1,186 @@
+(ns jepsen.openraft.nemesis.clock
+  (:require [clojure.tools.logging :refer [info]]
+            [jepsen [checker :as checker]
+             [control :as c]
+             [generator :as gen]
+             [nemesis :as nemesis]
+             [random :as random]]
+            [jepsen.openraft.checker :as openraft-checker]
+            [jepsen.openraft.clock :as clock]
+            [jepsen.openraft.cluster :as cluster]
+            [jepsen.openraft.nemesis.outcome :as outcome])
+  (:import (java.util Locale)))
+
+(def clock-seconds 10)
+(def ^:private application-pattern
+  "^/usr/local/bin/openraft-jepsen-app([[:space:]].*)?$")
+(def ^:private offset-tolerance-ms 1000)
+
+(defn- offset-setting [offset-ms]
+  (String/format Locale/ROOT
+                 "%+.3fs x1"
+                 (to-array [(/ offset-ms 1000.0)])))
+
+(defn- random-offset-ms []
+  (long (* (random/nth [-1 1])
+           (Math/pow 1.5 (+ 6 (random/double 25))))))
+
+(defn- random-targets [test]
+  (vec (random/nonempty-subset (:nodes test))))
+
+(defn- target-category [node-count target-count]
+  (cond
+    (= 1 target-count) :one
+    (= node-count target-count) :all
+    (<= target-count (quot (dec node-count) 2)) :minority
+    :else :majority))
+
+(defn verify-offset! [offset-ms]
+  (let [before (Long/parseLong (c/exec :date "+%s%3N"))
+        observed (clock/probe-wall-time-ms!)
+        after (Long/parseLong (c/exec :date "+%s%3N"))
+        minimum (- (+ before offset-ms) offset-tolerance-ms)
+        maximum (+ after offset-ms offset-tolerance-ms)]
+    (when-not (<= minimum observed maximum)
+      (throw (ex-info "Clock offset verification failed"
+                      {:kind :clock-offset-verification-failed
+                       :expected-offset-ms offset-ms
+                       :observed-wall-time-ms observed
+                       :host-before-ms before
+                       :host-after-ms after})))
+    {:setting (clock/read-setting!)
+     :observed-offset-ms (- observed before)}))
+
+(defn- apply-offsets! [test offsets]
+  (c/on-nodes
+   test
+   (keys offsets)
+   (fn [_test node]
+     (let [offset-ms (get offsets node)
+           setting (offset-setting offset-ms)
+           written (clock/write-setting! setting)]
+       (when-not (= setting written)
+         (throw (ex-info "Clock setting readback failed"
+                         {:kind :clock-setting-readback-failed
+                          :expected setting
+                          :observed written})))
+       (assoc (verify-offset! offset-ms)
+              :offset-ms offset-ms)))))
+
+(defn- reset-targets! [test targets]
+  (c/on-nodes
+   test
+   targets
+   (fn [_test _node]
+     (clock/reset-clock!)
+     (verify-offset! 0))))
+
+(defn- leader-evidence [test targets]
+  (let [leader (:leader (cluster/membership-status test))]
+    {:initial-leader leader
+     :leader-included (when leader (boolean (some #{leader} targets)))}))
+
+(defrecord ClockNemesis [settings]
+  nemesis/Nemesis
+  (setup! [_ test]
+    (c/on-nodes test
+                (:nodes test)
+                (fn [_test _node]
+                  (clock/verify-application-clock! application-pattern)))
+    (ClockNemesis. (atom (zipmap (:nodes test)
+                                 (repeat clock/normal-setting)))))
+
+  (invoke! [_ test op]
+    (case (:f op)
+      :check-clock
+      (assoc op
+             :value (outcome/installed
+                     {:evidence (reset-targets! test (:nodes test))}))
+
+      :bump-clock
+      (let [offsets (:value op)
+            targets (vec (keys offsets))
+            previous (select-keys @settings targets)
+            evidence (apply-offsets! test offsets)
+            new-settings (into {} (map (fn [[node offset-ms]]
+                                         [node (offset-setting offset-ms)]))
+                               offsets)]
+        (swap! settings merge new-settings)
+        (info "Bumped OpenRaft wall clocks" {:offsets offsets})
+        (assoc op
+               :value (outcome/installed
+                       (merge {:mode :bump
+                               :targets targets
+                               :target-category (target-category
+                                                 (count (:nodes test))
+                                                 (count targets))
+                               :offsets-ms offsets
+                               :previous-settings previous
+                               :settings new-settings
+                               :evidence evidence}
+                              (leader-evidence test targets)))))
+
+      :reset-clock
+      (let [targets (or (:value op) (:nodes test))
+            previous (select-keys @settings targets)
+            evidence (reset-targets! test targets)]
+        (swap! settings merge (zipmap targets (repeat clock/normal-setting)))
+        (assoc op
+               :value (outcome/installed
+                       {:mode :reset
+                        :targets (vec targets)
+                        :previous-settings previous
+                        :setting clock/normal-setting
+                        :evidence evidence})))))
+
+  (teardown! [_ test]
+    (reset-targets! test (:nodes test)))
+
+  nemesis/Reflection
+  (fs [_]
+    #{:check-clock :bump-clock :reset-clock}))
+
+(defn clock-nemesis []
+  (ClockNemesis. (atom {})))
+
+(defn- bump-op [test _context]
+  (let [targets (random-targets test)]
+    {:type :info
+     :f :bump-clock
+     :value (zipmap targets (repeatedly random-offset-ms))}))
+
+(defn- reset-op [test _context]
+  {:type :info
+   :f :reset-clock
+   :value (random-targets test)})
+
+(defn- clock-generator []
+  (gen/phases
+   {:type :info :f :check-clock}
+   (gen/cycle
+    (gen/phases
+     (gen/once bump-op)
+     (gen/once reset-op)))))
+
+(defn- installed? [op]
+  (= :installed (get-in op [:value :status])))
+
+(defn- coverage-checker []
+  (reify checker/Checker
+    (check [_ _test history _opts]
+      (let [bump? (some #(and (= :bump-clock (:f %)) (installed? %)) history)
+            final-reset (last (filter #(= :reset-clock (:f %)) history))
+            recovered? (and final-reset (installed? final-reset))]
+        {:valid? (boolean (and bump? recovered?))
+         :bump-installed (boolean bump?)
+         :final-reset-installed (boolean recovered?)}))))
+
+(defn clock-package []
+  {:name :clock
+   :interval clock-seconds
+   :nemesis (clock-nemesis)
+   :generator (clock-generator)
+   :final-generator {:type :info
+                     :f :reset-clock}
+   :checker (openraft-checker/reject-checker-exceptions
+             (coverage-checker))})
