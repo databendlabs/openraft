@@ -20,7 +20,8 @@ where C: RaftTypeConfig
 impl<C> ChangeMembershipRequest<C>
 where C: RaftTypeConfig
 {
-    /// Create a request without an application-defined payload or preconditions.
+    /// Create a request that uses a new blank payload for each membership entry and has no
+    /// preconditions.
     #[since(version = "0.10.0", change = "added configurable membership change request")]
     pub fn new(members: impl Into<ChangeMembers<C::NodeId, C::Node>>, retain: bool) -> Self {
         let members = members.into();

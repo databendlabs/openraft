@@ -86,10 +86,10 @@ where
 
     /// Propose a cluster configuration change from a [`ChangeMembershipRequest`].
     ///
-    /// A request without an application-defined payload creates a membership-only payload for each
-    /// physical log entry. [`ChangeMembershipRequest::with_payload()`] supplies a payload instead.
-    /// OpenRaft replaces any membership already stored in that payload with the membership computed
-    /// for each physical log entry.
+    /// A request without an application-defined payload starts each physical log entry from a
+    /// separate `C::Payload::blank()`. [`ChangeMembershipRequest::with_payload()`] supplies an
+    /// application-defined base instead. OpenRaft calls `with_membership()` on each base payload
+    /// with the membership computed for that physical log entry.
     ///
     /// Request preconditions follow the same two-step rules as [`Self::change_membership_if()`].
     /// They guard the first proposal. OpenRaft updates the membership-log precondition for a

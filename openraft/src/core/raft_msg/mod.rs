@@ -96,8 +96,8 @@ where C: RaftTypeConfig
     ChangeMembership {
         changes: ChangeMembers<C::NodeId, C::Node>,
 
-        /// Optional application payload to preserve in the membership log entry.
-        payload: Option<C::Payload>,
+        /// Payload whose membership OpenRaft replaces with the computed membership.
+        payload: C::Payload,
 
         /// If `retain` is `true`, then the voters that are not in the new
         /// config will be converted into learners, otherwise they will be removed.

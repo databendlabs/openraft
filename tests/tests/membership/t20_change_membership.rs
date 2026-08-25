@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use maplit::btreeset;
 use openraft::Config;
+use openraft::EntryPayload;
 use openraft::LogIdOptionExt;
 use openraft::RaftLogReader;
 use openraft::ServerState;
@@ -43,6 +44,30 @@ async fn update_membership_state() -> anyhow::Result<()> {
         let uniform = outcome.uniform.as_ref().expect("voter change should enter joint consensus");
         let uniform_log_index = log_index + 2;
         assert_eq!(uniform_log_index, uniform.log_id.index);
+
+        tracing::info!(
+            first_log_index,
+            uniform_log_index,
+            "--- inspect membership log payloads"
+        );
+        {
+            let first_membership = outcome.first.membership.clone().unwrap();
+            let uniform_membership = uniform.membership.clone().unwrap();
+            let expected_memberships = vec![first_membership, uniform_membership];
+
+            let (mut log_store, _) = router.get_storage_handle(&0)?;
+            let entries = log_store.try_get_log_entries(first_log_index..=uniform_log_index).await?;
+            let mut actual_memberships = Vec::new();
+            for entry in entries {
+                let membership = match entry.payload {
+                    EntryPayload::Membership(membership) => membership,
+                    payload => panic!("expected membership payload, got: {payload:?}"),
+                };
+                actual_memberships.push(membership);
+            }
+
+            assert_eq!(expected_memberships, actual_memberships);
+        }
 
         log_index = uniform_log_index;
 

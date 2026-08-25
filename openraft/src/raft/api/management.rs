@@ -11,6 +11,7 @@ use crate::RaftTypeConfig;
 use crate::batch::Batch;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::replication_lag;
+use crate::entry::RaftPayload;
 use crate::errors::ClientWriteError;
 use crate::errors::Fatal;
 use crate::errors::InitializeError;
@@ -74,8 +75,8 @@ where C: RaftTypeConfig
     ) -> Result<Result<ChangeMembershipOutcome<C>, ClientWriteError<C>>, Fatal<C>> {
         let (changes, retain, preconditions, payload) = request.into_parts();
         let (first_payload, uniform_payload) = match payload {
-            Some((first, uniform)) => (Some(first), Some(uniform)),
-            None => (None, None),
+            Some((first, uniform)) => (first, uniform),
+            None => (C::Payload::blank(), C::Payload::blank()),
         };
 
         tracing::info!(
@@ -195,7 +196,7 @@ where C: RaftTypeConfig
 
         let msg = RaftMsg::ChangeMembership {
             changes: ChangeMembers::AddNodes(btreemap! {id.clone()=>node}),
-            payload: None,
+            payload: C::Payload::blank(),
             retain: true,
             preconditions: Batch::of([]),
             tx,
