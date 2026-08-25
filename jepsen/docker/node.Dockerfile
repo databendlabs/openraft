@@ -62,6 +62,7 @@ RUN apt-get update \
       ca-certificates \
       iproute2 \
       iptables \
+      libfaketime \
       libgcc-s1 \
       librocksdb-dev \
       libstdc++6 \
@@ -71,6 +72,11 @@ RUN apt-get update \
       psmisc \
       sudo \
  && rm -rf /var/lib/apt/lists/*
+
+# Use one architecture-independent path in the application launch environment.
+RUN faketime_lib="$(find /usr/lib -path '*/faketime/libfaketime.so.1' -print -quit)" \
+ && test -n "$faketime_lib" \
+ && ln -s "$faketime_lib" /usr/local/lib/libfaketime.so.1
 
 RUN mkdir -p /run/sshd /var/lib/openraft /var/log/openraft /root/.ssh \
  && chmod 700 /root/.ssh \
