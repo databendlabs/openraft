@@ -1,0 +1,36 @@
+[package]
+name = "raft-kv-log-wal-sm-mem"
+version = "0.1.0"
+
+edition = "2024"
+authors = [
+    "drdr xp <drdr.xp@gmail.com>",
+]
+categories = ["algorithms", "asynchronous", "data-structures"]
+description = "An OpenRaft key-value example with a WAL log and in-memory state machine."
+homepage = "https://github.com/databendlabs/openraft"
+keywords = ["raft", "consensus"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/databendlabs/openraft"
+
+[dependencies]
+app-http        = { path = "../app-http" }
+log-wal         = { path = "../log-wal" }
+network-v2-http = { path = "../network-v2-http" }
+openraft        = { path = "../../openraft", features = ["serde", "type-alias"] }
+sm-mem          = { path = "../sm-mem" }
+types-kv        = { path = "../types-kv" }
+
+clap               = { version = "4.1.11", features = ["derive", "env"] }
+tokio              = { version = "1.35.1", features = ["full"] }
+tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }
+
+[dev-dependencies]
+maplit   = { version = "1.0.2" }
+tempfile = { version = "3.4.0" }
+tracing  = { version = "0.1.40" }
+
+[features]
+
+[package.metadata.docs.rs]
+all-features = true

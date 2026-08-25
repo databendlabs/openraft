@@ -93,6 +93,7 @@ exclude = [
     "examples/dir-transfer",
     "examples/log-mem",
     "examples/log-rocks",
+    "examples/log-wal",
     "examples/mem-log",
     "examples/memstore",
     "examples/rocksstore",
@@ -100,6 +101,7 @@ exclude = [
     "examples/sm-rocks",
     "examples/types-kv",
 
+    "examples/raft-kv-log-wal-sm-mem",
     "examples/raft-kv-memstore",
     "examples/raft-kv-memstore-grpc",
     "examples/raft-kv-memstore-single-threaded",
