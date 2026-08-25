@@ -4,12 +4,12 @@ use std::time::Duration;
 
 use maplit::btreeset;
 use openraft::Config;
-use openraft::EntryPayload;
 use openraft::LogIdOptionExt;
 use openraft::RaftLogReader;
 use openraft::ServerState;
 use openraft::errors::ChangeMembershipError;
 use openraft::errors::ClientWriteError;
+use openraft::raft::ChangeMembershipRequest;
 use openraft_memstore::MemNodeId;
 
 use crate::fixtures::RaftRouter;
@@ -33,7 +33,8 @@ async fn update_membership_state() -> anyhow::Result<()> {
     tracing::info!(log_index, "--- change membership from 012 to 01234");
     {
         let leader = router.get_raft_handle(&0)?;
-        let change = leader.change_membership_with_payload([0, 1, 2, 3, 4], false, EntryPayload::Blank);
+        let request = ChangeMembershipRequest::new([0, 1, 2, 3, 4], false);
+        let change = leader.change_membership_with_payload(request);
         let outcome = change.await?;
 
         let first_log_index = log_index + 1;

@@ -4,12 +4,14 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
+use openraft::EntryPayload;
 use openraft::Precondition;
 use openraft::async_runtime::WatchReceiver;
 use openraft::errors::ClientWriteError;
 use openraft::errors::ForwardToLeader;
 use openraft::errors::PreconditionFailed;
 use openraft::errors::RaftError;
+use openraft::raft::ChangeMembershipRequest;
 use openraft::type_config::alias::LeaderIdOf;
 use openraft::type_config::alias::LogIdOf;
 use openraft::vote::RaftLeaderIdExt;
@@ -51,7 +53,12 @@ async fn matching_membership_log_id_completes_joint_change() -> Result<()> {
         let precondition = Precondition::LastMembershipLogId {
             last_membership_log_id: membership_log_id,
         };
-        let resp = leader.change_membership_if([0, 1, 2, 3], false, [precondition]).await?;
+        let request = ChangeMembershipRequest::<TypeConfig>::new([0, 1, 2, 3], false)
+            .with_payload(EntryPayload::Blank)
+            .with_preconditions([precondition]);
+        let change = leader.change_membership_with_payload(request);
+        let outcome = change.await?;
+        let resp = outcome.uniform.as_ref().expect("voter change should enter joint consensus");
 
         // A joint config log and a uniform config log.
         log_index += 2;

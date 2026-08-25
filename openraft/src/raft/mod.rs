@@ -43,6 +43,7 @@ use linearizable_read::ReadLogId;
 pub use message::AppendEntriesRequest;
 pub use message::AppendEntriesResponse;
 pub use message::ChangeMembershipOutcome;
+pub use message::ChangeMembershipRequest;
 pub use message::ClientWriteResponse;
 pub use message::ClientWriteResult;
 #[allow(deprecated)]
