@@ -24,7 +24,7 @@
                        (map (fn [reason]
                               {:status :skipped
                                :reason reason})
-                            [:no-quorum-safe-process-target
+                            [:no-process-target
                              :no-reachable-pause-target
                              :no-safe-packet-target
                              :no-safe-partition-target
