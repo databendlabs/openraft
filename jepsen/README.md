@@ -277,7 +277,9 @@ processes. It uses node-local `libfaketime` control files and never changes the
 container or host clock. A focused run mixes multi-scale forward and backward
 jumps, rates sampled between 0.5x and 2x, rapid strobe jumps, and resets. Each
 operation replaces the complete clock state, and final cleanup restores every
-node to `+0 x1`.
+node to `+0 x1`. Rate changes may also jump the wall clock because libfaketime
+rebases the reported time when the multiplier changes; those jumps are part of
+the injected wall-clock fault.
 
 Targets are arbitrary non-empty subsets and can include a minority, majority,
 or every node. History records the targets, generated parameters, initial
