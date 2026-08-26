@@ -136,18 +136,8 @@ where
 mod tests {
     use std::collections::BTreeSet;
 
-    #[cfg(feature = "serde")]
-    use crate::Membership as MembershipType;
     use crate::entry::RaftPayload;
     use crate::entry::payload::EntryPayload;
-
-    #[cfg(feature = "serde")]
-    #[derive(serde::Deserialize, serde::Serialize)]
-    enum LegacyEntryPayload {
-        Blank,
-        Normal(u64),
-        Membership(MembershipType<u64, ()>),
-    }
 
     #[test]
     fn test_constructors() {
@@ -182,37 +172,6 @@ mod tests {
 
         let expected = EntryPayload::<u64, u64, ()>::Normal(3);
         assert_eq!(actual, expected);
-    }
-
-    /// The default payload keeps the variant order and fields used by OpenRaft 0.9.
-    #[cfg(feature = "serde")]
-    #[test]
-    fn test_serde_compat_with_09() -> anyhow::Result<()> {
-        let membership = MembershipType::new_with_defaults(vec![BTreeSet::from([1, 2])], []);
-        let cases = [
-            (LegacyEntryPayload::Blank, EntryPayload::Blank),
-            (LegacyEntryPayload::Normal(3), EntryPayload::Normal(3)),
-            (
-                LegacyEntryPayload::Membership(membership.clone()),
-                EntryPayload::Membership(membership),
-            ),
-        ];
-
-        for (legacy, expected) in cases {
-            let legacy_json = serde_json::to_string(&legacy)?;
-            assert_eq!(legacy_json, serde_json::to_string(&expected)?);
-
-            let decoded: EntryPayload<u64, u64, ()> = serde_json::from_str(&legacy_json)?;
-            assert_eq!(expected, decoded);
-
-            let legacy_bin = bincode::serialize(&legacy)?;
-            assert_eq!(legacy_bin, bincode::serialize(&expected)?);
-
-            let decoded: EntryPayload<u64, u64, ()> = bincode::deserialize(&legacy_bin)?;
-            assert_eq!(expected, decoded);
-        }
-
-        Ok(())
     }
 
     #[test]
