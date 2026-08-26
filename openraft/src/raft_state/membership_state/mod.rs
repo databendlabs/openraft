@@ -5,15 +5,16 @@ use std::sync::Arc;
 use openraft_macros::since;
 use validit::Validate;
 
+use crate::ChangeMembers;
 use crate::LogIdOptionExt;
+use crate::Membership;
+use crate::errors::ChangeMembershipError;
+use crate::errors::InProgress;
 
-mod change_handler;
 #[cfg(test)]
-mod change_handler_test;
+mod change_membership_test;
 #[cfg(test)]
 mod membership_state_test;
-
-pub(crate) use change_handler::ChangeHandler;
 
 use crate::log_id::LogId;
 use crate::membership::StoredMembership;
@@ -116,6 +117,48 @@ where
     /// Check if the given `NodeId` exists and is a voter.
     pub(crate) fn is_voter(&self, id: &NID) -> bool {
         self.effective.membership().is_voter(id)
+    }
+
+    /// Builds a new membership configuration by applying changes to the current configuration.
+    ///
+    /// * `changes`: The changes to apply to the current membership configuration.
+    /// * `retain` specifies whether to retain the removed voters as learners, i.e., nodes that
+    ///   continue to receive log replication from the leader.
+    ///
+    /// A Result containing the new membership configuration if the operation succeeds, or a
+    /// `ChangeMembershipError` if an error occurs.
+    ///
+    /// This function ensures that the cluster will have at least one voter in the new membership
+    /// configuration.
+    pub(crate) fn next_membership(
+        &self,
+        change: ChangeMembers<NID, N>,
+        retain: bool,
+    ) -> Result<Membership<NID, N>, ChangeMembershipError<CLID, NID>> {
+        self.ensure_committed()?;
+
+        let effective = self.effective();
+        let membership = effective.membership().clone();
+        let new_membership = membership.change(change, retain)?;
+        Ok(new_membership)
+    }
+
+    /// Ensures that the latest membership has been committed.
+    ///
+    /// Returns Ok if the last membership is committed, or an InProgress error
+    /// otherwise, to indicate a change-membership request should be rejected.
+    fn ensure_committed(&self) -> Result<(), InProgress<CLID>> {
+        let effective = self.effective();
+        let committed = self.committed();
+
+        if effective.log_id() == committed.log_id() {
+            return Ok(());
+        }
+
+        Err(InProgress {
+            committed: committed.log_id().clone(),
+            membership_log_id: effective.log_id().clone(),
+        })
     }
 
     /// Commit the effective membership config if `committed_log_id` is greater than or equal to
@@ -256,10 +299,6 @@ where
     /// A committed membership config may or may not be the same as the effective one.
     pub fn effective(&self) -> &Arc<StoredMembership<CLID, NID, N>> {
         &self.effective
-    }
-
-    pub(crate) fn change_handler(&self) -> ChangeHandler<'_, CLID, NID, N> {
-        ChangeHandler { state: self }
     }
 }
 
