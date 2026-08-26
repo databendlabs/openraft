@@ -9,14 +9,21 @@
   {:LD_PRELOAD library
    :FAKETIME_TIMESTAMP_FILE control-file
    :FAKETIME_NO_CACHE "1"
-   :FAKETIME_XRESET "1"
-   :FAKETIME_DONT_FAKE_STAT "1"
+   :NO_FAKE_STAT "1"
    :FAKETIME_DONT_FAKE_MONOTONIC "1"})
 
 (def ^:private write-setting-script
   (str "set -eu; "
        "printf '%s\\n' \"$1\" > \"$2.tmp\"; "
        "mv \"$2.tmp\" \"$2\"; "
+       "cat \"$2\""))
+
+(def ^:private initialize-setting-script
+  (str "set -eu; "
+       "if test ! -e \"$2\"; then "
+       "printf '%s\\n' \"$1\" > \"$2.tmp\"; "
+       "mv \"$2.tmp\" \"$2\"; "
+       "fi; "
        "cat \"$2\""))
 
 (def ^:private process-environment-script
@@ -54,4 +61,5 @@
 
 (defn prepare! []
   (c/exec :mkdir :-p "/var/lib/openraft")
-  (reset-clock!))
+  (c/exec :bash :-c initialize-setting-script
+          "openraft-clock-setting" normal-setting control-file))
