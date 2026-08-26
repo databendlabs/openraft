@@ -174,7 +174,7 @@ fn apply_membership_to_payload<C>(
 where
     C: RaftTypeConfig,
 {
-    let membership = membership_state.change_handler().apply(changes, retain)?;
+    let membership = membership_state.next_membership(changes, retain)?;
     let payload = payload.with_membership(membership);
     Ok(payload)
 }
