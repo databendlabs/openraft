@@ -4,11 +4,13 @@
 use std::num::NonZeroU64;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use clap::Parser;
 use openraft::Config;
 use openraft::NodeInfo as Node;
 use openraft::SnapshotPolicy;
+use openraft::storage::RaftLogStorage;
 
 use crate::app::App;
 use crate::store::new_storage;
@@ -77,7 +79,8 @@ pub async fn start_raft_node(options: Opt) -> std::io::Result<()> {
 
     let config = Arc::new(config.validate().unwrap());
 
-    let (log_store, state_machine_store) = new_storage(&dir).await;
+    let (mut log_store, state_machine_store) = new_storage(&dir).await;
+    let is_restart = log_store.get_log_state().await?.last_log_id.is_some();
 
     let kvs = state_machine_store.data.kvs.clone();
 
@@ -97,11 +100,21 @@ pub async fn start_raft_node(options: Opt) -> std::io::Result<()> {
     });
 
     let raft_server = network_v2_http::Server::new(app.raft.clone()).run(raft_addr);
-    let app_server = app_http::Server::new(app)
-        .add_openraft_routes()
-        .post("/read", http_api::read)
-        .post("/linearizable_read", http_api::linearizable_read)
-        .run(api_addr);
+    let app_server = async move {
+        if is_restart {
+            app.raft
+                .wait_for_recovery(Some(Duration::from_secs(5)))
+                .await
+                .map_err(|e| std::io::Error::other(e.to_string()))?;
+        }
+
+        app_http::Server::new(app)
+            .add_openraft_routes()
+            .post("/read", http_api::read)
+            .post("/linearizable_read", http_api::linearizable_read)
+            .run(api_addr)
+            .await
+    };
 
     tokio::try_join!(raft_server, app_server)?;
     Ok(())
