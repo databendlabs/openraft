@@ -2,8 +2,10 @@
   (:require [clojure.test :refer [deftest is testing]]
             [jepsen [checker :as checker]
              [db :as db]
+             [generator :as gen]
              [nemesis :as nemesis]
              [random :as random]]
+            [jepsen.generator.test :as gen-test]
             [jepsen.openraft.cluster :as cluster]
             [jepsen.openraft.harness :as harness]
             [jepsen.openraft.nemesis :as openraft-nemesis]
@@ -12,6 +14,10 @@
             [jepsen.openraft.worker :as worker]))
 
 (def voters ["n1" "n2" "n3" "n4" "n5"])
+
+(defn- healthy-status [nodes leader]
+  {:leader leader
+   :metrics (zipmap nodes (repeat {}))})
 
 (defn- installed [details]
   (assoc details :status :installed))
@@ -80,38 +86,86 @@
       (swap! events conj :teardown)
       (throw error))))
 
-(deftest selects-fault-set-for-leader-mode
+(deftest selects-fault-set-for-pause-leader-mode
   (let [configs [(set voters)]
         fault-sets (set (quorum/fault-sets configs))]
-    (doseq [mode [:leader-killed
-                  :leader-survives
-                  :leader-paused
+    (doseq [mode [:leader-paused
                   :leader-unpaused]]
       (testing (name mode)
-        (let [targets (#'process/process-targets
+        (let [targets (#'process/pause-targets
                        voters
                        configs
                        "n1"
                        mode)]
           (is (contains? fault-sets (set targets)))
-          (is (= (boolean (#{:leader-killed :leader-paused} mode))
+          (is (= (= :leader-paused mode)
                  (contains? (set targets) "n1"))))))))
+
+(deftest process-selects-any-nonempty-node-subset
+  (let [invocations (atom [])
+        delegate (recording-nemesis invocations)
+        subject (process/->ProcessNemesis delegate (atom nil))
+        test {:nodes ["n1" "n2" "n3" "n4" "n5"]}
+        configs [#{"n1" "n2" "n3"}]
+        selected ["n2" "n4" "n5"]]
+    (with-redefs [cluster/membership-status
+                  (constantly (healthy-status (:nodes test) "n1"))
+                  cluster/voter-configs
+                  (fn [_test _status] configs)
+                  random/nonempty-subset
+                  (fn [nodes]
+                    (is (= (:nodes test) nodes))
+                    selected)]
+      (let [completion (nemesis/invoke! subject
+                                        test
+                                        {:type :info
+                                         :f :kill-process
+                                         :value :random})
+            value (:value completion)]
+        (is (= :installed (:status value)))
+        (is (= selected (:nodes value)))
+        (is (= 3 (:target-count value)))
+        (is (false? (:leader-included? value)))
+        (is (= configs (:voter-configs value)))
+        (is (= ["n1" "n2" "n3"] (:reachable-voters value)))
+        (is (= ["n1" "n3"] (:survivors value)))
+        (is (= [[:kill selected]]
+               (mapv (juxt :f :value) @invocations)))))))
+
+(deftest process-generator-repeats-random-kill-episodes
+  (let [invocations (atom [])]
+    (gen-test/simulate
+     (gen/limit 4 (#'process/process-generator))
+     (fn [_context operation]
+       (swap! invocations conj operation)
+       (assoc operation :type :info)))
+    (is (= [[:kill-process :random]
+            [:restart-process nil]
+            [:kill-process :random]
+            [:restart-process nil]]
+           (mapv (juxt :f :value) @invocations)))))
+
+(deftest process-final-restart-uses-a-private-marker
+  (let [operation (:final-generator (process/process-package nil))]
+    (is (:process-final-restart? operation))
+    (is (not (contains? operation :final?)))))
 
 (deftest restarts-the-processes-that-were-killed
   (let [invocations (atom [])
         delegate (recording-nemesis invocations)
         subject (process/->ProcessNemesis delegate (atom nil))
         test {:nodes ["n1" "n2" "n3"]}
-        status {:leader "n1"}]
+        status (healthy-status (:nodes test) "n1")]
     (with-redefs [cluster/membership-status (fn [_test] status)
                   cluster/voter-configs
-                  (fn [_test _status] [(set (:nodes test))])]
+                  (fn [_test _status] [(set (:nodes test))])
+                  random/nonempty-subset (constantly ["n1"])]
       (let [killed (nemesis/invoke!
                     subject
                     test
                     {:type :info
                      :f :kill-process
-                     :value :leader-killed})
+                     :value :random})
             restarted (nemesis/invoke!
                        subject
                        test
@@ -131,7 +185,7 @@
 
 (deftest derives-process-outcomes-from-confirmed-node-results
   (let [test {:nodes ["n1" "n2" "n3"]}
-        status {:leader "n1"}
+        status (healthy-status (:nodes test) "n1")
         invoke-with-results
         (fn [results]
           (let [delegate (reify nemesis/Nemesis
@@ -142,12 +196,13 @@
                 subject (process/->ProcessNemesis delegate (atom nil))]
             (with-redefs [cluster/membership-status (constantly status)
                           cluster/voter-configs
-                          (fn [_test _status] [(set (:nodes test))])]
+                          (fn [_test _status] [(set (:nodes test))])
+                          random/nonempty-subset (constantly ["n1"])]
               (nemesis/invoke! subject
                                test
                                {:type :info
                                 :f :kill-process
-                                :value :leader-killed}))))]
+                                :value :random}))))]
     (testing "every pre-probe absence skips the kill"
       (let [value (:value (invoke-with-results {"n1" :target-absent}))]
         (is (= :skipped (:status value)))
@@ -168,21 +223,19 @@
                        (invoke! [_ _test op]
                          (assoc op :value results))
                        (teardown! [this _test] this))
-            subject (process/->ProcessNemesis delegate (atom nil))
-            prefer-targets (fn [candidates]
-                             (cons #{"n2" "n3"}
-                                   (remove #{#{"n2" "n3"}} candidates)))]
+            subject (process/->ProcessNemesis delegate (atom nil))]
         (with-redefs [cluster/membership-status
-                      (constantly {:leader "n1"})
+                      (constantly
+                       (healthy-status (:nodes five-node-test) "n1"))
                       cluster/voter-configs
                       (fn [_test _status] [(set voters)])
-                      random/shuffle prefer-targets]
+                      random/nonempty-subset (constantly ["n2" "n3"])]
           (let [value (:value
                        (nemesis/invoke! subject
                                         five-node-test
                                         {:type :info
                                          :f :kill-process
-                                         :value :leader-survives}))]
+                                         :value :random}))]
             (is (= :installed (:status value)))
             (is (= results (:stop-results value)))))))))
 
@@ -290,15 +343,17 @@
                    (teardown! [this _test] this))
         active (atom nil)
         subject (process/->ProcessNemesis delegate active)]
-    (with-redefs [cluster/membership-status (constantly {:leader "n1"})
+    (with-redefs [cluster/membership-status
+                  (constantly (healthy-status (:nodes test) "n1"))
                   cluster/voter-configs
-                  (fn [_test _status] [(set (:nodes test))])]
+                  (fn [_test _status] [(set (:nodes test))])
+                  random/nonempty-subset (constantly ["n1"])]
       (let [error (try
                     (nemesis/invoke! subject
                                      test
                                      {:type :info
                                       :f :kill-process
-                                      :value :leader-killed})
+                                      :value :random})
                     nil
                     (catch Exception e
                       e))]
@@ -376,7 +431,7 @@
           #(InterruptedException. "interrupted")
           process/process-nemesis
           nil
-          {:type :info :f :kill-process :value :leader-survives}]
+          {:type :info :f :kill-process :value :random}]
          [:start
           #(java.io.InterruptedIOException. "interrupted")
           process/process-nemesis
@@ -419,6 +474,8 @@
                                 :metrics (zipmap voters (repeat {}))})
                               cluster/voter-configs
                               (fn [_test _status] [(set voters)])
+                              random/nonempty-subset
+                              (constantly ["n2" "n3"])
                               random/shuffle prefer-planned]
                   (try
                     (nemesis/invoke! subject test op)
@@ -437,13 +494,12 @@
                                   (ex-info "kill failed" {}))
         subject (process/->ProcessNemesis delegate (atom nil))
         test {:nodes voters}
-        planned #{"n2" "n3"}
-        prefer-planned (fn [candidates]
-                         (cons planned (remove #{planned} candidates)))]
-    (with-redefs [cluster/membership-status (constantly {:leader "n1"})
+        planned ["n2" "n3"]]
+    (with-redefs [cluster/membership-status
+                  (constantly (healthy-status (:nodes test) "n1"))
                   cluster/voter-configs (fn [_test _status]
                                           [(set voters)])
-                  random/shuffle prefer-planned]
+                  random/nonempty-subset (constantly planned)]
       (is (thrown-with-msg?
            clojure.lang.ExceptionInfo
            #"kill failed"
@@ -451,7 +507,7 @@
                             test
                             {:type :info
                              :f :kill-process
-                             :value :leader-survives})))
+                             :value :random})))
       (let [restarted (nemesis/invoke! subject
                                        test
                                        {:type :info :f :restart-process})]
@@ -584,12 +640,13 @@
                                                :metrics @metrics})
                   cluster/voter-configs (fn [_test _status]
                                           [(set voters)])
+                  random/nonempty-subset (constantly ["n2"])
                   random/shuffle prefer-n2]
       (let [killed (nemesis/invoke! process-nemesis
                                     test
                                     {:type :info
                                      :f :kill-process
-                                     :value :leader-survives})
+                                     :value :random})
             killed-nodes (set (get-in killed [:value :nodes]))]
         (is (= #{"n2"} killed-nodes))
         (swap! metrics #(apply dissoc % killed-nodes))
@@ -749,7 +806,7 @@
         operations [[(process/->ProcessNemesis delegate (atom nil))
                      {:type :info
                       :f :kill-process
-                      :value :leader-killed}]
+                      :value :random}]
                     [(process/->PauseNemesis delegate (atom nil))
                      {:type :info
                       :f :pause-process
@@ -760,25 +817,11 @@
                (:value (nemesis/invoke! subject test op))))))
     (is (empty? @invocations))))
 
-(deftest skips-known-process-precondition-misses
+(deftest skips-known-process-state-conflicts
   (let [invocations (atom [])
         delegate (recording-nemesis invocations)
         test {:nodes ["n1"]}
         subject (process/->ProcessNemesis delegate (atom nil))]
-    (testing "there is no quorum-safe kill target"
-      (with-redefs [cluster/membership-status
-                    (constantly {:leader "n1"})
-                    cluster/voter-configs
-                    (fn [_test _status] [#{"n1"}])]
-        (let [value (:value
-                     (nemesis/invoke! subject
-                                      test
-                                      {:type :info
-                                       :f :kill-process
-                                       :value :leader-survives}))]
-          (is (= :skipped (:status value)))
-          (is (= :no-quorum-safe-process-target (:reason value))))))
-
     (testing "there are no killed processes to restart"
       (is (= (skipped :no-processes-killed {})
              (:value (nemesis/invoke! subject
@@ -787,7 +830,7 @@
                                        :f :restart-process})))))
 
     (testing "a tracked disruption is already active"
-      (let [active {:mode :leader-killed
+      (let [active {:mode :random
                     :nodes ["n1"]}
             active-subject (process/->ProcessNemesis delegate
                                                      (atom active))
@@ -796,35 +839,25 @@
                                     test
                                     {:type :info
                                      :f :kill-process
-                                     :value :leader-killed}))]
+                                     :value :random}))]
         (is (= :skipped (:status value)))
         (is (= :processes-already-killed (:reason value)))
         (is (= active (:killed value)))))
 
     (is (empty? @invocations))))
 
-(deftest requires-both-process-modes-and-an-intact-cluster
+(deftest requires-a-process-kill-and-an-intact-cluster
   (let [subject (#'process/coverage-checker)
         complete-history [{:f :kill-process
-                           :value (installed {:mode :leader-survives})}
+                           :value (installed {:mode :random})}
                           {:f :await-recovery
-                           :value (installed {:leader "n1"})}
-                          {:f :kill-process
-                           :value (installed {:mode :leader-killed})}
-                          {:f :await-recovery
-                           :value (installed {:leader "n2"})}]
+                           :value (installed {:leader "n1"})}]
         missing-mode-history [{:f :kill-process
-                               :value (installed {:mode :leader-survives})}
-                              {:f :kill-process
                                :value (skipped
                                        :no-supported-leader
                                        {})}]
         unrecovered-history [{:f :kill-process
-                              :value (installed {:mode :leader-survives})}
-                             {:f :await-recovery
-                              :value (installed {:leader "n1"})}
-                             {:f :kill-process
-                              :value (installed {:mode :leader-killed})}
+                              :value (installed {:mode :random})}
                              {:f :await-recovery
                               :value (indeterminate
                                       :recovery-timeout
@@ -834,28 +867,369 @@
       (is (= :intact (:cluster-state result))))
     (let [result (checker/check subject {} missing-mode-history {})]
       (is (false? (:valid? result)))
-      (is (= [:leader-killed] (:missing-modes result)))
-      (is (= :degraded (:cluster-state result))))
+      (is (= [:random] (:missing-modes result)))
+      (is (= :intact (:cluster-state result))))
     (let [result (checker/check subject {} unrecovered-history {})]
       (is (false? (:valid? result)))
       (is (empty? (:missing-modes result)))
       (is (= :degraded (:cluster-state result))))))
 
+(defn- process-kill-value
+  ([configs nodes]
+   (process-kill-value configs (quorum/voter-set configs) nodes))
+  ([configs reachable-voters nodes]
+   (installed {:mode :random
+               :nodes nodes
+               :voter-configs configs
+               :reachable-voters (vec reachable-voters)
+               :survivors (vec (remove (set nodes) reachable-voters))
+               :stop-results (zipmap nodes (repeat :killed))})))
+
+(defn- process-availability-history
+  ([configs nodes client-events restart-time]
+   (process-availability-history configs
+                                 nodes
+                                 client-events
+                                 restart-time
+                                 false))
+  ([configs nodes client-events restart-time final-restart?]
+   (into [{:time 0
+           :type :info
+           :process :nemesis
+           :f :kill-process
+           :value (process-kill-value configs nodes)}]
+         (concat client-events
+                 [(cond-> {:time restart-time
+                           :type :info
+                           :process :nemesis
+                           :f :restart-process
+                           :value nil}
+                    final-restart?
+                    (assoc :process-final-restart? true))]))))
+
+(deftest standalone-process-requires-progress-when-voters-retain-quorum
+  (let [subject (#'process/availability-checker 30)
+        configs [#{"n1" "n2" "n3"}]
+        check (fn [nodes client-events restart-time]
+                (checker/check
+                 subject
+                 {}
+                 (process-availability-history configs
+                                               nodes
+                                               client-events
+                                               restart-time)
+                 {}))
+        successful-attempt [{:time 5
+                             :type :invoke
+                             :process 0
+                             :phase :main
+                             :f :read}
+                            {:time 10
+                             :type :ok
+                             :process 0
+                             :phase :main
+                             :f :read}]
+        failed-attempt [{:time 5
+                         :type :invoke
+                         :process 0
+                         :phase :main
+                         :f :read}
+                        {:time 10
+                         :type :fail
+                         :process 0
+                         :phase :main
+                         :f :read}]]
+    (testing "a post-kill success proves retained-quorum availability"
+      (let [result (check ["n1"] successful-attempt 40)]
+        (is (:valid? result))
+        (is (= 1 (:quorum-episode-count result)))
+        (is (empty? (:failures result)))))
+
+    (testing "client attempts without a success reject the run"
+      (let [result (check ["n1"] failed-attempt 40)]
+        (is (false? (:valid? result)))
+        (is (= [:no-success-with-quorum]
+               (mapv :reason (:failures result))))))
+
+    (testing "missing client attempts are missing availability evidence"
+      (let [result (check ["n1"] [] 40)]
+        (is (false? (:valid? result)))
+        (is (= [:no-client-attempts]
+               (mapv :reason (:failures result))))))
+
+    (testing "an early success proves availability before the window ends"
+      (let [result (check ["n1"] successful-attempt 20)]
+        (is (:valid? result))
+        (is (true? (get-in result [:episodes 0 :evaluable?])))
+        (is (empty? (:failures result)))))
+
+    (testing "a short episode without success lacks enough evidence"
+      (let [result (check ["n1"] failed-attempt 20)]
+        (is (false? (:valid? result)))
+        (is (= [:insufficient-observation-window]
+               (mapv :reason (:failures result))))))
+
+    (testing "a CAS version mismatch proves the service responded"
+      (let [result (check ["n1"]
+                          [{:time 5
+                            :type :invoke
+                            :process 0
+                            :phase :main
+                            :f :cas}
+                           {:time 10
+                            :type :fail
+                            :process 0
+                            :phase :main
+                            :f :cas
+                            :error :version-mismatch}]
+                          40)]
+        (is (:valid? result))
+        (is (= 1 (get-in result [:episodes 0 :success-count])))))
+
+    (testing "an operation invoked before the kill is not availability proof"
+      (let [result (check ["n1"]
+                          [{:time -5
+                            :type :invoke
+                            :process 0
+                            :phase :main
+                            :f :read}
+                           {:time 5
+                            :type :ok
+                            :process 0
+                            :phase :main
+                            :f :read}]
+                          40)]
+        (is (false? (:valid? result)))
+        (is (= [:no-client-attempts]
+               (mapv :reason (:failures result))))))
+
+    (testing "a success after the deadline does not satisfy availability"
+      (let [result (check ["n1"]
+                          [{:time 5
+                            :type :invoke
+                            :process 0
+                            :phase :main
+                            :f :read}
+                           {:time 31
+                            :type :ok
+                            :process 0
+                            :phase :main
+                            :f :read}]
+                          40)]
+        (is (false? (:valid? result)))
+        (is (= [:no-success-with-quorum]
+               (mapv :reason (:failures result))))))
+
+    (testing "a dangling invocation is not successful progress"
+      (let [result (check ["n1"]
+                          [{:time 5
+                            :type :invoke
+                            :process 0
+                            :phase :main
+                            :f :read}]
+                          40)]
+        (is (false? (:valid? result)))
+        (is (= [:no-client-attempts]
+               (mapv :reason (:failures result))))))))
+
+(deftest excludes-completions-after-restart-from-process-availability
+  (let [subject (#'process/availability-checker 30)
+        configs [#{"n1" "n2" "n3"}]
+        history [{:time 0
+                  :type :info
+                  :process :nemesis
+                  :f :kill-process
+                  :value (process-kill-value configs ["n1"])}
+                 {:time 5
+                  :type :invoke
+                  :process 0
+                  :phase :main
+                  :f :read}
+                 {:time 30
+                  :type :info
+                  :process :nemesis
+                  :f :restart-process
+                  :value nil}
+                 {:time 30
+                  :type :ok
+                  :process 0
+                  :phase :main
+                  :f :read}]
+        result (checker/check subject {} history {})]
+    (is (false? (:valid? result)))
+    (is (= [:no-success-with-quorum]
+           (mapv :reason (:failures result))))))
+
+(deftest treats-a-short-final-process-episode-as-unevaluated
+  (let [subject (#'process/availability-checker 30)
+        configs [#{"n1" "n2" "n3"}]
+        history (process-availability-history configs
+                                              ["n1"]
+                                              []
+                                              20
+                                              true)
+        result (checker/check subject {} history {})]
+    (is (:valid? result))
+    (is (= 1 (:truncated-episode-count result)))
+    (is (zero? (:evaluated-quorum-episode-count result)))
+    (is (empty? (:failures result)))))
+
+(deftest standalone-process-does-not-require-progress-without-quorum
+  (let [subject (#'process/availability-checker 30)
+        configs [#{"n1" "n2" "n3"}]
+        history (process-availability-history configs
+                                              ["n1" "n2"]
+                                              []
+                                              40)
+        result (checker/check subject {} history {})]
+    (is (:valid? result))
+    (is (zero? (:quorum-episode-count result)))
+    (is (= 1 (:no-quorum-episode-count result)))
+    (is (empty? (:failures result)))))
+
+(deftest standalone-process-rejects-write-success-without-quorum
+  (let [subject (#'process/availability-checker 30)
+        configs [#{"n1" "n2" "n3"}]
+        history (process-availability-history
+                 configs
+                 ["n1" "n2"]
+                 [{:time 5
+                   :type :invoke
+                   :process 0
+                   :phase :main
+                   :f :write}
+                  {:time 10
+                   :type :ok
+                   :process 0
+                   :phase :main
+                   :f :write}]
+                 40)
+        result (checker/check subject {} history {})]
+    (is (false? (:valid? result)))
+    (is (= [:unexpected-success-without-quorum]
+           (mapv :reason (:failures result))))
+    (is (= 1 (get-in result [:episodes 0 :unexpected-success-count])))))
+
+(deftest standalone-process-uses-reachable-voters-for-quorum
+  (let [subject (#'process/availability-checker 30)
+        configs [#{"n1" "n2" "n3" "n4" "n5"}]
+        kill-value (process-kill-value configs
+                                       ["n1" "n2" "n3"]
+                                       ["n1"])
+        history [{:time 0
+                  :type :info
+                  :process :nemesis
+                  :f :kill-process
+                  :value kill-value}
+                 {:time 40
+                  :type :info
+                  :process :nemesis
+                  :f :restart-process
+                  :value nil}]
+        result (checker/check subject {} history {})]
+    (is (:valid? result))
+    (is (false? (get-in result [:episodes 0 :quorum-retained?])))
+    (is (= ["n2" "n3"] (get-in result [:episodes 0 :survivors])))))
+
+(deftest standalone-process-allows-success-when-quorum-is-only-possible
+  (let [subject (#'process/availability-checker 30)
+        configs [#{"n1" "n2" "n3"}]
+        kill-value (process-kill-value configs
+                                       ["n1" "n2"]
+                                       ["n1"])
+        history [{:time 0
+                  :type :info
+                  :process :nemesis
+                  :f :kill-process
+                  :value kill-value}
+                 {:time 5
+                  :type :invoke
+                  :process 0
+                  :phase :main
+                  :f :write}
+                 {:time 10
+                  :type :ok
+                  :process 0
+                  :phase :main
+                  :f :write}
+                 {:time 40
+                  :type :info
+                  :process :nemesis
+                  :f :restart-process
+                  :value nil}]
+        result (checker/check subject {} history {})]
+    (is (:valid? result))
+    (is (false? (get-in result [:episodes 0 :quorum-retained?])))
+    (is (true? (get-in result
+                       [:episodes 0 :configured-quorum-retained?])))
+    (is (= 1 (:indeterminate-quorum-episode-count result)))
+    (is (zero? (get-in result
+                       [:episodes 0 :unexpected-success-count])))
+    (is (empty? (:failures result)))))
+
+(deftest standalone-process-excludes-learners-from-quorum
+  (let [subject (#'process/availability-checker 30)
+        configs [#{"n1" "n2" "n3"}]
+        history (process-availability-history configs ["n4"] [] 40)
+        result (checker/check subject {} history {})]
+    (is (false? (:valid? result)))
+    (is (= 1 (:quorum-episode-count result)))
+    (is (= [:no-client-attempts]
+           (mapv :reason (:failures result))))))
+
+(deftest standalone-process-checks-every-joint-voter-config
+  (let [subject (#'process/availability-checker 30)
+        configs [#{"n1" "n2" "n3"}
+                 #{"n3" "n4" "n5"}]
+        no-quorum-history (process-availability-history configs
+                                                        ["n1" "n2"]
+                                                        []
+                                                        40)
+        retained-history (process-availability-history configs
+                                                       ["n1"]
+                                                       []
+                                                       40)]
+    (is (:valid? (checker/check subject {} no-quorum-history {})))
+    (is (= [:no-client-attempts]
+           (->> (checker/check subject {} retained-history {})
+                :failures
+                (mapv :reason))))))
+
+(deftest chaos-reuses-random-kills-without-standalone-availability-verdicts
+  (let [package (process/process-package nil)
+        raw-checker (:checker package)
+        chaos-checker (#'openraft-nemesis/fault-class-checker raw-checker)
+        configs [#{"n1" "n2" "n3"}]
+        history (into (process-availability-history configs
+                                                    ["n1"]
+                                                    []
+                                                    40)
+                      [{:time 41
+                        :type :info
+                        :process :nemesis
+                        :f :await-recovery
+                        :value (installed {:leader "n2"})}])
+        standalone-result (checker/check raw-checker {} history {})
+        chaos-result (checker/check chaos-checker {} history {})]
+    (is (false? (:valid? standalone-result)))
+    (is (= [:random] (:observed-modes standalone-result)))
+    (is (= :intact (:cluster-state standalone-result)))
+    (is (false? (get-in standalone-result [:availability :valid?])))
+    (is (:valid? chaos-result))
+    (is (:fault-class-executed? chaos-result))
+    (is (false? (get-in chaos-result [:availability :valid?])))))
+
 (deftest reports-an-indeterminate-process-state
   (let [subject (#'process/coverage-checker)
         covered-history [{:f :kill-process
-                          :value (installed {:mode :leader-survives})}
+                          :value (installed {:mode :random})}
                          {:f :await-recovery
-                          :value (installed {:leader "n1"})}
-                         {:f :kill-process
-                          :value (installed {:mode :leader-killed})}
-                         {:f :await-recovery
-                          :value (installed {:leader "n2"})}]
+                          :value (installed {:leader "n1"})}]
         indeterminate-history (conj covered-history
                                     {:f :kill-process
                                      :value (indeterminate
                                              :effect-unknown
-                                             {:mode :leader-killed})})
+                                             {:mode :random})})
         recovered-history (conj indeterminate-history
                                 {:f :await-recovery
                                  :value (installed {:leader "n2"})})]

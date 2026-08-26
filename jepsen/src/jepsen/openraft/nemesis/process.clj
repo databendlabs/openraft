@@ -1,5 +1,6 @@
 (ns jepsen.openraft.nemesis.process
-  (:require [clojure.tools.logging :refer [info]]
+  (:require [clojure.set :as set]
+            [clojure.tools.logging :refer [info]]
             [jepsen [checker :as checker]
              [generator :as gen]
              [nemesis :as nemesis]
@@ -14,11 +15,18 @@
 
 (def downtime-seconds 10)
 (def required-process-modes
-  #{:leader-killed :leader-survives})
+  #{:random})
 (def required-pause-modes
   #{:leader-paused :leader-unpaused})
 
-(defn- process-targets [eligible-nodes configs leader mode]
+;; openraft-test-app uses OpenRaft's 300 ms maximum election timeout. Three
+;; windows allow a split vote to settle without turning a retained-quorum
+;; outage into a silent success.
+(def ^:private max-election-timeout-ms 300)
+(def ^:private process-availability-window-nanos
+  (* 3 max-election-timeout-ms 1000000))
+
+(defn- pause-targets [eligible-nodes configs leader mode]
   (let [voters (quorum/voter-set configs)]
     (when-not (contains? voters leader)
       (throw (ex-info "The current leader is not a voter"
@@ -27,10 +35,10 @@
     (let [eligible-node-set (set eligible-nodes)
           fault-sets (quorum/fault-sets configs)
           candidates (->> (cond
-                            (#{:leader-killed :leader-paused} mode)
+                            (= :leader-paused mode)
                             (filter #(contains? % leader) fault-sets)
 
-                            (#{:leader-survives :leader-unpaused} mode)
+                            (= :leader-unpaused mode)
                             (remove #(contains? % leader) fault-sets)
 
                             :else
@@ -43,22 +51,32 @@
              (filter target-set)
              vec)))))
 
-(defn- process-disruption [test status mode eligible-nodes]
+(defn- process-disruption [kind test status mode eligible-nodes]
   (let [leader (:leader status)
         configs (cluster/voter-configs test status)
-        targets (process-targets eligible-nodes configs leader mode)]
-    (when targets
-      (let [voters (quorum/voter-set configs)
-            target-set (set targets)
+        voters (quorum/voter-set configs)
+        reachable-node-set (set (keys (:metrics status)))
+        reachable-voters (set/intersection voters reachable-node-set)
+        targets (case kind
+                  :process (some-> (random/nonempty-subset eligible-nodes) vec)
+                  :pause (pause-targets eligible-nodes configs leader mode))]
+    (when (seq targets)
+      (let [target-set (set targets)
             survivors (->> (:nodes test)
-                           (filter voters)
+                           (filter reachable-voters)
                            (remove target-set)
                            vec)]
-        {:mode mode
-         :leader leader
-         :nodes targets
-         :voter-configs configs
-         :survivors survivors}))))
+        (cond-> {:mode mode
+                 :leader leader
+                 :nodes targets
+                 :voter-configs configs
+                 :survivors survivors}
+          (= :process kind)
+          (assoc :reachable-voters (->> (:nodes test)
+                                        (filter reachable-voters)
+                                        vec)
+                 :target-count (count targets)
+                 :leader-included? (contains? target-set leader)))))))
 
 (def ^:private disruption-start-specs
   {:process {:delegate-f :kill
@@ -191,7 +209,8 @@
                                     (filter (set (keys (:metrics status))))
                                     vec)
                                (:nodes test))]
-          (if-let [disruption (process-disruption test
+          (if-let [disruption (process-disruption kind
+                                                  test
                                                   status
                                                   mode
                                                   eligible-nodes)]
@@ -218,11 +237,11 @@
                              :mode mode
                              :voter-configs (cluster/voter-configs test
                                                                    status)}]
-                (info "Skipping process kill without a quorum-safe target"
+                (info "Skipping process kill without an eligible target"
                       details)
                 (assoc op
                        :value (outcome/skipped
-                               :no-quorum-safe-process-target
+                               :no-process-target
                                details)))
 
               :pause
@@ -377,12 +396,7 @@
    (gen/phases
     {:type :info
      :f :kill-process
-     :value :leader-survives}
-    {:type :info
-     :f :restart-process}
-    {:type :info
-     :f :kill-process
-     :value :leader-killed}
+     :value :random}
     {:type :info
      :f :restart-process})))
 
@@ -465,15 +479,228 @@
                          history
                          cluster-state)))))
 
+(def ^:private client-completion-types
+  #{:ok :fail :info})
+
+(defn- main-client-operation? [op]
+  (and (not= :nemesis (:process op))
+       (= :main (:phase op))
+       (#{:read :write :cas} (:f op))))
+
+(defn- completed-client-attempts [history]
+  (:attempts
+   (reduce
+    (fn [{:keys [pending] :as state} [index op]]
+      (cond
+        (and (main-client-operation? op)
+             (= :invoke (:type op)))
+        (assoc-in state [:pending (:process op)]
+                  {:index index
+                   :op op})
+
+        (and (main-client-operation? op)
+             (client-completion-types (:type op)))
+        (if-let [{invoke-index :index
+                  invocation :op} (get pending (:process op))]
+          (-> state
+              (update :attempts conj
+                      {:process (:process op)
+                       :f (:f op)
+                       :invoke-index invoke-index
+                       :invoke-time (:time invocation)
+                       :completion-index index
+                       :completion-time (:time op)
+                       :type (:type op)
+                       :error (:error op)})
+              (update :pending dissoc (:process op)))
+          state)
+
+        :else state))
+    {:pending {}
+     :attempts []}
+    (map-indexed vector history))))
+
+(defn- installed-random-kill? [op]
+  (and (= :kill-process (:f op))
+       (disruption-installed? required-process-modes
+                              (:value op))))
+
+(defn- restart-invocation? [op]
+  (and (= :restart-process (:f op))
+       (nil? (:value op))))
+
+(defn- process-episodes [history]
+  (let [{:keys [active episodes]}
+        (reduce
+         (fn [{:keys [active] :as state} [index op]]
+           (cond
+             (installed-random-kill? op)
+             (assoc state
+                    :active {:start-index index
+                             :started-at (:time op)
+                             :details (:value op)})
+
+             (and active (restart-invocation? op))
+             (-> state
+                 (update :episodes conj
+                         (assoc active
+                                :end-index index
+                                :ended-at (:time op)
+                                :final-restart?
+                                (:process-final-restart? op)))
+                 (assoc :active nil))
+
+             :else state))
+         {:active nil
+          :episodes []}
+         (map-indexed vector history))]
+    (cond-> episodes
+      active (conj active))))
+
+(defn- attempt-started-during?
+  [{:keys [start-index end-index started-at]} deadline attempt]
+  (and (< start-index (:invoke-index attempt))
+       (or (nil? end-index)
+           (< (:invoke-index attempt) end-index))
+       (<= started-at (:invoke-time attempt) deadline)))
+
+(defn- successful-attempt?
+  [{:keys [end-index]} deadline attempt]
+  (and (or (= :ok (:type attempt))
+           (and (= :fail (:type attempt))
+                (= :version-mismatch (:error attempt))))
+       (or (nil? end-index)
+           (< (:completion-index attempt) end-index))
+       (<= (:completion-time attempt) deadline)))
+
+(defn- unexpected-write-success?
+  [{:keys [end-index]} attempt]
+  (and (= :ok (:type attempt))
+       (#{:write :cas} (:f attempt))
+       (or (nil? end-index)
+           (< (:completion-index attempt) end-index))))
+
+(defn- episode-availability [window-nanos attempts episode]
+  (let [{:keys [started-at ended-at final-restart? details]} episode
+        configs (:voter-configs details)
+        targets (set (:nodes details))
+        reachable-voters (set (:reachable-voters details))
+        configured-voters (quorum/voter-set configs)
+        survivors (set/difference reachable-voters targets)
+        configured-survivors (set/difference configured-voters targets)
+        quorum-retained? (quorum/quorum? configs survivors)
+        configured-quorum-retained? (quorum/quorum? configs
+                                                    configured-survivors)
+        deadline (+ started-at window-nanos)
+        episode-attempts (filterv (partial attempt-started-during?
+                                           episode
+                                           Long/MAX_VALUE)
+                                  attempts)
+        attempts (filterv #(<= (:invoke-time %) deadline)
+                          episode-attempts)
+        successes (filterv (partial successful-attempt?
+                                    episode
+                                    deadline)
+                           attempts)
+        unexpected-successes (when-not configured-quorum-retained?
+                               (filterv (partial unexpected-write-success?
+                                                 episode)
+                                        episode-attempts))
+        full-window? (and ended-at (<= deadline ended-at))
+        truncated? (and final-restart? (not full-window?))
+        reason (cond
+                 (seq unexpected-successes)
+                 :unexpected-success-without-quorum
+
+                 (not quorum-retained?)
+                 nil
+
+                 (seq successes)
+                 nil
+
+                 truncated?
+                 nil
+
+                 (not full-window?)
+                 :insufficient-observation-window
+
+                 (empty? attempts)
+                 :no-client-attempts
+
+                 :else
+                 :no-success-with-quorum)]
+    (cond-> {:started-at started-at
+             :ended-at ended-at
+             :deadline deadline
+             :targets (vec (:nodes details))
+             :voter-configs configs
+             :reachable-voters (vec (sort reachable-voters))
+             :survivors (vec (sort survivors))
+             :configured-survivors (vec (sort configured-survivors))
+             :quorum-retained? quorum-retained?
+             :configured-quorum-retained? configured-quorum-retained?
+             :evaluable? (boolean (or (not quorum-retained?)
+                                      (seq successes)
+                                      full-window?))
+             :truncated? truncated?
+             :attempt-count (count attempts)
+             :success-count (count successes)
+             :unexpected-success-count (count unexpected-successes)}
+      reason (assoc :reason reason))))
+
+(defn- availability-checker [window-nanos]
+  (reify checker/Checker
+    (check [_ _test history _opts]
+      (let [attempts (completed-client-attempts history)
+            episodes (mapv (partial episode-availability
+                                    window-nanos
+                                    attempts)
+                           (process-episodes history))
+            failures (filterv :reason episodes)
+            retained (filterv :quorum-retained? episodes)
+            evaluated-retained (filterv :evaluable? retained)
+            valid? (not (seq failures))]
+        {:valid? valid?
+         :window-nanos window-nanos
+         :episode-count (count episodes)
+         :quorum-episode-count (count retained)
+         :no-quorum-episode-count
+         (count (remove :configured-quorum-retained? episodes))
+         :indeterminate-quorum-episode-count
+         (count (filter #(and (:configured-quorum-retained? %)
+                              (not (:quorum-retained? %)))
+                        episodes))
+         :evaluated-quorum-episode-count (count evaluated-retained)
+         :truncated-episode-count (count (filter :truncated? episodes))
+         :episodes episodes
+         :failures failures}))))
+
+(defn- process-checker []
+  (let [coverage (coverage-checker)
+        availability (availability-checker process-availability-window-nanos)]
+    (reify checker/Checker
+      (check [_ test history opts]
+        (let [coverage-result (checker/check coverage test history opts)
+              availability-result (checker/check availability
+                                                 test
+                                                 history
+                                                 opts)]
+          (assoc coverage-result
+                 :valid? (checker/merge-valid
+                          [(:valid? coverage-result)
+                           (:valid? availability-result)])
+                 :availability availability-result))))))
+
 (defn process-package [db]
   {:name :process
    :interval downtime-seconds
    :nemesis (process-nemesis db)
    :generator (process-generator)
    :final-generator {:type :info
-                     :f :restart-process}
+                     :f :restart-process
+                     :process-final-restart? true}
    :checker (openraft-checker/reject-checker-exceptions
-             (coverage-checker))})
+             (process-checker))})
 
 (defn- next-pause-state [expected-nodes state op]
   (let [error? (operation-error? op)

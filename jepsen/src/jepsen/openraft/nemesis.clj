@@ -15,7 +15,7 @@
 (def ^:private initial-healthy-seconds 5)
 (def ^:private retry-interval-seconds 1)
 (def ^:private retryable-skip-reasons
-  #{:no-quorum-safe-process-target
+  #{:no-process-target
     :no-reachable-pause-target
     :no-safe-packet-target
     :no-safe-partition-target

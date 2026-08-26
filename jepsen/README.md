@@ -87,7 +87,7 @@ The `jepsen.openraft` namespace contains the OpenRaft-specific Jepsen code:
 - `nemesis.clj`: fault scheduling, composition, and final recovery.
 - `nemesis/membership.clj`: membership growth, shrink, and final restoration.
 - `nemesis/partition.clj`: leader-aware network partition faults and recovery.
-- `nemesis/process.clj`: quorum-safe process kill/restart and pause/resume faults.
+- `nemesis/process.clj`: process kill/restart and pause/resume faults.
 - `quorum.clj`: stable and joint-consensus quorum calculations.
 - `workload.clj`: generators and checkers for client operations.
 
@@ -159,18 +159,18 @@ narrower combination is needed.
 
 ### Nemesis Design
 
-Partition, process, pause, and packet standalone Nemeses select targets so the
-surviving voters retain a quorum in every effective voter configuration. Clock
-faults deliberately allow any non-empty node subset, including a majority or
-all nodes; their focused run does not require progress while no quorum is
-available, but safety and final recovery remain mandatory.
+Target policies are specific to each fault class. Network Partition, Process
+Pause, and Packet faults preserve a voter quorum so focused runs can require
+continuous progress. Process Kill and Clock faults may target any non-empty
+node subset, including a voter majority or every node. Their focused runs do
+not require progress while no usable quorum remains, but safety and final
+recovery remain mandatory. Membership changes retain their own legality and
+quorum-preserving rules.
 
-The `chaos` profile composes fault packages without reserving one common
-survivor quorum across fault classes. Most focused fault packages select
-quorum-safe targets, while Clock may target a majority or all nodes. Active
-fault intervals may overlap and temporarily remove the global quorum. Safety
-and eventual recovery remain mandatory in that case, but continuous
-availability does not.
+The `chaos` profile composes these faults without reserving one common survivor
+quorum across fault classes. Their active intervals may overlap and temporarily
+remove the global quorum. Safety and eventual recovery remain mandatory in that
+case, but continuous availability does not.
 
 #### Network Partition Nemesis
 
@@ -188,22 +188,23 @@ is skipped and retried later without counting as coverage.
 
 #### Process Kill Nemesis
 
-The process Nemesis reads the effective voter configurations from OpenRaft
-metrics and randomly stops a non-empty voter subset whose survivors still form
-a quorum. It exercises two target cases:
+The process Nemesis randomly stops any non-empty subset of the test nodes. It
+does not filter targets by quorum or leader placement, so an episode may stop a
+single node, a voter minority, a voter majority, learners, or every node. The
+history records the selected nodes, initial leader, and effective voter
+configuration, together with the voters reachable before the kill, so the
+checker can determine whether a usable quorum remained.
 
-- `leader-killed`: the selected processes include the current
-  quorum-supported leader, so the survivors must elect a replacement;
-- `leader-survives`: only non-leader voters are selected, so the existing leader
-  remains with a quorum.
-
-The target set is fixed for one fault episode. Recovery restarts the selected
-processes and waits for them to rejoin the healthy cluster.
+When a quorum remains, a focused Process run requires a definitive client
+response within three maximum election timeouts. Losing quorum permits a
+temporary lack of progress, but never relaxes safety. The target set is fixed
+for one fault episode. Each episode restarts the selected processes, and final
+recovery waits for every node to rejoin a healthy cluster.
 
 #### Process Pause Nemesis
 
-The pause Nemesis uses the same quorum-safe target selection as process kill,
-but suspends the selected processes without terminating them. It covers:
+The pause Nemesis suspends a quorum-safe target set without terminating its
+processes. It covers:
 
 - `leader-paused`: the selected set includes the supported leader;
 - `leader-unpaused`: only non-leader voters are suspended.
