@@ -113,7 +113,7 @@
                   :value {:status :installed}}
                  {:f :pause-process
                   :value {:status :installed
-                          :mode :leader-unpaused
+                          :mode :random
                           :leader "n1"
                           :nodes ["n2"]
                           :voter-configs [all-voters]
