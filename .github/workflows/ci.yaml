@@ -457,6 +457,16 @@ jobs:
       - name: Docs
         run: make docs-check
 
+      # The four SVGs in assets/logo are written by the two scripts beside
+      # them. Regenerate and fail on a diff, so an edited script that was never
+      # re-run, or a hand-edited SVG, cannot reach main. Both scripts write next
+      # to __file__, so the checkout root is the right working directory.
+      - name: Logo assets
+        run: |
+          python3 assets/logo/generate_mark.py
+          python3 assets/logo/generate_banner.py
+          git diff --exit-code assets/logo
+
       - name: Install cargo-audit
         uses: taiki-e/install-action@v2
         with:
