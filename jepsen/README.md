@@ -159,12 +159,12 @@ narrower combination is needed.
 
 ### Nemesis Design
 
-Target policies are specific to each fault class. Network Partition, Process
-Pause, and Packet faults preserve a voter quorum so focused runs can require
-continuous progress. Process Kill and Clock faults may target any non-empty
-node subset, including a voter majority or every node. Their focused runs do
-not require progress while no usable quorum remains, but safety and final
-recovery remain mandatory. Membership changes retain their own legality and
+Target policies are specific to each fault class. Network Partition and Packet
+faults preserve a voter quorum so focused runs can require continuous progress.
+Process Kill, Process Pause, and Clock faults may target any non-empty node
+subset, including a voter majority or every node. Their focused runs do not
+require progress while no usable quorum remains, but safety and final recovery
+remain mandatory. Membership changes retain their own legality and
 quorum-preserving rules.
 
 The `chaos` profile composes these faults without reserving one common survivor
@@ -203,11 +203,10 @@ recovery waits for every node to rejoin a healthy cluster.
 
 #### Process Pause Nemesis
 
-The pause Nemesis suspends a quorum-safe target set without terminating its
-processes. It covers:
-
-- `leader-paused`: the selected set includes the supported leader;
-- `leader-unpaused`: only non-leader voters are suspended.
+The pause Nemesis suspends a uniformly random non-empty subset of reachable
+nodes without terminating their processes. Like Process Kill, it may retain or
+remove the voter quorum and records enough evidence for the focused checker to
+apply the matching availability expectation.
 
 Paused processes retain their memory and open TCP connections, so peers observe
 unresponsive processes rather than closed connections. Resume operations target

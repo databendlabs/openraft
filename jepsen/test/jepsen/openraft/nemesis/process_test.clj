@@ -86,20 +86,36 @@
       (swap! events conj :teardown)
       (throw error))))
 
-(deftest selects-fault-set-for-pause-leader-mode
-  (let [configs [(set voters)]
-        fault-sets (set (quorum/fault-sets configs))]
-    (doseq [mode [:leader-paused
-                  :leader-unpaused]]
-      (testing (name mode)
-        (let [targets (#'process/pause-targets
-                       voters
-                       configs
-                       "n1"
-                       mode)]
-          (is (contains? fault-sets (set targets)))
-          (is (= (= :leader-paused mode)
-                 (contains? (set targets) "n1"))))))))
+(deftest pause-selects-any-nonempty-node-subset
+  (let [invocations (atom [])
+        delegate (recording-nemesis invocations)
+        subject (process/->PauseNemesis delegate (atom nil))
+        test {:nodes ["n1" "n2" "n3" "n4" "n5"]}
+        configs [#{"n1" "n2" "n3"}]
+        selected ["n2" "n4" "n5"]]
+    (with-redefs [cluster/membership-status
+                  (constantly (healthy-status (:nodes test) "n1"))
+                  cluster/voter-configs
+                  (fn [_test _status] configs)
+                  random/nonempty-subset
+                  (fn [nodes]
+                    (is (= (:nodes test) nodes))
+                    selected)]
+      (let [completion (nemesis/invoke! subject
+                                        test
+                                        {:type :info
+                                         :f :pause-process
+                                         :value :random})
+            value (:value completion)]
+        (is (= :installed (:status value)))
+        (is (= selected (:nodes value)))
+        (is (= 3 (:target-count value)))
+        (is (false? (:leader-included? value)))
+        (is (= configs (:voter-configs value)))
+        (is (= ["n1" "n2" "n3"] (:reachable-voters value)))
+        (is (= ["n1" "n3"] (:survivors value)))
+        (is (= [[:pause selected]]
+               (mapv (juxt :f :value) @invocations)))))))
 
 (deftest process-selects-any-nonempty-node-subset
   (let [invocations (atom [])
@@ -148,6 +164,11 @@
 (deftest process-final-restart-uses-a-private-marker
   (let [operation (:final-generator (process/process-package nil))]
     (is (:process-final-restart? operation))
+    (is (not (contains? operation :final?)))))
+
+(deftest pause-final-resume-uses-a-private-marker
+  (let [operation (:final-generator (process/pause-package nil))]
+    (is (:pause-final-resume? operation))
     (is (not (contains? operation :final?)))))
 
 (deftest restarts-the-processes-that-were-killed
@@ -255,12 +276,13 @@
                 subject (process/->PauseNemesis delegate (atom nil))]
             (with-redefs [cluster/membership-status (constantly status)
                           cluster/voter-configs
-                          (fn [_test _status] [(set (:nodes test))])]
+                          (fn [_test _status] [(set (:nodes test))])
+                          random/nonempty-subset (constantly ["n1"])]
               (nemesis/invoke! subject
                                test
                                {:type :info
                                 :f :pause-process
-                                :value :leader-paused}))))]
+                                :value :random}))))]
     (testing "every pre-probe absence skips the pause"
       (let [value (:value (invoke-with-result :target-absent))]
         (is (= :skipped (:status value)))
@@ -281,7 +303,7 @@
 
 (deftest derives-resume-outcomes-from-confirmed-node-results
   (let [test {:nodes ["n1" "n2" "n3"]}
-        disruption {:mode :leader-paused
+        disruption {:mode :random
                     :leader "n1"
                     :nodes ["n1"]
                     :voter-configs [(set (:nodes test))]
@@ -387,13 +409,14 @@
         subject (process/->PauseNemesis delegate active)]
     (with-redefs [cluster/membership-status (constantly status)
                   cluster/voter-configs
-                  (fn [_test _status] [(set (:nodes test))])]
+                  (fn [_test _status] [(set (:nodes test))])
+                  random/nonempty-subset (constantly ["n1"])]
       (let [error (try
                     (nemesis/invoke! subject
                                      test
                                      {:type :info
                                       :f :pause-process
-                                      :value :leader-paused})
+                                      :value :random})
                     nil
                     (catch Exception e
                       e))]
@@ -418,7 +441,7 @@
   (let [test {:nodes voters
               :sessions (zipmap voters (repeat :unused-session))}
         planned #{"n2" "n3"}
-        disruption {:mode :leader-unpaused
+        disruption {:mode :random
                     :leader "n1"
                     :nodes ["n2" "n3"]
                     :voter-configs [(set voters)]
@@ -441,7 +464,7 @@
           #(java.nio.channels.ClosedByInterruptException.)
           process/pause-nemesis
           nil
-          {:type :info :f :pause-process :value :leader-unpaused}]
+          {:type :info :f :pause-process :value :random}]
          [:resume
           #(ex-info "interrupted" {:kind :interrupted})
           process/pause-nemesis
@@ -527,17 +550,18 @@
                 :metrics (zipmap (:nodes test) (repeat {}))}]
     (with-redefs [cluster/membership-status (fn [_test] status)
                   cluster/voter-configs (fn [_test _status]
-                                          [(set (:nodes test))])]
+                                          [(set (:nodes test))])
+                  random/nonempty-subset (constantly ["n1"])]
       (is (thrown-with-msg?
            clojure.lang.ExceptionInfo
            #"pause failed"
            (nemesis/invoke! subject test {:type :info
                                           :f :pause-process
-                                          :value :leader-paused})))
+                                          :value :random})))
       (let [skipped-value
             (:value (nemesis/invoke! subject test {:type :info
                                                    :f :pause-process
-                                                   :value :leader-unpaused}))]
+                                                   :value :random}))]
         (is (= :skipped (:status skipped-value)))
         (is (= :processes-already-paused (:reason skipped-value))))
       (is (= [[:pause ["n1"]]]
@@ -545,11 +569,14 @@
       (let [resumed (nemesis/invoke! subject
                                      test
                                      {:type :info :f :resume-process})]
-        (is (= {:mode :leader-paused
+        (is (= {:mode :random
                 :leader "n1"
                 :nodes ["n1"]
                 :voter-configs [#{"n1" "n2" "n3"}]
-                :survivors ["n2" "n3"]}
+                :reachable-voters ["n1" "n2" "n3"]
+                :survivors ["n2" "n3"]
+                :target-count 1
+                :leader-included? true}
                (get-in resumed [:value :paused])))))))
 
 (deftest records-pause-recovery-history
@@ -575,12 +602,13 @@
     (with-redefs [cluster/membership-status (fn [_test] status)
                   cluster/await-ready! (fn [_test] status)
                   cluster/voter-configs
-                  (fn [_test _status] [(set (:nodes test))])]
-      (let [leader-pause (invoke! :pause-process :leader-paused)
-            duplicate-pause (invoke! :pause-process :leader-unpaused)
+                  (fn [_test _status] [(set (:nodes test))])
+                  random/nonempty-subset (constantly ["n1"])]
+      (let [leader-pause (invoke! :pause-process :random)
+            duplicate-pause (invoke! :pause-process :random)
             leader-resume (invoke! :resume-process)
             leader-recovery (recover!)
-            follower-pause (invoke! :pause-process :leader-unpaused)
+            follower-pause (invoke! :pause-process :random)
             follower-resume (invoke! :resume-process)
             follower-recovery (recover!)
             cleanup-resume (invoke! :resume-process)
@@ -640,7 +668,11 @@
                                                :metrics @metrics})
                   cluster/voter-configs (fn [_test _status]
                                           [(set voters)])
-                  random/nonempty-subset (constantly ["n2"])
+                  random/nonempty-subset
+                  (fn [nodes]
+                    (if (some #{"n2"} nodes)
+                      ["n2"]
+                      [(first nodes)]))
                   random/shuffle prefer-n2]
       (let [killed (nemesis/invoke! process-nemesis
                                     test
@@ -654,7 +686,7 @@
                                       test
                                       {:type :info
                                        :f :pause-process
-                                       :value :leader-unpaused})
+                                       :value :random})
               paused-nodes (get-in paused [:value :nodes])
               delegated-pause (first (filter #(= :pause (:f %))
                                              @invocations))]
@@ -662,7 +694,7 @@
           (is (every? (set (keys @metrics)) paused-nodes))
           (is (= paused-nodes (:value delegated-pause))))))))
 
-(deftest skips-a-pause-without-a-reachable-target
+(deftest pause-may-target-the-only-reachable-voter
   (let [invocations (atom [])
         subject (process/->PauseNemesis
                  (recording-nemesis invocations)
@@ -677,16 +709,16 @@
                                         test
                                         {:type :info
                                          :f :pause-process
-                                         :value :leader-unpaused})
+                                         :value :random})
             result (checker/check (#'process/pause-coverage-checker)
                                   test
                                   [completion]
                                   {})]
-        (is (= :skipped (get-in completion [:value :status])))
-        (is (= :no-reachable-pause-target
-               (get-in completion [:value :reason])))
-        (is (empty? @invocations))
-        (is (empty? (:observed-modes result)))))))
+        (is (= :installed (get-in completion [:value :status])))
+        (is (= ["n1"] (get-in completion [:value :nodes])))
+        (is (= [[:pause ["n1"]]]
+               (mapv (juxt :f :value) @invocations)))
+        (is (= [:random] (:observed-modes result)))))))
 
 (deftest teardown-cleanup-failure-records-a-harness-failure
   (let [failure-state (harness/failure-state)
@@ -810,7 +842,7 @@
                     [(process/->PauseNemesis delegate (atom nil))
                      {:type :info
                       :f :pause-process
-                      :value :leader-paused}]]]
+                      :value :random}]]]
     (with-redefs [cluster/membership-status (constantly nil)]
       (doseq [[subject op] operations]
         (is (= (skipped :no-supported-leader {})
@@ -1240,6 +1272,71 @@
       (is (= :unknown (:valid? result)))
       (is (= :unknown (:cluster-state result))))))
 
+(defn- pause-availability-history
+  [configs nodes client-events resume-time]
+  (into [{:time 0
+          :type :info
+          :process :nemesis
+          :f :pause-process
+          :value (installed
+                  {:mode :random
+                   :nodes nodes
+                   :voter-configs configs
+                   :reachable-voters (vec (quorum/voter-set configs))
+                   :pause-results (zipmap nodes (repeat :paused))})}]
+        (concat client-events
+                [{:time resume-time
+                  :type :info
+                  :process :nemesis
+                  :f :resume-process
+                  :value nil}])))
+
+(deftest standalone-pause-applies-quorum-aware-availability
+  (let [subject (#'process/availability-checker
+                 30
+                 :pause-process
+                 :resume-process
+                 process/required-pause-modes
+                 :pause-final-resume?)
+        configs [#{"n1" "n2" "n3"}]
+        success [{:time 5
+                  :type :invoke
+                  :process 0
+                  :phase :main
+                  :f :read}
+                 {:time 10
+                  :type :ok
+                  :process 0
+                  :phase :main
+                  :f :read}]
+        retained (checker/check
+                  subject
+                  {}
+                  (pause-availability-history configs ["n1"] success 40)
+                  {})
+        retained-without-progress (checker/check
+                                   subject
+                                   {}
+                                   (pause-availability-history configs
+                                                               ["n1"]
+                                                               []
+                                                               40)
+                                   {})
+        no-quorum (checker/check
+                   subject
+                   {}
+                   (pause-availability-history configs
+                                               ["n1" "n2"]
+                                               []
+                                               40)
+                   {})]
+    (is (:valid? retained))
+    (is (false? (:valid? retained-without-progress)))
+    (is (= :no-client-attempts
+           (get-in retained-without-progress [:failures 0 :reason])))
+    (is (:valid? no-quorum))
+    (is (= 1 (:no-quorum-episode-count no-quorum)))))
+
 (deftest checks-pause-coverage-and-recovery-state
   (let [subject (#'process/pause-coverage-checker)
         test {:nodes voters}
@@ -1252,31 +1349,25 @@
                         :voter-configs [(set voters)]
                         :survivors (vec (remove (set nodes) voters))
                         :pause-results (zipmap nodes (repeat :paused))}))
-        leader-unpaused (pause-value :leader-unpaused ["n2" "n3"])
-        leader-paused (pause-value :leader-paused ["n1" "n2"])
+        follower-targets (pause-value :random ["n2" "n3"])
+        leader-targets (pause-value :random ["n1" "n2"])
         resumed-all (installed
                      {:paused nil
                       :resumed voters
                       :resume-results (zipmap voters (repeat :resumed))})
         complete-history [{:f :pause-process
-                           :value leader-unpaused}
+                           :value follower-targets}
                           {:f :resume-process
                            :value resumed-all}
                           {:f :await-recovery
                            :value (installed {:leader "n1"})}
                           {:f :pause-process
-                           :value leader-paused}
+                           :value leader-targets}
                           {:f :resume-process
                            :value resumed-all}
                           {:f :await-recovery
                            :value (installed {:leader "n2"})}]
         missing-mode-history [{:f :pause-process
-                               :value leader-unpaused}
-                              {:f :resume-process
-                               :value resumed-all}
-                              {:f :await-recovery
-                               :value (installed {:leader "n1"})}
-                              {:f :pause-process
                                :value (skipped
                                        :no-supported-leader
                                        {})}]
@@ -1290,10 +1381,10 @@
                                     {:f :pause-process
                                      :value (indeterminate
                                              :effect-unknown
-                                             {:mode :leader-paused})})
+                                             {:mode :random})})
         paused-history (conj complete-history
                              {:f :pause-process
-                              :value leader-paused})
+                              :value leader-targets})
         resuming-history (conj paused-history
                                {:type :info
                                 :f :resume-process})
@@ -1305,16 +1396,16 @@
         partial-resume-history (assoc-in complete-history
                                          [4 :value :resumed]
                                          ["n1"])
-        mixed-leader-pause (assoc-in leader-paused
-                                     [:pause-results "n1"]
-                                     :target-absent)
+        mixed-pause (assoc-in leader-targets
+                              [:pause-results "n1"]
+                              :target-absent)
         mixed-pause-history (conj (subvec complete-history 0 3)
                                   {:f :pause-process
-                                   :value mixed-leader-pause})
+                                   :value mixed-pause})
         covered-then-mixed-pause-history
         (conj complete-history
               {:f :pause-process
-               :value mixed-leader-pause})
+               :value mixed-pause})
         mixed-resume-history (assoc-in complete-history
                                        [4 :value :resume-results "n5"]
                                        :target-absent)
@@ -1330,15 +1421,15 @@
         (assoc-in complete-history
                   [4 :value :resume-results]
                   (zipmap voters (repeat :target-absent)))]
-    (testing "both pause modes complete and recover"
+    (testing "random pause episodes complete and recover"
       (is (= {:valid? true
               :cluster-state :intact}
              (select-keys (check complete-history)
                           [:valid? :cluster-state]))))
 
-    (testing "a pause mode is missing"
+    (testing "the random pause mode is missing"
       (is (= {:valid? false
-              :missing-modes [:leader-paused]
+              :missing-modes [:random]
               :cluster-state :intact}
              (select-keys (check missing-mode-history)
                           [:valid? :missing-modes :cluster-state]))))
@@ -1368,9 +1459,9 @@
              (select-keys (check partial-resume-history)
                           [:valid? :cluster-state]))))
 
-    (testing "mixed pause evidence does not credit the planned leader mode"
+    (testing "mixed pause evidence still confirms a random disruption"
       (is (= {:valid? false
-              :missing-modes [:leader-paused]
+              :missing-modes []
               :cluster-state :paused}
              (select-keys (check mixed-pause-history)
                           [:valid? :missing-modes :cluster-state]))))
