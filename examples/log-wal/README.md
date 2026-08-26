@@ -9,9 +9,9 @@ suffix on truncation and drops a prefix on purge, so a purge frees whole chunk f
 leaving keys for a compaction to reclaim. Compare with [log-rocks](../log-rocks/), which stores the
 same data in a general-purpose LSM key-value store.
 
-`WalLogStore::open(dir)` opens the log in `dir` and creates it when `dir` holds no log yet. Every
-clone shares one log behind an async `RwLock`, so reads for replication run at the same time as each
-other and only the writing methods take the lock exclusively.
+`WalLogStore::open(dir)` opens the log in `dir`, creating the directory and the log in it when they
+do not exist yet. Every clone shares one log behind an async `RwLock`, so reads for replication run
+at the same time as each other and only the writing methods take the lock exclusively.
 
 ```rust
 let log_store = WalLogStore::<TypeConfig>::open("/path/to/raft-log-dir")?;
@@ -43,7 +43,13 @@ tracks it as flushed IO, or to a caller that waits for the flush before returnin
 promises to a quorum, so neither may be lost. `save_vote` waits for the fsync before returning;
 `append` returns at once and lets openraft learn about the completion through its callback.
 
-`save_committed`, `truncate_after` and `purge` do not fsync. Each one writes a record that a crash
-may drop, and each loss costs only repeated work after the restart: the state machine re-applies a
-few committed entries, openraft truncates the conflicting suffix again, or the purge runs again. The
-records reach disk with the next `append`.
+`save_committed` and `truncate_after` do not fsync. Each one writes a record that a crash may drop,
+and each loss costs only repeated work after the restart: the state machine re-applies a few
+committed entries, or openraft truncates the conflicting suffix again. The records reach disk with
+the next `append`.
+
+`purge` fsyncs, for the disk space rather than for the record. Losing a purge record is as harmless
+as losing the two above, but `raft-log` unlinks a purged chunk file only after the covering purge
+record is on disk. Without the fsync the freed space would wait for the next `append`, and a node
+that stops writing after a purge would never get it back. `purge` queues the fsync and returns
+without waiting for it.

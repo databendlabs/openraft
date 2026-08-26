@@ -77,7 +77,12 @@ pub fn example_config() -> Config {
     }
 }
 
-async fn new_raft_node(node_id: NodeId, data_dir: String, config: Config) -> io::Result<(Raft, StateMachineStore)> {
+/// Build a Raft node on the WAL in `data_dir`, without the two HTTP servers.
+///
+/// [`openraft::Raft::new`] rebuilds the state machine before it returns, so the
+/// returned [`StateMachineStore`] already holds every entry the WAL had
+/// committed.
+pub async fn new_raft_node(node_id: NodeId, data_dir: String, config: Config) -> io::Result<(Raft, StateMachineStore)> {
     let config = config.validate().map_err(io::Error::other)?;
     let config = Arc::new(config);
 

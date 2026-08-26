@@ -40,12 +40,13 @@ where
         log_id.0.index
     }
 
-    fn payload_size(_payload: &Self::LogPayload) -> u64 {
-        // `raft_log` uses this number only to bound how much memory the payload
-        // cache holds, and its doc says the number may be inaccurate. Measuring
-        // an entry would mean encoding it on every call, so a fixed per-entry
-        // estimate is used instead. A store that keeps the encoded bytes around
-        // should report their real length.
-        size_of::<EntryOf<C>>() as u64
+    fn payload_size(payload: &Self::LogPayload) -> u64 {
+        // `raft_log` evicts from its payload cache against this number. A fixed
+        // per-entry estimate would ignore everything an entry holds on the heap
+        // and let the cache grow past its configured capacity, so the entry is
+        // measured instead. The cost is one MessagePack pass per cache insert
+        // and per eviction. A store that keeps the encoded bytes around reads
+        // their length off the buffer and pays nothing.
+        payload.encoded_len()
     }
 }

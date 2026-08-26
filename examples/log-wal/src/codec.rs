@@ -28,6 +28,31 @@ use serde::de::DeserializeOwned;
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct MsgPack<T>(pub T);
 
+impl<T> MsgPack<T>
+where T: Serialize
+{
+    /// The number of bytes [`Encode::encode`] writes for this value.
+    ///
+    /// `raft_log` bounds its payload cache with this number, so it has to
+    /// follow the real size of the value. A serde value carries no length to
+    /// read off, so this encodes into [`io::sink`] and counts the bytes.
+    pub fn encoded_len(&self) -> u64 {
+        let res = encode_msgpack(&self.0, io::sink());
+
+        match res {
+            Ok(len) => len as u64,
+            Err(e) => {
+                // `raft_log` measures a payload only after `Encode::encode`
+                // wrote the same value to the WAL, so this cannot be reached
+                // from the store. Report zero rather than abort a cache
+                // accounting update.
+                tracing::warn!("log-wal: cannot measure {}: {e}", type_name::<T>());
+                0
+            }
+        }
+    }
+}
+
 impl<T> Encode for MsgPack<T>
 where T: Serialize
 {

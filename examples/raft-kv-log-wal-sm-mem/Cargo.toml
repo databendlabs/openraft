@@ -26,7 +26,9 @@ tokio              = { version = "1.35.1", features = ["full"] }
 tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }
 
 [dev-dependencies]
+maplit   = { version = "1.0.2" }
 tempfile = { version = "3.4.0" }
+tracing  = { version = "0.1.40" }
 
 [features]
 

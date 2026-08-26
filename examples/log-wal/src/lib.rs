@@ -10,6 +10,7 @@
 #![deny(unused_qualifications)]
 
 use std::fmt::Debug;
+use std::fs;
 use std::io;
 use std::ops::Bound;
 use std::ops::RangeBounds;
@@ -64,7 +65,8 @@ where
     C: RaftTypeConfig,
     EntryOf<C>: Clone,
 {
-    /// Open the log in `dir`, creating it if `dir` holds no log yet.
+    /// Open the log in `dir`, creating `dir` and the log in it when they do
+    /// not exist yet.
     pub fn open(dir: impl ToString) -> Result<Self, io::Error> {
         let config = Config::new(dir);
         Self::open_with_config(config)
@@ -73,6 +75,11 @@ where
     /// Open the log with a caller-built [`Config`], which sets the directory,
     /// the chunk size limits and the payload cache size.
     pub fn open_with_config(config: Config) -> Result<Self, io::Error> {
+        // `raft_log` creates the lock file in this directory but not the
+        // directory itself, so a first start on a fresh path fails without
+        // this.
+        fs::create_dir_all(&config.wal.dir)?;
+
         let raft_log = RaftLog::open(Arc::new(config))?;
 
         Ok(Self {
@@ -223,9 +230,14 @@ where
 
         log.purge(MsgPack(log_id))?;
 
-        // Purging needs no flush either. The chunk files stay on disk until the
-        // next `flush(true, _)` fsyncs this purge record, which is what makes
-        // deleting them safe.
+        // Losing the purge record itself costs nothing: openraft purges again
+        // after the restart. The fsync is asked for on behalf of the chunk
+        // files. `raft_log` unlinks a purged chunk only after a `flush(true, _)`
+        // has put the covering purge record on disk, so without this call the
+        // freed space waits for the next `append`. The flush is queued, not
+        // awaited, so this method does not block on the fsync.
+        log.flush(true, None)?;
+
         Ok(())
     }
 }

@@ -53,7 +53,15 @@ From there the cluster is formed with the same three admin calls the canonical e
 cargo test
 ```
 
-`rebuilds_state_machine_from_wal_after_restart` in [`src/lib.rs`](./src/lib.rs) appends three
-entries, marks the middle one committed, closes the store, and reopens it with a fresh `sm-mem`. It
-then asserts that `last_applied` stopped at the committed entry and that the key-value write it
-carried is back in the state machine.
+[`tests/cluster/test_cluster.rs`](./tests/cluster/test_cluster.rs) forms a 3-node cluster over HTTP,
+writes a key and reads it back on every node. Each node gets a data directory that does not exist
+yet, so this test also covers creating the WAL directory on a first start.
+
+[`tests/cluster/test_restart.rs`](./tests/cluster/test_restart.rs) writes a key through a single-node
+`Raft`, shuts the node down, and reopens the same directory with a fresh `sm-mem`. The key can only
+be in the new state machine by way of re-applying the WAL.
+
+`rebuilds_state_machine_from_wal_after_restart` in [`src/lib.rs`](./src/lib.rs) pins the replay
+boundary below the `Raft` layer: it appends three entries, marks the middle one committed, closes the
+store, and reopens it with a fresh `sm-mem`. It then asserts that `last_applied` stopped at the
+committed entry and that the key-value write it carried is back in the state machine.
