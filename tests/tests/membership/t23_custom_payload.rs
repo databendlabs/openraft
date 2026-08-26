@@ -3,6 +3,7 @@ use std::fmt;
 use std::future::Future;
 use std::io;
 use std::io::Cursor;
+use std::ops::RangeBounds;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -12,10 +13,10 @@ use std::time::Duration;
 
 use futures::Stream;
 use futures::TryStreamExt;
-use log_mem::LogStore;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::Entry;
+use openraft::LogState;
 use openraft::Membership;
 use openraft::OptionalSend;
 use openraft::Raft;
@@ -30,6 +31,7 @@ use openraft::alias::LogIdOf;
 use openraft::alias::SnapshotMetaOf;
 use openraft::alias::SnapshotOf;
 use openraft::alias::StoredMembershipOf;
+use openraft::alias::VoteOf;
 use openraft::async_runtime::WatchReceiver;
 use openraft::entry::RaftPayload;
 use openraft::errors::RPCError;
@@ -45,6 +47,8 @@ use openraft::raft::SnapshotResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft::storage::EntryResponder;
+use openraft::storage::IOFlushed;
+use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
 use serde::Deserialize;
 use serde::Serialize;
@@ -98,7 +102,94 @@ openraft::declare_raft_types!(
         Payload = CustomPayload,
 );
 
-type TestLogStore = LogStore<TestConfig>;
+#[derive(Clone, Debug, Default)]
+struct TestLogStore(Arc<Mutex<TestLogStoreInner>>);
+
+#[derive(Debug, Default)]
+struct TestLogStoreInner {
+    last_purged_log_id: Option<LogIdOf<TestConfig>>,
+    log: BTreeMap<u64, EntryOf<TestConfig>>,
+    committed: Option<LogIdOf<TestConfig>>,
+    vote: Option<VoteOf<TestConfig>>,
+}
+
+impl RaftLogReader<TestConfig> for TestLogStore {
+    async fn try_get_log_entries<RB>(&mut self, range: RB) -> Result<Vec<EntryOf<TestConfig>>, io::Error>
+    where RB: RangeBounds<u64> + Clone + fmt::Debug + OptionalSend {
+        let inner = self.0.lock().unwrap();
+        let entries = inner.log.range(range).map(|(_, entry)| entry.clone()).collect();
+        Ok(entries)
+    }
+
+    async fn read_vote(&mut self) -> Result<Option<VoteOf<TestConfig>>, io::Error> {
+        let inner = self.0.lock().unwrap();
+        Ok(inner.vote)
+    }
+}
+
+impl RaftLogStorage<TestConfig> for TestLogStore {
+    type LogReader = Self;
+
+    async fn get_log_state(&mut self) -> Result<LogState<TestConfig>, io::Error> {
+        let inner = self.0.lock().unwrap();
+        let last_log_id = inner.log.last_key_value().map(|(_, entry)| entry.log_id);
+        let last_log_id = last_log_id.or(inner.last_purged_log_id);
+
+        Ok(LogState {
+            last_purged_log_id: inner.last_purged_log_id,
+            last_log_id,
+        })
+    }
+
+    async fn get_log_reader(&mut self) -> Self::LogReader {
+        self.clone()
+    }
+
+    async fn save_vote(&mut self, vote: &VoteOf<TestConfig>) -> Result<(), io::Error> {
+        self.0.lock().unwrap().vote = Some(*vote);
+        Ok(())
+    }
+
+    async fn save_committed(&mut self, committed: Option<LogIdOf<TestConfig>>) -> Result<(), io::Error> {
+        self.0.lock().unwrap().committed = committed;
+        Ok(())
+    }
+
+    async fn read_committed(&mut self) -> Result<Option<LogIdOf<TestConfig>>, io::Error> {
+        let inner = self.0.lock().unwrap();
+        Ok(inner.committed)
+    }
+
+    async fn append<I>(&mut self, entries: I, callback: IOFlushed<TestConfig>) -> Result<(), io::Error>
+    where
+        I: IntoIterator<Item = EntryOf<TestConfig>> + OptionalSend,
+        I::IntoIter: OptionalSend,
+    {
+        let mut inner = self.0.lock().unwrap();
+        for entry in entries {
+            inner.log.insert(entry.log_id.index, entry);
+        }
+        drop(inner);
+
+        callback.io_completed(Ok(()));
+        Ok(())
+    }
+
+    async fn truncate_after(&mut self, last_log_id: Option<LogIdOf<TestConfig>>) -> Result<(), io::Error> {
+        let start_index = last_log_id.map(|log_id| log_id.index + 1).unwrap_or(0);
+        self.0.lock().unwrap().log.retain(|index, _| *index < start_index);
+        Ok(())
+    }
+
+    async fn purge(&mut self, log_id: LogIdOf<TestConfig>) -> Result<(), io::Error> {
+        let mut inner = self.0.lock().unwrap();
+        assert!(inner.last_purged_log_id.as_ref() <= Some(&log_id));
+        inner.last_purged_log_id = Some(log_id);
+        inner.log.retain(|index, _| *index > log_id.index);
+        Ok(())
+    }
+}
+
 type TestRaft = Raft<TestConfig, TestStateMachine>;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
