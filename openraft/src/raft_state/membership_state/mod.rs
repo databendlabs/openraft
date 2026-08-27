@@ -158,8 +158,6 @@ where
     /// - `proposed` keeps the [`Node`] of every node id the effective membership already knows.
     /// - The transition from the effective membership to `proposed` is one that a direct append
     ///   supports.
-    // TODO: remove this `allow` once `RaftCore::append_membership()` calls this method.
-    #[allow(dead_code)]
     pub(crate) fn validate_append_membership(
         &self,
         proposed: &Membership<NID, N>,

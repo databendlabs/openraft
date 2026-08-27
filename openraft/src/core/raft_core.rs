@@ -72,6 +72,7 @@ use crate::errors::LinearizableReadError;
 use crate::errors::PreconditionFailed;
 use crate::errors::StorageIOResult;
 use crate::errors::Timeout;
+use crate::errors::UncommittedLeaderLog;
 use crate::impls::ProgressResponder;
 use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
 use crate::metrics::HeartbeatMetrics;
@@ -488,6 +489,83 @@ where
             #[cfg(feature = "runtime-stats")]
             C::now(),
         );
+    }
+
+    /// Append a caller-built membership as one log entry, with no intermediate joint membership.
+    ///
+    /// `payload` already carries the proposed membership, bound by
+    /// [`RaftPayload::with_membership()`]. That payload is the only source of truth here: the
+    /// membership this method validates is read back out of it, and the entry written to the log
+    /// is that same payload.
+    ///
+    /// [`RaftPayload::with_membership()`]: crate::entry::RaftPayload::with_membership
+    #[tracing::instrument(level = "debug", skip(self, payload, tx, preconditions))]
+    pub(super) fn append_membership(
+        &mut self,
+        payload: C::Payload,
+        preconditions: BatchOf<C, Precondition<C>>,
+        tx: ProgressResponder<C, ClientWriteResult<C>>,
+    ) {
+        if let Err(e) = self.ensure_membership_writable_leader() {
+            tx.on_complete(Err(e));
+            return;
+        }
+
+        if let Err(e) = self.ensure_preconditions_satisfied(preconditions) {
+            tx.on_complete(Err(e.into()));
+            return;
+        }
+
+        // Safe unwrap(): the caller bound `membership` into this payload with
+        // `RaftPayload::with_membership()`, whose contract is that `get_membership()` returns it.
+        let membership = payload.get_membership().unwrap();
+
+        let membership_state = &self.engine.state.membership_state;
+        if let Err(e) = membership_state.validate_append_membership(&membership) {
+            tx.on_complete(Err(ClientWriteError::ChangeMembershipError(e)));
+            return;
+        }
+
+        self.write_entries(
+            Batch::of([payload]),
+            Batch::of([Some(CoreResponder::Progress(tx))]),
+            #[cfg(feature = "runtime-stats")]
+            C::now(),
+        );
+    }
+
+    /// Ensure this node may append a membership entry directly, as one log entry.
+    ///
+    /// Beyond being a writable leader, it must have committed a log entry of its own term. Raft's
+    /// single-step membership change rule requires that barrier: without it, two configurations
+    /// proposed in different terms from the same parent can both become committed, even when their
+    /// quorums do not intersect. See [`UncommittedLeaderLog`] for a run that loses a committed
+    /// membership this way.
+    ///
+    /// A valid leader lease is not enough. The lease reads the quorum acknowledgement clock, which
+    /// the heartbeat worker advances even when a follower reports a log conflict, so it proves a
+    /// quorum still sees this leader but not that a quorum stored the leader's blank log.
+    ///
+    /// [`Raft::change_membership()`] deliberately does not take this barrier: its two proposals
+    /// share an exact constituent voter set, so every pair of quorums intersects through the two
+    /// strict majorities of that set.
+    ///
+    /// [`Raft::change_membership()`]: crate::raft::Raft::change_membership
+    fn ensure_membership_writable_leader(&mut self) -> Result<(), ClientWriteError<C>> {
+        let lh = self.ensure_writable_leader_handler()?;
+
+        let noop_log_id = lh.leader.noop_log_id();
+        let cluster_committed = lh.state.cluster_committed();
+
+        if cluster_committed >= Some(noop_log_id) {
+            return Ok(());
+        }
+
+        let err = UncommittedLeaderLog {
+            committed: cluster_committed.cloned(),
+            leader_log_id: noop_log_id.clone(),
+        };
+        Err(ChangeMembershipErrorOf::<C>::from(err).into())
     }
 
     /// Ensure this node is the leader and is not transferring leadership.
@@ -1660,6 +1738,20 @@ where
                 );
 
                 self.change_membership(changes, retain, preconditions, payload, tx);
+            }
+            RaftMsg::AppendMembership {
+                payload,
+                preconditions,
+                tx,
+            } => {
+                tracing::info!(
+                    "received RaftMsg::AppendMembership: {}, payload: {}, preconditions: {}",
+                    func_name!(),
+                    payload,
+                    preconditions.as_ref().display()
+                );
+
+                self.append_membership(payload, preconditions, tx);
             }
             RaftMsg::WithRaftState { req } => {
                 req(&self.engine.state);

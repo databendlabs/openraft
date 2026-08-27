@@ -108,6 +108,30 @@ where C: RaftTypeConfig
         tx: ProgressResponder<C, ClientWriteResult<C>>,
     },
 
+    /// Append a caller-built membership as one log entry, with no intermediate joint membership.
+    ///
+    /// Unlike [`RaftMsg::ChangeMembership`], `RaftCore` does not compute the membership here. It
+    /// reads back the membership the caller already bound into `payload`, validates that exact
+    /// value, and appends `payload` unchanged.
+    // TODO: remove this `allow` once `ManagementApi::append_membership()` sends this message.
+    #[allow(dead_code)]
+    AppendMembership {
+        /// The caller's payload, after [`RaftPayload::with_membership()`] bound the proposed
+        /// membership into it.
+        ///
+        /// This payload is the single source of truth for the entry: `RaftCore` reads the
+        /// membership to validate out of it, and writes this same value to the log. Carrying the
+        /// membership in a second field would let the validated value and the written value drift
+        /// apart.
+        ///
+        /// [`RaftPayload::with_membership()`]: crate::entry::RaftPayload::with_membership
+        payload: C::Payload,
+
+        preconditions: BatchOf<C, Precondition<C>>,
+
+        tx: ProgressResponder<C, ClientWriteResult<C>>,
+    },
+
     WithRaftState {
         req: BoxOnce<'static, RaftState<C>>,
     },
@@ -151,6 +175,7 @@ where C: RaftTypeConfig
             RaftMsg::GetLinearizer { .. } => RaftMsgName::GetLinearizer,
             RaftMsg::Initialize { .. } => RaftMsgName::Initialize,
             RaftMsg::ChangeMembership { .. } => RaftMsgName::ChangeMembership,
+            RaftMsg::AppendMembership { .. } => RaftMsgName::AppendMembership,
             RaftMsg::HandleTransferLeader { .. } => RaftMsgName::HandleTransferLeader,
             RaftMsg::WithRaftState { .. } => RaftMsgName::WithRaftState,
             RaftMsg::ExternalCommand { cmd } => RaftMsgName::ExternalCommand(cmd.name()),
@@ -192,6 +217,13 @@ where C: RaftTypeConfig
                     "ChangeMembership: {}, retain: {}, preconditions: {}",
                     changes,
                     retain,
+                    preconditions.as_ref().display()
+                )
+            }
+            RaftMsg::AppendMembership { preconditions, .. } => {
+                write!(
+                    f,
+                    "AppendMembership: preconditions: {}",
                     preconditions.as_ref().display()
                 )
             }
