@@ -272,14 +272,18 @@ on every node.
 
 #### Clock Nemesis
 
-The Clock Nemesis changes only the wall clock observed by OpenRaft application
+The Clock Nemesis changes the wall clock observed by OpenRaft application
 processes. It uses node-local `libfaketime` control files and never changes the
-container or host clock. A focused run mixes multi-scale forward and backward
-jumps, rates sampled between 0.5x and 2x, rapid strobe jumps, and resets. Each
-operation replaces the complete clock state, and final cleanup restores every
-node to `+0 x1`. Rate changes may also jump the wall clock because libfaketime
+container or host clock. A focused run cycles through multi-scale forward or
+backward jumps, fast and slow rates sampled between 0.5x and 2x, rapid strobe
+jumps, and resets in a fixed order. Targets and fault parameters remain random.
+Each operation replaces the complete clock state, and final cleanup restores
+every node to `+0 x1`. Rate changes may also jump the wall clock because libfaketime
 rebases the reported time when the multiplier changes; those jumps are part of
-the injected wall-clock fault.
+the injected wall-clock fault. Monotonic-clock readings remain unscaled, but
+libfaketime rate settings still scale syscall waits such as `epoll_wait`. Slow
+rates may therefore delay Tokio runtime timers, so a rate-fault failure is not
+evidence of a wall-clock dependency alone.
 
 Targets are arbitrary non-empty subsets and can include a minority, majority,
 or every node. History records the targets, generated parameters, initial

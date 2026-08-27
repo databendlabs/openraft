@@ -19,11 +19,8 @@
              [partition :as partition]
              [process :as process]]))
 
-(def ^:private chaos-nemesis-types
-  [:partition :process :pause :membership :packet :clock])
-
 (def ^:private concrete-nemesis-types
-  chaos-nemesis-types)
+  [:partition :process :pause :membership :packet :clock])
 
 (def nemesis-types
   (conj (set concrete-nemesis-types) :chaos))
@@ -43,7 +40,7 @@
                        :unknown (vec unknown)})))
     (let [expanded (cond-> (disj requested :chaos)
                      (contains? requested :chaos)
-                     (into chaos-nemesis-types))]
+                     (into concrete-nemesis-types))]
       (filterv expanded concrete-nemesis-types))))
 
 (defn- valid-nemeses? [selection]
