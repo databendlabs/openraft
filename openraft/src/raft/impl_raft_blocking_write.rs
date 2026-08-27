@@ -160,6 +160,13 @@ where
 
     /// Append a caller-built membership as one log entry, with no intermediate joint membership.
     ///
+    /// This is Raft's single-step (single-server) membership change, generalized: besides the
+    /// one-voter step it also accepts a caller-built joint membership. It is not the default way
+    /// to change membership. The caller supplies the whole stored membership here — every voter
+    /// set, every learner and every node's metadata — and openraft checks only the transition
+    /// rule below. Prefer [`Self::change_membership()`], which derives all of that from the
+    /// current membership, unless you know exactly what this method will write.
+    ///
     /// Unlike [`Self::change_membership()`], which computes a joint config and then flattens it in
     /// a second entry, this method writes exactly the `membership` given, in one physical log
     /// entry. It never adds a joint membership and never flattens one, so a caller-built joint

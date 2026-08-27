@@ -159,7 +159,7 @@ What sets OpenRaft apart from a standard Raft implementation:
 - ✅ **Dynamic Membership**: using joint membership config change. Refer to [dynamic membership](https://docs.rs/openraft/0.10.0-alpha.34/openraft/docs/cluster_control/dynamic_membership/index.html)
 - ✅ **Linearizable read**: [`ensure_linearizable()`][].
 - ✅ **Metrics**: [`Raft::metrics()`][], [`Raft::data_metrics()`][], and [`Raft::server_metrics()`][].
-- ⛔️ **Won't support**: Single-step config change. Single-step membership change is a restricted subset of joint consensus that only allows changing one node at a time. Openraft uses the more general [joint consensus](https://docs.rs/openraft/0.10.0-alpha.34/openraft/docs/cluster_control/dynamic_membership/index.html) approach which supports arbitrary membership changes in a single operation.
+- ✅ **Single-step config change**: [`append_membership()`][] writes a caller-built membership as one log entry, with no intermediate joint config. It is a superset of standard Raft's single-server change, because it also accepts a caller-built joint membership. Use it only when you know exactly which transitions it accepts; [`change_membership()`][] derives the whole membership for you and is the default choice.
 - ✅ Toggle heartbeat / election: [`RuntimeConfigHandle::heartbeat()`][] / [`RuntimeConfigHandle::elect()`][].
 - ✅ Trigger snapshot / election manually: [`Trigger::snapshot()`][] / [`Trigger::elect()`][].
 - ✅ Purge log by policy or manually: [`Trigger::purge_log()`][].
@@ -301,6 +301,7 @@ or the [Apache License 2.0](http://www.apache.org/licenses/LICENSE-2.0), at your
 
 
 [`change_membership()`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/raft/struct.Raft.html#method.change_membership
+[`append_membership()`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/raft/struct.Raft.html#method.append_membership
 [`add_learner()`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/raft/struct.Raft.html#method.add_learner
 [`Trigger::purge_log()`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/raft/trigger/struct.Trigger.html#method.purge_log
 
