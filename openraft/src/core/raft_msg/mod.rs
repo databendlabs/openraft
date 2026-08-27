@@ -113,8 +113,6 @@ where C: RaftTypeConfig
     /// Unlike [`RaftMsg::ChangeMembership`], `RaftCore` does not compute the membership here. It
     /// reads back the membership the caller already bound into `payload`, validates that exact
     /// value, and appends `payload` unchanged.
-    // TODO: remove this `allow` once `ManagementApi::append_membership()` sends this message.
-    #[allow(dead_code)]
     AppendMembership {
         /// The caller's payload, after [`RaftPayload::with_membership()`] bound the proposed
         /// membership into it.

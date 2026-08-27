@@ -5,6 +5,7 @@
 use openraft_macros::since;
 
 use crate::ChangeMembers;
+use crate::Membership;
 use crate::Raft;
 use crate::RaftTypeConfig;
 use crate::batch::Batch;
@@ -153,6 +154,102 @@ where
     ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
         self.management_api()
             .change_membership(members, retain, BatchOf::<C, _>::of(preconditions))
+            .await
+            .into_raft_result()
+    }
+
+    /// Append a caller-built membership as one log entry, with no intermediate joint membership.
+    ///
+    /// Unlike [`Self::change_membership()`], which computes a joint config and then flattens it in
+    /// a second entry, this method writes exactly the `membership` given, in one physical log
+    /// entry. It never adds a joint membership and never flattens one, so a caller-built joint
+    /// membership of any number of voter sets is stored as it is. It returns after that entry is
+    /// committed and applied.
+    ///
+    /// `payload` is the base entry payload. This method calls
+    /// [`RaftPayload::with_membership()`] on it, so the application data and the membership share
+    /// one log id. A membership already present in `payload` is replaced; every other application
+    /// field survives according to the application's `with_membership()` implementation. A caller
+    /// with no application data passes `C::Payload::blank()`.
+    ///
+    /// # Accepted transitions
+    ///
+    /// The proposed membership must be reachable from the last committed one by a transition whose
+    /// quorum intersection openraft can prove cheaply:
+    ///
+    /// - Both memberships are uniform, and their voter sets differ by at most one node id.
+    /// - Otherwise, the two memberships share an exactly equal voter set.
+    ///
+    /// Anything else fails with [`UnsupportedMembershipTransition`], which is a limit of this
+    /// rule, not proof that the transition is unsafe.
+    ///
+    /// # Rejections that write no log
+    ///
+    /// - [`InProgress`], while the preceding membership is not committed yet.
+    /// - [`UncommittedLeaderLog`], until this leader commits a log entry of its own term. This
+    ///   holds even after the preceding membership commits and the leader holds a valid lease.
+    /// - [`NodeMetadataChanged`], when the proposed membership gives a different `Node` to a node
+    ///   id the cluster already knows. Adding and removing a node stay allowed; an intentional
+    ///   metadata update is still [`ChangeMembers::SetNodes`].
+    /// - [`ClientWriteError::PreconditionFailed`], when any supplied [`Precondition`] does not
+    ///   hold. All preconditions are checked before anything is validated or written.
+    ///
+    /// A caller that derives the proposed membership from an observed one must pass
+    /// [`Precondition::LastMembershipLogId`] with that membership's log id. Without it, a
+    /// membership change proposed in between is silently overwritten.
+    ///
+    /// # Examples
+    ///
+    /// Add voter `4` to the voter set `{1,2,3}`:
+    ///
+    /// ```ignore
+    /// let observed = raft.metrics().borrow().membership_config.clone();
+    ///
+    /// let voters = BTreeSet::from([1, 2, 3, 4]);
+    /// let nodes = observed.membership().nodes().map(|(id, n)| (id.clone(), n.clone()));
+    /// let proposed = Membership::new(vec![voters], nodes.collect::<BTreeMap<_, _>>())?;
+    ///
+    /// raft.append_membership(proposed, MyPayload::blank(), [Precondition::LastMembershipLogId {
+    ///     last_membership_log_id: observed.log_id().clone(),
+    /// }])
+    /// .await?;
+    /// ```
+    ///
+    /// Move from the uniform `{1,2,3}` to a joint membership of three voter sets. It is accepted
+    /// because `{1,2,3}` appears in both, exactly equal:
+    ///
+    /// ```ignore
+    /// let observed = raft.metrics().borrow().membership_config.clone();
+    ///
+    /// let configs = vec![
+    ///     BTreeSet::from([1, 2, 3]),
+    ///     BTreeSet::from([3, 4, 5]),
+    ///     BTreeSet::from([5, 6, 7]),
+    /// ];
+    /// let nodes = observed.membership().nodes().map(|(id, n)| (id.clone(), n.clone()));
+    /// let proposed = Membership::new(configs, nodes.collect::<BTreeMap<_, _>>())?;
+    ///
+    /// raft.append_membership(proposed, MyPayload::blank(), [Precondition::LastMembershipLogId {
+    ///     last_membership_log_id: observed.log_id().clone(),
+    /// }])
+    /// .await?;
+    /// ```
+    ///
+    /// [`RaftPayload::with_membership()`]: crate::entry::RaftPayload::with_membership
+    /// [`UnsupportedMembershipTransition`]: crate::errors::UnsupportedMembershipTransition
+    /// [`InProgress`]: crate::errors::InProgress
+    /// [`UncommittedLeaderLog`]: crate::errors::UncommittedLeaderLog
+    /// [`NodeMetadataChanged`]: crate::errors::NodeMetadataChanged
+    #[since(version = "0.10.0")]
+    #[tracing::instrument(level = "info", skip_all)]
+    pub async fn append_membership(
+        &self,
+        membership: Membership<C::NodeId, C::Node>,
+        payload: C::Payload,
+        preconditions: impl IntoIterator<Item = Precondition<C>>,
+    ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
+        self.management_api()
+            .append_membership(membership, payload, BatchOf::<C, _>::of(preconditions))
             .await
             .into_raft_result()
     }
