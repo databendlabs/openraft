@@ -7,7 +7,7 @@ detailed guide.
 | Area | Provides | Main APIs and guides |
 | --- | --- | --- |
 | Core integration | Processes Raft events without periodic ticks and batches messages for throughput. Applications implement `RaftLogStorage`, `RaftStateMachine`, and `RaftNetworkV2`; [`Raft`][] is the primary application API. | [`Raft`][] |
-| Cluster formation and membership | Initializes a cluster, adds non-voting learners, and changes membership through joint configuration. Joint consensus supports arbitrary membership changes in one operation; single-step configuration changes are intentionally unsupported. | [`Raft::initialize()`][], [`Raft::add_learner()`][], [`Raft::change_membership()`][], [cluster formation][], [dynamic membership][] |
+| Cluster formation and membership | Initializes a cluster, adds non-voting learners, and changes membership through joint configuration. Joint consensus supports arbitrary membership changes in one operation; `Raft::append_membership()` writes a caller-built membership as a single log entry for the transitions whose quorum intersection Openraft can prove. | [`Raft::initialize()`][], [`Raft::add_learner()`][], [`Raft::change_membership()`][], [`Raft::append_membership()`][], [cluster formation][], [dynamic membership][] |
 | Leadership and elections | Elects leaders by policy or manually, transfers leadership, and offers Pre-Vote to avoid unnecessary term increments. | [`Trigger::elect()`][], [`Trigger::transfer_leader()`][], [`Config::enable_pre_vote`][], [Pre-Vote protocol][] |
 | Logs and snapshots | Compacts logs by snapshotting the state machine, replicates snapshots, and purges logs by policy or on demand. | [`Trigger::snapshot()`][], [`Trigger::purge_log()`][], [snapshot replication][] |
 | Reads | Performs linearizable reads with `ReadPolicy::ReadIndex` or `ReadPolicy::LeaseRead`. | [`Raft::ensure_linearizable()`][], [read protocol][] |
@@ -18,6 +18,7 @@ detailed guide.
 [`Raft::initialize()`]: crate::Raft::initialize
 [`Raft::add_learner()`]: crate::Raft::add_learner
 [`Raft::change_membership()`]: crate::Raft::change_membership
+[`Raft::append_membership()`]: crate::Raft::append_membership
 [`Raft::ensure_linearizable()`]: crate::Raft::ensure_linearizable
 [`Raft::metrics()`]: crate::Raft::metrics
 [`Raft::data_metrics()`]: crate::Raft::data_metrics

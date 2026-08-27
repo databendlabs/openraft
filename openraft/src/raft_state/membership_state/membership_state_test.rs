@@ -1,10 +1,19 @@
 use std::sync::Arc;
 
+use maplit::btreemap;
 use maplit::btreeset;
 
+use crate::BasicNode;
 use crate::Membership;
+use crate::StoredMembership;
 use crate::engine::testing::UTConfig;
+use crate::engine::testing::UtClid;
 use crate::engine::testing::log_id;
+use crate::errors::ChangeMembershipError;
+use crate::errors::InProgress;
+use crate::errors::NodeMetadataChanged;
+use crate::errors::UnsupportedMembershipTransition;
+use crate::raft_state::MembershipState;
 use crate::type_config::alias::MembershipStateOf;
 use crate::type_config::alias::StoredMembershipOf;
 
@@ -20,6 +29,10 @@ fn m1() -> Membership<u64, ()> {
 
 fn m12() -> Membership<u64, ()> {
     Membership::new_with_defaults(vec![btreeset! {1,2}], [])
+}
+
+fn m123() -> Membership<u64, ()> {
+    Membership::new_with_defaults(vec![btreeset! {1,2,3}], [])
 }
 
 fn m123_345() -> Membership<u64, ()> {
@@ -240,6 +253,100 @@ fn test_membership_state_truncate() -> anyhow::Result<()> {
         assert_eq!(&Some(log_id(2, 1, 2)), ms.committed().log_id());
         assert_eq!(&Some(log_id(2, 1, 2)), ms.effective().log_id());
     }
+
+    Ok(())
+}
+
+/// A `MembershipState` whose effective membership is committed, so that
+/// `validate_append_membership()` gets past its `ensure_committed()` check.
+fn committed_state(m: Membership<u64, ()>) -> MembershipStateOf<UTConfig> {
+    let stored = effmem(3, 4, m);
+    MembershipStateOf::<UTConfig>::new(stored.clone(), stored)
+}
+
+/// The same as [`committed_state`], for a `Node` type that carries metadata.
+fn committed_node_state(m: Membership<u64, BasicNode>) -> MembershipState<UtClid, u64, BasicNode> {
+    let stored = Arc::new(StoredMembership::new(Some(log_id(3, 1, 4)), m));
+    MembershipState::new(stored.clone(), stored)
+}
+
+#[test]
+fn test_validate_append_membership_in_progress() -> anyhow::Result<()> {
+    let ms = MembershipStateOf::<UTConfig>::new(effmem(2, 2, m1()), effmem(3, 4, m123()));
+
+    let got = ms.validate_append_membership(&m123()).unwrap_err();
+
+    let want = ChangeMembershipError::InProgress(InProgress {
+        committed: Some(log_id(2, 1, 2)),
+        membership_log_id: Some(log_id(3, 1, 4)),
+    });
+    assert_eq!(want, got);
+
+    Ok(())
+}
+
+#[test]
+fn test_validate_append_membership_accepts_one_voter_change() -> anyhow::Result<()> {
+    let ms = committed_state(m123());
+
+    let proposed = Membership::new_with_defaults(vec![btreeset! {1,2,3,4}], []);
+    assert_eq!(Ok(()), ms.validate_append_membership(&proposed));
+
+    Ok(())
+}
+
+#[test]
+fn test_validate_append_membership_unsupported_transition() -> anyhow::Result<()> {
+    let ms = committed_state(m123());
+    let before = ms.clone();
+
+    let proposed = Membership::new_with_defaults(vec![btreeset! {2,3,4}], []);
+    let got = ms.validate_append_membership(&proposed).unwrap_err();
+
+    let want = ChangeMembershipError::UnsupportedMembershipTransition(UnsupportedMembershipTransition {
+        previous: vec![btreeset! {1,2,3}],
+        proposed: vec![btreeset! {2,3,4}],
+    });
+    assert_eq!(want, got);
+    assert_eq!(before, ms);
+
+    Ok(())
+}
+
+#[test]
+fn test_validate_append_membership_node_metadata() -> anyhow::Result<()> {
+    let node = |addr: &str| BasicNode::new(addr);
+    let voters = || vec![btreeset! {1,2}];
+    let previous = Membership::new(voters(), btreemap! {1=>node("a"), 2=>node("b"), 3=>node("c")})?;
+
+    let ms = committed_node_state(previous);
+    let before = ms.clone();
+
+    let unchanged = Membership::new(voters(), btreemap! {1=>node("a"), 2=>node("b"), 3=>node("c")})?;
+    assert_eq!(Ok(()), ms.validate_append_membership(&unchanged));
+
+    // Node 4 is new to this cluster, so its metadata is not a change.
+    let added = Membership::new(
+        voters(),
+        btreemap! {1=>node("a"), 2=>node("b"), 3=>node("c"), 4=>node("d")},
+    )?;
+    assert_eq!(Ok(()), ms.validate_append_membership(&added));
+
+    let voter_changed = Membership::new(voters(), btreemap! {1=>node("a"), 2=>node("b2"), 3=>node("c")})?;
+    let got = ms.validate_append_membership(&voter_changed).unwrap_err();
+    assert_eq!(
+        ChangeMembershipError::NodeMetadataChanged(NodeMetadataChanged { node_id: 2 }),
+        got
+    );
+
+    let learner_changed = Membership::new(voters(), btreemap! {1=>node("a"), 2=>node("b"), 3=>node("c3")})?;
+    let got = ms.validate_append_membership(&learner_changed).unwrap_err();
+    assert_eq!(
+        ChangeMembershipError::NodeMetadataChanged(NodeMetadataChanged { node_id: 3 }),
+        got
+    );
+
+    assert_eq!(before, ms);
 
     Ok(())
 }

@@ -10,6 +10,8 @@ use crate::LogIdOptionExt;
 use crate::Membership;
 use crate::errors::ChangeMembershipError;
 use crate::errors::InProgress;
+use crate::errors::NodeMetadataChanged;
+use crate::errors::UnsupportedMembershipTransition;
 
 #[cfg(test)]
 mod change_membership_test;
@@ -141,6 +143,47 @@ where
         let membership = effective.membership().clone();
         let new_membership = membership.change(change, retain)?;
         Ok(new_membership)
+    }
+
+    /// Validates a membership a caller wants appended as one log entry, without an intermediate
+    /// joint membership.
+    ///
+    /// It rejects the request unless every one of these holds:
+    ///
+    /// - The last membership log is committed, so the effective membership is also the last
+    ///   committed one, the parent this transition starts from.
+    /// - `proposed` is a valid membership on its own, and it defines a quorum. A public constructor
+    ///   is not enough of a guarantee: deserialization, [`Membership::default()`] and
+    ///   [`Membership::new_with_defaults()`] can all produce a value with no voter set at all, or
+    ///   with an empty one.
+    /// - `proposed` keeps the [`Node`] of every node id the effective membership already knows.
+    /// - The transition from the effective membership to `proposed` is one that a direct append
+    ///   supports.
+    pub(crate) fn validate_append_membership(
+        &self,
+        proposed: &Membership<NID, N>,
+    ) -> Result<(), ChangeMembershipError<CLID, NID>> {
+        self.ensure_committed()?;
+        proposed.ensure_valid()?;
+        proposed.ensure_quorum_defined()?;
+
+        let effective = self.effective().membership();
+
+        let changed_node_id = effective.find_changed_node_metadata(proposed);
+        if let Some(node_id) = changed_node_id {
+            return Err(NodeMetadataChanged { node_id }.into());
+        }
+
+        let compatible = effective.is_direct_append_compatible_with(proposed);
+        if !compatible {
+            let err = UnsupportedMembershipTransition {
+                previous: effective.get_joint_config().clone(),
+                proposed: proposed.get_joint_config().clone(),
+            };
+            return Err(err.into());
+        }
+
+        Ok(())
     }
 
     /// Ensures that the latest membership has been committed.

@@ -11,6 +11,7 @@ pub(crate) mod into_raft_result;
 mod leader_changed;
 mod linearizable_read_error;
 mod membership_error;
+mod node_metadata_changed;
 mod node_not_found;
 mod operation;
 mod precondition_failed;
@@ -22,6 +23,8 @@ pub(crate) mod replication_error;
 pub(crate) mod storage_error;
 mod storage_io_result;
 mod streaming_error;
+mod uncommitted_leader_log;
+mod unsupported_membership_transition;
 
 use std::collections::BTreeSet;
 use std::error::Error;
@@ -38,6 +41,7 @@ pub(crate) use self::higher_vote::HigherVote;
 pub use self::leader_changed::LeaderChanged;
 pub use self::linearizable_read_error::LinearizableReadError;
 pub use self::membership_error::MembershipError;
+pub use self::node_metadata_changed::NodeMetadataChanged;
 pub use self::node_not_found::NodeNotFound;
 pub use self::operation::Operation;
 pub use self::precondition_failed::PreconditionFailed;
@@ -48,6 +52,8 @@ pub use self::replication_closed::ReplicationClosed;
 pub(crate) use self::replication_error::ReplicationError;
 pub(crate) use self::storage_io_result::StorageIOResult;
 pub use self::streaming_error::StreamingError;
+pub use self::uncommitted_leader_log::UncommittedLeaderLog;
+pub use self::unsupported_membership_transition::UnsupportedMembershipTransition;
 use crate::LogId;
 use crate::Membership;
 use crate::RaftTypeConfig;
@@ -125,6 +131,10 @@ where C: RaftTypeConfig
 /// The set of errors which may take place when requesting to propose a config change.
 #[since(
     version = "0.10.0",
+    change = "added `UnsupportedMembershipTransition`, `UncommittedLeaderLog` and `NodeMetadataChanged` variants"
+)]
+#[since(
+    version = "0.10.0",
     change = "from `ChangeMembershipError<C>` to `ChangeMembershipError<CLID, NID>`"
 )]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -145,6 +155,21 @@ where
     /// A learner that should be in the cluster was not found.
     #[error(transparent)]
     LearnerNotFound(#[from] LearnerNotFound<NID>),
+
+    /// The proposed membership is not a transition a direct membership append supports.
+    #[since(version = "0.10.0")]
+    #[error(transparent)]
+    UnsupportedMembershipTransition(#[from] UnsupportedMembershipTransition<NID>),
+
+    /// The leader has not yet committed a log entry proposed in its own term.
+    #[since(version = "0.10.0")]
+    #[error(transparent)]
+    UncommittedLeaderLog(#[from] UncommittedLeaderLog<CLID>),
+
+    /// The proposed membership changes the metadata of a node id the cluster already knows.
+    #[since(version = "0.10.0")]
+    #[error(transparent)]
+    NodeMetadataChanged(#[from] NodeMetadataChanged<NID>),
 }
 
 /// The set of errors which may take place when initializing a pristine Raft node.
