@@ -7,6 +7,7 @@ use maplit::btreeset;
 
 use crate::ChangeMembers;
 use crate::Membership;
+use crate::errors::EmptyMembership;
 use crate::errors::MembershipError;
 use crate::errors::NodeNotFound;
 use crate::errors::Operation;
@@ -349,6 +350,152 @@ fn test_membership_next_coherent_retain_false_keeps_existing_learners() -> anyho
         btreemap! {2=>node(2), 3=>node(3)},
         res.nodes().map(|(nid, n)| (*nid, n.clone())).collect::<BTreeMap<_, _>>()
     );
+
+    Ok(())
+}
+
+#[test]
+fn test_membership_ensure_valid() -> anyhow::Result<()> {
+    // Zero voter sets: `QuorumSet::is_quorum()` would accept every node set.
+    let res = Membership::<u64, ()>::new(vec![], btreemap! {1=>()});
+    assert_eq!(Err(MembershipError::EmptyMembership(EmptyMembership {})), res);
+
+    // An empty voter set.
+    let res = Membership::<u64, ()>::new(vec![btreeset! {1}, btreeset! {}], btreemap! {1=>()});
+    assert_eq!(Err(MembershipError::EmptyMembership(EmptyMembership {})), res);
+
+    // A voter without node data.
+    let res = Membership::<u64, ()>::new(vec![btreeset! {1,2}], btreemap! {1=>()});
+    let want = MembershipError::NodeNotFound(NodeNotFound::new(2, Operation::None));
+    assert_eq!(Err(want), res);
+
+    Ok(())
+}
+
+#[test]
+fn test_membership_is_direct_append_compatible_with_uniform() -> anyhow::Result<()> {
+    let abc = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1,2,3}], []);
+    let abcx = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1,2,3,4}], []);
+    let bcd = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {2,3,4}], []);
+    let abcxy = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1,2,3,4,5}], []);
+
+    // Equal voter sets.
+    assert!(abc.is_direct_append_compatible_with(&abc));
+
+    // One voter added, and the same transition in reverse: one voter removed.
+    assert!(abc.is_direct_append_compatible_with(&abcx));
+    assert!(abcx.is_direct_append_compatible_with(&abc));
+
+    // One voter added and one removed: the symmetric difference is 2.
+    assert!(!abc.is_direct_append_compatible_with(&bcd));
+
+    // Two voters added.
+    assert!(!abc.is_direct_append_compatible_with(&abcxy));
+
+    Ok(())
+}
+
+#[test]
+fn test_membership_is_direct_append_compatible_with_joint() -> anyhow::Result<()> {
+    let uniform = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1,2,3}], []);
+    let joint = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1,2,3}, btreeset! {3,4,5}], []);
+
+    // `{1,2,3}` is shared exactly, in both directions.
+    assert!(uniform.is_direct_append_compatible_with(&joint));
+    assert!(joint.is_direct_append_compatible_with(&uniform));
+
+    // Sharing voters is not sharing a voter set: `{1,2}` is in every set below, and no set is
+    // shared.
+    let overlapping = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1,2,3}, btreeset! {1,2,4}], []);
+    let target = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1,2,5}], []);
+    assert!(!overlapping.is_direct_append_compatible_with(&target));
+
+    // The one-voter-difference rule applies to uniform memberships only: every set below differs
+    // by one voter from its counterpart, and the transition is still rejected.
+    let two_sets = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1,2,3}, btreeset! {4,5,6}], []);
+    let two_sets_grown = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1,2,3,7}, btreeset! {4,5,6,8}], []);
+    assert!(!two_sets.is_direct_append_compatible_with(&two_sets_grown));
+
+    Ok(())
+}
+
+#[test]
+fn test_membership_is_direct_append_compatible_with_many_sets() -> anyhow::Result<()> {
+    let shared = || btreeset! {1,2,3};
+    let previous = Membership::<u64, ()>::new_with_defaults(vec![shared()], []);
+
+    // The shared-set rule imposes no maximum on the number of voter sets.
+    for extra_sets in [
+        vec![btreeset! {4,5,6}],
+        vec![btreeset! {4,5,6}, btreeset! {7,8,9}],
+        vec![btreeset! {4,5,6}, btreeset! {7,8,9}, btreeset! {10,11,12}],
+    ] {
+        let mut configs = vec![shared()];
+        configs.extend(extra_sets.clone());
+        let proposed = Membership::<u64, ()>::new_with_defaults(configs, []);
+        assert!(
+            previous.is_direct_append_compatible_with(&proposed),
+            "sharing {:?} must be accepted with extra sets {:?}",
+            shared(),
+            extra_sets
+        );
+
+        let mut configs = vec![btreeset! {1,2,4}];
+        configs.extend(extra_sets.clone());
+        let unshared = Membership::<u64, ()>::new_with_defaults(configs, []);
+        assert!(
+            !previous.is_direct_append_compatible_with(&unshared),
+            "sharing no set must be rejected with extra sets {:?}",
+            extra_sets
+        );
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_membership_is_direct_append_compatible_with_invalid_config() -> anyhow::Result<()> {
+    let previous = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1,2,3}], []);
+
+    // A membership without any voter set is never appendable, in either direction.
+    let no_set = Membership::<u64, ()>::new_with_defaults(vec![], []);
+    assert!(!previous.is_direct_append_compatible_with(&no_set));
+    assert!(!no_set.is_direct_append_compatible_with(&previous));
+
+    // A membership with an empty voter set is never appendable either, even though it shares
+    // `{1,2,3}` with `previous`.
+    let empty_set = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1,2,3}, btreeset! {}], []);
+    assert!(!previous.is_direct_append_compatible_with(&empty_set));
+    assert!(!empty_set.is_direct_append_compatible_with(&previous));
+
+    Ok(())
+}
+
+#[test]
+fn test_membership_find_changed_node_metadata() -> anyhow::Result<()> {
+    let node = |addr: &str| TestNode {
+        addr: addr.to_string(),
+        data: Default::default(),
+    };
+    let m = |nodes| Membership::<u64, TestNode>::new_unchecked(vec![btreeset! {1,2}], nodes);
+
+    let previous = m(btreemap! {1=>node("a"), 2=>node("b"), 3=>node("c")});
+
+    // Every shared node id keeps its `Node`.
+    let unchanged = m(btreemap! {1=>node("a"), 2=>node("b"), 3=>node("c")});
+    assert_eq!(None, previous.find_changed_node_metadata(&unchanged));
+
+    // Node 3 is removed and node 4 is added: neither is a metadata change.
+    let removed_and_added = m(btreemap! {1=>node("a"), 2=>node("b"), 4=>node("d")});
+    assert_eq!(None, previous.find_changed_node_metadata(&removed_and_added));
+
+    // Voter 2 gets a different address.
+    let voter_changed = m(btreemap! {1=>node("a"), 2=>node("b2"), 3=>node("c")});
+    assert_eq!(Some(2), previous.find_changed_node_metadata(&voter_changed));
+
+    // Learner 3 gets a different address.
+    let learner_changed = m(btreemap! {1=>node("a"), 2=>node("b"), 3=>node("c3")});
+    assert_eq!(Some(3), previous.find_changed_node_metadata(&learner_changed));
 
     Ok(())
 }

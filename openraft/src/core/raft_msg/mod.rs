@@ -245,3 +245,33 @@ where C: RaftTypeConfig
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::batch::Batch;
+    use crate::engine::testing::UTConfig;
+    use crate::engine::testing::log_id;
+    use crate::entry::EntryPayload;
+
+    /// `AppendMembership` reports its own name, and prints the preconditions the caller supplied.
+    #[test]
+    fn test_append_membership_name_and_display() {
+        let (tx, _rx) = ProgressResponder::<UTConfig, ClientWriteResult<UTConfig>>::complete_only();
+
+        let precondition = Precondition::LastMembershipLogId {
+            last_membership_log_id: Some(log_id(1, 2, 3)),
+        };
+        let msg = RaftMsg::<UTConfig>::AppendMembership {
+            payload: EntryPayload::Blank,
+            preconditions: BatchOf::<UTConfig, _>::of([precondition]),
+            tx,
+        };
+
+        assert_eq!(RaftMsgName::AppendMembership, msg.name());
+        assert_eq!(
+            "AppendMembership: preconditions: [LastMembershipLogId(T1-N2.3)]",
+            msg.to_string()
+        );
+    }
+}

@@ -13,6 +13,7 @@ use std::time::Duration;
 
 use futures::Stream;
 use futures::TryStreamExt;
+use maplit::btreemap;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::Entry;
@@ -511,7 +512,7 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
     let final_membership = Membership::new_with_defaults(vec![btreeset! {0}], []);
 
     tracing::info!("--- a request without payload creates a separate blank for each membership entry");
-    let final_log_id = {
+    {
         let blank_calls = BLANK_CALLS.load(Ordering::SeqCst);
         let request = ChangeMembershipRequest::new([0], false);
         let outcome = node0.change_membership_with_payload(request).await?;
@@ -527,7 +528,7 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
         let expected_payloads = vec![
             (outcome.first.log_id, CustomPayload {
                 normal: None,
-                membership: Some(final_joint_membership),
+                membership: Some(final_joint_membership.clone()),
             }),
             (uniform.log_id, CustomPayload {
                 normal: None,
@@ -535,18 +536,48 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
             }),
         ];
         assert_eq!(expected_payloads, read_payloads(&log0, 5..=6).await?);
+    }
 
-        uniform.log_id
+    // Voters `{0}` unchanged, node 1 re-added as a learner: one voter set on both sides, so this
+    // is a direct append.
+    let appended_membership = Membership::new(vec![btreeset! {0}], btreemap! {0=>(), 1=>()})?;
+
+    tracing::info!("--- append_membership binds the membership into the caller's payload");
+    let appended_log_id = {
+        let blank_calls = BLANK_CALLS.load(Ordering::SeqCst);
+
+        // The base payload already carries a membership; `with_membership()` replaces exactly that
+        // field and keeps `normal`.
+        let base = CustomPayload {
+            normal: Some("appended application data".to_string()),
+            membership: Some(final_joint_membership.clone()),
+        };
+        let resp = node0.append_membership(appended_membership.clone(), base, []).await?;
+
+        assert_eq!(blank_calls, BLANK_CALLS.load(Ordering::SeqCst));
+        assert_eq!(7, resp.log_id.index);
+        assert_eq!(Some(appended_membership.clone()), resp.membership);
+
+        // One entry holds both the application data and the proposed membership.
+        let expected_payloads = vec![(resp.log_id, CustomPayload {
+            normal: Some("appended application data".to_string()),
+            membership: Some(appended_membership.clone()),
+        })];
+        assert_eq!(expected_payloads, read_payloads(&log0, 7..=7).await?);
+
+        resp.log_id
     };
 
     let expected_final_state = AppliedState {
-        last_applied: Some(final_log_id),
-        membership: StoredMembership::new(Some(final_log_id), final_membership),
+        last_applied: Some(appended_log_id),
+        membership: StoredMembership::new(Some(appended_log_id), appended_membership),
         commands: vec![
             (joint_log_id, "joint application data".to_string()),
             (uniform_log_id, "uniform application data".to_string()),
+            (appended_log_id, "appended application data".to_string()),
         ],
     };
+    assert_eq!(expected_final_state, sm0.state());
 
     tracing::info!("--- restart node 0 from its log with an empty state machine");
     let recovered_node = {
@@ -557,7 +588,7 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
         let recovered_sm = TestStateMachine::default();
         let recovered = new_node(0, config.clone(), router.clone(), log0, recovered_sm.clone()).await?;
         router.insert(0, recovered.clone());
-        recovered.wait(timeout()).applied_index(Some(6), "reapply committed log").await?;
+        recovered.wait(timeout()).applied_index(Some(7), "reapply committed log").await?;
 
         assert_eq!(expected_final_state, recovered_sm.state());
         let metrics = recovered.metrics().borrow_watched().clone();
@@ -568,7 +599,7 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
     tracing::info!("--- install node 0 snapshot into a fresh node");
     let node2 = {
         recovered_node.trigger().snapshot().await?;
-        recovered_node.wait(timeout()).snapshot(final_log_id, "custom payload snapshot").await?;
+        recovered_node.wait(timeout()).snapshot(appended_log_id, "custom payload snapshot").await?;
         let snapshot = recovered_node.get_snapshot().await?.expect("snapshot should exist");
         let vote = recovered_node.metrics().borrow_watched().vote;
 
