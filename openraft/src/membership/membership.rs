@@ -158,8 +158,8 @@ where
     /// Membership is defined by a joint of multiple configs.
     /// Each config is a vec of node-id.
     ///
-    /// The returned `Vec` contains one or more configs (currently it is two). If there is only one
-    /// config, it is in a uniform config, otherwise, it is in a joint consensus.
+    /// The returned `Vec` contains one or more configs. If there is only one config, it is in a
+    /// uniform config, otherwise, it is in a joint consensus.
     pub fn get_joint_config(&self) -> &Vec<BTreeSet<NID>> {
         &self.configs
     }

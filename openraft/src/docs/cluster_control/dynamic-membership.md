@@ -85,6 +85,62 @@ need to roll back. For permanent removal in a single call, prefer
 from the cluster without an intermediate learner state.
 
 
+### [`Raft::append_membership()`]
+
+Writes a caller-built membership as **one** log entry, with no intermediate
+joint config. Use it when a one-voter change must cost a single entry, or when
+the cluster must land on a joint membership the caller picked itself.
+
+**Parameters:**
+- `membership`: The exact membership to store, uniform or joint
+- `payload`: The base entry payload. [`RaftPayload::with_membership()`] binds
+  `membership` into it, so the application data and the membership are stored
+  and applied at the same log ID. A caller with no application data passes
+  `C::Payload::blank()`.
+- `preconditions`: Compare-and-set guards, all checked before anything is
+  validated or written
+
+**Accepted transitions:**
+- Both the effective and the proposed membership are uniform, and their voter
+  sets differ by at most one node ID
+- Otherwise, the two memberships share an exactly equal voter set
+
+Any other transition returns [`UnsupportedMembershipTransition`] and writes no
+log. [`extended membership`] proves why these two rules keep quorums
+intersecting.
+
+**Rejections that write no log:**
+- [`InProgress`], while the preceding membership is not yet committed
+- [`UncommittedLeaderLog`], until this leader commits a log entry of its own
+  term. A valid leader lease does not imply that condition.
+- [`NodeMetadataChanged`], when the proposed membership gives a different
+  `Node` to a node ID the cluster already knows. Adding a node and removing a
+  node stay allowed. An intentional metadata update remains
+  [`ChangeMembers::SetNodes`], whose split-brain risk the *Updating Node
+  Metadata* section below explains.
+- [`ClientWriteError::PreconditionFailed`], when a supplied `Precondition` does
+  not hold
+
+**Pass [`Precondition::LastMembershipLogId`]** whenever the proposed membership
+was derived from an observed one. Without it, a membership change that landed
+in between is silently overwritten.
+
+**Example:**
+```ignore
+let observed = raft.metrics().borrow().membership_config.clone();
+
+// Promote learner 4 to voter, keeping every node's metadata as observed.
+let voters = BTreeSet::from([1, 2, 3, 4]);
+let nodes = observed.membership().nodes().map(|(id, n)| (id.clone(), n.clone()));
+let proposed = Membership::new(vec![voters], nodes.collect::<BTreeMap<_, _>>())?;
+
+raft.append_membership(proposed, Request::blank(), [Precondition::LastMembershipLogId {
+    last_membership_log_id: observed.log_id().clone(),
+}])
+.await?;
+```
+
+
 ## Node IDs Must Not Be Reused
 
 A node ID identifies one node, holding one log, for the entire lifetime of the
@@ -205,6 +261,15 @@ Exercise additional care when:
 
 [`Raft::add_learner()`]: `crate::Raft::add_learner`
 [`Raft::change_membership()`]: `crate::Raft::change_membership`
+[`Raft::append_membership()`]: `crate::Raft::append_membership`
+[`RaftPayload::with_membership()`]: `crate::entry::RaftPayload::with_membership`
+[`Precondition::LastMembershipLogId`]: `crate::raft::Precondition::LastMembershipLogId`
+[`ClientWriteError::PreconditionFailed`]: `crate::errors::ClientWriteError::PreconditionFailed`
+[`InProgress`]: `crate::errors::InProgress`
+[`NodeMetadataChanged`]: `crate::errors::NodeMetadataChanged`
+[`UncommittedLeaderLog`]: `crate::errors::UncommittedLeaderLog`
+[`UnsupportedMembershipTransition`]: `crate::errors::UnsupportedMembershipTransition`
+[`extended membership`]: `crate::docs::data::extended_membership`
 [`ChangeMembers::SetNodes`]: `crate::change_members::ChangeMembers::SetNodes`
 [`ChangeMembers::RemoveNodes`]: `crate::change_members::ChangeMembers::RemoveNodes`
 [`Config::allow_log_reversion`]: `crate::config::Config::allow_log_reversion`
