@@ -6,6 +6,7 @@ use openraft_macros::since;
 
 use crate::ChangeMembers;
 use crate::LogIdOptionExt;
+use crate::Membership;
 use crate::RaftMetrics;
 use crate::RaftTypeConfig;
 use crate::batch::Batch;
@@ -182,6 +183,31 @@ where C: RaftTypeConfig
             uniform: Some(uniform),
         });
         Ok(outcome)
+    }
+
+    #[since(version = "0.10.0")]
+    #[tracing::instrument(level = "info", skip_all)]
+    pub(crate) async fn append_membership(
+        &self,
+        membership: Membership<C::NodeId, C::Node>,
+        payload: C::Payload,
+        preconditions: BatchOf<C, Precondition<C>>,
+    ) -> Result<ClientWriteResult<C>, Fatal<C>> {
+        tracing::info!("append_membership: proposed membership: {}", membership);
+
+        // Bind the membership into the payload here, so the core has exactly one value to
+        // validate and to write: the payload it receives.
+        let payload = payload.with_membership(membership);
+
+        let (tx, rx) = ProgressResponder::<C, _>::complete_only();
+
+        let msg = RaftMsg::AppendMembership {
+            payload,
+            preconditions,
+            tx,
+        };
+
+        self.inner.call_core(msg, rx).await
     }
 
     #[since(version = "0.10.0")]

@@ -12,6 +12,7 @@ use crate::errors::Operation;
 use crate::membership::IntoNodes;
 use crate::node::Node;
 use crate::node::NodeId;
+use crate::quorum::Coherent;
 use crate::quorum::FindCoherent;
 
 /// The membership configuration of the cluster.
@@ -157,8 +158,8 @@ where
     /// Membership is defined by a joint of multiple configs.
     /// Each config is a vec of node-id.
     ///
-    /// The returned `Vec` contains one or more configs (currently it is two). If there is only one
-    /// config, it is in a uniform config, otherwise, it is in a joint consensus.
+    /// The returned `Vec` contains one or more configs. If there is only one config, it is in a
+    /// uniform config, otherwise, it is in a joint consensus.
     pub fn get_joint_config(&self) -> &Vec<BTreeSet<NID>> {
         &self.configs
     }
@@ -249,7 +250,7 @@ where
         Ok(())
     }
 
-    /// Ensures that none of the sub-configs in this joint config are empty.
+    /// Ensures that no sub-config in this joint config is empty.
     pub(crate) fn ensure_non_empty_config(&self) -> Result<(), EmptyMembership> {
         for c in self.get_joint_config().iter() {
             if c.is_empty() {
@@ -258,6 +259,26 @@ where
         }
 
         Ok(())
+    }
+
+    /// Ensures that this membership defines a quorum: it holds at least one sub-config, and none
+    /// of them is empty.
+    ///
+    /// Zero sub-configs is as unusable as an empty sub-config: [`QuorumSet::is_quorum()`] iterates
+    /// the sub-configs, so with none of them it returns true for every node set.
+    ///
+    /// [`Membership::default()`] carries exactly that value as the empty sentinel, and storage
+    /// implementations round-trip it through [`Membership::new()`], so this check is not part of
+    /// [`Membership::ensure_valid()`]. Only a path that reads quorums out of a caller-supplied
+    /// membership calls it.
+    ///
+    /// [`QuorumSet::is_quorum()`]: crate::quorum::QuorumSet::is_quorum
+    pub(crate) fn ensure_quorum_defined(&self) -> Result<(), EmptyMembership> {
+        if self.get_joint_config().is_empty() {
+            return Err(EmptyMembership {});
+        }
+
+        self.ensure_non_empty_config()
     }
 
     /// Ensures that every vote has a corresponding Node.
@@ -273,9 +294,61 @@ where
         Ok(())
     }
 
+    /// Returns the first node id that both memberships know but describe with a different [`Node`].
+    ///
+    /// A node id that only one of the two memberships knows is skipped: adding a node and removing
+    /// a node are not metadata changes.
+    pub(crate) fn find_changed_node_metadata(&self, other: &Self) -> Option<NID> {
+        for (node_id, node) in self.nodes.iter() {
+            let Some(other_node) = other.nodes.get(node_id) else {
+                continue;
+            };
+
+            if other_node != node {
+                return Some(node_id.clone());
+            }
+        }
+
+        None
+    }
+
     // ---
     // Quorum related internal API
     // ---
+    /// Returns true if one membership can be appended directly on top of the other, as a single
+    /// log entry without an intermediate joint membership.
+    ///
+    /// The predicate is symmetric, and it accepts a transition only when quorum intersection
+    /// follows from one of two cases:
+    ///
+    /// - Both memberships are uniform, i.e. each has exactly one voter set, and the two voter sets
+    ///   differ by at most one node id. The majority sizes then leave no room for two disjoint
+    ///   quorums.
+    /// - Otherwise, the two memberships share an exactly equal voter set, which is the same
+    ///   argument [`Coherent::is_coherent_with()`] makes for joint consensus.
+    ///
+    /// The rule is conservative: it rejects some transitions whose quorums do intersect. See
+    /// [`UnsupportedMembershipTransition`] for examples.
+    ///
+    /// [`UnsupportedMembershipTransition`]: crate::errors::UnsupportedMembershipTransition
+    pub(crate) fn is_direct_append_compatible_with(&self, other: &Self) -> bool {
+        if self.ensure_quorum_defined().is_err() {
+            return false;
+        }
+        if other.ensure_quorum_defined().is_err() {
+            return false;
+        }
+
+        let both_uniform = self.configs.len() == 1 && other.configs.len() == 1;
+
+        if both_uniform {
+            let differing = self.configs[0].symmetric_difference(&other.configs[0]).count();
+            return differing <= 1;
+        }
+
+        self.configs.is_coherent_with(&other.configs)
+    }
+
     /// Returns the next coherent membership to change to, while the expected final membership is
     /// `goal`.
     ///

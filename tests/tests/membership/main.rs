@@ -16,6 +16,7 @@ mod t20_change_membership;
 mod t21_change_membership_cases;
 mod t22_change_membership_if;
 mod t23_custom_payload;
+mod t24_append_membership;
 mod t30_commit_joint_config;
 mod t30_elect_with_new_config;
 mod t31_add_remove_follower;

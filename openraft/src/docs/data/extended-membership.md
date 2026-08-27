@@ -141,6 +141,82 @@ If the last committed membership is `[{a, b, c}, {x, y, z}]`, a valid new member
 might be: `[{a, b, c}]`, or `[{x, y, z}]`.
 
 
+## Direct membership append
+
+[`Raft::change_membership()`][] always reaches its target through a joint
+config, so changing one voter costs two log entries.
+[`Raft::append_membership()`][] writes the caller's exact membership as one log
+entry instead. It must still satisfy (2) **old-new-intersect**, and it accepts a
+transition only when one of the two rules below proves that constraint.
+
+### Rule 1: two uniform memberships one voter apart
+
+The old membership `m` and the new membership `m'` each have exactly one voter
+set, `V` and `V'`, and the **total symmetric difference** of those sets holds at
+most one node id:
+
+`|(V \ V') ∪ (V' \ V)| ≤ 1`
+
+This proves **old-new-intersect**. Take `V' = V ∪ {x}` with `|V| = n`. Any
+`qᵢ ∈ m` holds at least `⌊n/2⌋ + 1` nodes of `V`. Any `qⱼ ∈ m'` holds at least
+`⌊(n+1)/2⌋ + 1` nodes of `V'`, so setting `x` aside it holds at least
+`⌊(n+1)/2⌋` nodes of `V`. The two counts add up to at least `n + 1`, which is
+more than `|V| = n`, so `qᵢ ∩ qⱼ ≠ ø`. Removing one voter is the same statement
+with `m` and `m'` swapped.
+
+A difference of two node ids breaks the argument. From `[{a,b,c}]` to
+`[{b,c,d}]`, the quorum `{a,b}` of the old membership and the quorum `{c,d}` of
+the new one share no node.
+
+| Transition | Symmetric difference | Result |
+| --- | --- | --- |
+| `[{a,b,c}]` → `[{a,b,c}]` | `{}` | accept |
+| `[{a,b,c}]` → `[{a,b,c,x}]` | `{x}` | accept |
+| `[{a,b,c,x}]` → `[{a,b,c}]` | `{x}` | accept |
+| `[{a,b,c}]` → `[{b,c,d}]` | `{a, d}` | reject |
+| `[{a,b,c}]` → `[{a,b,c,x,y}]` | `{x, y}` | reject |
+
+### Rule 2: an exactly equal voter set
+
+When either membership has more than one voter set, the two memberships must
+hold one voter set that is exactly equal. This is the condition the extended
+algorithm already uses, and it puts no maximum on the number of voter sets:
+`c1` → `c1c2c3c4` is accepted because `c1` appears in both.
+
+The rule compares whole voter sets, never their members. From
+`[{a,b,c}, {a,b,d}]` to `[{a,b,e}]`, every voter set holds `a` and `b`, yet no
+voter set is equal across the two memberships. The transition is rejected, and
+rightly so: the quorum `{a,c,d}` of the old membership and the quorum `{b,e}` of
+the new one share no node.
+
+The rule is conservative, so it also rejects transitions that are safe but that
+it cannot prove. [`UnsupportedMembershipTransition`][] carries such an example,
+and names every rejected transition unsupported rather than unsafe.
+
+### The current-term guard
+
+The two rules prove that a new membership intersects its parent. They say
+nothing about two children of the same parent. A direct append therefore also
+enforces the corrected Raft single-server rule: the leader must commit a log
+entry of its own term before it appends a configuration entry. Openraft records
+that entry as `Leader::noop_log_id` and the quorum-granted commit as
+[`RaftState::cluster_committed()`][], and rejects the append until:
+
+```text
+cluster_committed >= leader.noop_log_id
+```
+
+Without the guard, two children proposed in different terms can both commit
+while not intersecting each other. From the committed `[{a,b,c,d}]`, one leader
+proposes `[{a,b,c,d,u}]` and a later leader proposes `[{a,b,c,d,v}]`. Both pass
+rule 1, yet the quorum `{a,b,u}` and the quorum `{c,d,v}` share no node.
+[`UncommittedLeaderLog`][] walks through the full run.
+
+[`Raft::change_membership()`][] does not need this guard. Its joint proposal
+shares an exact voter set with the parent, so two joint proposals from the same
+parent intersect through the two strict majorities of that shared set.
+
+
 ## Proof of correctness
 
 (In this proof, ∵ means "because" and ∴ means "therefore")
@@ -189,3 +265,10 @@ encountering a node with the higher `term_2`.
 ∴ It's impossible for two leaders to both commit a log entry.
 
 QED.
+
+
+[`Raft::append_membership()`]: `crate::Raft::append_membership`
+[`Raft::change_membership()`]: `crate::Raft::change_membership`
+[`RaftState::cluster_committed()`]: `crate::RaftState::cluster_committed`
+[`UncommittedLeaderLog`]: `crate::errors::UncommittedLeaderLog`
+[`UnsupportedMembershipTransition`]: `crate::errors::UnsupportedMembershipTransition`
