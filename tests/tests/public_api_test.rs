@@ -140,6 +140,7 @@ use openraft::errors::LinearizableReadError;
 use openraft::errors::MembershipError;
 use openraft::errors::NetworkError;
 use openraft::errors::NoForward;
+use openraft::errors::NodeMetadataChanged;
 use openraft::errors::NodeNotFound;
 use openraft::errors::NotAllowed;
 use openraft::errors::NotInMembers;
@@ -153,7 +154,9 @@ use openraft::errors::ReplicationClosed;
 use openraft::errors::SnapshotMismatch as DeprecatedSnapshotMismatch;
 use openraft::errors::StreamingError;
 use openraft::errors::Timeout;
+use openraft::errors::UncommittedLeaderLog;
 use openraft::errors::Unreachable;
+use openraft::errors::UnsupportedMembershipTransition;
 use openraft::errors::decompose;
 // =============================================================================
 // impls module exports
