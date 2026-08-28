@@ -38,14 +38,7 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
     - [Examples with OpenRaft 0.10](https://github.com/databendlabs/openraft/tree/release-0.10/examples) require OpenRaft `0.10.0-alpha.34` (alpha) on [crates.io/openraft](https://crates.io/crates/openraft);
     - [Examples with OpenRaft 0.9](https://github.com/databendlabs/openraft/tree/release-0.9/examples) require OpenRaft 0.9 on [crates.io/openraft](https://crates.io/crates/openraft).
 
-- 🙌 **Questions**?
-    - Why not take a peek at our [FAQ](https://docs.rs/openraft/0.10.0-alpha.34/openraft/docs/faq/index.html)? You might find just what you need.
-    - Wanna chat? Come hang out with us on [Discord](https://discord.gg/ZKw3WG7FQ9)!
-    - Or start a new discussion over on [GitHub](https://github.com/databendlabs/openraft/discussions/new).
-    - Or join our [Feishu group](https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=d20l9084-6d36-4470-bac5-4bad7378d003).
-    - And hey, if you're on WeChat, add us: `drmingdrmer`. Let's get the conversation started!
-
-Whatever your style, we're here to support you. 🚀 Let's make something awesome together!
+- 🙌 **Questions**? Ask on [Discord](https://discord.gg/ZKw3WG7FQ9), in a [GitHub discussion](https://github.com/databendlabs/openraft/discussions/new), in our [Feishu group](https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=d20l9084-6d36-4470-bac5-4bad7378d003), or on WeChat: `drmingdrmer`.
 
 - OpenRaft is derived from [async-raft](https://docs.rs/crate/async-raft/latest) with several bugs fixed: [Fixed bugs](https://github.com/databendlabs/openraft/blob/main/derived-from-async-raft.md).
 
@@ -55,7 +48,10 @@ Whatever your style, we're here to support you. 🚀 Let's make something awesom
 - The features are almost complete for building an application.
 - Performance: Supports 33,000 writes/sec for a single writer and 5,615,000 writes/sec with batch writes. See: [Performance](#performance)
 - Unit test coverage stands at 92%.
-- The chaos test has not yet been completed, and further testing is needed to ensure the application's robustness and reliability.
+- Chaos testing: a [deterministic simulation fuzzer](./tests-turmoil) runs in every CI build;
+  a [Jepsen](./jepsen) suite runs 8 nemesis scenarios on every push to `main`:
+  network partition, process pause, process kill, slow packets, flaky packets, clock skew,
+  membership churn, and all of them combined.
 
 
 ## API status
@@ -63,10 +59,10 @@ Whatever your style, we're here to support you. 🚀 Let's make something awesom
 - **OpenRaft API is not stable yet**. Before `1.0.0`, an upgrade may contain incompatible changes.
   Check our [change-log](https://github.com/databendlabs/openraft/blob/main/change-log.md). A commit message starts with a keyword to indicate the modification type of the commit:
 
-  - `DataChange:` on-disk data types changes, which may require manual upgrade.
-  - `Change:` if it introduces incompatible changes.
-  - `Feature:` if it introduces compatible non-breaking new features.
-  - `Fix:` if it just fixes a bug.
+  - `data-change:` on-disk data types changes, which may require manual upgrade.
+  - `change:` if it introduces incompatible changes.
+  - `feat:` if it introduces compatible non-breaking new features.
+  - `fix:` if it just fixes a bug.
 
 ## Versions
 
@@ -74,34 +70,24 @@ Whatever your style, we're here to support you. 🚀 Let's make something awesom
     The main branch is for the [release-0.10](https://github.com/databendlabs/openraft/tree/release-0.10).
     Latest alpha on crates.io: [v0.10.0-alpha.34](https://crates.io/crates/openraft/0.10.0-alpha.34).
     The `0.10` line is in **alpha** — the API may still change before the final `0.10.0` release.
+    Upgrade guide: ⬆️  [0.9 to 0.10](https://docs.rs/openraft/0.10.0-alpha.34/openraft/docs/upgrade_guide/upgrade_09_10/index.html).
 
 - **Branch [release-0.9](https://github.com/databendlabs/openraft/tree/release-0.9)**:
-  Latest: ( [v0.9.0](https://github.com/databendlabs/openraft/tree/v0.9.0) | [Change log](https://github.com/databendlabs/openraft/blob/release-0.9/change-log.md#v090) );
+  Latest: ( [v0.9.25](https://github.com/databendlabs/openraft/tree/v0.9.25) | [Change log](https://github.com/databendlabs/openraft/blob/release-0.9/change-log.md) );
   Upgrade guide: ⬆️  [0.8 to 0.9](https://docs.rs/openraft/0.9.0/openraft/docs/upgrade_guide/upgrade_08_09/index.html);
   `release-0.9` **Won't** accept new features but only bug fixes.
 
-- **Branch [release-0.8](https://github.com/databendlabs/openraft/tree/release-0.8)**:
-  Latest: ( [v0.8.8](https://github.com/databendlabs/openraft/tree/v0.8.8) | [Change log](https://github.com/databendlabs/openraft/blob/release-0.8/change-log.md#v088) );
-  Upgrade guide: ⬆️  [0.7 to 0.8](https://docs.rs/openraft/0.8.4/openraft/docs/upgrade_guide/upgrade_07_08/index.html), ⬆️  [0.8.3 to 0.8.4](https://docs.rs/openraft/0.8.4/openraft/docs/upgrade_guide/upgrade_083_084/index.html);
-  `release-0.8` **Won't** accept new features but only bug fixes.
-
-- **Branch [release-0.7](https://github.com/databendlabs/openraft/tree/release-0.7)**:
-  Latest: ( [v0.7.6](https://github.com/databendlabs/openraft/tree/v0.7.6) | [Change log](https://github.com/databendlabs/openraft/blob/release-0.7/change-log.md#v076) );
-  Upgrade guide: ⬆️  [0.6 to 0.7](https://docs.rs/openraft/0.8.4/openraft/docs/upgrade_guide/upgrade_06_07/index.html);
-  `release-0.7` **Won't** accept new features but only bug fixes.
-
-- **Branch [release-0.6](https://github.com/databendlabs/openraft/tree/release-0.6)**:
-  Latest: ( [v0.6.8](https://github.com/databendlabs/openraft/tree/v0.6.8) | [Change log](https://github.com/databendlabs/openraft/blob/release-0.6/change-log.md) );
-  `release-0.6` **won't** accept new features but only bug fixes.
+- Branches [release-0.8](https://github.com/databendlabs/openraft/tree/release-0.8),
+  [release-0.7](https://github.com/databendlabs/openraft/tree/release-0.7) and
+  [release-0.6](https://github.com/databendlabs/openraft/tree/release-0.6) are closed;
+  their [upgrade guides](https://docs.rs/openraft/0.8.9/openraft/docs/upgrade_guide/index.html) stay published.
 
 # Roadmap
 
-- [x] **2022-10-31** [Extended joint membership](https://docs.rs/openraft/0.10.0-alpha.34/openraft/docs/data/extended_membership/index.html)
-- [x] **2023-02-14** Minimize confliction rate when electing;
-  See: [OpenRaft Vote design](https://docs.rs/openraft/0.10.0-alpha.34/openraft/docs/data/vote/index.html);
-  Or use [standard Raft leader-ID mode](https://docs.rs/openraft/0.10.0-alpha.34/openraft/docs/data/leader_id/index.html).
-- [x] **2023-04-26** Goal performance is 1,000,000 put/sec.
-- [ ] Reduce the complexity of vote and pre-vote: [get rid of pre-vote RPC](https://github.com/databendlabs/openraft/discussions/15);
+- [x] **2026-06-12** [Pre-Vote](https://docs.rs/openraft/0.10.0-alpha.34/openraft/docs/protocol/pre_vote/index.html):
+  a node asks its peers whether they would grant it a vote, before it increments its term;
+  enable it with [`Config::enable_pre_vote`][];
+  See: [design discussion](https://github.com/databendlabs/openraft/discussions/15).
 - [ ] Support flexible quorum, e.g.: [Hierarchical Quorums](https://zookeeper.apache.org/doc/r3.5.9/zookeeperHierarchicalQuorums.html)
 - [ ] Consider introducing read-quorum and write-quorum,
   improve efficiency with a cluster with an even number of nodes.
@@ -152,14 +138,14 @@ What sets OpenRaft apart from a standard Raft implementation:
 
 - ✅ **Leader election**: by policy or manually ([`Trigger::elect()`][]).
 - ✅ **Leader transfer**: [`Trigger::transfer_leader()`][].
-- ✅ **Pre-vote**: avoid unnecessary term increments by enabling [`Config::enable_pre_vote`][].
+- ✅ **Pre-vote**: avoid unnecessary term increments by enabling [`Config::enable_pre_vote`][]; it runs as a dedicated RPC, see [Pre-Vote protocol][].
 - ✅ **Non-voter(learner) Role**: refer to [`add_learner()`][].
 - ✅ **Log Compaction**(snapshot of state machine): by policy or manually ([`Trigger::snapshot()`][]).
 - ✅ **Snapshot replication**.
 - ✅ **Dynamic Membership**: using joint membership config change. Refer to [dynamic membership](https://docs.rs/openraft/0.10.0-alpha.34/openraft/docs/cluster_control/dynamic_membership/index.html)
 - ✅ **Linearizable read**: [`ensure_linearizable()`][].
 - ✅ **Metrics**: [`Raft::metrics()`][], [`Raft::data_metrics()`][], and [`Raft::server_metrics()`][].
-- ✅ **Single-step config change**: [`append_membership()`][] writes a caller-built membership as one log entry, with no intermediate joint config. It is a superset of standard Raft's single-server change, because it also accepts a caller-built joint membership. Use it only when you know exactly which transitions it accepts; [`change_membership()`][] derives the whole membership for you and is the default choice.
+- ✅ **Single-step config change**: [`append_membership()`][] writes a caller-built membership, without joint config. It accepts only a restricted set of transitions.
 - ✅ Toggle heartbeat / election: [`RuntimeConfigHandle::heartbeat()`][] / [`RuntimeConfigHandle::elect()`][].
 - ✅ Trigger snapshot / election manually: [`Trigger::snapshot()`][] / [`Trigger::elect()`][].
 - ✅ Purge log by policy or manually: [`Trigger::purge_log()`][].
@@ -300,7 +286,6 @@ OpenRaft is licensed under the terms of the [MIT License](https://en.wikipedia.o
 or the [Apache License 2.0](http://www.apache.org/licenses/LICENSE-2.0), at your choosing.
 
 
-[`change_membership()`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/raft/struct.Raft.html#method.change_membership
 [`append_membership()`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/raft/struct.Raft.html#method.append_membership
 [`add_learner()`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/raft/struct.Raft.html#method.add_learner
 [`Trigger::purge_log()`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/raft/trigger/struct.Trigger.html#method.purge_log
@@ -312,6 +297,7 @@ or the [Apache License 2.0](http://www.apache.org/licenses/LICENSE-2.0), at your
 [`Trigger::snapshot()`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/raft/trigger/struct.Trigger.html#method.snapshot
 [`Trigger::transfer_leader()`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/raft/trigger/struct.Trigger.html#method.transfer_leader
 [`Config::enable_pre_vote`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/struct.Config.html#structfield.enable_pre_vote
+[Pre-Vote protocol]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/docs/protocol/pre_vote/index.html
 [`Raft::metrics()`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/raft/struct.Raft.html#method.metrics
 [`Raft::data_metrics()`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/raft/struct.Raft.html#method.data_metrics
 [`Raft::server_metrics()`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/raft/struct.Raft.html#method.server_metrics
