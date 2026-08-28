@@ -226,6 +226,17 @@ async fn follower_answers_forward_to_leader() -> Result<()> {
     let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3}).await?;
     let follower = router.get_raft_handle(&1)?;
 
+    // `new_cluster()` waits for the learner to receive the last entry, not for the voters, so
+    // follower 1 may still be one entry behind here. Pin its log before the append, so that the
+    // last phase can tell an unchanged log from one the append grew.
+    router
+        .wait(&1, timeout())
+        .metrics(
+            |m| m.last_log_index == Some(log_index),
+            "follower 1 receives every entry the cluster wrote",
+        )
+        .await?;
+
     tracing::info!(log_index, "--- a follower forwards the append to the leader");
     {
         let proposed = Membership::new_with_defaults(vec![btreeset! {0,1,2,3}], []);
