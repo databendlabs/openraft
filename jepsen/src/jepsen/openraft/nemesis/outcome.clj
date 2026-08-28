@@ -1,5 +1,12 @@
 (ns jepsen.openraft.nemesis.outcome)
 
+(defn target-category [node-count target-count]
+  (cond
+    (= 1 target-count) :one
+    (= node-count target-count) :all
+    (<= target-count (quot (dec node-count) 2)) :minority
+    :else :majority))
+
 (defn installed
   "Returns a confirmed Nemesis outcome with structured details."
   [details]

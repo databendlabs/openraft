@@ -49,13 +49,6 @@
 (defn- random-targets [test]
   (vec (random/nonempty-subset (:nodes test))))
 
-(defn- target-category [node-count target-count]
-  (cond
-    (= 1 target-count) :one
-    (= node-count target-count) :all
-    (<= target-count (quot (dec node-count) 2)) :minority
-    :else :majority))
-
 (defn verify-offset! [offset-ms]
   (let [before (Long/parseLong (c/exec :date "+%s%3N"))
         observed (clock/probe-wall-time-ms!)
@@ -185,7 +178,7 @@
                :value (outcome/installed
                        (merge {:mode :bump
                                :targets targets
-                               :target-category (target-category
+                               :target-category (outcome/target-category
                                                  (count (:nodes test))
                                                  (count targets))
                                :offsets-ms offsets
@@ -210,7 +203,7 @@
                        (merge {:mode :rate
                                :direction direction
                                :targets targets
-                               :target-category (target-category
+                               :target-category (outcome/target-category
                                                  (count (:nodes test))
                                                  (count targets))
                                :rates rates
@@ -231,7 +224,7 @@
                :value (outcome/installed
                        (merge {:mode :strobe
                                :targets targets
-                               :target-category (target-category
+                               :target-category (outcome/target-category
                                                  (count (:nodes test))
                                                  (count targets))
                                :strobes strobes
