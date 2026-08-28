@@ -9,6 +9,7 @@
             [jepsen.openraft.cluster :as cluster]
             [jepsen.openraft.harness :as harness]
             [jepsen.openraft.nemesis :as openraft-nemesis]
+            [jepsen.openraft.nemesis.outcome :as outcome]
             [jepsen.openraft.nemesis.process :as process]
             [jepsen.openraft.quorum :as quorum]
             [jepsen.openraft.worker :as worker]))
@@ -150,9 +151,9 @@
         (is (= [[:kill selected]]
                (mapv (juxt :f :value) @invocations)))))))
 
-(deftest categorizes-process-target-scale
+(deftest categorizes-target-scale
   (is (= [:one :minority :majority :majority :all]
-         (mapv (partial #'process/target-category 5)
+         (mapv (partial outcome/target-category 5)
                (range 1 6)))))
 
 (deftest process-generator-repeats-random-kill-episodes
@@ -1381,7 +1382,7 @@
                         :leader "n1"
                         :nodes nodes
                         :voter-configs [(set voters)]
-                        :target-category (#'process/target-category
+                        :target-category (outcome/target-category
                                           (count voters)
                                           (count nodes))
                         :pause-results (zipmap nodes (repeat :paused))}))

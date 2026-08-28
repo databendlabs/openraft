@@ -26,13 +26,6 @@
 (def ^:private process-availability-window-nanos
   (* 3 max-election-timeout-ms 1000000))
 
-(defn- target-category [node-count target-count]
-  (cond
-    (= 1 target-count) :one
-    (= node-count target-count) :all
-    (<= target-count (quot (dec node-count) 2)) :minority
-    :else :majority))
-
 (defn- process-disruption [test status mode eligible-nodes]
   (let [leader (:leader status)
         configs (cluster/voter-configs test status)
@@ -51,8 +44,8 @@
                                 (filter reachable-voters)
                                 vec)
          :target-count target-count
-         :target-category (target-category (count (:nodes test))
-                                           target-count)
+         :target-category (outcome/target-category (count (:nodes test))
+                                                   target-count)
          :leader-included? (contains? target-set leader)}))))
 
 (def ^:private disruption-start-specs
