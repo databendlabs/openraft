@@ -5,7 +5,8 @@
             [jepsen.openraft.await :as await]
             [jepsen.openraft.client :as client]
             [jepsen.openraft.interruption :as interruption]
-            [jepsen.openraft.quorum :as quorum]))
+            [jepsen.openraft.quorum :as quorum]
+            [jepsen.util :as util]))
 
 (defn node-info [test node]
   {:node-id (client/node-host node)
@@ -84,19 +85,34 @@
 (defn- modeled-metrics-failure? [e]
   (contains? modeled-metrics-failure-kinds (:kind (ex-data e))))
 
-(defn- collect-reachable-metrics-from [test nodes]
-  (into {}
-        (keep
-         (fn [node]
-           (try
-             [node (node-metrics! test node)]
-             (catch InterruptedException e
-               (throw e))
-             (catch Exception e
-               (if (modeled-metrics-failure? e)
-                 nil
-                 (throw e)))))
-         nodes)))
+(defn- collect-reachable-metrics-from
+  "Fetches metrics from nodes at once, dropping the unreachable ones.
+
+  A node whose process is paused answers no request, so its probe ends at
+  `client/metrics!`'s five-second request timeout. One Nemesis thread runs
+  every fault class, and a sequential scan would hold that thread for one
+  timeout per paused node, delaying the cleanup that resumes them."
+  [test nodes]
+  (try
+    (into {}
+          (remove nil?)
+          (util/real-pmap
+           (fn [node]
+             (try
+               [node (node-metrics! test node)]
+               (catch InterruptedException e
+                 (throw e))
+               (catch Exception e
+                 (if (modeled-metrics-failure? e)
+                   nil
+                   (throw e)))))
+           nodes))
+    (catch Exception e
+      ;; real-pmap reports an interrupt by throwing out of Thread/join, which
+      ;; leaves the flag cleared on this thread.
+      (when (interruption/interruption? e)
+        (.interrupt (Thread/currentThread)))
+      (throw e))))
 
 (defn- collect-reachable-metrics [test]
   (collect-reachable-metrics-from test (:nodes test)))

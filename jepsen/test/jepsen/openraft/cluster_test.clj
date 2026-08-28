@@ -68,6 +68,26 @@
                                         {:kind :unreachable}))))]
       (is (nil? (#'cluster/cluster-status test-config))))))
 
+(deftest probes-every-node-concurrently
+  (let [nodes (:nodes test-config)
+        follower {:state "Follower"
+                  :current_leader "n2"
+                  :vote (vote 3 "n2")}
+        arrived (java.util.concurrent.CountDownLatch. (count nodes))]
+    (with-redefs [client/metrics!
+                  (fn [endpoint]
+                    (.countDown arrived)
+                    ;; A sequential scan never lets the last node arrive, so
+                    ;; the first probe waits out the timeout and fails here.
+                    (when-not (.await arrived
+                                      10
+                                      java.util.concurrent.TimeUnit/SECONDS)
+                      (throw (ex-info "a node probe waited for an earlier one"
+                                      {:endpoint endpoint})))
+                    follower)]
+      (is (= (zipmap nodes (repeat follower))
+             (#'cluster/collect-reachable-metrics test-config))))))
+
 (deftest distinguishes-modeled-metrics-failures-from-harness-errors
   (testing "recognized SUT observations make a node unavailable"
     (doseq [kind [:http-error
