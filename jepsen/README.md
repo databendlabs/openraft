@@ -267,9 +267,9 @@ at node-IP granularity and across DB-to-DB ports. It does not provide one-way,
 per-RPC, or per-port shaping. Because both modes own the same root qdisc, they
 are never active at the same time.
 
-The same Packet package and checker are used in focused and chaos runs. Packet
-coverage requires the selected mode and both leader-target cases to be installed
-and later cleared successfully. It does not require an election, timeout, or
+The same Packet package and checker are used in focused and chaos runs. A
+focused Packet run requires the selected mode and both leader-target cases to be
+installed and later cleared successfully. It does not require an election, timeout, or
 indeterminate mutation, because those observations depend on timing, TCP
 retransmission, and kernel packet selection. Partial installation or cleanup is
 a Harness failure; final recovery and teardown must attempt idempotent cleanup
@@ -303,10 +303,18 @@ linearizability and final data recovery.
 
 The default `chaos` profile independently schedules partition, process, pause,
 membership, packet, and clock faults. It composes the package, generator, final
-recovery, and checker supplied by each Nemesis rather than defining separate
-Chaos-only checker semantics. Packet chooses one of `slow` or `flaky` for each
-independent Packet episode, and never overlaps those two modes with each other.
-Different fault classes may remain active at the same time.
+recovery, and checker supplied by each Nemesis, and changes only how the
+composed verdict treats per-class coverage. Packet chooses one of `slow` or
+`flaky` for each independent Packet episode, and never overlaps those two modes
+with each other. Different fault classes may remain active at the same time.
+
+A chaos run does not require every fault class to install. All six classes draw
+from one 60-second random schedule, so whether a class ever meets a healthy
+cluster depends on wall-clock timing. `results.edn` therefore records
+`:fault-class-executed?` next to the observed and missing entries of each class,
+and a class that never installed does not reject the run. Coverage stays a hard
+requirement in the focused CI jobs, which run one Nemesis at a time. A chaos run
+still rejects fault errors, incomplete cleanup, and failed recovery.
 
 Every Jepsen node builds a snapshot after 100 newly committed logs by default.
 The regular write workload therefore exercises snapshot construction during
@@ -346,8 +354,8 @@ must return to the required state within the recovery deadline.
 The `final-workload` checker separately rejects a run when its final reads or
 writes fail. These modeled failures are not unexpected-SUT-response markers.
 
-A coverage failure rejects the run but does not by itself identify an OpenRaft
-failure or its root cause. Missing coverage is recorded in `results.edn` under
+A coverage failure rejects a focused run but does not by itself identify an
+OpenRaft failure or its root cause. Missing coverage is recorded in `results.edn` under
 fields such as `:missing-modes` or `:missing-target-roles`. The mode or target
 role may be absent from `history.edn`, skipped by an outcome such as
 `:no-supported-leader`, or blocked by a Harness failure recorded in
