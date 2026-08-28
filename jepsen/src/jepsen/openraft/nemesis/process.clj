@@ -372,10 +372,10 @@
 
 (defn- coverage-result
   [required-modes operation-f installed? invalid-states history cluster-state]
-  (let [installed-values (->> history
-                              (filter #(= operation-f (:f %)))
-                              (map :value)
-                              (filter installed?))
+  (let [values (->> history
+                    (filter #(= operation-f (:f %)))
+                    (map :value))
+        installed-values (filter installed? values)
         observed-modes (->> installed-values
                             (keep :mode)
                             set)
@@ -392,6 +392,7 @@
      :observed-modes (vec (sort observed-modes))
      :observed-target-categories (vec (sort observed-target-categories))
      :missing-modes (vec (sort missing-modes))
+     :unrecognized-installs (outcome/unrecognized-installs installed? values)
      :cluster-state cluster-state}))
 
 (defn- coverage-checker []

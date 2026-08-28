@@ -89,7 +89,7 @@
             :await-recovery]
            (mapv :f (:final-generator package))))))
 
-(deftest requires-each-composed-fault-class-to-execute
+(deftest reports-composed-fault-class-coverage-without-requiring-it
   (let [failure-state (harness/failure-state)
         database (db/db {})
         all-voters (set (:nodes test-config))
@@ -161,15 +161,26 @@
         (is (true? (get-in result
                            [:membership :fault-class-executed?])))))
 
-    (testing "a skipped fault does not count as execution"
+    (testing "a skipped fault is reported, not a composed-run failure"
       (let [result (check (mapv #(if (= :pause-process (:f %))
                                    (assoc % :value
                                           {:status :skipped
                                            :reason :no-supported-leader})
                                    %)
                                 history))]
+        (is (:valid? result))
+        (is (false? (get-in result [:pause :fault-class-executed?])))
+        (is (= [:random] (get-in result [:pause :missing-modes])))))
+
+    (testing "an installed outcome the class cannot read stays a failure"
+      (let [result (check (mapv #(if (= :start-partition (:f %))
+                                   (assoc % :value {:status :installed})
+                                   %)
+                                history))]
         (is (false? (:valid? result)))
-        (is (false? (get-in result [:pause :fault-class-executed?])))))))
+        (is (false? (get-in result [:partition :fault-class-executed?])))
+        (is (= 1 (get-in result [:partition :unrecognized-installs])))
+        (is (= :intact (get-in result [:partition :cluster-state])))))))
 
 (defn- teardown-package [package-name events throwable]
   {:name package-name

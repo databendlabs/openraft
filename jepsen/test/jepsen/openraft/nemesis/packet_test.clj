@@ -205,7 +205,20 @@
                                    stop]
                                   {})]
         (is (false? (:valid? result)))
-        (is (= :recovery-pending (:cluster-state result)))))))
+        (is (= :recovery-pending (:cluster-state result)))))
+
+    (testing "an installed degradation without a target role is a defect"
+      (let [result (checker/check subject
+                                  {}
+                                  [{:type :info
+                                    :process :nemesis
+                                    :f :start-packet
+                                    :value (installed {:mode :slow})}
+                                   stop
+                                   recovered]
+                                  {})]
+        (is (= 1 (:unrecognized-installs result)))
+        (is (empty? (:observed-target-roles result)))))))
 
 (deftest rejects-unknown-packet-modes
   (is (thrown-with-msg? clojure.lang.ExceptionInfo

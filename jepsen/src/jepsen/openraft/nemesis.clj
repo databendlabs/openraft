@@ -154,7 +154,21 @@
                      :f :await-recovery}
    :perf #{}})
 
-(defn- fault-class-checker [fault-checker]
+(defn- fault-class-checker
+  "Reports what one fault class covered in a composed run, without requiring it.
+
+  A composed run draws every fault class from one random schedule, so whether a
+  class ever meets a healthy cluster depends on wall-clock timing. The
+  single-class jepsen.yml jobs own per-class coverage and keep failing on their
+  own missing modes, target roles and changes. A composed run therefore keeps
+  the cleanup, error and recovery verdicts and reports the observed and missing
+  entries instead of failing on them.
+
+  Only an absent or skipped fault is relaxed. An outcome that claims an
+  installed fault the class cannot read is a Nemesis defect, not a schedule
+  that never reached the class, so `:unrecognized-installs` still rejects the
+  run."
+  [fault-checker]
   (openraft-checker/reject-checker-exceptions
    (reify checker/Checker
      (check [_ test history opts]
@@ -165,7 +179,7 @@
              executed? (boolean (seq observed))
              cluster-state (:cluster-state result)
              valid? (cond
-                      (not executed?) false
+                      (pos? (or (:unrecognized-installs result) 0)) false
                       (pos? (or (:error-count result) 0)) false
                       (contains? result :restored?)
                       (and (:restored? result)
@@ -173,12 +187,9 @@
                       (= :intact cluster-state) true
                       (= :unknown cluster-state) :unknown
                       :else false)]
-         (-> result
-             (dissoc :missing-modes
-                     :missing-target-roles
-                     :missing-changes)
-             (assoc :valid? valid?
-                    :fault-class-executed? executed?)))))))
+         (assoc result
+                :valid? valid?
+                :fault-class-executed? executed?))))))
 
 (defn- cleanup-order [packages]
   (let [membership? #(= :membership (:name %))]
