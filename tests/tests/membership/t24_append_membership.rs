@@ -334,6 +334,24 @@ async fn uncommitted_leader_log_blocks_the_append() -> Result<()> {
         assert_eq!(RaftError::APIError(want), err);
     }
 
+    tracing::info!(
+        log_index,
+        "--- a stale precondition is reported instead of the blank-log barrier"
+    );
+    {
+        // An initialized node always has an effective membership log id, so `None` never holds.
+        let stale = Precondition::LastMembershipLogId {
+            last_membership_log_id: None,
+        };
+        let err = new_leader.append_membership(proposed.clone(), EntryPayload::Blank, [stale]).await.unwrap_err();
+
+        let want = PreconditionFailed::LastMembershipLogIdMismatch {
+            expected: None,
+            actual: *blocked_metrics.membership_config.log_id(),
+        };
+        assert_eq!(RaftError::APIError(ClientWriteError::PreconditionFailed(want)), err);
+    }
+
     tracing::info!(log_index, "--- the blocked append wrote nothing");
     {
         let metrics = new_leader.metrics().borrow_watched().clone();

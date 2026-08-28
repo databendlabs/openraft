@@ -174,10 +174,12 @@ where
     /// committed and applied.
     ///
     /// `payload` is the base entry payload. This method calls
-    /// [`RaftPayload::with_membership()`] on it, so the application data and the membership share
-    /// one log id. A membership already present in `payload` is replaced; every other application
-    /// field survives according to the application's `with_membership()` implementation. A caller
-    /// with no application data passes `C::Payload::blank()`.
+    /// [`RaftPayload::with_membership()`] on it, and that implementation decides how much of the
+    /// base survives: if it preserves application data, the data and the membership are stored
+    /// and applied at one log id. The default `EntryPayload::with_membership()` returns
+    /// `EntryPayload::Membership`, so it replaces an `EntryPayload::Normal(data)` base and the
+    /// state machine never receives `data`. A caller with no application data passes
+    /// `C::Payload::blank()`.
     ///
     /// # Accepted transitions
     ///
@@ -207,7 +209,9 @@ where
     ///
     /// # Examples
     ///
-    /// Add voter `4` to the voter set `{1,2,3}`:
+    /// Promote learner `4` to a voter of `{1,2,3}`. Node `4` must already be a learner, so
+    /// that `observed` carries its `Node`: `Membership::new()` returns `NodeNotFound` for a
+    /// voter whose metadata is absent.
     ///
     /// ```ignore
     /// let observed = raft.metrics().borrow().membership_config.clone();
@@ -222,8 +226,9 @@ where
     /// .await?;
     /// ```
     ///
-    /// Move from the uniform `{1,2,3}` to a joint membership of three voter sets. It is accepted
-    /// because `{1,2,3}` appears in both, exactly equal:
+    /// Move from the uniform `{1,2,3}` to a joint membership of three voter sets, where nodes `4`
+    /// through `7` are already learners. It is accepted because `{1,2,3}` appears in both, exactly
+    /// equal:
     ///
     /// ```ignore
     /// let observed = raft.metrics().borrow().membership_config.clone();
