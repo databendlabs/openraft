@@ -517,13 +517,19 @@ where
             }
         };
 
-        if let Err(e) = Self::ensure_leader_log_committed(lh.state, lh.leader) {
-            tx.on_complete(Err(ClientWriteError::ChangeMembershipError(e.into())));
-            return;
-        }
+        // Read the barrier while the leader handler is still borrowed, but report it only after
+        // the preconditions: every `Precondition` is checked before anything else is validated,
+        // so a caller holding a stale membership log id learns that instead of being told to
+        // retry.
+        let leader_log_committed = Self::ensure_leader_log_committed(lh.state, lh.leader);
 
         if let Err(e) = self.ensure_preconditions_satisfied(preconditions) {
             tx.on_complete(Err(e.into()));
+            return;
+        }
+
+        if let Err(e) = leader_log_committed {
+            tx.on_complete(Err(ClientWriteError::ChangeMembershipError(e.into())));
             return;
         }
 

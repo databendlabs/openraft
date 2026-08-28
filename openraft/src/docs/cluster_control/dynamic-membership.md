@@ -94,8 +94,12 @@ the cluster must land on a joint membership the caller picked itself.
 **Parameters:**
 - `membership`: The exact membership to store, uniform or joint
 - `payload`: The base entry payload. [`RaftPayload::with_membership()`] binds
-  `membership` into it, so the application data and the membership are stored
-  and applied at the same log ID. A caller with no application data passes
+  `membership` into it, and that implementation decides how much of the base
+  survives. When it preserves application data, the data and the membership are
+  stored and applied at the same log ID. The default
+  `EntryPayload::with_membership()` returns `EntryPayload::Membership`, so it
+  replaces an `EntryPayload::Normal(data)` base and the state machine never
+  receives `data`. A caller with no application data passes
   `C::Payload::blank()`.
 - `preconditions`: Compare-and-set guards, all checked before anything is
   validated or written
