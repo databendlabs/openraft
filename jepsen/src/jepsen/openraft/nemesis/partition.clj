@@ -187,15 +187,19 @@
 (defn- coverage-checker []
   (reify checker/Checker
     (check [_ _test history _opts]
-      (let [observed-modes (->> history
-                                (filter #(= :start-partition (:f %)))
-                                (filter #(partition-start-installed?
-                                          (:value %)))
-                                (keep #(get-in % [:value :mode]))
+      (let [start-values (->> history
+                              (filter #(= :start-partition (:f %)))
+                              (map :value))
+            observed-modes (->> start-values
+                                (filter partition-start-installed?)
+                                (keep :mode)
                                 set)
             missing-modes (remove observed-modes required-partition-modes)
+            malformed (outcome/malformed-outcomes partition-start-installed?
+                                                  start-values)
             cluster-state (reduce next-cluster-state :intact history)
             valid? (cond
+                     (pos? malformed) false
                      (seq missing-modes) false
                      (= :intact cluster-state) true
                      (= :recovery-pending cluster-state) false
@@ -203,6 +207,7 @@
         {:valid? valid?
          :observed-modes (vec (sort observed-modes))
          :missing-modes (vec (sort missing-modes))
+         :malformed-outcomes malformed
          :cluster-state cluster-state}))))
 
 (defn partition-package []

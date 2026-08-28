@@ -917,6 +917,9 @@
   (reify checker/Checker
     (check [_ test history _opts]
       (let [required-changes #{:grow :shrink}
+            change-installed? #(membership-change-installed?
+                                required-changes
+                                %)
             expected-voters (set (:nodes test))
             membership-history (->> history
                                     (filter
@@ -924,23 +927,33 @@
                                          :shrink
                                          :restore-membership} (:f %)))
                                     vec)
+            ;; A restore reports the change it completed under
+            ;; :resolved-change, and its own value describes the restored
+            ;; membership rather than a change, so only :grow and :shrink
+            ;; contribute their outer value. A :resolved-change becomes a
+            ;; candidate only when the key is present, so an outcome that
+            ;; carries no nested change is not mistaken for a malformed one.
+            change-values (->> membership-history
+                               (filter #(#{:grow :shrink} (:f %)))
+                               (map :value))
+            resolved-changes (->> membership-history
+                                  (map :value)
+                                  (filter map?)
+                                  (filter #(contains? % :resolved-change))
+                                  (map :resolved-change))
+            change-candidates (concat change-values resolved-changes)
             errors (->> membership-history
                         (filter #(or (:error %)
                                      (:exception %)))
                         vec)
-            observed-changes (->> membership-history
-                                  (mapcat
-                                   (fn [op]
-                                     (let [value (:value op)]
-                                       [value
-                                        (:resolved-change value)])))
+            observed-changes (->> change-candidates
                                   (keep
                                    (fn [change]
-                                     (when (membership-change-installed?
-                                            required-changes
-                                            change)
+                                     (when (change-installed? change)
                                        (:change change))))
                                   set)
+            malformed (outcome/malformed-outcomes change-installed?
+                                                  change-candidates)
             missing-changes (remove observed-changes
                                     required-changes)
             final-operation (peek membership-history)
@@ -953,12 +966,14 @@
                                 last)
             recovered? (boolean
                         (recovery-installed? (:value final-recovery)))]
-        {:valid? (and (empty? errors)
+        {:valid? (and (zero? malformed)
+                      (empty? errors)
                       (empty? missing-changes)
                       restored?
                       recovered?)
          :observed-changes (vec (sort observed-changes))
          :missing-changes (vec (sort missing-changes))
+         :malformed-outcomes malformed
          :restored? restored?
          :recovered? recovered?
          :error-count (count errors)

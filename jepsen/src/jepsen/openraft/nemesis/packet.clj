@@ -206,17 +206,25 @@
 (defn- coverage-checker [packet-mode]
   (reify checker/Checker
     (check [_ _test history _opts]
-      (let [observed-roles (->> history
-                                (filter #(= :start-packet (:f %)))
-                                (filter #(packet-start-installed? (:value %)))
-                                (filter #(or (nil? packet-mode)
-                                             (= packet-mode
-                                                (get-in % [:value :mode]))))
-                                (keep #(get-in % [:value :target-role]))
+      ;; One predicate drives both coverage and malformed-outcome validation.
+      ;; A fixed-mode package that reports the other mode is a Nemesis defect,
+      ;; so it must not merely drop out of the observed roles.
+      (let [recognized? (fn [value]
+                          (and (packet-start-installed? value)
+                               (or (nil? packet-mode)
+                                   (= packet-mode (:mode value)))))
+            start-values (->> history
+                              (filter #(= :start-packet (:f %)))
+                              (map :value))
+            observed-roles (->> start-values
+                                (filter recognized?)
+                                (keep :target-role)
                                 set)
             missing-roles (remove observed-roles required-target-roles)
+            malformed (outcome/malformed-outcomes recognized? start-values)
             cluster-state (reduce next-cluster-state :intact history)
             valid? (cond
+                     (pos? malformed) false
                      (seq missing-roles) false
                      (= :intact cluster-state) true
                      (= :recovery-pending cluster-state) false
@@ -225,6 +233,7 @@
          :mode (or packet-mode :mixed)
          :observed-target-roles (vec (sort observed-roles))
          :missing-target-roles (vec (sort missing-roles))
+         :malformed-outcomes malformed
          :cluster-state cluster-state}))))
 
 (defn packet-package [database packet-mode]

@@ -215,7 +215,7 @@
         result (checker/check (:checker test) test (history/history []) {})]
     (is (= #{:valid? :seed :stats :exceptions :crash :nemesis :workload}
            (set (keys result))))
-    (is (= #{:valid? :partition :membership}
+    (is (= #{:valid? :fault-classes-executed :partition :membership}
            (set (keys (:nemesis result)))))))
 
 (defn- lifecycle-test-generator [failure-state]
