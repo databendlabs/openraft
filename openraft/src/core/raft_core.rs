@@ -50,6 +50,7 @@ use crate::core::raft_msg::ResultSender;
 use crate::core::raft_msg::VoteTx;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::raft_msg::install_full_snapshot_request::InstallFullSnapshotRequest;
+use crate::core::raft_msg::membership_payloads::MembershipPayloads;
 use crate::core::runtime_stats::RuntimeStats;
 use crate::core::sm;
 use crate::core::stage::Stage;
@@ -173,13 +174,13 @@ fn apply_membership_to_payload<C>(
     membership_state: &MembershipStateOf<C>,
     changes: ChangeMembers<C::NodeId, C::Node>,
     retain: bool,
-    payload: C::Payload,
+    payloads: MembershipPayloads<C>,
 ) -> Result<C::Payload, ChangeMembershipErrorOf<C>>
 where
     C: RaftTypeConfig,
 {
     let membership = membership_state.next_membership(changes, retain)?;
-    let payload = payload.with_membership(membership);
+    let payload = payloads.select(membership);
     Ok(payload)
 }
 
@@ -458,13 +459,13 @@ where
     //       Because allowing this requires the engine to be able to store more than 2
     //       membership logs. And it does not need to wait for the previous membership log to commit
     //       to propose the new membership log.
-    #[tracing::instrument(level = "debug", skip(self, payload, tx, preconditions))]
+    #[tracing::instrument(level = "debug", skip(self, payloads, tx, preconditions))]
     pub(super) fn change_membership(
         &mut self,
         changes: ChangeMembers<C::NodeId, C::Node>,
         retain: bool,
         preconditions: BatchOf<C, Precondition<C>>,
-        payload: C::Payload,
+        payloads: MembershipPayloads<C>,
         tx: ProgressResponder<C, ClientWriteResult<C>>,
     ) {
         if let Err(e) = self.ensure_leader_handler() {
@@ -477,7 +478,7 @@ where
             return;
         }
 
-        let res = apply_membership_to_payload::<C>(&self.engine.state.membership_state, changes, retain, payload);
+        let res = apply_membership_to_payload::<C>(&self.engine.state.membership_state, changes, retain, payloads);
         let payload = match res {
             Ok(x) => x,
             Err(e) => {
@@ -1740,7 +1741,7 @@ where
             }
             RaftMsg::ChangeMembership {
                 changes,
-                payload,
+                payloads,
                 retain,
                 preconditions,
                 tx,
@@ -1753,7 +1754,7 @@ where
                     preconditions.as_ref().display()
                 );
 
-                self.change_membership(changes, retain, preconditions, payload, tx);
+                self.change_membership(changes, retain, preconditions, payloads, tx);
             }
             RaftMsg::AppendMembership {
                 payload,
@@ -2669,7 +2670,9 @@ mod tests {
     use super::apply_membership_to_payload;
     use crate::ChangeMembers;
     use crate::Membership;
+    use crate::core::raft_msg::membership_payloads::MembershipPayloads;
     use crate::entry::RaftPayload;
+    use crate::type_config::TypeConfigExt;
     use crate::type_config::alias::MembershipStateOf;
     use crate::type_config::alias::StoredMembershipOf;
 
@@ -2734,8 +2737,9 @@ mod tests {
             membership: Some(input_membership),
         };
 
+        let payloads = MembershipPayloads::<TestConfig>::Uniform(payload);
         let changes = ChangeMembers::AddNodes(btreemap! {2 => ()});
-        let result = apply_membership_to_payload::<TestConfig>(&membership_state, changes, false, payload);
+        let result = apply_membership_to_payload::<TestConfig>(&membership_state, changes, false, payloads);
         let actual = result.unwrap();
 
         let expected_membership = Membership::new_with_defaults(vec![btreeset! {1}], btreeset! {2});
@@ -2752,8 +2756,9 @@ mod tests {
         let stored = Arc::new(StoredMembershipOf::<TestConfig>::new(None, current));
         let membership_state = MembershipStateOf::<TestConfig>::new(stored.clone(), stored);
 
+        let payloads = MembershipPayloads::<TestConfig>::Uniform(TestPayload::blank());
         let changes = ChangeMembers::AddNodes(btreemap! {2 => ()});
-        let result = apply_membership_to_payload::<TestConfig>(&membership_state, changes, false, TestPayload::blank());
+        let result = apply_membership_to_payload::<TestConfig>(&membership_state, changes, false, payloads);
         let actual = result.unwrap();
 
         let expected_membership = Membership::new_with_defaults(vec![btreeset! {1}], btreeset! {2});
@@ -2762,5 +2767,65 @@ mod tests {
             membership: Some(expected_membership),
         };
         assert_eq!(expected, actual);
+    }
+
+    /// Replacing the voters computes a joint membership, so the joint payload carries it and the
+    /// uniform payload goes back to the caller.
+    #[test]
+    fn joint_membership_selects_joint_payload() {
+        let current = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], btreeset! {4, 5});
+        let stored = Arc::new(StoredMembershipOf::<TestConfig>::new(None, current));
+        let membership_state = MembershipStateOf::<TestConfig>::new(stored.clone(), stored);
+
+        let (unused_tx, mut unused_rx) = TestConfig::oneshot();
+        let payloads = MembershipPayloads::<TestConfig>::JointOrUniform {
+            joint: TestPayload::normal(1),
+            uniform: TestPayload::normal(2),
+            unused_tx,
+        };
+
+        let changes = ChangeMembers::ReplaceAllVoters(btreeset! {3, 4, 5});
+        let result = apply_membership_to_payload::<TestConfig>(&membership_state, changes, false, payloads);
+        let actual = result.unwrap();
+
+        let joint_membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}, btreeset! {3, 4, 5}], []);
+        let expected = TestPayload {
+            normal: Some(1),
+            membership: Some(joint_membership),
+        };
+        assert_eq!(expected, actual);
+
+        let returned = unused_rx.try_recv().unwrap();
+        assert_eq!(TestPayload::normal(2), returned);
+    }
+
+    /// Adding a node moves no voter, so the computed membership is uniform and the uniform
+    /// payload carries it, sending the joint payload back to the caller.
+    #[test]
+    fn uniform_membership_selects_uniform_payload() {
+        let current = Membership::new_with_defaults(vec![btreeset! {1}], []);
+        let stored = Arc::new(StoredMembershipOf::<TestConfig>::new(None, current));
+        let membership_state = MembershipStateOf::<TestConfig>::new(stored.clone(), stored);
+
+        let (unused_tx, mut unused_rx) = TestConfig::oneshot();
+        let payloads = MembershipPayloads::<TestConfig>::JointOrUniform {
+            joint: TestPayload::normal(1),
+            uniform: TestPayload::normal(2),
+            unused_tx,
+        };
+
+        let changes = ChangeMembers::AddNodes(btreemap! {2 => ()});
+        let result = apply_membership_to_payload::<TestConfig>(&membership_state, changes, false, payloads);
+        let actual = result.unwrap();
+
+        let expected_membership = Membership::new_with_defaults(vec![btreeset! {1}], btreeset! {2});
+        let expected = TestPayload {
+            normal: Some(2),
+            membership: Some(expected_membership),
+        };
+        assert_eq!(expected, actual);
+
+        let returned = unused_rx.try_recv().unwrap();
+        assert_eq!(TestPayload::normal(1), returned);
     }
 }

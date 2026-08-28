@@ -58,7 +58,8 @@ async fn matching_membership_log_id_completes_joint_change() -> Result<()> {
             .with_preconditions([precondition]);
         let change = leader.change_membership_with_payload(request);
         let outcome = change.await?;
-        let resp = outcome.uniform.as_ref().expect("voter change should enter joint consensus");
+        assert!(outcome.joint.is_some(), "voter change should enter joint consensus");
+        let resp = &outcome.uniform;
 
         // A joint config log and a uniform config log.
         log_index += 2;
