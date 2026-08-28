@@ -68,6 +68,49 @@
                                         {:kind :unreachable}))))]
       (is (nil? (#'cluster/cluster-status test-config))))))
 
+(deftest probes-every-node-concurrently
+  (let [nodes (:nodes test-config)
+        follower {:state "Follower"
+                  :current_leader "n2"
+                  :vote (vote 3 "n2")}
+        arrived (java.util.concurrent.CountDownLatch. (count nodes))]
+    (with-redefs [client/metrics!
+                  (fn [endpoint]
+                    (.countDown arrived)
+                    ;; A sequential scan never lets the last node arrive, so
+                    ;; the first probe waits out the timeout and fails here.
+                    (when-not (.await arrived
+                                      10
+                                      java.util.concurrent.TimeUnit/SECONDS)
+                      (throw (ex-info "a node probe waited for an earlier one"
+                                      {:endpoint endpoint})))
+                    follower)]
+      (is (= (zipmap nodes (repeat follower))
+             (#'cluster/collect-reachable-metrics test-config))))))
+
+(deftest restores-an-interrupt-that-arrives-while-probing
+  (let [probing (java.util.concurrent.CountDownLatch. (count (:nodes test-config)))
+        coordinator (promise)
+        scan (future
+               (deliver coordinator (Thread/currentThread))
+               (try
+                 (with-redefs [client/metrics!
+                               (fn [_endpoint]
+                                 (.countDown probing)
+                                 (Thread/sleep 60000)
+                                 nil)]
+                   (#'cluster/collect-reachable-metrics test-config)
+                   [nil (.isInterrupted (Thread/currentThread))])
+                 (catch Exception e
+                   [e (.isInterrupted (Thread/currentThread))])
+                 (finally
+                   (Thread/interrupted))))]
+    (.await probing)
+    (.interrupt ^Thread @coordinator)
+    (let [[thrown interrupted?] @scan]
+      (is (instance? InterruptedException thrown))
+      (is interrupted?))))
+
 (deftest distinguishes-modeled-metrics-failures-from-harness-errors
   (testing "recognized SUT observations make a node unavailable"
     (doseq [kind [:http-error

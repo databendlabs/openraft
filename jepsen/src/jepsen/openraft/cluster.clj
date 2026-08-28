@@ -5,7 +5,10 @@
             [jepsen.openraft.await :as await]
             [jepsen.openraft.client :as client]
             [jepsen.openraft.interruption :as interruption]
-            [jepsen.openraft.quorum :as quorum]))
+            [jepsen.openraft.quorum :as quorum])
+  (:import (java.util.concurrent ExecutionException
+                                 Executors
+                                 Future)))
 
 (defn node-info [test node]
   {:node-id (client/node-host node)
@@ -84,19 +87,51 @@
 (defn- modeled-metrics-failure? [e]
   (contains? modeled-metrics-failure-kinds (:kind (ex-data e))))
 
-(defn- collect-reachable-metrics-from [test nodes]
-  (into {}
-        (keep
-         (fn [node]
-           (try
-             [node (node-metrics! test node)]
-             (catch InterruptedException e
-               (throw e))
-             (catch Exception e
-               (if (modeled-metrics-failure? e)
-                 nil
-                 (throw e)))))
-         nodes)))
+(defn- probe-result
+  "Reads one finished probe, surfacing the exception the probe itself threw."
+  [^Future probe]
+  (try
+    (.get probe)
+    (catch ExecutionException e
+      (throw (.getCause e)))))
+
+(defn- collect-reachable-metrics-from
+  "Fetches metrics from nodes at once, dropping the unreachable ones.
+
+  A node whose process is paused answers no request, so its probe ends at
+  `client/metrics!`'s five-second request timeout. One Nemesis thread runs
+  every fault class, and a sequential scan would hold that thread for one
+  timeout per paused node, delaying the cleanup that resumes them.
+
+  `ExecutorService.invokeAll` never drops an interrupt that arrives while this
+  thread waits for the probes: it cancels the unfinished ones and rethrows the
+  InterruptedException, or it returns while this thread still carries the flag.
+  A helper that joins each probe in turn can lose the interrupt instead, when
+  the probe it is joining finishes between the throw and the liveness check."
+  [test nodes]
+  (let [pool (Executors/newCachedThreadPool)
+        probes (mapv (fn [node]
+                       (fn []
+                         (try
+                           [node (node-metrics! test node)]
+                           (catch InterruptedException e
+                             (throw e))
+                           (catch Exception e
+                             (if (modeled-metrics-failure? e)
+                               nil
+                               (throw e))))))
+                     nodes)]
+    (try
+      (->> (.invokeAll pool probes)
+           (map probe-result)
+           (into {} (remove nil?)))
+      (catch Exception e
+        ;; invokeAll clears the flag on this thread when it throws.
+        (when (interruption/interruption? e)
+          (.interrupt (Thread/currentThread)))
+        (throw e))
+      (finally
+        (.shutdownNow pool)))))
 
 (defn- collect-reachable-metrics [test]
   (collect-reachable-metrics-from test (:nodes test)))
