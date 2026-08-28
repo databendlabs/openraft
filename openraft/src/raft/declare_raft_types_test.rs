@@ -110,14 +110,14 @@ fn test_payload_type() {
 
 #[test]
 fn test_change_membership_request_accepts_distinct_non_clone_payloads() {
-    let first_payload = CustomPayload(EntryPayload::Normal(1));
+    let joint_payload = CustomPayload(EntryPayload::Normal(1));
     let uniform_payload = CustomPayload(EntryPayload::Normal(2));
     let request =
-        ChangeMembershipRequest::<WithCustomPayload>::new([1], false).with_payload(first_payload, uniform_payload);
+        ChangeMembershipRequest::<WithCustomPayload>::new([1], false).with_payload(joint_payload, uniform_payload);
 
     let (_, _, _, payloads) = request.into_parts();
-    let (first_payload, uniform_payload) = payloads.unwrap();
-    let actual = (first_payload.0, uniform_payload.0);
+    let (joint_payload, uniform_payload) = payloads.unwrap();
+    let actual = (joint_payload.0, uniform_payload.0);
     let expected = (EntryPayload::Normal(1), EntryPayload::Normal(2));
     assert_eq!(expected, actual);
 }

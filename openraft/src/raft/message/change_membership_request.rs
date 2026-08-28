@@ -35,12 +35,19 @@ where C: RaftTypeConfig
 
     /// Use separate application-defined payloads for the membership-change steps.
     ///
-    /// `first_payload` is used for the requested change. `uniform_payload` is used only when a
-    /// second entry is needed to flatten a joint membership.
+    /// Each payload is tied to the shape of the membership it carries, not to the order of the
+    /// steps. `joint_payload` is used only for a joint membership entry, which the change writes
+    /// only when it moves voters. `uniform_payload` is used for the uniform membership entry,
+    /// which every completed change writes. A change that needs no joint entry therefore drops
+    /// `joint_payload` and writes its single entry with `uniform_payload`.
+    ///
+    /// `RaftCore` decides that shape, so it receives both payloads and drops the one it does not
+    /// use.
+    #[since(version = "0.10.0", change = "select each payload by the shape of its membership")]
     #[since(version = "0.10.0", change = "accept separate payloads for membership change steps")]
     #[since(version = "0.10.0", change = "added optional membership change payload")]
-    pub fn with_payload(mut self, first_payload: C::Payload, uniform_payload: C::Payload) -> Self {
-        self.payload = Some((first_payload, uniform_payload));
+    pub fn with_payload(mut self, joint_payload: C::Payload, uniform_payload: C::Payload) -> Self {
+        self.payload = Some((joint_payload, uniform_payload));
         self
     }
 

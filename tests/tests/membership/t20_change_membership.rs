@@ -38,25 +38,25 @@ async fn update_membership_state() -> anyhow::Result<()> {
         let change = leader.change_membership_with_payload(request);
         let outcome = change.await?;
 
-        let first_log_index = log_index + 1;
-        assert_eq!(first_log_index, outcome.first.log_id.index);
+        let joint = outcome.joint.as_ref().expect("voter change should enter joint consensus");
+        let joint_log_index = log_index + 1;
+        assert_eq!(joint_log_index, joint.log_id.index);
 
-        let uniform = outcome.uniform.as_ref().expect("voter change should enter joint consensus");
         let uniform_log_index = log_index + 2;
-        assert_eq!(uniform_log_index, uniform.log_id.index);
+        assert_eq!(uniform_log_index, outcome.uniform.log_id.index);
 
         tracing::info!(
-            first_log_index,
+            joint_log_index,
             uniform_log_index,
             "--- inspect membership log payloads"
         );
         {
-            let first_membership = outcome.first.membership.clone().unwrap();
-            let uniform_membership = uniform.membership.clone().unwrap();
-            let expected_memberships = vec![first_membership, uniform_membership];
+            let joint_membership = joint.membership.clone().unwrap();
+            let uniform_membership = outcome.uniform.membership.clone().unwrap();
+            let expected_memberships = vec![joint_membership, uniform_membership];
 
             let (mut log_store, _) = router.get_storage_handle(&0)?;
-            let entries = log_store.try_get_log_entries(first_log_index..=uniform_log_index).await?;
+            let entries = log_store.try_get_log_entries(joint_log_index..=uniform_log_index).await?;
             let mut actual_memberships = Vec::new();
             for entry in entries {
                 let membership = match entry.payload {

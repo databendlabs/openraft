@@ -97,8 +97,10 @@ where
     /// possible uniform proposal and carries over only the committed-leader precondition.
     ///
     /// A voter change may append a joint entry followed by a uniform entry. `with_payload()`
-    /// accepts one payload for the requested change and another for the possible uniform entry.
-    /// If `with_membership()` preserves application data, the state machine applies each
+    /// binds each payload to the shape of the membership it carries: the joint payload to the
+    /// joint entry, the uniform payload to the uniform entry. A change that moves no voter needs
+    /// no joint entry, so it drops the joint payload and writes its single entry with the uniform
+    /// payload. If `with_membership()` preserves application data, the state machine applies each
     /// payload at its corresponding log ID.
     ///
     /// Both supplied payloads are serialized, stored, and replicated when the change requires two
@@ -107,8 +109,8 @@ where
     /// If the uniform proposal fails, the joint entry is already committed. A retry must build a
     /// new request with the original payloads and preconditions based on the current joint state.
     ///
-    /// The returned [`ChangeMembershipOutcome`] contains the first response and the uniform
-    /// response when the change entered joint consensus.
+    /// The returned [`ChangeMembershipOutcome`] always contains the uniform response, and the
+    /// joint response when the change entered joint consensus.
     #[since(
         version = "0.10.0",
         change = "accept a request with an optional payload and preconditions"
