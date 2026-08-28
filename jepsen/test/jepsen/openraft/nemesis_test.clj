@@ -117,7 +117,7 @@
                           :leader "n1"
                           :nodes ["n2"]
                           :voter-configs [all-voters]
-                          :survivors (vec (disj all-voters "n2"))
+                          :target-category :one
                           :pause-results {"n2" :paused}}}
                  {:f :resume-process
                   :value {:status :installed

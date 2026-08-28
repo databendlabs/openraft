@@ -195,11 +195,12 @@ history records the selected nodes, initial leader, and effective voter
 configuration, together with the voters reachable before the kill, so the
 checker can determine whether a usable quorum remained.
 
-When a quorum remains, a focused Process run requires a definitive client
-response within three maximum election timeouts. Losing quorum permits a
-temporary lack of progress, but never relaxes safety. The target set is fixed
-for one fault episode. Each episode restarts the selected processes, and final
-recovery waits for every node to rejoin a healthy cluster.
+When a quorum remains, a focused Process run requires an `:ok` client operation
+or a CAS `:version-mismatch` within three maximum election timeouts; either
+result proves the service responded. Losing quorum permits a temporary lack of
+progress, but never relaxes safety. The target set is fixed for one fault
+episode. Each episode restarts the selected processes, and final recovery waits
+for every node to rejoin a healthy cluster.
 
 #### Process Pause Nemesis
 
@@ -211,10 +212,11 @@ apply the matching availability expectation.
 Paused processes retain their memory and open TCP connections, so peers observe
 unresponsive processes rather than closed connections. Resume operations target
 every test node as an idempotent cleanup and record the complete resumed node
-set in history. When a quorum remains, the focused checker requires a client
-response that starts after the pause is installed and completes before resume
-begins. This uses the complete fault episode because a request to a paused
-leader can remain blocked until the client timeout.
+set in history. When a quorum remains, the focused checker requires an `:ok`
+client operation or a CAS `:version-mismatch` that starts after the pause is
+installed and completes before resume begins. This uses the complete fault
+episode because a request to a paused leader can remain blocked until the
+client timeout.
 
 #### Membership Nemesis
 
