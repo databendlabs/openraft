@@ -11,6 +11,7 @@ use crate::RaftMetrics;
 use crate::RaftTypeConfig;
 use crate::batch::Batch;
 use crate::core::raft_msg::RaftMsg;
+use crate::core::raft_msg::membership_payloads::MembershipPayloads;
 use crate::core::replication_lag;
 use crate::entry::RaftPayload;
 use crate::errors::ClientWriteError;
@@ -23,6 +24,7 @@ use crate::raft::ChangeMembershipRequest;
 use crate::raft::ClientWriteResult;
 use crate::raft::Precondition;
 use crate::raft::raft_inner::RaftInner;
+use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::BatchOf;
 use crate::type_config::alias::LogIdOf;
 
@@ -66,7 +68,7 @@ where C: RaftTypeConfig
     ) -> Result<ClientWriteResult<C>, Fatal<C>> {
         let request = ChangeMembershipRequest::new(members, retain).with_preconditions(preconditions);
         let result = self.change_membership_with_payload(request).await?;
-        let result = result.map(|outcome| outcome.uniform.unwrap_or(outcome.first));
+        let result = result.map(|outcome| outcome.uniform);
         Ok(result)
     }
 
@@ -75,8 +77,8 @@ where C: RaftTypeConfig
         request: ChangeMembershipRequest<C>,
     ) -> Result<Result<ChangeMembershipOutcome<C>, ClientWriteError<C>>, Fatal<C>> {
         let (changes, retain, preconditions, payload) = request.into_parts();
-        let (first_payload, uniform_payload) = match payload {
-            Some((first, uniform)) => (first, uniform),
+        let (joint_payload, uniform_payload) = match payload {
+            Some((joint, uniform)) => (joint, uniform),
             None => (C::Payload::blank(), C::Payload::blank()),
         };
 
@@ -90,6 +92,16 @@ where C: RaftTypeConfig
 
         tracing::debug!("change_membership: start",);
 
+        // `RaftCore` computes the membership, so only `RaftCore` can tell whether this change
+        // needs a joint membership. It spends `joint_payload` on a joint membership and
+        // `uniform_payload` on a uniform one, and returns the payload it did not spend.
+        let (unused_tx, unused_rx) = C::oneshot();
+        let payloads = MembershipPayloads::JointOrUniform {
+            joint: joint_payload,
+            uniform: uniform_payload,
+            unused_tx,
+        };
+
         // res is error if membership cannot be changed.
         // If no error, it will enter a joint state
         let client_write_result = self
@@ -97,7 +109,7 @@ where C: RaftTypeConfig
             .call_core(
                 RaftMsg::ChangeMembership {
                     changes: changes.clone(),
-                    payload: first_payload,
+                    payloads,
                     retain,
                     preconditions: Batch::of(preconditions.as_ref().iter().cloned()),
                     tx,
@@ -121,17 +133,21 @@ where C: RaftTypeConfig
 
         tracing::debug!("res of first step: {}", resp);
 
-        let (log_id, joint) = (&resp.log_id, resp.membership.clone().unwrap());
+        let (log_id, membership) = (&resp.log_id, resp.membership.clone().unwrap());
 
-        if joint.get_joint_config().len() == 1 {
+        if !membership.is_joint() {
             let outcome = ChangeMembershipOutcome {
-                first: resp,
-                uniform: None,
+                joint: None,
+                uniform: resp,
             };
             return Ok(Ok(outcome));
         }
 
-        tracing::debug!("committed a joint config: {} {:?}", log_id, joint);
+        // The first step spent `joint_payload` on the joint entry, so the payload it returned is
+        // `uniform_payload`, for the entry this second step writes.
+        let uniform_payload = self.inner.recv_msg(unused_rx).await?;
+
+        tracing::debug!("committed a joint config: {} {:?}", log_id, membership);
         tracing::debug!("the second step is to change to uniform config: {:?}", changes);
 
         // The last membership config log ID is changed because we have proposed a new membership config
@@ -160,7 +176,7 @@ where C: RaftTypeConfig
             .call_core(
                 RaftMsg::ChangeMembership {
                     changes,
-                    payload: uniform_payload,
+                    payloads: MembershipPayloads::Uniform(uniform_payload),
                     retain,
                     preconditions,
                     tx,
@@ -179,8 +195,8 @@ where C: RaftTypeConfig
         }
 
         let outcome = client_write_result.map(|uniform| ChangeMembershipOutcome {
-            first: resp,
-            uniform: Some(uniform),
+            joint: Some(resp),
+            uniform,
         });
         Ok(outcome)
     }
@@ -222,7 +238,7 @@ where C: RaftTypeConfig
 
         let msg = RaftMsg::ChangeMembership {
             changes: ChangeMembers::AddNodes(btreemap! {id.clone()=>node}),
-            payload: C::Payload::blank(),
+            payloads: MembershipPayloads::Uniform(C::Payload::blank()),
             retain: true,
             preconditions: Batch::of([]),
             tx,

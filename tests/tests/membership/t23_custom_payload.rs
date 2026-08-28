@@ -15,6 +15,7 @@ use futures::Stream;
 use futures::TryStreamExt;
 use maplit::btreemap;
 use maplit::btreeset;
+use openraft::ChangeMembers;
 use openraft::Config;
 use openraft::Entry;
 use openraft::LogState;
@@ -458,19 +459,19 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
 
     tracing::info!("--- promote node 1 with distinct payloads for the joint and uniform entries");
     let (joint_log_id, uniform_log_id) = {
-        let first_payload = CustomPayload::normal("joint application data".to_string());
+        let joint_payload = CustomPayload::normal("joint application data".to_string());
         let uniform_payload = CustomPayload::normal("uniform application data".to_string());
-        let request = ChangeMembershipRequest::new([0, 1], false).with_payload(first_payload, uniform_payload);
+        let request = ChangeMembershipRequest::new([0, 1], false).with_payload(joint_payload, uniform_payload);
         let outcome = node0.change_membership_with_payload(request).await?;
-        let uniform = outcome.uniform.expect("voter change should enter joint consensus");
+        let joint = outcome.joint.expect("voter change should enter joint consensus");
 
-        assert_eq!(Some(joint_membership.clone()), outcome.first.membership);
-        assert_eq!(Some(uniform_membership.clone()), uniform.membership);
-        assert_eq!(3, outcome.first.log_id.index);
-        assert_eq!(4, uniform.log_id.index);
-        assert!(outcome.first.log_id < uniform.log_id);
+        assert_eq!(Some(joint_membership.clone()), joint.membership);
+        assert_eq!(Some(uniform_membership.clone()), outcome.uniform.membership);
+        assert_eq!(3, joint.log_id.index);
+        assert_eq!(4, outcome.uniform.log_id.index);
+        assert!(joint.log_id < outcome.uniform.log_id);
 
-        (outcome.first.log_id, uniform.log_id)
+        (joint.log_id, outcome.uniform.log_id)
     };
 
     tracing::info!("--- both nodes store and apply both custom membership payloads");
@@ -516,21 +517,21 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
         let blank_calls = BLANK_CALLS.load(Ordering::SeqCst);
         let request = ChangeMembershipRequest::new([0], false);
         let outcome = node0.change_membership_with_payload(request).await?;
-        let uniform = outcome.uniform.expect("voter change should enter joint consensus");
+        let joint = outcome.joint.expect("voter change should enter joint consensus");
         let new_blank_calls = BLANK_CALLS.load(Ordering::SeqCst);
 
         assert_eq!(blank_calls + 2, new_blank_calls);
-        assert_eq!(5, outcome.first.log_id.index);
-        assert_eq!(6, uniform.log_id.index);
-        assert_eq!(Some(final_joint_membership.clone()), outcome.first.membership);
-        assert_eq!(Some(final_membership.clone()), uniform.membership);
+        assert_eq!(5, joint.log_id.index);
+        assert_eq!(6, outcome.uniform.log_id.index);
+        assert_eq!(Some(final_joint_membership.clone()), joint.membership);
+        assert_eq!(Some(final_membership.clone()), outcome.uniform.membership);
 
         let expected_payloads = vec![
-            (outcome.first.log_id, CustomPayload {
+            (joint.log_id, CustomPayload {
                 normal: None,
                 membership: Some(final_joint_membership.clone()),
             }),
-            (uniform.log_id, CustomPayload {
+            (outcome.uniform.log_id, CustomPayload {
                 normal: None,
                 membership: Some(final_membership.clone()),
             }),
@@ -538,9 +539,30 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
         assert_eq!(expected_payloads, read_payloads(&log0, 5..=6).await?);
     }
 
-    // Voters `{0}` unchanged, node 1 re-added as a learner: one voter set on both sides, so this
-    // is a direct append.
-    let appended_membership = Membership::new(vec![btreeset! {0}], btreemap! {0=>(), 1=>()})?;
+    // Voters `{0}` unchanged, node 1 back as a learner: one voter set on both sides, so this is a
+    // direct append.
+    let learner_membership = Membership::new(vec![btreeset! {0}], btreemap! {0=>(), 1=>()})?;
+
+    tracing::info!("--- a change that moves no voter writes one uniform entry, with the uniform payload");
+    let learner_log_id = {
+        let joint_payload = CustomPayload::normal("joint application data".to_string());
+        let uniform_payload = CustomPayload::normal("learner application data".to_string());
+        let changes = ChangeMembers::AddNodes(btreemap! {1 => ()});
+        let request = ChangeMembershipRequest::new(changes, false).with_payload(joint_payload, uniform_payload);
+        let outcome = node0.change_membership_with_payload(request).await?;
+
+        assert!(outcome.joint.is_none(), "adding a learner needs no joint membership");
+        assert_eq!(7, outcome.uniform.log_id.index);
+        assert_eq!(Some(learner_membership.clone()), outcome.uniform.membership);
+
+        let expected_payloads = vec![(outcome.uniform.log_id, CustomPayload {
+            normal: Some("learner application data".to_string()),
+            membership: Some(learner_membership.clone()),
+        })];
+        assert_eq!(expected_payloads, read_payloads(&log0, 7..=7).await?);
+
+        outcome.uniform.log_id
+    };
 
     tracing::info!("--- append_membership binds the membership into the caller's payload");
     let appended_log_id = {
@@ -552,28 +574,29 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
             normal: Some("appended application data".to_string()),
             membership: Some(final_joint_membership.clone()),
         };
-        let resp = node0.append_membership(appended_membership.clone(), base, []).await?;
+        let resp = node0.append_membership(learner_membership.clone(), base, []).await?;
 
         assert_eq!(blank_calls, BLANK_CALLS.load(Ordering::SeqCst));
-        assert_eq!(7, resp.log_id.index);
-        assert_eq!(Some(appended_membership.clone()), resp.membership);
+        assert_eq!(8, resp.log_id.index);
+        assert_eq!(Some(learner_membership.clone()), resp.membership);
 
         // One entry holds both the application data and the proposed membership.
         let expected_payloads = vec![(resp.log_id, CustomPayload {
             normal: Some("appended application data".to_string()),
-            membership: Some(appended_membership.clone()),
+            membership: Some(learner_membership.clone()),
         })];
-        assert_eq!(expected_payloads, read_payloads(&log0, 7..=7).await?);
+        assert_eq!(expected_payloads, read_payloads(&log0, 8..=8).await?);
 
         resp.log_id
     };
 
     let expected_final_state = AppliedState {
         last_applied: Some(appended_log_id),
-        membership: StoredMembership::new(Some(appended_log_id), appended_membership),
+        membership: StoredMembership::new(Some(appended_log_id), learner_membership),
         commands: vec![
             (joint_log_id, "joint application data".to_string()),
             (uniform_log_id, "uniform application data".to_string()),
+            (learner_log_id, "learner application data".to_string()),
             (appended_log_id, "appended application data".to_string()),
         ],
     };
@@ -588,7 +611,7 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
         let recovered_sm = TestStateMachine::default();
         let recovered = new_node(0, config.clone(), router.clone(), log0, recovered_sm.clone()).await?;
         router.insert(0, recovered.clone());
-        recovered.wait(timeout()).applied_index(Some(7), "reapply committed log").await?;
+        recovered.wait(timeout()).applied_index(Some(8), "reapply committed log").await?;
 
         assert_eq!(expected_final_state, recovered_sm.state());
         let metrics = recovered.metrics().borrow_watched().clone();

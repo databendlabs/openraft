@@ -9,6 +9,7 @@ use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::base::BoxOnce;
 use crate::core::raft_msg::external_command::ExternalCommand;
+use crate::core::raft_msg::membership_payloads::MembershipPayloads;
 #[cfg(feature = "runtime-stats")]
 use crate::core::runtime_stats::RuntimeStats;
 use crate::display_ext::DisplayBTreeMapDebugValueExt;
@@ -36,6 +37,7 @@ use crate::type_config::alias::VoteOf;
 
 pub(crate) mod external_command;
 pub(crate) mod install_full_snapshot_request;
+pub(crate) mod membership_payloads;
 mod raft_msg_name;
 
 pub use raft_msg_name::ExternalCommandName;
@@ -96,8 +98,11 @@ where C: RaftTypeConfig
     ChangeMembership {
         changes: ChangeMembers<C::NodeId, C::Node>,
 
-        /// Payload whose membership OpenRaft replaces with the computed membership.
-        payload: C::Payload,
+        /// Payloads whose membership OpenRaft replaces with the computed membership.
+        ///
+        /// `RaftCore` computes the membership, so it also picks the payload that matches the
+        /// shape of that membership.
+        payloads: MembershipPayloads<C>,
 
         /// If `retain` is `true`, then the voters that are not in the new
         /// config will be converted into learners, otherwise they will be removed.

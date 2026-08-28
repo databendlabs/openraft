@@ -164,6 +164,11 @@ where
         &self.configs
     }
 
+    /// Returns true if this membership is in joint consensus, i.e. it has more than one config.
+    pub(crate) fn is_joint(&self) -> bool {
+        self.configs.len() > 1
+    }
+
     /// Returns an Iterator of all nodes(voters and learners).
     pub fn nodes(&self) -> impl Iterator<Item = (&NID, &N)> {
         self.nodes.iter()
