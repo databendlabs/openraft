@@ -553,7 +553,10 @@
         quorum-retained? (quorum/quorum? configs survivors)
         configured-quorum-retained? (quorum/quorum? configs
                                                     configured-survivors)
-        deadline (+ started-at window-nanos)
+        episode-window? (nil? window-nanos)
+        deadline (if episode-window?
+                   (or ended-at Long/MAX_VALUE)
+                   (+ started-at window-nanos))
         episode-attempts (filterv (partial attempt-started-during?
                                            episode
                                            Long/MAX_VALUE)
@@ -568,8 +571,11 @@
                                (filterv (partial unexpected-write-success?
                                                  episode)
                                         episode-attempts))
-        full-window? (and ended-at (<= deadline ended-at))
-        truncated? (and final-restart? (not full-window?))
+        full-window? (if episode-window?
+                       (boolean ended-at)
+                       (and ended-at (<= deadline ended-at)))
+        truncated? (and final-restart?
+                        (or episode-window? (not full-window?)))
         reason (cond
                  (seq unexpected-successes)
                  :unexpected-success-without-quorum
@@ -612,6 +618,8 @@
       reason (assoc :reason reason))))
 
 (defn- availability-checker
+  ;; A nil window checks the complete disruption episode, ending at the
+  ;; recovery invocation. A numeric window retains the fixed-deadline policy.
   ([window-nanos]
    (availability-checker window-nanos
                          :kill-process
@@ -729,7 +737,7 @@
 (defn- pause-checker []
   (let [coverage (pause-coverage-checker)
         availability (availability-checker
-                      process-availability-window-nanos
+                      nil
                       :pause-process
                       :resume-process
                       required-pause-modes

@@ -1337,6 +1337,34 @@
     (is (:valid? no-quorum))
     (is (= 1 (:no-quorum-episode-count no-quorum)))))
 
+(deftest standalone-pause-accepts-progress-throughout-the-pause-episode
+  (let [second 1000000000
+        subject (#'process/availability-checker
+                 nil
+                 :pause-process
+                 :resume-process
+                 process/required-pause-modes
+                 :pause-final-resume?)
+        configs [#{"n1" "n2" "n3"}]
+        history (pause-availability-history
+                 configs
+                 ["n1"]
+                 [{:time (* 50 1000000)
+                   :type :invoke
+                   :process 0
+                   :phase :main
+                   :f :read}
+                  {:time (+ (* 5 second) (* 20 1000000))
+                   :type :ok
+                   :process 0
+                   :phase :main
+                   :f :read}]
+                 (* 10 second))
+        result (checker/check subject {} history {})]
+    (is (:valid? result))
+    (is (= 1 (get-in result [:episodes 0 :success-count])))
+    (is (empty? (:failures result)))))
+
 (deftest checks-pause-coverage-and-recovery-state
   (let [subject (#'process/pause-coverage-checker)
         test {:nodes voters}
