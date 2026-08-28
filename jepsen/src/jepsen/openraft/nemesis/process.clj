@@ -26,6 +26,13 @@
 (def ^:private process-availability-window-nanos
   (* 3 max-election-timeout-ms 1000000))
 
+(defn- target-category [node-count target-count]
+  (cond
+    (= 1 target-count) :one
+    (= node-count target-count) :all
+    (<= target-count (quot (dec node-count) 2)) :minority
+    :else :majority))
+
 (defn- process-disruption [test status mode eligible-nodes]
   (let [leader (:leader status)
         configs (cluster/voter-configs test status)
@@ -35,10 +42,7 @@
         targets (some-> (random/nonempty-subset eligible-nodes) vec)]
     (when (seq targets)
       (let [target-set (set targets)
-            survivors (->> (:nodes test)
-                           (filter reachable-voters)
-                           (remove target-set)
-                           vec)]
+            target-count (count targets)]
         {:mode mode
          :leader leader
          :nodes targets
@@ -46,8 +50,9 @@
          :reachable-voters (->> (:nodes test)
                                 (filter reachable-voters)
                                 vec)
-         :survivors survivors
-         :target-count (count targets)
+         :target-count target-count
+         :target-category (target-category (count (:nodes test))
+                                           target-count)
          :leader-included? (contains? target-set leader)}))))
 
 (def ^:private disruption-start-specs
@@ -374,11 +379,16 @@
 
 (defn- coverage-result
   [required-modes operation-f installed? invalid-states history cluster-state]
-  (let [observed-modes (->> history
-                            (filter #(= operation-f (:f %)))
-                            (filter #(installed? (:value %)))
-                            (keep #(get-in % [:value :mode]))
+  (let [installed-values (->> history
+                              (filter #(= operation-f (:f %)))
+                              (map :value)
+                              (filter installed?))
+        observed-modes (->> installed-values
+                            (keep :mode)
                             set)
+        observed-target-categories (->> installed-values
+                                        (keep :target-category)
+                                        set)
         missing-modes (remove observed-modes required-modes)
         valid? (cond
                  (seq missing-modes) false
@@ -387,6 +397,7 @@
                  :else :unknown)]
     {:valid? valid?
      :observed-modes (vec (sort observed-modes))
+     :observed-target-categories (vec (sort observed-target-categories))
      :missing-modes (vec (sort missing-modes))
      :cluster-state cluster-state}))
 
@@ -561,12 +572,12 @@
                                            episode
                                            Long/MAX_VALUE)
                                   attempts)
-        attempts (filterv #(<= (:invoke-time %) deadline)
-                          episode-attempts)
+        attempts-in-window (filterv #(<= (:invoke-time %) deadline)
+                                    episode-attempts)
         successes (filterv (partial successful-attempt?
                                     episode
                                     deadline)
-                           attempts)
+                           attempts-in-window)
         unexpected-successes (when-not configured-quorum-retained?
                                (filterv (partial unexpected-write-success?
                                                  episode)
@@ -592,7 +603,7 @@
                  (not full-window?)
                  :insufficient-observation-window
 
-                 (empty? attempts)
+                 (empty? attempts-in-window)
                  :no-client-attempts
 
                  :else
@@ -612,7 +623,7 @@
                                       (seq successes)
                                       full-window?))
              :truncated? truncated?
-             :attempt-count (count attempts)
+             :attempt-count (count attempts-in-window)
              :success-count (count successes)
              :unexpected-success-count (count unexpected-successes)}
       reason (assoc :reason reason))))

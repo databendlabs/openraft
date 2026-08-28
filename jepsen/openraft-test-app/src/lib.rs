@@ -4,7 +4,6 @@
 use std::num::NonZeroU64;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
 
 use clap::Parser;
 use openraft::Config;
@@ -33,10 +32,6 @@ openraft::declare_raft_types!(
 pub type LogStore = log_rocks::RocksLogStore<TypeConfig>;
 pub type StateMachineStore = store::StateMachineStore;
 pub type Raft = openraft::Raft<TypeConfig, StateMachineStore>;
-
-// Jepsen bounds final cluster recovery externally. A local deadline would
-// terminate both servers while a restart is still able to catch up.
-const RESTART_RECOVERY_TIMEOUT: Option<Duration> = None;
 
 #[derive(Parser, Clone, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -106,10 +101,10 @@ pub async fn start_raft_node(options: Opt) -> std::io::Result<()> {
     let raft_server = network_v2_http::Server::new(app.raft.clone()).run(raft_addr);
     let app_server = async move {
         if is_restart {
-            app.raft
-                .wait_for_recovery(RESTART_RECOVERY_TIMEOUT)
-                .await
-                .map_err(|e| std::io::Error::other(e.to_string()))?;
+            // Jepsen bounds final cluster recovery externally. A local
+            // deadline would terminate both servers while a restart is still
+            // able to catch up.
+            app.raft.wait_for_recovery(None).await.map_err(|e| std::io::Error::other(e.to_string()))?;
         }
 
         app_http::Server::new(app)
@@ -131,12 +126,6 @@ mod tests {
     use clap::Parser;
 
     use super::Opt;
-    use super::RESTART_RECOVERY_TIMEOUT;
-
-    #[test]
-    fn restart_recovery_has_no_local_deadline() {
-        assert!(RESTART_RECOVERY_TIMEOUT.is_none());
-    }
 
     #[test]
     fn snapshot_threshold_must_be_positive() {

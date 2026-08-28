@@ -110,10 +110,11 @@
         (is (= :installed (:status value)))
         (is (= selected (:nodes value)))
         (is (= 3 (:target-count value)))
+        (is (= :majority (:target-category value)))
         (is (false? (:leader-included? value)))
         (is (= configs (:voter-configs value)))
         (is (= ["n1" "n2" "n3"] (:reachable-voters value)))
-        (is (= ["n1" "n3"] (:survivors value)))
+        (is (not (contains? value :survivors)))
         (is (= [[:pause selected]]
                (mapv (juxt :f :value) @invocations)))))))
 
@@ -141,12 +142,18 @@
         (is (= :installed (:status value)))
         (is (= selected (:nodes value)))
         (is (= 3 (:target-count value)))
+        (is (= :majority (:target-category value)))
         (is (false? (:leader-included? value)))
         (is (= configs (:voter-configs value)))
         (is (= ["n1" "n2" "n3"] (:reachable-voters value)))
-        (is (= ["n1" "n3"] (:survivors value)))
+        (is (not (contains? value :survivors)))
         (is (= [[:kill selected]]
                (mapv (juxt :f :value) @invocations)))))))
+
+(deftest categorizes-process-target-scale
+  (is (= [:one :minority :majority :majority :all]
+         (mapv (partial #'process/target-category 5)
+               (range 1 6)))))
 
 (deftest process-generator-repeats-random-kill-episodes
   (let [invocations (atom [])]
@@ -307,7 +314,6 @@
                     :leader "n1"
                     :nodes ["n1"]
                     :voter-configs [(set (:nodes test))]
-                    :survivors ["n2" "n3"]
                     :pause-results {"n1" :paused}}
         invoke-with-results
         (fn [results]
@@ -445,7 +451,6 @@
                     :leader "n1"
                     :nodes ["n2" "n3"]
                     :voter-configs [(set voters)]
-                    :survivors ["n1" "n4" "n5"]
                     :pause-results {"n2" :paused "n3" :paused}}
         prefer-planned (fn [candidates]
                          (cons planned (remove #{planned} candidates)))
@@ -574,8 +579,8 @@
                 :nodes ["n1"]
                 :voter-configs [#{"n1" "n2" "n3"}]
                 :reachable-voters ["n1" "n2" "n3"]
-                :survivors ["n2" "n3"]
                 :target-count 1
+                :target-category :one
                 :leader-included? true}
                (get-in resumed [:value :paused])))))))
 
@@ -881,7 +886,8 @@
 (deftest requires-a-process-kill-and-an-intact-cluster
   (let [subject (#'process/coverage-checker)
         complete-history [{:f :kill-process
-                           :value (installed {:mode :random})}
+                           :value (installed {:mode :random
+                                              :target-category :one})}
                           {:f :await-recovery
                            :value (installed {:leader "n1"})}]
         missing-mode-history [{:f :kill-process
@@ -896,6 +902,7 @@
                                       {})}]]
     (let [result (checker/check subject {} complete-history {})]
       (is (:valid? result))
+      (is (= [:one] (:observed-target-categories result)))
       (is (= :intact (:cluster-state result))))
     (let [result (checker/check subject {} missing-mode-history {})]
       (is (false? (:valid? result)))
@@ -914,7 +921,6 @@
                :nodes nodes
                :voter-configs configs
                :reachable-voters (vec reachable-voters)
-               :survivors (vec (remove (set nodes) reachable-voters))
                :stop-results (zipmap nodes (repeat :killed))})))
 
 (defn- process-availability-history
@@ -1375,7 +1381,9 @@
                         :leader "n1"
                         :nodes nodes
                         :voter-configs [(set voters)]
-                        :survivors (vec (remove (set nodes) voters))
+                        :target-category (#'process/target-category
+                                          (count voters)
+                                          (count nodes))
                         :pause-results (zipmap nodes (repeat :paused))}))
         follower-targets (pause-value :random ["n2" "n3"])
         leader-targets (pause-value :random ["n1" "n2"])
@@ -1451,9 +1459,12 @@
                   (zipmap voters (repeat :target-absent)))]
     (testing "random pause episodes complete and recover"
       (is (= {:valid? true
+              :observed-target-categories [:minority]
               :cluster-state :intact}
              (select-keys (check complete-history)
-                          [:valid? :cluster-state]))))
+                          [:valid?
+                           :observed-target-categories
+                           :cluster-state]))))
 
     (testing "the random pause mode is missing"
       (is (= {:valid? false
