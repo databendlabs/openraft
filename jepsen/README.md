@@ -280,6 +280,9 @@ processes. It uses node-local `libfaketime` control files and never changes the
 container or host clock. A focused run cycles through multi-scale forward or
 backward jumps, fast and slow rates sampled between 0.5x and 2x, rapid strobe
 jumps, and resets in a fixed order. Targets and fault parameters remain random.
+The order is fixed so that one default 60-second run covers every mode the
+Clock checker requires for `:valid?`; randomising it would make short runs fail
+on missing coverage.
 Each operation replaces the complete clock state, and final cleanup restores
 every node to `+0 x1`. Rate changes may also jump the wall clock because libfaketime
 rebases the reported time when the multiplier changes; those jumps are part of
