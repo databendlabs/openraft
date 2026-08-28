@@ -31,6 +31,7 @@ jobs:
             Subject line has to contain a commit type, e.g.: "Change: blabla" or a merge commit e.g.: "Merge xxx".
             Valid types are:
               DataChange    - Persistent data change
+              data-change   - Persistent data change
               Change        - API breaking change
               change        - API breaking change
               Feature       - API compatible new feature
