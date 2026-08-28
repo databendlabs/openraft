@@ -211,7 +211,10 @@ apply the matching availability expectation.
 Paused processes retain their memory and open TCP connections, so peers observe
 unresponsive processes rather than closed connections. Resume operations target
 every test node as an idempotent cleanup and record the complete resumed node
-set in history.
+set in history. When a quorum remains, the focused checker requires a client
+response that starts after the pause is installed and completes before resume
+begins. This uses the complete fault episode because a request to a paused
+leader can remain blocked until the client timeout.
 
 #### Membership Nemesis
 
@@ -310,6 +313,12 @@ processes, resumes paused processes, restores membership, and then performs one
 shared readiness check. Client operations continue while faults are active and
 during recovery. Final recovery performs one write and one read per register;
 every operation must succeed.
+
+A restarted test application keeps its Raft RPC service running while it waits
+for local recovery, but does not open the client API until recovery completes.
+This wait has no node-local deadline: Jepsen's shared readiness check provides
+the external 60-second recovery bound, reports a recovery timeout, and leaves
+the process alive for diagnosis and teardown.
 
 ### Results and Stored Evidence
 
