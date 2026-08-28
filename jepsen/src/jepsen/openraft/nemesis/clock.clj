@@ -304,7 +304,14 @@
 (defn- coverage-checker []
   (reify checker/Checker
     (check [_ _test history _opts]
-      (let [bump? (some #(and (= :bump-clock (:f %)) (installed? %)) history)
+      (let [installed-values (->> history
+                                  (filter #(and (contains? #{:bump-clock
+                                                             :rate-clock
+                                                             :strobe-clock}
+                                                           (:f %))
+                                                (installed? %)))
+                                  (map :value))
+            bump? (some #(and (= :bump-clock (:f %)) (installed? %)) history)
             strobe? (some #(and (= :strobe-clock (:f %)) (installed? %))
                           history)
             observed-modes (->> history
@@ -320,6 +327,9 @@
                                                (installed? %)))
                                  (keep #(get-in % [:value :direction]))
                                  set)
+            observed-target-categories (->> installed-values
+                                            (keep :target-category)
+                                            set)
             final-reset (last (filter #(= :reset-clock (:f %)) history))
             recovered? (and final-reset (installed? final-reset))]
         {:valid? (boolean (and bump?
@@ -329,6 +339,8 @@
          :bump-installed (boolean bump?)
          :strobe-installed (boolean strobe?)
          :observed-modes observed-modes
+         :observed-target-categories
+         (vec (sort observed-target-categories))
          :rate-directions (vec (sort rate-directions))
          :final-reset-installed (boolean recovered?)
          :cluster-state (if recovered? :intact :unknown)}))))

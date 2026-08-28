@@ -58,6 +58,28 @@
                                           [(installed :reset-clock)]
                                           {})))))))
 
+(deftest clock-checker-reports-target-categories
+  (let [subject (:checker (clock-nemesis/clock-package))
+        installed (fn [f details]
+                    {:type :info
+                     :f f
+                     :value (assoc details :status :installed)})
+        result (checker/check
+                subject
+                test-config
+                [(installed :bump-clock {:target-category :one})
+                 (installed :strobe-clock {:target-category :minority})
+                 (installed :rate-clock {:direction :fast
+                                         :target-category :all})
+                 (installed :rate-clock {:direction :slow
+                                         :target-category :one})
+                 (installed :kill-process {:target-category :majority})
+                 (installed :reset-clock {})]
+                {})]
+    (is (:valid? result))
+    (is (= [:all :minority :one]
+           (:observed-target-categories result)))))
+
 (deftest rate-settings-cover-both-directions
   (dotimes [_ 100]
     (let [fast (#'clock-nemesis/random-rate :fast)
