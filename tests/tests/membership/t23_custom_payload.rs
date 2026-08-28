@@ -630,6 +630,10 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
         let node = new_node(2, config, router.clone(), TestLogStore::default(), snapshot_sm.clone()).await?;
         router.insert(2, node.clone());
         node.install_full_snapshot(vote, snapshot).await?;
+        // `install_full_snapshot()` answers as soon as the snapshot is installed, before the
+        // RaftCore loop publishes the next metrics. Wait for the installed index, so that the
+        // membership assertion below reads the metrics the snapshot produced.
+        node.wait(timeout()).applied_index(Some(appended_log_id.index), "install snapshot").await?;
 
         assert_eq!(expected_final_state, snapshot_sm.state());
         let metrics = node.metrics().borrow_watched().clone();
