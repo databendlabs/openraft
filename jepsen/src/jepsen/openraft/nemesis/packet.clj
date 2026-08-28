@@ -206,13 +206,14 @@
 (defn- coverage-checker [packet-mode]
   (reify checker/Checker
     (check [_ _test history _opts]
-      (let [observed-roles (->> history
-                                (filter #(= :start-packet (:f %)))
-                                (filter #(packet-start-installed? (:value %)))
+      (let [start-values (->> history
+                              (filter #(= :start-packet (:f %)))
+                              (map :value))
+            observed-roles (->> start-values
+                                (filter packet-start-installed?)
                                 (filter #(or (nil? packet-mode)
-                                             (= packet-mode
-                                                (get-in % [:value :mode]))))
-                                (keep #(get-in % [:value :target-role]))
+                                             (= packet-mode (:mode %))))
+                                (keep :target-role)
                                 set)
             missing-roles (remove observed-roles required-target-roles)
             cluster-state (reduce next-cluster-state :intact history)
@@ -225,6 +226,9 @@
          :mode (or packet-mode :mixed)
          :observed-target-roles (vec (sort observed-roles))
          :missing-target-roles (vec (sort missing-roles))
+         :unrecognized-installs (outcome/unrecognized-installs
+                                 packet-start-installed?
+                                 start-values)
          :cluster-state cluster-state}))))
 
 (defn packet-package [database packet-mode]

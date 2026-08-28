@@ -1207,6 +1207,18 @@
                                   [shrink grow restore recovery]
                                   {}))))
 
+    (testing "an installed change without its evidence is a defect"
+      (let [result (checker/check subject
+                                  test-config
+                                  [(assoc shrink :value (installed {}))
+                                   grow
+                                   restore
+                                   recovery]
+                                  {})]
+        (is (false? (:valid? result)))
+        (is (= 1 (:unrecognized-installs result)))
+        (is (= [:shrink] (:missing-changes result)))))
+
     (testing "an indeterminate request does not count as coverage"
       (let [result (checker/check
                     subject

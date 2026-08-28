@@ -917,6 +917,13 @@
   (reify checker/Checker
     (check [_ test history _opts]
       (let [required-changes #{:grow :shrink}
+            change-installed? (fn [value]
+                                (or (membership-change-installed?
+                                     required-changes
+                                     value)
+                                    (membership-change-installed?
+                                     required-changes
+                                     (:resolved-change value))))
             expected-voters (set (:nodes test))
             membership-history (->> history
                                     (filter
@@ -924,6 +931,9 @@
                                          :shrink
                                          :restore-membership} (:f %)))
                                     vec)
+            change-values (->> membership-history
+                               (filter #(#{:grow :shrink} (:f %)))
+                               (map :value))
             errors (->> membership-history
                         (filter #(or (:error %)
                                      (:exception %)))
@@ -941,6 +951,9 @@
                                             change)
                                        (:change change))))
                                   set)
+            unrecognized-installs (outcome/unrecognized-installs
+                                   change-installed?
+                                   change-values)
             missing-changes (remove observed-changes
                                     required-changes)
             final-operation (peek membership-history)
@@ -959,6 +972,7 @@
                       recovered?)
          :observed-changes (vec (sort observed-changes))
          :missing-changes (vec (sort missing-changes))
+         :unrecognized-installs unrecognized-installs
          :restored? restored?
          :recovered? recovered?
          :error-count (count errors)
