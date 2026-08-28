@@ -36,27 +36,56 @@
 
 (deftest clock-checker-requires-all-faults-and-final-reset
   (let [subject (:checker (clock-nemesis/clock-package))
-        installed (fn [f] {:type :info :f f :value {:status :installed}})]
+        installed (fn [f mode]
+                    {:type :info
+                     :f f
+                     :value {:status :installed :mode mode}})
+        rate (fn [direction]
+               {:type :info
+                :f :rate-clock
+                :value {:status :installed
+                        :mode :rate
+                        :direction direction}})
+        complete [(installed :bump-clock :bump)
+                  (installed :strobe-clock :strobe)
+                  (rate :fast)
+                  (rate :slow)
+                  (installed :reset-clock :reset)]]
     (testing "complete coverage"
       (is (true? (:valid? (checker/check subject
                                          test-config
-                                         [(installed :bump-clock)
-                                          (installed :strobe-clock)
-                                          {:type :info
-                                           :f :rate-clock
-                                           :value {:status :installed
-                                                   :direction :fast}}
-                                          {:type :info
-                                           :f :rate-clock
-                                           :value {:status :installed
-                                                   :direction :slow}}
-                                          (installed :reset-clock)]
+                                         complete
                                          {})))))
     (testing "missing bump"
       (is (false? (:valid? (checker/check subject
                                           test-config
-                                          [(installed :reset-clock)]
-                                          {})))))))
+                                          [(installed :reset-clock :reset)]
+                                          {})))))
+
+    (testing "an installed rate change without a direction is malformed"
+      (let [result (checker/check
+                    subject
+                    test-config
+                    (into [{:type :info
+                            :f :rate-clock
+                            :value {:status :installed :mode :rate}}]
+                          complete)
+                    {})]
+        (is (false? (:valid? result)))
+        (is (= 1 (:malformed-outcomes result)))
+        (is (= [:fast :slow] (:rate-directions result)))))
+
+    (testing "an unknown status is malformed"
+      (let [result (checker/check
+                    subject
+                    test-config
+                    (into [{:type :info
+                            :f :bump-clock
+                            :value {:status :bogus :mode :bump}}]
+                          complete)
+                    {})]
+        (is (false? (:valid? result)))
+        (is (= 1 (:malformed-outcomes result)))))))
 
 (deftest clock-checker-reports-target-categories
   (let [subject (:checker (clock-nemesis/clock-package))
@@ -67,11 +96,15 @@
         result (checker/check
                 subject
                 test-config
-                [(installed :bump-clock {:target-category :one})
-                 (installed :strobe-clock {:target-category :minority})
-                 (installed :rate-clock {:direction :fast
+                [(installed :bump-clock {:mode :bump
+                                         :target-category :one})
+                 (installed :strobe-clock {:mode :strobe
+                                           :target-category :minority})
+                 (installed :rate-clock {:mode :rate
+                                         :direction :fast
                                          :target-category :all})
-                 (installed :rate-clock {:direction :slow
+                 (installed :rate-clock {:mode :rate
+                                         :direction :slow
                                          :target-category :one})
                  (installed :kill-process {:target-category :majority})
                  (installed :reset-clock {})]

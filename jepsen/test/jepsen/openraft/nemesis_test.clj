@@ -89,7 +89,7 @@
             :await-recovery]
            (mapv :f (:final-generator package))))))
 
-(deftest requires-each-composed-fault-class-to-execute
+(deftest reports-composed-fault-class-coverage-without-requiring-it
   (let [failure-state (harness/failure-state)
         database (db/db {})
         all-voters (set (:nodes test-config))
@@ -161,15 +161,72 @@
         (is (true? (get-in result
                            [:membership :fault-class-executed?])))))
 
-    (testing "a skipped fault does not count as execution"
+    (testing "a skipped fault is reported, not a composed-run failure"
       (let [result (check (mapv #(if (= :pause-process (:f %))
                                    (assoc % :value
                                           {:status :skipped
                                            :reason :no-supported-leader})
                                    %)
                                 history))]
+        (is (:valid? result))
+        (is (false? (get-in result [:pause :fault-class-executed?])))
+        (is (= [:random] (get-in result [:pause :missing-modes])))))
+
+    (testing "an installed outcome the class cannot read stays a failure"
+      (let [result (check (mapv #(if (= :start-partition (:f %))
+                                   (assoc % :value {:status :installed})
+                                   %)
+                                history))]
         (is (false? (:valid? result)))
-        (is (false? (get-in result [:pause :fault-class-executed?])))))))
+        (is (false? (get-in result [:partition :fault-class-executed?])))
+        (is (= 1 (get-in result [:partition :malformed-outcomes])))
+        (is (= :intact (get-in result [:partition :cluster-state])))))
+
+    (testing "an unknown status stays a failure"
+      (let [result (check (mapv #(if (= :start-partition (:f %))
+                                   (assoc % :value {:status :bogus
+                                                    :mode :leader-in-majority})
+                                   %)
+                                history))]
+        (is (false? (:valid? result)))
+        (is (= 1 (get-in result [:partition :malformed-outcomes])))))
+
+    (testing "one recognized fault satisfies the composed run"
+      (let [installed-partition? #(and (= :start-partition (:f %))
+                                       (= :installed
+                                          (get-in % [:value :status])))
+            skip-others (fn [op]
+                          (if (or (installed-partition? op)
+                                  (#{:stop-partition
+                                     :resume-process
+                                     :stop-packet
+                                     :reset-clock
+                                     :restore-membership
+                                     :await-recovery} (:f op)))
+                            op
+                            (assoc op :value {:status :skipped
+                                              :reason :no-supported-leader})))
+            result (check (mapv skip-others history))]
+        (is (:valid? result))
+        (is (= 1 (:fault-classes-executed result)))
+        (is (true? (get-in result [:partition :fault-class-executed?])))))
+
+    (testing "a run in which every fault class was skipped fails"
+      (let [cleanup-fs #{:stop-partition
+                         :resume-process
+                         :stop-packet
+                         :reset-clock
+                         :restore-membership
+                         :await-recovery}
+            skip-all (fn [op]
+                       (if (cleanup-fs (:f op))
+                         op
+                         (assoc op :value {:status :skipped
+                                           :reason :no-supported-leader})))
+            result (check (mapv skip-all history))]
+        (is (false? (:valid? result)))
+        (is (zero? (:fault-classes-executed result)))
+        (is (zero? (get-in result [:partition :malformed-outcomes])))))))
 
 (defn- teardown-package [package-name events throwable]
   {:name package-name

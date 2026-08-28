@@ -912,7 +912,17 @@
     (let [result (checker/check subject {} unrecovered-history {})]
       (is (false? (:valid? result)))
       (is (empty? (:missing-modes result)))
-      (is (= :degraded (:cluster-state result))))))
+      (is (= :degraded (:cluster-state result))))
+    (let [result (checker/check subject
+                                {}
+                                [{:f :kill-process
+                                  :value (installed {})}
+                                 {:f :await-recovery
+                                  :value (installed {:leader "n1"})}]
+                                {})]
+      (is (false? (:valid? result)))
+      (is (= 1 (:malformed-outcomes result)))
+      (is (empty? (:observed-modes result))))))
 
 (defn- process-kill-value
   ([configs nodes]

@@ -205,7 +205,60 @@
                                    stop]
                                   {})]
         (is (false? (:valid? result)))
-        (is (= :recovery-pending (:cluster-state result)))))))
+        (is (= :recovery-pending (:cluster-state result)))))
+
+    (testing "an installed degradation without a target role is a defect"
+      (let [result (checker/check subject
+                                  {}
+                                  [{:type :info
+                                    :process :nemesis
+                                    :f :start-packet
+                                    :value (installed {:mode :slow})}
+                                   stop
+                                   recovered]
+                                  {})]
+        (is (= 1 (:malformed-outcomes result)))
+        (is (empty? (:observed-target-roles result)))))
+
+    (testing "the other mode in a fixed-mode package fails the focused run"
+      (let [result (checker/check subject
+                                  {}
+                                  [(start :leader-included)
+                                   stop
+                                   (start :leader-excluded)
+                                   stop
+                                   {:type :info
+                                    :process :nemesis
+                                    :f :start-packet
+                                    :value (installed
+                                            {:mode :flaky
+                                             :target-role :leader-included})}
+                                   stop
+                                   recovered]
+                                  {})]
+        (is (false? (:valid? result)))
+        (is (= 1 (:malformed-outcomes result)))
+        (is (empty? (:missing-target-roles result)))))
+
+    (testing "an unknown status fails the focused run"
+      (let [result (checker/check subject
+                                  {}
+                                  [(start :leader-included)
+                                   stop
+                                   (start :leader-excluded)
+                                   stop
+                                   {:type :info
+                                    :process :nemesis
+                                    :f :start-packet
+                                    :value {:status :bogus
+                                            :mode :slow
+                                            :target-role :leader-included}}
+                                   stop
+                                   recovered]
+                                  {})]
+        (is (false? (:valid? result)))
+        (is (= 1 (:malformed-outcomes result)))
+        (is (empty? (:missing-target-roles result)))))))
 
 (deftest rejects-unknown-packet-modes
   (is (thrown-with-msg? clojure.lang.ExceptionInfo

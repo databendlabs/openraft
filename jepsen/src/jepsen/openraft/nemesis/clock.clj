@@ -301,40 +301,67 @@
 (defn- installed? [op]
   (= :installed (get-in op [:value :status])))
 
+(def ^:private required-rate-directions #{:fast :slow})
+(def ^:private fault-operations [:bump-clock :rate-clock :strobe-clock])
+(def ^:private operation-modes
+  {:bump-clock :bump
+   :rate-clock :rate
+   :strobe-clock :strobe})
+
+(defn- clock-fault-installed?
+  "Says whether one clock fault outcome carries the evidence coverage reads.
+
+  A `:rate-clock` outcome counts only when it names the direction it applied,
+  because Clock coverage requires both `:fast` and `:slow`. Without that
+  check, a rate change with an unusable direction would still contribute the
+  `:rate` mode and hide a Nemesis defect."
+  [operation-f value]
+  (and (= :installed (:status value))
+       (= (get operation-modes operation-f) (:mode value))
+       (or (not= :rate-clock operation-f)
+           (contains? required-rate-directions (:direction value)))))
+
 (defn- coverage-checker []
   (reify checker/Checker
     (check [_ _test history _opts]
-      (let [installed-values (->> history
-                                  (filter #(and (contains? #{:bump-clock
-                                                             :rate-clock
-                                                             :strobe-clock}
-                                                           (:f %))
-                                                (installed? %)))
-                                  (map :value))
-            bump? (some #(and (= :bump-clock (:f %)) (installed? %)) history)
-            strobe? (some #(and (= :strobe-clock (:f %)) (installed? %))
-                          history)
-            observed-modes (->> history
-                                (filter installed?)
-                                (keep #(case (:f %)
-                                         :bump-clock :bump
-                                         :rate-clock :rate
-                                         :strobe-clock :strobe
-                                         nil))
+      (let [values-by-operation
+            (into {}
+                  (map (fn [operation-f]
+                         [operation-f (->> history
+                                           (filter #(= operation-f (:f %)))
+                                           (map :value))]))
+                  fault-operations)
+            recognized-by-operation
+            (into {}
+                  (map (fn [[operation-f values]]
+                         [operation-f
+                          (filter #(clock-fault-installed? operation-f %)
+                                  values)]))
+                  values-by-operation)
+            malformed (->> values-by-operation
+                           (map (fn [[operation-f values]]
+                                  (outcome/malformed-outcomes
+                                   #(clock-fault-installed? operation-f %)
+                                   values)))
+                           (reduce + 0))
+            recognized-values (apply concat (vals recognized-by-operation))
+            bump? (seq (get recognized-by-operation :bump-clock))
+            strobe? (seq (get recognized-by-operation :strobe-clock))
+            observed-modes (->> recognized-values
+                                (keep :mode)
                                 set)
-            rate-directions (->> history
-                                 (filter #(and (= :rate-clock (:f %))
-                                               (installed? %)))
-                                 (keep #(get-in % [:value :direction]))
+            rate-directions (->> (get recognized-by-operation :rate-clock)
+                                 (keep :direction)
                                  set)
-            observed-target-categories (->> installed-values
+            observed-target-categories (->> recognized-values
                                             (keep :target-category)
                                             set)
             final-reset (last (filter #(= :reset-clock (:f %)) history))
             recovered? (and final-reset (installed? final-reset))]
-        {:valid? (boolean (and bump?
+        {:valid? (boolean (and (zero? malformed)
+                               bump?
                                strobe?
-                               (= #{:fast :slow} rate-directions)
+                               (= required-rate-directions rate-directions)
                                recovered?))
          :bump-installed (boolean bump?)
          :strobe-installed (boolean strobe?)
@@ -342,6 +369,7 @@
          :observed-target-categories
          (vec (sort observed-target-categories))
          :rate-directions (vec (sort rate-directions))
+         :malformed-outcomes malformed
          :final-reset-installed (boolean recovered?)
          :cluster-state (if recovered? :intact :unknown)}))))
 

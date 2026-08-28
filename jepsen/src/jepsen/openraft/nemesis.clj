@@ -154,7 +154,21 @@
                      :f :await-recovery}
    :perf #{}})
 
-(defn- fault-class-checker [fault-checker]
+(defn- fault-class-checker
+  "Reports what one fault class covered in a composed run, without requiring it.
+
+  A composed run draws every fault class from one random schedule, so whether a
+  class ever meets a healthy cluster depends on wall-clock timing. The
+  single-class jepsen.yml jobs own per-class coverage and keep failing on their
+  own missing modes, target roles and changes. A composed run therefore keeps
+  the cleanup, error and recovery verdicts and reports the observed and missing
+  entries instead of failing on them.
+
+  Only an absent or skipped fault is relaxed. An outcome that claims an
+  installed fault the class cannot read, or that carries a missing or unknown
+  status, is a Nemesis defect rather than a schedule that never reached the
+  class, so `:malformed-outcomes` still rejects the run."
+  [fault-checker]
   (openraft-checker/reject-checker-exceptions
    (reify checker/Checker
      (check [_ test history opts]
@@ -165,7 +179,7 @@
              executed? (boolean (seq observed))
              cluster-state (:cluster-state result)
              valid? (cond
-                      (not executed?) false
+                      (pos? (or (:malformed-outcomes result) 0)) false
                       (pos? (or (:error-count result) 0)) false
                       (contains? result :restored?)
                       (and (:restored? result)
@@ -173,12 +187,36 @@
                       (= :intact cluster-state) true
                       (= :unknown cluster-state) :unknown
                       :else false)]
-         (-> result
-             (dissoc :missing-modes
-                     :missing-target-roles
-                     :missing-changes)
-             (assoc :valid? valid?
-                    :fault-class-executed? executed?)))))))
+         (assoc result
+                :valid? valid?
+                :fault-class-executed? executed?))))))
+
+(defn- chaos-checker
+  "Requires that a composed run installed at least one recognized fault.
+
+  Every class relaxes its own coverage in a composed run, so without this gate
+  a run in which each of the six classes was absent or skipped would pass on
+  the workload, the cleanup and the final recovery alone, and an entirely
+  inert Nemesis would look successful. Only a class reporting
+  `:fault-class-executed? true` counts, and that flag reads the class's own
+  fault operation, so cleanup, clock reset and recovery operations do not
+  satisfy the gate.
+
+  The gate depends on wall-clock timing, like the per-class coverage it
+  replaces, but far more weakly: it needs one installation out of six classes
+  over the whole run rather than every mode of every class."
+  [composed]
+  (reify checker/Checker
+    (check [_ test history opts]
+      (let [result (checker/check composed test history opts)
+            executed (->> (vals result)
+                          (filter map?)
+                          (filter :fault-class-executed?)
+                          count)
+            any-fault? (pos? executed)]
+        (assoc result
+               :valid? (if any-fault? (:valid? result) false)
+               :fault-classes-executed executed)))))
 
 (defn- cleanup-order [packages]
   (let [membership? #(= :membership (:name %))]
@@ -223,4 +261,4 @@
            :checker (if (= 1 (count packages))
                       (:checker (first packages))
                       (openraft-checker/reject-checker-exceptions
-                       (checker/compose checkers))))))
+                       (chaos-checker (checker/compose checkers)))))))
