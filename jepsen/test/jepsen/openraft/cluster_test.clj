@@ -8,6 +8,13 @@
   {:nodes ["n1" "n2" "n3"]
    :api-port 21001})
 
+(defn- spin-millis
+  "Burns the calling thread for `ms`, which an interrupt cannot cut short."
+  [ms]
+  (let [deadline (+ (System/nanoTime) (* ms 1000000))]
+    (while (< (System/nanoTime) deadline)
+      nil)))
+
 (defn- vote [term leader]
   {:leader_id {:term term
                :node_id leader}
@@ -67,6 +74,66 @@
                         (throw (ex-info "unreachable"
                                         {:kind :unreachable}))))]
       (is (nil? (#'cluster/cluster-status test-config))))))
+
+(deftest probes-every-node-concurrently
+  (let [nodes (:nodes test-config)
+        follower {:state "Follower"
+                  :current_leader "n2"
+                  :vote (vote 3 "n2")}
+        arrived (java.util.concurrent.CountDownLatch. (count nodes))]
+    (with-redefs [client/metrics!
+                  (fn [endpoint]
+                    (.countDown arrived)
+                    ;; A sequential scan never lets the last node arrive, so
+                    ;; the first probe waits out the timeout and fails here.
+                    (when-not (.await arrived
+                                      10
+                                      java.util.concurrent.TimeUnit/SECONDS)
+                      (throw (ex-info "a node probe waited for an earlier one"
+                                      {:endpoint endpoint})))
+                    follower)]
+      (is (= (zipmap nodes (repeat follower))
+             (#'cluster/collect-reachable-metrics test-config))))))
+
+(deftest restores-an-interrupt-after-draining-every-probe
+  (let [node-count (count (:nodes test-config))
+        probing (java.util.concurrent.CountDownLatch. node-count)
+        cleaned (java.util.concurrent.CountDownLatch. node-count)
+        coordinator (promise)
+        scan (future
+               (deliver coordinator (Thread/currentThread))
+               (try
+                 (with-redefs [client/metrics!
+                               (fn [_endpoint]
+                                 (.countDown probing)
+                                 (try
+                                   (Thread/sleep 60000)
+                                   nil
+                                   (catch InterruptedException e
+                                     ;; A cancelled probe still runs cleanup,
+                                     ;; and the scan owes it that time.
+                                     (spin-millis 150)
+                                     (.countDown cleaned)
+                                     (throw e))))]
+                   (#'cluster/collect-reachable-metrics test-config)
+                   [nil
+                    (.isInterrupted (Thread/currentThread))
+                    (.getCount cleaned)])
+                 (catch Exception e
+                   [e
+                    (.isInterrupted (Thread/currentThread))
+                    (.getCount cleaned)])
+                 (finally
+                   (Thread/interrupted))))]
+    (is (.await probing 10 java.util.concurrent.TimeUnit/SECONDS))
+    (.interrupt ^Thread @coordinator)
+    (let [outcome (deref scan 30000 ::timeout)]
+      (is (vector? outcome) "the scan never returned")
+      (when (vector? outcome)
+        (let [[thrown interrupted? unfinished] outcome]
+          (is (instance? InterruptedException thrown))
+          (is interrupted?)
+          (is (zero? unfinished)))))))
 
 (deftest distinguishes-modeled-metrics-failures-from-harness-errors
   (testing "recognized SUT observations make a node unavailable"

@@ -5,7 +5,12 @@
             [jepsen.openraft.await :as await]
             [jepsen.openraft.client :as client]
             [jepsen.openraft.interruption :as interruption]
-            [jepsen.openraft.quorum :as quorum]))
+            [jepsen.openraft.quorum :as quorum])
+  (:import (java.util.concurrent ExecutionException
+                                 Executors
+                                 ExecutorService
+                                 Future
+                                 TimeUnit)))
 
 (defn node-info [test node]
   {:node-id (client/node-host node)
@@ -84,19 +89,80 @@
 (defn- modeled-metrics-failure? [e]
   (contains? modeled-metrics-failure-kinds (:kind (ex-data e))))
 
-(defn- collect-reachable-metrics-from [test nodes]
-  (into {}
-        (keep
-         (fn [node]
-           (try
-             [node (node-metrics! test node)]
-             (catch InterruptedException e
-               (throw e))
-             (catch Exception e
-               (if (modeled-metrics-failure? e)
-                 nil
-                 (throw e)))))
-         nodes)))
+(def ^:private probe-drain-seconds 10)
+
+(defn- probe-result
+  "Reads one finished probe, surfacing the exception the probe itself threw."
+  [^Future probe]
+  (try
+    (.get probe)
+    (catch ExecutionException e
+      (throw (.getCause e)))))
+
+(defn- drain-probes!
+  "Stops the pool and waits for every probe thread to leave.
+
+  `invokeAll` cancellation and `shutdownNow` only ask a probe to stop, and the
+  pool's threads are not daemons, so a scan that returns without waiting leaves
+  live threads behind. Each probe is one `client/metrics!` call bounded by its
+  five-second request timeout, so a probe that never observes its interrupt
+  still ends well inside `probe-drain-seconds`; a pool still running after that
+  is reported rather than ignored."
+  [^ExecutorService pool]
+  (.shutdownNow pool)
+  (when-not (.awaitTermination pool probe-drain-seconds TimeUnit/SECONDS)
+    (throw (ex-info "OpenRaft metrics probes did not terminate"
+                    {:timeout-seconds probe-drain-seconds}))))
+
+(defn- collect-reachable-metrics-from
+  "Fetches metrics from nodes at once, dropping the unreachable ones.
+
+  A node whose process is paused answers no request, so its probe ends at
+  `client/metrics!`'s five-second request timeout. One Nemesis thread runs
+  every fault class, and a sequential scan would hold that thread for one
+  timeout per paused node, delaying the cleanup that resumes them.
+
+  `ExecutorService.invokeAll` never drops an interrupt that arrives while this
+  thread waits for the probes: it cancels the unfinished ones and rethrows the
+  InterruptedException, or it returns while this thread still carries the flag.
+  A helper that joins each probe in turn can lose the interrupt instead, when
+  the probe it is joining finishes between the throw and the liveness check.
+
+  The scan drains the pool before it restores the flag, so it never returns
+  while a probe thread is still running, and the drain is not cut short by the
+  interrupt it is about to restore."
+  [test nodes]
+  (let [^ExecutorService pool (Executors/newCachedThreadPool)
+        probes (mapv (fn [node]
+                       (fn []
+                         (try
+                           [node (node-metrics! test node)]
+                           (catch InterruptedException e
+                             (throw e))
+                           (catch Exception e
+                             (if (modeled-metrics-failure? e)
+                               nil
+                               (throw e))))))
+                     nodes)
+        outcome (try
+                  {:metrics (->> (.invokeAll pool probes)
+                                 (map probe-result)
+                                 (into {} (remove nil?)))}
+                  (catch Exception e
+                    {:error e}))
+        ;; invokeAll clears the flag on this thread when it throws, so this
+        ;; drain runs before the flag is put back.
+        drain-error (try
+                      (drain-probes! pool)
+                      nil
+                      (catch Exception e
+                        e))
+        error (or (:error outcome) drain-error)]
+    (when error
+      (when (interruption/interruption? error)
+        (.interrupt (Thread/currentThread)))
+      (throw error))
+    (:metrics outcome)))
 
 (defn- collect-reachable-metrics [test]
   (collect-reachable-metrics-from test (:nodes test)))
