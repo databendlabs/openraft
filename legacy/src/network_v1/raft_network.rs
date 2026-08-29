@@ -5,15 +5,19 @@
 
 use std::time::Duration;
 
+use anyerror::AnyError;
 use openraft::OptionalSend;
 use openraft::OptionalSync;
 use openraft::RaftTypeConfig;
 use openraft::errors::RPCError;
 use openraft::errors::RaftError;
+use openraft::errors::Unreachable;
 use openraft::network::Backoff;
 use openraft::network::RPCOption;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse;
+use openraft::raft::TransferLeaderRequest;
+use openraft::raft::TransferLeaderResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft_macros::add_async_trait;
@@ -68,6 +72,25 @@ where C: RaftTypeConfig
         rpc: VoteRequest<C>,
         option: RPCOption,
     ) -> Result<VoteResponse<C>, RPCError<C, RaftError<C>>>;
+
+    /// Send TransferLeader RPC to the target.
+    ///
+    /// The node received this message should pass it to [`Raft::handle_transfer_leader()`].
+    ///
+    /// This method provides a default implementation that just returns [`Unreachable`] error to
+    /// ignore it. In case the application did not implement it, other nodes just wait for the
+    /// Leader lease to timeout and then restart election.
+    ///
+    /// [`Raft::handle_transfer_leader()`]: crate::raft::Raft::handle_transfer_leader
+    async fn transfer_leader(
+        &mut self,
+        _req: TransferLeaderRequest<C>,
+        _option: RPCOption,
+    ) -> Result<TransferLeaderResponse<C>, RPCError<C>> {
+        Err(RPCError::Unreachable(Unreachable::new(&AnyError::error(
+            "transfer_leader not implemented",
+        ))))
+    }
 
     /// Build a backoff instance if the target node is temporarily(or permanently) unreachable.
     ///

@@ -20,6 +20,8 @@ use openraft::network::v2::RaftNetworkV2;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse;
 use openraft::raft::SnapshotResponse;
+use openraft::raft::TransferLeaderRequest;
+use openraft::raft::TransferLeaderResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft::type_config::alias::SnapshotOf;
@@ -111,6 +113,14 @@ where
         option: RPCOption,
     ) -> Result<SnapshotResponse<C>, StreamingError<C>> {
         Sender::<C, SD>::send_snapshot(&mut self.network, vote, snapshot, cancel, option).await
+    }
+
+    async fn transfer_leader(
+        &mut self,
+        rpc: TransferLeaderRequest<C>,
+        option: RPCOption,
+    ) -> Result<TransferLeaderResponse<C>, RPCError<C>> {
+        RaftNetwork::<C>::transfer_leader(&mut self.network, rpc, option).await
     }
 
     fn backoff(&self) -> Option<Backoff> {
