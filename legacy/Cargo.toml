@@ -17,6 +17,7 @@ repository.workspace = true
 openraft = { path = "../openraft", version = "0.10.0-alpha.34", default-features = false }
 openraft-macros = { path = "../macros", version = "0.10.0-alpha.34" }
 
+anyerror = { workspace = true }
 derive_more = { workspace = true }
 display-more = { workspace = true }
 futures = { workspace = true }
