@@ -81,7 +81,7 @@ where C: RaftTypeConfig
     /// ignore it. In case the application did not implement it, other nodes just wait for the
     /// Leader lease to timeout and then restart election.
     ///
-    /// [`Raft::handle_transfer_leader()`]: crate::raft::Raft::handle_transfer_leader
+    /// [`Raft::handle_transfer_leader()`]: openraft::raft::Raft::handle_transfer_leader
     async fn transfer_leader(
         &mut self,
         _req: TransferLeaderRequest<C>,
