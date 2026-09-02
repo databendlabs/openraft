@@ -113,8 +113,6 @@ where
                 }
             };
 
-            tracing::error!("ReplicationError while sending snapshot: {}", error);
-
             match error {
                 ReplicationError::Closed(closed) => {
                     tracing::info!("snapshot transmission canceled: {}", closed);
@@ -144,6 +142,12 @@ where
                     return;
                 }
                 ReplicationError::RPCError(err) => {
+                    tracing::warn!(
+                        "RPCError while sending snapshot to target {}: {}; will retry",
+                        self.replication_context.target,
+                        err
+                    );
+
                     match &err {
                         RPCError::Unreachable(_unreachable) => {
                             // If there is an [`Unreachable`] error, we will backoff for a
