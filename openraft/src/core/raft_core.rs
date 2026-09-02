@@ -1507,7 +1507,7 @@ where
                             target: target.clone(),
                             timeout: ttl,
                         };
-                        tracing::error!("timeout while requesting {}: {}", kind.as_str(), timeout_err);
+                        tracing::warn!("timeout while requesting {}: {}", kind.as_str(), timeout_err);
                         return;
                     }
                 };
@@ -1534,7 +1534,7 @@ where
                     // `pre_vote` returns `Ok(granted)` from the default impl, so Pre-Vote
                     // degrades to a no-op rather than relying on this.
                     Err(err) => {
-                        tracing::error!("while requesting {}, error: {}, target: {}", kind.as_str(), err, target)
+                        tracing::warn!("while requesting {}, error: {}, target: {}", kind.as_str(), err, target)
                     }
                 }
             }
@@ -1562,14 +1562,14 @@ where
                 let res = match tm_res {
                     Ok(res) => res,
                     Err(timeout) => {
-                        tracing::error!("timeout sending transfer_leader: {}, target: {}", timeout, target);
+                        tracing::warn!("timeout sending transfer_leader: {}, target: {}", timeout, target);
                         return;
                     }
                 };
 
                 match res {
                     Err(e) => {
-                        tracing::error!("error sending transfer_leader: {}, target: {}", e, target);
+                        tracing::warn!("error sending transfer_leader: {}, target: {}", e, target);
                     }
                     Ok(resp) => {
                         tracing::info!("Done transfer_leader sent to {}, resp: {:?}", target, resp);
