@@ -7,6 +7,7 @@ vendor
 .zed
 tests/_log
 **/__pycache__
+.hegel
 
 # File Ignores ###############################################################
 **/*.rs.bk
