@@ -113,8 +113,6 @@ where
                 }
             };
 
-            tracing::error!("ReplicationError while sending snapshot: {}", error);
-
             match error {
                 ReplicationError::Closed(closed) => {
                     tracing::info!("snapshot transmission canceled: {}", closed);
