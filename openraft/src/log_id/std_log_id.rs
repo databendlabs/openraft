@@ -35,6 +35,8 @@ impl_raft_log_id!(i8);
 
 #[cfg(test)]
 mod tests {
+    use hegel::generators;
+
     use crate::log_id::raft_log_id::RaftLogId;
     use crate::vote::leader_id_std;
 
@@ -165,5 +167,35 @@ mod tests {
         let log_id = <(i8, u64) as RaftLogId>::new(leader_id, 100);
         assert_eq!((5, 100), log_id);
         assert_eq!(100, RaftLogId::index(&log_id));
+    }
+
+    // ---
+    // Property-based tests (hegel).
+    // ---
+
+    /// `committed_leader_id` reads the term through an `unsafe` `repr(transparent)` pointer cast,
+    /// once per supported term type. Each cast must hand back the tuple's own term, including at
+    /// the bounds of the term type.
+    #[hegel::test]
+    fn test_tuple_log_id_reports_its_own_term_and_index(tc: hegel::TestCase) {
+        macro_rules! check_term_type {
+            ($term_type:ty) => {{
+                let term = tc.draw(generators::integers::<$term_type>());
+                let index = tc.draw(generators::integers::<u64>());
+                let log_id: ($term_type, u64) = (term, index);
+
+                assert_eq!(term, **RaftLogId::committed_leader_id(&log_id));
+                assert_eq!(index, RaftLogId::index(&log_id));
+            }};
+        }
+
+        check_term_type!(u64);
+        check_term_type!(u32);
+        check_term_type!(u16);
+        check_term_type!(u8);
+        check_term_type!(i64);
+        check_term_type!(i32);
+        check_term_type!(i16);
+        check_term_type!(i8);
     }
 }
