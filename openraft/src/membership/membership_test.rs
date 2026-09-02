@@ -5,6 +5,7 @@ use std::fmt::Formatter;
 
 use maplit::btreemap;
 use maplit::btreeset;
+use quorum_set::verify_intersection;
 
 use crate::ChangeMembers;
 use crate::Membership;
@@ -518,4 +519,35 @@ fn test_membership_find_changed_node_metadata() -> anyhow::Result<()> {
     assert_eq!(Some(3), previous.find_changed_node_metadata(&learner_changed));
 
     Ok(())
+}
+
+/// `is_direct_append_compatible_with` accepts a transition between two uniform memberships when
+/// their voter sets differ by at most one node, and quorum intersection must follow. Checked
+/// against the definition over every pair of non-empty voter sets over five ids; the rule is
+/// conservative, so only this direction holds. A transition that involves a joint membership is
+/// decided by `QuorumIntersection::intersects_with()`, which the `quorum-set` crate tests against
+/// the same definition.
+#[test]
+fn test_is_direct_append_compatible_implies_intersecting_quorums() {
+    const UNIVERSE: u64 = 5;
+
+    let configs = (1..1u64 << UNIVERSE)
+        .map(|mask| (0..UNIVERSE).filter(|id| mask & (1 << id) != 0).collect::<BTreeSet<_>>())
+        .collect::<Vec<_>>();
+    let memberships = configs
+        .into_iter()
+        .map(|config| Membership::<u64, ()>::new_with_defaults(vec![config], []))
+        .collect::<Vec<_>>();
+
+    for previous in &memberships {
+        for proposed in &memberships {
+            if !previous.is_direct_append_compatible_with(proposed) {
+                continue;
+            }
+            assert!(
+                verify_intersection(previous.get_joint_config(), proposed.get_joint_config()),
+                "appending {proposed} directly on {previous} must keep quorums intersecting"
+            );
+        }
+    }
 }
