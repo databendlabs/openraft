@@ -102,6 +102,9 @@ where LID: RaftLeaderId
 }
 
 #[cfg(test)]
+mod vote_test;
+
+#[cfg(test)]
 #[allow(clippy::nonminimal_bool)]
 mod tests {
     mod feature_no_single_term_leader {
