@@ -38,6 +38,7 @@ maplit             = { version = "1.0.2" }
 peel-off           = { version = "0.1.0" }
 pretty_assertions  = { version = "1.0.0" }
 proc-macro2        = { version = "1.0" }
+quorum-set         = { version = "0.2.0" }
 quote              = { version = "1.0" }
 rand               = { version = "0.10" }
 smallvec           = { version = "1" }

@@ -39,7 +39,7 @@ fn update_entry<F>(eng: &mut Engine<UTConfig>, target: u64, update: F)
 where F: FnOnce(&mut ProgressEntry<UTConfig>) {
     let leader = eng.leader.as_mut().unwrap();
     let result = leader.progress.update_entry_with(&target, update);
-    let found = result.is_ok();
+    let found = result.is_some();
     assert!(found);
 }
 

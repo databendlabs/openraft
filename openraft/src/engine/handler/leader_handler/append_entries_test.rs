@@ -290,7 +290,7 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
                 targets: vec![TargetProgress {
                     target: 2,
                     target_node: (),
-                    progress: ProgressEntry::empty(2, StreamId::new(6), 7),
+                    progress: ProgressEntry::empty(2, StreamId::new(5), 7),
                 }],
                 close_old_streams: false,
             },
