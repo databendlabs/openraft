@@ -97,7 +97,7 @@ fn test_leader_append_membership_for_leader() -> anyhow::Result<()> {
                     TargetProgress {
                         target: 4,
                         target_node: (),
-                        progress: ProgressEntry::empty(4, StreamId::new(4), 0),
+                        progress: ProgressEntry::empty(4, StreamId::new(3), 0),
                     }
                 ], /* node-2 is leader,
                     * won't be removed */
@@ -158,15 +158,15 @@ fn test_leader_append_membership_update_learner_process() -> anyhow::Result<()> 
         );
 
         let p = ProgressEntry::testing_new(4, Some(log_id(1, 1, 4)));
-        l.progress.update_entry_with(&4, |entry| *entry = p.clone()).ok();
+        l.progress.update_entry_with(&4, |entry| *entry = p.clone());
         assert_eq!(Some(&p), l.progress.try_get(&4));
 
         let p = ProgressEntry::testing_new(5, Some(log_id(1, 1, 5)));
-        l.progress.update_entry_with(&5, |entry| *entry = p.clone()).ok();
+        l.progress.update_entry_with(&5, |entry| *entry = p.clone());
         assert_eq!(Some(&p), l.progress.try_get(&5));
 
         let p = ProgressEntry::testing_new(3, Some(log_id(1, 1, 3)));
-        l.progress.update_entry_with(&3, |entry| *entry = p.clone()).ok();
+        l.progress.update_entry_with(&3, |entry| *entry = p.clone());
         assert_eq!(Some(&p), l.progress.try_get(&3));
     } else {
         unreachable!("leader should not be None");
@@ -210,7 +210,7 @@ fn test_leader_append_membership_update_learner_process() -> anyhow::Result<()> 
 
         // Node 6 is new, with matching=None and searching_end=11
         // matching.next_index()=0 != searching_end=11, so NOT pipeline mode
-        let expected = ProgressEntry::empty(6, StreamId::new(8), 11).with_inflight(Inflight::logs(
+        let expected = ProgressEntry::empty(6, StreamId::new(5), 11).with_inflight(Inflight::logs(
             None,
             Some(log_id(5, 1, 10)),
             InflightId::new(4),

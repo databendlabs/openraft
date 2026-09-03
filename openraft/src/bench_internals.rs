@@ -6,7 +6,6 @@
 //!
 //! Gated behind the `bench` feature; not part of the public API.
 
-use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -18,7 +17,6 @@ use crate::Vote;
 use crate::engine::Engine;
 pub use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
-use crate::progress::VecProgress;
 pub use crate::quorum::QuorumSet;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::PayloadOf;
@@ -71,23 +69,5 @@ impl BenchEngine {
     #[inline]
     pub fn clear_commands(&mut self) {
         self.0.output.clear_commands();
-    }
-}
-
-/// A `VecProgress` over the joint quorum set `{0, 1, 2, 3, 4}` and `{5, 6, 7}`, for benchmarking
-/// `update()`.
-pub struct BenchVecProgress(VecProgress<(u64, u64), Vec<BTreeSet<u64>>>);
-
-impl BenchVecProgress {
-    pub fn new_joint_01234_567() -> Self {
-        let quorum_set = vec![btreeset! {0, 1, 2, 3, 4}, btreeset! {5, 6, 7}];
-
-        Self(VecProgress::<(u64, u64), _>::new(quorum_set, [], |id| (id, 0)))
-    }
-
-    /// Set the progress value of `id`, ignoring a value that is not accepted.
-    #[inline]
-    pub fn update(&mut self, id: u64, value: u64) {
-        self.0.update(&id, value).ok();
     }
 }

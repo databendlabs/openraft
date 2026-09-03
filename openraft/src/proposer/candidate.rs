@@ -1,13 +1,14 @@
 use std::fmt;
 
 use display_more::DisplayOptionExt;
+use validit::Valid;
 
 use crate::RaftTypeConfig;
 use crate::base::shared_id_generator::SharedIdGenerator;
 use crate::display_ext::DisplayInstantExt;
 use crate::engine::leader_log_ids::LeaderLogIds;
+use crate::progress::IdVal;
 use crate::progress::VecProgress;
-use crate::progress::id_val::IdVal;
 use crate::proposer::Leader;
 use crate::quorum::QuorumSet;
 use crate::type_config::alias::InstantOf;
@@ -32,7 +33,7 @@ where
     last_log_id: Option<LogIdOf<C>>,
 
     /// Which nodes have granted the vote at certain time point.
-    progress: VecProgress<IdVal<C::NodeId, bool>, QS>,
+    progress: Valid<VecProgress<IdVal<C::NodeId, bool>, QS>>,
 
     quorum_set: QS,
 
@@ -75,7 +76,7 @@ where
             starting_time,
             vote,
             last_log_id,
-            progress: VecProgress::new(quorum_set.clone(), [], IdVal::new_default),
+            progress: Valid::new(VecProgress::new(quorum_set.clone(), [], IdVal::new_default)),
             quorum_set,
             learner_ids: learner_ids.into_iter().collect::<Vec<_>>(),
             progress_id_gen,
@@ -104,7 +105,7 @@ where
 
     /// Grant the vote by a node.
     pub(crate) fn grant_by(&mut self, target: &C::NodeId) -> bool {
-        let Ok(granted) = self.progress.update(target, true) else {
+        let Some(granted) = self.progress.update_progress(target, true) else {
             tracing::warn!(
                 "{}: ignore vote from target not in quorum set: {}",
                 func_name!(),

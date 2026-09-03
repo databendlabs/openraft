@@ -2,14 +2,16 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::time::Duration;
 
+use validit::Valid;
+
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 use crate::base::shared_id_generator::SharedIdGenerator;
 use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::errors::QuorumNotEnough;
+use crate::progress::IdVal;
 use crate::progress::VecProgress;
 use crate::progress::entry::ProgressEntry;
-use crate::progress::id_val::IdVal;
 use crate::progress::stream_id::StreamId;
 use crate::quorum::QuorumSet;
 use crate::type_config::TypeConfigExt;
@@ -63,7 +65,7 @@ where C: RaftTypeConfig
     pub(crate) noop_log_id: LogIdOf<C>,
 
     /// Tracks the replication progress and committed index
-    pub(crate) progress: VecProgress<ProgressEntry<C>, QS>,
+    pub(crate) progress: Valid<VecProgress<ProgressEntry<C>, QS>>,
 
     /// Tracks the clock time acknowledged by other nodes.
     ///
@@ -78,7 +80,7 @@ where C: RaftTypeConfig
     /// See [`docs::leader_lease`] for more details.
     ///
     /// [`docs::leader_lease`]: `crate::docs::protocol::replication::leader_lease`
-    pub(crate) clock_progress: VecProgress<IdVal<C::NodeId, Option<InstantOf<C>>>, QS>,
+    pub(crate) clock_progress: Valid<VecProgress<IdVal<C::NodeId, Option<InstantOf<C>>>, QS>>,
 }
 
 impl<C, QS> Leader<C, QS>
@@ -143,7 +145,7 @@ where
         let now = C::now();
         let mut clock_progress = VecProgress::new(quorum_set, learner_ids, IdVal::new_default);
         let leader_node_id = vote.to_leader_node_id();
-        clock_progress.increase_to(&leader_node_id, Some(now)).ok();
+        clock_progress.increase_to(&leader_node_id, Some(now));
 
         Self {
             transfer_to: None,
@@ -151,8 +153,8 @@ where
             next_heartbeat: now,
             last_log_id: last_log_id.clone(),
             noop_log_id,
-            progress,
-            clock_progress,
+            progress: Valid::new(progress),
+            clock_progress: Valid::new(clock_progress),
         }
     }
 
@@ -205,7 +207,7 @@ where
     /// Update the clock acknowledged by `target` and return the time acknowledged by a quorum.
     pub(crate) fn update_clock(&mut self, target: &C::NodeId, sending_time: InstantOf<C>) -> Option<InstantOf<C>> {
         let leader_node_id = self.committed_vote.to_leader_node_id();
-        self.clock_progress.increase_to(&leader_node_id, Some(sending_time)).ok();
+        self.clock_progress.increase_to(&leader_node_id, Some(sending_time));
 
         *self
             .clock_progress
@@ -565,7 +567,7 @@ mod tests {
             "unknown target: must send"
         );
 
-        leading.clock_progress.increase_to(&2, Some(t0)).ok();
+        leading.clock_progress.increase_to(&2, Some(t0));
 
         assert!(
             !leading.need_heartbeat(&2, t0 + Duration::from_millis(99), min_interval),
