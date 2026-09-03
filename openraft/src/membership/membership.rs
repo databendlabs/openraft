@@ -12,8 +12,8 @@ use crate::errors::Operation;
 use crate::membership::IntoNodes;
 use crate::node::Node;
 use crate::node::NodeId;
-use crate::quorum::Coherent;
-use crate::quorum::FindCoherent;
+use crate::quorum::QuorumBridge;
+use crate::quorum::QuorumIntersection;
 
 /// The membership configuration of the cluster.
 ///
@@ -330,7 +330,7 @@ where
     ///   differ by at most one node id. The majority sizes then leave no room for two disjoint
     ///   quorums.
     /// - Otherwise, the two memberships share an exactly equal voter set, which is the same
-    ///   argument [`Coherent::is_coherent_with()`] makes for joint consensus.
+    ///   argument [`QuorumIntersection::intersects_with()`] makes for joint consensus.
     ///
     /// The rule is conservative: it rejects some transitions whose quorums do intersect. See
     /// [`UnsupportedMembershipTransition`] for examples.
@@ -351,7 +351,8 @@ where
             return differing <= 1;
         }
 
-        self.configs.is_coherent_with(&other.configs)
+        let intersects = self.configs.intersects_with(&other.configs);
+        intersects == Some(true)
     }
 
     /// Returns the next coherent membership to change to, while the expected final membership is
@@ -376,7 +377,7 @@ where
     /// }
     /// ```
     pub(crate) fn next_coherent(&self, goal: BTreeSet<NID>, retain: bool) -> Self {
-        let config = self.configs.find_coherent(goal);
+        let config = self.configs.bridge_to(goal);
 
         let mut nodes = self.nodes.clone();
 
