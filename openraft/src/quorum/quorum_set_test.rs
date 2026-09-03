@@ -106,8 +106,11 @@ pub(crate) fn draw_universe_joint(tc: &hegel::TestCase) -> Vec<BTreeSet<u64>> {
     (0..count).map(|_| draw_universe_config(tc)).collect()
 }
 
-/// Node ids come mostly from a small pool so that configs and granted sets overlap often;
+/// Node ids come mostly from a small pool so that configs and granted sets overlap often, and
 /// full-range draws cover the `u64` boundaries.
+///
+/// `#[hegel::composite]` turns this and the two functions below into generators: callers write
+/// `tc.draw(node_id())` or `tc.draw(id_set(1))`, and `draw` passes `tc` in as the first argument.
 #[hegel::composite]
 fn node_id(tc: &hegel::TestCase) -> u64 {
     tc.draw(hegel::one_of!(

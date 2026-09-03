@@ -32,7 +32,7 @@ futures-channel    = { version = "0.3" }
 futures-util       = { version = "0.3" }
 base2histogram     = { version = "0.2.3" }
 bincode            = { version = "1.3" }
-hegeltest          = { version = "0.35.0" }
+hegel              = { package = "hegeltest", version = "0.35.0" }
 lazy_static        = { version = "1.4.0" }
 maplit             = { version = "1.0.2" }
 peel-off           = { version = "0.1.0" }

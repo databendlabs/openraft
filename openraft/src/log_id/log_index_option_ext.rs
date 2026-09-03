@@ -47,8 +47,7 @@ mod tests {
     use crate::LogIndexOptionExt;
 
     /// `prev_index` steps one index back, `None` standing for "before index 0", and `next_index`
-    /// steps one forward with `None` mapping to 0. Stepping back and forward again must land on
-    /// the original index.
+    /// steps one forward with `None` mapping to 0.
     #[hegel::test]
     fn test_prev_index_then_next_index_is_the_original_index(tc: hegel::TestCase) {
         let index = tc.draw(generators::integers::<u64>());

@@ -916,6 +916,7 @@ fn vec_progress_sub_quorum_commit_regression() {
 
 // The tests below supplement the seeded-LCG model tests above: the quorum configurations are
 // generated too, and updates, resets and quorum upgrades interleave in one sequence.
+
 /// The ids a generated tracker knows about. Generated quorum sets are drawn from these, so an
 /// upgrade never drops a node's progress; `KNOWN_ID_COUNT` itself is never tracked, which is how
 /// the tests reach the unknown-id paths.
@@ -969,6 +970,10 @@ impl ProgressModel {
     }
 }
 
+// `hegel::stateful::run` below applies 50 rules per test case, each picked at random from the
+// `#[rule]` methods and handed its own `TestCase` to draw from. The `#[invariant]` runs on
+// the initial and final state, and after each rule with probability 1/50. Every rule that changes
+// the tracker also ends in `check`, so the model is compared after every change regardless.
 #[hegel::state_machine]
 impl ProgressModel {
     /// `update` requires a monotonic value and returns the quorum-accepted value, in an `Err` if
