@@ -20,9 +20,6 @@ type AdvLeaderId = leader_id_adv::LeaderId<u64, u64>;
 /// Terms and node ids are mostly drawn from a three-value pool, so that the equal terms and equal
 /// node ids the comparison rules turn on are common, and full-range draws cover the `u64`
 /// boundaries.
-///
-/// `#[hegel::composite]` turns the function into a generator: callers write
-/// `tc.draw(term_or_node_id())`, and `draw` passes `tc` in as the first argument.
 #[hegel::composite]
 fn term_or_node_id(tc: &hegel::TestCase) -> u64 {
     tc.draw(hegel::one_of!(
@@ -131,9 +128,6 @@ fn test_std_votes_of_one_term_for_different_nodes_are_incomparable(tc: hegel::Te
     let term = tc.draw(term_or_node_id());
     let node_a = tc.draw(term_or_node_id());
     let node_b = tc.draw(term_or_node_id());
-    // A failed `assume` discards the case and hegel draws another in its place, so discards do
-    // not count towards the 100 cases a test runs. Fifty discards before ten passing cases fail
-    // the test as a health check.
     tc.assume(node_a != node_b);
 
     let a = Vote::<StdLeaderId>::new(term, node_a);

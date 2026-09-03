@@ -208,9 +208,6 @@ mod tests {
 
     /// Terms, node ids and indexes are mostly drawn from a three-value pool so that ties on each
     /// component are common, and full-range draws cover the `u64` boundaries.
-    ///
-    /// `#[hegel::composite]` turns the function into a generator: callers write
-    /// `tc.draw(small_or_any_u64())`, and `draw` passes `tc` in as the first argument.
     #[hegel::composite]
     fn small_or_any_u64(tc: &hegel::TestCase) -> u64 {
         tc.draw(hegel::one_of!(
