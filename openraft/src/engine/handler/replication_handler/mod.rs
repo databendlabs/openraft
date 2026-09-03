@@ -400,7 +400,7 @@ where
             }
 
             let target = item.id.clone();
-            let t = item.next_send(self.state, self.config.max_payload_entries);
+            let t = item.next_send(self.state);
             tracing::debug!("next send: target: {}, send: {:?}", target, t);
 
             match t {

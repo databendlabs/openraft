@@ -113,7 +113,7 @@ fn test_trigger_purge_log_in_used_wont_be_delete() -> anyhow::Result<()> {
     let l = eng.leader.as_mut().unwrap();
     l.progress
         .update_entry_with(&2, |entry| {
-            entry.next_send(eng.state.deref_mut(), 10).unwrap();
+            entry.next_send(eng.state.deref_mut()).unwrap();
         })
         .unwrap();
 
