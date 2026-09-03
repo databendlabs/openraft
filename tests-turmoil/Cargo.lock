@@ -874,7 +874,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3c80231409c20246a13fddb31776fb942c38553c51e871f8cbd687a4cfb5843d"
 dependencies = [
  "phf_shared",
- "rand 0.8.5",
+ "rand 0.8.8",
 ]
 
 [[package]]
@@ -947,9 +947,9 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
 name = "rand"
-version = "0.8.5"
+version = "0.8.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
+checksum = "e058c7de0b26af77780c769414d6257830bb240f3c38477dbc2c16e5f54d6d4c"
 dependencies = [
  "libc",
  "rand_chacha",
@@ -999,7 +999,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32cb0b9bc82b0a0876c2dd994a7e7a2683d3e7390ca40e6886785ef0c7e3ee31"
 dependencies = [
  "num-traits",
- "rand 0.8.5",
+ "rand 0.8.8",
 ]
 
 [[package]]
@@ -1231,7 +1231,7 @@ dependencies = [
  "openraft",
  "openraft-rt",
  "openraft-rt-tokio",
- "rand 0.8.5",
+ "rand 0.10.1",
  "serde",
  "serde_json",
  "test-harness",
@@ -1366,7 +1366,7 @@ source = "git+https://github.com/drmingdrmer/turmoil?tag=v0.6.6-openraft.1#6ca23
 dependencies = [
  "bytes",
  "indexmap",
- "rand 0.8.5",
+ "rand 0.8.8",
  "rand_distr",
  "scoped-tls",
  "tokio",
