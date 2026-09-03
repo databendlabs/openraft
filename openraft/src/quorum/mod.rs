@@ -10,9 +10,8 @@ mod quorum_set_impl;
 
 #[cfg(test)]
 mod coherent_test;
-// `pub(crate)` so other test modules can reuse the exhaustive quorum enumeration it defines.
 #[cfg(test)]
-pub(crate) mod quorum_set_test;
+mod quorum_set_test;
 
 pub(crate) use coherent::Coherent;
 pub(crate) use coherent::FindCoherent;
