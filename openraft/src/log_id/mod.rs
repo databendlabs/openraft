@@ -154,6 +154,8 @@ where Term: RaftTerm
 #[cfg(test)]
 mod tests {
     use hegel::generators;
+    use hegel::generators::Generator;
+    use hegel::generators::PrintableGenerator;
 
     use crate::LogIdOptionExt;
     use crate::LogIndexOptionExt;
@@ -216,35 +218,46 @@ mod tests {
         ))
     }
 
+    fn std_log_ids() -> impl PrintableGenerator<super::LogId<TestCLID>> {
+        hegel::compose!(|tc| {
+            let term = tc.draw(small_or_any_u64());
+            let index = tc.draw(small_or_any_u64());
+            super::LogId::<TestCLID>::new_term_index(term, index)
+        })
+        .print_as_debug()
+    }
+
+    fn adv_log_ids() -> impl PrintableGenerator<super::LogId<AdvCLID>> {
+        hegel::compose!(|tc| {
+            let term = tc.draw(small_or_any_u64());
+            let node_id = tc.draw(small_or_any_u64());
+            let index = tc.draw(small_or_any_u64());
+            super::LogId::<AdvCLID>::new(leader_id_adv::LeaderId { term, node_id }, index)
+        })
+        .print_as_debug()
+    }
+
     /// The module docs promise log ids are ordered by leader id (term, then node id) and then by
     /// index. The order comes from a derive, so a field reorder would silently change it.
     #[hegel::test]
     fn test_log_id_order_matches_the_leader_id_then_index_oracle(tc: hegel::TestCase) {
-        let adv = |term, node_id, index| super::LogId::<AdvCLID>::new(leader_id_adv::LeaderId { term, node_id }, index);
-        let a = (
-            tc.draw(small_or_any_u64()),
-            tc.draw(small_or_any_u64()),
-            tc.draw(small_or_any_u64()),
-        );
-        let b = (
-            tc.draw(small_or_any_u64()),
-            tc.draw(small_or_any_u64()),
-            tc.draw(small_or_any_u64()),
-        );
-        assert_eq!(a.cmp(&b), adv(a.0, a.1, a.2).cmp(&adv(b.0, b.1, b.2)));
+        let adv_a = tc.draw(adv_log_ids());
+        let adv_b = tc.draw(adv_log_ids());
+        let adv_key = |log_id: &super::LogId<AdvCLID>| (log_id.leader_id.term, log_id.leader_id.node_id, log_id.index);
+        assert_eq!(adv_key(&adv_a).cmp(&adv_key(&adv_b)), adv_a.cmp(&adv_b));
 
         // A committed leader id in standard Raft is just the term, so the node id is gone.
-        let std_log_id = |term, index| super::LogId::<TestCLID>::new_term_index(term, index);
-        let x = (tc.draw(small_or_any_u64()), tc.draw(small_or_any_u64()));
-        let y = (tc.draw(small_or_any_u64()), tc.draw(small_or_any_u64()));
-        assert_eq!(x.cmp(&y), std_log_id(x.0, x.1).cmp(&std_log_id(y.0, y.1)));
+        let std_a = tc.draw(std_log_ids());
+        let std_b = tc.draw(std_log_ids());
+        let std_key = |log_id: &super::LogId<TestCLID>| (log_id.leader_id.term, log_id.index);
+        assert_eq!(std_key(&std_a).cmp(&std_key(&std_b)), std_a.cmp(&std_b));
     }
 
     /// `to_type` converts between `RaftLogId` implementations, so a `LogId` sent through the tuple
     /// implementation and back must come out unchanged.
     #[hegel::test]
     fn test_to_type_roundtrips_a_log_id_through_the_tuple_impl(tc: hegel::TestCase) {
-        let log_id = super::LogId::<TestCLID>::new_term_index(tc.draw(small_or_any_u64()), tc.draw(small_or_any_u64()));
+        let log_id = tc.draw(std_log_ids());
 
         let tuple: (u64, u64) = log_id.to_type();
         assert_eq!(log_id, tuple.to_type());
@@ -257,7 +270,8 @@ mod tests {
         let index = tc.draw(generators::optional(
             generators::integers::<u64>().max_value(u64::MAX - 1),
         ));
-        let log_id = index.map(|index| super::LogId::<TestCLID>::new_term_index(tc.draw(small_or_any_u64()), index));
+        let term = tc.draw(small_or_any_u64());
+        let log_id = index.map(|index| super::LogId::<TestCLID>::new_term_index(term, index));
 
         assert_eq!(index.next_index(), log_id.next_index());
         assert_eq!(index, log_id.index());
@@ -269,18 +283,13 @@ mod tests {
     #[cfg(feature = "serde")]
     #[hegel::test]
     fn test_log_id_serde_roundtrip(tc: hegel::TestCase) {
-        let std_log_id =
-            super::LogId::<TestCLID>::new_term_index(tc.draw(small_or_any_u64()), tc.draw(small_or_any_u64()));
+        let std_log_id = tc.draw(std_log_ids());
         let json = serde_json::to_string(&std_log_id).unwrap();
         assert_eq!(std_log_id, serde_json::from_str(&json).unwrap());
         let binary = bincode::serialize(&std_log_id).unwrap();
         assert_eq!(std_log_id, bincode::deserialize(&binary).unwrap());
 
-        let leader_id = leader_id_adv::LeaderId {
-            term: tc.draw(small_or_any_u64()),
-            node_id: tc.draw(small_or_any_u64()),
-        };
-        let adv_log_id = super::LogId::<AdvCLID>::new(leader_id, tc.draw(small_or_any_u64()));
+        let adv_log_id = tc.draw(adv_log_ids());
         let json = serde_json::to_string(&adv_log_id).unwrap();
         assert_eq!(adv_log_id, serde_json::from_str(&json).unwrap());
         let binary = bincode::serialize(&adv_log_id).unwrap();

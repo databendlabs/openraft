@@ -8,6 +8,8 @@
 use std::cmp::Ordering;
 
 use hegel::generators;
+use hegel::generators::Generator;
+use hegel::generators::PrintableGenerator;
 
 use crate::Vote;
 use crate::vote::RaftLeaderId;
@@ -28,24 +30,27 @@ fn term_or_node_id(tc: &hegel::TestCase) -> u64 {
     ))
 }
 
-fn draw_vote<LID>(tc: &hegel::TestCase) -> Vote<LID>
+fn votes<LID>() -> impl PrintableGenerator<Vote<LID>>
 where LID: RaftLeaderId<Term = u64, NodeId = u64> {
-    let term = tc.draw(term_or_node_id());
-    let node_id = tc.draw(term_or_node_id());
+    hegel::compose!(|tc| {
+        let term = tc.draw(term_or_node_id());
+        let node_id = tc.draw(term_or_node_id());
 
-    if tc.draw(generators::booleans()) {
-        Vote::new_committed(term, node_id)
-    } else {
-        Vote::new(term, node_id)
-    }
+        if tc.draw(generators::booleans()) {
+            Vote::new_committed(term, node_id)
+        } else {
+            Vote::new(term, node_id)
+        }
+    })
+    .print_as_debug()
 }
 
 #[hegel::test]
 fn test_vote_partial_cmp_is_reflexive(tc: hegel::TestCase) {
-    let std_vote = draw_vote::<StdLeaderId>(&tc);
+    let std_vote = tc.draw(votes::<StdLeaderId>());
     assert_eq!(Some(Ordering::Equal), std_vote.partial_cmp(&std_vote), "{std_vote}");
 
-    let adv_vote = draw_vote::<AdvLeaderId>(&tc);
+    let adv_vote = tc.draw(votes::<AdvLeaderId>());
     assert_eq!(Some(Ordering::Equal), adv_vote.partial_cmp(&adv_vote), "{adv_vote}");
 }
 
@@ -53,33 +58,41 @@ fn test_vote_partial_cmp_is_reflexive(tc: hegel::TestCase) {
 /// case: `PartialOrd` requires `a < b` iff `b > a`.
 #[hegel::test]
 fn test_vote_partial_cmp_is_antisymmetric(tc: hegel::TestCase) {
-    let a = draw_vote::<StdLeaderId>(&tc);
-    let b = draw_vote::<StdLeaderId>(&tc);
+    let std_a = tc.draw(votes::<StdLeaderId>());
+    let std_b = tc.draw(votes::<StdLeaderId>());
     assert_eq!(
-        a.partial_cmp(&b),
-        b.partial_cmp(&a).map(Ordering::reverse),
-        "{a} vs {b}"
+        std_a.partial_cmp(&std_b),
+        std_b.partial_cmp(&std_a).map(Ordering::reverse),
+        "{std_a} vs {std_b}"
     );
 
-    let a = draw_vote::<AdvLeaderId>(&tc);
-    let b = draw_vote::<AdvLeaderId>(&tc);
+    let adv_a = tc.draw(votes::<AdvLeaderId>());
+    let adv_b = tc.draw(votes::<AdvLeaderId>());
     assert_eq!(
-        a.partial_cmp(&b),
-        b.partial_cmp(&a).map(Ordering::reverse),
-        "{a} vs {b}"
+        adv_a.partial_cmp(&adv_b),
+        adv_b.partial_cmp(&adv_a).map(Ordering::reverse),
+        "{adv_a} vs {adv_b}"
     );
 }
 
 /// `partial_cmp` reports `Equal` exactly for the votes `PartialEq` considers equal.
 #[hegel::test]
 fn test_vote_partial_cmp_equal_agrees_with_eq(tc: hegel::TestCase) {
-    let a = draw_vote::<StdLeaderId>(&tc);
-    let b = draw_vote::<StdLeaderId>(&tc);
-    assert_eq!(a == b, a.partial_cmp(&b) == Some(Ordering::Equal), "{a} vs {b}");
+    let std_a = tc.draw(votes::<StdLeaderId>());
+    let std_b = tc.draw(votes::<StdLeaderId>());
+    assert_eq!(
+        std_a == std_b,
+        std_a.partial_cmp(&std_b) == Some(Ordering::Equal),
+        "{std_a} vs {std_b}"
+    );
 
-    let a = draw_vote::<AdvLeaderId>(&tc);
-    let b = draw_vote::<AdvLeaderId>(&tc);
-    assert_eq!(a == b, a.partial_cmp(&b) == Some(Ordering::Equal), "{a} vs {b}");
+    let adv_a = tc.draw(votes::<AdvLeaderId>());
+    let adv_b = tc.draw(votes::<AdvLeaderId>());
+    assert_eq!(
+        adv_a == adv_b,
+        adv_a.partial_cmp(&adv_b) == Some(Ordering::Equal),
+        "{adv_a} vs {adv_b}"
+    );
 }
 
 /// `a <= b` and `b <= c` imply `a <= c`, which is what lets vote-granting decisions chain. The
@@ -87,38 +100,48 @@ fn test_vote_partial_cmp_equal_agrees_with_eq(tc: hegel::TestCase) {
 /// could break.
 #[hegel::test]
 fn test_vote_partial_cmp_is_transitive(tc: hegel::TestCase) {
-    let a = draw_vote::<StdLeaderId>(&tc);
-    let b = draw_vote::<StdLeaderId>(&tc);
-    let c = draw_vote::<StdLeaderId>(&tc);
-    if a <= b && b <= c {
-        assert!(a <= c, "{a} <= {b} <= {c} but not {a} <= {c}");
+    let std_a = tc.draw(votes::<StdLeaderId>());
+    let std_b = tc.draw(votes::<StdLeaderId>());
+    let std_c = tc.draw(votes::<StdLeaderId>());
+    if std_a <= std_b && std_b <= std_c {
+        assert!(
+            std_a <= std_c,
+            "{std_a} <= {std_b} <= {std_c} but not {std_a} <= {std_c}"
+        );
     }
 
-    let a = draw_vote::<AdvLeaderId>(&tc);
-    let b = draw_vote::<AdvLeaderId>(&tc);
-    let c = draw_vote::<AdvLeaderId>(&tc);
-    if a <= b && b <= c {
-        assert!(a <= c, "{a} <= {b} <= {c} but not {a} <= {c}");
+    let adv_a = tc.draw(votes::<AdvLeaderId>());
+    let adv_b = tc.draw(votes::<AdvLeaderId>());
+    let adv_c = tc.draw(votes::<AdvLeaderId>());
+    if adv_a <= adv_b && adv_b <= adv_c {
+        assert!(
+            adv_a <= adv_c,
+            "{adv_a} <= {adv_b} <= {adv_c} but not {adv_a} <= {adv_c}"
+        );
     }
 }
 
 /// `leader_id_adv` is documented as totally ordered, so no pair of votes over it is incomparable.
 #[hegel::test]
 fn test_adv_votes_are_never_incomparable(tc: hegel::TestCase) {
-    let a = draw_vote::<AdvLeaderId>(&tc);
-    let b = draw_vote::<AdvLeaderId>(&tc);
+    let adv_a = tc.draw(votes::<AdvLeaderId>());
+    let adv_b = tc.draw(votes::<AdvLeaderId>());
 
-    assert!(a.partial_cmp(&b).is_some(), "{a} vs {b}");
+    assert!(adv_a.partial_cmp(&adv_b).is_some(), "{adv_a} vs {adv_b}");
 }
 
 /// With `leader_id_adv`, votes order lexicographically by term, then node id, then commit status.
 #[hegel::test]
 fn test_adv_vote_order_matches_the_tuple_oracle(tc: hegel::TestCase) {
-    let a = draw_vote::<AdvLeaderId>(&tc);
-    let b = draw_vote::<AdvLeaderId>(&tc);
+    let adv_a = tc.draw(votes::<AdvLeaderId>());
+    let adv_b = tc.draw(votes::<AdvLeaderId>());
 
     let key = |v: &Vote<AdvLeaderId>| (v.leader_id.term, v.leader_id.node_id, v.committed);
-    assert_eq!(Some(key(&a).cmp(&key(&b))), a.partial_cmp(&b), "{a} vs {b}");
+    assert_eq!(
+        Some(key(&adv_a).cmp(&key(&adv_b))),
+        adv_a.partial_cmp(&adv_b),
+        "{adv_a} vs {adv_b}"
+    );
 }
 
 /// Standard Raft allows at most one leader per term: with `leader_id_std`, two uncommitted votes
@@ -141,37 +164,40 @@ fn test_std_votes_of_one_term_for_different_nodes_are_incomparable(tc: hegel::Te
 #[hegel::test]
 fn test_std_committed_vote_beats_an_uncommitted_vote_of_no_higher_term(tc: hegel::TestCase) {
     let committed_term = tc.draw(term_or_node_id());
+    let committed_node_id = tc.draw(term_or_node_id());
     let uncommitted_term = tc.draw(generators::integers::<u64>().max_value(committed_term));
+    let uncommitted_node_id = tc.draw(term_or_node_id());
 
-    let committed = Vote::<StdLeaderId>::new_committed(committed_term, tc.draw(term_or_node_id()));
-    let uncommitted = Vote::<StdLeaderId>::new(uncommitted_term, tc.draw(term_or_node_id()));
+    let committed = Vote::<StdLeaderId>::new_committed(committed_term, committed_node_id);
+    let uncommitted = Vote::<StdLeaderId>::new(uncommitted_term, uncommitted_node_id);
 
     assert!(committed > uncommitted, "{committed} must beat {uncommitted}");
+}
+
+/// Every `Vote` and `LeaderId` field is public, so votes can be built by struct literal rather than
+/// through the constructors.
+fn publicly_built_std_votes() -> impl PrintableGenerator<Vote<StdLeaderId>> {
+    hegel::compose!(|tc| {
+        Vote {
+            leader_id: StdLeaderId {
+                term: tc.draw(term_or_node_id()),
+                voted_for: tc.draw(term_or_node_id()),
+            },
+            committed: tc.draw(generators::booleans()),
+        }
+    })
+    .print_as_debug()
 }
 
 /// Regression witness for the comparison panic reported in databendlabs/openraft#1872 and fixed in
 /// #1874: with `leader_id_std`, comparing two equal-term votes reached
 /// `LeaderId::voted_for.unwrap()` whenever either side held `None`.
-///
-/// Every `Vote` and `LeaderId` field is public, so votes are built here by struct literal rather
-/// than through the constructors.
 #[hegel::test]
 fn test_comparing_publicly_built_std_votes_does_not_panic(tc: hegel::TestCase) {
-    let leader_id = |tc: &hegel::TestCase| StdLeaderId {
-        term: tc.draw(term_or_node_id()),
-        voted_for: tc.draw(term_or_node_id()),
-    };
+    let std_a = tc.draw(publicly_built_std_votes());
+    let std_b = tc.draw(publicly_built_std_votes());
 
-    let a = Vote {
-        leader_id: leader_id(&tc),
-        committed: tc.draw(generators::booleans()),
-    };
-    let b = Vote {
-        leader_id: leader_id(&tc),
-        committed: tc.draw(generators::booleans()),
-    };
-
-    let _ = a.partial_cmp(&b);
+    let _ = std_a.partial_cmp(&std_b);
 }
 
 /// `RaftVote::partial_cmp` compares any two vote implementations, and `PartialOrd for Vote` is the
@@ -180,20 +206,20 @@ fn test_comparing_publicly_built_std_votes_does_not_panic(tc: hegel::TestCase) {
 fn test_raft_vote_partial_cmp_agrees_with_partial_ord(tc: hegel::TestCase) {
     use crate::vote::RaftVote;
 
-    let a = draw_vote::<StdLeaderId>(&tc);
-    let b = draw_vote::<StdLeaderId>(&tc);
+    let std_a = tc.draw(votes::<StdLeaderId>());
+    let std_b = tc.draw(votes::<StdLeaderId>());
     assert_eq!(
-        PartialOrd::partial_cmp(&a, &b),
-        RaftVote::partial_cmp(&a, &b),
-        "{a} vs {b}"
+        PartialOrd::partial_cmp(&std_a, &std_b),
+        RaftVote::partial_cmp(&std_a, &std_b),
+        "{std_a} vs {std_b}"
     );
 
-    let a = draw_vote::<AdvLeaderId>(&tc);
-    let b = draw_vote::<AdvLeaderId>(&tc);
+    let adv_a = tc.draw(votes::<AdvLeaderId>());
+    let adv_b = tc.draw(votes::<AdvLeaderId>());
     assert_eq!(
-        PartialOrd::partial_cmp(&a, &b),
-        RaftVote::partial_cmp(&a, &b),
-        "{a} vs {b}"
+        PartialOrd::partial_cmp(&adv_a, &adv_b),
+        RaftVote::partial_cmp(&adv_a, &adv_b),
+        "{adv_a} vs {adv_b}"
     );
 }
 
@@ -201,11 +227,12 @@ fn test_raft_vote_partial_cmp_agrees_with_partial_ord(tc: hegel::TestCase) {
 /// the reciprocal one must be the mirror image of the other.
 #[hegel::test]
 fn test_std_leader_id_and_committed_leader_id_compare_symmetrically(tc: hegel::TestCase) {
-    let leader_id = StdLeaderId {
-        term: tc.draw(term_or_node_id()),
-        voted_for: tc.draw(term_or_node_id()),
-    };
-    let committed = leader_id_std::CommittedLeaderId::new(tc.draw(term_or_node_id()));
+    let term = tc.draw(term_or_node_id());
+    let voted_for = tc.draw(term_or_node_id());
+    let committed_term = tc.draw(term_or_node_id());
+
+    let leader_id = StdLeaderId { term, voted_for };
+    let committed = leader_id_std::CommittedLeaderId::new(committed_term);
 
     assert_eq!(
         leader_id.partial_cmp(&committed),
@@ -220,13 +247,13 @@ fn test_std_leader_id_and_committed_leader_id_compare_symmetrically(tc: hegel::T
 #[cfg(feature = "serde")]
 #[hegel::test]
 fn test_vote_serde_roundtrip(tc: hegel::TestCase) {
-    let std_vote = draw_vote::<StdLeaderId>(&tc);
+    let std_vote = tc.draw(votes::<StdLeaderId>());
     let json = serde_json::to_string(&std_vote).unwrap();
     assert_eq!(std_vote, serde_json::from_str(&json).unwrap());
     let binary = bincode::serialize(&std_vote).unwrap();
     assert_eq!(std_vote, bincode::deserialize(&binary).unwrap());
 
-    let adv_vote = draw_vote::<AdvLeaderId>(&tc);
+    let adv_vote = tc.draw(votes::<AdvLeaderId>());
     let json = serde_json::to_string(&adv_vote).unwrap();
     assert_eq!(adv_vote, serde_json::from_str(&json).unwrap());
     let binary = bincode::serialize(&adv_vote).unwrap();

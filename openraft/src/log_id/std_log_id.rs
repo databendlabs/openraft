@@ -35,7 +35,7 @@ impl_raft_log_id!(i8);
 
 #[cfg(test)]
 mod tests {
-    use hegel::generators;
+    use hegel::generators::integers;
 
     use crate::log_id::raft_log_id::RaftLogId;
     use crate::vote::leader_id_std;
@@ -178,24 +178,31 @@ mod tests {
     /// the bounds of the term type.
     #[hegel::test]
     fn test_tuple_log_id_reports_its_own_term_and_index(tc: hegel::TestCase) {
-        macro_rules! check_term_type {
-            ($term_type:ty) => {{
-                let term = tc.draw(generators::integers::<$term_type>());
-                let index = tc.draw(generators::integers::<u64>());
-                let log_id: ($term_type, u64) = (term, index);
+        macro_rules! check_log_id {
+            ($log_id:expr) => {{
+                let (term, index) = $log_id;
 
-                assert_eq!(term, **RaftLogId::committed_leader_id(&log_id));
-                assert_eq!(index, RaftLogId::index(&log_id));
+                assert_eq!(term, **RaftLogId::committed_leader_id(&$log_id));
+                assert_eq!(index, RaftLogId::index(&$log_id));
             }};
         }
 
-        check_term_type!(u64);
-        check_term_type!(u32);
-        check_term_type!(u16);
-        check_term_type!(u8);
-        check_term_type!(i64);
-        check_term_type!(i32);
-        check_term_type!(i16);
-        check_term_type!(i8);
+        let u64_log_id = tc.draw(hegel::tuples!(integers::<u64>(), integers::<u64>()));
+        let u32_log_id = tc.draw(hegel::tuples!(integers::<u32>(), integers::<u64>()));
+        let u16_log_id = tc.draw(hegel::tuples!(integers::<u16>(), integers::<u64>()));
+        let u8_log_id = tc.draw(hegel::tuples!(integers::<u8>(), integers::<u64>()));
+        let i64_log_id = tc.draw(hegel::tuples!(integers::<i64>(), integers::<u64>()));
+        let i32_log_id = tc.draw(hegel::tuples!(integers::<i32>(), integers::<u64>()));
+        let i16_log_id = tc.draw(hegel::tuples!(integers::<i16>(), integers::<u64>()));
+        let i8_log_id = tc.draw(hegel::tuples!(integers::<i8>(), integers::<u64>()));
+
+        check_log_id!(u64_log_id);
+        check_log_id!(u32_log_id);
+        check_log_id!(u16_log_id);
+        check_log_id!(u8_log_id);
+        check_log_id!(i64_log_id);
+        check_log_id!(i32_log_id);
+        check_log_id!(i16_log_id);
+        check_log_id!(i8_log_id);
     }
 }
