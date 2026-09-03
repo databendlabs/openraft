@@ -212,7 +212,7 @@ fn test_leader_append_membership_update_learner_process() -> anyhow::Result<()> 
         // matching.next_index()=0 != searching_end=11, so NOT pipeline mode
         let expected = ProgressEntry::empty(6, StreamId::new(5), 11).with_inflight(Inflight::logs(
             None,
-            Some(log_id(5, 1, 10)),
+            Some(log_id(0, 0, 0)),
             InflightId::new(4),
         ));
         assert_eq!(

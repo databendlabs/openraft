@@ -119,7 +119,7 @@ fn test_next_send_inflight_busy() -> anyhow::Result<()> {
     let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 20);
     pe.data.inflight = inflight_logs(10, 11);
 
-    let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
+    let res = pe.next_send(&mut new_raft_state(6, 10, 20));
     assert_eq!(Err(&inflight_logs(10, 11)), res);
 
     Ok(())
@@ -140,7 +140,7 @@ fn test_next_send_snapshot_matching_purged() -> anyhow::Result<()> {
     let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 5);
     pe.matching = Some(log_id(4));
 
-    let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
+    let res = pe.next_send(&mut new_raft_state(6, 10, 20));
     assert_eq!(Ok(&Inflight::snapshot(InflightId::new(1))), res);
 
     Ok(())
@@ -160,7 +160,7 @@ fn test_next_send_snapshot_search_range_purged() -> anyhow::Result<()> {
     let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 6);
     pe.matching = Some(log_id(4));
 
-    let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
+    let res = pe.next_send(&mut new_raft_state(6, 10, 20));
     assert_eq!(Ok(&Inflight::snapshot(InflightId::new(1))), res);
 
     Ok(())
@@ -181,8 +181,8 @@ fn test_next_send_probe_at_purge_boundary() -> anyhow::Result<()> {
     let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 7);
     pe.matching = Some(log_id(4));
 
-    let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
-    assert_eq!(Ok(&inflight_logs(6, 20).with_id(1)), res);
+    let res = pe.next_send(&mut new_raft_state(6, 10, 20));
+    assert_eq!(Ok(&inflight_logs(6, 7).with_id(1)), res);
 
     Ok(())
 }
@@ -197,12 +197,12 @@ fn test_next_send_probe_clamped_to_purge_boundary() -> anyhow::Result<()> {
     //      6      10    20
     //
     // The binary-search midpoint, calc_mid(5, 20) = 5, is below the purge boundary;
-    // the probe start is clamped up to the boundary: prev = log id 6.
+    // the probe start is clamped up to the boundary: one entry at index 6.
     let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 20);
     pe.matching = Some(log_id(4));
 
-    let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
-    assert_eq!(Ok(&inflight_logs(6, 20).with_id(1)), res);
+    let res = pe.next_send(&mut new_raft_state(6, 10, 20));
+    assert_eq!(Ok(&inflight_logs(6, 7).with_id(1)), res);
 
     Ok(())
 }
@@ -221,7 +221,7 @@ fn test_next_send_pipeline_at_purge_boundary() -> anyhow::Result<()> {
     let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 7);
     pe.matching = Some(log_id(6));
 
-    let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
+    let res = pe.next_send(&mut new_raft_state(6, 10, 20));
     assert_eq!(
         Ok(&Inflight::logs_since(Some(log_id(6)), InflightId::new(1))),
         res,
@@ -245,8 +245,8 @@ fn test_next_send_probe_from_matching_next_short_range() -> anyhow::Result<()> {
     let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 8);
     pe.matching = Some(log_id(6));
 
-    let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
-    assert_eq!(Ok(&inflight_logs(6, 20).with_id(1)), res);
+    let res = pe.next_send(&mut new_raft_state(6, 10, 20));
+    assert_eq!(Ok(&inflight_logs(6, 7).with_id(1)), res);
 
     Ok(())
 }
@@ -261,12 +261,12 @@ fn test_next_send_probe_from_matching_next_wide_range() -> anyhow::Result<()> {
     //      6      10    20
     //
     // Probing: calc_mid(7, 20) = 7 (offset (20-7)/16*8 = 0), so the probe still
-    // starts right after matching: prev = log id 6.
+    // starts right after matching: one entry at index 7.
     let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 20);
     pe.matching = Some(log_id(6));
 
-    let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
-    assert_eq!(Ok(&inflight_logs(6, 20).with_id(1)), res);
+    let res = pe.next_send(&mut new_raft_state(6, 10, 20));
+    assert_eq!(Ok(&inflight_logs(6, 7).with_id(1)), res);
 
     Ok(())
 }
@@ -280,13 +280,12 @@ fn test_next_send_probe_from_matching_next_above_boundary() -> anyhow::Result<()
     //      purged snap  last
     //      6      10    20
     //
-    // Probing with matching above the purge boundary: no clamping is involved;
-    // the probe starts right after matching: prev = log id 7.
+    // Probing with matching above the purge boundary: one entry at index 8.
     let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 20);
     pe.matching = Some(log_id(7));
 
-    let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
-    assert_eq!(Ok(&inflight_logs(7, 20).with_id(1)), res);
+    let res = pe.next_send(&mut new_raft_state(6, 10, 20));
+    assert_eq!(Ok(&inflight_logs(7, 8).with_id(1)), res);
 
     Ok(())
 }
@@ -304,7 +303,7 @@ fn test_next_send_pipeline_above_purge_boundary() -> anyhow::Result<()> {
     let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 8);
     pe.matching = Some(log_id(7));
 
-    let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
+    let res = pe.next_send(&mut new_raft_state(6, 10, 20));
     assert_eq!(
         Ok(&Inflight::logs_since(Some(log_id(7)), InflightId::new(1))),
         res,
@@ -328,7 +327,7 @@ fn test_next_send_pipeline_caught_up() -> anyhow::Result<()> {
     let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 21);
     pe.matching = Some(log_id(20));
 
-    let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
+    let res = pe.next_send(&mut new_raft_state(6, 10, 20));
     assert_eq!(
         Ok(&Inflight::logs_since(Some(log_id(20)), InflightId::new(1))),
         res,
@@ -339,20 +338,40 @@ fn test_next_send_pipeline_caught_up() -> anyhow::Result<()> {
 }
 
 #[test]
-fn test_next_send_probe_capped_by_max_entries() -> anyhow::Result<()> {
+fn test_next_send_probe_one_entry_then_recompute_midpoint() -> anyhow::Result<()> {
     //       matching,end
-    //       7,          20
-    //       v-----------v
+    //       4               21
+    //       v---------------v
     // -----+------+-----+--->
     //      purged snap  last
     //      6      10    20
     //
-    // max_entries = 5 caps the probe range: entries 8..=12 are sent.
-    let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 20);
-    pe.matching = Some(log_id(7));
+    // A wide search range must send exactly one midpoint entry per probe. After a
+    // successful ack, the next probe recomputes the midpoint in the narrowed range
+    // instead of draining the former tail.
+    let engine_config = EngineConfig::new_default(1);
+    let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 21);
+    pe.matching = Some(log_id(4));
+    let mut state = new_raft_state(6, 10, 20);
 
-    let res = pe.next_send(&mut new_raft_state(6, 10, 20), 5);
-    assert_eq!(Ok(&inflight_logs(7, 12).with_id(1)), res);
+    let res = pe.next_send(&mut state);
+    assert_eq!(Ok(&inflight_logs(12, 13).with_id(1)), res);
+    if let Inflight::Logs { log_id_range, .. } = &pe.data.inflight {
+        assert_eq!(1, log_id_range.len(), "probe must carry exactly one entry");
+    } else {
+        panic!("expected probing Logs inflight");
+    }
+
+    pe.new_updater(&engine_config).update_matching(Some(log_id(13)), Some(InflightId::new(1)));
+    assert_eq!(Inflight::None, pe.data.inflight);
+    assert_eq!(Some(&log_id(13)), pe.matching());
+
+    let res = pe.next_send(&mut state);
+    assert_eq!(
+        Ok(&inflight_logs(13, 14).with_id(2)),
+        res,
+        "next probe recomputes midpoint in [14, 21)"
+    );
 
     Ok(())
 }
@@ -371,7 +390,7 @@ fn test_next_send_fully_purged_unknown_follower() -> anyhow::Result<()> {
     // Snapshot condition 2.
     let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 21);
 
-    let res = pe.next_send(&mut new_raft_state(20, 20, 20), 100);
+    let res = pe.next_send(&mut new_raft_state(20, 20, 20));
     assert_eq!(Ok(&Inflight::snapshot(InflightId::new(1))), res);
 
     Ok(())
@@ -391,8 +410,8 @@ fn test_next_send_not_pipeline_when_gap_exists() -> anyhow::Result<()> {
     let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 20);
     pe.matching = Some(log_id(7));
 
-    let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
-    assert_eq!(Ok(&inflight_logs(7, 20).with_id(1)), res, "not pipeline: gap exists");
+    let res = pe.next_send(&mut new_raft_state(6, 10, 20));
+    assert_eq!(Ok(&inflight_logs(7, 8).with_id(1)), res, "not pipeline: gap exists");
 
     Ok(())
 }
@@ -410,8 +429,8 @@ fn test_next_send_not_pipeline_without_matching() -> anyhow::Result<()> {
     // calc_mid(0, 20) = 0 + 20/16*8 = 8, so the probe starts at 8: prev = log id 7.
     let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 20);
 
-    let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
-    assert_eq!(Ok(&inflight_logs(7, 20).with_id(1)), res, "not pipeline: no matching");
+    let res = pe.next_send(&mut new_raft_state(6, 10, 20));
+    assert_eq!(Ok(&inflight_logs(7, 8).with_id(1)), res, "not pipeline: no matching");
 
     Ok(())
 }
@@ -426,13 +445,12 @@ fn test_next_send_probe_from_mid_of_search_range() -> anyhow::Result<()> {
     //      6      10    20
     //
     // The search range [5, 21) is wide enough for a non-zero binary-search offset:
-    // calc_mid(5, 21) = 5 + 16/16*8 = 13. The probe starts from the midpoint,
-    // not right after matching: prev = log id 12.
+    // calc_mid(5, 21) = 13: one entry at index 13.
     let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 21);
     pe.matching = Some(log_id(4));
 
-    let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
-    assert_eq!(Ok(&inflight_logs(12, 20).with_id(1)), res);
+    let res = pe.next_send(&mut new_raft_state(6, 10, 20));
+    assert_eq!(Ok(&inflight_logs(12, 13).with_id(1)), res);
 
     Ok(())
 }
@@ -452,7 +470,7 @@ fn test_next_send_snapshot_fully_purged_matching_behind() -> anyhow::Result<()> 
     let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 21);
     pe.matching = Some(log_id(15));
 
-    let res = pe.next_send(&mut new_raft_state(20, 20, 20), 100);
+    let res = pe.next_send(&mut new_raft_state(20, 20, 20));
     assert_eq!(Ok(&Inflight::snapshot(InflightId::new(1))), res);
 
     Ok(())
@@ -473,7 +491,7 @@ fn test_next_send_pipeline_fully_purged_caught_up() -> anyhow::Result<()> {
     let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 21);
     pe.matching = Some(log_id(20));
 
-    let res = pe.next_send(&mut new_raft_state(20, 20, 20), 100);
+    let res = pe.next_send(&mut new_raft_state(20, 20, 20));
     assert_eq!(Ok(&Inflight::logs_since(Some(log_id(20)), InflightId::new(1))), res);
 
     Ok(())
