@@ -46,6 +46,10 @@ mod update_conflicting_test;
 #[cfg(test)]
 mod update_matching_test;
 
+/// Bounds replication attached to each matching-point probe, avoiding large fragmented ranges
+/// while retaining batching for small follower gaps.
+const MAX_ENTRIES_PER_PROBE: u64 = 8;
+
 /// Handle replication operations.
 ///
 /// - Writing local log store;
@@ -400,7 +404,7 @@ where
             }
 
             let target = item.id.clone();
-            let t = item.next_send(self.state, self.config.max_payload_entries);
+            let t = item.next_send(self.state, MAX_ENTRIES_PER_PROBE);
             tracing::debug!("next send: target: {}, send: {:?}", target, t);
 
             match t {
