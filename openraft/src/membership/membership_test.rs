@@ -16,11 +16,6 @@ use crate::errors::MembershipError;
 use crate::errors::NodeNotFound;
 use crate::errors::Operation;
 use crate::quorum::QuorumSet;
-use crate::quorum::quorum_set_test::UNIVERSE;
-use crate::quorum::quorum_set_test::all_quorum_masks;
-use crate::quorum::quorum_set_test::draw_universe_config;
-use crate::quorum::quorum_set_test::draw_universe_joint;
-use crate::quorum::quorum_set_test::quorums_pairwise_intersect;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -529,8 +524,12 @@ fn test_membership_find_changed_node_metadata() -> anyhow::Result<()> {
     Ok(())
 }
 
-// Node ids below are drawn from the `UNIVERSE` ids so that voter sets, learners and change
-// requests overlap often, and so that the quorums of a generated membership can be enumerated.
+/// Node ids below are drawn from `0..UNIVERSE` so that voter sets, learners and change requests
+/// overlap often, and so that every quorum of a generated membership can be enumerated.
+/// `all_quorums` walks all `2^UNIVERSE` subsets, so the bound protects the running time of the
+/// tests that use it and says nothing about the sizes a `Membership` supports.
+const UNIVERSE: u64 = 7;
+
 fn universe_ids() -> Vec<u64> {
     (0..UNIVERSE).collect()
 }
@@ -543,10 +542,42 @@ fn draw_nodes(tc: &hegel::TestCase) -> BTreeMap<u64, ()> {
     draw_id_set(tc).into_iter().map(|id| (id, ())).collect()
 }
 
+/// A non-empty voter set.
+fn draw_config(tc: &hegel::TestCase) -> BTreeSet<u64> {
+    tc.draw(generators::subsequences(universe_ids()).min_size(1)).into_iter().collect()
+}
+
+/// A joint config of one or two voter sets.
+fn draw_joint_config(tc: &hegel::TestCase) -> Vec<BTreeSet<u64>> {
+    let count = tc.draw(generators::integers::<usize>().min_value(1).max_value(2));
+    (0..count).map(|_| draw_config(tc)).collect()
+}
+
+/// The oracle for `is_quorum`: `Membership` documents a quorum as a superset of a majority of
+/// every config.
+fn is_majority_of_every_config(configs: &[BTreeSet<u64>], granted: &BTreeSet<u64>) -> bool {
+    configs.iter().all(|config| config.intersection(granted).count() * 2 > config.len())
+}
+
+/// Every subset of the `UNIVERSE` ids that is a quorum of `configs`, one bitmask per subset.
+fn all_quorums(configs: &[BTreeSet<u64>]) -> Vec<u32> {
+    (0..1u32 << UNIVERSE)
+        .filter(|mask| {
+            let granted = (0..UNIVERSE).filter(|id| mask & (1 << id) != 0).collect();
+            is_majority_of_every_config(configs, &granted)
+        })
+        .collect()
+}
+
+/// True if every quorum in `a` shares a node with every quorum in `b`.
+fn quorums_pairwise_intersect(a: &[u32], b: &[u32]) -> bool {
+    a.iter().all(|x| b.iter().all(|y| x & y != 0))
+}
+
 /// A valid membership: a joint of one or two non-empty voter sets plus a few learners, with a node
 /// entry for every voter.
 fn draw_membership(tc: &hegel::TestCase) -> Membership<u64, ()> {
-    let configs = draw_universe_joint(tc);
+    let configs = draw_joint_config(tc);
     let learners = draw_id_set(tc);
 
     let nodes = configs.iter().flatten().chain(learners.iter()).map(|id| (*id, ())).collect::<BTreeMap<_, _>>();
@@ -594,16 +625,16 @@ fn draw_change(tc: &hegel::TestCase, depth: u32) -> ChangeMembers<u64, ()> {
     tc.draw(generators::one_of(alternatives))
 }
 
-/// `Membership` implements `QuorumSet` over its own joint config, duplicating the `Vec<BTreeSet>`
-/// implementation. The two must agree.
+/// `Membership` implements `QuorumSet` over its joint config.
 #[hegel::test]
-fn test_membership_is_quorum_agrees_with_its_joint_config(tc: hegel::TestCase) {
+fn test_membership_is_quorum_matches_the_majority_oracle(tc: hegel::TestCase) {
     let m = draw_membership(&tc);
     let granted = draw_id_set(&tc);
 
     assert_eq!(
-        m.get_joint_config().is_quorum(granted.iter()),
-        m.is_quorum(granted.iter())
+        is_majority_of_every_config(m.get_joint_config(), &granted),
+        m.is_quorum(granted.iter()),
+        "{m} granted {granted:?}"
     );
 }
 
@@ -613,7 +644,7 @@ fn test_membership_is_quorum_agrees_with_its_joint_config(tc: hegel::TestCase) {
 #[hegel::test]
 fn test_next_coherent_reaches_the_goal_in_two_steps(tc: hegel::TestCase) {
     let m = draw_membership(&tc);
-    let goal = draw_universe_config(&tc);
+    let goal = draw_config(&tc);
     let retain = tc.draw(generators::booleans());
 
     let step1 = m.next_coherent(goal.clone(), retain);
@@ -631,15 +662,15 @@ fn test_next_coherent_reaches_the_goal_in_two_steps(tc: hegel::TestCase) {
 #[hegel::test]
 fn test_next_coherent_quorums_intersect_the_previous_quorums(tc: hegel::TestCase) {
     let m = draw_membership(&tc);
-    let goal = draw_universe_config(&tc);
+    let goal = draw_config(&tc);
     let retain = tc.draw(generators::booleans());
 
     let next = m.next_coherent(goal, retain);
 
     assert!(
         quorums_pairwise_intersect(
-            &all_quorum_masks(m.get_joint_config()),
-            &all_quorum_masks(next.get_joint_config())
+            &all_quorums(m.get_joint_config()),
+            &all_quorums(next.get_joint_config())
         ),
         "quorums of {m} and of the next step {next} must intersect"
     );
@@ -653,7 +684,7 @@ fn test_change_quorums_intersect_the_previous_quorums(tc: hegel::TestCase) {
     let change = draw_change(&tc, 1);
     let retain = tc.draw(generators::booleans());
 
-    let old_quorums = all_quorum_masks(m.get_joint_config());
+    let old_quorums = all_quorums(m.get_joint_config());
 
     // A rejected change leaves the membership untouched, so there is nothing to check.
     let Ok(new) = m.clone().change(change, retain) else {
@@ -661,7 +692,7 @@ fn test_change_quorums_intersect_the_previous_quorums(tc: hegel::TestCase) {
     };
 
     assert!(
-        quorums_pairwise_intersect(&old_quorums, &all_quorum_masks(new.get_joint_config())),
+        quorums_pairwise_intersect(&old_quorums, &all_quorums(new.get_joint_config())),
         "quorums of {m} and of the changed {new} must intersect"
     );
 }
@@ -669,7 +700,7 @@ fn test_change_quorums_intersect_the_previous_quorums(tc: hegel::TestCase) {
 /// A node id in `nodes` that is not a voter is a learner.
 #[hegel::test]
 fn test_learner_ids_are_the_non_voter_nodes(tc: hegel::TestCase) {
-    let configs = draw_universe_joint(&tc);
+    let configs = draw_joint_config(&tc);
     let nodes = draw_nodes(&tc);
     let m = Membership::<u64, ()>::new_unchecked(configs.clone(), nodes.clone());
 
@@ -715,8 +746,8 @@ fn test_is_direct_append_compatible_implies_intersecting_quorums(tc: hegel::Test
     if previous.is_direct_append_compatible_with(&proposed) {
         assert!(
             quorums_pairwise_intersect(
-                &all_quorum_masks(previous.get_joint_config()),
-                &all_quorum_masks(proposed.get_joint_config())
+                &all_quorums(previous.get_joint_config()),
+                &all_quorums(proposed.get_joint_config())
             ),
             "appending {proposed} directly on {previous} must keep quorums intersecting"
         );
