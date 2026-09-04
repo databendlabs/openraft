@@ -140,7 +140,8 @@ When a Leader is established, it does not know which log entries are present on
 Followers and Learners. Therefore, it must determine the last matching log ID on
 each Follower before sending append-entries.
 
-This process uses a binary search:
+This process starts with an optimistic probe and falls back to a bounded binary
+search:
 
 The Leader uses a span `[matching_log_id, first_conflict_index]` to search:
 - The left bound is the last known matching log ID.
@@ -155,6 +156,8 @@ pub(crate) struct ProgressEntry<C> {
     pub(crate) matching: Option<LogId<C::NodeId>>,
     // Right bound
     pub(crate) searching_end: u64,
+    // Initial optimistic probe.
+    pub(crate) initial_probe_index: Option<u64>,
 }
 ```
 
@@ -163,6 +166,21 @@ pub(crate) struct ProgressEntry<C> {
 - The Leader initializes the span as `[None, leader_last_log_index + 1]`.
   Because the Leader is assumed to have all committed logs. Any logs after
   `leader_last_log_index` are uncommitted and can be safely deleted.
+
+- The Leader first sends entries beginning at the first log entry proposed by
+  its current leadership. If the Follower accepts the preceding log ID, the
+  response establishes a matching prefix and normal streaming continues.
+
+- If the Follower rejects the probe, it may return its `last_log_id` and
+  `committed_log_id` as a conflict hint:
+
+  - If the complete follower `last_log_id` exists in the Leader's log, the
+    Follower is an exact prefix. The Leader sets `matching` to that tail and
+    continues from the following entry.
+  - Otherwise, the divergent tail is an upper bound. If the complete committed
+    log ID also matches the Leader, it is a lower bound. The Leader binary
+    searches only between those bounds.
+  - A legacy response without a hint falls back to the original binary search.
 
 - The Leader sends the log entry at the midpoint of `[ProgressEntry.matching.next_index(), ProgressEntry.searching_end]` to the Follower.
 

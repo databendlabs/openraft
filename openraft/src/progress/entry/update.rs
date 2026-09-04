@@ -46,7 +46,7 @@ where C: RaftTypeConfig
     /// by a quorum must never be withdrawn.
     ///
     /// [`Config::allow_log_reversion`]: `crate::config::Config::allow_log_reversion`
-    pub(crate) fn update_conflicting(&mut self, conflict: u64, inflight_id: Option<InflightId>) {
+    pub(crate) fn update_conflicting(&mut self, conflict: u64, inflight_id: Option<InflightId>) -> bool {
         tracing::debug!(
             "update_conflict: current progress_entry: {}; conflict: {}",
             self.entry,
@@ -57,7 +57,7 @@ where C: RaftTypeConfig
         if let Some(inflight_id) = inflight_id {
             let applied = self.entry.data.inflight.conflict(conflict, inflight_id);
             if !applied {
-                return;
+                return false;
             }
         }
 
@@ -67,7 +67,7 @@ where C: RaftTypeConfig
                 conflict,
                 self.entry.data.searching_end
             );
-            return;
+            return true;
         }
 
         self.entry.data.searching_end = conflict;
@@ -110,6 +110,8 @@ where C: RaftTypeConfig
                 conflict
             );
         }
+
+        true
     }
 
     /// Update the matching log id for this follower when replication succeeds.

@@ -2324,7 +2324,6 @@ where
         let last_log_id = entries.last().unwrap().log_id();
         let last_log_index = last_log_id.index();
         tracing::debug!("AppendEntries: {}", entries.as_ref().display_n(10));
-
         let entry_count = entries.len() as u64;
 
         // Record to internal histogram

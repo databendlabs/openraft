@@ -18,6 +18,7 @@ use crate::entry::RaftEntry;
 use crate::errors::ConflictingLogId;
 use crate::errors::RejectAppendEntries;
 use crate::errors::RejectVote;
+use crate::raft::ConflictHint;
 use crate::raft::LogSegment;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
@@ -156,6 +157,10 @@ fn test_append_entries_prev_log_id_conflict() -> anyhow::Result<()> {
         Err(RejectAppendEntries::ConflictingLogId(ConflictingLogId {
             expect: log_id(2, 1, 2),
             local: Some(log_id(1, 1, 2)),
+            hint: Some(ConflictHint {
+                last_log_id: Some(log_id(2, 1, 3)),
+                committed_log_id: Some(log_id(0, 1, 0)),
+            }),
         })),
         res
     );
@@ -261,6 +266,10 @@ fn test_append_entries_prev_log_id_not_exists() -> anyhow::Result<()> {
         Err(RejectAppendEntries::ConflictingLogId(ConflictingLogId {
             expect: log_id(2, 1, 4),
             local: None,
+            hint: Some(ConflictHint {
+                last_log_id: Some(log_id(2, 1, 3)),
+                committed_log_id: Some(log_id(0, 1, 0)),
+            }),
         })),
         res
     );

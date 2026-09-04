@@ -163,18 +163,15 @@ where
                 self.send_notification(noti, "Seeing higher Vote").await?;
                 // Higher vote means leadership is not granted, don't send HeartbeatProgress
             }
-            Err(StreamAppendError::Conflict(_conflict_log_id)) => {
-                // The follower does not have `matching` log id.
-                // Use `matching` (which may be None) as the conflict point.
-                //
-                // Safe unwrap(): a None never conflict
-                let conflict_log_id = heartbeat.matching.clone().unwrap();
+            Err(StreamAppendError::Conflict(mut conflict)) => {
+                // Restore details omitted by legacy transports.
+                conflict.expect = heartbeat.matching.clone().unwrap();
 
                 let noti = Notification::ReplicationProgress {
                     stream_id: self.stream_id,
                     progress: Progress {
                         target: self.target.clone(),
-                        result: Ok(ReplicationResult(Err(conflict_log_id))),
+                        result: Ok(ReplicationResult(Err(conflict))),
                     },
                     inflight_id: None,
                 };

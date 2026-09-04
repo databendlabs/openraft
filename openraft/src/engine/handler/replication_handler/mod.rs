@@ -16,6 +16,7 @@ use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
 use crate::engine::TargetProgress;
 use crate::engine::handler::log_handler::LogHandler;
+use crate::errors::ConflictingLogId;
 use crate::errors::NodeNotFound;
 use crate::errors::Operation;
 use crate::progress;
@@ -129,13 +130,14 @@ where
 
         {
             let end = self.state.last_log_id().next_index();
+            let initial_probe_index = self.leader.noop_log_id().index();
 
             let old_progress = self.leader.progress.clone();
 
             let id_gen = self.state.progress_id_gen.clone();
             let default_entry = |id| {
                 let progress_id = StreamId::new(id_gen.next_id());
-                ProgressEntry::empty(id, progress_id, end)
+                ProgressEntry::empty(id, progress_id, end).with_initial_probe(initial_probe_index)
             };
 
             self.leader.progress = Valid::new(old_progress.into_inner().upgrade_quorum_set(
@@ -274,13 +276,60 @@ where
     pub(crate) fn update_conflicting(
         &mut self,
         target: C::NodeId,
-        conflict: LogIdOf<C>,
+        conflict: ConflictingLogId<C>,
         inflight_id: Option<InflightId>,
     ) {
+        let Some(progress) = self.leader.progress.try_get(&target) else {
+            return;
+        };
+
+        let may_apply_initial_hint = progress.matching().is_none();
+        let mut searching_end = conflict.expect.index();
+        let mut hinted_matching = None;
+
+        if may_apply_initial_hint
+            && let Some(hint) = conflict.hint
+        {
+            let tail_matches = match hint.last_log_id.as_ref() {
+                None => true,
+                Some(last) => self.state.get_log_id(last.index()).as_ref() == Some(last),
+            };
+
+            if tail_matches {
+                // Resume after a matching follower tail.
+                searching_end = hint.last_log_id.next_index();
+                hinted_matching = hint.last_log_id;
+            } else {
+                // Tighten the upper bound with the divergent tail.
+                if let Some(last) = hint.last_log_id {
+                    searching_end = std::cmp::min(searching_end, last.index());
+                }
+
+                // Leader Completeness makes this a valid lower bound.
+                if let Some(committed) = hint.committed_log_id {
+                    debug_assert!(
+                        self.state.has_log_id(&committed),
+                        "follower committed log must exist on the leader: {committed}"
+                    );
+
+                    if committed.index() < searching_end {
+                        hinted_matching = Some(committed);
+                    }
+                }
+            }
+        }
+
+        let mut conflict_accepted = false;
         self.leader.progress.reset_entry_with(&target, |entry| {
             let mut updater = Updater::new(&*self.config, entry);
-            updater.update_conflicting(conflict.index(), inflight_id);
+            conflict_accepted = updater.update_conflicting(searching_end, inflight_id);
         });
+
+        if conflict_accepted
+            && let Some(matching) = hinted_matching
+        {
+            self.update_matching(target, Some(matching), None);
+        }
     }
 
     /// Enable one-time replication reset for a specific node upon log reversion detection.
