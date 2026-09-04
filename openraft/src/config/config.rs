@@ -126,7 +126,7 @@ impl SnapshotPolicy {
                 let committed_next = state.committed().next_index();
                 let base_log_id = last_tried_at.max(state.snapshot_last_log_id());
 
-                if committed_next >= base_log_id.next_index() + threshold {
+                if committed_next >= base_log_id.next_index().saturating_add(*threshold) {
                     state.committed().cloned()
                 } else {
                     None
