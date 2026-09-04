@@ -92,12 +92,12 @@ fn test_leader_append_membership_for_leader() -> anyhow::Result<()> {
                     TargetProgress {
                         target: 3,
                         target_node: (),
-                        progress: ProgressEntry::empty(3, StreamId::new(2), 0),
+                        progress: ProgressEntry::empty(3, StreamId::new(2), 0).with_initial_probe(0),
                     },
                     TargetProgress {
                         target: 4,
                         target_node: (),
-                        progress: ProgressEntry::empty(4, StreamId::new(3), 0),
+                        progress: ProgressEntry::empty(4, StreamId::new(3), 0).with_initial_probe(0),
                     }
                 ], /* node-2 is leader,
                     * won't be removed */
@@ -149,11 +149,11 @@ fn test_leader_append_membership_update_learner_process() -> anyhow::Result<()> 
 
     if let Some(l) = &mut eng.leader.as_mut() {
         assert_eq!(
-            Some(&ProgressEntry::empty(4, StreamId::new(3), 11)),
+            Some(&ProgressEntry::empty(4, StreamId::new(3), 11).with_initial_probe(11)),
             l.progress.try_get(&4)
         );
         assert_eq!(
-            Some(&ProgressEntry::empty(5, StreamId::new(4), 11)),
+            Some(&ProgressEntry::empty(5, StreamId::new(4), 11).with_initial_probe(11)),
             l.progress.try_get(&5)
         );
 

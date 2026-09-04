@@ -1,8 +1,11 @@
 use std::fmt;
 
 use display_more::DisplayOptionExt;
+use openraft_macros::since;
 
 use crate::RaftTypeConfig;
+use crate::errors::ConflictingLogId;
+use crate::raft::ConflictHint;
 use crate::raft::StreamAppendError;
 use crate::raft::stream_append::StreamAppendResult;
 use crate::type_config::alias::LogIdOf;
@@ -15,10 +18,13 @@ use crate::type_config::alias::VoteOf;
 ///
 /// [`RPCError`]: crate::errors::RPCError
 /// [`RaftNetworkV2::append_entries`]: crate::network::RaftNetworkV2::append_entries
+#[since(version = "0.10.0", change = "added ConflictWithHint response")]
 #[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum AppendEntriesResponse<C: RaftTypeConfig> {
+pub enum AppendEntriesResponse<C>
+where C: RaftTypeConfig
+{
     /// Successfully replicated all log entries to the target node.
     Success,
 
@@ -47,6 +53,9 @@ pub enum AppendEntriesResponse<C: RaftTypeConfig> {
     /// [`AppendEntriesRequest::prev_log_id`]: crate::raft::AppendEntriesRequest::prev_log_id
     Conflict,
 
+    /// Conflict with follower search bounds.
+    ConflictWithHint(ConflictHint<C>),
+
     /// Seen a vote `v` that does not hold `mine_vote >= v`.
     /// And a leader's vote(committed vote) must be total order with other votes.
     /// Therefore, it has to be a higher vote: `mine_vote < v`
@@ -73,7 +82,7 @@ where C: RaftTypeConfig
 
     /// Returns true if the response indicates a log conflict.
     pub fn is_conflict(&self) -> bool {
-        matches!(*self, AppendEntriesResponse::Conflict)
+        matches!(*self, AppendEntriesResponse::Conflict | AppendEntriesResponse::ConflictWithHint(_))
     }
 
     /// Convert this response to a stream append result.
@@ -89,7 +98,18 @@ where C: RaftTypeConfig
         match self {
             AppendEntriesResponse::Success => Ok(last_log_id),
             AppendEntriesResponse::PartialSuccess(log_id) => Ok(log_id),
-            AppendEntriesResponse::Conflict => Err(StreamAppendError::Conflict(prev_log_id.unwrap())),
+            AppendEntriesResponse::Conflict => Err(StreamAppendError::Conflict(ConflictingLogId {
+                expect: prev_log_id.unwrap(),
+                local: None,
+                hint: None,
+            })),
+            AppendEntriesResponse::ConflictWithHint(hint) => {
+                Err(StreamAppendError::Conflict(ConflictingLogId {
+                    expect: prev_log_id.unwrap(),
+                    local: None,
+                    hint: Some(hint),
+                }))
+            }
             AppendEntriesResponse::HigherVote(vote) => Err(StreamAppendError::HigherVote(vote)),
         }
     }
@@ -99,7 +119,10 @@ impl<C: RaftTypeConfig> From<StreamAppendResult<C>> for AppendEntriesResponse<C>
     fn from(r: StreamAppendResult<C>) -> Self {
         match r {
             Ok(_) => AppendEntriesResponse::Success,
-            Err(StreamAppendError::Conflict(_)) => AppendEntriesResponse::Conflict,
+            Err(StreamAppendError::Conflict(conflict)) => match conflict.hint {
+                Some(hint) => AppendEntriesResponse::ConflictWithHint(hint),
+                None => AppendEntriesResponse::Conflict,
+            },
             Err(StreamAppendError::HigherVote(v)) => AppendEntriesResponse::HigherVote(v),
         }
     }
@@ -116,6 +139,7 @@ where C: RaftTypeConfig
             }
             AppendEntriesResponse::HigherVote(vote) => write!(f, "Higher vote, {}", vote),
             AppendEntriesResponse::Conflict => write!(f, "Conflict"),
+            AppendEntriesResponse::ConflictWithHint(hint) => write!(f, "ConflictWithHint({hint:?})"),
         }
     }
 }

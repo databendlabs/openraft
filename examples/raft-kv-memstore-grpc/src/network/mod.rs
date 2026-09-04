@@ -10,6 +10,7 @@ use openraft::OptionalSend;
 use openraft::RaftNetworkFactory;
 use openraft::base::BoxFuture;
 use openraft::base::BoxStream;
+use openraft::errors::ConflictingLogId;
 use openraft::errors::NetworkError;
 use openraft::errors::ReplicationClosed;
 use openraft::errors::Unreachable;
@@ -20,6 +21,7 @@ use openraft::network::NetStreamAppend;
 use openraft::network::NetTransferLeader;
 use openraft::network::NetVote;
 use openraft::network::RPCOption;
+use openraft::raft::ConflictHint;
 use openraft::raft::StreamAppendError;
 use openraft::raft::StreamAppendResult;
 use openraft::raft::TransferLeaderRequest;
@@ -88,7 +90,15 @@ impl NetworkConnection {
                     "Missing `last_log_id` in conflict stream-append response",
                 )))
             })?;
-            return Ok(Err(StreamAppendError::Conflict(conflict_log_id.into())));
+            let hint = resp.conflict_hint.map(|hint| ConflictHint {
+                last_log_id: hint.last_log_id.map(Into::into),
+                committed_log_id: hint.committed_log_id.map(Into::into),
+            });
+            return Ok(Err(StreamAppendError::Conflict(ConflictingLogId {
+                expect: conflict_log_id.into(),
+                local: None,
+                hint,
+            })));
         }
 
         Ok(Ok(resp.last_log_id.map(Into::into)))

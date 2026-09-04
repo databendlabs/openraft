@@ -4,6 +4,7 @@ use display_more::DisplayOptionExt;
 use display_more::DisplayResultExt;
 
 use crate::RaftTypeConfig;
+use crate::errors::ConflictingLogId;
 use crate::type_config::alias::LogIdOf;
 
 /// The response of replication command.
@@ -45,7 +46,9 @@ where C: RaftTypeConfig
 ///
 /// Ok for matching, Err for conflict.
 #[derive(Clone, Debug)]
-pub(crate) struct ReplicationResult<C: RaftTypeConfig>(pub(crate) Result<Option<LogIdOf<C>>, LogIdOf<C>>);
+pub(crate) struct ReplicationResult<C: RaftTypeConfig>(
+    pub(crate) Result<Option<LogIdOf<C>>, ConflictingLogId<C>>,
+);
 
 impl<C> fmt::Display for ReplicationResult<C>
 where C: RaftTypeConfig
@@ -70,8 +73,15 @@ mod tests {
         let want = format!("(Match:{})", log_id(1, 2, 3));
         assert!(result.to_string().ends_with(&want), "{}", result.to_string());
 
-        let result = ReplicationResult::<UTConfig>(Err(log_id(1, 2, 3)));
-        let want = format!("(Conflict:{})", log_id(1, 2, 3));
-        assert!(result.to_string().ends_with(&want), "{}", result.to_string());
+        let result = ReplicationResult::<UTConfig>(Err(crate::errors::ConflictingLogId {
+            expect: log_id(1, 2, 3),
+            local: None,
+            hint: None,
+        }));
+        assert!(
+            result.to_string().contains("Conflict:conflicting log-id:"),
+            "{}",
+            result.to_string()
+        );
     }
 }

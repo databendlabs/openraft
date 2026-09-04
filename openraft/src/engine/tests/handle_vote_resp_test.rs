@@ -217,7 +217,7 @@ fn test_handle_vote_resp_equal_vote() -> anyhow::Result<()> {
                     targets: vec![TargetProgress {
                         target: 2,
                         target_node: (),
-                        progress: ProgressEntry::empty(2, StreamId::new(2), 1),
+                        progress: ProgressEntry::empty(2, StreamId::new(2), 1).with_initial_probe(1),
                     }],
                     close_old_streams: true,
                 },
@@ -230,7 +230,10 @@ fn test_handle_vote_resp_equal_vote() -> anyhow::Result<()> {
                 },
                 Command::Replicate {
                     target: 2,
-                    req: Replicate::new_logs(LogIdRange::new(None, Some(log_id(2, 1, 1))), InflightId::new(1))
+                    req: Replicate::new_logs(
+                        LogIdRange::new(Some(log_id(0, 0, 0)), Some(log_id(2, 1, 1))),
+                        InflightId::new(1),
+                    )
                 },
             ],
             eng.output.take_commands()
