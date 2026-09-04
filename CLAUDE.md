@@ -92,3 +92,19 @@ Integration tests live in `tests/tests/`, one test binary per directory. Read `t
 - `stores/memstore/` - In-memory storage implementation
 - `tests/` - Integration tests
 - `examples/` - Example applications
+
+## Commit Messages
+
+- Subject format is `type: scope: subject` with colons, never `type(scope):`. The scope is the crate or area as `git log --oneline -20` already names it; the `tests-turmoil/` crate's scope is `turmoil`.
+- The type names what part of the codebase changed, not why. A patch entirely under `tests/`, `tests-turmoil/`, or another test harness is `test:`, even when it fixes a bug or adds a new oracle check. `fix:` and `feat:` are for production code under `openraft/src/`; `docs:` for documentation; `chore:` for build, tooling, and CI.
+- `change:` is reserved for breaking public API changes: the changelog generator groups by type, and `change:` signals upgrade work to users. A commit that adds public API or alters internal behavior without breaking anything is `feat:`. There is no `improve:` type.
+
+## Error Design
+
+When a receive or wait on a response channel fails (sender dropped, channel closed), handle it at the receiver and return an error that says no response arrived. Do not route it through an unrelated category such as `StorageError`, which claims a failure that did not happen, and do not have the producer side (for example a state-machine worker) synthesize the consumer's error. Give the failure its own accurate error variant even when reusing an existing one would need less code.
+
+## Jepsen Clojure Tests
+
+The Makefile runs the `jepsen/` Clojure unit tests (`jepsen/test/jepsen/openraft/*_test.clj`) through Docker. To run them locally without Docker: bootstrap Leiningen standalone (download `https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein`, `chmod +x` it, set `LEIN_HOME` to a writable directory, put it on `PATH`), then `cd jepsen && lein deps` and `lein test`; `lein test :only ns/test-name` runs one test.
+
+clojure.test's pass reporting uses `dosync`, whose STM machinery clears the thread interrupt flag. When asserting on `Thread.currentThread().isInterrupted()`, capture the flag into a `let` binding before any `is` or `thrown?` runs, then assert on the captured value.
