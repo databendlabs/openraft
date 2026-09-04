@@ -35,6 +35,8 @@ impl_raft_log_id!(i8);
 
 #[cfg(test)]
 mod tests {
+    use hegel::generators::integers;
+
     use crate::log_id::raft_log_id::RaftLogId;
     use crate::vote::leader_id_std;
 
@@ -165,5 +167,42 @@ mod tests {
         let log_id = <(i8, u64) as RaftLogId>::new(leader_id, 100);
         assert_eq!((5, 100), log_id);
         assert_eq!(100, RaftLogId::index(&log_id));
+    }
+
+    // ---
+    // Property-based tests (hegel).
+    // ---
+
+    /// `committed_leader_id` reads the term through an `unsafe` `repr(transparent)` pointer cast,
+    /// once per supported term type. Each cast must hand back the tuple's own term, including at
+    /// the bounds of the term type.
+    #[hegel::test]
+    fn test_tuple_log_id_reports_its_own_term_and_index(tc: hegel::TestCase) {
+        macro_rules! check_log_id {
+            ($log_id:expr) => {{
+                let (term, index) = $log_id;
+
+                assert_eq!(term, **RaftLogId::committed_leader_id(&$log_id));
+                assert_eq!(index, RaftLogId::index(&$log_id));
+            }};
+        }
+
+        let u64_log_id = tc.draw(hegel::tuples!(integers::<u64>(), integers::<u64>()));
+        let u32_log_id = tc.draw(hegel::tuples!(integers::<u32>(), integers::<u64>()));
+        let u16_log_id = tc.draw(hegel::tuples!(integers::<u16>(), integers::<u64>()));
+        let u8_log_id = tc.draw(hegel::tuples!(integers::<u8>(), integers::<u64>()));
+        let i64_log_id = tc.draw(hegel::tuples!(integers::<i64>(), integers::<u64>()));
+        let i32_log_id = tc.draw(hegel::tuples!(integers::<i32>(), integers::<u64>()));
+        let i16_log_id = tc.draw(hegel::tuples!(integers::<i16>(), integers::<u64>()));
+        let i8_log_id = tc.draw(hegel::tuples!(integers::<i8>(), integers::<u64>()));
+
+        check_log_id!(u64_log_id);
+        check_log_id!(u32_log_id);
+        check_log_id!(u16_log_id);
+        check_log_id!(u8_log_id);
+        check_log_id!(i64_log_id);
+        check_log_id!(i32_log_id);
+        check_log_id!(i16_log_id);
+        check_log_id!(i8_log_id);
     }
 }
