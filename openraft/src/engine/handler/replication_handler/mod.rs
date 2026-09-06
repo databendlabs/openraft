@@ -400,7 +400,7 @@ where
             }
 
             let target = item.id.clone();
-            let t = item.next_send(self.state);
+            let t = item.next_send(self.state, 8);
             tracing::debug!("next send: target: {}, send: {:?}", target, t);
 
             match t {
