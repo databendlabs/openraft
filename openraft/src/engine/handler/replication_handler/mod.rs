@@ -210,8 +210,6 @@ where
     ) {
         tracing::debug!("{}: node_id: {}, log_id: {}", func_name!(), node_id, log_id.display());
 
-        debug_assert!(log_id.is_some(), "a valid update can never set matching to None");
-
         // The value granted by a quorum may not yet be a committed.
         // A committed is **granted** and also is in the current term.
         let Some(quorum_accepted) = self.leader.progress.update_entry_with(&node_id, |entry| {
@@ -428,11 +426,11 @@ where
     ) {
         match inflight {
             Inflight::None => unreachable!("no data to send"),
-            Inflight::Logs {
+            Inflight::Probe {
                 log_id_range,
                 inflight_id,
             } => {
-                let req = Replicate::new_logs(log_id_range.clone(), *inflight_id);
+                let req = Replicate::new_probe(log_id_range.clone(), *inflight_id);
                 output.push_command(Command::Replicate {
                     target: target.clone(),
                     req,
@@ -524,7 +522,7 @@ where
             .progress
             .update_data_with(&id, |data| {
                 // TODO: It should be self.state.last_log_id() but None is ok.
-                data.inflight = Inflight::logs(None, upto.clone(), inflight_id);
+                data.inflight = Inflight::probe(None, upto.clone(), inflight_id);
             })
             .is_some()
         {

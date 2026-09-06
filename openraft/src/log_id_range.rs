@@ -57,9 +57,12 @@ where C: RaftTypeConfig
         Self { prev, last }
     }
 
-    #[allow(dead_code)]
     pub(crate) fn len(&self) -> u64 {
         self.last.next_index() - self.prev.next_index()
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
 

@@ -71,7 +71,7 @@ fn test_try_purge_log_postpones_when_logs_are_inflight() {
     let mut eng = eng();
     eng.state.purge_upto = Some(log_id(2, 2, 5));
     eng.leader.as_mut().unwrap().progress.update_data_with(&3, |data| {
-        data.inflight = Inflight::logs(Some(log_id(1, 1, 4)), Some(log_id(2, 2, 6)), InflightId::new(1));
+        data.inflight = Inflight::probe(Some(log_id(1, 1, 4)), Some(log_id(2, 2, 6)), InflightId::new(1));
     });
 
     eng.replication_handler().try_purge_log();
@@ -97,7 +97,7 @@ fn test_try_purge_log_retries_after_inflight_clears() {
     let mut eng = eng();
     eng.state.purge_upto = Some(log_id(2, 2, 5));
     eng.leader.as_mut().unwrap().progress.update_data_with(&3, |data| {
-        data.inflight = Inflight::logs(Some(log_id(1, 1, 4)), Some(log_id(2, 2, 6)), InflightId::new(1));
+        data.inflight = Inflight::probe(Some(log_id(1, 1, 4)), Some(log_id(2, 2, 6)), InflightId::new(1));
     });
 
     eng.replication_handler().try_purge_log();
@@ -127,7 +127,7 @@ fn test_try_purge_log_excludes_inflight_previous_log() {
     let mut eng = eng();
     eng.state.purge_upto = Some(log_id(2, 2, 5));
     eng.leader.as_mut().unwrap().progress.update_data_with(&3, |data| {
-        data.inflight = Inflight::logs(Some(log_id(2, 2, 5)), Some(log_id(2, 2, 6)), InflightId::new(1));
+        data.inflight = Inflight::probe(Some(log_id(2, 2, 5)), Some(log_id(2, 2, 6)), InflightId::new(1));
     });
 
     eng.replication_handler().try_purge_log();
