@@ -175,11 +175,13 @@ where C: RaftTypeConfig
                     return false;
                 }
 
-                *self = {
-                    debug_assert!(upto >= log_id_range.prev);
-                    debug_assert!(upto <= log_id_range.last);
-                    Inflight::logs(upto, log_id_range.last.clone(), *inflight_id)
-                };
+                debug_assert!(upto >= log_id_range.prev);
+                debug_assert!(upto <= log_id_range.last);
+
+                // An entry-less response does not complete the probe.
+                if upto > log_id_range.prev {
+                    *self = Inflight::None;
+                }
                 true
             }
             Inflight::Snapshot { inflight_id } => {

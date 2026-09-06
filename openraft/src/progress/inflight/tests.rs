@@ -66,26 +66,21 @@ fn test_inflight_ack() -> anyhow::Result<()> {
     {
         let mut f = Inflight::<UTConfig>::logs(Some(log_id(5)), Some(log_id(10)), InflightId::new(1));
 
-        f.ack(Some(log_id(5)), InflightId::new(1));
+        let applied = f.ack(Some(log_id(5)), InflightId::new(1));
+        assert!(applied);
         assert_eq!(
             Inflight::<UTConfig>::logs(Some(log_id(5)), Some(log_id(10)), InflightId::new(1)),
-            f
+            f,
+            "an entry-less acknowledgement does not complete the probe"
         );
 
-        f.ack(Some(log_id(6)), InflightId::new(1));
+        let applied = f.ack(Some(log_id(6)), InflightId::new(1));
+        assert!(applied);
         assert_eq!(
-            Inflight::<UTConfig>::logs(Some(log_id(6)), Some(log_id(10)), InflightId::new(1)),
-            f
+            Inflight::<UTConfig>::None,
+            f,
+            "the first acknowledgement carrying probe entries completes the fixed-range inflight"
         );
-
-        f.ack(Some(log_id(9)), InflightId::new(1));
-        assert_eq!(
-            Inflight::<UTConfig>::logs(Some(log_id(9)), Some(log_id(10)), InflightId::new(1)),
-            f
-        );
-
-        f.ack(Some(log_id(10)), InflightId::new(1));
-        assert_eq!(Inflight::<UTConfig>::None, f);
 
         {
             let res = std::panic::catch_unwind(|| {
