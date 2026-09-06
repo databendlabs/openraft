@@ -5,6 +5,7 @@
 mod fixtures;
 
 mod t10_append_entries_partial_success;
+mod t11_probe_partial_success_without_entry;
 mod t20_empty_log_entries;
 mod t50_append_entries_backoff;
 mod t50_append_entries_backoff_rejoin;

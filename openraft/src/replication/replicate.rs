@@ -30,7 +30,7 @@ where C: RaftTypeConfig
     fn default() -> Self {
         Replicate {
             inflight_id: InflightId::new(0),
-            payload: Payload::LogIdRange {
+            payload: Payload::Probe {
                 log_id_range: LogIdRange::new(None, None),
             },
         }
@@ -40,10 +40,10 @@ where C: RaftTypeConfig
 impl<C: RaftTypeConfig> fmt::Display for Replicate<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.payload {
-            Payload::LogIdRange { log_id_range } => {
+            Payload::Probe { log_id_range } => {
                 write!(
                     f,
-                    "Replicate{{log_id_range: {}, inflight_id: {}}}",
+                    "Replicate{{probe: {}, inflight_id: {}}}",
                     log_id_range, self.inflight_id
                 )
             }
@@ -62,11 +62,11 @@ impl<C: RaftTypeConfig> fmt::Display for Replicate<C> {
 impl<C> Replicate<C>
 where C: RaftTypeConfig
 {
-    /// Creates a request to replicate logs in a fixed range.
-    pub(crate) fn new_logs(log_id_range: LogIdRange<C>, inflight_id: InflightId) -> Self {
+    /// Creates a request to probe the matching point with logs from a candidate range.
+    pub(crate) fn new_probe(log_id_range: LogIdRange<C>, inflight_id: InflightId) -> Self {
         Self {
             inflight_id,
-            payload: Payload::LogIdRange { log_id_range },
+            payload: Payload::Probe { log_id_range },
         }
     }
 
