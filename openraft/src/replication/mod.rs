@@ -218,6 +218,12 @@ where
                 continue;
             }
 
+            // Send one RPC for a fixed-range probe, then recompute it from the acknowledgement.
+            if matches!(&payload, Payload::LogIdRange { .. }) {
+                self.inflight_id = None;
+                continue;
+            }
+
             // if partial success is returned, not all data is exhausted. keep sending
             payload.update_matching(self.replication_progress.remote_matched.clone());
             if payload.len() != Some(0) {

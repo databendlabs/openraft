@@ -73,6 +73,7 @@ where
 
         tracing::debug!("{}: log_id_range: {}", func_name!(), log_id_range);
 
+        let requested_range_is_empty = log_id_range.len() == 0;
         let res = self.read_log_entries(log_id_range).await;
         let (entries, sending_range) = match res {
             Ok(x) => x,
@@ -89,7 +90,13 @@ where
             return Ok(None);
         }
 
-        self.update_log_id_range(sending_range.last);
+        if matches!(self.payload, Some(Payload::LogIdRange { .. })) && (!entries.is_empty() || requested_range_is_empty)
+        {
+            // Stop after one non-empty fixed-range probe.
+            self.payload = None;
+        } else {
+            self.update_log_id_range(sending_range.last.clone());
+        }
 
         let payload: AppendEntriesRequest<C> = AppendEntriesRequest {
             vote: self.replication_context.leader_vote.clone().into_vote(),

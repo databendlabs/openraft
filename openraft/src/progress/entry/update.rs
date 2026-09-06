@@ -125,6 +125,12 @@ where C: RaftTypeConfig
         );
 
         if let Some(inflight_id) = inflight_id {
+            let completes_probe = self.entry.matching().next_index() < self.entry.data.searching_end
+                && match &self.entry.data.inflight {
+                    Inflight::Logs { log_id_range, .. } => matching.as_ref() > log_id_range.prev.as_ref(),
+                    _ => false,
+                };
+
             let applied = self.entry.data.inflight.ack(matching.clone(), inflight_id);
             if !applied {
                 // Stale payload ack: a newer request superseded this one, or a concurrent log
@@ -132,6 +138,10 @@ where C: RaftTypeConfig
                 // advance `matching`: the follower no longer holds the acked logs, and counting
                 // them as matched could form a false quorum over data the follower has reverted.
                 return;
+            }
+
+            if completes_probe {
+                self.entry.data.inflight = Inflight::None;
             }
         }
 
