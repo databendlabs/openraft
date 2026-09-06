@@ -5,7 +5,6 @@ use std::fmt::Formatter;
 use display_more::DisplayOptionExt;
 use validit::Validate;
 
-use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 use crate::type_config::alias::LogIdOf;
 
@@ -55,11 +54,6 @@ where C: RaftTypeConfig
 {
     pub(crate) fn new(prev: Option<LogIdOf<C>>, last: Option<LogIdOf<C>>) -> Self {
         Self { prev, last }
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn len(&self) -> u64 {
-        self.last.next_index() - self.prev.next_index()
     }
 }
 

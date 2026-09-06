@@ -135,12 +135,12 @@ where C: RaftTypeConfig
             }
         }
 
-        // If it is not a response of an actual replication(such as replicating commit log id),
-        // it may not indicate an actual progress.
-        if inflight_id.is_none() && matching <= self.entry.matching {
+        // An acknowledgement may clear inflight without advancing matching.
+        if matching <= self.entry.matching {
             return;
         }
 
+        debug_assert!(matching.is_some(), "a valid update can never set matching to None");
         debug_assert!(matching.as_ref() >= self.entry.matching());
         self.entry.matching = matching;
 

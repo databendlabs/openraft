@@ -12,6 +12,7 @@ pub(crate) mod replication_handle;
 pub(crate) mod replication_progress;
 mod replication_session_id;
 pub(crate) mod response;
+pub(crate) mod session_outcome;
 pub(crate) mod snapshot_transmitter;
 pub(crate) mod snapshot_transmitter_handle;
 pub(crate) mod stream_context;
@@ -57,11 +58,13 @@ use crate::replication::backoff_state::BackoffState;
 use crate::replication::event_watcher::EventWatcher;
 use crate::replication::inflight_append_queue::InflightAppendQueue;
 use crate::replication::replication_context::ReplicationContext;
+use crate::replication::session_outcome::SessionOutcome;
 use crate::replication::stream_context::StreamContext;
 use crate::storage::RaftLogStorage;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::JoinHandleOf;
+use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MutexOf;
 use crate::type_config::async_runtime::mpsc::MpscSender;
 
@@ -213,19 +216,19 @@ where
             let config = self.replication_context.config.clone();
             self.backoff_state.reconcile(|| network.backoff().unwrap_or_else(|| config.build_backoff()));
 
-            let mut payload = self.select_next_payload().await?;
+            let payload = self.select_next_payload().await?;
 
-            if !self.run_stream_session(&mut network, &payload).await? {
-                continue;
-            }
-
-            // if partial success is returned, not all data is exhausted. keep sending
-            payload.update_matching(self.replication_progress.remote_matched.clone());
-            if payload.len() != Some(0) {
-                self.next_action = Some(payload);
+            let session = self.run_stream_session(&mut network, &payload).await?;
+            let completed = if let Some(acked) = session.acked {
+                payload.is_complete(acked)
             } else {
-                // Payload is all sent.
+                false
+            };
+
+            if completed {
                 self.inflight_id = None;
+            } else {
+                self.next_action = session.remaining;
             }
         }
     }
@@ -284,14 +287,12 @@ where
 
     /// Stream `payload` to the target and consume the responses.
     ///
-    /// Returns whether the response stream was consumed to its end; `false` means the caller
-    /// should back off and open a new stream, leaving `payload` unacknowledged. An `Err` is fatal
-    /// and ends the task.
+    /// Returns what this session observed; an `Err` is fatal and ends the task.
     async fn run_stream_session(
         &mut self,
         network: &mut N::Network,
         payload: &Payload<C>,
-    ) -> Result<bool, ReplicationClosed> {
+    ) -> Result<SessionOutcome<C>, ReplicationClosed> {
         {
             let mut stream_state = self.stream_state.lock().await;
             stream_state.payload = Some(payload.clone());
@@ -327,17 +328,27 @@ where
                 self.backoff_state.on_error(rpc_err.backoff_rank());
                 self.send_progress_error(rpc_err, "initiate-stream-replication").await;
 
-                return Ok(false);
+                return Ok(SessionOutcome::new(None, None));
             }
         };
 
-        let res = self.handle_response_stream(resp_strm, inflight_queue).await;
+        let (acked, continue_res) = self.handle_response_stream(resp_strm, inflight_queue).await;
         if let Some(err) = Self::take_stream_fatal_error(&fatal_error).await {
             return Err(err);
         }
 
-        // Response stream is successfully exhausted.
-        Ok(res.is_ok())
+        // If the stream stops with an un-handleable status, such as conflict,
+        // do not continue the payload.
+        let remaining = if let Ok(()) = continue_res {
+            match acked.clone() {
+                None => Some(payload.clone()),
+                Some(matching) => payload.clone().update_matching(matching),
+            }
+        } else {
+            None
+        };
+
+        Ok(SessionOutcome::new(acked, remaining))
     }
 
     async fn take_stream_fatal_error(
@@ -347,13 +358,15 @@ where
         fatal_error.take()
     }
 
+    /// Consume the response stream, returning its greatest acknowledgement and stop reason.
     async fn handle_response_stream<'s>(
         &mut self,
         resp_strm: BoxStream<'s, Result<StreamAppendResult<C>, RPCError<C>>>,
         inflight_queue: InflightAppendQueue<C>,
-    ) -> Result<(), &'static str> {
+    ) -> (Option<Option<LogIdOf<C>>>, Result<(), &'static str>) {
         let mut resp_strm = std::pin::pin!(resp_strm);
         let mut cancel_rx = self.replication_context.cancel_rx.clone();
+        let mut acked: Option<Option<LogIdOf<C>>> = None;
 
         loop {
             let rpc_res = {
@@ -364,13 +377,13 @@ where
                     rpc_res = next_resp.fuse() => rpc_res,
                     cancel_res = cancel.fuse() => {
                         tracing::info!("ReplicationCore: canceled while waiting response: {:?}", cancel_res);
-                        return Err("canceled");
+                        return (acked, Err("canceled"));
                     }
                 }
             };
 
             let Some(rpc_res) = rpc_res else {
-                return Ok(());
+                return (acked, Ok(()));
             };
 
             tracing::debug!("AppendEntries RPC response: {:?}", rpc_res);
@@ -380,7 +393,7 @@ where
                 Ok(stream_append_res) => stream_append_res,
                 Err(rpc_err) => {
                     self.send_progress_error(rpc_err, "stream-replication").await;
-                    return Err("RPCError");
+                    return (acked, Err("RPCError"));
                 }
             };
 
@@ -392,7 +405,7 @@ where
                         self.notify_heartbeat_progress(last).await;
                     }
 
-                    self.replication_progress.remote_matched = matching.clone();
+                    acked = acked.max(Some(matching.clone()));
 
                     self.notify_progress(ReplicationResult(Ok(matching))).await;
                 }
@@ -418,7 +431,7 @@ where
                         }
                     }
 
-                    return Err("AppendError");
+                    return (acked, Err("AppendError"));
                 }
             }
         }
@@ -466,7 +479,7 @@ where
                 self.replication_progress.remote_matched = matching.clone();
 
                 // No need to notify
-                if matching.is_none() {
+                if matching.is_none() && self.inflight_id.is_none() {
                     return;
                 }
             }
@@ -514,7 +527,7 @@ where
                 let m = self.replication_progress.remote_matched.clone();
                 let log_id_range = LogIdRange::new(m.clone(), m);
                 self.inflight_id = None;
-                self.next_action = Some(Payload::LogIdRange { log_id_range });
+                self.next_action = Some(Payload::Probe { log_id_range });
             }
         };
 

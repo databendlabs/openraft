@@ -107,7 +107,7 @@ mod tests {
         // Replicate
         let cmd: Command<C> = Command::Replicate {
             target: 1,
-            req: Replicate::new_logs(
+            req: Replicate::new_probe(
                 crate::log_id_range::LogIdRange::new(None, Some(log_id(1, 0, 1))),
                 InflightId::new(1),
             ),
