@@ -61,6 +61,25 @@ where C: RaftTypeConfig
     pub(crate) fn len(&self) -> u64 {
         self.last.next_index() - self.prev.next_index()
     }
+
+    /// Whether an acknowledgement of `acked` executed a matching-point probe over this range.
+    ///
+    /// A probe is one AppendEntries RPC, and storage may shorten it to a prefix, so any
+    /// acknowledgement that carries an entry from the range finishes it. An acknowledgement that
+    /// does not reach past [`Self::prev`] carries no entry: the target accepted nothing (e.g.
+    /// [`AppendEntriesResponse::PartialSuccess`] of `prev_log_id`), so the probe still has to be
+    /// sent.
+    ///
+    /// [`Inflight::Probe`] and [`Payload::Probe`] must decide this the same way. The engine
+    /// otherwise keeps waiting for a probe the replication task has already dropped, and
+    /// replication to that target never resumes.
+    ///
+    /// [`AppendEntriesResponse::PartialSuccess`]: crate::raft::AppendEntriesResponse::PartialSuccess
+    /// [`Inflight::Probe`]: crate::progress::inflight::Inflight::Probe
+    /// [`Payload::Probe`]: crate::replication::payload::Payload::Probe
+    pub(crate) fn probe_completed_by(&self, acked: &Option<LogIdOf<C>>) -> bool {
+        acked > &self.prev
+    }
 }
 
 #[cfg(test)]

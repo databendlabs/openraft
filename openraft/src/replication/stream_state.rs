@@ -64,7 +64,8 @@ where
     /// Generates the next AppendEntries request from the current log range.
     ///
     /// Returns `Ok(None)` when there are no more entries to send.
-    /// After each call, `log_id_range` is updated to exclude the sent entries.
+    /// After each call, `log_id_range` is updated to exclude the sent entries, except for a
+    /// [`Payload::Probe`], which ends after the one request it produces.
     pub(crate) async fn next_request(&mut self) -> Result<Option<AppendEntriesRequest<C>>, ReplicationClosed> {
         // An empty range still sends one RPC and is then cleared by `update_log_id_range()`.
         let Some(log_id_range) = self.get_log_id_range().await else {
@@ -89,7 +90,13 @@ where
             return Ok(None);
         }
 
-        self.update_log_id_range(sending_range.last);
+        if matches!(self.payload, Some(Payload::Probe { .. })) && !entries.is_empty() {
+            // A probe is one request. An empty read did not execute it, so it stays for the next
+            // call, which `read_log_entries()` has already rate-limited.
+            self.payload = None;
+        } else {
+            self.update_log_id_range(sending_range.last.clone());
+        }
 
         let payload: AppendEntriesRequest<C> = AppendEntriesRequest {
             vote: self.replication_context.leader_vote.clone().into_vote(),
@@ -128,7 +135,9 @@ where
         tracing::debug!("pipeline stream payload: {}", payload);
 
         let prev = match payload {
-            Payload::LogIdRange { log_id_range } => return Some(log_id_range.clone()),
+            Payload::LogIdRange { log_id_range } | Payload::Probe { log_id_range } => {
+                return Some(log_id_range.clone());
+            }
             Payload::LogsSince { prev } => prev.clone(),
         };
 

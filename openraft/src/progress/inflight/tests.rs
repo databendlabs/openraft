@@ -33,6 +33,20 @@ fn test_inflight_create() -> anyhow::Result<()> {
     assert_eq!(Inflight::None, l);
     assert!(l.is_none());
 
+    // Probe
+    let l = Inflight::<UTConfig>::probe(Some(log_id(5)), Some(log_id(10)), InflightId::new(1));
+    assert_eq!(
+        Inflight::Probe {
+            log_id_range: LogIdRange::new(Some(log_id(5)), Some(log_id(10))),
+            inflight_id: InflightId::new(1),
+        },
+        l
+    );
+
+    // A probe has to carry an entry, so an empty range is no probe
+    let l = Inflight::<UTConfig>::probe(Some(log_id(10)), Some(log_id(10)), InflightId::new(1));
+    assert_eq!(Inflight::None, l);
+
     // Snapshot
     let l = Inflight::<UTConfig>::snapshot(InflightId::new(1));
     assert_eq!(
@@ -106,6 +120,27 @@ fn test_inflight_ack() -> anyhow::Result<()> {
         }
     }
 
+    // Update matching when probing
+    {
+        let mut f = Inflight::<UTConfig>::probe(Some(log_id(5)), Some(log_id(10)), InflightId::new(1));
+
+        let applied = f.ack(Some(log_id(5)), InflightId::new(1));
+        assert!(applied);
+        assert_eq!(
+            Inflight::<UTConfig>::probe(Some(log_id(5)), Some(log_id(10)), InflightId::new(1)),
+            f,
+            "an ack carrying no entry did not execute the probe"
+        );
+
+        let applied = f.ack(Some(log_id(6)), InflightId::new(1));
+        assert!(applied);
+        assert_eq!(
+            Inflight::<UTConfig>::None,
+            f,
+            "the first ack carrying an entry completes the probe, short of last"
+        );
+    }
+
     // Update matching when transmitting by snapshot
     {
         {
@@ -125,6 +160,13 @@ fn test_inflight_conflict() -> anyhow::Result<()> {
         let applied = f.conflict(5, InflightId::new(1));
         assert!(applied, "matching conflict should be applied");
         assert_eq!(Inflight::<UTConfig>::None, f, "valid conflict");
+    }
+
+    {
+        let mut f = Inflight::<UTConfig>::probe(Some(log_id(5)), Some(log_id(10)), InflightId::new(1));
+        let applied = f.conflict(5, InflightId::new(1));
+        assert!(applied, "matching conflict should be applied");
+        assert_eq!(Inflight::<UTConfig>::None, f, "a conflict ends the probe");
     }
 
     Ok(())

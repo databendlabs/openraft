@@ -12,6 +12,7 @@ pub(crate) mod replication_handle;
 pub(crate) mod replication_progress;
 mod replication_session_id;
 pub(crate) mod response;
+pub(crate) mod session_outcome;
 pub(crate) mod snapshot_transmitter;
 pub(crate) mod snapshot_transmitter_handle;
 pub(crate) mod stream_context;
@@ -57,11 +58,13 @@ use crate::replication::backoff_state::BackoffState;
 use crate::replication::event_watcher::EventWatcher;
 use crate::replication::inflight_append_queue::InflightAppendQueue;
 use crate::replication::replication_context::ReplicationContext;
+use crate::replication::session_outcome::SessionOutcome;
 use crate::replication::stream_context::StreamContext;
 use crate::storage::RaftLogStorage;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::JoinHandleOf;
+use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MutexOf;
 use crate::type_config::async_runtime::mpsc::MpscSender;
 
@@ -214,7 +217,24 @@ where
 
             let mut payload = self.select_next_payload().await?;
 
-            if !self.run_stream_session(&mut network, &payload).await? {
+            let session = self.run_stream_session(&mut network, &payload).await?;
+            if !session.exhausted {
+                continue;
+            }
+
+            // A probe is one request: an acknowledged entry ends it whatever is left of the range,
+            // and RaftCore recomputes the next probe from that acknowledgement.
+            if let Payload::Probe { log_id_range } = &payload {
+                if log_id_range.probe_completed_by(&session.acked) {
+                    self.inflight_id = None;
+                } else {
+                    // The probe did not execute and RaftCore still has it inflight, so send it
+                    // again unchanged. Advancing it from `remote_matched` would replace it with a
+                    // different range: that value is carried across sessions, so it may sit below
+                    // `prev`, or above `last` once the target reverted its log.
+                    self.next_action = Some(payload);
+                }
+
                 continue;
             }
 
@@ -283,14 +303,12 @@ where
 
     /// Stream `payload` to the target and consume the responses.
     ///
-    /// Returns whether the response stream was consumed to its end; `false` means the caller
-    /// should back off and open a new stream, leaving `payload` unacknowledged. An `Err` is fatal
-    /// and ends the task.
+    /// Returns what this session observed; an `Err` is fatal and ends the task.
     async fn run_stream_session(
         &mut self,
         network: &mut N::Network,
         payload: &Payload<C>,
-    ) -> Result<bool, ReplicationClosed> {
+    ) -> Result<SessionOutcome<C>, ReplicationClosed> {
         {
             let mut stream_state = self.stream_state.lock().await;
             stream_state.payload = Some(payload.clone());
@@ -326,7 +344,7 @@ where
                 self.backoff_state.on_error(rpc_err.backoff_rank());
                 self.send_progress_error(rpc_err, "initiate-stream-replication").await;
 
-                return Ok(false);
+                return Ok(SessionOutcome::new(false, None));
             }
         };
 
@@ -335,8 +353,12 @@ where
             return Err(err);
         }
 
-        // Response stream is successfully exhausted.
-        Ok(res.is_ok())
+        // An `Err` leaves the response stream unfinished, and its acknowledgements are reported
+        // through `send_progress_error()` and `notify_progress()` instead.
+        match res {
+            Ok(acked) => Ok(SessionOutcome::new(true, acked)),
+            Err(_) => Ok(SessionOutcome::new(false, None)),
+        }
     }
 
     async fn take_stream_fatal_error(
@@ -346,13 +368,15 @@ where
         fatal_error.take()
     }
 
+    /// Consume the response stream, returning the last matching log id it acknowledged.
     async fn handle_response_stream<'s>(
         &mut self,
         resp_strm: BoxStream<'s, Result<StreamAppendResult<C>, RPCError<C>>>,
         inflight_queue: InflightAppendQueue<C>,
-    ) -> Result<(), &'static str> {
+    ) -> Result<Option<LogIdOf<C>>, &'static str> {
         let mut resp_strm = std::pin::pin!(resp_strm);
         let mut cancel_rx = self.replication_context.cancel_rx.clone();
+        let mut acked = None;
 
         loop {
             let rpc_res = {
@@ -369,7 +393,7 @@ where
             };
 
             let Some(rpc_res) = rpc_res else {
-                return Ok(());
+                return Ok(acked);
             };
 
             tracing::debug!("AppendEntries RPC response: {:?}", rpc_res);
@@ -392,6 +416,7 @@ where
                     }
 
                     self.replication_progress.remote_matched = matching.clone();
+                    acked = matching.clone();
 
                     self.notify_progress(ReplicationResult(Ok(matching))).await;
                 }

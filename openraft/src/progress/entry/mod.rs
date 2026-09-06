@@ -156,7 +156,7 @@ where C: RaftTypeConfig
     pub(crate) fn is_log_range_inflight(&self, upto: &LogIdOf<C>) -> bool {
         match &self.data.inflight {
             Inflight::None => false,
-            Inflight::Logs { log_id_range, .. } => {
+            Inflight::Logs { log_id_range, .. } | Inflight::Probe { log_id_range, .. } => {
                 let lid = Some(upto);
                 lid > log_id_range.prev.as_ref()
             }
@@ -183,9 +183,9 @@ where C: RaftTypeConfig
     /// always holds. This puts the progress in one of two regimes:
     ///
     /// - **Probing** (`matching.next_index() < searching_end`): the exact matching point is not yet
-    ///   determined. Send a fixed range of logs `(prev, last]` ([`Inflight::Logs`]) with `prev` at
-    ///   a binary-search midpoint: a success response raises `matching`, a conflict response lowers
-    ///   `searching_end`, until the range collapses.
+    ///   determined. Send one AppendEntries from the candidate range `(prev, last]`
+    ///   ([`Inflight::Probe`]) with `prev` at a binary-search midpoint: a success response raises
+    ///   `matching`, a conflict response lowers `searching_end`, until the range collapses.
     ///
     /// - **Pipeline** (`matching.next_index() == searching_end`): the matching point is exactly
     ///   `matching`. Stream all logs after it, with no fixed upper bound ([`Inflight::LogsSince`]).
@@ -205,7 +205,7 @@ where C: RaftTypeConfig
     ///
     /// 2. Probing while the leader log is fully purged (`purge_upto == last_log_id`, which makes
     ///    the send range empty: `start == end`): the probe cannot carry any entry, and
-    ///    [`Inflight::logs`] cannot represent an AppendEntries without payload — an empty range
+    ///    [`Inflight::probe`] cannot represent an AppendEntries without payload — an empty range
     ///    collapses to [`Inflight::None`]. Pipeline mode is not affected: [`Inflight::LogsSince`]
     ///    is an open-ended stream, and an empty tail is valid.
     ///
@@ -257,7 +257,7 @@ where C: RaftTypeConfig
 
             let prev = log_state.prev_log_id(start);
             let last = log_state.prev_log_id(end);
-            self.data.inflight = Inflight::logs(prev, last, inflight_id);
+            self.data.inflight = Inflight::probe(prev, last, inflight_id);
         } else {
             // Pipeline: stream every log after the known matching point.
             // Snapshot condition 1 ensured `matching >= purge_upto`: no needed log is purged.
@@ -312,7 +312,7 @@ where C: RaftTypeConfig
 
         match &self.data.inflight {
             Inflight::None => {}
-            Inflight::Logs { log_id_range, .. } => {
+            Inflight::Logs { log_id_range, .. } | Inflight::Probe { log_id_range, .. } => {
                 // matching <= prev_log_id              <= last_log_id
                 //             prev_log_id.next_index() <= searching_end
                 validit::less_equal!(self.matching(), log_id_range.prev.as_ref());

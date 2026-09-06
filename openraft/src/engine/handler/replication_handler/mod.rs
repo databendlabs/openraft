@@ -434,6 +434,16 @@ where
                     req,
                 });
             }
+            Inflight::Probe {
+                log_id_range,
+                inflight_id,
+            } => {
+                let req = Replicate::new_probe(log_id_range.clone(), *inflight_id);
+                output.push_command(Command::Replicate {
+                    target: target.clone(),
+                    req,
+                });
+            }
             Inflight::Snapshot { inflight_id } => {
                 output.push_command(Command::ReplicateSnapshot {
                     leader_vote,
