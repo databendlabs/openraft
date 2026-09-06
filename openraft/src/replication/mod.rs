@@ -85,7 +85,7 @@ where
     /// A channel for receiving events from the RaftCore and snapshot transmitting task.
     event_watcher: EventWatcher<C>,
 
-    /// The next replication payload to send, set when partially completed.
+    /// The next streaming payload to send, set when partially completed.
     next_action: Option<Payload<C>>,
 
     /// Identifies the current in-flight replication batch for progress tracking.
@@ -218,7 +218,15 @@ where
                 continue;
             }
 
-            // if partial success is returned, not all data is exhausted. keep sending
+            // A fixed range is one matching-point probe. Even if the log reader returned only a
+            // prefix, do not drain the original suffix: RaftCore will use the acknowledged prefix
+            // to recompute the next probe.
+            if matches!(&payload, Payload::LogIdRange { .. }) {
+                self.inflight_id = None;
+                continue;
+            }
+
+            // In streaming mode, keep sending after a partial success.
             payload.update_matching(self.replication_progress.remote_matched.clone());
             if payload.len() != Some(0) {
                 self.next_action = Some(payload);

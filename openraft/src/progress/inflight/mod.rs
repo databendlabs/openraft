@@ -24,7 +24,11 @@ where C: RaftTypeConfig
 {
     None,
 
-    /// Replicating logs in a fixed range `(prev, last]`.
+    /// Probe logs from a fixed candidate range `(prev, last]`.
+    ///
+    /// The replication stream sends at most one non-empty AppendEntries request from this range.
+    /// Storage may return only a prefix, so any successful payload acknowledgement completes this
+    /// inflight probe even when it does not reach `last`.
     Logs {
         log_id_range: LogIdRange<C>,
         inflight_id: InflightId,
@@ -175,11 +179,15 @@ where C: RaftTypeConfig
                     return false;
                 }
 
-                *self = {
-                    debug_assert!(upto >= log_id_range.prev);
-                    debug_assert!(upto <= log_id_range.last);
-                    Inflight::logs(upto, log_id_range.last.clone(), *inflight_id)
-                };
+                debug_assert!(upto >= log_id_range.prev);
+                debug_assert!(upto <= log_id_range.last);
+
+                // A matching value equal to `prev` is an entry-less heartbeat, e.g. when a
+                // non-empty storage read unexpectedly returned no entries. It did not execute
+                // the probe and must leave it inflight for a retry.
+                if upto > log_id_range.prev {
+                    *self = Inflight::None;
+                }
                 true
             }
             Inflight::Snapshot { inflight_id } => {

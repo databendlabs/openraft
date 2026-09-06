@@ -64,15 +64,17 @@ where
     /// Generates the next AppendEntries request from the current log range.
     ///
     /// Returns `Ok(None)` when there are no more entries to send.
-    /// After each call, `log_id_range` is updated to exclude the sent entries.
+    /// A fixed [`Payload::LogIdRange`] sends one non-empty request and then ends. A streaming
+    /// [`Payload::LogsSince`] advances past the sent entries and continues.
     pub(crate) async fn next_request(&mut self) -> Result<Option<AppendEntriesRequest<C>>, ReplicationClosed> {
-        // An empty range still sends one RPC and is then cleared by `update_log_id_range()`.
+        // An empty range still sends one RPC and is then cleared as an intentional heartbeat.
         let Some(log_id_range) = self.get_log_id_range().await else {
             return Ok(None);
         };
 
         tracing::debug!("{}: log_id_range: {}", func_name!(), log_id_range);
 
+        let requested_range_is_empty = log_id_range.len() == 0;
         let res = self.read_log_entries(log_id_range).await;
         let (entries, sending_range) = match res {
             Ok(x) => x,
@@ -89,7 +91,12 @@ where
             return Ok(None);
         }
 
-        self.update_log_id_range(sending_range.last);
+        update_payload_after_request(
+            &mut self.payload,
+            sending_range.last.clone(),
+            !entries.is_empty(),
+            requested_range_is_empty,
+        );
 
         let payload: AppendEntriesRequest<C> = AppendEntriesRequest {
             vote: self.replication_context.leader_vote.clone().into_vote(),
@@ -200,21 +207,6 @@ where
         }
     }
 
-    /// Updates `log_id_range` after sending entries up to `matching`.
-    ///
-    /// Sets `log_id_range` to `None` when all entries have been sent.
-    fn update_log_id_range(&mut self, matching: Option<LogIdOf<C>>) {
-        let Some(payload) = self.payload.as_mut() else {
-            return;
-        };
-
-        payload.update_matching(matching);
-
-        if payload.len() == Some(0) {
-            self.payload = None;
-        }
-    }
-
     /// Reads log entries from storage for the given range.
     ///
     /// Returns the entries and the actual range covered (may be smaller than requested
@@ -289,6 +281,34 @@ where
     }
 }
 
+/// Updates replication work after constructing one AppendEntries request.
+///
+/// A fixed range is a single matching-point probe. The log reader may return only a prefix because
+/// of its byte limit; its unsent suffix is deliberately discarded so the engine recomputes the next
+/// probe from the acknowledgement. An unexpected empty read does not execute the probe and leaves
+/// it pending. `LogsSince` remains an open-ended stream and advances normally.
+fn update_payload_after_request<C>(
+    payload: &mut Option<Payload<C>>,
+    matching: Option<LogIdOf<C>>,
+    sent_entries: bool,
+    requested_range_is_empty: bool,
+) where
+    C: RaftTypeConfig,
+{
+    let Some(current) = payload.as_mut() else {
+        return;
+    };
+
+    match current {
+        Payload::LogIdRange { .. } => {
+            if sent_entries || requested_range_is_empty {
+                *payload = None;
+            }
+        }
+        Payload::LogsSince { .. } => current.update_matching(matching),
+    }
+}
+
 fn non_reversed_log_id_range<C>(prev: Option<LogIdOf<C>>, last: Option<LogIdOf<C>>) -> LogIdRange<C>
 where C: RaftTypeConfig {
     // `prev` is delivered through ReplicationCore's replication command channel, while `last` is
@@ -300,8 +320,44 @@ where C: RaftTypeConfig {
 #[cfg(test)]
 mod tests {
     use super::non_reversed_log_id_range;
+    use super::update_payload_after_request;
     use crate::engine::testing::UTConfig;
     use crate::engine::testing::log_id;
+    use crate::log_id_range::LogIdRange;
+    use crate::replication::payload::Payload;
+
+    #[test]
+    fn test_update_payload_after_request() {
+        let range = LogIdRange::new(Some(log_id(1, 1, 10)), Some(log_id(1, 1, 18)));
+
+        let mut fixed = Some(Payload::<UTConfig>::LogIdRange {
+            log_id_range: range.clone(),
+        });
+        update_payload_after_request(&mut fixed, Some(log_id(1, 1, 12)), true, false);
+        assert_eq!(None, fixed, "one non-empty request completes a fixed probe");
+
+        let mut empty_read = Some(Payload::<UTConfig>::LogIdRange { log_id_range: range });
+        update_payload_after_request(&mut empty_read, Some(log_id(1, 1, 10)), false, false);
+        assert!(empty_read.is_some(), "an unexpected empty storage read must retry");
+
+        let mut empty_request = Some(Payload::<UTConfig>::LogIdRange {
+            log_id_range: LogIdRange::new(Some(log_id(1, 1, 10)), Some(log_id(1, 1, 10))),
+        });
+        update_payload_after_request(&mut empty_request, Some(log_id(1, 1, 10)), false, true);
+        assert_eq!(None, empty_request, "an intentional heartbeat is sent once");
+
+        let mut streaming = Some(Payload::<UTConfig>::LogsSince {
+            prev: Some(log_id(1, 1, 10)),
+        });
+        update_payload_after_request(&mut streaming, Some(log_id(1, 1, 12)), true, false);
+        assert_eq!(
+            Some(Payload::LogsSince {
+                prev: Some(log_id(1, 1, 12))
+            }),
+            streaming,
+            "pipeline mode continues after each request"
+        );
+    }
 
     #[test]
     fn test_non_reversed_log_id_range() {

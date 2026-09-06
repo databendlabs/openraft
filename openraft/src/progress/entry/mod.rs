@@ -183,9 +183,10 @@ where C: RaftTypeConfig
     /// always holds. This puts the progress in one of two regimes:
     ///
     /// - **Probing** (`matching.next_index() < searching_end`): the exact matching point is not yet
-    ///   determined. Send exactly one log entry at a binary-search midpoint via [`Inflight::Logs`]:
-    ///   a success response raises `matching`, a conflict response lowers `searching_end`, until
-    ///   the range collapses.
+    ///   determined. Send at most `max_entries` from a binary-search midpoint via
+    ///   [`Inflight::Logs`]. The replication stream sends only the first storage-limited prefix as
+    ///   one AppendEntries RPC: a success response raises `matching`, a conflict response lowers
+    ///   `searching_end`, until the range collapses.
     ///
     /// - **Pipeline** (`matching.next_index() == searching_end`): the matching point is exactly
     ///   `matching`. Stream all logs after it, with no fixed upper bound ([`Inflight::LogsSince`]).
@@ -214,6 +215,7 @@ where C: RaftTypeConfig
     pub(crate) fn next_send(
         &mut self,
         log_state: &mut RaftState<C>,
+        max_entries: u64,
     ) -> Result<&Inflight<C>, &Inflight<C>> {
         if !self.data.inflight.is_none() {
             return Err(&self.data.inflight);
@@ -245,7 +247,7 @@ where C: RaftTypeConfig
             // and `purge_upto_next <= searching_end` by snapshot condition 1 above.
             let mid = Self::calc_mid(matching_next, self.data.searching_end);
             let start = std::cmp::max(mid, purge_upto_next);
-            let end = std::cmp::min(start + 1, last_next);
+            let end = std::cmp::min(start + max_entries, last_next);
 
             // Snapshot condition 2: the leader log is fully purged; there is no entry
             // for the probe to carry.

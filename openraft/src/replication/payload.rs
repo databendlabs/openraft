@@ -11,9 +11,11 @@ use crate::type_config::alias::LogIdOf;
 pub(crate) enum Payload<C>
 where C: RaftTypeConfig
 {
-    /// Replicate logs in a fixed range `(prev, last]`.
+    /// Probe logs from a fixed candidate range `(prev, last]`.
     ///
-    /// Used for batch replication where the leader sends a known set of log entries.
+    /// The replication stream sends one non-empty AppendEntries request. Count and storage byte
+    /// limits may reduce it to a prefix of this range; the engine then recomputes the next probe
+    /// from the acknowledged prefix.
     LogIdRange { log_id_range: LogIdRange<C> },
 
     /// Replicate logs after `prev` with no upper bound.
