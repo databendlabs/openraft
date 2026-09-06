@@ -13,6 +13,7 @@ use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::progress::Inflight;
 use crate::progress::inflight_id::InflightId;
+use crate::replication::response::ReplicationResult;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::StoredMembershipOf;
 use crate::utime::Leased;
@@ -65,7 +66,7 @@ fn test_update_matching() -> anyhow::Result<()> {
 
     let mut rh = eng.replication_handler();
     let mut set_inflight = |id, prev| {
-        let inflight = Inflight::logs(prev, Some(log_id(2, 1, 4)), InflightId::new(1));
+        let inflight = Inflight::probe(prev, Some(log_id(2, 1, 4)), InflightId::new(1));
         assert_eq!(
             Some(&inflight),
             rh.leader.progress.update_data_with(&id, |data| data.inflight = inflight).map(|data| &data.inflight)
@@ -120,6 +121,29 @@ fn test_update_matching() -> anyhow::Result<()> {
         assert_eq!(Some(&log_id(2, 1, 3)), rh.state.io_state.apply_progress.accepted());
         assert_eq!(None, rh.state.io_state.apply_progress.submitted());
     }
+
+    Ok(())
+}
+
+#[test]
+fn test_empty_ack_clears_inflight_without_updating_matching() -> anyhow::Result<()> {
+    let mut eng = eng();
+    eng.testing_new_leader();
+    eng.output.take_commands();
+
+    let target = 1;
+    let inflight_id = InflightId::new(1);
+    let inflight = Inflight::probe(None, Some(log_id(2, 1, 4)), inflight_id);
+
+    let mut rh = eng.replication_handler();
+    let data = rh.leader.progress.update_data_with(&target, |data| data.inflight = inflight);
+    let stream_id = data.unwrap().stream_id;
+
+    rh.update_progress(target, stream_id, Ok(ReplicationResult(Ok(None))), Some(inflight_id));
+
+    let entry = rh.leader.progress.try_get(&target).unwrap();
+    assert_eq!(None, entry.matching());
+    assert_eq!(Inflight::None, entry.data.inflight);
 
     Ok(())
 }

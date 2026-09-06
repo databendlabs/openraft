@@ -64,9 +64,9 @@ where
     /// Generates the next AppendEntries request from the current log range.
     ///
     /// Returns `Ok(None)` when there are no more entries to send.
-    /// After each call, `log_id_range` is updated to exclude the sent entries.
+    /// After each call, the payload is advanced or cleared according to its completion rule.
     pub(crate) async fn next_request(&mut self) -> Result<Option<AppendEntriesRequest<C>>, ReplicationClosed> {
-        // An empty range still sends one RPC and is then cleared by `update_log_id_range()`.
+        // An empty range still sends one RPC and is then cleared by `update_sent()`.
         let Some(log_id_range) = self.get_log_id_range().await else {
             return Ok(None);
         };
@@ -89,7 +89,7 @@ where
             return Ok(None);
         }
 
-        self.update_log_id_range(sending_range.last);
+        self.update_sent(&sending_range);
 
         let payload: AppendEntriesRequest<C> = AppendEntriesRequest {
             vote: self.replication_context.leader_vote.clone().into_vote(),
@@ -128,7 +128,7 @@ where
         tracing::debug!("pipeline stream payload: {}", payload);
 
         let prev = match payload {
-            Payload::LogIdRange { log_id_range } => return Some(log_id_range.clone()),
+            Payload::Probe { log_id_range } => return Some(log_id_range.clone()),
             Payload::LogsSince { prev } => prev.clone(),
         };
 
@@ -200,19 +200,17 @@ where
         }
     }
 
-    /// Updates `log_id_range` after sending entries up to `matching`.
+    /// Advances the payload after generating a request through `sent`.
     ///
-    /// Sets `log_id_range` to `None` when all entries have been sent.
-    fn update_log_id_range(&mut self, matching: Option<LogIdOf<C>>) {
-        let Some(payload) = self.payload.as_mut() else {
+    /// Clears the payload when its completion rule is satisfied.
+    fn update_sent(&mut self, sent: &LogIdRange<C>) {
+        let sent_last = sent.last.clone();
+
+        let Some(payload) = self.payload.take() else {
             return;
         };
 
-        payload.update_matching(matching);
-
-        if payload.len() == Some(0) {
-            self.payload = None;
-        }
+        self.payload = payload.update_sent(sent_last);
     }
 
     /// Reads log entries from storage for the given range.
@@ -296,6 +294,9 @@ where C: RaftTypeConfig {
     let last = std::cmp::max(last, prev.clone());
     LogIdRange::new(prev, last)
 }
+
+#[cfg(test)]
+mod stream_state_test;
 
 #[cfg(test)]
 mod tests {

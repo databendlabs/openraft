@@ -18,10 +18,10 @@ fn log_id(index: u64) -> LogIdOf<UTConfig> {
 
 #[test]
 fn test_inflight_create() -> anyhow::Result<()> {
-    // Logs
-    let l = Inflight::<UTConfig>::logs(Some(log_id(5)), Some(log_id(10)), InflightId::new(1));
+    // Probe
+    let l = Inflight::<UTConfig>::probe(Some(log_id(5)), Some(log_id(10)), InflightId::new(1));
     assert_eq!(
-        Inflight::Logs {
+        Inflight::Probe {
             log_id_range: LogIdRange::new(Some(log_id(5)), Some(log_id(10))),
             inflight_id: InflightId::new(1),
         },
@@ -29,9 +29,13 @@ fn test_inflight_create() -> anyhow::Result<()> {
     );
 
     // Empty range
-    let l = Inflight::<UTConfig>::logs(Some(log_id(11)), Some(log_id(10)), InflightId::new(1));
+    let l = Inflight::<UTConfig>::probe(Some(log_id(11)), Some(log_id(10)), InflightId::new(1));
     assert_eq!(Inflight::None, l);
     assert!(l.is_none());
+
+    // A probe has to carry an entry, so an empty range is no probe
+    let l = Inflight::<UTConfig>::probe(Some(log_id(10)), Some(log_id(10)), InflightId::new(1));
+    assert_eq!(Inflight::None, l);
 
     // Snapshot
     let l = Inflight::<UTConfig>::snapshot(InflightId::new(1));
@@ -51,8 +55,8 @@ fn test_inflight_is_xxx() -> anyhow::Result<()> {
     let l = Inflight::<UTConfig>::None;
     assert!(l.is_none());
 
-    let l = Inflight::<UTConfig>::logs(Some(log_id(5)), Some(log_id(10)), InflightId::new(0));
-    assert!(l.is_sending_log());
+    let l = Inflight::<UTConfig>::probe(Some(log_id(5)), Some(log_id(10)), InflightId::new(0));
+    assert!(l.is_probe());
 
     let l = Inflight::<UTConfig>::snapshot(InflightId::new(0));
     assert!(l.is_sending_snapshot());
@@ -62,34 +66,22 @@ fn test_inflight_is_xxx() -> anyhow::Result<()> {
 
 #[test]
 fn test_inflight_ack() -> anyhow::Result<()> {
-    // Update matching when transmitting by logs
+    // Update matching after a probe
     {
-        let mut f = Inflight::<UTConfig>::logs(Some(log_id(5)), Some(log_id(10)), InflightId::new(1));
+        let mut f = Inflight::<UTConfig>::probe(Some(log_id(5)), Some(log_id(10)), InflightId::new(1));
 
-        f.ack(Some(log_id(5)), InflightId::new(1));
-        assert_eq!(
-            Inflight::<UTConfig>::logs(Some(log_id(5)), Some(log_id(10)), InflightId::new(1)),
-            f
-        );
-
-        f.ack(Some(log_id(6)), InflightId::new(1));
-        assert_eq!(
-            Inflight::<UTConfig>::logs(Some(log_id(6)), Some(log_id(10)), InflightId::new(1)),
-            f
-        );
-
-        f.ack(Some(log_id(9)), InflightId::new(1));
-        assert_eq!(
-            Inflight::<UTConfig>::logs(Some(log_id(9)), Some(log_id(10)), InflightId::new(1)),
-            f
-        );
-
-        f.ack(Some(log_id(10)), InflightId::new(1));
+        assert!(f.ack(Some(log_id(5)), InflightId::new(1)));
         assert_eq!(Inflight::<UTConfig>::None, f);
+        assert!(!f.ack(Some(log_id(9)), InflightId::new(1)), "later acks are stale");
+
+        let mut f = Inflight::<UTConfig>::probe(Some(log_id(5)), Some(log_id(10)), InflightId::new(1));
+        assert!(f.ack(Some(log_id(6)), InflightId::new(1)));
+        assert_eq!(Inflight::<UTConfig>::None, f);
+        assert!(!f.ack(Some(log_id(9)), InflightId::new(1)), "later acks are stale");
 
         {
             let res = std::panic::catch_unwind(|| {
-                let mut f = Inflight::<UTConfig>::logs(Some(log_id(5)), Some(log_id(10)), InflightId::new(1));
+                let mut f = Inflight::<UTConfig>::probe(Some(log_id(5)), Some(log_id(10)), InflightId::new(1));
                 f.ack(Some(log_id(4)), InflightId::new(1));
             });
             tracing::info!("res: {:?}", res);
@@ -98,12 +90,26 @@ fn test_inflight_ack() -> anyhow::Result<()> {
 
         {
             let res = std::panic::catch_unwind(|| {
-                let mut f = Inflight::<UTConfig>::logs(Some(log_id(5)), Some(log_id(10)), InflightId::new(1));
+                let mut f = Inflight::<UTConfig>::probe(Some(log_id(5)), Some(log_id(10)), InflightId::new(1));
                 f.ack(Some(log_id(11)), InflightId::new(1));
             });
             tracing::info!("res: {:?}", res);
             assert!(res.is_err(), "non-matching ack > prev_log_id");
         }
+    }
+
+    // The leader's local update acknowledges its entire range immediately.
+    {
+        let mut f = Inflight::<UTConfig>::probe(None, Some(log_id(10)), InflightId::new(1));
+        assert!(f.ack(Some(log_id(10)), InflightId::new(1)));
+        assert_eq!(Inflight::<UTConfig>::None, f);
+    }
+
+    // A response acknowledging the empty position completes a fresh learner's probe.
+    {
+        let mut f = Inflight::<UTConfig>::probe(None, Some(log_id(10)), InflightId::new(1));
+        assert!(f.ack(None, InflightId::new(1)));
+        assert_eq!(Inflight::<UTConfig>::None, f);
     }
 
     // Update matching when transmitting by snapshot
@@ -121,7 +127,7 @@ fn test_inflight_ack() -> anyhow::Result<()> {
 #[test]
 fn test_inflight_conflict() -> anyhow::Result<()> {
     {
-        let mut f = Inflight::<UTConfig>::logs(Some(log_id(5)), Some(log_id(10)), InflightId::new(1));
+        let mut f = Inflight::<UTConfig>::probe(Some(log_id(5)), Some(log_id(10)), InflightId::new(1));
         let applied = f.conflict(5, InflightId::new(1));
         assert!(applied, "matching conflict should be applied");
         assert_eq!(Inflight::<UTConfig>::None, f, "valid conflict");
@@ -132,9 +138,9 @@ fn test_inflight_conflict() -> anyhow::Result<()> {
 
 #[test]
 fn test_inflight_ack_inflight_id_mismatch() -> anyhow::Result<()> {
-    // Logs: mismatched inflight_id should be ignored
+    // Probe: mismatched inflight_id should be ignored
     {
-        let mut f = Inflight::<UTConfig>::logs(Some(log_id(5)), Some(log_id(10)), InflightId::new(1));
+        let mut f = Inflight::<UTConfig>::probe(Some(log_id(5)), Some(log_id(10)), InflightId::new(1));
         let original = f;
 
         let applied = f.ack(Some(log_id(7)), InflightId::new(2));
@@ -184,9 +190,9 @@ fn test_inflight_conflict_inflight_id_mismatch() -> anyhow::Result<()> {
         assert_eq!(Inflight::<UTConfig>::None, f);
     }
 
-    // Logs: mismatched inflight_id should be ignored
+    // Probe: mismatched inflight_id should be ignored
     {
-        let mut f = Inflight::<UTConfig>::logs(Some(log_id(5)), Some(log_id(10)), InflightId::new(1));
+        let mut f = Inflight::<UTConfig>::probe(Some(log_id(5)), Some(log_id(10)), InflightId::new(1));
         let original = f;
 
         let applied = f.conflict(7, InflightId::new(2));
@@ -199,7 +205,7 @@ fn test_inflight_conflict_inflight_id_mismatch() -> anyhow::Result<()> {
 
 #[test]
 fn test_inflight_validate() -> anyhow::Result<()> {
-    let r = Inflight::Logs {
+    let r = Inflight::Probe {
         log_id_range: LogIdRange::<UTConfig>::new(Some(log_id(5)), Some(log_id(4))),
         inflight_id: InflightId::new(1),
     };
