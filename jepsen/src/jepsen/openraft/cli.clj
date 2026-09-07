@@ -10,6 +10,7 @@
              [db :as openraft-db]
              [generator :as openraft-generator]
              [harness :as harness]
+             [liveness :as liveness]
              [nemesis :as openraft-nemesis]
              [worker :as worker]
              [workload :as workload]]
@@ -58,7 +59,8 @@
                  :chaos)))
 
 (def cli-opts
-  [[nil "--api-port PORT" "OpenRaft application HTTP port."
+  [[nil "--liveness" "Run the fixed five-voter partial-network liveness test."]
+   [nil "--api-port PORT" "OpenRaft application HTTP port."
     :default 21001
     :parse-fn parse-long]
 
@@ -134,48 +136,64 @@
   (let [failure-state (harness/failure-state)
         database (openraft-db/db opts)
         workload (workload/workload opts)
+        roles (atom nil)
+        _ (when (and (:liveness opts)
+                     (not (= 5 (count (:nodes opts)) (count (set (:nodes opts))))))
+            (throw (ex-info "--liveness requires five distinct nodes" {})))
         nemesis-types (normalize-nemeses (:nemesis opts))
-        nemesis-package
-        (openraft-nemesis/compose-packages
-         failure-state
-         (mapv (fn [nemesis-type]
-                 (case nemesis-type
-                   :partition
-                   (partition/partition-package)
+        mode-config
+        (if (:liveness opts)
+          {:name "openraft partial-network liveness"
+           :nemesis-package (liveness/package roles)
+           :client (:client workload)
+           :generator (liveness/generator workload)}
+          (let [nemesis-package
+                (openraft-nemesis/compose-packages
+                 failure-state
+                 (mapv (fn [nemesis-type]
+                         (case nemesis-type
+                           :partition
+                           (partition/partition-package)
 
-                   :process
-                   (process/process-package database)
+                           :process
+                           (process/process-package database)
 
-                   :pause
-                   (process/pause-package database)
+                           :pause
+                           (process/pause-package database)
 
-                   :membership
-                   (membership/membership-package database opts)
+                           :membership
+                           (membership/membership-package database opts)
 
-                   :clock
-                   (clock/clock-package)
+                           :clock
+                           (clock/clock-package)
 
-                   :packet
-                   (let [packet-mode (:packet-mode opts)]
-                     (when (and (= [:packet] nemesis-types)
-                                (nil? packet-mode))
-                       (throw (ex-info
-                               "--packet-mode is required for Packet Nemesis"
-                               {:nemesis nemesis-types})))
-                     (packet/packet-package database packet-mode))))
-               nemesis-types))]
+                           :packet
+                           (let [packet-mode (:packet-mode opts)]
+                             (when (and (= [:packet] nemesis-types)
+                                        (nil? packet-mode))
+                               (throw (ex-info
+                                       "--packet-mode is required for Packet Nemesis"
+                                       {:nemesis nemesis-types})))
+                             (packet/packet-package database packet-mode))))
+                       nemesis-types))]
+            {:name (str "openraft linearizable registers "
+                        (str/join "," (map name nemesis-types)))
+             :nemesis-package nemesis-package
+             :client (:client workload)
+             :generator (lifecycle-generator failure-state
+                                             (:time-limit opts)
+                                             workload
+                                             nemesis-package)}))
+        nemesis-package (:nemesis-package mode-config)]
     (merge tests/noop-test
            opts
-           {:name (str "openraft linearizable registers "
-                       (str/join "," (map name nemesis-types)))
+           {:name (:name mode-config)
             :db database
-            :client (worker/wrap-client failure-state (:client workload))
+            :client (worker/wrap-client failure-state
+                                        (:client mode-config))
             :nemesis (worker/wrap-nemesis failure-state
                                           (:nemesis nemesis-package))
-            :generator (lifecycle-generator failure-state
-                                            (:time-limit opts)
-                                            workload
-                                            nemesis-package)
+            :generator (:generator mode-config)
             :checker (openraft-checker/reject-checker-exceptions
                       (openraft-checker/reject-harness-failures
                        failure-state
