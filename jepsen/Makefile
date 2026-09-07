@@ -18,6 +18,10 @@ ifneq ($(PACKET_MODE),)
 override ARGS += --packet-mode $(PACKET_MODE)
 endif
 
+ifeq ($(LIVENESS),1)
+override ARGS += --liveness
+endif
+
 app-lint:
 	cargo fmt --check --manifest-path $(APP_MANIFEST)
 	cargo clippy --no-deps --manifest-path $(APP_MANIFEST) --all-targets -- -D warnings

@@ -126,3 +126,44 @@ jobs:
       - name: Cleanup | Docker
         if: always()
         run: make -C jepsen down
+
+  liveness:
+    name: Jepsen Liveness
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+
+      - name: Test | Liveness
+        run: make -C jepsen jepsen LIVENESS=1
+
+      - name: Debug | Docker logs
+        if: failure()
+        run: |
+          docker compose -f jepsen/docker/docker-compose.yml logs --no-color \
+            | tee jepsen/docker-compose.log
+
+      - name: Results | Upload Liveness results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jepsen-results-liveness
+          path: jepsen/store/**/results.edn
+          if-no-files-found: ignore
+
+      - name: Debug | Upload Liveness diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jepsen-debug-liveness
+          path: |
+            jepsen/store/
+            jepsen/docker-compose.log
+          if-no-files-found: ignore
+
+      - name: Cleanup | Docker
+        if: always()
+        run: make -C jepsen down
