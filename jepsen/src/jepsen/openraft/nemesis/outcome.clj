@@ -1,6 +1,11 @@
 (ns jepsen.openraft.nemesis.outcome)
 
-(defn target-category [node-count target-count]
+(defn target-category
+  "Classifies targets as :one, :minority, :majority, or :all.
+
+  :one takes precedence over :all; :minority means target-count is no greater
+  than (quot (dec node-count) 2)."
+  [node-count target-count]
   (cond
     (= 1 target-count) :one
     (= node-count target-count) :all
