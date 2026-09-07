@@ -365,7 +365,7 @@
                                recovered?))
          :bump-installed (boolean bump?)
          :strobe-installed (boolean strobe?)
-         :observed-modes observed-modes
+         :observed-modes (vec (sort observed-modes))
          :observed-target-categories
          (vec (sort observed-target-categories))
          :rate-directions (vec (sort rate-directions))
