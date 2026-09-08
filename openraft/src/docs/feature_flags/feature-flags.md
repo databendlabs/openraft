@@ -54,7 +54,7 @@ let config = Config {
 ## feature-flag `compat`
 
 Enables compatibility supporting types.
-
+Implies `serde`, since these types are serialization shims.
 
 ## feature-flag `loosen-follower-log-revert` (removed)
 

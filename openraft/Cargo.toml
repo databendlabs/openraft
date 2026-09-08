@@ -95,7 +95,7 @@ single-term-leader = []
 type-alias = []
 
 # Provide basic compatible types
-compat = []
+compat = ["serde"]
 
 # DEPRECATED: This feature is removed since 0.10.0.
 #
