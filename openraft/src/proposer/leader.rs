@@ -260,6 +260,29 @@ where
         self.last_quorum_acked_time().is_some_and(|acked| now < acked + leader_lease)
     }
 
+    /// Return whether heartbeat broadcast must be suppressed.
+    ///
+    /// Heartbeats renew the followers' leader leases, and a follower whose lease is
+    /// fresh rejects vote requests. A leader that has not been acknowledged by a
+    /// quorum for more than one extra `leader_lease` beyond the lease expiry has
+    /// long lost quorum support: broadcasting heartbeats then would indefinitely
+    /// renew the leases of still reachable followers and block a connected quorum
+    /// from electing a new leader.
+    ///
+    /// Suppressing heartbeats only after the lease has been expired for a full
+    /// `leader_lease` keeps the normal-case behavior: a transient lapse shorter
+    /// than one lease is healed by the next heartbeat round, without an election.
+    /// A leader with no quorum acknowledgement at all, such as a newly established
+    /// leader, never suppresses heartbeats.
+    pub(crate) fn should_suppress_heartbeat(&self, leader_lease: Duration) -> bool {
+        if self.is_self_quorum() {
+            return false;
+        }
+
+        let now = C::now();
+        self.last_quorum_acked_time().is_some_and(|acked| now >= acked + leader_lease + leader_lease)
+    }
+
     /// Return whether this leader alone constitutes a quorum.
     pub(crate) fn is_self_quorum(&self) -> bool {
         if self.clock_progress.voter_count() != 1 {

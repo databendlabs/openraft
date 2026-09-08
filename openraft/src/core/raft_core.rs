@@ -432,8 +432,11 @@ where
             return;
         }
 
+        // A ReadIndex read confirms leadership by its own heartbeat round: it is a
+        // client-driven, explicit quorum check, not automatic lease maintenance, so
+        // it bypasses the heartbeat suppression.
         if linearizer_option.heartbeat_if_quorum_ack_stale {
-            lh.send_heartbeat(true);
+            lh.force_send_heartbeat(true);
         }
 
         let deadline = now + wait_timeout;
@@ -680,8 +683,11 @@ where
     }
 
     /// Send a heartbeat message to every follower/learners.
+    ///
+    /// An explicitly requested heartbeat bypasses the quorum-ack lease gate: it is
+    /// the recovery channel for a leader whose lease has expired.
     #[tracing::instrument(level = "debug", skip_all, fields(id = display(&self.id)))]
-    pub(crate) fn send_heartbeat(&mut self, emitter: impl fmt::Display) -> bool {
+    pub(crate) fn send_heartbeat(&mut self, emitter: impl fmt::Display, force: bool) -> bool {
         tracing::debug!("send heartbeat, now: {}", C::now().display());
 
         let Some(mut lh) = self.engine.try_leader_handler().ok() else {
@@ -702,7 +708,16 @@ where
             return false;
         }
 
-        lh.send_heartbeat(false);
+        let sent = if force {
+            lh.force_send_heartbeat(false);
+            true
+        } else {
+            lh.send_heartbeat(false)
+        };
+
+        if !sent {
+            return false;
+        }
 
         // Record heartbeat to external metrics recorder
         if let Some(r) = &self.metrics_recorder {
@@ -1838,7 +1853,7 @@ where
                 }
             }
             ExternalCommand::Heartbeat => {
-                self.send_heartbeat("ExternalCommand");
+                self.send_heartbeat("ExternalCommand", true);
             }
             ExternalCommand::Snapshot => {
                 self.trigger_snapshot();
@@ -2019,7 +2034,7 @@ where
             && now >= t
         {
             if self.runtime_config.enable_heartbeat.load(Ordering::Relaxed) {
-                self.send_heartbeat("tick");
+                self.send_heartbeat("tick", false);
             }
 
             // Install next heartbeat

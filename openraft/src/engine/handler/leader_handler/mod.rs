@@ -126,8 +126,43 @@ where
         Some(log_ids)
     }
 
+    /// Send a heartbeat to every follower/learner, unless heartbeat broadcast is
+    /// suppressed.
+    ///
+    /// Heartbeats keep the followers' leader leases alive, and a follower whose
+    /// lease is fresh rejects vote requests. Once this Leader has been without
+    /// quorum acknowledgement for more than one extra `leader_lease`, broadcasting
+    /// heartbeats would indefinitely renew the leases of still reachable followers
+    /// and block a connected quorum from electing a new leader (issue #2080).
+    /// See: [`Leader::should_suppress_heartbeat`].
+    ///
+    /// Replication of the pending log backlog is not gated: it is finite, and it
+    /// provides the recovery channel once quorum communication is restored.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn send_heartbeat(&mut self, bypass_min_interval: bool) {
+    pub(crate) fn send_heartbeat(&mut self, bypass_min_interval: bool) -> bool {
+        if self.leader.should_suppress_heartbeat(self.config.timer_config.leader_lease) {
+            tracing::info!(
+                "skip broadcasting heartbeat: quorum-ack lease expired for more than one leader_lease: vote: {}, last_quorum_acked: {:?}",
+                self.leader.committed_vote_ref(),
+                self.leader.last_quorum_acked_time(),
+            );
+            return false;
+        }
+
+        self.force_send_heartbeat(bypass_min_interval);
+        true
+    }
+
+    /// Broadcast a heartbeat unconditionally, even when the quorum-ack lease has
+    /// expired.
+    ///
+    /// This is the escape hatch for an explicitly requested heartbeat, such as
+    /// [`Trigger::heartbeat()`]: a successful ack renews the quorum-ack lease and
+    /// restores the ability to propose and to broadcast heartbeats.
+    ///
+    /// [`Trigger::heartbeat()`]: crate::raft::trigger::Trigger::heartbeat
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn force_send_heartbeat(&mut self, bypass_min_interval: bool) {
         let membership_log_id = self.state.membership_state.effective().log_id();
         let session_id = ReplicationSessionId::new(self.leader.committed_vote.clone(), membership_log_id.clone());
 

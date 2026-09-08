@@ -51,6 +51,10 @@ fn eng() -> Engine<UTConfig> {
 #[test]
 fn test_leader_send_heartbeat() -> anyhow::Result<()> {
     let mut eng = eng();
+    let now = UTConfig::<()>::now();
+    eng.leader.as_mut().unwrap().update_clock(&2, now);
+    eng.leader.as_mut().unwrap().update_clock(&3, now);
+
     eng.output.take_commands();
 
     // A heartbeat is a normal AppendEntries RPC if there are pending data to send.
@@ -83,6 +87,48 @@ fn test_leader_send_heartbeat() -> anyhow::Result<()> {
             eng.output.take_commands()
         );
     }
+
+    Ok(())
+}
+
+#[test]
+fn test_leader_send_heartbeat_suppressed_by_expired_quorum_ack_lease() -> anyhow::Result<()> {
+    // A leader that has been without quorum acknowledgement for more than one
+    // extra leader_lease must not broadcast heartbeats.
+    let mut eng = eng();
+    let lease = eng.config.timer_config.leader_lease;
+    let stale_ack = UTConfig::<()>::now() - lease - lease - Duration::from_millis(1);
+    let leader = eng.leader.as_mut().unwrap();
+    for node_id in [2, 3] {
+        leader.clock_progress.update_entry_with(&node_id, |entry| entry.val = Some(stale_ack));
+    }
+    eng.output.take_commands();
+
+    let sent = eng.try_leader_handler()?.send_heartbeat(false);
+
+    assert!(!sent);
+    assert_eq!(0, eng.output.take_commands().len());
+
+    Ok(())
+}
+
+#[test]
+fn test_leader_send_heartbeat_not_suppressed_within_one_extra_lease() -> anyhow::Result<()> {
+    // A transient lease lapse shorter than one extra leader_lease is healed by the
+    // next heartbeat round: the heartbeat is not suppressed.
+    let mut eng = eng();
+    let lease = eng.config.timer_config.leader_lease;
+    let stale_ack = UTConfig::<()>::now() - lease;
+    let leader = eng.leader.as_mut().unwrap();
+    for node_id in [2, 3] {
+        leader.clock_progress.update_entry_with(&node_id, |entry| entry.val = Some(stale_ack));
+    }
+    eng.output.take_commands();
+
+    let sent = eng.try_leader_handler()?.send_heartbeat(false);
+
+    assert!(sent);
+    assert_eq!(1, eng.output.take_commands().len());
 
     Ok(())
 }

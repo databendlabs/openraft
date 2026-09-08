@@ -26,12 +26,43 @@ request back to the same leader. The lease duration is
 
 [`ForwardToLeader`]: crate::errors::ForwardToLeader
 
+## Heartbeats
+
+Automatic heartbeat broadcast stops only after the quorum lease has been
+expired continuously for one extra `leader_lease`:
+
+```text
+now >= last_quorum_acked + leader_lease + leader_lease
+```
+
+A heartbeat renews the followers' leader leases, and a follower whose lease is
+fresh rejects vote requests. A leader that keeps broadcasting heartbeats after
+long losing quorum support would indefinitely renew the leases of still
+reachable followers, and a connected quorum that keeps hearing such an old
+leader could never elect a new leader. Suppressing heartbeats only after a
+full extra lease keeps the normal case intact: a transient lapse shorter than
+one lease is healed by the next heartbeat round, without an election. A leader
+with no quorum acknowledgement at all, such as a newly established leader,
+never suppresses heartbeats.
+See: [Raft does not Guarantee Liveness in the face of Network
+Faults](https://decentralizedthoughts.github.io/2020-12-12-raft-liveness-full-omission/).
+
+An explicitly requested heartbeat is not suppressed: `Trigger::heartbeat()` and
+the heartbeat round of a ReadIndex read are client- or operator-driven quorum
+checks, and a successful acknowledgement renews the lease and restores
+heartbeat broadcast.
+
+Replication of already accepted log entries is not gated: that traffic is
+bounded, because no new entry can be proposed while the lease is expired, and
+it provides the recovery channel once quorum communication is restored.
+
 ## Recovery
 
 Lease expiry does not change the leader's committed vote or
-[`ServerState`][]. The leader continues sending heartbeats and replicating
-existing logs. A later quorum acknowledgement renews the lease, and the leader
-automatically resumes accepting proposals.
+[`ServerState`][]. The leader stops broadcasting automatic heartbeats once the
+lease has been expired for one extra `leader_lease` and continues replicating
+existing logs. A later quorum acknowledgement renews the lease, heartbeat
+broadcast resumes, and the leader automatically resumes accepting proposals.
 
 If another leader has already been elected, quorum intersection prevents the
 old leader from renewing its lease. A voter in the new leader's quorum rejects
@@ -69,8 +100,8 @@ from the leader's current authority to accept new proposals:
 
 | Behavior | Conventional CheckQuorum | OpenRaft |
 |----------|--------------------------|----------|
-| Lease expires | Become follower | Reject new proposals |
-| Heartbeats and replication | Stop | Continue |
+| Lease expires | Become follower | Reject new proposals; stop automatic heartbeats after one extra lease |
+| Heartbeats and replication | Stop | Backlog replication continues; explicit heartbeat triggers still work |
 | Pending requests | Usually failed | Remain pending |
 | Quorum communication recovers | Run a new election | Renew the lease |
 
