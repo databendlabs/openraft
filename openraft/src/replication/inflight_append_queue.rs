@@ -13,8 +13,8 @@ use crate::type_config::alias::LogIdOf;
 ///
 /// When an AppendEntries request is sent, its metadata is pushed to this queue.
 /// When a response arrives with a matching log id, all requests up to and including
-/// that log id are drained, and the sending time of the last drained request is returned
-/// for RTT calculation.
+/// that log id are drained. The sending time of the last fully or partially acknowledged
+/// request is returned for RTT calculation.
 #[derive(Clone)]
 pub(crate) struct InflightAppendQueue<C>
 where C: RaftTypeConfig
@@ -72,9 +72,12 @@ where C: RaftTypeConfig
     }
 
     /// Removes all requests with `last_log_id <= matching` and returns
-    /// the sending time of the last removed request.
+    /// the sending time of the last fully or partially acknowledged request.
     ///
-    /// Returns `None` if no requests were removed.
+    /// A request with `prev_log_id < matching < last_log_id` contributes its sending time
+    /// but remains queued until its last log id is acknowledged.
+    ///
+    /// Returns `None` if no request is fully or partially acknowledged.
     pub(crate) fn drain_acked(&self, matching: &Option<LogIdOf<C>>) -> Option<InstantOf<C>> {
         let mut q = self.queue.lock().unwrap();
 
@@ -89,6 +92,9 @@ where C: RaftTypeConfig
             if matching >= &first.last_log_id {
                 last = Some(first.sending_time)
             } else {
+                if matching > &first.prev_log_id {
+                    last = Some(first.sending_time);
+                }
                 break;
             }
 
@@ -156,11 +162,65 @@ mod tests {
         q.push(None, Some(log_id(1, 1, 5)));
         q.push(Some(log_id(1, 1, 5)), Some(log_id(1, 1, 10)));
 
-        // matching=None is less than any log_id, so nothing is acked
+        // matching=None does not fully acknowledge either request.
         assert_eq!(q.drain_acked(&None), None);
-
-        // Queue should remain unchanged
         assert_eq!(q.queue.lock().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_drain_acked_inside_request() {
+        let q = InflightAppendQueue::<UTConfig>::new();
+        q.push(Some(log_id(1, 1, 0)), Some(log_id(1, 1, 10)));
+        q.push(Some(log_id(1, 1, 10)), Some(log_id(1, 1, 20)));
+
+        let expected_time = q.queue.lock().unwrap()[0].sending_time;
+
+        assert_eq!(q.drain_acked(&Some(log_id(1, 1, 5))), Some(expected_time));
+        assert_eq!(q.queue.lock().unwrap().len(), 2);
+
+        assert_eq!(q.drain_acked(&Some(log_id(1, 1, 10))), Some(expected_time));
+        assert_eq!(q.queue.lock().unwrap().len(), 1);
+        assert_eq!(q.queue.lock().unwrap()[0].last_log_id, Some(log_id(1, 1, 20)));
+        assert_eq!(q.drain_acked(&Some(log_id(1, 1, 10))), None);
+    }
+
+    #[test]
+    fn test_drain_acked_cumulative_partial() {
+        let q = InflightAppendQueue::<UTConfig>::new();
+        q.push(Some(log_id(1, 1, 0)), Some(log_id(1, 1, 10)));
+        q.push(Some(log_id(1, 1, 10)), Some(log_id(1, 1, 20)));
+
+        let expected_time = {
+            let mut queue = q.queue.lock().unwrap();
+            let expected_time = queue[0].sending_time + std::time::Duration::from_secs(1);
+            queue[1].sending_time = expected_time;
+            expected_time
+        };
+
+        assert_eq!(q.drain_acked(&Some(log_id(1, 1, 15))), Some(expected_time));
+        let deque = q.queue.lock().unwrap();
+        assert_eq!(deque.len(), 1);
+        assert_eq!(deque[0].last_log_id, Some(log_id(1, 1, 20)));
+    }
+
+    #[test]
+    fn test_drain_acked_same_last_log_id() {
+        let q = InflightAppendQueue::<UTConfig>::new();
+        q.push(None, Some(log_id(1, 1, 10)));
+        q.push(Some(log_id(1, 1, 10)), Some(log_id(1, 1, 10)));
+        q.push(Some(log_id(1, 1, 10)), Some(log_id(1, 1, 20)));
+
+        let expected_time = {
+            let mut queue = q.queue.lock().unwrap();
+            let expected_time = queue[0].sending_time + std::time::Duration::from_secs(1);
+            queue[1].sending_time = expected_time;
+            expected_time
+        };
+
+        // Both requests ending at 10 are removed; the request ending at 20 remains.
+        assert_eq!(q.drain_acked(&Some(log_id(1, 1, 10))), Some(expected_time));
+        assert_eq!(q.queue.lock().unwrap().len(), 1);
+        assert_eq!(q.queue.lock().unwrap()[0].last_log_id, Some(log_id(1, 1, 20)));
     }
 
     #[test]
