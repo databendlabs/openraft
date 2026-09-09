@@ -399,7 +399,7 @@ where
                 Err(append_err) => {
                     match append_err {
                         StreamAppendError::Conflict(conflict_log_id) => {
-                            if let Some(sending_time) = inflight_queue.sending_time_for_conflict(&conflict_log_id) {
+                            if let Some(sending_time) = inflight_queue.drain_acked(&Some(conflict_log_id.clone())) {
                                 self.notify_heartbeat_progress(sending_time).await;
                             }
 
