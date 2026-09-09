@@ -53,6 +53,17 @@ where C: RaftTypeConfig
             .map(|inflight| inflight.sending_time)
     }
 
+    /// Returns the sending time of the request containing a partial success.
+    ///
+    /// A strict partial success satisfies `prev_log_id <= matching < last_log_id`.
+    pub(crate) fn sending_time_for_partial_success(&self, matching: &Option<LogIdOf<C>>) -> Option<InstantOf<C>> {
+        let q = self.queue.lock().unwrap();
+
+        q.iter()
+            .find(|inflight| &inflight.prev_log_id <= matching && matching < &inflight.last_log_id)
+            .map(|inflight| inflight.sending_time)
+    }
+
     /// Removes all requests with `last_log_id <= matching` and returns
     /// the sending time of the last removed request.
     ///
@@ -189,6 +200,31 @@ mod tests {
 
         assert_eq!(q.sending_time_for_conflict(&log_id(1, 1, 10)), Some(expected));
         assert_eq!(q.sending_time_for_conflict(&log_id(1, 1, 30)), None);
+        assert_eq!(q.queue.lock().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_sending_time_for_partial_success() {
+        let q = InflightAppendQueue::<UTConfig>::new();
+        q.push(None, Some(log_id(1, 1, 5)));
+        q.push(Some(log_id(1, 1, 5)), Some(log_id(1, 1, 10)));
+
+        let expected = q.queue.lock().unwrap()[1].sending_time;
+
+        assert_eq!(
+            q.sending_time_for_partial_success(&Some(log_id(1, 1, 5))),
+            Some(expected)
+        );
+        assert_eq!(
+            q.sending_time_for_partial_success(&Some(log_id(1, 1, 8))),
+            Some(expected)
+        );
+
+        // A response matching the request's last log id is a full success.
+        assert_eq!(q.sending_time_for_partial_success(&Some(log_id(1, 1, 10))), None);
+        assert_eq!(q.sending_time_for_partial_success(&Some(log_id(1, 1, 20))), None);
+
+        // Looking up a sending time does not consume the queue.
         assert_eq!(q.queue.lock().unwrap().len(), 2);
     }
 }

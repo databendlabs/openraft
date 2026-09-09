@@ -52,6 +52,7 @@ use crate::progress::inflight_id::InflightId;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::StreamAppendError;
 use crate::raft::StreamAppendResult;
+use crate::raft::StreamAppendSuccess;
 use crate::raft_state::IOId;
 use crate::replication::backoff_state::BackoffState;
 use crate::replication::event_watcher::EventWatcher;
@@ -284,7 +285,8 @@ where
 
     /// Stream `payload` to the target and consume the responses.
     ///
-    /// Returns whether the response stream was consumed to its end; `false` means the caller
+    /// Returns whether the session completed successfully. A strict partial success completes the
+    /// session early because later pipelined requests are no longer valid. `false` means the caller
     /// should back off and open a new stream, leaving `payload` unacknowledged. An `Err` is fatal
     /// and ends the task.
     async fn run_stream_session(
@@ -336,7 +338,7 @@ where
             return Err(err);
         }
 
-        // Response stream is successfully exhausted.
+        // The response stream completed without an RPC or append error.
         Ok(res.is_ok())
     }
 
@@ -385,7 +387,7 @@ where
             };
 
             match append_res {
-                Ok(matching) => {
+                Ok(StreamAppendSuccess::Full(matching)) => {
                     let last_acked_sending_time = inflight_queue.drain_acked(&matching);
 
                     if let Some(last) = last_acked_sending_time {
@@ -395,6 +397,24 @@ where
                     self.replication_progress.remote_matched = matching.clone();
 
                     self.notify_progress(ReplicationResult(Ok(matching))).await;
+                }
+                Ok(StreamAppendSuccess::Partial(matching)) => {
+                    let sending_time = inflight_queue.sending_time_for_partial_success(&matching);
+                    debug_assert!(
+                        sending_time.is_some(),
+                        "partial success must match an in-flight request"
+                    );
+
+                    if let Some(sending_time) = sending_time {
+                        self.notify_heartbeat_progress(sending_time).await;
+                    }
+
+                    self.replication_progress.remote_matched = matching.clone();
+                    self.notify_progress(ReplicationResult(Ok(matching))).await;
+
+                    // A partial success invalidates the remaining pipelined requests. End this
+                    // stream so the next replication session resumes after `matching`.
+                    return Ok(());
                 }
                 Err(append_err) => {
                     match append_err {

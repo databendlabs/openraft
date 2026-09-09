@@ -101,12 +101,13 @@ message AppendEntriesResponse {
   // For StreamAppend (pipeline replication), `last_log_id` carries the conflict log id.
   bool conflict = 2;
 
-  // If `conflict = false`, the last log id the follower accepted from this request:
-  // - None: all input entries were accepted and persisted.
-  // - Some: partial success; only entries up to and including this id were accepted.
-  //
-  // If `conflict = true` in StreamAppend, this is the conflict log id.
+  // The last log id accepted by a successful StreamAppend request, or the conflict log id when
+  // `conflict = true`.
   LogId last_log_id = 3;
+
+  // Only a prefix ending at `last_log_id` was accepted. The StreamAppend stream ends after this
+  // response so the leader can resume from the matching log id.
+  bool partial_success = 4;
 }
 
 // The first chunk of snapshot transmission, which contains the snapshot meta.

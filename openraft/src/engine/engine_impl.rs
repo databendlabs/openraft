@@ -36,6 +36,7 @@ use crate::proposer::LeaderState;
 use crate::proposer::leader_state::CandidateState;
 use crate::raft::LogSegment;
 use crate::raft::SnapshotResponse;
+use crate::raft::StreamAppendSuccess;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft::stream_append::StreamAppendResult;
@@ -639,7 +640,8 @@ where
             self.state.last_log_id().display()
         );
 
-        let stream_result: StreamAppendResult<C> = self.append_entries(vote, segment).map_err(Into::into);
+        let stream_result: StreamAppendResult<C> =
+            self.append_entries(vote, segment).map(StreamAppendSuccess::Full).map_err(Into::into);
 
         let condition = if stream_result.is_ok() {
             Some(Condition::IOFlushed {

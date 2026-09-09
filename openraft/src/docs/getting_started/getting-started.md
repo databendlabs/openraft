@@ -271,6 +271,10 @@ For streaming AppendEntries, `hard_ttl()` is not a lifetime limit for the whole
 stream. Use `soft_ttl()` for setup, idle timeout, keepalive, or per-response
 deadline policy to detect a stuck stream.
 
+A streaming transport must preserve the [`StreamAppendResult`] success variant as
+well as its matching log id. `Full(Some(id))` and `Partial(Some(id))` have different
+control-flow semantics and cannot be encoded as the log id alone.
+
 Here is the list of methods that need to be implemented for the [`RaftNetworkV2`] trait:
 
 
@@ -587,6 +591,7 @@ and links the trait, protocol page, or test suite that defines it.
 [`Raft::install_full_snapshot()`]:      `crate::Raft::install_full_snapshot`
 
 [`AppendEntriesRequest`]:               `crate::raft::AppendEntriesRequest`
+[`StreamAppendResult`]:                 `crate::raft::StreamAppendResult`
 [`VoteRequest`]:                        `crate::raft::VoteRequest`
 
 [`RaftTypeConfig`]:                     `crate::RaftTypeConfig`

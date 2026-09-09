@@ -508,7 +508,7 @@ where C: RaftTypeConfig
         match self {
             Respond::Vote(vs) => write!(f, "Vote {}", vs.value()),
             Respond::AppendEntries(vs) => match vs.value() {
-                Ok(log_id) => write!(f, "AppendEntries Ok({})", log_id.display()),
+                Ok(success) => write!(f, "AppendEntries Ok({})", success),
                 Err(e) => write!(f, "AppendEntries Err({})", e),
             },
             Respond::InstallFullSnapshot(vs) => write!(f, "InstallFullSnapshot {}", vs.value()),

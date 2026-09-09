@@ -1,9 +1,11 @@
 use std::fmt;
 
 use display_more::DisplayOptionExt;
+use openraft_macros::since;
 
 use crate::RaftTypeConfig;
 use crate::raft::StreamAppendError;
+use crate::raft::StreamAppendSuccess;
 use crate::raft::stream_append::StreamAppendResult;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
@@ -30,11 +32,12 @@ pub enum AppendEntriesResponse<C: RaftTypeConfig> {
     ///
     /// ### Caution
     ///
-    /// The returned matching log id must be **greater than or equal to** the first log
-    /// id([`AppendEntriesRequest::prev_log_id`]) of the entries to send. If no RPC reply is
-    /// received, [`RaftNetworkV2::append_entries`] must return an [`RPCError`] to inform
-    /// Openraft that the first log id([`AppendEntriesRequest::prev_log_id`]) may not match on
-    /// the remote target node.
+    /// The returned matching log id must be between
+    /// [`AppendEntriesRequest::prev_log_id`] and the request's last log id, inclusive. A matching
+    /// log id equal to the request's last log id is normalized to a full success by the stream
+    /// adapter. If no RPC reply is received, [`RaftNetworkV2::append_entries`] must return an
+    /// [`RPCError`] to inform Openraft that the first log id may not match on the remote target
+    /// node.
     ///
     /// [`RPCError`]: crate::errors::RPCError
     /// [`RaftNetworkV2::append_entries`]: crate::network::RaftNetworkV2::append_entries
@@ -61,16 +64,6 @@ where C: RaftTypeConfig
         matches!(*self, AppendEntriesResponse::Success)
     }
 
-    /// Returns the partial success log id if this is a `PartialSuccess` response.
-    ///
-    /// Returns `None` for `Success`, `Conflict`, or `HigherVote` responses.
-    pub(crate) fn get_partial_success(&self) -> Option<&Option<LogIdOf<C>>> {
-        match self {
-            AppendEntriesResponse::PartialSuccess(log_id) => Some(log_id),
-            _ => None,
-        }
-    }
-
     /// Returns true if the response indicates a log conflict.
     pub fn is_conflict(&self) -> bool {
         matches!(*self, AppendEntriesResponse::Conflict)
@@ -80,25 +73,36 @@ where C: RaftTypeConfig
     ///
     /// Arguments:
     /// - `prev_log_id`: The prev_log_id from the request, used for Conflict errors.
-    /// - `last_log_id`: The last_log_id of the sent entries, used for Success.
+    /// - `last_log_id`: The last_log_id of the sent entries, used for Success and for normalizing a
+    ///   complete PartialSuccess response.
+    #[since(version = "0.10.0", change = "stream success distinguishes full and partial")]
     pub fn into_stream_result(
         self,
         prev_log_id: Option<LogIdOf<C>>,
         last_log_id: Option<LogIdOf<C>>,
     ) -> StreamAppendResult<C> {
         match self {
-            AppendEntriesResponse::Success => Ok(last_log_id),
-            AppendEntriesResponse::PartialSuccess(log_id) => Ok(log_id),
+            AppendEntriesResponse::Success => Ok(StreamAppendSuccess::Full(last_log_id)),
+            AppendEntriesResponse::PartialSuccess(log_id) if log_id == last_log_id => {
+                Ok(StreamAppendSuccess::Full(log_id))
+            }
+            AppendEntriesResponse::PartialSuccess(log_id) => {
+                debug_assert!(prev_log_id <= log_id && log_id < last_log_id);
+                Ok(StreamAppendSuccess::Partial(log_id))
+            }
             AppendEntriesResponse::Conflict => Err(StreamAppendError::Conflict(prev_log_id.unwrap())),
             AppendEntriesResponse::HigherVote(vote) => Err(StreamAppendError::HigherVote(vote)),
         }
     }
 }
 
-impl<C: RaftTypeConfig> From<StreamAppendResult<C>> for AppendEntriesResponse<C> {
+impl<C> From<StreamAppendResult<C>> for AppendEntriesResponse<C>
+where C: RaftTypeConfig
+{
     fn from(r: StreamAppendResult<C>) -> Self {
         match r {
-            Ok(_) => AppendEntriesResponse::Success,
+            Ok(StreamAppendSuccess::Full(_)) => AppendEntriesResponse::Success,
+            Ok(StreamAppendSuccess::Partial(log_id)) => AppendEntriesResponse::PartialSuccess(log_id),
             Err(StreamAppendError::Conflict(_)) => AppendEntriesResponse::Conflict,
             Err(StreamAppendError::HigherVote(v)) => AppendEntriesResponse::HigherVote(v),
         }
@@ -117,5 +121,37 @@ where C: RaftTypeConfig
             AppendEntriesResponse::HigherVote(vote) => write!(f, "Higher vote, {}", vote),
             AppendEntriesResponse::Conflict => write!(f, "Conflict"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::testing::UTConfig;
+    use crate::engine::testing::log_id;
+
+    #[test]
+    fn test_into_stream_result_preserves_success_kind() {
+        assert_eq!(
+            AppendEntriesResponse::<UTConfig>::Success.into_stream_result(None, Some(log_id(1, 1, 10))),
+            Ok(StreamAppendSuccess::Full(Some(log_id(1, 1, 10))))
+        );
+
+        assert_eq!(
+            AppendEntriesResponse::<UTConfig>::PartialSuccess(Some(log_id(1, 1, 8)))
+                .into_stream_result(Some(log_id(1, 1, 5)), Some(log_id(1, 1, 10))),
+            Ok(StreamAppendSuccess::Partial(Some(log_id(1, 1, 8))))
+        );
+
+        assert_eq!(
+            AppendEntriesResponse::<UTConfig>::PartialSuccess(Some(log_id(1, 1, 10)))
+                .into_stream_result(Some(log_id(1, 1, 5)), Some(log_id(1, 1, 10))),
+            Ok(StreamAppendSuccess::Full(Some(log_id(1, 1, 10))))
+        );
+
+        assert_eq!(
+            AppendEntriesResponse::<UTConfig>::PartialSuccess(None).into_stream_result(None, Some(log_id(1, 1, 10))),
+            Ok(StreamAppendSuccess::Partial(None))
+        );
     }
 }

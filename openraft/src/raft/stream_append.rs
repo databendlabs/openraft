@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use futures_util::Stream;
 use futures_util::StreamExt;
+use openraft_macros::since;
 
 use crate::AsyncRuntime;
 use crate::OptionalSend;
@@ -12,15 +13,16 @@ use crate::core::raft_msg::RaftMsg;
 use crate::errors::Fatal;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::StreamAppendError;
+use crate::raft::StreamAppendSuccess;
 use crate::raft::raft_inner::RaftInner;
-use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::async_runtime::MpscReceiver;
 use crate::type_config::async_runtime::MpscSender;
 use crate::type_config::util::TypeConfigExt;
 
 /// Result type for stream append operations.
-pub type StreamAppendResult<C> = Result<Option<LogIdOf<C>>, StreamAppendError<C>>;
+#[since(version = "0.10.0", change = "stream success distinguishes full and partial")]
+pub type StreamAppendResult<C> = Result<StreamAppendSuccess<C>, StreamAppendError<C>>;
 
 const PIPELINE_BUFFER_SIZE: usize = 64;
 

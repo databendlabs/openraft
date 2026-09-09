@@ -54,6 +54,7 @@ pub use message::LogSegment;
 pub use message::Precondition;
 pub use message::SnapshotResponse;
 pub use message::StreamAppendError;
+pub use message::StreamAppendSuccess;
 pub use message::TransferLeaderError;
 pub use message::TransferLeaderRequest;
 pub use message::TransferLeaderResponse;
@@ -932,7 +933,8 @@ where
     /// ## Output
     ///
     /// The output stream emits:
-    /// - `Ok(log_id)` when logs are successfully flushed
+    /// - `Ok(StreamAppendSuccess::Full(log_id))` when the complete request is flushed
+    /// - `Ok(StreamAppendSuccess::Partial(log_id))` when only a prefix is flushed
     /// - `Err(e)` when an error occurs, which terminates the stream
     ///
     /// ## Pinning
@@ -964,7 +966,7 @@ where
     ///
     /// while let Some(result) = output_stream.next().await {
     ///     match result {
-    ///         Ok(Ok(log_id)) => println!("Flushed: {:?}", log_id),
+    ///         Ok(Ok(success)) => println!("Flushed: {:?}", success),
     ///         Ok(Err(err)) => {
     ///             println!("Append error: {}", err);
     ///             break;
@@ -976,6 +978,7 @@ where
     ///     }
     /// }
     /// ```
+    #[since(version = "0.10.0", change = "stream success distinguishes full and partial")]
     #[since(version = "0.10.0", change = "stream item contains Fatal")]
     #[since(version = "0.10.0")]
     pub fn stream_append<S>(
