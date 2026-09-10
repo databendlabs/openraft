@@ -112,6 +112,7 @@ pub struct MemLogStore {
     committed: RwLock<Option<LogIdOf<TypeConfig>>>,
     log: RwLock<BTreeMap<u64, String>>,
     vote: RwLock<Option<Vote<MemLeaderId>>>,
+    locally_retired_for: RwLock<Option<MemLeaderId>>,
 }
 
 impl MemLogStore {
@@ -121,6 +122,7 @@ impl MemLogStore {
             committed: RwLock::new(None),
             log: RwLock::new(BTreeMap::new()),
             vote: RwLock::new(None),
+            locally_retired_for: RwLock::new(None),
         }
     }
 }
@@ -175,6 +177,15 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
     async fn save_vote(&mut self, vote: &Vote<MemLeaderId>) -> Result<(), io::Error> {
         *self.vote.write().await = Some(*vote);
         Ok(())
+    }
+
+    async fn save_local_retirement(&mut self, retired_for: &MemLeaderId) -> Result<(), io::Error> {
+        *self.locally_retired_for.write().await = Some(*retired_for);
+        Ok(())
+    }
+
+    async fn read_local_retirement(&mut self) -> Result<Option<MemLeaderId>, io::Error> {
+        Ok(*self.locally_retired_for.read().await)
     }
 
     async fn save_committed(&mut self, committed: Option<LogIdOf<TypeConfig>>) -> Result<(), io::Error> {

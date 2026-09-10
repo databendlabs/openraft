@@ -1,5 +1,7 @@
 use std::fmt;
 
+use openraft_macros::since;
+
 use crate::RaftTypeConfig;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LogIdOf;
@@ -33,6 +35,7 @@ where C: RaftTypeConfig
 }
 
 /// The subject of a storage error, indicating what operation or component failed.
+#[since]
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum ErrorSubject<C>
@@ -43,6 +46,10 @@ where C: RaftTypeConfig
 
     /// HardState related error.
     Vote,
+
+    /// Error that happened when operating the local-retirement marker.
+    #[since(version = "0.10.0", change = "added local retirement storage-error subject")]
+    LocalRetirement,
 
     /// Error that happened when operating a series of log entries
     Logs,
@@ -179,6 +186,18 @@ where C: RaftTypeConfig
     /// Create an error for reading vote state.
     pub fn read_vote(source: C::ErrorSource) -> Self {
         Self::new(ErrorSubject::Vote, ErrorVerb::Read, source)
+    }
+
+    /// Create an error for writing the local-retirement marker.
+    #[since(version = "0.10.0", change = "added local retirement storage error")]
+    pub fn write_local_retirement(source: C::ErrorSource) -> Self {
+        Self::new(ErrorSubject::LocalRetirement, ErrorVerb::Write, source)
+    }
+
+    /// Create an error for reading the local-retirement marker.
+    #[since(version = "0.10.0", change = "added local retirement storage error")]
+    pub fn read_local_retirement(source: C::ErrorSource) -> Self {
+        Self::new(ErrorSubject::LocalRetirement, ErrorVerb::Read, source)
     }
 
     /// Create an error for applying a log entry to the state machine.

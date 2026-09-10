@@ -6,6 +6,10 @@ A RocksDB-backed implementation of
 This crate stores Raft log entries and metadata in the `logs` and `meta` RocksDB column families.
 The caller owns the database and passes an `Arc<rocksdb::DB>` to `RocksLogStore::new()`.
 
+The local-retirement marker is stored under its own key in the `meta` column family and the WAL is
+flushed synchronously before `save_local_retirement` returns. A database created by an older
+version has no such key and is read as having no marker.
+
 ## Performance
 
 Raft log workloads are mostly append-only, with occasional suffix truncation and prefix purging.

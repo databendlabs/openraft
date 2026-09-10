@@ -20,6 +20,7 @@ use openraft::OptionalSend;
 use openraft::RaftLogReader;
 use openraft::RaftTypeConfig;
 use openraft::alias::EntryOf;
+use openraft::alias::LeaderIdOf;
 use openraft::alias::LogIdOf;
 use openraft::alias::VoteOf;
 use openraft::entry::RaftEntry;
@@ -167,6 +168,21 @@ where C: RaftTypeConfig
         Ok(())
     }
 
+    async fn save_local_retirement(&mut self, retired_for: &LeaderIdOf<C>) -> Result<(), io::Error> {
+        self.put_meta::<meta::LocalRetirement>(retired_for)?;
+
+        // A local-retirement marker fences a Leader after restart, so it must be persisted before
+        // returning.
+        let db = self.db.clone();
+        C::spawn_blocking(move || db.flush_wal(true).map_err(|e| io::Error::other(e.to_string()))).await??;
+
+        Ok(())
+    }
+
+    async fn read_local_retirement(&mut self) -> Result<Option<LeaderIdOf<C>>, io::Error> {
+        self.get_meta::<meta::LocalRetirement>()
+    }
+
     async fn append<I>(&mut self, entries: I, callback: IOFlushed<C>) -> Result<(), io::Error>
     where I: IntoIterator<Item = EntryOf<C>> + Send {
         let mut batch = WriteBatch::default();
@@ -230,6 +246,7 @@ where C: RaftTypeConfig
 /// This sub mod defines the key-value pairs of these metadata.
 mod meta {
     use openraft::RaftTypeConfig;
+    use openraft::alias::LeaderIdOf;
     use openraft::alias::LogIdOf;
     use openraft::alias::VoteOf;
 
@@ -245,6 +262,7 @@ mod meta {
     }
 
     pub(crate) struct LastPurged {}
+    pub(crate) struct LocalRetirement {}
     pub(crate) struct Vote {}
 
     impl<C> StoreMeta<C> for LastPurged
@@ -258,6 +276,12 @@ mod meta {
     {
         const KEY: &'static str = "vote";
         type Value = VoteOf<C>;
+    }
+    impl<C> StoreMeta<C> for LocalRetirement
+    where C: RaftTypeConfig
+    {
+        const KEY: &'static str = "locally_retired_for";
+        type Value = LeaderIdOf<C>;
     }
 }
 

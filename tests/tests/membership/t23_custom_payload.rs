@@ -52,6 +52,7 @@ use openraft::storage::EntryResponder;
 use openraft::storage::IOFlushed;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
+use openraft::type_config::alias::LeaderIdOf;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -113,6 +114,7 @@ struct TestLogStoreInner {
     log: BTreeMap<u64, EntryOf<TestConfig>>,
     committed: Option<LogIdOf<TestConfig>>,
     vote: Option<VoteOf<TestConfig>>,
+    locally_retired_for: Option<LeaderIdOf<TestConfig>>,
 }
 
 impl RaftLogReader<TestConfig> for TestLogStore {
@@ -150,6 +152,15 @@ impl RaftLogStorage<TestConfig> for TestLogStore {
     async fn save_vote(&mut self, vote: &VoteOf<TestConfig>) -> Result<(), io::Error> {
         self.0.lock().unwrap().vote = Some(*vote);
         Ok(())
+    }
+
+    async fn save_local_retirement(&mut self, retired_for: &LeaderIdOf<TestConfig>) -> Result<(), io::Error> {
+        self.0.lock().unwrap().locally_retired_for = Some(*retired_for);
+        Ok(())
+    }
+
+    async fn read_local_retirement(&mut self) -> Result<Option<LeaderIdOf<TestConfig>>, io::Error> {
+        Ok(self.0.lock().unwrap().locally_retired_for)
     }
 
     async fn save_committed(&mut self, committed: Option<LogIdOf<TestConfig>>) -> Result<(), io::Error> {
