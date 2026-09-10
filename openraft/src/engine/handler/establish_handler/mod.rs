@@ -4,6 +4,7 @@ use crate::proposer::Candidate;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::proposer::LeaderState;
+use crate::type_config::TypeConfigExt;
 use crate::vote::raft_vote::RaftVoteExt;
 
 /// Establish a leader for the Engine, when Candidate finishes voting stage.
@@ -40,7 +41,10 @@ where C: RaftTypeConfig
             }
         }
 
-        let leader = candidate.into_leader();
+        let mut leader = candidate.into_leader();
+        if let Some(grace) = self.config.quorum_loss_grace {
+            leader.reset_quorum_loss_deadline(C::now(), self.config.timer_config.leader_lease, grace);
+        }
         *self.leader = Some(Box::new(leader));
 
         self.leader.as_mut().map(|x| x.as_mut())

@@ -53,12 +53,22 @@ fn eng() -> Engine<UTConfig> {
 #[test]
 fn test_become_leader() -> anyhow::Result<()> {
     let mut eng = eng();
+    let lease = Duration::from_millis(100);
+    let grace = Duration::from_millis(20);
+    eng.config.timer_config.leader_lease = lease;
+    eng.config.quorum_loss_grace = Some(grace);
+
+    let before = UTConfig::<()>::now();
     eng.vote_handler().become_leader();
+    let after = UTConfig::<()>::now();
 
     let leader = eng.leader.as_ref().unwrap();
     assert_eq!(leader.noop_log_id, log_id(2, 1, 0));
     assert_eq!(leader.last_log_id(), Some(&log_id(2, 1, 0)));
     assert_eq!(*leader.committed_vote_ref(), Vote::new(2, 1).to_committed());
+    let deadline = leader.quorum_loss_retire_at().unwrap();
+    assert!(deadline >= before + lease + grace);
+    assert!(deadline <= after + lease + grace);
 
     assert_eq!(ServerState::Leader, eng.state.server_state);
 

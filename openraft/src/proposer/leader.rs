@@ -81,6 +81,11 @@ where C: RaftTypeConfig
     ///
     /// [`docs::leader_lease`]: `crate::docs::protocol::replication::leader_lease`
     pub(crate) clock_progress: Valid<VecProgress<IdVal<C::NodeId, Option<InstantOf<C>>>, QS>>,
+
+    /// Earliest time at which continued quorum loss may retire this Leader locally.
+    ///
+    /// `None` means quorum-loss retirement is disabled for this Leader session.
+    quorum_loss_retire_at: Option<InstantOf<C>>,
 }
 
 impl<C, QS> Leader<C, QS>
@@ -155,6 +160,7 @@ where
             noop_log_id,
             progress: Valid::new(progress),
             clock_progress: Valid::new(clock_progress),
+            quorum_loss_retire_at: None,
         }
     }
 
@@ -252,12 +258,59 @@ where
 
     /// Return whether this leader's lease is valid.
     pub(crate) fn is_lease_valid(&self, leader_lease: Duration) -> bool {
+        self.is_lease_valid_at(C::now(), leader_lease)
+    }
+
+    /// Return whether this leader's lease is valid at `now`.
+    pub(crate) fn is_lease_valid_at(&self, now: InstantOf<C>, leader_lease: Duration) -> bool {
         if self.is_self_quorum() {
             return true;
         }
 
-        let now = C::now();
         self.last_quorum_acked_time().is_some_and(|acked| now < acked + leader_lease)
+    }
+
+    /// Reset the quorum-loss deadline for this Leader session or voter quorum.
+    pub(crate) fn reset_quorum_loss_deadline(&mut self, now: InstantOf<C>, leader_lease: Duration, grace: Duration) {
+        self.quorum_loss_retire_at = Some(now + leader_lease + grace);
+    }
+
+    /// Move the quorum-loss deadline forward when the quorum acknowledgement is still fresh.
+    ///
+    /// A newer acknowledgement may already be expired when its response arrives. It still
+    /// belongs in `clock_progress`, but must not postpone retirement.
+    pub(crate) fn try_extend_quorum_loss_deadline(
+        &mut self,
+        now: InstantOf<C>,
+        leader_lease: Duration,
+        grace: Duration,
+    ) -> bool {
+        let Some(current) = self.quorum_loss_retire_at.as_mut() else {
+            return false;
+        };
+        let Some(acked) = *self.clock_progress.quorum_accepted() else {
+            return false;
+        };
+
+        if now < acked + leader_lease {
+            let next = acked + leader_lease + grace;
+            if next > *current {
+                *current = next;
+                return true;
+            }
+        }
+
+        false
+    }
+
+    /// Return whether the quorum-loss deadline is due while quorum is still unavailable.
+    pub(crate) fn is_quorum_loss_retirement_due(&self, now: InstantOf<C>, leader_lease: Duration) -> bool {
+        self.quorum_loss_retire_at.is_some_and(|deadline| now >= deadline) && !self.is_lease_valid_at(now, leader_lease)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn quorum_loss_retire_at(&self) -> Option<InstantOf<C>> {
+        self.quorum_loss_retire_at
     }
 
     /// Return whether this leader alone constitutes a quorum.
@@ -543,6 +596,150 @@ mod tests {
             err.got,
             "learner n4 is not counted, and n2's ack is too old"
         );
+    }
+
+    #[test]
+    fn test_lease_valid_at_expires_at_boundary() {
+        let mut leader = Leader::<UTConfig, Vec<BTreeSet<u64>>>::new(
+            Vote::new(2, 1).to_committed(),
+            vec![btreeset! {1, 2, 3}],
+            [],
+            None,
+            SharedIdGenerator::new(),
+        );
+        let lease = Duration::from_millis(100);
+        let acked = UTConfig::<()>::now();
+
+        leader.update_clock(&2, acked);
+
+        assert!(leader.is_lease_valid_at(acked + lease - Duration::from_nanos(1), lease));
+        assert!(!leader.is_lease_valid_at(acked + lease, lease));
+    }
+
+    #[test]
+    fn test_quorum_loss_deadline_only_advances_for_fresh_quorum() {
+        let mut leader = Leader::<UTConfig, Vec<BTreeSet<u64>>>::new(
+            Vote::new(2, 1).to_committed(),
+            vec![btreeset! {1, 2, 3}],
+            [],
+            None,
+            SharedIdGenerator::new(),
+        );
+        let lease = Duration::from_millis(100);
+        let grace = Duration::from_millis(20);
+        let started = UTConfig::<()>::now();
+
+        assert_eq!(None, leader.quorum_loss_retire_at());
+        assert!(!leader.try_extend_quorum_loss_deadline(started, lease, grace));
+
+        leader.reset_quorum_loss_deadline(started, lease, grace);
+        assert_eq!(Some(started + lease + grace), leader.quorum_loss_retire_at());
+
+        let fresh_acked = started + Duration::from_millis(10);
+        leader.update_clock(&2, fresh_acked);
+        assert!(leader.try_extend_quorum_loss_deadline(started + Duration::from_millis(20), lease, grace,));
+        assert_eq!(Some(fresh_acked + lease + grace), leader.quorum_loss_retire_at());
+
+        let reset_at = started + Duration::from_millis(50);
+        leader.reset_quorum_loss_deadline(reset_at, lease, grace);
+        assert!(!leader.try_extend_quorum_loss_deadline(reset_at, lease, grace));
+        assert_eq!(
+            Some(reset_at + lease + grace),
+            leader.quorum_loss_retire_at(),
+            "older quorum evidence must not move a later deadline backward"
+        );
+
+        let expired_acked = started + Duration::from_millis(70);
+        leader.update_clock(&2, expired_acked);
+        assert_eq!(Some(expired_acked), leader.last_quorum_acked_time());
+        assert!(!leader.try_extend_quorum_loss_deadline(expired_acked + lease, lease, grace));
+        assert_eq!(
+            Some(reset_at + lease + grace),
+            leader.quorum_loss_retire_at(),
+            "an expired acknowledgement must not postpone retirement"
+        );
+    }
+
+    #[test]
+    fn test_quorum_loss_deadline_does_not_advance_without_quorum() {
+        let mut leader = Leader::<UTConfig, Vec<BTreeSet<u64>>>::new(
+            Vote::new(2, 1).to_committed(),
+            vec![btreeset! {1, 2, 3, 4, 5}],
+            [],
+            None,
+            SharedIdGenerator::new(),
+        );
+        let lease = Duration::from_millis(100);
+        let grace = Duration::from_millis(20);
+        let started = UTConfig::<()>::now();
+        let deadline = started + lease + grace;
+
+        leader.reset_quorum_loss_deadline(started, lease, grace);
+
+        let fresh_acked = started + Duration::from_millis(10);
+        leader.update_clock(&2, fresh_acked);
+        assert_eq!(
+            None,
+            leader.last_quorum_acked_time(),
+            "two of five voters are not a quorum"
+        );
+        assert!(!leader.try_extend_quorum_loss_deadline(started + Duration::from_millis(20), lease, grace));
+        assert_eq!(
+            Some(deadline),
+            leader.quorum_loss_retire_at(),
+            "fresh responses from less than a quorum must not postpone retirement"
+        );
+    }
+
+    #[test]
+    fn test_quorum_loss_retirement_due() {
+        let lease = Duration::from_millis(100);
+        let grace = Duration::from_millis(20);
+        let started = UTConfig::<()>::now();
+
+        tracing::info!("--- disabled deadline is never due");
+        {
+            let leader = Leader::<UTConfig, Vec<BTreeSet<u64>>>::new(
+                Vote::new(2, 1).to_committed(),
+                vec![btreeset! {1, 2, 3}],
+                [],
+                None,
+                SharedIdGenerator::new(),
+            );
+            assert!(!leader.is_quorum_loss_retirement_due(started + lease + grace, lease));
+        }
+
+        tracing::info!("--- deadline is due only after it is reached with no fresh quorum");
+        {
+            let mut leader = Leader::<UTConfig, Vec<BTreeSet<u64>>>::new(
+                Vote::new(2, 1).to_committed(),
+                vec![btreeset! {1, 2, 3}],
+                [],
+                None,
+                SharedIdGenerator::new(),
+            );
+            leader.reset_quorum_loss_deadline(started, lease, grace);
+
+            assert!(!leader.is_quorum_loss_retirement_due(started + lease + grace - Duration::from_nanos(1), lease,));
+            assert!(leader.is_quorum_loss_retirement_due(started + lease + grace, lease));
+
+            let fresh_acked = started + grace + Duration::from_millis(1);
+            leader.update_clock(&2, fresh_acked);
+            assert!(!leader.is_quorum_loss_retirement_due(started + lease + grace, lease));
+        }
+
+        tracing::info!("--- a single-voter Leader always has quorum");
+        {
+            let mut leader = Leader::<UTConfig, Vec<BTreeSet<u64>>>::new(
+                Vote::new(2, 1).to_committed(),
+                vec![btreeset! {1}],
+                [],
+                None,
+                SharedIdGenerator::new(),
+            );
+            leader.reset_quorum_loss_deadline(started, lease, grace);
+            assert!(!leader.is_quorum_loss_retirement_due(started + lease + grace, lease));
+        }
     }
 
     #[test]
