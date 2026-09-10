@@ -38,7 +38,11 @@ additional grace period after the quorum lease expires.
 The transition is cancellable: when the deadline is reached, OpenRaft checks
 the quorum again and does nothing if communication has recovered. A new Leader
 session or changed voter quorum receives a complete leader-lease observation
-window before the grace period can expire.
+window before the grace period can expire. While the policy is enabled, a
+fresh quorum acknowledgement moves the deadline to
+`last_quorum_acked + leader_lease + ms`. A response whose recorded sending time
+is already outside the lease window still updates the historical clock, but it
+does not postpone retirement.
 
 [`StepDownPolicy::Never`][] preserves the default behavior. Because retirement
 is driven by the tick loop, the setting has no effect when
@@ -89,8 +93,10 @@ during the partition without invalidating work already accepted.
 
 [`ReadPolicy::LeaseRead`][] uses the same quorum lease and returns an error when
 the lease has expired. [`ReadPolicy::ReadIndex`][] does not rely on the lease:
-it contacts a quorum to confirm leadership and remains available as a recovery
-path.
+while the node is still Leader, it contacts a quorum to confirm leadership and
+its responses can cancel a pending retirement. After local retirement the node
+no longer sends that quorum probe as Leader and instead returns the normal
+not-Leader response.
 
 [`ReadPolicy::LeaseRead`]: crate::ReadPolicy::LeaseRead
 [`ReadPolicy::ReadIndex`]: crate::ReadPolicy::ReadIndex

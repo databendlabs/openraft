@@ -177,6 +177,10 @@ fn test_handle_vote_resp_equal_vote() -> anyhow::Result<()> {
     tracing::info!("--- equal vote, granted, constitute a quorum. become leader");
     {
         let mut eng = eng();
+        let lease = Duration::from_millis(100);
+        let grace = Duration::from_millis(20);
+        eng.config.timer_config.leader_lease = lease;
+        eng.config.quorum_loss_grace = Some(grace);
         eng.config.id = 1;
         eng.state.vote = Leased::new(UTConfig::<()>::now(), Duration::from_millis(500), Vote::new(2, 1));
         eng.state.membership_state.set_effective(Arc::new(StoredMembershipOf::<UTConfig>::new(
@@ -190,7 +194,9 @@ fn test_handle_vote_resp_equal_vote() -> anyhow::Result<()> {
 
         eng.state.server_state = ServerState::Candidate;
 
+        let before = UTConfig::<()>::now();
         eng.handle_vote_resp(2, VoteResponse::new(Vote::new(2, 1), Some(log_id(2, 1, 2)), true));
+        let after = UTConfig::<()>::now();
 
         assert_eq!(Vote::new_committed(2, 1), *eng.state.vote_ref(),);
 
@@ -209,6 +215,10 @@ fn test_handle_vote_resp_equal_vote() -> anyhow::Result<()> {
         );
 
         assert_eq!(ServerState::Leader, eng.state.server_state);
+
+        let deadline = eng.leader.as_ref().unwrap().quorum_loss_retire_at().unwrap();
+        assert!(deadline >= before + lease + grace);
+        assert!(deadline <= after + lease + grace);
 
         assert_eq!(
             vec![

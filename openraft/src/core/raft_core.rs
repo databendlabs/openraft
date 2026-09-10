@@ -2016,7 +2016,8 @@ where
         let now = C::now();
         tracing::debug!("received tick: {}, now: {}", i, now.display());
 
-        self.handle_tick_election();
+        self.handle_tick_election(now);
+        self.engine.try_retire_leader_on_quorum_loss(now);
 
         // Leader send heartbeat
         let heartbeat_at = self.engine.leader_ref().map(|l| l.next_heartbeat);
@@ -2029,7 +2030,7 @@ where
 
             // Install next heartbeat
             if let Some(l) = self.engine.leader_mut() {
-                l.next_heartbeat = C::now() + Duration::from_millis(self.config.heartbeat_interval);
+                l.next_heartbeat = now + Duration::from_millis(self.config.heartbeat_interval);
             }
         }
     }
@@ -2105,9 +2106,7 @@ where
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    fn handle_tick_election(&mut self) {
-        let now = C::now();
-
+    fn handle_tick_election(&mut self, now: InstantOf<C>) {
         tracing::debug!("try to trigger election, now: {}", now.display());
 
         if self.engine.state.server_state == ServerState::Leader {
