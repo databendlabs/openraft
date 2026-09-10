@@ -94,6 +94,7 @@ pub struct StateMachine {
 
 pub struct LogStore {
     vote: RwLock<Option<Vote<LeaderId>>>,
+    locally_retired_for: RwLock<Option<LeaderId>>,
     log: RwLock<BTreeMap<u64, EntryOf<TypeConfig>>>,
     last_purged_log_id: RwLock<Option<LogIdOf<TypeConfig>>>,
 }
@@ -104,6 +105,7 @@ impl LogStore {
 
         Self {
             vote: RwLock::new(None),
+            locally_retired_for: RwLock::new(None),
             log,
             last_purged_log_id: RwLock::new(None),
         }
@@ -225,6 +227,15 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
         let mut v = self.vote.write().await;
         *v = Some(*vote);
         Ok(())
+    }
+
+    async fn save_local_retirement(&mut self, retired_for: &LeaderId) -> Result<(), io::Error> {
+        *self.locally_retired_for.write().await = Some(*retired_for);
+        Ok(())
+    }
+
+    async fn read_local_retirement(&mut self) -> Result<Option<LeaderId>, io::Error> {
+        Ok(*self.locally_retired_for.read().await)
     }
 
     #[tracing::instrument(level = "debug", skip(self))]

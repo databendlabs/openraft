@@ -8,7 +8,7 @@ detailed guide.
 | --- | --- | --- |
 | Core integration | Processes Raft events without periodic ticks and batches messages for throughput. Applications implement `RaftLogStorage`, `RaftStateMachine`, and `RaftNetworkV2`; [`Raft`][] is the primary application API. | [`Raft`][] |
 | Cluster formation and membership | Initializes a cluster, adds non-voting learners, and changes membership through joint configuration. Joint consensus supports arbitrary membership changes in one operation; `Raft::append_membership()` writes a caller-built membership as a single log entry for the transitions whose quorum intersection Openraft can prove. | [`Raft::initialize()`][], [`Raft::add_learner()`][], [`Raft::change_membership()`][], [`Raft::append_membership()`][], [cluster formation][], [dynamic membership][] |
-| Leadership and elections | Elects leaders by policy or manually, transfers leadership, and offers Pre-Vote to avoid unnecessary term increments. | [`Trigger::elect()`][], [`Trigger::transfer_leader()`][], [`Config::enable_pre_vote`][], [Pre-Vote protocol][] |
+| Leadership and elections | Elects leaders by policy or manually, transfers leadership, offers Pre-Vote to avoid unnecessary term increments, and can retire a Leader after continued quorum loss. | [`Trigger::elect()`][], [`Trigger::transfer_leader()`][], [`Config::enable_pre_vote`][], [`Config::quorum_loss_step_down`][], [Pre-Vote protocol][], [CheckQuorum][] |
 | Logs and snapshots | Compacts logs by snapshotting the state machine, replicates snapshots, and purges logs by policy or on demand. | [`Trigger::snapshot()`][], [`Trigger::purge_log()`][], [snapshot replication][] |
 | Reads | Performs linearizable reads with `ReadPolicy::ReadIndex` or `ReadPolicy::LeaseRead`. | [`Raft::ensure_linearizable()`][], [read protocol][] |
 | Monitoring | Exposes full, data, and server metrics through watch receivers. [`tracing`][] provides logging and distributed tracing with [compile-time verbosity controls][]. | [`Raft::metrics()`][], [`Raft::data_metrics()`][], [`Raft::server_metrics()`][], [monitoring and maintenance][] |
@@ -28,11 +28,13 @@ detailed guide.
 [`Trigger::purge_log()`]: crate::raft::trigger::Trigger::purge_log
 [`Trigger::transfer_leader()`]: crate::raft::trigger::Trigger::transfer_leader
 [`Config::enable_pre_vote`]: crate::Config::enable_pre_vote
+[`Config::quorum_loss_step_down`]: crate::Config::quorum_loss_step_down
 [`RuntimeConfigHandle::heartbeat()`]: crate::raft::RuntimeConfigHandle::heartbeat
 [`RuntimeConfigHandle::elect()`]: crate::raft::RuntimeConfigHandle::elect
 [cluster formation]: crate::docs::cluster_control::cluster_formation
 [dynamic membership]: crate::docs::cluster_control::dynamic_membership
 [Pre-Vote protocol]: crate::docs::protocol::pre_vote
+[CheckQuorum]: crate::docs::protocol::check_quorum
 [snapshot replication]: crate::docs::protocol::replication::snapshot_replication
 [read protocol]: crate::docs::protocol::read
 [monitoring and maintenance]: crate::docs::cluster_control::monitoring_maintenance

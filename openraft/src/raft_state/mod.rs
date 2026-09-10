@@ -28,6 +28,7 @@ pub(crate) use io_state::io_id::IOId;
 mod tests {
     mod forward_to_leader_test;
     mod is_initialized_test;
+    mod local_retirement_test;
     mod log_state_reader_test;
     mod update_committed_test;
     mod validate_test;
@@ -46,6 +47,7 @@ use crate::proposer::LeaderQuorumSet;
 use crate::raft_state::io_state::io_progress::IOProgress;
 use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::type_config::alias::InstantOf;
+use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MembershipStateOf;
 use crate::type_config::alias::TermOf;
@@ -71,6 +73,12 @@ where C: RaftTypeConfig
 
     /// The metadata of the last snapshot.
     pub snapshot_meta: SnapshotMetaOf<C>,
+
+    /// The Leader authority for which this node retired locally.
+    ///
+    /// This marker suppresses only the matching committed local Vote. A newer Vote makes the
+    /// marker stale without requiring a separate persistent clear operation.
+    pub(crate) locally_retired_for: Option<LeaderIdOf<C>>,
 
     // --
     // -- volatile fields: they are not persisted.
@@ -181,6 +189,7 @@ where C: RaftTypeConfig
             log_ids: LogIdList::default(),
             membership_state: MembershipState::default(),
             snapshot_meta: SnapshotMetaOf::<C>::default(),
+            locally_retired_for: None,
             last_inflight_id: 0,
             server_state: ServerState::default(),
             io_state: Valid::new(IOState::default()),
@@ -402,7 +411,7 @@ where C: RaftTypeConfig
     ///
     /// See [Determine Server State][] for more details about determining the server state.
     ///
-    /// [Determine Server State]: crate::docs::data::vote#vote-and-membership-define-the-server-state
+    /// [Determine Server State]: crate::docs::data::vote#vote-membership-and-local-retirement-define-the-server-state
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn calc_server_state(&self, id: &C::NodeId) -> ServerState {
         tracing::debug!(
@@ -434,15 +443,24 @@ where C: RaftTypeConfig
         self.membership_state.is_voter(id)
     }
 
+    /// Return whether the current committed local Leader authority has retired locally.
+    pub(crate) fn is_locally_retired(&self, id: &C::NodeId) -> bool {
+        let vote = self.vote_ref();
+
+        vote.is_committed()
+            && vote.leader_node_id() == id
+            && self.locally_retired_for.as_ref() == Some(vote.leader_id())
+    }
+
     /// The node is candidate(leadership is not granted by a quorum) or leader(leadership is granted
     /// by a quorum)
     ///
     /// Note that in Openraft Leader does not have to be a voter. See [Determine Server State][] for
     /// more details about determining the server state.
     ///
-    /// [Determine Server State]: crate::docs::data::vote#vote-and-membership-define-the-server-state
+    /// [Determine Server State]: crate::docs::data::vote#vote-membership-and-local-retirement-define-the-server-state
     pub(crate) fn is_leading(&self, id: &C::NodeId) -> bool {
-        self.membership_state.contains(id) && self.vote.leader_node_id() == id
+        self.membership_state.contains(id) && self.vote.leader_node_id() == id && !self.is_locally_retired(id)
     }
 
     /// The node is leader
@@ -452,7 +470,7 @@ where C: RaftTypeConfig
     /// Note that in Openraft Leader does not have to be a voter. See [Determine Server State][] for
     /// more details about determining the server state.
     ///
-    /// [Determine Server State]: crate::docs::data::vote#vote-and-membership-define-the-server-state
+    /// [Determine Server State]: crate::docs::data::vote#vote-membership-and-local-retirement-define-the-server-state
     pub(crate) fn is_leader(&self, id: &C::NodeId) -> bool {
         self.is_leading(id) && self.vote.is_committed()
     }
@@ -478,7 +496,11 @@ where C: RaftTypeConfig
     }
 
     /// Build a ForwardToLeader error that contains the leader id and node it knows.
-    pub(crate) fn forward_to_leader(&self) -> ForwardToLeader<C> {
+    pub(crate) fn forward_to_leader(&self, local_id: &C::NodeId) -> ForwardToLeader<C> {
+        if self.is_locally_retired(local_id) {
+            return ForwardToLeader::empty();
+        }
+
         let vote = self.vote_ref();
 
         if vote.is_committed() {

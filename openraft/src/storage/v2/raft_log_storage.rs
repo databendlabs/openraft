@@ -9,14 +9,16 @@ use crate::RaftLogReader;
 use crate::RaftTypeConfig;
 use crate::storage::IOFlushed;
 use crate::storage::LogState;
+use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
 
 /// API for log store.
 ///
-/// `vote` API is also included because in raft, vote is part of the log: `vote` is about **when**,
-/// while `log` is about **what**. A distributed consensus is about **at what a time, happened what
-/// a event**.
+/// The Vote API is also included because in Raft, Vote is part of the log: Vote is about **when**,
+/// while log is about **what**. Distributed consensus establishes what happened at a given logical
+/// time. The local-retirement API stores the authority fence associated with a specific Leader ID
+/// alongside that Vote state.
 ///
 /// ## Related Types
 ///
@@ -28,8 +30,9 @@ use crate::type_config::alias::VoteOf;
 ///
 /// - Logs must be consecutive, i.e., there must **NOT** leave a **hole** in logs.
 /// - All write-IO must be serialized, i.e., the internal implementation must **NOT** apply a latter
-///   write request before a former write request is completed. This rule applies to both `vote` and
-///   `log` IO. E.g., Saving a vote and appending a log entry must be serialized too.
+///   write request before a former write request is completed. This rule applies to `vote`, local
+///   retirement, and `log` IO. E.g., Saving a vote and appending a log entry must be serialized
+///   too.
 #[add_async_trait]
 pub trait RaftLogStorage<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
@@ -61,6 +64,20 @@ where C: RaftTypeConfig
     ///
     /// The vote must be persisted on disk before returning.
     async fn save_vote(&mut self, vote: &VoteOf<C>) -> Result<(), io::Error>;
+
+    /// Save the Leader authority for which this node retired locally.
+    ///
+    /// The marker must be persisted on disk before returning. A later marker replaces the previous
+    /// one. The marker is versioned by `LeaderId`, so it does not need to be cleared when the Vote
+    /// advances.
+    #[since(version = "0.10.0", change = "added local retirement persistence")]
+    async fn save_local_retirement(&mut self, retired_for: &LeaderIdOf<C>) -> Result<(), io::Error>;
+
+    /// Return the last Leader authority saved by [`Self::save_local_retirement`].
+    ///
+    /// Returns `None` when no local-retirement marker has ever been stored.
+    #[since(version = "0.10.0", change = "added local retirement recovery")]
+    async fn read_local_retirement(&mut self) -> Result<Option<LeaderIdOf<C>>, io::Error>;
 
     /// Saves the last committed log id to storage.
     ///

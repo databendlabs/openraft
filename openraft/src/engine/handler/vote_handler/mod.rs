@@ -239,8 +239,9 @@ where
     pub(crate) fn become_following(&mut self) {
         debug_assert!(
             self.state.vote_ref().to_leader_id().node_id() != &self.config.id
-                || !self.state.membership_state.effective().membership().is_voter(&self.config.id),
-            "It must hold: vote is not mine, or I am not a voter(leader just left the cluster)"
+                || !self.state.membership_state.effective().membership().is_voter(&self.config.id)
+                || self.state.is_locally_retired(&self.config.id),
+            "It must hold: vote is not mine, I am not a voter, or this Leader authority retired locally"
         );
 
         let had_leading_state = self.leader.is_some() || self.candidate.is_some() || self.pre_candidate.is_some();

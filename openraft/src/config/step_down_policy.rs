@@ -1,28 +1,19 @@
-//! Policy for stepping down a Leader that is removed from the membership config.
+//! Policies for automatically stepping down a Leader.
 
 use openraft_macros::since;
 
-/// Policy for stepping down a Leader that is removed from a committed membership config.
+/// Policy for automatically stepping down a Leader after a configured condition occurs.
 ///
-/// It is the value of
-/// [`Config::removed_leader_step_down`](crate::Config::removed_leader_step_down).
+/// The [`Config`](crate::Config) field using this type defines the triggering condition, when the
+/// delay starts, and the transition performed after it expires.
 #[since(version = "0.10.0")]
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum StepDownPolicy {
     /// Never step down automatically.
-    ///
-    /// The removed Leader keeps leading, until the application reverts it to a learner with
-    /// [`Trigger::refresh_server_state()`].
-    ///
-    /// [`Trigger::refresh_server_state()`]: crate::raft::trigger::Trigger::refresh_server_state
     Never,
 
-    /// Step down after the specified number of milliseconds.
-    ///
-    /// The countdown starts when the membership config that removes the Leader is committed.
-    /// When it expires, the Leader transfers leadership to the most up-to-date voter, then
-    /// reverts itself to a learner.
+    /// Allow the configured step-down transition after the specified number of milliseconds.
     After(u64),
 }

@@ -11,6 +11,7 @@ use std::sync::Mutex;
 use futures::Stream;
 use openraft::EntryPayload;
 use openraft::OptionalSend;
+use openraft::alias::LeaderIdOf;
 use openraft::alias::LogIdListOf;
 use openraft::storage::EntryResponder;
 use openraft::storage::IOFlushed;
@@ -53,6 +54,7 @@ pub struct StateMachineData {
 /// In-memory log store.
 pub struct LogStore {
     vote: Mutex<Option<Vote>>,
+    locally_retired_for: Mutex<Option<LeaderIdOf<TypeConfig>>>,
     committed: Mutex<Option<LogId>>,
     last_purged: Mutex<Option<LogId>>,
     log: Mutex<BTreeMap<u64, Entry>>,
@@ -68,6 +70,7 @@ impl LogStore {
     pub fn new() -> Self {
         Self {
             vote: Mutex::new(None),
+            locally_retired_for: Mutex::new(None),
             committed: Mutex::new(None),
             last_purged: Mutex::new(None),
             log: Mutex::new(BTreeMap::new()),
@@ -122,6 +125,15 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
     async fn save_vote(&mut self, vote: &Vote) -> Result<(), io::Error> {
         *self.vote.lock().unwrap() = Some(*vote);
         Ok(())
+    }
+
+    async fn save_local_retirement(&mut self, retired_for: &LeaderIdOf<TypeConfig>) -> Result<(), io::Error> {
+        *self.locally_retired_for.lock().unwrap() = Some(*retired_for);
+        Ok(())
+    }
+
+    async fn read_local_retirement(&mut self) -> Result<Option<LeaderIdOf<TypeConfig>>, io::Error> {
+        Ok(*self.locally_retired_for.lock().unwrap())
     }
 
     async fn save_committed(&mut self, committed: Option<LogId>) -> Result<(), io::Error> {

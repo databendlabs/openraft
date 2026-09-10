@@ -118,6 +118,9 @@ pub struct LogStore {
 
     /// The current granted vote.
     vote: RefCell<Option<Vote>>,
+
+    /// The Leader authority for which this node retired locally.
+    locally_retired_for: RefCell<Option<LeaderId>>,
 }
 
 impl RaftLogReader<TypeConfig> for Rc<LogStore> {
@@ -299,6 +302,15 @@ impl RaftLogStorage<TypeConfig> for Rc<LogStore> {
         let mut v = self.vote.borrow_mut();
         *v = Some(*vote);
         Ok(())
+    }
+
+    async fn save_local_retirement(&mut self, retired_for: &LeaderId) -> Result<(), io::Error> {
+        *self.locally_retired_for.borrow_mut() = Some(*retired_for);
+        Ok(())
+    }
+
+    async fn read_local_retirement(&mut self) -> Result<Option<LeaderId>, io::Error> {
+        Ok(*self.locally_retired_for.borrow())
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries, callback))]
