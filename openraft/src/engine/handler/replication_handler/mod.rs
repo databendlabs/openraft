@@ -31,6 +31,7 @@ use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::replication::replicate::Replicate;
 use crate::replication::response::ReplicationResult;
 use crate::storage::RaftStateMachine;
+use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
@@ -39,6 +40,8 @@ use crate::vote::raft_vote::RaftVoteExt;
 
 #[cfg(test)]
 mod append_membership_test;
+#[cfg(test)]
+mod quorum_loss_test;
 #[cfg(test)]
 mod try_purge_log_test;
 #[cfg(test)]
@@ -129,6 +132,9 @@ where
     pub(crate) fn rebuild_progresses(&mut self) {
         let em = self.state.membership_state.effective();
 
+        let voter_quorum_changed = self.config.quorum_loss_grace.is_some()
+            && self.leader.clock_progress.quorum_set().get_joint_config() != em.get_joint_config();
+
         let learner_ids = em.learner_ids().collect::<Vec<_>>();
 
         {
@@ -147,6 +153,11 @@ where
                 learner_ids.clone(),
                 default_entry,
             ));
+        }
+
+        if voter_quorum_changed {
+            let grace = self.config.quorum_loss_grace.unwrap();
+            self.leader.reset_quorum_loss_deadline(C::now(), self.config.timer_config.leader_lease, grace);
         }
 
         {
@@ -178,6 +189,10 @@ where
         }
 
         let granted = self.leader.update_clock(&target, sending_time);
+
+        if let Some(grace) = self.config.quorum_loss_grace {
+            self.leader.try_extend_quorum_loss_deadline(C::now(), self.config.timer_config.leader_lease, grace);
+        }
 
         tracing::debug!(
             "granted leader vote clock after updating: granted: {}; clock_progress: {}",

@@ -203,7 +203,10 @@ where
         // It's a different leader that creates this vote.
         // Re-create a new Leader instance.
 
-        let leader = self.state.new_leader();
+        let mut leader = self.state.new_leader();
+        if let Some(grace) = self.config.quorum_loss_grace {
+            leader.reset_quorum_loss_deadline(C::now(), self.config.timer_config.leader_lease, grace);
+        }
         let leader_vote = leader.committed_vote_ref().clone();
         *self.leader = Some(Box::new(leader));
 

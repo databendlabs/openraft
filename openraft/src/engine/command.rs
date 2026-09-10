@@ -141,9 +141,6 @@ where
     SaveVote { vote: VoteOf<C> },
 
     /// Persist the Leader authority for which this node retired locally.
-    ///
-    /// The production emitter is added with the quorum-loss tick wiring.
-    #[cfg_attr(not(test), allow(dead_code))]
     SaveLocalRetirement { retired_for: LeaderIdOf<C> },
 
     /// Send vote to all other members

@@ -5,6 +5,7 @@ use rand::RngExt;
 use crate::AsyncRuntime;
 use crate::Config;
 use crate::RaftTypeConfig;
+use crate::StepDownPolicy;
 use crate::engine::time_state;
 use crate::type_config::alias::AsyncRuntimeOf;
 
@@ -35,6 +36,9 @@ pub(crate) struct EngineConfig<C: RaftTypeConfig> {
     pub(crate) timer_config: time_state::Config,
 
     pub(crate) enable_leader_restore: bool,
+
+    /// Additional delay after the leader lease expires before retiring for quorum loss.
+    pub(crate) quorum_loss_grace: Option<Duration>,
 }
 
 impl<C> EngineConfig<C>
@@ -57,6 +61,11 @@ where C: RaftTypeConfig
             },
 
             enable_leader_restore: config.enable_leader_restore(),
+
+            quorum_loss_grace: match &config.quorum_loss_step_down {
+                StepDownPolicy::Never => None,
+                StepDownPolicy::After(ms) => Some(Duration::from_millis(*ms)),
+            },
         };
         this.resample_election_timeout();
         this
@@ -74,6 +83,7 @@ where C: RaftTypeConfig
             election_timeout_max: 300,
             timer_config: time_state::Config::default(),
             enable_leader_restore: true,
+            quorum_loss_grace: None,
         }
     }
 
@@ -82,5 +92,31 @@ where C: RaftTypeConfig
         let election_timeout =
             AsyncRuntimeOf::<C>::thread_rng().random_range(self.election_timeout_min..self.election_timeout_max);
         self.timer_config.election_timeout = Duration::from_millis(election_timeout);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use pretty_assertions::assert_eq;
+
+    use super::EngineConfig;
+    use crate::Config;
+    use crate::StepDownPolicy;
+    use crate::engine::testing::UTConfig;
+
+    #[test]
+    fn test_quorum_loss_grace() {
+        let config = Config::default();
+        let engine_config = EngineConfig::<UTConfig>::new(1, &config);
+        assert_eq!(None, engine_config.quorum_loss_grace);
+
+        let config = Config {
+            quorum_loss_step_down: StepDownPolicy::After(20),
+            ..Default::default()
+        };
+        let engine_config = EngineConfig::<UTConfig>::new(1, &config);
+        assert_eq!(Some(Duration::from_millis(20)), engine_config.quorum_loss_grace);
     }
 }
