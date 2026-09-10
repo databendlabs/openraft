@@ -1,9 +1,12 @@
 use std::sync::Arc;
 
 use openraft::StorageError;
+use openraft::storage::RaftLogStorage;
 use openraft::testing::log::StoreBuilder;
 use openraft::testing::log::Suite;
 use openraft::type_config::TypeConfigExt;
+use openraft::type_config::alias::LeaderIdOf;
+use openraft::vote::RaftLeaderId;
 use openraft_memstore::BlockConfig;
 use openraft_memstore::MemStateMachine;
 use openraft_memstore::TypeConfig;
@@ -36,5 +39,23 @@ impl StoreBuilder<TypeConfig, WalLogStore<TypeConfig>, Arc<MemStateMachine>, Tem
 fn test_wal_log_store() {
     TypeConfig::run(async {
         Suite::test_all(WalStoreBuilder {}).await.unwrap();
+    });
+}
+
+#[test]
+fn test_local_retirement_survives_reopen() {
+    TypeConfig::run(async {
+        let temp_dir = TempDir::new().unwrap();
+        let dir = temp_dir.path().display().to_string();
+        let retired_for = LeaderIdOf::<TypeConfig>::new(3, 1);
+
+        {
+            let mut store = WalLogStore::<TypeConfig>::open(dir.clone()).unwrap();
+            assert_eq!(None, store.read_local_retirement().await.unwrap());
+            store.save_local_retirement(&retired_for).await.unwrap();
+        }
+
+        let mut reopened = WalLogStore::<TypeConfig>::open(dir).unwrap();
+        assert_eq!(Some(retired_for), reopened.read_local_retirement().await.unwrap());
     });
 }

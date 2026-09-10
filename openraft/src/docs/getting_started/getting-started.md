@@ -181,6 +181,8 @@ Follow the links to method documentations to see the details.
 | Write log: | [`truncate_after()`]      | ()                           | delete logs `(index, +oo)`            |
 | Write log: | [`purge()`]               | ()                           | purge logs `(-oo, index]`             |
 | Vote:      | [`save_vote()`]           | ()                           | save vote                             |
+| Retirement: | [`save_local_retirement()`] | ()                          | save locally retired Leader authority |
+|             | [`read_local_retirement()`] | `Option<LeaderId>`          | read locally retired Leader authority |
 
 | Kind       | [`RaftStateMachine`] method    | Return value                 | Description                           |
 |------------|--------------------------------|------------------------------|---------------------------------------|
@@ -519,6 +521,11 @@ and links the trait, protocol page, or test suite that defines it.
   and [`purge()`] must also leave no hole in the log, because Raft examines only
   the last log id.
 
+- **Durable local retirement.** [`save_local_retirement()`] must return only
+  after the marker is on disk and must be serialized with Vote and log writes.
+  [`read_local_retirement()`] must return the latest saved Leader authority, or
+  `None` when the store predates this marker or has never saved one.
+
 - **Storage conformance.** Run `Suite::test_all(builder)` from the
   [storage test suite][`LogSuite`] against the store the deployment actually
   uses, passing a [`StoreBuilder`] that constructs that store, as the
@@ -628,6 +635,8 @@ and links the trait, protocol page, or test suite that defines it.
 [`truncate_after()`]:                   `crate::storage::RaftLogStorage::truncate_after`
 [`purge()`]:                            `crate::storage::RaftLogStorage::purge`
 [`save_vote()`]:                        `crate::storage::RaftLogStorage::save_vote`
+[`save_local_retirement()`]:            `crate::storage::RaftLogStorage::save_local_retirement`
+[`read_local_retirement()`]:            `crate::storage::RaftLogStorage::read_local_retirement`
 [`get_log_state()`]:                    `crate::storage::RaftLogStorage::get_log_state`
 [`get_log_reader()`]:                   `crate::storage::RaftLogStorage::get_log_reader`
 

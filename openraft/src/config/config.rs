@@ -53,6 +53,7 @@ pub(crate) struct Defaults {
     pub enable_heartbeat: bool,
     pub enable_elect: bool,
     pub removed_leader_step_down: StepDownPolicy,
+    pub quorum_loss_step_down: StepDownPolicy,
     pub enable_pre_vote: Option<bool>,
 }
 
@@ -81,6 +82,7 @@ pub(crate) const DEFAULTS: Defaults = Defaults {
     enable_heartbeat: true,
     enable_elect: true,
     removed_leader_step_down: StepDownPolicy::After(150),
+    quorum_loss_step_down: StepDownPolicy::Never,
     enable_pre_vote: None,
 };
 
@@ -89,6 +91,13 @@ pub(crate) const DEFAULTS: Defaults = Defaults {
 #[cfg(feature = "serde")]
 fn default_removed_leader_step_down() -> StepDownPolicy {
     DEFAULTS.removed_leader_step_down.clone()
+}
+
+/// The serde default for [`Config::quorum_loss_step_down`]: it is used when the field is absent,
+/// preserving the behavior of config files written before this field existed.
+#[cfg(feature = "serde")]
+fn default_quorum_loss_step_down() -> StepDownPolicy {
+    DEFAULTS.quorum_loss_step_down.clone()
 }
 
 /// Log compaction and snapshot policy.
@@ -419,6 +428,33 @@ pub struct Config {
     #[cfg_attr(feature = "serde", serde(default = "default_removed_leader_step_down"))]
     pub removed_leader_step_down: StepDownPolicy,
 
+    /// The policy for stepping down a Leader after it loses contact with a voter quorum.
+    ///
+    /// - [`Never`](StepDownPolicy::Never): preserve the current behavior. The Leader keeps its role
+    ///   and may recover if quorum communication resumes.
+    /// - [`After(ms)`](StepDownPolicy::After): once the latest quorum acknowledgement has been
+    ///   outside the leader-lease window, wait an additional `ms` milliseconds. At that deadline
+    ///   OpenRaft checks the quorum again: it retires the Leader locally if quorum is still
+    ///   unavailable, or cancels the pending step-down if communication has recovered.
+    ///
+    /// This policy is evaluated by the tick loop and therefore has no effect when
+    /// [`enable_tick`](Self::enable_tick) is `false`.
+    ///
+    /// Activity evidence comes from follower responses. If
+    /// [`enable_heartbeat`](Self::enable_heartbeat) is `false`, an otherwise reachable but idle
+    /// multi-voter cluster may therefore retire its Leader unless writes, snapshots, or ReadIndex
+    /// requests produce enough responses to keep a quorum active.
+    ///
+    /// In CLI it is either a "never" literal (`never`, `no`, `none`, `off` or `false`,
+    /// case-insensitive) or the number of milliseconds, e.g.,
+    /// `--quorum-loss-step-down=never` or `--quorum-loss-step-down=500`.
+    ///
+    /// Defaults to [`Never`](StepDownPolicy::Never).
+    #[since(version = "0.10.0", change = "added quorum-loss step-down policy")]
+    #[cfg_attr(feature = "clap", clap(long, default_value = "never", value_parser = parse_step_down_policy))]
+    #[cfg_attr(feature = "serde", serde(default = "default_quorum_loss_step_down"))]
+    pub quorum_loss_step_down: StepDownPolicy,
+
     /// Whether a follower runs a Pre-Vote round before incrementing its term and starting a real
     /// election.
     ///
@@ -592,6 +628,7 @@ impl Default for Config {
             enable_heartbeat: DEFAULTS.enable_heartbeat,
             enable_elect: DEFAULTS.enable_elect,
             removed_leader_step_down: DEFAULTS.removed_leader_step_down.clone(),
+            quorum_loss_step_down: DEFAULTS.quorum_loss_step_down.clone(),
             enable_pre_vote: DEFAULTS.enable_pre_vote,
             backoff: DEFAULTS.backoff.to_string(),
             allow_log_reversion: None,

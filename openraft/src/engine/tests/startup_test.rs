@@ -23,8 +23,10 @@ use crate::raft_state::IOId;
 use crate::replication::replicate::Replicate;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::EntryOf;
+use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::StoredMembershipOf;
 use crate::utime::Leased;
+use crate::vote::RaftLeaderId;
 use crate::vote::raft_vote::RaftVoteExt;
 
 fn m_empty() -> Membership<u64, ()> {
@@ -254,6 +256,56 @@ fn test_startup_as_leader_leader_restore_disabled() -> anyhow::Result<()> {
     // The demotion is in-memory only: no command is emitted; the committed vote stays in storage.
     assert_eq!(eng.output.take_commands(), vec![]);
     assert_eq!(eng.state.vote_ref(), &Vote::new(2, 2));
+
+    Ok(())
+}
+
+#[test]
+fn test_startup_local_retirement_suppresses_matching_leader_restore() -> anyhow::Result<()> {
+    let mut eng = eng();
+    eng.state.membership_state.set_effective(Arc::new(StoredMembershipOf::<UTConfig>::new(
+        Some(log_id(1, 1, 3)),
+        m23(),
+    )));
+    eng.state.vote = Leased::new(
+        UTConfig::<()>::now(),
+        Duration::from_millis(500),
+        Vote::new_committed(2, 2),
+    );
+    eng.state.locally_retired_for = Some(LeaderIdOf::<UTConfig>::new(2, 2));
+
+    eng.startup();
+
+    assert_eq!(ServerState::Follower, eng.state.server_state);
+    assert!(eng.leader_ref().is_none());
+    assert_eq!(&Vote::new_committed(2, 2), eng.state.vote_ref());
+    assert_eq!(Some(LeaderIdOf::<UTConfig>::new(2, 2)), eng.state.locally_retired_for);
+    assert_eq!(eng.output.take_commands(), vec![]);
+
+    Ok(())
+}
+
+#[test]
+fn test_startup_stale_local_retirement_allows_leader_restore() -> anyhow::Result<()> {
+    let mut eng = eng();
+    eng.state.membership_state.set_effective(Arc::new(StoredMembershipOf::<UTConfig>::new(
+        Some(log_id(1, 1, 3)),
+        m23(),
+    )));
+    eng.state.log_ids = LogIdList::new(None, [log_id(1, 1, 3)]);
+    eng.state.vote = Leased::new(
+        UTConfig::<()>::now(),
+        Duration::from_millis(500),
+        Vote::new_committed(2, 2),
+    );
+    eng.state.locally_retired_for = Some(LeaderIdOf::<UTConfig>::new(1, 2));
+
+    eng.startup();
+
+    assert_eq!(ServerState::Leader, eng.state.server_state);
+    assert!(eng.leader_ref().is_some());
+    assert_eq!(&Vote::new_committed(2, 2), eng.state.vote_ref());
+    assert_eq!(Some(LeaderIdOf::<UTConfig>::new(1, 2)), eng.state.locally_retired_for);
 
     Ok(())
 }

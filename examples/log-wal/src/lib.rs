@@ -22,6 +22,7 @@ use openraft::OptionalSend;
 use openraft::RaftLogReader;
 use openraft::RaftTypeConfig;
 use openraft::alias::EntryOf;
+use openraft::alias::LeaderIdOf;
 use openraft::alias::LogIdOf;
 use openraft::alias::VoteOf;
 use openraft::entry::RaftEntry;
@@ -158,6 +159,31 @@ where
         flush_res?;
 
         Ok(())
+    }
+
+    async fn save_local_retirement(&mut self, retired_for: &LeaderIdOf<C>) -> Result<(), io::Error> {
+        let (tx, rx) = oneshot::channel();
+
+        {
+            let mut log = self.inner.write().await;
+
+            log.save_user_data(Some(MsgPack(retired_for.clone())))?;
+            log.flush(true, Some(Callback::Oneshot(tx)))?;
+        }
+
+        // The marker fences a Leader after restart, so it must reach disk before this method
+        // returns.
+        let flush_res = rx.await.map_err(io::Error::other)?;
+        flush_res?;
+
+        Ok(())
+    }
+
+    async fn read_local_retirement(&mut self) -> Result<Option<LeaderIdOf<C>>, io::Error> {
+        let log = self.inner.read().await;
+        let retired_for = log.log_state().user_data.as_ref().map(|value| value.0.clone());
+
+        Ok(retired_for)
     }
 
     async fn save_committed(&mut self, committed: Option<LogIdOf<C>>) -> Result<(), io::Error> {

@@ -127,6 +127,7 @@ use crate::type_config::alias::ChangeMembershipErrorOf;
 use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::InstantOf;
+use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MembershipStateOf;
 use crate::type_config::alias::MpscReceiverOf;
@@ -993,7 +994,7 @@ where
     }
 
     fn fail_pending_reads(&mut self) {
-        let forward = self.engine.state.forward_to_leader();
+        let forward = self.engine.state.forward_to_leader(&self.id);
         let err = LinearizableReadError::ForwardToLeader(forward);
         self.pending_reads.drain_all_with_error(err);
         self.reschedule_pending_read_check();
@@ -1004,13 +1005,13 @@ where
         self.pending_read_deadline_notifier.set_deadline(deadline);
     }
 
-    /// Return the current leader node ID based on the committed vote.
+    /// Return the current leader node ID based on the committed vote and local-retirement marker.
     ///
     /// In OpenRaft, a leader does not have to be a voter — it can be a learner
     /// or even a node outside the membership. Leadership is determined solely by
     /// a committed vote (i.e., a vote granted by a quorum), following Paxos
-    /// semantics. Therefore, this method does not check voter or membership
-    /// status.
+    /// semantics. Therefore, this method does not check voter or membership status. A locally
+    /// retired authority is reported as unknown even though its committed vote remains unchanged.
     ///
     /// Currently, this situation arises when a membership change removes the
     /// leader from the voter set (or from the membership entirely). The leader
@@ -1024,6 +1025,10 @@ where
             self.id,
             self.engine.state.vote_ref()
         );
+
+        if self.engine.state.is_locally_retired(&self.id) {
+            return None;
+        }
 
         let vote = self.engine.state.vote_ref();
 
@@ -1718,7 +1723,7 @@ where
 
                     if committed_leader_id.as_ref() != Some(&expected) {
                         // Leader has changed, return ForwardToLeader error to all responders
-                        let forward_err = self.engine.state.forward_to_leader();
+                        let forward_err = self.engine.state.forward_to_leader(&self.id);
                         for r in responders.into_iter().flatten() {
                             let err = ClientWriteError::ForwardToLeader(forward_err.clone());
                             r.on_complete(Err(err));
@@ -2393,6 +2398,13 @@ where
         Ok(())
     }
 
+    /// Run [`Command::SaveLocalRetirement`].
+    async fn run_save_local_retirement(&mut self, retired_for: LeaderIdOf<C>) -> Result<(), StorageError<C>> {
+        self.log_store.save_local_retirement(&retired_for).await.sto_write_local_retirement()?;
+
+        Ok(())
+    }
+
     /// Run [`Command::PurgeLog`].
     async fn run_purge_log(&mut self, upto: LogIdOf<C>) -> Result<(), StorageError<C>> {
         self.log_store.purge(upto.clone()).await.sto_write_logs()?;
@@ -2613,6 +2625,7 @@ where
                 entries,
             } => self.run_append_entries(committed_vote, entries).await?,
             Command::SaveVote { vote } => self.run_save_vote(vote).await?,
+            Command::SaveLocalRetirement { retired_for } => self.run_save_local_retirement(retired_for).await?,
             Command::PurgeLog { upto } => self.run_purge_log(upto).await?,
             Command::TruncateLog { after } => self.run_truncate_log(after).await?,
             Command::SendVote { vote_req } => {

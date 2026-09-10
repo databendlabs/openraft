@@ -10,6 +10,7 @@ use std::sync::Arc;
 use futures::lock::Mutex;
 use openraft::LogState;
 use openraft::RaftTypeConfig;
+use openraft::alias::LeaderIdOf;
 use openraft::alias::LogIdOf;
 use openraft::alias::VoteOf;
 use openraft::entry::RaftEntry;
@@ -34,6 +35,9 @@ pub struct LogStoreInner<C: RaftTypeConfig> {
 
     /// The current granted vote.
     vote: Option<VoteOf<C>>,
+
+    /// The Leader authority for which this node retired locally.
+    locally_retired_for: Option<LeaderIdOf<C>>,
 }
 
 impl<C: RaftTypeConfig> Default for LogStoreInner<C> {
@@ -43,6 +47,7 @@ impl<C: RaftTypeConfig> Default for LogStoreInner<C> {
             log: BTreeMap::new(),
             committed: None,
             vote: None,
+            locally_retired_for: None,
         }
     }
 }
@@ -91,6 +96,15 @@ impl<C: RaftTypeConfig> LogStoreInner<C> {
 
     async fn read_vote(&mut self) -> Result<Option<VoteOf<C>>, io::Error> {
         Ok(self.vote.clone())
+    }
+
+    async fn save_local_retirement(&mut self, retired_for: &LeaderIdOf<C>) -> Result<(), io::Error> {
+        self.locally_retired_for = Some(retired_for.clone());
+        Ok(())
+    }
+
+    async fn read_local_retirement(&mut self) -> Result<Option<LeaderIdOf<C>>, io::Error> {
+        Ok(self.locally_retired_for.clone())
     }
 
     async fn append<I>(&mut self, entries: I, callback: IOFlushed<C>) -> Result<(), io::Error>
@@ -144,6 +158,7 @@ mod impl_log_store {
     use openraft::LogState;
     use openraft::RaftLogReader;
     use openraft::RaftTypeConfig;
+    use openraft::alias::LeaderIdOf;
     use openraft::alias::LogIdOf;
     use openraft::alias::VoteOf;
     use openraft::storage::IOFlushed;
@@ -191,6 +206,16 @@ mod impl_log_store {
         async fn save_vote(&mut self, vote: &VoteOf<C>) -> Result<(), io::Error> {
             let mut inner = self.inner.lock().await;
             inner.save_vote(vote).await
+        }
+
+        async fn save_local_retirement(&mut self, retired_for: &LeaderIdOf<C>) -> Result<(), io::Error> {
+            let mut inner = self.inner.lock().await;
+            inner.save_local_retirement(retired_for).await
+        }
+
+        async fn read_local_retirement(&mut self) -> Result<Option<LeaderIdOf<C>>, io::Error> {
+            let mut inner = self.inner.lock().await;
+            inner.read_local_retirement().await
         }
 
         async fn append<I>(&mut self, entries: I, callback: IOFlushed<C>) -> Result<(), io::Error>

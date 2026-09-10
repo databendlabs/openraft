@@ -19,6 +19,7 @@ fn test_config_defaults() {
     assert_eq!(Some(65536), cfg.api_channel_size);
     assert_eq!(Some(65536), cfg.notification_channel_size);
     assert_eq!(StepDownPolicy::After(150), cfg.removed_leader_step_down);
+    assert_eq!(StepDownPolicy::Never, cfg.quorum_loss_step_down);
 }
 
 /// A config serialized before `removed_leader_step_down` existed deserializes to the default
@@ -31,6 +32,20 @@ fn test_removed_leader_step_down_serde_default() -> anyhow::Result<()> {
 
     let cfg: Config = serde_json::from_value(value)?;
     assert_eq!(StepDownPolicy::After(150), cfg.removed_leader_step_down);
+
+    Ok(())
+}
+
+/// A config serialized before `quorum_loss_step_down` existed keeps quorum-loss step-down
+/// disabled.
+#[cfg(feature = "serde")]
+#[test]
+fn test_quorum_loss_step_down_serde_default() -> anyhow::Result<()> {
+    let mut value = serde_json::to_value(Config::default())?;
+    value.as_object_mut().unwrap().remove("quorum_loss_step_down");
+
+    let cfg: Config = serde_json::from_value(value)?;
+    assert_eq!(StepDownPolicy::Never, cfg.quorum_loss_step_down);
 
     Ok(())
 }

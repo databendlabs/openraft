@@ -1,4 +1,5 @@
 use openraft_macros::VariantName;
+use openraft_macros::since;
 
 /// Enum representing the name of each `sm::Command` variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -16,6 +17,7 @@ pub enum SMCommandName {
 ///
 /// This provides an efficient way to identify command types without
 /// string comparisons, useful for logging, metrics, and debugging.
+#[since]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[derive(VariantName)]
 pub enum CommandName {
@@ -31,6 +33,8 @@ pub enum CommandName {
     FailPendingReads,
     RebuildReplicationStreams,
     SaveVote,
+    #[since(version = "0.10.0", change = "added local-retirement persistence command")]
+    SaveLocalRetirement,
     SendVote,
     SendPreVote,
     PurgeLog,
@@ -59,6 +63,7 @@ mod tests {
     use crate::raft_state::IOId;
     use crate::replication::ReplicationSessionId;
     use crate::replication::replicate::Replicate;
+    use crate::vote::RaftLeaderId;
     use crate::vote::committed::CommittedVote;
     use crate::vote::raft_vote::RaftVoteExt;
 
@@ -152,6 +157,12 @@ mod tests {
         let cmd: Command<C> = Command::SaveVote { vote: Vote::new(1, 0) };
         assert_eq!(cmd.name(), CommandName::SaveVote);
 
+        // SaveLocalRetirement
+        let cmd: Command<C> = Command::SaveLocalRetirement {
+            retired_for: UTLeaderId::new(1, 0),
+        };
+        assert_eq!(cmd.name(), CommandName::SaveLocalRetirement);
+
         // SendVote
         let cmd: Command<C> = Command::SendVote {
             vote_req: VoteRequest::new(Vote::new(1, 0), None),
@@ -211,6 +222,7 @@ mod tests {
             "RebuildReplicationStreams"
         );
         assert_eq!(CommandName::SaveVote.as_str(), "SaveVote");
+        assert_eq!(CommandName::SaveLocalRetirement.as_str(), "SaveLocalRetirement");
         assert_eq!(CommandName::SendVote.as_str(), "SendVote");
         assert_eq!(CommandName::PurgeLog.as_str(), "PurgeLog");
         assert_eq!(CommandName::TruncateLog.as_str(), "TruncateLog");

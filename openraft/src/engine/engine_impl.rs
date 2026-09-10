@@ -366,6 +366,35 @@ where
         self.leader.as_deref_mut()
     }
 
+    /// Retire the current local Leader authority without changing its Vote.
+    ///
+    /// Returns `true` when the transition is accepted. Stale Leader state is a no-op.
+    /// The production caller is added with the quorum-loss tick wiring.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn retire_leader_locally(&mut self) -> bool {
+        let retired_for = {
+            let Some(leader) = self.leader.as_ref() else {
+                return false;
+            };
+
+            let vote = self.state.vote_ref();
+            if !vote.is_committed()
+                || vote.leader_node_id() != &self.config.id
+                || leader.committed_vote_ref().as_ref_vote() != vote.as_ref_vote()
+            {
+                return false;
+            }
+
+            vote.leader_id().clone()
+        };
+
+        self.state.locally_retired_for = Some(retired_for.clone());
+        self.output.push_command(Command::SaveLocalRetirement { retired_for });
+        self.vote_handler().become_following();
+
+        true
+    }
+
     pub(crate) fn candidate_ref(&self) -> Option<&Candidate<C, LeaderQuorumSet<C>>> {
         self.candidate.as_ref()
     }
@@ -721,8 +750,9 @@ where
     /// otherwise this entry could never be committed.
     ///
     /// A Leader demoted to a learner that is still in the membership config is not affected:
-    /// openraft allows a learner to act as Leader. See: [Determine Server
-    /// State](crate::docs::data::vote#vote-and-membership-define-the-server-state).
+    /// openraft allows a learner to act as Leader. See: [Determine Server State][].
+    ///
+    /// [Determine Server State]: crate::docs::data::vote#vote-membership-and-local-retirement-define-the-server-state
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn refresh_server_state(&mut self) {
         tracing::debug!("{}: node_id: {}", func_name!(), self.config.id);
@@ -1035,7 +1065,7 @@ where
         let leader = match self.leader.as_mut() {
             None => {
                 tracing::debug!("not a leader, server_state: {:?}", self.state.server_state);
-                return Err(self.state.forward_to_leader());
+                return Err(self.state.forward_to_leader(&self.config.id));
             }
             Some(x) => x,
         };

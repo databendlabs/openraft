@@ -139,6 +139,7 @@ What sets OpenRaft apart from a standard Raft implementation:
 - ✅ **Leader election**: by policy or manually ([`Trigger::elect()`][]).
 - ✅ **Leader transfer**: [`Trigger::transfer_leader()`][].
 - ✅ **Pre-vote**: avoid unnecessary term increments by enabling [`Config::enable_pre_vote`][]; it runs as a dedicated RPC, see [Pre-Vote protocol][].
+- ✅ **Quorum-loss step-down**: optionally retire an isolated Leader with [`Config::quorum_loss_step_down`][]; see [CheckQuorum][].
 - ✅ **Non-voter(learner) Role**: refer to [`add_learner()`][].
 - ✅ **Log Compaction**(snapshot of state machine): by policy or manually ([`Trigger::snapshot()`][]).
 - ✅ **Snapshot replication**.
@@ -297,7 +298,9 @@ or the [Apache License 2.0](http://www.apache.org/licenses/LICENSE-2.0), at your
 [`Trigger::snapshot()`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/raft/trigger/struct.Trigger.html#method.snapshot
 [`Trigger::transfer_leader()`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/raft/trigger/struct.Trigger.html#method.transfer_leader
 [`Config::enable_pre_vote`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/struct.Config.html#structfield.enable_pre_vote
+[`Config::quorum_loss_step_down`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/struct.Config.html#structfield.quorum_loss_step_down
 [Pre-Vote protocol]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/docs/protocol/pre_vote/index.html
+[CheckQuorum]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/docs/protocol/check_quorum/index.html
 [`Raft::metrics()`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/raft/struct.Raft.html#method.metrics
 [`Raft::data_metrics()`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/raft/struct.Raft.html#method.data_metrics
 [`Raft::server_metrics()`]: https://docs.rs/openraft/0.10.0-alpha.34/openraft/raft/struct.Raft.html#method.server_metrics

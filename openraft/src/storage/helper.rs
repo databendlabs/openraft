@@ -84,6 +84,8 @@ where
     /// When the Raft node is first started, it will call this interface to fetch the last known
     /// state from stable storage.
     pub async fn get_initial_state(&mut self) -> Result<RaftState<C>, StorageError<C>> {
+        let locally_retired_for = self.log_store.read_local_retirement().await.sto_read_local_retirement()?;
+
         let mut log_reader = self.log_store.get_log_reader().await;
         let vote = log_reader.read_vote().await.sto_read_vote()?;
         // When absent, create a default value for this node.
@@ -235,6 +237,7 @@ where
             log_ids: log_id_list,
             membership_state: mem_state,
             snapshot_meta,
+            locally_retired_for,
 
             // -- volatile fields: they are not persisted.
             last_inflight_id: 0,

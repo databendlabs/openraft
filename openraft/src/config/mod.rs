@@ -6,7 +6,7 @@
 //!
 //! - [`Config`] - Main configuration for Raft runtime behavior
 //! - [`SnapshotPolicy`] - Policy for triggering automatic snapshots
-//! - [`StepDownPolicy`] - Policy for stepping down a removed Leader
+//! - [`StepDownPolicy`] - Policy for automatically stepping down a Leader
 //! - [`RuntimeConfig`] - Dynamic configuration that can be changed at runtime
 //! - [`ConfigError`] - Configuration validation errors
 //!

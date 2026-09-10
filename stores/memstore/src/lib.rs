@@ -22,6 +22,7 @@ use openraft::EntryPayload;
 use openraft::OptionalSend;
 use openraft::Vote;
 use openraft::alias::EntryOf;
+use openraft::alias::LeaderIdOf;
 use openraft::alias::LogIdOf;
 use openraft::alias::SnapshotMetaOf;
 use openraft::alias::SnapshotOf;
@@ -173,6 +174,9 @@ pub struct MemLogStore {
     /// The current hard state.
     vote: RwLock<Option<Vote<leader_id_mode::LeaderId<u64, u64>>>>,
 
+    /// The Leader authority for which this node retired locally.
+    locally_retired_for: RwLock<Option<LeaderIdOf<TypeConfig>>>,
+
     /// When set to true, `limited_get_log_entries` will return empty result.
     /// This is for testing graceful handling of faulty storage implementations.
     pub return_empty_limited_get: AtomicBool,
@@ -192,6 +196,7 @@ impl MemLogStore {
             log,
             block,
             vote: RwLock::new(None),
+            locally_retired_for: RwLock::new(None),
             return_empty_limited_get: AtomicBool::new(false),
             fail_next_limited_get: AtomicBool::new(false),
         }
@@ -426,6 +431,15 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
 
         *h = Some(*vote);
         Ok(())
+    }
+
+    async fn save_local_retirement(&mut self, retired_for: &LeaderIdOf<TypeConfig>) -> Result<(), io::Error> {
+        *self.locally_retired_for.write().await = Some(*retired_for);
+        Ok(())
+    }
+
+    async fn read_local_retirement(&mut self) -> Result<Option<LeaderIdOf<TypeConfig>>, io::Error> {
+        Ok(*self.locally_retired_for.read().await)
     }
 
     async fn save_committed(&mut self, committed: Option<LogIdOf<TypeConfig>>) -> Result<(), io::Error> {

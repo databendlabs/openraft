@@ -122,6 +122,23 @@ fn test_config_removed_leader_step_down() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_config_quorum_loss_step_down() -> anyhow::Result<()> {
+    let config = Config::build(&["foo"])?;
+    assert_eq!(StepDownPolicy::Never, config.quorum_loss_step_down);
+
+    let config = Config::build(&["foo", "--quorum-loss-step-down=500"])?;
+    assert_eq!(StepDownPolicy::After(500), config.quorum_loss_step_down);
+
+    let config = Config::build(&["foo", "--quorum-loss-step-down=off"])?;
+    assert_eq!(StepDownPolicy::Never, config.quorum_loss_step_down);
+
+    let res = Config::build(&["foo", "--quorum-loss-step-down=invalid"]);
+    assert!(res.is_err());
+
+    Ok(())
+}
+
+#[test]
 fn test_config_enable_tick() -> anyhow::Result<()> {
     let config = Config::build(&["foo", "--enable-tick=false"])?;
     assert_eq!(false, config.enable_tick);

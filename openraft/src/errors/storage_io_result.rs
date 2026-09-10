@@ -34,6 +34,12 @@ where C: RaftTypeConfig
     /// Convert io::Error to StorageError for reading vote state
     fn sto_read_vote(self) -> Result<T, StorageError<C>>;
 
+    /// Convert io::Error to StorageError for writing the local-retirement marker
+    fn sto_write_local_retirement(self) -> Result<T, StorageError<C>>;
+
+    /// Convert io::Error to StorageError for reading the local-retirement marker
+    fn sto_read_local_retirement(self) -> Result<T, StorageError<C>>;
+
     /// Convert io::Error to StorageError for applying a log entry
     fn sto_apply(self, log_id: LogIdOf<C>) -> Result<T, StorageError<C>>;
 
@@ -87,6 +93,14 @@ where C: RaftTypeConfig
 
     fn sto_read_vote(self) -> Result<T, StorageError<C>> {
         self.map_err(|e| StorageError::read_vote(C::err_from_error(&e)))
+    }
+
+    fn sto_write_local_retirement(self) -> Result<T, StorageError<C>> {
+        self.map_err(|e| StorageError::write_local_retirement(C::err_from_error(&e)))
+    }
+
+    fn sto_read_local_retirement(self) -> Result<T, StorageError<C>> {
+        self.map_err(|e| StorageError::read_local_retirement(C::err_from_error(&e)))
     }
 
     fn sto_apply(self, log_id: LogIdOf<C>) -> Result<T, StorageError<C>> {
