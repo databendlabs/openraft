@@ -98,6 +98,10 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         assert_eq!(ServerState::Candidate, eng.state.server_state);
 
         assert_eq!(eng.output.take_commands(), vec![]);
+        assert!(
+            eng.is_there_greater_log(),
+            "rejected (or unmatched) vote with a greater last_log_id records a backoff"
+        );
     }
 
     // TODO: when seeing a higher vote, keep trying until a majority of higher votes are seen.
@@ -135,6 +139,10 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
                 Command::CloseReplicationStreams,
             ],
             "no SaveVote because the higher vote is not yet granted by this node"
+        );
+        assert!(
+            !eng.is_there_greater_log(),
+            "responder last_log_id is smaller than local; no election backoff"
         );
     }
 
@@ -234,6 +242,53 @@ fn test_handle_vote_resp_equal_vote() -> anyhow::Result<()> {
                 },
             ],
             eng.output.take_commands()
+        );
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_handle_vote_resp_seen_greater_log_until_caught_up() -> anyhow::Result<()> {
+    let mut eng = eng();
+    eng.config.id = 1;
+    eng.state.vote = Leased::new(UTConfig::<()>::now(), Duration::from_millis(500), Vote::new(2, 1));
+    eng.state.membership_state.set_effective(Arc::new(StoredMembershipOf::<UTConfig>::new(
+        Some(log_id(1, 1, 1)),
+        m12(),
+    )));
+    let voting = eng.new_candidate(*eng.state.vote_ref());
+    voting.grant_by(&1);
+    eng.state.server_state = ServerState::Candidate;
+    eng.output.take_commands();
+
+    assert!(!eng.is_there_greater_log());
+
+    tracing::info!("--- reject with a greater last_log_id records it for election backoff");
+    {
+        eng.handle_vote_resp(2, VoteResponse::new(Vote::new(2, 1), Some(log_id(2, 1, 5)), false));
+
+        assert_eq!(Some(log_id(2, 1, 5)), eng.seen_greater_log);
+        assert!(eng.is_there_greater_log());
+        assert_eq!(ServerState::Candidate, eng.state.server_state);
+    }
+
+    tracing::info!("--- a later reject with a smaller last_log_id does not shrink the stored id");
+    {
+        eng.handle_vote_resp(2, VoteResponse::new(Vote::new(2, 1), Some(log_id(2, 1, 2)), false));
+
+        assert_eq!(Some(log_id(2, 1, 5)), eng.seen_greater_log);
+        assert!(eng.is_there_greater_log());
+    }
+
+    tracing::info!("--- catching up to that log id clears the extra delay without reset");
+    {
+        eng.state.log_ids = LogIdList::new(None, [log_id(2, 1, 5)]);
+
+        assert_eq!(Some(log_id(2, 1, 5)), eng.seen_greater_log);
+        assert!(
+            !eng.is_there_greater_log(),
+            "local last log is no longer smaller; a later election uses the normal timeout"
         );
     }
 
