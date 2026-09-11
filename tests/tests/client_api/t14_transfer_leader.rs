@@ -6,10 +6,14 @@ use openraft::Config;
 use openraft::ReadPolicy;
 use openraft::ServerState;
 use openraft::async_runtime::WatchReceiver;
+use openraft::errors::ClientWriteError;
+use openraft::errors::ForwardReason;
 use openraft::errors::LinearizableReadError;
 use openraft::raft::TransferLeaderError;
 use openraft::raft::TransferLeaderRequest;
 use openraft::type_config::TypeConfigExt;
+use openraft_memstore::ClientRequest;
+use openraft_memstore::IntoMemClientRequest;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
@@ -198,6 +202,7 @@ async fn transfer_leader_with_dead_target_does_not_block_election() -> anyhow::R
             if let Err(e) = &res
                 && let Some(LinearizableReadError::ForwardToLeader(fwd)) = e.api_error()
                 && fwd.leader_id == Some(1)
+                && fwd.reason == ForwardReason::LeadershipTransfer
             {
                 got = true;
                 break;
@@ -279,6 +284,7 @@ async fn transfer_leader_blocks_lease_read() -> anyhow::Result<()> {
         if let Err(e) = &res
             && let Some(LinearizableReadError::ForwardToLeader(fwd)) = e.api_error()
             && fwd.leader_id == Some(1)
+            && fwd.reason == ForwardReason::LeadershipTransfer
         {
             got = true;
             break;
@@ -287,8 +293,21 @@ async fn transfer_leader_blocks_lease_read() -> anyhow::Result<()> {
     }
     assert!(
         got,
-        "expected ForwardToLeader(1) for LeaseRead within 200ms after transfer"
+        "expected a leadership-transfer ForwardToLeader(1) for LeaseRead within 200ms after transfer"
     );
+
+    tracing::info!("--- a write on n0 must identify leadership transfer as the rejection reason");
+    {
+        let err = router
+            .send_client_request(0, ClientRequest::make_request("transfer", 1))
+            .await
+            .expect_err("write must be rejected during leadership transfer");
+        let ClientWriteError::ForwardToLeader(fwd) = err.into_api_error().expect("write returns an API error") else {
+            panic!("expected ForwardToLeader");
+        };
+        assert_eq!(Some(1), fwd.leader_id);
+        assert_eq!(ForwardReason::LeadershipTransfer, fwd.reason);
+    }
 
     Ok(())
 }

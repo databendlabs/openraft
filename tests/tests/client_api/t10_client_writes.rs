@@ -223,6 +223,7 @@ async fn write_with_leader() -> Result<()> {
     };
     // Check the error content: leader_id should point to node 0
     assert_eq!(Some(0), forward.leader_id);
+    assert_eq!(openraft::errors::ForwardReason::NotLeader, forward.reason);
 
     // Test 3: Write without leader check should succeed
     let (responder, complete_rx) = ProgressResponder::complete_only();
