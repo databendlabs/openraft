@@ -116,6 +116,7 @@ use crate::engine::EngineConfig;
 use crate::entry::RaftPayload;
 use crate::errors::ClientWriteError;
 use crate::errors::Fatal;
+use crate::errors::ForwardReason;
 use crate::errors::ForwardToLeader;
 use crate::errors::InitializeError;
 use crate::errors::LinearizableReadError;
@@ -783,6 +784,7 @@ where
             Err(ForwardToLeader {
                 leader_id: Some(node_id.clone()),
                 leader_node: node,
+                reason: ForwardReason::NotLeader,
             })
         }
     }
