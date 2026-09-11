@@ -3,6 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use openraft::Config;
 use openraft::errors::ClientWriteError;
+use openraft::errors::ForwardReason;
 use openraft::errors::ForwardToLeader;
 use openraft::errors::RaftError;
 
@@ -28,7 +29,9 @@ async fn add_learner_on_uninitialized_node() -> Result<()> {
     let n0 = router.get_raft_handle(&0)?;
     let err = n0.add_learner(0, (), false).await.unwrap_err();
     assert_eq!(
-        RaftError::APIError(ClientWriteError::ForwardToLeader(ForwardToLeader::empty())),
+        RaftError::APIError(ClientWriteError::ForwardToLeader(ForwardToLeader::empty(
+            ForwardReason::NotLeader,
+        ))),
         err
     );
 

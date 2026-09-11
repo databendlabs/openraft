@@ -391,7 +391,24 @@ pub struct Timeout<C: RaftTypeConfig> {
     pub timeout: Duration,
 }
 
-/// Error indicating that the request should be forwarded to the leader.
+/// Why a request must be forwarded or retried.
+#[since(version = "0.10.0")]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+pub enum ForwardReason {
+    /// The receiving node is not the leader.
+    #[default]
+    NotLeader,
+
+    /// The receiving leader is transferring leadership to another node.
+    LeadershipTransfer,
+
+    /// The receiving leader's quorum lease has expired.
+    LeaseExpired,
+}
+
+/// Error indicating that the request should be forwarded to the leader or retried.
+#[since(version = "0.10.0", change = "added `reason`")]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("has to forward request to: {leader_id:?}, {leader_node:?}")]
@@ -402,24 +419,33 @@ where C: RaftTypeConfig
     pub leader_id: Option<C::NodeId>,
     /// The node information of the current leader, if known.
     pub leader_node: Option<C::Node>,
+    /// Why the request was rejected.
+    ///
+    /// For [`ForwardReason::LeadershipTransfer`], `leader_id` and `leader_node` identify the
+    /// transfer target, which may not have established leadership yet.
+    #[since(version = "0.10.0")]
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub reason: ForwardReason,
 }
 
 impl<C> ForwardToLeader<C>
 where C: RaftTypeConfig
 {
     /// Create a ForwardToLeader error with no known leader information.
-    pub const fn empty() -> Self {
+    pub const fn empty(reason: ForwardReason) -> Self {
         Self {
             leader_id: None,
             leader_node: None,
+            reason,
         }
     }
 
     /// Create a ForwardToLeader error with known leader information.
-    pub fn new(leader_id: C::NodeId, node: C::Node) -> Self {
+    pub fn new(leader_id: C::NodeId, node: C::Node, reason: ForwardReason) -> Self {
         Self {
             leader_id: Some(leader_id),
             leader_node: Some(node),
+            reason,
         }
     }
 }

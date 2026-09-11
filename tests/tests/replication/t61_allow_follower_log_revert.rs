@@ -5,6 +5,7 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::errors::AllowNextRevertError;
+use openraft::errors::ForwardReason;
 use openraft::errors::ForwardToLeader;
 use openraft::errors::NodeNotFound;
 use openraft::errors::Operation;
@@ -103,7 +104,11 @@ async fn allow_follower_log_revert_errors() -> Result<()> {
         let n1 = router.get_raft_handle(&1)?;
         let res = n1.trigger().allow_next_revert(&0, true).await?;
         assert_eq!(
-            Err(AllowNextRevertError::ForwardToLeader(ForwardToLeader::new(0, ()))),
+            Err(AllowNextRevertError::ForwardToLeader(ForwardToLeader::new(
+                0,
+                (),
+                ForwardReason::NotLeader,
+            ))),
             res
         );
     }

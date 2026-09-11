@@ -116,6 +116,7 @@ use crate::engine::EngineConfig;
 use crate::entry::RaftPayload;
 use crate::errors::ClientWriteError;
 use crate::errors::Fatal;
+use crate::errors::ForwardReason;
 use crate::errors::ForwardToLeader;
 use crate::errors::InitializeError;
 use crate::errors::LinearizableReadError;
@@ -765,7 +766,7 @@ where
         let metrics = self.inner.rx_metrics.borrow_watched();
 
         let Some(committed_vote) = metrics.vote.try_to_committed() else {
-            return Err(ForwardToLeader::empty());
+            return Err(ForwardToLeader::empty(ForwardReason::NotLeader));
         };
 
         let leader_id = committed_vote.leader_id();
@@ -783,6 +784,7 @@ where
             Err(ForwardToLeader {
                 leader_id: Some(node_id.clone()),
                 leader_node: node,
+                reason: ForwardReason::NotLeader,
             })
         }
     }

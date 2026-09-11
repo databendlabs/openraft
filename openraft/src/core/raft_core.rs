@@ -67,6 +67,7 @@ use crate::entry::RaftPayload;
 use crate::errors::AllowNextRevertError;
 use crate::errors::ClientWriteError;
 use crate::errors::Fatal;
+use crate::errors::ForwardReason;
 use crate::errors::ForwardToLeader;
 use crate::errors::Infallible;
 use crate::errors::InitializeError;
@@ -595,7 +596,7 @@ where
 
         // If the leader is transferring leadership, forward requests to the new leader.
         if let Some(to) = lh.leader.get_transfer_to() {
-            return Err(lh.state.new_forward_to_leader(to.clone()));
+            return Err(lh.state.new_forward_to_leader(to.clone(), ForwardReason::LeadershipTransfer));
         }
 
         Ok(lh)
@@ -606,7 +607,7 @@ where
         let lh = self.ensure_leader_handler()?;
 
         if !lh.is_lease_valid() {
-            return Err(ForwardToLeader::empty());
+            return Err(ForwardToLeader::empty(ForwardReason::LeaseExpired));
         }
 
         Ok(lh)
@@ -2407,6 +2408,7 @@ where
             tx.on_complete(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
                 leader_id: leader_id.clone(),
                 leader_node: leader_node.clone(),
+                reason: ForwardReason::NotLeader,
             })));
             tracing::debug!("sent ForwardToLeader for purged log_index: {}", log_index);
         }
@@ -2428,6 +2430,7 @@ where
             tx.on_complete(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
                 leader_id: leader_id.clone(),
                 leader_node: leader_node.clone(),
+                reason: ForwardReason::NotLeader,
             })));
 
             tracing::debug!("sent ForwardToLeader for log_index: {}", log_index);

@@ -8,6 +8,7 @@ use openraft::EntryPayload;
 use openraft::Precondition;
 use openraft::async_runtime::WatchReceiver;
 use openraft::errors::ClientWriteError;
+use openraft::errors::ForwardReason;
 use openraft::errors::ForwardToLeader;
 use openraft::errors::PreconditionFailed;
 use openraft::errors::RaftError;
@@ -271,7 +272,7 @@ async fn follower_answers_forward_to_leader() -> Result<()> {
         };
         let err = follower.change_membership_if([0, 1, 2, 3], false, [precondition]).await.unwrap_err();
 
-        let want = ClientWriteError::ForwardToLeader(ForwardToLeader::new(0, ()));
+        let want = ClientWriteError::ForwardToLeader(ForwardToLeader::new(0, (), ForwardReason::NotLeader));
         assert_eq!(RaftError::APIError(want), err);
     }
 

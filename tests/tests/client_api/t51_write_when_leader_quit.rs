@@ -7,6 +7,7 @@ use openraft::Config;
 use openraft::Vote;
 use openraft::async_runtime::OneshotSender;
 use openraft::errors::ClientWriteError;
+use openraft::errors::ForwardReason;
 use openraft::errors::ForwardToLeader;
 use openraft::errors::RaftError;
 use openraft::raft::AppendEntriesRequest;
@@ -88,6 +89,7 @@ async fn write_when_leader_quit_and_log_revert() -> Result<()> {
         RaftError::APIError(ClientWriteError::ForwardToLeader(ForwardToLeader {
             leader_id: Some(1),
             leader_node: Some(()),
+            reason: ForwardReason::NotLeader,
         }))
     );
 

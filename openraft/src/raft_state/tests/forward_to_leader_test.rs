@@ -9,6 +9,7 @@ use crate::MembershipState;
 use crate::RaftState;
 use crate::Vote;
 use crate::engine::testing::UTConfig;
+use crate::errors::ForwardReason;
 use crate::errors::ForwardToLeader;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LeaderIdOf;
@@ -37,7 +38,7 @@ fn test_forward_to_leader_vote_not_committed() {
         ..Default::default()
     };
 
-    assert_eq!(ForwardToLeader::empty(), rs.forward_to_leader());
+    assert_eq!(ForwardToLeader::empty(ForwardReason::NotLeader), rs.forward_to_leader());
 }
 
 #[test]
@@ -55,7 +56,7 @@ fn test_forward_to_leader_not_a_member() {
         ..Default::default()
     };
 
-    assert_eq!(ForwardToLeader::empty(), rs.forward_to_leader());
+    assert_eq!(ForwardToLeader::empty(ForwardReason::NotLeader), rs.forward_to_leader());
 }
 
 #[test]
@@ -75,5 +76,8 @@ fn test_forward_to_leader_has_leader() {
         ..Default::default()
     };
 
-    assert_eq!(ForwardToLeader::new(3, 6), rs.forward_to_leader());
+    assert_eq!(
+        ForwardToLeader::new(3, 6, ForwardReason::NotLeader),
+        rs.forward_to_leader()
+    );
 }

@@ -3,6 +3,7 @@ use std::time::Duration;
 use super::*;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
+use crate::errors::ForwardReason;
 use crate::errors::ForwardToLeader;
 use crate::errors::LinearizableReadError;
 use crate::raft::linearizable_read::Linearizer;
@@ -53,7 +54,7 @@ fn test_drain_all_with_error() {
         receivers.push(rx);
     }
 
-    let want = ForwardToLeader::new(2, ());
+    let want = ForwardToLeader::new(2, (), ForwardReason::NotLeader);
     let err = LinearizableReadError::ForwardToLeader(want.clone());
     queue.drain_all_with_error(err);
 
@@ -144,7 +145,7 @@ fn test_drain_expired_removes_expired_prefix() {
 
     assert_eq!(Some(deadline1), queue.earliest_deadline());
 
-    let want = ForwardToLeader::new(4, ());
+    let want = ForwardToLeader::new(4, (), ForwardReason::NotLeader);
     let mut thresholds = Vec::new();
     queue.drain_expired(deadline2, |min_quorum_acked_at| {
         thresholds.push(min_quorum_acked_at);
@@ -194,7 +195,7 @@ fn test_drain_expired_follows_deadline_order_not_threshold_order() {
 
     assert_eq!(Some(deadline2), queue.earliest_deadline());
 
-    let want = ForwardToLeader::new(3, ());
+    let want = ForwardToLeader::new(3, (), ForwardReason::NotLeader);
     let mut thresholds = Vec::new();
     queue.drain_expired(deadline2, |min_quorum_acked_at| {
         thresholds.push(min_quorum_acked_at);
@@ -254,7 +255,7 @@ fn test_satisfied_removes_read_from_the_middle_of_deadline_order() {
     assert_linearizer(&mut rx1, 1, &read_log_id);
     assert_eq!(Some(deadline2), queue.earliest_deadline());
 
-    let want = ForwardToLeader::new(4, ());
+    let want = ForwardToLeader::new(4, (), ForwardReason::NotLeader);
     let mut thresholds = Vec::new();
     queue.drain_expired(deadline3, |min_quorum_acked_at| {
         thresholds.push(min_quorum_acked_at);
@@ -313,7 +314,7 @@ fn test_satisfied_takes_precedence_over_expired() {
     let quorum_acked_at = now + CLOCK_ADVANCE;
     queue.drain_satisfied(quorum_acked_at, None);
 
-    let err = LinearizableReadError::ForwardToLeader(ForwardToLeader::new(2, ()));
+    let err = LinearizableReadError::ForwardToLeader(ForwardToLeader::new(2, (), ForwardReason::NotLeader));
     queue.drain_expired(now, |_| err.clone());
 
     assert_linearizer(&mut rx, 1, &read_log_id);

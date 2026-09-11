@@ -7,7 +7,7 @@ use openraft::Config;
 use openraft::ServerState;
 use openraft::async_runtime::WatchReceiver;
 use openraft::errors::ClientWriteError;
-use openraft::errors::ForwardToLeader;
+use openraft::errors::ForwardReason;
 use openraft::errors::RaftError;
 use openraft::impls::ProgressResponder;
 use openraft::type_config::TypeConfigExt;
@@ -59,10 +59,10 @@ async fn client_write_requires_valid_quorum_lease() -> Result<()> {
     .expect("an expired leader lease rejects a new write")
     .unwrap_err();
 
-    assert_eq!(
-        RaftError::APIError(ClientWriteError::ForwardToLeader(ForwardToLeader::empty())),
-        rejected
-    );
+    let RaftError::APIError(ClientWriteError::ForwardToLeader(forward)) = rejected else {
+        panic!("expected ForwardToLeader");
+    };
+    assert_eq!(ForwardReason::LeaseExpired, forward.reason);
 
     let metrics = n0.metrics().borrow_watched().clone();
     assert_eq!(ServerState::Leader, metrics.state);

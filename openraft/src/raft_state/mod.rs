@@ -9,6 +9,7 @@ use validit::Validate;
 use crate::RaftTypeConfig;
 use crate::ServerState;
 use crate::engine::LogIdList;
+use crate::errors::ForwardReason;
 use crate::errors::ForwardToLeader;
 use crate::log_id::raft_log_id::RaftLogId;
 use crate::type_config::alias::CommittedLeaderIdOf;
@@ -484,22 +485,22 @@ where C: RaftTypeConfig
         if vote.is_committed() {
             let id = vote.to_leader_id().node_id().clone();
 
-            return self.new_forward_to_leader(id);
+            return self.new_forward_to_leader(id, ForwardReason::NotLeader);
         }
 
-        ForwardToLeader::empty()
+        ForwardToLeader::empty(ForwardReason::NotLeader)
     }
 
-    pub(crate) fn new_forward_to_leader(&self, to: C::NodeId) -> ForwardToLeader<C> {
+    pub(crate) fn new_forward_to_leader(&self, to: C::NodeId, reason: ForwardReason) -> ForwardToLeader<C> {
         // leader may not step down after being removed from `voters`.
         // It does not have to be a voter, being in membership is just enough
         let node = self.membership_state.effective().get_node(&to);
 
         if let Some(n) = node {
-            ForwardToLeader::new(to, n.clone())
+            ForwardToLeader::new(to, n.clone(), reason)
         } else {
             tracing::debug!("id={} is not in membership, when getting leader id", to);
-            ForwardToLeader::empty()
+            ForwardToLeader::empty(reason)
         }
     }
 
