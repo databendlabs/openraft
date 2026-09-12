@@ -423,6 +423,10 @@ where C: RaftTypeConfig
     ///
     /// For [`ForwardReason::LeadershipTransfer`], `leader_id` and `leader_node` identify the
     /// transfer target, which may not have established leadership yet.
+    ///
+    /// Adding this field is not backward compatible with Serde formats that encode structs
+    /// positionally, such as bincode and postcard. Formats that encode structs by field name can
+    /// deserialize older data because a missing field defaults to [`ForwardReason::NotLeader`].
     #[since(version = "0.10.0")]
     #[cfg_attr(feature = "serde", serde(default))]
     pub reason: ForwardReason,

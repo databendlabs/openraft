@@ -127,6 +127,10 @@ each stage transition.
 Derives `serde::Serialize, serde::Deserialize` for type that are used
 in storage and network, such as `Vote` or `AppendEntriesRequest`.
 
+These derives do not provide a stable wire or storage format. OpenRaft does not
+guarantee that serialized data remains compatible across versions. Applications
+that require compatibility must version or migrate their data.
+
 ## feature-flag `singlethreaded` (removed)
 
 This feature flag has been renamed to `single-threaded` since `0.10.0`.
