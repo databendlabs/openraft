@@ -332,6 +332,10 @@ jobs:
         with:
           toolchain: ${{ matrix.toolchain == 'nightly' && env.PIN || matrix.toolchain }}
 
+      - name: Check isolated feature builds
+        if: matrix.features == '' && matrix.extra_args == ''
+        run: make feature-check
+
       - name: Test crate `openraft/`
         run: cargo test ${{ matrix.extra_args }} --features "${{ matrix.features }}" --manifest-path openraft/Cargo.toml
         env:
