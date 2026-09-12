@@ -82,8 +82,10 @@ declare_raft_types!(
         AsyncRuntime = TokioRuntime,
 );
 
+#[cfg(feature = "tokio-rt")]
 declare_raft_types!(EmptyWithColon:);
 
+#[cfg(feature = "tokio-rt")]
 declare_raft_types!(Empty);
 
 declare_raft_types!(
@@ -105,6 +107,7 @@ fn test_payload_type() {
     }
 
     assert_payload::<WithCustomPayload, CustomPayload>();
+    #[cfg(feature = "tokio-rt")]
     assert_payload::<Empty, EntryPayload<String, u64, crate::impls::BasicNode>>();
 }
 

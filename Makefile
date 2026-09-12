@@ -10,7 +10,7 @@ compile:
 # Read-only completion gate: it never writes to the worktree, so a
 # human-reviewed diff stays exactly as reviewed. `make fix` is the mutating
 # counterpart.
-verify: fmt_check clippy docs-check
+verify: fmt_check feature-check clippy docs-check
 	cargo test --lib
 	cargo test --test '*'
 	# cargo test --features single-threaded --lib
@@ -18,6 +18,19 @@ verify: fmt_check clippy docs-check
 	cargo test -p openraft-macros -- --ignored
 
 basic_check: verify
+
+# Build each supported feature in isolation, without workspace or test dependencies
+# enabling features on the library's behalf. Removed features intentionally fail.
+.PHONY: feature-check
+feature-check:
+	cargo check --manifest-path openraft/Cargo.toml --lib --no-default-features
+	@set -eu; \
+	for feature in tokio-rt clap bench bt serde type-alias compat single-threaded \
+		tracing-log runtime-stats metrics-logids anyhow serde_json; do \
+		cargo check --manifest-path openraft/Cargo.toml --lib --no-default-features --features "$$feature"; \
+	done
+	cargo check --manifest-path openraft/Cargo.toml --no-default-features --all-targets
+	cargo check --manifest-path openraft/Cargo.toml --no-default-features --features single-threaded --all-targets
 
 defensive_test:
 	OPENRAFT_STORE_DEFENSIVE=on cargo test

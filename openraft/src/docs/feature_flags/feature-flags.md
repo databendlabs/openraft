@@ -14,10 +14,9 @@ snapshot transport, use the [`openraft-legacy`] crate instead.
 
 ## feature-flag `bench`
 
-Enables benchmarks in unittest. Benchmark in openraft depends on the unstable feature
-`test` thus it cannot be used with stable rust. In order to run the benchmark with stable
-toolchain, the unstable features have to be enabled explicitly with environment variable
-`RUSTC_BOOTSTRAP=1`.
+Exposes internal types used by the Criterion benchmarks in `openraft/benches/`.
+Run them with `cargo bench --features bench -p openraft`.
+Automatically enables `tokio-rt` because the benchmark helpers use `TokioRuntime`.
 
 ## feature-flag `bt`
 
