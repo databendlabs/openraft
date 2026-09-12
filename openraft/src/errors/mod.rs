@@ -432,21 +432,29 @@ impl<C> ForwardToLeader<C>
 where C: RaftTypeConfig
 {
     /// Create a ForwardToLeader error with no known leader information.
-    pub const fn empty(reason: ForwardReason) -> Self {
+    pub const fn empty() -> Self {
         Self {
             leader_id: None,
             leader_node: None,
-            reason,
+            reason: ForwardReason::NotLeader,
         }
     }
 
     /// Create a ForwardToLeader error with known leader information.
-    pub fn new(leader_id: C::NodeId, node: C::Node, reason: ForwardReason) -> Self {
+    pub fn new(leader_id: C::NodeId, node: C::Node) -> Self {
         Self {
             leader_id: Some(leader_id),
             leader_node: Some(node),
-            reason,
+            reason: ForwardReason::NotLeader,
         }
+    }
+
+    /// Set why the request was rejected.
+    #[since(version = "0.10.0")]
+    #[must_use]
+    pub const fn with_reason(mut self, reason: ForwardReason) -> Self {
+        self.reason = reason;
+        self
     }
 }
 

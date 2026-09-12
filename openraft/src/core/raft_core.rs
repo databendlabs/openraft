@@ -596,7 +596,8 @@ where
 
         // If the leader is transferring leadership, forward requests to the new leader.
         if let Some(to) = lh.leader.get_transfer_to() {
-            return Err(lh.state.new_forward_to_leader(to.clone(), ForwardReason::LeadershipTransfer));
+            let forward = lh.state.new_forward_to_leader(to.clone());
+            return Err(forward.with_reason(ForwardReason::LeadershipTransfer));
         }
 
         Ok(lh)
@@ -607,7 +608,7 @@ where
         let lh = self.ensure_leader_handler()?;
 
         if !lh.is_lease_valid() {
-            return Err(ForwardToLeader::empty(ForwardReason::LeaseExpired));
+            return Err(ForwardToLeader::empty().with_reason(ForwardReason::LeaseExpired));
         }
 
         Ok(lh)

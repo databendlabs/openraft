@@ -766,7 +766,7 @@ where
         let metrics = self.inner.rx_metrics.borrow_watched();
 
         let Some(committed_vote) = metrics.vote.try_to_committed() else {
-            return Err(ForwardToLeader::empty(ForwardReason::NotLeader));
+            return Err(ForwardToLeader::empty());
         };
 
         let leader_id = committed_vote.leader_id();
