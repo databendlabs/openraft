@@ -39,9 +39,12 @@ tracks it as flushed IO, or to a caller that waits for the flush before returnin
 
 ## What reaches disk, and when
 
-`append` and `save_vote` fsync. A vote decides an election and an append is the entry openraft
-promises to a quorum, so neither may be lost. `save_vote` waits for the fsync before returning;
-`append` returns at once and lets openraft learn about the completion through its callback.
+`append`, `save_vote`, and `save_local_retirement` fsync. A vote decides an election, an append is
+the entry openraft promises to a quorum, and a local-retirement marker fences an old Leader after
+restart, so none may be lost. `save_vote` and `save_local_retirement` wait for the fsync before
+returning; `append` returns at once and lets openraft learn about the completion through its
+callback. The retirement marker uses `raft-log`'s user-data field; an older WAL without user data
+is read as having no marker.
 
 `save_committed` and `truncate_after` do not fsync. Each one writes a record that a crash may drop,
 and each loss costs only repeated work after the restart: the state machine re-applies a few

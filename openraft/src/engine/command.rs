@@ -26,6 +26,7 @@ use crate::replication::replicate::Replicate;
 use crate::storage::RaftStateMachine;
 use crate::type_config::alias::BatchOf;
 use crate::type_config::alias::CommittedVoteOf;
+use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::VoteOf;
@@ -139,6 +140,9 @@ where
     /// Save vote to storage
     SaveVote { vote: VoteOf<C> },
 
+    /// Persist the Leader authority for which this node retired locally.
+    SaveLocalRetirement { retired_for: LeaderIdOf<C> },
+
     /// Send vote to all other members
     SendVote { vote_req: VoteRequest<C> },
 
@@ -247,6 +251,7 @@ where
                 )
             }
             Command::SaveVote { vote } => write!(f, "SaveVote: {}", vote),
+            Command::SaveLocalRetirement { retired_for } => write!(f, "SaveLocalRetirement: {}", retired_for),
             Command::SendVote { vote_req } => write!(f, "SendVote: {}", vote_req),
             Command::SendPreVote { vote_req } => write!(f, "SendPreVote: {}", vote_req),
             Command::PurgeLog { upto } => write!(f, "PurgeLog: upto: {}", upto),
@@ -287,6 +292,7 @@ where
             (Command::BroadcastTransferLeader { req },         Command::BroadcastTransferLeader { req: b, }, )                       => req == b,
             (Command::RebuildReplicationStreams { leader_vote, targets, close_old_streams },   Command::RebuildReplicationStreams { leader_vote: lb, targets: b, close_old_streams: cb }, ) => leader_vote == lb && targets == b && close_old_streams == cb,
             (Command::SaveVote { vote },                       Command::SaveVote { vote: b })                                        => vote == b,
+            (Command::SaveLocalRetirement { retired_for },      Command::SaveLocalRetirement { retired_for: b })                       => retired_for == b,
             (Command::SendVote { vote_req },                   Command::SendVote { vote_req: b }, )                                  => vote_req == b,
             (Command::SendPreVote { vote_req },                Command::SendPreVote { vote_req: b }, )                               => vote_req == b,
             (Command::PurgeLog { upto },                       Command::PurgeLog { upto: b })                                        => upto == b,
@@ -313,6 +319,7 @@ where
             (Command::FailPendingReads,                 _) => false,
             (Command::RebuildReplicationStreams { .. }, _) => false,
             (Command::SaveVote { .. },                  _) => false,
+            (Command::SaveLocalRetirement { .. },       _) => false,
             (Command::SendVote { .. },                  _) => false,
             (Command::SendPreVote { .. },               _) => false,
             (Command::PurgeLog { .. },                  _) => false,
@@ -344,6 +351,7 @@ where
             Command::FailPendingReads                 => CommandName::FailPendingReads,
             Command::RebuildReplicationStreams { .. } => CommandName::RebuildReplicationStreams,
             Command::SaveVote { .. }                  => CommandName::SaveVote,
+            Command::SaveLocalRetirement { .. }       => CommandName::SaveLocalRetirement,
             Command::SendVote { .. }                  => CommandName::SendVote,
             Command::SendPreVote { .. }               => CommandName::SendPreVote,
             Command::PurgeLog { .. }                  => CommandName::PurgeLog,
@@ -367,6 +375,7 @@ where
             Command::UpdateIOProgress { .. }          => CommandKind::Log,
             Command::AppendEntries { .. }             => CommandKind::Log,
             Command::SaveVote { .. }                  => CommandKind::Log,
+            Command::SaveLocalRetirement { .. }       => CommandKind::Log,
             Command::TruncateLog { .. }               => CommandKind::Log,
 
             Command::PurgeLog { .. }                  => CommandKind::Log,
@@ -396,6 +405,7 @@ where
             Command::UpdateIOProgress { when, .. }    => when.clone(),
             Command::AppendEntries { .. }             => None,
             Command::SaveVote { .. }                  => None,
+            Command::SaveLocalRetirement { .. }       => None,
             Command::TruncateLog { .. }               => None,
 
             Command::PurgeLog { upto }                => Some(Condition::Snapshot { log_id: upto.clone() }),
@@ -508,7 +518,7 @@ where C: RaftTypeConfig
         match self {
             Respond::Vote(vs) => write!(f, "Vote {}", vs.value()),
             Respond::AppendEntries(vs) => match vs.value() {
-                Ok(log_id) => write!(f, "AppendEntries Ok({})", log_id.display()),
+                Ok(success) => write!(f, "AppendEntries Ok({})", success),
                 Err(e) => write!(f, "AppendEntries Err({})", e),
             },
             Respond::InstallFullSnapshot(vs) => write!(f, "InstallFullSnapshot {}", vs.value()),

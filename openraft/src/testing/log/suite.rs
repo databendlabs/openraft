@@ -8,6 +8,8 @@ use std::marker::PhantomData;
 use std::ops::RangeBounds;
 use std::time::Duration;
 
+use openraft_macros::since;
+
 use crate::Membership;
 use crate::OptionalSend;
 use crate::RaftLogReader;
@@ -151,6 +153,7 @@ where
         run_test(builder, Self::get_initial_state_log_ids).await?;
         run_test(builder, Self::get_initial_state_re_apply_committed).await?;
         run_test(builder, Self::save_vote).await?;
+        run_test(builder, Self::local_retirement).await?;
         run_test(builder, Self::get_log_entries).await?;
         run_test(builder, Self::limited_get_log_entries).await?;
         run_test(builder, Self::leader_bounded_stream).await?;
@@ -969,6 +972,27 @@ where
         let got = store.read_vote().await?;
 
         assert_eq!(Some(VoteOf::<C>::from_term_node_id(100.into(), NODE_ID.into())), got,);
+        Ok(())
+    }
+
+    #[since(version = "0.10.0", change = "added local retirement storage test")]
+    pub async fn local_retirement(mut store: LS, mut sm: SM) -> Result<(), io::Error> {
+        assert_eq!(None, store.read_local_retirement().await?);
+
+        let first = LeaderIdOf::<C>::new(100.into(), NODE_ID.into());
+        store.save_local_retirement(&first).await?;
+        assert_eq!(Some(first.clone()), store.read_local_retirement().await?);
+
+        store.save_vote(&VoteOf::<C>::from_term_node_id(101.into(), NODE_ID.into())).await?;
+        assert_eq!(Some(first), store.read_local_retirement().await?);
+
+        let second = LeaderIdOf::<C>::new(102.into(), NODE_ID.into());
+        store.save_local_retirement(&second).await?;
+        assert_eq!(Some(second.clone()), store.read_local_retirement().await?);
+
+        let initial = StorageHelper::new(&mut store, &mut sm).with_id(NODE_ID.into()).get_initial_state().await?;
+        assert_eq!(Some(second), initial.locally_retired_for);
+
         Ok(())
     }
 

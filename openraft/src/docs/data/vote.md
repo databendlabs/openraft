@@ -43,11 +43,14 @@ The only difference between these two modes is the definition of `LeaderId`, and
 See: [`leader-id`].
 
 
-## Vote and Membership define the server state
+## Vote, Membership and local retirement define the server state
 
-In the default mode, the `Vote` defines the server state (leader, candidate, follower or learner).
-A server state has a unique corresponding `vote`, thus `vote` can be used to identify different server
-states, i.e., if the `vote` changes, the server state must have changed.
+In the default mode, the `Vote` and membership normally define the server state (leader, candidate,
+follower or learner). A matching local-retirement marker is a third, local input: it suppresses the
+authority represented by a committed local `Vote` without changing that `Vote`.
+
+Thus, a `Vote` change implies an authority change, but the local server state can also change when a
+Leader retires locally or when membership changes.
 
 Note: follower and learner in Openraft are almost the same. The only difference
 is a learner does not try to elect itself.
@@ -69,7 +72,7 @@ E.g.:
   - is a follower if it is a **voter** in config,
   - is a learner if it is a **non-voter** or **absent** in config.
 
-For node-2:
+For node-2, when there is no matching local-retirement marker:
 
 | vote \ membership                     | Voter     | Non-voter | Absent  |
 |---------------------------------------|-----------|-----------|---------|
@@ -77,6 +80,10 @@ For node-2:
 | (term=1, node_id=2, committed=false)  | candidate | candidate | learner |
 | (term=1, node_id=99, committed=true)  | follower  | learner   | learner |
 | (term=1, node_id=99, committed=false) | follower  | learner   | learner |
+
+When the marker matches `(term=1, node_id=2)`, a committed local Vote no longer makes node-2 a
+Leader: node-2 is a follower if it is a voter, otherwise it is a learner. The Vote remains committed
+and unchanged. A newer Vote makes the marker stale automatically.
 
 
 

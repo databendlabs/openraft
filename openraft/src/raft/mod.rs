@@ -13,6 +13,8 @@ pub(crate) mod api;
 mod declare_raft_types_test;
 mod impl_raft_blocking_write;
 pub mod linearizable_read;
+#[cfg(test)]
+mod local_leader_id_test;
 pub(crate) mod message;
 mod raft_inner;
 pub mod responder;
@@ -54,6 +56,7 @@ pub use message::LogSegment;
 pub use message::Precondition;
 pub use message::SnapshotResponse;
 pub use message::StreamAppendError;
+pub use message::StreamAppendSuccess;
 pub use message::TransferLeaderError;
 pub use message::TransferLeaderRequest;
 pub use message::TransferLeaderResponse;
@@ -742,6 +745,8 @@ where
     /// Returns [`Leader`] containing the leader ID and health metadata if this node is the leader
     /// (i.e., its vote has been accepted by a quorum), otherwise returns
     /// [`ForwardToLeader`] error containing the current known leader information.
+    /// A locally retired Leader returns an empty [`ForwardToLeader`] even though its committed
+    /// Vote remains unchanged.
     ///
     /// # Example
     ///
@@ -765,24 +770,24 @@ where
 
         let metrics = self.inner.rx_metrics.borrow_watched();
 
-        let Some(committed_vote) = metrics.vote.try_to_committed() else {
-            return Err(ForwardToLeader::empty());
-        };
-
-        let leader_id = committed_vote.leader_id();
-        let node_id = leader_id.node_id();
-
-        if node_id == &self.inner.id {
+        if metrics.state.is_leader()
+            && let Some(committed_vote) = metrics.vote.try_to_committed()
+            && committed_vote.leader_id().node_id() == &self.inner.id
+        {
             Ok(Leader {
                 raft: self.clone(),
-                leader_id: leader_id.clone(),
+                leader_id: committed_vote.leader_id().clone(),
                 last_quorum_acked: metrics.last_quorum_acked.map(|s| s.into_inner()),
             })
         } else {
-            let node = metrics.membership_config.membership().get_node(node_id).cloned();
+            let Some(node_id) = metrics.current_leader.clone() else {
+                return Err(ForwardToLeader::empty());
+            };
+
+            let node = metrics.membership_config.membership().get_node(&node_id).cloned();
 
             Err(ForwardToLeader {
-                leader_id: Some(node_id.clone()),
+                leader_id: Some(node_id),
                 leader_node: node,
                 reason: ForwardReason::NotLeader,
             })
@@ -934,7 +939,8 @@ where
     /// ## Output
     ///
     /// The output stream emits:
-    /// - `Ok(log_id)` when logs are successfully flushed
+    /// - `Ok(StreamAppendSuccess::Full(log_id))` when the complete request is flushed
+    /// - `Ok(StreamAppendSuccess::Partial(log_id))` when only a prefix is flushed
     /// - `Err(e)` when an error occurs, which terminates the stream
     ///
     /// ## Pinning
@@ -966,7 +972,7 @@ where
     ///
     /// while let Some(result) = output_stream.next().await {
     ///     match result {
-    ///         Ok(Ok(log_id)) => println!("Flushed: {:?}", log_id),
+    ///         Ok(Ok(success)) => println!("Flushed: {:?}", success),
     ///         Ok(Err(err)) => {
     ///             println!("Append error: {}", err);
     ///             break;
@@ -978,6 +984,7 @@ where
     ///     }
     /// }
     /// ```
+    #[since(version = "0.10.0", change = "stream success distinguishes full and partial")]
     #[since(version = "0.10.0", change = "stream item contains Fatal")]
     #[since(version = "0.10.0")]
     pub fn stream_append<S>(
@@ -1715,7 +1722,8 @@ where
     /// this method only fires when THIS node becomes or stops being the leader.
     ///
     /// - `start`: Called when this node becomes the leader (committed, quorum-acknowledged)
-    /// - `stop`: Called when this node is no longer the leader (another node becomes leader)
+    /// - `stop`: Called when this node is no longer the leader, including local retirement without
+    ///   a Vote change
     ///
     /// # Callback Guarantees
     ///
@@ -1756,27 +1764,18 @@ where
     {
         let mut prev_leader_id = None;
 
-        self.watch_vote_change(move |vote, my_node_id| {
-            let leader_id = vote.leader_id().clone();
+        self.watch_server_metrics_change(move |metrics| {
+            let leader_id = local_leader_id(&metrics);
 
-            // Fire `start` when THIS node becomes committed leader
-            // and it's a new leadership (different from current)
-            #[allow(clippy::collapsible_else_if)]
-            let (stop_fut, start_fut) = if leader_id.node_id() == my_node_id {
-                if vote.is_committed() && prev_leader_id.as_ref() != Some(&leader_id) {
-                    // Call stop first if transitioning from one leadership to another
-                    // (e.g., Term 1 leader -> Term 2 leader)
-                    // This guarantees alternating start/stop calls.
-                    let stop_fut = prev_leader_id.take().map(&stop);
-                    let start_fut = Some(start(leader_id.clone()));
-                    prev_leader_id = Some(leader_id);
-                    (stop_fut, start_fut)
-                } else {
-                    (None, None)
-                }
+            let (stop_fut, start_fut) = if prev_leader_id == leader_id {
+                (None, None)
             } else {
+                // Call stop first if transitioning directly between two local Leader authorities.
+                // This preserves the alternating start/stop guarantee.
                 let stop_fut = prev_leader_id.take().map(&stop);
-                (stop_fut, None)
+                let start_fut = leader_id.clone().map(&start);
+                prev_leader_id = leader_id;
+                (stop_fut, start_fut)
             };
 
             async move {
@@ -1790,10 +1789,44 @@ where
         })
     }
 
+    /// Spawn a task that watches server-metrics changes and invokes an async callback.
+    fn watch_server_metrics_change<F, Fut>(&self, mut callback: F) -> WatchChangeHandle<C>
+    where
+        F: FnMut(RaftServerMetrics<C>) -> Fut + OptionalSend + 'static,
+        Fut: Future<Output = ()> + OptionalSend + 'static,
+    {
+        use futures_util::FutureExt;
+
+        let mut server_metrics = self.server_metrics();
+        let (cancel_tx, cancel_rx) = C::oneshot::<()>();
+
+        let handle = C::spawn(async move {
+            let mut cancel_rx = cancel_rx.fuse();
+
+            loop {
+                futures_util::select! {
+                    _ = cancel_rx => break,
+                    res = server_metrics.changed().fuse() => {
+                        if res.is_err() {
+                            break;
+                        }
+
+                        let metrics = server_metrics.borrow_watched().clone();
+                        callback(metrics).await;
+                    }
+                }
+            }
+        });
+
+        WatchChangeHandle {
+            cancel_tx: Some(cancel_tx),
+            join_handle: Some(handle),
+        }
+    }
+
     /// Spawn a task that watches vote changes and invokes async callback on each change.
     ///
-    /// This is an internal helper used by [`Self::on_leader_change()`] and
-    /// [`Self::on_cluster_leader_change()`].
+    /// This is an internal helper used by [`Self::on_cluster_leader_change()`].
     ///
     /// The callback returns a future that will be awaited before processing
     /// the next vote change.
@@ -2052,4 +2085,19 @@ where
         }
         Ok(())
     }
+}
+
+/// Return the committed local Leader authority represented by one server-metrics snapshot.
+fn local_leader_id<C>(metrics: &RaftServerMetrics<C>) -> Option<C::LeaderId>
+where C: RaftTypeConfig {
+    if !metrics.state.is_leader() {
+        return None;
+    }
+
+    let vote = &metrics.vote;
+    if !vote.is_committed() || vote.leader_id().node_id() != &metrics.id {
+        return None;
+    }
+
+    Some(vote.leader_id().clone())
 }

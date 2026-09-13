@@ -7,6 +7,7 @@ use openraft::Config;
 use openraft::Vote;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::StreamAppendError;
+use openraft::raft::StreamAppendSuccess;
 use openraft::raft::VoteRequest;
 use openraft::testing::blank_ent;
 
@@ -63,9 +64,9 @@ async fn stream_append_success() -> Result<()> {
 
     let results: Vec<_> = output_stream.collect().await;
     assert_eq!(results, vec![
-        Ok(Ok(Some(log_id(1, 1, 1)))),
-        Ok(Ok(Some(log_id(1, 1, 3)))),
-        Ok(Ok(Some(log_id(1, 1, 4)))),
+        Ok(Ok(StreamAppendSuccess::Full(Some(log_id(1, 1, 1))))),
+        Ok(Ok(StreamAppendSuccess::Full(Some(log_id(1, 1, 3))))),
+        Ok(Ok(StreamAppendSuccess::Full(Some(log_id(1, 1, 4))))),
     ]);
 
     Ok(())
@@ -120,7 +121,7 @@ async fn stream_append_conflict() -> Result<()> {
 
     let results: Vec<_> = output_stream.collect().await;
     assert_eq!(results, vec![
-        Ok(Ok(Some(log_id(1, 1, 1)))),
+        Ok(Ok(StreamAppendSuccess::Full(Some(log_id(1, 1, 1))))),
         Ok(Err(StreamAppendError::Conflict(log_id(1, 1, 5)))),
     ]);
 

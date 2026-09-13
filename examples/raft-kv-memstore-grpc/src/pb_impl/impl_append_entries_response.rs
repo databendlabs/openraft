@@ -1,4 +1,5 @@
 use openraft::raft::StreamAppendError;
+use openraft::raft::StreamAppendSuccess;
 
 use crate::pb;
 use crate::typ::AppendEntriesResponse;
@@ -14,11 +15,11 @@ impl From<pb::AppendEntriesResponse> for AppendEntriesResponse {
             return AppendEntriesResponse::Conflict;
         }
 
-        if let Some(log_id) = r.last_log_id {
-            AppendEntriesResponse::PartialSuccess(Some(log_id.into()))
-        } else {
-            AppendEntriesResponse::Success
+        if r.partial_success || r.last_log_id.is_some() {
+            return AppendEntriesResponse::PartialSuccess(r.last_log_id.map(Into::into));
         }
+
+        AppendEntriesResponse::Success
     }
 }
 
@@ -29,21 +30,25 @@ impl From<AppendEntriesResponse> for pb::AppendEntriesResponse {
                 rejected_by: None,
                 conflict: false,
                 last_log_id: None,
+                partial_success: false,
             },
             AppendEntriesResponse::PartialSuccess(p) => pb::AppendEntriesResponse {
                 rejected_by: None,
                 conflict: false,
                 last_log_id: p.map(|log_id| log_id.into()),
+                partial_success: true,
             },
             AppendEntriesResponse::Conflict => pb::AppendEntriesResponse {
                 rejected_by: None,
                 conflict: true,
                 last_log_id: None,
+                partial_success: false,
             },
             AppendEntriesResponse::HigherVote(v) => pb::AppendEntriesResponse {
                 rejected_by: Some(v),
                 conflict: false,
                 last_log_id: None,
+                partial_success: false,
             },
         }
     }
@@ -52,25 +57,29 @@ impl From<AppendEntriesResponse> for pb::AppendEntriesResponse {
 impl From<StreamAppendResult> for pb::AppendEntriesResponse {
     fn from(result: StreamAppendResult) -> Self {
         match result {
-            Ok(Some(log_id)) => pb::AppendEntriesResponse {
+            Ok(StreamAppendSuccess::Full(log_id)) => pb::AppendEntriesResponse {
                 rejected_by: None,
                 conflict: false,
-                last_log_id: Some(log_id.into()),
+                last_log_id: log_id.map(Into::into),
+                partial_success: false,
             },
-            Ok(None) => pb::AppendEntriesResponse {
+            Ok(StreamAppendSuccess::Partial(log_id)) => pb::AppendEntriesResponse {
                 rejected_by: None,
                 conflict: false,
-                last_log_id: None,
+                last_log_id: log_id.map(Into::into),
+                partial_success: true,
             },
             Err(StreamAppendError::Conflict(log_id)) => pb::AppendEntriesResponse {
                 rejected_by: None,
                 conflict: true,
                 last_log_id: Some(log_id.into()),
+                partial_success: false,
             },
             Err(StreamAppendError::HigherVote(vote)) => pb::AppendEntriesResponse {
                 rejected_by: Some(vote),
                 conflict: false,
                 last_log_id: None,
+                partial_success: false,
             },
         }
     }

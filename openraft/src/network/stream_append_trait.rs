@@ -2,6 +2,7 @@
 
 use futures_util::Stream;
 use futures_util::StreamExt;
+use openraft_macros::since;
 
 use crate::OptionalSend;
 use crate::OptionalSync;
@@ -13,6 +14,7 @@ use crate::network::NetAppend;
 use crate::network::RPCOption;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::StreamAppendResult;
+use crate::raft::StreamAppendSuccess;
 
 /// Sends a stream of AppendEntries RPCs to a target node.
 ///
@@ -43,7 +45,9 @@ where C: RaftTypeConfig
     /// The remote follower should call [`Raft::stream_append()`] to process the stream
     /// and send back a stream of responses.
     ///
-    /// The output stream terminates when the input is exhausted or an error occurs.
+    /// The output stream terminates when the input is exhausted, an error occurs, or a strict
+    /// [`StreamAppendSuccess::Partial`] is returned. A partial success must be the last output item
+    /// so Openraft can resume replication from its matching log id in a new stream.
     /// The network implementation is responsible for enforcing `option.soft_ttl()`.
     ///
     /// `option.hard_ttl()` is not a hard limit on the lifetime of a long-lived stream. Streaming
@@ -57,6 +61,7 @@ where C: RaftTypeConfig
     /// captures the lifetime `'s` in an `impl Trait` position.
     ///
     /// [`Raft::stream_append()`]: crate::raft::Raft::stream_append
+    #[since(version = "0.10.0", change = "stream success distinguishes full and partial")]
     fn stream_append<'s, S>(
         &'s mut self,
         input: S,
@@ -69,6 +74,7 @@ where C: RaftTypeConfig
 /// Default sequential implementation of stream_append.
 ///
 /// This processes requests one at a time: send request, wait for response, repeat.
+#[since(version = "0.10.0", change = "stream success distinguishes full and partial")]
 pub fn stream_append_sequential<'s, C, N, S>(
     network: &'s mut N,
     input: S,
@@ -93,22 +99,10 @@ where
 
                 match result {
                     Ok(resp) => {
-                        let partial_success = resp.get_partial_success().cloned();
-
                         let stream_result = resp.into_stream_result(range.prev, range.last.clone());
-                        let is_err = stream_result.is_err();
-                        let next_state = if is_err {
-                            None
-                        } else if let Some(partial) = partial_success {
-                            if partial == range.last {
-                                Some((network, input))
-                            } else {
-                                // If the request is only partially finished, pipeline should be stopped
-                                None
-                            }
-                        } else {
-                            // full success
-                            Some((network, input))
+                        let next_state = match &stream_result {
+                            Ok(StreamAppendSuccess::Full(_)) => Some((network, input)),
+                            Ok(StreamAppendSuccess::Partial(_)) | Err(_) => None,
                         };
                         Some((Ok(stream_result), next_state))
                     }

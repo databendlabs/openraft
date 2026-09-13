@@ -4,6 +4,7 @@ use std::marker::PhantomData;
 
 use openraft::RaftTypeConfig;
 use openraft::alias::EntryOf;
+use openraft::alias::LeaderIdOf;
 use openraft::alias::LogIdOf;
 
 use crate::Callback;
@@ -33,8 +34,8 @@ where
     type Vote = MsgPackVote<C>;
     type Callback = Callback<C>;
 
-    /// This store attaches no application data to the log.
-    type UserData = MsgPack<()>;
+    /// The locally retired Leader authority is stored in `raft_log` user data.
+    type UserData = MsgPack<LeaderIdOf<C>>;
 
     fn log_index(log_id: &Self::LogId) -> u64 {
         log_id.0.index

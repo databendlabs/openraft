@@ -36,6 +36,7 @@ use crate::proposer::LeaderState;
 use crate::proposer::leader_state::CandidateState;
 use crate::raft::LogSegment;
 use crate::raft::SnapshotResponse;
+use crate::raft::StreamAppendSuccess;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft::stream_append::StreamAppendResult;
@@ -365,6 +366,51 @@ where
         self.leader.as_deref_mut()
     }
 
+    /// Retire the current local Leader authority without changing its Vote.
+    ///
+    /// Returns `true` when the transition is accepted. Stale Leader state is a no-op.
+    pub(crate) fn retire_leader_locally(&mut self) -> bool {
+        let retired_for = {
+            let Some(leader) = self.leader.as_ref() else {
+                return false;
+            };
+
+            let vote = self.state.vote_ref();
+            if self.state.server_state != ServerState::Leader
+                || !vote.is_committed()
+                || vote.leader_node_id() != &self.config.id
+                || leader.committed_vote_ref().as_ref_vote() != vote.as_ref_vote()
+            {
+                return false;
+            }
+
+            vote.leader_id().clone()
+        };
+
+        self.state.locally_retired_for = Some(retired_for.clone());
+        self.output.push_command(Command::SaveLocalRetirement { retired_for });
+        self.vote_handler().become_following();
+
+        true
+    }
+
+    /// Retire the current Leader if its quorum-loss deadline is due and quorum is still absent.
+    ///
+    /// Returns `true` only when local retirement is accepted.
+    pub(crate) fn try_retire_leader_on_quorum_loss(&mut self, now: crate::type_config::alias::InstantOf<C>) -> bool {
+        let should_retire = self
+            .leader
+            .as_ref()
+            .is_some_and(|leader| leader.is_quorum_loss_retirement_due(now, self.config.timer_config.leader_lease));
+
+        if !should_retire {
+            return false;
+        }
+
+        tracing::info!("retire Leader locally after continued quorum loss");
+        self.retire_leader_locally()
+    }
+
     pub(crate) fn candidate_ref(&self) -> Option<&Candidate<C, LeaderQuorumSet<C>>> {
         self.candidate.as_ref()
     }
@@ -639,7 +685,8 @@ where
             self.state.last_log_id().display()
         );
 
-        let stream_result: StreamAppendResult<C> = self.append_entries(vote, segment).map_err(Into::into);
+        let stream_result: StreamAppendResult<C> =
+            self.append_entries(vote, segment).map(StreamAppendSuccess::Full).map_err(Into::into);
 
         let condition = if stream_result.is_ok() {
             Some(Condition::IOFlushed {
@@ -719,8 +766,9 @@ where
     /// otherwise this entry could never be committed.
     ///
     /// A Leader demoted to a learner that is still in the membership config is not affected:
-    /// openraft allows a learner to act as Leader. See: [Determine Server
-    /// State](crate::docs::data::vote#vote-and-membership-define-the-server-state).
+    /// openraft allows a learner to act as Leader. See: [Determine Server State][].
+    ///
+    /// [Determine Server State]: crate::docs::data::vote#vote-membership-and-local-retirement-define-the-server-state
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn refresh_server_state(&mut self) {
         tracing::debug!("{}: node_id: {}", func_name!(), self.config.id);
@@ -1033,7 +1081,7 @@ where
         let leader = match self.leader.as_mut() {
             None => {
                 tracing::debug!("not a leader, server_state: {:?}", self.state.server_state);
-                return Err(self.state.forward_to_leader());
+                return Err(self.state.forward_to_leader(&self.config.id));
             }
             Some(x) => x,
         };
@@ -1110,6 +1158,7 @@ mod engine_testing {
     use crate::engine::EngineConfig;
     use crate::proposer::LeaderQuorumSet;
     use crate::raft_state::RaftState;
+    use crate::type_config::TypeConfigExt;
 
     impl<C, SM> Engine<C, SM>
     where
@@ -1120,7 +1169,10 @@ mod engine_testing {
         /// without initializing related resource,
         /// such as setting up replication, propose blank log.
         pub(crate) fn testing_new_leader(&mut self) -> &mut crate::proposer::Leader<C, LeaderQuorumSet<C>> {
-            let leader = self.state.new_leader();
+            let mut leader = self.state.new_leader();
+            if let Some(grace) = self.config.quorum_loss_grace {
+                leader.reset_quorum_loss_deadline(C::now(), self.config.timer_config.leader_lease, grace);
+            }
             self.leader = Some(Box::new(leader));
             self.leader.as_mut().unwrap()
         }

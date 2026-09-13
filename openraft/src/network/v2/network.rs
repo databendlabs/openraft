@@ -135,7 +135,9 @@ where C: RaftTypeConfig
     /// override this method with a custom implementation that handles out-of-order
     /// delivery appropriately (e.g., using sequence numbers or a reliable transport).
     ///
-    /// The output stream terminates when the input is exhausted or an error occurs.
+    /// The output stream terminates when the input is exhausted, an error occurs, or a strict
+    /// partial success is returned. A partial success must be the last output item so Openraft can
+    /// resume replication from its matching log id in a new stream.
     ///
     /// # Note
     ///
@@ -144,6 +146,7 @@ where C: RaftTypeConfig
     /// captures the lifetime `'s` in an `impl Trait` position.
     ///
     /// [`Raft::stream_append()`]: crate::raft::Raft::stream_append
+    #[since(version = "0.10.0", change = "stream success distinguishes full and partial")]
     #[since(version = "0.10.0")]
     fn stream_append<'s, S>(
         &'s mut self,

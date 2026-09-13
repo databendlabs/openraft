@@ -15,3 +15,5 @@ mod t62_follower_clear_restart_recover;
 mod t99_issue_1500_heartbeat_cause_reversion_panic;
 mod t99_issue_1795_storage_error_stops_replication;
 mod t99_issue_2004_redundant_commit_only_append;
+mod t99_issue_2085_conflict_updates_clock_progress;
+mod t99_issue_2085_partial_success_updates_clock_progress;

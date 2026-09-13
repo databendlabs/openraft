@@ -32,13 +32,36 @@ where C: RaftTypeConfig
     }
 
     /// Records a new in-flight AppendEntries request.
-    pub(crate) fn push(&self, log_id: Option<LogIdOf<C>>) {
+    pub(crate) fn push(&self, prev_log_id: Option<LogIdOf<C>>, last_log_id: Option<LogIdOf<C>>) {
         let mut q = self.queue.lock().unwrap();
-        let inflight = InflightAppend::new(log_id);
+        let inflight = InflightAppend::new(prev_log_id, last_log_id);
 
         tracing::debug!("Inflight queue push: {}", inflight);
 
         q.push_back(inflight)
+    }
+
+    /// Returns a conservative sending time for a request rejected with `Conflict`.
+    ///
+    /// `Conflict` identifies the rejected request by its `prev_log_id`. Returning the earliest
+    /// match is conservative when multiple requests share the same `prev_log_id`.
+    pub(crate) fn sending_time_for_conflict(&self, conflict_log_id: &LogIdOf<C>) -> Option<InstantOf<C>> {
+        let q = self.queue.lock().unwrap();
+
+        q.iter()
+            .find(|inflight| inflight.prev_log_id.as_ref() == Some(conflict_log_id))
+            .map(|inflight| inflight.sending_time)
+    }
+
+    /// Returns the sending time of the request containing a partial success.
+    ///
+    /// A strict partial success satisfies `prev_log_id <= matching < last_log_id`.
+    pub(crate) fn sending_time_for_partial_success(&self, matching: &Option<LogIdOf<C>>) -> Option<InstantOf<C>> {
+        let q = self.queue.lock().unwrap();
+
+        q.iter()
+            .find(|inflight| &inflight.prev_log_id <= matching && matching < &inflight.last_log_id)
+            .map(|inflight| inflight.sending_time)
     }
 
     /// Removes all requests with `last_log_id <= matching` and returns
@@ -84,8 +107,8 @@ mod tests {
     #[test]
     fn test_push_and_drain_acked_none_matching() {
         let q = InflightAppendQueue::<UTConfig>::new();
-        q.push(Some(log_id(1, 1, 5)));
-        q.push(Some(log_id(1, 1, 10)));
+        q.push(None, Some(log_id(1, 1, 5)));
+        q.push(Some(log_id(1, 1, 5)), Some(log_id(1, 1, 10)));
 
         // matching=None is less than any log_id, so nothing is acked
         assert_eq!(q.drain_acked(&None), None);
@@ -97,9 +120,9 @@ mod tests {
     #[test]
     fn test_drain_acked_partial() {
         let q = InflightAppendQueue::<UTConfig>::new();
-        q.push(Some(log_id(1, 1, 5)));
-        q.push(Some(log_id(1, 1, 10)));
-        q.push(Some(log_id(1, 1, 15)));
+        q.push(None, Some(log_id(1, 1, 5)));
+        q.push(Some(log_id(1, 1, 5)), Some(log_id(1, 1, 10)));
+        q.push(Some(log_id(1, 1, 10)), Some(log_id(1, 1, 15)));
 
         // Read the expected sending_time before calling drain_acked
         let expected_time = q.queue.lock().unwrap()[1].sending_time;
@@ -119,8 +142,8 @@ mod tests {
     #[test]
     fn test_drain_acked_all() {
         let q = InflightAppendQueue::<UTConfig>::new();
-        q.push(Some(log_id(1, 1, 5)));
-        q.push(Some(log_id(1, 1, 10)));
+        q.push(None, Some(log_id(1, 1, 5)));
+        q.push(Some(log_id(1, 1, 5)), Some(log_id(1, 1, 10)));
 
         // Read the expected sending_time before calling drain_acked
         let expected_time = q.queue.lock().unwrap()[1].sending_time;
@@ -144,8 +167,8 @@ mod tests {
     #[test]
     fn test_drain_acked_with_none_log_id() {
         let q = InflightAppendQueue::<UTConfig>::new();
-        q.push(None);
-        q.push(Some(log_id(1, 1, 5)));
+        q.push(None, None);
+        q.push(None, Some(log_id(1, 1, 5)));
 
         // Read the expected sending_time before calling drain_acked
         let expected_time = q.queue.lock().unwrap()[0].sending_time;
@@ -160,5 +183,48 @@ mod tests {
         let deque = q.queue.lock().unwrap();
         assert_eq!(deque.len(), 1);
         assert_eq!(deque[0].last_log_id, Some(log_id(1, 1, 5)));
+    }
+
+    #[test]
+    fn test_sending_time_for_conflict() {
+        let q = InflightAppendQueue::<UTConfig>::new();
+        q.push(Some(log_id(1, 1, 5)), Some(log_id(1, 1, 10)));
+        q.push(Some(log_id(1, 1, 10)), Some(log_id(1, 1, 20)));
+
+        let expected = {
+            let mut queue = q.queue.lock().unwrap();
+            let expected = queue[0].sending_time + std::time::Duration::from_secs(1);
+            queue[1].sending_time = expected;
+            expected
+        };
+
+        assert_eq!(q.sending_time_for_conflict(&log_id(1, 1, 10)), Some(expected));
+        assert_eq!(q.sending_time_for_conflict(&log_id(1, 1, 30)), None);
+        assert_eq!(q.queue.lock().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_sending_time_for_partial_success() {
+        let q = InflightAppendQueue::<UTConfig>::new();
+        q.push(None, Some(log_id(1, 1, 5)));
+        q.push(Some(log_id(1, 1, 5)), Some(log_id(1, 1, 10)));
+
+        let expected = q.queue.lock().unwrap()[1].sending_time;
+
+        assert_eq!(
+            q.sending_time_for_partial_success(&Some(log_id(1, 1, 5))),
+            Some(expected)
+        );
+        assert_eq!(
+            q.sending_time_for_partial_success(&Some(log_id(1, 1, 8))),
+            Some(expected)
+        );
+
+        // A response matching the request's last log id is a full success.
+        assert_eq!(q.sending_time_for_partial_success(&Some(log_id(1, 1, 10))), None);
+        assert_eq!(q.sending_time_for_partial_success(&Some(log_id(1, 1, 20))), None);
+
+        // Looking up a sending time does not consume the queue.
+        assert_eq!(q.queue.lock().unwrap().len(), 2);
     }
 }

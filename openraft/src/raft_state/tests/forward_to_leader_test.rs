@@ -37,7 +37,7 @@ fn test_forward_to_leader_vote_not_committed() {
         ..Default::default()
     };
 
-    assert_eq!(ForwardToLeader::empty(), rs.forward_to_leader());
+    assert_eq!(ForwardToLeader::empty(), rs.forward_to_leader(&1));
 }
 
 #[test]
@@ -55,7 +55,7 @@ fn test_forward_to_leader_not_a_member() {
         ..Default::default()
     };
 
-    assert_eq!(ForwardToLeader::empty(), rs.forward_to_leader());
+    assert_eq!(ForwardToLeader::empty(), rs.forward_to_leader(&1));
 }
 
 #[test]
@@ -75,5 +75,5 @@ fn test_forward_to_leader_has_leader() {
         ..Default::default()
     };
 
-    assert_eq!(ForwardToLeader::new(3, 6), rs.forward_to_leader());
+    assert_eq!(ForwardToLeader::new(3, 6), rs.forward_to_leader(&1));
 }

@@ -224,6 +224,7 @@ use openraft::raft::RuntimeConfigHandle;
 use openraft::raft::SnapshotResponse;
 use openraft::raft::StreamAppendError;
 use openraft::raft::StreamAppendResult;
+use openraft::raft::StreamAppendSuccess;
 use openraft::raft::TransferLeaderRequest;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
