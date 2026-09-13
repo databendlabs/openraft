@@ -12,9 +12,8 @@ use crate::type_config::alias::LogIdOf;
 /// A queue tracking in-flight AppendEntries requests for measuring replication latency.
 ///
 /// When an AppendEntries request is sent, its metadata is pushed to this queue.
-/// When a response arrives with a matching log id, all requests up to and including
-/// that log id are drained, and the sending time of the last drained request is returned
-/// for RTT calculation.
+/// When a response arrives with a matching log id, requests are drained through the first
+/// request containing that log id, and its sending time is returned for RTT calculation.
 #[derive(Clone)]
 pub(crate) struct InflightAppendQueue<C>
 where C: RaftTypeConfig
@@ -32,17 +31,23 @@ where C: RaftTypeConfig
     }
 
     /// Records a new in-flight AppendEntries request.
-    pub(crate) fn push(&self, log_id: Option<LogIdOf<C>>) {
+    pub(crate) fn push(&self, prev_log_id: Option<LogIdOf<C>>, last_log_id: Option<LogIdOf<C>>) {
         let mut q = self.queue.lock().unwrap();
-        let inflight = InflightAppend::new(log_id);
+        let inflight = InflightAppend::new(prev_log_id, last_log_id);
 
         tracing::debug!("Inflight queue push: {}", inflight);
 
         q.push_back(inflight)
     }
 
-    /// Removes all requests with `last_log_id <= matching` and returns
-    /// the sending time of the last removed request.
+    /// Removes requests through the first one with `prev_log_id <= matching <= last_log_id`
+    /// and returns the sending time of the last removed request.
+    ///
+    /// For a conflict response, pass the rejected request's `prev_log_id` as `matching`.
+    ///
+    /// A partial success consumes its request too: the remaining logs will be sent in a new
+    /// stream. Stop at the matched request so later empty requests with the same `last_log_id`
+    /// remain queued for their own responses.
     ///
     /// Returns `None` if no requests were removed.
     pub(crate) fn drain_acked(&self, matching: &Option<LogIdOf<C>>) -> Option<InstantOf<C>> {
@@ -56,13 +61,17 @@ where C: RaftTypeConfig
 
         let mut last = None;
         while let Some(first) = q.front() {
-            if matching >= &first.last_log_id {
-                last = Some(first.sending_time)
-            } else {
+            if matching < &first.prev_log_id {
                 break;
             }
 
+            last = Some(first.sending_time);
+            let reached_matching = matching <= &first.last_log_id;
             q.pop_front();
+
+            if reached_matching {
+                break;
+            }
         }
 
         last
@@ -82,24 +91,63 @@ mod tests {
     }
 
     #[test]
-    fn test_push_and_drain_acked_none_matching() {
+    fn test_drain_acked_partial_none_matching() {
         let q = InflightAppendQueue::<UTConfig>::new();
-        q.push(Some(log_id(1, 1, 5)));
-        q.push(Some(log_id(1, 1, 10)));
+        q.push(None, Some(log_id(1, 1, 5)));
+        q.push(Some(log_id(1, 1, 5)), Some(log_id(1, 1, 10)));
 
-        // matching=None is less than any log_id, so nothing is acked
+        let expected_time = q.queue.lock().unwrap()[0].sending_time;
+
+        // A partial success may accept no entries and only confirm prev_log_id=None.
+        assert_eq!(q.drain_acked(&None), Some(expected_time));
+        assert_eq!(q.queue.lock().unwrap().len(), 1);
         assert_eq!(q.drain_acked(&None), None);
+    }
 
-        // Queue should remain unchanged
-        assert_eq!(q.queue.lock().unwrap().len(), 2);
+    #[test]
+    fn test_drain_acked_inside_request() {
+        let q = InflightAppendQueue::<UTConfig>::new();
+        q.push(Some(log_id(1, 1, 5)), Some(log_id(1, 1, 10)));
+        q.push(Some(log_id(1, 1, 10)), Some(log_id(1, 1, 20)));
+
+        let expected_time = q.queue.lock().unwrap()[0].sending_time;
+
+        assert_eq!(q.drain_acked(&Some(log_id(1, 1, 7))), Some(expected_time));
+        assert_eq!(q.queue.lock().unwrap().len(), 1);
+        assert_eq!(q.queue.lock().unwrap()[0].last_log_id, Some(log_id(1, 1, 20)));
+    }
+
+    #[test]
+    fn test_drain_acked_same_matching_for_distinct_requests() {
+        let q = InflightAppendQueue::<UTConfig>::new();
+        q.push(None, Some(log_id(1, 1, 10)));
+        q.push(Some(log_id(1, 1, 10)), Some(log_id(1, 1, 10)));
+        q.push(Some(log_id(1, 1, 10)), Some(log_id(1, 1, 20)));
+
+        let first_time = {
+            let mut queue = q.queue.lock().unwrap();
+            let first_time = queue[0].sending_time;
+            queue[1].sending_time = first_time + std::time::Duration::from_secs(1);
+            queue[2].sending_time = first_time + std::time::Duration::from_secs(2);
+            first_time
+        };
+
+        // Data success, empty request success, then a partial success accepting no new entries.
+        for i in 0..3 {
+            assert_eq!(
+                q.drain_acked(&Some(log_id(1, 1, 10))),
+                Some(first_time + std::time::Duration::from_secs(i))
+            );
+        }
+        assert!(q.queue.lock().unwrap().is_empty());
     }
 
     #[test]
     fn test_drain_acked_partial() {
         let q = InflightAppendQueue::<UTConfig>::new();
-        q.push(Some(log_id(1, 1, 5)));
-        q.push(Some(log_id(1, 1, 10)));
-        q.push(Some(log_id(1, 1, 15)));
+        q.push(None, Some(log_id(1, 1, 5)));
+        q.push(Some(log_id(1, 1, 5)), Some(log_id(1, 1, 10)));
+        q.push(Some(log_id(1, 1, 10)), Some(log_id(1, 1, 15)));
 
         // Read the expected sending_time before calling drain_acked
         let expected_time = q.queue.lock().unwrap()[1].sending_time;
@@ -119,8 +167,8 @@ mod tests {
     #[test]
     fn test_drain_acked_all() {
         let q = InflightAppendQueue::<UTConfig>::new();
-        q.push(Some(log_id(1, 1, 5)));
-        q.push(Some(log_id(1, 1, 10)));
+        q.push(None, Some(log_id(1, 1, 5)));
+        q.push(Some(log_id(1, 1, 5)), Some(log_id(1, 1, 10)));
 
         // Read the expected sending_time before calling drain_acked
         let expected_time = q.queue.lock().unwrap()[1].sending_time;
@@ -144,8 +192,8 @@ mod tests {
     #[test]
     fn test_drain_acked_with_none_log_id() {
         let q = InflightAppendQueue::<UTConfig>::new();
-        q.push(None);
-        q.push(Some(log_id(1, 1, 5)));
+        q.push(None, None);
+        q.push(None, Some(log_id(1, 1, 5)));
 
         // Read the expected sending_time before calling drain_acked
         let expected_time = q.queue.lock().unwrap()[0].sending_time;

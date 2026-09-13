@@ -19,6 +19,9 @@ where C: RaftTypeConfig
     /// The time when the AppendEntries request was created.
     pub(crate) sending_time: InstantOf<C>,
 
+    /// The log id immediately before the entries in this request.
+    pub(crate) prev_log_id: Option<LogIdOf<C>>,
+
     /// The last log id included in this request.
     pub(crate) last_log_id: Option<LogIdOf<C>>,
 }
@@ -29,8 +32,9 @@ where C: RaftTypeConfig
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "InflightAppend{{sending_time:{}, last_log_id:{}}}",
+            "InflightAppend{{sending_time:{}, prev_log_id:{}, last_log_id:{}}}",
             self.sending_time.display(),
+            self.prev_log_id.display(),
             self.last_log_id.display()
         )
     }
@@ -39,9 +43,10 @@ where C: RaftTypeConfig
 impl<C> InflightAppend<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(last_log_id: Option<LogIdOf<C>>) -> Self {
+    pub(crate) fn new(prev_log_id: Option<LogIdOf<C>>, last_log_id: Option<LogIdOf<C>>) -> Self {
         Self {
             sending_time: C::now(),
+            prev_log_id,
             last_log_id,
         }
     }

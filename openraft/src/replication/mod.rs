@@ -184,7 +184,8 @@ where
             }
         };
 
-        stream_context.inflight_append_queue.push(req.last_log_id());
+        let range = req.log_id_range();
+        stream_context.inflight_append_queue.push(range.prev, range.last);
 
         Some((req, stream_context))
     }
@@ -398,6 +399,10 @@ where
                 Err(append_err) => {
                     match append_err {
                         StreamAppendError::Conflict(conflict_log_id) => {
+                            if let Some(sending_time) = inflight_queue.drain_acked(&Some(conflict_log_id.clone())) {
+                                self.notify_heartbeat_progress(sending_time).await;
+                            }
+
                             self.notify_progress(ReplicationResult(Err(conflict_log_id))).await;
                         }
                         StreamAppendError::HigherVote(higher) => {
