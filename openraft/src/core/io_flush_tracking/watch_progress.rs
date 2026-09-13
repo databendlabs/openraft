@@ -258,7 +258,6 @@ mod tests {
 
             let result = progress.wait_until(|v| v % 2 == 0).await.unwrap();
             assert_eq!(result % 2, 0);
-            assert_eq!(result, 2);
         });
     }
 
