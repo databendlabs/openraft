@@ -157,6 +157,16 @@ linearizable reads, writes, and compare-and-set operations across independent
 registers with Knossos. `NEMESIS` accepts a comma-separated subset when a
 narrower combination is needed.
 
+## Safety tests
+
+Safety runs check linearizable reads, writes, and compare-and-set operations
+under process, network, membership, and clock faults. They include focused
+single-Nemesis runs and the default Chaos composition described below. Focused
+runs also enforce their fault-specific progress and coverage requirements;
+all runs require cleanup and final recovery. The separate Liveness scenario
+below retains these common safety checks while testing progress under a fixed
+network topology.
+
 ### Nemesis Design
 
 Target policies are specific to each fault class. Network Partition and Packet
@@ -348,13 +358,74 @@ This wait has no node-local deadline: Jepsen's shared readiness check provides
 the external 60-second recovery bound, reports a recovery timeout, and leaves
 the process alive for diagnosis and teardown.
 
-### Results and Stored Evidence
+## Liveness tests
+
+### Partial network: old leader connected through a bridge
+
+From the repository root, run `make -C jepsen jepsen LIVENESS=1` (or
+`make -C jepsen test LIVENESS=1` with freshly built, running containers). This
+uses the same five data nodes (`n1` through `n5`) plus the control container as
+the normal safety tests. This is a fixed five-voter Jepsen scenario, not a
+random Chaos combination. It uses the normal Jepsen client, History, linearizability,
+panic, harness-error and final workload checks, plus a phase-specific liveness
+checker. CI runs it in a separate `Jepsen Liveness` job alongside the existing
+Jepsen scenarios on pushes to main and manual workflow dispatches. Pull requests
+run lint and unit tests only. Liveness failures fail the job; they are not
+treated as expected successes. Results and failure diagnostics are uploaded,
+and Docker cleanup runs regardless of the test result.
+
+The test chooses the established leader and waits for all logs to be applied.
+All five voters stay running throughout; no Kill or Restart is injected. Quorum
+is three votes. Three nodes stay mutually connected; the old leader stays
+connected to only one of them (the bridge). The fifth voter is isolated from
+all other voters. Only Raft-port traffic is filtered, not SSH or client HTTP.
+
+The installed topology is:
+
+```text
+       a -------- b             isolated
+        \        /
+         \      /
+          bridge
+             |
+         old leader
+```
+
+Lines represent retained bidirectional Raft connections; all other Raft
+connections are cut. In particular, the old leader cannot reach `a` or `b`,
+and the isolated voter cannot reach any peer. These are roles assigned at
+runtime, not fixed node names. All five processes remain running and remain
+voters, so the connected group `{a, bridge, b}` needs all three votes for a
+quorum. The bridge can still receive heartbeats from the old leader, which is
+the condition this test exercises.
+
+Client operations begin 600 ms after installation, allowing the old leader's
+initial quorum lease to expire before a client can follow a redirect to it.
+The liveness deadline still starts at installation. This prevents an early
+uncommitted write from independently making the bridge's log newer.
+
+The test observes the original topology for ten seconds and requires a new
+write to complete within 1.5 seconds (five configured maximum election timeouts
+of 300 ms). This is an engineering bound, not a Raft timing theorem. Leader and
+Vote metrics are retained for diagnosis, not used as a stability requirement.
+One successful write proves progress, not sustained availability. The topology remains
+unchanged throughout the observation period. Final cleanup heals the network
+and waits for recovery before the final read/write checks. Success during or
+after cleanup cannot excuse failure in the fault observation period.
+
+The existing implementation is expected to report `:nemesis :valid? false`,
+with no progress under `:original-topology`: the old leader keeps the bridge's lease alive.
+This is a failing liveness regression, not a harness success criterion inverted
+to make the test green. A command failure, missing phase or missing recovery
+also fails rather than masquerading as the intended liveness observation.
+
+## Results and Stored Evidence
 
 [Jepsen error-handling semantics](error-handling-semantics.md) defines the
 Outcome and Harness-failure contract. The sections below explain how to read
 the resulting checker verdicts and stored artifacts.
 
-#### Checker Verdicts
+### Checker Verdicts
 
 Checkers turn the collected evidence into separate verdicts. Property checkers
 decide whether OpenRaft satisfies a property: for example, the linearizability
@@ -381,7 +452,7 @@ The top-level `:valid?` combines these independent verdicts and answers only
 whether the entire run can be accepted. It does not by itself identify an
 OpenRaft property violation or the state of the Harness.
 
-#### Stored Evidence
+### Stored Evidence
 
 A run normally stores its artifacts under
 `jepsen/store/<test-name>/<timestamp>/`:
@@ -424,7 +495,8 @@ three possible values:
   report `:unknown`; locate the nested checker with that validity for its
   diagnostic fields.
 
-The test name begins with `openraft linearizable registers`, which also names
+Safety test names begin with `openraft linearizable registers`; the Liveness
+test is named `openraft partial-network liveness`. Each name also identifies
 its directory under `jepsen/store`. The independent linearizability checker
 lists failing keys at `[:workload :linearizable :failures]` and stores each
 key's result at `[:workload :linearizable :results <key>]`. Per-key histories
@@ -463,3 +535,9 @@ of the fault schedule; the seed is only an aid for rerunning similar conditions.
 - [x] Add a read, write, and compare-and-set workload.
 - [x] Add linearizability checking with Knossos.
 - [x] Exercise snapshot construction during ordinary workloads.
+- [x] Add a five-voter partial-network liveness regression that checks timely
+  successful writes while the old leader remains connected through a bridge.
+
+
+## References
+[Raft does not Guarantee Liveness in the face of Network Faults](https://decentralizedthoughts.github.io/2020-12-12-raft-liveness-full-omission/)
