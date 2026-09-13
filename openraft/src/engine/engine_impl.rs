@@ -79,11 +79,12 @@ where
     pub(crate) state: Valid<RaftState<C>>,
 
     // TODO: add a Voting state as a container.
-    /// Whether a greater log id is seen during election.
+    /// The greatest last-log-id reported by a peer that rejected a (pre-)vote.
     ///
-    /// If it is true, then this node **may** not become a leader therefore the election timeout
-    /// should be greater.
-    pub(crate) seen_greater_log: bool,
+    /// Extra election delay applies only while this node's last log is still smaller than this
+    /// id. Following a leader long enough to catch up clears the delay without an explicit
+    /// reset. `None` means no such log has been seen, or it was cleared when starting an election.
+    pub(crate) seen_greater_log: Option<LogIdOf<C>>,
 
     /// Represents the Leader state.
     pub(crate) leader: LeaderState<C>,
@@ -116,7 +117,7 @@ where
         Self {
             config,
             state: Valid::new(init_state),
-            seen_greater_log: false,
+            seen_greater_log: None,
             leader: None,
             candidate: None,
             pre_candidate: None,
@@ -545,7 +546,7 @@ where
                 func_name!(),
                 resp.last_log_id.display()
             );
-            self.set_greater_log();
+            self.set_greater_log(resp.last_log_id.clone());
         }
 
         // When vote request is rejected, only update to the non-committed version of the vote.
@@ -611,7 +612,7 @@ where
                 func_name!(),
                 resp.last_log_id.display()
             );
-            self.set_greater_log();
+            self.set_greater_log(resp.last_log_id.clone());
         }
 
         // Adopt the responder's higher term, same as handle_vote_resp does on reject.
@@ -986,20 +987,28 @@ where
         }
     }
 
-    pub(crate) fn is_there_greater_log(&self) -> bool {
-        self.seen_greater_log
-    }
-
-    /// Set that there is greater last log id found.
+    /// Whether a previously observed peer last-log-id is still greater than the local last log.
     ///
-    /// In such a case, this node should not try to elect aggressively.
-    pub(crate) fn set_greater_log(&mut self) {
-        self.seen_greater_log = true;
+    /// Used to extend the next election timeout so a shorter-log node does not campaign
+    /// aggressively. Becomes false once the local log catches up, even if the stored id is not
+    /// cleared.
+    pub(crate) fn is_there_greater_log(&self) -> bool {
+        self.seen_greater_log.as_ref() > self.state.last_log_id()
     }
 
-    /// Clear the flag of that there is greater last log id.
+    /// Record a peer last-log-id that is greater than this node's.
+    ///
+    /// Keeps the maximum id seen so far. This node should not try to elect aggressively until
+    /// its last log is no longer smaller than that id.
+    pub(crate) fn set_greater_log(&mut self, log_id: Option<LogIdOf<C>>) {
+        if log_id.as_ref() > self.seen_greater_log.as_ref() {
+            self.seen_greater_log = log_id;
+        }
+    }
+
+    /// Clear the recorded greater last-log-id.
     pub(crate) fn reset_greater_log(&mut self) {
-        self.seen_greater_log = false;
+        self.seen_greater_log = None;
     }
 
     // Only used by tests
