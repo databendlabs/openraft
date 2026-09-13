@@ -251,7 +251,7 @@ mod tests {
 
             TestConfig::spawn(async move {
                 for i in 2..=10 {
-                    TestConfig::sleep(std::time::Duration::from_millis(5)).await;
+                    TestConfig::sleep(std::time::Duration::from_millis(100)).await;
                     tx.send(i).unwrap();
                 }
             });
