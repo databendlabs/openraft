@@ -8,11 +8,15 @@ use crate::Membership;
 use crate::MembershipState;
 use crate::Vote;
 use crate::engine::Engine;
+use crate::engine::LogIdList;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
+use crate::errors::ConflictingLogId;
 use crate::progress::Inflight;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::inflight_id::InflightId;
+use crate::progress::stream_id::StreamId;
+use crate::raft::ConflictHint;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::StoredMembershipOf;
@@ -64,6 +68,14 @@ fn quorum_accepted(eng: &Engine<UTConfig>) -> Option<LogIdOf<UTConfig>> {
     *leader.progress.quorum_accepted()
 }
 
+fn conflict_at(expect: LogIdOf<UTConfig>) -> ConflictingLogId<UTConfig> {
+    ConflictingLogId {
+        expect,
+        local: None,
+        hint: None,
+    }
+}
+
 #[test]
 fn test_update_conflicting_response_identity() -> anyhow::Result<()> {
     let mut eng = eng();
@@ -85,7 +97,7 @@ fn test_update_conflicting_response_identity() -> anyhow::Result<()> {
         expected.data.inflight = Inflight::None;
         expected.data.searching_end = 7;
 
-        eng.replication_handler().update_conflicting(2, log_id(2, 1, 7), Some(first_id));
+        eng.replication_handler().update_conflicting(2, conflict_at(log_id(2, 1, 7)), Some(first_id));
 
         let actual = entry(&eng, 2);
         assert_eq!(expected, actual);
@@ -109,7 +121,7 @@ fn test_update_conflicting_response_identity() -> anyhow::Result<()> {
         let expected_entries = entries(&eng);
         let expected_quorum = quorum_accepted(&eng);
 
-        eng.replication_handler().update_conflicting(2, log_id(2, 1, 7), Some(first_id));
+        eng.replication_handler().update_conflicting(2, conflict_at(log_id(2, 1, 7)), Some(first_id));
 
         let actual_entry = entry(&eng, 2);
         let actual_entries = entries(&eng);
@@ -124,7 +136,7 @@ fn test_update_conflicting_response_identity() -> anyhow::Result<()> {
         let mut expected = entry(&eng, 2);
         expected.data.searching_end = 6;
 
-        eng.replication_handler().update_conflicting(2, log_id(2, 1, 6), None);
+        eng.replication_handler().update_conflicting(2, conflict_at(log_id(2, 1, 6)), None);
 
         let actual = entry(&eng, 2);
         assert_eq!(expected, actual);
@@ -135,7 +147,7 @@ fn test_update_conflicting_response_identity() -> anyhow::Result<()> {
         let expected_entries = entries(&eng);
         let expected_quorum = quorum_accepted(&eng);
 
-        eng.replication_handler().update_conflicting(99, log_id(2, 1, 0), Some(first_id));
+        eng.replication_handler().update_conflicting(99, conflict_at(log_id(2, 1, 0)), Some(first_id));
 
         let actual_entries = entries(&eng);
         let actual_quorum = quorum_accepted(&eng);
@@ -144,6 +156,99 @@ fn test_update_conflicting_response_identity() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+#[test]
+fn test_update_conflicting_uses_matching_tail_hint() -> anyhow::Result<()> {
+    let mut eng = eng();
+    eng.state.log_ids = LogIdList::new(None, [log_id(1, 1, 5), log_id(2, 1, 10)]);
+
+    update_entry(&mut eng, 2, |entry| {
+        *entry = ProgressEntry::empty(2, StreamId::new(2), 11)
+            .with_inflight(Inflight::logs(Some(log_id(2, 1, 9)), Some(log_id(2, 1, 10)), InflightId::new(7)));
+    });
+
+    eng.replication_handler().update_conflicting(
+        2,
+        ConflictingLogId {
+            expect: log_id(2, 1, 9),
+            local: None,
+            hint: Some(ConflictHint {
+                last_log_id: Some(log_id(1, 1, 5)),
+                committed_log_id: Some(log_id(1, 1, 3)),
+            }),
+        },
+        Some(InflightId::new(7)),
+    );
+
+    let progress = entry(&eng, 2);
+    assert_eq!(Some(&log_id(1, 1, 5)), progress.matching());
+    assert_eq!(6, progress.data.searching_end);
+    assert_eq!(Inflight::None, progress.data.inflight);
+
+    Ok(())
+}
+
+#[test]
+fn test_update_conflicting_uses_committed_hint_as_binary_search_lower_bound() -> anyhow::Result<()> {
+    let mut eng = eng();
+    eng.state.log_ids = LogIdList::new(None, [log_id(1, 1, 5), log_id(2, 1, 10)]);
+
+    update_entry(&mut eng, 2, |entry| {
+        *entry = ProgressEntry::empty(2, StreamId::new(2), 11)
+            .with_inflight(Inflight::logs(Some(log_id(2, 1, 9)), Some(log_id(2, 1, 10)), InflightId::new(7)));
+    });
+
+    eng.replication_handler().update_conflicting(
+        2,
+        ConflictingLogId {
+            expect: log_id(2, 1, 9),
+            local: Some(log_id(3, 2, 9)),
+            hint: Some(ConflictHint {
+                last_log_id: Some(log_id(3, 2, 8)),
+                committed_log_id: Some(log_id(1, 1, 5)),
+            }),
+        },
+        Some(InflightId::new(7)),
+    );
+
+    let progress = entry(&eng, 2);
+    assert_eq!(Some(&log_id(1, 1, 5)), progress.matching());
+    assert_eq!(8, progress.data.searching_end);
+    assert_eq!(Inflight::None, progress.data.inflight);
+
+    Ok(())
+}
+
+#[test]
+#[should_panic(expected = "follower committed log must exist on the leader")]
+fn test_update_conflicting_asserts_committed_hint_matches_leader() {
+    let mut eng = eng();
+    eng.state.log_ids = LogIdList::new(None, [log_id(1, 1, 5), log_id(2, 1, 10)]);
+
+    tracing::info!(target = 2, "reject a committed hint that violates Leader Completeness");
+    {
+        update_entry(&mut eng, 2, |entry| {
+            *entry = ProgressEntry::empty(2, StreamId::new(2), 11).with_inflight(Inflight::logs(
+                Some(log_id(2, 1, 9)),
+                Some(log_id(2, 1, 10)),
+                InflightId::new(7),
+            ));
+        });
+
+        eng.replication_handler().update_conflicting(
+            2,
+            ConflictingLogId {
+                expect: log_id(2, 1, 9),
+                local: Some(log_id(3, 2, 9)),
+                hint: Some(ConflictHint {
+                    last_log_id: Some(log_id(3, 2, 8)),
+                    committed_log_id: Some(log_id(3, 2, 5)),
+                }),
+            },
+            Some(InflightId::new(7)),
+        );
+    }
 }
 
 #[test]
@@ -189,7 +294,7 @@ fn test_update_conflicting_reversion() -> anyhow::Result<()> {
         expected.data.inflight = Inflight::None;
         expected.data.searching_end = 8;
 
-        eng.replication_handler().update_conflicting(1, log_id(2, 1, 8), Some(first_id));
+        eng.replication_handler().update_conflicting(1, conflict_at(log_id(2, 1, 8)), Some(first_id));
 
         let actual = entry(&eng, 1);
         assert_eq!(expected, actual);
@@ -218,7 +323,7 @@ fn test_update_conflicting_reversion() -> anyhow::Result<()> {
         expected.data.searching_end = 6;
         expected.data.allow_log_reversion = false;
 
-        eng.replication_handler().update_conflicting(3, log_id(2, 1, 6), Some(third_id));
+        eng.replication_handler().update_conflicting(3, conflict_at(log_id(2, 1, 6)), Some(third_id));
 
         let actual = entry(&eng, 3);
         assert_eq!(expected, actual);

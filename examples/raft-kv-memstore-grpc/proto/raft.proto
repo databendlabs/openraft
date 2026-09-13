@@ -88,6 +88,11 @@ message AppendEntriesRequest {
   LogId leader_commit = 4;
 }
 
+message ConflictHint {
+  LogId last_log_id = 1;
+  LogId committed_log_id = 2;
+}
+
 message AppendEntriesResponse {
   // If not None, the follower rejected the AppendEntries request due to having a higher vote.
   // All other fields are valid only when this field is None
@@ -107,6 +112,9 @@ message AppendEntriesResponse {
   //
   // If `conflict = true` in StreamAppend, this is the conflict log id.
   LogId last_log_id = 3;
+
+  // Optional follower bounds for conflict recovery.
+  ConflictHint conflict_hint = 4;
 }
 
 // The first chunk of snapshot transmission, which contains the snapshot meta.

@@ -121,7 +121,14 @@ async fn stream_append_conflict() -> Result<()> {
     let results: Vec<_> = output_stream.collect().await;
     assert_eq!(results, vec![
         Ok(Ok(Some(log_id(1, 1, 1)))),
-        Ok(Err(StreamAppendError::Conflict(log_id(1, 1, 5)))),
+        Ok(Err(StreamAppendError::Conflict(openraft::error::ConflictingLogId {
+            expect: log_id(1, 1, 5),
+            local: None,
+            hint: Some(openraft::raft::ConflictHint {
+                last_log_id: Some(log_id(1, 1, 1)),
+                committed_log_id: None,
+            }),
+        }))),
     ]);
 
     Ok(())

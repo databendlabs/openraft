@@ -157,11 +157,17 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
             },
             Command::Replicate {
                 target: 2,
-                req: Replicate::new_logs(LogIdRange::new(None, Some(log_id(3, 1, 6))), InflightId::new(1)),
+                req: Replicate::new_logs(
+                    LogIdRange::new(Some(log_id(2, 1, 3)), Some(log_id(3, 1, 6))),
+                    InflightId::new(1),
+                ),
             },
             Command::Replicate {
                 target: 3,
-                req: Replicate::new_logs(LogIdRange::new(None, Some(log_id(3, 1, 6))), InflightId::new(2)),
+                req: Replicate::new_logs(
+                    LogIdRange::new(Some(log_id(2, 1, 3)), Some(log_id(3, 1, 6))),
+                    InflightId::new(2),
+                ),
             },
         ],
         eng.output.take_commands()
@@ -290,13 +296,16 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
                 targets: vec![TargetProgress {
                     target: 2,
                     target_node: (),
-                    progress: ProgressEntry::empty(2, StreamId::new(5), 7),
+                    progress: ProgressEntry::empty(2, StreamId::new(5), 7).with_initial_probe(4),
                 }],
                 close_old_streams: false,
             },
             Command::Replicate {
                 target: 2,
-                req: Replicate::new_logs(LogIdRange::new(None, Some(log_id(3, 1, 6))), InflightId::new(1))
+                req: Replicate::new_logs(
+                    LogIdRange::new(Some(log_id(2, 1, 3)), Some(log_id(3, 1, 6))),
+                    InflightId::new(1),
+                )
             },
         ],
         eng.output.take_commands()

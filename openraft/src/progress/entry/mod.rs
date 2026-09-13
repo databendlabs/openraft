@@ -50,6 +50,9 @@ where C: RaftTypeConfig
     /// One plus the max log index on the following node that might match the leader log.
     pub(crate) searching_end: u64,
 
+    /// A one-shot probe at this leader's first entry.
+    pub(crate) initial_probe_index: Option<u64>,
+
     /// If true, reset the progress by setting matching to `None` when the follower's
     /// log is found reverted to an early state.
     ///
@@ -83,6 +86,12 @@ where C: RaftTypeConfig
         }
     }
 
+    /// Try `index` before falling back to the normal binary search.
+    pub(crate) fn with_initial_probe(mut self, index: u64) -> Self {
+        self.data.initial_probe_index = Some(index);
+        self
+    }
+
     pub(crate) fn matching(&self) -> Option<&LogIdOf<C>> {
         self.matching.as_ref()
     }
@@ -109,6 +118,7 @@ where C: RaftTypeConfig
             stream_id,
             inflight: Inflight::None,
             searching_end,
+            initial_probe_index: None,
             allow_log_reversion: false,
         }
     }
@@ -235,6 +245,18 @@ where C: RaftTypeConfig
         if self.data.searching_end < purge_upto_next {
             self.data.inflight = Inflight::snapshot(inflight_id);
             return Ok(&self.data.inflight);
+        }
+
+        // Probe this leader's first entry before binary search.
+        if let Some(probe_index) = self.data.initial_probe_index.take() {
+            let start = std::cmp::max(probe_index, purge_upto_next);
+            let end = std::cmp::min(start + max_entries, last_next);
+            if start < end {
+                let prev = log_state.prev_log_id(start);
+                let last = log_state.prev_log_id(end);
+                self.data.inflight = Inflight::logs(prev, last, inflight_id);
+                return Ok(&self.data.inflight);
+            }
         }
 
         let matching_next = self.matching().next_index();

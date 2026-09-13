@@ -19,6 +19,7 @@ use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::errors::ConflictingLogId;
 use crate::errors::RejectAppendEntries;
 use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
+use crate::raft::ConflictHint;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::io_state::log_io_id::LogIOId;
@@ -125,12 +126,17 @@ where
             && !self.state.has_log_id(prev)
         {
             let local = self.state.get_log_id(prev.index());
+            let hint = ConflictHint::new(
+                self.state.last_log_id().cloned(),
+                self.state.local_committed().cloned(),
+            );
             tracing::debug!("prev_log_id mismatch, local: {}", local.display());
 
             self.truncate_logs(prev.index());
             return Err(RejectAppendEntries::ConflictingLogId(ConflictingLogId {
                 local,
                 expect: prev.clone(),
+                hint: Some(hint),
             }));
         }
 

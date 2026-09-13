@@ -139,7 +139,7 @@ where
 
         let progress = VecProgress::new(quorum_set.clone(), learner_ids.iter().cloned(), |id| {
             let stream_id = StreamId::new(id_gen.next_id());
-            ProgressEntry::empty(id, stream_id, last_log_id.next_index())
+            ProgressEntry::empty(id, stream_id, last_log_id.next_index()).with_initial_probe(noop_log_id.index())
         });
 
         let now = C::now();

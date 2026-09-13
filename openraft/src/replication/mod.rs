@@ -397,8 +397,8 @@ where
                 }
                 Err(append_err) => {
                     match append_err {
-                        StreamAppendError::Conflict(conflict_log_id) => {
-                            self.notify_progress(ReplicationResult(Err(conflict_log_id))).await;
+                        StreamAppendError::Conflict(conflict) => {
+                            self.notify_progress(ReplicationResult(Err(conflict))).await;
                         }
                         StreamAppendError::HigherVote(higher) => {
                             self.replication_context

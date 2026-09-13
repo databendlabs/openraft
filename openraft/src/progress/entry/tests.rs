@@ -417,6 +417,18 @@ fn test_next_send_not_pipeline_without_matching() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_next_send_tries_initial_leader_entry_before_binary_search() -> anyhow::Result<()> {
+    // Probe index 17 instead of the binary-search midpoint 8.
+    let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 21).with_initial_probe(17);
+
+    let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
+    assert_eq!(Ok(&inflight_logs(16, 20).with_id(1)), res);
+    assert_eq!(None, pe.data.initial_probe_index, "the optimistic probe is one-shot");
+
+    Ok(())
+}
+
+#[test]
 fn test_next_send_probe_from_mid_of_search_range() -> anyhow::Result<()> {
     //    matching,end
     //    4               21

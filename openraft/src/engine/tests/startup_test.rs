@@ -82,7 +82,7 @@ fn test_startup_as_leader_without_logs() -> anyhow::Result<()> {
                 targets: vec![TargetProgress {
                     target: 3,
                     target_node: (),
-                    progress: ProgressEntry::empty(3, StreamId::new(2), 4),
+                    progress: ProgressEntry::empty(3, StreamId::new(2), 4).with_initial_probe(4),
                 }],
                 close_old_streams: true,
             },
@@ -92,7 +92,10 @@ fn test_startup_as_leader_without_logs() -> anyhow::Result<()> {
             },
             Command::Replicate {
                 target: 3,
-                req: Replicate::new_logs(LogIdRange::new(None, Some(log_id(2, 2, 4))), InflightId::new(1)),
+                req: Replicate::new_logs(
+                    LogIdRange::new(Some(log_id(1, 1, 3)), Some(log_id(2, 2, 4))),
+                    InflightId::new(1),
+                ),
             }
         ],
         eng.output.take_commands()
@@ -136,13 +139,16 @@ fn test_startup_as_leader_with_proposed_logs() -> anyhow::Result<()> {
                 targets: vec![TargetProgress {
                     target: 3,
                     target_node: (),
-                    progress: ProgressEntry::empty(3, StreamId::new(2), 7),
+                    progress: ProgressEntry::empty(3, StreamId::new(2), 7).with_initial_probe(4),
                 }],
                 close_old_streams: true,
             },
             Command::Replicate {
                 target: 3,
-                req: Replicate::new_logs(LogIdRange::new(None, Some(log_id(1, 2, 6))), InflightId::new(1))
+                req: Replicate::new_logs(
+                    LogIdRange::new(Some(log_id(1, 1, 3)), Some(log_id(1, 2, 6))),
+                    InflightId::new(1),
+                )
             }
         ],
         eng.output.take_commands()

@@ -44,6 +44,7 @@ pub use message::AppendEntriesRequest;
 pub use message::AppendEntriesResponse;
 pub use message::ChangeMembershipOutcome;
 pub use message::ChangeMembershipRequest;
+pub use message::ConflictHint;
 pub use message::ClientWriteResponse;
 pub use message::ClientWriteResult;
 #[allow(deprecated)]

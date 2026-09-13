@@ -7,6 +7,7 @@ mod append_entries_request;
 mod append_entries_response;
 mod change_membership;
 mod change_membership_request;
+mod conflict_hint;
 mod install_snapshot;
 mod log_segment;
 mod precondition;
@@ -22,6 +23,7 @@ pub use append_entries_request::AppendEntriesRequest;
 pub use append_entries_response::AppendEntriesResponse;
 pub use change_membership::ChangeMembershipOutcome;
 pub use change_membership_request::ChangeMembershipRequest;
+pub use conflict_hint::ConflictHint;
 pub use client_write::ClientWriteResponse;
 pub use client_write::ClientWriteResult;
 #[allow(deprecated)]

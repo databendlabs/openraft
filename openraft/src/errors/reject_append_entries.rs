@@ -24,7 +24,7 @@ impl<C: RaftTypeConfig> From<RejectAppendEntries<C>> for StreamAppendError<C> {
     fn from(e: RejectAppendEntries<C>) -> Self {
         match e {
             RejectAppendEntries::RejectVote(r) => StreamAppendError::HigherVote(r.higher),
-            RejectAppendEntries::ConflictingLogId(c) => StreamAppendError::Conflict(c.expect),
+            RejectAppendEntries::ConflictingLogId(c) => StreamAppendError::Conflict(c),
         }
     }
 }
