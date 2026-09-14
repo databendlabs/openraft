@@ -101,7 +101,7 @@ pub enum InstallSnapshotError {}
 pub enum ClientWriteError<C>
 where C: RaftTypeConfig
 {
-    /// This node is not the leader; request should be forwarded to the leader.
+    /// This node cannot accept or finish the request; use this error for routing.
     #[error(transparent)]
     ForwardToLeader(#[from] ForwardToLeader<C>),
 
@@ -407,7 +407,14 @@ pub enum ForwardReason {
     LeaseExpired,
 }
 
-/// Error indicating that the request should be forwarded to the leader or retried.
+/// An error that provides routing information for a request this node cannot accept or finish.
+///
+/// For a mutating request, this error does not prove that an earlier attempt had no effect.
+/// OpenRaft may return it after a local log entry is truncated or purged even though the same
+/// entry on another node may later commit. Retrying the request requires application-level
+/// deduplication; see [`Raft::client_write()`].
+///
+/// [`Raft::client_write()`]: crate::Raft::client_write
 #[since(version = "0.10.0", change = "added `reason`")]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
