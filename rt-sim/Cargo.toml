@@ -1,0 +1,28 @@
+[package]
+name = "openraft-rt-sim"
+description = "Deterministic simulated AsyncRuntime for testing Openraft"
+readme = "README.md"
+version = "0.10.0-alpha.34"
+edition = "2024"
+authors = ["Databend Authors <opensource@datafuselabs.com>"]
+categories = ["algorithms", "asynchronous", "data-structures"]
+homepage = "https://github.com/databendlabs/openraft"
+keywords = ["raft", "consensus", "simulation", "testing"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/databendlabs/openraft"
+publish = false
+
+[dependencies]
+openraft-rt      = { path = "../rt", version = "0.10.0-alpha.34" }
+futures-util     = { version = "0.3" }
+pin-project-lite = { version = "0.2" }
+rand             = { version = "0.10" }
+tokio            = { version = "1.39", default-features = false, features = ["sync"] }
+
+[features]
+default = []
+
+# Reseed the `futures_util::select!` shuffle RNG from the runtime seed at the start of every
+# `block_on`. Requires the openraft futures-util fork that adds `futures_util::reseed()`: build
+# from a workspace that patches futures-util, as tests-turmoil and tests-sim do.
+futures-reseed = []
