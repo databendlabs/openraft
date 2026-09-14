@@ -137,7 +137,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         let sleep = Rt::sleep(dur_10ms);
         let mut sleep = pin!(sleep);
 
-        let poll = poll_in_place(sleep.as_mut());
+        let poll = futures_util::poll!(sleep.as_mut());
         assert!(matches!(poll, Poll::Pending));
 
         sleep.await;
