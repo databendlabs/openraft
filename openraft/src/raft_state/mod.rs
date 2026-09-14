@@ -413,9 +413,8 @@ where C: RaftTypeConfig
             self.is_leading(id)
         );
 
-        // Openraft does not require Leader/Candidate to be a voter, i.e., a learner node could
-        // also be possible to be a leader. Although currently it is not supported.
-        // Allowing this will simplify leader step down: The leader just run as long as it wants to,
+        // A Leader/Candidate may be a learner in the effective membership, or a voter in the
+        // committed membership whose removal has not yet been committed.
         #[allow(clippy::collapsible_else_if)]
         if self.is_leader(id) {
             ServerState::Leader
@@ -442,7 +441,8 @@ where C: RaftTypeConfig
     ///
     /// [Determine Server State]: crate::docs::data::vote#vote-and-membership-define-the-server-state
     pub(crate) fn is_leading(&self, id: &C::NodeId) -> bool {
-        self.membership_state.contains(id) && self.vote.leader_node_id() == id
+        (self.membership_state.contains(id) || self.membership_state.committed().is_voter(id))
+            && self.vote.leader_node_id() == id
     }
 
     /// The node is leader

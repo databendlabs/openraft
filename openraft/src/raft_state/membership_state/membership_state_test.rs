@@ -55,6 +55,42 @@ fn test_membership_state_is_member() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_campaign_eligibility_ends_when_removal_commits() {
+    let joint = Membership::new_with_defaults(vec![btreeset! {1,2,5}, btreeset! {2}], [3]);
+    let final_membership = Membership::new_with_defaults(vec![btreeset! {2}], [1, 3]);
+    let mut state = MembershipStateOf::<UTConfig>::new(effmem(1, 1, joint), effmem(1, 2, final_membership));
+
+    tracing::info!("--- final keeps voter 2; committed joint still allows removed voters 1 and 5 to campaign");
+    {
+        for id in [1, 2, 5] {
+            assert!(state.can_campaign(&id), "node {id} can campaign");
+        }
+        assert!(
+            !state.is_voter(&1),
+            "retained learner does not count as an effective voter"
+        );
+        assert!(!state.is_voter(&5), "removed node does not count as an effective voter");
+        assert!(!state.can_campaign(&3), "ordinary learner cannot campaign");
+        assert!(!state.can_campaign(&6), "unknown node cannot campaign");
+    }
+
+    tracing::info!("--- committing the final membership ends only the removed voters' eligibility");
+    {
+        state.commit(&Some(log_id(1, 1, 2)));
+
+        assert!(
+            !state.can_campaign(&1),
+            "retained learner cannot start another campaign"
+        );
+        assert!(
+            !state.can_campaign(&5),
+            "fully removed node cannot start another campaign"
+        );
+        assert!(state.can_campaign(&2));
+    }
+}
+
+#[test]
 fn test_membership_state_update_committed() -> anyhow::Result<()> {
     let new = || {
         MembershipStateOf::<UTConfig>::new(

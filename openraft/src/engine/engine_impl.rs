@@ -714,10 +714,9 @@ where
     /// is removed from the membership config keeps leading until the membership config that
     /// removes it is committed, and it is this method that then reverts it to a learner.
     ///
-    /// This method updates the internal server state unconditionally. The caller must not call
-    /// it on a Leader whose effective membership config is not yet committed: the Leader, even
-    /// when removed, must keep leading to replicate the membership log entry that removes it;
-    /// otherwise this entry could never be committed.
+    /// A Leader that is still a voter in the committed membership keeps leading even if the
+    /// effective membership excludes it. This lets it finish replicating the membership entry
+    /// that removes it. Once that entry is locally known to be committed, this allowance ends.
     ///
     /// A Leader demoted to a learner that is still in the membership config is not affected:
     /// openraft allows a learner to act as Leader. See: [Determine Server
