@@ -22,6 +22,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use lazy_static::lazy_static;
+use openraft::AsyncRuntime;
 use openraft::Config;
 use openraft::OptionalSend;
 use openraft::RPCTypes;
@@ -56,6 +57,7 @@ use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft::raft::linearizable_read::ReadLogId;
 use openraft::type_config::TypeConfigExt;
+use openraft::type_config::alias::AsyncRuntimeOf;
 use openraft::type_config::alias::MutexOf;
 use openraft::vote::RaftLeaderId;
 use openraft_memstore::ClientRequest;
@@ -70,6 +72,7 @@ use openraft_memstore::TypeConfig as MemConfig;
 use pretty_assertions::assert_eq;
 #[allow(unused_imports)]
 use pretty_assertions::assert_ne;
+use rand::RngExt;
 use tracing_appender::non_blocking::WorkerGuard;
 
 use crate::fixtures::logging::init_file_logging;
@@ -82,6 +85,8 @@ mod pre_hook;
 pub mod rpc_error_type;
 pub mod rpc_request;
 pub mod rpc_response;
+#[cfg(feature = "rt-sim")]
+pub mod sim_log;
 
 type MemSnapshotData = Cursor<Vec<u8>>;
 type MemRpcRequest = RpcRequest<TypeConfig, MemSnapshotData>;
@@ -305,7 +310,7 @@ impl TypedRaftRouter {
             return;
         }
 
-        let r = rand::random::<u64>() % send_delay;
+        let r = AsyncRuntimeOf::<TypeConfig>::thread_rng().random::<u64>() % send_delay;
         let timeout = Duration::from_millis(r);
         TypeConfig::sleep(timeout).await;
     }

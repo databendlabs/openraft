@@ -17,6 +17,7 @@ license       = { workspace = true }
 repository    = { workspace = true }
 
 [dependencies]
+openraft-rt-sim = { path = "../rt-sim", optional = true }
 
 [dev-dependencies]
 openraft           = { path = "../openraft", version = "0.10.0-alpha.34", features = ["type-alias"] }
@@ -44,3 +45,6 @@ tracing-subscriber = { workspace = true }
 bt = ["openraft/bt"]
 runtime-stats = ["openraft/runtime-stats"]
 single-term-leader = ["openraft-memstore/single-term-leader"]
+
+# Run the integration tests on the deterministic simulated runtime, for openraft#206.
+rt-sim = ["openraft-memstore/rt-sim", "dep:openraft-rt-sim"]

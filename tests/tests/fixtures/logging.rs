@@ -77,7 +77,10 @@ pub fn init_file_logging(app_name: &str, dir: &str, level: &str) -> (WorkerGuard
     let directives = env::var(EnvFilter::DEFAULT_ENV).unwrap_or_else(|_x| level.to_string());
     let env_filter = EnvFilter::new(directives);
 
+    #[cfg(not(feature = "rt-sim"))]
     let subscriber = Registry::default().with(env_filter).with(f_layer);
+    #[cfg(feature = "rt-sim")]
+    let subscriber = Registry::default().with(env_filter).with(f_layer).with(super::sim_log::layer());
 
     (writer_guard, subscriber)
 }
