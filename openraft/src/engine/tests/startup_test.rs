@@ -5,6 +5,7 @@ use maplit::btreeset;
 use pretty_assertions::assert_eq;
 
 use crate::Membership;
+use crate::MembershipState;
 use crate::ServerState;
 use crate::Vote;
 use crate::batch::Batch;
@@ -256,4 +257,51 @@ fn test_startup_as_leader_leader_restore_disabled() -> anyhow::Result<()> {
     assert_eq!(eng.state.vote_ref(), &Vote::new(2, 2));
 
     Ok(())
+}
+
+#[test]
+fn test_startup_leader_removed_from_effective_membership() {
+    for (restore, committed_index, retain_as_learner, expected_state, expected_vote) in [
+        (true, 3, false, ServerState::Leader, Vote::new_committed(2, 2)),
+        (false, 3, false, ServerState::Learner, Vote::new(2, 2)),
+        (true, 5, false, ServerState::Learner, Vote::new_committed(2, 2)),
+        (true, 5, true, ServerState::Leader, Vote::new_committed(2, 2)),
+    ] {
+        tracing::info!(
+            restore,
+            committed_index,
+            retain_as_learner,
+            ?expected_state,
+            "--- restart node 2 with joint {{2,3}},{{3}} at index 3 and final {{3}} at index 5"
+        );
+        {
+            let mut eng = eng();
+            eng.config.enable_leader_restore = restore;
+            eng.state.log_ids = LogIdList::new(None, [log_id(1, 3, 5)]);
+            eng.state.vote = Leased::new(UTConfig::<()>::now(), Duration::ZERO, Vote::new_committed(2, 2));
+            eng.state.membership_state = MembershipState::new(
+                Arc::new(StoredMembershipOf::<UTConfig>::new(
+                    Some(log_id(1, 3, 3)),
+                    Membership::new_with_defaults(vec![btreeset! {2,3}, btreeset! {3}], []),
+                )),
+                Arc::new(StoredMembershipOf::<UTConfig>::new(
+                    Some(log_id(1, 3, 5)),
+                    Membership::new_with_defaults(vec![btreeset! {3}], retain_as_learner.then_some(2)),
+                )),
+            );
+            eng.state.update_local_committed(&Some(log_id(1, 3, committed_index)));
+
+            eng.startup();
+
+            assert_eq!(expected_state, eng.state.server_state);
+            assert_eq!(&expected_vote, eng.state.vote_ref());
+            assert!(eng.candidate_ref().is_none());
+            if expected_state == ServerState::Leader {
+                assert!(!eng.leader_ref().unwrap().is_self_quorum());
+            } else {
+                assert!(eng.leader_ref().is_none());
+                assert!(eng.output.take_commands().is_empty());
+            }
+        }
+    }
 }

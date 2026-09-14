@@ -25,6 +25,7 @@ mod t31_removed_follower;
 mod t51_hung_follower_blocks_loop;
 mod t51_remove_unreachable_follower;
 mod t52_change_membership_on_uninitialized_node;
+mod t90_issue_2091_finalization_recovery;
 mod t99_issue_471_adding_learner_uses_uninit_leader_id;
 mod t99_issue_584_replication_state_reverted;
 mod t99_new_leader_auto_commit_uniform_config;
