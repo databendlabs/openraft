@@ -6,6 +6,7 @@ use maplit::btreeset;
 use pretty_assertions::assert_eq;
 
 use crate::Membership;
+use crate::MembershipState;
 use crate::Vote;
 use crate::core::ServerState;
 use crate::engine::Command;
@@ -14,6 +15,7 @@ use crate::engine::LogIdList;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::raft::VoteRequest;
+use crate::raft::VoteResponse;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::StoredMembershipOf;
 use crate::utime::Leased;
@@ -130,4 +132,53 @@ fn test_pre_elect_single_node_starts_real_election() -> anyhow::Result<()> {
     );
 
     Ok(())
+}
+
+#[test]
+fn test_pre_elect_removed_committed_voter_uses_effective_quorum() {
+    let mut eng = eng();
+    eng.config.id = 1;
+    eng.state.log_ids = LogIdList::new(None, [log_id(1, 0, 2)]);
+    eng.state.vote = Leased::new(UTConfig::<()>::now(), Duration::ZERO, Vote::new(1, 0));
+    eng.state.membership_state = MembershipState::new(
+        Arc::new(StoredMembershipOf::<UTConfig>::new(
+            Some(log_id(1, 0, 1)),
+            Membership::new_with_defaults(vec![btreeset! {1,2,3}], []),
+        )),
+        Arc::new(StoredMembershipOf::<UTConfig>::new(
+            Some(log_id(1, 0, 2)),
+            Membership::new_with_defaults(vec![btreeset! {2,3}], []),
+        )),
+    );
+    eng.state.update_local_committed(&Some(log_id(1, 0, 1)));
+
+    tracing::info!("--- removed node 1 probes effective voters 2,3 without counting itself");
+    {
+        eng.pre_elect();
+
+        assert_eq!(&Vote::new(1, 0), eng.state.vote_ref());
+        assert!(eng.pre_candidate_ref().unwrap().granters().next().is_none());
+        assert!(eng.candidate_ref().is_none());
+        assert_eq!(
+            vec![Command::SendPreVote {
+                vote_req: VoteRequest::new(Vote::new(2, 1), Some(log_id(1, 0, 2))),
+            }],
+            eng.output.take_commands()
+        );
+    }
+
+    tracing::info!("--- both effective voters must pre-vote before the term advances");
+    {
+        eng.handle_pre_vote_resp(2, VoteResponse::new(Vote::new(1, 0), Some(log_id(1, 0, 2)), true));
+
+        assert_eq!(&Vote::new(1, 0), eng.state.vote_ref());
+        assert!(eng.candidate_ref().is_none());
+
+        eng.handle_pre_vote_resp(3, VoteResponse::new(Vote::new(1, 0), Some(log_id(1, 0, 2)), true));
+
+        assert_eq!(&Vote::new(2, 1), eng.state.vote_ref());
+        assert!(eng.pre_candidate_ref().is_none());
+        assert!(eng.candidate_ref().is_some());
+        assert_eq!(ServerState::Candidate, eng.state.server_state);
+    }
 }

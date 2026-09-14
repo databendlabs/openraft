@@ -49,8 +49,12 @@ In the default mode, the `Vote` defines the server state (leader, candidate, fol
 A server state has a unique corresponding `vote`, thus `vote` can be used to identify different server
 states, i.e., if the `vote` changes, the server state must have changed.
 
-Note: follower and learner in Openraft are almost the same. The only difference
-is a learner does not try to elect itself.
+Election eligibility uses both membership views: a node may campaign if it is a voter in
+either its effective or its committed membership. This lets a removed voter recover leadership
+while the final configuration that removes it is not yet locally known to be committed.
+Ordinary learners that are voters in neither view cannot campaign. Election and replication
+quorums still use only the effective membership; a candidate outside that voter set does not
+count its own vote.
 
 Note: a follower will switch to a learner and vice versa without changing the `vote`, when a
 new membership log is replicated to a follower or learner.
@@ -58,12 +62,14 @@ new membership log is replicated to a follower or learner.
 E.g.:
 
 - Node-2 with vote `(term=1, node_id=2, committed=true)`:
-  - is a leader if it is **present** in config, either a voter or non-voter.
-  - is a learner if it is **absent** in config.
+  - is a leader if it is **present** in the effective config, either a voter or non-voter,
+    or is a voter in the committed config.
+  - is a learner otherwise.
 
 - Node-2 with vote `(term=1, node_id=2, committed=false)`:
-  - is a candidate if it is **present** in config, either a voter or non-voter.
-  - is a learner if it is **absent** in config.
+  - is a candidate if it is **present** in the effective config, either a voter or non-voter,
+    or is a voter in the committed config.
+  - is a learner otherwise.
 
 - Node-3 with vote `(term=1, node_id=99, committed=false|true)`:
   - is a follower if it is a **voter** in config,
@@ -71,12 +77,16 @@ E.g.:
 
 For node-2:
 
-| vote \ membership                     | Voter     | Non-voter | Absent  |
-|---------------------------------------|-----------|-----------|---------|
-| (term=1, node_id=2, committed=true)   | leader    | leader    | learner |
-| (term=1, node_id=2, committed=false)  | candidate | candidate | learner |
-| (term=1, node_id=99, committed=true)  | follower  | learner   | learner |
-| (term=1, node_id=99, committed=false) | follower  | learner   | learner |
+| vote \ membership                   | Effective voter | Effective learner | Absent, committed voter | Absent, not committed voter |
+|-------------------------------------|-----------------|-------------------|-------------------------|-----------------------------|
+| (term=1, node_id=2, committed=true)   | leader          | leader            | leader                  | learner                     |
+| (term=1, node_id=2, committed=false)  | candidate       | candidate         | candidate               | learner                     |
+| (term=1, node_id=99, committed=true)  | follower        | learner           | learner                 | learner                     |
+| (term=1, node_id=99, committed=false) | follower        | learner           | learner                 | learner                     |
+
+These predicates determine the role when it is recalculated. An existing Leader that is fully
+removed by a committed configuration can keep its runtime Leader state until the configured
+step-down policy triggers a refresh or a Vote change ends its leadership.
 
 
 

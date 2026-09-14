@@ -1827,7 +1827,7 @@ where
                     // rejects the vote request. Leave the established leadership alone.
                     tracing::info!("ExternalCommand: already a Leader, ignore election trigger");
                 } else {
-                    if self.engine.state.membership_state.effective().is_voter(&self.id) {
+                    if self.engine.state.membership_state.is_voter_in_effective_or_committed(&self.id) {
                         if pre_vote {
                             self.engine.pre_elect();
                         } else {
@@ -2112,8 +2112,8 @@ where
             return;
         }
 
-        if !self.engine.state.membership_state.effective().is_voter(&self.id) {
-            tracing::debug!("skip election, not a voter");
+        if !self.engine.state.membership_state.is_voter_in_effective_or_committed(&self.id) {
+            tracing::debug!("skip election, not a voter in effective or committed membership");
             return;
         }
 
@@ -2127,9 +2127,14 @@ where
             election_timeout += self.engine.config.timer_config.smaller_log_timeout;
         }
 
-        let voter_count = self.engine.state.membership_state.effective().voter_ids().count();
+        let effective = self.engine.state.membership_state.effective();
+        // Whether this node is the only one that will start an election.
+        // There is no need to check `committed` membership.
+        // Because there won't be a leader established without contacting this node, if effective membership
+        // contains only this node.
+        let is_single_campaigner = effective.is_voter(&self.id) && effective.voter_ids().count() == 1;
 
-        if voter_count == 1 {
+        if is_single_campaigner {
             // When a node restart, it may stay in any state but the in progress election(engine.candidate) is
             // empty.
             if self.engine.candidate_ref().is_some() {
@@ -2138,7 +2143,7 @@ where
             }
             tracing::debug!("single voter, elect immediately");
         } else {
-            tracing::debug!("multiple voters, check election timeout");
+            tracing::debug!("remote votes required, check election timeout");
 
             let local_vote = &self.engine.state.vote;
             tracing::debug!("local vote: {}, election_timeout: {:?}", local_vote, election_timeout,);
@@ -2151,9 +2156,9 @@ where
             }
         }
 
-        // Pre-Vote (multi-voter only): probe a quorum before incrementing the term.
-        // A single voter always wins its own Pre-Vote, so it elects directly.
-        let pre_vote = self.runtime_config.enable_pre_vote.load(Ordering::Relaxed) && voter_count > 1;
+        // Only a node that is itself the sole effective voter can skip Pre-Vote. A removed
+        // committed voter still needs a remote quorum, even if there is only one effective voter.
+        let pre_vote = self.runtime_config.enable_pre_vote.load(Ordering::Relaxed) && !is_single_campaigner;
 
         if pre_vote {
             // A Pre-Vote does not advance `vote.last_update_time`, so without this guard a node
