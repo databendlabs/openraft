@@ -35,7 +35,7 @@ use crate::fixtures::ut_harness;
 /// `RaftCore` task.
 ///
 /// After the fix, `PurgeLog` drains and fails the responders it covers, so the pending write
-/// resolves with `ForwardToLeader` and the node keeps applying.
+/// resolves with `LogEntryDiscarded` and the node keeps applying.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn write_then_superseded_by_snapshot_install() -> Result<()> {
@@ -118,12 +118,12 @@ async fn write_then_superseded_by_snapshot_install() -> Result<()> {
         .await?;
     }
 
-    tracing::info!("--- the pending write must resolve with ForwardToLeader, not panic the core");
+    tracing::info!("--- the pending write must resolve with LogEntryDiscarded, not panic the core");
     let write_res = rx.await?;
     let raft_err = write_res.unwrap_err();
     assert_eq!(
         raft_err,
-        RaftError::APIError(ClientWriteError::ForwardToLeader(ForwardToLeader {
+        RaftError::APIError(ClientWriteError::LogEntryDiscarded(ForwardToLeader {
             leader_id: Some(1),
             leader_node: Some(()),
             reason: ForwardReason::NotLeader,
