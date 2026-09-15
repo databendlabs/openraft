@@ -122,6 +122,38 @@ fn test_config_removed_leader_step_down() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_config_quorum_loss() -> anyhow::Result<()> {
+    let config = Config::build(&["foo"])?;
+    assert_eq!(None, config.quorum_loss_grace);
+    assert_eq!(None, config.quorum_loss_probe_interval);
+
+    let config = Config::build(&["foo", "--quorum-loss-probe-interval=0"])?;
+    assert_eq!(None, config.quorum_loss_grace);
+    assert_eq!(Some(0), config.quorum_loss_probe_interval);
+
+    let config = Config::build(&["foo", "--quorum-loss-grace=0", "--quorum-loss-probe-interval=601"])?;
+    assert_eq!(Some(0), config.quorum_loss_grace);
+    assert_eq!(Some(601), config.quorum_loss_probe_interval);
+
+    assert_eq!(
+        ConfigError::QuorumLossProbeIntervalRequired,
+        Config::build(&["foo", "--quorum-loss-grace=500"]).unwrap_err()
+    );
+    assert_eq!(
+        ConfigError::QuorumLossProbeIntervalTooSmall {
+            election_timeout_max: 300,
+            probe_interval: 600,
+        },
+        Config::build(&["foo", "--quorum-loss-grace=500", "--quorum-loss-probe-interval=600"]).unwrap_err()
+    );
+
+    assert!(Config::build(&["foo", "--quorum-loss-grace=off"]).is_err());
+    assert!(Config::build(&["foo", "--quorum-loss-probe-interval=off"]).is_err());
+
+    Ok(())
+}
+
+#[test]
 fn test_config_enable_tick() -> anyhow::Result<()> {
     let config = Config::build(&["foo", "--enable-tick=false"])?;
     assert_eq!(false, config.enable_tick);

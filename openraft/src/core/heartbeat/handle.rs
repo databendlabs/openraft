@@ -28,7 +28,6 @@ where C: RaftTypeConfig
     /// Channel to send heartbeat events to the worker.
     event_tx: WatchSenderOf<C, Option<HeartbeatEvent<C>>>,
 
-    #[allow(dead_code)]
     stream_id: StreamId,
 
     /// Channel to signal shutdown to the worker.
@@ -66,6 +65,11 @@ where C: RaftTypeConfig
             tracing::debug!("id={} target={} send_heartbeat {}", self.id, target, event);
             self.workers.get(&target).unwrap().event_tx.send(Some(event)).ok();
         }
+    }
+
+    /// A probe round is submitted only once all current voter streams are ready.
+    pub(crate) fn has_worker(&self, target: &C::NodeId, stream_id: StreamId) -> bool {
+        self.workers.get(target).is_some_and(|worker| worker.stream_id == stream_id)
     }
 
     pub(crate) fn close_workers(&mut self) {

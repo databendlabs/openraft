@@ -26,6 +26,7 @@ use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
+use crate::fixtures::rpc_request::RpcRequest;
 use crate::fixtures::ut_harness;
 
 /// A removed voter retries a failed automatic campaign against its single remote voter.
@@ -174,12 +175,15 @@ async fn restart_in_final_window(retain: bool, pre_vote: bool) -> Result<(RaftRo
     tracing::info!(
         log_index,
         retain,
-        "--- persist final locally while every append to node 1 fails"
+        "--- block the original Leader's appends across restart; only a newer Vote may replicate final"
     );
     let pending = {
         router
-            .set_rpc_pre_hook(RPCTypes::AppendEntries, |_router, _request, from, to| {
-                let result = if from == 0 && to == 1 {
+            .set_rpc_pre_hook(RPCTypes::AppendEntries, |_router, request, from, to| {
+                let result = if from == 0
+                    && to == 1
+                    && matches!(request, RpcRequest::AppendEntries(append) if append.vote == Vote::new_committed(1, 0))
+                {
                     Err(RPCError::Network(NetworkError::<TypeConfig>::from_string(
                         "hold final on node 0",
                     )))
@@ -248,7 +252,6 @@ async fn restart_in_final_window(retain: bool, pre_vote: bool) -> Result<(RaftRo
                 "restart retains final without restoring leader authority",
             )
             .await?;
-        router.rpc_pre_hook(RPCTypes::AppendEntries, None).await;
     }
 
     Ok((router, log_index))

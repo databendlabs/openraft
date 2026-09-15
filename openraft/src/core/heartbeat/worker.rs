@@ -91,7 +91,11 @@ where
                 _ = self.rx.changed().fuse() => {},
             }
 
-            let heartbeat: Option<HeartbeatEvent<C>> = self.rx.borrow_watched().clone();
+            let heartbeat: Option<HeartbeatEvent<C>> = if self.config.quorum_loss_grace.is_some() {
+                self.rx.borrow_and_update().clone()
+            } else {
+                self.rx.borrow_watched().clone()
+            };
 
             // None is the initial value of the WatchReceiver, ignore it.
             let Some(heartbeat) = heartbeat else {

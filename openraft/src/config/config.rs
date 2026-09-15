@@ -53,6 +53,8 @@ pub(crate) struct Defaults {
     pub enable_heartbeat: bool,
     pub enable_elect: bool,
     pub removed_leader_step_down: StepDownPolicy,
+    pub quorum_loss_grace: Option<u64>,
+    pub quorum_loss_probe_interval: Option<u64>,
     pub enable_pre_vote: Option<bool>,
 }
 
@@ -81,6 +83,8 @@ pub(crate) const DEFAULTS: Defaults = Defaults {
     enable_heartbeat: true,
     enable_elect: true,
     removed_leader_step_down: StepDownPolicy::After(150),
+    quorum_loss_grace: None,
+    quorum_loss_probe_interval: None,
     enable_pre_vote: None,
 };
 
@@ -175,7 +179,7 @@ impl SnapshotPolicy {
 /// - [`SnapshotPolicy`] for snapshot triggering strategies
 ///
 /// [`Raft::new`]: crate::Raft::new
-#[since]
+#[since(version = "0.10.0", change = "added opt-in quorum-loss inactivity fields")]
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "clap", derive(Parser))]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -419,6 +423,61 @@ pub struct Config {
     #[cfg_attr(feature = "serde", serde(default = "default_removed_leader_step_down"))]
     pub removed_leader_step_down: StepDownPolicy,
 
+    /// Grace period in milliseconds before a Leader with no fresh voter quorum becomes inactive.
+    ///
+    /// `None` disables quorum-loss inactivity and preserves the existing behavior. Otherwise,
+    /// [`quorum_loss_probe_interval`](Self::quorum_loss_probe_interval) must also be set.
+    /// The quorum activity evidence window (`W`) is the Leader lease duration, equal to
+    /// [`election_timeout_max`](Self::election_timeout_max) milliseconds. An acknowledged RPC
+    /// contributes fresh evidence while `now < sending_time + W`.
+    /// A new Leader observes one full window before checking quorum. After the first failed
+    /// check it waits this grace period, continuing normal traffic.
+    /// Fresh quorum evidence cancels the wait immediately; at the deadline quorum is checked again.
+    /// `Some(0)` is valid and skips the grace period, not the initial observation window.
+    ///
+    /// An inactive node remains Leader with the same committed Vote, but pauses ordinary
+    /// heartbeat, AppendEntries, snapshot, and ReadIndex-triggered heartbeat traffic. Already
+    /// admitted RPCs may finish. A fresh quorum resumes traffic; a HigherVote follows the usual
+    /// Leader transition. This state is not persisted and a new Leader session starts active.
+    ///
+    /// Activity evidence comes from follower responses. When
+    /// [`enable_heartbeat`](Self::enable_heartbeat) is `false`, an otherwise reachable but idle
+    /// multi-voter Leader may become inactive unless replication, snapshots, or
+    /// [`ReadPolicy::ReadIndex`](crate::ReadPolicy::ReadIndex) requests obtain enough fresh
+    /// voter responses. [`ReadPolicy::LeaseRead`](crate::ReadPolicy::LeaseRead) only checks
+    /// the existing lease; it does not contact followers or advance `clock_progress`.
+    ///
+    /// Tick drives checks and probes. Disabling tick does not reset state or deadlines, and
+    /// response-driven recovery continues. The next tick after re-enabling checks the original
+    /// deadlines without catching up missed probes. See
+    /// [`CheckQuorum`](crate::docs::protocol::check_quorum).
+    #[since(version = "0.10.0", change = "added opt-in quorum-loss inactivity")]
+    #[cfg_attr(feature = "clap", clap(long))]
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub quorum_loss_grace: Option<u64>,
+
+    /// Interval in milliseconds between recovery-probe rounds while a Leader is inactive.
+    ///
+    /// Ignored, including validation, when [`quorum_loss_grace`](Self::quorum_loss_grace) is
+    /// `None`. When enabled it must be strictly greater than `leader_lease + election_timeout_max`.
+    /// The Leader lease currently equals [`election_timeout_max`](Self::election_timeout_max).
+    /// This leaves time for a previous follower lease to expire, then for one maximum election
+    /// timeout to elapse. Add scheduling and network margin, covering every voter if nodes use
+    /// different timing configurations. This local bound is not an unconditional liveness
+    /// guarantee: delayed admitted RPCs may renew
+    /// follower leases after inactivity begins.
+    ///
+    /// The first interval starts when ordinary traffic admission closes. Later intervals start
+    /// when Core submits a probe round, not when it is queued or its responses arrive. Each round
+    /// sends one empty AppendEntries attempt to every effective remote voter and remains inactive
+    /// unless fresh responses satisfy the membership quorum. Probes are independent of
+    /// `enable_heartbeat`. ReadIndex cannot trigger extra probes; it retains its existing waits
+    /// and errors and may complete from admitted RPC or probe evidence, or time out before a probe.
+    #[since(version = "0.10.0", change = "added quorum-loss recovery probe interval")]
+    #[cfg_attr(feature = "clap", clap(long))]
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub quorum_loss_probe_interval: Option<u64>,
+
     /// Whether a follower runs a Pre-Vote round before incrementing its term and starting a real
     /// election.
     ///
@@ -592,6 +651,8 @@ impl Default for Config {
             enable_heartbeat: DEFAULTS.enable_heartbeat,
             enable_elect: DEFAULTS.enable_elect,
             removed_leader_step_down: DEFAULTS.removed_leader_step_down.clone(),
+            quorum_loss_grace: DEFAULTS.quorum_loss_grace,
+            quorum_loss_probe_interval: DEFAULTS.quorum_loss_probe_interval,
             enable_pre_vote: DEFAULTS.enable_pre_vote,
             backoff: DEFAULTS.backoff.to_string(),
             allow_log_reversion: None,
@@ -739,6 +800,24 @@ impl Config {
 
         if self.max_payload_entries == 0 {
             return Err(ConfigError::MaxPayloadIs0);
+        }
+
+        if self.quorum_loss_grace.is_some() {
+            let Some(probe_interval) = self.quorum_loss_probe_interval else {
+                return Err(ConfigError::QuorumLossProbeIntervalRequired);
+            };
+
+            // The Leader lease currently uses election_timeout_max. Leave time for that lease
+            // to expire, then for one maximum election timeout before probing again.
+            // Widen both operands before addition so the sum cannot overflow.
+            let leader_lease = self.election_timeout_max;
+            let min_probe_interval = u128::from(leader_lease) + u128::from(self.election_timeout_max);
+            if u128::from(probe_interval) <= min_probe_interval {
+                return Err(ConfigError::QuorumLossProbeIntervalTooSmall {
+                    election_timeout_max: self.election_timeout_max,
+                    probe_interval,
+                });
+            }
         }
 
         // Validate the backoff policy string up-front so build_backoff() can assume it parses.

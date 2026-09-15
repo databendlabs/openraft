@@ -77,6 +77,15 @@ where
         bypass_min_interval: bool,
     },
 
+    /// Change ordinary-send admission for the current Leader authority.
+    SetLeaderActivity {
+        leader_vote: CommittedVoteOf<C>,
+        active: bool,
+    },
+
+    /// Submit one voter-only heartbeat round while ordinary traffic is paused.
+    QuorumProbe { leader_vote: CommittedVoteOf<C> },
+
     /// Save the committed log id `upto` to [`RaftLogStorage`].
     ///
     /// Upon startup, the saved committed log ids will be re-applied to the state machine to restore
@@ -212,6 +221,10 @@ where
                     session_id, bypass_min_interval
                 )
             }
+            Command::SetLeaderActivity { leader_vote, active } => {
+                write!(f, "SetLeaderActivity: leader_vote: {}, active: {}", leader_vote, active)
+            }
+            Command::QuorumProbe { leader_vote } => write!(f, "QuorumProbe: leader_vote: {}", leader_vote),
             Command::SaveCommittedAndApply {
                 already_applied: already_committed,
                 upto,
@@ -282,6 +295,8 @@ where
             (Command::AppendEntries { committed_vote: vote, entries },    Command::AppendEntries { committed_vote: vb, entries: b }, )               => vote == vb && entries == b,
             (Command::ReplicateCommitted { committed },        Command::ReplicateCommitted { committed: b }, )                       =>  committed == b,
             (Command::BroadcastHeartbeat { session_id, bypass_min_interval },       Command::BroadcastHeartbeat { session_id: sb, bypass_min_interval: ib }, ) => session_id == sb && bypass_min_interval == ib,
+            (Command::SetLeaderActivity { leader_vote, active },       Command::SetLeaderActivity { leader_vote: vb, active: ab }, ) => leader_vote == vb && active == ab,
+            (Command::QuorumProbe { leader_vote },             Command::QuorumProbe { leader_vote: vb }, )                           => leader_vote == vb,
             (Command::SaveCommittedAndApply { already_applied: already_committed, upto, },      Command::SaveCommittedAndApply { already_applied: b_committed, upto: b_upto, }, )  => already_committed == b_committed && upto == b_upto,
             (Command::Replicate { target, req },               Command::Replicate { target: b_target, req: other_req, }, )           => target == b_target && req == other_req,
             (Command::BroadcastTransferLeader { req },         Command::BroadcastTransferLeader { req: b, }, )                       => req == b,
@@ -305,6 +320,8 @@ where
             (Command::AppendEntries { .. },             _) => false,
             (Command::ReplicateCommitted { .. },        _) => false,
             (Command::BroadcastHeartbeat { .. },        _) => false,
+            (Command::SetLeaderActivity { .. },         _) => false,
+            (Command::QuorumProbe { .. },               _) => false,
             (Command::SaveCommittedAndApply { .. },     _) => false,
             (Command::Replicate { .. },                 _) => false,
             (Command::ReplicateSnapshot { .. },         _) => false,
@@ -336,6 +353,8 @@ where
             Command::AppendEntries { .. }             => CommandName::AppendEntries,
             Command::ReplicateCommitted { .. }        => CommandName::ReplicateCommitted,
             Command::BroadcastHeartbeat { .. }        => CommandName::BroadcastHeartbeat,
+            Command::SetLeaderActivity { .. }         => CommandName::SetLeaderActivity,
+            Command::QuorumProbe { .. }               => CommandName::QuorumProbe,
             Command::SaveCommittedAndApply { .. }     => CommandName::SaveCommittedAndApply,
             Command::Replicate { .. }                 => CommandName::Replicate,
             Command::ReplicateSnapshot { .. }         => CommandName::ReplicateSnapshot,
@@ -360,6 +379,7 @@ where
             Command::CloseReplicationStreams          => CommandKind::Main,
             Command::FailPendingReads                 => CommandKind::Main,
             Command::RebuildReplicationStreams { .. } => CommandKind::Main,
+            Command::SetLeaderActivity { .. }         => CommandKind::Main,
             Command::Respond { .. }                   => CommandKind::Respond,
             // Apply is firstly handled by RaftCore, then forwarded to state machine worker.
             // TODO: Apply also write `committed` to log-store, which should be run in CommandKind::Log
@@ -373,6 +393,7 @@ where
 
             Command::ReplicateCommitted { .. }        => CommandKind::Network,
             Command::BroadcastHeartbeat { .. }        => CommandKind::Network,
+            Command::QuorumProbe { .. }               => CommandKind::Network,
             Command::Replicate { .. }                 => CommandKind::Network,
             Command::ReplicateSnapshot { .. }         => CommandKind::Network,
             Command::BroadcastTransferLeader { .. }   => CommandKind::Network,
@@ -391,6 +412,8 @@ where
             Command::CloseReplicationStreams          => None,
             Command::FailPendingReads                 => None,
             Command::RebuildReplicationStreams { .. } => None,
+            Command::SetLeaderActivity { .. }         => None,
+            Command::QuorumProbe { .. }               => None,
             Command::Respond { when, .. }             => when.clone(),
 
             Command::UpdateIOProgress { when, .. }    => when.clone(),
