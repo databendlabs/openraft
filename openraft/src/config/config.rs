@@ -53,6 +53,8 @@ pub(crate) struct Defaults {
     pub enable_heartbeat: bool,
     pub enable_elect: bool,
     pub removed_leader_step_down: StepDownPolicy,
+    pub quorum_loss_grace: Option<u64>,
+    pub quorum_loss_probe_interval: Option<u64>,
     pub enable_pre_vote: Option<bool>,
 }
 
@@ -81,6 +83,8 @@ pub(crate) const DEFAULTS: Defaults = Defaults {
     enable_heartbeat: true,
     enable_elect: true,
     removed_leader_step_down: StepDownPolicy::After(150),
+    quorum_loss_grace: None,
+    quorum_loss_probe_interval: None,
     enable_pre_vote: None,
 };
 
@@ -647,8 +651,8 @@ impl Default for Config {
             enable_heartbeat: DEFAULTS.enable_heartbeat,
             enable_elect: DEFAULTS.enable_elect,
             removed_leader_step_down: DEFAULTS.removed_leader_step_down.clone(),
-            quorum_loss_grace: None,
-            quorum_loss_probe_interval: None,
+            quorum_loss_grace: DEFAULTS.quorum_loss_grace,
+            quorum_loss_probe_interval: DEFAULTS.quorum_loss_probe_interval,
             enable_pre_vote: DEFAULTS.enable_pre_vote,
             backoff: DEFAULTS.backoff.to_string(),
             allow_log_reversion: None,

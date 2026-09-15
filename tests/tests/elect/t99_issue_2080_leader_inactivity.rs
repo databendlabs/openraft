@@ -82,41 +82,43 @@ async fn bridge_election_despite_continuous_read_index() -> Result<()> {
             enabled,
             "--- continuously request ReadIndex while voters 3 and 4 campaign"
         );
-        let reads_sent = AtomicU64::new(0);
-        let stop_reads = AtomicBool::new(false);
-        let observe = async {
-            let result = if enabled {
-                let wait3 = n3.wait(timeout());
-                let wait4 = n4.wait(timeout());
-                let election = futures::future::select(
-                    Box::pin(wait3.state(ServerState::Leader, "voter 3 can win through bridge 2")),
-                    Box::pin(wait4.state(ServerState::Leader, "voter 4 can win through bridge 2")),
-                )
-                .await;
-                match election {
-                    Either::Left((result, _)) | Either::Right((result, _)) => result.map(|_| ()),
-                }
-            } else {
-                TypeConfig::sleep(Duration::from_millis(1_200)).await;
-                Ok(())
+        {
+            let reads_sent = AtomicU64::new(0);
+            let stop_reads = AtomicBool::new(false);
+            let observe = async {
+                let result = if enabled {
+                    let wait3 = n3.wait(timeout());
+                    let wait4 = n4.wait(timeout());
+                    let election = futures::future::select(
+                        Box::pin(wait3.state(ServerState::Leader, "voter 3 can win through bridge 2")),
+                        Box::pin(wait4.state(ServerState::Leader, "voter 4 can win through bridge 2")),
+                    )
+                    .await;
+                    match election {
+                        Either::Left((result, _)) | Either::Right((result, _)) => result.map(|_| ()),
+                    }
+                } else {
+                    TypeConfig::sleep(Duration::from_millis(1_200)).await;
+                    Ok(())
+                };
+                stop_reads.store(true, Ordering::SeqCst);
+                result
             };
-            stop_reads.store(true, Ordering::SeqCst);
-            result
-        };
-        let read_traffic = async {
-            while !stop_reads.load(Ordering::SeqCst) {
-                reads_sent.fetch_add(1, Ordering::SeqCst);
-                let option =
-                    LinearizerOption::new(Some(Duration::ZERO), true).with_wait_timeout(Duration::from_millis(20));
-                let _ = n0.get_read_linearizer(option).await;
-            }
-        };
-        let (result, ()) = futures::future::join(observe, read_traffic).await;
-        result?;
-        assert!(
-            reads_sent.load(Ordering::SeqCst) > 3,
-            "ReadIndex traffic must overlap the election window"
-        );
+            let read_traffic = async {
+                while !stop_reads.load(Ordering::SeqCst) {
+                    reads_sent.fetch_add(1, Ordering::SeqCst);
+                    let option =
+                        LinearizerOption::new(Some(Duration::ZERO), true).with_wait_timeout(Duration::from_millis(20));
+                    let _ = n0.get_read_linearizer(option).await;
+                }
+            };
+            let (result, ()) = futures::future::join(observe, read_traffic).await;
+            result?;
+            assert!(
+                reads_sent.load(Ordering::SeqCst) > 3,
+                "ReadIndex traffic must overlap the election window"
+            );
+        }
 
         tracing::info!(
             log_index,
