@@ -1291,7 +1291,7 @@ where
     /// while let Some(result) = stream.try_next().await? {
     ///     match result {
     ///         Ok(response) => println!("Applied at log index: {:?}", response.log_id),
-    ///         Err(forward_err) => eprintln!("Forward to leader: {:?}", forward_err),
+    ///         Err(error) => eprintln!("Write failed: {:?}", error),
     ///     }
     /// }
     /// ```
