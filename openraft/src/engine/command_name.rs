@@ -1,4 +1,5 @@
 use openraft_macros::VariantName;
+use openraft_macros::since;
 
 /// Enum representing the name of each `sm::Command` variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -18,11 +19,14 @@ pub enum SMCommandName {
 /// string comparisons, useful for logging, metrics, and debugging.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[derive(VariantName)]
+#[since(version = "0.10.0", change = "added Leader activity and quorum probe commands")]
 pub enum CommandName {
     UpdateIOProgress,
     AppendEntries,
     ReplicateCommitted,
     BroadcastHeartbeat,
+    SetLeaderActivity,
+    QuorumProbe,
     SaveCommittedAndApply,
     Replicate,
     ReplicateSnapshot,

@@ -5,9 +5,15 @@ A node may still report [`ServerState::Leader`][] while returning
 acknowledgement is older than the leader lease, so it cannot currently confirm
 that it still has authority to accept new proposals.
 
-The node does not step down. It continues heartbeat and replication traffic so
-that it can renew its lease if quorum communication recovers. Once a quorum
-acknowledges it again, new writes are accepted automatically.
+By default, the node does not step down. It continues heartbeat and replication
+traffic so that it can renew its lease if quorum communication recovers. Once
+a quorum acknowledges it again, new writes are accepted automatically.
+
+With [`Config::quorum_loss_grace`][] enabled, it instead pauses ordinary traffic
+after the configured grace period if quorum is still absent. Scheduled recovery
+probes or already admitted RPC responses can restore quorum and resume traffic.
+It still remains Leader and keeps its Vote; ReadIndex cannot bypass this pause
+by sending heartbeats.
 
 Writes accepted before the lease expired remain pending and may still commit.
 If an application times them out, it must treat their result as unknown.
@@ -18,3 +24,4 @@ self-demotion.
 [`ServerState::Leader`]: crate::ServerState::Leader
 [`ForwardToLeader`]: crate::errors::ForwardToLeader
 [CheckQuorum]: crate::docs::protocol::check_quorum
+[`Config::quorum_loss_grace`]: crate::Config::quorum_loss_grace

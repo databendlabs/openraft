@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::RaftTypeConfig;
 use crate::errors::ReplicationClosed;
 use crate::replication::inflight_append_queue::InflightAppendQueue;
+use crate::replication::replication_context::ReplicationContext;
 use crate::replication::stream_state::StreamState;
 use crate::storage::RaftLogStorage;
 use crate::type_config::alias::MutexOf;
@@ -17,6 +18,9 @@ where
     C: RaftTypeConfig,
     LS: RaftLogStorage<C>,
 {
+    /// Sending admission and cancellation for this Leader session.
+    pub(crate) replication_context: ReplicationContext<C>,
+
     /// Shared state for generating the next request.
     pub(crate) stream_state: Arc<MutexOf<C, StreamState<C, LS>>>,
 

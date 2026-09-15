@@ -167,7 +167,7 @@ where
     ///
     /// Used as the unfold function for the request stream.
     async fn next_append_request(
-        stream_context: StreamContext<C, LS>,
+        mut stream_context: StreamContext<C, LS>,
     ) -> Option<(AppendEntriesRequest<C>, StreamContext<C, LS>)> {
         let res = {
             let mut state = stream_context.stream_state.as_ref().lock().await;
@@ -183,6 +183,13 @@ where
                 return None;
             }
         };
+
+        if stream_context.replication_context.activity_rx.is_some()
+            && let Err(err) = stream_context.replication_context.wait_for_activity().await
+        {
+            *stream_context.fatal_error.lock().await = Some(err);
+            return None;
+        }
 
         let range = req.log_id_range();
         stream_context.inflight_append_queue.push(range.prev, range.last);
@@ -302,6 +309,7 @@ where
         let fatal_error = Arc::new(MutexOf::<C, _>::new(None));
 
         let stream_context = StreamContext {
+            replication_context: self.replication_context.clone(),
             stream_state: self.stream_state.clone(),
             inflight_append_queue: inflight_queue.clone(),
             fatal_error: fatal_error.clone(),

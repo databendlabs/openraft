@@ -139,6 +139,7 @@ What sets OpenRaft apart from a standard Raft implementation:
 - ✅ **Leader election**: by policy or manually ([`Trigger::elect()`][]).
 - ✅ **Leader transfer**: [`Trigger::transfer_leader()`][].
 - ✅ **Pre-vote**: avoid unnecessary term increments by enabling [`Config::enable_pre_vote`][]; it runs as a dedicated RPC, see [Pre-Vote protocol][].
+- ✅ **Optional quorum-loss inactivity**: set `Config::quorum_loss_grace` and `Config::quorum_loss_probe_interval` to pause ordinary Leader traffic after sustained quorum loss and send scheduled recovery probes. Disabled by default; see [CheckQuorum](./openraft/src/docs/protocol/check_quorum.md).
 - ✅ **Non-voter(learner) Role**: refer to [`add_learner()`][].
 - ✅ **Log Compaction**(snapshot of state machine): by policy or manually ([`Trigger::snapshot()`][]).
 - ✅ **Snapshot replication**.

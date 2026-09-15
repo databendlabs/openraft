@@ -128,6 +128,9 @@ where
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn send_heartbeat(&mut self, bypass_min_interval: bool) {
+        if self.leader.is_inactive() {
+            return;
+        }
         let membership_log_id = self.state.membership_state.effective().log_id();
         let session_id = ReplicationSessionId::new(self.leader.committed_vote.clone(), membership_log_id.clone());
 
