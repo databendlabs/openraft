@@ -1,18 +1,20 @@
+use openraft_macros::since;
+
 use crate::RaftTypeConfig;
 use crate::errors::ClientWriteError;
-use crate::errors::ForwardToLeader;
 use crate::raft::ClientWriteResponse;
 use crate::raft::ClientWriteResult;
 use crate::type_config::alias::LogIdOf;
 
 /// The result of a write operation, returned by [`Raft::client_write_many()`].
 ///
-/// This is a simplified version of [`ClientWriteResult`] that only contains
-/// [`ForwardToLeader`] as the error type, since batch writes do not support
-/// membership changes.
+/// This uses [`ClientWriteError`] so callers can distinguish a request rejected before append
+/// from one whose outcome became unknown after append. Batch writes only produce
+/// [`ClientWriteError::ForwardToLeader`] and [`ClientWriteError::OutcomeUnknown`].
 ///
 /// [`Raft::client_write_many()`]: crate::Raft::client_write_many
-pub type WriteResult<C> = Result<WriteResponse<C>, ForwardToLeader<C>>;
+#[since(version = "0.10.0", change = "changed the error type to `ClientWriteError<C>`")]
+pub type WriteResult<C> = Result<WriteResponse<C>, ClientWriteError<C>>;
 
 /// Response from a successful write operation.
 ///
@@ -47,7 +49,8 @@ impl<C: RaftTypeConfig> From<ClientWriteResponse<C>> for WriteResponse<C> {
 pub(crate) fn into_write_result<C: RaftTypeConfig>(result: ClientWriteResult<C>) -> WriteResult<C> {
     match result {
         Ok(resp) => Ok(resp.into()),
-        Err(ClientWriteError::ForwardToLeader(e)) => Err(e),
+        Err(e @ ClientWriteError::ForwardToLeader(_)) => Err(e),
+        Err(e @ ClientWriteError::OutcomeUnknown(_)) => Err(e),
         Err(ClientWriteError::ChangeMembershipError(_)) => {
             unreachable!("ChangeMembershipError should not occur for normal writes")
         }

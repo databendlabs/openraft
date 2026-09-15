@@ -44,6 +44,10 @@ use crate::errors::into_ok::into_ok;
 ///             // Recoverable: forward request to the current leader
 ///             Err(AppError::NotLeader(fwd.leader_id))
 ///         }
+///         Ok(Err(ClientWriteError::OutcomeUnknown(_))) => {
+///             // The write may still commit; retry only with application-level deduplication
+///             Err(AppError::OutcomeUnknown)
+///         }
 ///         Ok(Err(ClientWriteError::ChangeMembershipError(_))) => {
 ///             // Recoverable: membership change in progress, retry later
 ///             Err(AppError::RetryLater)

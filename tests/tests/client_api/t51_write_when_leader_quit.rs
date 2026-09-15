@@ -20,10 +20,10 @@ use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
 
-/// Client write will receive a [`ForwardToLeader`] error because of log reversion, when leader
-/// quit, even after log is appended.
+/// Client write will receive an [`OutcomeUnknown`] error when the leader quits and its appended log
+/// is reverted.
 ///
-/// [`ForwardToLeader`]: openraft::errors::ForwardToLeader
+/// [`OutcomeUnknown`]: openraft::errors::ClientWriteError::OutcomeUnknown
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn write_when_leader_quit_and_log_revert() -> Result<()> {
@@ -84,14 +84,14 @@ async fn write_when_leader_quit_and_log_revert() -> Result<()> {
     tracing::info!(log_index, "--- write_res: {:?}", write_res);
 
     let raft_err = write_res.unwrap_err();
-    assert_eq!(
-        raft_err,
-        RaftError::APIError(ClientWriteError::ForwardToLeader(ForwardToLeader {
-            leader_id: Some(1),
-            leader_node: Some(()),
-            reason: ForwardReason::NotLeader,
-        }))
-    );
+    let forward = ForwardToLeader {
+        leader_id: Some(1),
+        leader_node: Some(()),
+        reason: ForwardReason::NotLeader,
+    };
+    assert_eq!(Some(&forward), raft_err.forward_to_leader());
+
+    assert_eq!(raft_err, RaftError::APIError(ClientWriteError::OutcomeUnknown(forward)));
 
     Ok(())
 }

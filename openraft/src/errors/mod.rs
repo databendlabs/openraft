@@ -94,16 +94,26 @@ pub type CheckIsLeaderError<C> = LinearizableReadError<C>;
 pub enum InstallSnapshotError {}
 
 /// An error related to a client write request.
-#[since]
+#[since(version = "0.10.0", change = "added `OutcomeUnknown`")]
 #[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum ClientWriteError<C>
 where C: RaftTypeConfig
 {
-    /// This node cannot accept or finish the request; use this error for routing.
+    /// This proposal was rejected before its entry was appended; use this error for routing.
     #[error(transparent)]
     ForwardToLeader(#[from] ForwardToLeader<C>),
+
+    /// The proposal's entry was appended, but its commit outcome is unknown.
+    ///
+    /// The contained [`ForwardToLeader`] provides the latest known leader information. Retrying
+    /// requires application-level deduplication because another node may have committed the entry
+    /// or may still commit it.
+    #[since(version = "0.10.0")]
+    #[error("write outcome is unknown; {0}")]
+    #[try_into(ignore)]
+    OutcomeUnknown(ForwardToLeader<C>),
 
     /// When writing a change-membership entry.
     #[error(transparent)]
@@ -122,7 +132,7 @@ where C: RaftTypeConfig
 {
     fn try_as_ref(&self) -> Option<&ForwardToLeader<C>> {
         match self {
-            Self::ForwardToLeader(f) => Some(f),
+            Self::ForwardToLeader(f) | Self::OutcomeUnknown(f) => Some(f),
             _ => None,
         }
     }
@@ -407,14 +417,12 @@ pub enum ForwardReason {
     LeaseExpired,
 }
 
-/// An error that provides routing information for a request this node cannot accept or finish.
+/// Routing information for a request this node cannot accept or finish.
 ///
-/// For a mutating request, this error does not prove that an earlier attempt had no effect.
-/// OpenRaft may return it after a local log entry is truncated or purged even though the same
-/// entry on another node may later commit. Retrying the request requires application-level
-/// deduplication; see [`Raft::client_write()`].
+/// This type does not describe whether a mutating request was accepted. See [`ClientWriteError`]
+/// for write outcome semantics.
 ///
-/// [`Raft::client_write()`]: crate::Raft::client_write
+/// [`ClientWriteError`]: crate::errors::ClientWriteError
 #[since(version = "0.10.0", change = "added `reason`")]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
@@ -426,7 +434,7 @@ where C: RaftTypeConfig
     pub leader_id: Option<C::NodeId>,
     /// The node information of the current leader, if known.
     pub leader_node: Option<C::Node>,
-    /// Why the request was rejected.
+    /// Why the request must be forwarded or retried.
     ///
     /// For [`ForwardReason::LeadershipTransfer`], `leader_id` and `leader_node` identify the
     /// transfer target, which may not have established leadership yet.
