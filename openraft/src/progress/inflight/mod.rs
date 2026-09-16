@@ -24,19 +24,12 @@ where C: RaftTypeConfig
 {
     None,
 
-    /// Replicating logs in a fixed range `(prev, last]`.
+    /// Waiting for an acknowledgement of logs from `(prev, last]`.
     ///
-    /// `prev` advances as the follower acknowledges, and the range is done once it is drained.
+    /// Completes on the first acknowledgement beyond `prev`. Used for matching-point probes
+    /// and the leader's local progress update, which acknowledges the entire range immediately.
+    /// See [`LogIdRange::probe_completed_by()`] for the completion and retry rules.
     Logs {
-        log_id_range: LogIdRange<C>,
-        inflight_id: InflightId,
-    },
-
-    /// Probing the matching point with logs from the candidate range `(prev, last]`.
-    ///
-    /// Sends one entry-carrying request. See [`LogIdRange::probe_completed_by()`] for the
-    /// completion and retry rules shared with the replication task.
-    Probe {
         log_id_range: LogIdRange<C>,
         inflight_id: InflightId,
     },
@@ -71,7 +64,6 @@ where C: RaftTypeConfig
         match self {
             Inflight::None => Ok(()),
             Inflight::Logs { log_id_range: r, .. } => r.validate(),
-            Inflight::Probe { log_id_range: r, .. } => r.validate(),
             Inflight::LogsSince { .. } => Ok(()),
             Inflight::Snapshot { .. } => Ok(()),
         }
@@ -88,10 +80,6 @@ where C: RaftTypeConfig
                 log_id_range: r,
                 inflight_id,
             } => write!(f, "Logs:{}, inflight_id:{}", r, inflight_id),
-            Inflight::Probe {
-                log_id_range: r,
-                inflight_id,
-            } => write!(f, "Probe:{}, inflight_id:{}", r, inflight_id),
             Inflight::LogsSince { prev, inflight_id } => {
                 write!(f, "LogsSince:{:?}, inflight_id:{}", prev, inflight_id)
             }
@@ -110,21 +98,6 @@ where C: RaftTypeConfig
             Self::None
         } else {
             Self::Logs {
-                log_id_range: LogIdRange::new(prev, last),
-                inflight_id,
-            }
-        }
-    }
-
-    /// Create inflight state for probing the matching point with logs from `(prev, last]`.
-    ///
-    /// An empty range collapses to [`Inflight::None`]: a probe has to carry an entry.
-    pub(crate) fn probe(prev: Option<LogIdOf<C>>, last: Option<LogIdOf<C>>, inflight_id: InflightId) -> Self {
-        #![allow(clippy::nonminimal_bool)]
-        if !(prev < last) {
-            Self::None
-        } else {
-            Self::Probe {
                 log_id_range: LogIdRange::new(prev, last),
                 inflight_id,
             }
@@ -153,13 +126,6 @@ where C: RaftTypeConfig
                 log_id_range,
                 inflight_id: InflightId::new(id),
             },
-            Inflight::Probe {
-                log_id_range,
-                inflight_id: _,
-            } => Inflight::Probe {
-                log_id_range,
-                inflight_id: InflightId::new(id),
-            },
             Inflight::Snapshot { inflight_id: _ } => Inflight::Snapshot {
                 inflight_id: InflightId::new(id),
             },
@@ -177,7 +143,7 @@ where C: RaftTypeConfig
     // test it if used
     #[allow(dead_code)]
     pub(crate) fn is_sending_log(&self) -> bool {
-        matches!(self, Inflight::Logs { .. } | Inflight::Probe { .. })
+        matches!(self, Inflight::Logs { .. })
     }
 
     pub(crate) fn is_logs_since(&self) -> bool {
@@ -206,21 +172,6 @@ where C: RaftTypeConfig
         match self {
             Inflight::None => false,
             Inflight::Logs {
-                log_id_range,
-                inflight_id,
-            } => {
-                if *inflight_id != from_inflight_id {
-                    return false;
-                }
-
-                *self = {
-                    debug_assert!(upto >= log_id_range.prev);
-                    debug_assert!(upto <= log_id_range.last);
-                    Inflight::logs(upto, log_id_range.last.clone(), *inflight_id)
-                };
-                true
-            }
-            Inflight::Probe {
                 log_id_range,
                 inflight_id,
             } => {
@@ -265,10 +216,6 @@ where C: RaftTypeConfig
         match self {
             Inflight::None => false,
             Inflight::Logs {
-                log_id_range: _,
-                inflight_id,
-            }
-            | Inflight::Probe {
                 log_id_range: _,
                 inflight_id,
             } => {

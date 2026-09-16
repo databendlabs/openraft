@@ -69,14 +69,6 @@ impl<C: RaftTypeConfig> fmt::Display for Replicate<C> {
 impl<C> Replicate<C>
 where C: RaftTypeConfig
 {
-    /// Creates a request to replicate logs in a fixed range.
-    pub(crate) fn new_logs(log_id_range: LogIdRange<C>, inflight_id: InflightId) -> Self {
-        Self {
-            inflight_id,
-            payload: Payload::LogIdRange { log_id_range },
-        }
-    }
-
     /// Creates a request to probe the matching point with logs from a candidate range.
     pub(crate) fn new_probe(log_id_range: LogIdRange<C>, inflight_id: InflightId) -> Self {
         Self {

@@ -69,11 +69,11 @@ where C: RaftTypeConfig
     /// [`AppendEntriesResponse::PartialSuccess`] at `prev_log_id` verifies `prev` but acknowledges
     /// no additional entry, so the probe is retried unchanged. No response also leaves it pending.
     ///
-    /// [`Inflight::Probe`] and [`Payload::Probe`] must decide this the same way. The engine
+    /// [`Inflight::Logs`] and [`Payload::Probe`] must decide this the same way. The engine
     /// otherwise keeps waiting for a probe the replication task has dropped, stalling replication.
     ///
     /// [`AppendEntriesResponse::PartialSuccess`]: crate::raft::AppendEntriesResponse::PartialSuccess
-    /// [`Inflight::Probe`]: crate::progress::inflight::Inflight::Probe
+    /// [`Inflight::Logs`]: crate::progress::inflight::Inflight::Logs
     /// [`Payload::Probe`]: crate::replication::payload::Payload::Probe
     pub(crate) fn probe_completed_by(&self, acked: &Option<LogIdOf<C>>) -> bool {
         acked > &self.prev
