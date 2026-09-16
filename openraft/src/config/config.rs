@@ -53,6 +53,7 @@ pub(crate) struct Defaults {
     pub enable_heartbeat: bool,
     pub enable_elect: bool,
     pub removed_leader_step_down: StepDownPolicy,
+    pub quorum_loss_probe_interval: Option<u64>,
     pub enable_pre_vote: Option<bool>,
 }
 
@@ -81,6 +82,7 @@ pub(crate) const DEFAULTS: Defaults = Defaults {
     enable_heartbeat: true,
     enable_elect: true,
     removed_leader_step_down: StepDownPolicy::After(150),
+    quorum_loss_probe_interval: None,
     enable_pre_vote: None,
 };
 
@@ -176,6 +178,7 @@ impl SnapshotPolicy {
 ///
 /// [`Raft::new`]: crate::Raft::new
 #[since]
+#[since(version = "0.10.0", change = "added opt-in quorum-loss inactivity setting")]
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "clap", derive(Parser))]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -419,6 +422,19 @@ pub struct Config {
     #[cfg_attr(feature = "serde", serde(default = "default_removed_leader_step_down"))]
     pub removed_leader_step_down: StepDownPolicy,
 
+    /// Duration in milliseconds of each heartbeat suppression or send phase after quorum loss.
+    ///
+    /// `None` preserves existing behavior. `Some(R)` starts with a suppression phase after the
+    /// Leader lease expires, then alternates suppression and send phases of length `R`. Before the
+    /// first quorum acknowledgement, the current Vote's last-modified time is used.
+    ///
+    /// `R` must be at least `leader_lease + election_timeout_max`. See
+    /// [`CheckQuorum`](crate::docs::protocol::check_quorum).
+    #[since(version = "0.10.0", change = "added quorum-loss heartbeat phase interval")]
+    #[cfg_attr(feature = "clap", clap(long))]
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub quorum_loss_probe_interval: Option<u64>,
+
     /// Whether a follower runs a Pre-Vote round before incrementing its term and starting a real
     /// election.
     ///
@@ -592,6 +608,7 @@ impl Default for Config {
             enable_heartbeat: DEFAULTS.enable_heartbeat,
             enable_elect: DEFAULTS.enable_elect,
             removed_leader_step_down: DEFAULTS.removed_leader_step_down.clone(),
+            quorum_loss_probe_interval: DEFAULTS.quorum_loss_probe_interval,
             enable_pre_vote: DEFAULTS.enable_pre_vote,
             backoff: DEFAULTS.backoff.to_string(),
             allow_log_reversion: None,
@@ -739,6 +756,20 @@ impl Config {
 
         if self.max_payload_entries == 0 {
             return Err(ConfigError::MaxPayloadIs0);
+        }
+
+        if let Some(probe_interval) = self.quorum_loss_probe_interval {
+            // The Leader lease currently uses election_timeout_max. Leave time for that lease
+            // to expire, then for one maximum election timeout before allowing heartbeats again.
+            // Widen both operands before addition so the sum cannot overflow.
+            let leader_lease = self.election_timeout_max;
+            let min_probe_interval = u128::from(leader_lease) + u128::from(self.election_timeout_max);
+            if u128::from(probe_interval) < min_probe_interval {
+                return Err(ConfigError::QuorumLossProbeIntervalTooSmall {
+                    election_timeout_max: self.election_timeout_max,
+                    probe_interval,
+                });
+            }
         }
 
         // Validate the backoff policy string up-front so build_backoff() can assume it parses.
