@@ -11,6 +11,7 @@ use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
+use crate::proposer::leader_activity::LeaderActivity;
 use crate::replication::ReplicationSessionId;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::StoredMembershipOf;
@@ -55,7 +56,7 @@ fn test_leader_send_heartbeat() -> anyhow::Result<()> {
 
     // A heartbeat is a normal AppendEntries RPC if there are pending data to send.
     {
-        eng.try_leader_handler()?.send_heartbeat(false);
+        assert!(eng.try_leader_handler()?.send_heartbeat(false));
         assert_eq!(
             vec![
                 //
@@ -71,7 +72,7 @@ fn test_leader_send_heartbeat() -> anyhow::Result<()> {
     // Heartbeat will be resent
     {
         eng.output.clear_commands();
-        eng.try_leader_handler()?.send_heartbeat(false);
+        assert!(eng.try_leader_handler()?.send_heartbeat(false));
         assert_eq!(
             vec![
                 //
@@ -82,6 +83,16 @@ fn test_leader_send_heartbeat() -> anyhow::Result<()> {
             ],
             eng.output.take_commands()
         );
+    }
+
+    tracing::info!("Do not emit an ordinary heartbeat while the Leader is inactive");
+    {
+        eng.output.clear_commands();
+        eng.leader.as_mut().unwrap().activity = Some(LeaderActivity::Inactive {
+            next_probe_at: UTConfig::<()>::now(),
+        });
+        assert!(!eng.try_leader_handler()?.send_heartbeat(true));
+        assert!(eng.output.take_commands().is_empty());
     }
 
     Ok(())

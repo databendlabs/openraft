@@ -232,6 +232,10 @@ where
 
     pub(crate) heartbeat_handle: HeartbeatWorkersHandle<C>,
 
+    /// Ordinary-send permit shared by workers in the current Leader session.
+    /// Absent outside an enabled Leader session.
+    pub(crate) activity_tx: Option<WatchSenderOf<C, bool>>,
+
     #[allow(dead_code)]
     pub(crate) tx_api: MpscSenderOf<C, RaftMsg<C>>,
     pub(crate) rx_api: BatchRaftMsgReceiver<C>,
@@ -704,7 +708,9 @@ where
             return false;
         }
 
-        lh.send_heartbeat(false);
+        if !lh.send_heartbeat(false) {
+            return false;
+        }
 
         // Record heartbeat to external metrics recorder
         if let Some(r) = &self.metrics_recorder {
@@ -1170,6 +1176,7 @@ where
             config: self.config.clone(),
             tx_notify: self.tx_notification.clone(),
             cancel_rx,
+            activity_rx: self.activity_tx.as_ref().map(|tx| tx.subscribe()),
             replicate_batch: self.shared_replicate_batch.clone(),
         }
     }
@@ -2015,6 +2022,8 @@ where
 
         self.handle_tick_election();
 
+        self.engine.handle_leader_activity(now);
+
         // Leader send heartbeat
         let heartbeat_at = self.engine.leader_ref().map(|l| l.next_heartbeat);
         if let Some(t) = heartbeat_at
@@ -2238,6 +2247,9 @@ where
         };
 
         let committed_vote = lh.leader.committed_vote.clone();
+        if lh.leader.is_inactive() {
+            return;
+        }
         let membership_log_id = lh.state.membership_state.effective().log_id();
         let current_session_id = ReplicationSessionId::new(committed_vote, membership_log_id.clone());
 
@@ -2268,6 +2280,58 @@ where
         self.heartbeat_handle.broadcast(events);
     }
 
+    /// Apply a session-scoped admission change before consuming the next tick.
+    fn set_leader_activity(&mut self, leader_vote: CommittedVoteOf<C>, active: bool) {
+        let Some(leader) = self.engine.leader_ref() else {
+            return;
+        };
+        let same_session = leader.committed_vote == leader_vote;
+        let state_matches = if active {
+            leader.is_active()
+        } else {
+            leader.is_inactive()
+        };
+        if !same_session || !state_matches {
+            return;
+        }
+        let Some(tx) = self.activity_tx.as_ref() else {
+            return;
+        };
+
+        tx.send_if_different(active);
+        if !active {
+            self.engine.schedule_next_quorum_probe(C::now());
+        }
+    }
+
+    /// Submit one probe round, then anchor R to its actual submission time.
+    fn submit_quorum_probe(&mut self, leader_vote: CommittedVoteOf<C>) {
+        let Some(leader) = self.engine.leader_ref() else {
+            return;
+        };
+        let now = C::now();
+        if leader.committed_vote != leader_vote || !leader.is_quorum_probe_due(now) {
+            return;
+        }
+
+        let membership = self.engine.state.membership_state.effective();
+        let voters = leader.progress.iter().filter(|entry| entry.id != self.id && membership.is_voter(&entry.id));
+        if !voters.clone().all(|entry| self.heartbeat_handle.has_worker(&entry.id, entry.data.stream_id)) {
+            return;
+        }
+
+        let committed = self.engine.state.cluster_committed().cloned();
+        let events = voters.map(|entry| {
+            (entry.id.clone(), HeartbeatEvent {
+                time: now,
+                matching: entry.matching.clone(),
+                cluster_committed: committed.clone(),
+            })
+        });
+        self.heartbeat_handle.broadcast(events);
+        self.engine.schedule_next_quorum_probe(C::now());
+    }
+
     /// Creates a new replication context and its associated cancellation channel.
     ///
     /// Returns the context for the replication task and the sender half of the
@@ -2287,6 +2351,7 @@ where
             config: self.config.clone(),
             tx_notify: self.tx_notification.clone(),
             cancel_rx,
+            activity_rx: self.activity_tx.as_ref().map(|tx| tx.subscribe()),
             replicate_batch: self.shared_replicate_batch.clone(),
         };
         (ctx, cancel_tx)
@@ -2498,6 +2563,7 @@ where
 
     /// Run [`Command::CloseReplicationStreams`].
     fn run_close_replication_streams(&mut self) {
+        self.activity_tx = None;
         self.heartbeat_handle.close_workers();
 
         let left = std::mem::take(&mut self.replications);
@@ -2513,6 +2579,20 @@ where
         targets: Vec<TargetProgress<C>>,
         close_old_streams: bool,
     ) {
+        if self.config.quorum_loss_probe_interval.is_some() {
+            let Some(leader) = self.engine.leader_ref().filter(|leader| leader.committed_vote == leader_vote) else {
+                return;
+            };
+
+            if close_old_streams {
+                self.activity_tx = Some(C::watch_channel(!leader.is_inactive()).0);
+            } else if let Some(tx) = self.activity_tx.as_ref() {
+                tx.send_if_different(!leader.is_inactive());
+            }
+        } else if close_old_streams {
+            self.activity_tx = None;
+        }
+
         {
             let mut factory = self.network_factory.lock().await;
             self.heartbeat_handle
@@ -2637,6 +2717,8 @@ where
                 session_id,
                 bypass_min_interval,
             } => self.broadcast_heartbeat(session_id, bypass_min_interval),
+            Command::SetLeaderActivity { leader_vote, active } => self.set_leader_activity(leader_vote, active),
+            Command::QuorumProbe { leader_vote } => self.submit_quorum_probe(leader_vote),
             Command::SaveCommittedAndApply { already_applied, upto } => {
                 self.run_save_committed_and_apply(already_applied, upto).await?
             }
@@ -2838,3 +2920,6 @@ mod tests {
         assert_eq!(TestPayload::normal(1), returned);
     }
 }
+
+#[cfg(test)]
+mod leader_activity_test;

@@ -122,6 +122,25 @@ fn test_config_removed_leader_step_down() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_config_quorum_loss() -> anyhow::Result<()> {
+    let config = Config::build(&["foo"])?;
+    assert_eq!(None, config.quorum_loss_probe_interval);
+
+    let config = Config::build(&["foo", "--quorum-loss-probe-interval=600"])?;
+    assert_eq!(Some(600), config.quorum_loss_probe_interval);
+
+    assert_eq!(
+        ConfigError::QuorumLossProbeIntervalTooSmall {
+            election_timeout_max: 300,
+            probe_interval: 599,
+        },
+        Config::build(&["foo", "--quorum-loss-probe-interval=599"]).unwrap_err()
+    );
+
+    Ok(())
+}
+
+#[test]
 fn test_config_enable_tick() -> anyhow::Result<()> {
     let config = Config::build(&["foo", "--enable-tick=false"])?;
     assert_eq!(false, config.enable_tick);

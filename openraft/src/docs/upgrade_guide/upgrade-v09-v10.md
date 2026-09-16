@@ -1,6 +1,7 @@
 # Guide for upgrading from [v0.9](https://github.com/databendlabs/openraft/tree/release-0.9) to v0.10:
 
-> This guide is under construction; it currently covers the `snapshot_id` changes.
+> This guide is under construction; it currently covers the `snapshot_id` and
+> optional quorum-loss inactivity changes.
 
 ## `snapshot_id` moved out of snapshot metadata
 
@@ -59,6 +60,31 @@ in both directions, but error bodies do not — `StorageError` was an enum in
 0.9 and is a struct in 0.10 — so a peer of a different version should treat a
 serialized error response as diagnostic text rather than parse it.
 
+## Optional quorum-loss inactivity configuration
+
+[`Config`][] adds `quorum_loss_probe_interval: Option<u64>` in milliseconds.
+Exhaustive Rust struct literals must add this field, or use
+`..Default::default()`.
+
+The public `engine::CommandName` enum also adds `SetLeaderActivity` and
+`QuorumProbe`; downstream exhaustive matches must handle these variants.
+`ConfigError` adds a validation variant for a too-small probe interval;
+exhaustive matches must handle it too.
+
+The field defaults to `None`, including when omitted from older named-field
+serde configuration, which preserves the existing runtime behavior. When set,
+the interval has a nominal liveness floor of at least
+`leader_lease + election_timeout_max`, with deployment margin for network and
+scheduling delay. This is not a Raft safety requirement or an unconditional
+liveness guarantee. The Leader lease currently equals `election_timeout_max`.
+
+This is a session-local traffic pause, not a Leader step-down. It adds no
+storage interface or persisted marker and changes no Vote, snapshot, or Raft
+network format. No stored-data migration is needed. See
+[CheckQuorum](crate::docs::protocol::check_quorum) for state transitions,
+ReadIndex behavior, and tick semantics.
+
+[`Config`]: crate::Config
 [`SnapshotMeta`]:      `crate::storage::SnapshotMeta`
 [`SnapshotSignature`]: `crate::storage::SnapshotSignature`
 [`RaftNetworkV2`]:     `crate::network::RaftNetworkV2`

@@ -1,12 +1,16 @@
 use std::fmt;
 use std::sync::Arc;
 
+use futures_util::FutureExt;
+
 use crate::Config;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::async_runtime::MpscSender;
+use crate::async_runtime::watch::WatchReceiver;
 use crate::core::SharedReplicateBatch;
 use crate::core::notification::Notification;
+use crate::errors::ReplicationClosed;
 use crate::progress::inflight_id::InflightId;
 use crate::progress::stream_id::StreamId;
 use crate::raft_state::IOId;
@@ -52,6 +56,10 @@ where C: RaftTypeConfig
     /// When the sender is dropped, this signals that replication should stop.
     pub(crate) cancel_rx: WatchReceiverOf<C, ()>,
 
+    /// Ordinary sends pause here while the current Leader is inactive.
+    /// Absent when quorum-loss inactivity is disabled.
+    pub(crate) activity_rx: Option<WatchReceiverOf<C, bool>>,
+
     /// Shared histogram for recording replication batch sizes.
     pub(crate) replicate_batch: SharedReplicateBatch,
 }
@@ -59,6 +67,43 @@ where C: RaftTypeConfig
 impl<C> ReplicationContext<C>
 where C: RaftTypeConfig
 {
+    /// Admit one concrete send, keeping terminal cancellation live while parked.
+    pub(crate) async fn wait_for_activity(&mut self) -> Result<(), ReplicationClosed> {
+        let Some(activity_rx) = self.activity_rx.as_mut() else {
+            return Ok(());
+        };
+
+        loop {
+            // Cancellation is terminal and takes priority over an available permit. Once this
+            // check passes, returning `Ok` below is the admission point for one concrete RPC.
+            if self.cancel_rx.changed().now_or_never().is_some() {
+                return Err(ReplicationClosed::new("Leader session canceled"));
+            }
+
+            // Drain a pending activity update before reading its value. This also observes a
+            // closed session channel even when its retained last value is `true`.
+            match activity_rx.changed().now_or_never() {
+                Some(Ok(())) => continue,
+                Some(Err(_)) => return Err(ReplicationClosed::new("activity channel closed")),
+                None => {}
+            }
+
+            let active = *activity_rx.borrow_and_update();
+            if active {
+                return Ok(());
+            }
+
+            futures_util::select_biased! {
+                _ = self.cancel_rx.changed().fuse() => {
+                    return Err(ReplicationClosed::new("Leader session canceled"));
+                }
+                result = activity_rx.changed().fuse() => {
+                    result.map_err(|_| ReplicationClosed::new("activity channel closed"))?;
+                }
+            }
+        }
+    }
+
     /// Whether the leader this replication works for has been superseded.
     ///
     /// A replication task is bound to the leader that spawned it. Once local IO is accepted under
@@ -146,5 +191,71 @@ where C: RaftTypeConfig
             .field("session_id", &self.stream_id)
             .field("config", &self.config)
             .finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::async_runtime::watch::WatchSender;
+    use crate::engine::testing::UTConfig;
+    use crate::impls::Vote;
+    use crate::type_config::TypeConfigExt;
+    use crate::type_config::alias::WatchSenderOf;
+    use crate::vote::raft_vote::RaftVoteExt;
+
+    fn context(
+        active: bool,
+    ) -> (
+        ReplicationContext<UTConfig>,
+        WatchSenderOf<UTConfig, bool>,
+        WatchSenderOf<UTConfig, ()>,
+    ) {
+        let (cancel_tx, cancel_rx) = UTConfig::<()>::watch_channel(());
+        let (activity_tx, activity_rx) = UTConfig::<()>::watch_channel(active);
+        let context = ReplicationContext {
+            id: 1,
+            target: 2,
+            leader_vote: Vote::new_committed(1, 1).to_committed(),
+            stream_id: StreamId::new(1),
+            config: Arc::new(Config::default()),
+            tx_notify: UTConfig::<()>::mpsc(16).0,
+            cancel_rx,
+            activity_rx: Some(activity_rx),
+            replicate_batch: SharedReplicateBatch::new(),
+        };
+        (context, activity_tx, cancel_tx)
+    }
+
+    #[test]
+    fn activity_admits_one_send_and_parks_the_next() {
+        let (mut context, tx, _cancel) = context(true);
+        assert!(context.wait_for_activity().now_or_never().unwrap().is_ok());
+
+        tx.send(false).unwrap();
+        let mut next_send = Box::pin(context.wait_for_activity());
+        assert!(next_send.as_mut().now_or_never().is_none());
+
+        tx.send(true).unwrap();
+        assert!(next_send.as_mut().now_or_never().unwrap().is_ok());
+    }
+
+    #[test]
+    fn cancellation_wins_over_a_reopened_permit() {
+        let (mut context, activity, cancel) = context(false);
+        let mut send = Box::pin(context.wait_for_activity());
+        assert!(send.as_mut().now_or_never().is_none());
+
+        activity.send(true).unwrap();
+        drop(cancel);
+        assert!(send.as_mut().now_or_never().unwrap().is_err());
+    }
+
+    #[test]
+    fn closed_session_does_not_admit_retained_true() {
+        let (mut context, activity, _cancel) = context(true);
+        drop(activity);
+
+        assert!(context.wait_for_activity().now_or_never().unwrap().is_err());
     }
 }

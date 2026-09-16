@@ -13,6 +13,7 @@ use crate::progress::IdVal;
 use crate::progress::VecProgress;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::stream_id::StreamId;
+use crate::proposer::leader_activity::LeaderActivity;
 use crate::quorum::QuorumSet;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::CommittedLeaderIdOf;
@@ -81,6 +82,9 @@ where C: RaftTypeConfig
     ///
     /// [`docs::leader_lease`]: `crate::docs::protocol::replication::leader_lease`
     pub(crate) clock_progress: Valid<VecProgress<IdVal<C::NodeId, Option<InstantOf<C>>>, QS>>,
+
+    /// Absent when quorum-loss inactivity is disabled.
+    pub(crate) activity: Option<LeaderActivity<InstantOf<C>>>,
 }
 
 impl<C, QS> Leader<C, QS>
@@ -155,6 +159,7 @@ where
             noop_log_id,
             progress: Valid::new(progress),
             clock_progress: Valid::new(clock_progress),
+            activity: None,
         }
     }
 
@@ -252,12 +257,102 @@ where
 
     /// Return whether this leader's lease is valid.
     pub(crate) fn is_lease_valid(&self, leader_lease: Duration) -> bool {
+        self.is_lease_valid_at(C::now(), leader_lease)
+    }
+
+    pub(crate) fn is_lease_valid_at(&self, now: InstantOf<C>, leader_lease: Duration) -> bool {
         if self.is_self_quorum() {
             return true;
         }
 
-        let now = C::now();
         self.last_quorum_acked_time().is_some_and(|acked| now < acked + leader_lease)
+    }
+
+    /// Start a complete evidence window without seeding remote acknowledgements.
+    pub(crate) fn observe_quorum(&mut self, now: InstantOf<C>, leader_lease: Duration) {
+        self.activity = Some(LeaderActivity::Active {
+            next_check_at: now + leader_lease,
+        });
+    }
+
+    pub(crate) fn is_inactive(&self) -> bool {
+        matches!(self.activity, Some(LeaderActivity::Inactive { .. }))
+    }
+
+    pub(crate) fn is_active(&self) -> bool {
+        matches!(self.activity, None | Some(LeaderActivity::Active { .. }))
+    }
+
+    pub(crate) fn is_quorum_probe_due(&self, now: InstantOf<C>) -> bool {
+        matches!(self.activity, Some(LeaderActivity::Inactive { next_probe_at }) if now >= next_probe_at)
+    }
+
+    /// Schedule the next quorum probe `interval` after `now`.
+    ///
+    /// Do nothing unless the Leader is inactive.
+    pub(crate) fn schedule_next_quorum_probe(&mut self, now: InstantOf<C>, interval: Duration) {
+        if let Some(LeaderActivity::Inactive { next_probe_at }) = self.activity.as_mut() {
+            *next_probe_at = now + interval;
+        }
+    }
+
+    /// Refresh the activity deadline from fresh quorum evidence.
+    ///
+    /// Return whether admission must reopen after recovering from inactivity.
+    pub(crate) fn refresh_activity(&mut self, now: InstantOf<C>, leader_lease: Duration) -> bool {
+        if self.activity.is_none() {
+            return false;
+        }
+
+        let next_check_at = if self.is_self_quorum() {
+            now + leader_lease
+        } else {
+            let Some(next_check_at) = self.last_quorum_acked_time().map(|acked| acked + leader_lease) else {
+                return false;
+            };
+
+            if now >= next_check_at {
+                return false;
+            }
+            next_check_at
+        };
+
+        match self.activity.as_mut().unwrap() {
+            LeaderActivity::Active { next_check_at: current } => {
+                *current = std::cmp::max(*current, next_check_at);
+                false
+            }
+            activity @ LeaderActivity::Inactive { .. } => {
+                *activity = LeaderActivity::Active { next_check_at };
+                true
+            }
+        }
+    }
+
+    /// Check the activity deadline. Return whether admission must close.
+    pub(crate) fn check_activity(
+        &mut self,
+        now: InstantOf<C>,
+        leader_lease: Duration,
+        probe_interval: Duration,
+    ) -> bool {
+        let Some(LeaderActivity::Active { next_check_at }) = self.activity else {
+            return false;
+        };
+
+        if now < next_check_at {
+            return false;
+        }
+
+        if self.is_lease_valid_at(now, leader_lease) {
+            self.refresh_activity(now, leader_lease);
+            return false;
+        }
+
+        self.activity = Some(LeaderActivity::Inactive {
+            next_probe_at: now + probe_interval,
+        });
+        true
     }
 
     /// Return whether this leader alone constitutes a quorum.
@@ -303,6 +398,9 @@ where
         false
     }
 }
+
+#[cfg(test)]
+mod inactivity_test;
 
 #[cfg(test)]
 mod tests {

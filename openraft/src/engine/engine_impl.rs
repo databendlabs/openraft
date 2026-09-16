@@ -44,6 +44,7 @@ use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
 use crate::storage::RaftStateMachine;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
@@ -122,6 +123,44 @@ where
             candidate: None,
             pre_candidate: None,
             output: EngineOutput::new(4096),
+        }
+    }
+
+    /// Drive the current session's activity policy from a processed tick.
+    pub(crate) fn handle_leader_activity(&mut self, now: InstantOf<C>) {
+        let Some(interval) = self.config.quorum_loss_probe_interval else {
+            return;
+        };
+        let Some(leader) = self.leader.as_mut() else {
+            return;
+        };
+        let leader_lease = self.config.timer_config.leader_lease;
+
+        if leader.is_inactive() {
+            if leader.refresh_activity(now, leader_lease) {
+                self.output.prepend_command(Command::SetLeaderActivity {
+                    leader_vote: leader.committed_vote.clone(),
+                    active: true,
+                });
+            } else if leader.is_quorum_probe_due(now) {
+                self.output.prepend_command(Command::QuorumProbe {
+                    leader_vote: leader.committed_vote.clone(),
+                });
+            }
+        } else if leader.check_activity(now, leader_lease, interval) {
+            self.output.prepend_command(Command::SetLeaderActivity {
+                leader_vote: leader.committed_vote.clone(),
+                active: false,
+            });
+        }
+    }
+
+    /// Schedule the next quorum probe after Core closes admission or submits a probe.
+    pub(crate) fn schedule_next_quorum_probe(&mut self, now: InstantOf<C>) {
+        if let Some(interval) = self.config.quorum_loss_probe_interval
+            && let Some(leader) = self.leader.as_mut()
+        {
+            leader.schedule_next_quorum_probe(now, interval);
         }
     }
 
@@ -1118,6 +1157,7 @@ mod engine_testing {
     use crate::engine::EngineConfig;
     use crate::proposer::LeaderQuorumSet;
     use crate::raft_state::RaftState;
+    use crate::type_config::TypeConfigExt;
 
     impl<C, SM> Engine<C, SM>
     where
@@ -1128,7 +1168,10 @@ mod engine_testing {
         /// without initializing related resource,
         /// such as setting up replication, propose blank log.
         pub(crate) fn testing_new_leader(&mut self) -> &mut crate::proposer::Leader<C, LeaderQuorumSet<C>> {
-            let leader = self.state.new_leader();
+            let mut leader = self.state.new_leader();
+            if self.config.quorum_loss_probe_interval.is_some() {
+                leader.observe_quorum(C::now(), self.config.timer_config.leader_lease);
+            }
             self.leader = Some(Box::new(leader));
             self.leader.as_mut().unwrap()
         }

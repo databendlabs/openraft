@@ -575,6 +575,7 @@ where
             replications: Default::default(),
 
             heartbeat_handle: HeartbeatWorkersHandle::new(id.clone(), config.clone()),
+            activity_tx: None,
             tx_api: tx_api.clone(),
             rx_api: BatchRaftMsgReceiver::new(
                 rx_api,

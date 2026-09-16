@@ -17,6 +17,7 @@ use crate::entry::RaftEntry;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::inflight_id::InflightId;
 use crate::progress::stream_id::StreamId;
+use crate::proposer::leader_activity::LeaderActivity;
 use crate::raft_state::IOId;
 use crate::replication::payload::Payload;
 use crate::replication::replicate::Replicate;
@@ -53,12 +54,20 @@ fn eng() -> Engine<UTConfig> {
 #[test]
 fn test_become_leader() -> anyhow::Result<()> {
     let mut eng = eng();
+    eng.config.quorum_loss_probe_interval = Some(Duration::from_millis(700));
+    let before = UTConfig::<()>::now();
     eng.vote_handler().become_leader();
+    let after = UTConfig::<()>::now();
 
     let leader = eng.leader.as_ref().unwrap();
     assert_eq!(leader.noop_log_id, log_id(2, 1, 0));
     assert_eq!(leader.last_log_id(), Some(&log_id(2, 1, 0)));
     assert_eq!(*leader.committed_vote_ref(), Vote::new(2, 1).to_committed());
+    let Some(LeaderActivity::Active { next_check_at }) = leader.activity else {
+        panic!("become_leader must initialize activity tracking when enabled");
+    };
+    let leader_lease = eng.config.timer_config.leader_lease;
+    assert!(before + leader_lease <= next_check_at && next_check_at <= after + leader_lease);
 
     assert_eq!(ServerState::Leader, eng.state.server_state);
 

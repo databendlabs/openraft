@@ -1,4 +1,5 @@
 use openraft_macros::VariantName;
+use openraft_macros::since;
 
 /// Enum representing the name of each `sm::Command` variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -18,11 +19,14 @@ pub enum SMCommandName {
 /// string comparisons, useful for logging, metrics, and debugging.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[derive(VariantName)]
+#[since(version = "0.10.0", change = "added Leader activity and quorum probe commands")]
 pub enum CommandName {
     UpdateIOProgress,
     AppendEntries,
     ReplicateCommitted,
     BroadcastHeartbeat,
+    SetLeaderActivity,
+    QuorumProbe,
     SaveCommittedAndApply,
     Replicate,
     ReplicateSnapshot,
@@ -96,6 +100,19 @@ mod tests {
             bypass_min_interval: false,
         };
         assert_eq!(cmd.name(), CommandName::BroadcastHeartbeat);
+
+        // SetLeaderActivity
+        let cmd: Command<C> = Command::SetLeaderActivity {
+            leader_vote: cv.clone(),
+            active: false,
+        };
+        assert_eq!(cmd.name(), CommandName::SetLeaderActivity);
+
+        // QuorumProbe
+        let cmd: Command<C> = Command::QuorumProbe {
+            leader_vote: cv.clone(),
+        };
+        assert_eq!(cmd.name(), CommandName::QuorumProbe);
 
         // SaveCommittedAndApply
         let cmd: Command<C> = Command::SaveCommittedAndApply {
@@ -200,6 +217,8 @@ mod tests {
         assert_eq!(CommandName::AppendEntries.as_str(), "AppendEntries");
         assert_eq!(CommandName::ReplicateCommitted.as_str(), "ReplicateCommitted");
         assert_eq!(CommandName::BroadcastHeartbeat.as_str(), "BroadcastHeartbeat");
+        assert_eq!(CommandName::SetLeaderActivity.as_str(), "SetLeaderActivity");
+        assert_eq!(CommandName::QuorumProbe.as_str(), "QuorumProbe");
         assert_eq!(CommandName::SaveCommittedAndApply.as_str(), "SaveCommittedAndApply");
         assert_eq!(CommandName::Replicate.as_str(), "Replicate");
         assert_eq!(CommandName::ReplicateSnapshot.as_str(), "ReplicateSnapshot");

@@ -225,6 +225,10 @@ where
 
         let sender_vote: VoteOf<C> = self.replication_context.leader_vote.clone().into_vote();
 
+        if self.replication_context.activity_rx.is_some() {
+            self.replication_context.wait_for_activity().await?;
+        }
+
         let start_time = C::now();
 
         let resp = self.network.full_snapshot(sender_vote.clone(), snapshot, cancel, option).await?;

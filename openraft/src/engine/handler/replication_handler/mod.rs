@@ -31,6 +31,7 @@ use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::replication::replicate::Replicate;
 use crate::replication::response::ReplicationResult;
 use crate::storage::RaftStateMachine;
+use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
@@ -179,6 +180,10 @@ where
 
         let granted = self.leader.update_clock(&target, sending_time);
 
+        if self.config.quorum_loss_probe_interval.is_some() {
+            self.refresh_activity(C::now());
+        }
+
         tracing::debug!(
             "granted leader vote clock after updating: granted: {}; clock_progress: {}",
             granted.as_ref().map(|x| x.display()).display(),
@@ -197,6 +202,16 @@ where
         //         1 2 3
         // Value:  1 1 2 2 2 // 1 is granted by a quorum
         // ```
+    }
+
+    /// Evidence recovery is immediate and independent of tick emission.
+    pub(crate) fn refresh_activity(&mut self, now: InstantOf<C>) {
+        if self.leader.refresh_activity(now, self.config.timer_config.leader_lease) {
+            self.output.prepend_command(Command::SetLeaderActivity {
+                leader_vote: self.leader.committed_vote.clone(),
+                active: true,
+            });
+        }
     }
 
     /// Update progress when replicated data(logs or snapshot) matches on follower/learner and is
@@ -394,6 +409,9 @@ where
     /// `send_none` specifies whether to force to send a message even when there is no data to send.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn initiate_replication(&mut self) {
+        if self.leader.is_inactive() {
+            return;
+        }
         tracing::debug!("{}: progress: {:?}", func_name!(), self.leader.progress);
 
         for item in self.leader.progress.iter_mut_without_reorder() {

@@ -2,6 +2,7 @@
 
 pub(crate) mod candidate;
 pub(crate) mod leader;
+pub(crate) mod leader_activity;
 pub(crate) mod leader_state;
 
 pub(crate) use candidate::Candidate;
