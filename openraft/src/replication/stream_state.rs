@@ -219,9 +219,7 @@ where
             return;
         };
 
-        payload.update_matching(matching);
-
-        if payload.len() == Some(0) {
+        if payload.update_matching(matching) {
             self.payload = None;
         }
     }

@@ -222,25 +222,17 @@ where
                 continue;
             }
 
-            if let Payload::Probe { log_id_range } = &payload {
-                if log_id_range.probe_completed_by(&session.acked) {
-                    self.inflight_id = None;
-                } else {
-                    // Retry unchanged: `remote_matched` may come from earlier sessions and
-                    // fall outside this probe's range.
-                    self.next_action = Some(payload);
-                }
-
-                continue;
-            }
-
-            // if partial success is returned, not all data is exhausted. keep sending
-            payload.update_matching(self.replication_progress.remote_matched.clone());
-            if payload.len() != Some(0) {
-                self.next_action = Some(payload);
+            let matching = if matches!(payload, Payload::Probe { .. }) {
+                // Earlier sessions' `remote_matched` may fall outside this probe's range.
+                session.acked
             } else {
-                // Payload is all sent.
+                self.replication_progress.remote_matched.clone()
+            };
+
+            if payload.update_matching(matching) {
                 self.inflight_id = None;
+            } else {
+                self.next_action = Some(payload);
             }
         }
     }

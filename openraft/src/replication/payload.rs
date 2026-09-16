@@ -50,20 +50,55 @@ where C: RaftTypeConfig
 impl<C> Payload<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn update_matching(&mut self, matching: Option<LogIdOf<C>>) {
+    /// Advance the payload and return whether it is complete.
+    ///
+    /// A probe keeps its candidate range unchanged for retries and completes on the first
+    /// acknowledgement beyond `prev`. An open-ended stream never completes here.
+    #[must_use]
+    pub(crate) fn update_matching(&mut self, matching: Option<LogIdOf<C>>) -> bool {
         match self {
-            Payload::LogIdRange { log_id_range } => log_id_range.prev = matching,
-            // A probe is sent as it was built: it is either done or sent again unchanged.
-            Payload::Probe { .. } => {}
-            Payload::LogsSince { prev } => *prev = matching,
+            Payload::LogIdRange { log_id_range } => {
+                log_id_range.prev = matching;
+                log_id_range.len() == 0
+            }
+            Payload::Probe { log_id_range } => log_id_range.probe_completed_by(&matching),
+            Payload::LogsSince { prev } => {
+                *prev = matching;
+                false
+            }
         }
     }
+}
 
-    pub(crate) fn len(&self) -> Option<u64> {
-        match self {
-            Payload::LogIdRange { log_id_range } => Some(log_id_range.len()),
-            Payload::Probe { log_id_range } => Some(log_id_range.len()),
-            Payload::LogsSince { .. } => None,
-        }
+#[cfg(test)]
+mod tests {
+    use super::Payload;
+    use crate::engine::testing::UTConfig;
+    use crate::engine::testing::log_id;
+    use crate::log_id_range::LogIdRange;
+
+    #[test]
+    fn probe_completion_preserves_retry_range() {
+        let range = LogIdRange::<UTConfig>::new(Some(log_id(1, 1, 52)), Some(log_id(1, 1, 60)));
+        let mut payload = Payload::Probe { log_id_range: range };
+
+        assert!(!payload.update_matching(None));
+        assert!(!payload.update_matching(range.prev));
+        assert_eq!(Payload::Probe { log_id_range: range }, payload);
+
+        assert!(payload.update_matching(Some(log_id(1, 1, 53))));
+    }
+
+    #[test]
+    fn fixed_range_completes_but_pipeline_stays_open() {
+        let range = LogIdRange::<UTConfig>::new(Some(log_id(1, 1, 52)), Some(log_id(1, 1, 60)));
+        let mut payload = Payload::LogIdRange { log_id_range: range };
+
+        assert!(!payload.update_matching(Some(log_id(1, 1, 53))));
+        assert!(payload.update_matching(range.last));
+
+        let mut pipeline = Payload::<UTConfig>::LogsSince { prev: range.prev };
+        assert!(!pipeline.update_matching(range.last));
+        assert_eq!(Payload::LogsSince { prev: range.last }, pipeline);
     }
 }
