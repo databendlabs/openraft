@@ -62,17 +62,15 @@ where C: RaftTypeConfig
         self.last.next_index() - self.prev.next_index()
     }
 
-    /// Whether an acknowledgement of `acked` executed a matching-point probe over this range.
+    /// Whether `acked` completes a matching-point probe over this range.
     ///
     /// A probe is one AppendEntries RPC, and storage may shorten it to a prefix, so any
-    /// acknowledgement that carries an entry from the range finishes it. An acknowledgement that
-    /// does not reach past [`Self::prev`] carries no entry: the target accepted nothing (e.g.
-    /// [`AppendEntriesResponse::PartialSuccess`] of `prev_log_id`), so the probe still has to be
-    /// sent.
+    /// acknowledgement beyond [`Self::prev`] finishes it. A
+    /// [`AppendEntriesResponse::PartialSuccess`] at `prev_log_id` verifies `prev` but acknowledges
+    /// no additional entry, so the probe is retried unchanged. No response also leaves it pending.
     ///
     /// [`Inflight::Probe`] and [`Payload::Probe`] must decide this the same way. The engine
-    /// otherwise keeps waiting for a probe the replication task has already dropped, and
-    /// replication to that target never resumes.
+    /// otherwise keeps waiting for a probe the replication task has dropped, stalling replication.
     ///
     /// [`AppendEntriesResponse::PartialSuccess`]: crate::raft::AppendEntriesResponse::PartialSuccess
     /// [`Inflight::Probe`]: crate::progress::inflight::Inflight::Probe

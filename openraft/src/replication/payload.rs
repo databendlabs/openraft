@@ -18,9 +18,8 @@ where C: RaftTypeConfig
 
     /// Probe the matching point with logs from the candidate range `(prev, last]`.
     ///
-    /// Unlike `LogIdRange`, the stream sends one AppendEntries request and ends. Count and storage
-    /// byte limits may reduce it to a prefix of the range; the rest is discarded and the engine
-    /// recomputes the next probe from the acknowledgement.
+    /// Sends one entry-carrying request. See [`LogIdRange::probe_completed_by()`] for the
+    /// completion and retry rules shared with the engine.
     Probe { log_id_range: LogIdRange<C> },
 
     /// Replicate logs after `prev` with no upper bound.

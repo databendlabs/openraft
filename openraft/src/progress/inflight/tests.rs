@@ -129,7 +129,7 @@ fn test_inflight_ack() -> anyhow::Result<()> {
         assert_eq!(
             Inflight::<UTConfig>::probe(Some(log_id(5)), Some(log_id(10)), InflightId::new(1)),
             f,
-            "an ack carrying no entry did not execute the probe"
+            "an ack at prev leaves the probe pending"
         );
 
         let applied = f.ack(Some(log_id(6)), InflightId::new(1));

@@ -222,16 +222,12 @@ where
                 continue;
             }
 
-            // A probe is one request: an acknowledged entry ends it whatever is left of the range,
-            // and RaftCore recomputes the next probe from that acknowledgement.
             if let Payload::Probe { log_id_range } = &payload {
                 if log_id_range.probe_completed_by(&session.acked) {
                     self.inflight_id = None;
                 } else {
-                    // The probe did not execute and RaftCore still has it inflight, so send it
-                    // again unchanged. Advancing it from `remote_matched` would replace it with a
-                    // different range: that value is carried across sessions, so it may sit below
-                    // `prev`, or above `last` once the target reverted its log.
+                    // Retry unchanged: `remote_matched` may come from earlier sessions and
+                    // fall outside this probe's range.
                     self.next_action = Some(payload);
                 }
 

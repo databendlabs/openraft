@@ -3,11 +3,8 @@ use crate::type_config::alias::LogIdOf;
 
 /// What one AppendEntries stream session observed.
 ///
-/// Every field describes only the session that produced it. A decision about the payload just sent
-/// must not consult [`ReplicationProgress`], which carries acknowledgements across sessions and
-/// keeps its value when the target reverts its log.
-///
-/// [`ReplicationProgress`]: crate::replication::replication_progress::ReplicationProgress
+/// Unlike `ReplicationProgress::remote_matched`, these acknowledgements do not carry across
+/// sessions.
 pub(crate) struct SessionOutcome<C>
 where C: RaftTypeConfig
 {
@@ -19,8 +16,7 @@ where C: RaftTypeConfig
 
     /// The last matching log id the target acknowledged during this session.
     ///
-    /// `None` when no response arrived, which every caller must treat as an acknowledgement that
-    /// advanced nothing: no log id is less than `None`.
+    /// `None` if no response arrived or the target acknowledged an empty log.
     pub(crate) acked: Option<LogIdOf<C>>,
 }
 

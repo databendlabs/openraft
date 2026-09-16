@@ -90,12 +90,14 @@ where
             return Ok(None);
         }
 
-        if matches!(self.payload, Some(Payload::Probe { .. })) && !entries.is_empty() {
-            // A probe is one request. An empty read did not execute it, so it stays for the next
-            // call, which `read_log_entries()` has already rate-limited.
-            self.payload = None;
-        } else {
-            self.update_log_id_range(sending_range.last.clone());
+        match self.payload {
+            Some(Payload::Probe { .. }) => {
+                // Empty storage reads are rate-limited by `read_log_entries()` and retried.
+                if !entries.is_empty() {
+                    self.payload = None;
+                }
+            }
+            _ => self.update_log_id_range(sending_range.last),
         }
 
         let payload: AppendEntriesRequest<C> = AppendEntriesRequest {
@@ -305,6 +307,9 @@ where C: RaftTypeConfig {
     let last = std::cmp::max(last, prev.clone());
     LogIdRange::new(prev, last)
 }
+
+#[cfg(test)]
+mod stream_state_test;
 
 #[cfg(test)]
 mod tests {

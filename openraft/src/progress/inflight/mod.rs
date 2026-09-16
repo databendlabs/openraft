@@ -34,9 +34,8 @@ where C: RaftTypeConfig
 
     /// Probing the matching point with logs from the candidate range `(prev, last]`.
     ///
-    /// Unlike `Logs`, a probe is one AppendEntries request carrying as much of the range as
-    /// storage returns; the rest is discarded and the next probe is recomputed from the
-    /// acknowledgement. See [`LogIdRange::probe_completed_by()`] for when it is done.
+    /// Sends one entry-carrying request. See [`LogIdRange::probe_completed_by()`] for the
+    /// completion and retry rules shared with the replication task.
     Probe {
         log_id_range: LogIdRange<C>,
         inflight_id: InflightId,
@@ -232,9 +231,6 @@ where C: RaftTypeConfig
                 debug_assert!(upto >= log_id_range.prev);
                 debug_assert!(upto <= log_id_range.last);
 
-                // The probe is one request, so anything it carried is all it will ever carry.
-                // An ack that stops at `prev` carried no entry: the probe did not execute and is
-                // sent again.
                 if log_id_range.probe_completed_by(&upto) {
                     *self = Inflight::None;
                 }

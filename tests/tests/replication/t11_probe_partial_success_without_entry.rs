@@ -8,6 +8,8 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::RPCTypes;
 use openraft::ServerState;
+use openraft::async_runtime::MpscReceiver;
+use openraft::async_runtime::MpscSender;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
 
@@ -16,11 +18,6 @@ use crate::fixtures::rpc_request::RpcRequest;
 use crate::fixtures::ut_harness;
 
 /// A matching-point probe answered with `PartialSuccess(prev_log_id)` must be sent again.
-///
-/// A probe is one AppendEntries RPC, so the replication task drops the payload once the target
-/// acknowledges an entry from it. A `PartialSuccess` at `prev_log_id` acknowledges no entry: the
-/// leader keeps the probe inflight, and dropping the payload there would leave it waiting for a
-/// request nobody sends again, stalling replication to that target for the rest of the term.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn probe_partial_success_without_entry_is_retried() -> Result<()> {
@@ -46,20 +43,36 @@ async fn probe_partial_success_without_entry_is_retried() -> Result<()> {
         }
     }
 
-    let probes = Arc::new(AtomicU64::new(0));
+    let (retried_tx, mut retried_rx) = TypeConfig::mpsc(2);
 
-    tracing::info!(log_index, "--- count AppendEntries that carry entries");
+    tracing::info!(
+        log_index,
+        "--- observe the second entry-carrying request to each follower"
+    );
     {
-        let probes = probes.clone();
+        let attempts = [AtomicU64::new(0), AtomicU64::new(0)];
 
         router
-            .set_rpc_pre_hook(RPCTypes::AppendEntries, move |_router, req, _from, _to| {
-                if let RpcRequest::AppendEntries(append) = &req
+            .set_rpc_pre_hook(RPCTypes::AppendEntries, move |_router, req, from, to| {
+                let mut retried = false;
+                if from == 1
+                    && let RpcRequest::AppendEntries(append) = &req
                     && !append.entries.is_empty()
                 {
-                    probes.fetch_add(1, Ordering::Relaxed);
+                    let index = match to {
+                        0 => 0,
+                        2 => 1,
+                        _ => unreachable!("unexpected follower {to}"),
+                    };
+                    retried = attempts[index].fetch_add(1, Ordering::Relaxed) == 1;
                 }
-                Box::pin(async move { Ok(()) })
+                let retried_tx = retried_tx.clone();
+                Box::pin(async move {
+                    if retried {
+                        retried_tx.send(to).await.unwrap();
+                    }
+                    Ok(())
+                })
             })
             .await;
     }
@@ -83,17 +96,16 @@ async fn probe_partial_success_without_entry_is_retried() -> Result<()> {
 
     tracing::info!(
         log_index,
-        "--- wait until the probes have been answered with PartialSuccess"
+        "--- both followers must retry after acknowledging no entry beyond prev"
     );
     {
-        let deadline = TypeConfig::now() + Duration::from_millis(5_000);
-
-        while probes.load(Ordering::Relaxed) < 2 {
-            assert!(TypeConfig::now() < deadline, "no probe was sent to a follower");
-            TypeConfig::sleep(Duration::from_millis(10)).await;
-        }
-
-        TypeConfig::sleep(Duration::from_millis(300)).await;
+        let retried = TypeConfig::timeout(Duration::from_secs(5), async {
+            let first = retried_rx.recv().await.expect("retry hook closed");
+            let second = retried_rx.recv().await.expect("retry hook closed");
+            btreeset! {first, second}
+        })
+        .await?;
+        assert_eq!(btreeset! {0, 2}, retried);
     }
 
     tracing::info!(
