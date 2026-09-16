@@ -90,6 +90,16 @@ mod tests {
     }
 
     #[test]
+    fn fresh_learner_probe_completes_on_first_entry() {
+        let range = LogIdRange::<UTConfig>::new(None, Some(log_id(1, 1, 8)));
+        let mut payload = Payload::Probe { log_id_range: range };
+
+        assert!(!payload.update_matching(None));
+        assert_eq!(Payload::Probe { log_id_range: range }, payload);
+        assert!(payload.update_matching(Some(log_id(1, 1, 0))));
+    }
+
+    #[test]
     fn fixed_range_completes_but_pipeline_stays_open() {
         let range = LogIdRange::<UTConfig>::new(Some(log_id(1, 1, 52)), Some(log_id(1, 1, 60)));
         let mut payload = Payload::LogIdRange { log_id_range: range };

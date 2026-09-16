@@ -64,8 +64,7 @@ where
     /// Generates the next AppendEntries request from the current log range.
     ///
     /// Returns `Ok(None)` when there are no more entries to send.
-    /// After each call, `log_id_range` is updated to exclude the sent entries, except for a
-    /// [`Payload::Probe`], which ends after the one request it produces.
+    /// After each call, the payload is advanced or cleared according to its completion rule.
     pub(crate) async fn next_request(&mut self) -> Result<Option<AppendEntriesRequest<C>>, ReplicationClosed> {
         // An empty range still sends one RPC and is then cleared by `update_log_id_range()`.
         let Some(log_id_range) = self.get_log_id_range().await else {
@@ -90,15 +89,7 @@ where
             return Ok(None);
         }
 
-        match self.payload {
-            Some(Payload::Probe { .. }) => {
-                // Empty storage reads are rate-limited by `read_log_entries()` and retried.
-                if !entries.is_empty() {
-                    self.payload = None;
-                }
-            }
-            _ => self.update_log_id_range(sending_range.last),
-        }
+        self.update_log_id_range(sending_range.last);
 
         let payload: AppendEntriesRequest<C> = AppendEntriesRequest {
             vote: self.replication_context.leader_vote.clone().into_vote(),
@@ -211,9 +202,9 @@ where
         }
     }
 
-    /// Updates `log_id_range` after sending entries up to `matching`.
+    /// Advances the payload after sending entries up to `matching`.
     ///
-    /// Sets `log_id_range` to `None` when all entries have been sent.
+    /// Clears the payload when its completion rule is satisfied.
     fn update_log_id_range(&mut self, matching: Option<LogIdOf<C>>) {
         let Some(payload) = self.payload.as_mut() else {
             return;

@@ -404,7 +404,9 @@ where
                     }
 
                     self.replication_progress.remote_matched = matching.clone();
-                    acked = matching.clone();
+                    if acked < matching {
+                        acked = matching.clone();
+                    }
 
                     self.notify_progress(ReplicationResult(Ok(matching))).await;
                 }
