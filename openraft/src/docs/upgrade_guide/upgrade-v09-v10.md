@@ -1,7 +1,7 @@
 # Guide for upgrading from [v0.9](https://github.com/databendlabs/openraft/tree/release-0.9) to v0.10:
 
-> This guide is under construction; it currently covers the `snapshot_id` changes
-> and the removed feature flags.
+> This guide is under construction; it currently covers the `snapshot_id`
+> changes, removed feature flags, and optional quorum-loss inactivity.
 
 ## `snapshot_id` moved out of snapshot metadata
 
@@ -87,6 +87,30 @@ the replacement:
   to [`leader_id_std::LeaderId`][], either in the `declare_raft_types!`
   statement or in the [`RaftTypeConfig`][] implementation.
 
+## Optional quorum-loss inactivity configuration
+
+[`Config`][] adds `quorum_loss_probe_interval: Option<u64>` in milliseconds.
+Exhaustive Rust struct literals must add this field, or use
+`..Default::default()`.
+
+`ConfigError` adds a validation variant for a too-small probe interval;
+exhaustive matches must handle it too.
+
+The field defaults to `None`, including when omitted from older named-field
+serde configuration, which preserves the existing runtime behavior. When set,
+the interval is the duration of each alternating heartbeat suppression and send
+period. It has a nominal liveness floor of at least
+`leader_lease + election_timeout_max`, with deployment margin for network and
+scheduling delay. This is not a Raft safety requirement or an unconditional
+liveness guarantee. The Leader lease currently equals `election_timeout_max`.
+
+This policy is derived from existing Vote and quorum-acknowledgement timestamps;
+it is not a Leader step-down and adds no persisted state. It changes no storage
+interface, Vote, or Raft network format. No stored-data migration is needed.
+See [CheckQuorum](crate::docs::protocol::check_quorum) for the heartbeat gate and
+ReadIndex behavior.
+
+[`Config`]: crate::Config
 [`SnapshotMeta`]:      `crate::storage::SnapshotMeta`
 [`SnapshotSignature`]: `crate::storage::SnapshotSignature`
 [`RaftNetworkV2`]:     `crate::network::RaftNetworkV2`

@@ -5,6 +5,7 @@ use crate::impls::BoxedErrorSource;
 
 /// Error variants related to configuration.
 #[since]
+#[since(version = "0.10.0", change = "added quorum-loss inactivity validation error")]
 #[derive(Debug, thiserror::Error)]
 #[derive(PartialEq, Eq)]
 pub enum ConfigError {
@@ -52,6 +53,18 @@ pub enum ConfigError {
         heartbeat_interval: u64,
         /// Minimum interval between two heartbeats to the same follower.
         heartbeat_min_interval: u64,
+    },
+
+    /// The probe interval must leave time for follower lease expiry and an election.
+    #[since(version = "0.10.0", change = "added quorum-loss inactivity validation")]
+    #[error(
+        "quorum_loss_probe_interval({probe_interval}) must be >= leader_lease({election_timeout_max}) + election_timeout_max({election_timeout_max})"
+    )]
+    QuorumLossProbeIntervalTooSmall {
+        /// Maximum election timeout in milliseconds.
+        election_timeout_max: u64,
+        /// Configured heartbeat phase interval in milliseconds.
+        probe_interval: u64,
     },
 
     /// Invalid snapshot policy string format.

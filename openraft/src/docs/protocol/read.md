@@ -27,6 +27,12 @@ depending on the `read_policy` [`ReadPolicy`].  The `read_policy` can be one of:
   better performance but slightly weaker consistency guarantees (assumes minimal clock drift
   between nodes).
 
+With [quorum-loss inactivity](crate::docs::protocol::check_quorum) enabled,
+ReadIndex-triggered heartbeats use the same alternating suppression and send
+periods as periodic heartbeats. Replication and snapshots may also provide the
+required quorum evidence. LeaseRead only checks an existing lease and never
+contacts followers.
+
 [`get_read_linearizer()`] returns a [`Linearizer`], containing `(read_log_id, last_applied_log_id)`:
 
 - `read_log_id` represents the log id up to which the state machine should apply to ensure a

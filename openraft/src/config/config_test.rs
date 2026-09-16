@@ -19,6 +19,46 @@ fn test_config_defaults() {
     assert_eq!(Some(65536), cfg.api_channel_size);
     assert_eq!(Some(65536), cfg.notification_channel_size);
     assert_eq!(StepDownPolicy::After(150), cfg.removed_leader_step_down);
+    assert_eq!(None, cfg.quorum_loss_probe_interval);
+}
+
+#[test]
+fn test_quorum_loss_configuration() {
+    let config = Config {
+        quorum_loss_probe_interval: Some(599),
+        ..Default::default()
+    };
+    let result = config.validate();
+    let error = result.unwrap_err();
+    assert_eq!(
+        ConfigError::QuorumLossProbeIntervalTooSmall {
+            election_timeout_max: 300,
+            probe_interval: 599,
+        },
+        error
+    );
+
+    let config = Config {
+        quorum_loss_probe_interval: Some(600),
+        ..Default::default()
+    };
+    let result = config.validate();
+    assert!(result.is_ok());
+
+    let config = Config {
+        election_timeout_max: u64::MAX,
+        quorum_loss_probe_interval: Some(u64::MAX),
+        ..Default::default()
+    };
+    let result = config.validate();
+    let error = result.unwrap_err();
+    assert_eq!(
+        ConfigError::QuorumLossProbeIntervalTooSmall {
+            election_timeout_max: u64::MAX,
+            probe_interval: u64::MAX,
+        },
+        error
+    );
 }
 
 /// A config serialized before `removed_leader_step_down` existed deserializes to the default
