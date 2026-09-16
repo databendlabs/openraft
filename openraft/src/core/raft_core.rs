@@ -704,7 +704,9 @@ where
             return false;
         }
 
-        lh.send_heartbeat(false);
+        if !lh.send_heartbeat(false) {
+            return false;
+        }
 
         // Record heartbeat to external metrics recorder
         if let Some(r) = &self.metrics_recorder {

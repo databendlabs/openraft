@@ -55,7 +55,7 @@ fn test_leader_send_heartbeat() -> anyhow::Result<()> {
 
     // A heartbeat is a normal AppendEntries RPC if there are pending data to send.
     {
-        eng.try_leader_handler()?.send_heartbeat(false);
+        assert!(eng.try_leader_handler()?.send_heartbeat(false));
         assert_eq!(
             vec![
                 //
@@ -71,7 +71,7 @@ fn test_leader_send_heartbeat() -> anyhow::Result<()> {
     // Heartbeat will be resent
     {
         eng.output.clear_commands();
-        eng.try_leader_handler()?.send_heartbeat(false);
+        assert!(eng.try_leader_handler()?.send_heartbeat(false));
         assert_eq!(
             vec![
                 //
@@ -82,6 +82,68 @@ fn test_leader_send_heartbeat() -> anyhow::Result<()> {
             ],
             eng.output.take_commands()
         );
+    }
+
+    tracing::info!("Suppress a heartbeat during a quorum-loss quiet period");
+    {
+        eng.output.clear_commands();
+        let leader_lease = Duration::from_millis(300);
+        eng.config.timer_config.leader_lease = leader_lease;
+        eng.config.quorum_loss_probe_interval = Some(Duration::from_millis(600));
+        let activity_at = UTConfig::<()>::now() - leader_lease;
+        eng.state.vote = Leased::new(activity_at, leader_lease, Vote::new_committed(3, 1));
+        let sent = eng.try_leader_handler()?.send_heartbeat(true);
+        assert!(!sent);
+        let commands = eng.output.take_commands();
+        assert!(commands.is_empty());
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_quorum_loss_heartbeat_periods() -> anyhow::Result<()> {
+    let mut eng = eng();
+    let leader_lease = Duration::from_millis(300);
+    let period = Duration::from_millis(600);
+    eng.config.timer_config.leader_lease = leader_lease;
+    eng.config.quorum_loss_probe_interval = Some(period);
+
+    let activity_at = UTConfig::<()>::now();
+    eng.state.vote = Leased::new(activity_at, leader_lease, Vote::new_committed(3, 1));
+
+    tracing::info!("Use the current Vote time before the first quorum acknowledgement");
+    {
+        let quorum_acked_at = eng.leader.as_ref().unwrap().last_quorum_acked_time();
+        assert_eq!(None, quorum_acked_at);
+
+        let before_lease_expiry = activity_at + leader_lease - Duration::from_millis(1);
+        let allowed = eng.try_leader_handler()?.heartbeat_is_allowed(before_lease_expiry);
+        assert!(allowed);
+
+        let quiet_at = activity_at + leader_lease;
+        let allowed = eng.try_leader_handler()?.heartbeat_is_allowed(quiet_at);
+        assert!(!allowed);
+
+        let send_at = quiet_at + period;
+        let allowed = eng.try_leader_handler()?.heartbeat_is_allowed(send_at);
+        assert!(allowed);
+
+        let quiet_again_at = send_at + period;
+        let allowed = eng.try_leader_handler()?.heartbeat_is_allowed(quiet_again_at);
+        assert!(!allowed);
+    }
+
+    tracing::info!("Prefer a quorum acknowledgement over the older Vote time");
+    {
+        let acked_at = activity_at + period + period + period;
+        let leader = eng.leader.as_mut().unwrap();
+        leader.update_clock(&2, acked_at);
+        leader.update_clock(&3, acked_at);
+
+        let check_at = acked_at + leader_lease - Duration::from_millis(1);
+        let allowed = eng.try_leader_handler()?.heartbeat_is_allowed(check_at);
+        assert!(allowed);
     }
 
     Ok(())

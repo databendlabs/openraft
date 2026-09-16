@@ -87,6 +87,19 @@ the replacement:
   to [`leader_id_std::LeaderId`][], either in the `declare_raft_types!`
   statement or in the [`RaftTypeConfig`][] implementation.
 
+## Optional quorum-loss inactivity configuration
+
+[`Config`][] adds `quorum_loss_probe_interval: Option<u64>` in milliseconds.
+Exhaustive Rust struct literals must add this field, or use
+`..Default::default()`.
+
+`ConfigError` adds a validation variant for a too-small probe interval;
+exhaustive matches must handle it too.
+
+The field defaults to `None` when omitted from named-field serde configuration.
+See [CheckQuorum](crate::docs::protocol::check_quorum) for its behavior.
+
+[`Config`]: crate::Config
 [`SnapshotMeta`]:      `crate::storage::SnapshotMeta`
 [`SnapshotSignature`]: `crate::storage::SnapshotSignature`
 [`RaftNetworkV2`]:     `crate::network::RaftNetworkV2`
