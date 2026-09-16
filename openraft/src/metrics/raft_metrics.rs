@@ -289,7 +289,7 @@ where C: RaftTypeConfig
             #[cfg(feature = "metrics-logids")]
             log_id_list: Default::default(),
 
-            state: ServerState::Follower,
+            state: Default::default(),
             current_leader: None,
             millis_since_quorum_ack: None,
             last_quorum_acked: None,
