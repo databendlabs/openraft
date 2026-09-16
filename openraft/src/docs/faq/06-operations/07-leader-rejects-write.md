@@ -5,9 +5,14 @@ A node may still report [`ServerState::Leader`][] while returning
 acknowledgement is older than the leader lease, so it cannot currently confirm
 that it still has authority to accept new proposals.
 
-The node does not step down. It continues heartbeat and replication traffic so
-that it can renew its lease if quorum communication recovers. Once a quorum
-acknowledges it again, new writes are accepted automatically.
+By default, the node does not step down. It continues heartbeat and replication
+traffic so that it can renew its lease if quorum communication recovers. Once
+a quorum acknowledges it again, new writes are accepted automatically.
+
+With `Config::quorum_loss_probe_interval` set, heartbeat suppression and send
+periods alternate after the quorum evidence expires. A new quorum
+acknowledgement restores normal heartbeats. Replication and snapshots continue.
+The node remains Leader and keeps its Vote.
 
 Writes accepted before the lease expired remain pending and may still commit.
 If an application times them out, it must treat their result as unknown.

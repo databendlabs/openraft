@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::engine::Command;
@@ -12,9 +14,12 @@ use crate::raft::linearizable_read::ReadLogId;
 use crate::raft::message::TransferLeaderRequest;
 use crate::raft_state::IOId;
 use crate::replication::ReplicationSessionId;
+use crate::rt::Instant;
 use crate::storage::RaftStateMachine;
+use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::BatchOf;
 use crate::type_config::alias::CommittedLeaderIdOf;
+use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::PayloadOf;
 
 #[cfg(test)]
@@ -127,7 +132,11 @@ where
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn send_heartbeat(&mut self, bypass_min_interval: bool) {
+    pub(crate) fn send_heartbeat(&mut self, bypass_min_interval: bool) -> bool {
+        if !self.heartbeat_is_allowed(C::now()) {
+            return false;
+        }
+
         let membership_log_id = self.state.membership_state.effective().log_id();
         let session_id = ReplicationSessionId::new(self.leader.committed_vote.clone(), membership_log_id.clone());
 
@@ -135,6 +144,35 @@ where
             session_id,
             bypass_min_interval,
         });
+        true
+    }
+
+    fn heartbeat_is_allowed(&self, now: InstantOf<C>) -> bool {
+        let Some(period) = self.config.quorum_loss_probe_interval else {
+            return true;
+        };
+        let Some(age) = self.quorum_activity_age(now) else {
+            return true;
+        };
+        let leader_lease = self.config.timer_config.leader_lease;
+        if age < leader_lease {
+            return true;
+        }
+
+        debug_assert!(!period.is_zero());
+        let elapsed = age - leader_lease;
+        let slot = elapsed.as_nanos() / period.as_nanos();
+        slot % 2 == 1
+    }
+
+    fn quorum_activity_age(&self, now: InstantOf<C>) -> Option<Duration> {
+        if self.leader.is_self_quorum() {
+            return None;
+        }
+
+        let quorum_acked_at = self.leader.last_quorum_acked_time();
+        let activity_at = quorum_acked_at.or(self.state.vote_last_modified())?;
+        Some(now.saturating_duration_since(activity_at))
     }
 
     /// Get the log id for a linearizable read.

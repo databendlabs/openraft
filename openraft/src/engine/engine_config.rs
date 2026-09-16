@@ -35,6 +35,9 @@ pub(crate) struct EngineConfig<C: RaftTypeConfig> {
     pub(crate) timer_config: time_state::Config,
 
     pub(crate) enable_leader_restore: bool,
+
+    /// Duration of each alternating heartbeat phase after the Leader lease expires.
+    pub(crate) quorum_loss_probe_interval: Option<Duration>,
 }
 
 impl<C> EngineConfig<C>
@@ -57,6 +60,7 @@ where C: RaftTypeConfig
             },
 
             enable_leader_restore: config.enable_leader_restore(),
+            quorum_loss_probe_interval: config.quorum_loss_probe_interval.map(Duration::from_millis),
         };
         this.resample_election_timeout();
         this
@@ -74,6 +78,7 @@ where C: RaftTypeConfig
             election_timeout_max: 300,
             timer_config: time_state::Config::default(),
             enable_leader_restore: true,
+            quorum_loss_probe_interval: None,
         }
     }
 
