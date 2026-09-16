@@ -110,6 +110,8 @@
                  (installed :reset-clock {})]
                 {})]
     (is (:valid? result))
+    (is (= [:bump :rate :strobe]
+           (:observed-modes result)))
     (is (= [:all :minority :one]
            (:observed-target-categories result)))))
 

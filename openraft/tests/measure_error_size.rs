@@ -12,7 +12,7 @@ openraft::declare_raft_types!(
         NodeId = u64,
         Node = BasicNode,
         Entry = openraft::Entry<<Self::LeaderId as openraft::vote::RaftLeaderId>::Committed, Self::Payload>,
-        AsyncRuntime = openraft::impls::TokioRuntime
+        AsyncRuntime = openraft_rt_tokio::TokioRuntime
 );
 
 #[test]

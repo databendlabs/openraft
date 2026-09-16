@@ -89,8 +89,9 @@ where T: Instant
 #[cfg(test)]
 mod tests {
 
+    use openraft_rt_tokio::TokioInstant;
+
     use crate::Instant;
-    use crate::TokioInstant;
     use crate::display_ext::DisplayInstantExt;
 
     /// Check the result by a human.

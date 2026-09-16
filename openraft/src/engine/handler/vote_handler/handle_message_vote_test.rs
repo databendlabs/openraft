@@ -2,11 +2,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
+use openraft_rt_tokio::TokioInstant;
 use pretty_assertions::assert_eq;
 
 use crate::Instant;
 use crate::Membership;
-use crate::TokioInstant;
 use crate::Vote;
 use crate::core::ServerState;
 use crate::engine::Command;

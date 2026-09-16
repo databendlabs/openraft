@@ -14,10 +14,9 @@ snapshot transport, use the [`openraft-legacy`] crate instead.
 
 ## feature-flag `bench`
 
-Enables benchmarks in unittest. Benchmark in openraft depends on the unstable feature
-`test` thus it cannot be used with stable rust. In order to run the benchmark with stable
-toolchain, the unstable features have to be enabled explicitly with environment variable
-`RUSTC_BOOTSTRAP=1`.
+Exposes internal types used by the Criterion benchmarks in `openraft/benches/`.
+Run them with `cargo bench --features bench -p openraft`.
+Automatically enables `tokio-rt` because the benchmark helpers use `TokioRuntime`.
 
 ## feature-flag `bt`
 
@@ -54,7 +53,7 @@ let config = Config {
 ## feature-flag `compat`
 
 Enables compatibility supporting types.
-
+Implies `serde`, since these types are serialization shims.
 
 ## feature-flag `loosen-follower-log-revert` (removed)
 
@@ -126,6 +125,10 @@ each stage transition.
 
 Derives `serde::Serialize, serde::Deserialize` for type that are used
 in storage and network, such as `Vote` or `AppendEntriesRequest`.
+
+These derives do not provide a stable wire or storage format. OpenRaft does not
+guarantee that serialized data remains compatible across versions. Applications
+that require compatibility must version or migrate their data.
 
 ## feature-flag `singlethreaded` (removed)
 

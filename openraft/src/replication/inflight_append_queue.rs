@@ -13,8 +13,8 @@ use crate::type_config::alias::LogIdOf;
 ///
 /// When an AppendEntries request is sent, its metadata is pushed to this queue.
 /// When a response arrives with a matching log id, all requests up to and including
-/// that log id are drained, and the sending time of the last drained request is returned
-/// for RTT calculation.
+/// that log id are drained. The sending time of the last fully or partially acknowledged
+/// request is returned for RTT calculation.
 #[derive(Clone)]
 pub(crate) struct InflightAppendQueue<C>
 where C: RaftTypeConfig
@@ -32,19 +32,52 @@ where C: RaftTypeConfig
     }
 
     /// Records a new in-flight AppendEntries request.
-    pub(crate) fn push(&self, log_id: Option<LogIdOf<C>>) {
+    pub(crate) fn push(&self, prev_log_id: Option<LogIdOf<C>>, last_log_id: Option<LogIdOf<C>>) {
         let mut q = self.queue.lock().unwrap();
-        let inflight = InflightAppend::new(log_id);
+        let inflight = InflightAppend::new(prev_log_id, last_log_id);
 
         tracing::debug!("Inflight queue push: {}", inflight);
 
         q.push_back(inflight)
     }
 
-    /// Removes all requests with `last_log_id <= matching` and returns
-    /// the sending time of the last removed request.
+    /// Removes stale requests through the first request at or containing a conflict point and
+    /// returns that request's sending time.
     ///
-    /// Returns `None` if no requests were removed.
+    /// At a shared boundary, the request starting at the conflict point is selected.
+    pub(crate) fn drain_conflicted(&self, conflict_log_id: &LogIdOf<C>) -> Option<InstantOf<C>> {
+        let mut q = self.queue.lock().unwrap();
+
+        while let Some(first) = q.front() {
+            let starts_at_conflict = first.prev_log_id.as_ref() == Some(conflict_log_id);
+            let ends_at_or_before_conflict = first.last_log_id.as_ref() <= Some(conflict_log_id);
+            let is_stale = !starts_at_conflict && ends_at_or_before_conflict;
+            if is_stale {
+                q.pop_front();
+                continue;
+            }
+
+            let contains_conflict = first.prev_log_id.as_ref() < Some(conflict_log_id);
+            let matches_conflict = starts_at_conflict || contains_conflict;
+            if matches_conflict {
+                let sending_time = first.sending_time;
+                q.pop_front();
+                return Some(sending_time);
+            }
+
+            break;
+        }
+
+        None
+    }
+
+    /// Removes all requests with `last_log_id <= matching` and returns
+    /// the sending time of the last fully or partially acknowledged request.
+    ///
+    /// A request with `prev_log_id < matching < last_log_id` contributes its sending time
+    /// but remains queued until its last log id is acknowledged.
+    ///
+    /// Returns `None` if no request is fully or partially acknowledged.
     pub(crate) fn drain_acked(&self, matching: &Option<LogIdOf<C>>) -> Option<InstantOf<C>> {
         let mut q = self.queue.lock().unwrap();
 
@@ -59,6 +92,9 @@ where C: RaftTypeConfig
             if matching >= &first.last_log_id {
                 last = Some(first.sending_time)
             } else {
+                if matching > &first.prev_log_id {
+                    last = Some(first.sending_time);
+                }
                 break;
             }
 
@@ -82,24 +118,117 @@ mod tests {
     }
 
     #[test]
+    fn test_drain_conflicted() {
+        let q = InflightAppendQueue::<UTConfig>::new();
+        q.push(Some(log_id(1, 1, 0)), Some(log_id(1, 1, 10)));
+        q.push(Some(log_id(1, 1, 10)), Some(log_id(1, 1, 10)));
+        q.push(Some(log_id(1, 1, 10)), Some(log_id(1, 1, 30)));
+
+        let (boundary_time, interior_time) = {
+            let mut queue = q.queue.lock().unwrap();
+            let boundary_time = queue[0].sending_time + std::time::Duration::from_secs(1);
+            queue[1].sending_time = boundary_time;
+            let interior_time = boundary_time + std::time::Duration::from_secs(1);
+            queue[2].sending_time = interior_time;
+            (boundary_time, interior_time)
+        };
+
+        // Conflict(10) rejects B's prev, even when A's last is also 10.
+        let actual = q.drain_conflicted(&log_id(1, 1, 10));
+        assert_eq!(actual, Some(boundary_time));
+
+        {
+            let queue = q.queue.lock().unwrap();
+            assert_eq!(queue.len(), 1);
+            assert_eq!(queue[0].last_log_id, Some(log_id(1, 1, 30)));
+        }
+
+        // Conflict(25) falls inside C's range.
+        let actual = q.drain_conflicted(&log_id(1, 1, 25));
+        assert_eq!(actual, Some(interior_time));
+
+        {
+            let queue = q.queue.lock().unwrap();
+            assert!(queue.is_empty());
+        }
+
+        let actual = q.drain_conflicted(&log_id(1, 1, 30));
+        assert_eq!(actual, None);
+    }
+
+    #[test]
     fn test_push_and_drain_acked_none_matching() {
         let q = InflightAppendQueue::<UTConfig>::new();
-        q.push(Some(log_id(1, 1, 5)));
-        q.push(Some(log_id(1, 1, 10)));
+        q.push(None, Some(log_id(1, 1, 5)));
+        q.push(Some(log_id(1, 1, 5)), Some(log_id(1, 1, 10)));
 
-        // matching=None is less than any log_id, so nothing is acked
+        // matching=None does not fully acknowledge either request.
         assert_eq!(q.drain_acked(&None), None);
-
-        // Queue should remain unchanged
         assert_eq!(q.queue.lock().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_drain_acked_inside_request() {
+        let q = InflightAppendQueue::<UTConfig>::new();
+        q.push(Some(log_id(1, 1, 0)), Some(log_id(1, 1, 10)));
+        q.push(Some(log_id(1, 1, 10)), Some(log_id(1, 1, 20)));
+
+        let expected_time = q.queue.lock().unwrap()[0].sending_time;
+
+        assert_eq!(q.drain_acked(&Some(log_id(1, 1, 5))), Some(expected_time));
+        assert_eq!(q.queue.lock().unwrap().len(), 2);
+
+        assert_eq!(q.drain_acked(&Some(log_id(1, 1, 10))), Some(expected_time));
+        assert_eq!(q.queue.lock().unwrap().len(), 1);
+        assert_eq!(q.queue.lock().unwrap()[0].last_log_id, Some(log_id(1, 1, 20)));
+        assert_eq!(q.drain_acked(&Some(log_id(1, 1, 10))), None);
+    }
+
+    #[test]
+    fn test_drain_acked_cumulative_partial() {
+        let q = InflightAppendQueue::<UTConfig>::new();
+        q.push(Some(log_id(1, 1, 0)), Some(log_id(1, 1, 10)));
+        q.push(Some(log_id(1, 1, 10)), Some(log_id(1, 1, 20)));
+
+        let expected_time = {
+            let mut queue = q.queue.lock().unwrap();
+            let expected_time = queue[0].sending_time + std::time::Duration::from_secs(1);
+            queue[1].sending_time = expected_time;
+            expected_time
+        };
+
+        assert_eq!(q.drain_acked(&Some(log_id(1, 1, 15))), Some(expected_time));
+        let deque = q.queue.lock().unwrap();
+        assert_eq!(deque.len(), 1);
+        assert_eq!(deque[0].last_log_id, Some(log_id(1, 1, 20)));
+    }
+
+    #[test]
+    fn test_drain_acked_same_last_log_id() {
+        let q = InflightAppendQueue::<UTConfig>::new();
+        q.push(None, Some(log_id(1, 1, 10)));
+        q.push(Some(log_id(1, 1, 10)), Some(log_id(1, 1, 10)));
+        q.push(Some(log_id(1, 1, 10)), Some(log_id(1, 1, 20)));
+
+        let expected_time = {
+            let mut queue = q.queue.lock().unwrap();
+            let expected_time = queue[0].sending_time + std::time::Duration::from_secs(1);
+            queue[1].sending_time = expected_time;
+            expected_time
+        };
+
+        // Both requests ending at 10 are removed; the request ending at 20 remains.
+        assert_eq!(q.drain_acked(&Some(log_id(1, 1, 10))), Some(expected_time));
+        assert_eq!(q.queue.lock().unwrap().len(), 1);
+        assert_eq!(q.queue.lock().unwrap()[0].last_log_id, Some(log_id(1, 1, 20)));
     }
 
     #[test]
     fn test_drain_acked_partial() {
         let q = InflightAppendQueue::<UTConfig>::new();
-        q.push(Some(log_id(1, 1, 5)));
-        q.push(Some(log_id(1, 1, 10)));
-        q.push(Some(log_id(1, 1, 15)));
+        q.push(None, Some(log_id(1, 1, 5)));
+        q.push(Some(log_id(1, 1, 5)), Some(log_id(1, 1, 10)));
+        q.push(Some(log_id(1, 1, 10)), Some(log_id(1, 1, 15)));
 
         // Read the expected sending_time before calling drain_acked
         let expected_time = q.queue.lock().unwrap()[1].sending_time;
@@ -119,8 +248,8 @@ mod tests {
     #[test]
     fn test_drain_acked_all() {
         let q = InflightAppendQueue::<UTConfig>::new();
-        q.push(Some(log_id(1, 1, 5)));
-        q.push(Some(log_id(1, 1, 10)));
+        q.push(None, Some(log_id(1, 1, 5)));
+        q.push(Some(log_id(1, 1, 5)), Some(log_id(1, 1, 10)));
 
         // Read the expected sending_time before calling drain_acked
         let expected_time = q.queue.lock().unwrap()[1].sending_time;
@@ -144,8 +273,8 @@ mod tests {
     #[test]
     fn test_drain_acked_with_none_log_id() {
         let q = InflightAppendQueue::<UTConfig>::new();
-        q.push(None);
-        q.push(Some(log_id(1, 1, 5)));
+        q.push(None, None);
+        q.push(None, Some(log_id(1, 1, 5)));
 
         // Read the expected sending_time before calling drain_acked
         let expected_time = q.queue.lock().unwrap()[0].sending_time;

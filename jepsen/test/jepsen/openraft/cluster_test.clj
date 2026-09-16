@@ -230,7 +230,14 @@
                    t))]
     (is (identical? failure thrown))
     (is (= (count (:nodes test-config)) (count @threads)))
-    (is (every? #(not (.isAlive ^Thread %)) @threads))))
+    ;; `awaitTermination` returns once the pool's worker count reaches zero,
+    ;; and each worker decrements that count before it leaves `run`, so a
+    ;; drained thread can still be alive here. The join separates a thread
+    ;; that is exiting from one idling out the cached pool's 60-second
+    ;; keep-alive.
+    (doseq [^Thread thread @threads]
+      (.join thread 10000)
+      (is (not (.isAlive thread))))))
 
 (deftest distinguishes-modeled-metrics-failures-from-harness-errors
   (testing "recognized SUT observations make a node unavailable"

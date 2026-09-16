@@ -121,6 +121,14 @@ where
         self.effective.membership().is_voter(id)
     }
 
+    /// Whether a node may campaign according to its effective or committed membership.
+    ///
+    /// A removed voter may need to regain leadership to finish the membership change.
+    /// This does not add it to the election quorum, which uses only effective voters.
+    pub(crate) fn is_voter_in_effective_or_committed(&self, id: &NID) -> bool {
+        self.effective.is_voter(id) || self.committed.is_voter(id)
+    }
+
     /// Builds a new membership configuration by applying changes to the current configuration.
     ///
     /// * `changes`: The changes to apply to the current membership configuration.

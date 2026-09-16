@@ -116,6 +116,7 @@ use crate::engine::EngineConfig;
 use crate::entry::RaftPayload;
 use crate::errors::ClientWriteError;
 use crate::errors::Fatal;
+use crate::errors::ForwardReason;
 use crate::errors::ForwardToLeader;
 use crate::errors::InitializeError;
 use crate::errors::LinearizableReadError;
@@ -783,6 +784,7 @@ where
             Err(ForwardToLeader {
                 leader_id: Some(node_id.clone()),
                 leader_node: node,
+                reason: ForwardReason::NotLeader,
             })
         }
     }
@@ -1215,10 +1217,11 @@ where
     /// Our goal for Raft is to implement linearizable semantics. If the leader crashes after
     /// committing a log entry but before responding to the client, the client may retry the
     /// command with a new leader, causing it to be executed a second time. As such, clients
-    /// should assign unique serial numbers to every command. Then, the state machine should
-    /// track the latest serial number processed for each client, along with the associated
-    /// response. If it receives a command whose serial number has already been executed, it
-    /// responds immediately without re-executing the request (§8). The
+    /// should assign a unique serial number to every logical command and reuse it for every retry.
+    /// The state machine should track the latest serial number processed for each client, along
+    /// with the associated response. This deduplication state must be durable and included in
+    /// snapshots. If the state machine receives a command whose serial number has already been
+    /// executed, it responds immediately without re-executing the request (§8). The
     /// [`RaftStateMachine::apply`] method is the perfect place to implement
     /// this.
     ///
@@ -1288,7 +1291,7 @@ where
     /// while let Some(result) = stream.try_next().await? {
     ///     match result {
     ///         Ok(response) => println!("Applied at log index: {:?}", response.log_id),
-    ///         Err(forward_err) => eprintln!("Forward to leader: {:?}", forward_err),
+    ///         Err(error) => eprintln!("Write failed: {:?}", error),
     ///     }
     /// }
     /// ```

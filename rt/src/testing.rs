@@ -132,9 +132,15 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
     }
 
     pub async fn test_sleep() {
-        let start_time = std::time::Instant::now();
+        let start_time = Rt::Instant::now();
         let dur_10ms = Duration::from_millis(10);
-        Rt::sleep(dur_10ms).await;
+        let sleep = Rt::sleep(dur_10ms);
+        let mut sleep = pin!(sleep);
+
+        let poll = futures_util::poll!(sleep.as_mut());
+        assert!(matches!(poll, Poll::Pending));
+
+        sleep.await;
         let elapsed = start_time.elapsed();
 
         assert!(elapsed >= dur_10ms);
@@ -600,7 +606,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         // This changed() should wait for the new value (not return immediately)
         // If changed() doesn't properly mark as seen, this would return immediately
         // causing a hot loop
-        let start = std::time::Instant::now();
+        let start = Rt::Instant::now();
         rx.changed().await.unwrap();
         let elapsed = start.elapsed();
 
@@ -713,7 +719,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
             tx_clone.send(2).unwrap();
         });
 
-        let start = std::time::Instant::now();
+        let start = Rt::Instant::now();
         rx.changed().await.unwrap();
         let elapsed = start.elapsed();
 

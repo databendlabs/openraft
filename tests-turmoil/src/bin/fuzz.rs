@@ -17,9 +17,8 @@ use std::time::Duration;
 
 use clap::Parser;
 use openraft::async_runtime::WatchReceiver;
-use rand::Rng;
+use rand::RngExt;
 use rand::SeedableRng;
-use rand::rngs::SmallRng;
 use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 use serde::Serialize;
@@ -98,18 +97,22 @@ struct DerivedConfig {
 impl DerivedConfig {
     fn from_seed(seed: u64) -> Self {
         let mut rng = StdRng::seed_from_u64(seed);
-        let heartbeat_interval = 50 + rng.gen_range(0..100);
-        let election_timeout_min = heartbeat_interval * rng.gen_range(2..4);
-        let snapshot_logs_threshold = rng.gen_range(100..=250);
-        let num_initial_nodes = 3 + rng.gen_range(0..3);
-        let fail_rate = rng.gen_range(0.0..0.002);
-        let election_timeout_max = election_timeout_min + rng.gen_range(100..500);
-        let enable_chaos = rng.gen_bool(0.8);
-        let enable_leader_restore = rng.gen_bool(0.5);
-        let enable_pre_vote = rng.gen_bool(0.5);
+        let heartbeat_interval = 50 + rng.random_range(0..100);
+        let election_timeout_min = heartbeat_interval * rng.random_range(2..4);
+        let snapshot_logs_threshold = rng.random_range(100..=250);
+        let num_initial_nodes = 3 + rng.random_range(0..3);
+        let fail_rate = rng.random_range(0.0..0.002);
+        let election_timeout_max = election_timeout_min + rng.random_range(100..500);
+        let enable_chaos = rng.random_bool(0.8);
+        let enable_leader_restore = rng.random_bool(0.5);
+        let enable_pre_vote = rng.random_bool(0.5);
         // An aggressive zero-keep purge policy makes "fully purged log" states
         // reachable, which some replication paths only hit there.
-        let max_in_snapshot_log_to_keep = if rng.gen_bool(0.2) { 0 } else { rng.gen_range(30..=80) };
+        let max_in_snapshot_log_to_keep = if rng.random_bool(0.2) {
+            0
+        } else {
+            rng.random_range(30..=80)
+        };
         Self {
             num_initial_nodes,
             max_potential_nodes: 10,
@@ -117,26 +120,26 @@ impl DerivedConfig {
             heartbeat_interval,
             election_timeout_min,
             election_timeout_max,
-            enable_chaos,                              // 80% chance
-            restart_chance: rng.gen_range(0.01..0.05), // 1-5%
-            chaos_interval: rng.gen_range(2000..5000),
-            membership_interval: rng.gen_range(10000..25000),
+            enable_chaos,                                 // 80% chance
+            restart_chance: rng.random_range(0.01..0.05), // 1-5%
+            chaos_interval: rng.random_range(2000..5000),
+            membership_interval: rng.random_range(10000..25000),
             snapshot_logs_threshold,
             max_in_snapshot_log_to_keep,
             replication_lag_threshold: snapshot_logs_threshold * 2,
-            long_outage_chance: rng.gen_range(0.1..=0.3), // 10-30% of crashes
+            long_outage_chance: rng.random_range(0.1..=0.3), // 10-30% of crashes
             long_outage_min_ticks: 5000,
             long_outage_max_ticks: 15000,
             enable_leader_restore,
             enable_pre_vote,
-            key_space: rng.gen_range(10..=500),
-            min_message_latency_ms: rng.gen_range(0..=2),
-            max_message_latency_ms: rng.gen_range(5..=50),
-            enable_trigger_ops: rng.gen_bool(0.7),
-            trigger_interval: rng.gen_range(2000..6000),
-            quiet_window_chance: rng.gen_range(0.02..=0.06),
-            pre_liveness_quiet_ticks: if rng.gen_bool(0.25) {
-                rng.gen_range(2000..=8000)
+            key_space: rng.random_range(10..=500),
+            min_message_latency_ms: rng.random_range(0..=2),
+            max_message_latency_ms: rng.random_range(5..=50),
+            enable_trigger_ops: rng.random_bool(0.7),
+            trigger_interval: rng.random_range(2000..6000),
+            quiet_window_chance: rng.random_range(0.02..=0.06),
+            pre_liveness_quiet_ticks: if rng.random_bool(0.25) {
+                rng.random_range(2000..=8000)
             } else {
                 0
             },
@@ -385,7 +388,7 @@ struct NetworkChaos {
 impl NetworkChaos {
     fn new(seed: u64) -> Self {
         let mut rng = StdRng::seed_from_u64(seed);
-        let next_step = rng.gen_range(1000..5000);
+        let next_step = rng.random_range(1000..5000);
         Self { rng, next_step }
     }
 
@@ -402,7 +405,7 @@ impl NetworkChaos {
         }
 
         apply_network_chaos(sim, &mut self.rng, max_nodes, derived, cluster_state);
-        self.next_step = steps + self.rng.gen_range(1000..5000);
+        self.next_step = steps + self.rng.random_range(1000..5000);
     }
 }
 
@@ -489,7 +492,7 @@ impl std::fmt::Display for MembershipStats {
 impl WorkloadSchedule {
     fn new(seed: u64, key_space: u64, quiet_chance: f64, hard_quiet_from: u64, attempts: Arc<AtomicU64>) -> Self {
         let mut rng = StdRng::seed_from_u64(seed);
-        let next_step = rng.gen_range(10..50);
+        let next_step = rng.random_range(10..50);
         Self {
             rng,
             next_step,
@@ -512,8 +515,8 @@ impl WorkloadSchedule {
         Request {
             client_id: "workload".to_string(),
             serial,
-            key: format!("key-{}", self.rng.gen_range(0..self.key_space)),
-            value: format!("value-{}-{}", serial, self.rng.r#gen::<u32>()),
+            key: format!("key-{}", self.rng.random_range(0..self.key_space)),
+            value: format!("value-{}-{}", serial, self.rng.random::<u32>()),
         }
     }
 
@@ -532,10 +535,10 @@ impl WorkloadSchedule {
             return;
         }
 
-        if self.rng.gen_bool(self.quiet_chance) {
-            self.quiet_until = steps + self.rng.gen_range(1000..=8000);
+        if self.rng.random_bool(self.quiet_chance) {
+            self.quiet_until = steps + self.rng.random_range(1000..=8000);
             println!("WORKLOAD: quiet window until step {}", self.quiet_until);
-            self.next_step = steps + self.rng.gen_range(10..50);
+            self.next_step = steps + self.rng.random_range(10..50);
             return;
         }
 
@@ -544,7 +547,7 @@ impl WorkloadSchedule {
             enqueue_write(queue, history, raft, req);
         }
 
-        self.next_step = steps + self.rng.gen_range(10..50);
+        self.next_step = steps + self.rng.random_range(10..50);
     }
 }
 
@@ -565,7 +568,7 @@ struct ReadSchedule {
 impl ReadSchedule {
     fn new(seed: u64, key_space: u64) -> Self {
         let mut rng = StdRng::seed_from_u64(seed);
-        let next_step = rng.gen_range(20..80);
+        let next_step = rng.random_range(20..80);
         Self {
             rng,
             next_step,
@@ -574,7 +577,7 @@ impl ReadSchedule {
     }
 
     fn pick_key(&mut self) -> String {
-        format!("key-{}", self.rng.gen_range(0..self.key_space))
+        format!("key-{}", self.rng.random_range(0..self.key_space))
     }
 
     /// Reads keep flowing during membership pauses and workload quiet windows:
@@ -585,7 +588,7 @@ impl ReadSchedule {
         }
         let key = self.pick_key();
         queue.lock().unwrap().push_back(key);
-        self.next_step = steps + self.rng.gen_range(20..80);
+        self.next_step = steps + self.rng.random_range(20..80);
     }
 }
 
@@ -601,7 +604,7 @@ struct TriggerSchedule {
 impl TriggerSchedule {
     fn new(seed: u64, interval: u64) -> Self {
         let mut rng = StdRng::seed_from_u64(seed);
-        let next_step = interval + rng.gen_range(0..interval);
+        let next_step = interval + rng.random_range(0..interval);
         Self {
             rng,
             next_step,
@@ -619,38 +622,38 @@ impl TriggerSchedule {
         if steps < self.next_step {
             return;
         }
-        self.next_step = steps + self.interval + self.rng.gen_range(0..self.interval);
+        self.next_step = steps + self.interval + self.rng.random_range(0..self.interval);
 
         let state = cluster_state.lock().unwrap();
-        let op = match self.rng.gen_range(0..5) {
+        let op = match self.rng.random_range(0..5) {
             0 => {
-                let node = self.rng.gen_range(1..=max_nodes);
-                let pre_vote = self.rng.r#gen::<bool>();
+                let node = self.rng.random_range(1..=max_nodes);
+                let pre_vote = self.rng.random::<bool>();
                 state.get_raft(node).map(|raft| (node, raft, TriggerKind::Elect { pre_vote }))
             }
             1 => {
-                let node = self.rng.gen_range(1..=max_nodes);
+                let node = self.rng.random_range(1..=max_nodes);
                 state.get_raft(node).map(|raft| (node, raft, TriggerKind::Snapshot))
             }
             2 => {
-                let node = self.rng.gen_range(1..=max_nodes);
+                let node = self.rng.random_range(1..=max_nodes);
                 state.get_raft(node).and_then(|raft| {
                     let snapshot = raft.metrics().borrow_watched().snapshot;
                     snapshot.map(|log_id| (node, raft, TriggerKind::PurgeLog { upto: log_id.index }))
                 })
             }
             3 => {
-                let to = self.rng.gen_range(1..=max_nodes);
+                let to = self.rng.random_range(1..=max_nodes);
                 state.find_leader_entry().map(|(id, raft)| (id, raft, TriggerKind::TransferLeader { to }))
             }
             4 => {
                 // Compaction matters most on the leader, whose purged log
                 // forces replication to fall back to snapshots; hit a random
                 // node half of the time anyway.
-                if self.rng.r#gen::<bool>() {
+                if self.rng.random::<bool>() {
                     state.find_leader_entry().map(|(id, raft)| (id, raft, TriggerKind::Compact))
                 } else {
-                    let node = self.rng.gen_range(1..=max_nodes);
+                    let node = self.rng.random_range(1..=max_nodes);
                     state.get_raft(node).map(|raft| (node, raft, TriggerKind::Compact))
                 }
             }
@@ -717,11 +720,11 @@ fn apply_network_chaos(
     derived: &DerivedConfig,
     cluster_state: &Arc<Mutex<ClusterState>>,
 ) {
-    match rng.gen_range(0..9) {
+    match rng.random_range(0..9) {
         0 => {
             // Single-node isolation: one node unreachable from all others.
             // Does not threaten quorum in 3+ clusters on its own.
-            let victim = rng.gen_range(1..=max_nodes);
+            let victim = rng.random_range(1..=max_nodes);
             for i in 1..=max_nodes {
                 if i != victim {
                     sim.partition(host_name(victim), host_name(i));
@@ -738,10 +741,10 @@ fn apply_network_chaos(
         }
         2 => {
             // One-way hold on a single pair (delivers later).
-            let a = rng.gen_range(1..=max_nodes);
-            let mut b = rng.gen_range(1..=max_nodes);
+            let a = rng.random_range(1..=max_nodes);
+            let mut b = rng.random_range(1..=max_nodes);
             while b == a {
-                b = rng.gen_range(1..=max_nodes);
+                b = rng.random_range(1..=max_nodes);
             }
             sim.hold(host_name(a), host_name(b));
         }
@@ -759,7 +762,7 @@ fn apply_network_chaos(
             // Minority partition: split the cluster into a minority side
             // (size 1..=max_nodes/2) vs the rest. The majority side
             // retains quorum; the minority cannot commit until repaired.
-            let minority_size = rng.gen_range(1..=max_nodes / 2);
+            let minority_size = rng.random_range(1..=max_nodes / 2);
             let mut all: Vec<u64> = (1..=max_nodes).collect();
             all.shuffle(rng);
             let minority: BTreeSet<u64> = all.into_iter().take(minority_size as usize).collect();
@@ -782,7 +785,7 @@ fn apply_network_chaos(
             };
             let majority_needed = (max_nodes / 2) + 1;
             let extra = if max_nodes > majority_needed {
-                rng.gen_range(0..=(max_nodes - majority_needed))
+                rng.random_range(0..=(max_nodes - majority_needed))
             } else {
                 0
             };
@@ -804,23 +807,23 @@ fn apply_network_chaos(
             // arrive after messages sent later on other links. Out-of-order
             // follower acks are exactly the kind of interleaving that broke
             // the leader's commit-quorum bookkeeping upstream (#1802).
-            let a = rng.gen_range(1..=max_nodes);
-            let mut b = rng.gen_range(1..=max_nodes);
+            let a = rng.random_range(1..=max_nodes);
+            let mut b = rng.random_range(1..=max_nodes);
             while b == a {
-                b = rng.gen_range(1..=max_nodes);
+                b = rng.random_range(1..=max_nodes);
             }
-            let spike_ms = rng.gen_range(100..=800);
+            let spike_ms = rng.random_range(100..=800);
             sim.set_link_max_message_latency(host_name(a), host_name(b), Duration::from_millis(spike_ms));
         }
         7 => {
             // Link loss: one link drops a large fraction of messages,
             // exercising retry/backoff paths without a full partition.
-            let a = rng.gen_range(1..=max_nodes);
-            let mut b = rng.gen_range(1..=max_nodes);
+            let a = rng.random_range(1..=max_nodes);
+            let mut b = rng.random_range(1..=max_nodes);
             while b == a {
-                b = rng.gen_range(1..=max_nodes);
+                b = rng.random_range(1..=max_nodes);
             }
-            let loss = rng.gen_range(0.05..=0.4);
+            let loss = rng.random_range(0.05..=0.4);
             sim.set_link_fail_rate(host_name(a), host_name(b), loss);
         }
         8 => {
@@ -970,27 +973,27 @@ fn new_membership_plan(
     active_voters: &BTreeSet<NodeId>,
     potential_nodes: &BTreeMap<NodeId, Node>,
 ) -> Option<MembershipPlan> {
-    let add = active_voters.len() < 3 || (active_voters.len() < 7 && rng.gen_bool(0.7));
+    let add = active_voters.len() < 3 || (active_voters.len() < 7 && rng.random_bool(0.7));
     if add {
         let candidates: Vec<NodeId> =
             potential_nodes.keys().copied().filter(|id| !active_voters.contains(id)).collect();
-        let joiner = *candidates.get(rng.gen_range(0..candidates.len().max(1)))?;
+        let joiner = *candidates.get(rng.random_range(0..candidates.len().max(1)))?;
         let mut desired = active_voters.clone();
         desired.insert(joiner);
         Some(MembershipPlan {
             desired,
             learners_to_add: vec![(joiner, potential_nodes.get(&joiner).cloned()?)],
-            retain: rng.r#gen::<bool>(),
+            retain: rng.random::<bool>(),
         })
     } else if active_voters.len() > 3 {
         let voters: Vec<NodeId> = active_voters.iter().copied().collect();
-        let victim = voters[rng.gen_range(0..voters.len())];
+        let victim = voters[rng.random_range(0..voters.len())];
         let mut desired = active_voters.clone();
         desired.remove(&victim);
         Some(MembershipPlan {
             desired,
             learners_to_add: Vec::new(),
-            retain: rng.r#gen::<bool>(),
+            retain: rng.random::<bool>(),
         })
     } else {
         None
@@ -1448,7 +1451,6 @@ fn run_single_iteration(
     // reproducible by a fresh-process `--reproduce` run of the same seed.
     futures_util::reseed(iteration_seed);
 
-    let rng = Box::new(SmallRng::seed_from_u64(iteration_seed));
     // Sized so a healthy run can never hit the simulation-duration limit:
     // safety phase + both liveness deadlines + slack. Hitting it anyway is a
     // harness failure, reported through `step_tick`.
@@ -1460,7 +1462,8 @@ fn run_single_iteration(
         .fail_rate(derived.fail_rate)
         .enable_random_order()
         .tcp_capacity(65536)
-        .build_with_rng(rng);
+        .rng_seed(iteration_seed)
+        .build();
 
     let raft_config = Arc::new(openraft::Config {
         heartbeat_interval: derived.heartbeat_interval,
@@ -1636,19 +1639,21 @@ fn run_single_iteration(
         // - Long outage (rare, `long_outage_chance`): 5k-15k ticks, so the crashed node falls behind by
         //   more than `replication_lag_threshold` and must receive a snapshot install instead of log
         //   shipping when it rejoins.
-        if st.steps > 0 && st.steps.is_multiple_of(derived.chaos_interval) && chaos_rng.gen_bool(derived.restart_chance)
+        if st.steps > 0
+            && st.steps.is_multiple_of(derived.chaos_interval)
+            && chaos_rng.random_bool(derived.restart_chance)
         {
             let crashable: Vec<_> =
                 active_voters.iter().copied().filter(|id| !pending_bounces.iter().any(|(p, _)| p == id)).collect();
             if !crashable.is_empty() {
-                let victim = crashable[chaos_rng.gen_range(0..crashable.len())];
-                let is_long_outage = chaos_rng.gen_bool(derived.long_outage_chance);
+                let victim = crashable[chaos_rng.random_range(0..crashable.len())];
+                let is_long_outage = chaos_rng.random_bool(derived.long_outage_chance);
                 let downtime = if is_long_outage {
-                    chaos_rng.gen_range(derived.long_outage_min_ticks..=derived.long_outage_max_ticks)
+                    chaos_rng.random_range(derived.long_outage_min_ticks..=derived.long_outage_max_ticks)
                 } else {
                     let min_downtime = derived.election_timeout_max / 2;
                     let max_downtime = derived.election_timeout_max * 2;
-                    chaos_rng.gen_range(min_downtime..=max_downtime)
+                    chaos_rng.random_range(min_downtime..=max_downtime)
                 };
                 crash_node(&mut sim, victim, &cluster_state);
                 pending_bounces.push((victim, st.steps + downtime));

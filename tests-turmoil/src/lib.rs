@@ -4,8 +4,8 @@
 //! using the turmoil framework. It allows testing network partitions, message delays,
 //! and other failure scenarios in a reproducible manner.
 
-// Determinism depends on the forked turmoil seeding tokio's runtime RNG
-// (`Builder::rng_seed`, a `tokio_unstable` API): without it, `tokio::sync::watch`
+// Determinism depends on turmoil seeding tokio's runtime RNG (tokio's
+// `Builder::rng_seed`, a `tokio_unstable` API): without it, `tokio::sync::watch`
 // wakes waiters in random order. The flag comes from this crate's
 // `.cargo/config.toml`, which cargo only reads when invoked from inside this
 // directory, and whose rustflags any `RUSTFLAGS` environment variable

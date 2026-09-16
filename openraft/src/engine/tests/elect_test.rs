@@ -11,6 +11,7 @@ use rand::RngExt;
 use crate::AsyncRuntime;
 use crate::Config;
 use crate::Membership;
+use crate::MembershipState;
 use crate::Vote;
 use crate::core::ServerState;
 use crate::engine::Command;
@@ -21,9 +22,11 @@ use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
+use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::StoredMembershipOf;
+use crate::utime::Leased;
 use crate::vote::RaftLeaderIdExt;
 
 fn m1() -> Membership<u64, ()> {
@@ -384,4 +387,71 @@ fn test_elect_multi_node_enter_candidate() -> anyhow::Result<()> {
         );
     }
     Ok(())
+}
+
+#[test]
+fn test_elect_removed_committed_voter_uses_effective_quorum() {
+    let mut eng = eng();
+    eng.config.id = 1;
+    eng.state.log_ids = LogIdList::new(None, [log_id(1, 0, 2)]);
+    eng.state.vote = Leased::new(UTConfig::<()>::now(), Duration::ZERO, Vote::new(1, 0));
+    eng.state.membership_state = MembershipState::new(
+        Arc::new(StoredMembershipOf::<UTConfig>::new(
+            Some(log_id(1, 0, 1)),
+            Membership::new_with_defaults(vec![btreeset! {1,2,3}], []),
+        )),
+        Arc::new(StoredMembershipOf::<UTConfig>::new(
+            Some(log_id(1, 0, 2)),
+            Membership::new_with_defaults(vec![btreeset! {2,3}], []),
+        )),
+    );
+    eng.state.update_local_committed(&Some(log_id(1, 0, 1)));
+
+    tracing::info!("--- node 1 campaigns while its removal at index 2 is uncommitted");
+    {
+        eng.elect();
+
+        assert_eq!(Vote::new(2, 1), *eng.candidate_ref().unwrap().vote_ref());
+        assert_eq!(ServerState::Candidate, eng.state.server_state);
+    }
+
+    tracing::info!("--- self and node 2 are not a quorum of the effective voters 2,3");
+    {
+        eng.handle_vote_resp(1, VoteResponse::new(Vote::new(2, 1), Some(log_id(1, 0, 2)), true));
+        eng.handle_vote_resp(2, VoteResponse::new(Vote::new(2, 1), Some(log_id(1, 0, 2)), true));
+
+        assert_eq!(
+            btreeset! {2},
+            eng.candidate_ref().unwrap().granters().collect::<BTreeSet<_>>()
+        );
+        assert!(eng.leader_ref().is_none());
+    }
+
+    tracing::info!("--- a higher vote still cancels the removed node's campaign");
+    {
+        eng.handle_vote_resp(3, VoteResponse::new(Vote::new(3, 3), Some(log_id(1, 0, 2)), false));
+
+        assert_eq!(&Vote::new(3, 3), eng.state.vote_ref());
+        assert!(eng.candidate_ref().is_none());
+        assert!(eng.leader_ref().is_none());
+        assert_eq!(ServerState::Learner, eng.state.server_state);
+    }
+
+    tracing::info!("--- a new campaign wins only after both effective voters grant it");
+    {
+        eng.elect();
+        eng.handle_vote_resp(1, VoteResponse::new(Vote::new(4, 1), Some(log_id(1, 0, 2)), true));
+        eng.handle_vote_resp(2, VoteResponse::new(Vote::new(4, 1), Some(log_id(1, 0, 2)), true));
+        assert!(eng.leader_ref().is_none());
+
+        eng.handle_vote_resp(3, VoteResponse::new(Vote::new(4, 1), Some(log_id(1, 0, 2)), true));
+
+        assert_eq!(&Vote::new_committed(4, 1), eng.state.vote_ref());
+        assert!(eng.candidate_ref().is_none());
+        assert_eq!(ServerState::Leader, eng.state.server_state);
+        assert_eq!(
+            btreeset! {2,3},
+            eng.leader_ref().unwrap().progress.iter().map(|entry| entry.id).collect::<BTreeSet<_>>()
+        );
+    }
 }

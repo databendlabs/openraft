@@ -10,8 +10,6 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use openraft::async_runtime::WatchReceiver;
-use rand::SeedableRng;
-use rand::rngs::SmallRng;
 
 use crate::cluster::ClusterState;
 use crate::cluster::host_name;
@@ -60,7 +58,8 @@ fn learner_added_while_partitioned_catches_up_from_fully_purged_leader() {
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(600))
         .tcp_capacity(65536)
-        .build_with_rng(Box::new(SmallRng::seed_from_u64(SEED)));
+        .rng_seed(SEED)
+        .build();
 
     let raft_config = Arc::new(openraft::Config {
         heartbeat_interval: 50,

@@ -140,6 +140,37 @@ fn test_handle_pre_vote_resp_reject_keeps_waiting() -> anyhow::Result<()> {
     assert!(eng.candidate_ref().is_none(), "no real election started");
     assert_eq!(vote_before, *eng.state.vote_ref());
     assert_eq!(0, eng.output.take_commands().len());
+    assert!(
+        !eng.is_there_greater_log(),
+        "equal last_log_id does not trigger election backoff"
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_handle_pre_vote_resp_reject_seen_greater_log() -> anyhow::Result<()> {
+    let mut eng = eng();
+
+    eng.new_pre_candidate(Vote::new(1, 1));
+    eng.pre_candidate_mut().unwrap().grant_by(&1);
+    eng.output.take_commands();
+
+    tracing::info!("--- pre-vote reject with a greater last_log_id records it for election backoff");
+    {
+        eng.handle_pre_vote_resp(2, VoteResponse::new(Vote::new(0, 0), Some(log_id(2, 1, 5)), false));
+
+        assert_eq!(Some(log_id(2, 1, 5)), eng.seen_greater_log);
+        assert!(eng.is_there_greater_log());
+        assert!(eng.pre_candidate_ref().is_some());
+    }
+
+    tracing::info!("--- catching up to that log id clears the extra delay");
+    {
+        eng.state.log_ids = LogIdList::new(None, [log_id(2, 1, 5)]);
+
+        assert!(!eng.is_there_greater_log());
+    }
 
     Ok(())
 }

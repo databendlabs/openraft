@@ -75,7 +75,7 @@ clap = ["dep:clap", "dep:parse-size"]
 # `openraft::bench_internals`.
 #
 # Run the benchmarks with: `cargo bench --features bench -p openraft`
-bench = []
+bench = ["tokio-rt"]
 
 # Enable backtrace when generating an error.
 # Stable rust does not support backtrace.
@@ -95,7 +95,7 @@ single-term-leader = []
 type-alias = []
 
 # Provide basic compatible types
-compat = []
+compat = ["serde"]
 
 # DEPRECATED: This feature is removed since 0.10.0.
 #

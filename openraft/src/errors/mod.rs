@@ -94,16 +94,26 @@ pub type CheckIsLeaderError<C> = LinearizableReadError<C>;
 pub enum InstallSnapshotError {}
 
 /// An error related to a client write request.
-#[since]
+#[since(version = "0.10.0", change = "added `LogEntryDiscarded`")]
 #[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum ClientWriteError<C>
 where C: RaftTypeConfig
 {
-    /// This node is not the leader; request should be forwarded to the leader.
+    /// This proposal was rejected before its entry was appended; use this error for routing.
     #[error(transparent)]
     ForwardToLeader(#[from] ForwardToLeader<C>),
+
+    /// The proposal's local log entry was discarded while this node adopted another leader's log.
+    ///
+    /// The contained [`ForwardToLeader`] provides the latest known leader information. Retrying
+    /// requires application-level deduplication because the entry may have committed or may still
+    /// commit through another leader.
+    #[since(version = "0.10.0")]
+    #[error("log entry discarded on leader change; commit status unknown; application must deduplicate retries; {0}")]
+    #[try_into(ignore)]
+    LogEntryDiscarded(ForwardToLeader<C>),
 
     /// When writing a change-membership entry.
     #[error(transparent)]
@@ -122,7 +132,7 @@ where C: RaftTypeConfig
 {
     fn try_as_ref(&self) -> Option<&ForwardToLeader<C>> {
         match self {
-            Self::ForwardToLeader(f) => Some(f),
+            Self::ForwardToLeader(f) | Self::LogEntryDiscarded(f) => Some(f),
             _ => None,
         }
     }
@@ -391,7 +401,29 @@ pub struct Timeout<C: RaftTypeConfig> {
     pub timeout: Duration,
 }
 
-/// Error indicating that the request should be forwarded to the leader.
+/// Why a request must be forwarded or retried.
+#[since(version = "0.10.0")]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+pub enum ForwardReason {
+    /// The receiving node is not the leader.
+    #[default]
+    NotLeader,
+
+    /// The receiving leader is transferring leadership to another node.
+    LeadershipTransfer,
+
+    /// The receiving leader's quorum lease has expired.
+    LeaseExpired,
+}
+
+/// Routing information for a request this node cannot accept or finish.
+///
+/// This type does not describe whether a mutating request was accepted. See [`ClientWriteError`]
+/// for write outcome semantics.
+///
+/// [`ClientWriteError`]: crate::errors::ClientWriteError
+#[since(version = "0.10.0", change = "added `reason`")]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("has to forward request to: {leader_id:?}, {leader_node:?}")]
@@ -402,6 +434,17 @@ where C: RaftTypeConfig
     pub leader_id: Option<C::NodeId>,
     /// The node information of the current leader, if known.
     pub leader_node: Option<C::Node>,
+    /// Why the request must be forwarded or retried.
+    ///
+    /// For [`ForwardReason::LeadershipTransfer`], `leader_id` and `leader_node` identify the
+    /// transfer target, which may not have established leadership yet.
+    ///
+    /// Adding this field is not backward compatible with Serde formats that encode structs
+    /// positionally, such as bincode and postcard. Formats that encode structs by field name can
+    /// deserialize older data because a missing field defaults to [`ForwardReason::NotLeader`].
+    #[since(version = "0.10.0")]
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub reason: ForwardReason,
 }
 
 impl<C> ForwardToLeader<C>
@@ -412,6 +455,7 @@ where C: RaftTypeConfig
         Self {
             leader_id: None,
             leader_node: None,
+            reason: ForwardReason::NotLeader,
         }
     }
 
@@ -420,7 +464,16 @@ where C: RaftTypeConfig
         Self {
             leader_id: Some(leader_id),
             leader_node: Some(node),
+            reason: ForwardReason::NotLeader,
         }
+    }
+
+    /// Set why the request was rejected.
+    #[since(version = "0.10.0")]
+    #[must_use]
+    pub const fn with_reason(mut self, reason: ForwardReason) -> Self {
+        self.reason = reason;
+        self
     }
 }
 
