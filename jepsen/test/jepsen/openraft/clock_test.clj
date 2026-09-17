@@ -18,6 +18,7 @@
     (is (= clock/control-file (nth (second @calls) 5)))))
 
 (deftest application-clock-excludes-monotonic-time
+  (is (= "/usr/local/lib/libfaketimeMT.so.1" clock/library))
   (is (= clock/library (:LD_PRELOAD clock/application-env)))
   (is (= clock/control-file
          (:FAKETIME_TIMESTAMP_FILE clock/application-env)))

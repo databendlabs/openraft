@@ -78,14 +78,13 @@ async fn automatic_recovery_retries_single_remote_voter() -> Result<()> {
             );
             {
                 router.rpc_pre_hook(RPCTypes::Vote, None).await;
-                let received = survivor
+                survivor
                     .wait(timeout())
                     .metrics(
-                        |m| m.membership_config.log_id().index() == Some(final_index),
+                        |m| m.current_term > 1 && m.membership_config.log_id().index() == Some(final_index),
                         "the recovered removed leader replicates final",
                     )
                     .await?;
-                assert!(received.current_term > 1, "leader restoration is disabled");
             }
 
             tracing::info!(
