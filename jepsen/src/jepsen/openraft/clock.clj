@@ -1,7 +1,7 @@
 (ns jepsen.openraft.clock
   (:require [jepsen.control :as c]))
 
-(def library "/usr/local/lib/libfaketime.so.1")
+(def library "/usr/local/lib/libfaketimeMT.so.1")
 (def control-file "/var/lib/openraft/faketime")
 (def normal-setting "+0 x1")
 
