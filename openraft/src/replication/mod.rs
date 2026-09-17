@@ -18,14 +18,12 @@ pub(crate) mod stream_context;
 pub(crate) mod stream_state;
 
 use std::fmt;
-use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
 use display_more::DisplayOptionExt;
 use futures_util::FutureExt;
 use futures_util::StreamExt;
-use futures_util::future::Either;
 use payload::Payload;
 use replication_progress::ReplicationProgress;
 pub(crate) use replication_session_id::ReplicationSessionId;
@@ -36,22 +34,6 @@ pub(crate) const EXHAUSTED_BACKOFF_DELAY: Duration = Duration::from_millis(500);
 use response::ReplicationResult;
 use stream_state::StreamState;
 use tracing::Instrument;
-
-/// Wait for replication data or a committed-index update, preferring data when both are ready.
-async fn select_data_or_committed<D, C>(data: D, committed: C) -> Either<D::Output, C::Output>
-where
-    D: Future,
-    C: Future,
-{
-    let data = data.fuse();
-    let committed = committed.fuse();
-    futures_util::pin_mut!(data, committed);
-
-    futures_util::select_biased! {
-        output = data => Either::Left(output),
-        output = committed => Either::Right(output),
-    }
-}
 
 use crate::RaftNetworkFactory;
 use crate::RaftTypeConfig;
@@ -512,8 +494,10 @@ where
         let entries = self.event_watcher.replicate_rx.changed();
         let committed = self.event_watcher.committed_rx.changed();
 
-        match select_data_or_committed(entries, committed).await {
-            Either::Left(entries_res) => {
+        // When both events are ready, prefer log entries so that they carry the latest committed
+        // index instead of opening a stream just for an empty commit-only request.
+        futures_util::select_biased! {
+            entries_res = entries.fuse() => {
                 entries_res.map_err(|_e| ReplicationClosed::new("replicate_rx closed"))?;
                 // This read delivers the command: `borrow_and_update()` marks it as seen so a
                 // value arriving after `changed()` resolved is not delivered a second time.
@@ -521,7 +505,7 @@ where
                 self.inflight_id = Some(data.inflight_id);
                 self.next_action = Some(data.payload);
             }
-            Either::Right(committed_res) => {
+            committed_res = committed.fuse() => {
                 committed_res.map_err(|_e| ReplicationClosed::new("committed_rx closed"))?;
 
                 // Committed update: create an empty-range payload to sync commit index.
@@ -534,7 +518,7 @@ where
                 self.inflight_id = None;
                 self.next_action = Some(Payload::LogIdRange { log_id_range });
             }
-        }
+        };
 
         tracing::debug!(
             "drain_events set: inflight_id={:?}, next_action={:?}",
@@ -543,36 +527,5 @@ where
         );
 
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::future;
-
-    use futures_util::future::Either;
-    use openraft_rt::AsyncRuntime;
-    use openraft_rt_tokio::TokioRuntime;
-
-    use super::select_data_or_committed;
-
-    #[test]
-    fn test_select_data_or_committed_prefers_data_when_both_are_ready() {
-        let selected = TokioRuntime::run(select_data_or_committed(
-            future::ready("data"),
-            future::ready("committed"),
-        ));
-
-        assert!(matches!(selected, Either::Left("data")));
-    }
-
-    #[test]
-    fn test_select_data_or_committed_selects_committed_when_data_is_pending() {
-        let selected = TokioRuntime::run(select_data_or_committed(
-            future::pending::<&str>(),
-            future::ready("committed"),
-        ));
-
-        assert!(matches!(selected, Either::Right("committed")));
     }
 }

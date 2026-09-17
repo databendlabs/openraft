@@ -2,7 +2,6 @@ use std::time::Duration;
 
 use display_more::DisplayOptionExt;
 use futures_util::FutureExt;
-use futures_util::future::Either;
 
 use crate::LogIdOptionExt;
 use crate::RaftLogReader;
@@ -151,8 +150,6 @@ where
                 let io_change = self.event_watcher.io_submitted_rx.changed();
                 let committed_change = self.event_watcher.committed_rx.changed();
                 let cancel = self.replication_context.cancel_rx.changed();
-                let io_or_committed = super::select_data_or_committed(io_change, committed_change).fuse();
-                futures_util::pin_mut!(io_or_committed);
 
                 // Prefer work that can carry the commit over a dedicated commit-only request.
                 // Cancellation stays first so sustained replication can not delay shutdown.
@@ -168,21 +165,16 @@ where
                             return None;
                         }
                     }
-                    selected = io_or_committed => {
-                        match selected {
-                            Either::Left(_) => {
-                                tracing::debug!("io_submitted_rx changed");
-                                // Continue
-                            }
-                            Either::Right(_) => {
-                                tracing::debug!("committed_rx changed");
-                                // Only a commit that no request has carried is still unseen here,
-                                // because `next_request()` marks every commit it sends. With no new
-                                // logs to piggyback on, an entry-less request is the only way to
-                                // deliver it.
-                                return Some(non_reversed_log_id_range(prev, last_log_id));
-                            }
-                        }
+                    _io_changed = io_change.fuse() => {
+                        tracing::debug!("io_submitted_rx changed");
+                        // Continue
+                    }
+                    _committed_change = committed_change.fuse() => {
+                        tracing::debug!("committed_rx changed");
+                        // Only a commit that no request has carried is still unseen here, because
+                        // `next_request()` marks every commit it sends. With no new logs to
+                        // piggyback on, an entry-less request is the only way to deliver it.
+                        return Some(non_reversed_log_id_range(prev, last_log_id));
                     }
                 }
             }
