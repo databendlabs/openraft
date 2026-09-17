@@ -494,7 +494,9 @@ where
         let entries = self.event_watcher.replicate_rx.changed();
         let committed = self.event_watcher.committed_rx.changed();
 
-        futures_util::select! {
+        // When both events are ready, prefer log entries so that they carry the latest committed
+        // index instead of opening a stream just for an empty commit-only request.
+        futures_util::select_biased! {
             entries_res = entries.fuse() => {
                 entries_res.map_err(|_e| ReplicationClosed::new("replicate_rx closed"))?;
                 // This read delivers the command: `borrow_and_update()` marks it as seen so a

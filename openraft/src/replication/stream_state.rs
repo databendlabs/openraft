@@ -151,7 +151,13 @@ where
                 let committed_change = self.event_watcher.committed_rx.changed();
                 let cancel = self.replication_context.cancel_rx.changed();
 
-                futures_util::select! {
+                // Prefer work that can carry the commit over a dedicated commit-only request.
+                // Cancellation stays first so sustained replication can not delay shutdown.
+                futures_util::select_biased! {
+                    cancel_res = cancel.fuse() => {
+                        tracing::info!("Replication Stream is canceled, res: {:?}, when:(get_log_id_range:wait-for-changed)", cancel_res);
+                        return None;
+                    }
                     _data_changed = data_change.fuse() => {
                         let new_data = self.event_watcher.replicate_rx.borrow_watched().clone();
                         if Some(new_data.inflight_id) != self.inflight_id {
@@ -169,10 +175,6 @@ where
                         // `next_request()` marks every commit it sends. With no new logs to
                         // piggyback on, an entry-less request is the only way to deliver it.
                         return Some(non_reversed_log_id_range(prev, last_log_id));
-                    }
-                    cancel_res = cancel.fuse() => {
-                        tracing::info!("Replication Stream is canceled, res: {:?}, when:(get_log_id_range:wait-for-changed)", cancel_res);
-                        return None;
                     }
                 }
             }
