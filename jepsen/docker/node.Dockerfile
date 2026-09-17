@@ -73,10 +73,11 @@ RUN apt-get update \
       sudo \
  && rm -rf /var/lib/apt/lists/*
 
-# Use one architecture-independent path in the application launch environment.
-RUN faketime_lib="$(find /usr/lib -path '*/faketime/libfaketime.so.1' -print -quit)" \
+# OpenRaft uses a multi-threaded runtime, so preload libfaketime's synchronized
+# variant. Use one architecture-independent path in the launch environment.
+RUN faketime_lib="$(find /usr/lib -path '*/faketime/libfaketimeMT.so.1' -print -quit)" \
  && test -n "$faketime_lib" \
- && ln -s "$faketime_lib" /usr/local/lib/libfaketime.so.1
+ && ln -s "$faketime_lib" /usr/local/lib/libfaketimeMT.so.1
 
 RUN mkdir -p /run/sshd /var/lib/openraft /var/log/openraft /root/.ssh \
  && chmod 700 /root/.ssh \
