@@ -1,6 +1,7 @@
 # Guide for upgrading from [v0.9](https://github.com/databendlabs/openraft/tree/release-0.9) to v0.10:
 
-> This guide is under construction; it currently covers the `snapshot_id` changes.
+> This guide is under construction; it currently covers the `snapshot_id` changes
+> and the removed feature flags.
 
 ## `snapshot_id` moved out of snapshot metadata
 
@@ -59,6 +60,39 @@ in both directions, but error bodies do not — `StorageError` was an enum in
 0.9 and is a struct in 0.10 — so a peer of a different version should treat a
 serialized error response as diagnostic text rather than parse it.
 
+## Removed and renamed feature flags
+
+Enabling any of these flags in 0.10 fails compilation with an error that names
+the replacement:
+
+- `adapt-network-v1` is removed. For backward compatibility with the v1
+  `RaftNetwork` trait and chunk-based snapshot transport, use the
+  [`openraft-legacy`][] crate instead, which provides
+  `openraft_legacy::network_v1::RaftNetwork`.
+
+- `loosen-follower-log-revert` is removed. Use
+  [`Config::allow_log_reversion`][] instead:
+
+  ```ignore
+  let config = Config {
+      allow_log_reversion: Some(true),
+      ..Default::default()
+  };
+  ```
+
+- `singlethreaded` is renamed to [`single-threaded`][]. Update your
+  `Cargo.toml` to use `single-threaded` instead.
+
+- `single-term-leader` is removed. To enable standard Raft mode, set `LeaderId`
+  to [`leader_id_std::LeaderId`][], either in the `declare_raft_types!`
+  statement or in the [`RaftTypeConfig`][] implementation.
+
 [`SnapshotMeta`]:      `crate::storage::SnapshotMeta`
 [`SnapshotSignature`]: `crate::storage::SnapshotSignature`
 [`RaftNetworkV2`]:     `crate::network::RaftNetworkV2`
+
+[`openraft-legacy`]:             https://crates.io/crates/openraft-legacy
+[`Config::allow_log_reversion`]: `crate::Config::allow_log_reversion`
+[`single-threaded`]:             `crate::docs::feature_flags#feature-flag-single-threaded`
+[`leader_id_std::LeaderId`]:     `crate::impls::leader_id_std::LeaderId`
+[`RaftTypeConfig`]:              `crate::RaftTypeConfig`
