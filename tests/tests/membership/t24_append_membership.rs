@@ -309,8 +309,14 @@ async fn uncommitted_leader_log_blocks_the_append() -> Result<()> {
         new_leader
             .wait(timeout())
             .metrics(
-                |m| m.state == ServerState::Leader && m.last_quorum_acked.is_some(),
-                "node 1 leads and a quorum keeps acking it",
+                |m| {
+                    let is_leader = m.state == ServerState::Leader;
+                    let commit_tracking_reset = m.cluster_committed.is_none();
+                    let quorum_acked = m.last_quorum_acked.is_some();
+
+                    is_leader && commit_tracking_reset && quorum_acked
+                },
+                "node 1 leads with reset commit tracking and a quorum keeps acking it",
             )
             .await?;
     }
