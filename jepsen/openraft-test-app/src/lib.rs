@@ -69,6 +69,7 @@ pub async fn start_raft_node(options: Opt) -> std::io::Result<()> {
     let mut config = Config {
         heartbeat_interval: 50,
         election_timeout_min: 299,
+        quorum_loss_probe_interval: Some(700),
         ..Default::default()
     };
 
