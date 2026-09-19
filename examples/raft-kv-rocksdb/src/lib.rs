@@ -44,6 +44,7 @@ where
     let config = Config {
         heartbeat_interval: 50,
         election_timeout_min: 299,
+        enable_pre_vote: Some(true),
         ..Default::default()
     };
 

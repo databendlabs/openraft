@@ -48,6 +48,16 @@ impl GroupRouter<TypeConfig, GroupId> for Router {
         self.send(target, &group_id, "/raft/vote", rpc).await.map_err(RPCError::Unreachable)
     }
 
+    async fn pre_vote(
+        &self,
+        target: NodeId,
+        group_id: GroupId,
+        rpc: VoteRequest<TypeConfig>,
+        _option: RPCOption,
+    ) -> Result<VoteResponse<TypeConfig>, RPCError<TypeConfig>> {
+        self.send(target, &group_id, "/raft/pre-vote", rpc).await.map_err(RPCError::Unreachable)
+    }
+
     async fn full_snapshot(
         &self,
         target: NodeId,

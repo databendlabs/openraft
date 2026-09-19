@@ -69,6 +69,7 @@ pub fn example_config() -> Config {
         heartbeat_interval: 500,
         election_timeout_min: 1500,
         election_timeout_max: 3000,
+        enable_pre_vote: Some(true),
         ..Default::default()
     }
 }

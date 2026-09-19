@@ -137,4 +137,8 @@ where C: RaftTypeConfig<Node = NodeInfo>
     async fn vote(&mut self, req: VoteRequest<C>, option: RPCOption) -> Result<VoteResponse<C>, RPCError<C>> {
         self.request("vote", req, &option).await
     }
+
+    async fn pre_vote(&mut self, req: VoteRequest<C>, option: RPCOption) -> Result<VoteResponse<C>, RPCError<C>> {
+        self.request("pre-vote", req, &option).await
+    }
 }

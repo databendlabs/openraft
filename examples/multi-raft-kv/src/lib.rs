@@ -65,6 +65,7 @@ pub async fn create_node(node_id: NodeId, group_ids: &[GroupId], router: Router)
             election_timeout_min: 1500,
             election_timeout_max: 3000,
             max_in_snapshot_log_to_keep: 0,
+            enable_pre_vote: Some(true),
             ..Default::default()
         };
 

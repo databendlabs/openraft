@@ -59,6 +59,7 @@ impl App {
                 "/raft/append" => api::append(&mut self, payload).await,
                 "/raft/snapshot" => api::snapshot(&mut self, payload).await,
                 "/raft/vote" => api::vote(&mut self, payload).await,
+                "/raft/pre-vote" => api::pre_vote(&mut self, payload).await,
 
                 // Management API
                 "/mng/add-learner" => api::add_learner(&mut self, payload).await,

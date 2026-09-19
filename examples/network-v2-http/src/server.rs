@@ -127,6 +127,11 @@ where
 
             Ok(json_response(&raft.vote(req).await))
         }
+        "/pre-vote" => {
+            let req = serde_json::from_slice(&body).map_err(bad_request)?;
+
+            Ok(json_response(&raft.pre_vote(req).await))
+        }
         _ => Err(error_response(StatusCode::NOT_FOUND, "not found")),
     }
 }
