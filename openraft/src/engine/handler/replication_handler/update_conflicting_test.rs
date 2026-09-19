@@ -75,7 +75,7 @@ fn test_update_conflicting_response_identity() -> anyhow::Result<()> {
         update_entry(&mut eng, 2, |entry| {
             entry.matching = Some(log_id(2, 1, 3));
             entry.data.searching_end = 10;
-            entry.data.inflight = Inflight::logs(Some(log_id(2, 1, 7)), Some(log_id(2, 1, 9)), first_id);
+            entry.data.inflight = Inflight::probe(Some(log_id(2, 1, 7)), Some(log_id(2, 1, 9)), first_id);
         });
     }
 
@@ -95,7 +95,7 @@ fn test_update_conflicting_response_identity() -> anyhow::Result<()> {
     {
         update_entry(&mut eng, 2, |entry| {
             entry.data.searching_end = 10;
-            entry.data.inflight = Inflight::logs(Some(log_id(2, 1, 3)), Some(log_id(2, 1, 9)), second_id);
+            entry.data.inflight = Inflight::probe(Some(log_id(2, 1, 3)), Some(log_id(2, 1, 9)), second_id);
         });
     }
 
@@ -157,7 +157,7 @@ fn test_update_conflicting_reversion() -> anyhow::Result<()> {
         update_entry(&mut eng, 1, |entry| {
             entry.matching = Some(log_id(2, 1, 8));
             entry.data.searching_end = 12;
-            entry.data.inflight = Inflight::logs(Some(log_id(2, 1, 8)), Some(log_id(2, 1, 11)), first_id);
+            entry.data.inflight = Inflight::probe(Some(log_id(2, 1, 8)), Some(log_id(2, 1, 11)), first_id);
         });
         update_entry(&mut eng, 2, |entry| {
             entry.matching = Some(log_id(2, 1, 7));
@@ -208,7 +208,7 @@ fn test_update_conflicting_reversion() -> anyhow::Result<()> {
         eng.config.allow_log_reversion = false;
         update_entry(&mut eng, 3, |entry| {
             entry.data.searching_end = 10;
-            entry.data.inflight = Inflight::logs(Some(log_id(2, 1, 6)), Some(log_id(2, 1, 9)), third_id);
+            entry.data.inflight = Inflight::probe(Some(log_id(2, 1, 6)), Some(log_id(2, 1, 9)), third_id);
         });
         eng.replication_handler().allow_next_revert(3, true)?;
 
