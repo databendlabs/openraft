@@ -92,6 +92,7 @@ impl Node {
                 "/raft/append" => api::append(group, payload).await,
                 "/raft/snapshot" => api::snapshot(group, payload).await,
                 "/raft/vote" => api::vote(group, payload).await,
+                "/raft/pre-vote" => api::pre_vote(group, payload).await,
                 "/raft/transfer_leader" => api::transfer_leader(group, payload).await,
 
                 // Management API

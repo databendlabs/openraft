@@ -57,4 +57,9 @@ impl RaftNetworkV2<TypeConfig> for Connection {
         let resp = self.router.send(self.target, "/raft/vote", req).await?;
         Ok(resp)
     }
+
+    async fn pre_vote(&mut self, req: VoteRequest, _option: RPCOption) -> Result<VoteResponse, RPCError> {
+        let resp = self.router.send(self.target, "/raft/pre-vote", req).await?;
+        Ok(resp)
+    }
 }

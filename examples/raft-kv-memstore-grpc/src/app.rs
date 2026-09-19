@@ -24,6 +24,7 @@ pub async fn start_raft_app(
             heartbeat_interval: 500,
             election_timeout_min: 1500,
             election_timeout_max: 3000,
+            enable_pre_vote: Some(true),
             ..Default::default()
         }
         .validate()?,

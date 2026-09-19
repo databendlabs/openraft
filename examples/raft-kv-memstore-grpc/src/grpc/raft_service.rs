@@ -67,6 +67,22 @@ impl RaftService for RaftServiceImpl {
         Ok(Response::new(vote_resp.into()))
     }
 
+    /// Handles pre-vote requests without changing the node's term or persisted vote.
+    ///
+    /// Returns whether this node would grant the proposed vote in a real election.
+    async fn pre_vote(&self, request: Request<VoteRequest>) -> Result<Response<VoteResponse>, Status> {
+        debug!("Processing pre-vote request");
+
+        let vote_resp = self
+            .raft_node
+            .pre_vote(request.into_inner().into())
+            .await
+            .map_err(|e| Status::internal(format!("Pre-vote operation failed: {}", e)))?;
+
+        debug!("PreVote request processed successfully");
+        Ok(Response::new(vote_resp.into()))
+    }
+
     /// Handles append entries requests for log replication.
     ///
     /// # Arguments
