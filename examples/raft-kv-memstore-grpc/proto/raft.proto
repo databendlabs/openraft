@@ -159,6 +159,9 @@ service RaftService {
   // Vote handles vote requests between Raft nodes during leader election
   rpc Vote(VoteRequest) returns (VoteResponse) {}
 
+  // PreVote handles prevote requests between Raft nodes during leader election
+  rpc PreVote(VoteRequest) returns (VoteResponse) {}
+
   // AppendEntries handles call related to append entries RPC
   rpc AppendEntries(AppendEntriesRequest) returns (AppendEntriesResponse) {}
 

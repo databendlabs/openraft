@@ -162,6 +162,19 @@ impl NetVote<TypeConfig> for NetworkConnection {
         let proto_vote_resp: PbVoteResponse = response.into_inner();
         Ok(proto_vote_resp.into())
     }
+
+    async fn pre_vote(&mut self, req: VoteRequest, _option: RPCOption) -> Result<VoteResponse, RPCError> {
+        let mut client = self.make_client().await?;
+
+        let proto_vote_req: PbVoteRequest = req.into();
+        let response = client
+            .pre_vote(proto_vote_req)
+            .await
+            .map_err(|e| RPCError::Network(NetworkError::<TypeConfig>::new(&e)))?;
+
+        let proto_vote_resp: PbVoteResponse = response.into_inner();
+        Ok(proto_vote_resp.into())
+    }
 }
 
 impl NetSnapshot<TypeConfig> for NetworkConnection {
