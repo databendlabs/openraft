@@ -49,6 +49,12 @@ pub async fn vote(app: &mut GroupApp, req: String) -> String {
     encode(res)
 }
 
+/// Handle pre-vote request
+pub async fn pre_vote(app: &mut GroupApp, req: String) -> String {
+    let res = app.raft.pre_vote(decode(&req)).await;
+    encode(res)
+}
+
 /// Handle append entries request
 pub async fn append(app: &mut GroupApp, req: String) -> String {
     let res = app.raft.append_entries(decode(&req)).await;

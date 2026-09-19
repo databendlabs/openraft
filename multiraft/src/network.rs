@@ -19,6 +19,7 @@ use openraft::error::Unreachable;
 use openraft::network::Backoff;
 use openraft::network::RPCOption;
 use openraft::network::v2::RaftNetworkV2;
+use openraft::openraft_macros::since;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse;
 use openraft::raft::SnapshotResponse;
@@ -50,6 +51,16 @@ where C: RaftTypeConfig
 
     /// Send Vote to target node for a specific group.
     fn vote(
+        &self,
+        target: C::NodeId,
+        group_id: G,
+        rpc: VoteRequest<C>,
+        option: RPCOption,
+    ) -> impl Future<Output = Result<VoteResponse<C>, RPCError<C>>> + OptionalSend;
+
+    /// Send PreVote to target node for a specific group.
+    #[since(version = "0.10.0", change = "added pre_vote RPC")]
+    fn pre_vote(
         &self,
         target: C::NodeId,
         group_id: G,
@@ -164,6 +175,10 @@ where
 
     async fn vote(&mut self, rpc: VoteRequest<C>, option: RPCOption) -> Result<VoteResponse<C>, RPCError<C>> {
         self.router.vote(self.target.clone(), self.group_id.clone(), rpc, option).await
+    }
+
+    async fn pre_vote(&mut self, rpc: VoteRequest<C>, option: RPCOption) -> Result<VoteResponse<C>, RPCError<C>> {
+        self.router.pre_vote(self.target.clone(), self.group_id.clone(), rpc, option).await
     }
 
     async fn full_snapshot(
