@@ -14,6 +14,8 @@ use std::task::Context;
 use std::task::Poll;
 use std::time::Duration;
 
+use openraft_macros::since;
+
 use crate::AsyncRuntime;
 use crate::Instant;
 use crate::Mutex;
@@ -58,6 +60,15 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         Self::test_block_on_non_send();
 
         let mut rt = Rt::new(1);
+        Self::test_all_on(&mut rt);
+        DetsimSuite::<Rt>::test_all();
+    }
+
+    /// Runs the conformance checks using the caller's runtime.
+    ///
+    /// [`Self::test_all`] also runs [`DetsimSuite`], which creates its own runtimes.
+    #[since(version = "0.10.0")]
+    pub fn test_all_on(rt: &mut Rt) {
         rt.block_on(async {
             Self::test_spawn_join_handle().await;
             Self::test_thread_rng().await;
@@ -127,8 +138,6 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
             Self::test_task_local_poll_after_take_value().await;
             Self::test_task_local_get_value().await;
         });
-
-        DetsimSuite::<Rt>::test_all();
     }
 
     fn test_block_on_non_send() {

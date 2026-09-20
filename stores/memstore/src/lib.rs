@@ -89,6 +89,13 @@ mod leader_id_mode {
     pub use openraft::impls::leader_id_std::LeaderId;
 }
 
+#[cfg(not(feature = "rt-sim"))]
+#[allow(deprecated)]
+type Runtime = openraft::impls::TokioRuntime;
+
+#[cfg(feature = "rt-sim")]
+type Runtime = openraft_rt_sim::SimRuntime;
+
 openraft::declare_raft_types!(
     /// Declare the type configuration for `MemStore`.
     pub TypeConfig:
@@ -96,6 +103,7 @@ openraft::declare_raft_types!(
         R = ClientResponse,
         Node = (),
         LeaderId = leader_id_mode::LeaderId<Self::Term, Self::NodeId>,
+        AsyncRuntime = Runtime,
 );
 
 /// The application snapshot type which the `MemStore` works with.

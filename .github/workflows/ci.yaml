@@ -396,6 +396,70 @@ jobs:
           path: |
             tests/_log/
 
+  # Test the simulated runtime: an external crate, like rt-monoio and rt-compio.
+  rt-sim:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup | Toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy
+
+      - name: Clippy
+        run: cargo clippy --no-deps --manifest-path "rt-sim/Cargo.toml" --all-targets --features sim-log -- -D warnings
+
+      - name: Unit Tests
+        run: cargo test --tests --manifest-path "rt-sim/Cargo.toml" --features sim-log
+        env:
+          RUST_BACKTRACE: full
+
+  # Run one integration test on rt-sim three times in one process, in each of
+  # two processes, all with the same seed. Require byte-identical full OpenRaft
+  # logs across the processes, and across the runs in one process.
+  tests-sim:
+    name: Simulated runtime repeatability
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          # tests-sim is excluded from the root workspace; see `detsim`.
+          cache-workspaces: tests-sim
+
+      - name: Same seed, same log
+        working-directory: tests-sim
+        run: |
+          for run in a b; do
+            OPENRAFT_SIM_LOG="$RUNNER_TEMP/$run.log" cargo test --locked --test membership -- \
+              --test-threads=1 --exact \
+              run1::follower_answers_forward_to_leader \
+              run2::follower_answers_forward_to_leader \
+              run3::follower_answers_forward_to_leader
+          done
+          test -s "$RUNNER_TEMP/a.log"
+          diff "$RUNNER_TEMP/a.log" "$RUNNER_TEMP/b.log"
+
+          # Each line names its run in the test span, `membership::runN@`.
+          # Remove N so the runs compare equal.
+          for n in 1 2 3; do
+            grep -F "membership::run$n@" "$RUNNER_TEMP/a.log" \
+              | sed "s/membership::run$n@/membership::run@/g" > "$RUNNER_TEMP/run$n.log"
+          done
+          test -s "$RUNNER_TEMP/run1.log"
+          diff "$RUNNER_TEMP/run1.log" "$RUNNER_TEMP/run2.log"
+          diff "$RUNNER_TEMP/run1.log" "$RUNNER_TEMP/run3.log"
+        env:
+          OPENRAFT_RT_SIM_SEED: 9
+          OPENRAFT_NETWORK_SEND_DELAY: 30
+
   # Deterministic simulation test with turmoil.
   detsim:
     name: Deterministic simulation test
