@@ -7,6 +7,8 @@
                  [org.clojure/tools.cli "1.4.256"]
                  [jepsen "0.3.12-SNAPSHOT"]
                  [cheshire "5.6.3"]]
+  :mirrors {"central" {:name "central"
+                       :url "https://repo.maven.apache.org/maven2/"}}
   :jvm-opts ["-Djava.awt.headless=true"
              "-server"]
   :repl-options {:init-ns jepsen.openraft.cli}

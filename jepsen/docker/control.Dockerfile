@@ -13,11 +13,8 @@ WORKDIR /openraft/jepsen
 
 COPY jepsen/project.clj ./project.clj
 
-# repo1.maven.org sometimes answers 403 to a whole runner IP, so a single
-# pass fails every Central artifact at once. The 2026-08-23 `pause` job died
-# that way while its four sibling matrix jobs fetched the same artifacts
-# cleanly. Retry the resolution so one Central hiccup does not cost a
-# 30-minute Jepsen job.
+# Retry dependency resolution so a temporary repository failure does not cost
+# a 30-minute Jepsen job.
 RUN attempt=1; \
     until lein deps; do \
       if [ "$attempt" -ge 3 ]; then exit 1; fi; \
