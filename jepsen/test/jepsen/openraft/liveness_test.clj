@@ -1,6 +1,9 @@
 (ns jepsen.openraft.liveness-test
   (:require [clojure.test :refer [deftest is testing]]
             [jepsen.checker :as checker]
+            [jepsen.generator :as gen]
+            [jepsen.generator.test :as gen-test]
+            [jepsen.openraft.harness :as harness]
             [jepsen.openraft.liveness :as liveness]))
 
 (def nodes ["n1" "n2" "n3" "n4" "n5"])
@@ -90,3 +93,48 @@
                                           passing-history))))))
   (testing "empty history fails closed"
     (is (false? (:valid? (verdict []))))))
+
+(deftest stops-work-after-a-harness-failure
+  (doseq [failure-operation [:sample-liveness :ordinary-workload]]
+    (testing (str "failure in " (name failure-operation))
+      (let [failure-state (harness/failure-state)
+            operations (atom [])
+            failed? (atom false)
+            workload {:generator (gen/clients
+                                  (gen/delay 0.1 (repeat {:f :ordinary-workload})))
+                      :final-generator (gen/clients [{:f :final-workload}])}
+            history (gen-test/simulate
+                     (liveness/generator failure-state workload)
+                     (fn [_context operation]
+                       (swap! operations conj (:f operation))
+                       (when (and (= failure-operation (:f operation))
+                                  (compare-and-set! failed? false true))
+                         (harness/record-failure!
+                          failure-state (if (= :nemesis (:process operation)) :nemesis :client)
+                          {:operation operation}
+                          (RuntimeException. "harness failed")))
+                       (-> operation
+                           (assoc :type (if (= :nemesis (:process operation)) :info :ok))
+                           (update :time + 10))))
+            failure-time (:time (last (filter #(= failure-operation (:f %)) history)))
+            stop-time (:time (first (filter #(= :stop-liveness (:f %)) history)))]
+        (is (some? (harness/primary-failure failure-state)))
+        (is (= 1 (count (filter #{failure-operation} @operations))))
+        (is (some #{:stop-liveness} @operations))
+        (is (< (- stop-time failure-time) 2000000000))
+        (is (not-any? #{:final-workload} @operations))))))
+
+(deftest runs-final-workload-without-a-harness-failure
+  (let [failure-state (harness/failure-state)
+        workload {:generator (gen/clients
+                              (gen/delay 0.1 (repeat {:f :ordinary-workload})))
+                  :final-generator (gen/clients [{:f :final-workload}])}
+        history (gen-test/simulate
+                 (liveness/generator failure-state workload)
+                 (fn [_context operation]
+                   (-> operation
+                       (assoc :type (if (= :nemesis (:process operation)) :info :ok))
+                       (update :time + 10))))]
+    (is (nil? (harness/primary-failure failure-state)))
+    (is (some #(= :stop-liveness (:f %)) history))
+    (is (some #(= :final-workload (:f %)) history))))

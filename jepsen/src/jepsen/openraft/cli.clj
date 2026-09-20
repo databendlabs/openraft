@@ -59,6 +59,9 @@
                         [selection]))
                  :chaos)))
 
+(defn- supplied-option? [argv option]
+  (some #(or (= option %) (str/starts-with? % (str option "="))) argv))
+
 (def cli-opts
   [[nil "--liveness SCENARIO" "Run bridge-partition or two-leaf-partition."
     :parse-fn keyword
@@ -95,7 +98,21 @@
 
 (defn- prepare-options [parsed]
   (let [options (:options parsed)
-        nemesis-types (when-not (seq (:errors parsed))
+        liveness-errors
+        (when (:liveness options)
+          (cond-> []
+            (not (= 5 (count (:nodes options)) (count (set (:nodes options)))))
+            (conj "--liveness requires five distinct nodes.")
+
+            (supplied-option? (:argv options) "--nemesis")
+            (conj "--nemesis cannot be used with --liveness.")
+
+            (supplied-option? (:argv options) "--packet-mode")
+            (conj "--packet-mode cannot be used with --liveness.")
+
+            (supplied-option? (:argv options) "--time-limit")
+            (conj "--time-limit cannot be used with --liveness; each scenario has a fixed observation window.")))
+        nemesis-types (when-not (or (seq (:errors parsed)) (:liveness options))
                         (normalize-nemeses (:nemesis options)))
         packet-mode-error
         (when nemesis-types
@@ -114,6 +131,9 @@
                  (random/long Long/MAX_VALUE))]
     (random/set-seed! seed)
     (cond-> (assoc-in parsed [:options :seed] seed)
+      (seq liveness-errors)
+      (update :errors (fnil into []) liveness-errors)
+
       packet-mode-error
       (update :errors (fnil conj []) packet-mode-error))))
 
@@ -156,7 +176,7 @@
           {:name "openraft bridge-partition"
            :nemesis-package (liveness/package roles)
            :client (:client workload)
-           :generator (liveness/generator workload)}
+           :generator (liveness/generator failure-state workload)}
 
           (:pre-vote-stability opts)
           {:name "openraft two-leaf-partition"

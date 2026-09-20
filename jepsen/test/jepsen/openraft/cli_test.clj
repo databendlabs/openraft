@@ -1,5 +1,6 @@
 (ns jepsen.openraft.cli-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.string :as str]
+            [clojure.test :refer [deftest is testing]]
             [clojure.tools.cli :as tools-cli]
             [jepsen.checker :as checker]
             [jepsen.generator :as gen]
@@ -75,6 +76,35 @@
                                          cli/cli-opts)]
         (is (some #(re-find #"Must be a positive integer" %)
                   (:errors parsed)))))))
+
+(deftest validates-liveness-options
+  (let [options {:liveness :bridge-partition
+                 :nodes ["n1" "n2" "n3" "n4" "n5"]
+                 :nemesis [:chaos]
+                 :time-limit 60}
+        prepare (fn [args overrides]
+                  (#'cli/prepare-options
+                   {:options (assoc (merge options overrides)
+                                    :argv (into ["test"] args))}))]
+    (testing "defaults are accepted"
+      (is (empty? (:errors (prepare ["--liveness=bridge-partition"] {})))))
+
+    (testing "liveness requires five distinct nodes"
+      (doseq [nodes [["n1" "n2" "n3" "n4"]
+                     ["n1" "n2" "n3" "n4" "n4"]]]
+        (is (some #(re-find #"five distinct nodes" %)
+                  (:errors (prepare ["--liveness=bridge-partition"] {:nodes nodes}))))))
+
+    (testing "explicit ordinary-mode options are rejected"
+      (doseq [[flag argv] [["--nemesis" ["--nemesis" "packet"]]
+                           ["--nemesis" ["--nemesis=chaos"]]
+                           ["--packet-mode" ["--packet-mode" "slow"]]
+                           ["--time-limit" ["--time-limit" "10"]]
+                           ["--time-limit" ["--time-limit=60"]]]]
+        (let [errors (:errors (prepare (into ["--liveness=bridge-partition"] argv) {}))]
+          (is (some #(and (str/includes? % flag)
+                          (str/includes? % "--liveness")) errors))
+          (is (not-any? #(str/includes? % "required for Packet") errors)))))))
 
 (deftest selects-composable-nemeses
   (testing "chaos is the default"

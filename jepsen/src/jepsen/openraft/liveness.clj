@@ -6,7 +6,9 @@
              [nemesis :as nemesis]]
             [jepsen.openraft.await :as await]
             [jepsen.openraft.client :as http]
-            [jepsen.openraft.cluster :as cluster]))
+            [jepsen.openraft.cluster :as cluster]
+            [jepsen.openraft.generator :as openraft-generator]
+            [jepsen.openraft.harness :as harness]))
 
 (def observation-seconds 10)
 (def deadline-nanos 1500000000)
@@ -35,12 +37,12 @@
 (defn metric-snapshot! [test nodes]
   (into {} (map (fn [node] [node (cluster/node-metrics! test node)]) nodes)))
 
-(defn- cut! [test leader nodes]
-  (c/on leader
+(defn- cut! [test node peers]
+  (c/on node
         (c/su
-         (doseq [node nodes
+         (doseq [peer peers
                  :let [ip (.getHostAddress (java.net.InetAddress/getByName
-                                            (http/node-host node)))]]
+                                            (http/node-host peer)))]]
            (c/exec :iptables :-A :OR_LIVE :-s ip :-p :tcp
                    :-m :multiport :--ports (:raft-port test 22001) :-j :DROP)
            (c/exec :iptables :-A :OR_LIVE :-d ip :-p :tcp
@@ -160,18 +162,26 @@
   {:nemesis (PartialNetwork. roles)
    :checker (liveness-checker)})
 
-(defn generator [workload]
+(defn generator [failure-state workload]
   (let [samples #(gen/time-limit observation-seconds
                                  (gen/stagger 0.2
                                               (repeat {:type :info :f :sample-liveness})))]
     (gen/phases
      (gen/nemesis {:type :info :f :start-liveness})
      (gen/shortest-any
-      (gen/nemesis (samples))
-      ;; Let the old leader's initial quorum lease expire before the normal
-      ;; client follows any redirect to it. Otherwise an early uncommitted
-      ;; write makes the bridge's log newer and confounds the lease experiment.
-      ;; The liveness deadline still starts at installation, not after this wait.
-      (gen/phases (gen/sleep 0.6) (:generator workload)))
+      (openraft-generator/stop-on-harness-failure
+       failure-state
+       (gen/nemesis (samples)))
+      (openraft-generator/pending-on-harness-failure
+       failure-state
+       ;; Let the old leader's initial quorum lease expire before the normal
+       ;; client follows any redirect to it. Otherwise an early uncommitted
+       ;; write makes the bridge's log newer and confounds the lease experiment.
+       ;; The liveness deadline still starts at installation, not after this wait.
+       (gen/phases (gen/sleep 0.6) (:generator workload))))
      (gen/nemesis {:type :info :f :stop-liveness})
-     (:final-generator workload))))
+     (delay
+       (when-not (harness/primary-failure failure-state)
+         (openraft-generator/stop-on-harness-failure
+          failure-state
+          (:final-generator workload)))))))

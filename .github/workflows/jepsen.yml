@@ -71,23 +71,33 @@ jobs:
       matrix:
         include:
           - name: membership
+            target: safety
             nemesis: membership
           - name: partition
+            target: safety
             nemesis: partition
           - name: pause
+            target: safety
             nemesis: pause
           - name: process
+            target: safety
             nemesis: process
           - name: packet-slow
+            target: safety
             nemesis: packet
             packet_mode: slow
           - name: packet-flaky
+            target: safety
             nemesis: packet
             packet_mode: flaky
           - name: clock
+            target: safety
             nemesis: clock
           - name: chaos
+            target: safety
             nemesis: chaos
+          - name: liveness
+            target: liveness
 
     steps:
       - name: Setup | Checkout
@@ -98,7 +108,7 @@ jobs:
           make -C jepsen build
           make -C jepsen up
           docker compose -f jepsen/docker/docker-compose.yml exec control lein test
-          make -C jepsen safety NEMESIS=${{ matrix.nemesis }} PACKET_MODE=${{ matrix.packet_mode }}
+          make -C jepsen ${{ matrix.target }} NEMESIS=${{ matrix.nemesis }} PACKET_MODE=${{ matrix.packet_mode }}
 
       - name: Debug | Docker logs
         if: failure()
@@ -119,50 +129,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: jepsen-debug-${{ matrix.name }}
-          path: |
-            jepsen/store/
-            jepsen/docker-compose.log
-          if-no-files-found: ignore
-
-      - name: Cleanup | Docker
-        if: always()
-        run: make -C jepsen down
-
-  liveness:
-    name: Jepsen Liveness
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    steps:
-      - name: Setup | Checkout
-        uses: actions/checkout@v4
-
-      - name: Test | Liveness
-        run: |
-          make -C jepsen build
-          make -C jepsen up
-          make -C jepsen liveness
-
-      - name: Debug | Docker logs
-        if: failure()
-        run: |
-          docker compose -f jepsen/docker/docker-compose.yml logs --no-color \
-            | tee jepsen/docker-compose.log
-
-      - name: Results | Upload Liveness results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: jepsen-results-liveness
-          path: jepsen/store/**/results.edn
-          if-no-files-found: ignore
-
-      - name: Debug | Upload Liveness diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: jepsen-debug-liveness
           path: |
             jepsen/store/
             jepsen/docker-compose.log
