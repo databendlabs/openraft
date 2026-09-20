@@ -114,6 +114,7 @@ exclude = [
     "jepsen/openraft-test-app",
 
     "rt-monoio",
+    "rt-sim",
     "rt-compio",
     "rt-tokio",
     "multiraft"

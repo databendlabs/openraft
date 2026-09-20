@@ -15,13 +15,14 @@ if [ "${1:-}" = "--dry-run" ]; then
 fi
 
 # Publish order based on dependency graph:
-#   macros -> rt -> rt-tokio, rt-compio, rt-monoio -> openraft -> legacy, multiraft, memstore
+#   macros -> rt -> rt-tokio, rt-compio, rt-monoio -> rt-sim, openraft -> legacy, multiraft, memstore
 CRATES=(
     macros
     rt
     rt-tokio
     rt-compio
     rt-monoio
+    rt-sim
     openraft
     legacy
     multiraft

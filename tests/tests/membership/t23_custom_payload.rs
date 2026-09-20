@@ -28,6 +28,7 @@ use openraft::RaftSnapshotBuilder;
 use openraft::RaftTypeConfig;
 use openraft::Snapshot;
 use openraft::StoredMembership;
+use openraft::alias::AsyncRuntimeOf;
 use openraft::alias::EntryOf;
 use openraft::alias::LogIdOf;
 use openraft::alias::SnapshotMetaOf;
@@ -102,6 +103,7 @@ openraft::declare_raft_types!(
         R = (),
         Node = (),
         Payload = CustomPayload,
+        AsyncRuntime = AsyncRuntimeOf<openraft_memstore::TypeConfig>,
 );
 
 #[derive(Clone, Debug, Default)]
