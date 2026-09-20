@@ -257,7 +257,10 @@ Partition Nemesis. Packet provides two mutually exclusive modes:
 
 The `slow` parameters are derived from the test application's timing
 configuration. Its election timeout is approximately 299 ms and its heartbeat
-interval is 50 ms. A 300 ms base delay with a 50 ms normal jitter scale therefore
+interval is 50 ms. Every scenario also enables the quorum-loss heartbeat gate
+with `quorum_loss_probe_interval: Some(700)`, above the 600 ms minimum of the
+leader lease plus maximum election timeout. A 300 ms base delay with a 50 ms
+normal jitter scale therefore
 concentrates delays around the election threshold, with substantial probability
 on either side of it. This deliberately exercises the boundary where some
 messages arrive before an election timeout and others arrive after it, without
@@ -372,7 +375,7 @@ uses the same five data nodes (`n1` through `n5`) plus the control container as
 the normal safety tests. This is a fixed five-voter Jepsen scenario, not a
 random Chaos combination. It uses the normal Jepsen client, History, linearizability,
 panic, harness-error and final workload checks, plus a phase-specific liveness
-checker. CI runs it in a separate `Jepsen Liveness` job alongside the existing
+checker. CI runs it as the `Jepsen (liveness)` matrix entry alongside the existing
 Jepsen scenarios on pushes to main and manual workflow dispatches. Pull requests
 run lint and unit tests only. Liveness failures fail the job; they are not
 treated as expected successes. Results and failure diagnostics are uploaded,
@@ -421,9 +424,13 @@ The liveness deadline still starts at installation. This prevents an early
 uncommitted write from independently making the bridge's log newer.
 
 The test observes the original topology for ten seconds and requires a new
-write to complete within 1.5 seconds (five configured maximum election timeouts
-of 300 ms). This is an engineering bound, not a Raft timing theorem. Leader and
-Vote metrics are retained for diagnosis, not used as a stability requirement.
+write to complete within 1.5 seconds of installation. This budget includes the
+old leader's lease expiry, a first election that the bridge may reject while
+its follower lease remains valid, a retry, and the client write. In nine local
+runs, the first successful write completed 618--942 ms after installation,
+leaving 558--882 ms of margin. This is an engineering bound, not a Raft timing
+theorem. Leader and Vote metrics are retained for diagnosis, not used as a
+stability requirement.
 One successful write proves progress, not sustained availability. The topology remains
 unchanged throughout the observation period. Final cleanup heals the network
 and waits for recovery before the final read/write checks. Success during or
@@ -443,8 +450,8 @@ The CLI selects one scenario with `--liveness=two-leaf-partition`; Make expands
 `SCENARIO=all` or a comma-separated list into independent runs.
 The scenario requires five distinct nodes. Their order assigns the roles below;
 the default order is `n1,n2,n3,n4,n5`, with `n1` as the bootstrap leader.
-CI runs both scenarios in the `Jepsen Liveness` job on pushes to main and manual
-workflow dispatches, using `make -C jepsen liveness`.
+CI runs both scenarios in the `Jepsen (liveness)` matrix entry on pushes to main
+and manual workflow dispatches, using `make -C jepsen liveness`.
 
 ```text
   n5 ---- n1 ---- n3
