@@ -396,6 +396,28 @@ jobs:
           path: |
             tests/_log/
 
+  # Test the simulated runtime: an external crate, like rt-monoio and rt-compio.
+  rt-sim:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup | Toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy
+
+      - name: Clippy
+        run: cargo clippy --no-deps --manifest-path "rt-sim/Cargo.toml" --all-targets --features sim-log -- -D warnings
+
+      - name: Unit Tests
+        run: cargo test --tests --manifest-path "rt-sim/Cargo.toml" --features sim-log
+        env:
+          RUST_BACKTRACE: full
+
   # Deterministic simulation test with turmoil.
   detsim:
     name: Deterministic simulation test
