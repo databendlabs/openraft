@@ -396,6 +396,82 @@ jobs:
           path: |
             tests/_log/
 
+  # Test the simulated runtime: an external crate, like rt-monoio and rt-compio.
+  rt-sim:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup | Toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy
+
+      - name: Clippy
+        run: cargo clippy --no-deps --manifest-path "rt-sim/Cargo.toml" --all-targets --features sim-log -- -D warnings
+
+      - name: Unit Tests
+        run: cargo test --tests --manifest-path "rt-sim/Cargo.toml" --features sim-log
+        env:
+          RUST_BACKTRACE: full
+
+  # Run crate `tests/` on rt-sim. Then run the `t24_append_membership` tests in
+  # each of two processes with the same seed, and require byte-identical full
+  # OpenRaft logs. One of them must also write the same lines alone as after
+  # another test in the same process.
+  tests-rt-sim:
+    name: Tests on simulated runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy
+
+      - name: Clippy
+        run: cargo clippy --no-deps --manifest-path tests/Cargo.toml --all-targets --features rt-sim -- -D warnings
+
+      - name: Test
+        run: cargo test --manifest-path tests/Cargo.toml --features rt-sim
+        env:
+          RUST_BACKTRACE: full
+
+      - name: Same seed, same log
+        run: |
+          for run in a b; do
+            OPENRAFT_SIM_LOG="$RUNNER_TEMP/$run.log" cargo test --manifest-path tests/Cargo.toml --features rt-sim \
+              --test membership -- --test-threads=1 t24_append_membership::
+          done
+          test -s "$RUNNER_TEMP/a.log"
+          diff "$RUNNER_TEMP/a.log" "$RUNNER_TEMP/b.log"
+
+          # `follower_answers_forward_to_leader` ran after another t24 test above.
+          # Alone, it must write the same lines. Each line names its test span.
+          OPENRAFT_SIM_LOG="$RUNNER_TEMP/alone.log" cargo test --manifest-path tests/Cargo.toml --features rt-sim \
+            --test membership -- --exact t24_append_membership::follower_answers_forward_to_leader
+          span=membership::t24_append_membership@follower_answers_forward_to_leader
+          grep -F "$span" "$RUNNER_TEMP/a.log" > "$RUNNER_TEMP/after-others.log"
+          grep -F "$span" "$RUNNER_TEMP/alone.log" > "$RUNNER_TEMP/alone-only.log"
+          test -s "$RUNNER_TEMP/alone-only.log"
+          diff "$RUNNER_TEMP/after-others.log" "$RUNNER_TEMP/alone-only.log"
+        env:
+          OPENRAFT_RT_SIM_SEED: 9
+          OPENRAFT_NETWORK_SEND_DELAY: 30
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: tests-rt-sim
+          path: |
+            tests/_log/
+
   # Deterministic simulation test with turmoil.
   detsim:
     name: Deterministic simulation test
