@@ -418,6 +418,34 @@ jobs:
         env:
           RUST_BACKTRACE: full
 
+  # Run one integration test on rt-sim twice with the same seed, in separate
+  # processes, and require byte-identical full OpenRaft logs.
+  tests-sim:
+    name: Simulated runtime repeatability
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          # tests-sim is excluded from the root workspace; see `detsim`.
+          cache-workspaces: tests-sim
+
+      - name: Same seed, same log
+        working-directory: tests-sim
+        run: |
+          for run in a b; do
+            OPENRAFT_SIM_LOG="$RUNNER_TEMP/$run.log" cargo test --locked --test membership -- \
+              --exact run1::follower_answers_forward_to_leader
+          done
+          test -s "$RUNNER_TEMP/a.log"
+          diff "$RUNNER_TEMP/a.log" "$RUNNER_TEMP/b.log"
+        env:
+          OPENRAFT_RT_SIM_SEED: 9
+          OPENRAFT_NETWORK_SEND_DELAY: 30
+
   # Deterministic simulation test with turmoil.
   detsim:
     name: Deterministic simulation test

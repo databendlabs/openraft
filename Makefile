@@ -153,6 +153,7 @@ fmt:
 	cargo fmt --manifest-path examples/raft-kv-memstore/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path examples/raft-kv-rocksdb/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path examples/multi-raft-kv/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path tests-sim/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path tests-turmoil/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path jepsen/openraft-test-app/Cargo.toml $(FMT_ARGS)
 
@@ -188,6 +189,7 @@ clippy:
 	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore/Cargo.toml                       --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-rocksdb/Cargo.toml                        --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/multi-raft-kv/Cargo.toml                          --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path tests-sim/Cargo.toml                                       --all-targets -- -D warnings
 	@# Run from inside tests-turmoil so cargo reads its .cargo/config.toml,
 	@# which supplies `--cfg tokio_unstable`; `--manifest-path` from the repo
 	@# root would not pick it up.

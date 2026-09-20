@@ -85,6 +85,7 @@ members = [
 exclude = [
     "benchmarks/minimal",
     "metrics-otel",
+    "tests-sim",
     "tests-turmoil",
 
     "examples/app-http",

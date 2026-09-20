@@ -1,0 +1,59 @@
+[package]
+name = "tests-sim"
+description = "openraft integration tests on the deterministic simulated runtime (rt-sim)"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+openraft-rt-sim = { path = "../rt-sim", features = ["sim-log"] }
+
+[dev-dependencies]
+openraft          = { path = "../openraft", features = ["type-alias"] }
+openraft-legacy   = { path = "../legacy", features = ["serde"] }
+openraft-memstore = { path = "../stores/memstore", features = ["rt-sim"] }
+
+anyhow             = { version = "1.0.63" }
+derive_more        = { version = "2.1.1", features = ["std", "from", "try_into", "display"] }
+futures            = { version = "0.3" }
+lazy_static        = { version = "1.4.0" }
+maplit             = { version = "1.0.2" }
+pretty_assertions  = { version = "1.0.0" }
+rand               = { version = "0.10" }
+test-harness       = { version = "0.3.0" }
+tracing            = { version = "0.1.40" }
+tracing-appender   = { version = "0.2.0" }
+tracing-subscriber = { version = "0.3.3", features = ["env-filter"] }
+
+[features]
+default = ["reseed"]
+
+# Reseed the `select!` shuffle RNG at the start of every run. Turn it off
+# (`--no-default-features`) to see runs in one process drift.
+reseed = ["openraft-rt-sim/futures-reseed"]
+
+bt = ["openraft/bt"]
+
+# The same futures-util fork as tests-turmoil, pinned to the same tag. It adds
+# `futures_util::reseed()` for the `select!` shuffle RNG, whose thread-local
+# state otherwise depends on how many threads used it first and leaks across
+# runs in one process. rt-sim's `futures-reseed` feature calls it at the start
+# of every `block_on`.
+#   https://github.com/rust-lang/futures-rs/compare/0.3.32...drmingdrmer:futures-rs:0.3.32-openraft.1
+#
+# The whole futures-* family is patched to the same tag: inside the git
+# checkout, futures-util resolves its siblings (futures-core, ...) by path,
+# so patching only futures-util would put two copies of each sibling in the
+# graph. The tag equals the 0.3.32 release, so the code is identical.
+[patch.crates-io]
+futures = { git = "https://github.com/drmingdrmer/futures-rs", tag = "0.3.32-openraft.1" }
+futures-channel = { git = "https://github.com/drmingdrmer/futures-rs", tag = "0.3.32-openraft.1" }
+futures-core = { git = "https://github.com/drmingdrmer/futures-rs", tag = "0.3.32-openraft.1" }
+futures-executor = { git = "https://github.com/drmingdrmer/futures-rs", tag = "0.3.32-openraft.1" }
+futures-io = { git = "https://github.com/drmingdrmer/futures-rs", tag = "0.3.32-openraft.1" }
+futures-macro = { git = "https://github.com/drmingdrmer/futures-rs", tag = "0.3.32-openraft.1" }
+futures-sink = { git = "https://github.com/drmingdrmer/futures-rs", tag = "0.3.32-openraft.1" }
+futures-task = { git = "https://github.com/drmingdrmer/futures-rs", tag = "0.3.32-openraft.1" }
+futures-util = { git = "https://github.com/drmingdrmer/futures-rs", tag = "0.3.32-openraft.1" }
