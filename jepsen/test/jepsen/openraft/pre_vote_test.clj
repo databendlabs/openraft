@@ -32,7 +32,7 @@
 (def base-history
   [(event :start-pre-vote 0
           (assoc (pre-vote/topology nodes)
-                 :status :installed :rules-verified? true :metrics metrics
+                 :status :installed :metrics metrics
                  :baseline {:leader "n1" :metrics metrics :activity activity}))
    (event :sample-pre-vote second-nanos {:status :observed :metrics metrics})
    (event :sample-pre-vote (* 10 second-nanos) {:status :observed :metrics metrics})
@@ -135,7 +135,6 @@
            [0 [:value :baseline :metrics "n1" :current_term] nil]
            [second-nanos [:value :metrics "n4" :membership_config :membership :configs]
             [(vec (butlast nodes))]]
-           [0 [:value :rules-verified?] false]
            [0 [:value :retained] []]
            [0 [:value :leader] "n3"]]]
     (testing (str "invalid evidence at " time ": " path)
@@ -217,7 +216,6 @@
                             [node [:iptables :-A :OR_PREVOTE direction (get addresses peer)
                                    :-p :tcp :-m :multiport :--ports 22001 :-j :DROP]]))]
         (is (= :installed (get-in result [:value :status])))
-        (is (true? (get-in result [:value :rules-verified?])))
         (is (= plan @roles))
         (is (= expected (set additions)))
         (doseq [[node [_ _ & rule]] additions]

@@ -75,7 +75,7 @@ pub async fn start_raft_node(options: Opt) -> std::io::Result<()> {
         election_timeout_min: 299,
         // 700 ms exceeds the 600 ms minimum: leader lease + max election timeout.
         quorum_loss_probe_interval: Some(700),
-        enable_pre_vote: enable_pre_vote.then_some(true),
+        enable_pre_vote: Some(enable_pre_vote),
         ..Default::default()
     };
 
