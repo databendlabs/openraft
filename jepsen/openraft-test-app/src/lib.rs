@@ -50,6 +50,9 @@ pub struct Opt {
 
     #[clap(long)]
     snapshot_threshold: Option<NonZeroU64>,
+
+    #[clap(long)]
+    enable_pre_vote: bool,
 }
 
 #[path = "../../../examples/utils/declare_types.rs"]
@@ -62,6 +65,7 @@ pub async fn start_raft_node(options: Opt) -> std::io::Result<()> {
         raft_addr,
         data_dir,
         snapshot_threshold,
+        enable_pre_vote,
     } = options;
     let dir = data_dir.unwrap_or_else(|| PathBuf::from(format!("{api_addr}.db")));
 
@@ -70,6 +74,7 @@ pub async fn start_raft_node(options: Opt) -> std::io::Result<()> {
         heartbeat_interval: 50,
         election_timeout_min: 299,
         quorum_loss_probe_interval: Some(700),
+        enable_pre_vote: enable_pre_vote.then_some(true),
         ..Default::default()
     };
 

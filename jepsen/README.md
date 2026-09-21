@@ -88,6 +88,7 @@ The `jepsen.openraft` namespace contains the OpenRaft-specific Jepsen code:
 - `nemesis/membership.clj`: membership growth, shrink, and final restoration.
 - `nemesis/partition.clj`: leader-aware network partition faults and recovery.
 - `nemesis/process.clj`: process kill/restart and pause/resume faults.
+- `pre_vote.clj`: fixed partial-network pre-vote stability scenario.
 - `quorum.clj`: stable and joint-consensus quorum calculations.
 - `workload.clj`: generators and checkers for client operations.
 
@@ -143,6 +144,9 @@ $ make -C jepsen safety NEMESIS=partition SEED=123456
 
 # Override the committed-log threshold that triggers snapshots.
 $ make -C jepsen test SNAPSHOT_THRESHOLD=250
+
+# Run the fixed partial-network pre-vote stability test.
+$ make -C jepsen liveness SCENARIO=two-leaf-partition
 
 # Stop and remove the Jepsen containers.
 $ make -C jepsen down
@@ -375,7 +379,7 @@ treated as expected successes. Results and failure diagnostics are uploaded,
 and Docker cleanup runs regardless of the test result.
 
 Use `make -C jepsen liveness` (equivalent to `SCENARIO=all`) to run all
-available liveness scenarios. Currently, only `bridge-partition` is available.
+available liveness scenarios. Available scenarios are `bridge-partition` and `two-leaf-partition`.
 `SCENARIO` also accepts a comma-separated list; each selected scenario runs
 independently with its own setup, teardown, and results. Unknown scenarios are
 rejected before any liveness run starts.
@@ -431,6 +435,49 @@ the connected quorum can elect a leader and complete a write under
 `:original-topology`. A liveness failure here indicates a regression of the
 fix for #2080. A command failure, missing phase, or missing recovery also
 fails the run.
+
+### Pre-vote stability with a reachable leader quorum
+
+Run `make -C jepsen liveness SCENARIO=two-leaf-partition` with freshly built, running containers.
+The CLI selects one scenario with `--liveness=two-leaf-partition`; Make expands
+`SCENARIO=all` or a comma-separated list into independent runs.
+The scenario requires five distinct nodes. Their order assigns the roles below;
+the default order is `n1,n2,n3,n4,n5`, with `n1` as the bootstrap leader.
+CI runs both scenarios in the `Jepsen Liveness` job on pushes to main and manual
+workflow dispatches, using `make -C jepsen liveness`.
+
+```text
+  n5 ---- n1 ---- n3
+           \      /
+            \    /
+              n2 ---- n4
+```
+
+The retained bidirectional Raft links are `{1-2, 1-3, 2-3, 2-4, 1-5}`.
+Every other pair is blocked on the Raft port; client HTTP and SSH remain
+reachable. The scenario enables pre-vote using the real HTTP pre-vote RPC.
+Other scenarios retain their existing election configuration.
+
+After ordinary bootstrap completes, the test retains its committed vote and
+term T. There is no additional baseline wait or idle phase. The test installs
+and verifies the fixed topology, then immediately runs the normal read/write
+workload through the first three nodes for 20 seconds, scheduling read, write,
+and CAS attempts in rotation so write attempts recur regularly. The topology
+remains unchanged until healing. Node 5 continues receiving heartbeats directly
+from node 1.
+
+Acceptance requires node 1 to remain leader and every node's term to remain T
+from bootstrap through installation, the workload, healing, and recovery. It
+compares leadership-transition log counters as well as metrics to catch
+transitions between samples. It also requires recurring successful writes during
+the fault: the maximum gap between successful writes, including the start and end
+of the 20-second phase,
+must not exceed 1.5 seconds. This provisional tolerance is an engineering
+bound for workload and environment delays, not an election timeout requirement.
+The common linearizability, panic, harness-error, and final workload checks
+still apply. Recovery reads each register before writing new values, so recovery
+writes cannot conceal lost acknowledged values. Healing must let node 4 catch up;
+successful recovery cannot excuse a stability or progress failure during the partition.
 
 ## Results and Stored Evidence
 
@@ -508,9 +555,9 @@ three possible values:
   report `:unknown`; locate the nested checker with that validity for its
   diagnostic fields.
 
-Safety test names begin with `openraft linearizable registers`; the Liveness
-test is named `openraft partial-network liveness`. Each name also identifies
-its directory under `jepsen/store`. The independent linearizability checker
+Safety test names begin with `openraft linearizable registers`; liveness tests
+are named `openraft bridge-partition` and `openraft two-leaf-partition`. Each
+name also identifies its directory under `jepsen/store`. The independent linearizability checker
 lists failing keys at `[:workload :linearizable :failures]` and stores each
 key's result at `[:workload :linearizable :results <key>]`. Per-key histories
 and checker output are written under

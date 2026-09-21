@@ -143,29 +143,30 @@
   (signal-and-confirm! "CONT" :running :resumed))
 
 (defn- start-command!
-  [node-id api-addr raft-addr snapshot-threshold]
-  (control-exec!
-   (c/env (merge clock/application-env
-                 {:RUST_BACKTRACE "1"
-                  :RUST_LOG "info"}))
-   :start-stop-daemon
-   :--start
-   :--oknodo
-   :--background
-   :--no-close
-   :--exec binary
-   :--chdir data-dir
-   :--startas binary
-   :--
-   :--id node-id
-   :--api-addr api-addr
-   :--raft-addr raft-addr
-   :--snapshot-threshold snapshot-threshold
-   :>> log-file
-   (c/lit "2>&1")))
+  [node-id api-addr raft-addr snapshot-threshold enable-pre-vote?]
+  (apply control-exec!
+         (concat
+          [(c/env (merge clock/application-env
+                         {:RUST_BACKTRACE "1"
+                          :RUST_LOG "info"}))
+           :start-stop-daemon
+           :--start
+           :--oknodo
+           :--background
+           :--no-close
+           :--exec binary
+           :--chdir data-dir
+           :--startas binary
+           :--
+           :--id node-id
+           :--api-addr api-addr
+           :--raft-addr raft-addr
+           :--snapshot-threshold snapshot-threshold]
+          (when enable-pre-vote? [:--enable-pre-vote])
+          [:>> log-file (c/lit "2>&1")])))
 
 (defn- start-process!
-  [node-id api-addr raft-addr snapshot-threshold]
+  [node-id api-addr raft-addr snapshot-threshold enable-pre-vote?]
   (let [state (probe-process!)]
     (case state
       :running
@@ -175,7 +176,7 @@
       (do
         ;; --oknodo makes a start race succeed without broadly suppressing exit
         ;; status 1, which may instead mean a control or permission failure.
-        (start-command! node-id api-addr raft-addr snapshot-threshold)
+        (start-command! node-id api-addr raft-addr snapshot-threshold enable-pre-vote?)
         (await-process-state! :running)
         :start-confirmed)
 
@@ -209,7 +210,10 @@
                          {:timeout 60000})
       (jepsen/synchronize test)
       (when (= node (jepsen/primary test))
-        (cluster/bootstrap! test)))
+        (let [status (cluster/bootstrap! test)]
+          (when-let [bootstrap-state (:bootstrap-state test)]
+            (reset! bootstrap-state status))
+          status)))
 
     (teardown! [this test node]
       (info node "tearing down OpenRaft")
@@ -234,7 +238,8 @@
          (start-process! node-id
                          api-addr
                          raft-addr
-                         (:snapshot-threshold test)))))
+                         (:snapshot-threshold test)
+                         (:pre-vote-stability test)))))
 
     (kill! [_ _ _node]
       (c/su

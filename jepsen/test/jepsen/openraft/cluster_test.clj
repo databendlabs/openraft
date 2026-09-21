@@ -35,6 +35,41 @@
         (is (= "n2" (:leader status)))
         (is (= 3 (count (:metrics status))))))))
 
+(deftest stability-readiness-includes-the-final-committed-membership
+  (let [nodes ["n1" "n2" "n3" "n4" "n5"]
+        test (assoc test-config :nodes nodes :pre-vote-stability true)
+        membership {:log_id {:index 7}
+                    :membership {:configs [nodes]}}
+        metrics (into {}
+                      (map (fn [node]
+                             [(client/api-endpoint test node)
+                              {:state (if (= "n1" node) "Leader" "Follower")
+                               :current_leader "n1"
+                               :current_term 3
+                               :vote (vote 3 "n1")
+                               :membership_config membership
+                               :committed_membership_config membership}])
+                           nodes))]
+    (testing "the existing readiness check accepts five committed voters at one term"
+      (with-redefs [client/metrics! metrics]
+        (is (= "n1" (:leader (#'cluster/cluster-status test))))))
+
+    (doseq [[condition change]
+            [["a follower still has the joint membership"
+              #(assoc-in % [:membership_config :membership :configs]
+                         [["n1"] nodes])]
+             ["a follower has not committed the final membership"
+              #(assoc-in % [:committed_membership_config :log_id :index] 6)]
+             ["a follower reports another current term"
+              #(assoc % :current_term 4)]
+             ["a follower is missing its current term"
+              #(dissoc % :current_term)]]]
+      (testing condition
+        (with-redefs [client/metrics! (update metrics "n4:21001" change)]
+          (is (nil? (#'cluster/cluster-status test)))
+          (is (some? (#'cluster/cluster-status
+                      (dissoc test :pre-vote-stability)))))))))
+
 (deftest rejects-disagreement-about-the-leader
   (let [metrics {"n1:21001" {:state "Leader"
                              :current_leader "n1"
