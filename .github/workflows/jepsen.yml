@@ -94,10 +94,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Test | Jepsen
-        run: >-
-          make -C jepsen jepsen
-          NEMESIS=${{ matrix.nemesis }}
-          PACKET_MODE=${{ matrix.packet_mode }}
+        run: |
+          make -C jepsen build
+          make -C jepsen up
+          docker compose -f jepsen/docker/docker-compose.yml exec control lein test
+          make -C jepsen safety NEMESIS=${{ matrix.nemesis }} PACKET_MODE=${{ matrix.packet_mode }}
 
       - name: Debug | Docker logs
         if: failure()
@@ -138,7 +139,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Test | Liveness
-        run: make -C jepsen jepsen LIVENESS=1
+        run: |
+          make -C jepsen build
+          make -C jepsen up
+          make -C jepsen liveness SCENARIO=bridge-partition
 
       - name: Debug | Docker logs
         if: failure()

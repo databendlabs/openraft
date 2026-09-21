@@ -3,8 +3,16 @@ APP_MANIFEST := openraft-test-app/Cargo.toml
 NODES ?= n1,n2,n3,n4,n5
 CONCURRENCY ?= 3
 NEMESIS ?= chaos
+SCENARIO ?= all
+LIVENESS_SCENARIOS := bridge-partition
+comma := ,
+ifeq ($(SCENARIO),all)
+SELECTED_SCENARIOS := $(LIVENESS_SCENARIOS)
+else
+SELECTED_SCENARIOS := $(subst $(comma), ,$(SCENARIO))
+endif
 SSH_KEY ?= /root/.ssh/openraft-jepsen
-ARGS ?= --nodes $(NODES) --concurrency $(CONCURRENCY) --nemesis $(NEMESIS) --ssh-private-key $(SSH_KEY)
+ARGS ?= --nodes $(NODES) --concurrency $(CONCURRENCY) --ssh-private-key $(SSH_KEY)
 
 ifneq ($(SEED),)
 override ARGS += --seed $(SEED)
@@ -15,11 +23,7 @@ override ARGS += --snapshot-threshold $(SNAPSHOT_THRESHOLD)
 endif
 
 ifneq ($(PACKET_MODE),)
-override ARGS += --packet-mode $(PACKET_MODE)
-endif
-
-ifeq ($(LIVENESS),1)
-override ARGS += --liveness
+PACKET_ARGS := --packet-mode $(PACKET_MODE)
 endif
 
 app-lint:
@@ -43,8 +47,7 @@ jepsen: build
 	@$(COMPOSE) up -d --force-recreate
 	@echo "[jepsen] running unit tests"
 	@$(COMPOSE) exec control lein test
-	@echo "[jepsen] running linearizability test"
-	@$(COMPOSE) exec control lein run test $(ARGS)
+	@$(MAKE) test
 
 key:
 	@echo "[jepsen] preparing SSH key"
@@ -58,12 +61,26 @@ up: key
 	@echo "[jepsen] starting containers"
 	@$(COMPOSE) up -d --force-recreate
 
+# Recursive calls in one recipe stay sequential even with make -j.
+# Preserve failure while still attempting the other test category.
 test:
-	@echo "[jepsen] running linearizability test"
-	@$(COMPOSE) exec control lein run test $(ARGS)
+	@status=0; $(MAKE) safety || status=1; \
+	$(MAKE) liveness || status=1; exit $$status
+
+safety:
+	@echo "[jepsen] running safety test"
+	@$(COMPOSE) exec control lein run test $(ARGS) --nemesis=$(NEMESIS) $(PACKET_ARGS)
+
+liveness:
+	@test -n "$(SELECTED_SCENARIOS)" && test -z "$(filter-out $(LIVENESS_SCENARIOS),$(SELECTED_SCENARIOS))" || \
+	{ echo "Unknown scenario: $(SCENARIO). Available: all, $(LIVENESS_SCENARIOS)"; exit 1; }
+	@status=0; for scenario in $(SELECTED_SCENARIOS); do \
+		echo "[jepsen] running liveness scenario $$scenario"; \
+		$(COMPOSE) exec control lein run test $(ARGS) --liveness=$$scenario || status=1; \
+	done; exit $$status
 
 down:
 	@echo "[jepsen] stopping containers"
 	@$(COMPOSE) down
 
-.PHONY: app-lint app-test clojure-lint lint unit-test jepsen key build up test down
+.PHONY: safety liveness app-lint app-test clojure-lint lint unit-test jepsen key build up test down
