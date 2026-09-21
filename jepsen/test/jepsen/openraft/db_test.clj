@@ -28,7 +28,7 @@
       (nth command (inc index)))))
 
 (deftest starts-and-confirms-the-test-app
-  (doseq [options [{} {:pre-vote-stability true}]]
+  (doseq [options [{} {:two-leaf-partition true}]]
     (testing (str "scenario options " options)
       (let [calls (atom [])
             running? (atom false)
@@ -49,8 +49,8 @@
           (is (= "n1:21001" (argument-after start-command :--api-addr)))
           (is (= "n1:22001" (argument-after start-command :--raft-addr)))
           (is (= 250 (argument-after start-command :--snapshot-threshold)))
-          (is (= (if (:pre-vote-stability options) 1 0) (count pre-vote-flags)))
-          (when (:pre-vote-stability options)
+          (is (= (if (:two-leaf-partition options) 1 0) (count pre-vote-flags)))
+          (when (:two-leaf-partition options)
             (is (< (.indexOf start-command :--)
                    (.indexOf start-command :--enable-pre-vote)
                    (.indexOf start-command :>>)))))))))

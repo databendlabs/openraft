@@ -88,7 +88,9 @@ The `jepsen.openraft` namespace contains the OpenRaft-specific Jepsen code:
 - `nemesis/membership.clj`: membership growth, shrink, and final restoration.
 - `nemesis/partition.clj`: leader-aware network partition faults and recovery.
 - `nemesis/process.clj`: process kill/restart and pause/resume faults.
-- `pre_vote.clj`: fixed partial-network pre-vote stability scenario.
+- `scenario/bridge_partition.clj`: old-leader bridge liveness scenario.
+- `scenario/two_leaf_partition.clj`: stable-leader two-leaf scenario.
+- `history.clj`: shared Jepsen history queries used by scenario checkers.
 - `quorum.clj`: stable and joint-consensus quorum calculations.
 - `workload.clj`: generators and checkers for client operations.
 
@@ -443,7 +445,7 @@ the connected quorum can elect a leader and complete a write under
 fix for #2080. A command failure, missing phase, or missing recovery also
 fails the run.
 
-### Pre-vote stability with a reachable leader quorum
+### Two-leaf partition with a reachable leader quorum
 
 Run `make -C jepsen liveness SCENARIO=two-leaf-partition` with freshly built, running containers.
 The CLI selects one scenario with `--liveness=two-leaf-partition`; Make expands

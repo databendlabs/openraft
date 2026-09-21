@@ -77,6 +77,11 @@
           (throw e))
         (throw e)))))
 
+(defn metric-snapshot!
+  "Fetches metrics from each requested node, keyed by its Jepsen node name."
+  [test nodes]
+  (into {} (map (fn [node] [node (node-metrics! test node)]) nodes)))
+
 (def ^:private modeled-metrics-failure-kinds
   #{:http-error
     :invalid-json
@@ -219,9 +224,9 @@
         (when (and leader-vote
                    (every? #(and (= leader-id (:current_leader %))
                                  (= leader-vote (:vote %))
-                                 ;; The stability scenario retains this result as
+                                 ;; The two-leaf scenario retains this result as
                                  ;; its reference, including the final membership.
-                                 (or (not (:pre-vote-stability test))
+                                 (or (not (:two-leaf-partition test))
                                      (and (some? (:current_term %))
                                           (= (:current_term leader-metrics)
                                              (:current_term %))

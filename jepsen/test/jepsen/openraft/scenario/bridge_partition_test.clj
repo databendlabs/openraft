@@ -1,10 +1,10 @@
-(ns jepsen.openraft.liveness-test
+(ns jepsen.openraft.scenario.bridge-partition-test
   (:require [clojure.test :refer [deftest is testing]]
             [jepsen.checker :as checker]
             [jepsen.generator :as gen]
             [jepsen.generator.test :as gen-test]
             [jepsen.openraft.harness :as harness]
-            [jepsen.openraft.liveness :as liveness]))
+            [jepsen.openraft.scenario.bridge-partition :as bridge-partition]))
 
 (def nodes ["n1" "n2" "n3" "n4" "n5"])
 
@@ -16,17 +16,17 @@
    {:process 0 :type :ok :f :write :time finish :value ["k" "v"]}])
 
 (def base-history
-  [(update (event :start-liveness 0 :installed) :value assoc
+  [(update (event :start-bridge-partition 0 :installed) :value assoc
            :majority ["n1" "n2" "n3"] :leader "n4" :isolated "n5")
-   (assoc-in (event :sample-liveness 100000000 :observed)
+   (assoc-in (event :sample-bridge-partition 100000000 :observed)
              [:value :metrics]
              (zipmap nodes
                      (repeat {:membership_config {:membership {:configs [nodes]}}})))
-   {:process :nemesis :type :info :f :stop-liveness :time 10000000000}
-   (event :stop-liveness 11000000000 :recovered)])
+   {:process :nemesis :type :info :f :stop-bridge-partition :time 10000000000}
+   (event :stop-bridge-partition 11000000000 :recovered)])
 
 (defn verdict [history]
-  (checker/check (liveness/liveness-checker) {:nodes nodes}
+  (checker/check (bridge-partition/checker) {:nodes nodes}
                  (sort-by :time history) {}))
 
 (def passing-history
@@ -35,9 +35,9 @@
 (deftest topology-test
   (is (= {:leader "n4" :bridge "n1" :majority ["n1" "n2" "n3"]
           :cut ["n2" "n3"] :isolated "n5"}
-         (liveness/topology nodes "n4")))
+         (bridge-partition/topology nodes "n4")))
   (doseq [leader nodes]
-    (let [{:keys [majority bridge cut isolated] :as plan} (liveness/topology nodes leader)]
+    (let [{:keys [majority bridge cut isolated] :as plan} (bridge-partition/topology nodes leader)]
       (is (= leader (:leader plan)))
       (is (= (frequencies nodes) (frequencies (concat majority [leader isolated]))))
       (is (= 3 (count majority)))
@@ -46,9 +46,9 @@
   (doseq [invalid [(vec (butlast nodes)) (conj nodes "n6")
                    ["n1" "n2" "n3" "n4" "n4"]]]
     (is (thrown? clojure.lang.ExceptionInfo
-                 (liveness/topology invalid "n1"))))
+                 (bridge-partition/topology invalid "n1"))))
   (is (thrown? clojure.lang.ExceptionInfo
-               (liveness/topology nodes "n6"))))
+               (bridge-partition/topology nodes "n6"))))
 
 (deftest phase-boundaries-test
   (testing "writes during and after recovery cannot hide the fault-period stall"
@@ -64,7 +64,7 @@
                        [:original-topology :successful-writes]))))
   (testing "a four-voter membership cannot pass the five-node scenario"
     (let [result (verdict
-                  (map #(if (= :sample-liveness (:f %))
+                  (map #(if (= :sample-bridge-partition (:f %))
                           (update-in % [:value :metrics]
                                      (fn [metrics]
                                        (into {} (for [[node m] metrics]
@@ -79,7 +79,7 @@
       (is (false?
            (:valid?
             (verdict
-             (map #(if (= :sample-liveness (:f %))
+             (map #(if (= :sample-bridge-partition (:f %))
                      (update-in % [:value :metrics] dissoc node) %)
                   passing-history)))) node)))
   (testing "success after the deadline is reported but fails the bound"
@@ -95,7 +95,7 @@
     (is (false? (:valid? (verdict []))))))
 
 (deftest stops-work-after-a-harness-failure
-  (doseq [failure-operation [:sample-liveness :ordinary-workload]]
+  (doseq [failure-operation [:sample-bridge-partition :ordinary-workload]]
     (testing (str "failure in " (name failure-operation))
       (let [failure-state (harness/failure-state)
             operations (atom [])
@@ -104,7 +104,7 @@
                                   (gen/delay 0.1 (repeat {:f :ordinary-workload})))
                       :final-generator (gen/clients [{:f :final-workload}])}
             history (gen-test/simulate
-                     (liveness/generator failure-state workload)
+                     (bridge-partition/generator failure-state workload)
                      (fn [_context operation]
                        (swap! operations conj (:f operation))
                        (when (and (= failure-operation (:f operation))
@@ -117,10 +117,10 @@
                            (assoc :type (if (= :nemesis (:process operation)) :info :ok))
                            (update :time + 10))))
             failure-time (:time (last (filter #(= failure-operation (:f %)) history)))
-            stop-time (:time (first (filter #(= :stop-liveness (:f %)) history)))]
+            stop-time (:time (first (filter #(= :stop-bridge-partition (:f %)) history)))]
         (is (some? (harness/primary-failure failure-state)))
         (is (= 1 (count (filter #{failure-operation} @operations))))
-        (is (some #{:stop-liveness} @operations))
+        (is (some #{:stop-bridge-partition} @operations))
         (is (< (- stop-time failure-time) 2000000000))
         (is (not-any? #{:final-workload} @operations))))))
 
@@ -130,11 +130,11 @@
                               (gen/delay 0.1 (repeat {:f :ordinary-workload})))
                   :final-generator (gen/clients [{:f :final-workload}])}
         history (gen-test/simulate
-                 (liveness/generator failure-state workload)
+                 (bridge-partition/generator failure-state workload)
                  (fn [_context operation]
                    (-> operation
                        (assoc :type (if (= :nemesis (:process operation)) :info :ok))
                        (update :time + 10))))]
     (is (nil? (harness/primary-failure failure-state)))
-    (is (some #(= :stop-liveness (:f %)) history))
+    (is (some #(= :stop-bridge-partition (:f %)) history))
     (is (some #(= :final-workload (:f %)) history))))

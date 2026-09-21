@@ -1,5 +1,5 @@
-(ns jepsen.openraft.pre-vote
-  "Leader and term stability under a fixed partial network."
+(ns jepsen.openraft.scenario.two-leaf-partition
+  "Two-leaf-partition liveness scenario."
   (:require [clojure.string :as str]
             [jepsen [checker :as checker]
              [control :as c]
@@ -7,9 +7,10 @@
              [nemesis :as nemesis]]
             [jepsen.openraft.await :as await]
             [jepsen.openraft.client :as http]
-            [jepsen.openraft.liveness :as liveness]
+            [jepsen.openraft.cluster :as cluster]
             [jepsen.openraft.db :as db]
             [jepsen.openraft.generator :as generator]
+            [jepsen.openraft.history :as history]
             [jepsen.openraft.harness :as harness]))
 
 (def observation-seconds 20)
@@ -17,7 +18,7 @@
 
 (defn topology [nodes]
   (when-not (= 5 (count nodes) (count (set nodes)))
-    (throw (ex-info "Pre-vote stability requires five distinct nodes" {:nodes nodes})))
+    (throw (ex-info "Two-leaf partition requires five distinct nodes" {:nodes nodes})))
   (let [[n1 n2 n3 n4 n5] nodes]
     {:leader n1 :core [n1 n2 n3] :disconnected n4
      :retained [[n1 n2] [n1 n3] [n2 n3] [n2 n4] [n1 n5]]
@@ -38,7 +39,7 @@
                           db/log-file)
            counts (mapv parse-long (str/split (str/trim output) #"\s+"))]
        (when-not (and (= 2 (count counts)) (every? some? counts))
-         (throw (ex-info "Invalid pre-vote activity counters" {:output output})))
+         (throw (ex-info "Invalid leadership activity counters" {:output output})))
        (zipmap [:leader-entries :leader-exits] counts)))))
 
 (defn- install! [test plan]
@@ -46,14 +47,14 @@
    test (keys (:blocked plan))
    (fn [_ node]
      (c/su
-      (c/exec :iptables :-N :OR_PREVOTE)
+      (c/exec :iptables :-N :OR_TWO_LEAF_PARTITION)
       (doseq [chain [:INPUT :OUTPUT]]
-        (c/exec :iptables :-I chain :-j :OR_PREVOTE)
-        (c/exec :iptables :-C chain :-j :OR_PREVOTE))
+        (c/exec :iptables :-I chain :-j :OR_TWO_LEAF_PARTITION)
+        (c/exec :iptables :-C chain :-j :OR_TWO_LEAF_PARTITION))
       (doseq [peer (get-in plan [:blocked node])
               :let [ip (.getHostAddress (java.net.InetAddress/getByName (http/node-host peer)))]
               direction [:-s :-d]]
-        (let [rule [:OR_PREVOTE direction ip :-p :tcp :-m :multiport
+        (let [rule [:OR_TWO_LEAF_PARTITION direction ip :-p :tcp :-m :multiport
                     :--ports (:raft-port test http/default-raft-port) :-j :DROP]]
           (apply c/exec :iptables :-A rule)
           (apply c/exec :iptables :-C rule)))))))
@@ -67,12 +68,12 @@
         ;; A failed listing must propagate as a control-plane failure; it does
         ;; not establish that the chain is absent or that healing succeeded.
         (let [rules (str/split-lines (c/exec :iptables :-S))]
-          (when (some #{"-N OR_PREVOTE"} rules)
+          (when (some #{"-N OR_TWO_LEAF_PARTITION"} rules)
             (doseq [chain [:INPUT :OUTPUT]
-                    _ (filter #{(str "-A " (name chain) " -j OR_PREVOTE")} rules)]
-              (c/exec :iptables :-D chain :-j :OR_PREVOTE))
-            (c/exec :iptables :-F :OR_PREVOTE)
-            (c/exec :iptables :-X :OR_PREVOTE))))))))
+                    _ (filter #{(str "-A " (name chain) " -j OR_TWO_LEAF_PARTITION")} rules)]
+              (c/exec :iptables :-D chain :-j :OR_TWO_LEAF_PARTITION))
+            (c/exec :iptables :-F :OR_TWO_LEAF_PARTITION)
+            (c/exec :iptables :-X :OR_TWO_LEAF_PARTITION))))))))
 
 (defn- caught-up? [metrics leader]
   (let [applied (get-in metrics [leader :last_applied])]
@@ -81,12 +82,12 @@
                        (= (:index applied) (:last_log_index %)))
                  (vals metrics)))))
 
-(defrecord PreVoteStability [roles]
+(defrecord TwoLeafPartition [roles]
   nemesis/Nemesis
   (setup! [this _] this)
   (invoke! [_ test op]
     (case (:f op)
-      :start-pre-vote
+      :start-two-leaf-partition
       (let [bootstrap (some-> (:bootstrap-state test) deref)
             plan (topology (:nodes test))]
         (when-not bootstrap
@@ -96,15 +97,15 @@
         (let [baseline (assoc bootstrap :activity (activity-snapshot! test))]
           (install! test plan)
           (assoc op :value (assoc plan :status :installed
-                                  :baseline baseline :metrics (liveness/metric-snapshot! test (:nodes test))))))
+                                  :baseline baseline :metrics (cluster/metric-snapshot! test (:nodes test))))))
 
-      :sample-pre-vote
-      (assoc op :value (cond-> {:status :observed :metrics (liveness/metric-snapshot! test (:nodes test))}
+      :sample-two-leaf-partition
+      (assoc op :value (cond-> {:status :observed :metrics (cluster/metric-snapshot! test (:nodes test))}
                          (:final-sample? op) (assoc :activity (activity-snapshot! test))))
 
-      :stop-pre-vote
+      :stop-two-leaf-partition
       (let [before-heal (try
-                          {:metrics (liveness/metric-snapshot! test (:nodes test))}
+                          {:metrics (cluster/metric-snapshot! test (:nodes test))}
                           (catch Exception e
                             ;; Diagnostic failures must not prevent network recovery.
                             (try
@@ -116,35 +117,35 @@
         (heal! test @roles)
         (let [recovered? (try
                            (await/until!
-                            :pre-vote-catch-up
-                            #(let [ms (liveness/metric-snapshot! test (:nodes test))]
+                            :two-leaf-catch-up
+                            #(let [ms (cluster/metric-snapshot! test (:nodes test))]
                                (swap! observations conj ms)
                                (if (caught-up? ms (:leader @roles))
                                  true
-                                 (await/retry! :pre-vote-catch-up {})))
+                                 (await/retry! :two-leaf-catch-up {})))
                             {:timeout 10000})
                            (catch Exception e
-                             (if (await/condition-timeout? e :pre-vote-catch-up)
+                             (if (await/condition-timeout? e :two-leaf-catch-up)
                                false
                                (throw e))))]
           (assoc op :value {:status (if recovered? :recovered :incomplete)
                             :before-heal before-heal :recovery-metrics @observations})))))
   (teardown! [_ test] (heal! test @roles))
   nemesis/Reflection
-  (fs [_] #{:start-pre-vote :sample-pre-vote :stop-pre-vote}))
+  (fs [_] #{:start-two-leaf-partition :sample-two-leaf-partition :stop-two-leaf-partition}))
 
 (defn- events [history f status]
   (filter #(and (= :nemesis (:process %)) (= f (:f %))
                 (= status (get-in % [:value :status]))) history))
 
-(defn stability-checker []
+(defn checker []
   (reify checker/Checker
     (check [_ test history _]
-      (let [start (first (events history :start-pre-vote :installed))
+      (let [start (first (events history :start-two-leaf-partition :installed))
             stop (first (filter #(and (= :nemesis (:process %))
-                                      (= :stop-pre-vote (:f %))) history))
-            recovered (first (events history :stop-pre-vote :recovered))
-            samples (events history :sample-pre-vote :observed)
+                                      (= :stop-two-leaf-partition (:f %))) history))
+            recovered (first (events history :stop-two-leaf-partition :recovered))
+            samples (events history :sample-two-leaf-partition :observed)
             final (first (filter :final-sample? samples))
             nodes (set (:nodes test))
             leader (first (:nodes test))
@@ -184,7 +185,7 @@
                                                         (select-keys after [:leader-entries :leader-exits])))))
                                             nodes))
             writes (when (and start stop)
-                     (liveness/find-successful-writes history (:time start) (:time stop)))
+                     (history/successful-writes history (:time start) (:time stop)))
             max-gap (when (and start stop)
                       (apply max (map - (concat (map :time writes) [(:time stop)])
                                       (cons (:time start) (map :time writes)))))
@@ -203,27 +204,27 @@
          :observation-complete? (boolean bounds?) :recovered? (boolean (and recovered caught-up?))}))))
 
 (defn package [roles]
-  {:nemesis (PreVoteStability. roles) :checker (stability-checker)})
+  {:nemesis (TwoLeafPartition. roles) :checker (checker)})
 
 (defn generator [failure-state workload]
   (gen/phases
    (generator/stop-on-harness-failure
-    failure-state (gen/nemesis {:type :info :f :start-pre-vote}))
+    failure-state (gen/nemesis {:type :info :f :start-two-leaf-partition}))
    (gen/shortest-any
     (gen/nemesis
      (generator/stop-on-harness-failure
       failure-state
       (gen/phases
        (gen/time-limit observation-seconds
-                       (gen/delay 0.2 (repeat {:type :info :f :sample-pre-vote})))
+                       (gen/delay 0.2 (repeat {:type :info :f :sample-two-leaf-partition})))
        ;; time-limit rejects its next scheduled op immediately. Finish the last
        ;; sample interval while clients keep running, ensuring a full 20 seconds.
        (gen/sleep 0.2))))
     (generator/pending-on-harness-failure failure-state (:generator workload)))
-   (gen/nemesis {:type :info :f :stop-pre-vote})
+   (gen/nemesis {:type :info :f :stop-two-leaf-partition})
    (delay
      (when-not (harness/primary-failure failure-state)
        (generator/stop-on-harness-failure
         failure-state
         (gen/phases (:final-generator workload)
-                    (gen/nemesis {:type :info :f :sample-pre-vote :final-sample? true})))))))
+                    (gen/nemesis {:type :info :f :sample-two-leaf-partition :final-sample? true})))))))

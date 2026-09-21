@@ -1,4 +1,4 @@
-(ns jepsen.openraft.pre-vote-test
+(ns jepsen.openraft.scenario.two-leaf-partition-test
   (:require [clojure.test :refer [deftest is testing]]
             [jepsen [checker :as checker]
              [control :as c]
@@ -8,7 +8,7 @@
             [jepsen.openraft.client :as http]
             [jepsen.openraft.cluster :as cluster]
             [jepsen.openraft.harness :as harness]
-            [jepsen.openraft.pre-vote :as pre-vote]))
+            [jepsen.openraft.scenario.two-leaf-partition :as two-leaf-partition]))
 
 (def nodes ["n1" "n2" "n3" "n4" "n5"])
 (def second-nanos 1000000000)
@@ -30,19 +30,19 @@
   {:process :nemesis :type :info :f f :time time :value value})
 
 (def base-history
-  [(event :start-pre-vote 0
-          (assoc (pre-vote/topology nodes)
+  [(event :start-two-leaf-partition 0
+          (assoc (two-leaf-partition/topology nodes)
                  :status :installed :metrics metrics
                  :baseline {:leader "n1" :metrics metrics :activity activity}))
-   (event :sample-pre-vote second-nanos {:status :observed :metrics metrics})
-   (event :sample-pre-vote (* 10 second-nanos) {:status :observed :metrics metrics})
-   (event :sample-pre-vote (* 19 second-nanos) {:status :observed :metrics metrics})
-   (event :stop-pre-vote (* 20 second-nanos) nil)
-   (event :stop-pre-vote (* 21 second-nanos)
+   (event :sample-two-leaf-partition second-nanos {:status :observed :metrics metrics})
+   (event :sample-two-leaf-partition (* 10 second-nanos) {:status :observed :metrics metrics})
+   (event :sample-two-leaf-partition (* 19 second-nanos) {:status :observed :metrics metrics})
+   (event :stop-two-leaf-partition (* 20 second-nanos) nil)
+   (event :stop-two-leaf-partition (* 21 second-nanos)
           {:status :recovered
            :before-heal {:metrics metrics}
            :recovery-metrics [metrics]})
-   (assoc (event :sample-pre-vote (* 22 second-nanos)
+   (assoc (event :sample-two-leaf-partition (* 22 second-nanos)
                  {:status :observed :metrics metrics :activity activity})
           :final-sample? true)])
 
@@ -58,14 +58,14 @@
 (def passing-history (concat base-history workload))
 
 (defn verdict [history]
-  (checker/check (pre-vote/stability-checker) {:nodes nodes}
+  (checker/check (two-leaf-partition/checker) {:nodes nodes}
                  (sort-by :time history) {}))
 
 (defn change-event [history predicate f]
   (map #(if (predicate %) (f %) %) history))
 
 (deftest topology-retains-exactly-the-requested-links
-  (let [{:keys [retained blocked] :as plan} (pre-vote/topology nodes)
+  (let [{:keys [retained blocked] :as plan} (two-leaf-partition/topology nodes)
         retained (set (map set retained))
         blocked (set (for [[node peers] blocked peer peers] #{node peer}))
         all-pairs (set (for [a nodes b nodes :when (neg? (compare a b))] #{a b}))]
@@ -78,9 +78,9 @@
     (is (not-any? retained blocked)))
   (doseq [invalid [(vec (butlast nodes)) (conj nodes "n6")
                    ["n1" "n2" "n3" "n4" "n4"]]]
-    (is (thrown? clojure.lang.ExceptionInfo (pre-vote/topology invalid)))))
+    (is (thrown? clojure.lang.ExceptionInfo (two-leaf-partition/topology invalid)))))
 
-(deftest stability-checker-accepts-a-complete-stable-execution
+(deftest checker-accepts-a-complete-stable-execution
   (let [result (verdict passing-history)]
     (is (true? (:valid? result)))
     (is (= 7 (:term result)))
@@ -124,8 +124,8 @@
         (is (false? (:valid? result)))
         (is (false? (:complete-observations? result))))))
   (testing "missing mandatory events cannot pass"
-    (doseq [predicate [#(= :start-pre-vote (:f %))
-                       #(and (= :sample-pre-vote (:f %)) (not (:final-sample? %)))
+    (doseq [predicate [#(= :start-two-leaf-partition (:f %))
+                       #(and (= :sample-two-leaf-partition (:f %)) (not (:final-sample? %)))
                        :final-sample?
                        #(= :recovered (get-in % [:value :status]))]]
       (is (false? (:valid? (verdict (remove predicate passing-history)))))))
@@ -143,7 +143,7 @@
   (testing "samples only after healing do not establish partition coverage"
     (is (false? (:valid? (verdict
                           (change-event passing-history
-                                        #(and (= :sample-pre-vote (:f %)) (not (:final-sample? %)))
+                                        #(and (= :sample-two-leaf-partition (:f %)) (not (:final-sample? %)))
                                         #(assoc % :time (+ (* 21 second-nanos) 100000000))))))))
   (testing "empty history fails closed"
     (is (false? (:valid? (verdict []))))))
@@ -181,11 +181,11 @@
   (let [commands (atom [])
         current-node (atom nil)
         roles (atom nil)
-        plan (pre-vote/topology nodes)
+        plan (two-leaf-partition/topology nodes)
         addresses (zipmap nodes ["127.0.0.1" "127.0.0.2" "127.0.0.3" "127.0.0.4" "127.0.0.5"])
         test {:nodes nodes :raft-port 22001
               :bootstrap-state (atom {:leader "n1" :metrics metrics})}
-        subject (:nemesis (pre-vote/package roles))
+        subject (:nemesis (two-leaf-partition/package roles))
         on-nodes (fn on-nodes
                    ([test f] (on-nodes test (:nodes test) f))
                    ([test targets f]
@@ -199,7 +199,7 @@
                              (= :awk (first args)) "1 0\n"
                              (= [:iptables :-S] (vec args))
                              (if (= "n4" @current-node)
-                               "-N OR_PREVOTE\n-A INPUT -j OR_PREVOTE\n-A OUTPUT -j OR_PREVOTE\n"
+                               "-N OR_TWO_LEAF_PARTITION\n-A INPUT -j OR_TWO_LEAF_PARTITION\n-A OUTPUT -j OR_TWO_LEAF_PARTITION\n"
                                "-P INPUT ACCEPT\n-P OUTPUT ACCEPT\n")
                              :else ""))
                   http/node-host addresses
@@ -210,10 +210,10 @@
 (deftest firewall-installs-and-verifies-only-the-raft-cuts
   (with-firewall
     (fn [{:keys [commands roles plan addresses test subject]}]
-      (let [result (nemesis/invoke! subject test {:type :info :f :start-pre-vote})
+      (let [result (nemesis/invoke! subject test {:type :info :f :start-two-leaf-partition})
             additions (filter #(= [:iptables :-A] (take 2 (second %))) @commands)
             expected (set (for [[node peers] (:blocked plan) peer peers direction [:-s :-d]]
-                            [node [:iptables :-A :OR_PREVOTE direction (get addresses peer)
+                            [node [:iptables :-A :OR_TWO_LEAF_PARTITION direction (get addresses peer)
                                    :-p :tcp :-m :multiport :--ports 22001 :-j :DROP]]))]
         (is (= :installed (get-in result [:value :status])))
         (is (= plan @roles))
@@ -221,8 +221,8 @@
         (doseq [[node [_ _ & rule]] additions]
           (is (some #{[node (into [:iptables :-C] rule)]} @commands)))
         (doseq [node ["n4" "n5"] chain [:INPUT :OUTPUT]]
-          (is (some #{[node [:iptables :-I chain :-j :OR_PREVOTE]]} @commands))
-          (is (some #{[node [:iptables :-C chain :-j :OR_PREVOTE]]} @commands)))))))
+          (is (some #{[node [:iptables :-I chain :-j :OR_TWO_LEAF_PARTITION]]} @commands))
+          (is (some #{[node [:iptables :-C chain :-j :OR_TWO_LEAF_PARTITION]]} @commands)))))))
 
 (deftest failed-installation-keeps-the-plan-for-cleanup
   (doseq [failure [:-A :-C]]
@@ -235,14 +235,14 @@
                                  (throw (ex-info "iptables failed" {}))
                                  :else ""))]
           (is (thrown-with-msg? clojure.lang.ExceptionInfo #"iptables failed"
-                                (nemesis/invoke! subject test {:type :info :f :start-pre-vote}))))
+                                (nemesis/invoke! subject test {:type :info :f :start-two-leaf-partition}))))
         (is (= plan @roles))
         (nemesis/teardown! subject test)
         (is (= [["n4" [:iptables :-S]]
-                ["n4" [:iptables :-D :INPUT :-j :OR_PREVOTE]]
-                ["n4" [:iptables :-D :OUTPUT :-j :OR_PREVOTE]]
-                ["n4" [:iptables :-F :OR_PREVOTE]]
-                ["n4" [:iptables :-X :OR_PREVOTE]]
+                ["n4" [:iptables :-D :INPUT :-j :OR_TWO_LEAF_PARTITION]]
+                ["n4" [:iptables :-D :OUTPUT :-j :OR_TWO_LEAF_PARTITION]]
+                ["n4" [:iptables :-F :OR_TWO_LEAF_PARTITION]]
+                ["n4" [:iptables :-X :OR_TWO_LEAF_PARTITION]]
                 ["n5" [:iptables :-S]]]
                @commands))))))
 
@@ -260,8 +260,8 @@
       (reset! roles plan)
       (with-redefs [cluster/node-metrics! (fn [& _] (throw (ex-info "metrics failed" {})))]
         (is (thrown-with-msg? clojure.lang.ExceptionInfo #"metrics failed"
-                              (nemesis/invoke! subject test {:type :info :f :stop-pre-vote}))))
-      (is (some #{["n4" [:iptables :-X :OR_PREVOTE]]} @commands))
+                              (nemesis/invoke! subject test {:type :info :f :stop-two-leaf-partition}))))
+      (is (some #{["n4" [:iptables :-X :OR_TWO_LEAF_PARTITION]]} @commands))
       (is (some #{["n5" [:iptables :-S]]} @commands)))))
 
 (deftest cleanup-failure-preserves-the-diagnostic-error
@@ -273,7 +273,7 @@
         (with-redefs [cluster/node-metrics! (fn [& _] (throw error))
                       c/exec (fn [& _] (throw cleanup))]
           (is (identical? error (try
-                                  (nemesis/invoke! subject test {:type :info :f :stop-pre-vote})
+                                  (nemesis/invoke! subject test {:type :info :f :stop-two-leaf-partition})
                                   (catch Exception e e))))
           (is (= [cleanup] (vec (.getSuppressed error)))))))))
 
@@ -285,17 +285,17 @@
                         :final-generator (gen/clients [{:f :final-read}])}
               history (vec
                        (gen-test/simulate
-                        (pre-vote/generator (harness/failure-state) workload)
+                        (two-leaf-partition/generator (harness/failure-state) workload)
                         (fn [_ operation]
                           (cond-> (-> operation
                                       (assoc :type (if (= :nemesis (:process operation)) :info :ok))
                                       (update :time + (if (= :sleep (:type operation))
                                                         (long (* second-nanos (:value operation)))
                                                         latency)))
-                            (= :start-pre-vote (:f operation))
+                            (= :start-two-leaf-partition (:f operation))
                             (assoc :value {:status :installed})))))
               start (first (filter #(= :installed (get-in % [:value :status])) history))
-              stop (first (filter #(= :stop-pre-vote (:f %)) history))
+              stop (first (filter #(= :stop-two-leaf-partition (:f %)) history))
               final-read (first (filter #(= :final-read (:f %)) history))
               final-sample (first (filter :final-sample? history))]
           (is (<= (* 20 second-nanos) (- (:time stop) (:time start))))
@@ -309,7 +309,7 @@
         workload {:generator (gen/stagger 0.1 (repeat {:f :write}))
                   :final-generator [{:f :final-read}]}
         history (gen-test/simulate
-                 (pre-vote/generator failure-state workload)
+                 (two-leaf-partition/generator failure-state workload)
                  (fn [_ operation]
                    (swap! operations conj (:f operation))
                    (when (= :write (:f operation))
@@ -321,6 +321,6 @@
     (is (seq history))
     (is (some? (harness/primary-failure failure-state)))
     (is (= 1 (count (filter #{:write} @operations))))
-    (is (= :start-pre-vote (first @operations)))
-    (is (= :stop-pre-vote (last @operations)))
+    (is (= :start-two-leaf-partition (first @operations)))
+    (is (= :stop-two-leaf-partition (last @operations)))
     (is (not-any? #{:final-read} @operations))))

@@ -291,7 +291,7 @@
                  (cas-op key-names latest-values value-counter)]
         ;; A bounded write-gap check needs regular write attempts, not a random
         ;; mix that can itself go a whole window without scheduling a write.
-        operations (if (:pre-vote-stability opts)
+        operations (if (:two-leaf-partition opts)
                      (gen/cycle (mapv gen/once choices))
                      (gen/mix choices))
         bootstrap (apply gen/phases
@@ -302,7 +302,7 @@
                      (concat
                       ;; Read the partition's acknowledged values before new
                       ;; writes could hide data loss during recovery.
-                      (when (:pre-vote-stability opts)
+                      (when (:two-leaf-partition opts)
                         (map #(gen/once (final-read-op %)) key-names))
                       (map #(gen/once
                              (final-write-op % value-counter))
