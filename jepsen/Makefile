@@ -4,7 +4,7 @@ NODES ?= n1,n2,n3,n4,n5
 CONCURRENCY ?= 3
 NEMESIS ?= chaos
 SCENARIO ?= all
-LIVENESS_SCENARIOS := bridge-partition
+LIVENESS_SCENARIOS := bridge-partition two-leaf-partition
 comma := ,
 ifeq ($(SCENARIO),all)
 SELECTED_SCENARIOS := $(LIVENESS_SCENARIOS)

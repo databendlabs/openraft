@@ -142,7 +142,7 @@ jobs:
         run: |
           make -C jepsen build
           make -C jepsen up
-          make -C jepsen liveness SCENARIO=bridge-partition
+          make -C jepsen liveness
 
       - name: Debug | Docker logs
         if: failure()

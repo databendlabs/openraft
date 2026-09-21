@@ -1,7 +1,10 @@
 (ns jepsen.openraft.db-test
   (:require [clojure.test :refer [deftest is testing]]
             [jepsen.control :as c]
+            [jepsen.control.util :as cu]
+            [jepsen.core :as jepsen]
             [jepsen.db :as db]
+            [jepsen.openraft.cluster :as cluster]
             [jepsen.openraft.db :as openraft-db]))
 
 (def test-config
@@ -25,23 +28,58 @@
       (nth command (inc index)))))
 
 (deftest starts-and-confirms-the-test-app
-  (let [calls (atom [])
-        running? (atom false)
-        database (openraft-db/db {})]
-    (with-redefs [c/exec
-                  (fn [& command]
-                    (swap! calls conj command)
-                    (case (command-kind command)
-                      :probe (if @running? "running" "absent")
-                      :start (do (reset! running? true) "")
-                      ""))]
-      (is (= :start-confirmed (db/start! database test-config "n1"))))
-    (let [start-command (first (filter #(= :start (command-kind %)) @calls))]
-      (is (some #{:--oknodo} start-command))
-      (is (= "n1" (argument-after start-command :--id)))
-      (is (= "n1:21001" (argument-after start-command :--api-addr)))
-      (is (= "n1:22001" (argument-after start-command :--raft-addr)))
-      (is (= 250 (argument-after start-command :--snapshot-threshold))))))
+  (doseq [options [{} {:pre-vote-stability true}]]
+    (testing (str "scenario options " options)
+      (let [calls (atom [])
+            running? (atom false)
+            database (openraft-db/db {})]
+        (with-redefs [c/exec
+                      (fn [& command]
+                        (swap! calls conj command)
+                        (case (command-kind command)
+                          :probe (if @running? "running" "absent")
+                          :start (do (reset! running? true) "")
+                          ""))]
+          (is (= :start-confirmed
+                 (db/start! database (merge test-config options) "n1"))))
+        (let [start-command (vec (first (filter #(= :start (command-kind %)) @calls)))
+              pre-vote-flags (filter #{:--enable-pre-vote} start-command)]
+          (is (some #{:--oknodo} start-command))
+          (is (= "n1" (argument-after start-command :--id)))
+          (is (= "n1:21001" (argument-after start-command :--api-addr)))
+          (is (= "n1:22001" (argument-after start-command :--raft-addr)))
+          (is (= 250 (argument-after start-command :--snapshot-threshold)))
+          (is (= (if (:pre-vote-stability options) 1 0) (count pre-vote-flags)))
+          (when (:pre-vote-stability options)
+            (is (< (.indexOf start-command :--)
+                   (.indexOf start-command :--enable-pre-vote)
+                   (.indexOf start-command :>>)))))))))
+
+(deftest retains-the-existing-bootstrap-observation-when-requested
+  (doseq [node ["n1" "n2"]
+          capture? [false true]]
+    (let [bootstrap-state (atom nil)
+          status {:leader "n1" :metrics {"n1" {:current_term 7}}}
+          bootstraps (atom 0)
+          running? (atom false)
+          database (openraft-db/db {})
+          test (cond-> test-config
+                 capture? (assoc :bootstrap-state bootstrap-state))]
+      (with-redefs [c/exec (fn [& command]
+                             (case (command-kind command)
+                               :probe (if @running? "running" "absent")
+                               :start (do (reset! running? true) "")
+                               ""))
+                    cu/await-tcp-port (fn [& _])
+                    jepsen/synchronize (fn [_])
+                    jepsen/primary (constantly "n1")
+                    cluster/bootstrap! (fn [_]
+                                         (swap! bootstraps inc)
+                                         status)]
+        (db/setup! database test node))
+      (is (= (if (= "n1" node) 1 0) @bootstraps))
+      (is (= (when (and capture? (= "n1" node)) status)
+             @bootstrap-state)))))
 
 (deftest uses-explicit-process-evidence-when-starting
   (let [database (openraft-db/db {})]

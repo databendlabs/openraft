@@ -232,7 +232,7 @@
            :node node
            :leader-endpoint (atom (http/api-endpoint test
                                                      (jepsen/primary test)))
-           :endpoints (mapv #(http/api-endpoint test %) (:nodes test))))
+           :endpoints (mapv #(http/api-endpoint test %) (or (:client-nodes test) (:nodes test)))))
 
   (setup! [this _test]
     this)
@@ -283,18 +283,27 @@
 
   (close! [_ _test]))
 
-(defn workload [_opts]
+(defn workload [opts]
   (let [latest-values (atom {})
         value-counter (atom 0)
-        operations (gen/mix [(partial read-op key-names)
-                             (write-op key-names value-counter)
-                             (cas-op key-names latest-values value-counter)])
+        choices [(partial read-op key-names)
+                 (write-op key-names value-counter)
+                 (cas-op key-names latest-values value-counter)]
+        ;; A bounded write-gap check needs regular write attempts, not a random
+        ;; mix that can itself go a whole window without scheduling a write.
+        operations (if (:pre-vote-stability opts)
+                     (gen/cycle (mapv gen/once choices))
+                     (gen/mix choices))
         bootstrap (apply gen/phases
                          (map #(gen/once
                                 (bootstrap-write-op % value-counter))
                               key-names))
         final (apply gen/phases
                      (concat
+                      ;; Read the partition's acknowledged values before new
+                      ;; writes could hide data loss during recovery.
+                      (when (:pre-vote-stability opts)
+                        (map #(gen/once (final-read-op %)) key-names))
                       (map #(gen/once
                              (final-write-op % value-counter))
                            key-names)

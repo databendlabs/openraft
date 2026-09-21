@@ -291,6 +291,32 @@
            (map (juxt :f :phase :final? (comp key :value))
                 invocations)))))
 
+(deftest pre-vote-workload-uses-core-and-regular-write-attempts
+  (let [test {:nodes ["n1" "n2" "n3" "n4" "n5"]
+              :client-nodes ["n1" "n2" "n3"]}
+        subject (client/open! (workload/->KVClient nil nil nil (atom {})) test "n4")
+        operations (->> (gen-test/simulate
+                         (gen/limit 23 (:generator (workload/workload {:pre-vote-stability true})))
+                         (fn [_test op] (assoc op :type :ok)))
+                        (filter #(and (= :invoke (:type %)) (= :main (:phase %)))))]
+    (is (= ["n1:21001" "n2:21001" "n3:21001"] (:endpoints subject)))
+    (is (= "n1:21001" @(:leader-endpoint subject)))
+    (is (= 18 (count operations)))
+    ;; Without simulated version responses, each CAS attempt falls back to a
+    ;; write. The guaranteed write slot remains second in every group of three.
+    (is (every? #(= [:read :write :write] (mapv :f %)) (partition 3 operations)))))
+
+(deftest pre-vote-recovery-reads-before-overwriting-values
+  (let [keys @#'workload/key-names
+        invocations (->> (gen-test/simulate
+                          (:final-generator (workload/workload {:pre-vote-stability true}))
+                          (fn [_test op] (assoc op :type :ok)))
+                         (filter #(= :invoke (:type %))))]
+    (is (= (concat (map #(vector :read %) keys)
+                   (map #(vector :write %) keys)
+                   (map #(vector :read %) keys))
+           (map (juxt :f (comp key :value)) invocations)))))
+
 (deftest generates-cas-only-with-a-known-version
   (testing "a version observed for another key still produces a write"
     (let [latest-values (atom {other-key {:value "other" :version 6}})

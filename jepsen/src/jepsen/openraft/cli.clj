@@ -12,6 +12,7 @@
              [harness :as harness]
              [liveness :as liveness]
              [nemesis :as openraft-nemesis]
+             [pre-vote :as pre-vote]
              [worker :as worker]
              [workload :as workload]]
             [jepsen.openraft.nemesis [membership :as membership]
@@ -59,10 +60,10 @@
                  :chaos)))
 
 (def cli-opts
-  [[nil "--liveness SCENARIO" "Run liveness tests: all or bridge-partition."
+  [[nil "--liveness SCENARIO" "Run bridge-partition or two-leaf-partition."
     :parse-fn keyword
-    :validate [#{:all :bridge-partition}
-               "Must be all or bridge-partition."]]
+    :validate [#{:bridge-partition :two-leaf-partition}
+               "Must be bridge-partition or two-leaf-partition."]]
    [nil "--api-port PORT" "OpenRaft application HTTP port."
     :default 21001
     :parse-fn parse-long]
@@ -136,20 +137,34 @@
         (:final-generator workload))))))
 
 (defn openraft-test [opts]
-  (let [failure-state (harness/failure-state)
+  (when (and (:liveness opts)
+             (not (= 5 (count (:nodes opts)) (count (set (:nodes opts))))))
+    (throw (ex-info "--liveness requires five distinct nodes" {})))
+  (let [opts (cond-> opts
+               (= :two-leaf-partition (:liveness opts))
+               (assoc :pre-vote-stability true
+                      :bootstrap-state (atom nil)
+                      :client-nodes (vec (take 3 (:nodes opts)))))
+        failure-state (harness/failure-state)
         database (openraft-db/db opts)
         workload (workload/workload opts)
         roles (atom nil)
-        _ (when (and (:liveness opts)
-                     (not (= 5 (count (:nodes opts)) (count (set (:nodes opts))))))
-            (throw (ex-info "--liveness requires five distinct nodes" {})))
         nemesis-types (normalize-nemeses (:nemesis opts))
         mode-config
-        (if (:liveness opts)
-          {:name "openraft partial-network liveness"
+        (cond
+          (= :bridge-partition (:liveness opts))
+          {:name "openraft bridge-partition"
            :nemesis-package (liveness/package roles)
            :client (:client workload)
            :generator (liveness/generator workload)}
+
+          (:pre-vote-stability opts)
+          {:name "openraft two-leaf-partition"
+           :nemesis-package (pre-vote/package roles)
+           :client (:client workload)
+           :generator (pre-vote/generator failure-state workload)}
+
+          :else
           (let [nemesis-package
                 (openraft-nemesis/compose-packages
                  failure-state

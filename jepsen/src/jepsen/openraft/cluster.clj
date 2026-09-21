@@ -214,10 +214,20 @@
                (every? (comp ready-state? :state val) metrics))
       (let [[leader leader-metrics] (first leaders)
             leader-id (client/node-host leader)
-            leader-vote (committed-leader-vote leader-metrics leader-id)]
+            leader-vote (committed-leader-vote leader-metrics leader-id)
+            expected-voters (test-node-ids test)]
         (when (and leader-vote
                    (every? #(and (= leader-id (:current_leader %))
-                                 (= leader-vote (:vote %)))
+                                 (= leader-vote (:vote %))
+                                 ;; The stability scenario retains this result as
+                                 ;; its reference, including the final membership.
+                                 (or (not (:pre-vote-stability test))
+                                     (and (some? (:current_term %))
+                                          (= (:current_term leader-metrics)
+                                             (:current_term %))
+                                          (= [expected-voters]
+                                             (mapv set (get-in % [:membership_config :membership :configs])))
+                                          (membership-committed? %))))
                            (vals metrics)))
           {:leader leader
            :metrics metrics})))))

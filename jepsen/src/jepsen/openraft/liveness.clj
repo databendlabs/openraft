@@ -32,7 +32,7 @@
     {:leader leader :bridge bridge :majority [bridge a b]
      :cut [a b] :isolated isolated}))
 
-(defn- metric-snapshot! [test nodes]
+(defn metric-snapshot! [test nodes]
   (into {} (map (fn [node] [node (cluster/node-metrics! test node)]) nodes)))
 
 (defn- cut! [test leader nodes]
@@ -104,7 +104,7 @@
   (filter #(and (= :nemesis (:process %)) (= f (:f %))
                 (= status (get-in % [:value :status]))) history))
 
-(defn- find-successful-writes [history start end]
+(defn find-successful-writes [history start end]
   (:writes
    (reduce (fn [{:keys [pending] :as acc} op]
              (cond
