@@ -239,7 +239,7 @@
                          api-addr
                          raft-addr
                          (:snapshot-threshold test)
-                         (:pre-vote-stability test)))))
+                         (:two-leaf-partition test)))))
 
     (kill! [_ _ _node]
       (c/su

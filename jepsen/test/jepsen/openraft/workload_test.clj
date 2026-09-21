@@ -291,12 +291,12 @@
            (map (juxt :f :phase :final? (comp key :value))
                 invocations)))))
 
-(deftest pre-vote-workload-uses-core-and-regular-write-attempts
+(deftest two-leaf-workload-uses-core-and-regular-write-attempts
   (let [test {:nodes ["n1" "n2" "n3" "n4" "n5"]
               :client-nodes ["n1" "n2" "n3"]}
         subject (client/open! (workload/->KVClient nil nil nil (atom {})) test "n4")
         operations (->> (gen-test/simulate
-                         (gen/limit 23 (:generator (workload/workload {:pre-vote-stability true})))
+                         (gen/limit 23 (:generator (workload/workload {:two-leaf-partition true})))
                          (fn [_test op] (assoc op :type :ok)))
                         (filter #(and (= :invoke (:type %)) (= :main (:phase %)))))]
     (is (= ["n1:21001" "n2:21001" "n3:21001"] (:endpoints subject)))
@@ -306,10 +306,10 @@
     ;; write. The guaranteed write slot remains second in every group of three.
     (is (every? #(= [:read :write :write] (mapv :f %)) (partition 3 operations)))))
 
-(deftest pre-vote-recovery-reads-before-overwriting-values
+(deftest two-leaf-recovery-reads-before-overwriting-values
   (let [keys @#'workload/key-names
         invocations (->> (gen-test/simulate
-                          (:final-generator (workload/workload {:pre-vote-stability true}))
+                          (:final-generator (workload/workload {:two-leaf-partition true}))
                           (fn [_test op] (assoc op :type :ok)))
                          (filter #(= :invoke (:type %))))]
     (is (= (concat (map #(vector :read %) keys)

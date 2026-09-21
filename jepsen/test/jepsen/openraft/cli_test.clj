@@ -30,7 +30,7 @@
             (do
               (is (nil? (:client-nodes test)))
               (is (nil? (:bootstrap-state test)))))
-          (is (= (= scenario "two-leaf-partition") (boolean (:pre-vote-stability test))))))))
+          (is (= (= scenario "two-leaf-partition") (boolean (:two-leaf-partition test))))))))
   (doseq [args [["--liveness"] ["--liveness=unknown"] ["--liveness=all"]]]
     (is (seq (:errors (tools-cli/parse-opts args cli/cli-opts))))))
 

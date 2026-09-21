@@ -10,16 +10,16 @@
              [db :as openraft-db]
              [generator :as openraft-generator]
              [harness :as harness]
-             [liveness :as liveness]
              [nemesis :as openraft-nemesis]
-             [pre-vote :as pre-vote]
              [worker :as worker]
              [workload :as workload]]
             [jepsen.openraft.nemesis [membership :as membership]
              [clock :as clock]
              [packet :as packet]
              [partition :as partition]
-             [process :as process]]))
+             [process :as process]]
+            [jepsen.openraft.scenario [bridge-partition :as bridge-partition]
+             [two-leaf-partition :as two-leaf-partition]]))
 
 (def ^:private concrete-nemesis-types
   [:partition :process :pause :membership :packet :clock])
@@ -162,7 +162,7 @@
     (throw (ex-info "--liveness requires five distinct nodes" {})))
   (let [opts (cond-> opts
                (= :two-leaf-partition (:liveness opts))
-               (assoc :pre-vote-stability true
+               (assoc :two-leaf-partition true
                       :bootstrap-state (atom nil)
                       :client-nodes (vec (take 3 (:nodes opts)))))
         failure-state (harness/failure-state)
@@ -174,15 +174,15 @@
         (cond
           (= :bridge-partition (:liveness opts))
           {:name "openraft bridge-partition"
-           :nemesis-package (liveness/package roles)
+           :nemesis-package (bridge-partition/package roles)
            :client (:client workload)
-           :generator (liveness/generator failure-state workload)}
+           :generator (bridge-partition/generator failure-state workload)}
 
-          (:pre-vote-stability opts)
+          (:two-leaf-partition opts)
           {:name "openraft two-leaf-partition"
-           :nemesis-package (pre-vote/package roles)
+           :nemesis-package (two-leaf-partition/package roles)
            :client (:client workload)
-           :generator (pre-vote/generator failure-state workload)}
+           :generator (two-leaf-partition/generator failure-state workload)}
 
           :else
           (let [nemesis-package
