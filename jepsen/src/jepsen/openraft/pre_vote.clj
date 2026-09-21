@@ -95,7 +95,7 @@
         (reset! roles plan)
         (let [baseline (assoc bootstrap :activity (activity-snapshot! test))]
           (install! test plan)
-          (assoc op :value (assoc plan :status :installed :rules-verified? true
+          (assoc op :value (assoc plan :status :installed
                                   :baseline baseline :metrics (liveness/metric-snapshot! test (:nodes test))))))
 
       :sample-pre-vote
@@ -191,8 +191,7 @@
             caught-up? (caught-up? (last (get-in recovered [:value :recovery-metrics])) leader)
             topology? (and (= leader (:leader baseline))
                            (= (topology (:nodes test))
-                              (select-keys (:value start) [:leader :core :disconnected :retained :blocked]))
-                           (true? (get-in start [:value :rules-verified?])))]
+                              (select-keys (:value start) [:leader :core :disconnected :retained :blocked])))]
         {:valid? (boolean (and bounds? complete? topology? (some? term) five-voters? caught-up?
                                (empty? term-errors) (empty? role-errors) leadership-events?
                                (seq writes) max-gap (<= max-gap progress-window-nanos)))

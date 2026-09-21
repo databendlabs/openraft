@@ -152,6 +152,18 @@ $ make -C jepsen liveness SCENARIO=two-leaf-partition
 $ make -C jepsen down
 ```
 
+Use `make -C jepsen liveness` (equivalent to `SCENARIO=all`) to run all
+available liveness scenarios. Available scenarios are `bridge-partition` and
+`two-leaf-partition`. `SCENARIO` also accepts a comma-separated list; each
+selected scenario runs independently with its own setup, teardown, and results.
+Unknown scenarios are rejected before any liveness run starts.
+
+`make -C jepsen safety` runs the default chaos safety test; use `NEMESIS=...`
+to select faults. `make -C jepsen test` runs safety followed by liveness,
+sequentially even with `make -j`. It attempts both categories and fails if
+either fails. `PACKET_MODE` applies only to safety. The `jepsen` target builds
+and starts the containers, runs unit tests, then runs this combined test target.
+
 The harness uses each Jepsen node's container hostname, such as `n1`, directly
 as its OpenRaft node ID.
 
@@ -380,18 +392,6 @@ Jepsen scenarios on pushes to main and manual workflow dispatches. Pull requests
 run lint and unit tests only. Liveness failures fail the job; they are not
 treated as expected successes. Results and failure diagnostics are uploaded,
 and Docker cleanup runs regardless of the test result.
-
-Use `make -C jepsen liveness` (equivalent to `SCENARIO=all`) to run all
-available liveness scenarios. Available scenarios are `bridge-partition` and `two-leaf-partition`.
-`SCENARIO` also accepts a comma-separated list; each selected scenario runs
-independently with its own setup, teardown, and results. Unknown scenarios are
-rejected before any liveness run starts.
-
-`make -C jepsen safety` runs the default chaos safety test; use `NEMESIS=...`
-to select faults. `make -C jepsen test` runs safety followed by liveness,
-sequentially even with `make -j`. It attempts both categories and fails if
-either fails. `PACKET_MODE` applies only to safety. The `jepsen` target builds
-and starts the containers, runs unit tests, then runs this combined test target.
 
 The test chooses the established leader and waits for all logs to be applied.
 All five voters stay running throughout; no Kill or Restart is injected. Quorum
