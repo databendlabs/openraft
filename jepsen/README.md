@@ -105,7 +105,7 @@ From the repository root:
 # Format and lint the dedicated Rust test application.
 $ make -C jepsen app-lint
 
-# Build images, start containers, then run unit and default chaos tests.
+# Build images, start containers, then run unit, safety, and liveness tests.
 $ make -C jepsen jepsen
 
 # Generate the local Docker SSH key and build the Jepsen images.
@@ -114,32 +114,32 @@ $ make -C jepsen build
 # Start or recreate the Jepsen containers.
 $ make -C jepsen up
 
-# Run the default chaos test against the running containers.
+# Run safety and all liveness scenarios independently, in sequence.
 $ make -C jepsen test
 
 # Run only the network partition test.
-$ make -C jepsen test NEMESIS=partition
+$ make -C jepsen safety NEMESIS=partition
 
 # Run only the process crash/restart test.
-$ make -C jepsen test NEMESIS=process
+$ make -C jepsen safety NEMESIS=process
 
 # Run only the process pause/resume test.
-$ make -C jepsen test NEMESIS=pause
+$ make -C jepsen safety NEMESIS=pause
 
 # Run only the membership change test.
-$ make -C jepsen test NEMESIS=membership
+$ make -C jepsen safety NEMESIS=membership
 
 # Run only the wall-clock fault test.
-$ make -C jepsen test NEMESIS=clock
+$ make -C jepsen safety NEMESIS=clock
 
 # Run only one Packet mode; MODE must be slow or flaky.
-$ make -C jepsen test NEMESIS=packet PACKET_MODE=slow
+$ make -C jepsen safety NEMESIS=packet PACKET_MODE=slow
 
 # Compose selected fault classes with overlapping schedules.
-$ make -C jepsen test NEMESIS=partition,process,pause
+$ make -C jepsen safety NEMESIS=partition,process,pause
 
 # Reuse a recorded seed for Jepsen random choices.
-$ make -C jepsen test NEMESIS=partition SEED=123456
+$ make -C jepsen safety NEMESIS=partition SEED=123456
 
 # Override the committed-log threshold that triggers snapshots.
 $ make -C jepsen test SNAPSHOT_THRESHOLD=250
@@ -362,8 +362,8 @@ the process alive for diagnosis and teardown.
 
 ### Partial network: old leader connected through a bridge
 
-From the repository root, run `make -C jepsen jepsen LIVENESS=1` (or
-`make -C jepsen test LIVENESS=1` with freshly built, running containers). This
+With freshly built, running containers, run
+`make -C jepsen liveness SCENARIO=bridge-partition` from the repository root. This
 uses the same five data nodes (`n1` through `n5`) plus the control container as
 the normal safety tests. This is a fixed five-voter Jepsen scenario, not a
 random Chaos combination. It uses the normal Jepsen client, History, linearizability,
@@ -373,6 +373,18 @@ Jepsen scenarios on pushes to main and manual workflow dispatches. Pull requests
 run lint and unit tests only. Liveness failures fail the job; they are not
 treated as expected successes. Results and failure diagnostics are uploaded,
 and Docker cleanup runs regardless of the test result.
+
+Use `make -C jepsen liveness` (equivalent to `SCENARIO=all`) to run all
+available liveness scenarios. Currently, only `bridge-partition` is available.
+`SCENARIO` also accepts a comma-separated list; each selected scenario runs
+independently with its own setup, teardown, and results. Unknown scenarios are
+rejected before any liveness run starts.
+
+`make -C jepsen safety` runs the default chaos safety test; use `NEMESIS=...`
+to select faults. `make -C jepsen test` runs safety followed by liveness,
+sequentially even with `make -j`. It attempts both categories and fails if
+either fails. `PACKET_MODE` applies only to safety. The `jepsen` target builds
+and starts the containers, runs unit tests, then runs this combined test target.
 
 The test chooses the established leader and waits for all logs to be applied.
 All five voters stay running throughout; no Kill or Restart is injected. Quorum

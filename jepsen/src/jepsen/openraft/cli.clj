@@ -59,7 +59,10 @@
                  :chaos)))
 
 (def cli-opts
-  [[nil "--liveness" "Run the fixed five-voter partial-network liveness test."]
+  [[nil "--liveness SCENARIO" "Run liveness tests: all or bridge-partition."
+    :parse-fn keyword
+    :validate [#{:all :bridge-partition}
+               "Must be all or bridge-partition."]]
    [nil "--api-port PORT" "OpenRaft application HTTP port."
     :default 21001
     :parse-fn parse-long]

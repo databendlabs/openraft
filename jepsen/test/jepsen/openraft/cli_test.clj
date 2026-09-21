@@ -14,6 +14,28 @@
             [jepsen.openraft.worker :as worker]
             [jepsen.random :as random]))
 
+(deftest selects-bridge-partition-liveness
+  (doseq [selection ["all" "bridge-partition"]
+          args [[(str "--liveness=" selection)] ["--liveness" selection]]]
+    (let [parsed (#'cli/prepare-options (tools-cli/parse-opts args cli/cli-opts))]
+      (is (empty? (:errors parsed)))
+      (is (= (keyword selection) (get-in parsed [:options :liveness])))
+      (with-redefs [openraft-nemesis/compose-packages
+                    (fn [& _] (throw (AssertionError. "Safety nemesis selected")))]
+        (is (= "openraft partial-network liveness"
+               (:name (cli/openraft-test
+                       (assoc (:options parsed) :nodes ["n1" "n2" "n3" "n4" "n5"])))))))))
+
+(deftest rejects-unavailable-liveness-selections
+  (doseq [args [["--liveness"] ["--liveness="] ["--liveness=1"]
+                ["--liveness=two-leaf-partition"] ["--liveness=unknown"]]]
+    (is (seq (:errors (tools-cli/parse-opts args cli/cli-opts))))))
+
+(deftest liveness-selection-preserves-safety-defaults
+  (let [parsed (tools-cli/parse-opts [] cli/cli-opts)]
+    (is (nil? (get-in parsed [:options :liveness])))
+    (is (= [:chaos] (get-in parsed [:options :nemesis])))))
+
 (deftest records-and-applies-the-random-seed
   (testing "a generated seed is recorded and applied once"
     (let [applied-seeds (atom [])
