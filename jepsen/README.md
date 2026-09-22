@@ -272,16 +272,15 @@ Partition Nemesis. Packet provides two mutually exclusive modes:
 
 The `slow` parameters are derived from the test application's timing
 configuration. Its election timeout is approximately 299 ms and its heartbeat
-interval is 50 ms. Every scenario also enables the quorum-loss heartbeat gate
-with `quorum_loss_probe_interval: Some(700)`, above the 600 ms minimum of the
-leader lease plus maximum election timeout. A 300 ms base delay with a 50 ms
-normal jitter scale therefore
-concentrates delays around the election threshold, with substantial probability
-on either side of it. This deliberately exercises the boundary where some
-messages arrive before an election timeout and others arrive after it, without
-requiring every fault episode to trigger an election. The distribution is not
-bounded to 250--350 ms; values farther from the base delay are less likely but
-possible.
+interval is 50 ms. A 300 ms base delay with a 50 ms normal jitter scale
+therefore concentrates delays around the election threshold, with substantial
+probability on either side of it. This deliberately exercises the boundary
+where some messages arrive before an election timeout and others arrive after
+it, without requiring every fault episode to trigger an election. The
+distribution is not bounded to 250--350 ms; values farther from the base delay
+are less likely but possible. Every scenario also enables the quorum-loss
+heartbeat gate with `quorum_loss_probe_interval: Some(700)`, above the 600 ms
+minimum of the leader lease plus maximum election timeout.
 
 A focused run explicitly selects one mode. Within that mode it exercises two
 quorum-safe target cases:

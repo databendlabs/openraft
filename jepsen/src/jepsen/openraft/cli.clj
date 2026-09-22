@@ -64,7 +64,8 @@
   (some #(or (= option %) (str/starts-with? % (str option "="))) argv))
 
 (def cli-opts
-  [[nil "--liveness SCENARIO" "Run bridge-partition, two-leaf-partition, or leader-removal-recovery."
+  [[nil "--liveness SCENARIO"
+    "Run bridge-partition (10 s window), two-leaf-partition (20 s window), or leader-removal-recovery (60 s recovery deadline). Rejects --nemesis, --packet-mode, and --time-limit."
     :parse-fn keyword
     :validate [#{:bridge-partition :two-leaf-partition :leader-removal-recovery}
                "Must be bridge-partition, two-leaf-partition, or leader-removal-recovery."]]
@@ -166,8 +167,6 @@
         (:final-generator workload))))))
 
 (defn openraft-test [opts]
-  (when-let [error (liveness-node-error opts)]
-    (throw (ex-info error {})))
   (let [opts (cond-> opts
                (= :leader-removal-recovery (:liveness opts))
                (update :nodes #(vec (take 2 %)))
