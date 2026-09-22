@@ -1,8 +1,2 @@
-use std::collections::BTreeMap;
-use std::sync::Arc;
-
-use futures::lock::Mutex;
-
-pub type KeyValues = Arc<Mutex<BTreeMap<String, types_kv::VersionedValue>>>;
-
-pub type App = app_http::App<crate::TypeConfig, crate::StateMachineStore, KeyValues>;
+/// Reads go through `Raft::with_state_machine`, so the application holds no data of its own.
+pub type App = app_http::App<crate::TypeConfig, crate::StateMachineStore, ()>;
