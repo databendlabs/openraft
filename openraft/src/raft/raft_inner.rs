@@ -242,6 +242,11 @@ where C: RaftTypeConfig
             let mut state = self.core_state.lock().unwrap();
 
             match &*state {
+                CoreState::Unstarted(_) => {
+                    // Dropping the unstarted future drops RaftCore and closes all of its channels.
+                    *state = CoreState::Done(Err(Fatal::Stopped));
+                    return;
+                }
                 CoreState::Running(_) => {
                     let (tx, rx) = C::watch_channel::<bool>(false);
 

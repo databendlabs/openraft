@@ -35,12 +35,16 @@ where C: RaftTypeConfig
 
     /// Emit event or not
     enabled: Arc<AtomicBool>,
+
+    /// Start emitting only after [`TickHandle::start`] is called.
+    started: Arc<AtomicBool>,
 }
 
 pub(crate) struct TickHandle<C>
 where C: RaftTypeConfig
 {
     enabled: Arc<AtomicBool>,
+    started: Arc<AtomicBool>,
     shutdown: Mutex<Option<OneshotSenderOf<C, ()>>>,
     join_handle: Mutex<Option<JoinHandleOf<C, ()>>>,
 }
@@ -60,12 +64,24 @@ where C: RaftTypeConfig
 impl<C> Tick<C>
 where C: RaftTypeConfig
 {
+    #[cfg(test)]
     pub(crate) fn spawn(period: Duration, tx: MpscSenderOf<C, Notification<C>>, enabled: bool) -> TickHandle<C> {
+        Self::do_spawn(period, tx, enabled, true)
+    }
+
+    /// Spawn a ticker that remains idle until [`TickHandle::start`] is called.
+    pub(crate) fn spawn_paused(period: Duration, tx: MpscSenderOf<C, Notification<C>>, enabled: bool) -> TickHandle<C> {
+        Self::do_spawn(period, tx, enabled, false)
+    }
+
+    fn do_spawn(period: Duration, tx: MpscSenderOf<C, Notification<C>>, enabled: bool, started: bool) -> TickHandle<C> {
         let enabled = Arc::new(AtomicBool::from(enabled));
+        let started = Arc::new(AtomicBool::from(started));
         let this = Self {
             period,
             first_wait: Self::sample_first_wait(period),
             enabled: enabled.clone(),
+            started: started.clone(),
             tx,
         };
 
@@ -81,6 +97,7 @@ where C: RaftTypeConfig
 
         TickHandle {
             enabled,
+            started,
             shutdown,
             join_handle: Mutex::new(Some(join_handle)),
         }
@@ -131,7 +148,7 @@ where C: RaftTypeConfig
             offset_us += step_us;
             at = first_wait_at + Duration::from_micros(offset_us as u64);
 
-            if !self.enabled.load(Ordering::Relaxed) {
+            if !self.started.load(Ordering::Relaxed) || !self.enabled.load(Ordering::Relaxed) {
                 continue;
             }
 
@@ -151,6 +168,10 @@ where C: RaftTypeConfig
 impl<C> TickHandle<C>
 where C: RaftTypeConfig
 {
+    pub(crate) fn start(&self) {
+        self.started.store(true, Ordering::Relaxed);
+    }
+
     pub(crate) fn enable(&self, enabled: bool) {
         self.enabled.store(enabled, Ordering::Relaxed);
     }
