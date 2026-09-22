@@ -293,7 +293,8 @@ pub enum ReadPolicy {
 ///
 /// # Lifecycle
 ///
-/// 1. **Creation**: Use [`Raft::new`] to create and spawn a new Raft node
+/// 1. **Creation**: Use [`Raft::new`] to create and spawn a new Raft node, or use [`Raft::build`]
+///    followed by [`Raft::run`] when application setup must finish before Raft starts
 /// 2. **Initialization**: Call [`initialize`](Raft::initialize) on pristine nodes to form a cluster
 /// 3. **Operation**: Use various methods to interact with the node:
 ///    - Protocol RPCs: [`append_entries`](Raft::append_entries), [`vote`](Raft::vote)
@@ -484,6 +485,40 @@ where
         id: C::NodeId,
         config: Arc<Config>,
         network: N,
+        log_store: LS,
+        state_machine: SM,
+    ) -> Result<Self, Fatal<C>>
+    where
+        N: RaftNetworkFactory<C>,
+        N::Network: NetSnapshot<C, SnapshotData = SM::SnapshotData>,
+        LS: RaftLogStorage<C>,
+    {
+        let raft = Self::build(id, config, network, log_store, state_machine).await?;
+        raft.run();
+        Ok(raft)
+    }
+
+    /// Build a Raft node without starting its core task.
+    ///
+    /// This two-phase alternative to [`new`](Self::new) lets an application construct data-serving
+    /// components that depend on the [`Raft`] handle before the node can campaign for leadership.
+    /// Call [`run`](Self::run) after those components are ready.
+    ///
+    /// Storage is inspected and the initial Raft state is recovered during this call, but
+    /// `RaftCore` does not process messages or ticks until [`run`](Self::run) is called.
+    ///
+    /// ```ignore
+    /// let raft = Raft::build(id, config, network, log_store, sm).await?;
+    /// let server = DataServer::new(raft.clone());
+    /// raft.run();
+    /// server.serve().await?;
+    /// ```
+    #[since(version = "0.10.0")]
+    #[tracing::instrument(level="debug", skip_all, fields(cluster=%config.cluster_name))]
+    pub async fn build<LS, N>(
+        id: C::NodeId,
+        config: Arc<Config>,
+        network: N,
         mut log_store: LS,
         mut state_machine: SM,
     ) -> Result<Self, Fatal<C>>
@@ -515,7 +550,7 @@ where
         let (tx_shutdown, rx_shutdown) = C::oneshot();
 
         let tick_period = Duration::from_millis(config.tick_interval());
-        let tick_handle = Tick::spawn(tick_period, tx_notify.clone(), config.enable_tick);
+        let tick_handle = Tick::spawn_paused(tick_period, tx_notify.clone(), config.enable_tick);
 
         let runtime_config = Arc::new(RuntimeConfig::new(&config));
 
@@ -619,7 +654,7 @@ where
             &config,
         );
 
-        let core_handle = C::spawn(core.main(rx_shutdown).instrument(trace_span!("spawn").or_current()));
+        let core_fut = Box::pin(core.main(rx_shutdown).instrument(trace_span!("spawn").or_current()));
 
         let inner = RaftInner {
             id,
@@ -632,7 +667,7 @@ where
             rx_server_metrics,
             progress_watcher,
             tx_shutdown: Mutex::new(Some(tx_shutdown)),
-            core_state: Mutex::new(CoreState::Running(core_handle)),
+            core_state: Mutex::new(CoreState::Unstarted(core_fut)),
             extensions: Extensions::default(),
         };
 
@@ -641,6 +676,24 @@ where
             sm_cmd_tx,
             install_snapshot_tx: tx_install_snapshot,
         })
+    }
+
+    /// Start the Raft core task built by [`build`](Self::build).
+    ///
+    /// This method is idempotent: calling it on an already running or stopped node has no effect.
+    #[since(version = "0.10.0")]
+    pub fn run(&self) {
+        let mut state = self.inner.core_state.lock().unwrap();
+        if !matches!(&*state, CoreState::Unstarted(_)) {
+            return;
+        }
+
+        let previous = std::mem::replace(&mut *state, CoreState::Done(Err(Fatal::Stopped)));
+        let CoreState::Unstarted(core_fut) = previous else {
+            unreachable!()
+        };
+        *state = CoreState::Running(C::spawn(core_fut));
+        self.inner.tick_handle.start();
     }
 }
 

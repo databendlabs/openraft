@@ -9,6 +9,7 @@ mod fixtures;
 
 mod t10_initialization;
 mod t11_shutdown;
+mod t12_build_run;
 mod t50_follower_restart_does_not_interrupt;
 mod t50_leader_restart_clears_state;
 mod t50_leader_restart_cluster_committed_not_restored;

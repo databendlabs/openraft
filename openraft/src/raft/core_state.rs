@@ -1,4 +1,5 @@
 use crate::RaftTypeConfig;
+use crate::base::BoxFuture;
 use crate::errors::Fatal;
 use crate::errors::Infallible;
 use crate::type_config::alias::JoinHandleOf;
@@ -8,6 +9,9 @@ use crate::type_config::alias::WatchReceiverOf;
 pub(in crate::raft) enum CoreState<C>
 where C: RaftTypeConfig
 {
+    /// The RaftCore has been constructed but its task has not been spawned.
+    Unstarted(BoxFuture<'static, Result<Infallible, Fatal<C>>>),
+
     /// The RaftCore task is still running.
     Running(JoinHandleOf<C, Result<Infallible, Fatal<C>>>),
 
