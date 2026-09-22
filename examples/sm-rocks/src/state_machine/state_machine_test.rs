@@ -104,6 +104,21 @@ fn cas_sees_earlier_write_in_same_batch() {
 }
 
 #[test]
+fn get_returns_stored_value_or_none() {
+    TypeConfig::run(async {
+        let (_temp_dir, mut state_machine) = new_state_machine();
+        apply_set(&mut state_machine, 1, "key", "value").await;
+
+        let expected = types_kv::VersionedValue {
+            value: "value".to_string(),
+            version: 1,
+        };
+        assert_eq!(Some(expected), state_machine.get("key").unwrap());
+        assert_eq!(None, state_machine.get("missing").unwrap());
+    });
+}
+
+#[test]
 fn builder_captures_stable_checkpoint_and_publishes_it() {
     TypeConfig::run(async {
         let (_temp_dir, mut state_machine) = new_state_machine();

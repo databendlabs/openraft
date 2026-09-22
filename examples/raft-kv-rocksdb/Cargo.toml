@@ -22,21 +22,30 @@ path = "src/bin/main.rs"
 
 [dependencies]
 app-http            = { path = "../app-http" }
+dir-transfer        = { path = "../dir-transfer" }
 log-rocks           = { path = "../log-rocks" }
 network-v2-http     = { path = "../network-v2-http" }
 openraft            = { path = "../../openraft", features = ["serde", "type-alias"] }
+sm-rocks            = { path = "../sm-rocks" }
 types-kv            = { path = "../types-kv" }
 
+bytes              = { version = "1.0" }
 clap               = { version = "4.1.11", features = ["derive", "env"] }
 futures            = { version = "0.3" }
-rocksdb            = { version = "0.22.0" }
+http-body-util     = { version = "0.1" }
+hyper              = { version = "1.0", features = ["http1", "server"] }
+hyper-util         = { version = "0.1", features = ["tokio"] }
+reqwest            = { version = "0.12.5", features = ["json", "stream"] }
+rmp-serde          = { version = "1.3.0" }
 serde              = { version = "1.0.114", features = ["derive"] }
 serde_json         = { version = "1.0.57" }
 tokio              = { version = "1.35.1", features = ["full"] }
+tokio-util         = { version = "0.7", features = ["io"] }
 tracing            = { version = "0.1.40" }
 tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }
 
 [dev-dependencies]
+anyhow = { version = "1.0.63" }
 maplit = { version = "1.0.2" }
 tempfile = { version = "3.4.0" }
 

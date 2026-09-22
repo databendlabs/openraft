@@ -24,7 +24,7 @@ or runtime.
 |---------|-----|---------------|------------------|-------------|--------|--------|------------------|
 | [raft-kv-memstore] | [log-mem] | [sm-mem] | HTTP/reqwest([network-v2]) | RaftNetworkV2 | [app-http] | [app-http] | Canonical example — start here |
 | [raft-kv-log-wal-sm-mem] | [log-wal] | [sm-mem] | HTTP/reqwest([network-v2]) | RaftNetworkV2 | [app-http] | [app-http] | Persistent WAL with state rebuilt from retained logs |
-| [raft-kv-rocksdb] | [log-rocks] | RocksDB | HTTP/reqwest([network-v2]) | RaftNetworkV2 | [app-http] | [app-http] | [raft-kv-memstore] with persistent storage |
+| [raft-kv-rocksdb] | [log-rocks] | [sm-rocks] | HTTP/reqwest([network-v2]) + [dir-transfer] snapshots | RaftNetworkV2 | [app-http] | [app-http] | Persistent storage; snapshots are RocksDB checkpoints streamed as directories |
 | [raft-kv-memstore-network-v1] | [log-mem] | [sm-mem] | HTTP/reqwest([network-v1]) | RaftNetwork | [app-http] | [app-http] | Legacy V1 network + chunked snapshot replication |
 | [multi-raft-kv] | [log-mem] | [sm-mem] | HTTP/channel | GroupRouter | channel | in-memory | Multi-Raft groups |
 | [raft-kv-memstore-grpc] | [log-mem] | in-memory | gRPC/tonic | RaftNetworkV2 sub-traits | tonic | tonic | gRPC transport |
@@ -58,6 +58,10 @@ The following symbolic links are provided for backward compatibility:
 - **[network-v2]** - HTTP-based RaftNetworkV2 interface using `reqwest` crate
 - **[network-v1]** - HTTP-based RaftNetwork interface V1 using `reqwest` crate
 
+### Snapshot Transfer
+- **[dir-transfer]** - Streams a directory of immutable files as frames over any ordered
+  transport; [raft-kv-rocksdb] ships its RocksDB checkpoint snapshots with it
+
 ### Application HTTP
 - **[app-http]** - JSON HTTP client and server used by the KV examples
 
@@ -79,6 +83,7 @@ The following symbolic links are provided for backward compatibility:
 [log-wal]: log-wal/
 [sm-mem]: sm-mem/
 [sm-rocks]: sm-rocks/
+[dir-transfer]: dir-transfer/
 [network-v2]: network-v2-http/
 [network-v1]: network-v1-http/
 [app-http]: app-http/

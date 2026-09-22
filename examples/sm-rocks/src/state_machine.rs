@@ -73,6 +73,11 @@ where C: RaftTypeConfig
         })
     }
 
+    /// Read the value stored under `key`.
+    pub fn get(&self, key: &str) -> io::Result<Option<types_kv::VersionedValue>> {
+        read_value(self.active.db(), key)
+    }
+
     fn get_meta(&self) -> io::Result<SnapshotMetaOf<C>> {
         read_meta::<C>(self.active.db())
     }
@@ -132,10 +137,7 @@ where C: RaftTypeConfig<
                         let current = if let Some(current) = pending_values.get(key) {
                             Some(current.clone())
                         } else {
-                            db.get_cf(cf_data, key.as_bytes())
-                                .map_err(io::Error::other)?
-                                .map(|bytes| deserialize(&bytes))
-                                .transpose()?
+                            read_value(db, key)?
                         };
 
                         if current.is_some_and(|current| current.version == *expected_version) {
@@ -244,6 +246,12 @@ where C: RaftTypeConfig {
 
 fn column_family<'a>(db: &'a DB, name: &str) -> io::Result<&'a rocksdb::ColumnFamily> {
     db.cf_handle(name).ok_or_else(|| io::Error::other(format!("column family `{name}` not found")))
+}
+
+fn read_value(db: &DB, key: &str) -> io::Result<Option<types_kv::VersionedValue>> {
+    let cf_data = column_family(db, "sm_data")?;
+    let bytes = db.get_cf(cf_data, key.as_bytes()).map_err(io::Error::other)?;
+    bytes.map(|bytes| deserialize(&bytes)).transpose()
 }
 
 fn read_meta<C>(db: &DB) -> io::Result<SnapshotMetaOf<C>>
