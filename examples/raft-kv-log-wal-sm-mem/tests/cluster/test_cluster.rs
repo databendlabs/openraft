@@ -73,13 +73,15 @@ async fn test_cluster_inner() -> Result<(), Box<dyn std::error::Error + Send + S
 
     let leader = Client::<TypeConfig>::new(1, api_addr(1));
 
-    tracing::info!("initialize node 1 as a single-node cluster and wait until it leads");
+    tracing::info!("initialize node 1 and wait for leadership and committed membership");
     {
         leader.init().await??;
 
         loop {
             let metrics = leader.metrics().await?;
-            if metrics.current_leader == Some(1) {
+            let is_leader = metrics.current_leader == Some(1);
+            let membership_committed = metrics.membership_config == metrics.committed_membership_config;
+            if is_leader && membership_committed {
                 break;
             }
             TypeConfig::sleep(Duration::from_millis(200)).await;
