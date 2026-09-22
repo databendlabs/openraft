@@ -293,7 +293,8 @@ pub enum ReadPolicy {
 ///
 /// # Lifecycle
 ///
-/// 1. **Creation**: Use [`Raft::new`] to create and spawn a new Raft node
+/// 1. **Creation**: Use [`Raft::new`] to create and spawn a new Raft node, or use [`Raft::build`]
+///    followed by [`Raft::run`] when application setup must finish before Raft starts
 /// 2. **Initialization**: Call [`initialize`](Raft::initialize) on pristine nodes to form a cluster
 /// 3. **Operation**: Use various methods to interact with the node:
 ///    - Protocol RPCs: [`append_entries`](Raft::append_entries), [`vote`](Raft::vote)
@@ -484,6 +485,40 @@ where
         id: C::NodeId,
         config: Arc<Config>,
         network: N,
+        log_store: LS,
+        state_machine: SM,
+    ) -> Result<Self, Fatal<C>>
+    where
+        N: RaftNetworkFactory<C>,
+        N::Network: NetSnapshot<C, SnapshotData = SM::SnapshotData>,
+        LS: RaftLogStorage<C>,
+    {
+        let raft = Self::build(id, config, network, log_store, state_machine).await?;
+        raft.run();
+        Ok(raft)
+    }
+
+    /// Build a Raft node without spawning its tasks.
+    ///
+    /// This two-phase alternative to [`new`](Self::new) lets an application construct data-serving
+    /// components that depend on the [`Raft`] handle before the node can campaign for leadership.
+    /// Call [`run`](Self::run) after those components are ready.
+    ///
+    /// Storage is inspected and the initial Raft state is recovered during this call, but
+    /// No Raft background task starts until [`run`](Self::run) is called.
+    ///
+    /// ```ignore
+    /// let raft = Raft::build(id, config, network, log_store, sm).await?;
+    /// let server = DataServer::new(raft.clone());
+    /// raft.run();
+    /// server.serve().await?;
+    /// ```
+    #[since(version = "0.10.0")]
+    #[tracing::instrument(level="debug", skip_all, fields(cluster=%config.cluster_name))]
+    pub async fn build<LS, N>(
+        id: C::NodeId,
+        config: Arc<Config>,
+        network: N,
         mut log_store: LS,
         mut state_machine: SM,
     ) -> Result<Self, Fatal<C>>
@@ -514,9 +549,6 @@ where
         let (tx_progress, progress_watcher) = IoProgressWatcher::new();
         let (tx_shutdown, rx_shutdown) = C::oneshot();
 
-        let tick_period = Duration::from_millis(config.tick_interval());
-        let tick_handle = Tick::spawn(tick_period, tx_notify.clone(), config.enable_tick);
-
         let runtime_config = Arc::new(RuntimeConfig::new(&config));
 
         let core_span = tracing::span!(
@@ -538,16 +570,9 @@ where
 
         let sm_span = tracing::span!(parent: &core_span, Level::DEBUG, "sm_worker");
 
-        let sm_handle = worker::Worker::spawn(
-            id.clone(),
-            state_machine,
-            log_store.get_log_reader().await,
-            tx_notify.clone(),
-            config.state_machine_channel_size(),
-            sm_span,
-        );
-
-        let sm_cmd_tx = sm_handle.downgrade_sender();
+        let log_reader = log_store.get_log_reader().await;
+        let (sm_cmd_tx, sm_cmd_rx) = C::mpsc(config.state_machine_channel_size());
+        let weak_sm_cmd_tx = sm_cmd_tx.downgrade();
 
         let default_io_id = IOId::new_vote_io(UncommittedVote::new_with_default_term(id.clone()));
         let (io_accepted_tx, _io_accepted_rx) = C::watch_channel(default_io_id.clone());
@@ -556,91 +581,135 @@ where
 
         let shared_replicate_batch = SharedReplicateBatch::new();
 
-        let core: RaftCore<C, N, LS, SM> = RaftCore {
-            id: id.clone(),
-            config: config.clone(),
-            runtime_config: runtime_config.clone(),
-            core_state: Default::default(),
-            network_factory: Arc::new(C::mutex(network)),
-            log_store,
-            sm_handle,
+        let start = {
+            let id = id.clone();
+            let config = config.clone();
+            let runtime_config = runtime_config.clone();
+            let tx_api = tx_api.clone();
+            let tx_install_snapshot = tx_install_snapshot.clone();
+            let rx_metrics = rx_metrics.clone();
+            let rx_server_metrics = rx_server_metrics.clone();
 
-            engine,
+            Box::new(move |inner: &RaftInner<C>| {
+                let tick_tx = tx_notify.clone();
+                let sm_handle = worker::Worker::spawn(
+                    id.clone(),
+                    state_machine,
+                    log_reader,
+                    tx_notify.clone(),
+                    (sm_cmd_tx, sm_cmd_rx),
+                    sm_span,
+                );
 
-            // initially, allocate for 8 kilo outstanding requests.
-            client_responders: ClientResponderQueue::with_capacity(1024 * 8),
+                let core: RaftCore<C, N, LS, SM> = RaftCore {
+                    id: id.clone(),
+                    config: config.clone(),
+                    runtime_config: runtime_config.clone(),
+                    core_state: Default::default(),
+                    network_factory: Arc::new(C::mutex(network)),
+                    log_store,
+                    sm_handle,
 
-            pending_reads: PendingReadQueue::default(),
-            pending_read_deadline_notifier: PendingReadDeadlineNotifier::spawn(tx_notify.clone()),
-            replications: Default::default(),
+                    engine,
 
-            heartbeat_handle: HeartbeatWorkersHandle::new(id.clone(), config.clone()),
-            tx_api: tx_api.clone(),
-            rx_api: BatchRaftMsgReceiver::new(
-                rx_api,
-                config.api_batch_capacity,
-                Duration::from_millis(config.api_batch_linger_ms),
-            ),
-            tx_install_snapshot: tx_install_snapshot.clone(),
-            rx_install_snapshot,
+                    // initially, allocate for 8 kilo outstanding requests.
+                    client_responders: ClientResponderQueue::with_capacity(1024 * 8),
 
-            tx_notification: tx_notify,
-            rx_notification: rx_notify,
+                    pending_reads: PendingReadQueue::default(),
+                    pending_read_deadline_notifier: PendingReadDeadlineNotifier::spawn(tx_notify.clone()),
+                    replications: Default::default(),
 
-            io_broadcast: IoBroadcast {
-                completed: tx_io_completed,
-                accepted: io_accepted_tx,
-                submitted: io_submitted_tx,
-                committed: committed_tx,
-            },
+                    heartbeat_handle: HeartbeatWorkersHandle::new(id.clone(), config.clone()),
+                    tx_api: tx_api.clone(),
+                    rx_api: BatchRaftMsgReceiver::new(
+                        rx_api,
+                        config.api_batch_capacity,
+                        Duration::from_millis(config.api_batch_linger_ms),
+                    ),
+                    tx_install_snapshot: tx_install_snapshot.clone(),
+                    rx_install_snapshot,
 
-            metrics: MetricsChannels {
-                all: tx_metrics,
-                data: tx_data_metrics,
-                server: tx_server_metrics,
-                progress: tx_progress,
-            },
+                    tx_notification: tx_notify,
+                    rx_notification: rx_notify,
 
-            runtime_stats: RuntimeStats::new(&config),
-            shared_replicate_batch,
+                    io_broadcast: IoBroadcast {
+                        completed: tx_io_completed,
+                        accepted: io_accepted_tx,
+                        submitted: io_submitted_tx,
+                        committed: committed_tx,
+                    },
 
-            metrics_recorder: None,
+                    metrics: MetricsChannels {
+                        all: tx_metrics,
+                        data: tx_data_metrics,
+                        server: tx_server_metrics,
+                        progress: tx_progress,
+                    },
 
-            span: core_span,
+                    runtime_stats: RuntimeStats::new(&config),
+                    shared_replicate_batch,
+
+                    metrics_recorder: None,
+
+                    span: core_span,
+                };
+
+                // Spawn forwarder task to bridge Watch channel to notification channel
+                let _forwarder_handle = C::spawn(io_completion_forwarder::<C>(rx_io_completed, weak_tx_notify));
+
+                StepDownWatcher::<C>::spawn(
+                    rx_server_metrics.clone(),
+                    rx_metrics.clone(),
+                    tx_api.downgrade(),
+                    &config,
+                );
+
+                let core_fut = core.main(rx_shutdown).instrument(trace_span!("spawn").or_current());
+                let join_handle = C::spawn(core_fut);
+
+                let tick_period = Duration::from_millis(config.tick_interval());
+                let enabled = inner.runtime_config.enable_tick.clone();
+                let tick_handle = Tick::spawn(tick_period, tick_tx, enabled);
+                *inner.tick_handle.lock().unwrap() = Some(tick_handle);
+                join_handle
+            })
         };
-
-        // Spawn forwarder task to bridge Watch channel to notification channel
-        let _forwarder_handle = C::spawn(io_completion_forwarder::<C>(rx_io_completed, weak_tx_notify));
-
-        StepDownWatcher::<C>::spawn(
-            rx_server_metrics.clone(),
-            rx_metrics.clone(),
-            tx_api.downgrade(),
-            &config,
-        );
-
-        let core_handle = C::spawn(core.main(rx_shutdown).instrument(trace_span!("spawn").or_current()));
 
         let inner = RaftInner {
             id,
             config,
             runtime_config,
-            tick_handle,
+            tick_handle: Mutex::new(None),
             tx_api,
             rx_metrics,
             rx_data_metrics,
             rx_server_metrics,
             progress_watcher,
             tx_shutdown: Mutex::new(Some(tx_shutdown)),
-            core_state: Mutex::new(CoreState::Running(core_handle)),
+            core_state: Mutex::new(CoreState::Unstarted(Some(start))),
             extensions: Extensions::default(),
         };
 
         Ok(Self {
             inner: Arc::new(inner),
-            sm_cmd_tx,
+            sm_cmd_tx: weak_sm_cmd_tx,
             install_snapshot_tx: tx_install_snapshot,
         })
+    }
+
+    /// Start the Raft core task built by [`build`](Self::build).
+    ///
+    /// This method is idempotent: calling it on an already running or stopped node has no effect.
+    #[since(version = "0.10.0")]
+    pub fn run(&self) {
+        let mut state = self.inner.core_state.lock().unwrap();
+        let CoreState::Unstarted(start) = &mut *state else {
+            return;
+        };
+
+        let start = start.take().expect("unstarted Raft must have a start function");
+        let join_handle = start(self.inner.as_ref());
+        *state = CoreState::Running(join_handle);
     }
 }
 
@@ -1969,7 +2038,12 @@ where
             tracing::info!("sending shutdown signal to RaftCore, sending res: {:?}", send_res);
         }
         self.inner.join_core_task().await;
-        if let Some(join_handle) = self.inner.tick_handle.shutdown() {
+        let tick_handle = self.inner.tick_handle.lock().unwrap().take();
+        let join_handle = match tick_handle {
+            Some(tick_handle) => tick_handle.shutdown(),
+            None => None,
+        };
+        if let Some(join_handle) = join_handle {
             join_handle.await.ok();
         }
 

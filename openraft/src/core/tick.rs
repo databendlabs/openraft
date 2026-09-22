@@ -40,7 +40,6 @@ where C: RaftTypeConfig
 pub(crate) struct TickHandle<C>
 where C: RaftTypeConfig
 {
-    enabled: Arc<AtomicBool>,
     shutdown: Mutex<Option<OneshotSenderOf<C, ()>>>,
     join_handle: Mutex<Option<JoinHandleOf<C, ()>>>,
 }
@@ -60,19 +59,21 @@ where C: RaftTypeConfig
 impl<C> Tick<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn spawn(period: Duration, tx: MpscSenderOf<C, Notification<C>>, enabled: bool) -> TickHandle<C> {
-        let enabled = Arc::new(AtomicBool::from(enabled));
+    pub(crate) fn spawn(
+        period: Duration,
+        tx: MpscSenderOf<C, Notification<C>>,
+        enabled: Arc<AtomicBool>,
+    ) -> TickHandle<C> {
         let this = Self {
             period,
             first_wait: Self::sample_first_wait(period),
-            enabled: enabled.clone(),
+            enabled,
             tx,
         };
 
         let (shutdown, shutdown_rx) = C::oneshot();
 
         let shutdown = Mutex::new(Some(shutdown));
-
         let join_handle = C::spawn(this.tick_loop(shutdown_rx).instrument(tracing::span!(
             parent: &Span::current(),
             Level::DEBUG,
@@ -80,7 +81,6 @@ where C: RaftTypeConfig
         )));
 
         TickHandle {
-            enabled,
             shutdown,
             join_handle: Mutex::new(Some(join_handle)),
         }
@@ -151,10 +151,6 @@ where C: RaftTypeConfig
 impl<C> TickHandle<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn enable(&self, enabled: bool) {
-        self.enabled.store(enabled, Ordering::Relaxed);
-    }
-
     /// Signal the tick loop to stop. And return a JoinHandle to wait for the loop to stop.
     ///
     /// If it is called twice, the second call will return None.
@@ -183,6 +179,8 @@ where C: RaftTypeConfig
 #[cfg(test)]
 mod tests {
     use std::future::Future;
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
     use std::time::Duration;
 
     use openraft_rt::deterministic_rng::DeterministicRng;
@@ -328,7 +326,8 @@ mod tests {
 
             // A first wait far longer than this test's own timeout: the loop can only finish by
             // observing the shutdown signal.
-            let th = Tick::<TickUTConfig>::spawn(Duration::from_secs(10), tx, true);
+            let enabled = Arc::new(AtomicBool::new(true));
+            let th = Tick::<TickUTConfig>::spawn(Duration::from_secs(10), tx, enabled);
 
             TickUTConfig::sleep(Duration::from_millis(50)).await;
             let join_handle = th.shutdown().unwrap();
@@ -355,7 +354,8 @@ mod tests {
 
         run_seeded(SEED, async {
             let (tx, mut rx) = SeededTickConfig::mpsc(1024);
-            let th = Tick::<SeededTickConfig>::spawn(period, tx, true);
+            let enabled = Arc::new(AtomicBool::new(true));
+            let th = Tick::<SeededTickConfig>::spawn(period, tx, enabled);
 
             let early_first =
                 SeededTickConfig::timeout(first_wait - margin, recv_tick::<SeededTickConfig>(&mut rx)).await;
@@ -393,7 +393,8 @@ mod tests {
             // Capacity one: the first tick fills the channel, so the second blocks in `send()`
             // until this task drains it, and the tick loop is held past its own schedule.
             let (tx, mut rx) = TickUTConfig::mpsc(1);
-            let th = Tick::<TickUTConfig>::spawn(PERIOD, tx, true);
+            let enabled = Arc::new(AtomicBool::new(true));
+            let th = Tick::<TickUTConfig>::spawn(PERIOD, tx, enabled);
 
             TickUTConfig::sleep(STALL).await;
 
@@ -419,7 +420,8 @@ mod tests {
         TickUTConfig::run(async {
             // Capacity one throttles the busy loop to this task's receive rate.
             let (tx, mut rx) = TickUTConfig::mpsc(1);
-            let th = Tick::<TickUTConfig>::spawn(Duration::ZERO, tx, true);
+            let enabled = Arc::new(AtomicBool::new(true));
+            let th = Tick::<TickUTConfig>::spawn(Duration::ZERO, tx, enabled);
 
             for expected in 1..=3 {
                 let i = TickUTConfig::timeout(Duration::from_secs(1), recv_tick::<TickUTConfig>(&mut rx))
@@ -453,7 +455,8 @@ mod tests {
             // Capacity one: the second tick stays blocked in `send()` for the whole stall, so the
             // loop sleeps through the deadlines at `first_wait + 3 * PERIOD` and `+ 4 * PERIOD`.
             let (tx, mut rx) = SeededTickConfig::mpsc(1);
-            let th = Tick::<SeededTickConfig>::spawn(PERIOD, tx, true);
+            let enabled = Arc::new(AtomicBool::new(true));
+            let th = Tick::<SeededTickConfig>::spawn(PERIOD, tx, enabled);
 
             SeededTickConfig::sleep(first_wait + STALL).await;
 
