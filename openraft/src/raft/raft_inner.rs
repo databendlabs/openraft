@@ -48,7 +48,7 @@ where C: RaftTypeConfig
     pub(in crate::raft) id: C::NodeId,
     pub(in crate::raft) config: Arc<Config>,
     pub(in crate::raft) runtime_config: Arc<RuntimeConfig>,
-    pub(in crate::raft) tick_handle: TickHandle<C>,
+    pub(in crate::raft) tick_handle: Mutex<Option<TickHandle<C>>>,
     pub(in crate::raft) tx_api: MpscSenderOf<C, RaftMsg<C>>,
     pub(in crate::raft) rx_metrics: WatchReceiverOf<C, RaftMetrics<C>>,
     pub(in crate::raft) rx_data_metrics: WatchReceiverOf<C, RaftDataMetrics<C>>,
@@ -242,6 +242,11 @@ where C: RaftTypeConfig
             let mut state = self.core_state.lock().unwrap();
 
             match &*state {
+                CoreState::Unstarted(_) => {
+                    // Dropping the unstarted future drops RaftCore and closes all of its channels.
+                    *state = CoreState::Done(Err(Fatal::Stopped));
+                    return;
+                }
                 CoreState::Running(_) => {
                     let (tx, rx) = C::watch_channel::<bool>(false);
 

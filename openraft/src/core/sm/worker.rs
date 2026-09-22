@@ -64,10 +64,10 @@ where
         state_machine: SM,
         log_reader: LR,
         resp_tx: MpscSenderOf<C, Notification<C>>,
-        state_machine_channel_size: usize,
+        cmd_channel: (MpscSenderOf<C, Command<C, SM>>, MpscReceiverOf<C, Command<C, SM>>),
         span: tracing::Span,
     ) -> Handle<C, SM> {
-        let (cmd_tx, cmd_rx) = C::mpsc(state_machine_channel_size);
+        let (cmd_tx, cmd_rx) = cmd_channel;
 
         let worker = Worker {
             id,

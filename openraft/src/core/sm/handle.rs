@@ -34,15 +34,6 @@ where
         self.cmd_tx.send(cmd).await
     }
 
-    /// Create a weak sender for direct access to the SM command channel.
-    ///
-    /// It is weak because the [`Worker`] watches the close event of this channel for shutdown.
-    ///
-    /// [`Worker`]: sm::worker::Worker
-    pub(crate) fn downgrade_sender(&self) -> MpscWeakSenderOf<C, sm::Command<C, SM>> {
-        self.cmd_tx.downgrade()
-    }
-
     /// Create a [`SnapshotReader`] to get the current snapshot from the state machine.
     pub(crate) fn new_snapshot_reader(&self) -> SnapshotReader<C, SM> {
         SnapshotReader {
