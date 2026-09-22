@@ -359,3 +359,18 @@
                      :final-workload-1
                      :final-workload-2}
                    operations)))))
+
+(deftest selects-two-nodes-for-leader-removal
+  (doseq [nodes [["n1" "n2"] ["n1" "n2" "n3" "n4" "n5"]]]
+    (let [parsed (tools-cli/parse-opts ["--liveness=leader-removal-recovery"] cli/cli-opts)
+          options (assoc (:options parsed) :nodes nodes)]
+      (is (empty? (:errors (#'cli/prepare-options {:options options}))))
+      (with-redefs [openraft-nemesis/compose-packages
+                    (fn [& _] (throw (AssertionError. "Safety nemesis selected")))]
+        (let [test (cli/openraft-test options)]
+          (is (= ["n1" "n2"] (:nodes test)))
+          (is (nil? (:pre-vote-stability test)))
+          (is (= openraft-db/default-snapshot-threshold (:snapshot-threshold test)))))))
+  (doseq [nodes [["n1"] ["n1" "n1"]]]
+    (is (seq (:errors (#'cli/prepare-options
+                       {:options {:liveness :leader-removal-recovery :nodes nodes}}))))))

@@ -19,6 +19,7 @@
              [partition :as partition]
              [process :as process]]
             [jepsen.openraft.scenario [bridge-partition :as bridge-partition]
+             [leader-removal-recovery :as leader-removal]
              [two-leaf-partition :as two-leaf-partition]]))
 
 (def ^:private concrete-nemesis-types
@@ -63,10 +64,10 @@
   (some #(or (= option %) (str/starts-with? % (str option "="))) argv))
 
 (def cli-opts
-  [[nil "--liveness SCENARIO" "Run bridge-partition or two-leaf-partition."
+  [[nil "--liveness SCENARIO" "Run bridge-partition, two-leaf-partition, or leader-removal-recovery."
     :parse-fn keyword
-    :validate [#{:bridge-partition :two-leaf-partition}
-               "Must be bridge-partition or two-leaf-partition."]]
+    :validate [#{:bridge-partition :two-leaf-partition :leader-removal-recovery}
+               "Must be bridge-partition, two-leaf-partition, or leader-removal-recovery."]]
    [nil "--api-port PORT" "OpenRaft application HTTP port."
     :default 21001
     :parse-fn parse-long]
@@ -96,13 +97,21 @@
     :parse-fn parse-long
     :validate [some? "Must be an integer."]]])
 
+(defn- liveness-node-error [{:keys [liveness nodes]}]
+  (when liveness
+    (if (= :leader-removal-recovery liveness)
+      (when-not (and (<= 2 (count nodes)) (= (count nodes) (count (set nodes))))
+        "--liveness=leader-removal-recovery requires at least two distinct nodes.")
+      (when-not (= 5 (count nodes) (count (set nodes)))
+        "--liveness requires five distinct nodes."))))
+
 (defn- prepare-options [parsed]
   (let [options (:options parsed)
         liveness-errors
         (when (:liveness options)
           (cond-> []
-            (not (= 5 (count (:nodes options)) (count (set (:nodes options)))))
-            (conj "--liveness requires five distinct nodes.")
+            (liveness-node-error options)
+            (conj (liveness-node-error options))
 
             (supplied-option? (:argv options) "--nemesis")
             (conj "--nemesis cannot be used with --liveness.")
@@ -157,21 +166,30 @@
         (:final-generator workload))))))
 
 (defn openraft-test [opts]
-  (when (and (:liveness opts)
-             (not (= 5 (count (:nodes opts)) (count (set (:nodes opts))))))
-    (throw (ex-info "--liveness requires five distinct nodes" {})))
+  (when-let [error (liveness-node-error opts)]
+    (throw (ex-info error {})))
   (let [opts (cond-> opts
+               (= :leader-removal-recovery (:liveness opts))
+               (update :nodes #(vec (take 2 %)))
                (= :two-leaf-partition (:liveness opts))
                (assoc :two-leaf-partition true
                       :bootstrap-state (atom nil)
                       :client-nodes (vec (take 3 (:nodes opts)))))
         failure-state (harness/failure-state)
         database (openraft-db/db opts)
-        workload (workload/workload opts)
+        workload (if (= :leader-removal-recovery (:liveness opts))
+                   (select-keys tests/noop-test [:client :checker])
+                   (workload/workload opts))
         roles (atom nil)
         nemesis-types (normalize-nemeses (:nemesis opts))
         mode-config
         (cond
+          (= :leader-removal-recovery (:liveness opts))
+          {:name "openraft leader-removal-recovery"
+           :nemesis-package (leader-removal/package database)
+           :client (:client workload)
+           :generator (leader-removal/generator failure-state)}
+
           (= :bridge-partition (:liveness opts))
           {:name "openraft bridge-partition"
            :nemesis-package (bridge-partition/package roles)
