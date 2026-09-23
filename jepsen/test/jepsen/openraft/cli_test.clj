@@ -369,7 +369,7 @@
                     (fn [& _] (throw (AssertionError. "Safety nemesis selected")))]
         (let [test (cli/openraft-test options)]
           (is (= ["n1" "n2"] (:nodes test)))
-          (is (nil? (:pre-vote-stability test)))
+          (is (nil? (:two-leaf-partition test)))
           (is (= openraft-db/default-snapshot-threshold (:snapshot-threshold test)))))))
   (doseq [nodes [["n1"] ["n1" "n1"]]]
     (is (seq (:errors (#'cli/prepare-options

@@ -56,14 +56,16 @@
                      (c/exec :iptables :-w :-X chain)))))))
 
 (defn- partition! [test]
-  (c/on-nodes test
-              (fn [_ _]
-                (c/su
-                 (c/exec :iptables :-w :-N chain)
-                 (c/exec :iptables :-w :-A chain :-p :tcp :--dport (:raft-port test 22001) :-j :DROP)
-                 (c/exec :iptables :-w :-I :OUTPUT :-j chain)
-                 (c/exec :iptables :-w :-C :OUTPUT :-j chain)
-                 (c/exec :iptables :-w :-C chain :-p :tcp :--dport (:raft-port test 22001) :-j :DROP)))))
+  (let [raft-port (:raft-port test http/default-raft-port)
+        script (str "iptables -w -N " chain " && "
+                    "iptables -w -A " chain " -p tcp --dport " raft-port " -j DROP && "
+                    "iptables -w -C " chain " -p tcp --dport " raft-port " -j DROP && "
+                    "iptables -w -I OUTPUT -j " chain " && "
+                    "iptables -w -C OUTPUT -j " chain)]
+    (c/on-nodes test
+                (fn [_ _]
+                  (c/su
+                   (c/exec :bash :-ceu script))))))
 
 (defn- await-state! [test condition pred]
   (await/until!
@@ -95,6 +97,11 @@
         (when-not (= :request-timeout (:kind (ex-data e))) (throw e))))
     (await-state! test :final-window #(window-valid? (:nodes test) %))))
 
+(defn- retryable-recovery-error? [e]
+  (or (#{:unreachable :request-timeout :transport-error} (:kind (ex-data e)))
+      (and (= :openraft-error (:kind (ex-data e)))
+           (some #{:ForwardToLeader :QuorumNotEnough} (keys (:error (ex-data e)))))))
+
 (defn- recover! [test f started]
   (let [b (second (:nodes test))
         endpoint (http/api-endpoint test b)
@@ -104,22 +111,27 @@
       (let [result
             (await/until!
              :leader-removal-recovery
-             #(try
-                (let [metrics (cluster/node-metrics! test b)]
-                  (reset! last-observation {:metrics metrics})
-                  (when-not (final-ready? b f metrics)
-                    (await/retry! :leader-removal-recovery @last-observation))
-                  ;; Direct calls to B: no redirection or dependence on A's application API.
+             #(let [metrics (try
+                              (cluster/node-metrics! test b)
+                              (catch Exception e
+                                (if (retryable-recovery-error? e)
+                                  (await/retry! :leader-removal-recovery
+                                                (assoc @last-observation :error (ex-data e)))
+                                  (throw e))))]
+                (reset! last-observation {:metrics metrics})
+                (when-not (final-ready? b f metrics)
+                  (await/retry! :leader-removal-recovery @last-observation))
+                ;; Direct calls to B: no redirection or dependence on A's application API.
+                (try
                   (http/write! endpoint fresh-key "after-heal")
                   (assoc @last-observation
                          :fresh (:value (http/linearizable-read! endpoint fresh-key))
-                         :sentinel (:value (http/linearizable-read! endpoint sentinel-key))))
-                (catch Exception e
-                  (if (or (#{:unreachable :request-timeout :transport-error} (:kind (ex-data e)))
-                          (and (= :openraft-error (:kind (ex-data e)))
-                               (some #{:ForwardToLeader :QuorumNotEnough} (keys (:error (ex-data e))))))
-                    (await/retry! :leader-removal-recovery (assoc @last-observation :error (ex-data e)))
-                    (throw e))))
+                         :sentinel (:value (http/linearizable-read! endpoint sentinel-key)))
+                  (catch Exception e
+                    (if (retryable-recovery-error? e)
+                      (await/retry! :leader-removal-recovery
+                                    (assoc @last-observation :error (ex-data e)))
+                      (throw e)))))
              {:timeout (max 1 (- recovery-ms (elapsed))) :retry-interval 100})]
         (assoc result :status :recovered :elapsed-ms (elapsed)))
       (catch Exception e

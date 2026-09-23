@@ -108,11 +108,12 @@
 
 (defn- prepare-options [parsed]
   (let [options (:options parsed)
+        node-error (liveness-node-error options)
         liveness-errors
         (when (:liveness options)
           (cond-> []
-            (liveness-node-error options)
-            (conj (liveness-node-error options))
+            node-error
+            (conj node-error)
 
             (supplied-option? (:argv options) "--nemesis")
             (conj "--nemesis cannot be used with --liveness.")
