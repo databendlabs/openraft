@@ -331,6 +331,9 @@
                     :api_addr api-addr
                     :raft_addr raft-addr})))
 
+(defn append-membership! [endpoint configs]
+  (ok-value (post! endpoint "/append-membership" configs)))
+
 (defn change-membership! [endpoint node-ids]
   (ok-value (post! endpoint "/change-membership" node-ids)))
 

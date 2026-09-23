@@ -37,7 +37,7 @@
 
 (deftest stability-readiness-includes-the-final-committed-membership
   (let [nodes ["n1" "n2" "n3" "n4" "n5"]
-        test (assoc test-config :nodes nodes :pre-vote-stability true)
+        test (assoc test-config :nodes nodes :two-leaf-partition true)
         membership {:log_id {:index 7}
                     :membership {:configs [nodes]}}
         metrics (into {}
@@ -68,7 +68,7 @@
         (with-redefs [client/metrics! (update metrics "n4:21001" change)]
           (is (nil? (#'cluster/cluster-status test)))
           (is (some? (#'cluster/cluster-status
-                      (dissoc test :pre-vote-stability)))))))))
+                      (dissoc test :two-leaf-partition)))))))))
 
 (deftest rejects-disagreement-about-the-leader
   (let [metrics {"n1:21001" {:state "Leader"

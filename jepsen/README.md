@@ -88,7 +88,9 @@ The `jepsen.openraft` namespace contains the OpenRaft-specific Jepsen code:
 - `nemesis/membership.clj`: membership growth, shrink, and final restoration.
 - `nemesis/partition.clj`: leader-aware network partition faults and recovery.
 - `nemesis/process.clj`: process kill/restart and pause/resume faults.
-- `pre_vote.clj`: fixed partial-network pre-vote stability scenario.
+- `scenario/bridge_partition.clj`: old-leader bridge liveness scenario.
+- `scenario/two_leaf_partition.clj`: stable-leader two-leaf scenario.
+- `history.clj`: shared Jepsen history queries used by scenario checkers.
 - `quorum.clj`: stable and joint-consensus quorum calculations.
 - `workload.clj`: generators and checkers for client operations.
 
@@ -151,6 +153,19 @@ $ make -C jepsen liveness SCENARIO=two-leaf-partition
 # Stop and remove the Jepsen containers.
 $ make -C jepsen down
 ```
+
+Use `make -C jepsen liveness` (equivalent to `SCENARIO=all`) to run all
+available liveness scenarios. Available scenarios are `bridge-partition`,
+`two-leaf-partition`, and `leader-removal-recovery`. `SCENARIO` also accepts a
+comma-separated list; each selected scenario runs independently with its own
+setup, teardown, and results.
+Unknown scenarios are rejected before any liveness run starts.
+
+`make -C jepsen safety` runs the default chaos safety test; use `NEMESIS=...`
+to select faults. `make -C jepsen test` runs safety followed by liveness,
+sequentially even with `make -j`. It attempts both categories and fails if
+either fails. `PACKET_MODE` applies only to safety. The `jepsen` target builds
+and starts the containers, runs unit tests, then runs this combined test target.
 
 The harness uses each Jepsen node's container hostname, such as `n1`, directly
 as its OpenRaft node ID.
@@ -381,18 +396,6 @@ run lint and unit tests only. Liveness failures fail the job; they are not
 treated as expected successes. Results and failure diagnostics are uploaded,
 and Docker cleanup runs regardless of the test result.
 
-Use `make -C jepsen liveness` (equivalent to `SCENARIO=all`) to run all
-available liveness scenarios. Available scenarios are `bridge-partition` and `two-leaf-partition`.
-`SCENARIO` also accepts a comma-separated list; each selected scenario runs
-independently with its own setup, teardown, and results. Unknown scenarios are
-rejected before any liveness run starts.
-
-`make -C jepsen safety` runs the default chaos safety test; use `NEMESIS=...`
-to select faults. `make -C jepsen test` runs safety followed by liveness,
-sequentially even with `make -j`. It attempts both categories and fails if
-either fails. `PACKET_MODE` applies only to safety. The `jepsen` target builds
-and starts the containers, runs unit tests, then runs this combined test target.
-
 The test chooses the established leader and waits for all logs to be applied.
 All five voters stay running throughout; no Kill or Restart is injected. Quorum
 is three votes. Three nodes stay mutually connected; the old leader stays
@@ -443,14 +446,14 @@ the connected quorum can elect a leader and complete a write under
 fix for #2080. A command failure, missing phase, or missing recovery also
 fails the run.
 
-### Pre-vote stability with a reachable leader quorum
+### Two-leaf partition with a reachable leader quorum
 
 Run `make -C jepsen liveness SCENARIO=two-leaf-partition` with freshly built, running containers.
 The CLI selects one scenario with `--liveness=two-leaf-partition`; Make expands
 `SCENARIO=all` or a comma-separated list into independent runs.
 The scenario requires five distinct nodes. Their order assigns the roles below;
 the default order is `n1,n2,n3,n4,n5`, with `n1` as the bootstrap leader.
-CI runs both scenarios in the `Jepsen (liveness)` matrix entry on pushes to main
+CI runs the scenarios in the `Jepsen (liveness)` matrix entry on pushes to main
 and manual workflow dispatches, using `make -C jepsen liveness`.
 
 ```text
@@ -485,6 +488,31 @@ The common linearizability, panic, harness-error, and final workload checks
 still apply. Recovery reads each register before writing new values, so recovery
 writes cannot conceal lost acknowledged values. Healing must let node 4 catch up;
 successful recovery cannot excuse a stability or progress failure during the partition.
+
+### Leader removal interrupted before final membership commits
+
+Run `make -C jepsen liveness SCENARIO=leader-removal-recovery`. This scenario
+uses the first two configured nodes as A and B; other containers do not participate.
+It covers [#2091](https://github.com/databendlabs/openraft/issues/2091).
+
+After acknowledging a sentinel write, explicitly append joint membership
+J = joint({A,B},{B}) and wait until both nodes commit/apply it. Block Raft traffic,
+then explicitly append final membership F = {B}, retaining A as a learner. Verify
+A has effective F but committed J, and B has not received F. Kill A with SIGKILL,
+restart it with unchanged storage, and remove the partition. Leader restoration
+is disabled only in this scenario; pre-vote and snapshot settings are unchanged.
+
+Within 60 seconds after healing, B must lead and commit/apply the same F (including
+its log ID). A fresh write and its linearizable read must succeed through B, and
+another linearizable read must return the pre-crash sentinel. Recovery uses automatic
+elections, without resubmitting membership commands. The deadline is an engineering
+bound, not a Raft guarantee. No intermediate restart metrics or temporary leadership
+observations are required.
+
+This focused scenario records its direct client checks in Nemesis history instead
+of running the random register workload. The scenario checker, panic checks, and
+harness-error checks determine the result. Missing setup evidence or recovery timeout
+fails the run; partition cleanup runs even after an error.
 
 ## Results and Stored Evidence
 
@@ -563,7 +591,8 @@ three possible values:
   diagnostic fields.
 
 Safety test names begin with `openraft linearizable registers`; liveness tests
-are named `openraft bridge-partition` and `openraft two-leaf-partition`. Each
+are named `openraft bridge-partition`, `openraft two-leaf-partition`, and
+`openraft leader-removal-recovery`. Each
 name also identifies its directory under `jepsen/store`. The independent linearizability checker
 lists failing keys at `[:workload :linearizable :failures]` and stores each
 key's result at `[:workload :linearizable :results <key>]`. Per-key histories

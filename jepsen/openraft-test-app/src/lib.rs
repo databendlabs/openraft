@@ -53,6 +53,9 @@ pub struct Opt {
 
     #[clap(long)]
     enable_pre_vote: bool,
+
+    #[clap(long)]
+    disable_leader_restore: bool,
 }
 
 #[path = "../../../examples/utils/declare_types.rs"]
@@ -66,6 +69,7 @@ pub async fn start_raft_node(options: Opt) -> std::io::Result<()> {
         data_dir,
         snapshot_threshold,
         enable_pre_vote,
+        disable_leader_restore,
     } = options;
     let dir = data_dir.unwrap_or_else(|| PathBuf::from(format!("{api_addr}.db")));
 
@@ -75,7 +79,8 @@ pub async fn start_raft_node(options: Opt) -> std::io::Result<()> {
         election_timeout_min: 299,
         // 700 ms exceeds the 600 ms minimum: leader lease + max election timeout.
         quorum_loss_probe_interval: Some(700),
-        enable_pre_vote: enable_pre_vote.then_some(true),
+        enable_pre_vote: Some(enable_pre_vote),
+        enable_leader_restore: disable_leader_restore.then_some(false),
         ..Default::default()
     };
 
@@ -116,6 +121,7 @@ pub async fn start_raft_node(options: Opt) -> std::io::Result<()> {
 
         app_http::Server::new(app)
             .add_openraft_routes()
+            .post("/append-membership", http_api::append_membership)
             .post("/read", http_api::read)
             .post("/linearizable_read", http_api::linearizable_read)
             .run(api_addr)

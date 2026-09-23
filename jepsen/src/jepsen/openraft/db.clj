@@ -143,7 +143,7 @@
   (signal-and-confirm! "CONT" :running :resumed))
 
 (defn- start-command!
-  [node-id api-addr raft-addr snapshot-threshold enable-pre-vote?]
+  [node-id api-addr raft-addr snapshot-threshold enable-pre-vote? disable-leader-restore?]
   (apply control-exec!
          (concat
           [(c/env (merge clock/application-env
@@ -163,10 +163,11 @@
            :--raft-addr raft-addr
            :--snapshot-threshold snapshot-threshold]
           (when enable-pre-vote? [:--enable-pre-vote])
+          (when disable-leader-restore? [:--disable-leader-restore])
           [:>> log-file (c/lit "2>&1")])))
 
 (defn- start-process!
-  [node-id api-addr raft-addr snapshot-threshold enable-pre-vote?]
+  [node-id api-addr raft-addr snapshot-threshold enable-pre-vote? disable-leader-restore?]
   (let [state (probe-process!)]
     (case state
       :running
@@ -176,7 +177,7 @@
       (do
         ;; --oknodo makes a start race succeed without broadly suppressing exit
         ;; status 1, which may instead mean a control or permission failure.
-        (start-command! node-id api-addr raft-addr snapshot-threshold enable-pre-vote?)
+        (start-command! node-id api-addr raft-addr snapshot-threshold enable-pre-vote? disable-leader-restore?)
         (await-process-state! :running)
         :start-confirmed)
 
@@ -239,7 +240,8 @@
                          api-addr
                          raft-addr
                          (:snapshot-threshold test)
-                         (:pre-vote-stability test)))))
+                         (:two-leaf-partition test)
+                         (= :leader-removal-recovery (:liveness test))))))
 
     (kill! [_ _ _node]
       (c/su
