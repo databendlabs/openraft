@@ -26,7 +26,7 @@ where C: RaftTypeConfig
     ///
     /// Disabling tick will disable election and heartbeat.
     pub fn tick(&self, enabled: bool) {
-        self.raft_inner.tick_handle.enable(enabled);
+        self.raft_inner.runtime_config.enable_tick.store(enabled, Ordering::Relaxed);
     }
 
     /// Enable or disable heartbeat messages when a leader has no more log to replicate.
