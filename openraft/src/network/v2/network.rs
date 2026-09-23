@@ -130,10 +130,9 @@ where C: RaftTypeConfig
     /// manner: it sends one request, waits for the response, then sends the next.
     /// This is simple but not optimal for performance.
     ///
-    /// Since network delivery order is not guaranteed, the default implementation
-    /// does not attempt pipelining. Applications requiring higher throughput should
-    /// override this method with a custom implementation that handles out-of-order
-    /// delivery appropriately (e.g., using sequence numbers or a reliable transport).
+    /// Since network delivery order is not guaranteed, the default implementation does not
+    /// attempt pipelining. A custom pipelined implementation must yield responses in the same
+    /// order as the input requests, using sequence numbers or an ordered transport as needed.
     ///
     /// The output stream terminates when the input is exhausted or an error occurs.
     ///

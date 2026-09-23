@@ -43,6 +43,9 @@ where C: RaftTypeConfig
     /// The remote follower should call [`Raft::stream_append()`] to process the stream
     /// and send back a stream of responses.
     ///
+    /// The output stream must return responses in the same order as the input requests. A
+    /// pipelined implementation must reorder concurrent results before yielding them.
+    ///
     /// The output stream terminates when the input is exhausted or an error occurs.
     /// The network implementation is responsible for enforcing `option.soft_ttl()`.
     ///

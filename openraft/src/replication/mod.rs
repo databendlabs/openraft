@@ -395,7 +395,12 @@ where
 
                     acked = acked.max(Some(matching.clone()));
 
-                    self.notify_progress(ReplicationResult(Ok(matching))).await;
+                    let greatest_acked = match &acked {
+                        Some(greatest_acked) => greatest_acked.clone(),
+                        None => unreachable!("acked was just updated"),
+                    };
+                    let result = ReplicationResult(Ok(greatest_acked));
+                    self.notify_progress(result).await;
                 }
                 Err(append_err) => {
                     match append_err {
