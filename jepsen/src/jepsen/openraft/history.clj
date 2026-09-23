@@ -1,5 +1,13 @@
 (ns jepsen.openraft.history)
 
+(defn nemesis-events
+  "Returns nemesis events for operation f whose value has status."
+  [history f status]
+  (filter #(and (= :nemesis (:process %))
+                (= f (:f %))
+                (= status (get-in % [:value :status])))
+          history))
+
 (defn successful-writes
   "Returns writes invoked and completed successfully within [start, end)."
   [history start end]
