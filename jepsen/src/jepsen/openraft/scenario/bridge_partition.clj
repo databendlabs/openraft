@@ -1,5 +1,5 @@
 (ns jepsen.openraft.scenario.bridge-partition
-  "Bridge-partition liveness scenario."
+  "Old leader stays connected through a bridge; a new write must complete within 1.5 seconds."
   (:require [jepsen [checker :as checker]
              [control :as c]
              [generator :as gen]
@@ -100,20 +100,16 @@
   nemesis/Reflection
   (fs [_] #{:start-bridge-partition :sample-bridge-partition :stop-bridge-partition}))
 
-(defn- matching-nemesis-events [history f status]
-  (filter #(and (= :nemesis (:process %)) (= f (:f %))
-                (= status (get-in % [:value :status]))) history))
-
 (defn checker []
   (reify checker/Checker
     (check [_ test history _]
-      (let [start (first (matching-nemesis-events history :start-bridge-partition :installed))
+      (let [start (first (history/nemesis-events history :start-bridge-partition :installed))
             stop (first (filter #(and (= :nemesis (:process %))
                                       (= :stop-bridge-partition (:f %))) history))
-            recovered (first (matching-nemesis-events history :stop-bridge-partition :recovered))
+            recovered (first (history/nemesis-events history :stop-bridge-partition :recovered))
             bounds? (and start stop recovered
                          (< (:time start) (:time stop)))
-            samples (matching-nemesis-events history :sample-bridge-partition :observed)
+            samples (history/nemesis-events history :sample-bridge-partition :observed)
             majority (get-in start [:value :majority])
             expected-nodes (set (conj majority (get-in start [:value :leader])
                                       (get-in start [:value :isolated])))
@@ -129,7 +125,7 @@
                                           (some #(< (:time %) (+ from deadline-nanos))
                                                 writes))}))
             original (when bounds? (phase (:time start) (:time stop)))
-            configs (for [op (matching-nemesis-events history :sample-bridge-partition :observed)
+            configs (for [op (history/nemesis-events history :sample-bridge-partition :observed)
                           m (vals (get-in op [:value :metrics]))]
                       (get-in m [:membership_config :membership :configs]))
             five-voters? (and (= 5 (count (:nodes test)) (count (set (:nodes test))))

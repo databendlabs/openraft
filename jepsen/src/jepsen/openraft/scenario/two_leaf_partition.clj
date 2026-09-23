@@ -1,5 +1,5 @@
 (ns jepsen.openraft.scenario.two-leaf-partition
-  "Two-leaf-partition liveness scenario."
+  "Leader and term stay fixed while writes continue under a two-leaf partition with a reachable leader quorum."
   (:require [clojure.string :as str]
             [jepsen [checker :as checker]
              [control :as c]
@@ -134,18 +134,14 @@
   nemesis/Reflection
   (fs [_] #{:start-two-leaf-partition :sample-two-leaf-partition :stop-two-leaf-partition}))
 
-(defn- events [history f status]
-  (filter #(and (= :nemesis (:process %)) (= f (:f %))
-                (= status (get-in % [:value :status]))) history))
-
 (defn checker []
   (reify checker/Checker
     (check [_ test history _]
-      (let [start (first (events history :start-two-leaf-partition :installed))
+      (let [start (first (history/nemesis-events history :start-two-leaf-partition :installed))
             stop (first (filter #(and (= :nemesis (:process %))
                                       (= :stop-two-leaf-partition (:f %))) history))
-            recovered (first (events history :stop-two-leaf-partition :recovered))
-            samples (events history :sample-two-leaf-partition :observed)
+            recovered (first (history/nemesis-events history :stop-two-leaf-partition :recovered))
+            samples (history/nemesis-events history :sample-two-leaf-partition :observed)
             final (first (filter :final-sample? samples))
             nodes (set (:nodes test))
             leader (first (:nodes test))

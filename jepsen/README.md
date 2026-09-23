@@ -38,39 +38,6 @@ API. Every db node exposes the same `app_http` endpoints, and the leader-aware
 client may contact any of them. The default OpenRaft cluster contains all five
 Docker nodes, which communicate over the Raft RPC port.
 
-The intended layout is:
-
-```text
-jepsen/
-  Makefile
-  project.clj
-  README.md
-  openraft-test-app/
-    Cargo.toml
-    src/
-  docker/
-    docker-compose.yml
-    control.Dockerfile
-    control.Dockerfile.dockerignore
-    node.Dockerfile
-    node.Dockerfile.dockerignore
-    init-ssh-key.sh
-  src/jepsen/openraft/
-    checker.clj
-    cli.clj
-    client.clj
-    db.clj
-    cluster.clj
-    interruption.clj
-    nemesis.clj
-    nemesis/
-      membership.clj
-      partition.clj
-      process.clj
-    quorum.clj
-    workload.clj
-```
-
 The `openraft-test-app` crate is derived from the RocksDB example but belongs to
 the Jepsen harness. It uses string node IDs so each Docker hostname can also be
 the corresponding OpenRaft node ID. Test-specific application changes can be
@@ -78,20 +45,29 @@ made there without increasing the complexity of the general-purpose example.
 
 The `jepsen.openraft` namespace contains the OpenRaft-specific Jepsen code:
 
+- `await.clj`: bounded polling helpers for scenario conditions.
 - `checker.clj`: run metadata, unhandled exception, and node log checkers.
 - `cli.clj`: command-line entry point.
 - `client.clj`: HTTP client for the OpenRaft KV example APIs.
-- `db.clj`: Jepsen DB lifecycle for starting and stopping OpenRaft nodes.
+- `clock.clj`: clock-fault setup and cleanup helpers.
 - `cluster.clj`: cluster bootstrap helpers.
+- `db.clj`: Jepsen DB lifecycle for starting and stopping OpenRaft nodes.
+- `generator.clj`: generators that react to harness failures.
+- `harness.clj`: shared harness-failure state and reporting.
+- `history.clj`: shared Jepsen history queries used by scenario checkers.
 - `interruption.clj`: shared thread-interruption classification.
 - `nemesis.clj`: fault scheduling, composition, and final recovery.
+- `nemesis/clock.clj`: wall-clock faults.
 - `nemesis/membership.clj`: membership growth, shrink, and final restoration.
+- `nemesis/outcome.clj`: shared fault-outcome classification.
+- `nemesis/packet.clj`: packet delay and loss faults.
 - `nemesis/partition.clj`: leader-aware network partition faults and recovery.
 - `nemesis/process.clj`: process kill/restart and pause/resume faults.
-- `scenario/bridge_partition.clj`: old-leader bridge liveness scenario.
-- `scenario/two_leaf_partition.clj`: stable-leader two-leaf scenario.
-- `history.clj`: shared Jepsen history queries used by scenario checkers.
 - `quorum.clj`: stable and joint-consensus quorum calculations.
+- `scenario/bridge_partition.clj`: old-leader bridge liveness scenario.
+- `scenario/leader_removal_recovery.clj`: interrupted leader-removal recovery scenario.
+- `scenario/two_leaf_partition.clj`: stable-leader two-leaf scenario.
+- `worker.clj`: bounded concurrent operation workers.
 - `workload.clj`: generators and checkers for client operations.
 
 ## Running
@@ -147,8 +123,14 @@ $ make -C jepsen safety NEMESIS=partition SEED=123456
 # Override the committed-log threshold that triggers snapshots.
 $ make -C jepsen test SNAPSHOT_THRESHOLD=250
 
-# Run the fixed partial-network pre-vote stability test.
+# Run only the bridge-partition liveness scenario.
+$ make -C jepsen liveness SCENARIO=bridge-partition
+
+# Run only the two-leaf-partition liveness scenario.
 $ make -C jepsen liveness SCENARIO=two-leaf-partition
+
+# Run only the leader-removal-recovery liveness scenario.
+$ make -C jepsen liveness SCENARIO=leader-removal-recovery
 
 # Stop and remove the Jepsen containers.
 $ make -C jepsen down
