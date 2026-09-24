@@ -16,6 +16,7 @@ repository    = { workspace = true }
 [dependencies]
 openraft = { path = "../../openraft", version = "0.10.0-alpha.34", features = ["serde", "type-alias"] }
 openraft-legacy = { path = "../../legacy", version = "0.10.0-alpha.34" }
+openraft-rt-sim = { path = "../../rt-sim", optional = true }
 
 derive_more = { workspace = true }
 futures     = { workspace = true }
@@ -29,6 +30,9 @@ tracing     = { workspace = true }
 [features]
 bt = ["openraft/bt"]
 single-term-leader = []
+
+# Run on the deterministic simulated runtime instead of tokio, for openraft#206.
+rt-sim = ["dep:openraft-rt-sim"]
 
 [package.metadata.docs.rs]
 all-features = true
