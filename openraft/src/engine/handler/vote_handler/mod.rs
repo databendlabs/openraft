@@ -212,10 +212,13 @@ where
             (leader.last_log_id().cloned(), leader.noop_log_id().clone())
         };
 
-        self.state.accept_log_io(IOId::new_log_io(leader_vote.clone(), last_log_id.clone()));
+        let prev_accepted = self.state.accept_log_io(IOId::new_log_io(leader_vote.clone(), last_log_id.clone()));
+        // SaveVote currently finishes its I/O before the next command runs.
+        // Keep this dependency explicit if vote persistence becomes non-blocking.
+        let condition = prev_accepted.map(|io_id| Condition::IOFlushed { io_id });
 
         self.output.push_command(Command::UpdateIOProgress {
-            when: None,
+            when: condition,
             io_id: IOId::new_log_io(leader_vote, last_log_id.clone()),
         });
 
