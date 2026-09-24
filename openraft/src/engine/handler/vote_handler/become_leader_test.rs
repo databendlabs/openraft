@@ -9,6 +9,7 @@ use crate::Vote;
 use crate::batch::Batch;
 use crate::core::ServerState;
 use crate::engine::Command;
+use crate::engine::Condition;
 use crate::engine::Engine;
 use crate::engine::TargetProgress;
 use crate::engine::testing::UTConfig;
@@ -91,4 +92,23 @@ fn test_become_leader() -> anyhow::Result<()> {
     ]);
 
     Ok(())
+}
+
+#[test]
+fn test_become_leader_waits_for_previous_io() {
+    let mut eng = eng();
+    let previous_vote = Vote::new(2, 1);
+    let previous_io = IOId::new(&previous_vote);
+    eng.state.accept_log_io(previous_io.clone());
+
+    eng.vote_handler().become_leader();
+
+    let leader_vote = previous_vote.to_committed();
+    let leader_io = IOId::new_log_io(leader_vote, None);
+    let first_command = eng.output.pop_command();
+    let expected = Some(Command::UpdateIOProgress {
+        when: Some(Condition::IOFlushed { io_id: previous_io }),
+        io_id: leader_io,
+    });
+    assert_eq!(first_command, expected);
 }
