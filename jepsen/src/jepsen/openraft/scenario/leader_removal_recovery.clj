@@ -102,6 +102,11 @@
       (and (= :openraft-error (:kind (ex-data e)))
            (some #{:ForwardToLeader :QuorumNotEnough} (keys (:error (ex-data e)))))))
 
+(defn- retry-or-throw! [e observation]
+  (if (retryable-recovery-error? e)
+    (await/retry! :leader-removal-recovery (assoc observation :error (ex-data e)))
+    (throw e)))
+
 (defn- recover! [test f started]
   (let [b (second (:nodes test))
         endpoint (http/api-endpoint test b)
@@ -113,11 +118,7 @@
              :leader-removal-recovery
              #(let [metrics (try
                               (cluster/node-metrics! test b)
-                              (catch Exception e
-                                (if (retryable-recovery-error? e)
-                                  (await/retry! :leader-removal-recovery
-                                                (assoc @last-observation :error (ex-data e)))
-                                  (throw e))))]
+                              (catch Exception e (retry-or-throw! e @last-observation)))]
                 (reset! last-observation {:metrics metrics})
                 (when-not (final-ready? b f metrics)
                   (await/retry! :leader-removal-recovery @last-observation))
@@ -127,11 +128,7 @@
                   (assoc @last-observation
                          :fresh (:value (http/linearizable-read! endpoint fresh-key))
                          :sentinel (:value (http/linearizable-read! endpoint sentinel-key)))
-                  (catch Exception e
-                    (if (retryable-recovery-error? e)
-                      (await/retry! :leader-removal-recovery
-                                    (assoc @last-observation :error (ex-data e)))
-                      (throw e)))))
+                  (catch Exception e (retry-or-throw! e @last-observation))))
              {:timeout (max 1 (- recovery-ms (elapsed))) :retry-interval 100})]
         (assoc result :status :recovered :elapsed-ms (elapsed)))
       (catch Exception e

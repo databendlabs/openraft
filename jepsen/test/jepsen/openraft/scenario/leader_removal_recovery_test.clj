@@ -65,20 +65,17 @@
     (is (= [:sentinel [nodes ["n2"]] :joint-applied :partition [["n2"]] :final-window] @calls))))
 
 (deftest partition-install-minimizes-the-leader-lease-critical-path
-  (let [commands (atom [])]
+  (let [commands (atom [])
+        script (str "iptables -w -N OR_LEADER_REMOVAL && "
+                    "iptables -w -A OR_LEADER_REMOVAL -p tcp --dport 22099 -j DROP && "
+                    "iptables -w -C OR_LEADER_REMOVAL -p tcp --dport 22099 -j DROP && "
+                    "iptables -w -I OUTPUT -j OR_LEADER_REMOVAL && "
+                    "iptables -w -C OUTPUT -j OR_LEADER_REMOVAL")]
     (with-redefs [c/on-nodes (fn [test f]
                                (doseq [node (:nodes test)] (f test node)))
                   c/exec (fn [& command] (swap! commands conj command))]
       (#'sut/partition! {:nodes nodes :raft-port 22099}))
-    (is (= 2 (count @commands)))
-    (doseq [[shell flags script] @commands]
-      (is (= [:bash :-ceu] [shell flags]))
-      (is (str/includes? script "--dport 22099"))
-      (let [rule-check (.indexOf script "-C OR_LEADER_REMOVAL")
-            install (.indexOf script "-I OUTPUT")
-            hook-check (.indexOf script "-C OUTPUT")]
-        (is (every? #(<= 0 %) [rule-check install hook-check]))
-        (is (< rule-check install hook-check))))))
+    (is (= [[:bash :-ceu script] [:bash :-ceu script]] @commands))))
 
 (deftest cleanup-survives-a-harness-failure
   (let [failure (harness/failure-state)]
