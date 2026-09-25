@@ -221,7 +221,7 @@ unused_dep:
 
 typos:
 	# cargo install typos-cli
-	typos --write-changes openraft/ tests/ stores/memstore/ stores/memstore-custom-node-id/ stores/rocksstore examples/log-wal/ examples/raft-kv-log-wal-sm-mem/ examples/raft-kv-memstore/ examples/raft-kv-rocksdb/
+	typos --write-changes openraft/ tests/ stores/memstore/ stores/memstore-custom-node-id/ examples/log-wal/ examples/raft-kv-log-wal-sm-mem/ examples/raft-kv-memstore/ examples/raft-kv-rocksdb/
 	#typos --write-changes --exclude change-log/ --exclude change-log.md --exclude derived-from-async-raft.md
 	# typos
 
