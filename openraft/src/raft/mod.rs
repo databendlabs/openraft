@@ -664,6 +664,7 @@ where
                     &config,
                 );
 
+                let core = Box::new(core);
                 let core_fut = core.main(rx_shutdown).instrument(trace_span!("spawn").or_current());
                 let join_handle = C::spawn(core_fut);
 
