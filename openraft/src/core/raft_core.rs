@@ -312,7 +312,10 @@ where
     SM: RaftStateMachine<C>,
 {
     /// The main loop of the Raft protocol.
-    pub(crate) async fn main(mut self, rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<Infallible, Fatal<C>> {
+    pub(crate) async fn main(
+        mut self: Box<Self>,
+        rx_shutdown: OneshotReceiverOf<C, ()>,
+    ) -> Result<Infallible, Fatal<C>> {
         let span = tracing::span!(parent: &self.span, Level::DEBUG, "main");
         let res = self.do_main(rx_shutdown).instrument(span).await;
 
