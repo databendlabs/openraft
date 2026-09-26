@@ -7,6 +7,7 @@ use super::StreamState;
 use crate::Config;
 use crate::OptionalSend;
 use crate::RaftLogReader;
+#[cfg(feature = "runtime-stats")]
 use crate::core::SharedReplicateBatch;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
@@ -117,6 +118,7 @@ fn probe_stops_after_storage_limited_prefix() {
                         }),
                         tx_notify,
                         cancel_rx,
+                        #[cfg(feature = "runtime-stats")]
                         replicate_batch: SharedReplicateBatch::new(),
                     },
                     event_watcher: EventWatcher {

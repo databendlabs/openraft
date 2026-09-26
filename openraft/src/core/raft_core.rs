@@ -9,6 +9,7 @@ use std::time::Duration;
 use display_more::DisplayOptionExt;
 use display_more::DisplaySliceExt;
 use futures_util::FutureExt;
+use openraft_macros::since;
 use tracing::Instrument;
 use tracing::Level;
 use tracing::Span;
@@ -35,6 +36,7 @@ use crate::core::PendingRead;
 use crate::core::PendingReadDeadlineNotifier;
 use crate::core::PendingReadQueue;
 use crate::core::ServerState;
+#[cfg(feature = "runtime-stats")]
 use crate::core::SharedReplicateBatch;
 use crate::core::balancer::Balancer;
 use crate::core::core_state::CoreState;
@@ -45,14 +47,17 @@ use crate::core::notification::Notification;
 use crate::core::raft_msg::AppendEntriesTx;
 use crate::core::raft_msg::ClientReadTx;
 use crate::core::raft_msg::RaftMsg;
+#[cfg(feature = "runtime-stats")]
 use crate::core::raft_msg::RaftMsgName;
 use crate::core::raft_msg::ResultSender;
 use crate::core::raft_msg::VoteTx;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::raft_msg::install_full_snapshot_request::InstallFullSnapshotRequest;
 use crate::core::raft_msg::membership_payloads::MembershipPayloads;
+#[cfg(feature = "runtime-stats")]
 use crate::core::runtime_stats::RuntimeStats;
 use crate::core::sm;
+#[cfg(feature = "runtime-stats")]
 use crate::core::stage::Stage;
 use crate::display_ext::DisplayInstantExt;
 use crate::engine::Command;
@@ -186,6 +191,10 @@ where
 }
 
 /// The core type implementing the Raft protocol.
+#[since(
+    version = "0.10.0",
+    change = "Exclude runtime statistics when runtime-stats is disabled"
+)]
 pub struct RaftCore<C, NF, LS, SM>
 where
     C: RaftTypeConfig,
@@ -267,12 +276,14 @@ where
     ///
     /// Owned directly by RaftCore for lock-free access to most stats.
     /// Only `replicate_batch` is shared with replication tasks via `shared_replicate_batch`.
+    #[cfg(feature = "runtime-stats")]
     pub(crate) runtime_stats: RuntimeStats<C>,
 
     /// Shared histogram for replication batch sizes.
     ///
     /// This is the only stats field that needs to be shared with replication tasks.
     /// All other stats are updated only by RaftCore.
+    #[cfg(feature = "runtime-stats")]
     pub(crate) shared_replicate_batch: SharedReplicateBatch,
 
     /// External metrics recorder for exporting metrics to custom backends.
@@ -1087,6 +1098,7 @@ where
         let mut responders = self.client_responders.drain_upto(last.index());
 
         let entry_count = last.index() + 1 - first.index();
+        #[cfg(feature = "runtime-stats")]
         self.runtime_stats.apply_batch.record(entry_count);
 
         // Record to external metrics recorder
@@ -1175,6 +1187,7 @@ where
             config: self.config.clone(),
             tx_notify: self.tx_notification.clone(),
             cancel_rx,
+            #[cfg(feature = "runtime-stats")]
             replicate_batch: self.shared_replicate_batch.clone(),
         }
     }
@@ -1379,8 +1392,10 @@ where
     /// It returns the number of processed message.
     /// If the input channel is closed, it returns `Fatal::Stopped`.
     async fn process_raft_msg(&mut self, at_most: u64) -> Result<u64, Fatal<C>> {
+        #[cfg(feature = "runtime-stats")]
         self.runtime_stats.raft_msg_budget.record(at_most);
 
+        #[cfg(feature = "runtime-stats")]
         let mut processed = 0u64;
         let mut total = 0u64;
         // Being 0 disabled batch msg processing.
@@ -1395,24 +1410,34 @@ where
             };
 
             self.handle_api_msg(msg);
-            processed += 1;
+            #[cfg(feature = "runtime-stats")]
+            {
+                processed += 1;
+            }
             total += 1;
 
             let index = self.engine.state.last_log_id().next_index();
 
             if index.saturating_sub(last_log_index) >= run_command_threshold {
                 // After handling all the inputs, batch run all the commands for better performance
+                #[cfg(feature = "runtime-stats")]
                 self.runtime_stats.raft_msg_per_run.record(processed);
+                #[cfg(feature = "runtime-stats")]
                 self.runtime_stats.raft_msg_usage_permille.record(processed * 1000 / at_most);
                 self.run_engine_commands().await?;
 
                 last_log_index = index;
-                processed = 0;
+                #[cfg(feature = "runtime-stats")]
+                {
+                    processed = 0;
+                }
             }
         }
 
         // After handling all the inputs, batch run all the commands for better performance
+        #[cfg(feature = "runtime-stats")]
         self.runtime_stats.raft_msg_per_run.record(processed);
+        #[cfg(feature = "runtime-stats")]
         self.runtime_stats.raft_msg_usage_permille.record(processed * 1000 / at_most);
         self.run_engine_commands().await?;
 
@@ -1428,6 +1453,7 @@ where
     /// It returns the number of processed notifications.
     /// If the input channel is closed, it returns `Fatal::Stopped`.
     async fn process_notification(&mut self, at_most: u64) -> Result<u64, Fatal<C>> {
+        #[cfg(feature = "runtime-stats")]
         self.runtime_stats.notification_budget.record(at_most);
 
         let mut processed = 0u64;
@@ -1458,6 +1484,7 @@ where
             self.run_engine_commands().await?;
         }
 
+        #[cfg(feature = "runtime-stats")]
         self.runtime_stats.notification_usage_permille.record(processed * 1000 / at_most);
 
         if processed == at_most {
@@ -1675,6 +1702,7 @@ where
     pub(crate) fn handle_install_full_snapshot_request(&mut self, req: InstallFullSnapshotRequest<C, SM>) {
         tracing::debug!("RAFT_event id={:<2}  input: {}", self.id, req);
 
+        #[cfg(feature = "runtime-stats")]
         self.runtime_stats.record_raft_msg(RaftMsgName::InstallSnapshot);
 
         self.engine.handle_install_full_snapshot(req.vote, req.snapshot, req.tx);
@@ -1685,6 +1713,7 @@ where
     pub(crate) fn handle_api_msg(&mut self, msg: RaftMsg<C>) {
         tracing::debug!("RAFT_event id={:<2}  input: {}", self.id, msg);
 
+        #[cfg(feature = "runtime-stats")]
         self.runtime_stats.record_raft_msg(msg.name());
 
         match msg {
@@ -1733,6 +1762,7 @@ where
                         return;
                     }
                 }
+                #[cfg(feature = "runtime-stats")]
                 self.runtime_stats.write_batch.record(payloads.len() as u64);
                 self.write_entries(
                     payloads,
@@ -1909,6 +1939,7 @@ where
     pub(crate) fn handle_notification(&mut self, notify: Notification<C>) -> Result<(), Fatal<C>> {
         tracing::debug!("RAFT_event id={:<2} notify: {}", self.id, notify);
 
+        #[cfg(feature = "runtime-stats")]
         self.runtime_stats.record_notification(notify.name());
 
         match notify {
@@ -2042,6 +2073,7 @@ where
 
         match io_id {
             IOId::Log(log_io_id) => {
+                #[cfg(feature = "runtime-stats")]
                 if let Some(ref log_id) = log_io_id.log_id {
                     self.runtime_stats.record_log_stage_now(Stage::Persisted, log_id.index() + 1);
                 }
@@ -2098,6 +2130,7 @@ where
                 }
             }
             sm::Response::Apply(res) => {
+                #[cfg(feature = "runtime-stats")]
                 self.runtime_stats.record_log_stage_now(Stage::Applied, res.last_applied.index() + 1);
                 self.engine.state.apply_progress_mut().try_flush(res.last_applied);
             }
@@ -2292,6 +2325,7 @@ where
             config: self.config.clone(),
             tx_notify: self.tx_notification.clone(),
             cancel_rx,
+            #[cfg(feature = "runtime-stats")]
             replicate_batch: self.shared_replicate_batch.clone(),
         };
         (ctx, cancel_tx)
@@ -2334,12 +2368,14 @@ where
         entries: BatchOf<C, C::Entry>,
     ) -> Result<(), StorageError<C>> {
         let last_log_id = entries.last().unwrap().log_id();
+        #[cfg(feature = "runtime-stats")]
         let last_log_index = last_log_id.index();
         tracing::debug!("AppendEntries: {}", entries.as_ref().display_n(10));
 
         let entry_count = entries.len() as u64;
 
         // Record to internal histogram
+        #[cfg(feature = "runtime-stats")]
         self.runtime_stats.append_batch.record(entry_count);
 
         // Record to external metrics recorder
@@ -2363,6 +2399,7 @@ where
         // because `append()` may call the callback before returning.
         self.engine.state.log_progress_mut().submit(io_id.clone());
 
+        #[cfg(feature = "runtime-stats")]
         self.runtime_stats.record_log_stage_now(Stage::Submitted, last_log_index + 1);
 
         // Submit IO request, do not wait for the response.
@@ -2456,6 +2493,7 @@ where
         already_applied: Option<LogIdOf<C>>,
         upto: LogIdOf<C>,
     ) -> Result<(), StorageError<C>> {
+        #[cfg(feature = "runtime-stats")]
         self.runtime_stats.record_log_stage_now(Stage::Committed, upto.index() + 1);
 
         self.engine.state.apply_progress_mut().submit(upto.clone());
@@ -2618,6 +2656,7 @@ where
         tracing::debug!("RAFT_event id={:<2}    cmd: {}", self.id, cmd);
 
         // Record command execution
+        #[cfg(feature = "runtime-stats")]
         self.runtime_stats.record_command(cmd.name());
 
         match cmd {

@@ -31,17 +31,21 @@ pub(crate) mod io_flush_tracking;
 pub(crate) mod merged_raft_msg_receiver;
 pub(crate) mod notification;
 pub(crate) mod raft_msg;
+#[cfg(feature = "runtime-stats")]
 pub(crate) mod runtime_stats;
 pub(crate) mod sm;
+#[cfg(feature = "runtime-stats")]
 pub(crate) mod stage;
 
 mod client_responder_queue;
 mod linearizable_read;
 mod metrics_channels;
+#[cfg(feature = "runtime-stats")]
 mod notification_name;
 mod raft_core;
 mod replication_state;
 mod server_state;
+#[cfg(feature = "runtime-stats")]
 mod shared_replicate_batch;
 mod step_down_watcher;
 mod tick;
@@ -52,11 +56,13 @@ pub(crate) use linearizable_read::PendingRead;
 pub(crate) use linearizable_read::PendingReadDeadlineNotifier;
 pub(crate) use linearizable_read::PendingReadQueue;
 pub(crate) use metrics_channels::MetricsChannels;
+#[cfg(feature = "runtime-stats")]
 pub use notification_name::NotificationName;
 pub(crate) use raft_core::ApplyResult;
 pub use raft_core::RaftCore;
 pub(crate) use replication_state::replication_lag;
 pub use server_state::ServerState;
+#[cfg(feature = "runtime-stats")]
 pub(crate) use shared_replicate_batch::SharedReplicateBatch;
 pub(crate) use step_down_watcher::StepDownWatcher;
 pub(crate) use tick::Tick;

@@ -28,8 +28,11 @@
 //! to make Openraft flexible across different environments.
 
 pub(crate) mod finalized;
+#[cfg(any(feature = "runtime-stats", test))]
 pub(crate) mod multi_range_map;
+#[cfg(any(feature = "runtime-stats", test))]
 pub(crate) mod range_map;
+#[cfg(any(feature = "runtime-stats", test))]
 pub(crate) mod range_values;
 pub(crate) mod shared_id_generator;
 

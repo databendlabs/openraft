@@ -38,9 +38,12 @@ use crate::type_config::alias::VoteOf;
 pub(crate) mod external_command;
 pub(crate) mod install_full_snapshot_request;
 pub(crate) mod membership_payloads;
+#[cfg(any(feature = "runtime-stats", test))]
 mod raft_msg_name;
 
+#[cfg(any(feature = "runtime-stats", test))]
 pub use raft_msg_name::ExternalCommandName;
+#[cfg(any(feature = "runtime-stats", test))]
 pub use raft_msg_name::RaftMsgName;
 
 /// A oneshot TX to send result from `RaftCore` to external caller, e.g. `Raft::append_entries`.
@@ -169,6 +172,7 @@ impl<C> RaftMsg<C>
 where C: RaftTypeConfig
 {
     /// Returns the name of this message variant.
+    #[cfg(any(feature = "runtime-stats", test))]
     pub fn name(&self) -> RaftMsgName {
         match self {
             RaftMsg::AppendEntries { .. } => RaftMsgName::AppendEntries,

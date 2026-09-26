@@ -22,14 +22,14 @@ openraft-macros = { path = "../macros", version = "0.10.0-alpha.35" }
 anyerror        = { workspace = true }
 anyhow          = { workspace = true, optional = true }
 backoff-series  = { workspace = true }
-base2histogram  = { workspace = true }
+base2histogram  = { workspace = true, optional = true }
 parse-size      = { workspace = true, optional = true }
 chrono          = { workspace = true }
 clap            = { workspace = true, optional = true }
 derive_more     = { workspace = true }
 display-more    = { workspace = true }
 futures-util    = { workspace = true }
-itertools       = { workspace = true }
+itertools       = { workspace = true, optional = true }
 maplit          = { workspace = true }
 rand            = { workspace = true }
 smallvec        = { workspace = true }
@@ -47,6 +47,7 @@ quorum-set      = { workspace = true }
 anyhow            = { workspace = true }
 bincode           = { workspace = true }
 criterion         = { workspace = true }
+itertools         = { workspace = true }
 openraft-rt-tokio = { path = "../rt-tokio", version = "0.10.0-alpha.35" }
 pretty_assertions = { workspace = true }
 serde_json        = { workspace = true }
@@ -135,7 +136,7 @@ tracing-log = [ "tracing/log" ]
 # and add `Raft::runtime_stats()` method for accessing runtime statistics.
 # Also tracks per-entry latency across log stages (proposed, received, appended,
 # persisted, committed, applied).
-runtime-stats = ["dep:tabled"]
+runtime-stats = ["dep:base2histogram", "dep:itertools", "dep:tabled"]
 
 # Include `LogIdList` in `RaftMetrics` and `RaftDataMetrics`.
 # This is primarily used for deterministic testing.

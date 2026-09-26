@@ -92,6 +92,7 @@ use crate::core::MetricsChannels;
 use crate::core::PendingReadDeadlineNotifier;
 use crate::core::PendingReadQueue;
 use crate::core::RaftCore;
+#[cfg(feature = "runtime-stats")]
 use crate::core::SharedReplicateBatch;
 use crate::core::StepDownWatcher;
 use crate::core::Tick;
@@ -108,6 +109,7 @@ use crate::core::notification::Notification;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::raft_msg::install_full_snapshot_request::InstallFullSnapshotRequest;
+#[cfg(feature = "runtime-stats")]
 use crate::core::runtime_stats::RuntimeStats;
 use crate::core::sm;
 use crate::core::sm::worker;
@@ -579,6 +581,7 @@ where
         let (io_submitted_tx, _io_submitted_rx) = C::watch_channel(default_io_id);
         let (committed_tx, _committed_rx) = C::watch_channel(None);
 
+        #[cfg(feature = "runtime-stats")]
         let shared_replicate_batch = SharedReplicateBatch::new();
 
         let start = {
@@ -646,7 +649,9 @@ where
                         progress: tx_progress,
                     },
 
+                    #[cfg(feature = "runtime-stats")]
                     runtime_stats: RuntimeStats::new(&config),
+                    #[cfg(feature = "runtime-stats")]
                     shared_replicate_batch,
 
                     metrics_recorder: None,

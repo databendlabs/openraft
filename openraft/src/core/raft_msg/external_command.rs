@@ -6,6 +6,7 @@ use std::sync::Arc;
 use display_more::DisplayOptionExt;
 
 use crate::RaftTypeConfig;
+#[cfg(any(feature = "runtime-stats", test))]
 use crate::core::raft_msg::ExternalCommandName;
 use crate::core::raft_msg::ResultSender;
 use crate::errors::AllowNextRevertError;
@@ -91,6 +92,7 @@ impl<C> ExternalCommand<C>
 where C: RaftTypeConfig
 {
     /// Returns the name of this command variant.
+    #[cfg(any(feature = "runtime-stats", test))]
     pub fn name(&self) -> ExternalCommandName {
         match self {
             ExternalCommand::Elect { .. } => ExternalCommandName::Elect,

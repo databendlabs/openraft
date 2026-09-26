@@ -111,8 +111,11 @@ where
             );
         }
 
-        let entry_count = payload.entries.len() as u64;
-        self.replication_context.replicate_batch.record(entry_count);
+        #[cfg(feature = "runtime-stats")]
+        {
+            let entry_count = payload.entries.len() as u64;
+            self.replication_context.replicate_batch.record(entry_count);
+        }
 
         tracing::debug!("next_request: AppendEntries: {}", payload);
 

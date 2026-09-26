@@ -4,6 +4,7 @@ use display_more::DisplayOptionExt;
 
 use crate::RaftTypeConfig;
 use crate::StorageError;
+#[cfg(feature = "runtime-stats")]
 use crate::core::NotificationName;
 use crate::core::sm;
 use crate::display_ext::DisplayInstantExt;
@@ -108,6 +109,7 @@ where C: RaftTypeConfig
     }
 
     /// Returns the name of this notification variant.
+    #[cfg(feature = "runtime-stats")]
     pub(crate) fn name(&self) -> NotificationName {
         match self {
             Self::VoteResponse { .. } => NotificationName::VoteResponse,

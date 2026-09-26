@@ -5,6 +5,7 @@ use crate::Config;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::async_runtime::MpscSender;
+#[cfg(feature = "runtime-stats")]
 use crate::core::SharedReplicateBatch;
 use crate::core::notification::Notification;
 use crate::progress::inflight_id::InflightId;
@@ -53,6 +54,7 @@ where C: RaftTypeConfig
     pub(crate) cancel_rx: WatchReceiverOf<C, ()>,
 
     /// Shared histogram for recording replication batch sizes.
+    #[cfg(feature = "runtime-stats")]
     pub(crate) replicate_batch: SharedReplicateBatch,
 }
 
