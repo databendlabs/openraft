@@ -224,7 +224,9 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft) -> anyhow::Resu
     let now = Instant::now();
 
     // Spawn stats printing task
+    #[cfg(feature = "runtime-stats")]
     let stats_leader = leader.clone();
+    #[cfg(feature = "runtime-stats")]
     let stats_handle = tokio::spawn(async move {
         loop {
             tokio::time::sleep(Duration::from_secs(5)).await;
@@ -300,15 +302,19 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft) -> anyhow::Resu
     }
 
     // Stop stats printing task
+    #[cfg(feature = "runtime-stats")]
     stats_handle.abort();
 
     // Print final stats
-    let stats = leader.runtime_stats().await?;
-    eprintln!(
-        "[{:>6.2}s] Final:\n{}",
-        elapsed.as_secs_f64(),
-        stats.display().human_readable()
-    );
+    #[cfg(feature = "runtime-stats")]
+    {
+        let stats = leader.runtime_stats().await?;
+        eprintln!(
+            "[{:>6.2}s] Final:\n{}",
+            elapsed.as_secs_f64(),
+            stats.display().human_readable()
+        );
+    }
 
     let millis = elapsed.as_millis().max(1);
     println!(

@@ -10,7 +10,7 @@ compile:
 # Read-only completion gate: it never writes to the worktree, so a
 # human-reviewed diff stays exactly as reviewed. `make fix` is the mutating
 # counterpart.
-verify: fmt_check feature-check clippy docs-check
+verify: fmt_check feature-check clippy docs-check test-bench-minimal
 	cargo test --lib
 	cargo test --test '*'
 	# cargo test --features single-threaded --lib
@@ -86,6 +86,10 @@ bench_cluster_of_3:
 
 bench_cluster_of_5:
 	$(BENCH_RUSTFLAGS) cargo run --manifest-path benchmarks/minimal/Cargo.toml --release --bin bench $(BENCH_FEATURES_FLAG) -- -m 5
+
+test-bench-minimal:
+	cargo test --manifest-path benchmarks/minimal/Cargo.toml --all-targets
+	cargo test --manifest-path benchmarks/minimal/Cargo.toml --all-targets --no-default-features
 
 fmt_check:
 	$(MAKE) fmt FMT_ARGS='-- --check'
@@ -168,6 +172,7 @@ clippy:
 	cargo clippy --no-deps --manifest-path rt-tokio/Cargo.toml                                        --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path metrics-otel/Cargo.toml                                    --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path benchmarks/minimal/Cargo.toml                               --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path benchmarks/minimal/Cargo.toml --no-default-features         --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/app-http/Cargo.toml                               --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/network-v1-http/Cargo.toml                         --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/network-v2-http/Cargo.toml                         --all-targets -- -D warnings
