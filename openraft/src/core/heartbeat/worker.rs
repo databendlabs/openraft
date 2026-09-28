@@ -119,10 +119,12 @@ where
                 let mut output = self.network.stream_append(input_stream, option).await?.fuse();
                 let res = output.next().await.transpose();
                 // Poll output until it returns `None`, which should be the very next value, to
-                // allow the network layer to close the connection cleanly.
-                let extra: Vec<_> = output.collect().await;
-                if !extra.is_empty() {
-                    tracing::warn!("{} unexpected extra heartbeat responses: {:?}", self, extra);
+                // allow the network layer to close the connection cleanly. Save the first extra
+                // response for logging.
+                let extra = output.next().await;
+                output.for_each(|_| async {}).await;
+                if let Some(extra) = extra {
+                    tracing::warn!("{} unexpected extra heartbeat response: {:?}", self, extra);
                 }
                 res
             })
