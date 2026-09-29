@@ -408,7 +408,8 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
 
     pub async fn test_watch_init_value() {
         let init_value = 1;
-        let (tx, rx) = Rt::Watch::channel(init_value);
+        let (tx, mut rx) = Rt::Watch::channel(init_value);
+        assert!(is_pending(rx.changed()));
         let value_from_rx = rx.borrow_watched();
         assert_eq!(*value_from_rx, init_value);
         let value_from_tx = tx.borrow_watched();
