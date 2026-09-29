@@ -104,7 +104,12 @@ where C: RaftTypeConfig
 
     /// Submit a command to inform RaftCore to transfer leadership to the specified node.
     ///
+    /// By default, this also resets the target's active replication backoff. Set
+    /// [`Config::reset_backoff_on_transfer_leader`] to `Some(false)` to disable the reset.
+    ///
     /// If this node is not a Leader, it is just ignored.
+    ///
+    /// [`Config::reset_backoff_on_transfer_leader`]: crate::Config::reset_backoff_on_transfer_leader
     pub async fn transfer_leader(&self, to: C::NodeId) -> Result<(), Fatal<C>> {
         self.raft_inner.send_external_command(ExternalCommand::TriggerTransferLeader { to }).await
     }

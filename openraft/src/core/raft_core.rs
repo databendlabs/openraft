@@ -1874,6 +1874,10 @@ where
                 self.engine.trigger_purge_log(upto);
             }
             ExternalCommand::TriggerTransferLeader { to } => {
+                if self.config.get_reset_backoff_on_transfer_leader() {
+                    let targets = BatchOf::<C, _>::of([to.clone()]);
+                    self.trigger_reset_backoff(targets);
+                }
                 self.engine.trigger_transfer_leader(to);
             }
             ExternalCommand::ResetBackoff { to } => {

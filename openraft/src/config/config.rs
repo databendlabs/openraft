@@ -178,6 +178,7 @@ impl SnapshotPolicy {
 ///
 /// [`Raft::new`]: crate::Raft::new
 #[since]
+#[since(version = "0.10.0", change = "added reset_backoff_on_transfer_leader option")]
 #[since(version = "0.10.0", change = "added opt-in quorum-loss inactivity setting")]
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "clap", derive(Parser))]
@@ -522,6 +523,18 @@ pub struct Config {
     #[cfg_attr(feature = "clap", clap(long, default_value = DEFAULTS.backoff))]
     pub backoff: String,
 
+    /// Whether transferring leadership resets the target's active replication backoff.
+    ///
+    /// `None` (the default) enables the reset. Set this to `Some(false)` to keep the target's
+    /// current backoff delay during a leadership transfer.
+    #[since(version = "0.10.0")]
+    #[cfg_attr(feature = "clap", clap(long,
+           action = clap::ArgAction::Set,
+           num_args = 0..=1,
+           default_missing_value = "true"
+    ))]
+    pub reset_backoff_on_transfer_leader: Option<bool>,
+
     /// Whether to allow to reset the replication progress to `None`, when the
     /// follower's log is found reverted to an early state. **Do not enable this in production**
     /// unless you know what you are doing.
@@ -611,6 +624,7 @@ impl Default for Config {
             quorum_loss_probe_interval: DEFAULTS.quorum_loss_probe_interval,
             enable_pre_vote: DEFAULTS.enable_pre_vote,
             backoff: DEFAULTS.backoff.to_string(),
+            reset_backoff_on_transfer_leader: None,
             allow_log_reversion: None,
             enable_leader_restore: None,
         }
@@ -658,6 +672,11 @@ impl Config {
     #[since(version = "0.10.0")]
     pub(crate) fn enable_leader_restore(&self) -> bool {
         self.enable_leader_restore.unwrap_or(true)
+    }
+
+    /// Whether a leadership transfer resets the target's active replication backoff.
+    pub(crate) fn get_reset_backoff_on_transfer_leader(&self) -> bool {
+        self.reset_backoff_on_transfer_leader.unwrap_or(true)
     }
 
     /// Whether a follower runs a Pre-Vote round before starting a real election.
