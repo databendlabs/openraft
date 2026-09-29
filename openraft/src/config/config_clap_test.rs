@@ -216,6 +216,29 @@ fn test_config_enable_pre_vote() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_config_reset_backoff_on_transfer_leader() -> anyhow::Result<()> {
+    let config = Config::build(&["foo"])?;
+    assert_eq!(None, config.reset_backoff_on_transfer_leader);
+    let enabled = config.get_reset_backoff_on_transfer_leader();
+    assert!(enabled);
+
+    let config = Config::build(&["foo", "--reset-backoff-on-transfer-leader=false"])?;
+    assert_eq!(Some(false), config.reset_backoff_on_transfer_leader);
+    let enabled = config.get_reset_backoff_on_transfer_leader();
+    assert!(!enabled);
+
+    let config = Config::build(&["foo", "--reset-backoff-on-transfer-leader=true"])?;
+    assert_eq!(Some(true), config.reset_backoff_on_transfer_leader);
+    let enabled = config.get_reset_backoff_on_transfer_leader();
+    assert!(enabled);
+
+    let config = Config::build(&["foo", "--reset-backoff-on-transfer-leader"])?;
+    assert_eq!(Some(true), config.reset_backoff_on_transfer_leader);
+
+    Ok(())
+}
+
+#[test]
 fn test_config_allow_log_reversion() -> anyhow::Result<()> {
     let config = Config::build(&["foo", "--allow-log-reversion=false"])?;
     assert_eq!(Some(false), config.allow_log_reversion);

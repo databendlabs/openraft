@@ -154,6 +154,89 @@ async fn reset_backoff_before_backoff_is_dropped() -> Result<()> {
     Ok(())
 }
 
+/// A leadership transfer resumes replication to a reachable target by default, while an explicit
+/// `Some(false)` leaves the target in backoff.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn transfer_leader_resets_target_backoff_by_default() -> Result<()> {
+    for reset_backoff_on_transfer_leader in [Some(false), None] {
+        let config = Arc::new(
+            Config {
+                enable_tick: false,
+                backoff: BACKOFF.to_string(),
+                reset_backoff_on_transfer_leader,
+                ..Default::default()
+            }
+            .validate()?,
+        );
+
+        let mut router = RaftRouter::new(config.clone());
+
+        tracing::info!(?reset_backoff_on_transfer_leader, "--- bring up a 3-node cluster");
+        let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+
+        let n0 = router.get_raft_handle(&0)?;
+        let n2 = router.get_raft_handle(&2)?;
+        let failures_remaining = Arc::new(AtomicU64::new(0));
+
+        tracing::info!(log_index, "--- fail one AppendEntries to node-2 to start its backoff");
+        {
+            let hook_failures_remaining = failures_remaining.clone();
+            router
+                .set_rpc_pre_hook(RPCTypes::AppendEntries, move |_router, _req, _from, to| {
+                    let should_fail = to == 2 && hook_failures_remaining.load(Ordering::SeqCst) > 0;
+                    let res = if should_fail {
+                        hook_failures_remaining.fetch_sub(1, Ordering::SeqCst);
+                        Err(RPCError::Unreachable(Unreachable::<TypeConfig>::from_string(
+                            "injected",
+                        )))
+                    } else {
+                        Ok(())
+                    };
+                    Box::pin(futures::future::ready(res))
+                })
+                .await;
+
+            failures_remaining.store(1, Ordering::SeqCst);
+            router.client_request(0, "foo", 1).await?;
+            log_index += 1;
+        }
+
+        tracing::info!(log_index, "--- node-2 is reachable but still in backoff");
+        {
+            TypeConfig::sleep(Duration::from_millis(500)).await;
+
+            let failures_remaining = failures_remaining.load(Ordering::SeqCst);
+            assert_eq!(failures_remaining, 0, "the injected failure is consumed");
+
+            let n2_metrics = n2.metrics();
+            let last_log_index = n2_metrics.borrow_watched().last_log_index;
+            assert_eq!(last_log_index, Some(log_index - 1), "node-2 is behind during backoff");
+        }
+
+        tracing::info!(log_index, ?reset_backoff_on_transfer_leader, "--- transfer to node-2");
+        {
+            n0.trigger().transfer_leader(2).await?;
+
+            if reset_backoff_on_transfer_leader == Some(false) {
+                TypeConfig::sleep(Duration::from_millis(1_000)).await;
+
+                let n2_metrics = n2.metrics();
+                let last_log_index = n2_metrics.borrow_watched().last_log_index;
+                assert_eq!(
+                    last_log_index,
+                    Some(log_index - 1),
+                    "disabled reset keeps node-2 in backoff"
+                );
+            } else {
+                router.wait(&2, timeout()).applied_index(Some(log_index), "transfer resumes replication").await?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 fn timeout() -> Option<Duration> {
     Some(Duration::from_millis(1_000))
 }

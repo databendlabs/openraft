@@ -75,6 +75,20 @@ fn test_removed_leader_step_down_serde_default() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "serde")]
+#[test]
+fn test_reset_backoff_on_transfer_leader_serde_default() -> anyhow::Result<()> {
+    let mut value = serde_json::to_value(Config::default())?;
+    value.as_object_mut().unwrap().remove("reset_backoff_on_transfer_leader");
+
+    let config: Config = serde_json::from_value(value)?;
+    assert_eq!(None, config.reset_backoff_on_transfer_leader);
+    let enabled = config.get_reset_backoff_on_transfer_leader();
+    assert!(enabled);
+
+    Ok(())
+}
+
 #[test]
 fn test_invalid_election_timeout_config_produces_expected_error() {
     let config = Config {
