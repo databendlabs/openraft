@@ -1,3 +1,5 @@
+use rt::WatchSender;
+
 use crate::RaftTypeConfig;
 use crate::errors::ReplicationClosed;
 use crate::progress::stream_id::StreamId;
@@ -19,6 +21,9 @@ where C: RaftTypeConfig
     /// Sender for the cancellation signal; dropping this stops replication.
     pub(crate) cancel_tx: WatchSenderOf<C, ()>,
 
+    /// Sender for the backoff reset signal; sending on it ends the active backoff of replication.
+    pub(crate) backoff_reset_tx: WatchSenderOf<C, ()>,
+
     /// The spawn handle of the `ReplicationCore` task.
     pub(crate) join_handle: Option<JoinHandleOf<C, Result<(), ReplicationClosed>>>,
 
@@ -33,6 +38,7 @@ where C: RaftTypeConfig
         stream_id: StreamId,
         replicate_tx: WatchSenderOf<C, Replicate<C>>,
         cancel_tx: WatchSenderOf<C, ()>,
+        backoff_reset_tx: WatchSenderOf<C, ()>,
     ) -> Self {
         Self {
             stream_id,
@@ -40,6 +46,18 @@ where C: RaftTypeConfig
             replicate_tx,
             snapshot_transmit_handle: None,
             cancel_tx,
+            backoff_reset_tx,
+        }
+    }
+
+    /// Signal the replication task to end its active backoff.
+    pub(crate) fn reset_backoff(&self) {
+        let send_res = self.backoff_reset_tx.send(());
+        if send_res.is_err() {
+            tracing::warn!(
+                "Failed to reset backoff for replication stream {}: channel closed",
+                self.stream_id
+            );
         }
     }
 }

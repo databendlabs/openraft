@@ -29,7 +29,7 @@ use replication_progress::ReplicationProgress;
 pub(crate) use replication_session_id::ReplicationSessionId;
 pub(crate) use response::Progress;
 
-/// Fallback delay used when a [`Backoff`](crate::network::Backoff) iterator is exhausted.
+/// Fallback delay used when a [`Backoff`] iterator is exhausted.
 pub(crate) const EXHAUSTED_BACKOFF_DELAY: Duration = Duration::from_millis(500);
 use response::ReplicationResult;
 use stream_state::StreamState;
@@ -45,6 +45,7 @@ use crate::display_ext::display_instant::DisplayInstantExt;
 use crate::errors::RPCError;
 use crate::errors::ReplicationClosed;
 use crate::log_id_range::LogIdRange;
+use crate::network::Backoff;
 use crate::network::NetBackoff;
 use crate::network::NetStreamAppend;
 use crate::network::RPCOption;
@@ -64,6 +65,7 @@ use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MutexOf;
+use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::async_runtime::mpsc::MpscSender;
 
 /// A task responsible for sending replication events to a target follower in the Raft cluster.
@@ -125,6 +127,7 @@ where
         network: N::Network,
         log_reader: LS::LogReader,
         event_watcher: EventWatcher<C>,
+        backoff_reset_rx: WatchReceiverOf<C, ()>,
         span: tracing::Span,
     ) -> JoinHandleOf<C, Result<(), ReplicationClosed>> {
         tracing::debug!(
@@ -136,6 +139,7 @@ where
         );
 
         let backoff_state = BackoffState::new();
+        let backoff_consumer = backoff_state.consumer(backoff_reset_rx);
 
         let this = Self {
             replication_context: replication_context.clone(),
@@ -145,7 +149,7 @@ where
                 log_reader,
                 payload: None,
                 inflight_id: None,
-                backoff_consumer: backoff_state.consumer(),
+                backoff_consumer,
             })),
             inflight_id: None,
             event_watcher,
@@ -212,12 +216,23 @@ where
             // to `network`, which is needed to construct the `Backoff` iterator.
             // If the network returns None, fall back to the policy configured in `Config::backoff`.
             let config = self.replication_context.config.clone();
-            self.backoff_state.reconcile(|| network.backoff().unwrap_or_else(|| config.build_backoff()));
+            self.reconcile_backoff(|| network.backoff().unwrap_or_else(|| config.build_backoff())).await;
 
             let payload = self.select_next_payload().await?;
 
             self.next_action = self.run_stream_session(&mut network, &payload).await?;
         }
+    }
+
+    async fn reconcile_backoff(&mut self, backoff_factory: impl FnOnce() -> Backoff) {
+        let mut stream_state = self.stream_state.lock().await;
+
+        self.backoff_state.reconcile(|| {
+            let backoff = backoff_factory();
+            // Discard resets from before this backoff; later resets remain pending.
+            stream_state.backoff_consumer.reset_rx.borrow_and_update();
+            backoff
+        });
     }
 
     /// Check the two reasons this task must stop before opening another stream: the leader

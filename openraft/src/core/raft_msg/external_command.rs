@@ -4,12 +4,15 @@ use std::fmt;
 use std::sync::Arc;
 
 use display_more::DisplayOptionExt;
+use display_more::DisplaySliceExt;
 
 use crate::RaftTypeConfig;
+use crate::batch::Batch;
 use crate::core::raft_msg::ExternalCommandName;
 use crate::core::raft_msg::ResultSender;
 use crate::errors::AllowNextRevertError;
 use crate::metrics::MetricsRecorder;
+use crate::type_config::alias::BatchOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
 
@@ -51,6 +54,9 @@ where C: RaftTypeConfig
 
     /// Submit a command to inform RaftCore to transfer leadership to the specified node.
     TriggerTransferLeader { to: C::NodeId },
+
+    /// Reset the backoff state of the replication to the specified nodes.
+    ResetBackoff { to: BatchOf<C, C::NodeId> },
 
     /// Allow or not the next revert of the replication to the specified node.
     AllowNextRevert {
@@ -98,6 +104,7 @@ where C: RaftTypeConfig
             ExternalCommand::Snapshot => ExternalCommandName::Snapshot,
             ExternalCommand::PurgeLog { .. } => ExternalCommandName::PurgeLog,
             ExternalCommand::TriggerTransferLeader { .. } => ExternalCommandName::TriggerTransferLeader,
+            ExternalCommand::ResetBackoff { .. } => ExternalCommandName::ResetBackoff,
             ExternalCommand::AllowNextRevert { .. } => ExternalCommandName::AllowNextRevert,
             ExternalCommand::SetMetricsRecorder { .. } => ExternalCommandName::SetMetricsRecorder,
             ExternalCommand::RefreshServerState { .. } => ExternalCommandName::RefreshServerState,
@@ -132,6 +139,13 @@ where C: RaftTypeConfig
             }
             ExternalCommand::TriggerTransferLeader { to } => {
                 write!(f, "TriggerTransferLeader: to {}", to)
+            }
+            ExternalCommand::ResetBackoff { to } => {
+                if to.is_empty() {
+                    write!(f, "ResetBackoff: to all")
+                } else {
+                    write!(f, "ResetBackoff: to {}", to.as_ref().display())
+                }
             }
             ExternalCommand::AllowNextRevert { to, allow, .. } => {
                 write!(

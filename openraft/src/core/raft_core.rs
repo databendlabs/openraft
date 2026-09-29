@@ -929,6 +929,22 @@ where
         self.engine.snapshot_handler().trigger_snapshot()
     }
 
+    /// Reset the backoff of the replication streams to `to`, or of every stream if `to` is empty.
+    pub(crate) fn trigger_reset_backoff(&mut self, to: BatchOf<C, C::NodeId>) {
+        if to.is_empty() {
+            for (_node_id, repl_handle) in self.replications.iter() {
+                repl_handle.reset_backoff();
+            }
+            return;
+        }
+
+        for node_id in to {
+            if let Some(repl_handle) = self.replications.get(&node_id) {
+                repl_handle.reset_backoff();
+            }
+        }
+    }
+
     /// Trigger routine actions that need to be checked after processing messages.
     ///
     /// This is called in the main event loop after processing messages and running engine commands.
@@ -1120,10 +1136,12 @@ where
         };
 
         let (replicate_tx, replicate_rx) = C::watch_channel(Replicate::default());
+        let (backoff_reset_tx, backoff_reset_rx) = C::watch_channel(());
 
         let event_watcher = self.new_event_watcher(replicate_rx);
 
-        let (mut replication_handle, replication_context) = self.new_replication(leader_vote, prog, replicate_tx);
+        let (mut replication_handle, replication_context) =
+            self.new_replication(leader_vote, prog, replicate_tx, backoff_reset_tx);
 
         let progress = replication_progress::ReplicationProgress {
             local_committed: self.engine.state.local_committed().cloned(),
@@ -1136,6 +1154,7 @@ where
             network,
             self.log_store.get_log_reader().await,
             event_watcher,
+            backoff_reset_rx,
             tracing::span!(parent: &self.span, Level::DEBUG, "replication", id=display(&self.id), target=display(&prog.target)),
         );
 
@@ -1149,12 +1168,13 @@ where
         leader_vote: CommittedVoteOf<C>,
         prog: &TargetProgress<C>,
         replicate_tx: WatchSenderOf<C, Replicate<C>>,
+        backoff_reset_tx: WatchSenderOf<C, ()>,
     ) -> (ReplicationHandle<C>, ReplicationContext<C>) {
         let (cancel_tx, cancel_rx) = C::watch_channel(());
 
         let context = self.new_replication_context(leader_vote, prog, cancel_rx);
 
-        let handle = ReplicationHandle::new(prog.progress.data.stream_id, replicate_tx, cancel_tx);
+        let handle = ReplicationHandle::new(prog.progress.data.stream_id, replicate_tx, cancel_tx, backoff_reset_tx);
 
         (handle, context)
     }
@@ -1856,6 +1876,9 @@ where
             ExternalCommand::TriggerTransferLeader { to } => {
                 self.engine.trigger_transfer_leader(to);
             }
+            ExternalCommand::ResetBackoff { to } => {
+                self.trigger_reset_backoff(to);
+            }
             ExternalCommand::AllowNextRevert { to, allow, tx } => {
                 //
                 let res = match self.engine.try_leader_handler() {
@@ -2305,6 +2328,7 @@ where
         // Drop sender to notify the task to shutdown
         drop(s.replicate_tx);
         drop(s.cancel_tx);
+        drop(s.backoff_reset_tx);
 
         let target = target.clone();
         #[allow(clippy::let_underscore_future)]

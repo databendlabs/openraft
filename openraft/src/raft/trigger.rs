@@ -3,11 +3,13 @@
 use openraft_macros::since;
 
 use crate::RaftTypeConfig;
+use crate::batch::Batch;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::errors::AllowNextRevertError;
 use crate::errors::Fatal;
 use crate::raft::RaftInner;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::BatchOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
 
@@ -105,6 +107,19 @@ where C: RaftTypeConfig
     /// If this node is not a Leader, it is just ignored.
     pub async fn transfer_leader(&self, to: C::NodeId) -> Result<(), Fatal<C>> {
         self.raft_inner.send_external_command(ExternalCommand::TriggerTransferLeader { to }).await
+    }
+
+    /// Request to reset the current replication backoff for the specified nodes.
+    ///
+    /// A reset ends the current or next wait of the backoff that is active when it arrives.
+    /// A backoff that starts later is not affected. Snapshot transfer retries are not affected
+    /// either.
+    ///
+    /// If no node ids are specified, this applies to all replication targets.
+    #[since(version = "0.10.0")]
+    pub async fn reset_backoff(&self, to: impl IntoIterator<Item = C::NodeId>) -> Result<(), Fatal<C>> {
+        let to = BatchOf::<C, _>::of(to);
+        self.raft_inner.send_external_command(ExternalCommand::ResetBackoff { to }).await
     }
 
     /// Request the RaftCore to allow to reset replication for a specific node when log revert is

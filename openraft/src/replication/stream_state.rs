@@ -49,11 +49,9 @@ where
 
     pub(crate) inflight_id: Option<InflightId>,
 
-    /// Read-only handle to the shared backoff state, sampled before each request.
-    ///
-    /// The consumer can only query the next delay; only `ReplicationCore` (via its
-    /// owned `BackoffState`) enables or clears the backoff.
-    pub(crate) backoff_consumer: BackoffConsumer,
+    /// Handle that samples backoff delays and clears the current backoff on reset.
+    /// `ReplicationCore` enables new backoff after RPC errors.
+    pub(crate) backoff_consumer: BackoffConsumer<C>,
 }
 
 impl<C, LS> StreamState<C, LS>
@@ -181,23 +179,7 @@ where
 
     /// Waits for the backoff duration if backoff is enabled, or returns immediately.
     async fn backoff_if_enabled(&mut self) {
-        let Some(sleep_duration) = self.backoff_consumer.next_delay() else {
-            return;
-        };
-
-        let sleep = C::sleep(sleep_duration);
-        let cancel = self.replication_context.cancel_rx.changed();
-
-        tracing::debug!("backoff timeout: {:?}", sleep_duration);
-
-        futures_util::select! {
-            _ = sleep.fuse() => {
-                tracing::debug!("backoff timeout");
-            }
-            cancel_res = cancel.fuse() => {
-                tracing::info!("Replication Stream is canceled, res: {:?}, when:(backoff_if_enabled:wait-for-changed)", cancel_res);
-            }
-        }
+        self.backoff_consumer.backoff_if_enabled(self.replication_context.cancel_rx.changed()).await;
     }
 
     /// Advances the payload after generating a request through `sent`.

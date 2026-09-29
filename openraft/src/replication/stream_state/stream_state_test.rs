@@ -103,6 +103,7 @@ fn probe_stops_after_storage_limited_prefix() {
                 let (_committed_tx, committed_rx) = UTConfig::<()>::watch_channel(None);
                 let (_io_tx, io_rx) = UTConfig::<()>::watch_channel(IOId::new_log_io(vote.clone(), range.last));
                 let (_cancel_tx, cancel_rx) = UTConfig::<()>::watch_channel(());
+                let (_backoff_reset_tx, backoff_reset_rx) = UTConfig::<()>::watch_channel(());
                 let (tx_notify, _rx_notify) = UTConfig::<()>::mpsc(1);
 
                 StreamState::<UTConfig, PrefixStore> {
@@ -131,7 +132,7 @@ fn probe_stops_after_storage_limited_prefix() {
                     },
                     payload: Some(Payload::Probe { log_id_range: range }),
                     inflight_id: Some(inflight_id),
-                    backoff_consumer: BackoffState::new().consumer(),
+                    backoff_consumer: BackoffState::new().consumer(backoff_reset_rx),
                 }
             };
 
