@@ -2,6 +2,7 @@ use openraft_macros::VariantName;
 use openraft_macros::since;
 
 /// Enum representing the name of each `ExternalCommand` variant.
+#[since(version = "0.10.0", change = "added ResetBackoff variant")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[derive(VariantName)]
 #[variant_name(prefix = "Ext::")]
@@ -11,6 +12,7 @@ pub enum ExternalCommandName {
     Snapshot,
     PurgeLog,
     TriggerTransferLeader,
+    ResetBackoff,
     AllowNextRevert,
     SetMetricsRecorder,
     RefreshServerState,

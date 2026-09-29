@@ -4,9 +4,8 @@
 //! should throttle outgoing requests after transient RPC errors:
 //!
 //! - `rank`: accumulated error weight, reset on success.
-//! - `inner`: the active [`Backoff`] iterator. Handed to the request-stream generator as a
-//!   [`BackoffConsumer`] so the consumer can sample the next delay without being able to enable or
-//!   disable the backoff itself.
+//! - `inner`: the active [`Backoff`] iterator. Shared with the request-stream generator through a
+//!   [`BackoffConsumer`], which samples delays and clears the iterator on an explicit reset.
 //!
 //! Both pieces must be cleared on success; otherwise a stale [`Backoff`] left over
 //! from a prior error throttles every subsequent request in the same stream session
@@ -20,6 +19,7 @@ use crate::RaftTypeConfig;
 use crate::errors::RPCError;
 use crate::network::Backoff;
 use crate::replication::backoff_consumer::BackoffConsumer;
+use crate::type_config::alias::WatchReceiverOf;
 
 /// Error-rank threshold above which backoff is enabled.
 const BACKOFF_RANK_THRESHOLD: u64 = 20;
@@ -27,8 +27,8 @@ const BACKOFF_RANK_THRESHOLD: u64 = 20;
 /// Coordinates rank accumulation and the shared [`Backoff`] iterator for a
 /// replication session.
 ///
-/// Owned by `ReplicationCore`. The request-stream generator receives a read-only
-/// [`BackoffConsumer`] that can only sample delays.
+/// Owned by `ReplicationCore`. The request-stream generator receives a
+/// [`BackoffConsumer`] that samples delays and handles resets.
 pub(crate) struct BackoffState {
     rank: u64,
     inner: Arc<Mutex<Option<Backoff>>>,
@@ -42,10 +42,12 @@ impl BackoffState {
         }
     }
 
-    /// Returns a consumer handle that can only sample the current backoff delay.
-    pub(crate) fn consumer(&self) -> BackoffConsumer {
+    /// Returns a consumer handle for sampling delays and handling resets.
+    pub(crate) fn consumer<C>(&self, reset_rx: WatchReceiverOf<C, ()>) -> BackoffConsumer<C>
+    where C: RaftTypeConfig {
         BackoffConsumer {
             inner: self.inner.clone(),
+            reset_rx,
         }
     }
 
@@ -55,9 +57,8 @@ impl BackoffState {
     /// stream session is active, so this is the only opportunity to drop the stale
     /// [`Backoff`] before the next RPC in the same session reads it.
     ///
-    /// Fast path: `rank == 0` implies `inner` is already `None` (invariant maintained
-    /// by every writer in this module), so we skip the lock on the common hot path of
-    /// successive successes.
+    /// Fast path: `rank == 0` implies `inner` is already `None`, so we skip the
+    /// lock on the common hot path of successive successes.
     pub(crate) fn on_success(&mut self) {
         if self.rank == 0 {
             return;
