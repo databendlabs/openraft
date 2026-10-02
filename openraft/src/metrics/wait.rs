@@ -33,8 +33,13 @@ pub enum WaitError {
 
 /// Wait is a wrapper of RaftMetrics channel that impls several utils to wait for metrics to satisfy
 /// some condition.
+#[since]
 pub struct Wait<C: RaftTypeConfig> {
     /// The timeout duration for waiting operations.
+    ///
+    /// `Duration::MAX` means no timeout: the wait arms no timer and ends only when the condition
+    /// is met or Raft shuts down.
+    #[since(version = "0.10.0", change = "`Duration::MAX` means no timeout")]
     pub timeout: Duration,
     /// The metrics receiver channel.
     pub rx: WatchReceiverOf<C, RaftMetrics<C>>,
@@ -47,7 +52,9 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "trace", skip(self, func), fields(msg=%msg.to_string()))]
     pub async fn metrics<T>(&self, func: T, msg: impl ToString) -> Result<RaftMetrics<C>, WaitError>
     where T: Fn(&RaftMetrics<C>) -> bool + OptionalSend {
-        let timeout_at = C::now() + self.timeout;
+        // `Duration::MAX` means no deadline: wait on the metrics channel alone, without arming a
+        // timer.
+        let timeout_at = (self.timeout != Duration::MAX).then(|| C::now() + self.timeout);
 
         let mut rx = self.rx.clone();
         loop {
@@ -60,17 +67,28 @@ where C: RaftTypeConfig
                 return Ok(latest);
             }
 
-            let now = C::now();
-            if now >= timeout_at {
-                return Err(WaitError::Timeout(
-                    self.timeout,
-                    format!("{} latest: {}", msg.to_string(), latest),
-                ));
-            }
+            let delay = match timeout_at {
+                None => None,
+                Some(timeout_at) => {
+                    let now = C::now();
+                    if now >= timeout_at {
+                        return Err(WaitError::Timeout(
+                            self.timeout,
+                            format!("{} latest: {}", msg.to_string(), latest),
+                        ));
+                    }
 
-            let sleep_time = timeout_at - now;
-            tracing::debug!(?sleep_time, "wait timeout");
-            let delay = C::sleep(sleep_time);
+                    let sleep_time = timeout_at - now;
+                    tracing::debug!(?sleep_time, "wait timeout");
+                    Some(C::sleep(sleep_time))
+                }
+            };
+            let delay = async move {
+                match delay {
+                    Some(delay) => delay.await,
+                    None => futures_util::future::pending().await,
+                }
+            };
 
             futures_util::select_biased! {
                 _ = delay.fuse() => {
