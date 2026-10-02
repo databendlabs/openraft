@@ -99,7 +99,16 @@ exhaustive matches must handle it too.
 The field defaults to `None` when omitted from named-field serde configuration.
 See [CheckQuorum](crate::docs::protocol::check_quorum) for its behavior.
 
+## `Wait::timeout` is optional
+
+[`Wait`][]`::timeout` changes from `Duration` to `Option<Duration>`; `None` means
+no timeout, and the wait arms no timer. Code that builds a `Wait` directly wraps
+the duration in `Some`, and code that read the field handles `None`.
+[`Raft::wait()`][] already takes an `Option<Duration>` and needs no change.
+
 [`Config`]: crate::Config
+[`Wait`]: crate::metrics::Wait
+[`Raft::wait()`]: crate::Raft::wait
 [`SnapshotMeta`]:      `crate::storage::SnapshotMeta`
 [`SnapshotSignature`]: `crate::storage::SnapshotSignature`
 [`RaftNetworkV2`]:     `crate::network::RaftNetworkV2`
