@@ -305,7 +305,7 @@ where C: RaftTypeConfig
     }
 
     pub(crate) fn wait(&self, timeout: Option<Duration>) -> Wait<C> {
-        let timeout = timeout.unwrap_or_else(|| Duration::from_secs(86400 * 365 * 100));
+        let timeout = timeout.unwrap_or(Duration::MAX);
 
         Wait {
             timeout,

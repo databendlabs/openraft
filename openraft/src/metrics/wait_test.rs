@@ -177,6 +177,42 @@ fn test_wait() {
     .unwrap();
 }
 
+/// `Duration::MAX` means no deadline: the wait ends only on the condition or shutdown.
+#[test]
+fn test_wait_without_timeout() {
+    UTConfig::<()>::run(async {
+        let (init, mut w, tx) = init_wait_test::<UTConfig>();
+        w.timeout = Duration::MAX;
+
+        tracing::info!("wait without timeout: returns once the condition is met");
+        {
+            let h = UTConfig::<()>::spawn(async move {
+                UTConfig::<()>::sleep(Duration::from_millis(10)).await;
+                let mut update = init.clone();
+                update.last_log_index = Some(3);
+                update.last_applied = Some(log_id(1, 0, 3));
+                let rst = tx.send(update);
+                assert!(rst.is_ok());
+                tx
+            });
+            let got = w.applied_index_at_least(Some(3), "applied").await?;
+            assert_eq!(Some(3), got.last_applied.index());
+
+            let tx = h.await?;
+            drop(tx);
+        }
+
+        tracing::info!("wait without timeout: returns ShuttingDown once the sender is dropped");
+        {
+            let got = w.applied_index_at_least(Some(4), "applied").await;
+            assert_eq!(Err(WaitError::ShuttingDown), got.map(|_| ()));
+        }
+
+        Ok::<(), anyhow::Error>(())
+    })
+    .unwrap();
+}
+
 #[test]
 fn test_wait_log_index() {
     UTConfig::<()>::run(async {
