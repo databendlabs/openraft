@@ -305,8 +305,6 @@ where C: RaftTypeConfig
     }
 
     pub(crate) fn wait(&self, timeout: Option<Duration>) -> Wait<C> {
-        let timeout = timeout.unwrap_or(Duration::MAX);
-
         Wait {
             timeout,
             rx: self.rx_metrics.clone(),

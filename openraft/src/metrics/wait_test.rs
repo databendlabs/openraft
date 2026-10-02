@@ -177,12 +177,12 @@ fn test_wait() {
     .unwrap();
 }
 
-/// `Duration::MAX` means no deadline: the wait ends only on the condition or shutdown.
+/// Without a timeout, the wait ends only on the condition or shutdown.
 #[test]
 fn test_wait_without_timeout() {
     UTConfig::<()>::run(async {
         let (init, mut w, tx) = init_wait_test::<UTConfig>();
-        w.timeout = Duration::MAX;
+        w.timeout = None;
 
         tracing::info!("wait without timeout: returns once the condition is met");
         {
@@ -394,7 +394,7 @@ where C: RaftTypeConfig<NodeId = u64> {
     };
     let (tx, rx) = C::watch_channel(init.clone());
     let w = Wait {
-        timeout: Duration::from_millis(100),
+        timeout: Some(Duration::from_millis(100)),
         rx,
     };
 
