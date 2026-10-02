@@ -7,11 +7,11 @@ use tempfile::TempDir;
 
 use crate::frame::DirFrame;
 use crate::frame::DirManifest;
-use crate::frame::FORMAT_VERSION;
-use crate::frame::FileMeta;
 use crate::frame::MAX_CHUNK_SIZE;
-use crate::receiver::DirReceiver;
-use crate::sender::DirSender;
+use crate::frame::ManifestEntry;
+use crate::frame::PROTOCOL_VERSION;
+use crate::frame_producer::DirFrameProducer;
+use crate::writer::DirWriter;
 
 /// Read a directory into `name -> contents`, asserting it is flat.
 fn dir_contents(dir: &Path) -> BTreeMap<String, Vec<u8>> {
@@ -32,21 +32,21 @@ async fn source_frames() -> (TempDir, Vec<DirFrame>) {
     fs::write(dir.path().join("b.txt"), b"1234567").unwrap();
     fs::write(dir.path().join("c.bin"), b"abcdefgh").unwrap();
 
-    let mut sender = DirSender::new(dir.path(), 4).unwrap();
+    let mut producer = DirFrameProducer::new(dir.path(), 4).unwrap();
     let mut frames = Vec::new();
-    while let Some(frame) = sender.next_frame().await.unwrap() {
+    while let Some(frame) = producer.next_frame().await.unwrap() {
         frames.push(frame);
     }
     (dir, frames)
 }
 
-/// Feed all frames; on success call `finish()`.
+/// Write all frames; on success call `finish()`.
 async fn receive_all(target: &Path, frames: Vec<DirFrame>) -> io::Result<()> {
-    let mut receiver = DirReceiver::new(target.to_path_buf());
+    let mut writer = DirWriter::new(target.to_path_buf());
     for frame in frames {
-        receiver.feed(frame).await?;
+        writer.write_frame(frame).await?;
     }
-    receiver.finish().await
+    writer.finish().await
 }
 
 /// Assert that receiving `frames` fails with `InvalidData`.
@@ -56,9 +56,9 @@ async fn assert_rejected(frames: Vec<DirFrame>) {
     assert_eq!(io::ErrorKind::InvalidData, err.kind());
 }
 
-fn manifest_frame(files: Vec<FileMeta>) -> DirFrame {
+fn manifest_frame(files: Vec<ManifestEntry>) -> DirFrame {
     DirFrame::Manifest(DirManifest {
-        format_version: FORMAT_VERSION,
+        format_version: PROTOCOL_VERSION,
         files,
     })
 }
@@ -78,9 +78,9 @@ async fn test_round_trip_empty_dir() {
     let source = tempfile::tempdir().unwrap();
     let target = tempfile::tempdir().unwrap();
 
-    let mut sender = DirSender::new(source.path(), 4).unwrap();
+    let mut producer = DirFrameProducer::new(source.path(), 4).unwrap();
     let mut frames = Vec::new();
-    while let Some(frame) = sender.next_frame().await.unwrap() {
+    while let Some(frame) = producer.next_frame().await.unwrap() {
         frames.push(frame);
     }
 
@@ -100,7 +100,7 @@ async fn test_wrong_first_frame() {
 #[tokio::test]
 async fn test_unsupported_version() {
     assert_rejected(vec![DirFrame::Manifest(DirManifest {
-        format_version: FORMAT_VERSION + 1,
+        format_version: PROTOCOL_VERSION + 1,
         files: vec![],
     })])
     .await;
@@ -110,13 +110,13 @@ async fn test_unsupported_version() {
 async fn test_manifest_name_validation_precedes_writes() {
     for name in ["../evil", "a/b", "", ".."] {
         let target = tempfile::tempdir().unwrap();
-        let mut receiver = DirReceiver::new(target.path().to_path_buf());
+        let mut writer = DirWriter::new(target.path().to_path_buf());
 
-        let frame = manifest_frame(vec![FileMeta {
+        let frame = manifest_frame(vec![ManifestEntry {
             name: name.to_string(),
             size: 1,
         }]);
-        let err = receiver.feed(frame).await.unwrap_err();
+        let err = writer.write_frame(frame).await.unwrap_err();
 
         assert_eq!(io::ErrorKind::InvalidData, err.kind(), "name: {name:?}");
         assert_eq!(BTreeMap::new(), dir_contents(target.path()), "no file may be created");
@@ -125,7 +125,7 @@ async fn test_manifest_name_validation_precedes_writes() {
 
 #[tokio::test]
 async fn test_duplicate_manifest_name() {
-    let meta = FileMeta {
+    let meta = ManifestEntry {
         name: "dup".to_string(),
         size: 0,
     };
@@ -184,6 +184,27 @@ async fn test_truncated_stream_fails_finish() {
 }
 
 #[tokio::test]
+async fn test_rejected_frame_fails_the_session() {
+    let target = tempfile::tempdir().unwrap();
+    let mut writer = DirWriter::new(target.path().to_path_buf());
+    let manifest = manifest_frame(vec![ManifestEntry {
+        name: "a".to_string(),
+        size: 1,
+    }]);
+    writer.write_frame(manifest).await.unwrap();
+    let err = writer.write_frame(DirFrame::End).await.unwrap_err();
+    assert_eq!(io::ErrorKind::InvalidData, err.kind());
+
+    // The frame that was expected before the failure is no longer accepted.
+    let frame = DirFrame::FileStart { name: "a".to_string() };
+    let err = writer.write_frame(frame).await.unwrap_err();
+    assert_eq!(io::ErrorKind::InvalidData, err.kind());
+
+    let err = writer.finish().await.unwrap_err();
+    assert_eq!(io::ErrorKind::InvalidData, err.kind());
+}
+
+#[tokio::test]
 async fn test_tampered_chunk() {
     let (_source, mut frames) = source_frames().await;
     let DirFrame::Chunk { data } = &mut frames[4] else {
@@ -230,7 +251,7 @@ async fn test_empty_chunk() {
 #[tokio::test]
 async fn test_oversized_chunk() {
     let frames = vec![
-        manifest_frame(vec![FileMeta {
+        manifest_frame(vec![ManifestEntry {
             name: "big".to_string(),
             size: (MAX_CHUNK_SIZE + 1) as u64,
         }]),

@@ -1,4 +1,4 @@
-//! Turn a flat directory of immutable files into an ordered stream of frames.
+//! Produce ordered transfer frames from a flat directory of immutable files.
 
 use std::io;
 use std::path::Path;
@@ -9,19 +9,19 @@ use tokio::io::AsyncReadExt;
 
 use crate::frame::DirFrame;
 use crate::frame::DirManifest;
-use crate::frame::FORMAT_VERSION;
-use crate::frame::FileMeta;
 use crate::frame::MAX_CHUNK_SIZE;
+use crate::frame::ManifestEntry;
+use crate::frame::PROTOCOL_VERSION;
 use crate::frame::checksum_digest;
 use crate::frame::invalid_data;
-use crate::frame::validate_name;
+use crate::frame::validate_file_name;
 
-/// A pull-based sender that emits the frame stream of one directory.
+/// An asynchronous frame producer for one directory of immutable files.
 ///
-/// The transport drives pacing by awaiting [`DirSender::next_frame`], which yields natural
-/// backpressure. The directory must stay immutable while the sender runs; a file whose size
-/// changes mid-transfer fails the session.
-pub struct DirSender {
+/// The transport drives pacing by awaiting [`DirFrameProducer::next_frame`], which yields natural
+/// backpressure. The directory must stay immutable while frames are produced; a file whose
+/// size changes mid-transfer fails the session.
+pub struct DirFrameProducer {
     dir: PathBuf,
     chunk_size: usize,
     manifest: DirManifest,
@@ -29,21 +29,22 @@ pub struct DirSender {
 }
 
 enum State {
-    SendManifest,
+    EmitManifest,
     StartFile { index: usize },
-    SendFile(FileProgress),
-    SendEnd,
+    ReadFile(FileReadState),
+    EmitEnd,
     Done,
+    Failed,
 }
 
-struct FileProgress {
+struct FileReadState {
     index: usize,
     file: File,
     digest: crc::Digest<'static, u64>,
-    sent: u64,
+    bytes_read: u64,
 }
 
-impl DirSender {
+impl DirFrameProducer {
     /// Enumerate `dir` and build the manifest.
     ///
     /// The directory must be flat: every entry a regular file with a valid name. Files are
@@ -66,9 +67,9 @@ impl DirSender {
                 .file_name()
                 .into_string()
                 .map_err(|name| invalid_data(format!("file name {name:?} is not UTF-8")))?;
-            validate_name(&name)?;
+            validate_file_name(&name)?;
 
-            files.push(FileMeta {
+            files.push(ManifestEntry {
                 name,
                 size: entry.metadata()?.len(),
             });
@@ -79,36 +80,45 @@ impl DirSender {
             dir: dir.to_path_buf(),
             chunk_size,
             manifest: DirManifest {
-                format_version: FORMAT_VERSION,
+                format_version: PROTOCOL_VERSION,
                 files,
             },
-            state: State::SendManifest,
+            state: State::EmitManifest,
         })
     }
 
-    /// Return the next frame of the stream, or `None` after [`DirFrame::End`] has been emitted.
+    /// Return the next frame, or `None` after [`DirFrame::End`] has been emitted.
     pub async fn next_frame(&mut self) -> io::Result<Option<DirFrame>> {
-        match std::mem::replace(&mut self.state, State::Done) {
-            State::SendManifest => {
+        // `Failed` stays in place when a branch below returns an error.
+        let state = std::mem::replace(&mut self.state, State::Failed);
+        match state {
+            State::EmitManifest => {
                 self.state = self.next_file_state(0);
                 Ok(Some(DirFrame::Manifest(self.manifest.clone())))
             }
             State::StartFile { index } => {
                 let meta = &self.manifest.files[index];
                 let file = File::open(self.dir.join(&meta.name)).await?;
-                self.state = State::SendFile(FileProgress {
+                self.state = State::ReadFile(FileReadState {
                     index,
                     file,
                     digest: checksum_digest(),
-                    sent: 0,
+                    bytes_read: 0,
                 });
                 Ok(Some(DirFrame::FileStart {
                     name: meta.name.clone(),
                 }))
             }
-            State::SendFile(progress) => self.send_file(progress).await.map(Some),
-            State::SendEnd => Ok(Some(DirFrame::End)),
-            State::Done => Ok(None),
+            State::ReadFile(progress) => self.next_file_frame(progress).await.map(Some),
+            State::EmitEnd => {
+                self.state = State::Done;
+                Ok(Some(DirFrame::End))
+            }
+            State::Done => {
+                self.state = State::Done;
+                Ok(None)
+            }
+            State::Failed => Err(invalid_data("session failed on an earlier frame")),
         }
     }
 
@@ -117,20 +127,20 @@ impl DirSender {
         if index < self.manifest.files.len() {
             State::StartFile { index }
         } else {
-            State::SendEnd
+            State::EmitEnd
         }
     }
 
     /// Emit the next `Chunk` of the current file, or its `FileEnd` at end of file.
-    async fn send_file(&mut self, mut progress: FileProgress) -> io::Result<DirFrame> {
+    async fn next_file_frame(&mut self, mut progress: FileReadState) -> io::Result<DirFrame> {
         let data = read_chunk(&mut progress.file, self.chunk_size).await?;
         let size = self.manifest.files[progress.index].size;
 
         if data.is_empty() {
-            if progress.sent != size {
+            if progress.bytes_read != size {
                 return Err(invalid_data(format!(
                     "file shrank during transfer: {} < {size}",
-                    progress.sent
+                    progress.bytes_read
                 )));
             }
             self.state = self.next_file_state(progress.index + 1);
@@ -140,15 +150,15 @@ impl DirSender {
         }
 
         progress.digest.update(&data);
-        progress.sent += data.len() as u64;
-        if progress.sent > size {
+        progress.bytes_read += data.len() as u64;
+        if progress.bytes_read > size {
             return Err(invalid_data(format!(
                 "file grew during transfer: {} > {size}",
-                progress.sent
+                progress.bytes_read
             )));
         }
 
-        self.state = State::SendFile(progress);
+        self.state = State::ReadFile(progress);
         Ok(DirFrame::Chunk { data })
     }
 }
@@ -173,12 +183,12 @@ mod tests {
     use std::fs;
     use std::io;
 
-    use super::DirSender;
+    use super::DirFrameProducer;
     use crate::frame::DirFrame;
     use crate::frame::DirManifest;
-    use crate::frame::FORMAT_VERSION;
-    use crate::frame::FileMeta;
     use crate::frame::MAX_CHUNK_SIZE;
+    use crate::frame::ManifestEntry;
+    use crate::frame::PROTOCOL_VERSION;
     use crate::frame::checksum_digest;
 
     fn crc64(data: &[u8]) -> u64 {
@@ -187,9 +197,9 @@ mod tests {
         digest.finalize()
     }
 
-    async fn collect_frames(sender: &mut DirSender) -> io::Result<Vec<DirFrame>> {
+    async fn collect_frames(producer: &mut DirFrameProducer) -> io::Result<Vec<DirFrame>> {
         let mut frames = Vec::new();
-        while let Some(frame) = sender.next_frame().await? {
+        while let Some(frame) = producer.next_frame().await? {
             frames.push(frame);
         }
         Ok(frames)
@@ -202,22 +212,22 @@ mod tests {
         fs::write(dir.path().join("a.txt"), b"").unwrap();
         fs::write(dir.path().join("c.bin"), b"abcdefgh").unwrap();
 
-        let mut sender = DirSender::new(dir.path(), 4).unwrap();
-        let frames = collect_frames(&mut sender).await.unwrap();
+        let mut producer = DirFrameProducer::new(dir.path(), 4).unwrap();
+        let frames = collect_frames(&mut producer).await.unwrap();
 
         let expected = vec![
             DirFrame::Manifest(DirManifest {
-                format_version: FORMAT_VERSION,
+                format_version: PROTOCOL_VERSION,
                 files: vec![
-                    FileMeta {
+                    ManifestEntry {
                         name: "a.txt".to_string(),
                         size: 0,
                     },
-                    FileMeta {
+                    ManifestEntry {
                         name: "b.txt".to_string(),
                         size: 7,
                     },
-                    FileMeta {
+                    ManifestEntry {
                         name: "c.bin".to_string(),
                         size: 8,
                     },
@@ -250,19 +260,19 @@ mod tests {
         assert_eq!(expected, frames);
 
         // The stream stays exhausted.
-        assert!(sender.next_frame().await.unwrap().is_none());
+        assert!(producer.next_frame().await.unwrap().is_none());
     }
 
     #[tokio::test]
     async fn test_empty_dir() {
         let dir = tempfile::tempdir().unwrap();
 
-        let mut sender = DirSender::new(dir.path(), 4).unwrap();
-        let frames = collect_frames(&mut sender).await.unwrap();
+        let mut producer = DirFrameProducer::new(dir.path(), 4).unwrap();
+        let frames = collect_frames(&mut producer).await.unwrap();
 
         let expected = vec![
             DirFrame::Manifest(DirManifest {
-                format_version: FORMAT_VERSION,
+                format_version: PROTOCOL_VERSION,
                 files: vec![],
             }),
             DirFrame::End,
@@ -275,7 +285,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         for chunk_size in [0, MAX_CHUNK_SIZE + 1] {
-            let err = DirSender::new(dir.path(), chunk_size).err().unwrap();
+            let err = DirFrameProducer::new(dir.path(), chunk_size).err().unwrap();
             assert_eq!(io::ErrorKind::InvalidData, err.kind());
         }
     }
@@ -285,7 +295,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         fs::create_dir(dir.path().join("sub")).unwrap();
 
-        let err = DirSender::new(dir.path(), 4).err().unwrap();
+        let err = DirFrameProducer::new(dir.path(), 4).err().unwrap();
         assert_eq!(io::ErrorKind::InvalidData, err.kind());
     }
 
@@ -296,7 +306,7 @@ mod tests {
         fs::write(dir.path().join("real"), b"x").unwrap();
         std::os::unix::fs::symlink(dir.path().join("real"), dir.path().join("link")).unwrap();
 
-        let err = DirSender::new(dir.path(), 4).err().unwrap();
+        let err = DirFrameProducer::new(dir.path(), 4).err().unwrap();
         assert_eq!(io::ErrorKind::InvalidData, err.kind());
     }
 
@@ -305,19 +315,23 @@ mod tests {
         // The file shrinks after the manifest is built.
         let dir = tempfile::tempdir().unwrap();
         fs::write(dir.path().join("f"), b"12345678").unwrap();
-        let mut sender = DirSender::new(dir.path(), 4).unwrap();
+        let mut producer = DirFrameProducer::new(dir.path(), 4).unwrap();
         fs::write(dir.path().join("f"), b"12").unwrap();
 
-        let err = collect_frames(&mut sender).await.unwrap_err();
+        let err = collect_frames(&mut producer).await.unwrap_err();
+        assert_eq!(io::ErrorKind::InvalidData, err.kind());
+
+        // The failure is sticky: the stream does not end cleanly afterwards.
+        let err = producer.next_frame().await.unwrap_err();
         assert_eq!(io::ErrorKind::InvalidData, err.kind());
 
         // The file grows after the manifest is built.
         let dir = tempfile::tempdir().unwrap();
         fs::write(dir.path().join("f"), b"12").unwrap();
-        let mut sender = DirSender::new(dir.path(), 4).unwrap();
+        let mut producer = DirFrameProducer::new(dir.path(), 4).unwrap();
         fs::write(dir.path().join("f"), b"12345678").unwrap();
 
-        let err = collect_frames(&mut sender).await.unwrap_err();
+        let err = collect_frames(&mut producer).await.unwrap_err();
         assert_eq!(io::ErrorKind::InvalidData, err.kind());
     }
 }

@@ -4,8 +4,8 @@ use std::future::Future;
 use std::io;
 
 use crate::frame::DirFrame;
-use crate::receiver::DirReceiver;
-use crate::sender::DirSender;
+use crate::frame_producer::DirFrameProducer;
+use crate::writer::DirWriter;
 
 /// Transmit the frames of one session to the remote peer.
 ///
@@ -26,27 +26,27 @@ pub trait FrameSource {
     fn recv_frame(&mut self) -> impl Future<Output = io::Result<DirFrame>> + Send;
 }
 
-/// Send one complete session: every frame of `sender` into `sink`.
-pub async fn send_dir<S>(mut sender: DirSender, sink: &mut S) -> io::Result<()>
+/// Send one complete session: every frame of `producer` into `sink`.
+pub async fn send_dir<S>(mut producer: DirFrameProducer, sink: &mut S) -> io::Result<()>
 where S: FrameSink {
-    while let Some(frame) = sender.next_frame().await? {
+    while let Some(frame) = producer.next_frame().await? {
         sink.send_frame(frame).await?;
     }
     Ok(())
 }
 
-/// Receive one complete session: feed every frame from `source` into `receiver` and call its
-/// `finish()` after [`DirFrame::End`].
+/// Receive one complete session: write every frame from `source` with [`DirWriter::write_frame`],
+/// then call [`DirWriter::finish`] after [`DirFrame::End`].
 ///
 /// No frame is read past `End`, so the transport can carry unrelated traffic afterwards.
-pub async fn recv_dir<S>(source: &mut S, mut receiver: DirReceiver) -> io::Result<()>
+pub async fn recv_dir<S>(source: &mut S, mut writer: DirWriter) -> io::Result<()>
 where S: FrameSource {
     loop {
         let frame = source.recv_frame().await?;
         let is_end = matches!(frame, DirFrame::End);
-        receiver.feed(frame).await?;
+        writer.write_frame(frame).await?;
         if is_end {
-            return receiver.finish().await;
+            return writer.finish().await;
         }
     }
 }
@@ -66,8 +66,8 @@ mod tests {
     use super::recv_dir;
     use super::send_dir;
     use crate::frame::DirFrame;
-    use crate::receiver::DirReceiver;
-    use crate::sender::DirSender;
+    use crate::frame_producer::DirFrameProducer;
+    use crate::writer::DirWriter;
 
     /// An in-memory transport: sent frames queue up and are received in order.
     #[derive(Default)]
@@ -123,9 +123,9 @@ mod tests {
         fs::write(dir.path().join("b.txt"), b"1234567").unwrap();
         fs::write(dir.path().join("c.bin"), b"abcdefgh").unwrap();
 
-        let sender = DirSender::new(dir.path(), 4).unwrap();
+        let producer = DirFrameProducer::new(dir.path(), 4).unwrap();
         let mut transport = QueueTransport::default();
-        send_dir(sender, &mut transport).await.unwrap();
+        send_dir(producer, &mut transport).await.unwrap();
         (dir, transport)
     }
 
@@ -134,7 +134,7 @@ mod tests {
         let (source, mut transport) = sent_session().await;
         let target = tempfile::tempdir().unwrap();
 
-        recv_dir(&mut transport, DirReceiver::new(target.path().to_path_buf())).await.unwrap();
+        recv_dir(&mut transport, DirWriter::new(target.path().to_path_buf())).await.unwrap();
 
         assert_eq!(dir_contents(source.path()), dir_contents(target.path()));
         assert!(transport.frames.is_empty());
@@ -146,7 +146,7 @@ mod tests {
         transport.frames.push_back(DirFrame::End);
         let target = tempfile::tempdir().unwrap();
 
-        recv_dir(&mut transport, DirReceiver::new(target.path().to_path_buf())).await.unwrap();
+        recv_dir(&mut transport, DirWriter::new(target.path().to_path_buf())).await.unwrap();
 
         // The frame after `End` is left in the transport.
         assert_eq!(VecDeque::from([DirFrame::End]), transport.frames);
@@ -158,7 +158,7 @@ mod tests {
         transport.frames.pop_back();
         let target = tempfile::tempdir().unwrap();
 
-        let err = recv_dir(&mut transport, DirReceiver::new(target.path().to_path_buf())).await.unwrap_err();
+        let err = recv_dir(&mut transport, DirWriter::new(target.path().to_path_buf())).await.unwrap_err();
 
         assert_eq!(io::ErrorKind::UnexpectedEof, err.kind());
     }
@@ -168,8 +168,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         fs::write(dir.path().join("f"), b"12345678").unwrap();
 
-        let sender = DirSender::new(dir.path(), 4).unwrap();
-        let err = send_dir(sender, &mut FailingSink { remaining: 2 }).await.unwrap_err();
+        let producer = DirFrameProducer::new(dir.path(), 4).unwrap();
+        let err = send_dir(producer, &mut FailingSink { remaining: 2 }).await.unwrap_err();
 
         assert_eq!(io::ErrorKind::ConnectionReset, err.kind());
     }
