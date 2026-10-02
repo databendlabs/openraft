@@ -3,9 +3,12 @@
 Transfer a flat directory of immutable files to a remote peer as an ordered stream of frames,
 without fixing a concrete transport.
 
-This crate defines the file-level protocol: the frame types, a sender that turns a directory into
-a frame stream, and a receiver that rebuilds and validates the directory. The carrier is anything
-that moves opaque frames reliably and in order: TCP, gRPC streaming, an HTTP body, a message
+This crate defines `DirFrame`, [`DirFrameProducer`](src/frame_producer.rs), and
+[`DirWriter`](src/writer.rs). `DirFrameProducer::next_frame()` reads a directory as frames.
+`DirWriter::write_frame()` validates and writes those frames into the target directory.
+Call `DirWriter::finish()` after the `End` frame.
+
+The carrier moves frames reliably and in order: TCP, gRPC streaming, an HTTP body, or a message
 queue.
 
 Built for shipping RocksDB checkpoint directories as OpenRaft snapshots (see
@@ -21,8 +24,8 @@ Manifest, { FileStart, Chunk*, FileEnd }, End
 
 with one `FileStart`/`Chunk`/`FileEnd` group per manifest entry, in manifest order.
 
-- `Manifest` carries the format version and every file's name and size.
-- File names are flat: no path separators, no `.` or `..`.
+- `Manifest` carries `PROTOCOL_VERSION` and every file's name and size as a `ManifestEntry`.
+- File names are flat: at most `MAX_FILE_NAME_BYTES` bytes, no path separators, no `.` or `..`.
 - `FileEnd` carries a CRC-64/XZ checksum of the complete file contents.
 - Every violation fails with `io::ErrorKind::InvalidData`; a failed session is discarded and
   restarted from scratch.
@@ -33,10 +36,10 @@ A transport implements `FrameSink` on the sending node and `FrameSource` on the 
 choosing its own frame encoding; `send_dir()` and `recv_dir()` drive one complete session over
 them. A conforming transport must:
 
-1. Deliver the frames of one session to exactly one receiver, in order, without loss or
+1. Deliver the frames of one session to exactly one `DirWriter`, in order, without loss or
    duplication.
-2. Propagate receiver errors back to the sender; on any error both sides drop the session.
-3. Report success only after the receiver's `finish()` succeeds.
+2. Propagate writer errors back to the sender; on any error both sides drop the session.
+3. Report success only after `DirWriter::finish()` succeeds.
 
 Retry, authentication, compression, and rate limiting are transport concerns, outside this
 protocol.

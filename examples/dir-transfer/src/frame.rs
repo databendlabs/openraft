@@ -10,10 +10,10 @@ use serde::Serialize;
 /// The protocol version this crate emits and accepts.
 ///
 /// Version 1 fixes the per-file checksum to CRC-64/XZ.
-pub const FORMAT_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 1;
 
 /// Longest accepted manifest file name, in bytes.
-pub const MAX_NAME_LEN: usize = 255;
+pub const MAX_FILE_NAME_BYTES: usize = 255;
 
 /// Largest accepted [`DirFrame::Chunk`] payload, in bytes.
 pub const MAX_CHUNK_SIZE: usize = 8 * 1024 * 1024;
@@ -23,7 +23,7 @@ static CRC64: Crc<u64> = Crc::<u64>::new(&CRC_64_XZ);
 /// Name and size of one file in a [`DirManifest`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[derive(Serialize, Deserialize)]
-pub struct FileMeta {
+pub struct ManifestEntry {
     /// Flat file name; no path separators.
     pub name: String,
 
@@ -35,11 +35,11 @@ pub struct FileMeta {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[derive(Serialize, Deserialize)]
 pub struct DirManifest {
-    /// Protocol version; see [`FORMAT_VERSION`].
+    /// Protocol version; see [`PROTOCOL_VERSION`].
     pub format_version: u32,
 
     /// Every file of the directory, in transfer order.
-    pub files: Vec<FileMeta>,
+    pub files: Vec<ManifestEntry>,
 }
 
 /// One frame of the transfer stream.
@@ -74,21 +74,23 @@ pub enum DirFrame {
     End,
 }
 
-/// Return a streaming hasher for the per-file checksum of [`FORMAT_VERSION`] 1.
+/// Return a streaming hasher for the per-file checksum of [`PROTOCOL_VERSION`] 1.
 pub(crate) fn checksum_digest() -> crc::Digest<'static, u64> {
     CRC64.digest()
 }
 
 /// Validate a manifest file name before any filesystem access.
 ///
-/// Names must be non-empty, at most [`MAX_NAME_LEN`] bytes, free of path separators and NUL, and
-/// not `.` or `..`.
-pub(crate) fn validate_name(name: &str) -> io::Result<()> {
+/// Names must be non-empty, at most [`MAX_FILE_NAME_BYTES`] bytes, free of path separators and NUL,
+/// and not `.` or `..`.
+pub(crate) fn validate_file_name(name: &str) -> io::Result<()> {
     if name.is_empty() {
         return Err(invalid_data("empty file name"));
     }
-    if name.len() > MAX_NAME_LEN {
-        return Err(invalid_data(format!("file name longer than {MAX_NAME_LEN} bytes")));
+    if name.len() > MAX_FILE_NAME_BYTES {
+        return Err(invalid_data(format!(
+            "file name longer than {MAX_FILE_NAME_BYTES} bytes"
+        )));
     }
     if name == "." || name == ".." {
         return Err(invalid_data(format!("file name {name:?} is not allowed")));
@@ -111,7 +113,7 @@ mod tests {
     use std::io;
 
     use super::checksum_digest;
-    use super::validate_name;
+    use super::validate_file_name;
 
     #[test]
     fn test_checksum_is_crc64_xz() {
@@ -128,10 +130,10 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_name() {
-        validate_name("CURRENT").unwrap();
-        validate_name("000012.sst").unwrap();
-        validate_name(&"x".repeat(super::MAX_NAME_LEN)).unwrap();
+    fn test_validate_file_name() {
+        validate_file_name("CURRENT").unwrap();
+        validate_file_name("000012.sst").unwrap();
+        validate_file_name(&"x".repeat(super::MAX_FILE_NAME_BYTES)).unwrap();
 
         let invalid = [
             "",
@@ -141,10 +143,10 @@ mod tests {
             "/abs",
             "a\\b",
             "a\0b",
-            &"x".repeat(super::MAX_NAME_LEN + 1),
+            &"x".repeat(super::MAX_FILE_NAME_BYTES + 1),
         ];
         for name in invalid {
-            let err = validate_name(name).unwrap_err();
+            let err = validate_file_name(name).unwrap_err();
             assert_eq!(io::ErrorKind::InvalidData, err.kind(), "name: {name:?}");
         }
     }
