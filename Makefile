@@ -67,6 +67,10 @@ test-examples:
 	cargo test --manifest-path examples/sm-rocks/Cargo.toml
 	cargo test --manifest-path examples/multi-raft-kv/Cargo.toml
 
+# Test one example, e.g. `make test-example-raft-kv-rocksdb`.
+test-example-%:
+	cargo test --manifest-path examples/$*/Cargo.toml
+
 bench:
 	cargo bench --features bench -p openraft
 
