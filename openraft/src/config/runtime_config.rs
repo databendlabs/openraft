@@ -4,10 +4,11 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
 use crate::Config;
+use crate::core::TickSwitch;
 
 /// Updatable config for a raft runtime.
 pub(crate) struct RuntimeConfig {
-    pub(crate) enable_tick: Arc<AtomicBool>,
+    pub(crate) enable_tick: Arc<TickSwitch>,
     pub(crate) enable_heartbeat: AtomicBool,
     pub(crate) enable_elect: AtomicBool,
     pub(crate) enable_pre_vote: AtomicBool,
@@ -16,7 +17,7 @@ pub(crate) struct RuntimeConfig {
 impl RuntimeConfig {
     pub(crate) fn new(config: &Config) -> Self {
         Self {
-            enable_tick: Arc::new(AtomicBool::from(config.enable_tick)),
+            enable_tick: Arc::new(TickSwitch::new(config.enable_tick)),
             enable_heartbeat: AtomicBool::from(config.enable_heartbeat),
             enable_elect: AtomicBool::from(config.enable_elect),
             enable_pre_vote: AtomicBool::from(config.get_enable_pre_vote()),

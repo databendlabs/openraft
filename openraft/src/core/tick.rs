@@ -2,8 +2,6 @@
 
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use futures_util::future::Either;
@@ -14,6 +12,7 @@ use tracing::Span;
 
 use crate::AsyncRuntime;
 use crate::RaftTypeConfig;
+use crate::core::TickSwitch;
 use crate::core::notification::Notification;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::AsyncRuntimeOf;
@@ -33,8 +32,8 @@ where C: RaftTypeConfig
 
     tx: MpscSenderOf<C, Notification<C>>,
 
-    /// Emit event or not
-    enabled: Arc<AtomicBool>,
+    /// Emit ticks or not. The loop parks while it is off.
+    enabled: Arc<TickSwitch>,
 }
 
 pub(crate) struct TickHandle<C>
@@ -62,7 +61,7 @@ where C: RaftTypeConfig
     pub(crate) fn spawn(
         period: Duration,
         tx: MpscSenderOf<C, Notification<C>>,
-        enabled: Arc<AtomicBool>,
+        enabled: Arc<TickSwitch>,
     ) -> TickHandle<C> {
         let this = Self {
             period,
@@ -105,6 +104,20 @@ where C: RaftTypeConfig
         // the modulo below defined for a zero period, which stays a busy loop as it was before.
         let step_us = self.period.as_micros().max(1);
 
+        // Round the time elapsed since the origin up to the next whole multiple of the
+        // period, so every deadline is `first_wait_at + k * step_us`. Deriving it from the fixed
+        // origin rather than from this wake keeps wake latency out of the phase: re-anchoring
+        // would stretch the effective period and let the sampled offset wander until
+        // instances fell into a shared timer slot, where they would stay. Whole periods
+        // missed during a stall are stepped over by the same arithmetic, so a stall cannot
+        // shift the phase either, nor emit one catch-up tick per period it covered.
+        let next_deadline = move || {
+            let mut offset_us = (C::now() - first_wait_at).as_micros();
+            offset_us -= offset_us % step_us;
+            offset_us += step_us;
+            first_wait_at + Duration::from_micros(offset_us as u64)
+        };
+
         loop {
             let sleep_fut = std::pin::pin!(C::sleep_until(at));
             let cancel_fut = cancel.as_mut();
@@ -119,19 +132,27 @@ where C: RaftTypeConfig
                 }
             }
 
-            // Round the time elapsed since the origin up to the next whole multiple of the
-            // period, so every deadline is `first_wait_at + k * step_us`. Deriving it from the fixed
-            // origin rather than from this wake keeps wake latency out of the phase: re-anchoring
-            // would stretch the effective period and let the sampled offset wander until
-            // instances fell into a shared timer slot, where they would stay. Whole periods
-            // missed during a stall are stepped over by the same arithmetic, so a stall cannot
-            // shift the phase either, nor emit one catch-up tick per period it covered.
-            let mut offset_us = (C::now() - first_wait_at).as_micros();
-            offset_us -= offset_us % step_us;
-            offset_us += step_us;
-            at = first_wait_at + Duration::from_micros(offset_us as u64);
+            at = next_deadline();
 
-            if !self.enabled.load(Ordering::Relaxed) {
+            if !self.enabled.is_enabled() {
+                // Park until the tick is re-enabled or the loop is cancelled, rather than waking
+                // every period only to find it still disabled.
+                let enabled_fut = std::pin::pin!(self.enabled.wait_enabled());
+
+                match futures_util::future::select(cancel.as_mut(), enabled_fut).await {
+                    Either::Left((_canceled, _)) => {
+                        tracing::info!("TickLoop received cancel signal while disabled, quit");
+                        return;
+                    }
+                    Either::Right((_, _)) => {
+                        tracing::debug!("Tick re-enabled, resuming");
+                    }
+                }
+
+                // Resume on the original grid: the first tick after re-enabling lands on the
+                // next grid line, at most one period away, exactly when the loop would have
+                // emitted it had it kept sleeping through the disabled span.
+                at = next_deadline();
                 continue;
             }
 
@@ -179,8 +200,12 @@ where C: RaftTypeConfig
 #[cfg(test)]
 mod tests {
     use std::future::Future;
+    use std::pin::Pin;
     use std::sync::Arc;
-    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
+    use std::task::Context;
+    use std::task::Poll;
     use std::time::Duration;
 
     use openraft_rt::deterministic_rng::DeterministicRng;
@@ -192,9 +217,11 @@ mod tests {
     use crate::RaftTypeConfig;
     use crate::async_runtime::MpscReceiver;
     use crate::core::Tick;
+    use crate::core::TickSwitch;
     use crate::core::notification::Notification;
     use crate::type_config::TypeConfigExt;
     use crate::type_config::alias::MpscReceiverOf;
+    use crate::type_config::async_runtime::oneshot::OneshotSender;
 
     #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Ord, PartialOrd)]
     #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -326,7 +353,7 @@ mod tests {
 
             // A first wait far longer than this test's own timeout: the loop can only finish by
             // observing the shutdown signal.
-            let enabled = Arc::new(AtomicBool::new(true));
+            let enabled = Arc::new(TickSwitch::new(true));
             let th = Tick::<TickUTConfig>::spawn(Duration::from_secs(10), tx, enabled);
 
             TickUTConfig::sleep(Duration::from_millis(50)).await;
@@ -354,7 +381,7 @@ mod tests {
 
         run_seeded(SEED, async {
             let (tx, mut rx) = SeededTickConfig::mpsc(1024);
-            let enabled = Arc::new(AtomicBool::new(true));
+            let enabled = Arc::new(TickSwitch::new(true));
             let th = Tick::<SeededTickConfig>::spawn(period, tx, enabled);
 
             let early_first =
@@ -393,7 +420,7 @@ mod tests {
             // Capacity one: the first tick fills the channel, so the second blocks in `send()`
             // until this task drains it, and the tick loop is held past its own schedule.
             let (tx, mut rx) = TickUTConfig::mpsc(1);
-            let enabled = Arc::new(AtomicBool::new(true));
+            let enabled = Arc::new(TickSwitch::new(true));
             let th = Tick::<TickUTConfig>::spawn(PERIOD, tx, enabled);
 
             TickUTConfig::sleep(STALL).await;
@@ -420,7 +447,7 @@ mod tests {
         TickUTConfig::run(async {
             // Capacity one throttles the busy loop to this task's receive rate.
             let (tx, mut rx) = TickUTConfig::mpsc(1);
-            let enabled = Arc::new(AtomicBool::new(true));
+            let enabled = Arc::new(TickSwitch::new(true));
             let th = Tick::<TickUTConfig>::spawn(Duration::ZERO, tx, enabled);
 
             for expected in 1..=3 {
@@ -455,7 +482,7 @@ mod tests {
             // Capacity one: the second tick stays blocked in `send()` for the whole stall, so the
             // loop sleeps through the deadlines at `first_wait + 3 * PERIOD` and `+ 4 * PERIOD`.
             let (tx, mut rx) = SeededTickConfig::mpsc(1);
-            let enabled = Arc::new(AtomicBool::new(true));
+            let enabled = Arc::new(TickSwitch::new(true));
             let th = Tick::<SeededTickConfig>::spawn(PERIOD, tx, enabled);
 
             SeededTickConfig::sleep(first_wait + STALL).await;
@@ -475,6 +502,128 @@ mod tests {
                 .expect("the tick after the stall must land on the original grid");
             assert_eq!(4, fourth);
 
+            th.shutdown().unwrap().await.unwrap();
+        });
+    }
+
+    /// Counts how often the wrapped future is polled: one poll per wakeup of the tick task.
+    struct CountPolls<F> {
+        inner: Pin<Box<F>>,
+        polls: Arc<AtomicUsize>,
+    }
+
+    impl<F> Future for CountPolls<F>
+    where F: Future
+    {
+        type Output = F::Output;
+
+        fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<F::Output> {
+            self.polls.fetch_add(1, Ordering::Relaxed);
+            self.inner.as_mut().poll(cx)
+        }
+    }
+
+    /// A disabled tick must park instead of waking once per period to re-check the flag.
+    ///
+    /// A loop that re-checks the flag every period would be polled about 50 times here. The
+    /// parked loop is polled for the first wait, once more to park, and not again until it is
+    /// re-enabled.
+    #[test]
+    fn test_a_disabled_tick_parks_without_waking() {
+        const PERIOD: Duration = Duration::from_millis(10);
+
+        TickUTConfig::run(async {
+            let (tx, mut rx) = TickUTConfig::mpsc(1024);
+            let switch = Arc::new(TickSwitch::new(false));
+            let tick = Tick::<TickUTConfig> {
+                period: PERIOD,
+                first_wait: PERIOD,
+                tx,
+                enabled: switch.clone(),
+            };
+            let (cancel_tx, cancel_rx) = TickUTConfig::oneshot();
+            let polls = Arc::new(AtomicUsize::new(0));
+            let join_handle = TickUTConfig::spawn(CountPolls {
+                inner: Box::pin(tick.tick_loop(cancel_rx)),
+                polls: polls.clone(),
+            });
+
+            TickUTConfig::sleep(PERIOD * 50).await;
+            let parked_polls = polls.load(Ordering::Relaxed);
+            assert!(
+                parked_polls <= 3,
+                "a disabled tick must not wake every period: polled {parked_polls} times in 50 periods"
+            );
+            assert!(rx.try_recv().is_err(), "a disabled tick must not emit");
+
+            // Re-enabling resumes ticking, the first tick at most one period (plus slack) later.
+            switch.set(true);
+            let i = TickUTConfig::timeout(PERIOD * 3, recv_tick::<TickUTConfig>(&mut rx))
+                .await
+                .expect("re-enabling must resume ticking within a period");
+            assert_eq!(1, i);
+
+            // Disable again and cancel while parked: the loop must exit promptly.
+            switch.set(false);
+            TickUTConfig::sleep(PERIOD * 3).await;
+            cancel_tx.send(()).unwrap();
+            TickUTConfig::timeout(Duration::from_millis(500), join_handle)
+                .await
+                .expect("cancel must stop a parked tick loop")
+                .expect("tick loop must not panic");
+        });
+    }
+
+    /// Toggling the switch from another thread must never strand the loop parked while enabled.
+    ///
+    /// On the multi-threaded runtime the test body runs on the `block_on` thread and the tick
+    /// loop on a worker, so `set()` and
+    /// the loop's check-then-park really run concurrently. Each round disables the tick right
+    /// after a tick was received, while the loop sleeps towards its next deadline, and busy-waits
+    /// before re-enabling it. The busy-wait sweeps a little more than one observed tick interval,
+    /// so the enable crosses the loop's wake, check and park, which is where a lost wakeup
+    /// would hide. The interval is measured rather than assumed, because the timer may be much
+    /// coarser than `PERIOD` (about 15 ms on Windows).
+    #[test]
+    fn test_enable_after_disable_never_loses_the_wakeup() {
+        const PERIOD: Duration = Duration::from_millis(1);
+        const ROUNDS: u32 = 100;
+
+        fn spin_for(d: Duration) {
+            let end = std::time::Instant::now() + d;
+            while std::time::Instant::now() < end {
+                std::hint::spin_loop();
+            }
+        }
+
+        TickUTConfig::run(async {
+            // Capacity one bounds what a stranded loop could still deliver: one tick buffered and
+            // one blocked in `send()`. Receiving more than that proves the loop is running.
+            let (tx, mut rx) = TickUTConfig::mpsc(1);
+            let switch = Arc::new(TickSwitch::new(true));
+            let th = Tick::<TickUTConfig>::spawn(PERIOD, tx, switch.clone());
+
+            recv_tick::<TickUTConfig>(&mut rx).await;
+            let start = std::time::Instant::now();
+            for _ in 0..4 {
+                recv_tick::<TickUTConfig>(&mut rx).await;
+            }
+            let interval = start.elapsed() / 4;
+
+            for round in 0..ROUNDS {
+                switch.set(false);
+                // Coprime with ROUNDS, so the rounds visit every step of the sweep once.
+                spin_for(interval * 5 * (round * 37 % ROUNDS) / (4 * ROUNDS));
+                switch.set(true);
+
+                for _ in 0..3 {
+                    TickUTConfig::timeout(Duration::from_millis(500), recv_tick::<TickUTConfig>(&mut rx))
+                        .await
+                        .unwrap_or_else(|_| panic!("round {round}: an enabled tick stayed parked"));
+                }
+            }
+
+            drop(rx);
             th.shutdown().unwrap().await.unwrap();
         });
     }
