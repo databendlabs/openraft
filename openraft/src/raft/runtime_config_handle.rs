@@ -3,6 +3,7 @@
 use std::sync::atomic::Ordering;
 
 use crate::RaftTypeConfig;
+use crate::async_runtime::watch::WatchSender;
 use crate::raft::RaftInner;
 
 /// RuntimeConfigHandle is an interface to update runtime config.
@@ -24,9 +25,11 @@ where C: RaftTypeConfig
 
     /// Enable or disable raft internal ticker.
     ///
-    /// Disabling tick will disable election and heartbeat.
+    /// Disabling tick will disable election and heartbeat. While disabled, the internal ticker
+    /// parks and causes no wakeups; re-enabling it resumes ticking, with the first tick at most
+    /// one tick period later.
     pub fn tick(&self, enabled: bool) {
-        self.raft_inner.runtime_config.enable_tick.store(enabled, Ordering::Relaxed);
+        self.raft_inner.runtime_config.enable_tick.send_if_different(enabled);
     }
 
     /// Enable or disable heartbeat messages when a leader has no more log to replicate.

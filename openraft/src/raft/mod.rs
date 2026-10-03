@@ -81,6 +81,7 @@ use crate::async_runtime::MpscWeakSender;
 use crate::async_runtime::OneshotSender;
 use crate::async_runtime::mpsc::MpscSender;
 use crate::async_runtime::watch::WatchReceiver;
+use crate::async_runtime::watch::WatchSender;
 use crate::base::BoxFuture;
 use crate::base::BoxOnce;
 use crate::base::BoxStream;
@@ -669,7 +670,7 @@ where
                 let join_handle = C::spawn(core_fut);
 
                 let tick_period = Duration::from_millis(config.tick_interval());
-                let enabled = inner.runtime_config.enable_tick.clone();
+                let enabled = inner.runtime_config.enable_tick.subscribe();
                 let tick_handle = Tick::spawn(tick_period, tick_tx, enabled);
                 *inner.tick_handle.lock().unwrap() = Some(tick_handle);
                 join_handle

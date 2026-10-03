@@ -200,7 +200,7 @@ where
     /// This node's runtime config.
     pub(crate) config: Arc<Config>,
 
-    pub(crate) runtime_config: Arc<RuntimeConfig>,
+    pub(crate) runtime_config: Arc<RuntimeConfig<C>>,
 
     /// Additional state that does not directly affect the consensus.
     pub(crate) core_state: CoreState<C>,
