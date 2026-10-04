@@ -43,11 +43,14 @@ impl TickSwitch {
     /// Resolve once the switch is on.
     ///
     /// Only the tick loop waits here, since `AtomicWaker` holds a single waker. A spurious wake
-    /// just re-checks the flag.
+    /// just re-checks the flag. On return the registered waker is dropped, so a later `set(true)`
+    /// does not wake a loop that is no longer parked, nor keep its task alive after shutdown.
     pub(crate) async fn wait_enabled(&self) {
         std::future::poll_fn(|cx| {
             self.waker.register(cx.waker());
             if self.is_enabled() {
+                // Only on the way out: a pending poll must keep its waker registered.
+                drop(self.waker.take());
                 Poll::Ready(())
             } else {
                 Poll::Pending

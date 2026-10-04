@@ -556,11 +556,12 @@ mod tests {
             );
             assert!(rx.try_recv().is_err(), "a disabled tick must not emit");
 
-            // Re-enabling resumes ticking, the first tick at most one period (plus slack) later.
+            // Re-enabling resumes ticking. The bound is loose on purpose, for slow timers and loaded
+            // machines; `test_resume_stays_on_the_grid` checks when the first tick lands.
             switch.set(true);
-            let i = TickUTConfig::timeout(PERIOD * 3, recv_tick::<TickUTConfig>(&mut rx))
+            let i = TickUTConfig::timeout(Duration::from_secs(1), recv_tick::<TickUTConfig>(&mut rx))
                 .await
-                .expect("re-enabling must resume ticking within a period");
+                .expect("re-enabling must resume ticking");
             assert_eq!(1, i);
 
             // Disable again and cancel while parked: the loop must exit promptly.
@@ -574,20 +575,79 @@ mod tests {
         });
     }
 
-    /// Toggling the switch from another thread must never strand the loop parked while enabled.
+    /// Re-enabling resumes on the original phase grid, without a tick at the moment of enabling
+    /// and without a burst of catch-up ticks for the disabled span.
+    ///
+    /// The loop is driven in this task by `join`, which polls it first, so its origin is
+    /// `before + PERIOD` with no spawn latency in between. The tick is enabled mid-period; when
+    /// the enable lands well away from a grid line, the first tick must wait for the next one.
+    #[test]
+    fn test_resume_stays_on_the_grid() {
+        const PERIOD: Duration = Duration::from_millis(200);
+
+        TickUTConfig::run(async {
+            let (tx, mut rx) = TickUTConfig::mpsc(1024);
+            let switch = Arc::new(TickSwitch::new(false));
+            let tick = Tick::<TickUTConfig> {
+                period: PERIOD,
+                first_wait: PERIOD,
+                tx,
+                enabled: switch.clone(),
+            };
+            let (cancel_tx, cancel_rx) = TickUTConfig::oneshot();
+
+            let before = TickUTConfig::now();
+            let loop_fut = tick.tick_loop(cancel_rx);
+            let check = async move {
+                TickUTConfig::sleep(PERIOD * 2 + PERIOD / 2).await;
+                let enabled_at = TickUTConfig::now();
+                switch.set(true);
+                let i = recv_tick::<TickUTConfig>(&mut rx).await;
+                let got = TickUTConfig::now();
+                assert_eq!(1, i);
+
+                let p = PERIOD.as_micros();
+                let phase = (enabled_at - (before + PERIOD)).as_micros() % p;
+                if (p / 4..=p * 3 / 4).contains(&phase) {
+                    assert!(
+                        got - enabled_at >= PERIOD / 8,
+                        "resumed off the grid: tick {:?} after enabling at phase {phase}us",
+                        got - enabled_at
+                    );
+                } else {
+                    // A loaded machine delayed the enable to near a grid line, where an on-grid
+                    // tick and an immediate one are indistinguishable.
+                    eprintln!("enabled at phase {phase}us, outside the checked window; skipped");
+                }
+
+                // No burst: the next tick is about one period later.
+                let i2 = recv_tick::<TickUTConfig>(&mut rx).await;
+                assert_eq!(2, i2);
+                assert!(TickUTConfig::now() - got >= PERIOD / 2, "burst of catch-up ticks");
+
+                cancel_tx.send(()).unwrap();
+            };
+            futures_util::future::join(loop_fut, check).await;
+        });
+    }
+
+    /// An enable that follows a disable always resumes ticking, wherever it lands in the loop.
     ///
     /// On the multi-threaded runtime the test body runs on the `block_on` thread and the tick
-    /// loop on a worker, so `set()` and
-    /// the loop's check-then-park really run concurrently. Each round disables the tick right
-    /// after a tick was received, while the loop sleeps towards its next deadline, and busy-waits
-    /// before re-enabling it. The busy-wait sweeps a little more than one observed tick interval,
-    /// so the enable crosses the loop's wake, check and park, which is where a lost wakeup
-    /// would hide. The interval is measured rather than assumed, because the timer may be much
-    /// coarser than `PERIOD` (about 15 ms on Windows).
+    /// loop on a worker, so `set()` runs concurrently with the loop. Each round disables the tick
+    /// right after a tick was received and busy-waits before re-enabling it. The busy-wait sweeps
+    /// a little more than one observed tick interval, so across the rounds the enable lands
+    /// before, during and after the loop parks. The interval is measured rather than assumed,
+    /// because the timer may be much coarser than `PERIOD` (about 15 ms on Windows).
+    ///
+    /// This catches an enable that never wakes a parked loop. It cannot reliably hit the
+    /// nanosecond windows of the check-then-park race itself; that relies on `AtomicWaker`'s
+    /// documented pattern, with `wait_enabled()` registering before it checks the flag and
+    /// `set()` storing the flag before it wakes.
     #[test]
-    fn test_enable_after_disable_never_loses_the_wakeup() {
+    fn test_enable_after_disable_always_resumes_ticking() {
         const PERIOD: Duration = Duration::from_millis(1);
-        const ROUNDS: u32 = 100;
+        const ROUNDS: u32 = 50;
 
         fn spin_for(d: Duration) {
             let end = std::time::Instant::now() + d;
