@@ -50,11 +50,6 @@ async fn wait_for<T>(what: &str, mut f: impl FnMut() -> Option<T>) -> T {
 fn learner_added_while_partitioned_catches_up_from_fully_purged_leader() {
     const SEED: u64 = 0x1828;
 
-    // Reset the `futures_util::select!` shuffle RNG (a process-wide
-    // thread-local) so this test is deterministic no matter what ran on
-    // this thread before it.
-    futures_util::reseed(SEED);
-
     let mut sim = turmoil::Builder::new()
         .simulation_duration(Duration::from_secs(600))
         .tcp_capacity(65536)

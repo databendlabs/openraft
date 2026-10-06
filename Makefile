@@ -133,8 +133,13 @@ guide:
 	@echo "doc is built in:"
 	@echo "./guide/book/index.html"
 
+test-turmoil:
+	cd tests-turmoil && cargo test --lib
+
+DETSIM_ARGS ?= --iterations 5 --max-steps 10000
+
 detsim:
-	cd tests-turmoil && cargo run --bin fuzz -- --iterations 5 --max-steps 10000
+	cd tests-turmoil && cargo run --bin fuzz -- $(DETSIM_ARGS)
 
 # Extra arguments passed to every `cargo fmt` below. Empty rewrites the files;
 # `fmt_check` overrides it with `-- --check` to report without rewriting.
@@ -297,4 +302,4 @@ clean:
 	cargo clean --manifest-path jepsen/openraft-test-app/Cargo.toml
 	rm -rf tests/_log
 
-.PHONY: test test-runtime verify basic_check fmt fmt_check fix clippy lint clean doc docs-check guide detsim typos
+.PHONY: test test-runtime test-turmoil verify basic_check fmt fmt_check fix clippy lint clean doc docs-check guide detsim typos
