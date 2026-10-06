@@ -3,6 +3,9 @@
 #![allow(missing_docs)]
 
 use std::future::Future;
+use std::future::pending;
+use std::future::poll_fn;
+use std::future::ready;
 use std::pin::Pin;
 use std::pin::pin;
 use std::sync::Arc;
@@ -15,6 +18,9 @@ use crate::Instant;
 use crate::Mutex;
 use crate::Oneshot;
 use crate::OneshotSender;
+use crate::Select2;
+use crate::Select3;
+use crate::Select4;
 use crate::Watch;
 use crate::mpsc::Mpsc;
 use crate::mpsc::MpscReceiver;
@@ -23,6 +29,13 @@ use crate::mpsc::MpscWeakSender;
 use crate::mpsc::TryRecvError;
 use crate::watch::WatchReceiver;
 use crate::watch::WatchSender;
+
+async fn ready_if<T>(enabled: bool, value: T) -> T {
+    if !enabled {
+        pending::<()>().await;
+    }
+    value
+}
 
 /// Test suite to ensure a runtime impl works as expected.
 ///
@@ -52,6 +65,17 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
             Self::test_sleep_until().await;
             Self::test_timeout().await;
             Self::test_timeout_at().await;
+            Self::test_select2().await;
+            Self::test_select3().await;
+            Self::test_select4().await;
+            Self::test_select_stops_polling().await;
+            Self::test_select_wakes_from_later_branch().await;
+            Self::test_select_bias_after_pending().await;
+            Self::test_select_retains_borrowed_future().await;
+            Self::test_select_drops_owned_future().await;
+            Self::test_select_cancellation().await;
+            #[cfg(feature = "single-threaded")]
+            Self::test_select_non_send().await;
 
             Self::test_mpsc_recv_empty().await;
             Self::test_mpsc_recv_channel_closed().await;
@@ -286,6 +310,137 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         })
         .await;
         assert!(timeout_result.is_err());
+    }
+
+    async fn test_select2() {
+        let expected = [Select2::First(1_u8), Select2::Second("two")];
+        for (first_ready, expected) in expected.into_iter().enumerate() {
+            let first = ready_if(first_ready == 0, 1_u8);
+            let second = ready("two");
+            let selected = Rt::select2(first, second).await;
+            assert_eq!(selected, expected);
+        }
+    }
+
+    async fn test_select3() {
+        let expected = [Select3::First(1_u8), Select3::Second("two"), Select3::Third(true)];
+        for (first_ready, expected) in expected.into_iter().enumerate() {
+            let first = ready_if(first_ready == 0, 1_u8);
+            let second = ready_if(first_ready <= 1, "two");
+            let third = ready(true);
+            let selected = Rt::select3(first, second, third).await;
+            assert_eq!(selected, expected);
+        }
+    }
+
+    async fn test_select4() {
+        let expected = [
+            Select4::First(1_u8),
+            Select4::Second("two"),
+            Select4::Third(true),
+            Select4::Fourth([4, 5]),
+        ];
+        for (first_ready, expected) in expected.into_iter().enumerate() {
+            let first = ready_if(first_ready == 0, 1_u8);
+            let second = ready_if(first_ready <= 1, "two");
+            let third = ready_if(first_ready <= 2, true);
+            let fourth = ready([4, 5]);
+            let selected = Rt::select4(first, second, third, fourth).await;
+            assert_eq!(selected, expected);
+        }
+    }
+
+    async fn test_select_stops_polling() {
+        let later = || poll_fn(|_| -> Poll<()> { panic!("polled a future after a ready branch") });
+        let second = later();
+        let third = later();
+        let fourth = later();
+        let selected = Rt::select4(async { 1 }, second, third, fourth).await;
+        let expected = Select4::First(1);
+        assert_eq!(selected, expected);
+    }
+
+    async fn test_select_wakes_from_later_branch() {
+        let (tx, rx) = Rt::Oneshot::channel::<i32>();
+        let fourth = async { rx.await.unwrap() };
+        let first = pending::<()>();
+        let second = pending::<()>();
+        let third = pending::<()>();
+        let select = Rt::select4(first, second, third, fourth);
+        let mut select = pin!(select);
+        let polled = futures_util::poll!(select.as_mut());
+        assert_eq!(polled, Poll::Pending);
+        let sender = Rt::spawn(async move {
+            Rt::sleep(Duration::from_millis(10)).await;
+            tx.send(4).unwrap();
+        });
+        let selected = select.await;
+        sender.await.unwrap();
+        let expected = Select4::Fourth(4);
+        assert_eq!(selected, expected);
+    }
+
+    async fn test_select_bias_after_pending() {
+        let (first_tx, first_rx) = Rt::Oneshot::channel::<i32>();
+        let (second_tx, second_rx) = Rt::Oneshot::channel::<i32>();
+        let first = async { first_rx.await.unwrap() };
+        let second = async { second_rx.await.unwrap() };
+        let select = Rt::select2(first, second);
+        let mut select = pin!(select);
+        let polled = futures_util::poll!(select.as_mut());
+        assert_eq!(polled, Poll::Pending);
+        second_tx.send(2).unwrap();
+        first_tx.send(1).unwrap();
+        let selected = select.await;
+        let expected = Select2::First(1);
+        assert_eq!(selected, expected);
+    }
+
+    async fn test_select_retains_borrowed_future() {
+        let mut second = pin!(async { "two" });
+        let selected = Rt::select2(async { 1 }, second.as_mut()).await;
+        let expected = Select2::First(1);
+        assert_eq!(selected, expected);
+        let retained = second.await;
+        assert_eq!(retained, "two");
+    }
+
+    async fn test_select_drops_owned_future() {
+        let marker = Arc::new(());
+        let losing_marker = marker.clone();
+        let second = ready_if(false, losing_marker);
+        let selected = Rt::select2(async { 1 }, second).await;
+        let expected = Select2::First(1);
+        assert_eq!(selected, expected);
+        let retained = Arc::strong_count(&marker);
+        assert_eq!(retained, 1);
+    }
+
+    async fn test_select_cancellation() {
+        let marker = Arc::new(());
+        let first_marker = marker.clone();
+        let second_marker = marker.clone();
+        let first = ready_if(false, first_marker);
+        let second = ready_if(false, second_marker);
+        let select = Rt::select2(first, second);
+        let mut select = Box::pin(select);
+        let polled = futures_util::poll!(select.as_mut());
+        assert_eq!(polled, Poll::Pending);
+        drop(select);
+        let retained = Arc::strong_count(&marker);
+        assert_eq!(retained, 1);
+    }
+
+    #[cfg(feature = "single-threaded")]
+    async fn test_select_non_send() {
+        let value = std::rc::Rc::new(1);
+        let first = async { value.clone() };
+        let second = pending::<()>();
+        let third = pending::<()>();
+        let fourth = pending::<()>();
+        let selected = Rt::select4(first, second, third, fourth).await;
+        let expected = Select4::First(value);
+        assert_eq!(selected, expected);
     }
 
     pub async fn test_mpsc_recv_empty() {

@@ -8,7 +8,6 @@ use std::time::Duration;
 
 use display_more::DisplayOptionExt;
 use display_more::DisplaySliceExt;
-use futures_util::FutureExt;
 use tracing::Instrument;
 use tracing::Level;
 use tracing::Span;
@@ -23,6 +22,7 @@ use crate::StorageError;
 use crate::async_runtime::MpscReceiver;
 use crate::async_runtime::Mutex;
 use crate::async_runtime::OneshotSender;
+use crate::async_runtime::Select4;
 use crate::async_runtime::TryRecvError;
 use crate::async_runtime::watch::WatchSender;
 use crate::batch::Batch;
@@ -1332,17 +1332,21 @@ where
             // In each loop, the first step is blocking waiting for any message from any channel.
             // Then if there is any message, process as many as possible to maximize throughput.
 
-            // Check shutdown in each loop first so that a message flood in `tx_api` won't block shutting down.
-            // `select!` without `biased` provides a random fairness.
-            // We want to check shutdown prior to other channels.
-            // See: https://docs.rs/tokio/latest/tokio/macro.select.html#fairness
-            futures_util::select_biased! {
-                _ = (&mut rx_shutdown).fuse() => {
+            // Check shutdown first so that a message flood in `tx_api` won't block shutting down.
+            let selected = C::select4(
+                &mut rx_shutdown,
+                self.rx_notification.recv(),
+                self.rx_install_snapshot.recv(),
+                self.rx_api.ensure_buffered(),
+            )
+            .await;
+            match selected {
+                Select4::First(_) => {
                     tracing::info!("recv from rx_shutdown");
                     return Err(Fatal::Stopped);
                 }
 
-                notify_res = self.rx_notification.recv().fuse() => {
+                Select4::Second(notify_res) => {
                     match notify_res {
                         Some(notify) => self.handle_notification(notify)?,
                         None => {
@@ -1352,7 +1356,7 @@ where
                     };
                 }
 
-                install_res = self.rx_install_snapshot.recv().fuse() => {
+                Select4::Third(install_res) => {
                     match install_res {
                         Some(req) => self.handle_install_full_snapshot_request(req),
                         None => {
@@ -1362,7 +1366,7 @@ where
                     };
                 }
 
-                msg_res = self.rx_api.ensure_buffered().fuse() => {
+                Select4::Fourth(msg_res) => {
                     msg_res?;
                 }
             };

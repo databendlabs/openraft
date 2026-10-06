@@ -1,12 +1,12 @@
 use std::time::Duration;
 
 use display_more::DisplayOptionExt;
-use futures_util::FutureExt;
 
 use crate::LogIdOptionExt;
 use crate::RaftLogReader;
 use crate::RaftTypeConfig;
 use crate::StorageError;
+use crate::async_runtime::Select4;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::entry::RaftEntry;
 use crate::entry::raft_entry_ext::RaftEntryExt;
@@ -149,27 +149,35 @@ where
                 let committed_change = self.event_watcher.committed_rx.changed();
                 let cancel = self.replication_context.cancel_rx.changed();
 
-                futures_util::select! {
-                    _data_changed = data_change.fuse() => {
+                let selected = C::select4(cancel, data_change, io_change, committed_change).await;
+                match selected {
+                    Select4::Second(_) => {
                         let new_data = self.event_watcher.replicate_rx.borrow_watched().clone();
                         if Some(new_data.inflight_id) != self.inflight_id {
-                            tracing::info!("current inflight_id: {} received payload with new inflight_id: {}, quit", self.inflight_id.display(), new_data.inflight_id);
+                            tracing::info!(
+                                "current inflight_id: {} received payload with new inflight_id: {}, quit",
+                                self.inflight_id.display(),
+                                new_data.inflight_id
+                            );
                             return None;
                         }
                     }
-                    _io_changed = io_change.fuse() => {
+                    Select4::Third(_) => {
                         tracing::debug!("io_submitted_rx changed");
                         // Continue
                     }
-                    _committed_change = committed_change.fuse() => {
+                    Select4::Fourth(_) => {
                         tracing::debug!("committed_rx changed");
                         // Only a commit that no request has carried is still unseen here, because
                         // `next_request()` marks every commit it sends. With no new logs to
                         // piggyback on, an entry-less request is the only way to deliver it.
                         return Some(non_reversed_log_id_range(prev, last_log_id));
                     }
-                    cancel_res = cancel.fuse() => {
-                        tracing::info!("Replication Stream is canceled, res: {:?}, when:(get_log_id_range:wait-for-changed)", cancel_res);
+                    Select4::First(cancel_res) => {
+                        tracing::info!(
+                            "Replication Stream is canceled, res: {:?}, when:(get_log_id_range:wait-for-changed)",
+                            cancel_res
+                        );
                         return None;
                     }
                 }

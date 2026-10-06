@@ -12,6 +12,9 @@ use crate::RaftTypeConfig;
 use crate::async_runtime::Mpsc;
 use crate::async_runtime::MpscReceiver;
 use crate::async_runtime::Oneshot;
+use crate::async_runtime::Select2;
+use crate::async_runtime::Select3;
+use crate::async_runtime::Select4;
 use crate::async_runtime::mutex::Mutex;
 use crate::async_runtime::watch::Watch;
 use crate::errors::ErrorSource;
@@ -34,6 +37,7 @@ use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::alias::WatchSenderOf;
 
 /// Collection of utility methods to `RaftTypeConfig` function.
+#[since(version = "0.10.0", change = "add biased select2, select3, and select4 methods")]
 #[since(version = "0.10.0")]
 pub trait TypeConfigExt: RaftTypeConfig {
     // Time related methods
@@ -80,6 +84,54 @@ pub trait TypeConfigExt: RaftTypeConfig {
         future: F,
     ) -> TimeoutOf<Self, R, F> {
         AsyncRuntimeOf::<Self>::timeout_at(deadline, future)
+    }
+
+    /// Wait for one of two futures, giving priority to the first ready future in argument order.
+    ///
+    /// See [`AsyncRuntime::select2`] for polling and cancellation rules.
+    #[since(version = "0.10.0")]
+    fn select2<A, B>(a: A, b: B) -> impl Future<Output = Select2<A::Output, B::Output>> + OptionalSend
+    where
+        A: Future + OptionalSend,
+        B: Future + OptionalSend,
+    {
+        AsyncRuntimeOf::<Self>::select2(a, b)
+    }
+
+    /// Wait for one of three futures, giving priority to the first ready future in argument order.
+    ///
+    /// See [`AsyncRuntime::select3`] for polling and cancellation rules.
+    #[since(version = "0.10.0")]
+    fn select3<A, B, C>(
+        a: A,
+        b: B,
+        c: C,
+    ) -> impl Future<Output = Select3<A::Output, B::Output, C::Output>> + OptionalSend
+    where
+        A: Future + OptionalSend,
+        B: Future + OptionalSend,
+        C: Future + OptionalSend,
+    {
+        AsyncRuntimeOf::<Self>::select3(a, b, c)
+    }
+
+    /// Wait for one of four futures, giving priority to the first ready future in argument order.
+    ///
+    /// See [`AsyncRuntime::select4`] for polling and cancellation rules.
+    #[since(version = "0.10.0")]
+    fn select4<A, B, C, D>(
+        a: A,
+        b: B,
+        c: C,
+        d: D,
+    ) -> impl Future<Output = Select4<A::Output, B::Output, C::Output, D::Output>> + OptionalSend
+    where
+        A: Future + OptionalSend,
+        B: Future + OptionalSend,
+        C: Future + OptionalSend,
+        D: Future + OptionalSend,
+    {
+        AsyncRuntimeOf::<Self>::select4(a, b, c, d)
     }
 
     // Synchronization methods

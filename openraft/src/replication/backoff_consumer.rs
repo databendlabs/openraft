@@ -10,11 +10,11 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use futures_util::FutureExt;
 use rt::OptionalSend;
 use rt::WatchReceiver;
 
 use crate::RaftTypeConfig;
+use crate::async_runtime::Select3;
 use crate::network::Backoff;
 use crate::replication::EXHAUSTED_BACKOFF_DELAY;
 use crate::type_config::TypeConfigExt;
@@ -65,15 +65,22 @@ where C: RaftTypeConfig
 
         tracing::debug!("backoff timeout: {:?}", sleep_duration);
 
-        futures_util::select! {
-            _ = sleep.fuse() => {
+        let selected = C::select3(cancel, reset, sleep).await;
+        match selected {
+            Select3::Third(_) => {
                 tracing::debug!("backoff timeout");
             }
-            cancel_res = cancel.fuse() => {
-                tracing::info!("Replication Stream is canceled, res: {:?}, when:(backoff_if_enabled:wait-for-changed)", cancel_res);
+            Select3::First(cancel_res) => {
+                tracing::info!(
+                    "Replication Stream is canceled, res: {:?}, when:(backoff_if_enabled:wait-for-changed)",
+                    cancel_res
+                );
             }
-            reset_res = reset.fuse() => {
-                tracing::info!("Backoff is reset, res: {:?}, when:(backoff_if_enabled:wait-for-changed)", reset_res);
+            Select3::Second(reset_res) => {
+                tracing::info!(
+                    "Backoff is reset, res: {:?}, when:(backoff_if_enabled:wait-for-changed)",
+                    reset_res
+                );
                 // once reset is received, clear the backoff state.
                 self.inner.lock().unwrap().take();
             }

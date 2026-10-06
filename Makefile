@@ -10,7 +10,7 @@ compile:
 # Read-only completion gate: it never writes to the worktree, so a
 # human-reviewed diff stays exactly as reviewed. `make fix` is the mutating
 # counterpart.
-verify: fmt_check feature-check clippy docs-check test-bench-minimal
+verify: fmt_check feature-check clippy docs-check test-bench-minimal test-runtime
 	cargo test --lib
 	cargo test --test '*'
 	# cargo test --features single-threaded --lib
@@ -66,6 +66,12 @@ test-examples:
 	cargo test --manifest-path examples/raft-kv-rocksdb/Cargo.toml
 	cargo test --manifest-path examples/sm-rocks/Cargo.toml
 	cargo test --manifest-path examples/multi-raft-kv/Cargo.toml
+
+test-runtime:
+	cargo test --manifest-path rt-tokio/Cargo.toml
+	cargo test --manifest-path rt-tokio/Cargo.toml --features single-threaded
+	cargo test --manifest-path rt-compio/Cargo.toml
+	cargo test --manifest-path rt-monoio/Cargo.toml
 
 # Test one example, e.g. `make test-example-raft-kv-rocksdb`.
 test-example-%:
@@ -291,4 +297,4 @@ clean:
 	cargo clean --manifest-path jepsen/openraft-test-app/Cargo.toml
 	rm -rf tests/_log
 
-.PHONY: test verify basic_check fmt fmt_check fix clippy lint clean doc docs-check guide detsim typos
+.PHONY: test test-runtime verify basic_check fmt fmt_check fix clippy lint clean doc docs-check guide detsim typos

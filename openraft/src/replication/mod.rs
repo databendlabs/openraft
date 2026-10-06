@@ -38,6 +38,7 @@ use tracing::Instrument;
 use crate::RaftNetworkFactory;
 use crate::RaftTypeConfig;
 use crate::async_runtime::Mutex;
+use crate::async_runtime::Select2;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::base::BoxStream;
 use crate::core::notification::Notification;
@@ -376,9 +377,10 @@ where
                 let next_resp = resp_strm.next();
                 let cancel = cancel_rx.changed();
 
-                futures_util::select! {
-                    rpc_res = next_resp.fuse() => rpc_res,
-                    cancel_res = cancel.fuse() => {
+                let selected = C::select2(cancel, next_resp).await;
+                match selected {
+                    Select2::Second(rpc_res) => rpc_res,
+                    Select2::First(cancel_res) => {
                         tracing::info!("ReplicationCore: canceled while waiting response: {:?}", cancel_res);
                         return (acked, Err("canceled"));
                     }
@@ -515,8 +517,9 @@ where
         let entries = self.event_watcher.replicate_rx.changed();
         let committed = self.event_watcher.committed_rx.changed();
 
-        futures_util::select! {
-            entries_res = entries.fuse() => {
+        let selected = C::select2(entries, committed).await;
+        match selected {
+            Select2::First(entries_res) => {
                 entries_res.map_err(|_e| ReplicationClosed::new("replicate_rx closed"))?;
                 // This read delivers the command: `borrow_and_update()` marks it as seen so a
                 // value arriving after `changed()` resolved is not delivered a second time.
@@ -524,7 +527,7 @@ where
                 self.inflight_id = Some(data.inflight_id);
                 self.next_action = Some(data.payload);
             }
-            committed_res = committed.fuse() => {
+            Select2::Second(committed_res) => {
                 committed_res.map_err(|_e| ReplicationClosed::new("committed_rx closed"))?;
 
                 // Committed update: create an empty-range payload to sync commit index.
