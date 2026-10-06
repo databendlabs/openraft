@@ -31,6 +31,7 @@ use crate::config::RuntimeConfig;
 use crate::core::ClientResponderQueue;
 use crate::core::IoBroadcast;
 use crate::core::MetricsChannels;
+use crate::core::PeekableReceiver;
 use crate::core::PendingRead;
 use crate::core::PendingReadDeadlineNotifier;
 use crate::core::PendingReadQueue;
@@ -255,7 +256,7 @@ where
     pub(crate) tx_notification: MpscSenderOf<C, Notification<C>>,
 
     /// A Receiver to receive callback from other components.
-    pub(crate) rx_notification: MpscReceiverOf<C, Notification<C>>,
+    pub(crate) rx_notification: PeekableReceiver<C, Notification<C>>,
 
     /// The watch channels that broadcast local IO progress to storage callbacks and replication.
     pub(crate) io_broadcast: IoBroadcast<C>,
@@ -1398,7 +1399,7 @@ where
         }
     }
 
-    /// Process RaftMsg as many as possible.
+    /// Process RaftMsg up to the budget, yielding to ready notifications in eager mode.
     ///
     /// It returns the number of processed message.
     /// If the input channel is closed, it returns `Fatal::Stopped`.
@@ -1413,6 +1414,18 @@ where
         let mut last_log_index = 0;
 
         for _i in 0..at_most {
+            // Process at least one RaftMsg so notifications cannot starve API traffic.
+            if total > 0 && self.config.broadcast_submitted_on_append() {
+                match self.rx_notification.peek() {
+                    Ok(_) => break,
+                    Err(TryRecvError::Empty) => {}
+                    Err(TryRecvError::Disconnected) => {
+                        tracing::error!("rx_notify is disconnected, quit");
+                        return Err(Fatal::Stopped);
+                    }
+                }
+            }
+
             let res = self.rx_api.try_recv().await?;
             let Some(msg) = res else {
                 break;
@@ -1474,11 +1487,9 @@ where
 
             self.handle_notification(notify)?;
             processed += 1;
+        }
 
-            // TODO: does run_engine_commands() run too frequently?
-            //       to run many commands in one shot, it is possible to batch more commands to gain
-            //       better performance.
-
+        if processed > 0 {
             self.run_engine_commands().await?;
         }
 
@@ -2399,6 +2410,10 @@ where
 
         // Submit IO request, do not wait for the response.
         self.log_store.append(entries, callback).await.sto_write_logs()?;
+
+        if self.config.broadcast_submitted_on_append() {
+            self.io_broadcast.submitted.send_if_greater(io_id);
+        }
 
         Ok(())
     }

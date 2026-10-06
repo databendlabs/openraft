@@ -91,6 +91,7 @@ use crate::config::RuntimeConfig;
 use crate::core::ClientResponderQueue;
 use crate::core::IoBroadcast;
 use crate::core::MetricsChannels;
+use crate::core::PeekableReceiver;
 use crate::core::PendingReadDeadlineNotifier;
 use crate::core::PendingReadQueue;
 use crate::core::RaftCore;
@@ -632,7 +633,7 @@ where
                     rx_install_snapshot,
 
                     tx_notification: tx_notify,
-                    rx_notification: rx_notify,
+                    rx_notification: PeekableReceiver::new(rx_notify),
 
                     io_broadcast: IoBroadcast {
                         completed: tx_io_completed,
