@@ -23,4 +23,5 @@ mod t16_with_state_machine;
 mod t20_raft_api;
 mod t50_lagging_network_write;
 mod t51_write_when_leader_quit;
+mod t60_notification_preemption;
 mod t90_issue_1761_purge_stranded_responder;

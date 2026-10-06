@@ -1375,8 +1375,8 @@ where
 
             // There is a message waking up the loop, process channels one by one.
 
-            let raft_msg_processed = self.process_raft_msg(balancer.raft_msg()).await?;
-            let notify_processed = self.process_notification(balancer.notification()).await?;
+            let (raft_msg_processed, pending_notification) = self.process_raft_msg(balancer.raft_msg()).await?;
+            let notify_processed = self.process_notification(balancer.notification(), pending_notification).await?;
 
             // If one of the channel consumed all its budget, re-balance the budget ratio.
 
@@ -1398,11 +1398,13 @@ where
         }
     }
 
-    /// Process RaftMsg as many as possible.
+    /// Process RaftMsg until the budget is exhausted, the channel is empty, or a notification is
+    /// ready.
     ///
-    /// It returns the number of processed message.
+    /// It returns the number of processed messages and the notification that interrupted the run,
+    /// if any.
     /// If the input channel is closed, it returns `Fatal::Stopped`.
-    async fn process_raft_msg(&mut self, at_most: u64) -> Result<u64, Fatal<C>> {
+    async fn process_raft_msg(&mut self, at_most: u64) -> Result<(u64, Option<Notification<C>>), Fatal<C>> {
         self.runtime_stats.raft_msg_budget.record(at_most);
 
         let mut processed = 0u64;
@@ -1413,6 +1415,26 @@ where
         let mut last_log_index = 0;
 
         for _i in 0..at_most {
+            // Once this run has made progress, yield to a notification that arrived while its
+            // commands were executing. In particular, a follower acknowledgement should not
+            // wait behind the rest of a continuously-ready client queue. Requiring at least one
+            // RaftMsg per run prevents notification traffic from starving API traffic.
+            if total > 0 {
+                match self.rx_notification.try_recv() {
+                    Ok(notify) => {
+                        self.runtime_stats.raft_msg_per_run.record(processed);
+                        self.runtime_stats.raft_msg_usage_permille.record(processed * 1000 / at_most);
+                        self.run_engine_commands().await?;
+                        return Ok((total, Some(notify)));
+                    }
+                    Err(TryRecvError::Empty) => {}
+                    Err(TryRecvError::Disconnected) => {
+                        tracing::error!("rx_notify is disconnected, quit");
+                        return Err(Fatal::Stopped);
+                    }
+                }
+            }
+
             let res = self.rx_api.try_recv().await?;
             let Some(msg) = res else {
                 break;
@@ -1444,31 +1466,35 @@ where
             tracing::debug!("at_most({}) reached, there are more queued RaftMsg to process", at_most);
         }
 
-        Ok(total)
+        Ok((total, None))
     }
 
-    /// Process Notification as many as possible.
+    /// Process Notification as many as possible, starting with an optional notification already
+    /// removed from the channel by [`Self::process_raft_msg`].
     ///
     /// It returns the number of processed notifications.
     /// If the input channel is closed, it returns `Fatal::Stopped`.
-    async fn process_notification(&mut self, at_most: u64) -> Result<u64, Fatal<C>> {
+    async fn process_notification(&mut self, at_most: u64, first: Option<Notification<C>>) -> Result<u64, Fatal<C>> {
         self.runtime_stats.notification_budget.record(at_most);
 
         let mut processed = 0u64;
+        let mut first = first;
 
         for _i in 0..at_most {
-            let res = self.rx_notification.try_recv();
-            let notify = match res {
-                Ok(msg) => msg,
-                Err(e) => match e {
-                    TryRecvError::Empty => {
-                        tracing::debug!("all Notification are processed, wait for more");
-                        break;
-                    }
-                    TryRecvError::Disconnected => {
-                        tracing::error!("rx_notify is disconnected, quit");
-                        return Err(Fatal::Stopped);
-                    }
+            let notify = match first.take() {
+                Some(notify) => notify,
+                None => match self.rx_notification.try_recv() {
+                    Ok(msg) => msg,
+                    Err(e) => match e {
+                        TryRecvError::Empty => {
+                            tracing::debug!("all Notification are processed, wait for more");
+                            break;
+                        }
+                        TryRecvError::Disconnected => {
+                            tracing::error!("rx_notify is disconnected, quit");
+                            return Err(Fatal::Stopped);
+                        }
+                    },
                 },
             };
 
