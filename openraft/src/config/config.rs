@@ -178,6 +178,7 @@ impl SnapshotPolicy {
 ///
 /// [`Raft::new`]: crate::Raft::new
 #[since]
+#[since(version = "0.10.0", change = "added broadcast_submitted_on_append option")]
 #[since(version = "0.10.0", change = "added reset_backoff_on_transfer_leader option")]
 #[since(version = "0.10.0", change = "added opt-in quorum-loss inactivity setting")]
 #[derive(Clone, Debug)]
@@ -339,6 +340,20 @@ pub struct Config {
     #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long))]
     pub log_stage_capacity: Option<u64>,
+
+    /// Publish submitted logs to replication as soon as [`RaftLogStorage::append`] returns.
+    ///
+    /// Also yield message draining to ready notifications after at least one Raft message.
+    /// Disabled by default because earlier scheduling can reduce batch sizes and throughput.
+    ///
+    /// [`RaftLogStorage::append`]: crate::storage::RaftLogStorage::append
+    #[since(version = "0.10.0")]
+    #[cfg_attr(feature = "clap", clap(long,
+           action = clap::ArgAction::Set,
+           num_args = 0..=1,
+           default_missing_value = "true"
+    ))]
+    pub broadcast_submitted_on_append: Option<bool>,
 
     /// Enable or disable tick.
     ///
@@ -617,6 +632,7 @@ impl Default for Config {
             notification_channel_size: Some(DEFAULTS.notification_channel_size),
             state_machine_channel_size: Some(DEFAULTS.state_machine_channel_size),
             log_stage_capacity: None,
+            broadcast_submitted_on_append: None,
             enable_tick: DEFAULTS.enable_tick,
             enable_heartbeat: DEFAULTS.enable_heartbeat,
             enable_elect: DEFAULTS.enable_elect,
@@ -714,6 +730,11 @@ impl Config {
     #[allow(dead_code)]
     pub(crate) fn log_stage_capacity(&self) -> usize {
         self.log_stage_capacity.unwrap_or(1024) as usize
+    }
+
+    /// Whether to publish submitted logs after each append; defaults to `false`.
+    pub(crate) fn broadcast_submitted_on_append(&self) -> bool {
+        self.broadcast_submitted_on_append.unwrap_or(false)
     }
 
     /// Get the maximum number of log entries per append I/O operation.
