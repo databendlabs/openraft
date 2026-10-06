@@ -1445,12 +1445,6 @@ fn run_single_iteration(
     max_steps: u64,
     running: Arc<AtomicBool>,
 ) -> FuzzResult {
-    // Reset the `futures_util::select!` shuffle RNG (a process-wide
-    // thread-local, see the vendored futures-util patch). Without this, RNG
-    // state leaks across iterations and an in-process iteration is not
-    // reproducible by a fresh-process `--reproduce` run of the same seed.
-    futures_util::reseed(iteration_seed);
-
     // Sized so a healthy run can never hit the simulation-duration limit:
     // safety phase + both liveness deadlines + slack. Hitting it anyway is a
     // harness failure, reported through `step_tick`.
