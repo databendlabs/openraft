@@ -27,6 +27,9 @@ use rand::rngs::SmallRng;
 
 use crate::AsyncRuntime;
 use crate::OptionalSend;
+use crate::Select2;
+use crate::Select3;
+use crate::Select4;
 
 /// Golden ratio fractional bits — used by `derive_spawn_seed`.
 const GOLDEN_RATIO: u64 = 0x9e3779b97f4a7c15;
@@ -152,6 +155,42 @@ where RT: AsyncRuntime
     fn timeout_at<R, F>(deadline: Self::Instant, future: F) -> Self::Timeout<R, F>
     where F: Future<Output = R> + OptionalSend {
         RT::timeout_at(deadline, future)
+    }
+
+    fn select2<A, B>(a: A, b: B) -> impl Future<Output = Select2<A::Output, B::Output>> + OptionalSend
+    where
+        A: Future + OptionalSend,
+        B: Future + OptionalSend,
+    {
+        RT::select2(a, b)
+    }
+
+    fn select3<A, B, C>(
+        a: A,
+        b: B,
+        c: C,
+    ) -> impl Future<Output = Select3<A::Output, B::Output, C::Output>> + OptionalSend
+    where
+        A: Future + OptionalSend,
+        B: Future + OptionalSend,
+        C: Future + OptionalSend,
+    {
+        RT::select3(a, b, c)
+    }
+
+    fn select4<A, B, C, D>(
+        a: A,
+        b: B,
+        c: C,
+        d: D,
+    ) -> impl Future<Output = Select4<A::Output, B::Output, C::Output, D::Output>> + OptionalSend
+    where
+        A: Future + OptionalSend,
+        B: Future + OptionalSend,
+        C: Future + OptionalSend,
+        D: Future + OptionalSend,
+    {
+        RT::select4(a, b, c, d)
     }
 
     #[inline]

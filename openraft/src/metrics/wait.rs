@@ -1,12 +1,12 @@
 use core::time::Duration;
 use std::collections::BTreeSet;
 
-use futures_util::FutureExt;
 use openraft_macros::since;
 
 use crate::LogIdOptionExt;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
+use crate::async_runtime::Select2;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::core::ServerState;
 use crate::metrics::Condition;
@@ -92,16 +92,20 @@ where C: RaftTypeConfig
                 }
             };
 
-            futures_util::select_biased! {
-                timeout = delay.fuse() => {
-                    tracing::debug!( "id={} timeout wait {:} latest: {}", latest.id, msg.to_string(), latest );
-                    return Err(WaitError::Timeout(timeout, format!("{} latest: {}", msg.to_string(), latest)));
+            let selected = C::select2(delay, rx.changed()).await;
+            match selected {
+                Select2::First(timeout) => {
+                    tracing::debug!("id={} timeout wait {:} latest: {}", latest.id, msg.to_string(), latest);
+                    return Err(WaitError::Timeout(
+                        timeout,
+                        format!("{} latest: {}", msg.to_string(), latest),
+                    ));
                 }
-                changed = rx.changed().fuse() => {
+                Select2::Second(changed) => {
                     match changed {
                         Ok(_) => {
                             // metrics changed, continue the waiting loop
-                        },
+                        }
                         Err(err) => {
                             tracing::debug!(
                                 "id={} error: {:?}; wait {:} latest: {:?}",

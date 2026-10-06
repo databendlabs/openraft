@@ -2,11 +2,11 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
-use futures_util::FutureExt;
 use futures_util::StreamExt;
 
 use crate::Config;
 use crate::RaftTypeConfig;
+use crate::async_runtime::Select2;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::core::heartbeat::errors::RaftCoreClosed;
 use crate::core::heartbeat::errors::Stopped;
@@ -83,12 +83,13 @@ where
         loop {
             tracing::debug!("{} is waiting for a new heartbeat event.", self);
 
-            futures_util::select! {
-                _ = (&mut rx_shutdown).fuse() => {
+            let selected = C::select2(&mut rx_shutdown, self.rx.changed()).await;
+            match selected {
+                Select2::First(_) => {
                     tracing::info!("{} is shutdown.", self);
                     return Err(Stopped::ReceivedShutdown);
-                },
-                _ = self.rx.changed().fuse() => {},
+                }
+                Select2::Second(_) => {}
             }
 
             let heartbeat: Option<HeartbeatEvent<C>> = self.rx.borrow_watched().clone();

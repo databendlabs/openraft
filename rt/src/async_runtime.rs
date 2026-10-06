@@ -6,7 +6,10 @@
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::future::Future;
+use std::future::poll_fn;
 use std::io;
+use std::pin::pin;
+use std::task::Poll;
 use std::time::Duration;
 
 use openraft_macros::since;
@@ -18,6 +21,9 @@ use crate::Mutex;
 use crate::Oneshot;
 use crate::OptionalSend;
 use crate::OptionalSync;
+use crate::Select2;
+use crate::Select3;
+use crate::Select4;
 use crate::TryRecvError;
 use crate::Watch;
 
@@ -31,6 +37,7 @@ use crate::Watch;
 /// ## Note
 ///
 /// The default asynchronous runtime is `tokio`.
+#[since(version = "0.10.0", change = "add biased select2, select3, and select4 methods")]
 pub trait AsyncRuntime: Debug + OptionalSend + OptionalSync + 'static {
     /// The error type of [`Self::JoinHandle`].
     type JoinError: Debug + Display + OptionalSend;
@@ -79,6 +86,111 @@ pub trait AsyncRuntime: Debug + OptionalSend + OptionalSync + 'static {
     /// Require a [`Future`] to complete before the specified instant in time.
     #[track_caller]
     fn timeout_at<R, F: Future<Output = R> + OptionalSend>(deadline: Self::Instant, future: F) -> Self::Timeout<R, F>;
+
+    /// Wait for one of two futures to complete, returning its output.
+    ///
+    /// Futures are polled in argument order on every poll. The first ready future wins;
+    /// later futures are not polled once a ready future is found. A continuously ready
+    /// earlier future can starve later futures when selection is repeated in a loop.
+    ///
+    /// Owned futures are dropped when selection completes or is cancelled. Pass `&mut`
+    /// references to `Unpin` futures, or pinned references, to retain losing futures.
+    /// Cancellation safety depends on the futures being selected.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use openraft_rt::{AsyncRuntime, Select2};
+    ///
+    /// async fn choose<Rt>()
+    /// where Rt: AsyncRuntime
+    /// {
+    ///     let selected = Rt::select2(async { 1_u8 }, async { "two" }).await;
+    ///     let expected = Select2::First(1);
+    ///     assert_eq!(selected, expected);
+    /// }
+    /// ```
+    #[since(version = "0.10.0")]
+    fn select2<A, B>(a: A, b: B) -> impl Future<Output = Select2<A::Output, B::Output>> + OptionalSend
+    where
+        A: Future + OptionalSend,
+        B: Future + OptionalSend,
+    {
+        async move {
+            let mut a = pin!(a);
+            let mut b = pin!(b);
+            let select = poll_fn(move |cx| {
+                let first = a.as_mut().poll(cx);
+                if let Poll::Ready(value) = first {
+                    let selected = Select2::First(value);
+                    return Poll::Ready(selected);
+                }
+                let second = b.as_mut().poll(cx);
+                if let Poll::Ready(value) = second {
+                    let selected = Select2::Second(value);
+                    return Poll::Ready(selected);
+                }
+                Poll::Pending
+            });
+            select.await
+        }
+    }
+
+    /// Wait for one of three futures to complete, returning its output.
+    ///
+    /// Uses the same argument-order bias and cancellation rules as [`Self::select2`].
+    /// The default implementation composes [`Self::select2`], preserving runtime overrides.
+    #[since(version = "0.10.0")]
+    fn select3<A, B, C>(
+        a: A,
+        b: B,
+        c: C,
+    ) -> impl Future<Output = Select3<A::Output, B::Output, C::Output>> + OptionalSend
+    where
+        A: Future + OptionalSend,
+        B: Future + OptionalSend,
+        C: Future + OptionalSend,
+    {
+        async move {
+            let tail = Self::select2(b, c);
+            let selected = Self::select2(a, tail).await;
+            match selected {
+                Select2::First(value) => Select3::First(value),
+                Select2::Second(Select2::First(value)) => Select3::Second(value),
+                Select2::Second(Select2::Second(value)) => Select3::Third(value),
+            }
+        }
+    }
+
+    /// Wait for one of four futures to complete, returning its output.
+    ///
+    /// Uses the same argument-order bias and cancellation rules as [`Self::select2`].
+    /// The default implementation composes [`Self::select2`], preserving runtime overrides.
+    #[since(version = "0.10.0")]
+    fn select4<A, B, C, D>(
+        a: A,
+        b: B,
+        c: C,
+        d: D,
+    ) -> impl Future<Output = Select4<A::Output, B::Output, C::Output, D::Output>> + OptionalSend
+    where
+        A: Future + OptionalSend,
+        B: Future + OptionalSend,
+        C: Future + OptionalSend,
+        D: Future + OptionalSend,
+    {
+        async move {
+            let head = Self::select2(a, b);
+            let tail = Self::select2(c, d);
+            let selected = Self::select2(head, tail).await;
+            match selected {
+                Select2::First(Select2::First(value)) => Select4::First(value),
+                Select2::First(Select2::Second(value)) => Select4::Second(value),
+                Select2::Second(Select2::First(value)) => Select4::Third(value),
+                Select2::Second(Select2::Second(value)) => Select4::Fourth(value),
+            }
+        }
+    }
 
     /// Check if the [`Self::JoinError`] is `panic`.
     #[track_caller]

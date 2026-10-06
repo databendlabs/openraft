@@ -3,7 +3,6 @@
 use std::sync::Mutex;
 use std::time::Duration;
 
-use futures_util::future::Either;
 use rand::RngExt;
 use tracing::Instrument;
 use tracing::Level;
@@ -11,6 +10,7 @@ use tracing::Span;
 
 use crate::AsyncRuntime;
 use crate::RaftTypeConfig;
+use crate::async_runtime::Select2;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::core::notification::Notification;
 use crate::type_config::TypeConfigExt;
@@ -108,12 +108,13 @@ where C: RaftTypeConfig
             let sleep_fut = std::pin::pin!(C::sleep_until(at));
             let cancel_fut = cancel.as_mut();
 
-            match futures_util::future::select(cancel_fut, sleep_fut).await {
-                Either::Left((_canceled, _)) => {
+            let selected = C::select2(cancel_fut, sleep_fut).await;
+            match selected {
+                Select2::First(_) => {
                     tracing::info!("TickLoop received cancel signal, quit");
                     return;
                 }
-                Either::Right((_, _)) => {
+                Select2::Second(_) => {
                     // sleep done
                 }
             }
@@ -125,16 +126,17 @@ where C: RaftTypeConfig
                 // grid line, as if the loop had kept waking through the disabled span.
                 let enabled_fut = std::pin::pin!(self.enabled.wait_until(|enabled| *enabled));
 
-                match futures_util::future::select(cancel.as_mut(), enabled_fut).await {
-                    Either::Left((_canceled, _)) => {
+                let selected = C::select2(cancel.as_mut(), enabled_fut).await;
+                match selected {
+                    Select2::First(_) => {
                         tracing::info!("TickLoop received cancel signal while disabled, quit");
                         return;
                     }
-                    Either::Right((Err(_closed), _)) => {
+                    Select2::Second(Err(_closed)) => {
                         tracing::info!("TickLoop: RuntimeConfig dropped while disabled, quit");
                         return;
                     }
-                    Either::Right((Ok(_), _)) => {
+                    Select2::Second(Ok(_)) => {
                         tracing::debug!("Tick re-enabled");
                     }
                 }

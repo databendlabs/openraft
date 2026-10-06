@@ -79,6 +79,7 @@ use crate::StorageError;
 use crate::StorageHelper;
 use crate::async_runtime::MpscWeakSender;
 use crate::async_runtime::OneshotSender;
+use crate::async_runtime::Select2;
 use crate::async_runtime::mpsc::MpscSender;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::async_runtime::watch::WatchSender;
@@ -1874,19 +1875,16 @@ where
         F: FnMut(Vote<C::LeaderId>, &NodeIdOf<C>) -> Fut + OptionalSend + 'static,
         Fut: Future<Output = ()> + OptionalSend + 'static,
     {
-        use futures_util::FutureExt;
-
         let my_node_id = self.inner.id().clone();
         let mut vote_progress = self.watch_vote_progress();
-        let (cancel_tx, cancel_rx) = C::oneshot::<()>();
+        let (cancel_tx, mut cancel_rx) = C::oneshot::<()>();
 
         let handle = C::spawn(async move {
-            let mut cancel_rx = cancel_rx.fuse();
-
             loop {
-                futures_util::select! {
-                    _ = cancel_rx => break,
-                    res = vote_progress.changed().fuse() => {
+                let selected = C::select2(&mut cancel_rx, vote_progress.changed()).await;
+                match selected {
+                    Select2::First(_) => break,
+                    Select2::Second(res) => {
                         if res.is_err() {
                             break;
                         }

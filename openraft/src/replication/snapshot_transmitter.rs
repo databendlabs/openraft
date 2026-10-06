@@ -1,10 +1,10 @@
 use display_more::DisplayOptionExt;
-use futures_util::FutureExt;
 
 use crate::RaftNetworkFactory;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::async_runtime::MpscSender;
+use crate::async_runtime::Select2;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::core::notification::Notification;
 use crate::core::sm::handle::SnapshotReader;
@@ -169,11 +169,12 @@ where
                         let sleep = C::sleep(duration);
                         let recv = self.replication_context.cancel_rx.changed();
 
-                        futures_util::select! {
-                            _ = sleep.fuse() => {
+                        let selected = C::select2(recv, sleep).await;
+                        match selected {
+                            Select2::Second(_) => {
                                 tracing::debug!("backoff timeout");
                             }
-                            _ = recv.fuse() => {
+                            Select2::First(_) => {
                                 tracing::info!("snapshot transmission canceled by RaftCore");
                                 return;
                             }
