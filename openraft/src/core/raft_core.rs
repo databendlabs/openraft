@@ -2400,6 +2400,10 @@ where
         // Submit IO request, do not wait for the response.
         self.log_store.append(entries, callback).await.sto_write_logs()?;
 
+        // The entries are now readable by replication tasks. Publish this cursor here instead of
+        // waiting for `trigger_routine_actions()` after RaftCore drains its message batch.
+        self.io_broadcast.submitted.send_if_greater(io_id);
+
         Ok(())
     }
 
