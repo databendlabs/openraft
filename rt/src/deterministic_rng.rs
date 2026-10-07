@@ -216,10 +216,7 @@ where RT: AsyncRuntime
     }
 
     fn block_on<F, T>(&mut self, future: F) -> T
-    where
-        F: Future<Output = T>,
-        T: OptionalSend,
-    {
+    where F: Future<Output = T> {
         DETSIM_SEED.sync_scope(Cell::new(self.seed), || {
             let result = self.inner.block_on(future);
             self.seed = DETSIM_SEED.with(|c| c.get());

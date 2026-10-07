@@ -20,7 +20,6 @@ use crate::MpscReceiver;
 use crate::Mutex;
 use crate::Oneshot;
 use crate::OptionalSend;
-use crate::OptionalSync;
 use crate::Select2;
 use crate::Select3;
 use crate::Select4;
@@ -37,19 +36,22 @@ use crate::Watch;
 /// ## Note
 ///
 /// The default asynchronous runtime is `tokio`.
+#[since(
+    version = "0.10.0",
+    change = "remove the `OptionalSend` and `OptionalSync` requirements"
+)]
 #[since(version = "0.10.0", change = "add biased select2, select3, and select4 methods")]
-pub trait AsyncRuntime: Debug + OptionalSend + OptionalSync + 'static {
+pub trait AsyncRuntime: Debug + 'static {
     /// The error type of [`Self::JoinHandle`].
     type JoinError: Debug + Display + OptionalSend;
 
     /// The return type of [`Self::spawn`].
-    type JoinHandle<T: OptionalSend + 'static>: Future<Output = Result<T, Self::JoinError>>
-        + OptionalSend
-        + OptionalSync
-        + Unpin;
+    #[since(version = "0.10.0", change = "remove the `OptionalSync` requirement")]
+    type JoinHandle<T: OptionalSend + 'static>: Future<Output = Result<T, Self::JoinError>> + OptionalSend + Unpin;
 
     /// The type that enables the user to sleep in an asynchronous runtime.
-    type Sleep: Future<Output = ()> + OptionalSend + OptionalSync;
+    #[since(version = "0.10.0", change = "remove the `OptionalSync` requirement")]
+    type Sleep: Future<Output = ()> + OptionalSend;
 
     /// A measurement of a monotonically non-decreasing clock.
     type Instant: Instant;
@@ -232,10 +234,9 @@ pub trait AsyncRuntime: Debug + OptionalSend + OptionalSync + 'static {
     /// Run a future to completion on this runtime.
     ///
     /// This runs synchronously on the current thread, so `Send` is not required.
+    #[since(version = "0.10.0", change = "allow results without `OptionalSend`")]
     fn block_on<F, T>(&mut self, future: F) -> T
-    where
-        F: Future<Output = T>,
-        T: OptionalSend;
+    where F: Future<Output = T>;
 
     /// Convenience method: create a runtime and run the future to completion.
     ///
@@ -245,11 +246,11 @@ pub trait AsyncRuntime: Debug + OptionalSend + OptionalSync + 'static {
     /// [`Self::block_on`] directly.
     ///
     /// This runs synchronously on the current thread, so `Send` is not required.
+    #[since(version = "0.10.0", change = "allow results without `OptionalSend`")]
     fn run<F, T>(future: F) -> T
     where
         Self: Sized,
         F: Future<Output = T>,
-        T: OptionalSend,
     {
         Self::new(8).block_on(future)
     }
