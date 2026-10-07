@@ -31,6 +31,8 @@ use crate::mpsc::TryRecvError;
 use crate::watch::WatchReceiver;
 use crate::watch::WatchSender;
 
+const MPSC_PEEK_CAPACITY: usize = 2;
+
 async fn ready_if<T>(enabled: bool, value: T) -> T {
     if !enabled {
         pending::<()>().await;
@@ -87,6 +89,14 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
             Self::test_mpsc_send().await;
             Self::test_mpsc_send_to_closed_channel().await;
             Self::test_mpsc_backpressure().await;
+            Self::test_mpsc_peek_preserves_order().await;
+            Self::test_mpsc_peek_empty().await;
+            Self::test_mpsc_peek_closed().await;
+            Self::test_mpsc_peek_cancelled_receive().await;
+            Self::test_mpsc_peek_cancelled_pending_receive().await;
+            Self::test_mpsc_peek_non_sync().await;
+            #[cfg(feature = "single-threaded")]
+            Self::test_mpsc_peek_non_send().await;
 
             Self::test_watch_init_value().await;
             Self::test_watch_overwrite_init_value().await;
@@ -576,6 +586,119 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         // Verify remaining items
         assert_eq!(rx.recv().await.unwrap(), 2);
         assert_eq!(rx.recv().await.unwrap(), 3);
+    }
+
+    async fn test_mpsc_peek_preserves_order() {
+        let (tx, rx) = Rt::Mpsc::channel::<u64>(MPSC_PEEK_CAPACITY);
+        let mut rx = rx.peekable();
+        let sent = tx.send(10).await;
+        sent.unwrap();
+        let sent = tx.send(20).await;
+        sent.unwrap();
+        for _ in 0..2 {
+            let peeked = rx.peek();
+            assert_eq!(peeked, Ok(&10));
+        }
+        let first = rx.try_recv();
+        assert_eq!(first, Ok(10));
+        let second = rx.recv().await;
+        assert_eq!(second, Some(20));
+        let empty = rx.try_recv();
+        assert_eq!(empty, Err(TryRecvError::Empty));
+    }
+
+    async fn test_mpsc_peek_empty() {
+        let (tx, rx) = Rt::Mpsc::channel::<u64>(MPSC_PEEK_CAPACITY);
+        let mut rx = rx.peekable();
+        let empty = rx.peek();
+        assert_eq!(empty, Err(TryRecvError::Empty));
+        let sent = tx.send(10).await;
+        sent.unwrap();
+        let peeked = rx.peek();
+        assert_eq!(peeked, Ok(&10));
+        let received = rx.recv().await;
+        assert_eq!(received, Some(10));
+    }
+
+    async fn test_mpsc_peek_closed() {
+        let (tx, rx) = Rt::Mpsc::channel::<u64>(MPSC_PEEK_CAPACITY);
+        let mut rx = rx.peekable();
+        let sent = tx.send(10).await;
+        sent.unwrap();
+        let peeked = rx.peek();
+        assert_eq!(peeked, Ok(&10));
+        drop(tx);
+        let peeked = rx.peek();
+        assert_eq!(peeked, Ok(&10));
+        let received = rx.recv().await;
+        assert_eq!(received, Some(10));
+        let closed = rx.peek();
+        assert_eq!(closed, Err(TryRecvError::Disconnected));
+        let closed = rx.try_recv();
+        assert_eq!(closed, Err(TryRecvError::Disconnected));
+        let received = rx.recv().await;
+        assert_eq!(received, None);
+    }
+
+    async fn test_mpsc_peek_cancelled_receive() {
+        let (tx, rx) = Rt::Mpsc::channel::<u64>(MPSC_PEEK_CAPACITY);
+        let mut rx = rx.peekable();
+        let sent = tx.send(10).await;
+        sent.unwrap();
+        let peeked = rx.peek();
+        assert_eq!(peeked, Ok(&10));
+        let shutdown = ready(());
+        let receive = rx.recv();
+        let selected = Rt::select2(shutdown, receive).await;
+        assert_eq!(selected, Select2::First(()));
+        let received = rx.recv().await;
+        assert_eq!(received, Some(10));
+    }
+
+    async fn test_mpsc_peek_cancelled_pending_receive() {
+        let (tx, rx) = Rt::Mpsc::channel::<u64>(MPSC_PEEK_CAPACITY);
+        let mut rx = rx.peekable();
+        {
+            let receive = rx.recv();
+            let mut receive = Box::pin(receive);
+            let polled = futures_util::poll!(receive.as_mut());
+            assert_eq!(polled, Poll::Pending);
+        }
+        let sent = tx.send(10).await;
+        sent.unwrap();
+        let peeked = rx.peek();
+        assert_eq!(peeked, Ok(&10));
+        let received = rx.recv().await;
+        assert_eq!(received, Some(10));
+    }
+
+    async fn test_mpsc_peek_non_sync() {
+        let (tx, rx) = Rt::Mpsc::channel::<std::cell::Cell<u64>>(MPSC_PEEK_CAPACITY);
+        let mut rx = rx.peekable();
+        let value = std::cell::Cell::new(10);
+        let sent = tx.send(value).await;
+        sent.unwrap();
+        let peeked = rx.peek().unwrap();
+        let value = peeked.get();
+        assert_eq!(value, 10);
+        let received = rx.recv().await;
+        let value = std::cell::Cell::new(10);
+        let expected = Some(value);
+        assert_eq!(received, expected);
+    }
+
+    #[cfg(feature = "single-threaded")]
+    async fn test_mpsc_peek_non_send() {
+        let (tx, rx) = Rt::Mpsc::channel::<std::rc::Rc<u64>>(MPSC_PEEK_CAPACITY);
+        let mut rx = rx.peekable();
+        let value = std::rc::Rc::new(10);
+        let sent_value = value.clone();
+        let sent = tx.send(sent_value).await;
+        sent.unwrap();
+        let peeked = rx.peek();
+        assert_eq!(peeked, Ok(&value));
+        let received = rx.recv().await;
+        assert_eq!(received, Some(value));
     }
 
     pub async fn test_watch_init_value() {
