@@ -671,7 +671,10 @@ where
                 let join_handle = C::spawn(core_fut);
 
                 let tick_period = Duration::from_millis(config.tick_interval());
-                let enabled = inner.runtime_config.enable_tick.subscribe();
+                let enabled = {
+                    let enable_tick = inner.runtime_config.enable_tick.lock().unwrap();
+                    enable_tick.subscribe()
+                };
                 let tick_handle = Tick::spawn(tick_period, tick_tx, enabled);
                 *inner.tick_handle.lock().unwrap() = Some(tick_handle);
                 join_handle

@@ -57,8 +57,9 @@ pub trait Watch: Sized + OptionalSend {
 }
 
 /// Sends values to the associated Receiver.
+#[since(version = "0.10.0", change = "no longer requires `OptionalSync`")]
 #[since(version = "0.10.0", change = "requires `OptionalSync`")]
-pub trait WatchSender<W, T>: OptionalSend + OptionalSync + Clone
+pub trait WatchSender<W, T>: OptionalSend + Clone
 where
     W: Watch,
     T: OptionalSend + OptionalSync,
