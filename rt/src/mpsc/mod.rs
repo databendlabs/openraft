@@ -1,11 +1,13 @@
 //! Bounded MPSC channel traits.
 
+mod peekable_receiver;
 mod send_error;
 mod try_recv_error;
 
 use std::future::Future;
 
 use openraft_macros::since;
+pub use peekable_receiver::PeekableReceiver;
 pub use send_error::SendError;
 pub use try_recv_error::TryRecvError;
 
@@ -50,6 +52,7 @@ where
 }
 
 /// Receive values from the associated [`MpscSender`].
+#[since(version = "0.10.0", change = "add peekable receiver conversion")]
 #[since(version = "0.10.0", change = "remove the `OptionalSync` requirement")]
 pub trait MpscReceiver<T>: OptionalSend {
     /// Receives the next value for this receiver.
@@ -68,6 +71,16 @@ pub trait MpscReceiver<T>: OptionalSend {
     /// currently empty, and there are no outstanding senders.
     #[track_caller]
     fn try_recv(&mut self) -> Result<T, TryRecvError>;
+
+    /// Wraps this receiver to inspect the next item without consuming it or waiting.
+    #[since(version = "0.10.0")]
+    fn peekable(self) -> PeekableReceiver<Self, T>
+    where
+        Self: Sized,
+        T: OptionalSend,
+    {
+        PeekableReceiver::new(self)
+    }
 }
 
 /// A sender that does not prevent the channel from being closed.
