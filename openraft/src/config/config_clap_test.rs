@@ -160,6 +160,20 @@ fn test_config_enable_tick() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_config_broadcast_submitted_on_append() -> anyhow::Result<()> {
+    let config = Config::build(&["foo"])?;
+    assert_eq!(None, config.broadcast_submitted_on_append);
+
+    let config = Config::build(&["foo", "--broadcast-submitted-on-append"])?;
+    assert_eq!(Some(true), config.broadcast_submitted_on_append);
+
+    let config = Config::build(&["foo", "--broadcast-submitted-on-append=false"])?;
+    assert_eq!(Some(false), config.broadcast_submitted_on_append);
+
+    Ok(())
+}
+
+#[test]
 fn test_config_enable_heartbeat() -> anyhow::Result<()> {
     let config = Config::build(&["foo", "--enable-heartbeat=false"])?;
     assert_eq!(false, config.enable_heartbeat);

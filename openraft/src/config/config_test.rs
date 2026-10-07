@@ -18,8 +18,19 @@ fn test_config_defaults() {
     assert_eq!(SnapshotPolicy::LogsSinceLast(5000), cfg.snapshot_policy);
     assert_eq!(Some(65536), cfg.api_channel_size);
     assert_eq!(Some(65536), cfg.notification_channel_size);
+    assert_eq!(None, cfg.broadcast_submitted_on_append);
+    assert!(!cfg.broadcast_submitted_on_append());
     assert_eq!(StepDownPolicy::After(150), cfg.removed_leader_step_down);
     assert_eq!(None, cfg.quorum_loss_probe_interval);
+}
+
+#[test]
+fn test_broadcast_submitted_on_append() {
+    let config = Config {
+        broadcast_submitted_on_append: Some(true),
+        ..Default::default()
+    };
+    assert!(config.broadcast_submitted_on_append());
 }
 
 #[test]

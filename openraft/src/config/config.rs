@@ -180,6 +180,7 @@ impl SnapshotPolicy {
 #[since]
 #[since(version = "0.10.0", change = "added reset_backoff_on_transfer_leader option")]
 #[since(version = "0.10.0", change = "added opt-in quorum-loss inactivity setting")]
+#[since(version = "0.10.0", change = "added broadcast_submitted_on_append option")]
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "clap", derive(Parser))]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -339,6 +340,24 @@ pub struct Config {
     #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long))]
     pub log_stage_capacity: Option<u64>,
+
+    /// Publish the submitted-log watermark to replication streams as soon as each
+    /// [`RaftLogStorage::append`] returns, instead of only once per `RaftCore` loop iteration.
+    ///
+    /// Enabling this reduces the time an entry can wait behind a busy Raft message queue before
+    /// replication starts. While it is enabled, ready replication notifications also interrupt
+    /// Raft message draining so acknowledgements do not move the same queueing delay from send to
+    /// commit. These scheduling changes can create smaller batches when storage and the network
+    /// are extremely fast, so they are disabled by default.
+    ///
+    /// [`RaftLogStorage::append`]: crate::storage::RaftLogStorage::append
+    #[since(version = "0.10.0")]
+    #[cfg_attr(feature = "clap", clap(long,
+           action = clap::ArgAction::Set,
+           num_args = 0..=1,
+           default_missing_value = "true"
+    ))]
+    pub broadcast_submitted_on_append: Option<bool>,
 
     /// Enable or disable tick.
     ///
@@ -617,6 +636,7 @@ impl Default for Config {
             notification_channel_size: Some(DEFAULTS.notification_channel_size),
             state_machine_channel_size: Some(DEFAULTS.state_machine_channel_size),
             log_stage_capacity: None,
+            broadcast_submitted_on_append: None,
             enable_tick: DEFAULTS.enable_tick,
             enable_heartbeat: DEFAULTS.enable_heartbeat,
             enable_elect: DEFAULTS.enable_elect,
@@ -714,6 +734,13 @@ impl Config {
     #[allow(dead_code)]
     pub(crate) fn log_stage_capacity(&self) -> usize {
         self.log_stage_capacity.unwrap_or(1024) as usize
+    }
+
+    /// Whether to publish submitted logs immediately after each append.
+    ///
+    /// Defaults to `false`, retaining one publication per `RaftCore` loop iteration.
+    pub(crate) fn broadcast_submitted_on_append(&self) -> bool {
+        self.broadcast_submitted_on_append.unwrap_or(false)
     }
 
     /// Get the maximum number of log entries per append I/O operation.

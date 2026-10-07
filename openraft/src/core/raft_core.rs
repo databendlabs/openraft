@@ -1415,11 +1415,12 @@ where
         let mut last_log_index = 0;
 
         for _i in 0..at_most {
-            // Once this run has made progress, yield to a notification that arrived while its
-            // commands were executing. In particular, a follower acknowledgement should not
-            // wait behind the rest of a continuously-ready client queue. Requiring at least one
-            // RaftMsg per run prevents notification traffic from starving API traffic.
-            if total > 0 {
+            // In eager-replication mode, once this run has made progress, yield to a notification
+            // that arrived while its commands were executing. In particular, a follower
+            // acknowledgement should not wait behind the rest of a continuously-ready client
+            // queue. Requiring at least one RaftMsg per run prevents notification traffic from
+            // starving API traffic. The default throughput-oriented mode retains the full budget.
+            if total > 0 && self.config.broadcast_submitted_on_append() {
                 match self.rx_notification.try_recv() {
                     Ok(notify) => {
                         self.runtime_stats.raft_msg_per_run.record(processed);
@@ -2427,9 +2428,12 @@ where
         // Submit IO request, do not wait for the response.
         self.log_store.append(entries, callback).await.sto_write_logs()?;
 
-        // The entries are now readable by replication tasks. Publish this cursor here instead of
-        // waiting for `trigger_routine_actions()` after RaftCore drains its message batch.
-        self.io_broadcast.submitted.send_if_greater(io_id);
+        // The entries are now readable by replication tasks. Workloads that prioritize scheduling
+        // latency can publish this cursor here instead of waiting for `trigger_routine_actions()`
+        // after RaftCore drains its message batch.
+        if self.config.broadcast_submitted_on_append() {
+            self.io_broadcast.submitted.send_if_greater(io_id);
+        }
 
         Ok(())
     }
