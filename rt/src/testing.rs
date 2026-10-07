@@ -8,6 +8,7 @@ use std::future::poll_fn;
 use std::future::ready;
 use std::pin::Pin;
 use std::pin::pin;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
@@ -52,6 +53,8 @@ pub struct Suite<Rt: AsyncRuntime> {
 
 impl<Rt: AsyncRuntime> Suite<Rt> {
     pub fn test_all() {
+        Self::test_block_on_non_send();
+
         let mut rt = Rt::new(1);
         rt.block_on(async {
             Self::test_spawn_join_handle().await;
@@ -116,6 +119,20 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         });
 
         DetsimSuite::<Rt>::test_all();
+    }
+
+    fn test_block_on_non_send() {
+        let expected = Rc::new(42);
+        let mut rt = Rt::new(1);
+        let future = async { expected.clone() };
+        let result = rt.block_on(future);
+        let shares_value = Rc::ptr_eq(&result, &expected);
+        assert!(shares_value);
+
+        let future = async { expected.clone() };
+        let result = Rt::run(future);
+        let shares_value = Rc::ptr_eq(&result, &expected);
+        assert!(shares_value);
     }
 
     pub async fn test_spawn_join_handle() {

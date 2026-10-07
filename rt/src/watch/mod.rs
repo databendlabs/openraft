@@ -13,7 +13,8 @@ use crate::OptionalSync;
 /// A `Watch` is a pair of `WatchSender` and `WatchReceiver` that can be used to watch for changes
 /// to a value.
 /// A single-producer, multi-consumer channel that only retains the last sent value.
-pub trait Watch: Sized + OptionalSend {
+#[since(version = "0.10.0", change = "remove the `OptionalSend` requirement")]
+pub trait Watch: Sized {
     /// Sends values to the associated Receiver.
     type Sender<T: OptionalSend + OptionalSync>: WatchSender<Self, T>;
 

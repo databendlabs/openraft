@@ -2,18 +2,17 @@
 
 use std::future::Future;
 
+use openraft_macros::since;
+
 use crate::OptionalSend;
-use crate::OptionalSync;
 
 /// A oneshot channel for sending a single value between asynchronous tasks.
 pub trait Oneshot {
     /// Type of a `oneshot` sender.
     type Sender<T: OptionalSend>: OneshotSender<T>;
     /// Type of a `oneshot` receiver.
-    type Receiver<T: OptionalSend>: OptionalSend
-        + OptionalSync
-        + Future<Output = Result<T, Self::ReceiverError>>
-        + Unpin;
+    #[since(version = "0.10.0", change = "remove the `OptionalSync` requirement")]
+    type Receiver<T: OptionalSend>: OptionalSend + Future<Output = Result<T, Self::ReceiverError>> + Unpin;
     /// Type of a `oneshot` receiver error.
     type ReceiverError: std::error::Error + OptionalSend;
 
@@ -30,7 +29,8 @@ pub trait Oneshot {
 }
 
 /// Send a value on a oneshot channel.
-pub trait OneshotSender<T>: OptionalSend + OptionalSync + Sized
+#[since(version = "0.10.0", change = "remove the `OptionalSync` requirement")]
+pub trait OneshotSender<T>: OptionalSend + Sized
 where T: OptionalSend
 {
     /// Attempts to send a value on this channel, returning it back if it could
