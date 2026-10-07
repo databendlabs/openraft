@@ -127,8 +127,6 @@ pub enum BlockOperation {
     DelayBuildingSnapshot,
     BuildSnapshot,
     PurgeLog,
-    /// Delay every log append before the entries are stored.
-    DelayAppend,
 }
 
 /// Block operations for testing purposes.
@@ -454,11 +452,6 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
     #[tracing::instrument(level = "trace", skip_all)]
     async fn append<I>(&mut self, entries: I, callback: IOFlushed<TypeConfig>) -> Result<(), io::Error>
     where I: IntoIterator<Item = EntryOf<TypeConfig>> + OptionalSend {
-        if let Some(d) = self.block.get_blocking(&BlockOperation::DelayAppend) {
-            tracing::info!(?d, "delay append");
-            TypeConfig::sleep(d).await;
-        }
-
         let mut log = self.log.write().await;
         for entry in entries {
             let s =
