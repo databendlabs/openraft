@@ -5,6 +5,7 @@ mod try_recv_error;
 
 use std::future::Future;
 
+use openraft_macros::since;
 pub use send_error::SendError;
 pub use try_recv_error::TryRecvError;
 
@@ -48,7 +49,8 @@ where
 }
 
 /// Receive values from the associated [`MpscSender`].
-pub trait MpscReceiver<T>: OptionalSend + OptionalSync {
+#[since(version = "0.10.0", change = "remove the `OptionalSync` requirement")]
+pub trait MpscReceiver<T>: OptionalSend {
     /// Receives the next value for this receiver.
     ///
     /// This method returns `None` if the channel has been closed and there are
