@@ -208,12 +208,10 @@ pub trait TypeConfigExt: RaftTypeConfig {
     /// default configuration and runs the future on it.
     ///
     /// This runs synchronously on the current thread, so `Send` is not required.
+    #[since(version = "0.10.0", change = "allow results without `OptionalSend`")]
     #[track_caller]
     fn run<F, T>(future: F) -> T
-    where
-        F: Future<Output = T>,
-        T: OptionalSend,
-    {
+    where F: Future<Output = T> {
         <AsyncRuntimeOf<Self> as AsyncRuntime>::run(future)
     }
 
@@ -252,6 +250,8 @@ impl<T> TypeConfigExt for T where T: RaftTypeConfig {}
 #[cfg(test)]
 mod tests {
 
+    use std::rc::Rc;
+
     use futures_util::StreamExt;
     use openraft_rt_tokio::TokioRuntime;
 
@@ -281,6 +281,15 @@ mod tests {
             = crate::impls::InlineBatch<T>
         where T: OptionalSend + 'static;
         type ErrorSource = anyerror::AnyError;
+    }
+
+    #[test]
+    fn test_run_non_send_result() {
+        let expected = Rc::new(42);
+        let future = async { expected.clone() };
+        let result = UTConfig::run(future);
+        let shares_value = Rc::ptr_eq(&result, &expected);
+        assert!(shares_value);
     }
 
     #[test]

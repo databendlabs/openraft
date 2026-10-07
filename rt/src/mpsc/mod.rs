@@ -13,7 +13,8 @@ use crate::OptionalSend;
 use crate::OptionalSync;
 
 /// Multi-producer, single-consumer channel.
-pub trait Mpsc: Sized + OptionalSend {
+#[since(version = "0.10.0", change = "remove the `OptionalSend` requirement")]
+pub trait Mpsc: Sized {
     /// The sender type for this MPSC channel.
     type Sender<T: OptionalSend>: MpscSender<Self, T>;
     /// The receiver type for this MPSC channel.
