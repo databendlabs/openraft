@@ -29,7 +29,8 @@ where C: RaftTypeConfig
     /// parks and causes no wakeups; re-enabling it resumes ticking, with the first tick at most
     /// one tick period later.
     pub fn tick(&self, enabled: bool) {
-        self.raft_inner.runtime_config.enable_tick.send_if_different(enabled);
+        let enable_tick = self.raft_inner.runtime_config.enable_tick.lock().unwrap();
+        enable_tick.send_if_different(enabled);
     }
 
     /// Enable or disable heartbeat messages when a leader has no more log to replicate.
