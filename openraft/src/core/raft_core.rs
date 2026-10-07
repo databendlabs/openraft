@@ -1500,11 +1500,12 @@ where
 
             self.handle_notification(notify)?;
             processed += 1;
+        }
 
-            // TODO: does run_engine_commands() run too frequently?
-            //       to run many commands in one shot, it is possible to batch more commands to gain
-            //       better performance.
-
+        // Apply the greatest progress observed in this ready batch at once. Running commands after
+        // every notification fragments commit and state-machine apply work without making an
+        // already-ready notification complete any sooner.
+        if processed > 0 {
             self.run_engine_commands().await?;
         }
 
