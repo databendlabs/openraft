@@ -90,11 +90,14 @@ mod leader_id_mode {
 }
 
 #[cfg(not(feature = "rt-sim"))]
-#[allow(deprecated)]
-type Runtime = openraft::impls::TokioRuntime;
+type Runtime = openraft_rt_tokio::TokioRuntime;
 
 #[cfg(feature = "rt-sim")]
 type Runtime = openraft_rt_sim::SimRuntime;
+
+// Cargo cannot drop `openraft-rt-tokio` when `rt-sim` is on; this keeps it a used dependency.
+#[cfg(feature = "rt-sim")]
+use openraft_rt_tokio as _;
 
 openraft::declare_raft_types!(
     /// Declare the type configuration for `MemStore`.
