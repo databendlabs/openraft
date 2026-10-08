@@ -17,6 +17,7 @@ repository    = { workspace = true }
 openraft = { path = "../../openraft", version = "0.10.0-alpha.36", features = ["serde", "type-alias"] }
 openraft-legacy = { path = "../../legacy", version = "0.10.0-alpha.36" }
 openraft-rt-sim = { path = "../../rt-sim", optional = true }
+openraft-rt-tokio = { path = "../../rt-tokio", version = "0.10.0-alpha.36" }
 
 derive_more = { workspace = true }
 futures     = { workspace = true }
