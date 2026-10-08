@@ -672,6 +672,7 @@ dependencies = [
  "openraft",
  "openraft-legacy",
  "openraft-rt-sim",
+ "openraft-rt-tokio",
  "serde",
  "serde_json",
  "tokio",
