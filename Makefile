@@ -97,6 +97,14 @@ bench_cluster_of_3:
 bench_cluster_of_5:
 	$(BENCH_RUSTFLAGS) cargo run --manifest-path benchmarks/minimal/Cargo.toml --release --bin bench $(BENCH_FEATURES_FLAG) -- -m 5
 
+BENCH_ARGS ?= --client-workers 1 --server-workers 16 --clients 1024 --operations 131072 \
+	--members 3 --batch 1 --warmup-writes 128 --write-rate 24000 \
+	--append-delay-us 250 --flush-delay-us 250 --network-delay-us 500 \
+	--raft-config '{"api_batch_capacity":4096,"enable_tick":false,"enable_heartbeat":false,"enable_elect":false,"snapshot_policy":"Never"}'
+
+bench_write_latency:
+	cargo run --manifest-path benchmarks/minimal/Cargo.toml --release --no-default-features --bin bench -- --latency $(BENCH_ARGS)
+
 test-bench-minimal:
 	cargo test --manifest-path benchmarks/minimal/Cargo.toml --all-targets
 	cargo test --manifest-path benchmarks/minimal/Cargo.toml --all-targets --no-default-features

@@ -30,13 +30,28 @@ pub type BenchRaft = Raft<TypeConfig, Arc<StateMachineStore>>;
 #[derive(Clone)]
 pub struct Router {
     pub table: Arc<Mutex<BTreeMap<NodeId, BenchRaft>>>,
+    append_delay: Duration,
+    flush_delay: Duration,
+    network_delay: Duration,
 }
 
 impl Router {
     pub fn new() -> Self {
         Router {
             table: Default::default(),
+            append_delay: Duration::ZERO,
+            flush_delay: Duration::ZERO,
+            network_delay: Duration::ZERO,
         }
+    }
+
+    /// Create a router with simulated log submission, flush, and one-way network delays.
+    pub fn with_delays(append_delay: Duration, flush_delay: Duration, network_delay: Duration) -> Self {
+        let mut router = Self::new();
+        router.append_delay = append_delay;
+        router.flush_delay = flush_delay;
+        router.network_delay = network_delay;
+        router
     }
 
     pub fn get_raft(&self, id: NodeId) -> BenchRaft {
@@ -48,7 +63,8 @@ impl Router {
         let mut rafts = BTreeMap::new();
 
         for id in voter_ids.iter() {
-            let log_store = Arc::new(LogStore::default());
+            let log_store = LogStore::with_delays(self.append_delay, self.flush_delay);
+            let log_store = Arc::new(log_store);
             let sm = Arc::new(StateMachineStore::new());
 
             let raft = Raft::new(*id, config.clone(), self.clone(), log_store, sm).await?;
@@ -89,6 +105,7 @@ impl RaftNetworkFactory<TypeConfig> for Router {
         Network {
             target,
             target_raft: self.table.lock().unwrap().get(&target).unwrap().clone(),
+            delay: self.network_delay,
         }
         .into_v2()
     }
@@ -97,6 +114,7 @@ impl RaftNetworkFactory<TypeConfig> for Router {
 pub struct Network {
     target: NodeId,
     target_raft: BenchRaft,
+    delay: Duration,
 }
 
 impl RaftNetwork<TypeConfig> for Network {
@@ -105,7 +123,14 @@ impl RaftNetwork<TypeConfig> for Network {
         rpc: AppendEntriesRequest<TypeConfig>,
         _option: RPCOption,
     ) -> Result<AppendEntriesResponse<TypeConfig>, RPCError<TypeConfig, RaftError<TypeConfig>>> {
-        let resp = self.target_raft.append_entries(rpc).await.map_err(|e| RemoteError::new(self.target, e))?;
+        if !self.delay.is_zero() {
+            tokio::time::sleep(self.delay).await;
+        }
+        let resp = self.target_raft.append_entries(rpc).await;
+        if !self.delay.is_zero() {
+            tokio::time::sleep(self.delay).await;
+        }
+        let resp = resp.map_err(|e| RemoteError::new(self.target, e))?;
         Ok(resp)
     }
 

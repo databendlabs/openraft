@@ -7,6 +7,7 @@ use std::io;
 use std::io::Cursor;
 use std::ops::RangeBounds;
 use std::sync::Arc;
+use std::time::Duration;
 
 use futures::Stream;
 use openraft::EntryPayload;
@@ -32,7 +33,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use tokio::sync::RwLock;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct ClientRequest {}
 
 impl fmt::Display for ClientRequest {
@@ -96,6 +97,8 @@ pub struct LogStore {
     vote: RwLock<Option<Vote<LeaderId>>>,
     log: RwLock<BTreeMap<u64, EntryOf<TypeConfig>>>,
     last_purged_log_id: RwLock<Option<LogIdOf<TypeConfig>>>,
+    append_delay: Duration,
+    flush_delay: Duration,
 }
 
 impl LogStore {
@@ -106,7 +109,17 @@ impl LogStore {
             vote: RwLock::new(None),
             log,
             last_purged_log_id: RwLock::new(None),
+            append_delay: Duration::ZERO,
+            flush_delay: Duration::ZERO,
         }
+    }
+
+    /// Create a store that delays append submission and completes flushing asynchronously.
+    pub fn with_delays(append_delay: Duration, flush_delay: Duration) -> Self {
+        let mut store = Self::new();
+        store.append_delay = append_delay;
+        store.flush_delay = flush_delay;
+        store
     }
 
     pub async fn new_async() -> Arc<Self> {
@@ -260,7 +273,18 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
             let mut log = self.log.write().await;
             log.extend(entries.into_iter().map(|entry| (entry.index(), entry)));
         }
-        callback.io_completed(Ok(()));
+        if !self.append_delay.is_zero() {
+            tokio::time::sleep(self.append_delay).await;
+        }
+        if self.flush_delay.is_zero() {
+            callback.io_completed(Ok(()));
+        } else {
+            let deadline = tokio::time::Instant::now() + self.flush_delay;
+            tokio::spawn(async move {
+                tokio::time::sleep_until(deadline).await;
+                callback.io_completed(Ok(()));
+            });
+        }
         Ok(())
     }
 
@@ -354,5 +378,35 @@ impl SnapshotReceiverFactory<TypeConfig> for Arc<StateMachineStore> {
 
     async fn begin_receiving_snapshot(&mut self) -> Result<Self::SnapshotReceiver, io::Error> {
         Ok(Cursor::new(Vec::new()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use openraft::type_config::TypeConfigExt;
+    use openraft::vote::RaftLeaderIdExt;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn entries_are_readable_before_delayed_flush() -> anyhow::Result<()> {
+        let store = LogStore::with_delays(Duration::ZERO, Duration::from_millis(2));
+        let mut store = Arc::new(store);
+        let leader_id = LeaderId::new_committed(1, 0);
+        let log_id = LogIdOf::<TypeConfig>::new(leader_id, 0);
+        let entry = EntryOf::<TypeConfig>::new_blank(log_id);
+        let expected = vec![entry];
+        let (tx, mut rx) = TypeConfig::oneshot();
+        let callback = IOFlushed::signal(tx);
+        store.append(expected.clone(), callback).await?;
+        let pending = rx.try_recv();
+        let error = pending.unwrap_err();
+        assert_eq!(tokio::sync::oneshot::error::TryRecvError::Empty, error);
+        let entries = store.try_get_log_entries(0..1).await?;
+        assert_eq!(expected, entries);
+        let timeout = Duration::from_secs(5);
+        let flushed = tokio::time::timeout(timeout, rx).await?;
+        flushed??;
+        Ok(())
     }
 }
