@@ -8,21 +8,22 @@
 //! order, keyed by `(deadline, seq)`. Every scheduling decision and timer fire is appended to a
 //! trace, so two runs can be compared line by line.
 
+mod enter;
+mod shared;
+mod state;
+mod task_future;
+mod task_waker;
+
 use std::cell::RefCell;
-use std::collections::BTreeMap;
-use std::collections::VecDeque;
 use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::MutexGuard;
-use std::sync::Weak;
 use std::task::Context;
 use std::task::Poll;
-use std::task::Wake;
-use std::task::Waker;
 
-use openraft_rt::OptionalSend;
+pub(crate) use shared::Shared;
+
+use crate::executor::enter::Enter;
+use crate::executor::task_waker::waker_for;
 
 /// Identifies a task within one runtime. The future passed to `block_on` is task 0.
 pub(crate) type TaskId = u64;
@@ -32,235 +33,8 @@ const MAIN_TASK: TaskId = 0;
 /// Virtual time starts one day in, so code that subtracts a timeout from `now` does not underflow.
 pub(crate) const EPOCH_NANOS: u64 = 86_400 * 1_000_000_000;
 
-/// Polls allowed while virtual time stands still before the executor reports a busy loop.
-const MAX_POLLS_PER_INSTANT: u64 = 1_000_000;
-
-/// A spawned task, as the executor stores it.
-pub(crate) trait TaskFuture: Future<Output = ()> + OptionalSend {}
-
-impl<F> TaskFuture for F where F: Future<Output = ()> + OptionalSend {}
-
 thread_local! {
     static CURRENT: RefCell<Option<Arc<Shared>>> = const { RefCell::new(None) };
-}
-
-/// Everything one runtime owns, shared with the wakers and timers of its tasks.
-pub(crate) struct Shared {
-    state: Mutex<State>,
-}
-
-pub(crate) struct State {
-    /// Virtual time in nanoseconds.
-    pub(crate) now: u64,
-    /// The task being polled; `None` while the executor itself fires timers.
-    current: Option<TaskId>,
-    next_task_id: TaskId,
-    next_timer_seq: u64,
-
-    run_queue: VecDeque<TaskId>,
-
-    /// `None` while the task is out of the map being polled.
-    tasks: BTreeMap<TaskId, Option<Pin<Box<dyn TaskFuture>>>>,
-
-    timers: BTreeMap<(u64, u64), Waker>,
-
-    seed: u64,
-    rng_draws: u64,
-
-    polls_at_instant: u64,
-    /// Whether events are recorded; formatting every poll is too costly to leave on by default.
-    record: bool,
-    trace: Vec<String>,
-}
-
-impl Shared {
-    pub(crate) fn new(seed: u64) -> Arc<Self> {
-        Arc::new(Shared {
-            state: Mutex::new(State {
-                now: EPOCH_NANOS,
-                current: None,
-                next_task_id: MAIN_TASK + 1,
-                next_timer_seq: 0,
-                run_queue: VecDeque::new(),
-                tasks: BTreeMap::new(),
-                timers: BTreeMap::new(),
-                seed,
-                rng_draws: 0,
-                polls_at_instant: 0,
-                record: false,
-                trace: Vec::new(),
-            }),
-        })
-    }
-
-    /// Locks the state. A panic inside a task never happens under this lock, so poisoning only
-    /// follows a panic in the executor itself; the state is still consistent enough to drop.
-    pub(crate) fn lock(&self) -> MutexGuard<'_, State> {
-        self.state.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
-    }
-
-    pub(crate) fn set_seed(&self, seed: u64) {
-        self.lock().seed = seed;
-    }
-
-    pub(crate) fn set_record(&self, record: bool) {
-        self.lock().record = record;
-    }
-
-    pub(crate) fn take_trace(&self) -> Vec<String> {
-        std::mem::take(&mut self.lock().trace)
-    }
-
-    /// Drops every remaining task with this runtime installed, so drop code that reads the clock
-    /// or cancels timers still works. Tasks spawned while dropping are dropped too.
-    pub(crate) fn drop_tasks(self: &Arc<Self>) {
-        let _enter = Enter::try_new(self.clone());
-        #[cfg(feature = "sim-log")]
-        let _log = crate::sim_log::enter();
-        loop {
-            let tasks: Vec<_> = {
-                let mut st = self.lock();
-                // A panicked poll leaves `current` set; label the drops below as `exec`.
-                st.current = None;
-                st.run_queue.clear();
-                std::mem::take(&mut st.tasks).into_values().flatten().collect()
-            };
-            if tasks.is_empty() {
-                break;
-            }
-            drop(tasks);
-        }
-    }
-
-    /// Adds a task and makes it runnable.
-    pub(crate) fn spawn(&self, future: Pin<Box<dyn TaskFuture>>) -> TaskId {
-        let mut st = self.lock();
-        let id = st.next_task_id;
-        st.next_task_id += 1;
-        st.tasks.insert(id, Some(future));
-        st.trace(|st| format!("spawn t{id} by {}", st.who()));
-        st.enqueue(id);
-        id
-    }
-}
-
-impl State {
-    /// Appends an event to the trace. The event is only formatted while recording.
-    fn trace(&mut self, event: impl FnOnce(&Self) -> String) {
-        if self.record {
-            let event = event(self);
-            self.trace.push(event);
-        }
-    }
-
-    fn who(&self) -> String {
-        match self.current {
-            Some(id) => format!("t{id}"),
-            None => "exec".to_string(),
-        }
-    }
-
-    fn enqueue(&mut self, id: TaskId) -> bool {
-        if !self.run_queue.contains(&id) {
-            self.run_queue.push_back(id);
-            true
-        } else {
-            false
-        }
-    }
-
-    fn wake(&mut self, id: TaskId) {
-        // `MAIN_TASK` is never in `tasks`, because `block_on` holds the main future. Any other id
-        // is missing when a waker outlives its task. For example, `drop_tasks` takes every task out
-        // of `tasks` before dropping them, and dropping one task wakes another by closing a channel
-        // that the other task waits on. Ignoring such a wake keeps a task that no longer exists out
-        // of the run queue and the trace.
-        if id != MAIN_TASK && !self.tasks.contains_key(&id) {
-            return;
-        }
-        if self.enqueue(id) {
-            self.trace(|st| format!("wake t{id} by {}", st.who()));
-        }
-    }
-
-    fn pop_runnable(&mut self) -> Option<TaskId> {
-        self.run_queue.pop_front()
-    }
-
-    fn begin_poll(&mut self, id: TaskId) {
-        self.current = Some(id);
-        self.polls_at_instant += 1;
-        if self.polls_at_instant > MAX_POLLS_PER_INSTANT {
-            panic!(
-                "rt-sim: {} polls at virtual time {}ns without time advancing: a task is busy-looping",
-                MAX_POLLS_PER_INSTANT,
-                self.now - EPOCH_NANOS
-            );
-        }
-        self.trace(|st| format!("poll t{id} @{}", st.now - EPOCH_NANOS));
-    }
-
-    /// Returns the sequence number of a new timer. Timers sharing a deadline fire in this order.
-    pub(crate) fn new_timer_seq(&mut self) -> u64 {
-        let seq = self.next_timer_seq;
-        self.next_timer_seq += 1;
-        seq
-    }
-
-    /// Makes the timer `(deadline, seq)` wake `waker`, and adds the timer if it is not pending.
-    pub(crate) fn set_timer(&mut self, deadline: u64, seq: u64, waker: &Waker) {
-        let replaced = self.timers.insert((deadline, seq), waker.clone());
-        if replaced.is_none() {
-            self.trace(|st| format!("timer+ ({},{seq}) by {}", deadline - EPOCH_NANOS, st.who()));
-        }
-    }
-
-    /// Removes a timer that has not fired yet.
-    pub(crate) fn cancel_timer(&mut self, deadline: u64, seq: u64) {
-        if self.timers.remove(&(deadline, seq)).is_some() {
-            self.trace(|st| format!("timer- ({},{seq}) by {}", deadline - EPOCH_NANOS, st.who()));
-        }
-    }
-
-    /// A seed for one `thread_rng()` call, derived from the runtime seed and the draw count.
-    pub(crate) fn next_rng_seed(&mut self) -> u64 {
-        let draw = self.rng_draws;
-        self.rng_draws += 1;
-        self.trace(|st| format!("rng #{draw} by {}", st.who()));
-        splitmix64(self.seed ^ splitmix64(draw))
-    }
-}
-
-/// SplitMix64, the same mixer `openraft_rt::deterministic_rng` uses.
-fn splitmix64(seed: u64) -> u64 {
-    let z = seed.wrapping_add(0x9e3779b97f4a7c15);
-    let z = (z ^ (z >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
-    let z = (z ^ (z >> 27)).wrapping_mul(0x94d049bb133111eb);
-    z ^ (z >> 31)
-}
-
-struct TaskWaker {
-    id: TaskId,
-    shared: Weak<Shared>,
-}
-
-impl Wake for TaskWaker {
-    fn wake(self: Arc<Self>) {
-        self.wake_by_ref();
-    }
-
-    fn wake_by_ref(self: &Arc<Self>) {
-        if let Some(shared) = self.shared.upgrade() {
-            shared.lock().wake(self.id);
-        }
-    }
-}
-
-fn waker_for(shared: &Arc<Shared>, id: TaskId) -> Waker {
-    Waker::from(Arc::new(TaskWaker {
-        id,
-        shared: Arc::downgrade(shared),
-    }))
 }
 
 /// The runtime installed on this thread. Panics outside `block_on`.
@@ -271,36 +45,6 @@ pub(crate) fn current() -> Arc<Shared> {
 
 pub(crate) fn try_current() -> Option<Arc<Shared>> {
     CURRENT.try_with(|c| c.borrow().clone()).ok().flatten()
-}
-
-/// Installs a runtime on this thread and removes it on drop, including during a panic.
-struct Enter;
-
-impl Enter {
-    fn new(shared: Arc<Shared>) -> Self {
-        Self::try_new(shared).expect("rt-sim: nested block_on is not supported")
-    }
-
-    /// Installs `shared` unless a runtime is already installed on this thread.
-    fn try_new(shared: Arc<Shared>) -> Option<Self> {
-        CURRENT
-            .try_with(|c| {
-                let mut c = c.borrow_mut();
-                if c.is_some() {
-                    return false;
-                }
-                *c = Some(shared);
-                true
-            })
-            .unwrap_or(false)
-            .then_some(Enter)
-    }
-}
-
-impl Drop for Enter {
-    fn drop(&mut self) {
-        let _ = CURRENT.try_with(|c| c.borrow_mut().take());
-    }
 }
 
 /// Runs `future` to completion, polling spawned tasks and advancing virtual time as needed.
