@@ -10,78 +10,59 @@ use std::task::Poll;
 use crate::executor;
 use crate::executor::Shared;
 
-#[derive(Debug)]
-struct Registration {
-    runtime: Weak<Shared>,
-    seq: u64,
-}
-
 /// Completes once virtual time reaches its deadline.
 ///
-/// The timer is registered on first poll and removed when the future is dropped before firing.
+/// The timer gets its sequence number when the future is created, is added on first poll, and is
+/// removed when the future is dropped before firing. The future must be polled in the runtime that
+/// created it.
 #[derive(Debug)]
 pub struct SimSleep {
     deadline: u64,
-    registration: Option<Registration>,
+    seq: u64,
+    runtime: Weak<Shared>,
 }
 
 impl SimSleep {
+    #[track_caller]
     pub(crate) fn until(deadline: u64) -> Self {
+        let shared = executor::current();
+        let seq = shared.lock().new_timer_seq();
         SimSleep {
             deadline,
-            registration: None,
+            seq,
+            runtime: Arc::downgrade(&shared),
         }
-    }
-
-    fn cancel_registration(&mut self) {
-        let Some(registration) = self.registration.take() else {
-            return;
-        };
-        let Some(shared) = registration.runtime.upgrade() else {
-            return;
-        };
-        shared.lock().cancel_timer(self.deadline, registration.seq);
     }
 }
 
 impl Future for SimSleep {
     type Output = ();
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
         let shared = executor::current();
         let runtime = Arc::downgrade(&shared);
-        if let Some(registration) = self.registration.as_ref() {
-            let same_runtime = registration.runtime.ptr_eq(&runtime);
-            if !same_runtime {
-                self.cancel_registration();
-            }
-        }
+        let same_runtime = self.runtime.ptr_eq(&runtime);
+        assert!(
+            same_runtime,
+            "rt-sim: a sleep must be polled in the runtime that created it"
+        );
         let mut st = shared.lock();
 
         if st.now >= self.deadline {
-            if let Some(registration) = self.registration.take() {
-                // Normally already removed by the fire; this covers a deadline reached by a later
-                // advance while this future was not the one being woken.
-                st.cancel_timer(self.deadline, registration.seq);
-            }
             return Poll::Ready(());
         }
 
-        let refreshed = match self.registration.as_ref() {
-            Some(registration) => st.refresh_timer(self.deadline, registration.seq, cx.waker()),
-            None => false,
-        };
-        if !refreshed {
-            let seq = st.add_timer(self.deadline, cx.waker().clone());
-            self.registration = Some(Registration { runtime, seq });
-        }
+        st.set_timer(self.deadline, self.seq, cx.waker());
         Poll::Pending
     }
 }
 
 impl Drop for SimSleep {
     fn drop(&mut self) {
-        self.cancel_registration();
+        let Some(shared) = self.runtime.upgrade() else {
+            return;
+        };
+        shared.lock().cancel_timer(self.deadline, self.seq);
     }
 }
 

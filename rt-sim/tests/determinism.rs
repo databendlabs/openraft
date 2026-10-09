@@ -54,14 +54,20 @@ fn virtual_time_does_not_wait() {
 }
 
 #[test]
-fn equal_deadlines_fire_in_registration_order() {
+fn equal_deadlines_fire_in_creation_order() {
     SimRuntime::new(1).block_on(async {
         let (tx, mut rx) = <SimRuntime as AsyncRuntime>::Mpsc::channel::<u32>(8);
         let deadline = SimInstant::now() + Duration::from_millis(5);
+        let mut sleeps = Vec::new();
         for id in 0..4 {
+            let sleep = SimRuntime::sleep_until(deadline);
+            sleeps.push((id, sleep));
+        }
+        // Spawning in reverse polls the sleeps for the first time in reverse creation order.
+        for (id, sleep) in sleeps.into_iter().rev() {
             let tx = tx.clone();
             let _detached = SimRuntime::spawn(async move {
-                SimRuntime::sleep_until(deadline).await;
+                sleep.await;
                 tx.send(id).await.unwrap();
             });
         }

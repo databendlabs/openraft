@@ -37,7 +37,7 @@ pub const SEED_ENV: &str = "OPENRAFT_RT_SIM_SEED";
 /// - Tasks are polled FIFO, in the order they became runnable, on the thread that calls
 ///   [`block_on`](AsyncRuntime::block_on).
 /// - When nothing is runnable, virtual time jumps to the earliest pending timer. Timers sharing a
-///   deadline fire in registration order.
+///   deadline fire in creation order.
 /// - [`thread_rng`](AsyncRuntime::thread_rng) draws from a stream derived from the seed.
 /// - If the main future is pending, nothing is runnable and no timer is pending, `block_on` panics.
 ///
@@ -128,6 +128,7 @@ impl AsyncRuntime for SimRuntime {
         Self::sleep_until(<SimInstant as openraft_rt::Instant>::now() + duration)
     }
 
+    #[track_caller]
     fn sleep_until(deadline: Self::Instant) -> Self::Sleep {
         SimSleep::until(deadline.nanos())
     }
@@ -138,6 +139,7 @@ impl AsyncRuntime for SimRuntime {
         SimTimeout::new(future, Self::sleep(duration))
     }
 
+    #[track_caller]
     fn timeout_at<R, F>(deadline: Self::Instant, future: F) -> Self::Timeout<R, F>
     where F: Future<Output = R> + OptionalSend {
         SimTimeout::new(future, Self::sleep_until(deadline))
