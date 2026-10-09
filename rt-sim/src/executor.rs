@@ -10,7 +10,6 @@
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::collections::BTreeSet;
 use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
@@ -58,7 +57,6 @@ pub(crate) struct State {
     next_task: TaskId,
     next_timer_seq: u64,
     run_queue: VecDeque<TaskId>,
-    queued: BTreeSet<TaskId>,
     /// `None` while the task is out of the map being polled.
     tasks: BTreeMap<TaskId, Option<Pin<Box<dyn TaskFuture>>>>,
     timers: BTreeMap<(u64, u64), Waker>,
@@ -79,7 +77,6 @@ impl Shared {
                 next_task: MAIN_TASK + 1,
                 next_timer_seq: 0,
                 run_queue: VecDeque::new(),
-                queued: BTreeSet::new(),
                 tasks: BTreeMap::new(),
                 timers: BTreeMap::new(),
                 seed,
@@ -121,7 +118,6 @@ impl Shared {
                 // A panicked poll leaves `current` set; label the drops below as `exec`.
                 st.current = None;
                 st.run_queue.clear();
-                st.queued.clear();
                 std::mem::take(&mut st.tasks).into_values().flatten().collect()
             };
             if tasks.is_empty() {
@@ -160,7 +156,7 @@ impl State {
     }
 
     fn enqueue(&mut self, id: TaskId) -> bool {
-        if self.queued.insert(id) {
+        if !self.run_queue.contains(&id) {
             self.run_queue.push_back(id);
             true
         } else {
@@ -183,9 +179,7 @@ impl State {
     }
 
     fn pop_runnable(&mut self) -> Option<TaskId> {
-        let id = self.run_queue.pop_front()?;
-        self.queued.remove(&id);
-        Some(id)
+        self.run_queue.pop_front()
     }
 
     fn begin_poll(&mut self, id: TaskId) {
