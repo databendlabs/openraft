@@ -418,11 +418,12 @@ jobs:
         env:
           RUST_BACKTRACE: full
 
-  # Run one integration test on rt-sim three times in one process, in each of
-  # two processes, all with the same seed. Require byte-identical full OpenRaft
-  # logs across the processes, and across the runs in one process.
-  tests-sim:
-    name: Simulated runtime repeatability
+  # Run crate `tests/` on rt-sim. Then run the `t24_append_membership` tests in
+  # each of two processes with the same seed, and require byte-identical full
+  # OpenRaft logs. One of them must also write the same lines alone as after
+  # another test in the same process.
+  tests-rt-sim:
+    name: Tests on simulated runtime
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -431,34 +432,58 @@ jobs:
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          # tests-sim is excluded from the root workspace; see `detsim`.
-          cache-workspaces: tests-sim
+          components: clippy
+
+      - name: Clippy
+        run: cargo clippy --no-deps --manifest-path tests/Cargo.toml --all-targets --features rt-sim -- -D warnings
+
+      # The skipped tests do not pass on rt-sim yet.
+      - name: Test
+        run: |
+          cargo test --manifest-path tests/Cargo.toml --features rt-sim -- \
+            --skip t60_enable_heartbeat::enable_heartbeat \
+            --skip t11_client_reads::client_reads \
+            --skip t11_client_reads::ensure_linearizable_process_from_followers \
+            --skip t11_client_reads::ensure_linearizable_with_read_index \
+            --skip t11_client_reads::ensure_linearizable_with_wait_timeout \
+            --skip t11_client_reads::get_read_log_id \
+            --skip t23_custom_payload::custom_payload_survives_membership_change_and_recovery \
+            --skip t10_append_entries_partial_success::append_entries_partial_success \
+            --skip t30_purge_in_snapshot_logs::purge_in_snapshot_logs \
+            --skip t34_replication_does_not_block_purge::replication_does_not_block_purge \
+            --skip t90_issue_808_snapshot_to_unreachable_node_should_not_block::snapshot_to_unreachable_node_should_not_block
+        env:
+          RUST_BACKTRACE: full
 
       - name: Same seed, same log
-        working-directory: tests-sim
         run: |
           for run in a b; do
-            OPENRAFT_SIM_LOG="$RUNNER_TEMP/$run.log" cargo test --locked --test membership -- \
-              --test-threads=1 --exact \
-              run1::follower_answers_forward_to_leader \
-              run2::follower_answers_forward_to_leader \
-              run3::follower_answers_forward_to_leader
+            OPENRAFT_SIM_LOG="$RUNNER_TEMP/$run.log" cargo test --manifest-path tests/Cargo.toml --features rt-sim \
+              --test membership -- --test-threads=1 t24_append_membership::
           done
           test -s "$RUNNER_TEMP/a.log"
           diff "$RUNNER_TEMP/a.log" "$RUNNER_TEMP/b.log"
 
-          # Each line names its run in the test span, `membership::runN@`.
-          # Remove N so the runs compare equal.
-          for n in 1 2 3; do
-            grep -F "membership::run$n@" "$RUNNER_TEMP/a.log" \
-              | sed "s/membership::run$n@/membership::run@/g" > "$RUNNER_TEMP/run$n.log"
-          done
-          test -s "$RUNNER_TEMP/run1.log"
-          diff "$RUNNER_TEMP/run1.log" "$RUNNER_TEMP/run2.log"
-          diff "$RUNNER_TEMP/run1.log" "$RUNNER_TEMP/run3.log"
+          # `follower_answers_forward_to_leader` ran after another t24 test above.
+          # Alone, it must write the same lines. Each line names its test span.
+          OPENRAFT_SIM_LOG="$RUNNER_TEMP/alone.log" cargo test --manifest-path tests/Cargo.toml --features rt-sim \
+            --test membership -- --exact t24_append_membership::follower_answers_forward_to_leader
+          span=membership::t24_append_membership@follower_answers_forward_to_leader
+          grep -F "$span" "$RUNNER_TEMP/a.log" > "$RUNNER_TEMP/after-others.log"
+          grep -F "$span" "$RUNNER_TEMP/alone.log" > "$RUNNER_TEMP/alone-only.log"
+          test -s "$RUNNER_TEMP/alone-only.log"
+          diff "$RUNNER_TEMP/after-others.log" "$RUNNER_TEMP/alone-only.log"
         env:
           OPENRAFT_RT_SIM_SEED: 9
           OPENRAFT_NETWORK_SEND_DELAY: 30
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: tests-rt-sim
+          path: |
+            tests/_log/
 
   # Deterministic simulation test with turmoil.
   detsim:
