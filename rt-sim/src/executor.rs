@@ -118,6 +118,8 @@ impl Shared {
         loop {
             let tasks: Vec<_> = {
                 let mut st = self.lock();
+                // A panicked poll leaves `current` set; label the drops below as `exec`.
+                st.current = None;
                 st.run_queue.clear();
                 st.queued.clear();
                 std::mem::take(&mut st.tasks).into_values().flatten().collect()
