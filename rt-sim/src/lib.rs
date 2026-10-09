@@ -3,9 +3,6 @@
 mod executor;
 mod instant;
 mod join;
-mod mpsc;
-mod mutex;
-mod oneshot;
 mod runtime;
 #[cfg(feature = "sim-log")]
 mod sim_log;
@@ -16,13 +13,6 @@ mod watch;
 pub use instant::SimInstant;
 pub use join::SimJoinError;
 pub use join::SimJoinHandle;
-pub use mpsc::SimMpsc;
-pub use mpsc::SimMpscReceiver;
-pub use mpsc::SimMpscSender;
-pub use mpsc::SimMpscWeakSender;
-pub use mutex::SimMutex;
-pub use oneshot::SimOneshot;
-pub use oneshot::SimOneshotSender;
 pub use runtime::SEED_ENV;
 pub use runtime::SimRuntime;
 pub use runtime::TRACE_ENV;

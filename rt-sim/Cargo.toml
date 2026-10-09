@@ -14,7 +14,7 @@ publish = false
 
 [dependencies]
 openraft-rt      = { path = "../rt", version = "0.10.0-alpha.34" }
-futures-util     = { version = "0.3" }
+openraft-rt-tokio = { path = "../rt-tokio", version = "0.10.0-alpha.36" }
 pin-project-lite = { version = "0.2" }
 rand             = { version = "0.10" }
 tokio            = { version = "1.39", default-features = false, features = ["sync"] }
