@@ -54,14 +54,19 @@ pub(crate) struct State {
     pub(crate) now: u64,
     /// The task being polled; `None` while the executor itself fires timers.
     current: Option<TaskId>,
-    next_task: TaskId,
+    next_task_id: TaskId,
     next_timer_seq: u64,
+
     run_queue: VecDeque<TaskId>,
+
     /// `None` while the task is out of the map being polled.
     tasks: BTreeMap<TaskId, Option<Pin<Box<dyn TaskFuture>>>>,
+
     timers: BTreeMap<(u64, u64), Waker>,
+
     seed: u64,
     rng_draws: u64,
+
     polls_at_instant: u64,
     /// Whether events are recorded; formatting every poll is too costly to leave on by default.
     record: bool,
@@ -74,7 +79,7 @@ impl Shared {
             state: Mutex::new(State {
                 now: EPOCH_NANOS,
                 current: None,
-                next_task: MAIN_TASK + 1,
+                next_task_id: MAIN_TASK + 1,
                 next_timer_seq: 0,
                 run_queue: VecDeque::new(),
                 tasks: BTreeMap::new(),
@@ -130,8 +135,8 @@ impl Shared {
     /// Adds a task and makes it runnable.
     pub(crate) fn spawn(&self, future: Pin<Box<dyn TaskFuture>>) -> TaskId {
         let mut st = self.lock();
-        let id = st.next_task;
-        st.next_task += 1;
+        let id = st.next_task_id;
+        st.next_task_id += 1;
         st.tasks.insert(id, Some(future));
         st.trace(|st| format!("spawn t{id} by {}", st.who()));
         st.enqueue(id);
