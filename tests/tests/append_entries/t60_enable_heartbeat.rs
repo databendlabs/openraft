@@ -4,8 +4,6 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
-use openraft::impls::TokioRuntime;
-use openraft::type_config::AsyncRuntime;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
 
@@ -34,7 +32,7 @@ async fn enable_heartbeat() -> Result<()> {
 
     for _i in 0..3 {
         let now = TypeConfig::now();
-        TokioRuntime::sleep(Duration::from_millis(500)).await;
+        TypeConfig::sleep(Duration::from_millis(500)).await;
 
         for node_id in [1, 2, 3] {
             // no new log will be sent, .

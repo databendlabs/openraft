@@ -144,7 +144,7 @@ where
 
         let this = Self {
             replication_context: replication_context.clone(),
-            stream_state: Arc::new(MutexOf::<C, _>::new(StreamState {
+            stream_state: Arc::new(C::mutex(StreamState {
                 replication_context,
                 event_watcher: event_watcher.clone(),
                 log_reader,
@@ -304,7 +304,7 @@ where
         }
 
         let inflight_queue = InflightAppendQueue::new();
-        let fatal_error = Arc::new(MutexOf::<C, _>::new(None));
+        let fatal_error = Arc::new(C::mutex(None));
 
         let stream_context = StreamContext {
             stream_state: self.stream_state.clone(),

@@ -4,9 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
-use openraft::Instant;
 use openraft::ServerState;
-use openraft::TokioInstant;
 use openraft::alias::VoteOf;
 use openraft::async_runtime::WatchReceiver;
 use openraft::type_config::TypeConfigExt;
@@ -69,7 +67,7 @@ async fn inbound_heartbeats_prevent_election_when_outbound_rpcs_fail() -> Result
     {
         router.set_rpc_failure(1, Direction::NetSend, Some(RpcErrorType::NetworkError));
 
-        let heartbeat_at = TokioInstant::now();
+        let heartbeat_at = TypeConfig::now();
         n0.trigger().heartbeat().await?;
 
         let mut heartbeat_received = false;

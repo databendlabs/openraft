@@ -89,15 +89,14 @@ where T: Instant
 #[cfg(test)]
 mod tests {
 
-    use openraft_rt_tokio::TokioInstant;
-
-    use crate::Instant;
     use crate::display_ext::DisplayInstantExt;
+    use crate::engine::testing::UTConfig;
+    use crate::type_config::TypeConfigExt;
 
     /// Check the result by a human.
     #[test]
     fn test_display_instant() -> anyhow::Result<()> {
-        let now = TokioInstant::now();
+        let now = UTConfig::<()>::now();
         println!("now: {}", now.display());
         println!("now: {}", now.display().full());
         println!("now: {}", now.display().full().simple());
