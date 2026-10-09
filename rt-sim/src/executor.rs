@@ -167,6 +167,11 @@ impl State {
     }
 
     fn wake(&mut self, id: TaskId) {
+        // `MAIN_TASK` is never in `tasks`, because `block_on` holds the main future. Any other id
+        // is missing when a waker outlives its task. For example, `drop_tasks` takes every task out
+        // of `tasks` before dropping them, and dropping one task wakes another by closing a channel
+        // that the other task waits on. Ignoring such a wake keeps a task that no longer exists out
+        // of the run queue and the trace.
         if id != MAIN_TASK && !self.tasks.contains_key(&id) {
             return;
         }
