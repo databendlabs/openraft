@@ -155,11 +155,9 @@ where C: RaftTypeConfig
 
 #[cfg(test)]
 mod tests {
-    use openraft_rt_tokio::TokioRuntime;
     use validit::Valid;
 
     use super::*;
-    use crate::AsyncRuntime;
     use crate::Vote;
     use crate::engine::Respond;
     use crate::engine::respond_command::PendingRespond;
@@ -169,13 +167,13 @@ mod tests {
     use crate::raft_state::IOId;
     use crate::raft_state::io_state::IOState;
     use crate::raft_state::io_state::io_progress::IOProgress;
-    use crate::type_config::async_runtime::oneshot::Oneshot;
+    use crate::type_config::TypeConfigExt;
 
     type TestIOId = IOId<UTConfig>;
     type TestLogId = LogIdOf<UTConfig>;
 
     fn new_respond() -> Respond<UTConfig> {
-        let (tx, _rx) = <TokioRuntime as AsyncRuntime>::Oneshot::channel();
+        let (tx, _rx) = UTConfig::<()>::oneshot();
         Respond::new(VoteResponse::new(Vote::new(1, 1), None, false), tx)
     }
 

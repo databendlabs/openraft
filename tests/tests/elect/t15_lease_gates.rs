@@ -4,10 +4,8 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
-use openraft::Instant;
 use openraft::RPCTypes;
 use openraft::ServerState;
-use openraft::TokioInstant;
 use openraft::async_runtime::WatchReceiver;
 use openraft::errors::NetworkError;
 use openraft::errors::RPCError;
@@ -60,7 +58,7 @@ async fn block_append_entries(router: &RaftRouter, from: u64, to: u64) {
 async fn wait_vote_lease_expired(router: &RaftRouter, node: u64) -> Result<()> {
     for _ in 0..200 {
         let last_modified = router.with_raft_state(node, |state| state.vote_last_modified()).await?;
-        let now = TokioInstant::now();
+        let now = TypeConfig::now();
 
         let expired = match last_modified {
             Some(last_modified) => now > last_modified + LEADER_LEASE,
@@ -118,7 +116,7 @@ async fn manual_pre_vote_from_lease_expired_follower() -> Result<()> {
 
     tracing::info!(log_index, "--- refresh node 0's quorum-ack lease through node 2");
     {
-        let heartbeat_at = TokioInstant::now();
+        let heartbeat_at = TypeConfig::now();
         n0.trigger().heartbeat().await?;
         n0.wait(Some(WAIT_TIMEOUT))
             .metrics(
@@ -207,7 +205,7 @@ async fn manual_pre_vote_from_healthy_follower_with_stale_peer() -> Result<()> {
         "--- refresh node 0's quorum-ack lease and node 1's follower lease"
     );
     {
-        let heartbeat_at = TokioInstant::now();
+        let heartbeat_at = TypeConfig::now();
         n0.trigger().heartbeat().await?;
         n0.wait(Some(WAIT_TIMEOUT))
             .metrics(
