@@ -2,10 +2,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
-use openraft_rt_tokio::TokioInstant;
 use pretty_assertions::assert_eq;
 
-use crate::Instant;
 use crate::Membership;
 use crate::Vote;
 use crate::core::ServerState;
@@ -79,7 +77,7 @@ fn test_handle_message_vote_reject_smaller_vote() -> anyhow::Result<()> {
 fn test_handle_message_vote_committed_vote() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.state.log_ids = LogIdList::new(None, vec![log_id(2, 1, 3)]);
-    let now = TokioInstant::now();
+    let now = UTConfig::<()>::now();
 
     let resp = eng.vote_handler().update_vote(&Vote::new_committed(3, 2));
 
@@ -108,7 +106,7 @@ fn test_handle_message_vote_granted_equal_vote() -> anyhow::Result<()> {
 
     let mut eng = eng();
     eng.state.log_ids = LogIdList::new(None, vec![log_id(2, 1, 3)]);
-    let now = TokioInstant::now();
+    let now = UTConfig::<()>::now();
 
     let resp = eng.vote_handler().update_vote(&Vote::new(2, 1));
 

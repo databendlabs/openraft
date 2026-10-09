@@ -5,7 +5,6 @@ use std::sync::Arc;
 use futures_util::Stream;
 use futures_util::StreamExt;
 
-use crate::AsyncRuntime;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::core::raft_msg::RaftMsg;
@@ -48,7 +47,7 @@ where
 
     let unfold_inner = inner.clone();
 
-    let _join_handle = C::AsyncRuntime::spawn(async move {
+    let _join_handle = C::spawn(async move {
         futures_util::pin_mut!(input);
 
         while let Some(req) = input.next().await {

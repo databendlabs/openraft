@@ -5,8 +5,6 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
-use openraft::Instant;
-use openraft::TokioInstant;
 use openraft::Vote;
 use openraft::raft::VoteRequest;
 use openraft::type_config::TypeConfigExt;
@@ -31,12 +29,12 @@ async fn heartbeat_reject_vote() -> Result<()> {
     );
     let mut router = RaftRouter::new(config.clone());
 
-    let now = TokioInstant::now();
+    let now = TypeConfig::now();
     TypeConfig::sleep(Duration::from_millis(1)).await;
 
     let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3}).await?;
 
-    let vote_modified_time = Arc::new(Mutex::new(Some(TokioInstant::now())));
+    let vote_modified_time = Arc::new(Mutex::new(Some(TypeConfig::now())));
     tracing::info!(log_index, "--- leader lease is set by heartbeat");
     {
         let m = vote_modified_time.clone();
@@ -49,7 +47,7 @@ async fn heartbeat_reject_vote() -> Result<()> {
             })
             .await?;
 
-        let now = TokioInstant::now();
+        let now = TypeConfig::now();
         TypeConfig::sleep(Duration::from_millis(700)).await;
 
         let m = vote_modified_time.clone();

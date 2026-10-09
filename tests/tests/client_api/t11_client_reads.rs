@@ -1,11 +1,11 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::time::Duration;
-use std::time::Instant;
 
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
+use openraft::Instant;
 use openraft::LogIdOptionExt;
 use openraft::RPCTypes;
 use openraft::ReadPolicy;
@@ -339,7 +339,7 @@ async fn ensure_linearizable_with_wait_timeout() -> Result<()> {
     {
         let option = LinearizerOption::new(Some(Duration::ZERO), true).with_wait_timeout(Duration::ZERO);
 
-        let start = Instant::now();
+        let start = TypeConfig::now();
         let rst = leader.get_read_linearizer(option).await;
         let elapsed = start.elapsed();
 
@@ -357,7 +357,7 @@ async fn ensure_linearizable_with_wait_timeout() -> Result<()> {
         let wait_timeout = Duration::from_millis(100);
         let option = LinearizerOption::new(Some(Duration::ZERO), true).with_wait_timeout(wait_timeout);
 
-        let start = Instant::now();
+        let start = TypeConfig::now();
         let rst = leader.get_read_linearizer(option).await;
         let elapsed = start.elapsed();
 
