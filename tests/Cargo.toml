@@ -17,6 +17,8 @@ license       = { workspace = true }
 repository    = { workspace = true }
 
 [dependencies]
+# Only enables `sim-log`: with `OPENRAFT_SIM_LOG=<file>`, a test on rt-sim writes a reproducible log.
+openraft-rt-sim    = { path = "../rt-sim", features = ["sim-log"], optional = true }
 
 [dev-dependencies]
 openraft           = { path = "../openraft", version = "0.10.0-alpha.36", features = ["type-alias"] }
@@ -44,3 +46,6 @@ tracing-subscriber = { workspace = true }
 bt = ["openraft/bt"]
 runtime-stats = ["openraft/runtime-stats"]
 single-term-leader = ["openraft-memstore/single-term-leader"]
+
+# Run the tests on the deterministic simulated runtime, for openraft#206. Not all of them pass yet.
+rt-sim = ["openraft-memstore/rt-sim", "dep:openraft-rt-sim"]
