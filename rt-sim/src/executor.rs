@@ -4,7 +4,7 @@
 //! executor is reached through a thread-local that [`block_on`] installs for the duration of a run.
 //!
 //! Scheduling is FIFO: a task is polled in the order it became runnable. When nothing is runnable,
-//! virtual time jumps to the earliest pending timer; timers sharing a deadline fire in registration
+//! virtual time jumps to the earliest pending timer; timers sharing a deadline fire in creation
 //! order, keyed by `(deadline, seq)`. Every scheduling decision and timer fire is appended to a
 //! trace, so two runs can be compared line by line.
 
@@ -199,25 +199,18 @@ impl State {
         self.trace(|st| format!("poll t{id} @{}", st.now - EPOCH_NANOS));
     }
 
-    /// Registers a timer and returns its sequence number.
-    pub(crate) fn add_timer(&mut self, deadline: u64, waker: Waker) -> u64 {
+    /// Returns the sequence number of a new timer. Timers sharing a deadline fire in this order.
+    pub(crate) fn new_timer_seq(&mut self) -> u64 {
         let seq = self.next_timer_seq;
         self.next_timer_seq += 1;
-        self.timers.insert((deadline, seq), waker);
-        self.trace(|st| format!("timer+ ({},{seq}) by {}", deadline - EPOCH_NANOS, st.who()));
         seq
     }
 
-    /// Replaces the waker of a registered timer. Returns `false` if the timer is gone.
-    pub(crate) fn refresh_timer(&mut self, deadline: u64, seq: u64, waker: &Waker) -> bool {
-        match self.timers.get_mut(&(deadline, seq)) {
-            Some(registered) => {
-                if !registered.will_wake(waker) {
-                    *registered = waker.clone();
-                }
-                true
-            }
-            None => false,
+    /// Makes the timer `(deadline, seq)` wake `waker`, and adds the timer if it is not pending.
+    pub(crate) fn set_timer(&mut self, deadline: u64, seq: u64, waker: &Waker) {
+        let replaced = self.timers.insert((deadline, seq), waker.clone());
+        if replaced.is_none() {
+            self.trace(|st| format!("timer+ ({},{seq}) by {}", deadline - EPOCH_NANOS, st.who()));
         }
     }
 

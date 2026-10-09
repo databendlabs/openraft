@@ -6,13 +6,14 @@ use openraft_rt::AsyncRuntime;
 use super::*;
 use crate::SimRuntime;
 
-fn register_sleep(rt: &mut SimRuntime, sleep: &mut SimSleep) {
+/// Creates a sleep in `rt` and polls it once, so its timer is pending.
+fn pending_sleep(rt: &mut SimRuntime, deadline: u64) -> SimSleep {
     rt.block_on(poll_fn(|cx| {
-        let sleep = Pin::new(&mut *sleep);
-        let polled = sleep.poll(cx);
+        let mut sleep = SimSleep::until(deadline);
+        let polled = Pin::new(&mut sleep).poll(cx);
         assert_eq!(polled, Poll::Pending);
-        Poll::Ready(())
-    }));
+        Poll::Ready(sleep)
+    }))
 }
 
 fn timer_events(rt: &SimRuntime) -> Vec<String> {
@@ -29,8 +30,7 @@ fn timer_events(rt: &SimRuntime) -> Vec<String> {
 fn drop_outside_runtime_cancels_timer() {
     let mut rt = SimRuntime::with_seed(0);
     rt.record_trace(true);
-    let mut sleep = SimSleep::until(executor::EPOCH_NANOS + 1);
-    register_sleep(&mut rt, &mut sleep);
+    let sleep = pending_sleep(&mut rt, executor::EPOCH_NANOS + 1);
     drop(sleep);
     rt.block_on(async {
         SimRuntime::sleep(Duration::from_nanos(2)).await;
@@ -51,10 +51,8 @@ fn drop_in_another_runtime_cancels_only_owner_timer() {
     let mut other = SimRuntime::with_seed(0);
     owner.record_trace(true);
     other.record_trace(true);
-    let mut sleep = SimSleep::until(executor::EPOCH_NANOS + 1);
-    let mut other_sleep = SimSleep::until(executor::EPOCH_NANOS + 1);
-    register_sleep(&mut owner, &mut sleep);
-    register_sleep(&mut other, &mut other_sleep);
+    let sleep = pending_sleep(&mut owner, executor::EPOCH_NANOS + 1);
+    let other_sleep = pending_sleep(&mut other, executor::EPOCH_NANOS + 1);
     other.block_on(async {
         drop(sleep);
         other_sleep.await;
@@ -68,32 +66,22 @@ fn drop_in_another_runtime_cancels_only_owner_timer() {
 }
 
 #[test]
-fn polling_another_runtime_moves_registration() {
+#[should_panic(expected = "rt-sim: a sleep must be polled in the runtime that created it")]
+fn polling_in_another_runtime_panics() {
     let mut first = SimRuntime::with_seed(0);
     let mut second = SimRuntime::with_seed(0);
-    first.record_trace(true);
-    second.record_trace(true);
-    let mut sleep = SimSleep::until(executor::EPOCH_NANOS + 1);
-    register_sleep(&mut first, &mut sleep);
-    register_sleep(&mut first, &mut sleep);
-    register_sleep(&mut second, &mut sleep);
-    drop(sleep);
-    let expected = ["timer+ (1,0) by t0", "timer- (1,0) by exec"];
-    for rt in [&first, &second] {
-        let events = timer_events(rt);
-        assert_eq!(events, expected);
-    }
+    let mut sleep = pending_sleep(&mut first, executor::EPOCH_NANOS + 1);
+    second.block_on(&mut sleep);
 }
 
 #[test]
-fn registration_does_not_keep_runtime_alive() {
+fn sleep_does_not_keep_runtime_alive() {
     let mut rt = SimRuntime::with_seed(0);
     let owner = rt.block_on(async {
         let shared = executor::current();
         Arc::downgrade(&shared)
     });
-    let mut sleep = SimSleep::until(executor::EPOCH_NANOS + 1);
-    register_sleep(&mut rt, &mut sleep);
+    let sleep = pending_sleep(&mut rt, executor::EPOCH_NANOS + 1);
     drop(rt);
     let owner_alive = owner.upgrade().is_some();
     assert!(!owner_alive);
