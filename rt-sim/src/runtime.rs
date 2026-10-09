@@ -9,6 +9,9 @@ use std::time::Duration;
 
 use openraft_rt::AsyncRuntime;
 use openraft_rt::OptionalSend;
+use openraft_rt_tokio::TokioMpsc;
+use openraft_rt_tokio::TokioMutex;
+use openraft_rt_tokio::TokioOneshot;
 use rand::SeedableRng;
 use rand::rngs::SmallRng;
 
@@ -16,9 +19,6 @@ use crate::Elapsed;
 use crate::SimInstant;
 use crate::SimJoinError;
 use crate::SimJoinHandle;
-use crate::SimMpsc;
-use crate::SimMutex;
-use crate::SimOneshot;
 use crate::SimSleep;
 use crate::SimTimeout;
 use crate::SimWatch;
@@ -153,10 +153,12 @@ impl AsyncRuntime for SimRuntime {
         SmallRng::seed_from_u64(seed)
     }
 
-    type Mpsc = SimMpsc;
+    // Tokio's mpsc, oneshot and mutex need no Tokio runtime and wake waiters in FIFO order, so the
+    // rt-tokio wrappers stay deterministic here. Tokio's watch does not; see `SimWatch`.
+    type Mpsc = TokioMpsc;
     type Watch = SimWatch;
-    type Oneshot = SimOneshot;
-    type Mutex<T: OptionalSend + 'static> = SimMutex<T>;
+    type Oneshot = TokioOneshot;
+    type Mutex<T: OptionalSend + 'static> = TokioMutex<T>;
 
     /// `threads` is ignored: the runtime always runs on the calling thread. The seed comes from
     /// [`SEED_ENV`] if it is set.
