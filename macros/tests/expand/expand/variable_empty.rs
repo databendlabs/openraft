@@ -1,8 +1,8 @@
 fn main() {
     openraft_macros::expand!(
         !KEYED,
-        (K, T, V) => {K; T; V;},
+        (K, T, V) => {let K T V;},
         (c, , ,),
-        (c, , u8 ),
+        (c, , = 1 ),
     );
 }
