@@ -442,11 +442,6 @@ jobs:
         run: |
           cargo test --manifest-path tests/Cargo.toml --features rt-sim -- \
             --skip t60_enable_heartbeat::enable_heartbeat \
-            --skip t11_client_reads::client_reads \
-            --skip t11_client_reads::ensure_linearizable_process_from_followers \
-            --skip t11_client_reads::ensure_linearizable_with_read_index \
-            --skip t11_client_reads::ensure_linearizable_with_wait_timeout \
-            --skip t11_client_reads::get_read_log_id \
             --skip t23_custom_payload::custom_payload_survives_membership_change_and_recovery \
             --skip t10_append_entries_partial_success::append_entries_partial_success \
             --skip t30_purge_in_snapshot_logs::purge_in_snapshot_logs \
