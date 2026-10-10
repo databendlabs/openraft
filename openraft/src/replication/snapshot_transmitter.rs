@@ -28,6 +28,13 @@ use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchSenderOf;
 use crate::vote::raft_vote::RaftVoteExt;
 
+/// The number of `Network` errors that [`SnapshotTransmitter`] retries immediately. The next one
+/// starts the backoff.
+///
+/// Log replication starts its backoff at the same point: each `Network` error adds 2 to its error
+/// rank, and it backs off once the rank exceeds 20.
+const MAX_IMMEDIATE_NETWORK_RETRIES: u64 = 10;
+
 /// Task that transmits a snapshot to a follower.
 ///
 /// Spawned by `RaftCore` when log replication falls too far behind and a snapshot
@@ -49,16 +56,21 @@ where
     /// Snapshot transmitting is a long-running task and is processed in a separate task.
     network: N::Network,
 
-    /// The backoff policy if an [`Unreachable`](`crate::error::Unreachable`) error is returned.
+    /// The backoff policy if an [`Unreachable`](`crate::error::Unreachable`) error is returned,
+    /// or if [`network_errors`](Self::network_errors) exceeds [`MAX_IMMEDIATE_NETWORK_RETRIES`].
     /// It will be reset to `None` when a successful response is received.
     ///
     /// This is deliberately not
     /// [`BackoffState`](crate::replication::backoff_state::BackoffState), which log replication
     /// uses: that one accumulates an error rank and backs off once the rank crosses a threshold,
     /// so a `RemoteError` also throttles and the throttling persists across error kinds. Here
-    /// only [`Unreachable`](`crate::error::Unreachable`) throttles, and any other error clears it,
-    /// because a target that answers at all is worth retrying immediately.
+    /// only [`Unreachable`](`crate::error::Unreachable`) and repeated `Network` errors throttle,
+    /// and a `Timeout` or a `RemoteError` clears it: a `Timeout` has already waited, and a target
+    /// that answers at all is worth retrying immediately.
     backoff: Option<Backoff>,
+
+    /// The number of `Network` errors since the last `Timeout` or `RemoteError`.
+    network_errors: u64,
 
     /// The handle to get a snapshot directly from the state machine.
     snapshot_reader: SnapshotReader<C, SM>,
@@ -83,6 +95,7 @@ where
             inflight_id,
             network,
             backoff: None,
+            network_errors: 0,
             snapshot_reader,
         };
 
@@ -142,23 +155,24 @@ where
                     return;
                 }
                 ReplicationError::RPCError(err) => {
-                    match &err {
-                        RPCError::Unreachable(_unreachable) => {
-                            // If there is an [`Unreachable`] error, we will backoff for a
-                            // period of time. Backoff will be reset if there is a
-                            // successful RPC is sent.
-                            if self.backoff.is_none() {
-                                self.backoff = Some(
-                                    self.network
-                                        .backoff()
-                                        .unwrap_or_else(|| self.replication_context.config.build_backoff()),
-                                );
-                            }
+                    let start_backoff = match &err {
+                        RPCError::Unreachable(_) => true,
+                        RPCError::Network(_) => {
+                            self.network_errors += 1;
+                            self.network_errors > MAX_IMMEDIATE_NETWORK_RETRIES
                         }
-                        RPCError::Timeout(_) | RPCError::Network(_) | RPCError::RemoteError(_) => {
+                        RPCError::Timeout(_) | RPCError::RemoteError(_) => {
                             self.backoff = None;
+                            self.network_errors = 0;
+                            false
                         }
                     };
+
+                    if start_backoff && self.backoff.is_none() {
+                        self.backoff = Some(
+                            self.network.backoff().unwrap_or_else(|| self.replication_context.config.build_backoff()),
+                        );
+                    }
 
                     if let Some(b) = &mut self.backoff {
                         let duration = b.next().unwrap_or_else(|| {
