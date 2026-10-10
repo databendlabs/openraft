@@ -11,6 +11,7 @@ use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
+use crate::proposer::SendStamp;
 use crate::replication::ReplicationSessionId;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::StoredMembershipOf;
@@ -138,8 +139,8 @@ fn test_quorum_loss_heartbeat_periods() -> anyhow::Result<()> {
     {
         let acked_at = activity_at + period + period + period;
         let leader = eng.leader.as_mut().unwrap();
-        leader.update_clock(&2, acked_at);
-        leader.update_clock(&3, acked_at);
+        leader.update_clock(&2, SendStamp::new(acked_at, 0));
+        leader.update_clock(&3, SendStamp::new(acked_at, 0));
 
         let check_at = acked_at + leader_lease - Duration::from_millis(1);
         let allowed = eng.try_leader_handler()?.heartbeat_is_allowed(check_at);

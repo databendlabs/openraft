@@ -9,6 +9,7 @@ use crate::core::SharedReplicateBatch;
 use crate::core::notification::Notification;
 use crate::progress::inflight_id::InflightId;
 use crate::progress::stream_id::StreamId;
+use crate::proposer::SendStamp;
 use crate::raft_state::IOId;
 use crate::replication::response::Progress;
 use crate::replication::response::ReplicationResult;
@@ -91,13 +92,14 @@ where C: RaftTypeConfig
     /// Report that the target answered a request sent at `sending_time`.
     ///
     /// Any successful exchange with the target also proves the leader is still reachable, so this
-    /// doubles as a heartbeat acknowledgement.
+    /// doubles as a heartbeat acknowledgement. A replication request belongs to no heartbeat round,
+    /// so its stamp has round `0`.
     pub(crate) async fn notify_heartbeat_progress(&self, sending_time: InstantOf<C>) {
         self.tx_notify
             .send(Notification::HeartbeatProgress {
                 stream_id: self.stream_id,
                 target: self.target.clone(),
-                sending_time,
+                sending_time: SendStamp::new(sending_time, 0),
             })
             .await
             .ok();

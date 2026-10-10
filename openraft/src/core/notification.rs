@@ -6,9 +6,9 @@ use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::core::NotificationName;
 use crate::core::sm;
-use crate::display_ext::DisplayInstantExt;
 use crate::progress::inflight_id::InflightId;
 use crate::progress::stream_id::StreamId;
+use crate::proposer::SendStamp;
 use crate::raft::VoteResponse;
 use crate::raft_state::IOId;
 use crate::replication;
@@ -83,7 +83,7 @@ where C: RaftTypeConfig
 
     HeartbeatProgress {
         stream_id: StreamId,
-        sending_time: InstantOf<C>,
+        sending_time: SendStamp<InstantOf<C>>,
         target: C::NodeId,
     },
 
@@ -185,9 +185,7 @@ where C: RaftTypeConfig
                 write!(
                     f,
                     "HeartbeatProgress: target={}, leader_vote: {}, sending_time: {}",
-                    target,
-                    leader_vote,
-                    sending_time.display(),
+                    target, leader_vote, sending_time,
                 )
             }
             Self::StateMachine { command_result } => {
