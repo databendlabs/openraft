@@ -437,16 +437,8 @@ jobs:
       - name: Clippy
         run: cargo clippy --no-deps --manifest-path tests/Cargo.toml --all-targets --features rt-sim -- -D warnings
 
-      # The skipped tests do not pass on rt-sim yet.
       - name: Test
-        run: |
-          cargo test --manifest-path tests/Cargo.toml --features rt-sim -- \
-            --skip t60_enable_heartbeat::enable_heartbeat \
-            --skip t23_custom_payload::custom_payload_survives_membership_change_and_recovery \
-            --skip t10_append_entries_partial_success::append_entries_partial_success \
-            --skip t30_purge_in_snapshot_logs::purge_in_snapshot_logs \
-            --skip t34_replication_does_not_block_purge::replication_does_not_block_purge \
-            --skip t90_issue_808_snapshot_to_unreachable_node_should_not_block::snapshot_to_unreachable_node_should_not_block
+        run: cargo test --manifest-path tests/Cargo.toml --features rt-sim
         env:
           RUST_BACKTRACE: full
 
