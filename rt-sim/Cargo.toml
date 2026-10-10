@@ -2,7 +2,7 @@
 name = "openraft-rt-sim"
 description = "Deterministic simulated AsyncRuntime for testing Openraft"
 readme = "README.md"
-version = "0.10.0-alpha.36"
+version = "0.10.0-alpha.37"
 edition = "2024"
 authors = ["Databend Authors <opensource@datafuselabs.com>"]
 categories = ["algorithms", "asynchronous", "data-structures"]
@@ -12,8 +12,8 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/databendlabs/openraft"
 
 [dependencies]
-openraft-rt      = { path = "../rt", version = "0.10.0-alpha.36" }
-openraft-rt-tokio = { path = "../rt-tokio", version = "0.10.0-alpha.36" }
+openraft-rt      = { path = "../rt", version = "0.10.0-alpha.37" }
+openraft-rt-tokio = { path = "../rt-tokio", version = "0.10.0-alpha.37" }
 pin-project-lite = { version = "0.2" }
 rand             = { version = "0.10" }
 tokio            = { version = "1.39", default-features = false, features = ["sync"] }

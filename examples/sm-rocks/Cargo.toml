@@ -17,7 +17,7 @@ repository = "https://github.com/databendlabs/openraft"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-openraft = { path = "../../openraft", version = "0.10.0-alpha.36", features = ["serde", "type-alias"] }
+openraft = { path = "../../openraft", version = "0.10.0-alpha.37", features = ["serde", "type-alias"] }
 types-kv = { path = "../types-kv" }
 
 futures    = { version = "0.3" }
