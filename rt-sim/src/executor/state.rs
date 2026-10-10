@@ -11,7 +11,7 @@ use crate::executor::TaskId;
 use crate::executor::task_future::TaskFuture;
 
 /// Polls allowed while virtual time stands still before the executor reports a busy loop.
-const MAX_POLLS_PER_INSTANT: u64 = 1_000_000;
+const MAX_POLLS_PER_INSTANT: u64 = 100_000;
 
 pub(crate) struct State {
     /// Virtual time in nanoseconds.
