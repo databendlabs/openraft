@@ -7,6 +7,7 @@ use super::pending_read_deadline_key::PendingReadDeadlineKey;
 use super::pending_read_key::PendingReadKey;
 use crate::RaftTypeConfig;
 use crate::errors::LinearizableReadError;
+use crate::proposer::SendStamp;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
 
@@ -16,21 +17,21 @@ where C: RaftTypeConfig
 {
     next_sequence: u64,
 
-    /// The pending reads, ordered by the quorum-acknowledgement instant each one requires.
-    reads: BTreeMap<PendingReadKey<InstantOf<C>>, PendingRead<C>>,
+    /// The pending reads, ordered by the quorum-acknowledgement stamp each one requires.
+    reads: BTreeMap<PendingReadKey<SendStamp<InstantOf<C>>>, PendingRead<C>>,
 
     /// A secondary index over the same reads, ordered by deadline.
     ///
     /// Each entry points at the primary key of the read it describes. A per-request
     /// `wait_timeout` makes deadline order differ from `reads` order, so expiry needs its own
     /// ordering to answer the earliest deadline first.
-    deadlines: BTreeMap<PendingReadDeadlineKey<InstantOf<C>>, PendingReadKey<InstantOf<C>>>,
+    deadlines: BTreeMap<PendingReadDeadlineKey<InstantOf<C>>, PendingReadKey<SendStamp<InstantOf<C>>>>,
 }
 
 impl<C> PendingReadQueue<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn push(&mut self, min_quorum_acked_at: InstantOf<C>, pending_read: PendingRead<C>) {
+    pub(crate) fn push(&mut self, min_quorum_acked_at: SendStamp<InstantOf<C>>, pending_read: PendingRead<C>) {
         let sequence = self.next_sequence;
         self.next_sequence = sequence.checked_add(1).expect("pending read sequence overflow");
 
@@ -50,7 +51,7 @@ where C: RaftTypeConfig
     pub(crate) fn drain_expired(
         &mut self,
         now: InstantOf<C>,
-        mut make_error: impl FnMut(InstantOf<C>) -> LinearizableReadError<C>,
+        mut make_error: impl FnMut(SendStamp<InstantOf<C>>) -> LinearizableReadError<C>,
     ) {
         while let Some((deadline_key, key)) = self.deadlines.first_key_value() {
             if deadline_key.deadline > now {
@@ -68,7 +69,7 @@ where C: RaftTypeConfig
 
     /// Answer every read whose threshold is exceeded, reporting `applied` as the log id applied by
     /// the state machine now rather than when each read was queued.
-    pub(crate) fn drain_satisfied(&mut self, quorum_acked_at: InstantOf<C>, applied: Option<LogIdOf<C>>) {
+    pub(crate) fn drain_satisfied(&mut self, quorum_acked_at: SendStamp<InstantOf<C>>, applied: Option<LogIdOf<C>>) {
         while let Some((key, _)) = self.reads.first_key_value() {
             if key.min_quorum_acked_at >= quorum_acked_at {
                 break;

@@ -10,7 +10,6 @@ use crate::Membership;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::ServerState;
-use crate::display_ext::DisplayInstantExt;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
@@ -26,6 +25,7 @@ use crate::progress::inflight_id::InflightId;
 use crate::progress::stream_id::StreamId;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
+use crate::proposer::SendStamp;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::replication::replicate::Replicate;
@@ -166,12 +166,12 @@ where
         &mut self,
         stream_id: StreamId,
         target: C::NodeId,
-        sending_time: InstantOf<C>,
+        sending_time: SendStamp<InstantOf<C>>,
     ) {
         // clock_progress and progress has the same structure but clock_progress does not store stream_id.
         // Thus we need to check stream_id in progress to ensure the stream is correct.
 
-        tracing::debug!("{}: target: {}, t: {}", func_name!(), &target, sending_time.display());
+        tracing::debug!("{}: target: {}, t: {}", func_name!(), &target, sending_time);
 
         if !self.leader.is_replication_stream_valid(&target, stream_id) {
             return;
@@ -181,10 +181,8 @@ where
 
         tracing::debug!(
             "granted leader vote clock after updating: granted: {}; clock_progress: {}",
-            granted.as_ref().map(|x| x.display()).display(),
-            self.leader.clock_progress.display_with(|f, item| {
-                write!(f, "{}: {}", item.id, item.val.as_ref().map(|x| x.display()).display())
-            })
+            granted.display(),
+            self.leader.clock_progress.display_with(|f, item| write!(f, "{}: {}", item.id, item.val.display()))
         );
 
         // When membership changes, the granted value may revert to a previous value.

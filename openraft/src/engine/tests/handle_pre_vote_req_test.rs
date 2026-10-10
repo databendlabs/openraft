@@ -11,6 +11,7 @@ use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
+use crate::proposer::SendStamp;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::type_config::TypeConfigExt;
@@ -78,7 +79,8 @@ fn test_handle_pre_vote_req_rejected_by_quorum_ack_lease() -> anyhow::Result<()>
         Duration::from_millis(500),
         Vote::new_committed(2, 1),
     );
-    eng.testing_new_leader().update_clock(&0, UTConfig::<()>::now());
+    let acked_at = SendStamp::new(UTConfig::<()>::now(), 0);
+    eng.testing_new_leader().update_clock(&0, acked_at);
     let vote_before = *eng.state.vote_ref();
 
     let resp = eng.handle_pre_vote_req(VoteRequest {

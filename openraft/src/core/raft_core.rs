@@ -97,6 +97,7 @@ use crate::progress::inflight_id::InflightId;
 use crate::progress::stream_id::StreamId;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
+use crate::proposer::SendStamp;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::ClientWriteResult;
 use crate::raft::LogSegment;
@@ -383,7 +384,9 @@ where
     /// this node.
     ///
     /// Both the fast path and the queue require `now < acked + age`; an acknowledgement at the
-    /// exact threshold is not fresh enough.
+    /// exact threshold is not fresh enough. The queue also accepts an acknowledgement at the
+    /// threshold time when it is for a heartbeat round started after the read arrived; see
+    /// [`SendStamp`].
     ///
     /// Broadcasting a heartbeat per read does not amplify RPCs: heartbeat events reach each target
     /// through a watch channel, so a burst coalesces to the latest event, and a heartbeat sent
@@ -426,7 +429,10 @@ where
             return;
         }
 
-        let min_quorum_acked_at = now - max_quorum_ack_age;
+        // A heartbeat broadcast after this read has a higher round, so its acknowledgement exceeds
+        // this threshold even if the clock has not moved since `now`.
+        let heartbeat_round = lh.leader.heartbeat_round();
+        let min_quorum_acked_at = SendStamp::new(now - max_quorum_ack_age, heartbeat_round);
         let wait_timeout = linearizer_option.effective_wait_timeout(leader_lease);
 
         // A read that will not wait cannot benefit from a newer quorum acknowledgement.
@@ -734,7 +740,10 @@ where
             let replication = Some(replication_prog.collect_mapped(|item| item.id_progress_owned()));
 
             let clock_prog = &leader.clock_progress;
-            let heartbeat = Some(clock_prog.collect_mapped(|item| (item.id.clone(), item.val.map(SerdeInstant::new))));
+            let heartbeat = Some(clock_prog.collect_mapped(|item| {
+                let sending_time = item.val.map(|stamp| stamp.time);
+                (item.id.clone(), sending_time.map(SerdeInstant::new))
+            }));
 
             (replication, heartbeat)
         } else {
@@ -994,7 +1003,7 @@ where
         match lh_res {
             Ok(lh) => {
                 // Quorum satisfaction takes precedence over a delayed timeout wake-up.
-                let quorum_acked_at = lh.leader.last_quorum_acked_time();
+                let quorum_acked_at = lh.leader.last_quorum_acked_stamp();
                 if let Some(quorum_acked_at) = quorum_acked_at {
                     self.pending_reads.drain_satisfied(quorum_acked_at, applied);
                 }
@@ -2295,6 +2304,7 @@ where
 
         let cluster_committed = lh.state.cluster_committed().cloned();
         let now = C::now();
+        let round = lh.leader.next_heartbeat_round();
         let min_interval = Duration::from_millis(self.config.heartbeat_min_interval());
         let leader = &*lh.leader;
         let events = leader
@@ -2306,7 +2316,7 @@ where
             })
             .map(|progress_entry| {
                 (progress_entry.id.clone(), HeartbeatEvent {
-                    time: now,
+                    time: SendStamp::new(now, round),
                     matching: progress_entry.matching.clone(),
                     cluster_committed: cluster_committed.clone(),
                 })

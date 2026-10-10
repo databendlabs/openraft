@@ -13,6 +13,7 @@ use crate::progress::IdVal;
 use crate::progress::VecProgress;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::stream_id::StreamId;
+use crate::proposer::SendStamp;
 use crate::quorum::QuorumSet;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::CommittedLeaderIdOf;
@@ -56,6 +57,12 @@ where C: RaftTypeConfig
     /// The time to send next heartbeat.
     pub(crate) next_heartbeat: InstantOf<C>,
 
+    /// The round of the last heartbeat broadcast, or `0` if none has been broadcast.
+    ///
+    /// A read records this round when it arrives; only a heartbeat broadcast after that has a
+    /// higher round. See [`SendStamp`].
+    heartbeat_round: u64,
+
     last_log_id: Option<LogIdOf<C>>,
 
     /// The log id of the first log entry proposed by this leader,
@@ -79,8 +86,11 @@ where C: RaftTypeConfig
     ///
     /// See [`docs::leader_lease`] for more details.
     ///
+    /// Each value is a [`SendStamp`]: the sending time plus a heartbeat round that orders RPCs sent
+    /// at the same time.
+    ///
     /// [`docs::leader_lease`]: `crate::docs::protocol::replication::leader_lease`
-    pub(crate) clock_progress: Valid<VecProgress<IdVal<C::NodeId, Option<InstantOf<C>>>, QS>>,
+    pub(crate) clock_progress: Valid<VecProgress<IdVal<C::NodeId, Option<SendStamp<InstantOf<C>>>>, QS>>,
 }
 
 impl<C, QS> Leader<C, QS>
@@ -145,12 +155,13 @@ where
         let now = C::now();
         let mut clock_progress = VecProgress::new(quorum_set, learner_ids, IdVal::new_default);
         let leader_node_id = vote.to_leader_node_id();
-        clock_progress.increase_to(&leader_node_id, Some(now));
+        clock_progress.increase_to(&leader_node_id, Some(SendStamp::new(now, 0)));
 
         Self {
             transfer_to: None,
             committed_vote: vote,
             next_heartbeat: now,
+            heartbeat_round: 0,
             last_log_id: last_log_id.clone(),
             noop_log_id,
             progress: Valid::new(progress),
@@ -204,8 +215,24 @@ where
         Some(LeaderLogIds::new(committed_leader_id, first, last))
     }
 
-    /// Update the clock acknowledged by `target` and return the time acknowledged by a quorum.
-    pub(crate) fn update_clock(&mut self, target: &C::NodeId, sending_time: InstantOf<C>) -> Option<InstantOf<C>> {
+    /// Start a new heartbeat round and return it.
+    pub(crate) fn next_heartbeat_round(&mut self) -> u64 {
+        let round = self.heartbeat_round.checked_add(1).expect("heartbeat round overflow");
+        self.heartbeat_round = round;
+        round
+    }
+
+    /// Return the round of the last heartbeat broadcast, or `0` if none has been broadcast.
+    pub(crate) fn heartbeat_round(&self) -> u64 {
+        self.heartbeat_round
+    }
+
+    /// Update the clock acknowledged by `target` and return the stamp acknowledged by a quorum.
+    pub(crate) fn update_clock(
+        &mut self,
+        target: &C::NodeId,
+        sending_time: SendStamp<InstantOf<C>>,
+    ) -> Option<SendStamp<InstantOf<C>>> {
         let leader_node_id = self.committed_vote.to_leader_node_id();
         self.clock_progress.increase_to(&leader_node_id, Some(sending_time));
 
@@ -217,6 +244,12 @@ where
 
     /// Get the last timestamp acknowledged by a quorum.
     pub(crate) fn last_quorum_acked_time(&self) -> Option<InstantOf<C>> {
+        let acked = self.last_quorum_acked_stamp()?;
+        Some(acked.time)
+    }
+
+    /// Get the last [`SendStamp`] acknowledged by a quorum.
+    pub(crate) fn last_quorum_acked_stamp(&self) -> Option<SendStamp<InstantOf<C>>> {
         *self.clock_progress.quorum_accepted()
     }
 
@@ -227,7 +260,7 @@ where
     /// out because they never grant a value. This leader is always included when it is a voter: it
     /// grants its own RPCs, while [`Self::update_clock`] records that grant only once a follower
     /// responds.
-    pub(crate) fn clock_quorum_not_enough(&self, min_acked_at: InstantOf<C>) -> QuorumNotEnough<C>
+    pub(crate) fn clock_quorum_not_enough(&self, min_acked_at: SendStamp<InstantOf<C>>) -> QuorumNotEnough<C>
     where QS: fmt::Display {
         let voter_count = self.clock_progress.voter_count();
 
@@ -283,7 +316,7 @@ where
     /// [`Config::heartbeat_min_interval`]: `crate::Config::heartbeat_min_interval`
     pub(crate) fn need_heartbeat(&self, target: &C::NodeId, now: InstantOf<C>, min_interval: Duration) -> bool {
         let acked = self.clock_progress.try_get(target).and_then(|entry| entry.val);
-        acked.is_none_or(|sending_time| now >= sending_time + min_interval)
+        acked.is_none_or(|sending_time| now >= sending_time.time + min_interval)
     }
 
     pub(crate) fn is_replication_stream_valid(&self, target: &C::NodeId, stream_id: StreamId) -> bool {
@@ -319,6 +352,7 @@ mod tests {
     use crate::engine::testing::UTConfig;
     use crate::engine::testing::log_id;
     use crate::proposer::Leader;
+    use crate::proposer::SendStamp;
     use crate::type_config::TypeConfigExt;
     use crate::vote::raft_vote::RaftVoteExt;
 
@@ -457,7 +491,7 @@ mod tests {
 
         let now1 = UTConfig::<()>::now();
 
-        leading.update_clock(&2, now1);
+        leading.update_clock(&2, SendStamp::new(now1, 0));
         let t1 = leading.last_quorum_acked_time();
         assert_eq!(Some(now1), t1, "n1(leader) and n2 acked, t1 > t2");
     }
@@ -473,12 +507,12 @@ mod tests {
         );
 
         let t2 = UTConfig::<()>::now();
-        leading.update_clock(&2, t2);
+        leading.update_clock(&2, SendStamp::new(t2, 0));
         let t = leading.last_quorum_acked_time();
         assert!(t.is_none(), "n1(leader+learner) does not count in quorum");
 
         let t3 = UTConfig::<()>::now();
-        leading.update_clock(&3, t3);
+        leading.update_clock(&3, SendStamp::new(t3, 0));
         let t = leading.last_quorum_acked_time();
         assert_eq!(Some(t2), t, "n2 and n3 acked");
     }
@@ -494,12 +528,12 @@ mod tests {
         );
 
         let t2 = UTConfig::<()>::now();
-        leading.update_clock(&2, t2);
+        leading.update_clock(&2, SendStamp::new(t2, 0));
         let t = leading.last_quorum_acked_time();
         assert!(t.is_none(), "n1(leader+learner) does not count in quorum");
 
         let t3 = UTConfig::<()>::now();
-        leading.update_clock(&3, t3);
+        leading.update_clock(&3, SendStamp::new(t3, 0));
         let t = leading.last_quorum_acked_time();
         assert_eq!(Some(t2), t, "n2 and n3 acked");
     }
@@ -517,8 +551,9 @@ mod tests {
             SharedIdGenerator::new(),
         );
 
-        let t1 = UTConfig::<()>::now();
-        let t2 = t1 + Duration::from_millis(10);
+        let now = UTConfig::<()>::now();
+        let t1 = SendStamp::new(now, 0);
+        let t2 = SendStamp::new(now + Duration::from_millis(10), 0);
 
         let err = leading.clock_quorum_not_enough(t1);
         assert_eq!(
@@ -545,6 +580,47 @@ mod tests {
         );
     }
 
+    /// The clock may not move between a read and the heartbeat it triggers, as on a simulated
+    /// runtime. The heartbeat round still tells an RPC sent before the read from one sent after it.
+    #[test]
+    fn test_clock_quorum_orders_same_time_by_heartbeat_round() {
+        // Voters {1,2,3} with learner {4}; node 1 is the leader.
+        let membership = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1, 2, 3}], [4]);
+        let mut leading = Leader::<UTConfig, _>::new(
+            Vote::new(2, 1).to_committed(),
+            Arc::new(membership),
+            [4],
+            None,
+            SharedIdGenerator::new(),
+        );
+        let now = UTConfig::<()>::now();
+
+        tracing::info!("--- n2 acks a replication RPC sent at `now`, before the read arrives");
+        leading.update_clock(&2, SendStamp::new(now, 0));
+
+        let round_at_read = leading.heartbeat_round();
+        let read_threshold = SendStamp::new(now, round_at_read);
+
+        tracing::info!(round_at_read, "--- an RPC sent before the read does not confirm it");
+        {
+            let err = leading.clock_quorum_not_enough(read_threshold);
+            assert_eq!(btreeset! {1}, err.got);
+        }
+
+        tracing::info!("--- n3 acks the heartbeat that the read triggers, still at `now`");
+        {
+            let round = leading.next_heartbeat_round();
+            let heartbeat = SendStamp::new(now, round);
+            leading.update_clock(&3, heartbeat);
+
+            let err = leading.clock_quorum_not_enough(read_threshold);
+            assert_eq!(btreeset! {1, 3}, err.got);
+
+            let quorum_acked = leading.last_quorum_acked_stamp();
+            assert_eq!(Some(heartbeat), quorum_acked);
+        }
+    }
+
     #[test]
     fn test_need_heartbeat() {
         let mut leading = Leader::<UTConfig, Vec<BTreeSet<u64>>>::new(
@@ -567,7 +643,7 @@ mod tests {
             "unknown target: must send"
         );
 
-        leading.clock_progress.increase_to(&2, Some(t0));
+        leading.clock_progress.increase_to(&2, Some(SendStamp::new(t0, 0)));
 
         assert!(
             !leading.need_heartbeat(&2, t0 + Duration::from_millis(99), min_interval),

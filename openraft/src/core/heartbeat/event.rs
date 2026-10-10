@@ -3,7 +3,7 @@ use std::fmt;
 use display_more::DisplayOptionExt;
 
 use crate::RaftTypeConfig;
-use crate::display_ext::DisplayInstantExt;
+use crate::proposer::SendStamp;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
 
@@ -13,11 +13,11 @@ use crate::type_config::alias::LogIdOf;
 pub(crate) struct HeartbeatEvent<C>
 where C: RaftTypeConfig
 {
-    /// The timestamp when this heartbeat is sent.
+    /// The timestamp when this heartbeat is sent, and the heartbeat round of this broadcast.
     ///
     /// The Leader uses this sending time to calculate the quorum acknowledge time, but not the
     /// receiving timestamp.
-    pub(crate) time: InstantOf<C>,
+    pub(crate) time: SendStamp<InstantOf<C>>,
 
     /// The last known matching log id that has been confirmed replicated to the target follower.
     ///
@@ -39,7 +39,7 @@ where C: RaftTypeConfig
         write!(
             f,
             "(time={}, matching: {}, cluster_committed: {})",
-            self.time.display(),
+            self.time,
             self.matching.display(),
             self.cluster_committed.display()
         )

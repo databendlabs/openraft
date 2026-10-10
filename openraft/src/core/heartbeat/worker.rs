@@ -247,6 +247,7 @@ mod tests {
     use crate::network::NetStreamAppend;
     use crate::network::RPCOption;
     use crate::progress::stream_id::StreamId;
+    use crate::proposer::SendStamp;
     use crate::raft::AppendEntriesRequest;
     use crate::raft::StreamAppendResult;
     use crate::type_config::TypeConfigExt;
@@ -318,7 +319,7 @@ mod tests {
             tracing::info!("--- send one heartbeat and wait for the worker to report its progress");
             {
                 let heartbeat = HeartbeatEvent {
-                    time: C::now(),
+                    time: SendStamp::new(C::now(), 1),
                     matching: None,
                     cluster_committed: None,
                 };
