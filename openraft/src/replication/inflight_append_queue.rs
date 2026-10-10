@@ -103,6 +103,12 @@ where C: RaftTypeConfig
 
         last
     }
+
+    /// Returns `true` if every recorded request is fully acknowledged.
+    pub(crate) fn is_empty(&self) -> bool {
+        let q = self.queue.lock().unwrap();
+        q.is_empty()
+    }
 }
 
 #[cfg(test)]
