@@ -1,5 +1,4 @@
 fn main() {
-    c;
-    c;
-    u8;
+    let c;
+    let c = 1;
 }
