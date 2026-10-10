@@ -69,6 +69,13 @@ use crate::type_config::alias::MutexOf;
 use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::async_runtime::mpsc::MpscSender;
 
+/// The error rank that a stream session adds when the target accepted none of the entries it sent.
+///
+/// It exceeds `BACKOFF_RANK_THRESHOLD` (20), as the rank of `Unreachable` does, so the next session
+/// waits on the backoff instead of resending the entries at once. A lower rank would never start
+/// the backoff, because each `Ok` answer in a session resets the rank to 0.
+const NO_PROGRESS_BACKOFF_RANK: u64 = 100;
+
 /// A task responsible for sending replication events to a target follower in the Raft cluster.
 ///
 /// NOTE: we do not stack replication requests to targets because this could result in
@@ -336,7 +343,7 @@ where
             }
         };
 
-        let (acked, continue_res) = self.handle_response_stream(resp_strm, inflight_queue).await;
+        let (acked, continue_res) = self.handle_response_stream(resp_strm, inflight_queue.clone()).await;
         if let Some(err) = Self::take_stream_fatal_error(&fatal_error).await {
             return Err(err);
         }
@@ -351,6 +358,14 @@ where
         } else {
             None
         };
+
+        // The target accepted none of the entries this session sent. Without a backoff, the next
+        // session would resend them at once.
+        let no_progress = remaining.as_ref() == Some(payload);
+        let has_unacked = !inflight_queue.is_empty();
+        if no_progress && has_unacked {
+            self.backoff_state.on_error(NO_PROGRESS_BACKOFF_RANK);
+        }
 
         Ok(remaining)
     }
