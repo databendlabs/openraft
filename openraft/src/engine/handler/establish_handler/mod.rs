@@ -1,9 +1,10 @@
 use crate::RaftTypeConfig;
 use crate::engine::EngineConfig;
 use crate::proposer::Candidate;
+use crate::proposer::ElectionQuorumSet;
 use crate::proposer::Leader;
-use crate::proposer::LeaderQuorumSet;
 use crate::proposer::LeaderState;
+use crate::proposer::WriteQuorumSet;
 use crate::vote::raft_vote::RaftVoteExt;
 
 /// Establish a leader for the Engine, when Candidate finishes voting stage.
@@ -20,8 +21,8 @@ where C: RaftTypeConfig
     /// Consume the `candidate` state and establish a leader.
     pub(crate) fn establish(
         self,
-        candidate: Candidate<C, LeaderQuorumSet<C>>,
-    ) -> Option<&'x mut Leader<C, LeaderQuorumSet<C>>> {
+        candidate: Candidate<C, ElectionQuorumSet<C>>,
+    ) -> Option<&'x mut Leader<C, WriteQuorumSet<C>>> {
         let vote = candidate.vote_ref().clone();
 
         debug_assert_eq!(

@@ -58,6 +58,8 @@ where
     type NodeId = NID;
     type Committed = Self;
 
+    const TOTALLY_ORDERED: bool = true;
+
     fn new(term: Term, node_id: NID) -> Self {
         Self { term, node_id }
     }

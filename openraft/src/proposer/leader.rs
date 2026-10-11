@@ -15,8 +15,8 @@ use crate::progress::IdVal;
 use crate::progress::VecProgress;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::stream_id::StreamId;
-use crate::proposer::LeaderQuorumSet;
 use crate::proposer::SendStamp;
+use crate::proposer::WriteQuorumSet;
 use crate::quorum::QuorumSet;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::CommittedLeaderIdOf;
@@ -98,7 +98,7 @@ where
     pub(crate) clock_progress: Valid<VecProgress<IdVal<C::NodeId, Option<SendStamp<InstantOf<C>>>>, QS>>,
 }
 
-impl<C> Leader<C, LeaderQuorumSet<C>>
+impl<C> Leader<C, WriteQuorumSet<C>>
 where C: RaftTypeConfig
 {
     /// Creates a leader using the membership's write quorum for replication and heartbeat tracking.
