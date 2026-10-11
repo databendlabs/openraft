@@ -23,6 +23,8 @@ use crate::batch::Batch;
 use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
 use crate::errors::ErrorSource;
+use crate::membership::RaftMembership;
+use crate::membership::RaftMembershipEdit;
 use crate::raft::responder::Responder;
 use crate::vote::RaftLeaderId;
 use crate::vote::RaftTerm;
@@ -62,7 +64,9 @@ use crate::vote::raft_vote::RaftVote;
 ///         Term             = u64,
 ///         LeaderId         = openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>,
 ///         Vote             = openraft::impls::Vote<Self::LeaderId>,
-///         Payload          = openraft::EntryPayload<Self::D, Self::NodeId, Self::Node>,
+///         Membership       = openraft::impls::Membership<Self::NodeId, Self::Node>,
+///         MembershipEdit   = openraft::impls::ChangeMembers<Self::NodeId, Self::Node>,
+///         Payload          = openraft::impls::EntryPayload<Self::D, Self::Membership>,
 ///         Entry            = openraft::impls::Entry<
 ///             <Self::LeaderId as openraft::vote::RaftLeaderId>::Committed,
 ///             Self::Payload,
@@ -86,6 +90,8 @@ use crate::vote::raft_vote::RaftVote;
 ///
 /// [`Raft`]: crate::Raft
 /// [`declare_raft_types!`]: crate::declare_raft_types
+#[since(version = "0.10.0", change = "added `MembershipEdit` associated type")]
+#[since(version = "0.10.0", change = "added `Membership` associated type")]
 #[since(version = "0.10.0", change = "added `Payload` associated type")]
 pub trait RaftTypeConfig:
     Sized + OptionalSend + OptionalSync + Debug + Clone + Copy + Default + Eq + PartialEq + Ord + PartialOrd + 'static
@@ -124,9 +130,22 @@ pub trait RaftTypeConfig:
     )]
     type Vote: RaftVote<LeaderId = Self::LeaderId>;
 
+    /// Cluster membership configuration type.
+    ///
+    /// It defines the read and write quorum rules and the roles of each node.
+    #[since(version = "0.10.0")]
+    type Membership: RaftMembership<NodeId = Self::NodeId, Node = Self::Node>;
+
+    /// Membership operations, selected independently of the membership representation.
+    ///
+    /// The macro defaults to [`ChangeMembers`](crate::impls::ChangeMembers). A custom edit
+    /// implements [`RaftMembershipEdit`] for the selected membership.
+    #[since(version = "0.10.0")]
+    type MembershipEdit: RaftMembershipEdit<Self::Membership>;
+
     /// Raft log entry payload.
     #[since(version = "0.10.0", change = "added configurable log payload type")]
-    type Payload: RaftPayload<D = Self::D, NodeId = Self::NodeId, Node = Self::Node>;
+    type Payload: RaftPayload<D = Self::D, Membership = Self::Membership>;
 
     /// Raft log entry with the configured payload.
     #[since(version = "0.10.0", change = "link entry payload to configured `Payload`")]
@@ -180,12 +199,13 @@ pub trait RaftTypeConfig:
 pub mod alias {
     use openraft_macros::since;
 
-    use crate::EntryPayload;
-    use crate::LogId;
     use crate::RaftTypeConfig;
     use crate::async_runtime::Mpsc;
     use crate::async_runtime::Oneshot;
     use crate::async_runtime::watch;
+    use crate::impls::EntryPayload;
+    use crate::impls::LogId;
+    use crate::membership::RaftMembership;
     use crate::raft::message::ClientWriteResult;
     use crate::storage::RaftStateMachine;
     use crate::type_config::AsyncRuntime;
@@ -200,6 +220,12 @@ pub mod alias {
     pub type TermOf<C> = <C as RaftTypeConfig>::Term;
     pub type LeaderIdOf<C> = <C as RaftTypeConfig>::LeaderId;
     pub type VoteOf<C> = <C as RaftTypeConfig>::Vote;
+    #[since(version = "0.10.0")]
+    pub type MembershipOf<C> = <C as RaftTypeConfig>::Membership;
+    #[since(version = "0.10.0")]
+    pub type MembershipEditOf<C> = <C as RaftTypeConfig>::MembershipEdit;
+    #[since(version = "0.10.0")]
+    pub type QuorumSetOf<C> = <MembershipOf<C> as RaftMembership>::QuorumSet;
     #[since(version = "0.10.0")]
     pub type PayloadOf<C> = <C as RaftTypeConfig>::Payload;
     pub type EntryOf<C> = <C as RaftTypeConfig>::Entry;
@@ -243,15 +269,15 @@ pub mod alias {
     pub type LogIdOf<C> = LogId<CommittedLeaderIdOf<C>>;
     pub type CommittedLeaderIdOf<C> = <LeaderIdOf<C> as RaftLeaderId>::Committed;
     pub(crate) type RefLogIdOf<'a, C> = crate::log_id::ref_log_id::RefLogId<'a, CommittedLeaderIdOf<C>>;
-    pub type EntryPayloadOf<C> = EntryPayload<DOf<C>, NodeIdOf<C>, NodeOf<C>>;
+    pub type EntryPayloadOf<C> = EntryPayload<DOf<C>, MembershipOf<C>>;
     #[since(version = "0.10.0", change = "use configured payload type")]
-    pub type DefaultEntryOf<C> = crate::Entry<CommittedLeaderIdOf<C>, PayloadOf<C>>;
-    pub type StoredMembershipOf<C> = crate::StoredMembership<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>>;
+    pub type DefaultEntryOf<C> = crate::impls::Entry<CommittedLeaderIdOf<C>, PayloadOf<C>>;
+    pub type StoredMembershipOf<C> = crate::StoredMembership<CommittedLeaderIdOf<C>, MembershipOf<C>>;
     pub type SnapshotSignatureOf<C> = crate::storage::SnapshotSignature<CommittedLeaderIdOf<C>>;
-    pub type SnapshotMetaOf<C> = crate::storage::SnapshotMeta<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>>;
-    pub type SnapshotOf<C, SD> = crate::storage::Snapshot<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>, SD>;
+    pub type SnapshotMetaOf<C> = crate::storage::SnapshotMeta<CommittedLeaderIdOf<C>, MembershipOf<C>>;
+    pub type SnapshotOf<C, SD> = crate::storage::Snapshot<CommittedLeaderIdOf<C>, MembershipOf<C>, SD>;
     pub type SmSnapshotOf<C, SM> = SnapshotOf<C, SnapshotDataOf<C, SM>>;
-    pub type MembershipStateOf<C> = crate::MembershipState<CommittedLeaderIdOf<C>, NodeIdOf<C>, NodeOf<C>>;
+    pub type MembershipStateOf<C> = crate::MembershipState<CommittedLeaderIdOf<C>, MembershipOf<C>>;
     pub type ChangeMembershipErrorOf<C> = crate::errors::ChangeMembershipError<CommittedLeaderIdOf<C>, NodeIdOf<C>>;
     pub type InProgressOf<C> = crate::errors::InProgress<CommittedLeaderIdOf<C>>;
     pub type SerdeInstantOf<C> = crate::metrics::SerdeInstant<InstantOf<C>>;

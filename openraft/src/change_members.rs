@@ -11,7 +11,10 @@ use display_more::DisplayBTreeSetExt;
 use display_more::DisplaySliceExt;
 use openraft_macros::since;
 
+use crate::Membership;
 use crate::display_ext::DisplayBTreeMapDebugValueExt;
+use crate::errors::MembershipError;
+use crate::membership::RaftMembershipEdit;
 use crate::node::Node;
 use crate::node::NodeId;
 
@@ -131,5 +134,35 @@ where
                 write!(f, "Batch({})", changes.as_slice().display_n(1024))
             }
         }
+    }
+}
+
+impl<NID, N> RaftMembershipEdit<Membership<NID, N>> for ChangeMembers<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
+    fn apply(self, membership: &Membership<NID, N>) -> Result<Membership<NID, N>, MembershipError<NID>> {
+        tracing::debug!("{}: change: {:?}", func_name!(), self);
+
+        let Membership { mut configs, nodes } = membership.clone().compute_target_membership(self);
+
+        // Safe unwrap(): membership changes are only evaluated on an initialized leader.
+        let target_voter_ids = configs.pop().unwrap();
+
+        let target = Membership::new_unchecked(vec![target_voter_ids], nodes);
+
+        tracing::debug!("target membership: {}", target);
+
+        Ok(target)
+    }
+
+    fn add_learner(node_id: NID, node: N) -> Self {
+        let nodes = BTreeMap::from([(node_id, node)]);
+        ChangeMembers::AddNodes(nodes)
+    }
+
+    fn make_uniform() -> Self {
+        ChangeMembers::AddVoterIds(BTreeSet::new())
     }
 }

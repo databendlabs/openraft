@@ -3,7 +3,6 @@ use std::fmt::Display;
 
 use openraft_macros::since;
 
-use crate::Membership;
 use crate::base::OptionalFeatures;
 use crate::base::finalized::Final;
 use crate::entry::RaftPayload;
@@ -59,9 +58,7 @@ where Self: OptionalFeatures + Debug + Display
     /// Return `Some(Membership)` if this entry contains a membership payload.
     #[since(version = "0.10.0", change = "derive membership type from `Payload`")]
     #[since(version = "0.10.0")]
-    fn get_membership(
-        &self,
-    ) -> Option<Membership<<Self::Payload as RaftPayload>::NodeId, <Self::Payload as RaftPayload>::Node>>;
+    fn get_membership(&self) -> Option<<Self::Payload as RaftPayload>::Membership>;
 
     /// Create a new blank log entry.
     #[since(version = "0.10.0", change = "construct configured payload type")]
@@ -84,13 +81,8 @@ where Self: OptionalFeatures + Debug + Display
     /// The returned instance must return `Some()` for `Self::get_membership()`.
     #[since(version = "0.10.0", change = "construct configured payload type")]
     #[since(version = "0.10.0", change = "become a default method")]
-    fn new_membership(
-        log_id: LogId<Self::CommittedLeaderId>,
-        m: Membership<<Self::Payload as RaftPayload>::NodeId, <Self::Payload as RaftPayload>::Node>,
-    ) -> Self
-    where
-        Self: Final + Sized,
-    {
+    fn new_membership(log_id: LogId<Self::CommittedLeaderId>, m: <Self::Payload as RaftPayload>::Membership) -> Self
+    where Self: Final + Sized {
         Self::new(log_id, Self::Payload::membership(m))
     }
 
