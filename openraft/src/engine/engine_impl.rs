@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use display_more::DisplayOptionExt;
@@ -139,8 +138,7 @@ where
             now,
             vote,
             last_log_id,
-            Arc::new((*membership).clone()),
-            membership.learner_ids(),
+            membership.clone(),
             self.state.progress_id_gen.clone(),
         ));
 
@@ -162,8 +160,7 @@ where
             now,
             vote,
             last_log_id,
-            Arc::new((*membership).clone()),
-            membership.learner_ids(),
+            membership.clone(),
             self.state.progress_id_gen.clone(),
         ));
 
@@ -175,10 +172,10 @@ where
         // Allows starting up as a leader.
 
         tracing::info!(
-            "startup begin: state: {:?}, is_leader: {}, is_voter: {}",
+            "startup begin: state: {:?}, is_leader: {}, is_campaigner: {}",
             self.state,
             self.state.is_leader(&self.config.id),
-            self.state.membership_state.effective().is_voter(&self.config.id)
+            self.state.is_campaigner(&self.config.id)
         );
 
         // TODO: replace all the following codes with one update_internal_server_state;
@@ -204,12 +201,7 @@ where
             }
         }
 
-        let server_state = if self.state.membership_state.effective().is_voter(&self.config.id) {
-            ServerState::Follower
-        } else {
-            ServerState::Learner
-        };
-
+        let server_state = self.state.calc_following_state(&self.config.id);
         self.state.server_state = server_state;
 
         tracing::info!(
@@ -972,10 +964,10 @@ where
         })
     }
 
-    /// When initialized, the node that accept initialize request has to be a member of the initial
-    /// config.
+    /// Requires the initializing node to be a campaigner in the initial configuration, because
+    /// `RaftCore::handle_initialize()` starts an election on this node right after initialization.
     fn check_members_contain_me(&self, m: &Membership<C::NodeId, C::Node>) -> Result<(), NotInMembers<C>> {
-        if !m.is_voter(&self.config.id) {
+        if !m.is_campaigner(&self.config.id) {
             let e = NotInMembers {
                 node_id: self.config.id.clone(),
                 membership: m.clone(),

@@ -899,7 +899,9 @@ where
 
     /// Get an iterator over the current learner node IDs.
     ///
-    /// Returns node IDs that are learners in the effective membership. Voters are not included.
+    /// Returns known node IDs in the effective membership with no campaign, read voter,
+    /// or write voter role. These nodes receive replicated logs without counting toward either
+    /// quorum.
     ///
     /// # Example
     ///
@@ -913,7 +915,11 @@ where
         // borrow_watched() holds a lock that blocks RaftCore.
         // Clone and collect immediately to release the lock quickly.
         let membership = self.inner.rx_metrics.borrow_watched().membership_config.clone();
-        membership.membership().learner_ids().collect::<Vec<_>>().into_iter()
+        let membership = membership.membership();
+        let nodes = membership.nodes();
+        let learners = nodes.filter(|(id, _)| membership.is_learner(id));
+        let ids = learners.map(|(id, _)| id.clone()).collect::<Vec<_>>();
+        ids.into_iter()
     }
 
     /// Create a new [`ProtocolApi`] to handle Raft protocol RPCs received by this Raft node.

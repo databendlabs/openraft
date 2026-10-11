@@ -49,17 +49,21 @@ In the default mode, the `Vote` defines the server state (leader, candidate, fol
 A server state has a unique corresponding `vote`, thus `vote` can be used to identify different server
 states, i.e., if the `vote` changes, the server state must have changed.
 
-Election eligibility uses both membership views: a node may campaign if it is a voter in
-either its effective or its committed membership. This lets a removed voter recover leadership
+Election eligibility uses both membership views: a node may campaign if it is a campaigner in
+either its effective or its committed membership. This lets a removed campaigner recover leadership
 while the final configuration that removes it is not yet locally known to be committed.
-Ordinary learners that are voters in neither view cannot campaign. Election and replication
-quorums still use only the effective membership; a candidate outside that voter set does not
+Nodes with no campaign role in either view cannot campaign. Election and replication
+quorums still use only the effective membership; a candidate outside its read voter set does not
 count its own vote.
+
+A configured learner receives logs and has no campaign, read voter, or write voter role.
+A non-leading node with any of these roles is a follower. A non-leading node outside the
+effective membership also uses the passive `ServerState::Learner` state.
 
 Note: a follower will switch to a learner and vice versa without changing the `vote`, when a
 new membership log is replicated to a follower or learner.
 
-E.g.:
+The following examples use the current `Membership`, where every voter has all three roles:
 
 - Node-2 with vote `(term=1, node_id=2, committed=true)`:
   - is a leader if it is **present** in the effective config, either a voter or non-voter,

@@ -1,10 +1,12 @@
 use std::collections::BTreeSet;
 use std::fmt;
+use std::sync::Arc;
 use std::time::Duration;
 
 use validit::Valid;
 
 use crate::LogIdOptionExt;
+use crate::Membership;
 use crate::RaftTypeConfig;
 use crate::base::shared_id_generator::SharedIdGenerator;
 use crate::engine::leader_log_ids::LeaderLogIds;
@@ -13,6 +15,7 @@ use crate::progress::IdVal;
 use crate::progress::VecProgress;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::stream_id::StreamId;
+use crate::proposer::LeaderQuorumSet;
 use crate::proposer::SendStamp;
 use crate::quorum::QuorumSet;
 use crate::type_config::TypeConfigExt;
@@ -37,8 +40,10 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// a higher `leader_id`(roughly the `term` in original raft) is seen.
 /// But instead it will be able to upgrade its `leader_id` without losing leadership.
 #[derive(Clone, Debug)]
-pub(crate) struct Leader<C, QS: QuorumSet<Id = C::NodeId>>
-where C: RaftTypeConfig
+pub(crate) struct Leader<C, QS>
+where
+    C: RaftTypeConfig,
+    QS: QuorumSet<Id = C::NodeId>,
 {
     /// Whether this Leader is marked as transferring to another node.
     ///
@@ -71,10 +76,10 @@ where C: RaftTypeConfig
     /// It is set when leader established.
     pub(crate) noop_log_id: LogIdOf<C>,
 
-    /// Tracks the replication progress and committed index
+    /// Tracks replication to all known nodes; only write voters determine the committed index.
     pub(crate) progress: Valid<VecProgress<ProgressEntry<C>, QS>>,
 
-    /// Tracks the clock time acknowledged by other nodes.
+    /// Tracks heartbeat acknowledgments; a write quorum confirms the leader's authority.
     ///
     /// Tracks the sending time(not receiving time) of the last heartbeat RPC to each follower.
     /// The leader's own entry is always updated with the current time when calculating
@@ -93,20 +98,17 @@ where C: RaftTypeConfig
     pub(crate) clock_progress: Valid<VecProgress<IdVal<C::NodeId, Option<SendStamp<InstantOf<C>>>>, QS>>,
 }
 
-impl<C, QS> Leader<C, QS>
-where
-    C: RaftTypeConfig,
-    QS: QuorumSet<Id = C::NodeId> + Clone + fmt::Debug + 'static,
+impl<C> Leader<C, LeaderQuorumSet<C>>
+where C: RaftTypeConfig
 {
-    /// Create a new Leader.
+    /// Creates a leader using the membership's write quorum for replication and heartbeat tracking.
     ///
     /// `last_leader_log_ids` is the first and last log id proposed by the last leader.
     // leader_id: Copy is feature gated
     #[allow(clippy::clone_on_copy)]
     pub(crate) fn new(
         vote: CommittedVoteOf<C>,
-        quorum_set: QS,
-        learner_ids: impl IntoIterator<Item = C::NodeId>,
+        membership: Membership<C::NodeId, C::Node>,
         last_leader_log_ids: Option<LeaderLogIds<CommittedLeaderIdOf<C>>>,
         id_gen: SharedIdGenerator,
     ) -> Self {
@@ -127,7 +129,7 @@ where
             );
         }
 
-        let learner_ids = learner_ids.into_iter().collect::<Vec<_>>();
+        let non_write_voter_ids = membership.non_write_voter_ids().collect::<Vec<_>>();
 
         let first_ref = last_leader_log_ids.as_ref().map(|x| x.first_ref());
         let last_ref = last_leader_log_ids.as_ref().map(|x| x.last_ref());
@@ -147,13 +149,15 @@ where
 
         let last_log_id = last_ref.map(|r| r.into_log_id());
 
-        let progress = VecProgress::new(quorum_set.clone(), learner_ids.iter().cloned(), |id| {
+        let write_quorum_set = Arc::new(membership.write_quorum_set().clone());
+
+        let progress = VecProgress::new(write_quorum_set.clone(), non_write_voter_ids.iter().cloned(), |id| {
             let stream_id = StreamId::new(id_gen.next_id());
             ProgressEntry::empty(id, stream_id, last_log_id.next_index())
         });
 
         let now = C::now();
-        let mut clock_progress = VecProgress::new(quorum_set, learner_ids, IdVal::new_default);
+        let mut clock_progress = VecProgress::new(write_quorum_set, non_write_voter_ids, IdVal::new_default);
         let leader_node_id = vote.to_leader_node_id();
         clock_progress.increase_to(&leader_node_id, Some(SendStamp::new(now, 0)));
 
@@ -168,7 +172,13 @@ where
             clock_progress: Valid::new(clock_progress),
         }
     }
+}
 
+impl<C, QS> Leader<C, QS>
+where
+    C: RaftTypeConfig,
+    QS: QuorumSet<Id = C::NodeId> + Clone + fmt::Debug + 'static,
+{
     pub(crate) fn noop_log_id(&self) -> &LogIdOf<C> {
         &self.noop_log_id
     }
@@ -340,7 +350,6 @@ where
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
-    use std::sync::Arc;
     use std::time::Duration;
 
     use maplit::btreeset;
@@ -357,14 +366,48 @@ mod tests {
     use crate::vote::raft_vote::RaftVoteExt;
 
     #[test]
+    fn test_new_tracks_write_voters_and_other_nodes() {
+        let membership = Membership::new_with_defaults(vec![btreeset! {1,2}, btreeset! {2,3}], [4, 5]);
+        let vote = Vote::new(2, 1).to_committed();
+        let leading = Leader::<UTConfig, _>::new(vote, membership, None, SharedIdGenerator::new());
+
+        let progress_ids = leading.progress.iter().map(|entry| entry.id);
+        let progress_ids = progress_ids.collect::<BTreeSet<_>>();
+        assert_eq!(btreeset! {1,2,3,4,5}, progress_ids);
+        let clock_ids = leading.clock_progress.iter().map(|entry| entry.id);
+        let clock_ids = clock_ids.collect::<BTreeSet<_>>();
+        assert_eq!(btreeset! {1,2,3,4,5}, clock_ids);
+        let write_voters = (0..=6).filter(|id| leading.progress.is_voter(id) == Some(true)).collect::<Vec<_>>();
+        assert_eq!(vec![1, 2, 3], write_voters);
+        let clock_voters = (0..=6).filter(|id| leading.clock_progress.is_voter(id) == Some(true)).collect::<Vec<_>>();
+        assert_eq!(vec![1, 2, 3], clock_voters);
+    }
+
+    #[test]
+    fn test_joint_clock_quorum_excludes_non_write_voters() {
+        let membership = Membership::new_with_defaults(vec![btreeset! {1,2}, btreeset! {2,3}], [4]);
+        let vote = Vote::new(2, 1).to_committed();
+        let mut leading = Leader::<UTConfig, _>::new(vote, membership, None, SharedIdGenerator::new());
+        let now = UTConfig::<()>::now();
+        let stamp = SendStamp::new(now, 0);
+
+        let acked = leading.update_clock(&2, stamp);
+        assert_eq!(None, acked);
+        let acked = leading.update_clock(&4, stamp);
+        assert_eq!(None, acked);
+        let acked = leading.update_clock(&3, stamp);
+        assert_eq!(Some(stamp), acked);
+    }
+
+    #[test]
     fn test_leader_new_with_proposed_log_id() {
         tracing::info!("--- vote greater than last log id, create new noop_log_id");
         {
             let vote = Vote::new(2, 2).to_committed();
+            let membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], []);
             let leader = Leader::<UTConfig, _>::new(
                 vote,
-                vec![btreeset! {1, 2, 3}],
-                vec![],
+                membership,
                 Some(LeaderLogIds::new(*log_id(1, 2, 0).committed_leader_id(), 1, 3)),
                 SharedIdGenerator::new(),
             );
@@ -376,10 +419,10 @@ mod tests {
         tracing::info!("--- vote equals last log id, reuse noop_log_id");
         {
             let vote = Vote::new(1, 2).to_committed();
+            let membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], []);
             let leader = Leader::<UTConfig, _>::new(
                 vote,
-                vec![btreeset! {1, 2, 3}],
-                vec![],
+                membership,
                 Some(LeaderLogIds::new(*log_id(1, 2, 0).committed_leader_id(), 1, 3)),
                 SharedIdGenerator::new(),
             );
@@ -391,10 +434,10 @@ mod tests {
         tracing::info!("--- vote equals last log id, reuse noop_log_id, last_leader_log_id.len()==1");
         {
             let vote = Vote::new(1, 2).to_committed();
+            let membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], []);
             let leader = Leader::<UTConfig, _>::new(
                 vote,
-                vec![btreeset! {1, 2, 3}],
-                vec![],
+                membership,
                 Some(LeaderLogIds::new_single(log_id(1, 2, 3))),
                 SharedIdGenerator::new(),
             );
@@ -406,8 +449,8 @@ mod tests {
         tracing::info!("--- no last log ids, create new noop_log_id, last_leader_log_id.len()==0");
         {
             let vote = Vote::new(1, 2).to_committed();
-            let leader =
-                Leader::<UTConfig, _>::new(vote, vec![btreeset! {1, 2, 3}], vec![], None, SharedIdGenerator::new());
+            let membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], []);
+            let leader = Leader::<UTConfig, _>::new(vote, membership, None, SharedIdGenerator::new());
 
             assert_eq!(leader.noop_log_id(), &log_id(1, 2, 0));
             assert_eq!(leader.last_log_id(), None);
@@ -417,10 +460,10 @@ mod tests {
     #[test]
     fn test_leader_established() {
         let vote = Vote::new(2, 2).to_committed();
+        let membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], []);
         let mut leader = Leader::<UTConfig, _>::new(
             vote,
-            vec![btreeset! {1, 2, 3}],
-            vec![],
+            membership,
             Some(LeaderLogIds::new_single(log_id(1, 2, 3))),
             SharedIdGenerator::new(),
         );
@@ -438,8 +481,8 @@ mod tests {
     #[test]
     fn test_1_entry_none_last_log_id() {
         let vote = Vote::new(0, 0).to_committed();
-        let mut leading =
-            Leader::<UTConfig, _>::new(vote, vec![btreeset! {1, 2, 3}], vec![], None, SharedIdGenerator::new());
+        let membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], []);
+        let mut leading = Leader::<UTConfig, _>::new(vote, membership, None, SharedIdGenerator::new());
 
         let log_ids: Vec<_> = leading.assign_log_ids(1).unwrap().into_iter().collect();
 
@@ -450,10 +493,10 @@ mod tests {
     #[test]
     fn test_no_entries_provided() {
         let vote = Vote::new(2, 2).to_committed();
+        let membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], []);
         let mut leading = Leader::<UTConfig, _>::new(
             vote,
-            vec![btreeset! {1, 2, 3}],
-            vec![],
+            membership,
             Some(LeaderLogIds::new_single(log_id(1, 1, 8))),
             SharedIdGenerator::new(),
         );
@@ -466,10 +509,10 @@ mod tests {
     #[test]
     fn test_multiple_entries() {
         let vote = Vote::new(2, 2).to_committed();
+        let membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], []);
         let mut leading = Leader::<UTConfig, _>::new(
             vote,
-            vec![btreeset! {1, 2, 3}],
-            [],
+            membership,
             Some(LeaderLogIds::new_single(log_id(1, 1, 8))),
             SharedIdGenerator::new(),
         );
@@ -481,13 +524,9 @@ mod tests {
 
     #[test]
     fn test_leading_last_quorum_acked_time_leader_is_voter() {
-        let mut leading = Leader::<UTConfig, Vec<BTreeSet<u64>>>::new(
-            Vote::new(2, 1).to_committed(),
-            vec![btreeset! {1, 2, 3}],
-            [4],
-            None,
-            SharedIdGenerator::new(),
-        );
+        let membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], [4]);
+        let vote = Vote::new(2, 1).to_committed();
+        let mut leading = Leader::<UTConfig, _>::new(vote, membership, None, SharedIdGenerator::new());
 
         let now1 = UTConfig::<()>::now();
 
@@ -498,13 +537,9 @@ mod tests {
 
     #[test]
     fn test_leading_last_quorum_acked_time_leader_is_learner() {
-        let mut leading = Leader::<UTConfig, Vec<BTreeSet<u64>>>::new(
-            Vote::new(2, 4).to_committed(),
-            vec![btreeset! {1, 2, 3}],
-            [4],
-            None,
-            SharedIdGenerator::new(),
-        );
+        let membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], [4]);
+        let vote = Vote::new(2, 4).to_committed();
+        let mut leading = Leader::<UTConfig, _>::new(vote, membership, None, SharedIdGenerator::new());
 
         let t2 = UTConfig::<()>::now();
         leading.update_clock(&2, SendStamp::new(t2, 0));
@@ -519,13 +554,9 @@ mod tests {
 
     #[test]
     fn test_leading_last_quorum_acked_time_leader_is_not_member() {
-        let mut leading = Leader::<UTConfig, Vec<BTreeSet<u64>>>::new(
-            Vote::new(2, 5).to_committed(),
-            vec![btreeset! {1, 2, 3}],
-            [4],
-            None,
-            SharedIdGenerator::new(),
-        );
+        let membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], [4]);
+        let vote = Vote::new(2, 5).to_committed();
+        let mut leading = Leader::<UTConfig, _>::new(vote, membership, None, SharedIdGenerator::new());
 
         let t2 = UTConfig::<()>::now();
         leading.update_clock(&2, SendStamp::new(t2, 0));
@@ -542,14 +573,9 @@ mod tests {
     fn test_clock_quorum_not_enough() {
         // Voters {1,2,3} with learner {4}; node 1 is the leader.
         let membership = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1, 2, 3}], [4]);
-        let quorum_set = Arc::new(membership);
-        let mut leading = Leader::<UTConfig, _>::new(
-            Vote::new(2, 1).to_committed(),
-            quorum_set.clone(),
-            [4],
-            None,
-            SharedIdGenerator::new(),
-        );
+        let cluster = membership.to_string();
+        let vote = Vote::new(2, 1).to_committed();
+        let mut leading = Leader::<UTConfig, _>::new(vote, membership, None, SharedIdGenerator::new());
 
         let now = UTConfig::<()>::now();
         let t1 = SendStamp::new(now, 0);
@@ -561,7 +587,7 @@ mod tests {
             err.got,
             "the leader grants its own RPCs before any response"
         );
-        assert_eq!(quorum_set.to_string(), err.cluster);
+        assert_eq!(cluster, err.cluster);
 
         leading.update_clock(&2, t1);
         let err = leading.clock_quorum_not_enough(t1);
@@ -586,13 +612,8 @@ mod tests {
     fn test_clock_quorum_orders_same_time_by_heartbeat_round() {
         // Voters {1,2,3} with learner {4}; node 1 is the leader.
         let membership = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1, 2, 3}], [4]);
-        let mut leading = Leader::<UTConfig, _>::new(
-            Vote::new(2, 1).to_committed(),
-            Arc::new(membership),
-            [4],
-            None,
-            SharedIdGenerator::new(),
-        );
+        let vote = Vote::new(2, 1).to_committed();
+        let mut leading = Leader::<UTConfig, _>::new(vote, membership, None, SharedIdGenerator::new());
         let now = UTConfig::<()>::now();
 
         tracing::info!("--- n2 acks a replication RPC sent at `now`, before the read arrives");
@@ -623,13 +644,9 @@ mod tests {
 
     #[test]
     fn test_need_heartbeat() {
-        let mut leading = Leader::<UTConfig, Vec<BTreeSet<u64>>>::new(
-            Vote::new(2, 1).to_committed(),
-            vec![btreeset! {1, 2, 3}],
-            [4],
-            None,
-            SharedIdGenerator::new(),
-        );
+        let membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], [4]);
+        let vote = Vote::new(2, 1).to_committed();
+        let mut leading = Leader::<UTConfig, _>::new(vote, membership, None, SharedIdGenerator::new());
 
         let min_interval = Duration::from_millis(100);
         let t0 = UTConfig::<()>::now();
