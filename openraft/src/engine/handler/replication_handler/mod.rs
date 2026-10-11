@@ -6,7 +6,6 @@ use progress::entry::update::Updater;
 use validit::Valid;
 
 use crate::LogIdOptionExt;
-use crate::Membership;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::engine::Command;
@@ -16,6 +15,8 @@ use crate::engine::TargetProgress;
 use crate::engine::handler::log_handler::LogHandler;
 use crate::errors::NodeNotFound;
 use crate::errors::Operation;
+use crate::membership::RaftMembership;
+use crate::membership::RaftMembershipExt;
 use crate::progress;
 use crate::progress::IdVal;
 use crate::progress::Inflight;
@@ -91,7 +92,7 @@ where
     ///
     /// It is called by the leader when a new membership log is appended to the log store.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn append_membership(&mut self, log_id: &LogIdOf<C>, m: &Membership<C::NodeId, C::Node>) {
+    pub(crate) fn append_membership(&mut self, log_id: &LogIdOf<C>, m: &C::Membership) {
         tracing::debug!("update effective membership: log_id:{} {}", log_id, m);
 
         self.state
@@ -148,6 +149,7 @@ where
                 non_write_voter_ids,
                 IdVal::new_default,
             ));
+            self.leader.update_self_quorum();
         }
     }
 
@@ -383,10 +385,15 @@ where
     pub(crate) fn initiate_replication(&mut self) {
         tracing::debug!("{}: progress: {:?}", func_name!(), self.leader.progress);
 
+        let membership = self.state.membership_state.effective().clone();
         for item in self.leader.progress.iter_mut_without_reorder() {
             // TODO: update matching should be done here for leader
             //       or updating matching should be queued in commands?
             if item.id == self.config.id {
+                continue;
+            }
+            let receives_logs = membership.membership().receives_logs(&item.id);
+            if !receives_logs {
                 continue;
             }
 

@@ -6,22 +6,19 @@ use std::fmt::Formatter;
 use openraft_macros::since;
 
 use crate::AppData;
-use crate::Membership;
-use crate::node::Node;
-use crate::node::NodeId;
+use crate::membership::RaftMembership;
 
 /// Log entry payload variants.
 #[since(
     version = "0.10.0",
-    change = "from `EntryPayload<C: RaftTypeConfig>` to `EntryPayload<D, NID, N>`"
+    change = "from `EntryPayload<C: RaftTypeConfig>` to `EntryPayload<D, Mem>`"
 )]
 #[derive(PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum EntryPayload<D, NID, N>
+pub enum EntryPayload<D, Mem>
 where
     D: AppData,
-    NID: NodeId,
-    N: Node,
+    Mem: RaftMembership,
 {
     /// An empty payload committed by a new cluster leader.
     Blank,
@@ -30,14 +27,13 @@ where
     Normal(D),
 
     /// A change-membership log entry.
-    Membership(Membership<NID, N>),
+    Membership(Mem),
 }
 
-impl<D, NID, N> Clone for EntryPayload<D, NID, N>
+impl<D, Mem> Clone for EntryPayload<D, Mem>
 where
     D: AppData + Clone,
-    NID: NodeId,
-    N: Node,
+    Mem: RaftMembership,
 {
     fn clone(&self) -> Self {
         match self {
@@ -48,11 +44,10 @@ where
     }
 }
 
-impl<D, NID, N> fmt::Debug for EntryPayload<D, NID, N>
+impl<D, Mem> fmt::Debug for EntryPayload<D, Mem>
 where
     D: AppData,
-    NID: NodeId,
-    N: Node,
+    Mem: RaftMembership,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -67,11 +62,10 @@ where
     }
 }
 
-impl<D, NID, N> fmt::Display for EntryPayload<D, NID, N>
+impl<D, Mem> fmt::Display for EntryPayload<D, Mem>
 where
     D: AppData,
-    NID: NodeId,
-    N: Node,
+    Mem: RaftMembership,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -86,11 +80,10 @@ where
     }
 }
 
-impl<D, NID, N> EntryPayload<D, NID, N>
+impl<D, Mem> EntryPayload<D, Mem>
 where
     D: AppData,
-    NID: NodeId,
-    N: Node,
+    Mem: RaftMembership,
 {
     pub fn type_str(&self) -> &'static str {
         match self {
@@ -101,15 +94,13 @@ where
     }
 }
 
-impl<AppData, NID, N> crate::entry::raft_payload::RaftPayload for EntryPayload<AppData, NID, N>
+impl<AppData, Mem> crate::entry::raft_payload::RaftPayload for EntryPayload<AppData, Mem>
 where
     AppData: crate::AppData,
-    NID: NodeId,
-    N: Node,
+    Mem: RaftMembership,
 {
     type D = AppData;
-    type NodeId = NID;
-    type Node = N;
+    type Membership = Mem;
 
     fn blank() -> Self {
         EntryPayload::Blank
@@ -119,11 +110,11 @@ where
         EntryPayload::Normal(data)
     }
 
-    fn with_membership(self, membership: Membership<NID, N>) -> Self {
+    fn with_membership(self, membership: Mem) -> Self {
         EntryPayload::Membership(membership)
     }
 
-    fn get_membership(&self) -> Option<Membership<NID, N>> {
+    fn get_membership(&self) -> Option<Mem> {
         if let EntryPayload::Membership(m) = self {
             Some(m.clone())
         } else {
@@ -139,53 +130,53 @@ mod tests {
     use crate::entry::RaftPayload;
     use crate::entry::payload::EntryPayload;
 
+    type TestPayload = EntryPayload<u64, crate::Membership<u64, ()>>;
+
     #[test]
     fn test_constructors() {
-        let actual = EntryPayload::<u64, u64, ()>::blank();
+        let actual = TestPayload::blank();
         assert_eq!(actual, EntryPayload::Blank);
 
-        let actual = EntryPayload::<u64, u64, ()>::normal(3);
+        let actual = TestPayload::normal(3);
         assert_eq!(actual, EntryPayload::Normal(3));
 
         let membership = crate::Membership::new_with_defaults(vec![BTreeSet::from([1, 2])], []);
-        let actual = EntryPayload::<u64, u64, ()>::membership(membership.clone());
+        let actual = TestPayload::membership(membership.clone());
         assert_eq!(actual, EntryPayload::Membership(membership));
     }
 
     #[test]
     fn test_with_membership_replaces_normal() {
         let membership = crate::Membership::new_with_defaults(vec![BTreeSet::from([1, 2])], []);
-        let payload = EntryPayload::<u64, u64, ()>::Normal(3);
+        let payload = TestPayload::Normal(3);
 
         let actual = payload.with_membership(membership.clone());
 
-        let expected = EntryPayload::<u64, u64, ()>::Membership(membership);
+        let expected = TestPayload::Membership(membership);
         assert_eq!(actual, expected);
     }
 
     #[test]
     fn test_with_normal_replaces_membership() {
         let membership = crate::Membership::new_with_defaults(vec![BTreeSet::from([1, 2])], []);
-        let payload = EntryPayload::<u64, u64, ()>::Membership(membership);
+        let payload = TestPayload::Membership(membership);
 
         let actual = payload.with_normal(3);
 
-        let expected = EntryPayload::<u64, u64, ()>::Normal(3);
+        let expected = TestPayload::Normal(3);
         assert_eq!(actual, expected);
     }
 
     #[test]
     fn test_debug() {
-        let blank = EntryPayload::<u64, u64, ()>::Blank;
+        let blank = TestPayload::Blank;
         assert_eq!(format!("{:?}", blank), "blank");
 
-        let normal = EntryPayload::<u64, u64, ()>::Normal(3);
+        let normal = TestPayload::Normal(3);
         assert_eq!(format!("{:?}", normal), "normal:3");
 
-        let membership = EntryPayload::<u64, u64, ()>::Membership(crate::Membership::new_with_defaults(
-            vec![BTreeSet::from([1, 2])],
-            [],
-        ));
+        let membership =
+            TestPayload::Membership(crate::Membership::new_with_defaults(vec![BTreeSet::from([1, 2])], []));
         assert_eq!(
             format!("{:?}", membership),
             "membership:Membership { configs: [{1, 2}], nodes: {1: (), 2: ()} }"
@@ -194,16 +185,14 @@ mod tests {
 
     #[test]
     fn test_display() {
-        let blank = EntryPayload::<u64, u64, ()>::Blank;
+        let blank = TestPayload::Blank;
         assert_eq!(format!("{}", blank), "blank");
 
-        let normal = EntryPayload::<u64, u64, ()>::Normal(3);
+        let normal = TestPayload::Normal(3);
         assert_eq!(format!("{}", normal), "normal:3");
 
-        let membership = EntryPayload::<u64, u64, ()>::Membership(crate::Membership::new_with_defaults(
-            vec![BTreeSet::from([1, 2])],
-            [],
-        ));
+        let membership =
+            TestPayload::Membership(crate::Membership::new_with_defaults(vec![BTreeSet::from([1, 2])], []));
         assert_eq!(
             format!("{}", membership),
             "membership:{voters:[{1:(),2:()}], learners:[]}"

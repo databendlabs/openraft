@@ -15,7 +15,6 @@ use openraft::AppData;
 use openraft::AppDataResponse;
 use openraft::AsyncRuntime;
 use openraft::BasicNode;
-use openraft::ChangeMembers;
 use openraft::Config;
 use openraft::ConfigError;
 use openraft::EmptyNode;
@@ -162,6 +161,7 @@ use openraft::errors::decompose;
 // impls module exports
 // =============================================================================
 use openraft::impls::BasicNode as ImplsBasicNode;
+use openraft::impls::ChangeMembers;
 use openraft::impls::EmptyNode as ImplsEmptyNode;
 use openraft::impls::Entry as ImplsEntry;
 use openraft::impls::LogId as ImplsLogId;

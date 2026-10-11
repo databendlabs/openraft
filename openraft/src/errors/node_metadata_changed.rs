@@ -10,7 +10,7 @@ use crate::node::NodeId;
 ///
 /// An intentional metadata update remains a separate [`ChangeMembers::SetNodes`] operation.
 ///
-/// [`ChangeMembers::SetNodes`]: crate::ChangeMembers::SetNodes
+/// [`ChangeMembers::SetNodes`]: crate::impls::ChangeMembers::SetNodes
 #[since(version = "0.10.0")]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
