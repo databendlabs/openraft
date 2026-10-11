@@ -29,6 +29,8 @@ use crate::testing::log::StoreBuilder;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::NodeIdOf;
+use crate::type_config::alias::NodeOf;
 use crate::type_config::alias::StoredMembershipOf;
 use crate::type_config::alias::TermOf;
 use crate::type_config::alias::VoteOf;
@@ -113,7 +115,7 @@ where
 #[allow(unused)]
 impl<C, LS, SM, B, G> Suite<C, LS, SM, B, G>
 where
-    C: RaftTypeConfig,
+    C: RaftTypeConfig<Membership = Membership<NodeIdOf<C>, NodeOf<C>>>,
     C::D: Debug,
     C::R: Debug,
     C::Term: From<u64>,
@@ -1783,7 +1785,7 @@ where
 /// Create a membership entry with node_id 0 for test.
 fn membership_ent_0<C>(term: impl Into<C::Term>, index: u64, bs: BTreeSet<C::NodeId>) -> C::Entry
 where
-    C: RaftTypeConfig,
+    C: RaftTypeConfig<Membership = Membership<NodeIdOf<C>, NodeOf<C>>>,
     C::NodeId: From<u64>,
     C::Node: Default,
 {

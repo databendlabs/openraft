@@ -232,7 +232,7 @@ where C: RaftTypeConfig
     ) -> Result<RaftMetrics<C>, WaitError> {
         self.metrics(
             |m| {
-                let got = m.membership_config.membership().voter_ids().collect::<BTreeSet<_>>();
+                let got = m.membership_config.voter_ids().collect::<BTreeSet<_>>();
                 want_members == got
             },
             &format!("{} .members -> {:?}", msg.to_string(), want_members),
@@ -253,7 +253,7 @@ where C: RaftTypeConfig
 
         self.metrics(
             |m| {
-                let got = m.membership_config.membership().voter_ids().collect();
+                let got = m.membership_config.voter_ids().collect();
                 want == got
             },
             &format!("{} .members == {:?}", msg.to_string(), want),

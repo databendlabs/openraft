@@ -11,7 +11,10 @@ use display_more::DisplayBTreeSetExt;
 use display_more::DisplaySliceExt;
 use openraft_macros::since;
 
+use crate::Membership;
 use crate::display_ext::DisplayBTreeMapDebugValueExt;
+use crate::errors::MembershipError;
+use crate::membership::RaftMembershipEdit;
 use crate::node::Node;
 use crate::node::NodeId;
 
@@ -131,5 +134,24 @@ where
                 write!(f, "Batch({})", changes.as_slice().display_n(1024))
             }
         }
+    }
+}
+
+impl<NID, N> RaftMembershipEdit<Membership<NID, N>> for ChangeMembers<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
+    fn apply(self, membership: &Membership<NID, N>) -> Result<Membership<NID, N>, MembershipError<NID>> {
+        membership.change(self)
+    }
+
+    fn add_learner(node_id: NID, node: N) -> Self {
+        let nodes = BTreeMap::from([(node_id, node)]);
+        ChangeMembers::AddNodes(nodes)
+    }
+
+    fn make_uniform() -> Self {
+        ChangeMembers::AddVoterIds(BTreeSet::new())
     }
 }

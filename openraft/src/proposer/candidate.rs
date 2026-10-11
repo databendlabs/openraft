@@ -4,11 +4,11 @@ use std::sync::Arc;
 use display_more::DisplayOptionExt;
 use validit::Valid;
 
-use crate::Membership;
 use crate::RaftTypeConfig;
 use crate::base::shared_id_generator::SharedIdGenerator;
 use crate::display_ext::DisplayInstantExt;
 use crate::engine::leader_log_ids::LeaderLogIds;
+use crate::membership::RaftMembership;
 use crate::progress::IdVal;
 use crate::progress::VecProgress;
 use crate::proposer::ElectionQuorumSet;
@@ -42,7 +42,7 @@ where
     /// Which nodes have granted the vote at certain time point.
     progress: Valid<VecProgress<IdVal<C::NodeId, bool>, QS>>,
 
-    membership: Membership<C::NodeId, C::Node>,
+    membership: C::Membership,
 
     progress_id_gen: SharedIdGenerator,
 }
@@ -75,7 +75,7 @@ where C: RaftTypeConfig
         starting_time: InstantOf<C>,
         vote: VoteOf<C>,
         last_log_id: Option<LogIdOf<C>>,
-        membership: Membership<C::NodeId, C::Node>,
+        membership: C::Membership,
         progress_id_gen: SharedIdGenerator,
     ) -> Self {
         let read_quorum_set = membership.read_quorum_set().clone();

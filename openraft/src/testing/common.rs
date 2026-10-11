@@ -6,6 +6,8 @@ use crate::RaftTypeConfig;
 use crate::entry::RaftEntry;
 use crate::type_config::alias::EntryOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::NodeIdOf;
+use crate::type_config::alias::NodeOf;
 use crate::vote::RaftLeaderIdExt;
 
 /// Builds a log id, for testing purposes.
@@ -29,7 +31,7 @@ where
 /// Create a membership log entry without learner config for test.
 pub fn membership_ent<C>(term: u64, node_id: C::NodeId, index: u64, config: Vec<BTreeSet<C::NodeId>>) -> EntryOf<C>
 where
-    C: RaftTypeConfig,
+    C: RaftTypeConfig<Membership = crate::Membership<NodeIdOf<C>, NodeOf<C>>>,
     C::Term: From<u64>,
     C::Node: Default,
 {

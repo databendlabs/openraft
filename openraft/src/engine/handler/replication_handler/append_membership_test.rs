@@ -29,6 +29,10 @@ fn m01() -> Membership<u64, ()> {
     Membership::<u64, ()>::new_with_defaults(vec![btreeset! {0,1}], [])
 }
 
+fn m2() -> Membership<u64, ()> {
+    Membership::<u64, ()>::new_with_defaults(vec![btreeset! {2}], [])
+}
+
 fn m23() -> Membership<u64, ()> {
     Membership::<u64, ()>::new_with_defaults(vec![btreeset! {2,3}], [])
 }
@@ -223,6 +227,28 @@ fn test_leader_append_membership_update_learner_process() -> anyhow::Result<()> 
     } else {
         unreachable!("leader should not be None");
     }
+
+    Ok(())
+}
+
+#[test]
+fn test_leader_append_membership_updates_self_quorum() -> anyhow::Result<()> {
+    let mut eng = eng();
+    eng.state.membership_state.set_effective(Arc::new(StoredMembershipOf::<UTConfig>::new(
+        Some(log_id(2, 1, 3)),
+        m2(),
+    )));
+
+    // Make it a real leader: voted for itself and vote is committed.
+    eng.testing_new_leader();
+
+    let self_quorum = eng.leader_ref().unwrap().is_self_quorum();
+    assert!(self_quorum, "node 2 alone is a majority of {{2}}");
+
+    eng.replication_handler().append_membership(&log_id(3, 1, 4), &m23());
+
+    let self_quorum = eng.leader_ref().unwrap().is_self_quorum();
+    assert!(!self_quorum, "node 2 alone is not a majority of {{2,3}}");
 
     Ok(())
 }

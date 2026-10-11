@@ -1,4 +1,3 @@
-use crate::Membership;
 use crate::RaftTypeConfig;
 use crate::raft::responder::core_responder::CoreResponder;
 use crate::type_config::alias::LogIdOf;
@@ -14,7 +13,7 @@ pub(crate) enum ApplyResponderInner<C: RaftTypeConfig> {
     /// Entry response with membership change.
     Membership {
         log_id: LogIdOf<C>,
-        membership: Membership<C::NodeId, C::Node>,
+        membership: C::Membership,
         responder: CoreResponder<C>,
     },
 }
