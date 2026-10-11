@@ -1,8 +1,4 @@
-use std::collections::BTreeSet;
-
 use openraft_macros::since;
-
-use crate::node::NodeId;
 
 /// The proposed membership is not one of the transitions a direct membership append supports.
 ///
@@ -62,13 +58,11 @@ use crate::node::NodeId;
 #[since(version = "0.10.0")]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[error("unsupported membership transition: from voters {previous:?} to voters {proposed:?}")]
-pub struct UnsupportedMembershipTransition<NID>
-where NID: NodeId
-{
-    /// The voter sets of the last effective membership.
-    pub previous: Vec<BTreeSet<NID>>,
+#[error("unsupported membership transition: from {previous} to {proposed}")]
+pub struct UnsupportedMembershipTransition {
+    /// The last effective membership, formatted with `Display`.
+    pub previous: String,
 
-    /// The voter sets of the membership the caller proposed.
-    pub proposed: Vec<BTreeSet<NID>>,
+    /// The membership the caller proposed, formatted with `Display`.
+    pub proposed: String,
 }

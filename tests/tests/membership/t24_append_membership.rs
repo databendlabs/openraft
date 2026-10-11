@@ -99,8 +99,8 @@ async fn unsupported_transition_writes_no_log() -> Result<()> {
         let err = leader.append_membership(proposed, EntryPayload::Blank, []).await.unwrap_err();
 
         let transition = UnsupportedMembershipTransition {
-            previous: vec![btreeset! {0,1,2}],
-            proposed: vec![btreeset! {1,2,3}],
+            previous: "{voters:[{0:(),1:(),2:()}], learners:[3:()]}".to_string(),
+            proposed: "{voters:[{1:(),2:(),3:()}], learners:[]}".to_string(),
         };
         let want =
             ClientWriteError::ChangeMembershipError(ChangeMembershipError::UnsupportedMembershipTransition(transition));

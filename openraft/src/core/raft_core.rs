@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::fmt;
 use std::fmt::Debug;
 use std::future::Future;
@@ -12,9 +13,7 @@ use tracing::Instrument;
 use tracing::Level;
 use tracing::Span;
 
-use crate::ChangeMembers;
 use crate::Instant;
-use crate::Membership;
 use crate::OptionalSend;
 use crate::RaftState;
 use crate::RaftTypeConfig;
@@ -79,6 +78,7 @@ use crate::errors::Timeout;
 use crate::errors::UncommittedLeaderLog;
 use crate::impls::ProgressResponder;
 use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
+use crate::membership::RaftMembershipExt;
 use crate::metrics::HeartbeatMetrics;
 use crate::metrics::MetricsRecorder;
 use crate::metrics::RaftDataMetrics;
@@ -131,6 +131,7 @@ use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::MembershipEditOf;
 use crate::type_config::alias::MembershipStateOf;
 use crate::type_config::alias::MpscReceiverOf;
 use crate::type_config::alias::MpscSenderOf;
@@ -175,15 +176,16 @@ impl<C: RaftTypeConfig> fmt::Display for ApplyResult<C> {
 
 fn apply_membership_to_payload<C>(
     membership_state: &MembershipStateOf<C>,
-    changes: ChangeMembers<C::NodeId, C::Node>,
+    changes: MembershipEditOf<C>,
     retain: bool,
     payloads: MembershipPayloads<C>,
 ) -> Result<C::Payload, ChangeMembershipErrorOf<C>>
 where
     C: RaftTypeConfig,
 {
-    let membership = membership_state.next_membership(changes, retain)?;
-    let payload = payloads.select(membership);
+    let (membership, joint) = membership_state.next_membership(changes, retain)?;
+    let finished = !joint;
+    let payload = payloads.select(membership, finished);
     Ok(payload)
 }
 
@@ -473,7 +475,7 @@ where
     #[tracing::instrument(level = "debug", skip(self, payloads, tx, preconditions))]
     pub(super) fn change_membership(
         &mut self,
-        changes: ChangeMembers<C::NodeId, C::Node>,
+        changes: MembershipEditOf<C>,
         retain: bool,
         preconditions: BatchOf<C, Precondition<C>>,
         payloads: MembershipPayloads<C>,
@@ -894,14 +896,8 @@ where
     ///
     /// [precondition]: crate::docs::cluster_control::cluster_formation#preconditions-for-initialization
     #[tracing::instrument(level = "debug", skip(self, tx))]
-    pub(crate) fn handle_initialize(
-        &mut self,
-        member_nodes: BTreeMap<C::NodeId, C::Node>,
-        tx: ResultSender<C, (), InitializeError<C>>,
-    ) {
-        tracing::debug!("{}: member_nodes: {:?}", func_name!(), member_nodes);
-
-        let membership = Membership::from(member_nodes);
+    pub(crate) fn handle_initialize(&mut self, membership: C::Membership, tx: ResultSender<C, (), InitializeError<C>>) {
+        tracing::debug!("{}: membership: {}", func_name!(), membership);
 
         let res = self.engine.initialize(membership);
 
@@ -1539,8 +1535,11 @@ where
         let id = self.id.clone();
         let tx = self.tx_notification.clone();
         let ttl = Duration::from_millis(self.config.election_timeout_min);
+        let membership = self.engine.state.membership_state.effective();
+        let voter_ids = membership.voter_ids();
+        let targets: Vec<_> = voter_ids.collect();
 
-        self.broadcast_to_voters(ttl, |target, mut client, option| {
+        self.broadcast_to(targets, ttl, |target, mut client, option| {
             let req = vote_req.clone();
             let vote = vote.clone();
             let id = id.clone();
@@ -1606,12 +1605,20 @@ where
         .await;
     }
 
-    /// Tell every other voter to accept a new leader.
+    /// Tell every other voter and the known transfer target to accept a new leader.
     #[tracing::instrument(level = "trace", skip_all)]
     async fn broadcast_transfer_leader(&mut self, req: TransferLeaderRequest<C>) {
         let ttl = Duration::from_millis(self.config.election_timeout_min);
+        let membership = self.engine.state.membership_state.effective();
+        let voter_ids = membership.voter_ids();
+        let mut targets: BTreeSet<_> = voter_ids.collect();
+        let to = req.to_node_id();
+        let known_target = membership.get_node(to).is_some();
+        if known_target {
+            targets.insert(to.clone());
+        }
 
-        self.broadcast_to_voters(ttl, |target, mut client, option| {
+        self.broadcast_to(targets, ttl, |target, mut client, option| {
             let r = req.clone();
 
             let span = tracing::debug_span!(
@@ -1644,19 +1651,18 @@ where
         .await;
     }
 
-    /// Send an RPC to every voter except this node, each in its own detached task.
+    /// Send an RPC to each target except this node, each in its own detached task.
     ///
     /// `make_rpc` is handed a fresh client for one target and the shared [`RPCOption`], and returns
     /// the future that talks to it. Nothing is joined, so each future has to report its own
     /// outcome; `ttl` is the timeout the caller is expected to enforce inside that future.
-    async fn broadcast_to_voters<F, Fut>(&mut self, ttl: Duration, make_rpc: F)
+    async fn broadcast_to<I, F, Fut>(&mut self, targets: I, ttl: Duration, make_rpc: F)
     where
+        I: IntoIterator<Item = C::NodeId>,
         F: Fn(C::NodeId, NF::Network, RPCOption) -> Fut,
         Fut: Future<Output = ()> + OptionalSend + 'static,
     {
-        let voter_ids = self.engine.state.membership_state.effective().voter_ids();
-
-        for target in voter_ids {
+        for target in targets {
             if target == self.id {
                 continue;
             }
@@ -2200,11 +2206,13 @@ where
         }
 
         let effective = self.engine.state.membership_state.effective();
-        // Whether this node is the only one that will start an election.
-        // There is no need to check `committed` membership.
-        // Because there won't be a leader established without contacting this node, if effective membership
-        // contains only this node.
-        let is_single_campaigner = effective.is_campaigner(&self.id) && effective.voter_ids().count() == 1;
+        // A sole voter may elect immediately only while holding its own vote. It must honor a
+        // vote granted to a campaigner outside the voter sets.
+        let is_sole_voter = effective.voter_ids().eq([self.id.clone()]);
+        let vote = self.engine.state.vote_ref();
+        let votes_for_self = vote.leader_node_id() == &self.id;
+        let may_campaign = effective.is_campaigner(&self.id);
+        let is_single_campaigner = may_campaign && is_sole_voter && votes_for_self;
 
         if is_single_campaigner {
             // When a node restart, it may stay in any state but the in progress election(engine.candidate) is
@@ -2215,7 +2223,7 @@ where
             }
             tracing::debug!("single voter, elect immediately");
         } else {
-            tracing::debug!("remote votes required, check election timeout");
+            tracing::debug!("check election timeout");
 
             let local_vote = &self.engine.state.vote;
             tracing::debug!("local vote: {}, election_timeout: {:?}", local_vote, election_timeout,);
@@ -2228,7 +2236,7 @@ where
             }
         }
 
-        // Only a node that is itself the sole effective voter can skip Pre-Vote. A removed
+        // Only the sole effective voter holding its own vote can skip Pre-Vote. A removed
         // committed voter still needs a remote quorum, even if there is only one effective voter.
         let pre_vote = self.runtime_config.enable_pre_vote.load(Ordering::Relaxed) && !is_single_campaigner;
 
@@ -2548,6 +2556,11 @@ where
         target: C::NodeId,
         inflight_id: InflightId,
     ) {
+        let membership = self.engine.state.membership_state.effective();
+        let receives_logs = membership.membership().receives_logs(&target);
+        if !receives_logs {
+            return;
+        }
         let node = self.replications.get(&target).expect("replication to target node exists");
 
         let snapshot_reader = self.sm_handle.new_snapshot_reader();
@@ -2607,6 +2620,11 @@ where
         let mut new_replications = BTreeMap::new();
 
         for prog in targets.iter() {
+            let membership = self.engine.state.membership_state.effective();
+            let receives_logs = membership.membership().receives_logs(&prog.target);
+            if !receives_logs {
+                continue;
+            }
             let removed = self.replications.remove(&prog.target);
 
             let handle = if let Some(removed) = removed {
@@ -2719,8 +2737,12 @@ where
                 self.run_save_committed_and_apply(already_applied, upto).await?
             }
             Command::Replicate { req, target } => {
-                let node = self.replications.get(&target).expect("replication to target node exists");
-                node.replicate_tx.send(req).ok();
+                let membership = self.engine.state.membership_state.effective();
+                let receives_logs = membership.membership().receives_logs(&target);
+                if receives_logs {
+                    let node = self.replications.get(&target).expect("replication to target node exists");
+                    node.replicate_tx.send(req).ok();
+                }
             }
             Command::ReplicateSnapshot {
                 leader_vote,
@@ -2778,8 +2800,7 @@ mod tests {
 
     impl RaftPayload for TestPayload {
         type D = u64;
-        type NodeId = u64;
-        type Node = ();
+        type Membership = Membership<u64, ()>;
 
         fn blank() -> Self {
             Self {
@@ -2883,11 +2904,11 @@ mod tests {
         assert_eq!(expected, actual);
 
         let returned = unused_rx.try_recv().unwrap();
-        assert_eq!(TestPayload::normal(2), returned);
+        assert_eq!(Some(TestPayload::normal(2)), returned);
     }
 
     /// Adding a node moves no voter, so the computed membership is uniform and the uniform
-    /// payload carries it, sending the joint payload back to the caller.
+    /// payload carries it. The caller gets `None` back, because no second step follows.
     #[test]
     fn uniform_membership_selects_uniform_payload() {
         let current = Membership::new_with_defaults(vec![btreeset! {1}], []);
@@ -2913,6 +2934,6 @@ mod tests {
         assert_eq!(expected, actual);
 
         let returned = unused_rx.try_recv().unwrap();
-        assert_eq!(TestPayload::normal(1), returned);
+        assert_eq!(None, returned);
     }
 }
