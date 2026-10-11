@@ -6,16 +6,16 @@ use std::fmt;
 
 use openraft_rt_tokio::TokioRuntime;
 
-use crate::EntryPayload;
 use crate::Membership;
 use crate::RaftTypeConfig;
 use crate::declare_raft_types;
 use crate::entry::RaftPayload;
+use crate::impls::EntryPayload;
 use crate::raft::ChangeMembershipRequest;
 
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-struct CustomPayload(EntryPayload<u64, u64, ()>);
+struct CustomPayload(EntryPayload<u64, Membership<u64, ()>>);
 
 impl fmt::Display for CustomPayload {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -25,8 +25,7 @@ impl fmt::Display for CustomPayload {
 
 impl RaftPayload for CustomPayload {
     type D = u64;
-    type NodeId = u64;
-    type Node = ();
+    type Membership = Membership<u64, ()>;
 
     fn blank() -> Self {
         Self(EntryPayload::blank())
@@ -57,7 +56,7 @@ declare_raft_types!(
         R = (),
         Term = u64,
         LeaderId = crate::impls::leader_id_std::LeaderId<u64, u64>,
-        Entry = crate::Entry<<Self::LeaderId as crate::vote::RaftLeaderId>::Committed, Self::Payload>,
+        Entry = crate::impls::Entry<<Self::LeaderId as crate::vote::RaftLeaderId>::Committed, Self::Payload>,
         Vote = crate::impls::Vote<Self::LeaderId>,
         AsyncRuntime = TokioRuntime,
         // Responder<T> is not supported by  declare_raft_types
@@ -69,7 +68,7 @@ declare_raft_types!(
         R = (),
         NodeId = u64,
         Node = (),
-        Entry = crate::Entry<<Self::LeaderId as crate::vote::RaftLeaderId>::Committed, Self::Payload>,
+        Entry = crate::impls::Entry<<Self::LeaderId as crate::vote::RaftLeaderId>::Committed, Self::Payload>,
         AsyncRuntime = TokioRuntime,
 );
 
@@ -78,7 +77,7 @@ declare_raft_types!(
         D = u64,
         NodeId = u64,
         Node = (),
-        Entry = crate::Entry<<Self::LeaderId as crate::vote::RaftLeaderId>::Committed, Self::Payload>,
+        Entry = crate::impls::Entry<<Self::LeaderId as crate::vote::RaftLeaderId>::Committed, Self::Payload>,
         AsyncRuntime = TokioRuntime,
 );
 
@@ -108,7 +107,7 @@ fn test_payload_type() {
 
     assert_payload::<WithCustomPayload, CustomPayload>();
     #[cfg(feature = "tokio-rt")]
-    assert_payload::<Empty, EntryPayload<String, u64, crate::impls::BasicNode>>();
+    assert_payload::<Empty, EntryPayload<String, Membership<u64, crate::impls::BasicNode>>>();
 }
 
 #[test]

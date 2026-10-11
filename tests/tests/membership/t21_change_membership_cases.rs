@@ -3,9 +3,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
-use openraft::ChangeMembers;
 use openraft::Config;
 use openraft::ServerState;
+use openraft::impls::ChangeMembers;
 use openraft_memstore::MemNodeId;
 
 use crate::fixtures::RaftRouter;

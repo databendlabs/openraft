@@ -4,7 +4,6 @@ use std::fmt::Debug;
 use display_more::DisplayOptionExt;
 use openraft_macros::since;
 
-use crate::Membership;
 use crate::RaftTypeConfig;
 use crate::errors::ClientWriteError;
 use crate::type_config::alias::LogIdOf;
@@ -13,6 +12,7 @@ use crate::type_config::alias::LogIdOf;
 pub type ClientWriteResult<C> = Result<ClientWriteResponse<C>, ClientWriteError<C>>;
 
 /// The response to a client-request.
+#[since(version = "0.10.0", change = "`membership` has type `Option<C::Membership>`")]
 #[cfg_attr(
     feature = "serde",
     derive(serde::Deserialize, serde::Serialize),
@@ -26,7 +26,7 @@ pub struct ClientWriteResponse<C: RaftTypeConfig> {
     pub data: C::R,
 
     /// If the log entry is a change-membership entry.
-    pub membership: Option<Membership<C::NodeId, C::Node>>,
+    pub membership: Option<C::Membership>,
 }
 
 impl<C> ClientWriteResponse<C>
@@ -55,7 +55,7 @@ where C: RaftTypeConfig
 
     /// Return membership config if the log entry is a change-membership entry.
     #[since(version = "0.9.5")]
-    pub fn membership(&self) -> &Option<Membership<C::NodeId, C::Node>> {
+    pub fn membership(&self) -> &Option<C::Membership> {
         &self.membership
     }
 }

@@ -7,6 +7,8 @@ use openraft_macros::since;
 
 use crate::Membership;
 use crate::log_id::LogId;
+use crate::membership::RaftMembership;
+use crate::membership::RaftMembershipExt;
 use crate::node::Node;
 use crate::node::NodeId;
 use crate::quorum::QuorumSet;
@@ -23,51 +25,48 @@ use crate::vote::RaftCommittedLeaderId;
 /// just created.
 #[since(
     version = "0.10.0",
-    change = "from `StoredMembership<C>` to `StoredMembership<CLID, NID, N>`"
+    change = "from `StoredMembership<C>` to `StoredMembership<CLID, Mem>`"
 )]
 #[since(version = "0.8.0")]
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct StoredMembership<CLID, NID, N>
+pub struct StoredMembership<CLID, Mem>
 where
     CLID: RaftCommittedLeaderId,
-    NID: NodeId,
-    N: Node,
+    Mem: RaftMembership,
 {
     /// The id of the log that stores this membership config
     log_id: Option<LogId<CLID>>,
 
     /// Membership config
-    membership: Membership<NID, N>,
+    membership: Mem,
 }
 
-impl<CLID, NID, N> Default for StoredMembership<CLID, NID, N>
+impl<CLID, Mem> Default for StoredMembership<CLID, Mem>
 where
     CLID: RaftCommittedLeaderId,
-    NID: NodeId,
-    N: Node,
+    Mem: RaftMembership,
 {
     fn default() -> Self {
         Self {
             log_id: None,
-            membership: Membership::default(),
+            membership: Mem::default(),
         }
     }
 }
 
-impl<CLID, NID, N> StoredMembership<CLID, NID, N>
+impl<CLID, Mem> StoredMembership<CLID, Mem>
 where
     CLID: RaftCommittedLeaderId,
-    NID: NodeId,
-    N: Node,
+    Mem: RaftMembership,
 {
     /// Create a new StoredMembership with the given log ID and membership configuration.
-    pub fn new(log_id: Option<LogId<CLID>>, membership: Membership<NID, N>) -> Self {
+    pub fn new(log_id: Option<LogId<CLID>>, membership: Mem) -> Self {
         Self { log_id, membership }
     }
 
-    pub(crate) fn new_arc(log_id: Option<LogId<CLID>>, membership: Membership<NID, N>) -> Arc<Self> {
+    pub(crate) fn new_arc(log_id: Option<LogId<CLID>>, membership: Mem) -> Arc<Self> {
         Arc::new(Self::new(log_id, membership))
     }
 
@@ -77,33 +76,41 @@ where
     }
 
     /// Get the membership configuration.
-    pub fn membership(&self) -> &Membership<NID, N> {
+    pub fn membership(&self) -> &Mem {
         &self.membership
     }
 
     /// Returns whether `nid` may start an election under the stored membership configuration.
     ///
     /// The log ID does not affect campaign eligibility.
-    pub(crate) fn is_campaigner(&self, nid: &NID) -> bool {
+    pub(crate) fn is_campaigner(&self, nid: &Mem::NodeId) -> bool {
         self.membership.is_campaigner(nid)
     }
 
     /// Get an iterator over the voter node IDs.
-    pub fn voter_ids(&self) -> impl Iterator<Item = NID> {
+    pub fn voter_ids(&self) -> impl Iterator<Item = Mem::NodeId> {
         self.membership.voter_ids()
     }
 
     /// Returns known node IDs outside the write voter configurations.
-    pub(crate) fn non_write_voter_ids(&self) -> impl Iterator<Item = NID> + '_ {
+    pub(crate) fn non_write_voter_ids(&self) -> impl Iterator<Item = Mem::NodeId> + '_ {
         self.membership.non_write_voter_ids()
     }
 
     /// Get the node (either voter or learner) by node id.
     #[since(version = "0.10.0")]
-    pub fn get_node(&self, node_id: &NID) -> Option<&N> {
-        self.membership.get_node(node_id)
+    pub fn get_node(&self, node_id: &Mem::NodeId) -> Option<&Mem::Node> {
+        let node_ref = self.membership.get_node(node_id)?;
+        Some(node_ref.node)
     }
+}
 
+impl<CLID, NID, N> StoredMembership<CLID, Membership<NID, N>>
+where
+    CLID: RaftCommittedLeaderId,
+    NID: NodeId,
+    N: Node,
+{
     /// Get an iterator over all nodes (ID and node information).
     pub fn nodes(&self) -> impl Iterator<Item = (&NID, &N)> {
         self.membership.nodes()
@@ -119,11 +126,10 @@ where
     }
 }
 
-impl<CLID, NID, N> fmt::Display for StoredMembership<CLID, NID, N>
+impl<CLID, Mem> fmt::Display for StoredMembership<CLID, Mem>
 where
     CLID: RaftCommittedLeaderId,
-    NID: NodeId,
-    N: Node,
+    Mem: RaftMembership,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{{log_id:{}, {}}}", self.log_id.display(), self.membership)
@@ -131,7 +137,7 @@ where
 }
 
 /// Implement node-id joint quorum set.
-impl<CLID, NID, N> QuorumSet for StoredMembership<CLID, NID, N>
+impl<CLID, NID, N> QuorumSet for StoredMembership<CLID, Membership<NID, N>>
 where
     CLID: RaftCommittedLeaderId,
     NID: NodeId,
