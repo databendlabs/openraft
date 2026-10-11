@@ -4,14 +4,14 @@
 
 use openraft_macros::since;
 
-use crate::ChangeMembers;
-use crate::Membership;
 use crate::Raft;
 use crate::RaftTypeConfig;
 use crate::batch::Batch;
 use crate::errors::ClientWriteError;
 use crate::errors::RaftError;
 use crate::errors::into_raft_result::IntoRaftResult;
+#[cfg(doc)]
+use crate::impls::ChangeMembers;
 #[cfg(doc)]
 use crate::impls::OneshotResponder;
 use crate::raft::ChangeMembershipOutcome;
@@ -22,6 +22,7 @@ use crate::raft::ManagementApi;
 use crate::raft::Precondition;
 use crate::storage::RaftStateMachine;
 use crate::type_config::alias::BatchOf;
+use crate::type_config::alias::MembershipEditOf;
 
 /// Implement blocking mode write operations those reply on oneshot channel for communication
 /// between Raft core and client.
@@ -83,12 +84,20 @@ where
     /// [`UncommittedLeaderLog`]: crate::errors::UncommittedLeaderLog
     #[since(
         version = "0.10.0",
+        change = "the joint entry keeps every config of the starting membership"
+    )]
+    #[since(
+        version = "0.10.0",
+        change = "take `impl Into<MembershipEditOf<C>>` instead of `impl Into<ChangeMembers>`"
+    )]
+    #[since(
+        version = "0.10.0",
         change = "skip the joint entry when every old quorum intersects every new quorum"
     )]
     #[tracing::instrument(level = "info", skip_all)]
     pub async fn change_membership(
         &self,
-        members: impl Into<ChangeMembers<C::NodeId, C::Node>>,
+        members: impl Into<MembershipEditOf<C>>,
         retain: bool,
     ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
         self.management_api()
@@ -125,6 +134,10 @@ where
     ///
     /// The returned [`ChangeMembershipOutcome`] always contains the uniform response, and the
     /// joint response when the change entered joint consensus.
+    #[since(
+        version = "0.10.0",
+        change = "the joint entry keeps every config of the starting membership"
+    )]
     #[since(
         version = "0.10.0",
         change = "skip the joint entry when every old quorum intersects every new quorum"
@@ -166,13 +179,21 @@ where
     /// joint entry's log id, a value the caller never passed.
     #[since(
         version = "0.10.0",
+        change = "the joint entry keeps every config of the starting membership"
+    )]
+    #[since(
+        version = "0.10.0",
+        change = "take `impl Into<MembershipEditOf<C>>` instead of `impl Into<ChangeMembers>`"
+    )]
+    #[since(
+        version = "0.10.0",
         change = "skip the joint entry when every old quorum intersects every new quorum"
     )]
     #[since(version = "0.10.0")]
     #[tracing::instrument(level = "info", skip_all)]
     pub async fn change_membership_if(
         &self,
-        members: impl Into<ChangeMembers<C::NodeId, C::Node>>,
+        members: impl Into<MembershipEditOf<C>>,
         retain: bool,
         preconditions: impl IntoIterator<Item = Precondition<C>>,
     ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
@@ -188,8 +209,8 @@ where
     /// one-voter step it also accepts a caller-built joint membership. It is not the default way
     /// to change membership. The caller supplies the whole stored membership here — every voter
     /// set, every learner and every node's metadata — and openraft checks only the transition
-    /// rule below. Prefer [`Self::change_membership()`], which derives all of that from the
-    /// current membership, unless you know exactly what this method will write.
+    /// rule and the rejections below. Prefer [`Self::change_membership()`], which derives all of
+    /// that from the current membership, unless you know exactly what this method will write.
     ///
     /// Unlike [`Self::change_membership()`], which may compute a joint config and then flatten it
     /// in a second entry, this method writes exactly the `membership` given, in one physical log
@@ -207,10 +228,11 @@ where
     ///
     /// # Accepted transitions
     ///
-    /// The proposed membership must be reachable from the last committed one by a transition whose
-    /// quorum intersection openraft can prove cheaply: a voter set of one membership and a voter
-    /// set of the other have intersecting majorities, i.e. every majority of the first intersects
-    /// every majority of the second.
+    /// [`RaftMembership::supports_direct_transition_to()`] of the last committed membership must
+    /// return `true` for the proposed one, so the membership type decides which transitions are
+    /// accepted. The default [`Membership`] accepts a transition whose quorum intersection it can
+    /// prove cheaply: a voter set of one membership and a voter set of the other have intersecting
+    /// majorities, i.e. every majority of the first intersects every majority of the second.
     ///
     /// Anything else fails with [`UnsupportedMembershipTransition`]. When either membership has
     /// more than one voter set, the error is a limit of this rule, not proof that the transition
@@ -221,6 +243,13 @@ where
     /// - [`InProgress`], while the preceding membership is not committed yet.
     /// - [`UncommittedLeaderLog`], until this leader commits a log entry of its own term. This
     ///   holds even after the preceding membership commits and the leader holds a valid lease.
+    /// - [`EmptyMembership`], when the read or the write quorum set of the proposed membership has
+    ///   no usable quorum.
+    /// - [`LearnerNotFound`], when a quorum ID of the proposed membership has no node.
+    /// - [`WriteVoterWithoutReceiveLogs`], when a write voter of the proposed membership does not
+    ///   have [`NodeRole::ReceiveLogs`].
+    /// - [`UnprovenReadWriteIntersection`], when openraft cannot prove that every read quorum of
+    ///   the proposed membership intersects every write quorum.
     /// - [`NodeMetadataChanged`], when the proposed membership gives a different `Node` to a node
     ///   id the cluster already knows. Adding and removing a node stay allowed; an intentional
     ///   metadata update is still [`ChangeMembers::SetNodes`].
@@ -271,9 +300,16 @@ where
     /// ```
     ///
     /// [`RaftPayload::with_membership()`]: crate::entry::RaftPayload::with_membership
+    /// [`RaftMembership::supports_direct_transition_to()`]: crate::membership::RaftMembership::supports_direct_transition_to
+    /// [`Membership`]: crate::Membership
     /// [`UnsupportedMembershipTransition`]: crate::errors::UnsupportedMembershipTransition
     /// [`InProgress`]: crate::errors::InProgress
     /// [`UncommittedLeaderLog`]: crate::errors::UncommittedLeaderLog
+    /// [`EmptyMembership`]: crate::errors::EmptyMembership
+    /// [`LearnerNotFound`]: crate::errors::LearnerNotFound
+    /// [`WriteVoterWithoutReceiveLogs`]: crate::errors::WriteVoterWithoutReceiveLogs
+    /// [`NodeRole::ReceiveLogs`]: crate::membership::NodeRole::ReceiveLogs
+    /// [`UnprovenReadWriteIntersection`]: crate::errors::UnprovenReadWriteIntersection
     /// [`NodeMetadataChanged`]: crate::errors::NodeMetadataChanged
     #[since(
         version = "0.10.0",
@@ -283,7 +319,7 @@ where
     #[tracing::instrument(level = "info", skip_all)]
     pub async fn append_membership(
         &self,
-        membership: Membership<C::NodeId, C::Node>,
+        membership: C::Membership,
         payload: C::Payload,
         preconditions: impl IntoIterator<Item = Precondition<C>>,
     ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {

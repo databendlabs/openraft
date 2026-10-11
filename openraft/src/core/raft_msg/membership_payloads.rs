@@ -1,4 +1,3 @@
-use crate::Membership;
 use crate::RaftTypeConfig;
 use crate::async_runtime::OneshotSender;
 use crate::entry::RaftPayload;
@@ -19,13 +18,14 @@ where C: RaftTypeConfig
 
     /// The change may compute a joint or a uniform membership.
     ///
-    /// `RaftCore` selects the payload of the computed shape and sends the other one back through
-    /// `unused_tx`. A joint membership therefore returns `uniform`, which the caller spends on
-    /// the entry that flattens that joint membership.
+    /// `RaftCore` selects the payload of the computed shape. For a joint membership it sends
+    /// `uniform` back through `unused_tx`, and the caller spends it on the entry that flattens
+    /// that joint membership. For a uniform membership it sends `None`, so the caller knows that
+    /// the change is complete.
     JointOrUniform {
         joint: C::Payload,
         uniform: C::Payload,
-        unused_tx: OneshotSenderOf<C, C::Payload>,
+        unused_tx: OneshotSenderOf<C, Option<C::Payload>>,
     },
 }
 
@@ -33,7 +33,10 @@ impl<C> MembershipPayloads<C>
 where C: RaftTypeConfig
 {
     /// Bind `membership` into the payload that matches its shape, and return that payload.
-    pub(crate) fn select(self, membership: Membership<C::NodeId, C::Node>) -> C::Payload {
+    ///
+    /// `finished` is true when `membership` is the target of the change, and false when it is a
+    /// joint membership.
+    pub(crate) fn select(self, membership: C::Membership, finished: bool) -> C::Payload {
         let payload = match self {
             Self::Uniform(uniform) => uniform,
             Self::JointOrUniform {
@@ -41,14 +44,14 @@ where C: RaftTypeConfig
                 uniform,
                 unused_tx,
             } => {
-                let (selected, unused) = if membership.is_joint() {
-                    (joint, uniform)
+                let (selected, unused) = if finished {
+                    (uniform, None)
                 } else {
-                    (uniform, joint)
+                    (joint, Some(uniform))
                 };
 
-                // The caller owns the payload this entry does not spend. It needs the uniform
-                // one back to write the entry that flattens a joint membership.
+                // The caller needs the uniform payload back only after a joint membership, to
+                // write the entry that flattens it.
                 let _ = unused_tx.send(unused);
                 selected
             }

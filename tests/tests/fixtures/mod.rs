@@ -79,6 +79,7 @@ use crate::fixtures::logging::init_file_logging;
 use crate::fixtures::rpc_request::RpcRequest;
 use crate::fixtures::rpc_response::RpcResponse;
 
+pub mod custom_membership;
 pub mod logging;
 mod post_hook;
 mod pre_hook;

@@ -55,8 +55,9 @@ pub use self::streaming_error::StreamingError;
 pub use self::uncommitted_leader_log::UncommittedLeaderLog;
 pub use self::unsupported_membership_transition::UnsupportedMembershipTransition;
 use crate::LogId;
-use crate::Membership;
 use crate::RaftTypeConfig;
+pub use crate::membership::errors::UnprovenReadWriteIntersection;
+pub use crate::membership::errors::WriteVoterWithoutReceiveLogs;
 use crate::network::RPCTypes;
 use crate::node::NodeId;
 use crate::try_as_ref::TryAsRef;
@@ -139,6 +140,8 @@ where C: RaftTypeConfig
 }
 
 /// The set of errors which may take place when requesting to propose a config change.
+#[since(version = "0.10.0", change = "added `WriteVoterWithoutReceiveLogs` variant")]
+#[since(version = "0.10.0", change = "added `UnprovenReadWriteIntersection` variant")]
 #[since(
     version = "0.10.0",
     change = "added `UnsupportedMembershipTransition`, `UncommittedLeaderLog` and `NodeMetadataChanged` variants"
@@ -169,7 +172,7 @@ where
     /// The proposed membership is not a transition a direct membership append supports.
     #[since(version = "0.10.0")]
     #[error(transparent)]
-    UnsupportedMembershipTransition(#[from] UnsupportedMembershipTransition<NID>),
+    UnsupportedMembershipTransition(#[from] UnsupportedMembershipTransition),
 
     /// The leader has not yet committed a log entry proposed in its own term.
     #[since(version = "0.10.0")]
@@ -180,9 +183,24 @@ where
     #[since(version = "0.10.0")]
     #[error(transparent)]
     NodeMetadataChanged(#[from] NodeMetadataChanged<NID>),
+
+    /// OpenRaft cannot prove that every read quorum of the proposed membership intersects every
+    /// write quorum.
+    #[since(version = "0.10.0")]
+    #[error(transparent)]
+    UnprovenReadWriteIntersection(#[from] UnprovenReadWriteIntersection),
+
+    /// A write voter of the proposed membership does not have [`NodeRole::ReceiveLogs`], so it
+    /// never acknowledges a log.
+    ///
+    /// [`NodeRole::ReceiveLogs`]: crate::membership::NodeRole::ReceiveLogs
+    #[since(version = "0.10.0")]
+    #[error(transparent)]
+    WriteVoterWithoutReceiveLogs(#[from] WriteVoterWithoutReceiveLogs<NID>),
 }
 
 /// The set of errors which may take place when initializing a pristine Raft node.
+#[since(version = "0.10.0", change = "added `InvalidMembership` variant")]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, derive_more::TryInto)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum InitializeError<C>
@@ -195,6 +213,15 @@ where C: RaftTypeConfig
     /// This node is not included in the initial membership configuration.
     #[error(transparent)]
     NotInMembers(#[from] NotInMembers<C>),
+
+    /// The initial membership configuration defines no quorum, a quorum ID has no node, a write
+    /// voter does not have [`NodeRole::ReceiveLogs`], or OpenRaft cannot prove that its read
+    /// quorums intersect its write quorums.
+    ///
+    /// [`NodeRole::ReceiveLogs`]: crate::membership::NodeRole::ReceiveLogs
+    #[since(version = "0.10.0")]
+    #[error(transparent)]
+    InvalidMembership(#[from] MembershipError<C::NodeId>),
 }
 
 /// Error occurs when invoking a remote raft API.
@@ -502,11 +529,15 @@ where C: RaftTypeConfig
 pub struct SnapshotMismatch {}
 
 /// Error indicating that not enough nodes responded to form a quorum.
+#[since(
+    version = "0.10.0",
+    change = "`cluster` from a membership description to the write quorum set formatted with `Debug`"
+)]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[error("not enough for a quorum, cluster: {cluster}, got: {got:?}")]
+#[error("not enough for a quorum, write quorum set: {cluster}, got: {got:?}")]
 pub struct QuorumNotEnough<C: RaftTypeConfig> {
-    /// A description of the cluster membership.
+    /// The write quorum set, formatted with `Debug`.
     pub cluster: String,
     /// The set of nodes that responded.
     pub got: BTreeSet<C::NodeId>,
@@ -552,6 +583,7 @@ pub struct NotAllowed<C: RaftTypeConfig> {
 }
 
 /// Error indicating a node is not a member of the cluster.
+#[since(version = "0.10.0", change = "`membership` field has type `C::Membership`")]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("node {node_id} has to be a member. membership:{membership:?}")]
@@ -561,7 +593,7 @@ where C: RaftTypeConfig
     /// The node ID that is not in the membership.
     pub node_id: C::NodeId,
     /// The current cluster membership.
-    pub membership: Membership<C::NodeId, C::Node>,
+    pub membership: C::Membership,
 }
 
 /// Error indicating an empty membership configuration was provided.

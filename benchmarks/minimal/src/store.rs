@@ -10,10 +10,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::Stream;
-use openraft::EntryPayload;
 use openraft::OptionalSend;
 use openraft::RaftTypeConfig;
-use openraft::Vote;
 use openraft::alias::DefaultEntryOf;
 use openraft::alias::EntryOf;
 use openraft::alias::LogIdOf;
@@ -21,6 +19,8 @@ use openraft::alias::SnapshotMetaOf;
 use openraft::alias::SnapshotOf;
 use openraft::alias::StoredMembershipOf;
 use openraft::entry::RaftEntry;
+use openraft::impls::EntryPayload;
+use openraft::impls::Vote;
 use openraft::storage::EntryResponder;
 use openraft::storage::IOFlushed;
 use openraft::storage::LogState;
@@ -69,7 +69,9 @@ impl RaftTypeConfig for TypeConfig {
     type Term = u64;
     type LeaderId = LeaderId;
     type Vote = Vote<Self::LeaderId>;
-    type Payload = EntryPayload<Self::D, Self::NodeId, Self::Node>;
+    type Membership = openraft::impls::Membership<Self::NodeId, Self::Node>;
+    type MembershipEdit = openraft::impls::ChangeMembers<Self::NodeId, Self::Node>;
+    type Payload = EntryPayload<Self::D, Self::Membership>;
     type Entry = DefaultEntryOf<Self>;
     type Responder<T>
         = openraft::impls::OneshotResponder<Self, T>
