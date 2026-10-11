@@ -96,8 +96,8 @@ use crate::progress::VecProgressEntry;
 use crate::progress::inflight_id::InflightId;
 use crate::progress::stream_id::StreamId;
 use crate::proposer::Leader;
-use crate::proposer::LeaderQuorumSet;
 use crate::proposer::SendStamp;
+use crate::proposer::WriteQuorumSet;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::ClientWriteResult;
 use crate::raft::LogSegment;
@@ -581,7 +581,7 @@ where
     /// [`Raft::change_membership()`]: crate::raft::Raft::change_membership
     fn ensure_leader_log_committed(
         state: &RaftState<C>,
-        leader: &Leader<C, LeaderQuorumSet<C>>,
+        leader: &Leader<C, WriteQuorumSet<C>>,
     ) -> Result<(), UncommittedLeaderLog<CommittedLeaderIdOf<C>>> {
         let noop_log_id = leader.noop_log_id();
         let cluster_committed = state.cluster_committed();

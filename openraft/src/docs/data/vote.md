@@ -53,8 +53,9 @@ Election eligibility uses both membership views: a node may campaign if it is a 
 either its effective or its committed membership. This lets a removed campaigner recover leadership
 while the final configuration that removes it is not yet locally known to be committed.
 Nodes with no campaign role in either view cannot campaign. Election and replication
-quorums still use only the effective membership; a candidate outside its read voter set does not
-count its own vote.
+quorums still use only the effective membership. A candidate counts its own vote toward the
+read quorum only if it is a read voter. With standard leader IDs, the candidate's own vote
+also counts toward the write quorum when the candidate is a write voter.
 
 A configured learner receives logs and has no campaign, read voter, or write voter role.
 A non-leading node with any of these roles is a follower. A non-leading node outside the

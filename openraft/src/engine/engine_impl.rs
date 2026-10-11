@@ -29,9 +29,10 @@ use crate::errors::NotAllowed;
 use crate::errors::NotInMembers;
 use crate::errors::RejectAppendEntries;
 use crate::proposer::Candidate;
+use crate::proposer::ElectionQuorumSet;
 use crate::proposer::Leader;
-use crate::proposer::LeaderQuorumSet;
 use crate::proposer::LeaderState;
+use crate::proposer::WriteQuorumSet;
 use crate::proposer::leader_state::CandidateState;
 use crate::raft::LogSegment;
 use crate::raft::SnapshotResponse;
@@ -128,7 +129,7 @@ where
     ///
     /// The candidate `last_log_id` is initialized with the attributes of Acceptor part:
     /// [`RaftState`]
-    pub(crate) fn new_candidate(&mut self, vote: VoteOf<C>) -> &mut Candidate<C, LeaderQuorumSet<C>> {
+    pub(crate) fn new_candidate(&mut self, vote: VoteOf<C>) -> &mut Candidate<C, ElectionQuorumSet<C>> {
         let now = C::now();
         let last_log_id = self.state.last_log_id().cloned();
 
@@ -150,7 +151,7 @@ where
     /// Like [`new_candidate`](Self::new_candidate), but for the Pre-Vote round: the resulting
     /// quorum tracker lives in [`pre_candidate`](Self::pre_candidate) and `vote` is only a
     /// hypothetical next-term vote that is never persisted.
-    pub(crate) fn new_pre_candidate(&mut self, vote: VoteOf<C>) -> &mut Candidate<C, LeaderQuorumSet<C>> {
+    pub(crate) fn new_pre_candidate(&mut self, vote: VoteOf<C>) -> &mut Candidate<C, ElectionQuorumSet<C>> {
         let now = C::now();
         let last_log_id = self.state.last_log_id().cloned();
 
@@ -350,28 +351,28 @@ where
         });
     }
 
-    pub(crate) fn leader_ref(&self) -> Option<&Leader<C, LeaderQuorumSet<C>>> {
+    pub(crate) fn leader_ref(&self) -> Option<&Leader<C, WriteQuorumSet<C>>> {
         self.leader.as_deref()
     }
 
-    pub(crate) fn leader_mut(&mut self) -> Option<&mut Leader<C, LeaderQuorumSet<C>>> {
+    pub(crate) fn leader_mut(&mut self) -> Option<&mut Leader<C, WriteQuorumSet<C>>> {
         self.leader.as_deref_mut()
     }
 
-    pub(crate) fn candidate_ref(&self) -> Option<&Candidate<C, LeaderQuorumSet<C>>> {
+    pub(crate) fn candidate_ref(&self) -> Option<&Candidate<C, ElectionQuorumSet<C>>> {
         self.candidate.as_ref()
     }
 
-    pub(crate) fn candidate_mut(&mut self) -> Option<&mut Candidate<C, LeaderQuorumSet<C>>> {
+    pub(crate) fn candidate_mut(&mut self) -> Option<&mut Candidate<C, ElectionQuorumSet<C>>> {
         self.candidate.as_mut()
     }
 
-    pub(crate) fn pre_candidate_ref(&self) -> Option<&Candidate<C, LeaderQuorumSet<C>>> {
+    pub(crate) fn pre_candidate_ref(&self) -> Option<&Candidate<C, ElectionQuorumSet<C>>> {
         self.pre_candidate.as_ref()
     }
 
     #[cfg(test)]
-    pub(crate) fn pre_candidate_mut(&mut self) -> Option<&mut Candidate<C, LeaderQuorumSet<C>>> {
+    pub(crate) fn pre_candidate_mut(&mut self) -> Option<&mut Candidate<C, ElectionQuorumSet<C>>> {
         self.pre_candidate.as_mut()
     }
 
@@ -1108,7 +1109,7 @@ mod engine_testing {
     use crate::RaftTypeConfig;
     use crate::engine::Engine;
     use crate::engine::EngineConfig;
-    use crate::proposer::LeaderQuorumSet;
+    use crate::proposer::WriteQuorumSet;
     use crate::raft_state::RaftState;
 
     impl<C, SM> Engine<C, SM>
@@ -1119,7 +1120,7 @@ mod engine_testing {
         /// Create a Leader state just for testing purpose only,
         /// without initializing related resource,
         /// such as setting up replication, propose blank log.
-        pub(crate) fn testing_new_leader(&mut self) -> &mut crate::proposer::Leader<C, LeaderQuorumSet<C>> {
+        pub(crate) fn testing_new_leader(&mut self) -> &mut crate::proposer::Leader<C, WriteQuorumSet<C>> {
             let leader = self.state.new_leader();
             self.leader = Some(Box::new(leader));
             self.leader.as_mut().unwrap()
