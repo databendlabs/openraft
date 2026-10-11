@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use maplit::btreemap;
 use maplit::btreeset;
 
 use crate::ChangeMembers;
@@ -76,34 +77,108 @@ fn test_next_membership_retain_learner() -> anyhow::Result<()> {
 
     // Do not leave removed voters as learner
     let res = new().next_membership(ChangeMembers::RemoveVoters(btreeset! {1,2}), false);
-    assert_eq!(
-        Ok(Membership::new_with_defaults(vec![btreeset! {3,4,5}], [3, 4, 5])),
-        res
-    );
+    let expected = Membership::new_with_defaults(vec![btreeset! {3,4,5}], [3, 4, 5]);
+    assert_eq!(Ok((expected, false)), res);
 
     // Leave removed voters as learner
     let res = new().next_membership(ChangeMembers::RemoveVoters(btreeset! {1,2}), true);
-    assert_eq!(
-        Ok(Membership::new_with_defaults(vec![btreeset! {3,4,5}], [1, 2, 3, 4, 5])),
-        res
-    );
+    let expected = Membership::new_with_defaults(vec![btreeset! {3,4,5}], [1, 2, 3, 4, 5]);
+    assert_eq!(Ok((expected, false)), res);
 
     Ok(())
 }
 
-/// Changing from a joint membership may drop a leader that belongs only to the old voter set.
+/// A change from a joint membership appends a joint membership that keeps every old voter set.
 #[test]
-fn test_next_membership_joint_can_leave_out_leader() -> anyhow::Result<()> {
+fn test_next_membership_from_joint_keeps_old_voter_sets() -> anyhow::Result<()> {
     let state = MembershipStateOf::<UTConfig>::new(effmem(3, 4, m123_345()), effmem(3, 4, m123_345()));
-    let joint = vec![btreeset! {3,4,5}, btreeset! {4}];
+    let joint = vec![btreeset! {1,2,3}, btreeset! {3,4,5}, btreeset! {4}];
 
     let result = state.next_membership(ChangeMembers::ReplaceAllVoters(btreeset! {4}), false);
     let expected = Membership::new_with_defaults(joint.clone(), []);
-    assert_eq!(Ok(expected), result);
+    assert_eq!(Ok((expected, true)), result);
 
     let result = state.next_membership(ChangeMembers::ReplaceAllVoters(btreeset! {4}), true);
-    let expected = Membership::new_with_defaults(joint, [1, 2]);
-    assert_eq!(Ok(expected), result);
+    let expected = Membership::new_with_defaults(joint, []);
+    assert_eq!(Ok((expected, true)), result);
+
+    Ok(())
+}
+
+/// From a committed membership, `next_membership()` returns the target of `ReplaceAllVoters` when
+/// the step to it is proven, and the joint of the two otherwise.
+#[test]
+fn test_next_membership_returns_target_or_joint() -> anyhow::Result<()> {
+    let nodes = || vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
+    let c1 = || btreeset! {1,2,3};
+    let c2 = || btreeset! {3,4,5};
+    let c3 = || btreeset! {7,8,9};
+
+    #[allow(clippy::redundant_closure)]
+    let new_mem = |voter_ids, ns| Membership::<u64, ()>::new_with_defaults(voter_ids, ns);
+
+    // The result of `ReplaceAllVoters(voter_ids)` when `m` is the committed and effective membership.
+    let next_step = |m: &Membership<u64, ()>, voter_ids, retain: bool| {
+        let state = MembershipStateOf::<UTConfig>::new(effmem(3, 4, m.clone()), effmem(3, 4, m.clone()));
+        state.next_membership(ChangeMembers::ReplaceAllVoters(voter_ids), retain)
+    };
+
+    let m1 = new_mem(vec![c1()], nodes());
+    let m12 = new_mem(vec![c1(), c2()], nodes());
+
+    let res = next_step(&m1, c1(), false);
+    assert_eq!(Ok((m1.clone(), false)), res);
+
+    let res = next_step(&m1, c2(), false);
+    assert_eq!(Ok((m12.clone(), true)), res);
+
+    let res = next_step(&m12, c1(), false);
+    let expected = new_mem(vec![c1()], vec![1, 2, 3, 6, 7, 8, 9]);
+    assert_eq!(Ok((expected, false)), res);
+
+    let res = next_step(&m12, c2(), false);
+    let expected = new_mem(vec![c2()], vec![3, 4, 5, 6, 7, 8, 9]);
+    assert_eq!(Ok((expected, false)), res);
+
+    let res = next_step(&m12, c3(), false);
+    let expected = new_mem(vec![c1(), c2(), c3()], nodes());
+    assert_eq!(Ok((expected, true)), res);
+
+    let res = next_step(&m12, c3(), true);
+    let expected = new_mem(vec![c1(), c2(), c3()], nodes());
+    assert_eq!(Ok((expected, true)), res);
+
+    // Turn removed members to learners
+
+    let m23_with_learners_old = new_mem(vec![c2(), c3()], vec![1, 2]);
+    let res = next_step(&m23_with_learners_old, c3(), true);
+    let expected = new_mem(vec![c3()], vec![1, 2, 3, 4, 5]);
+    assert_eq!(Ok((expected, false)), res);
+
+    Ok(())
+}
+
+/// A batch that removes voter 2 and adds voter 5 takes two steps, because quorum `{1,2}` of
+/// `{1,2,3}` and quorum `{3,5}` of `{1,3,5}` are disjoint.
+#[test]
+fn test_next_membership_batch_takes_two_steps() -> anyhow::Result<()> {
+    let rm_2_add_5 = || {
+        ChangeMembers::Batch(vec![
+            ChangeMembers::RemoveVoters(btreeset! {2}),
+            ChangeMembers::AddVoters(btreemap! {5=>()}),
+        ])
+    };
+
+    let m123 = Membership::new_with_defaults(vec![btreeset! {1,2,3}], []);
+    let state = MembershipStateOf::<UTConfig>::new(effmem(3, 4, m123.clone()), effmem(3, 4, m123));
+    let result = state.next_membership(rm_2_add_5(), false);
+    let joint = Membership::new_with_defaults(vec![btreeset! {1,2,3}, btreeset! {1,3,5}], []);
+    assert_eq!(Ok((joint.clone(), true)), result);
+
+    let state = MembershipStateOf::<UTConfig>::new(effmem(3, 5, joint.clone()), effmem(3, 5, joint));
+    let result = state.next_membership(rm_2_add_5(), false);
+    let expected = Membership::new_with_defaults(vec![btreeset! {1,3,5}], []);
+    assert_eq!(Ok((expected, false)), result);
 
     Ok(())
 }

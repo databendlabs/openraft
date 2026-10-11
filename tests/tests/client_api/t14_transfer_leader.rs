@@ -453,14 +453,13 @@ async fn transfer_leader_to_promoted_learner_without_promotion_log_does_not_pani
     Ok(())
 }
 
-/// The only voter steps down after a transfer to a learner, wins a new term, and serves writes
-/// again.
+/// The only voter recovers from a transfer to an unreachable learner and serves writes again.
 ///
-/// A learner never campaigns, and no other node can win an election, so the transfer can never
-/// complete. Node 0 steps down once the transfer has not completed within an election timeout.
+/// The target cannot receive the transfer request. Node 0 steps down once the transfer has not
+/// completed within an election timeout.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
-async fn only_voter_steps_down_after_transfer_to_learner() -> anyhow::Result<()> {
+async fn only_voter_steps_down_after_transfer_to_unreachable_learner() -> anyhow::Result<()> {
     let config = Arc::new(
         Config {
             election_timeout_min: 150,
@@ -480,9 +479,10 @@ async fn only_voter_steps_down_after_transfer_to_learner() -> anyhow::Result<()>
 
     tracing::info!(
         log_index,
-        "--- node 0 transfers leadership to learner 1 and rejects writes"
+        "--- isolate learner 1, then node 0 transfers leadership to it and rejects writes"
     );
     {
+        router.set_network_error(1, true);
         n0.trigger().transfer_leader(1).await?;
 
         let err = n0

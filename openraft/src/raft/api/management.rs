@@ -1,12 +1,9 @@
 use std::fmt::Debug;
 
 use display_more::DisplayResultExt;
-use maplit::btreemap;
 use openraft_macros::since;
 
-use crate::ChangeMembers;
 use crate::LogIdOptionExt;
-use crate::Membership;
 use crate::RaftMetrics;
 use crate::RaftTypeConfig;
 use crate::batch::Batch;
@@ -18,7 +15,7 @@ use crate::errors::ClientWriteError;
 use crate::errors::Fatal;
 use crate::errors::InitializeError;
 use crate::impls::ProgressResponder;
-use crate::membership::IntoNodes;
+use crate::membership::RaftMembershipEdit;
 use crate::raft::ChangeMembershipOutcome;
 use crate::raft::ChangeMembershipRequest;
 use crate::raft::ClientWriteResult;
@@ -27,6 +24,7 @@ use crate::raft::raft_inner::RaftInner;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::BatchOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::MembershipEditOf;
 
 /// Provides management APIs for the Raft system.
 ///
@@ -49,10 +47,10 @@ where C: RaftTypeConfig
     #[since(version = "0.10.0")]
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) async fn initialize<T>(&self, members: T) -> Result<Result<(), InitializeError<C>>, Fatal<C>>
-    where T: IntoNodes<C::NodeId, C::Node> + Debug {
+    where T: Into<C::Membership> + Debug {
         self.inner
             .call_core_oneshot(|tx| RaftMsg::Initialize {
-                members: members.into_nodes(),
+                members: members.into(),
                 tx,
             })
             .await
@@ -62,7 +60,7 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "info", skip_all)]
     pub(crate) async fn change_membership(
         &self,
-        members: impl Into<ChangeMembers<C::NodeId, C::Node>>,
+        members: impl Into<MembershipEditOf<C>>,
         retain: bool,
         preconditions: BatchOf<C, Precondition<C>>,
     ) -> Result<ClientWriteResult<C>, Fatal<C>> {
@@ -93,8 +91,9 @@ where C: RaftTypeConfig
         tracing::debug!("change_membership: start",);
 
         // `RaftCore` computes the membership, so only `RaftCore` can tell whether this change
-        // needs a joint membership. It spends `joint_payload` on a joint membership and
-        // `uniform_payload` on a uniform one, and returns the payload it did not spend.
+        // needs a joint membership. It spends `joint_payload` on a joint membership and returns
+        // `uniform_payload` for the second step. It spends `uniform_payload` on a uniform one and
+        // returns `None`.
         let (unused_tx, unused_rx) = C::oneshot();
         let payloads = MembershipPayloads::JointOrUniform {
             joint: joint_payload,
@@ -108,7 +107,7 @@ where C: RaftTypeConfig
             .inner
             .call_core(
                 RaftMsg::ChangeMembership {
-                    changes: changes.clone(),
+                    changes,
                     payloads,
                     retain,
                     preconditions: Batch::of(preconditions.as_ref().iter().cloned()),
@@ -135,20 +134,20 @@ where C: RaftTypeConfig
 
         let (log_id, membership) = (&resp.log_id, resp.membership.clone().unwrap());
 
-        if !membership.is_joint() {
+        // The first step returns `uniform_payload` only after it spent `joint_payload` on a joint
+        // entry. The second step then spends `uniform_payload` on the entry that flattens it.
+        let unused_payload = self.inner.recv_msg(unused_rx).await?;
+
+        let Some(uniform_payload) = unused_payload else {
             let outcome = ChangeMembershipOutcome {
                 joint: None,
                 uniform: resp,
             };
             return Ok(Ok(outcome));
-        }
-
-        // The first step spent `joint_payload` on the joint entry, so the payload it returned is
-        // `uniform_payload`, for the entry this second step writes.
-        let uniform_payload = self.inner.recv_msg(unused_rx).await?;
+        };
 
         tracing::debug!("committed a joint config: {} {:?}", log_id, membership);
-        tracing::debug!("the second step is to change to uniform config: {:?}", changes);
+        tracing::debug!("the second step is to change to uniform config");
 
         // The last membership config log ID is changed because we have proposed a new membership config
         // log. Therefore, we need to remove the previous membership log ID precondition and add a new
@@ -169,8 +168,8 @@ where C: RaftTypeConfig
 
         let (tx, rx) = ProgressResponder::<C, _>::complete_only();
 
-        // The second step, send a NOOP change to flatten the joint config.
-        let changes = ChangeMembers::AddVoterIds(Default::default());
+        // The second step, send an edit that leaves the joint config for its target.
+        let changes = MembershipEditOf::<C>::make_uniform();
         let client_write_result = self
             .inner
             .call_core(
@@ -205,7 +204,7 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "info", skip_all)]
     pub(crate) async fn append_membership(
         &self,
-        membership: Membership<C::NodeId, C::Node>,
+        membership: C::Membership,
         payload: C::Payload,
         preconditions: BatchOf<C, Precondition<C>>,
     ) -> Result<ClientWriteResult<C>, Fatal<C>> {
@@ -237,7 +236,7 @@ where C: RaftTypeConfig
         let (tx, rx) = ProgressResponder::<C, _>::complete_only();
 
         let msg = RaftMsg::ChangeMembership {
-            changes: ChangeMembers::AddNodes(btreemap! {id.clone()=>node}),
+            changes: MembershipEditOf::<C>::add_learner(id.clone(), node),
             payloads: MembershipPayloads::Uniform(C::Payload::blank()),
             retain: true,
             preconditions: Batch::of([]),
@@ -297,7 +296,7 @@ where C: RaftTypeConfig
             return Err(());
         }
 
-        if metrics.membership_config.membership().get_node(node_id).is_none() {
+        if metrics.membership_config.get_node(node_id).is_none() {
             // This learner has been removed.
             return Ok(None);
         }

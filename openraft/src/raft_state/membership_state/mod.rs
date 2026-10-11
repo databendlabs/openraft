@@ -5,12 +5,10 @@ use std::sync::Arc;
 use openraft_macros::since;
 use validit::Validate;
 
-use crate::ChangeMembers;
 use crate::LogIdOptionExt;
-use crate::Membership;
 use crate::errors::ChangeMembershipError;
 use crate::errors::InProgress;
-use crate::errors::NodeMetadataChanged;
+use crate::errors::MembershipError;
 use crate::errors::UnsupportedMembershipTransition;
 
 #[cfg(test)]
@@ -19,9 +17,9 @@ mod change_membership_test;
 mod membership_state_test;
 
 use crate::log_id::LogId;
+use crate::membership::RaftMembership;
+use crate::membership::RaftMembershipExt;
 use crate::membership::StoredMembership;
-use crate::node::Node;
-use crate::node::NodeId;
 use crate::vote::RaftCommittedLeaderId;
 
 /// The state of membership configs a raft node needs to know.
@@ -53,27 +51,25 @@ use crate::vote::RaftCommittedLeaderId;
 /// Thus, a raft node will only need to store at most two recent membership logs.
 #[since(
     version = "0.10.0",
-    change = "from `MembershipState<C>` to `MembershipState<CLID, NID, N>`"
+    change = "from `MembershipState<C>` to `MembershipState<CLID, Mem>`"
 )]
 #[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
-pub struct MembershipState<CLID, NID, N>
+pub struct MembershipState<CLID, Mem>
 where
     CLID: RaftCommittedLeaderId,
-    NID: NodeId,
-    N: Node,
+    Mem: RaftMembership,
 {
-    committed: Arc<StoredMembership<CLID, NID, N>>,
+    committed: Arc<StoredMembership<CLID, Mem>>,
 
     // Using `Arc` because the effective membership will be copied to RaftMetrics frequently.
-    effective: Arc<StoredMembership<CLID, NID, N>>,
+    effective: Arc<StoredMembership<CLID, Mem>>,
 }
 
-impl<CLID, NID, N> Default for MembershipState<CLID, NID, N>
+impl<CLID, Mem> Default for MembershipState<CLID, Mem>
 where
     CLID: RaftCommittedLeaderId,
-    NID: NodeId,
-    N: Node,
+    Mem: RaftMembership,
 {
     fn default() -> Self {
         Self {
@@ -83,11 +79,10 @@ where
     }
 }
 
-impl<CLID, NID, N> fmt::Display for MembershipState<CLID, NID, N>
+impl<CLID, Mem> fmt::Display for MembershipState<CLID, Mem>
 where
     CLID: RaftCommittedLeaderId,
-    NID: NodeId,
-    N: Node,
+    Mem: RaftMembership,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -98,21 +93,20 @@ where
     }
 }
 
-impl<CLID, NID, N> MembershipState<CLID, NID, N>
+impl<CLID, Mem> MembershipState<CLID, Mem>
 where
     CLID: RaftCommittedLeaderId,
-    NID: NodeId,
-    N: Node,
+    Mem: RaftMembership,
 {
     pub(crate) fn new(
-        committed: Arc<StoredMembership<CLID, NID, N>>,
-        effective: Arc<StoredMembership<CLID, NID, N>>,
+        committed: Arc<StoredMembership<CLID, Mem>>,
+        effective: Arc<StoredMembership<CLID, Mem>>,
     ) -> Self {
         Self { committed, effective }
     }
 
     /// Returns whether `id` is a voter or learner in the effective membership.
-    pub(crate) fn contains(&self, id: &NID) -> bool {
+    pub(crate) fn contains(&self, id: &Mem::NodeId) -> bool {
         self.effective.membership().contains(id)
     }
 
@@ -120,7 +114,7 @@ where
     ///
     /// This uses the latest membership even before its log entry commits.
     /// Election triggers use [`Self::is_campaigner_in_effective_or_committed`] instead.
-    pub(crate) fn is_campaigner(&self, id: &NID) -> bool {
+    pub(crate) fn is_campaigner(&self, id: &Mem::NodeId) -> bool {
         self.effective.membership().is_campaigner(id)
     }
 
@@ -129,7 +123,7 @@ where
     /// For joint membership, a voter may belong to any component configuration.
     /// This uses the latest membership even before its log entry commits.
     #[allow(dead_code, reason = "Reserved for read/write quorum separation")]
-    pub(crate) fn is_read_voter(&self, id: &NID) -> bool {
+    pub(crate) fn is_read_voter(&self, id: &Mem::NodeId) -> bool {
         self.effective.membership().is_read_voter(id)
     }
 
@@ -138,7 +132,7 @@ where
     /// For joint membership, a voter may belong to any component configuration.
     /// This uses the latest membership even before its log entry commits.
     #[allow(dead_code, reason = "Reserved for read/write quorum separation")]
-    pub(crate) fn is_write_voter(&self, id: &NID) -> bool {
+    pub(crate) fn is_write_voter(&self, id: &Mem::NodeId) -> bool {
         self.effective.membership().is_write_voter(id)
     }
 
@@ -147,32 +141,57 @@ where
     /// A removed campaigner may need to regain leadership to finish the membership change.
     /// It remains eligible until the membership change commits, even if retained as a learner.
     /// Voting and quorum checks use only the effective membership.
-    pub(crate) fn is_campaigner_in_effective_or_committed(&self, id: &NID) -> bool {
+    pub(crate) fn is_campaigner_in_effective_or_committed(&self, id: &Mem::NodeId) -> bool {
         self.effective.is_campaigner(id) || self.committed.is_campaigner(id)
     }
 
     /// Builds a new membership configuration by applying changes to the current configuration.
     ///
+    /// It returns the target of `change` when `supports_direct_transition_to()` holds from the
+    /// effective membership to the target. Otherwise it returns the `joint_with()` of the two,
+    /// which needs no check: every read quorum of the joint is a read quorum of both memberships,
+    /// and the same holds for write quorums. `RaftMembership` requires each membership to keep
+    /// every read quorum intersecting every write quorum, so on each step to and from the joint,
+    /// every read quorum of one side intersects every write quorum of the other side.
+    ///
+    /// E.g.(`cicj` is a joint membership of `ci` and `cj`, and for any two of `c1`, `c2`, `c3`, a
+    /// quorum of one can miss a quorum of the other):
+    /// - from `c1` to `c1`, it returns `c1`
+    /// - from `c1` to `c2`, it returns `c1c2`
+    /// - from `c1c2` to `c2`, it returns `c2`
+    /// - from `c1c2` to `c1`, it returns `c1`
+    /// - from `c1c2` to `c3`, it returns `c1c2c3`
+    ///
     /// * `changes`: The changes to apply to the current membership configuration.
     /// * `retain` specifies whether to retain the removed voters as learners, i.e., nodes that
     ///   continue to receive log replication from the leader.
     ///
-    /// A Result containing the new membership configuration if the operation succeeds, or a
-    /// `ChangeMembershipError` if an error occurs.
+    /// A Result containing the new membership configuration and whether it is the joint one, if
+    /// the operation succeeds, or a `ChangeMembershipError` if an error occurs.
     ///
     /// This function ensures that the cluster will have at least one voter in the new membership
     /// configuration.
     pub(crate) fn next_membership(
         &self,
-        change: ChangeMembers<NID, N>,
+        change: Mem::Edit,
         retain: bool,
-    ) -> Result<Membership<NID, N>, ChangeMembershipError<CLID, NID>> {
+    ) -> Result<(Mem, bool), ChangeMembershipError<CLID, Mem::NodeId>> {
         self.ensure_committed()?;
 
-        let effective = self.effective();
-        let membership = effective.membership().clone();
-        let new_membership = membership.change(change, retain)?;
-        Ok(new_membership)
+        let effective = self.effective().membership();
+        let mut goal = effective.change(change)?;
+        goal.ensure_non_empty_config()?;
+        goal.ensure_voters_have_nodes().map_err(MembershipError::from)?;
+        if !retain {
+            goal = effective.drop_voters_demoted_to_learners(goal);
+        }
+
+        if effective.supports_direct_transition_to(&goal) {
+            return Ok((goal, false));
+        }
+
+        let joint = effective.joint_with(&goal);
+        Ok((joint, true))
     }
 
     /// Validates a membership a caller wants appended as one log entry, without an intermediate
@@ -183,32 +202,34 @@ where
     /// - The last membership log is committed, so the effective membership is also the last
     ///   committed one, the parent this transition starts from.
     /// - `proposed` is a valid membership on its own, and it defines a quorum. A public constructor
-    ///   is not enough of a guarantee: deserialization, [`Membership::default()`] and
-    ///   [`Membership::new_with_defaults()`] can all produce a value with no voter set at all, or
-    ///   with an empty one.
+    ///   is not enough of a guarantee: deserialization, [`Membership::new()`],
+    ///   [`Membership::default()`] and [`Membership::new_with_defaults()`] can all produce a value
+    ///   with no voter set at all, or with an empty one.
     /// - `proposed` keeps the [`Node`] of every node id the effective membership already knows.
     /// - The transition from the effective membership to `proposed` is one that a direct append
     ///   supports.
+    ///
+    /// [`Membership::new()`]: crate::Membership::new
+    /// [`Membership::default()`]: crate::Membership::default
+    /// [`Membership::new_with_defaults()`]: crate::Membership::new_with_defaults
+    /// [`Node`]: crate::Node
     pub(crate) fn validate_append_membership(
         &self,
-        proposed: &Membership<NID, N>,
-    ) -> Result<(), ChangeMembershipError<CLID, NID>> {
+        proposed: &Mem,
+    ) -> Result<(), ChangeMembershipError<CLID, Mem::NodeId>> {
         self.ensure_committed()?;
-        proposed.ensure_valid()?;
-        proposed.ensure_quorum_defined()?;
+        proposed.ensure_non_empty_config()?;
+        proposed.ensure_voters_have_nodes().map_err(MembershipError::from)?;
 
         let effective = self.effective().membership();
 
-        let changed_node_id = effective.find_changed_node_metadata(proposed);
-        if let Some(node_id) = changed_node_id {
-            return Err(NodeMetadataChanged { node_id }.into());
-        }
+        effective.ensure_node_metadata_unchanged(proposed)?;
 
-        let compatible = effective.is_direct_append_compatible_with(proposed);
+        let compatible = effective.supports_direct_transition_to(proposed);
         if !compatible {
             let err = UnsupportedMembershipTransition {
-                previous: effective.get_joint_config().clone(),
-                proposed: proposed.get_joint_config().clone(),
+                previous: effective.to_string(),
+                proposed: proposed.to_string(),
             };
             return Err(err.into());
         }
@@ -258,7 +279,7 @@ where
     /// corresponding local membership.
     pub(crate) fn install_membership_snapshot(
         &mut self,
-        membership_snapshot: Arc<StoredMembership<CLID, NID, N>>,
+        membership_snapshot: Arc<StoredMembership<CLID, Mem>>,
         snapshot_last_log_index: u64,
     ) {
         // Snapshot install purges every log entry up to snapshot_last_log_index.
@@ -298,7 +319,7 @@ where
     /// - Leader appends a new membership,
     /// - Or a follower has confirmed preceding logs matches the leaders' and appends membership
     ///   received from the leader.
-    pub(crate) fn append(&mut self, m: Arc<StoredMembership<CLID, NID, N>>) {
+    pub(crate) fn append(&mut self, m: Arc<StoredMembership<CLID, Mem>>) {
         debug_assert!(
             m.log_id() > self.effective.log_id(),
             "new membership has to have a greater log_id"
@@ -332,7 +353,7 @@ where
     /// |                                    last membership      // before deleting since..
     /// last membership                                           // after  deleting since..
     /// ```
-    pub(crate) fn truncate(&mut self, since: u64) -> Option<Arc<StoredMembership<CLID, NID, N>>> {
+    pub(crate) fn truncate(&mut self, since: u64) -> Option<Arc<StoredMembership<CLID, Mem>>> {
         debug_assert!(
             since >= self.committed().log_id().next_index(),
             "committed log should never be truncated: committed membership cannot conflict with the leader"
@@ -353,14 +374,14 @@ where
 
     // This method is only used by tests
     #[cfg(test)]
-    pub(crate) fn set_effective(&mut self, e: Arc<StoredMembership<CLID, NID, N>>) {
+    pub(crate) fn set_effective(&mut self, e: Arc<StoredMembership<CLID, Mem>>) {
         self.effective = e
     }
 
     /// Returns a reference to the last committed membership config.
     ///
     /// A committed membership config may or may not be the same as the effective one.
-    pub fn committed(&self) -> &Arc<StoredMembership<CLID, NID, N>> {
+    pub fn committed(&self) -> &Arc<StoredMembership<CLID, Mem>> {
         &self.committed
     }
 
@@ -370,16 +391,15 @@ where
     /// one.
     ///
     /// A committed membership config may or may not be the same as the effective one.
-    pub fn effective(&self) -> &Arc<StoredMembership<CLID, NID, N>> {
+    pub fn effective(&self) -> &Arc<StoredMembership<CLID, Mem>> {
         &self.effective
     }
 }
 
-impl<CLID, NID, N> Validate for MembershipState<CLID, NID, N>
+impl<CLID, Mem> Validate for MembershipState<CLID, Mem>
 where
     CLID: RaftCommittedLeaderId,
-    NID: NodeId,
-    N: Node,
+    Mem: RaftMembership,
 {
     fn validate(&self) -> Result<(), Box<dyn Error>> {
         validit::less_equal!(self.committed.log_id(), self.effective.log_id());

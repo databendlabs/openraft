@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::fmt::Display;
@@ -18,8 +19,10 @@ use hyper::header::HeaderValue;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper_util::rt::TokioIo;
+use openraft::ChangeMembers;
 use openraft::NodeInfo;
 use openraft::RaftTypeConfig;
+use openraft::alias::MembershipEditOf;
 use openraft::storage::RaftStateMachine;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -94,6 +97,8 @@ where D: Send + Sync + 'static
 impl<C, SM, Data> Server<App<C, SM, Data>>
 where
     C: RaftTypeConfig<Node = NodeInfo>,
+    C::Membership: From<BTreeMap<C::NodeId, NodeInfo>>,
+    MembershipEditOf<C>: From<ChangeMembers<C::NodeId, C::Node>>,
     SM: RaftStateMachine<C>,
     App<C, SM, Data>: Send + Sync + 'static,
 {

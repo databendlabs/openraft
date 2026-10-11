@@ -6,11 +6,12 @@ use std::time::Duration;
 use validit::Valid;
 
 use crate::LogIdOptionExt;
-use crate::Membership;
 use crate::RaftTypeConfig;
 use crate::base::shared_id_generator::SharedIdGenerator;
 use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::errors::QuorumNotEnough;
+use crate::membership::RaftMembership;
+use crate::membership::RaftMembershipExt;
 use crate::progress::IdVal;
 use crate::progress::VecProgress;
 use crate::progress::entry::ProgressEntry;
@@ -99,6 +100,13 @@ where
     ///
     /// [`docs::leader_lease`]: `crate::docs::protocol::replication::leader_lease`
     pub(crate) clock_progress: Valid<VecProgress<IdVal<C::NodeId, Option<SendStamp<InstantOf<C>>>>, QS>>,
+
+    /// Whether this leader alone forms a write quorum; see [`Self::is_self_quorum()`].
+    ///
+    /// [`QuorumSet::is_quorum()`] runs application code with no bound on its running time. So
+    /// [`Self::update_self_quorum()`] computes this value once per write quorum set, instead of on
+    /// every lease check, read, and metrics report.
+    self_quorum: bool,
 }
 
 impl<C> Leader<C, WriteQuorumSet<C>>
@@ -111,7 +119,7 @@ where C: RaftTypeConfig
     #[allow(clippy::clone_on_copy)]
     pub(crate) fn new(
         vote: CommittedVoteOf<C>,
-        membership: Membership<C::NodeId, C::Node>,
+        membership: C::Membership,
         last_leader_log_ids: Option<LeaderLogIds<CommittedLeaderIdOf<C>>>,
         id_gen: SharedIdGenerator,
     ) -> Self {
@@ -164,7 +172,7 @@ where C: RaftTypeConfig
         let leader_node_id = vote.to_leader_node_id();
         clock_progress.increase_to(&leader_node_id, Some(SendStamp::new(now, 0)));
 
-        Self {
+        let mut leader = Self {
             transfer_to: None,
             committed_vote: vote,
             next_heartbeat: now,
@@ -173,7 +181,10 @@ where C: RaftTypeConfig
             noop_log_id,
             progress: Valid::new(progress),
             clock_progress: Valid::new(clock_progress),
-        }
+            self_quorum: false,
+        };
+        leader.update_self_quorum();
+        leader
     }
 }
 
@@ -288,8 +299,7 @@ where
     /// out because they never grant a value. This leader is always included when it is a voter: it
     /// grants its own RPCs, while [`Self::update_clock`] records that grant only once a follower
     /// responds.
-    pub(crate) fn clock_quorum_not_enough(&self, min_acked_at: SendStamp<InstantOf<C>>) -> QuorumNotEnough<C>
-    where QS: fmt::Display {
+    pub(crate) fn clock_quorum_not_enough(&self, min_acked_at: SendStamp<InstantOf<C>>) -> QuorumNotEnough<C> {
         let voter_count = self.clock_progress.voter_count();
 
         let mut got: BTreeSet<C::NodeId> = self
@@ -306,14 +316,22 @@ where
         }
 
         QuorumNotEnough {
-            cluster: self.clock_progress.quorum_set().to_string(),
+            cluster: format!("{:?}", self.clock_progress.quorum_set()),
             got,
         }
     }
 
     /// Return whether this leader's lease is valid.
+    ///
+    /// A leader that alone forms a write quorum keeps its lease without acknowledgments, except
+    /// while it transfers leadership. A transfer stops heartbeats so that the lease runs out and
+    /// this leader votes for another candidate. Otherwise a transfer whose target never campaigns
+    /// would keep this node leader until it steps down after the transfer deadline, refusing every
+    /// write and every vote. A leader without `NodeRole::Campaigner` starts no election, so it
+    /// would stay leader forever.
     pub(crate) fn is_lease_valid(&self, leader_lease: Duration) -> bool {
-        if self.is_self_quorum() {
+        let is_transferring = self.transfer_to.is_some();
+        if self.is_self_quorum() && !is_transferring {
             return true;
         }
 
@@ -321,14 +339,35 @@ where
         self.last_quorum_acked_time().is_some_and(|acked| now < acked + leader_lease)
     }
 
-    /// Return whether this leader alone constitutes a quorum.
+    /// Return whether this leader alone forms a write quorum.
+    ///
+    /// Such a leader needs no acknowledgment to keep its lease. Every read quorum must share a node
+    /// with the write quorum `{leader}`, so every read quorum contains this leader, and no
+    /// candidate can win without its vote. The leader refuses that vote while it leads, except
+    /// for a leadership transfer that it started.
     pub(crate) fn is_self_quorum(&self) -> bool {
-        if self.clock_progress.voter_count() != 1 {
-            return false;
+        #[cfg(debug_assertions)]
+        {
+            let calculated = self.calc_self_quorum();
+            debug_assert_eq!(
+                calculated, self.self_quorum,
+                "update_self_quorum() must run after clock_progress gets a new quorum set"
+            );
         }
 
+        self.self_quorum
+    }
+
+    /// Recompute [`Self::self_quorum`]. Call it after [`Self::clock_progress`] gets a new quorum
+    /// set.
+    pub(crate) fn update_self_quorum(&mut self) {
+        self.self_quorum = self.calc_self_quorum();
+    }
+
+    fn calc_self_quorum(&self) -> bool {
         let leader_node_id = self.committed_vote.to_leader_node_id();
-        self.clock_progress.iter().next().unwrap().id == leader_node_id
+        let write_quorum_set = self.clock_progress.quorum_set();
+        write_quorum_set.is_quorum(std::iter::once(&leader_node_id))
     }
 
     /// Decide whether a heartbeat needs to be sent to `target` at time `now`.
@@ -591,7 +630,7 @@ mod tests {
     fn test_clock_quorum_not_enough() {
         // Voters {1,2,3} with learner {4}; node 1 is the leader.
         let membership = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1, 2, 3}], [4]);
-        let cluster = membership.to_string();
+        let cluster = "[{1, 2, 3}]";
         let vote = Vote::new(2, 1).to_committed();
         let mut leading = Leader::<UTConfig, _>::new(vote, membership, None, SharedIdGenerator::new());
 

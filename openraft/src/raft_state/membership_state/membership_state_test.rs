@@ -323,7 +323,7 @@ fn committed_state(m: Membership<u64, ()>) -> MembershipStateOf<UTConfig> {
 }
 
 /// The same as [`committed_state`], for a `Node` type that carries metadata.
-fn committed_node_state(m: Membership<u64, BasicNode>) -> MembershipState<UtClid, u64, BasicNode> {
+fn committed_node_state(m: Membership<u64, BasicNode>) -> MembershipState<UtClid, Membership<u64, BasicNode>> {
     let stored = Arc::new(StoredMembership::new(Some(log_id(3, 1, 4)), m));
     MembershipState::new(stored.clone(), stored)
 }
@@ -362,8 +362,8 @@ fn test_validate_append_membership_unsupported_transition() -> anyhow::Result<()
     let got = ms.validate_append_membership(&proposed).unwrap_err();
 
     let want = ChangeMembershipError::UnsupportedMembershipTransition(UnsupportedMembershipTransition {
-        previous: vec![btreeset! {1,2,3}],
-        proposed: vec![btreeset! {2,3,4}],
+        previous: "{voters:[{1:(),2:(),3:()}], learners:[]}".to_string(),
+        proposed: "{voters:[{2:(),3:(),4:()}], learners:[]}".to_string(),
     });
     assert_eq!(want, got);
     assert_eq!(before, ms);

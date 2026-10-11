@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use maplit::btreemap;
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
 
@@ -13,9 +14,13 @@ use crate::engine::LogIdList;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::entry::RaftEntry;
+use crate::errors::EmptyMembership;
 use crate::errors::InitializeError;
+use crate::errors::MembershipError;
+use crate::errors::NodeNotFound;
 use crate::errors::NotAllowed;
 use crate::errors::NotInMembers;
+use crate::errors::Operation;
 use crate::raft_state::LogStateReader;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::EntryOf;
@@ -158,6 +163,34 @@ fn test_initialize() -> anyhow::Result<()> {
         let membership = Membership::new_with_defaults(vec![btreeset! {1,2}], [0]);
         let result = eng.initialize(membership.clone());
         let expected = Err(InitializeError::NotInMembers(NotInMembers { node_id: 0, membership }));
+        assert_eq!(expected, result);
+        let commands = eng.output.take_commands();
+        let expected_commands = Vec::<Command<UTConfig>>::new();
+        assert_eq!(expected_commands, commands);
+    }
+
+    tracing::info!("--- [{{1}}, {{}}] has no quorum; node 1 stays a voter, or NotInMembers fires first");
+    {
+        let mut eng = eng();
+        eng.config.id = 1;
+        let membership = Membership::new_with_defaults(vec![btreeset! {1}, btreeset! {}], []);
+        let result = eng.initialize(membership);
+        let err = MembershipError::from(EmptyMembership {});
+        let expected = Err(InitializeError::InvalidMembership(err));
+        assert_eq!(expected, result);
+        let commands = eng.output.take_commands();
+        let expected_commands = Vec::<Command<UTConfig>>::new();
+        assert_eq!(expected_commands, commands);
+    }
+
+    tracing::info!("--- voter 2 has no node");
+    {
+        let mut eng = eng();
+        eng.config.id = 1;
+        let membership = Membership::new_unchecked(vec![btreeset! {1,2}], btreemap! {1=>()});
+        let result = eng.initialize(membership);
+        let err = MembershipError::from(NodeNotFound::new(2, Operation::None));
+        let expected = Err(InitializeError::InvalidMembership(err));
         assert_eq!(expected, result);
         let commands = eng.output.take_commands();
         let expected_commands = Vec::<Command<UTConfig>>::new();

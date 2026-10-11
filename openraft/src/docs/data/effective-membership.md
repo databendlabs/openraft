@@ -23,9 +23,9 @@ In Openraft, the membership state contains these two configs, each held as a
 `StoredMembership`:
 
 ```ignore
-pub struct MembershipState<CLID, NID, N> {
-    committed: Arc<StoredMembership<CLID, NID, N>>,
-    effective: Arc<StoredMembership<CLID, NID, N>>,
+pub struct MembershipState<CLID, Mem> {
+    committed: Arc<StoredMembership<CLID, Mem>>,
+    effective: Arc<StoredMembership<CLID, Mem>>,
 }
 ```
 
