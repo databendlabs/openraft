@@ -197,7 +197,9 @@ mod tests {
         type Term = u64;
         type LeaderId = crate::impls::leader_id_adv::LeaderId<u64, u64>;
         type Vote = Vote<Self::LeaderId>;
-        type Payload = crate::EntryPayload<Self::D, Self::NodeId, Self::Node>;
+        type Membership = crate::impls::Membership<Self::NodeId, Self::Node>;
+        type MembershipEdit = crate::ChangeMembers<Self::NodeId, Self::Node>;
+        type Payload = crate::EntryPayload<Self::D, Self::Membership>;
         type Entry = crate::Entry<<Self::LeaderId as crate::vote::RaftLeaderId>::Committed, Self::Payload>;
         type AsyncRuntime = TokioRuntime;
         type Responder<T>

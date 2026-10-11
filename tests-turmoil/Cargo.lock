@@ -932,9 +932,9 @@ dependencies = [
 
 [[package]]
 name = "quorum-set"
-version = "0.3.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65cd05904841f8c27d9974e0a08657d683a2bd73c7129de408fcf81562eb3855"
+checksum = "08e5096e3213445c508519451fbc117ccdb2864bacb826f23040ffdcc3da20a1"
 dependencies = [
  "sha2",
  "validit",

@@ -4,10 +4,8 @@ use std::fmt::Display;
 use openraft_macros::since;
 
 use crate::AppData;
-use crate::Membership;
 use crate::base::OptionalFeatures;
-use crate::node::Node;
-use crate::node::NodeId;
+use crate::membership::RaftMembership;
 
 /// Defines operations for constructing and inspecting an entry payload.
 #[since(
@@ -25,13 +23,9 @@ where Self: OptionalFeatures + Debug + Display + Sized + 'static
     #[since(version = "0.10.0")]
     type D: AppData;
 
-    /// The node ID type used in memberships.
+    /// The membership type that a membership payload carries.
     #[since(version = "0.10.0")]
-    type NodeId: NodeId;
-
-    /// The node type used in memberships.
-    #[since(version = "0.10.0")]
-    type Node: Node;
+    type Membership: RaftMembership;
 
     /// Create a blank payload.
     ///
@@ -49,11 +43,11 @@ where Self: OptionalFeatures + Debug + Display + Sized + 'static
     /// OpenRaft calls this method for every physical membership-change entry. An implementation
     /// may preserve other application fields.
     #[since(version = "0.10.0")]
-    fn with_membership(self, membership: Membership<Self::NodeId, Self::Node>) -> Self;
+    fn with_membership(self, membership: Self::Membership) -> Self;
 
     /// Return `Some(Membership)` if the entry payload contains a membership payload.
     #[since(version = "0.10.0", change = "use associated node types")]
-    fn get_membership(&self) -> Option<Membership<Self::NodeId, Self::Node>>;
+    fn get_membership(&self) -> Option<Self::Membership>;
 
     /// Create a payload containing normal application data.
     #[since(version = "0.10.0")]
@@ -64,7 +58,7 @@ where Self: OptionalFeatures + Debug + Display + Sized + 'static
 
     /// Create a payload containing a membership.
     #[since(version = "0.10.0")]
-    fn membership(membership: Membership<Self::NodeId, Self::Node>) -> Self {
+    fn membership(membership: Self::Membership) -> Self {
         let payload = Self::blank();
         payload.with_membership(membership)
     }
