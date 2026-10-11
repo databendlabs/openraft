@@ -129,7 +129,8 @@ where
     pub(crate) fn rebuild_progresses(&mut self) {
         let em = self.state.membership_state.effective();
 
-        let learner_ids = em.learner_ids().collect::<Vec<_>>();
+        let non_write_voter_ids = em.non_write_voter_ids().collect::<Vec<_>>();
+        let write_quorum_set = Arc::new(em.membership().write_quorum_set().clone());
 
         {
             let end = self.state.last_log_id().next_index();
@@ -143,8 +144,8 @@ where
             };
 
             self.leader.progress = Valid::new(old_progress.into_inner().upgrade_quorum_set(
-                Arc::new((*em.membership()).clone()),
-                learner_ids.clone(),
+                write_quorum_set.clone(),
+                non_write_voter_ids.clone(),
                 default_entry,
             ));
         }
@@ -153,8 +154,8 @@ where
             let old_progress = self.leader.clock_progress.clone();
 
             self.leader.clock_progress = Valid::new(old_progress.into_inner().upgrade_quorum_set(
-                Arc::new((*em.membership()).clone()),
-                learner_ids,
+                write_quorum_set,
+                non_write_voter_ids,
                 IdVal::new_default,
             ));
         }

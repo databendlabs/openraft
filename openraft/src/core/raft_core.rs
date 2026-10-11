@@ -1876,7 +1876,7 @@ where
                     // rejects the vote request. Leave the established leadership alone.
                     tracing::info!("ExternalCommand: already a Leader, ignore election trigger");
                 } else {
-                    if self.engine.state.membership_state.is_voter_in_effective_or_committed(&self.id) {
+                    if self.engine.state.membership_state.is_campaigner_in_effective_or_committed(&self.id) {
                         if pre_vote {
                             self.engine.pre_elect();
                         } else {
@@ -1884,7 +1884,7 @@ where
                         }
                         tracing::debug!("ExternalCommand: triggered election, pre_vote: {}", pre_vote);
                     } else {
-                        // Node is switched to learner.
+                        // Node is not a campaigner.
                     }
                 }
             }
@@ -2168,8 +2168,8 @@ where
             return;
         }
 
-        if !self.engine.state.membership_state.is_voter_in_effective_or_committed(&self.id) {
-            tracing::debug!("skip election, not a voter in effective or committed membership");
+        if !self.engine.state.membership_state.is_campaigner_in_effective_or_committed(&self.id) {
+            tracing::debug!("skip election, not a campaigner in effective or committed membership");
             return;
         }
 
@@ -2188,7 +2188,7 @@ where
         // There is no need to check `committed` membership.
         // Because there won't be a leader established without contacting this node, if effective membership
         // contains only this node.
-        let is_single_campaigner = effective.is_voter(&self.id) && effective.voter_ids().count() == 1;
+        let is_single_campaigner = effective.is_campaigner(&self.id) && effective.voter_ids().count() == 1;
 
         if is_single_campaigner {
             // When a node restart, it may stay in any state but the in progress election(engine.candidate) is

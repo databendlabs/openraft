@@ -4,15 +4,19 @@ Openraft provides APIs to manage cluster membership, handle node lifecycle, and 
 
 ## Node Roles
 
-**Voter**: Participates in elections and voting. Can become candidate, leader, or follower.
+**Voter**: Contributes to a read or write quorum.
+
+**Campaigner**: May start an election.
 
 **Leader**: Single node handling all client requests and coordinating log replication.
 
-**Follower**: Accepts logs from leader and participates in voting during elections.
+**Follower**: Accepts logs from the leader and has a campaign, read voter, or write voter role.
 
-**Learner**: Receives replicated logs but doesn't vote. Useful for adding capacity or testing before promoting to voter.
+**Learner**: Receives replicated logs with no campaign, read voter, or write voter role. Useful for adding capacity or testing before promoting to voter.
 
-**Candidate**: Temporary state when a voter requests votes to become leader.
+**Candidate**: Temporary state while a campaigner requests votes to become leader.
+
+The current `Membership` gives every voter all three roles.
 
 ## State Transitions
 

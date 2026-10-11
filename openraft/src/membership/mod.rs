@@ -11,8 +11,10 @@
 //! ## Overview
 //!
 //! Membership configuration controls which nodes participate in the cluster:
-//! - **Voters**: Participate in elections and voting, can become leader
-//! - **Learners**: Receive log replication but don't vote
+//! - **Voters**: Contribute to read or write quorums; campaigners may start elections
+//! - **Learners**: Receive logs with no campaign, read voter, or write voter role
+//!
+//! The current [`Membership`] gives every voter all three roles.
 //!
 //! Membership changes use joint consensus to ensure safety during configuration transitions.
 //!
