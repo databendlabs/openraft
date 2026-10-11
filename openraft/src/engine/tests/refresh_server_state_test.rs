@@ -71,9 +71,10 @@ fn test_roles_use_effective_membership() {
 
     let campaigners = (0..=6).filter(|id| eng.state.is_campaigner(id)).collect::<Vec<_>>();
     assert_eq!(vec![2, 3, 4], campaigners);
-    let read_voters = (0..=6).filter(|id| eng.state.is_read_voter(id)).collect::<Vec<_>>();
+    let membership = eng.state.membership_state.effective().membership();
+    let read_voters = (0..=6).filter(|id| membership.is_read_voter(id)).collect::<Vec<_>>();
     assert_eq!(vec![2, 3, 4], read_voters);
-    let write_voters = (0..=6).filter(|id| eng.state.is_write_voter(id)).collect::<Vec<_>>();
+    let write_voters = (0..=6).filter(|id| membership.is_write_voter(id)).collect::<Vec<_>>();
     assert_eq!(vec![2, 3, 4], write_voters);
 
     let server_states = (0..=6).map(|id| eng.state.calc_server_state(&id)).collect::<Vec<_>>();

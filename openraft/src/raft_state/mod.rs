@@ -39,6 +39,7 @@ pub use membership_state::MembershipState;
 use crate::base::shared_id_generator::SharedIdGenerator;
 use crate::entry::RaftEntry;
 use crate::entry::raft_entry_ext::RaftEntryExt;
+use crate::membership::RaftMembershipExt;
 use crate::progress::inflight_id::InflightId;
 use crate::proposer::Leader;
 use crate::proposer::WriteQuorumSet;
@@ -443,18 +444,6 @@ where C: RaftTypeConfig
     /// Election triggers also consider campaigners in the committed membership.
     pub(crate) fn is_campaigner(&self, id: &C::NodeId) -> bool {
         self.membership_state.is_campaigner(id)
-    }
-
-    /// Returns whether `id` is a read voter in any effective membership component.
-    #[allow(dead_code, reason = "Reserved for read/write quorum separation")]
-    pub(crate) fn is_read_voter(&self, id: &C::NodeId) -> bool {
-        self.membership_state.is_read_voter(id)
-    }
-
-    /// Returns whether `id` is a write voter in any effective membership component.
-    #[allow(dead_code, reason = "Reserved for read/write quorum separation")]
-    pub(crate) fn is_write_voter(&self, id: &C::NodeId) -> bool {
-        self.membership_state.is_write_voter(id)
     }
 
     /// Returns whether `id` owns the current vote and may remain a candidate or leader.
