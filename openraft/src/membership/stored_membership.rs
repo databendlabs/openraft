@@ -81,9 +81,11 @@ where
         &self.membership
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn is_voter(&self, nid: &NID) -> bool {
-        self.membership.is_voter(nid)
+    /// Returns whether `nid` may start an election under the stored membership configuration.
+    ///
+    /// The log ID does not affect campaign eligibility.
+    pub(crate) fn is_campaigner(&self, nid: &NID) -> bool {
+        self.membership.is_campaigner(nid)
     }
 
     /// Get an iterator over the voter node IDs.
@@ -91,9 +93,17 @@ where
         self.membership.voter_ids()
     }
 
-    /// Returns an Iterator of all learner node ids. Voters are not included.
-    pub(crate) fn learner_ids(&self) -> impl Iterator<Item = NID> + '_ {
-        self.membership.learner_ids()
+    /// Deprecated alias for [`Self::non_write_voter_ids()`].
+    #[since(version = "0.10.0", change = "deprecated in favor of `non_write_voter_ids()`")]
+    #[deprecated(since = "0.10.0", note = "use `non_write_voter_ids()` instead")]
+    pub fn learner_ids(&self) -> impl Iterator<Item = NID> + '_ {
+        self.non_write_voter_ids()
+    }
+
+    /// Returns known node IDs outside the write voter configurations.
+    #[since(version = "0.10.0")]
+    pub fn non_write_voter_ids(&self) -> impl Iterator<Item = NID> + '_ {
+        self.membership.non_write_voter_ids()
     }
 
     /// Get the node (either voter or learner) by node id.

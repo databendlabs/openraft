@@ -65,6 +65,19 @@ fn eng_leader(effective: Membership<u64, ()>, committed: LogIdOf<UTConfig>) -> E
 }
 
 #[test]
+fn test_roles_use_effective_membership() {
+    let effective = Membership::new_with_defaults(vec![btreeset! {2,3}, btreeset! {3,4}], [1, 5]);
+    let eng = eng_leader(effective, log_id(2, 1, 2));
+
+    let campaigners = (0..=6).filter(|id| eng.state.is_campaigner(id)).collect::<Vec<_>>();
+    assert_eq!(vec![2, 3, 4], campaigners);
+    let read_voters = (0..=6).filter(|id| eng.state.is_read_voter(id)).collect::<Vec<_>>();
+    assert_eq!(vec![2, 3, 4], read_voters);
+    let write_voters = (0..=6).filter(|id| eng.state.is_write_voter(id)).collect::<Vec<_>>();
+    assert_eq!(vec![2, 3, 4], write_voters);
+}
+
+#[test]
 fn test_refresh_server_state_voter_leader() -> anyhow::Result<()> {
     // The Leader is a voter in the committed effective membership config: nothing changes.
     let mut eng = eng_leader(m12(), log_id(2, 1, 3));

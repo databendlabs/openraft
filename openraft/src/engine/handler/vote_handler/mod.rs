@@ -26,7 +26,6 @@ use crate::storage::RaftStateMachine;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::VoteOf;
-use crate::vote::RaftLeaderId;
 use crate::vote::RaftVote;
 use crate::vote::raft_vote::RaftVoteExt;
 
@@ -236,14 +235,14 @@ where
         }
     }
 
-    /// Enter following state (vote.node_id != self.id or self is not a voter).
+    /// Clears campaign and leadership state when this node can no longer lead.
     ///
-    /// This node then becomes raft-follower or raft-learner.
+    /// Recalculates the server state as follower or learner from the effective membership.
     pub(crate) fn become_following(&mut self) {
+        let is_leading = self.state.is_leading(&self.config.id);
         debug_assert!(
-            self.state.vote_ref().to_leader_id().node_id() != &self.config.id
-                || !self.state.membership_state.effective().membership().is_voter(&self.config.id),
-            "It must hold: vote is not mine, or I am not a voter(leader just left the cluster)"
+            !is_leading,
+            "this node must no longer lead under the current vote and membership"
         );
 
         let had_leading_state = self.leader.is_some() || self.candidate.is_some() || self.pre_candidate.is_some();
