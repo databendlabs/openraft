@@ -11,12 +11,16 @@ use crate::display_ext::DisplayInstantExt;
 use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::progress::IdVal;
 use crate::progress::VecProgress;
+use crate::proposer::ElectionQuorumSet;
 use crate::proposer::Leader;
-use crate::proposer::LeaderQuorumSet;
+use crate::proposer::WriteQuorumSet;
+use crate::quorum::BothQuorums;
 use crate::quorum::QuorumSet;
+use crate::quorum::ReadOrBoth;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
+use crate::vote::RaftLeaderId;
 use crate::vote::RaftVote;
 use crate::vote::raft_vote::RaftVoteExt;
 
@@ -60,9 +64,13 @@ where
     }
 }
 
-impl<C> Candidate<C, LeaderQuorumSet<C>>
+impl<C> Candidate<C, ElectionQuorumSet<C>>
 where C: RaftTypeConfig
 {
+    /// Creates a candidate that wins by the election rule of `C::LeaderId`.
+    ///
+    /// Totally ordered leader IDs need only a read quorum; other leader IDs need a vote set that is
+    /// both a read and a write quorum.
     pub(crate) fn new(
         starting_time: InstantOf<C>,
         vote: VoteOf<C>,
@@ -71,11 +79,18 @@ where C: RaftTypeConfig
         progress_id_gen: SharedIdGenerator,
     ) -> Self {
         let read_quorum_set = membership.read_quorum_set().clone();
+        let election_quorum_set = if C::LeaderId::TOTALLY_ORDERED {
+            ReadOrBoth::Read(Arc::new(read_quorum_set))
+        } else {
+            let write_quorum_set = membership.write_quorum_set().clone();
+            let both = BothQuorums::new(Arc::new(read_quorum_set), Arc::new(write_quorum_set));
+            ReadOrBoth::Both(both)
+        };
         Self {
             starting_time,
             vote,
             last_log_id,
-            progress: Valid::new(VecProgress::new(Arc::new(read_quorum_set), [], IdVal::new_default)),
+            progress: Valid::new(VecProgress::new(election_quorum_set, [], IdVal::new_default)),
             membership,
             progress_id_gen,
         }
@@ -131,10 +146,10 @@ where
     }
 }
 
-impl<C> Candidate<C, LeaderQuorumSet<C>>
+impl<C> Candidate<C, ElectionQuorumSet<C>>
 where C: RaftTypeConfig
 {
-    pub(crate) fn into_leader(self) -> Leader<C, LeaderQuorumSet<C>> {
+    pub(crate) fn into_leader(self) -> Leader<C, WriteQuorumSet<C>> {
         // Mark the vote as committed, i.e., being granted and saved by a quorum.
         let vote = {
             let vote = self.vote_ref().clone();
@@ -155,5 +170,48 @@ where C: RaftTypeConfig
             last_leader_log_ids, // already Option<LeaderLogIds>
             self.progress_id_gen,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use maplit::btreeset;
+    use openraft_rt_tokio::TokioRuntime;
+
+    use crate::Membership;
+    use crate::Vote;
+    use crate::base::shared_id_generator::SharedIdGenerator;
+    use crate::declare_raft_types;
+    use crate::engine::testing::UTConfig;
+    use crate::proposer::Candidate;
+    use crate::quorum::ReadOrBoth;
+    use crate::type_config::TypeConfigExt;
+
+    declare_raft_types!(
+        StdConfig:
+            LeaderId = crate::impls::leader_id_std::LeaderId<u64, u64>,
+            AsyncRuntime = TokioRuntime,
+    );
+
+    #[test]
+    fn test_new_with_advanced_leader_id_elects_by_read_quorum() {
+        let membership = Membership::new_with_defaults(vec![btreeset! {1,2,3}], []);
+        let now = UTConfig::<()>::now();
+        let vote = Vote::new(2, 1);
+        let candidate = Candidate::<UTConfig, _>::new(now, vote, None, membership, SharedIdGenerator::new());
+
+        let is_read = matches!(candidate.progress().quorum_set(), ReadOrBoth::Read(_));
+        assert!(is_read, "advanced leader IDs are totally ordered");
+    }
+
+    #[test]
+    fn test_new_with_standard_leader_id_elects_by_read_and_write_quorum() {
+        let membership = Membership::new_with_defaults(vec![btreeset! {1,2,3}], []);
+        let now = StdConfig::now();
+        let vote = Vote::new(2, 1);
+        let candidate = Candidate::<StdConfig, _>::new(now, vote, None, membership, SharedIdGenerator::new());
+
+        let is_read_and_write = matches!(candidate.progress().quorum_set(), ReadOrBoth::Both(_));
+        assert!(is_read_and_write, "standard leader IDs are partially ordered");
     }
 }

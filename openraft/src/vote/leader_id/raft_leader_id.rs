@@ -1,6 +1,8 @@
 use std::fmt::Debug;
 use std::fmt::Display;
 
+use openraft_macros::since;
+
 use crate::NodeId;
 use crate::base::OptionalFeatures;
 use crate::vote::RaftCommittedLeaderId;
@@ -43,6 +45,16 @@ where
     ///
     /// A simple implementation of this trait would return `Self` as the committed version.
     type Committed: RaftCommittedLeaderId;
+
+    /// Whether any two leader IDs are comparable.
+    ///
+    /// With totally ordered leader IDs, a candidate wins an election with a read quorum alone.
+    /// Otherwise it needs a vote set that is both a read quorum and a write quorum. See
+    /// [election quorum](crate::docs::protocol::election_quorum).
+    ///
+    /// Set it to `true` only if `partial_cmp()` returns `Some` for any two leader IDs.
+    #[since(version = "0.10.0")]
+    const TOTALLY_ORDERED: bool = false;
 
     /// Create a new leader ID for the given term and node.
     fn new(term: Self::Term, node_id: Self::NodeId) -> Self;

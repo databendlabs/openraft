@@ -9,7 +9,7 @@ use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::entry::RaftEntry;
 use crate::proposer::Leader;
-use crate::proposer::LeaderQuorumSet;
+use crate::proposer::WriteQuorumSet;
 use crate::raft::linearizable_read::ReadLogId;
 use crate::raft::message::TransferLeaderRequest;
 use crate::raft_state::IOId;
@@ -42,7 +42,7 @@ where
     SM: RaftStateMachine<C>,
 {
     pub(crate) config: &'x mut EngineConfig<C>,
-    pub(crate) leader: &'x mut Leader<C, LeaderQuorumSet<C>>,
+    pub(crate) leader: &'x mut Leader<C, WriteQuorumSet<C>>,
     pub(crate) state: &'x mut RaftState<C>,
     pub(crate) output: &'x mut EngineOutput<C, SM>,
 }
@@ -54,7 +54,7 @@ where
 {
     pub(crate) fn new(
         config: &'x mut EngineConfig<C>,
-        leader: &'x mut Leader<C, LeaderQuorumSet<C>>,
+        leader: &'x mut Leader<C, WriteQuorumSet<C>>,
         state: &'x mut RaftState<C>,
         output: &'x mut EngineOutput<C, SM>,
     ) -> Self {

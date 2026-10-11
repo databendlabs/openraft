@@ -41,7 +41,7 @@ use crate::entry::RaftEntry;
 use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::progress::inflight_id::InflightId;
 use crate::proposer::Leader;
-use crate::proposer::LeaderQuorumSet;
+use crate::proposer::WriteQuorumSet;
 use crate::raft_state::io_state::io_progress::IOProgress;
 use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::type_config::alias::InstantOf;
@@ -489,7 +489,7 @@ where C: RaftTypeConfig
     /// for example, node-1 elects node-2 as a Leader, node-2 will become a Leader when receives the
     /// vote.
     /// A Leader established with election using the state in `Engine.candidate`.
-    pub(crate) fn new_leader(&mut self) -> Leader<C, LeaderQuorumSet<C>> {
+    pub(crate) fn new_leader(&mut self) -> Leader<C, WriteQuorumSet<C>> {
         let em = self.membership_state.effective().membership();
 
         let last_leader_log_ids = self.log_ids.by_last_leader();

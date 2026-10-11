@@ -21,6 +21,11 @@ pub mod pre_vote {
     #![doc = include_str!("pre_vote.md")]
 }
 
+#[openraft_macros::since(version = "0.10.0")]
+pub mod election_quorum {
+    #![doc = include_str!("election_quorum.md")]
+}
+
 pub mod replication {
     #![doc = include_str!("replication.md")]
 
