@@ -40,18 +40,20 @@ fn m123_345() -> Membership<u64, ()> {
 }
 
 #[test]
-fn test_membership_state_is_member() -> anyhow::Result<()> {
-    let x = MembershipStateOf::<UTConfig>::new(effmem(1, 1, m1()), effmem(3, 4, m123_345()));
+fn test_membership_state_roles_use_effective_config() {
+    let committed = Membership::new_with_defaults(vec![btreeset! {1,7,8}], [6]);
+    let effective = Membership::new_with_defaults(vec![btreeset! {1,2,3}, btreeset! {3,4,5}], [6, 7]);
+    let state = MembershipStateOf::<UTConfig>::new(effmem(1, 1, committed), effmem(3, 4, effective));
 
-    assert!(!x.is_voter(&0));
-    assert!(x.is_voter(&1));
-    assert!(x.is_voter(&2));
-    assert!(x.is_voter(&3));
-    assert!(x.is_voter(&4));
-    assert!(x.is_voter(&5));
-    assert!(!x.is_voter(&6));
-
-    Ok(())
+    let campaigners = (0..=9).filter(|id| state.is_campaigner(id)).collect::<Vec<_>>();
+    assert_eq!(vec![1, 2, 3, 4, 5], campaigners);
+    let read_voters = (0..=9).filter(|id| state.is_read_voter(id)).collect::<Vec<_>>();
+    assert_eq!(vec![1, 2, 3, 4, 5], read_voters);
+    let write_voters = (0..=9).filter(|id| state.is_write_voter(id)).collect::<Vec<_>>();
+    assert_eq!(vec![1, 2, 3, 4, 5], write_voters);
+    let eligible_campaigners =
+        (0..=9).filter(|id| state.is_campaigner_in_effective_or_committed(id)).collect::<Vec<_>>();
+    assert_eq!(vec![1, 2, 3, 4, 5, 7, 8], eligible_campaigners);
 }
 
 #[test]
@@ -62,38 +64,52 @@ fn test_campaign_eligibility_ends_when_removal_commits() {
 
     tracing::info!("--- final keeps voter 2; committed joint still allows removed voters 1 and 5 to campaign");
     {
-        for id in [1, 2, 5] {
-            assert!(state.is_voter_in_effective_or_committed(&id), "node {id} can campaign");
-        }
-        assert!(
-            !state.is_voter(&1),
-            "retained learner does not count as an effective voter"
-        );
-        assert!(!state.is_voter(&5), "removed node does not count as an effective voter");
-        assert!(
-            !state.is_voter_in_effective_or_committed(&3),
-            "ordinary learner cannot campaign"
-        );
-        assert!(
-            !state.is_voter_in_effective_or_committed(&6),
-            "unknown node cannot campaign"
-        );
+        let campaigners = (0..=6).filter(|id| state.is_campaigner(id)).collect::<Vec<_>>();
+        assert_eq!(vec![2], campaigners);
+        let read_voters = (0..=6).filter(|id| state.is_read_voter(id)).collect::<Vec<_>>();
+        assert_eq!(vec![2], read_voters);
+        let write_voters = (0..=6).filter(|id| state.is_write_voter(id)).collect::<Vec<_>>();
+        assert_eq!(vec![2], write_voters);
+        let eligible_campaigners =
+            (0..=6).filter(|id| state.is_campaigner_in_effective_or_committed(id)).collect::<Vec<_>>();
+        assert_eq!(vec![1, 2, 5], eligible_campaigners);
     }
 
     tracing::info!("--- committing the final membership ends only the removed voters' eligibility");
     {
-        state.commit(&Some(log_id(1, 1, 2)));
+        let committed = Some(log_id(1, 1, 2));
+        state.commit(&committed);
 
-        assert!(
-            !state.is_voter_in_effective_or_committed(&1),
-            "retained learner cannot start another campaign"
-        );
-        assert!(
-            !state.is_voter_in_effective_or_committed(&5),
-            "fully removed node cannot start another campaign"
-        );
-        assert!(state.is_voter_in_effective_or_committed(&2));
+        let campaigners = (0..=6).filter(|id| state.is_campaigner(id)).collect::<Vec<_>>();
+        assert_eq!(vec![2], campaigners);
+        let read_voters = (0..=6).filter(|id| state.is_read_voter(id)).collect::<Vec<_>>();
+        assert_eq!(vec![2], read_voters);
+        let write_voters = (0..=6).filter(|id| state.is_write_voter(id)).collect::<Vec<_>>();
+        assert_eq!(vec![2], write_voters);
+        let eligible_campaigners =
+            (0..=6).filter(|id| state.is_campaigner_in_effective_or_committed(id)).collect::<Vec<_>>();
+        assert_eq!(vec![2], eligible_campaigners);
     }
+}
+
+#[test]
+fn test_membership_roles_revert_when_pending_config_is_truncated() {
+    let committed = Membership::new_with_defaults(vec![btreeset! {1,2}], [3, 4]);
+    let effective = Membership::new_with_defaults(vec![btreeset! {2,3}], [1, 4]);
+    let mut state = MembershipStateOf::<UTConfig>::new(effmem(1, 1, committed), effmem(1, 2, effective));
+
+    let reverted = state.truncate(2);
+    let expected = Some(state.committed().clone());
+    assert_eq!(expected, reverted);
+    let campaigners = (0..=5).filter(|id| state.is_campaigner(id)).collect::<Vec<_>>();
+    assert_eq!(vec![1, 2], campaigners);
+    let read_voters = (0..=5).filter(|id| state.is_read_voter(id)).collect::<Vec<_>>();
+    assert_eq!(vec![1, 2], read_voters);
+    let write_voters = (0..=5).filter(|id| state.is_write_voter(id)).collect::<Vec<_>>();
+    assert_eq!(vec![1, 2], write_voters);
+    let eligible_campaigners =
+        (0..=5).filter(|id| state.is_campaigner_in_effective_or_committed(id)).collect::<Vec<_>>();
+    assert_eq!(vec![1, 2], eligible_campaigners);
 }
 
 #[test]

@@ -2,8 +2,28 @@ use maplit::btreeset;
 
 use crate::Membership;
 use crate::engine::testing::UTConfig;
+use crate::engine::testing::log_id;
 use crate::quorum::QuorumSet;
 use crate::type_config::alias::StoredMembershipOf;
+
+#[test]
+fn test_stored_membership_campaigners() {
+    let cases = [
+        (Membership::<u64, ()>::default(), vec![]),
+        (Membership::new_with_defaults(vec![btreeset! {1}], [2]), vec![1]),
+        (
+            Membership::new_with_defaults(vec![btreeset! {1,2}, btreeset! {2,3}], [4]),
+            vec![1, 2, 3],
+        ),
+    ];
+    for (membership, expected) in cases {
+        for log_id in [None, Some(log_id(1, 1, 1))] {
+            let stored = StoredMembershipOf::<UTConfig>::new(log_id, membership.clone());
+            let campaigners = (0..=5).filter(|id| stored.is_campaigner(id)).collect::<Vec<_>>();
+            assert_eq!(expected, campaigners);
+        }
+    }
+}
 
 #[test]
 fn test_stored_membership_majority() -> anyhow::Result<()> {

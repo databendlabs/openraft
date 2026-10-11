@@ -152,5 +152,17 @@ fn test_initialize() -> anyhow::Result<()> {
         );
     }
 
+    tracing::info!("--- initial learner 0 cannot initialize the cluster");
+    {
+        let mut eng = eng();
+        let membership = Membership::new_with_defaults(vec![btreeset! {1,2}], [0]);
+        let result = eng.initialize(membership.clone());
+        let expected = Err(InitializeError::NotInMembers(NotInMembers { node_id: 0, membership }));
+        assert_eq!(expected, result);
+        let commands = eng.output.take_commands();
+        let expected_commands = Vec::<Command<UTConfig>>::new();
+        assert_eq!(expected_commands, commands);
+    }
+
     Ok(())
 }
