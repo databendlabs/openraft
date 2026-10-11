@@ -42,7 +42,8 @@ pub fn check_converged(snapshots: &[(NodeId, FullNodeSnapshot)]) -> Result<Conve
         .filter(|id| {
             let (_, s) = snapshots.iter().find(|(sid, _)| sid == id).expect("claimant must be in snapshots");
             let m = s.raft.membership_config.membership();
-            m.voter_ids().chain(m.learner_ids()).any(|member| member == *id)
+            let mut member_ids = m.voter_ids().chain(m.non_write_voter_ids());
+            member_ids.any(|member| member == *id)
         })
         .collect();
 
@@ -59,7 +60,8 @@ pub fn check_converged(snapshots: &[(NodeId, FullNodeSnapshot)]) -> Result<Conve
         return Err(format!("leader n{leader} still in joint membership {membership}"));
     }
 
-    let members: BTreeSet<NodeId> = membership.voter_ids().chain(membership.learner_ids()).collect();
+    let member_ids = membership.voter_ids().chain(membership.non_write_voter_ids());
+    let members: BTreeSet<NodeId> = member_ids.collect();
 
     // The leader itself must have applied everything it holds.
     let leader_applied = ls.raft.last_applied;

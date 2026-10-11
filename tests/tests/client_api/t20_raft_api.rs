@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
@@ -113,25 +114,32 @@ async fn api_learner_ids() -> Result<()> {
     let mut router = RaftRouter::new(config.clone());
 
     tracing::info!("--- initializing cluster with voters 0,1 and learners 2,3");
-    router.new_cluster(btreeset! {0,1}, btreeset! {2,3}).await?;
+    let mut log_index = router.new_cluster(btreeset! {0,1}, btreeset! {2,3}).await?;
 
     let leader_id = router.leader().expect("leader not found");
     let leader = router.get_raft_handle(&leader_id)?;
 
     let learners: Vec<u64> = leader.learner_ids().collect();
-    assert_eq!(learners.len(), 2, "should have 2 learners");
-    assert!(learners.contains(&2), "should contain learner 2");
-    assert!(learners.contains(&3), "should contain learner 3");
+    assert_eq!(vec![2, 3], learners);
 
-    // Verify voters and learners are separate
     let voters: Vec<u64> = leader.voter_ids().collect();
-    assert_eq!(voters.len(), 2, "should have 2 voters");
-    assert!(voters.contains(&0), "should contain voter 0");
-    assert!(voters.contains(&1), "should contain voter 1");
+    assert_eq!(vec![0, 1], voters);
 
-    // Learners should not be in voters
-    for learner in &learners {
-        assert!(!voters.contains(learner), "learner {} should not be in voters", learner);
+    tracing::info!(
+        log_index,
+        "--- promote learner 2 and verify API IDs agree with its follower state"
+    );
+    {
+        leader.change_membership(btreeset! {0,1,2}, true).await?;
+        log_index += 2;
+
+        router.wait(&leader_id, timeout()).applied_index(Some(log_index), "promote learner 2").await?;
+        router.wait(&2, timeout()).state(openraft::ServerState::Follower, "promoted voter").await?;
+
+        let learners: Vec<u64> = leader.learner_ids().collect();
+        assert_eq!(vec![3], learners);
+        let voters: Vec<u64> = leader.voter_ids().collect();
+        assert_eq!(vec![0, 1, 2], voters);
     }
 
     Ok(())
@@ -227,4 +235,8 @@ async fn api_as_leader() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn timeout() -> Option<Duration> {
+    Some(Duration::from_secs(1))
 }

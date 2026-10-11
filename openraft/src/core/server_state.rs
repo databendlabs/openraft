@@ -3,10 +3,12 @@
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum ServerState {
-    /// The node is completely passive; replicating entries, but neither voting nor timing out.
+    /// The node has no campaign, read voter, or write voter role in the effective membership.
+    ///
+    /// Uninitialized and removed nodes also use this passive state.
     #[default]
     Learner,
-    /// The node is replicating logs from the leader.
+    /// The node receives logs and has a campaign, read voter, or write voter role.
     Follower,
     /// The node is campaigning to become the cluster leader.
     Candidate,

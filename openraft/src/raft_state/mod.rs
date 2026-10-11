@@ -1,6 +1,5 @@
 use std::error::Error;
 use std::ops::Deref;
-use std::sync::Arc;
 
 use openraft_macros::since;
 use validit::Valid;
@@ -406,43 +405,70 @@ where C: RaftTypeConfig
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn calc_server_state(&self, id: &C::NodeId) -> ServerState {
         tracing::debug!(
-            "states: contains: {}, is_voter: {}, is_leader: {}, is_leading: {}",
+            "states: contains: {}, is_campaigner: {}, is_leader: {}, is_leading: {}",
             self.membership_state.contains(id),
-            self.is_voter(id),
+            self.is_campaigner(id),
             self.is_leader(id),
             self.is_leading(id)
         );
 
-        // A Leader/Candidate may be a learner in the effective membership, or a voter in the
+        // A Leader/Candidate may be a learner in the effective membership, or a campaigner in the
         // committed membership whose removal has not yet been committed.
-        #[allow(clippy::collapsible_else_if)]
         if self.is_leader(id) {
             ServerState::Leader
         } else if self.is_leading(id) {
             ServerState::Candidate
         } else {
-            if self.is_voter(id) {
-                ServerState::Follower
-            } else {
-                ServerState::Learner
-            }
+            self.calc_following_state(id)
         }
     }
 
-    pub(crate) fn is_voter(&self, id: &C::NodeId) -> bool {
-        self.membership_state.is_voter(id)
+    /// Returns the follower or learner state for a node that is not leading.
+    ///
+    /// Configured learners have no campaign, read voter, or write voter role.
+    /// Uninitialized and removed nodes also use the passive learner state.
+    pub(crate) fn calc_following_state(&self, id: &C::NodeId) -> ServerState {
+        let membership = self.membership_state.effective().membership();
+        let is_member = membership.contains(id);
+        let is_learner = membership.is_learner(id);
+        if !is_member || is_learner {
+            return ServerState::Learner;
+        }
+
+        ServerState::Follower
     }
 
-    /// The node is candidate(leadership is not granted by a quorum) or leader(leadership is granted
-    /// by a quorum)
+    /// Returns whether `id` may campaign under the effective membership.
     ///
-    /// Note that in Openraft Leader does not have to be a voter. See [Determine Server State][] for
-    /// more details about determining the server state.
+    /// Election triggers also consider campaigners in the committed membership.
+    pub(crate) fn is_campaigner(&self, id: &C::NodeId) -> bool {
+        self.membership_state.is_campaigner(id)
+    }
+
+    /// Returns whether `id` is a read voter in any effective membership component.
+    #[allow(dead_code, reason = "Reserved for read/write quorum separation")]
+    pub(crate) fn is_read_voter(&self, id: &C::NodeId) -> bool {
+        self.membership_state.is_read_voter(id)
+    }
+
+    /// Returns whether `id` is a write voter in any effective membership component.
+    #[allow(dead_code, reason = "Reserved for read/write quorum separation")]
+    pub(crate) fn is_write_voter(&self, id: &C::NodeId) -> bool {
+        self.membership_state.is_write_voter(id)
+    }
+
+    /// Returns whether `id` owns the current vote and may remain a candidate or leader.
+    ///
+    /// An effective member, including a learner, may keep leading.
+    /// A removed node may also keep leading while it is a campaigner in the committed membership.
+    /// See [Determine Server State][] for details.
     ///
     /// [Determine Server State]: crate::docs::data::vote#vote-and-membership-define-the-server-state
     pub(crate) fn is_leading(&self, id: &C::NodeId) -> bool {
-        (self.membership_state.contains(id) || self.membership_state.committed().is_voter(id))
-            && self.vote.leader_node_id() == id
+        let is_member = self.membership_state.contains(id);
+        let is_committed_campaigner = self.membership_state.committed().is_campaigner(id);
+        let owns_vote = self.vote.leader_node_id() == id;
+        (is_member || is_committed_campaigner) && owns_vote
     }
 
     /// The node is leader
@@ -470,8 +496,7 @@ where C: RaftTypeConfig
 
         Leader::new(
             self.vote_ref().to_committed(),
-            Arc::new((*em).clone()),
-            em.learner_ids(),
+            em.clone(),
             last_leader_log_ids,
             self.progress_id_gen.clone(),
         )

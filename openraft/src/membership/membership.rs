@@ -89,12 +89,11 @@ where
         }
         write!(f, "]")?;
 
-        let all_node_ids = self.nodes.keys().cloned().collect::<BTreeSet<_>>();
-        let members = self.voter_ids().collect::<BTreeSet<_>>();
+        let learner_ids = self.nodes.keys().filter(|id| self.is_learner(id));
 
         write!(f, ", learners:[")?;
 
-        for (learner_cnt, learner_id) in all_node_ids.difference(&members).enumerate() {
+        for (learner_cnt, learner_id) in learner_ids.enumerate() {
             if learner_cnt > 0 {
                 write!(f, ",")?;
             }
@@ -184,9 +183,19 @@ where
         self.configs.iter().flatten().cloned().collect::<BTreeSet<_>>().into_iter()
     }
 
-    /// Returns an Iterator of all learner node ids. Voters are not included.
+    /// Deprecated alias for [`Self::non_write_voter_ids()`].
+    #[since(version = "0.10.0", change = "deprecated in favor of `non_write_voter_ids()`")]
+    #[deprecated(since = "0.10.0", note = "use `non_write_voter_ids()` instead")]
     pub fn learner_ids(&self) -> impl Iterator<Item = NID> + '_ {
-        self.nodes.keys().filter(|x| !self.is_voter(x)).cloned()
+        self.non_write_voter_ids()
+    }
+
+    /// Returns known node IDs outside the write voter configurations, in ascending order.
+    ///
+    /// These nodes receive replicated logs without counting toward the write quorum.
+    #[since(version = "0.10.0")]
+    pub fn non_write_voter_ids(&self) -> impl Iterator<Item = NID> + '_ {
+        self.nodes.keys().filter(|x| !self.is_write_voter(x)).cloned()
     }
 }
 
@@ -205,19 +214,70 @@ where
         }
     }
 
-    /// Return true if the given node id is either a voter or a learner.
+    /// Returns whether `node_id` belongs to this membership.
     pub(crate) fn contains(&self, node_id: &NID) -> bool {
         self.nodes.contains_key(node_id)
     }
 
-    /// Check if the given `NodeId` exists and is a voter.
-    pub(crate) fn is_voter(&self, node_id: &NID) -> bool {
+    /// Returns the read quorum definition.
+    ///
+    /// This majority-based membership uses the same definition for read and write quorums.
+    pub(crate) fn read_quorum_set(&self) -> &Self {
+        self
+    }
+
+    /// Returns the write quorum definition.
+    ///
+    /// This majority-based membership uses the same definition for read and write quorums.
+    pub(crate) fn write_quorum_set(&self) -> &Self {
+        self
+    }
+
+    /// Returns whether `node_id` may start an election under this configuration.
+    ///
+    /// This majority-based membership lets every write voter campaign.
+    pub(crate) fn is_campaigner(&self, node_id: &NID) -> bool {
+        self.is_write_voter(node_id)
+    }
+
+    /// Returns whether `node_id` is a read voter in any component configuration.
+    ///
+    /// In a joint membership, belonging to any component is enough to be a read voter.
+    /// A read quorum still requires a majority of every component.
+    /// This membership uses the same voters for read and write quorums.
+    pub(crate) fn is_read_voter(&self, node_id: &NID) -> bool {
         for c in self.configs.iter() {
             if c.contains(node_id) {
                 return true;
             }
         }
         false
+    }
+
+    /// Returns whether `node_id` is a write voter in any component configuration.
+    ///
+    /// In a joint membership, belonging to any component is enough to be a write voter.
+    /// A write quorum still requires a majority of every component.
+    /// This membership uses the same voters for read and write quorums.
+    pub(crate) fn is_write_voter(&self, node_id: &NID) -> bool {
+        self.is_read_voter(node_id)
+    }
+
+    /// Returns whether `node_id` is a configured learner.
+    ///
+    /// Learners receive logs but have no campaign, read voter, or write voter role.
+    /// Nodes absent from this membership are not learners.
+    pub(crate) fn is_learner(&self, node_id: &NID) -> bool {
+        if !self.contains(node_id) {
+            return false;
+        }
+
+        let is_campaigner = self.is_campaigner(node_id);
+        let is_read_voter = self.is_read_voter(node_id);
+        let is_write_voter = self.is_write_voter(node_id);
+        let is_voter = is_read_voter || is_write_voter;
+        let has_role = is_campaigner || is_voter;
+        !has_role
     }
 
     /// Create a new Membership the same as [`Self::new()`], but does not add the default
