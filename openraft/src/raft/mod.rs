@@ -125,7 +125,8 @@ use crate::errors::InitializeError;
 use crate::errors::LinearizableReadError;
 use crate::errors::RaftError;
 use crate::errors::into_raft_result::IntoRaftResult;
-use crate::membership::IntoNodes;
+use crate::membership::RaftMembership;
+use crate::membership::RaftMembershipExt;
 use crate::metrics::MetricsRecorder;
 use crate::metrics::RaftDataMetrics;
 use crate::metrics::RaftMetrics;
@@ -171,17 +172,18 @@ use crate::vote::raft_vote::RaftVoteExt;
 ///        D            = ClientRequest,
 ///        R            = ClientResponse,
 ///        NodeId       = u64,
-///        Node         = openraft::BasicNode,
+///        Node         = openraft::impls::BasicNode,
 ///        Term         = u64,
 ///        LeaderId     = openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>,
 ///        Vote           = openraft::impls::Vote<Self::LeaderId>,
-///        Payload        = openraft::EntryPayload<Self::D, Self::NodeId, Self::Node>,
-///        Entry          = openraft::Entry<
+///        Membership     = openraft::impls::Membership<Self::NodeId, Self::Node>,
+///        Payload        = openraft::impls::EntryPayload<Self::D, Self::Membership>,
+///        Entry          = openraft::impls::Entry<
 ///            <Self::LeaderId as openraft::vote::RaftLeaderId>::Committed,
 ///            Self::Payload,
 ///        >,
 ///        Responder<T>   = openraft::impls::OneshotResponder<Self, T>,
-///        AsyncRuntime   = openraft::TokioRuntime,
+///        AsyncRuntime   = openraft::impls::TokioRuntime,
 /// );
 /// ```
 ///
@@ -193,7 +195,8 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// - `Term`:         `u64`
 /// - `LeaderId`:     `::openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>`
 /// - `Vote`:           `::openraft::impls::Vote<Self::LeaderId>`
-/// - `Payload`:        `::openraft::EntryPayload<Self::D, Self::NodeId, Self::Node>`
+/// - `Membership`:     `::openraft::impls::Membership<Self::NodeId, Self::Node>`
+/// - `Payload`:        `::openraft::impls::EntryPayload<Self::D, Self::Membership>`
 /// - `Entry`:          `::openraft::impls::Entry<CommittedLeaderId, Self::Payload>`
 /// - `Responder<T>`:   `::openraft::impls::OneshotResponder<Self, T>`
 /// - `AsyncRuntime`:   `::openraft::impls::TokioRuntime`
@@ -243,8 +246,10 @@ macro_rules! declare_raft_types {
                 (Term         , , u64                                          ),
                 (LeaderId     , , $crate::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId> ),
                 (Vote           , , $crate::impls::Vote<Self::LeaderId>            ),
-                (Payload        , , $crate::EntryPayload<Self::D, Self::NodeId, Self::Node> ),
-                (Entry          , , $crate::Entry<<Self::LeaderId as $crate::vote::RaftLeaderId>::Committed, Self::Payload> ),
+                (Membership     , , $crate::impls::Membership<Self::NodeId, Self::Node> ),
+                (MembershipEdit , , $crate::impls::ChangeMembers<Self::NodeId, Self::Node> ),
+                (Payload        , , $crate::impls::EntryPayload<Self::D, Self::Membership> ),
+                (Entry          , , $crate::impls::Entry<<Self::LeaderId as $crate::vote::RaftLeaderId>::Committed, Self::Payload> ),
                 (Responder<T>   , , $crate::impls::ProgressResponder<Self, T> where T: $crate::OptionalSend + 'static     ),
                 (Batch<T>       , , $crate::impls::InlineBatch<T> where T: $crate::OptionalSend + 'static     ),
                 (AsyncRuntime   , , $crate::impls::TokioRuntime                  ),
@@ -855,7 +860,7 @@ where
                 last_quorum_acked: metrics.last_quorum_acked.map(|s| s.into_inner()),
             })
         } else {
-            let node = metrics.membership_config.membership().get_node(node_id).cloned();
+            let node = metrics.membership_config.get_node(node_id).cloned();
 
             Err(ForwardToLeader {
                 leader_id: Some(node_id.clone()),
@@ -916,9 +921,9 @@ where
         // Clone and collect immediately to release the lock quickly.
         let membership = self.inner.rx_metrics.borrow_watched().membership_config.clone();
         let membership = membership.membership();
-        let nodes = membership.nodes();
-        let learners = nodes.filter(|(id, _)| membership.is_learner(id));
-        let ids = learners.map(|(id, _)| id.clone()).collect::<Vec<_>>();
+        let node_ids = membership.node_ids();
+        let learners = node_ids.filter(|id| membership.is_learner(id));
+        let ids = learners.collect::<Vec<_>>();
         ids.into_iter()
     }
 
@@ -1485,6 +1490,14 @@ where
     /// log entry to store, then enter Candidate state and attempt to elect itself as the
     /// leader.
     ///
+    /// `members` converts into the first membership config. The default [`Membership`] converts
+    /// from a `BTreeMap` or a `HashMap` of nodes, and from a `BTreeSet` of node ids when the node
+    /// type is `()` or `EmptyNode`.
+    /// Initialization fails with `InitializeError::InvalidMembership` when the read or the write
+    /// quorum set has no usable quorum, or when a quorum ID has no node.
+    ///
+    /// [`Membership`]: crate::Membership
+    ///
     /// # Examples
     ///
     /// ```ignore
@@ -1503,9 +1516,10 @@ where
     /// nodes.insert(3, BasicNode { addr: "127.0.0.1:8082".to_string() });
     /// raft.initialize(nodes).await?;
     /// ```
+    #[since(version = "0.10.0", change = "takes `Into<C::Membership>` instead of `IntoNodes`")]
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn initialize<T>(&self, members: T) -> Result<(), RaftError<C, InitializeError<C>>>
-    where T: IntoNodes<C::NodeId, C::Node> + Debug {
+    where T: Into<C::Membership> + Debug {
         self.management_api().initialize(members).await.into_raft_result()
     }
 

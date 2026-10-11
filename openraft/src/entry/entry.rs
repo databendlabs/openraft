@@ -2,7 +2,6 @@ use std::fmt;
 
 use openraft_macros::since;
 
-use crate::Membership;
 use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
 use crate::log_id::LogId;
@@ -97,7 +96,7 @@ where
         self.log_id = new;
     }
 
-    fn get_membership(&self) -> Option<Membership<P::NodeId, P::Node>> {
+    fn get_membership(&self) -> Option<P::Membership> {
         self.payload.get_membership()
     }
 }

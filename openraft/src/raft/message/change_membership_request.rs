@@ -1,17 +1,17 @@
 use openraft_macros::since;
 
-use crate::ChangeMembers;
 use crate::RaftTypeConfig;
 use crate::batch::Batch;
 use crate::raft::Precondition;
 use crate::type_config::alias::BatchOf;
+use crate::type_config::alias::MembershipEditOf;
 
 /// Parameters for a membership change that may carry an application-defined payload.
 #[since(version = "0.10.0", change = "added configurable membership change request")]
 pub struct ChangeMembershipRequest<C>
 where C: RaftTypeConfig
 {
-    members: ChangeMembers<C::NodeId, C::Node>,
+    members: MembershipEditOf<C>,
     retain_removed_as_learners: bool,
     preconditions: BatchOf<C, Precondition<C>>,
     payload: Option<(C::Payload, C::Payload)>,
@@ -22,8 +22,12 @@ where C: RaftTypeConfig
 {
     /// Create a request that uses a new blank payload for each membership entry and has no
     /// preconditions.
+    #[since(
+        version = "0.10.0",
+        change = "take `impl Into<MembershipEditOf<C>>` instead of `impl Into<ChangeMembers>`"
+    )]
     #[since(version = "0.10.0", change = "added configurable membership change request")]
-    pub fn new(members: impl Into<ChangeMembers<C::NodeId, C::Node>>, retain: bool) -> Self {
+    pub fn new(members: impl Into<MembershipEditOf<C>>, retain: bool) -> Self {
         let members = members.into();
         Self {
             members,
@@ -60,7 +64,7 @@ where C: RaftTypeConfig
     pub(crate) fn into_parts(
         self,
     ) -> (
-        ChangeMembers<C::NodeId, C::Node>,
+        MembershipEditOf<C>,
         bool,
         BatchOf<C, Precondition<C>>,
         Option<(C::Payload, C::Payload)>,

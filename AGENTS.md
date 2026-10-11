@@ -46,6 +46,8 @@ Modifies files:
 
 ## Rust Style
 
+- Reference provided Openraft implementations through `openraft::impls::` (`crate::impls::` inside the core crate).
+
 - Use `where` clauses for trait bounds instead of inline bounds. This applies to functions, methods, structs, enums, `impl` blocks, and trait definitions.
   - Correct: `fn foo<T>(x: T) where T: RaftLeaderId`
   - Wrong: `fn foo<T: RaftLeaderId>(x: T)`

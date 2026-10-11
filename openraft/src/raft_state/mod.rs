@@ -39,6 +39,7 @@ pub use membership_state::MembershipState;
 use crate::base::shared_id_generator::SharedIdGenerator;
 use crate::entry::RaftEntry;
 use crate::entry::raft_entry_ext::RaftEntryExt;
+use crate::membership::RaftMembershipExt;
 use crate::progress::inflight_id::InflightId;
 use crate::proposer::Leader;
 use crate::proposer::WriteQuorumSet;
