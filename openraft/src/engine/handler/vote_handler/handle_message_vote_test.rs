@@ -248,8 +248,7 @@ fn test_become_following_active_candidate_emits_close() -> anyhow::Result<()> {
         UTConfig::<()>::now(),
         Vote::new(3, 0),
         None,
-        Arc::new(m01()),
-        vec![],
+        m01(),
         eng.state.progress_id_gen.clone(),
     ));
     eng.state.server_state = ServerState::Candidate;
@@ -273,8 +272,7 @@ fn test_become_following_active_pre_candidate_emits_close() -> anyhow::Result<()
         UTConfig::<()>::now(),
         Vote::new(3, 0),
         None,
-        Arc::new(m01()),
-        vec![],
+        m01(),
         eng.state.progress_id_gen.clone(),
     ));
     eng.state.server_state = ServerState::Candidate;
@@ -299,8 +297,7 @@ fn test_become_following_invalid_role_combination_emits_single_close() -> anyhow
         UTConfig::<()>::now(),
         Vote::new(3, 0),
         None,
-        Arc::new(m01()),
-        vec![],
+        m01(),
         eng.state.progress_id_gen.clone(),
     ));
     eng.state.server_state = ServerState::Leader;
