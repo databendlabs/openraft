@@ -3,13 +3,13 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::ChangeMembers;
 use openraft::Config;
 use openraft::EntryPayload;
 use openraft::Membership;
 use openraft::ServerState;
 use openraft::StepDownPolicy;
 use openraft::async_runtime::WatchReceiver;
+use openraft::impls::ChangeMembers;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::ClientResponse;
 use openraft_memstore::IntoMemClientRequest;

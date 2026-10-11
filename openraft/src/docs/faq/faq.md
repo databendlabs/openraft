@@ -743,7 +743,7 @@ are learners:
 2. **Task 1** calls `change_membership(ReplaceAllVoters({a,b,d}))`
    → Transitions to joint config `[{a,b,c}, {a,b,d}]`
 3. **Task 2** calls `change_membership(ReplaceAllVoters({a,b,e}))`
-   → Transitions from `[{a,b,c}, {a,b,d}]` to `[{a,b,d}, {a,b,e}]`
+   → Transitions from `[{a,b,c}, {a,b,d}]` to `[{a,b,c}, {a,b,d}, {a,b,e}]`
 4. **Task 1 (Step 2)** fails with `PreconditionFailed`, because the last
    membership log is now Task 2's joint config
 5. **Task 2 (Step 2)** finalizes config to `{a,b,e}` and reports success to its
@@ -784,7 +784,7 @@ OpenRaft intentionally supports this behavior because:
   example, if transitioning from `{a,b,c}` to `{b,c,d}` but node `d` becomes
   unreliable when it finished phase-1 and the config is `[{a,b,c}, {b,c,d}]`,
   the leader can pivot to include a different node (e.g., change membership
-  config to `[{a,b,c}, {b,c,x}]` then to `{b,c,x}`) or revert to the original
+  config to `[{a,b,c}, {b,c,d}, {b,c,x}]` then to `{b,c,x}`) or revert to the original
   configuration `{a,b,c}`.
 
 

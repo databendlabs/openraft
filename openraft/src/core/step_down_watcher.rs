@@ -14,6 +14,7 @@ use crate::async_runtime::watch::WatchReceiver;
 use crate::core::ServerState;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::external_command::ExternalCommand;
+use crate::membership::RaftMembershipExt;
 use crate::metrics::RaftMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::type_config::TypeConfigExt;
@@ -192,10 +193,9 @@ where C: RaftTypeConfig {
     // Only a Leader publishes replication metrics.
     let replication = metrics.replication.as_ref()?;
 
-    let membership = metrics.membership_config.membership();
     let matching = |id: &C::NodeId| replication.get(id).cloned().flatten();
 
-    membership.voter_ids().max_by_key(matching)
+    metrics.membership_config.voter_ids().max_by_key(matching)
 }
 
 #[cfg(test)]

@@ -47,9 +47,10 @@ fn test_membership_state_roles_use_effective_config() {
 
     let campaigners = (0..=9).filter(|id| state.is_campaigner(id)).collect::<Vec<_>>();
     assert_eq!(vec![1, 2, 3, 4, 5], campaigners);
-    let read_voters = (0..=9).filter(|id| state.is_read_voter(id)).collect::<Vec<_>>();
+    let membership = state.effective().membership();
+    let read_voters = (0..=9).filter(|id| membership.is_read_voter(id)).collect::<Vec<_>>();
     assert_eq!(vec![1, 2, 3, 4, 5], read_voters);
-    let write_voters = (0..=9).filter(|id| state.is_write_voter(id)).collect::<Vec<_>>();
+    let write_voters = (0..=9).filter(|id| membership.is_write_voter(id)).collect::<Vec<_>>();
     assert_eq!(vec![1, 2, 3, 4, 5], write_voters);
     let eligible_campaigners =
         (0..=9).filter(|id| state.is_campaigner_in_effective_or_committed(id)).collect::<Vec<_>>();
@@ -66,9 +67,10 @@ fn test_campaign_eligibility_ends_when_removal_commits() {
     {
         let campaigners = (0..=6).filter(|id| state.is_campaigner(id)).collect::<Vec<_>>();
         assert_eq!(vec![2], campaigners);
-        let read_voters = (0..=6).filter(|id| state.is_read_voter(id)).collect::<Vec<_>>();
+        let membership = state.effective().membership();
+        let read_voters = (0..=6).filter(|id| membership.is_read_voter(id)).collect::<Vec<_>>();
         assert_eq!(vec![2], read_voters);
-        let write_voters = (0..=6).filter(|id| state.is_write_voter(id)).collect::<Vec<_>>();
+        let write_voters = (0..=6).filter(|id| membership.is_write_voter(id)).collect::<Vec<_>>();
         assert_eq!(vec![2], write_voters);
         let eligible_campaigners =
             (0..=6).filter(|id| state.is_campaigner_in_effective_or_committed(id)).collect::<Vec<_>>();
@@ -82,9 +84,10 @@ fn test_campaign_eligibility_ends_when_removal_commits() {
 
         let campaigners = (0..=6).filter(|id| state.is_campaigner(id)).collect::<Vec<_>>();
         assert_eq!(vec![2], campaigners);
-        let read_voters = (0..=6).filter(|id| state.is_read_voter(id)).collect::<Vec<_>>();
+        let membership = state.effective().membership();
+        let read_voters = (0..=6).filter(|id| membership.is_read_voter(id)).collect::<Vec<_>>();
         assert_eq!(vec![2], read_voters);
-        let write_voters = (0..=6).filter(|id| state.is_write_voter(id)).collect::<Vec<_>>();
+        let write_voters = (0..=6).filter(|id| membership.is_write_voter(id)).collect::<Vec<_>>();
         assert_eq!(vec![2], write_voters);
         let eligible_campaigners =
             (0..=6).filter(|id| state.is_campaigner_in_effective_or_committed(id)).collect::<Vec<_>>();
@@ -103,9 +106,10 @@ fn test_membership_roles_revert_when_pending_config_is_truncated() {
     assert_eq!(expected, reverted);
     let campaigners = (0..=5).filter(|id| state.is_campaigner(id)).collect::<Vec<_>>();
     assert_eq!(vec![1, 2], campaigners);
-    let read_voters = (0..=5).filter(|id| state.is_read_voter(id)).collect::<Vec<_>>();
+    let membership = state.effective().membership();
+    let read_voters = (0..=5).filter(|id| membership.is_read_voter(id)).collect::<Vec<_>>();
     assert_eq!(vec![1, 2], read_voters);
-    let write_voters = (0..=5).filter(|id| state.is_write_voter(id)).collect::<Vec<_>>();
+    let write_voters = (0..=5).filter(|id| membership.is_write_voter(id)).collect::<Vec<_>>();
     assert_eq!(vec![1, 2], write_voters);
     let eligible_campaigners =
         (0..=5).filter(|id| state.is_campaigner_in_effective_or_committed(id)).collect::<Vec<_>>();
@@ -323,7 +327,7 @@ fn committed_state(m: Membership<u64, ()>) -> MembershipStateOf<UTConfig> {
 }
 
 /// The same as [`committed_state`], for a `Node` type that carries metadata.
-fn committed_node_state(m: Membership<u64, BasicNode>) -> MembershipState<UtClid, u64, BasicNode> {
+fn committed_node_state(m: Membership<u64, BasicNode>) -> MembershipState<UtClid, Membership<u64, BasicNode>> {
     let stored = Arc::new(StoredMembership::new(Some(log_id(3, 1, 4)), m));
     MembershipState::new(stored.clone(), stored)
 }
@@ -362,8 +366,8 @@ fn test_validate_append_membership_unsupported_transition() -> anyhow::Result<()
     let got = ms.validate_append_membership(&proposed).unwrap_err();
 
     let want = ChangeMembershipError::UnsupportedMembershipTransition(UnsupportedMembershipTransition {
-        previous: vec![btreeset! {1,2,3}],
-        proposed: vec![btreeset! {2,3,4}],
+        previous: "{voters:[{1:(),2:(),3:()}], learners:[]}".to_string(),
+        proposed: "{voters:[{2:(),3:(),4:()}], learners:[]}".to_string(),
     });
     assert_eq!(want, got);
     assert_eq!(before, ms);
