@@ -184,9 +184,12 @@ where
         self.configs.iter().flatten().cloned().collect::<BTreeSet<_>>().into_iter()
     }
 
-    /// Returns an Iterator of all learner node ids. Voters are not included.
-    pub fn learner_ids(&self) -> impl Iterator<Item = NID> + '_ {
-        self.nodes.keys().filter(|x| !self.is_voter(x)).cloned()
+    /// Returns known node IDs outside the write voter configurations, in ascending order.
+    ///
+    /// These nodes receive replicated logs without counting toward the write quorum.
+    #[since(version = "0.10.0", change = "renamed `learner_ids()` to `non_write_voter_ids()`")]
+    pub fn non_write_voter_ids(&self) -> impl Iterator<Item = NID> + '_ {
+        self.nodes.keys().filter(|x| !self.is_write_voter(x)).cloned()
     }
 }
 
@@ -210,14 +213,48 @@ where
         self.nodes.contains_key(node_id)
     }
 
-    /// Check if the given `NodeId` exists and is a voter.
-    pub(crate) fn is_voter(&self, node_id: &NID) -> bool {
+    /// Returns the read quorum definition.
+    ///
+    /// This majority-based membership uses the same definition for read and write quorums.
+    pub(crate) fn read_quorum_set(&self) -> &Self {
+        self
+    }
+
+    /// Returns the write quorum definition.
+    ///
+    /// This majority-based membership uses the same definition for read and write quorums.
+    pub(crate) fn write_quorum_set(&self) -> &Self {
+        self
+    }
+
+    /// Returns whether `node_id` may start an election under this configuration.
+    ///
+    /// This majority-based membership lets every write voter campaign.
+    pub(crate) fn is_campaigner(&self, node_id: &NID) -> bool {
+        self.is_write_voter(node_id)
+    }
+
+    /// Returns whether `node_id` is a read voter in any component configuration.
+    ///
+    /// In a joint membership, belonging to any component is enough to be a read voter.
+    /// A read quorum still requires a majority of every component.
+    /// This membership uses the same voters for read and write quorums.
+    pub(crate) fn is_read_voter(&self, node_id: &NID) -> bool {
         for c in self.configs.iter() {
             if c.contains(node_id) {
                 return true;
             }
         }
         false
+    }
+
+    /// Returns whether `node_id` is a write voter in any component configuration.
+    ///
+    /// In a joint membership, belonging to any component is enough to be a write voter.
+    /// A write quorum still requires a majority of every component.
+    /// This membership uses the same voters for read and write quorums.
+    pub(crate) fn is_write_voter(&self, node_id: &NID) -> bool {
+        self.is_read_voter(node_id)
     }
 
     /// Create a new Membership the same as [`Self::new()`], but does not add the default

@@ -79,15 +79,31 @@ fn test_membership() -> anyhow::Result<()> {
     assert_eq!(vec![1, 2, 3], m123.voter_ids().collect::<Vec<_>>());
     assert_eq!(vec![1, 2, 3, 4, 5], m123_345.voter_ids().collect::<Vec<_>>());
 
-    assert!(!m1.is_voter(&0));
-    assert!(m1.is_voter(&1));
-    assert!(m123_345.is_voter(&4));
-    assert!(!m123_345.is_voter(&6));
-
     assert!(!m123.get_joint_config().len() > 1);
     assert!(m123_345.get_joint_config().len() > 1);
 
     Ok(())
+}
+
+#[test]
+fn test_membership_roles() {
+    let cases = [
+        (vec![], btreeset! {}),
+        (vec![btreeset! {1}], btreeset! {1}),
+        (vec![btreeset! {1,2,3}, btreeset! {3,4,5}], btreeset! {1,2,3,4,5}),
+    ];
+    for (configs, voters) in cases {
+        let membership = Membership::<u64, ()>::new_with_defaults(configs, [1, 3, 6]);
+        for id in 0..=7 {
+            let expected = voters.contains(&id);
+            let is_campaigner = membership.is_campaigner(&id);
+            assert_eq!(expected, is_campaigner, "campaigner {id}");
+            let is_read_voter = membership.is_read_voter(&id);
+            assert_eq!(expected, is_read_voter, "read voter {id}");
+            let is_write_voter = membership.is_write_voter(&id);
+            assert_eq!(expected, is_write_voter, "write voter {id}");
+        }
+    }
 }
 
 #[test]
@@ -99,10 +115,10 @@ fn test_membership_with_learners() -> anyhow::Result<()> {
 
         // test learner and membership
         assert_eq!(vec![1], m1_2.voter_ids().collect::<Vec<_>>());
-        assert_eq!(btreeset! {2}, m1_2.learner_ids().collect());
+        assert_eq!(btreeset! {2}, m1_2.non_write_voter_ids().collect());
 
         assert_eq!(vec![1], m1_23.voter_ids().collect::<Vec<_>>());
-        assert_eq!(vec![2, 3], m1_23.learner_ids().collect::<Vec<_>>());
+        assert_eq!(vec![2, 3], m1_23.non_write_voter_ids().collect::<Vec<_>>());
 
         // Adding a member as learner has no effect:
 
@@ -114,14 +130,14 @@ fn test_membership_with_learners() -> anyhow::Result<()> {
 
         let m = m1_23.change(ChangeMembers::AddNodes(btreemap! {3=>()}), true)?;
         assert_eq!(vec![1], m.voter_ids().collect::<Vec<_>>());
-        assert_eq!(btreeset! {2,3}, m.learner_ids().collect());
+        assert_eq!(btreeset! {2,3}, m.non_write_voter_ids().collect());
     }
 
     // overlapping members and learners
     {
         let s1_2 =
             Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1,2,3}, btreeset! {5,6,7}], btreeset! {3,4,5});
-        let x = s1_2.learner_ids().collect();
+        let x = s1_2.non_write_voter_ids().collect();
         assert_eq!(btreeset! {4}, x);
     }
 

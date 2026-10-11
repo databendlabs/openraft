@@ -111,22 +111,44 @@ where
         Self { committed, effective }
     }
 
-    /// Return true if the given node id is either a voter or a learner.
+    /// Returns whether `id` is a voter or learner in the effective membership.
     pub(crate) fn contains(&self, id: &NID) -> bool {
         self.effective.membership().contains(id)
     }
 
-    /// Check if the given `NodeId` exists and is a voter.
-    pub(crate) fn is_voter(&self, id: &NID) -> bool {
-        self.effective.membership().is_voter(id)
+    /// Returns whether `id` may campaign under the effective membership.
+    ///
+    /// This uses the latest membership even before its log entry commits.
+    /// Election triggers use [`Self::is_campaigner_in_effective_or_committed`] instead.
+    pub(crate) fn is_campaigner(&self, id: &NID) -> bool {
+        self.effective.membership().is_campaigner(id)
+    }
+
+    /// Returns whether `id` is a read voter in the effective membership.
+    ///
+    /// For joint membership, a voter may belong to any component configuration.
+    /// This uses the latest membership even before its log entry commits.
+    #[allow(dead_code, reason = "Reserved for read/write quorum separation")]
+    pub(crate) fn is_read_voter(&self, id: &NID) -> bool {
+        self.effective.membership().is_read_voter(id)
+    }
+
+    /// Returns whether `id` is a write voter in the effective membership.
+    ///
+    /// For joint membership, a voter may belong to any component configuration.
+    /// This uses the latest membership even before its log entry commits.
+    #[allow(dead_code, reason = "Reserved for read/write quorum separation")]
+    pub(crate) fn is_write_voter(&self, id: &NID) -> bool {
+        self.effective.membership().is_write_voter(id)
     }
 
     /// Whether a node may campaign according to its effective or committed membership.
     ///
-    /// A removed voter may need to regain leadership to finish the membership change.
-    /// This does not add it to the election quorum, which uses only effective voters.
-    pub(crate) fn is_voter_in_effective_or_committed(&self, id: &NID) -> bool {
-        self.effective.is_voter(id) || self.committed.is_voter(id)
+    /// A removed campaigner may need to regain leadership to finish the membership change.
+    /// It remains eligible until the membership change commits, even if retained as a learner.
+    /// Voting and quorum checks use only the effective membership.
+    pub(crate) fn is_campaigner_in_effective_or_committed(&self, id: &NID) -> bool {
+        self.effective.is_campaigner(id) || self.committed.is_campaigner(id)
     }
 
     /// Builds a new membership configuration by applying changes to the current configuration.
