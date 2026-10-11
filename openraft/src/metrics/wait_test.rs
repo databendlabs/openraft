@@ -385,8 +385,8 @@ where C: RaftTypeConfig<NodeId = u64> {
         current_leader: None,
         millis_since_quorum_ack: None,
         last_quorum_acked: None,
-        membership_config: Arc::new(StoredMembershipOf::<C>::new(None, Membership::default())),
-        committed_membership_config: Arc::new(StoredMembershipOf::<C>::new(None, Membership::default())),
+        membership_config: Arc::new(StoredMembershipOf::<C>::new(None, C::Membership::default())),
+        committed_membership_config: Arc::new(StoredMembershipOf::<C>::new(None, C::Membership::default())),
         heartbeat: None,
 
         snapshot: None,

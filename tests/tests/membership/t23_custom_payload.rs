@@ -15,7 +15,6 @@ use futures::Stream;
 use futures::TryStreamExt;
 use maplit::btreemap;
 use maplit::btreeset;
-use openraft::ChangeMembers;
 use openraft::Config;
 use openraft::Entry;
 use openraft::LogState;
@@ -41,6 +40,7 @@ use openraft::errors::RPCError;
 use openraft::errors::ReplicationClosed;
 use openraft::errors::StreamingError;
 use openraft::errors::Unreachable;
+use openraft::impls::ChangeMembers;
 use openraft::network::RPCOption;
 use openraft::network::v2::RaftNetworkV2;
 use openraft::raft::AppendEntriesRequest;
@@ -74,8 +74,7 @@ impl fmt::Display for CustomPayload {
 
 impl RaftPayload for CustomPayload {
     type D = String;
-    type NodeId = u64;
-    type Node = ();
+    type Membership = Membership<u64, ()>;
 
     fn blank() -> Self {
         BLANK_CALLS.fetch_add(1, Ordering::SeqCst);

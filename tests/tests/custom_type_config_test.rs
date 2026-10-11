@@ -7,10 +7,10 @@
 
 #![allow(dead_code)]
 
-use openraft::Entry;
 use openraft::OptionalSend;
 use openraft::RaftTypeConfig;
 use openraft::batch::Batch;
+use openraft::impls::Entry;
 use openraft::impls::OneshotResponder;
 use openraft::impls::TokioRuntime;
 
@@ -63,11 +63,13 @@ impl RaftTypeConfig for CustomConfig {
     type D = u64;
     type R = u64;
     type NodeId = u64;
-    type Node = openraft::BasicNode;
+    type Node = openraft::impls::BasicNode;
     type Term = u64;
     type LeaderId = openraft::impls::leader_id_adv::LeaderId<u64, u64>;
     type Vote = openraft::impls::Vote<Self::LeaderId>;
-    type Payload = openraft::EntryPayload<Self::D, Self::NodeId, Self::Node>;
+    type Membership = openraft::impls::Membership<Self::NodeId, Self::Node>;
+    type MembershipEdit = openraft::impls::ChangeMembers<Self::NodeId, Self::Node>;
+    type Payload = openraft::impls::EntryPayload<Self::D, Self::Membership>;
     type Entry = Entry<<Self::LeaderId as openraft::vote::RaftLeaderId>::Committed, Self::Payload>;
     type AsyncRuntime = TokioRuntime;
     type Responder<T>

@@ -4,14 +4,14 @@
 
 use openraft_macros::since;
 
-use crate::ChangeMembers;
-use crate::Membership;
 use crate::Raft;
 use crate::RaftTypeConfig;
 use crate::batch::Batch;
 use crate::errors::ClientWriteError;
 use crate::errors::RaftError;
 use crate::errors::into_raft_result::IntoRaftResult;
+#[cfg(doc)]
+use crate::impls::ChangeMembers;
 #[cfg(doc)]
 use crate::impls::OneshotResponder;
 use crate::raft::ChangeMembershipOutcome;
@@ -22,6 +22,7 @@ use crate::raft::ManagementApi;
 use crate::raft::Precondition;
 use crate::storage::RaftStateMachine;
 use crate::type_config::alias::BatchOf;
+use crate::type_config::alias::MembershipEditOf;
 
 /// Implement blocking mode write operations those reply on oneshot channel for communication
 /// between Raft core and client.
@@ -83,12 +84,20 @@ where
     /// [`UncommittedLeaderLog`]: crate::errors::UncommittedLeaderLog
     #[since(
         version = "0.10.0",
+        change = "the joint entry keeps every config of the starting membership"
+    )]
+    #[since(
+        version = "0.10.0",
+        change = "take `impl Into<MembershipEditOf<C>>` instead of `impl Into<ChangeMembers>`"
+    )]
+    #[since(
+        version = "0.10.0",
         change = "skip the joint entry when every old quorum intersects every new quorum"
     )]
     #[tracing::instrument(level = "info", skip_all)]
     pub async fn change_membership(
         &self,
-        members: impl Into<ChangeMembers<C::NodeId, C::Node>>,
+        members: impl Into<MembershipEditOf<C>>,
         retain: bool,
     ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
         self.management_api()
@@ -125,6 +134,10 @@ where
     ///
     /// The returned [`ChangeMembershipOutcome`] always contains the uniform response, and the
     /// joint response when the change entered joint consensus.
+    #[since(
+        version = "0.10.0",
+        change = "the joint entry keeps every config of the starting membership"
+    )]
     #[since(
         version = "0.10.0",
         change = "skip the joint entry when every old quorum intersects every new quorum"
@@ -166,13 +179,21 @@ where
     /// joint entry's log id, a value the caller never passed.
     #[since(
         version = "0.10.0",
+        change = "the joint entry keeps every config of the starting membership"
+    )]
+    #[since(
+        version = "0.10.0",
+        change = "take `impl Into<MembershipEditOf<C>>` instead of `impl Into<ChangeMembers>`"
+    )]
+    #[since(
+        version = "0.10.0",
         change = "skip the joint entry when every old quorum intersects every new quorum"
     )]
     #[since(version = "0.10.0")]
     #[tracing::instrument(level = "info", skip_all)]
     pub async fn change_membership_if(
         &self,
-        members: impl Into<ChangeMembers<C::NodeId, C::Node>>,
+        members: impl Into<MembershipEditOf<C>>,
         retain: bool,
         preconditions: impl IntoIterator<Item = Precondition<C>>,
     ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
@@ -283,7 +304,7 @@ where
     #[tracing::instrument(level = "info", skip_all)]
     pub async fn append_membership(
         &self,
-        membership: Membership<C::NodeId, C::Node>,
+        membership: C::Membership,
         payload: C::Payload,
         preconditions: impl IntoIterator<Item = Precondition<C>>,
     ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {

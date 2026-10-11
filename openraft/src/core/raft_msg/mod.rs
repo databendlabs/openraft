@@ -1,10 +1,8 @@
-use std::collections::BTreeMap;
 use std::fmt;
 
 use display_more::DisplayOptionExt;
 use display_more::DisplaySliceExt;
 
-use crate::ChangeMembers;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::base::BoxOnce;
@@ -12,7 +10,6 @@ use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::raft_msg::membership_payloads::MembershipPayloads;
 #[cfg(feature = "runtime-stats")]
 use crate::core::runtime_stats::RuntimeStats;
-use crate::display_ext::DisplayBTreeMapDebugValueExt;
 use crate::errors::Infallible;
 use crate::errors::InitializeError;
 use crate::errors::LinearizableReadError;
@@ -31,6 +28,7 @@ use crate::type_config::alias::CommittedLeaderIdOf;
 #[cfg(feature = "runtime-stats")]
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::MembershipEditOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::PayloadOf;
 use crate::type_config::alias::VoteOf;
@@ -91,12 +89,12 @@ where C: RaftTypeConfig
     },
 
     Initialize {
-        members: BTreeMap<C::NodeId, C::Node>,
+        members: C::Membership,
         tx: ResultSender<C, (), InitializeError<C>>,
     },
 
     ChangeMembership {
-        changes: ChangeMembers<C::NodeId, C::Node>,
+        changes: MembershipEditOf<C>,
 
         /// Payloads whose membership OpenRaft replaces with the computed membership.
         ///
@@ -207,7 +205,7 @@ where C: RaftTypeConfig
                 write!(f, "GetLinearizer: {}", linearizer_option)
             }
             RaftMsg::Initialize { members, .. } => {
-                write!(f, "Initialize: {}", members.display())
+                write!(f, "Initialize: {}", members)
             }
             RaftMsg::ChangeMembership {
                 changes,
