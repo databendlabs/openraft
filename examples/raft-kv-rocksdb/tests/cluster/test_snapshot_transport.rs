@@ -39,7 +39,7 @@ fn test_interrupted_snapshot_preserves_state_and_retries() -> anyhow::Result<()>
             let response = transfer.send(&learner).await?;
             let expected_response = SnapshotResponse::new(transfer.vote);
             assert_eq!(expected_response, response);
-            written.data
+            written.data.unwrap()
         };
         let state_before = learner.applied_state().await?;
         let current_before = learner.current()?;
@@ -51,7 +51,7 @@ fn test_interrupted_snapshot_preserves_state_and_retries() -> anyhow::Result<()>
             let written = leader.write("key", &value).await?;
             let snapshot = leader.build_snapshot().await?;
             let transfer = SnapshotTransfer::new(&leader, &snapshot, CHUNK_SIZE).await?;
-            (written.data, transfer)
+            (written.data.unwrap(), transfer)
         };
 
         tracing::info!(dir = %learner.dir().display(), "Disconnect after the receiver writes part of a file");
@@ -150,7 +150,7 @@ fn test_large_snapshot_with_fragmented_http_body() -> anyhow::Result<()> {
             }
             let spans_multiple_chunks = full_chunks > 1;
             assert!(spans_multiple_chunks);
-            ((written.data, second.data), transfer)
+            ((written.data.unwrap(), second.data.unwrap()), transfer)
         };
 
         tracing::info!("Split length prefixes and payloads across HTTP chunks, combining message boundaries");
@@ -201,7 +201,7 @@ fn test_invalid_snapshot_payloads_preserve_state() -> anyhow::Result<()> {
             let snapshot = leader.build_snapshot().await?;
             let transfer = SnapshotTransfer::new(&leader, &snapshot, CHUNK_SIZE).await?;
             transfer.send(&learner).await?;
-            (written.data, transfer)
+            (written.data.unwrap(), transfer)
         };
         let state_before = learner.applied_state().await?;
         let current_before = learner.current()?;
@@ -278,7 +278,7 @@ fn test_stale_and_duplicate_snapshots_are_discarded() -> anyhow::Result<()> {
             let snapshot = leader.build_snapshot().await?;
             let current = SnapshotTransfer::new(&leader, &snapshot, CHUNK_SIZE).await?;
             current.send(&learner).await?;
-            (older, current, written.data)
+            (older, current, written.data.unwrap())
         };
         let state_before = learner.applied_state().await?;
         let current_before = learner.current()?;

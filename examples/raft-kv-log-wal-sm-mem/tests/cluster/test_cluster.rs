@@ -111,7 +111,7 @@ async fn test_cluster_inner() -> Result<(), Box<dyn std::error::Error + Send + S
         tracing::info!("write foo=bar on the leader");
 
         let resp = leader.write(&types_kv::Request::set("foo", "bar")).await??;
-        resp.data
+        resp.data.unwrap()
     };
 
     tracing::info!("read foo=bar back on every node, the two followers included");

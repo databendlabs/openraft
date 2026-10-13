@@ -125,6 +125,7 @@ where C: RaftTypeConfig<
             let version = entry.log_id().index();
             last_applied_log = Some(entry.log_id());
 
+            let is_normal = matches!(&entry.payload, EntryPayload::Normal(_));
             let put = match entry.payload {
                 EntryPayload::Blank => None,
                 EntryPayload::Normal(ref req) => match req {
@@ -168,7 +169,7 @@ where C: RaftTypeConfig<
             };
 
             if let Some(responder) = responder {
-                responses.push((responder, response));
+                responses.push((responder, is_normal.then_some(response)));
             }
         }
 

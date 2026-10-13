@@ -1027,7 +1027,11 @@ async fn driver_loop(queue: DriverQueue, history: Arc<Mutex<ClientHistory>>) -> 
                                 if dbg_ops() {
                                     println!("DBG ack serial={serial} log={}", resp.log_id);
                                 }
-                                history.lock().unwrap().record_write_acked(serial, resp.log_id, resp.data.prev)
+                                history.lock().unwrap().record_write_acked(
+                                    serial,
+                                    resp.log_id,
+                                    resp.data.expect("client write always carries a response").prev,
+                                )
                             }
                             _ => {
                                 if dbg_ops() {

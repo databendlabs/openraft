@@ -241,18 +241,18 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachine> {
             data.last_applied = Some(entry.log_id);
 
             let response = match entry.payload {
-                EntryPayload::Blank => Response { prev: None },
+                EntryPayload::Blank => None,
                 EntryPayload::Normal(ref req) => {
                     let prev = data.data.insert(req.key.clone(), ValueMeta {
                         value: req.value.clone(),
                         serial: req.serial,
                         log_id: entry.log_id,
                     });
-                    Response { prev }
+                    Some(Response { prev })
                 }
                 EntryPayload::Membership(ref mem) => {
                     data.last_membership = StoredMembership::new(Some(entry.log_id), mem.clone());
-                    Response { prev: None }
+                    None
                 }
             };
 

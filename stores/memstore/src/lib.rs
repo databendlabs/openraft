@@ -552,14 +552,14 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
             sm.last_applied_log = Some(entry.log_id);
 
             let response = match entry.payload {
-                EntryPayload::Blank => ClientResponse(None),
+                EntryPayload::Blank => None,
                 EntryPayload::Normal(ref data) => {
                     let previous = sm.client_status.insert(data.client.clone(), data.status.clone());
-                    ClientResponse(previous)
+                    Some(ClientResponse(previous))
                 }
                 EntryPayload::Membership(ref mem) => {
                     sm.last_membership = StoredMembershipOf::<TypeConfig>::new(Some(entry.log_id), mem.clone());
-                    ClientResponse(None)
+                    None
                 }
             };
 

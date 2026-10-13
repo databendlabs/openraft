@@ -44,7 +44,7 @@ async fn restart_inner() -> Result<(), Box<dyn std::error::Error + Send + Sync>>
         // next open needs.
         raft.shutdown().await?;
 
-        resp.data
+        resp.data.unwrap()
     };
 
     tracing::info!("reopen the same WAL directory with a fresh state machine");

@@ -38,9 +38,12 @@ pub struct WriteResponse<C: RaftTypeConfig> {
 
 impl<C: RaftTypeConfig> From<ClientWriteResponse<C>> for WriteResponse<C> {
     fn from(resp: ClientWriteResponse<C>) -> Self {
+        // `client_write_many()` only submits normal payloads, so every response carries data.
+        let response = resp.data.expect("client_write_many() only produces normal entries");
+
         WriteResponse {
             log_id: resp.log_id,
-            response: resp.data,
+            response,
         }
     }
 }

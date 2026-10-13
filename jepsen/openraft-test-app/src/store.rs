@@ -148,8 +148,8 @@ impl RaftStateMachine<TypeConfig> for StateMachineStore {
             self.data.last_applied_log_id = Some(entry.log_id.clone());
 
             let response = match entry.payload {
-                EntryPayload::Blank => types_kv::Response::none(),
-                EntryPayload::Normal(req) => match req {
+                EntryPayload::Blank => None,
+                EntryPayload::Normal(req) => Some(match req {
                     types_kv::Request::Set { key, value } => {
                         let mut st = self.data.kvs.lock().await;
                         st.insert(key, types_kv::VersionedValue {
@@ -176,10 +176,10 @@ impl RaftStateMachine<TypeConfig> for StateMachineStore {
                             types_kv::Response::none()
                         }
                     }
-                },
+                }),
                 EntryPayload::Membership(mem) => {
                     self.data.last_membership = StoredMembership::new(Some(entry.log_id), mem);
-                    types_kv::Response::none()
+                    None
                 }
             };
 

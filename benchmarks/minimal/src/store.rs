@@ -314,6 +314,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
         while let Some((entry, responder)) = entries.try_next().await? {
             sm.last_applied_log = Some(entry.log_id);
 
+            let is_normal = matches!(&entry.payload, EntryPayload::Normal(_));
             match entry.payload {
                 EntryPayload::Blank | EntryPayload::Normal(_) => {}
                 EntryPayload::Membership(ref mem) => {
@@ -322,7 +323,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
             };
 
             if let Some(responder) = responder {
-                responder.send(ClientResponse {});
+                responder.send(is_normal.then_some(ClientResponse {}));
             }
         }
         Ok(())

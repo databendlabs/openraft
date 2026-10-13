@@ -262,11 +262,12 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
         let mut sm = self.sm.write().await;
         while let Some((entry, responder)) = entries.try_next().await? {
             sm.last_applied_log = Some(entry.log_id);
+            let is_normal = matches!(&entry.payload, EntryPayload::Normal(_));
             if let EntryPayload::Membership(ref mem) = entry.payload {
                 sm.last_membership = StoredMembershipOf::<TypeConfig>::new(Some(entry.log_id), mem.clone());
             }
             if let Some(r) = responder {
-                r.send(());
+                r.send(is_normal.then_some(()));
             }
         }
         Ok(())

@@ -40,7 +40,7 @@ async fn test_snapshot_replication_inner() -> anyhow::Result<()> {
 
     println!("=== write 2 logs on the leader");
     leader.write(&types_kv::Request::set("foo1", "bar1")).await??;
-    let expected_foo2 = leader.write(&types_kv::Request::set("foo2", "bar2")).await??.data;
+    let expected_foo2 = leader.write(&types_kv::Request::set("foo2", "bar2")).await??.data.unwrap();
 
     println!("=== leader snapshots and purges the logs it covers");
     // Building the snapshot and purging the logs it covers are two steps, so wait for

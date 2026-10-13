@@ -35,9 +35,9 @@ fn test_snapshot_followed_by_logs() -> anyhow::Result<()> {
             let installed = metrics.borrow_watched().snapshot;
             assert_eq!(snapshot.meta.last_log_id, installed);
             let shared = learner.read("shared").await?;
-            assert_eq!(overwritten.data, shared);
+            assert_eq!(overwritten.data.as_ref(), Some(&shared));
             let tail = learner.read("tail").await?;
-            assert_eq!(added.data, tail);
+            assert_eq!(added.data.as_ref(), Some(&tail));
             let expected_state = leader.applied_state().await?;
             let actual_state = learner.applied_state().await?;
             assert_eq!(expected_state, actual_state);
@@ -45,13 +45,13 @@ fn test_snapshot_followed_by_logs() -> anyhow::Result<()> {
 
         tracing::info!("Continue writing through the writable database created from the checkpoint");
         {
-            let value = overwritten.data.value.context("overwritten value exists")?;
+            let value = overwritten.data.unwrap().value.context("overwritten value exists")?;
             let request = types_kv::Request::compare_and_set("shared", value.version, "cas");
             let response = leader.raft().client_write(request).await?;
             let index = response.log_id.index();
             learner.wait_applied(index).await?;
             let expected = types_kv::Response::new("cas", index);
-            assert_eq!(expected, response.data);
+            assert_eq!(Some(&expected), response.data.as_ref());
             let actual = learner.read("shared").await?;
             assert_eq!(expected, actual);
         }
@@ -76,7 +76,7 @@ fn test_restart_after_snapshot_installation() -> anyhow::Result<()> {
             let snapshot = leader.build_snapshot().await?;
             leader.purge(&snapshot).await?;
             leader.add_learner(&learner).await?;
-            written.data
+            written.data.unwrap()
         };
         let expected_state = learner.applied_state().await?;
         let expected_current = learner.current()?;
@@ -98,7 +98,7 @@ fn test_restart_after_snapshot_installation() -> anyhow::Result<()> {
             let index = response.log_id.index();
             learner.wait_applied(index).await?;
             let actual = learner.read("key").await?;
-            assert_eq!(response.data, actual);
+            assert_eq!(response.data.as_ref(), Some(&actual));
             let expected_state = leader.applied_state().await?;
             let actual_state = learner.applied_state().await?;
             assert_eq!(expected_state, actual_state);
@@ -123,7 +123,7 @@ fn test_restarted_leader_rebuilds_snapshot_for_learner() -> anyhow::Result<()> {
             let written = leader.write("key", "survives purge").await?;
             let snapshot = leader.build_snapshot().await?;
             leader.purge(&snapshot).await?;
-            (written.data, snapshot)
+            (written.data.unwrap(), snapshot)
         };
         let expected_current = leader.current()?;
         drop(snapshot.snapshot);

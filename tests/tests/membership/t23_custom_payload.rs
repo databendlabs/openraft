@@ -275,9 +275,10 @@ impl RaftStateMachine<TestConfig> for TestStateMachine {
     async fn apply<Strm>(&mut self, mut entries: Strm) -> Result<(), io::Error>
     where Strm: Stream<Item = Result<EntryResponder<TestConfig>, io::Error>> + Unpin + OptionalSend {
         while let Some((entry, responder)) = entries.try_next().await? {
+            let has_normal = entry.payload.normal.is_some();
             self.apply_entry(entry);
             if let Some(responder) = responder {
-                responder.send(());
+                responder.send(has_normal.then_some(()));
             }
         }
 

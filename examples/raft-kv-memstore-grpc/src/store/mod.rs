@@ -108,9 +108,9 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
 
             sm.last_applied = Some(log_id.into());
 
-            let value = if let Some(req) = entry.app_data {
+            let response = if let Some(req) = entry.app_data {
                 sm.data.insert(req.key, req.value.clone());
-                Some(req.value)
+                Some(Response { value: Some(req.value) })
             } else if let Some(mem) = entry.membership {
                 sm.last_membership_log_id = Some(log_id.into());
                 sm.last_membership = Some(mem);
@@ -120,7 +120,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
             };
 
             if let Some(responder) = responder {
-                responder.send(Response { value });
+                responder.send(response);
             }
         }
         Ok(())

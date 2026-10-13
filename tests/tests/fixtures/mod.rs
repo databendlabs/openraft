@@ -810,7 +810,7 @@ impl TypedRaftRouter {
         &self,
         target: MemNodeId,
         req: ClientRequest,
-    ) -> Result<ClientResponse, RaftError<MemConfig, ClientWriteError<MemConfig>>> {
+    ) -> Result<Option<ClientResponse>, RaftError<MemConfig, ClientWriteError<MemConfig>>> {
         let node = {
             let rt = self.nodes.lock().unwrap();
             rt.get(&target)

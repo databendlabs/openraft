@@ -62,7 +62,10 @@ impl AppService for AppServiceImpl {
         let res = self.raft_node.client_write(req.clone()).await;
 
         match res.decompose() {
-            Ok(Ok(resp)) => Ok(Response::new(resp.data)),
+            Ok(Ok(resp)) => {
+                let data = resp.data.ok_or_else(|| Status::internal("normal write returned no data"))?;
+                Ok(Response::new(data))
+            }
             Ok(Err(ClientWriteError::ForwardToLeader(forward))) => Err(status_forward_to_leader(&forward)),
             Ok(Err(e)) => Err(Status::internal(e.to_string())),
             Err(fatal) => Err(Status::internal(fatal.to_string())),

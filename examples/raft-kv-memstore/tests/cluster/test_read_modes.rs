@@ -26,7 +26,7 @@ async fn test_read_modes_inner() -> anyhow::Result<()> {
             value: "bar".to_string(),
         })
         .await??;
-    let expected = write_response.data;
+    let expected = write_response.data.unwrap();
     TypeConfig::sleep(Duration::from_millis(1_000)).await;
 
     let follower2 = Client::<TypeConfig>::new(2, util::api_addr(PORT_BASE, 2));

@@ -196,18 +196,18 @@ impl RaftStateMachine<TypeConfig> for Rc<StateMachineStore> {
             sm.last_applied = Some(entry.log_id);
 
             let response = match entry.payload {
-                EntryPayload::Blank => Response { value: None },
+                EntryPayload::Blank => None,
                 EntryPayload::Normal(ref req) => match req {
                     Request::Set { key, value, .. } => {
                         sm.data.insert(key.clone(), value.clone());
-                        Response {
+                        Some(Response {
                             value: Some(value.clone()),
-                        }
+                        })
                     }
                 },
                 EntryPayload::Membership(ref mem) => {
                     sm.last_membership = StoredMembership::new(Some(entry.log_id), mem.clone());
-                    Response { value: None }
+                    None
                 }
             };
 

@@ -98,8 +98,11 @@ async fn run_test(rafts: &[Raft]) {
         println!("write resp: {:#?}", resp);
         let resp = client.write(&types_kv::Request::set("foo2", "bar2")).await.unwrap().unwrap();
         println!("write resp: {:#?}", resp);
-        assert_eq!(resp.log_id.index(), resp.data.value.as_ref().unwrap().version);
-        resp.data
+        assert_eq!(
+            resp.log_id.index(),
+            resp.data.as_ref().unwrap().value.as_ref().unwrap().version
+        );
+        resp.data.unwrap()
     };
 
     println!("=== let node-1 take a snapshot");

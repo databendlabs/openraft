@@ -150,8 +150,8 @@ where C: RaftTypeConfig<
             inner.last_applied_log = Some(entry.log_id.clone());
 
             let response = match &entry.payload {
-                EntryPayload::Blank => types_kv::Response::none(),
-                EntryPayload::Normal(req) => match req {
+                EntryPayload::Blank => None,
+                EntryPayload::Normal(req) => Some(match req {
                     types_kv::Request::Set { key, value } => {
                         inner.state_machine.data.insert(key.clone(), types_kv::VersionedValue {
                             value: value.clone(),
@@ -180,10 +180,10 @@ where C: RaftTypeConfig<
                             types_kv::Response::none()
                         }
                     }
-                },
+                }),
                 EntryPayload::Membership(mem) => {
                     inner.last_membership = StoredMembershipOf::<C>::new(Some(entry.log_id.clone()), mem.clone());
-                    types_kv::Response::none()
+                    None
                 }
             };
 

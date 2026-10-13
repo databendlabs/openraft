@@ -18,12 +18,22 @@ pub type ClientWriteResult<C> = Result<ClientWriteResponse<C>, ClientWriteError<
     derive(serde::Deserialize, serde::Serialize),
     serde(bound = "C::R: crate::AppDataResponse")
 )]
+#[since]
 pub struct ClientWriteResponse<C: RaftTypeConfig> {
     /// The id of the log that is applied.
     pub log_id: LogIdOf<C>,
 
     /// Application specific response data.
-    pub data: C::R,
+    ///
+    /// It is [`Some`] only when the applied log entry is a normal application entry
+    /// ([`EntryPayload::Normal`](crate::EntryPayload::Normal)). A blank entry does not carry
+    /// application data, and a membership entry reports its outcome via
+    /// [`membership`](Self::membership); both yield `None`.
+    #[since(
+        version = "0.10.0",
+        change = "`Option<C::R>`; `None` when the entry has no response data"
+    )]
+    pub data: Option<C::R>,
 
     /// If the log entry is a change-membership entry.
     pub membership: Option<Membership<C::NodeId, C::Node>>,
@@ -38,7 +48,7 @@ where C: RaftTypeConfig
     pub(crate) fn new_app_response(log_id: LogIdOf<C>, data: C::R) -> Self {
         Self {
             log_id,
-            data,
+            data: Some(data),
             membership: None,
         }
     }
@@ -48,9 +58,13 @@ where C: RaftTypeConfig
         &self.log_id
     }
 
+    /// Return the application response data, if the applied entry carries any.
+    ///
+    /// Returns [`None`] for blank and membership entries.
+    #[since(version = "0.10.0", change = "returns `Option<&C::R>`")]
     #[since(version = "0.9.5")]
-    pub fn response(&self) -> &C::R {
-        &self.data
+    pub fn response(&self) -> Option<&C::R> {
+        self.data.as_ref()
     }
 
     /// Return membership config if the log entry is a change-membership entry.

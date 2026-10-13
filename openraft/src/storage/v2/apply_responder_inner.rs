@@ -21,7 +21,10 @@ pub(crate) enum ApplyResponderInner<C: RaftTypeConfig> {
 
 impl<C: RaftTypeConfig> ApplyResponderInner<C> {
     /// Send the response after applying an entry.
-    pub(crate) fn send(self, response: C::R) {
+    ///
+    /// `response` is [`Some`] only for a normal application entry; blank and membership entries
+    /// pass [`None`].
+    pub(crate) fn send(self, response: Option<C::R>) {
         use crate::raft::ClientWriteResponse;
         use crate::raft::responder::Responder as ResponderTrait;
 

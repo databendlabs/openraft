@@ -115,7 +115,7 @@ async fn client_write_ff() -> Result<()> {
     let (responder, complete_rx) = ProgressResponder::complete_only();
     n0.client_write_ff(ClientRequest::make_request("foo", 2), Some(responder)).await?;
     let got: ClientWriteResponse<TypeConfig> = complete_rx.await??;
-    assert_eq!(None, got.response().0.as_deref());
+    assert_eq!(None, got.response().unwrap().0.as_deref());
 
     tracing::info!("--- omit one responder and observe that write through the next response");
     {
@@ -124,7 +124,7 @@ async fn client_write_ff() -> Result<()> {
         let (responder, complete_rx) = ProgressResponder::complete_only();
         n0.client_write_ff(ClientRequest::make_request("foo", 4), Some(responder)).await?;
         let got: ClientWriteResponse<TypeConfig> = complete_rx.await??;
-        assert_eq!(Some("request-3"), got.response().0.as_deref());
+        assert_eq!(Some("request-3"), got.response().unwrap().0.as_deref());
     }
 
     Ok(())
@@ -156,7 +156,7 @@ async fn write_builder() -> Result<()> {
     let (responder, complete_rx) = ProgressResponder::complete_only();
     n0.write(ClientRequest::make_request("foo", 2)).responder(responder).await?;
     let got: ClientWriteResponse<TypeConfig> = complete_rx.await??;
-    assert_eq!(None, got.response().0.as_deref());
+    assert_eq!(None, got.response().unwrap().0.as_deref());
 
     // Test write without responder (fire-and-forget)
     n0.write(ClientRequest::make_request("foo", 3)).await?;
@@ -165,7 +165,7 @@ async fn write_builder() -> Result<()> {
     let (responder, complete_rx) = ProgressResponder::complete_only();
     n0.write(ClientRequest::make_request("foo", 4)).responder(responder).await?;
     let got: ClientWriteResponse<TypeConfig> = complete_rx.await??;
-    assert_eq!(Some("request-3"), got.response().0.as_deref());
+    assert_eq!(Some("request-3"), got.response().unwrap().0.as_deref());
 
     Ok(())
 }
@@ -204,7 +204,7 @@ async fn write_with_leader() -> Result<()> {
     router.wait(&0, None).applied_index(Some(log_index), "write with correct leader").await?;
 
     let got = complete_rx.await??;
-    assert_eq!(&ClientResponse(None), got.response());
+    assert_eq!(Some(&ClientResponse(None)), got.response());
     assert_eq!(&log_id(1, 0, log_index), got.log_id());
 
     // Test 2: Write with incorrect leader should fail with ForwardToLeader
@@ -234,7 +234,7 @@ async fn write_with_leader() -> Result<()> {
 
     let got = complete_rx.await??;
     // Should see request-2 (request-3 failed)
-    assert_eq!(&ClientResponse(Some("request-2".to_string())), got.response());
+    assert_eq!(Some(&ClientResponse(Some("request-2".to_string()))), got.response());
     assert_eq!(&log_id(1, 0, log_index), got.log_id());
 
     Ok(())

@@ -52,7 +52,7 @@ async fn client_write_ff_with_progress_responder() -> Result<()> {
     let response = result?;
     assert_eq!(log_id(1, 0, log_index), response.log_id);
     // First write returns None (no previous value)
-    assert_eq!(None, response.response().0.as_deref());
+    assert_eq!(None, response.response().unwrap().0.as_deref());
 
     // Test another write - pattern follows t10: write("foo", 11) with no responder, then write("foo",
     // 12)
@@ -72,7 +72,7 @@ async fn client_write_ff_with_progress_responder() -> Result<()> {
     let response = result?;
     assert_eq!(log_id(1, 0, log_index), response.log_id);
     // Should return the value from the previous write (11)
-    assert_eq!(Some("request-11"), response.response().0.as_deref());
+    assert_eq!(Some("request-11"), response.response().unwrap().0.as_deref());
 
     Ok(())
 }
