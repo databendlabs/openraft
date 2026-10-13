@@ -101,7 +101,11 @@ where C: RaftTypeConfig
             Self::Tick { i } => {
                 format!("Tick {}", i)
             }
-            Self::LocalLogFlushed { vote, last_log_id, result } => {
+            Self::LocalLogFlushed {
+                vote,
+                last_log_id,
+                result,
+            } => {
                 format!(
                     "LocalLogFlushed: vote: {}, last_log_id: {}, ok: {}",
                     vote,

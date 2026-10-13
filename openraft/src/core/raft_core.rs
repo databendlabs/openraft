@@ -796,8 +796,8 @@ where
         Ok(())
     }
 
-    /// Append as leader without waiting for the flush, so the `Replicate` commands that follow go out at
-    /// once and the followers' fsyncs overlap the leader's. The flush is
+    /// Append as leader without waiting for the flush, so the `Replicate` commands that follow go
+    /// out at once and the followers' fsyncs overlap the leader's. The flush is
     /// reported later as [`Notify::LocalLogFlushed`], and only then does
     /// the leader count itself in the commit quorum, so a commit still
     /// needs a quorum of durable copies.
@@ -873,8 +873,8 @@ where
         Ok(())
     }
 
-    /// If a leader append has been waiting for its flush for a heartbeat interval or longer, wait for
-    /// every submitted append's flush (see [`LeaderFlush`]).
+    /// If a leader append has been waiting for its flush for a heartbeat interval or longer, wait
+    /// for every submitted append's flush (see [`LeaderFlush`]).
     async fn wait_if_leader_flush_stalled(&mut self) {
         let after = Duration::from_millis(self.config.heartbeat_interval);
         if !self.leader_flush.stalled(after) {
