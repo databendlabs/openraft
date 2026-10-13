@@ -1,8 +1,10 @@
 use crate::core::sm;
 use crate::raft::VoteResponse;
 use crate::replication;
+use crate::LogId;
 use crate::MessageSummary;
 use crate::RaftTypeConfig;
+use crate::StorageError;
 use crate::Vote;
 
 /// A message coming from the internal components.
@@ -47,6 +49,17 @@ where C: RaftTypeConfig
         /// ith tick
         i: u64,
     },
+
+    /// An append this node submitted as leader, without waiting for it,
+    /// is flushed (or failed). Sent in the order the appends were
+    /// submitted.
+    LocalLogFlushed {
+        /// The leader vote the append was submitted under.
+        vote: Vote<C::NodeId>,
+        /// The last log id of the append.
+        last_log_id: LogId<C::NodeId>,
+        result: Result<(), StorageError<C::NodeId>>,
+    },
 }
 
 impl<C> Notify<C>
@@ -87,6 +100,18 @@ where C: RaftTypeConfig
             }
             Self::Tick { i } => {
                 format!("Tick {}", i)
+            }
+            Self::LocalLogFlushed {
+                vote,
+                last_log_id,
+                result,
+            } => {
+                format!(
+                    "LocalLogFlushed: vote: {}, last_log_id: {}, ok: {}",
+                    vote,
+                    last_log_id,
+                    result.is_ok()
+                )
             }
         }
     }
