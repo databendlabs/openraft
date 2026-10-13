@@ -299,6 +299,7 @@ where C: RaftTypeConfig
             tx_server_metrics,
 
             command_state: CommandState::default(),
+            leader_flush: Default::default(),
             span: core_span,
 
             _p: Default::default(),
