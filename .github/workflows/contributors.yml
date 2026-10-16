@@ -1,0 +1,72 @@
+name: Update contributors
+
+on:
+  schedule:
+    # First day of each month at 01:17 UTC (09:17 Asia/Shanghai).
+    - cron: '17 1 1 * *'
+  workflow_dispatch:
+
+# Repository settings must allow GitHub Actions to create pull requests.
+permissions:
+  contents: write
+  issues: read
+  pull-requests: write
+
+concurrency:
+  group: update-contributors
+  cancel-in-progress: false
+
+jobs:
+  update:
+    if: github.repository == 'databendlabs/openraft' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TZ: UTC
+
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Update contributor resources
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: make -C scripts/contributors
+
+      - name: Update README contributor section
+        shell: python
+        run: |
+          from pathlib import Path
+
+          readme = Path("README.md")
+          start = "## Contributors\n"
+          end = "\n# License\n"
+          before, section = readme.read_text().split(start)
+          section, after = section.split(end)
+          introduction, _ = section.split("-->\n", 1)
+          contributors = Path("assets/contributors/contributors.md").read_text()
+          readme.write_text(before + start + introduction + "-->\n" + contributors + end + after)
+
+      - name: Create or update pull request
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ github.token }}
+          branch: codex/update-contributors
+          commit-message: 'docs: contributors: refresh contributor list'
+          title: 'docs: contributors: refresh contributor list'
+          body: |
+            Refresh the contributor list, avatar resources, and README contributor
+            section when membership changes.
+
+            Regenerate resources using the existing contributor policy:
+            all-time commit authors and issue/PR authors from the last year.
+            Contributors outside that policy may be removed in the same update.
+          add-paths: |
+            README.md
+            assets/contributors/contributors.txt
+            assets/contributors/contributors.md
+            assets/contributors/svg/
+            assets/contributors/avatars/
