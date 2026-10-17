@@ -115,6 +115,7 @@ where
         tracing::debug!("next_request: AppendEntries: {}", payload);
 
         self.backoff_if_enabled().await;
+        self.replication_context.wait_for_send_period().await?;
 
         Ok(Some(payload))
     }

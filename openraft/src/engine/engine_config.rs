@@ -36,7 +36,7 @@ pub(crate) struct EngineConfig<C: RaftTypeConfig> {
 
     pub(crate) enable_leader_restore: bool,
 
-    /// Duration of each alternating heartbeat phase after the Leader lease expires.
+    /// Duration of each alternating suppression or send phase after the Leader lease expires.
     pub(crate) quorum_loss_probe_interval: Option<Duration>,
 }
 

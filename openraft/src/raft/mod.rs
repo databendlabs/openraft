@@ -581,6 +581,7 @@ where
         let (io_accepted_tx, _io_accepted_rx) = C::watch_channel(default_io_id.clone());
         let (io_submitted_tx, _io_submitted_rx) = C::watch_channel(default_io_id);
         let (committed_tx, _committed_rx) = C::watch_channel(None);
+        let (quorum_loss_probe_tx, _quorum_loss_probe_rx) = C::watch_channel(None);
 
         let shared_replicate_batch = SharedReplicateBatch::new();
 
@@ -641,6 +642,7 @@ where
                         submitted: io_submitted_tx,
                         committed: committed_tx,
                     },
+                    quorum_loss_probe_tx,
 
                     metrics: MetricsChannels {
                         all: tx_metrics,
