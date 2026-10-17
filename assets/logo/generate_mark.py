@@ -13,6 +13,7 @@ measures the same at the ring's inner edge as at its outer edge.
 Writes openraft-mark.svg and openraft-mark-dark.svg next to this script.
 """
 
+import itertools
 import math
 import pathlib
 
@@ -88,10 +89,12 @@ def sector(start, end, inner, outer, gap_start, gap_end):
     p_outer_end, p_inner_end = point(b_outer, outer), point(b_inner, inner)
     long_outer = 1 if (b_outer - a_outer) > 180 else 0
     long_inner = 1 if (b_inner - a_inner) > 180 else 0
-    return (f"M{p_inner_start[0]} {p_inner_start[1]}L{p_outer_start[0]} {p_outer_start[1]}"
-            f"A{outer} {outer} 0 {long_outer} 1 {p_outer_end[0]} {p_outer_end[1]}"
-            f"L{p_inner_end[0]} {p_inner_end[1]}"
-            f"A{inner} {inner} 0 {long_inner} 0 {p_inner_start[0]} {p_inner_start[1]}Z")
+    return (
+        f"M{p_inner_start[0]} {p_inner_start[1]}L{p_outer_start[0]} {p_outer_start[1]}"
+        f"A{outer} {outer} 0 {long_outer} 1 {p_outer_end[0]} {p_outer_end[1]}"
+        f"L{p_inner_end[0]} {p_inner_end[1]}"
+        f"A{inner} {inner} 0 {long_inner} 0 {p_inner_start[0]} {p_inner_start[1]}Z"
+    )
 
 
 def pointed_wedge(start, end, radius, gap):
@@ -101,9 +104,11 @@ def pointed_wedge(start, end, radius, gap):
     edge = _offset(gap, radius)
     arc_start, arc_end = point(start + edge, radius), point(end - edge, radius)
     long_arc = 1 if (end - edge) - (start + edge) > 180 else 0
-    return (f"M{tip[0]} {tip[1]}L{arc_start[0]} {arc_start[1]}"
-            f"A{radius} {radius} 0 {long_arc} 1 {arc_end[0]} {arc_end[1]}"
-            f"L{tip[0]} {tip[1]}Z")
+    return (
+        f"M{tip[0]} {tip[1]}L{arc_start[0]} {arc_start[1]}"
+        f"A{radius} {radius} 0 {long_arc} 1 {arc_end[0]} {arc_end[1]}"
+        f"L{tip[0]} {tip[1]}Z"
+    )
 
 
 def largest_fillet(start, end, hole, gap):
@@ -113,9 +118,12 @@ def largest_fillet(start, end, hole, gap):
     for _ in range(40):
         candidate = (low + high) / 2
         reach = candidate + gap
-        discriminant = (hole + candidate) ** 2 - reach ** 2
-        fits = discriminant > 0 and math.degrees(
-            math.atan2(reach, math.sqrt(discriminant))) < half_span - 0.5
+        discriminant = (hole + candidate) ** 2 - reach**2
+        fits = (
+            discriminant > 0
+            and math.degrees(math.atan2(reach, math.sqrt(discriminant)))
+            < half_span - 0.5
+        )
         low, high = (candidate, high) if fits else (low, candidate)
     return low
 
@@ -130,12 +138,22 @@ def holed_wedge(start, end, radius, gap, hole, requested_fillet):
     normal_start = (-ray_start[1], ray_start[0])
     normal_end = (ray_end[1], -ray_end[0])
     along = math.sqrt((hole + fillet) ** 2 - (fillet + gap) ** 2)
-    place = lambda ray, normal, out: (CENTRE + along * ray[0] + out * normal[0],
-                                      CENTRE + along * ray[1] + out * normal[1])
-    tangent_start, centre_start = place(ray_start, normal_start, gap), place(ray_start, normal_start, fillet + gap)
-    tangent_end, centre_end = place(ray_end, normal_end, gap), place(ray_end, normal_end, fillet + gap)
-    pull_in = lambda c: (CENTRE + (c[0] - CENTRE) * hole / (hole + fillet),
-                         CENTRE + (c[1] - CENTRE) * hole / (hole + fillet))
+    place = lambda ray, normal, out: (
+        CENTRE + along * ray[0] + out * normal[0],
+        CENTRE + along * ray[1] + out * normal[1],
+    )
+    tangent_start, centre_start = (
+        place(ray_start, normal_start, gap),
+        place(ray_start, normal_start, fillet + gap),
+    )
+    tangent_end, centre_end = (
+        place(ray_end, normal_end, gap),
+        place(ray_end, normal_end, fillet + gap),
+    )
+    pull_in = lambda c: (
+        CENTRE + (c[0] - CENTRE) * hole / (hole + fillet),
+        CENTRE + (c[1] - CENTRE) * hole / (hole + fillet),
+    )
     hole_start, hole_end = pull_in(centre_start), pull_in(centre_end)
 
     def sweep(centre, first, second):
@@ -149,12 +167,14 @@ def holed_wedge(start, end, radius, gap, hole, requested_fillet):
     corner = math.degrees(math.atan2(fillet + gap, along))
     long_hole = 1 if (end - corner) - (start + corner) > 180 else 0
     at = lambda p: f"{round(p[0], 2)} {round(p[1], 2)}"
-    return (f"M{at(tangent_start)}L{arc_start[0]} {arc_start[1]}"
-            f"A{radius} {radius} 0 {long_arc} 1 {arc_end[0]} {arc_end[1]}"
-            f"L{at(tangent_end)}"
-            f"A{fillet} {fillet} 0 0 {sweep(centre_end, tangent_end, hole_end)} {at(hole_end)}"
-            f"A{hole} {hole} 0 {long_hole} 0 {at(hole_start)}"
-            f"A{fillet} {fillet} 0 0 {sweep(centre_start, hole_start, tangent_start)} {at(tangent_start)}Z")
+    return (
+        f"M{at(tangent_start)}L{arc_start[0]} {arc_start[1]}"
+        f"A{radius} {radius} 0 {long_arc} 1 {arc_end[0]} {arc_end[1]}"
+        f"L{at(tangent_end)}"
+        f"A{fillet} {fillet} 0 0 {sweep(centre_end, tangent_end, hole_end)} {at(hole_end)}"
+        f"A{hole} {hole} 0 {long_hole} 0 {at(hole_start)}"
+        f"A{fillet} {fillet} 0 0 {sweep(centre_start, hole_start, tangent_start)} {at(tangent_start)}Z"
+    )
 
 
 def core_wedge(start, end, gap):
@@ -171,17 +191,29 @@ def paths(neutral):
     quorum = oklch(RING_LIGHTNESS, RING_CHROMA, RING_HUE)
     out = []
     for start in NEUTRAL_STARTS:
-        out.append((sector(start, start + SEGMENT_SPAN, RING_INNER, RING_OUTER, gap, gap), neutral))
+        out.append(
+            (
+                sector(start, start + SEGMENT_SPAN, RING_INNER, RING_OUTER, gap, gap),
+                neutral,
+            )
+        )
     for start in QUORUM_STARTS:
-        out.append((sector(start, start + SEGMENT_SPAN, RING_INNER, RING_OUTER, gap, gap), quorum))
+        out.append(
+            (
+                sector(start, start + SEGMENT_SPAN, RING_INNER, RING_OUTER, gap, gap),
+                quorum,
+            )
+        )
     bands = list(zip(BAND_EDGES, BAND_EDGES[1:], BAND_LIGHTNESS))
     for start, end, lightness in bands:
         gap_start = gap if start == BAND_EDGES[0] else 0.0
         gap_end = gap if end == BAND_EDGES[-1] else 0.0
         colour = oklch(lightness, RING_CHROMA, RING_HUE)
-        out.append((sector(start, end, RING_INNER, RING_OUTER, gap_start, gap_end), colour))
+        out.append(
+            (sector(start, end, RING_INNER, RING_OUTER, gap_start, gap_end), colour)
+        )
     rays = BAND_EDGES + [BAND_EDGES[0] + 360]
-    spans = list(zip(rays, rays[1:]))
+    spans = list(itertools.pairwise(rays))
     for (start, end), colour in zip(spans, CHIPS + [CORE]):
         out.append((core_wedge(start, end, gap), oklch(*colour)))
     return out
@@ -189,14 +221,18 @@ def paths(neutral):
 
 def render(neutral):
     body = "\n".join(f'  <path d="{d}" fill="{fill}"/>' for d, fill in paths(neutral))
-    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {VIEW} {VIEW}" '
-            f'width="{VIEW}" height="{VIEW}" role="img" aria-label="OpenRaft">\n'
-            f'  <title>OpenRaft</title>\n{body}\n</svg>\n')
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {VIEW} {VIEW}" '
+        f'width="{VIEW}" height="{VIEW}" role="img" aria-label="OpenRaft">\n'
+        f"  <title>OpenRaft</title>\n{body}\n</svg>\n"
+    )
 
 
 if __name__ == "__main__":
     here = pathlib.Path(__file__).parent
-    for name, neutral in (("openraft-mark.svg", NEUTRAL_ON_LIGHT),
-                          ("openraft-mark-dark.svg", NEUTRAL_ON_DARK)):
+    for name, neutral in (
+        ("openraft-mark.svg", NEUTRAL_ON_LIGHT),
+        ("openraft-mark-dark.svg", NEUTRAL_ON_DARK),
+    ):
         (here / name).write_text(render(neutral))
         print(f"wrote {name}")

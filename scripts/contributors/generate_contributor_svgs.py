@@ -77,7 +77,9 @@ def cached_avatar(cache_dir, name):
 def download_avatar(cache_dir, name):
     """Download a login's avatar, store it in the cache under its real extension."""
     url = f"https://github.com/{name}.png?size={AVATAR_FETCH_PX}"
-    data = subprocess.run(["curl", "-fsSL", url], capture_output=True, check=True).stdout
+    data = subprocess.run(
+        ["curl", "-fsSL", url], capture_output=True, check=True
+    ).stdout
     _, ext = image_kind(data)
     for stale in cache_dir.glob(f"{name}.*"):
         stale.unlink()
@@ -140,9 +142,19 @@ def main():
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--dir", default="assets/contributors", help="contributor directory (holds the list plus svg/ and avatars/)")
-    parser.add_argument("--txt", default="contributors.txt", help="login-list filename within --dir")
-    parser.add_argument("--refresh", action="store_true", help="re-download avatars instead of using the cache")
+    parser.add_argument(
+        "--dir",
+        default="assets/contributors",
+        help="contributor directory (holds the list plus svg/ and avatars/)",
+    )
+    parser.add_argument(
+        "--txt", default="contributors.txt", help="login-list filename within --dir"
+    )
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help="re-download avatars instead of using the cache",
+    )
     args = parser.parse_args()
 
     directory = Path(args.dir)
