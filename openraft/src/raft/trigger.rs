@@ -104,11 +104,24 @@ where C: RaftTypeConfig
 
     /// Submit a command to inform RaftCore to transfer leadership to the specified node.
     ///
+    /// The Leader stops sending heartbeats, refuses writes and linearizable reads, and sends every
+    /// other voter a [`TransferLeaderRequest`] carrying its last log id, which no longer grows. The
+    /// target starts an election once it has flushed that log id. A target that is behind waits up
+    /// to [`Config::election_timeout_min`] for the missing logs; if replication brings them later,
+    /// the Leader sends the request again once the target acknowledges its last log id.
+    ///
+    /// The transfer is never cancelled: this node keeps refusing requests until a new Leader is
+    /// elected. If the target does not catch up, an ordinary election decides the next Leader once
+    /// the voters' election timeout expires, and it may be another voter.
+    ///
     /// By default, this also resets the target's active replication backoff. Set
     /// [`Config::reset_backoff_on_transfer_leader`] to `Some(false)` to disable the reset.
     ///
+    /// It returns once the command is submitted, without waiting for the transfer.
     /// If this node is not a Leader, it is just ignored.
     ///
+    /// [`TransferLeaderRequest`]: crate::raft::TransferLeaderRequest
+    /// [`Config::election_timeout_min`]: crate::Config::election_timeout_min
     /// [`Config::reset_backoff_on_transfer_leader`]: crate::Config::reset_backoff_on_transfer_leader
     pub async fn transfer_leader(&self, to: C::NodeId) -> Result<(), Fatal<C>> {
         self.raft_inner.send_external_command(ExternalCommand::TriggerTransferLeader { to }).await

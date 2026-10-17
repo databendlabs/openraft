@@ -26,6 +26,7 @@ use crate::progress::stream_id::StreamId;
 use crate::proposer::Leader;
 use crate::proposer::LeaderQuorumSet;
 use crate::proposer::SendStamp;
+use crate::raft::message::TransferLeaderRequest;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::replication::replicate::Replicate;
@@ -208,6 +209,8 @@ where
     ) {
         tracing::debug!("{}: node_id: {}, log_id: {}", func_name!(), node_id, log_id.display());
 
+        let transfer_target_was_behind = self.is_transfer_target_behind(&node_id);
+
         // The value granted by a quorum may not yet be a committed.
         // A committed is **granted** and also is in the current term.
         let Some(quorum_accepted) = self.leader.progress.update_entry_with(&node_id, |entry| {
@@ -225,6 +228,38 @@ where
         );
 
         self.try_commit_quorum_accepted(quorum_accepted);
+
+        // A transfer target that was behind waits for the missing logs only for
+        // `election_timeout_min`, then gives up on the request. Ask again now that it holds the
+        // leader's last log id, which is final because a transferring leader proposes nothing.
+        // If the target is still waiting on the first request, this one is a duplicate: whichever
+        // arrives second names a vote the target no longer holds, and is ignored.
+        if transfer_target_was_behind && !self.is_transfer_target_behind(&node_id) {
+            tracing::info!(
+                "transfer target {} holds the leader's last log id {}, resend TransferLeader",
+                node_id,
+                self.leader.last_log_id().display()
+            );
+
+            self.output.push_command(Command::BroadcastTransferLeader {
+                req: TransferLeaderRequest::new(
+                    self.leader.committed_vote.clone().into_vote(),
+                    node_id,
+                    self.leader.last_log_id().cloned(),
+                ),
+            });
+        }
+    }
+
+    /// Whether `node_id` is the target of an ongoing leadership transfer and has not yet matched
+    /// the leader's last log id.
+    fn is_transfer_target_behind(&self, node_id: &C::NodeId) -> bool {
+        if self.leader.get_transfer_to() != Some(node_id) {
+            return false;
+        }
+
+        let matching = self.leader.progress.try_get(node_id).and_then(|entry| entry.matching());
+        matching < self.leader.last_log_id()
     }
 
     /// Commit the log id that is granted(accepted) by a quorum of voters.

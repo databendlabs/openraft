@@ -1,8 +1,12 @@
 use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use maplit::btreeset;
 use openraft::Config;
+use openraft::RPCTypes;
 use openraft::ReadPolicy;
 use openraft::ServerState;
 use openraft::async_runtime::WatchReceiver;
@@ -11,6 +15,7 @@ use openraft::errors::ForwardReason;
 use openraft::errors::LinearizableReadError;
 use openraft::raft::TransferLeaderError;
 use openraft::raft::TransferLeaderRequest;
+use openraft::type_config::OneshotSender;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::IntoMemClientRequest;
@@ -446,6 +451,93 @@ async fn transfer_leader_to_promoted_learner_without_promotion_log_does_not_pani
         "stale transfer target should ignore the transfer without panicking: {:?}",
         alive
     );
+
+    Ok(())
+}
+
+/// A transfer target that catches up only after giving up on the `TransferLeaderRequest` still
+/// becomes the Leader, because the Leader sends the request again once the target holds its last
+/// log id.
+///
+/// The target waits for the missing logs for at most `election_timeout_min`. Here its
+/// AppendEntries are held past that wait, the way a slow catch-up would delay them. Ticking is
+/// disabled, so no ordinary election can elect a Leader: only a transfer can elect node-2.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn transfer_leader_to_target_that_catches_up_late() -> anyhow::Result<()> {
+    let config = Arc::new(
+        Config {
+            enable_tick: false,
+            election_timeout_min: 150,
+            election_timeout_max: 300,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
+    let mut router = RaftRouter::new(config.clone());
+
+    tracing::info!("--- initializing cluster");
+    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+
+    let n0 = router.get_raft_handle(&0)?;
+    let n2 = router.get_raft_handle(&2)?;
+
+    let hold_node_2 = Arc::new(AtomicBool::new(true));
+
+    tracing::info!(log_index, "--- hold AppendEntries to node-2, commit logs without it");
+    {
+        let hold = hold_node_2.clone();
+        router
+            .set_rpc_pre_hook(RPCTypes::AppendEntries, move |_router, _req, _from, to| {
+                let hold = hold.clone();
+                Box::pin(async move {
+                    while to == 2 && hold.load(Ordering::SeqCst) {
+                        TypeConfig::sleep(Duration::from_millis(5)).await;
+                    }
+                    Ok(())
+                })
+            })
+            .await;
+
+        log_index += router.client_request_many(0, "foo", 3).await?;
+        router.wait(&1, timeout()).applied_index(Some(log_index), "node-1 has the logs").await?;
+    }
+
+    tracing::info!(log_index, "--- transfer to node-2 while it is behind");
+    {
+        let (sent_tx, sent_rx) = TypeConfig::oneshot();
+        let sent_tx = Arc::new(Mutex::new(Some(sent_tx)));
+        router
+            .set_rpc_pre_hook(RPCTypes::TransferLeader, move |_router, _req, _from, to| {
+                if to == 2
+                    && let Some(tx) = sent_tx.lock().unwrap().take()
+                {
+                    tx.send(()).ok();
+                }
+                Box::pin(async { Ok(()) })
+            })
+            .await;
+
+        n0.trigger().transfer_leader(2).await?;
+        TypeConfig::timeout(Duration::from_secs(1), sent_rx).await??;
+
+        // node-0 stops waiting for the reply after `election_timeout_min`, and node-2 stops
+        // waiting for the logs after the same delay.
+        TypeConfig::sleep(Duration::from_millis(2 * config.election_timeout_min)).await;
+
+        let metrics = n2.metrics().borrow_watched().clone();
+        assert_eq!(ServerState::Follower, metrics.state, "node-2 is not elected");
+        assert!(metrics.last_log_index < Some(log_index), "node-2 is still behind");
+    }
+
+    tracing::info!(log_index, "--- release node-2; it catches up and is asked again");
+    {
+        hold_node_2.store(false, Ordering::SeqCst);
+
+        n2.wait(timeout()).state(ServerState::Leader, "node-2 becomes leader").await?;
+        n0.wait(timeout()).state(ServerState::Follower, "node-0 becomes follower").await?;
+    }
 
     Ok(())
 }

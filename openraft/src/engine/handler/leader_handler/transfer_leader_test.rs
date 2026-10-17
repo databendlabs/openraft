@@ -69,3 +69,34 @@ fn test_leader_send_heartbeat() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_resend_transfer_leader_when_target_catches_up() -> anyhow::Result<()> {
+    let mut eng = eng();
+
+    eng.try_leader_handler()?.transfer_leader(2);
+    eng.output.take_commands();
+
+    let req = TransferLeaderRequest::new(Vote::new_committed(3, 1), 2, Some(log_id(2, 1, 3)));
+
+    // Another voter catching up does not resend.
+    eng.replication_handler().update_matching(3, Some(log_id(2, 1, 3)), None);
+    assert_eq!(0, eng.output.take_commands().len());
+
+    // The target still lacks the leader's last log id.
+    eng.replication_handler().update_matching(2, Some(log_id(2, 1, 2)), None);
+    assert_eq!(0, eng.output.take_commands().len());
+
+    // The target reaches the leader's last log id: resend the same request.
+    eng.replication_handler().update_matching(2, Some(log_id(2, 1, 3)), None);
+    assert_eq!(
+        vec![Command::BroadcastTransferLeader { req }],
+        eng.output.take_commands()
+    );
+
+    // Resend only once, when the target reaches it.
+    eng.replication_handler().update_matching(2, Some(log_id(2, 1, 3)), None);
+    assert_eq!(0, eng.output.take_commands().len());
+
+    Ok(())
+}
