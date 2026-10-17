@@ -22,6 +22,7 @@ use crate::replication::replication_context::ReplicationContext;
 use crate::replication::response::ReplicationResult;
 use crate::replication::snapshot_transmitter_handle::SnapshotTransmitterHandle;
 use crate::storage::RaftStateMachine;
+use crate::type_config::OneshotSender;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::SmSnapshotOf;
 use crate::type_config::alias::VoteOf;
@@ -121,9 +122,8 @@ where
 
             let error = match res {
                 Err(error) => error,
-                Ok(_) => {
-                    return;
-                }
+                Ok(false) => continue,
+                Ok(true) => return,
             };
 
             match error {
@@ -199,7 +199,9 @@ where
         }
     }
 
-    async fn read_and_send_snapshot(&mut self, ith: i32) -> Result<(), ReplicationError<C>> {
+    async fn read_and_send_snapshot(&mut self, ith: i32) -> Result<bool, ReplicationError<C>> {
+        self.replication_context.wait_for_send_period().await?;
+
         let snapshot = self.snapshot_reader.get_snapshot().await.map_err(|reason| {
             tracing::warn!("failed to get snapshot from state machine: {}", reason);
             ReplicationClosed::new(reason)
@@ -225,24 +227,37 @@ where
         self.send_snapshot(snapshot, option).await
     }
 
+    /// Return `false` if a quiet period interrupts the transfer, so the caller can retry it.
     async fn send_snapshot(
         &mut self,
         snapshot: SmSnapshotOf<C, SM>,
         option: RPCOption,
-    ) -> Result<(), ReplicationError<C>> {
+    ) -> Result<bool, ReplicationError<C>> {
         let meta = snapshot.meta.clone();
 
+        let (quiet_tx, quiet_rx) = C::oneshot();
         let mut c = self.replication_context.cancel_rx.clone();
         let cancel = async move {
-            c.changed().await.ok();
-            ReplicationClosed::new("RaftCore is dropped")
+            let closed = c.changed();
+            C::select2(closed, quiet_rx).await;
+            ReplicationClosed::new("snapshot transmission canceled")
         };
 
         let sender_vote: VoteOf<C> = self.replication_context.leader_vote.clone().into_vote();
 
         let start_time = C::now();
 
-        let resp = self.network.full_snapshot(sender_vote.clone(), snapshot, cancel, option).await?;
+        let mut context = self.replication_context.clone();
+        let quiet = context.wait_for_quiet_period();
+        let send = self.network.full_snapshot(sender_vote.clone(), snapshot, cancel, option);
+        let resp = match C::select2(quiet, send).await {
+            Select2::First(result) => {
+                quiet_tx.send(()).ok();
+                result?;
+                return Ok(false);
+            }
+            Select2::Second(result) => result?,
+        };
 
         tracing::info!("finished sending full_snapshot, resp: {}", resp);
 
@@ -258,6 +273,6 @@ where
         self.replication_context
             .notify_progress(Ok(ReplicationResult(Ok(meta.last_log_id))), Some(self.inflight_id))
             .await;
-        Ok(())
+        Ok(true)
     }
 }
