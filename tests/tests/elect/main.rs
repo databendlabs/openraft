@@ -14,3 +14,4 @@ mod t15_lease_gates;
 mod t16_disjoint_read_quorums;
 mod t17_leader_alone_is_write_quorum;
 mod t18_campaigner_outside_voters;
+mod t60_quorum_loss_probe_interval;

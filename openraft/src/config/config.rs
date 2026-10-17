@@ -469,14 +469,16 @@ pub struct Config {
     #[cfg_attr(feature = "serde", serde(default = "default_removed_leader_step_down"))]
     pub removed_leader_step_down: StepDownPolicy,
 
-    /// Duration in milliseconds of each heartbeat suppression or send phase after quorum loss.
+    /// Duration in milliseconds of each suppression or send phase after quorum loss.
     ///
     /// `None` preserves existing behavior. `Some(R)` starts with a suppression phase after the
     /// Leader lease expires, then alternates suppression and send phases of length `R`. Before the
-    /// first quorum acknowledgement, the current Vote's last-modified time is used.
+    /// first quorum acknowledgement, the current Vote's last-modified time is used. A suppression
+    /// phase holds back heartbeats, log replication and snapshot transmission.
     ///
     /// `R` must be at least `leader_lease + election_timeout_max`. See
     /// [`CheckQuorum`](crate::docs::protocol::check_quorum).
+    #[since(version = "0.10.0", change = "suppress log replication and snapshots too")]
     #[since(version = "0.10.0", change = "added quorum-loss heartbeat phase interval")]
     #[cfg_attr(feature = "clap", clap(long))]
     #[cfg_attr(feature = "serde", serde(default))]

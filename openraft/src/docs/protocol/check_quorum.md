@@ -42,35 +42,41 @@ normal leader-transition path.
 
 ## Optional quorum-loss inactivity
 
-Set `Config::quorum_loss_probe_interval` to `Some(R)` to suppress ordinary
-heartbeats when quorum is unavailable. `R` is the duration in milliseconds of
-each alternating suppression and send period. `None` preserves the existing
-runtime behavior.
+Set `Config::quorum_loss_probe_interval` to `Some(R)` to stop sending to
+followers and learners in alternating periods when quorum is unavailable. `R`
+is the duration in milliseconds of each alternating suppression and send
+period. `None` preserves the existing runtime behavior.
 
 Let `T` be the sending time of the last RPC acknowledged by a quorum. Before
 the first quorum acknowledgement, OpenRaft uses the current Vote's
-last-modified time. Heartbeats are allowed while `now - T < leader_lease`.
-After that lease expires, the heartbeat gate uses:
+last-modified time. Sending is allowed while `now - T < leader_lease`.
+After that lease expires, the gate uses:
 
 ```text
 slot = (now - T - leader_lease) / R
 ```
 
-Even-numbered slots suppress heartbeats; odd-numbered slots allow them. Thus
-the first period after lease expiry is quiet. A new quorum acknowledgement
-moves `T` forward and immediately restores normal heartbeats. A single-voter
-Leader always leaves the gate open.
+Even-numbered slots suppress sending; odd-numbered slots allow it. Thus the
+first period after lease expiry is quiet. A new quorum acknowledgement moves
+`T` forward and immediately restores normal heartbeats and replication. A
+single-voter Leader always leaves the gate open.
+
+The gate holds back heartbeats, log replication and snapshot transmission
+alike. A follower renews its lease on every AppendEntries or snapshot it
+accepts, so a single one in a quiet period, such as a replication retry after
+a lost reply, would keep it from granting its vote. The entries held back
+cannot commit meanwhile anyway, because no quorum acknowledges them. A
+replication request or snapshot that becomes ready in a quiet period waits
+until the period ends or `T` moves forward. A snapshot transfer that started
+before the period is not interrupted.
 
 The gate applies to periodic, ReadIndex-triggered, and externally triggered
 heartbeats. It does not schedule heartbeat attempts itself. Automatic recovery
 attempts therefore require periodic heartbeat to be enabled.
 
-Log replication and snapshots are not gated. Their responses can move `T`
-forward.
-
 `R` must be at least `leader_lease + election_timeout_max`, allowing a previous
 follower lease to expire and one maximum election timeout to pass before
-heartbeats resume.
+sending resumes.
 
 This gives the connected quorum an election opportunity in the topology from
 [issue #2080](https://github.com/databendlabs/openraft/issues/2080).

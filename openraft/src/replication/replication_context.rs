@@ -5,14 +5,19 @@ use crate::Config;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::async_runtime::MpscSender;
+use crate::async_runtime::Select3;
+use crate::async_runtime::watch::WatchReceiver;
 use crate::core::SharedReplicateBatch;
 use crate::core::notification::Notification;
+use crate::engine::quorum_loss_probe::QuorumLossProbe;
+use crate::errors::ReplicationClosed;
 use crate::progress::inflight_id::InflightId;
 use crate::progress::stream_id::StreamId;
 use crate::proposer::SendStamp;
 use crate::raft_state::IOId;
 use crate::replication::response::Progress;
 use crate::replication::response::ReplicationResult;
+use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::MpscSenderOf;
@@ -55,6 +60,9 @@ where C: RaftTypeConfig
 
     /// Shared histogram for recording replication batch sizes.
     pub(crate) replicate_batch: SharedReplicateBatch,
+
+    /// The quiet periods the Leader keeps after losing its quorum, published by `RaftCore`.
+    pub(crate) quorum_loss_probe_rx: WatchReceiverOf<C, Option<QuorumLossProbe<InstantOf<C>>>>,
 }
 
 impl<C> ReplicationContext<C>
@@ -80,6 +88,32 @@ where C: RaftTypeConfig
             current_leader
         );
         true
+    }
+
+    /// Wait until the Leader may send to the target.
+    ///
+    /// A Leader that has lost its quorum sends nothing in a quiet period, see
+    /// [`QuorumLossProbe`]. This waits for the current one to end, or for a quorum acknowledgement
+    /// that ends it early. It returns at once outside a quiet period.
+    pub(crate) async fn wait_for_send_period(&mut self) -> Result<(), ReplicationClosed> {
+        loop {
+            let probe = *self.quorum_loss_probe_rx.borrow_and_update();
+            let Some(quiet_for) = probe.and_then(|probe| probe.quiet_for(C::now())) else {
+                return Ok(());
+            };
+
+            tracing::debug!("{}: quorum lost, keep quiet for {:?}", self, quiet_for);
+
+            let cancel = self.cancel_rx.changed();
+            let probe_changed = self.quorum_loss_probe_rx.changed();
+            let quiet = C::sleep(quiet_for);
+
+            match C::select3(cancel, probe_changed, quiet).await {
+                Select3::First(_) => return Err(ReplicationClosed::new("canceled")),
+                Select3::Second(Err(_)) => return Err(ReplicationClosed::new("RaftCore is dropped")),
+                Select3::Second(Ok(())) | Select3::Third(()) => {}
+            }
+        }
     }
 
     /// Report a storage failure to [`RaftCore`].

@@ -232,6 +232,8 @@ where
     ) -> Result<(), ReplicationError<C>> {
         let meta = snapshot.meta.clone();
 
+        self.replication_context.wait_for_send_period().await?;
+
         let mut c = self.replication_context.cancel_rx.clone();
         let cancel = async move {
             c.changed().await.ok();
