@@ -175,6 +175,7 @@ impl<C: RaftTypeConfig> fmt::Display for ApplyResult<C> {
 
 fn apply_membership_to_payload<C>(
     membership_state: &MembershipStateOf<C>,
+    leader_id: &C::NodeId,
     changes: ChangeMembers<C::NodeId, C::Node>,
     retain: bool,
     payloads: MembershipPayloads<C>,
@@ -182,7 +183,7 @@ fn apply_membership_to_payload<C>(
 where
     C: RaftTypeConfig,
 {
-    let membership = membership_state.next_membership(changes, retain)?;
+    let membership = membership_state.next_membership(leader_id, changes, retain)?;
     let payload = payloads.select(membership);
     Ok(payload)
 }
@@ -489,7 +490,8 @@ where
             return;
         }
 
-        let res = apply_membership_to_payload::<C>(&self.engine.state.membership_state, changes, retain, payloads);
+        let membership_state = &self.engine.state.membership_state;
+        let res = apply_membership_to_payload::<C>(membership_state, &self.id, changes, retain, payloads);
         let payload = match res {
             Ok(x) => x,
             Err(e) => {
@@ -2827,7 +2829,7 @@ mod tests {
 
         let payloads = MembershipPayloads::<TestConfig>::Uniform(payload);
         let changes = ChangeMembers::AddNodes(btreemap! {2 => ()});
-        let result = apply_membership_to_payload::<TestConfig>(&membership_state, changes, false, payloads);
+        let result = apply_membership_to_payload::<TestConfig>(&membership_state, &1, changes, false, payloads);
         let actual = result.unwrap();
 
         let expected_membership = Membership::new_with_defaults(vec![btreeset! {1}], btreeset! {2});
@@ -2846,7 +2848,7 @@ mod tests {
 
         let payloads = MembershipPayloads::<TestConfig>::Uniform(TestPayload::blank());
         let changes = ChangeMembers::AddNodes(btreemap! {2 => ()});
-        let result = apply_membership_to_payload::<TestConfig>(&membership_state, changes, false, payloads);
+        let result = apply_membership_to_payload::<TestConfig>(&membership_state, &1, changes, false, payloads);
         let actual = result.unwrap();
 
         let expected_membership = Membership::new_with_defaults(vec![btreeset! {1}], btreeset! {2});
@@ -2873,7 +2875,7 @@ mod tests {
         };
 
         let changes = ChangeMembers::ReplaceAllVoters(btreeset! {3, 4, 5});
-        let result = apply_membership_to_payload::<TestConfig>(&membership_state, changes, false, payloads);
+        let result = apply_membership_to_payload::<TestConfig>(&membership_state, &1, changes, false, payloads);
         let actual = result.unwrap();
 
         let joint_membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}, btreeset! {3, 4, 5}], []);
@@ -2903,7 +2905,7 @@ mod tests {
         };
 
         let changes = ChangeMembers::AddNodes(btreemap! {2 => ()});
-        let result = apply_membership_to_payload::<TestConfig>(&membership_state, changes, false, payloads);
+        let result = apply_membership_to_payload::<TestConfig>(&membership_state, &1, changes, false, payloads);
         let actual = result.unwrap();
 
         let expected_membership = Membership::new_with_defaults(vec![btreeset! {1}], btreeset! {2});

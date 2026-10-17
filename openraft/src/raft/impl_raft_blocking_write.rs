@@ -60,6 +60,10 @@ where
     /// If it loses leadership or crashed before committing the second **uniform** config log, the
     /// cluster is left in the **joint** config.
     ///
+    /// This leader writes both config logs, so it refuses, with [`LeaderNotInJointMembership`], a
+    /// change whose **joint** config would leave it out. From a **joint** config `[A, B]`, that is
+    /// a change asked of a leader in `A` only, for voters without it and with `retain` false.
+    ///
     /// # Examples
     ///
     /// ```ignore
@@ -73,6 +77,8 @@ where
     /// let new_voters = BTreeSet::from([3, 4, 5]);
     /// raft.change_membership(new_voters, false).await?;
     /// ```
+    ///
+    /// [`LeaderNotInJointMembership`]: crate::errors::LeaderNotInJointMembership
     #[tracing::instrument(level = "info", skip_all)]
     pub async fn change_membership(
         &self,

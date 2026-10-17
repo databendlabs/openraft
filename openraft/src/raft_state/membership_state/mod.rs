@@ -10,6 +10,7 @@ use crate::LogIdOptionExt;
 use crate::Membership;
 use crate::errors::ChangeMembershipError;
 use crate::errors::InProgress;
+use crate::errors::LeaderNotInJointMembership;
 use crate::errors::NodeMetadataChanged;
 use crate::errors::UnsupportedMembershipTransition;
 
@@ -131,6 +132,7 @@ where
 
     /// Builds a new membership configuration by applying changes to the current configuration.
     ///
+    /// * `leader_id`: The leader that proposes the new membership configuration.
     /// * `changes`: The changes to apply to the current membership configuration.
     /// * `retain` specifies whether to retain the removed voters as learners, i.e., nodes that
     ///   continue to receive log replication from the leader.
@@ -139,9 +141,10 @@ where
     /// `ChangeMembershipError` if an error occurs.
     ///
     /// This function ensures that the cluster will have at least one voter in the new membership
-    /// configuration.
+    /// configuration, and that a new joint membership contains the leader.
     pub(crate) fn next_membership(
         &self,
+        leader_id: &NID,
         change: ChangeMembers<NID, N>,
         retain: bool,
     ) -> Result<Membership<NID, N>, ChangeMembershipError<CLID, NID>> {
@@ -150,6 +153,17 @@ where
         let effective = self.effective();
         let membership = effective.membership().clone();
         let new_membership = membership.change(change, retain)?;
+
+        // Once a joint membership is committed, its leader writes the uniform one that completes
+        // it, which a leader outside the committed membership may not do.
+        if new_membership.is_joint() && !new_membership.contains(leader_id) {
+            return Err(LeaderNotInJointMembership {
+                leader_id: leader_id.clone(),
+                joint: new_membership.get_joint_config().clone(),
+            }
+            .into());
+        }
+
         Ok(new_membership)
     }
 

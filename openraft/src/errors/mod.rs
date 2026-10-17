@@ -9,6 +9,7 @@ pub(crate) mod higher_vote;
 pub(crate) mod into_ok;
 pub(crate) mod into_raft_result;
 mod leader_changed;
+mod leader_not_in_joint_membership;
 mod linearizable_read_error;
 mod membership_error;
 mod node_metadata_changed;
@@ -39,6 +40,7 @@ pub use self::error_source::ErrorSource;
 pub use self::fatal::Fatal;
 pub(crate) use self::higher_vote::HigherVote;
 pub use self::leader_changed::LeaderChanged;
+pub use self::leader_not_in_joint_membership::LeaderNotInJointMembership;
 pub use self::linearizable_read_error::LinearizableReadError;
 pub use self::membership_error::MembershipError;
 pub use self::node_metadata_changed::NodeMetadataChanged;
@@ -139,6 +141,7 @@ where C: RaftTypeConfig
 }
 
 /// The set of errors which may take place when requesting to propose a config change.
+#[since(version = "0.10.0", change = "added `LeaderNotInJointMembership` variant")]
 #[since(
     version = "0.10.0",
     change = "added `UnsupportedMembershipTransition`, `UncommittedLeaderLog` and `NodeMetadataChanged` variants"
@@ -180,6 +183,11 @@ where
     #[since(version = "0.10.0")]
     #[error(transparent)]
     NodeMetadataChanged(#[from] NodeMetadataChanged<NID>),
+
+    /// The change would enter a joint membership that leaves out the leader.
+    #[since(version = "0.10.0")]
+    #[error(transparent)]
+    LeaderNotInJointMembership(#[from] LeaderNotInJointMembership<NID>),
 }
 
 /// The set of errors which may take place when initializing a pristine Raft node.
