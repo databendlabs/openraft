@@ -14,6 +14,7 @@ use crate::engine::Respond;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::raft::SnapshotResponse;
+use crate::raft_state::IOId;
 use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::SnapshotMetaOf;
@@ -107,6 +108,10 @@ fn test_handle_install_full_snapshot_no_conflict() -> anyhow::Result<()> {
     let mut eng = eng();
 
     let curr_vote = *eng.state.vote_ref();
+    let log_io = IOId::new_log_io(curr_vote.to_committed(), Some(log_id(4, 1, 8)));
+    eng.state.log_progress_mut().accept(log_io.clone());
+    eng.state.log_progress_mut().submit(log_io);
+    eng.state.apply_progress_mut().submit(log_id(2, 1, 4));
 
     let (tx, _rx) = UTConfig::<()>::oneshot();
 
@@ -155,5 +160,50 @@ fn test_handle_install_full_snapshot_no_conflict() -> anyhow::Result<()> {
         eng.output.take_commands()
     );
 
+    tracing::info!("Wait for snapshot 6 to be submitted before generating another Apply command");
+    {
+        let command = eng.next_progress_driven_command();
+        assert_eq!(None, command);
+    }
+
+    tracing::info!("Apply logs 7 through 8 after submitting snapshot 6, while its completion is pending");
+    {
+        let installed = log_id(4, 1, 6);
+        eng.state.apply_progress_mut().submit(installed);
+        eng.state.snapshot_progress_mut().submit(installed);
+        eng.state.update_local_committed(&Some(log_id(4, 1, 8)));
+
+        let command = eng.next_progress_driven_command();
+        let expected = Some(Command::SaveCommittedAndApply {
+            already_applied: Some(installed),
+            upto: log_id(4, 1, 8),
+        });
+        assert_eq!(expected, command);
+
+        let flushed = eng.state.io_state().snapshot.flushed();
+        assert_eq!(None, flushed);
+    }
+
     Ok(())
+}
+
+#[test]
+fn test_apply_waits_for_snapshot_without_purge() {
+    let mut eng = eng();
+    let vote = eng.state.vote_ref().to_committed();
+    let log_io = IOId::new_log_io(vote, Some(log_id(4, 1, 8)));
+    eng.state.log_progress_mut().accept(log_io.clone());
+    eng.state.log_progress_mut().submit(log_io);
+    eng.state.apply_progress_mut().submit(log_id(2, 1, 4));
+    eng.state.apply_progress_mut().accept(log_id(4, 1, 8));
+
+    tracing::info!("Wait for snapshot 6 to be submitted even though no purge is accepted");
+    {
+        eng.state.snapshot_progress_mut().accept(log_id(4, 1, 6));
+        eng.state.snapshot_meta.last_log_id = Some(log_id(4, 1, 6));
+        let purged = eng.state.purge_progress().accepted();
+        assert_eq!(None, purged);
+        let command = eng.next_progress_driven_command();
+        assert_eq!(None, command);
+    }
 }
