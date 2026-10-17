@@ -90,3 +90,20 @@ fn test_next_membership_retain_learner() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+/// Changing from a joint membership may drop a leader that belongs only to the old voter set.
+#[test]
+fn test_next_membership_joint_can_leave_out_leader() -> anyhow::Result<()> {
+    let state = MembershipStateOf::<UTConfig>::new(effmem(3, 4, m123_345()), effmem(3, 4, m123_345()));
+    let joint = vec![btreeset! {3,4,5}, btreeset! {4}];
+
+    let result = state.next_membership(ChangeMembers::ReplaceAllVoters(btreeset! {4}), false);
+    let expected = Membership::new_with_defaults(joint.clone(), []);
+    assert_eq!(Ok(expected), result);
+
+    let result = state.next_membership(ChangeMembers::ReplaceAllVoters(btreeset! {4}), true);
+    let expected = Membership::new_with_defaults(joint, [1, 2]);
+    assert_eq!(Ok(expected), result);
+
+    Ok(())
+}
