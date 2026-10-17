@@ -64,6 +64,7 @@ use crate::engine::Respond;
 use crate::engine::TargetProgress;
 use crate::engine::handler::leader_handler::LeaderHandler;
 use crate::engine::leader_log_ids::LeaderLogIds;
+use crate::engine::quorum_loss_probe::QuorumLossProbe;
 use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
 use crate::errors::AllowNextRevertError;
@@ -263,6 +264,10 @@ where
 
     /// The watch channels that broadcast local IO progress to storage callbacks and replication.
     pub(crate) io_broadcast: IoBroadcast<C>,
+
+    /// Publishes the Leader's quorum-loss quiet periods to the replication tasks, which keep them
+    /// as heartbeats do.
+    pub(crate) quorum_loss_probe_tx: WatchSenderOf<C, Option<QuorumLossProbe<InstantOf<C>>>>,
 
     /// The watch channels that publish this node's state for observers.
     pub(crate) metrics: MetricsChannels<C>,
@@ -966,6 +971,7 @@ where
     /// It performs routine checks and triggers corresponding actions:
     /// - Snapshot building based on `SnapshotPolicy`
     /// - Initiate replication if the replication stream is idle (for leader)
+    /// - Publish the leader's quorum-loss quiet periods to replication tasks
     ///
     /// Unlike tick-based triggers, this runs after every message batch, making it independent of
     /// the tick configuration and more responsive to state changes.
@@ -991,6 +997,9 @@ where
         if let Ok(mut lh) = self.engine.try_leader_handler() {
             lh.replication_handler().initiate_replication();
         }
+
+        let quorum_loss_probe = self.engine.try_leader_handler().ok().and_then(|lh| lh.quorum_loss_probe());
+        self.quorum_loss_probe_tx.send_if_different(quorum_loss_probe);
 
         // Broadcast I/O progress so replication tasks can read submitted logs.
         if let Some(submitted) = self.engine.state.log_progress().submitted().cloned() {
@@ -1205,6 +1214,7 @@ where
             tx_notify: self.notifications.sender(),
             cancel_rx,
             replicate_batch: self.shared_replicate_batch.clone(),
+            quorum_loss_probe_rx: self.quorum_loss_probe_tx.subscribe(),
         }
     }
 
@@ -2389,6 +2399,7 @@ where
             tx_notify: self.notifications.sender(),
             cancel_rx,
             replicate_batch: self.shared_replicate_batch.clone(),
+            quorum_loss_probe_rx: self.quorum_loss_probe_tx.subscribe(),
         };
         (ctx, cancel_tx)
     }
