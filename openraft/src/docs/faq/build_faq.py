@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 
+
 from pathlib import Path
+
 
 def get_section_name(dir_path):
     readme = dir_path / "README.md"
     return readme.read_text().strip()
 
+
 def build_faq():
     output = []
 
-    category_dirs = sorted([d for d in Path(".").iterdir() if d.is_dir() and d.name[0].isdigit()])
+    category_dirs = sorted(
+        [d for d in Path(".").iterdir() if d.is_dir() and d.name[0].isdigit()]
+    )
 
     for dir_path in category_dirs:
         section_name = get_section_name(dir_path)
@@ -24,6 +29,7 @@ def build_faq():
 
     Path("faq.md").write_text("".join(output))
     print("Generated faq.md successfully")
+
 
 if __name__ == "__main__":
     build_faq()

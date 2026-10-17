@@ -38,20 +38,37 @@ def gh_lines(*args):
 
 def commit_authors(repo):
     """All-time commit contributors: everyone with a merged commit."""
-    return set(gh_lines(
-        "api", "--paginate", f"repos/{repo}/contributors?per_page=100",
-        "--jq", ".[].login",
-    ))
+    return set(
+        gh_lines(
+            "api",
+            "--paginate",
+            f"repos/{repo}/contributors?per_page=100",
+            "--jq",
+            ".[].login",
+        )
+    )
 
 
 def issue_pr_authors(repo, since):
     """Authors of issues and pull requests created since `since`."""
     authors = set()
     for kind in ("prs", "issues"):
-        authors.update(gh_lines(
-            "search", kind, "--repo", repo, "--created", f">={since}",
-            "--limit", "1000", "--json", "author", "--jq", ".[].author.login",
-        ))
+        authors.update(
+            gh_lines(
+                "search",
+                kind,
+                "--repo",
+                repo,
+                "--created",
+                f">={since}",
+                "--limit",
+                "1000",
+                "--json",
+                "author",
+                "--jq",
+                ".[].author.login",
+            )
+        )
     return authors
 
 
@@ -74,14 +91,28 @@ def main():
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--repo", default="databendlabs/openraft", help="GitHub owner/name")
-    parser.add_argument("--since", help="ISO date lower bound for issues/PRs (default: one year ago)")
-    parser.add_argument("--dir", default="assets/contributors", help="output directory for the list, Markdown, and svg/ subdir")
-    parser.add_argument("--txt", default="contributors.txt", help="login-list filename within --dir")
-    parser.add_argument("--markdown", default="contributors.md", help="Markdown filename within --dir")
+    parser.add_argument(
+        "--repo", default="databendlabs/openraft", help="GitHub owner/name"
+    )
+    parser.add_argument(
+        "--since", help="ISO date lower bound for issues/PRs (default: one year ago)"
+    )
+    parser.add_argument(
+        "--dir",
+        default="assets/contributors",
+        help="output directory for the list, Markdown, and svg/ subdir",
+    )
+    parser.add_argument(
+        "--txt", default="contributors.txt", help="login-list filename within --dir"
+    )
+    parser.add_argument(
+        "--markdown", default="contributors.md", help="Markdown filename within --dir"
+    )
     args = parser.parse_args()
 
-    since = args.since or (datetime.date.today() - datetime.timedelta(days=365)).isoformat()
+    since = (
+        args.since or (datetime.date.today() - datetime.timedelta(days=365)).isoformat()
+    )
     names = all_contributors(args.repo, since)
 
     directory = Path(args.dir)
@@ -91,7 +122,10 @@ def main():
     svg_dir = f"{directory.as_posix()}/svg"
     txt_path.write_text("\n".join(names) + "\n")
     markdown_path.write_text(render_markdown(names, svg_dir) + "\n")
-    print(f"wrote {len(names)} logins to {txt_path} and Markdown to {markdown_path}", file=sys.stderr)
+    print(
+        f"wrote {len(names)} logins to {txt_path} and Markdown to {markdown_path}",
+        file=sys.stderr,
+    )
 
 
 if __name__ == "__main__":

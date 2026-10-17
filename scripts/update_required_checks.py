@@ -40,10 +40,12 @@ import argparse
 import json
 import subprocess
 import sys
-from typing import Dict, Iterable, List, Optional, Sequence, Set
+from collections.abc import Sequence
 
 
-def run_gh(args: Sequence[str], *, input_text: Optional[str] = None) -> subprocess.CompletedProcess:
+def run_gh(
+    args: Sequence[str], *, input_text: str | None = None
+) -> subprocess.CompletedProcess:
     """Run a `gh` command and return the completed process, raising on failure."""
 
     cmd = ["gh", *args]
@@ -56,11 +58,13 @@ def run_gh(args: Sequence[str], *, input_text: Optional[str] = None) -> subproce
     )
     if result.returncode != 0:
         sys.stderr.write(f"Command failed: {' '.join(cmd)}\n{result.stderr}\n")
-        raise subprocess.CalledProcessError(result.returncode, cmd, result.stdout, result.stderr)
+        raise subprocess.CalledProcessError(
+            result.returncode, cmd, result.stdout, result.stderr
+        )
     return result
 
 
-def gh_json(args: Sequence[str]) -> Dict:
+def gh_json(args: Sequence[str]) -> dict:
     """Invoke `gh ...` and parse stdout as JSON."""
 
     cp = run_gh(args)
@@ -82,11 +86,13 @@ def detect_repo_slug() -> str:
 
     slug = data.get("nameWithOwner")
     if not slug:
-        raise RuntimeError("Failed to determine repository slug; provide --repo explicitly")
+        raise RuntimeError(
+            "Failed to determine repository slug; provide --repo explicitly"
+        )
     return slug
 
 
-def pr_details(repo: Optional[str], number: int) -> Dict:
+def pr_details(repo: str | None, number: int) -> dict:
     args = ["pr", "view", str(number), "--json", "baseRefName,headRefOid"]
     if repo:
         args.extend(["--repo", repo])
@@ -94,7 +100,7 @@ def pr_details(repo: Optional[str], number: int) -> Dict:
     return json.loads(cp.stdout)
 
 
-def collect_check_run_names(repo: str, sha: str) -> Set[str]:
+def collect_check_run_names(repo: str, sha: str) -> set[str]:
     endpoint = f"repos/{repo}/commits/{sha}/check-runs"
     args = ["api", endpoint, "--paginate", "--jq", ".check_runs[].name"]
     cp = run_gh(args)
@@ -102,7 +108,7 @@ def collect_check_run_names(repo: str, sha: str) -> Set[str]:
     return names
 
 
-def collect_status_contexts(repo: str, sha: str) -> Set[str]:
+def collect_status_contexts(repo: str, sha: str) -> set[str]:
     endpoint = f"repos/{repo}/commits/{sha}/status"
     args = ["api", endpoint, "--jq", ".statuses[].context"]
     cp = run_gh(args)
@@ -110,14 +116,14 @@ def collect_status_contexts(repo: str, sha: str) -> Set[str]:
     return contexts
 
 
-def collect_required_contexts(repo: str, sha: str) -> List[str]:
-    contexts: Set[str] = set()
+def collect_required_contexts(repo: str, sha: str) -> list[str]:
+    contexts: set[str] = set()
     contexts.update(collect_check_run_names(repo, sha))
     contexts.update(collect_status_contexts(repo, sha))
     return sorted(contexts)
 
 
-def normalize_subject(value) -> Optional[str]:
+def normalize_subject(value) -> str | None:
     if isinstance(value, str):
         return value
     if isinstance(value, dict):
@@ -125,11 +131,11 @@ def normalize_subject(value) -> Optional[str]:
     return None
 
 
-def extract_allowances(data: Optional[Dict]) -> Optional[Dict[str, List[str]]]:
+def extract_allowances(data: dict | None) -> dict[str, list[str]] | None:
     if not data:
         return None
 
-    result: Dict[str, List[str]] = {}
+    result: dict[str, list[str]] = {}
     for key in ("users", "teams", "apps"):
         entries = [normalize_subject(v) for v in data.get(key, [])]
         entries = [v for v in entries if v]
@@ -139,8 +145,8 @@ def extract_allowances(data: Optional[Dict]) -> Optional[Dict[str, List[str]]]:
     return result or None
 
 
-def build_protection_payload(current: Dict, contexts: List[str]) -> Dict:
-    payload: Dict = {}
+def build_protection_payload(current: dict, contexts: list[str]) -> dict:
+    payload: dict = {}
 
     status = current.get("required_status_checks") or {}
     payload["required_status_checks"] = {
@@ -148,7 +154,9 @@ def build_protection_payload(current: Dict, contexts: List[str]) -> Dict:
         "contexts": contexts,
     }
 
-    payload["enforce_admins"] = (current.get("enforce_admins") or {}).get("enabled", False)
+    payload["enforce_admins"] = (current.get("enforce_admins") or {}).get(
+        "enabled", False
+    )
 
     reviews = current.get("required_pull_request_reviews")
     if reviews:
@@ -169,9 +177,15 @@ def build_protection_payload(current: Dict, contexts: List[str]) -> Dict:
     restrictions = current.get("restrictions")
     if restrictions:
         payload["restrictions"] = {
-            "users": [s for s in map(normalize_subject, restrictions.get("users", [])) if s],
-            "teams": [s for s in map(normalize_subject, restrictions.get("teams", [])) if s],
-            "apps": [s for s in map(normalize_subject, restrictions.get("apps", [])) if s],
+            "users": [
+                s for s in map(normalize_subject, restrictions.get("users", [])) if s
+            ],
+            "teams": [
+                s for s in map(normalize_subject, restrictions.get("teams", [])) if s
+            ],
+            "apps": [
+                s for s in map(normalize_subject, restrictions.get("apps", [])) if s
+            ],
         }
     else:
         payload["restrictions"] = None

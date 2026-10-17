@@ -85,7 +85,9 @@ def fetch_page(url: str) -> str:
     cmd = ["gh", "api", url]
     result = subprocess.run(cmd, text=True, capture_output=True, check=False)
     if result.returncode != 0:
-        raise subprocess.CalledProcessError(result.returncode, cmd, result.stdout, result.stderr)
+        raise subprocess.CalledProcessError(
+            result.returncode, cmd, result.stdout, result.stderr
+        )
     return result.stdout
 
 
@@ -149,7 +151,9 @@ def crawl_package(url: str) -> list[tuple[str, int]]:
 
     while next_url is not None:
         if page_number > MAX_PAGES_PER_PACKAGE:
-            log(f"  warning: stopped at the {MAX_PAGES_PER_PACKAGE} page cap; later pages are missing")
+            log(
+                f"  warning: stopped at the {MAX_PAGES_PER_PACKAGE} page cap; later pages are missing"
+            )
             break
 
         page = fetch_page(next_url)
@@ -213,11 +217,15 @@ def run_graphql(query: str) -> dict:
     cmd = ["gh", "api", "graphql", "-f", f"query={query}"]
     result = subprocess.run(cmd, text=True, capture_output=True, check=False)
     if not result.stdout.strip():
-        raise subprocess.CalledProcessError(result.returncode, cmd, result.stdout, result.stderr)
+        raise subprocess.CalledProcessError(
+            result.returncode, cmd, result.stdout, result.stderr
+        )
 
     data = json.loads(result.stdout).get("data")
     if data is None:
-        raise subprocess.CalledProcessError(result.returncode, cmd, result.stdout, result.stderr)
+        raise subprocess.CalledProcessError(
+            result.returncode, cmd, result.stdout, result.stderr
+        )
     return data
 
 
@@ -241,7 +249,9 @@ def fetch_descriptions(repos: list[str]) -> dict[str, str]:
     return descriptions
 
 
-def print_rows(dependents: Iterable[tuple[str, int]], descriptions: dict[str, str]) -> None:
+def print_rows(
+    dependents: Iterable[tuple[str, int]], descriptions: dict[str, str]
+) -> None:
     """Print one `stars<TAB>owner/repo<TAB>description` row per repository."""
 
     for dependent, stars in dependents:
@@ -249,7 +259,9 @@ def print_rows(dependents: Iterable[tuple[str, int]], descriptions: dict[str, st
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(
+        description=__doc__.splitlines()[0] if __doc__ else None
+    )
     parser.add_argument(
         "repo",
         nargs="?",
@@ -276,7 +288,9 @@ def main() -> None:
     selected = ranked
     if args.min_stars is not None:
         selected = [item for item in ranked if item[1] >= args.min_stars]
-        log(f"Selected {len(selected)} of {len(ranked)} repositories with at least {args.min_stars} stars")
+        log(
+            f"Selected {len(selected)} of {len(ranked)} repositories with at least {args.min_stars} stars"
+        )
 
     log(f"Fetching descriptions of {len(selected)} repositories")
     descriptions = fetch_descriptions([dependent for dependent, _stars in selected])

@@ -39,26 +39,35 @@ from pathlib import Path
 
 # A link into this repository at its current state. Only `main` is translated:
 # a URL pinned to a commit or tag names a snapshot, not the working tree.
-REPO_URL = re.compile(r"^https://github\.com/databendlabs/openraft/(?:blob|tree)/main/(.+)$")
+REPO_URL = re.compile(
+    r"^https://github\.com/databendlabs/openraft/(?:blob|tree)/main/(.+)$"
+)
 
 # `[text](destination)`, with an optional `"title"` and optional `<>` around
 # the destination.
 INLINE_LINK = re.compile(r"\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+[\"'][^\"']*[\"'])?\s*\)")
 
 # `[label]: destination`, the reference-style definition.
-REFERENCE_DEF = re.compile(r"^\s{0,3}\[[^\]]+\]:\s*<?([^\s>]+)>?\s*(?:[\"'].*[\"'])?\s*$")
+REFERENCE_DEF = re.compile(
+    r"^\s{0,3}\[[^\]]+\]:\s*<?([^\s>]+)>?\s*(?:[\"'].*[\"'])?\s*$"
+)
 
 
 def repo_root() -> Path:
     out = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=True
+        ["git", "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+        check=True,
     )
     return Path(out.stdout.strip())
 
 
 def markdown_files(root: Path, paths: list[str]) -> list[Path]:
     """Tracked markdown files under `paths`, symlinks excluded."""
-    cmd = ["git", "ls-files", "-z", "--"] + [p + "*.md" if p.endswith("/") else p for p in paths]
+    cmd = ["git", "ls-files", "-z", "--"] + [
+        p + "*.md" if p.endswith("/") else p for p in paths
+    ]
     out = subprocess.run(cmd, cwd=root, capture_output=True, text=True, check=True)
     files = []
     for name in out.stdout.split("\0"):
@@ -100,9 +109,14 @@ def resolve(root: Path, md_file: Path, dest: str) -> Path | None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(
+        description=__doc__.splitlines()[0] if __doc__ else None
+    )
     parser.add_argument(
-        "paths", nargs="*", default=["*.md"], help="limit the scan to these paths (default: all)"
+        "paths",
+        nargs="*",
+        default=["*.md"],
+        help="limit the scan to these paths (default: all)",
     )
     args = parser.parse_args()
 
