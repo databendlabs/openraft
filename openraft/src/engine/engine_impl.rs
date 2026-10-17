@@ -901,6 +901,12 @@ where
             let apply_submitted = apply_progress.submitted();
             let apply_accepted = apply_progress.accepted();
 
+            // Apply commands must follow the accepted snapshot in the state machine queue.
+            let snapshot_accepted = self.state.io_state.snapshot.accepted();
+            if apply_submitted.next_index() < snapshot_accepted.next_index() {
+                return None;
+            }
+
             let log_submitted = log_progress.submitted().and_then(|io_id| io_id.last_log_id());
 
             let applicable_upto = log_submitted.min(apply_accepted);
