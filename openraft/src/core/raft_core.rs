@@ -479,7 +479,7 @@ where
         payloads: MembershipPayloads<C>,
         tx: ProgressResponder<C, ClientWriteResult<C>>,
     ) {
-        if let Err(e) = self.ensure_leader_handler() {
+        if let Err(e) = self.ensure_leader_handler().and_then(Self::ensure_leader_in_membership) {
             tx.on_complete(Err(ClientWriteError::ForwardToLeader(e)));
             return;
         }
@@ -521,7 +521,7 @@ where
         preconditions: BatchOf<C, Precondition<C>>,
         tx: ProgressResponder<C, ClientWriteResult<C>>,
     ) {
-        let lh = match self.ensure_writable_leader_handler() {
+        let lh = match self.ensure_writable_leader_handler().and_then(Self::ensure_leader_in_membership) {
             Ok(lh) => lh,
             Err(forward) => {
                 tx.on_complete(Err(ClientWriteError::ForwardToLeader(forward)));
@@ -611,6 +611,23 @@ where
         }
 
         Ok(lh)
+    }
+
+    /// Ensure the leader is in the membership, as it must be to change the membership.
+    ///
+    /// A leader removed by the committed membership keeps leading until it steps down, see
+    /// [`Config::removed_leader_step_down`]. Meanwhile it still writes normal entries, but no
+    /// membership entry: that takes [`RaftState::is_leader()`], which is false for a leader in
+    /// neither the effective membership nor the committed voters. The next leader is not known
+    /// yet, so the request is forwarded to none.
+    fn ensure_leader_in_membership(
+        lh: LeaderHandler<'_, C, SM>,
+    ) -> Result<LeaderHandler<'_, C, SM>, ForwardToLeader<C>> {
+        if lh.state.is_leader(&lh.config.id) {
+            return Ok(lh);
+        }
+
+        Err(ForwardToLeader::empty())
     }
 
     /// Ensure this node has a valid leader lease and may accept new writes.

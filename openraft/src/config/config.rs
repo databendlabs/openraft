@@ -426,6 +426,9 @@ pub struct Config {
     /// - [`Never`](StepDownPolicy::Never): the removed Leader keeps leading, until the application
     ///   reverts it manually with [`Trigger::refresh_server_state()`].
     ///
+    /// Either way, until it steps down the removed Leader refuses membership changes with a
+    /// [`ForwardToLeader`] that names no leader.
+    ///
     /// In CLI it is either a "never" literal (`never`, `no`, `none`, `off` or `false`,
     /// case-insensitive) or the number of milliseconds, e.g.,
     /// `--removed-leader-step-down=never` or `--removed-leader-step-down=150`.
@@ -433,6 +436,7 @@ pub struct Config {
     /// Defaults to `After(150)`.
     ///
     /// [`Trigger::refresh_server_state()`]: crate::raft::trigger::Trigger::refresh_server_state
+    /// [`ForwardToLeader`]: crate::errors::ForwardToLeader
     #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long, default_value = "150", value_parser = parse_step_down_policy))]
     #[cfg_attr(feature = "serde", serde(default = "default_removed_leader_step_down"))]
