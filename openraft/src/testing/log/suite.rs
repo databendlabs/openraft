@@ -146,6 +146,7 @@ where
         run_test(builder, Self::get_initial_state_with_state).await?;
         run_test(builder, Self::get_initial_state_last_log_gt_sm).await?;
         run_test(builder, Self::get_initial_state_last_log_lt_sm).await?;
+        run_test(builder, Self::get_initial_state_last_log_lt_sm_past_snapshot).await?;
         run_test(builder, Self::get_initial_state_inverted_log_order).await?;
         run_test(builder, Self::get_initial_state_conflict_at_same_index).await?;
         run_test(builder, Self::get_initial_state_log_ids).await?;
@@ -644,6 +645,33 @@ where
             Some(log_id_0::<C>(3, 3)),
             "state machine has higher log"
         );
+        Ok(())
+    }
+
+    pub async fn get_initial_state_last_log_lt_sm_past_snapshot(mut store: LS, mut sm: SM) -> Result<(), io::Error> {
+        Self::default_vote(&mut store).await?;
+
+        // The state machine is snapshotted at (1,1), then applies up to (1,3), which a crash took
+        // from the log store before it was flushed: the log store has only (1,2).
+        append(&mut store, [blank_ent_0::<C>(1, 1), blank_ent_0::<C>(1, 2)]).await?;
+        apply(&mut sm, [blank_ent_0::<C>(1, 1)]).await?;
+        sm.try_create_snapshot_builder(true).await.unwrap().build_snapshot().await?;
+        apply(&mut sm, [blank_ent_0::<C>(1, 2), blank_ent_0::<C>(1, 3)]).await?;
+
+        let initial = StorageHelper::new(&mut store, &mut sm).with_id(NODE_ID.into()).get_initial_state().await?;
+
+        assert_eq!(
+            initial.last_purged_log_id().cloned(),
+            Some(log_id_0::<C>(1, 3)),
+            "the hole up to the state machine is purged"
+        );
+        assert_eq!(
+            initial.snapshot_last_log_id().cloned(),
+            Some(log_id_0::<C>(1, 3)),
+            "a snapshot covers the purged logs"
+        );
+        // `Engine::startup()` validates the same state.
+        validit::Validate::validate(&initial).map_err(|e| io::Error::other(e.to_string()))?;
         Ok(())
     }
 
