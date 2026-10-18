@@ -160,7 +160,52 @@ With the five fixes, #2167 and #2170 disappear; with the fixes for the two new b
 
 ### Depth and cost
 
-One seed takes about 0.5 s at `--max-steps 10000` and 12–14 s at `--max-steps 100000` (one process on a 32-core x86 Linux machine, release build), with no measurable difference between storage modes. Per CPU-hour, short lossy runs find #2167 most often (about 55 times), while long runs are needed for the rest: the startup bug did not show up in 14,000 short runs with storage faults, the purge assertion fails one long seed in 20 but one short seed in 2,000, and membership changes come every 10,000–25,000 ticks, so a 10k run sees at most one. CI runs `--iterations 5 --max-steps 10000` per pull request, a few seconds. A nightly job of about an hour on four processes, two at `--max-steps 10000` and two at `--max-steps 100000`, one of each with `--storage lossy`, covers about 7,000 short and 400 long seeds; a base seed taken from the date (`--seed $(date +%Y%m%d)00000`) moves it to new seeds every night, and `--crash-file` keeps what to replay.
+One seed takes about 0.5 s at `--max-steps 10000` and 12–14 s at `--max-steps 100000` (one process on a 32-core x86 Linux machine, release build), with no measurable difference between storage modes. Per CPU-hour, short lossy runs find #2167 most often (about 55 times), while long runs are needed for the rest: the startup bug did not show up in 14,000 short runs with storage faults, the purge assertion fails one long seed in 20 but one short seed in 2,000, and membership changes come every 10,000–25,000 ticks, so a 10k run sees at most one.
+
+### CI
+
+Each pull request runs `--iterations 5 --max-steps 10000 --storage durable`, a few seconds, and so does `make detsim`. Until the fixes for #2167 ([#2172](https://github.com/databendlabs/openraft/pull/2172)) and for the two purge bugs land, `main` still fails with storage faults, so `seeded` and `lossy` are opt-in: run them by hand, as in [Running the Fuzzer](#running-the-fuzzer). Once they land, CI can drop `--storage durable`, and a nightly job can add depth. A proposal of about an hour on four runners, two at `--max-steps 10000` and two at `--max-steps 100000`, one of each with `--storage lossy`: about 7,000 short and 400 long seeds a night, new ones every night through a base seed taken from the date, and a crash file to replay:
+
+```yaml
+# Proposal, not yet a workflow: .github/workflows/detsim-nightly.yml
+#
+# name: detsim-nightly
+# on:
+#   schedule:
+#     - cron: "0 2 * * *"
+#   workflow_dispatch:
+# jobs:
+#   fuzz:
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 120
+#     strategy:
+#       fail-fast: false
+#       matrix:
+#         include:
+#           - { storage: seeded, steps: 10000, iterations: 3500 }
+#           - { storage: lossy, steps: 10000, iterations: 3500 }
+#           - { storage: seeded, steps: 100000, iterations: 200 }
+#           - { storage: lossy, steps: 100000, iterations: 200 }
+#     steps:
+#       - uses: actions/checkout@v4
+#       - uses: actions-rust-lang/setup-rust-toolchain@v1
+#         with:
+#           cache-workspaces: tests-turmoil
+#           rustflags: ""
+#       - name: Fuzz
+#         run: >
+#           cd tests-turmoil && cargo run --release --bin fuzz --
+#           --seed "$(date +%Y%m%d)00000" --iterations ${{ matrix.iterations }}
+#           --max-steps ${{ matrix.steps }} --storage ${{ matrix.storage }}
+#           --crash-file crash.json
+#       - if: failure()
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: crash-${{ matrix.storage }}-${{ matrix.steps }}
+#           path: tests-turmoil/crash.json
+```
+
+`--iterations` stops at the first failing seed, so a red night shows one failure per runner; `--reproduce` with the logged seed replays it.
 
 ## Running the Fuzzer
 
@@ -176,7 +221,7 @@ cargo run --release --bin fuzz -- --seed 500 --iterations 20 --max-steps 50000
 | `--iterations` | 100 (0=∞)      | Number of iterations; stops at the first failure                   |
 | `--max-steps`  | 100000         | Safety-phase length in ticks; liveness phases run after            |
 | `--crash-file` | —              | Where to write crash info                                          |
-| `--storage`    | `seeded`       | Storage faults: drawn from each seed (`seeded`), none (`durable`, as before they existed), or always lossy (`lossy`) |
+| `--storage`    | `seeded`       | Storage faults: drawn from each seed (`seeded`), none (`durable`, as before they existed, and what CI runs), or always lossy (`lossy`) |
 
 Environment variables:
 
