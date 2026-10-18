@@ -160,6 +160,17 @@ where
         let mem_state = self.get_membership().await?;
 
         // Clean up dirty state: snapshot is installed, but logs are not cleaned.
+        //
+        // The same hole appears after a crash. Applying a log does not require this node to
+        // persist it first. It only requires the log to be committed, that is, persisted on a
+        // quorum, and that quorum need not include this node; see `docs::data::log_pointers`. So
+        // the state machine may apply a log and persist it in `apply()` before the local log store
+        // flushes it. A crash then loses the log from the log store but not from the state machine.
+        // After the restart, `last_log_id < last_applied`, and no snapshot covers `last_applied`.
+        //
+        // Either way, purge the logs up to `last_applied`, so that the log store resumes right
+        // after `last_applied` and the node can start. In the second case the purge goes past the
+        // last snapshot, so the snapshot is rebuilt below.
         if last_log_id < last_applied {
             // A genuine hole means `last_applied` is strictly ahead by index. An equal index means
             // the state machine and log store contain different entries in the same slot; a smaller
@@ -195,19 +206,16 @@ where
 
         let snapshot = self.state_machine.get_current_snapshot().await.sto_read_snapshot(None)?;
 
-        // If there is not a snapshot and there are logs purged, which means the snapshot is not persisted,
-        // we just rebuild it so that replication can use it.
-        let snapshot = match snapshot {
-            None => {
-                if last_purged_log_id.is_some() {
-                    let mut b = self.state_machine.try_create_snapshot_builder(true).await.unwrap();
-                    let s = b.build_snapshot().await.sto_write_snapshot(None)?;
-                    Some(s)
-                } else {
-                    None
-                }
-            }
-            s @ Some(_) => s,
+        // Replication sends purged logs as a snapshot, so the snapshot must cover them. It does
+        // not when it was never persisted, or when the hole purge above went past it. Rebuild it
+        // from the state machine, which has applied every purged log.
+        let snapshot_last_log_id = snapshot.as_ref().and_then(|s| s.meta.last_log_id.clone());
+        let snapshot = if snapshot_last_log_id < last_purged_log_id {
+            let mut b = self.state_machine.try_create_snapshot_builder(true).await.unwrap();
+            let s = b.build_snapshot().await.sto_write_snapshot(None)?;
+            Some(s)
+        } else {
+            snapshot
         };
         let snapshot_meta = snapshot.map(|x| x.meta).unwrap_or_default();
 
