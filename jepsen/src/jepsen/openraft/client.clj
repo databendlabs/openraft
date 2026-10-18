@@ -23,7 +23,7 @@
 (def ^:private max-u64 18446744073709551615N)
 (def ^:private response-body-preview-limit 1024)
 (def ^:private modeled-error-variants
-  #{:ForwardToLeader :QuorumNotEnough})
+  #{:ForwardToLeader :LogEntryDiscarded :QuorumNotEnough})
 
 (def ^:private ^JsonFactory preflight-json-factory
   (json-factory/make-json-factory {}))
@@ -243,12 +243,23 @@
   ;; contains? returns false for a nil map, so no nil guard is needed.
   (contains? (:error (ex-data e)) :ForwardToLeader))
 
+(defn log-entry-discarded?
+  "True when a write's log entry was discarded on a leader change.
+
+  OpenRaft returns LogEntryDiscarded after the entry was appended, so it may
+  still commit through another leader: its outcome is unknown, unlike a
+  ForwardToLeader, and the request must never be retried."
+  [e]
+  (contains? (:error (ex-data e)) :LogEntryDiscarded))
+
 (defn- quorum-not-enough? [e]
   (contains? (:error (ex-data e)) :QuorumNotEnough))
 
 (defn- forward-endpoint [e]
-  (get-in (ex-data e)
-          [:error :ForwardToLeader :leader_node :data]))
+  ;; LogEntryDiscarded carries the same ForwardToLeader payload.
+  (let [error (:error (ex-data e))]
+    (get-in (or (:ForwardToLeader error) (:LogEntryDiscarded error))
+            [:leader_node :data])))
 
 (defn- unreachable? [e]
   (= :unreachable (:kind (ex-data e))))
@@ -261,7 +272,8 @@
         (quorum-not-enough? e))))
 
 (defn- reroute-next-operation? [e]
-  (retryable-read-error? e))
+  (or (retryable-read-error? e)
+      (log-entry-discarded? e)))
 
 (defn- next-endpoint [endpoints attempted e]
   ;; A ForwardToLeader with an empty data field carries no usable address, and
@@ -278,8 +290,9 @@
   ForwardToLeader and connection-establishment failures prove that the request
   was not applied, so retrying them does not duplicate a mutation. The optional
   retryable? predicate allows side-effect-free operations to retry additional
-  failures. An ambiguous failure is returned to the workload, but the next
-  operation starts from another endpoint."
+  failures. An ambiguous failure, LogEntryDiscarded included, is returned to
+  the workload, but the next operation starts from another endpoint, the
+  reported leader first."
   ([leader-endpoint endpoints request]
    (with-leader! leader-endpoint endpoints request (constantly false)))
   ([leader-endpoint endpoints request retryable?]

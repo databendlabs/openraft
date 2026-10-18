@@ -729,6 +729,31 @@
                (get-in value [:existing-change :voter-configs])))
         (is (nil? (harness/primary-failure failure-state)))))))
 
+(deftest a-discarded-membership-entry-is-indeterminate
+  (let [failure-state (harness/failure-state)
+        subject (worker/wrap-nemesis failure-state (membership-nemesis))]
+    (with-redefs [cluster/membership-status
+                  (constantly (stable-status (set nodes)))
+                  random/shuffle reverse
+                  client/change-membership!
+                  (fn [& _]
+                    (throw (ex-info
+                            "discarded"
+                            {:kind :openraft-error
+                             :error {:LogEntryDiscarded
+                                     {:leader_id "n2"
+                                      :leader_node {:data "n2:21001"}}}})))
+                  openraft-db/stop-and-wipe-node!
+                  (fn [& _]
+                    (throw (ex-info "MUST NOT clean up" {})))]
+      (let [value (:value
+                   (nemesis/invoke! subject
+                                    test-config
+                                    {:type :info :f :shrink}))]
+        (is (= :indeterminate (:status value))
+            "the entry may still commit through the new leader")
+        (is (nil? (harness/primary-failure failure-state)))))))
+
 (deftest final-restoration-resolves-a-pending-removal
   (let [before (set nodes)
         after (disj before "n5")

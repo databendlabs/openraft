@@ -165,6 +165,11 @@
             (contains? error :QuorumNotEnough)
             (complete-with-error op :fail :quorum-not-enough false)
 
+            ;; The entry was appended, then discarded on a leader change; it
+            ;; may still commit, so the outcome is unknown but modeled.
+            (contains? error :LogEntryDiscarded)
+            (complete-with-ambiguous-outcome op :log-entry-discarded false)
+
             :else
             (complete-with-ambiguous-outcome op :openraft-error true))
 

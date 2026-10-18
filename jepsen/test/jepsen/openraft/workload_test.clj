@@ -448,7 +448,15 @@
                      {:kind :openraft-error
                       :error {:QuorumNotEnough {}}})
             :fail
-            :quorum-not-enough]]]
+            :quorum-not-enough]
+           ["log entry discarded on a leader change"
+            (ex-info "discarded"
+                     {:kind :openraft-error
+                      :error {:LogEntryDiscarded
+                              {:leader_id "n2"
+                               :leader_node {:data "n2:21001"}}}})
+            :info
+            :log-entry-discarded]]]
     (testing description
       (with-redefs [http/write! (fn [& _] (throw throwable))]
         (let [op {:type :invoke :f :write :value (keyed "value")}

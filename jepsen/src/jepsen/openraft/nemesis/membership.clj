@@ -54,7 +54,10 @@
            :invalid-response} kind)
         (and (= :http-error kind)
              (or (nil? status)
-                 (<= 500 status 599))))))
+                 (<= 500 status 599)))
+        ;; The membership entry was appended, then discarded on a leader
+        ;; change, so it may still commit.
+        (client/log-entry-discarded? e))))
 
 (defn- leader-routing-error? [e]
   (let [{:keys [kind error]} (ex-data e)]

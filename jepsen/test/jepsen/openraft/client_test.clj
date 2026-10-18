@@ -133,6 +133,30 @@
     (is (= "n2:21001" @leader)
         "the next operation should avoid the endpoint which timed out")))
 
+(deftest never-retries-a-discarded-log-entry
+  (doseq [[label retryable?] [["write" (constantly false)]
+                              ["read predicate" client/retryable-read-error?]]]
+    (testing label
+      (let [leader (atom "n1:21001")
+            attempts (atom 0)
+            error (caught
+                   #(client/with-leader!
+                      leader
+                      ["n1:21001" "n2:21001" "n3:21001"]
+                      (fn [_]
+                        (swap! attempts inc)
+                        (throw (ex-info "discarded"
+                                        {:kind :openraft-error
+                                         :error {:LogEntryDiscarded
+                                                 {:leader_id "n3"
+                                                  :leader_node {:data "n3:21001"}}}})))
+                      retryable?))]
+        (is (client/log-entry-discarded? error))
+        (is (= 1 @attempts)
+            "a discarded entry may still commit, so the write is not retried")
+        (is (= "n3:21001" @leader)
+            "the next operation starts from the reported leader")))))
+
 (deftest retries-read-timeout-on-another-node
   (let [leader (atom "n1:21001")
         attempts (atom [])
@@ -324,8 +348,18 @@
       (is (= :openraft-error (:kind (ex-data thrown))))
       (is (= error (:error (ex-data thrown))))))
 
+  (testing "a LogEntryDiscarded object remains modeled"
+    (let [error {:LogEntryDiscarded {:leader_id "n2"
+                                     :leader_node {:data "n2:21001"}}}
+          thrown (with-redefs [client/post! (fn [& _]
+                                              (http-response {:Err error}))]
+                   (caught #(client/write! "n1:21001" "key" "value")))]
+      (is (= :openraft-error (:kind (ex-data thrown))))
+      (is (= error (:error (ex-data thrown))))))
+
   (doseq [[variant payload]
           [[:ForwardToLeader "not-an-object"]
+           [:LogEntryDiscarded "not-an-object"]
            [:QuorumNotEnough ["not" "an" "object"]]]]
     (testing (name variant)
       (let [thrown (with-redefs [client/post! (fn [& _]
