@@ -195,19 +195,18 @@ where
 
         let snapshot = self.state_machine.get_current_snapshot().await.sto_read_snapshot(None)?;
 
-        // If there is not a snapshot and there are logs purged, which means the snapshot is not persisted,
-        // we just rebuild it so that replication can use it.
-        let snapshot = match snapshot {
-            None => {
-                if last_purged_log_id.is_some() {
-                    let mut b = self.state_machine.try_create_snapshot_builder(true).await.unwrap();
-                    let s = b.build_snapshot().await.sto_write_snapshot(None)?;
-                    Some(s)
-                } else {
-                    None
-                }
-            }
-            s @ Some(_) => s,
+        // Replication sends purged logs as a snapshot, so the snapshot must cover them. It does
+        // not when it was never persisted, or when the hole above was purged up to `last_applied`,
+        // past the last snapshot: the state machine applied logs that a crash then took from the
+        // log store before they were flushed. Rebuild it from the state machine, which has applied
+        // every purged log.
+        let snapshot_last_log_id = snapshot.as_ref().and_then(|s| s.meta.last_log_id.clone());
+        let snapshot = if snapshot_last_log_id < last_purged_log_id {
+            let mut b = self.state_machine.try_create_snapshot_builder(true).await.unwrap();
+            let s = b.build_snapshot().await.sto_write_snapshot(None)?;
+            Some(s)
+        } else {
+            snapshot
         };
         let snapshot_meta = snapshot.map(|x| x.meta).unwrap_or_default();
 
