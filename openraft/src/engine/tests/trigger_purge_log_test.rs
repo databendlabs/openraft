@@ -12,6 +12,7 @@ use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
+use crate::raft_state::IOState;
 use crate::storage::SnapshotMeta;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::StoredMembershipOf;
@@ -126,6 +127,61 @@ fn test_trigger_purge_log_in_used_wont_be_delete() -> anyhow::Result<()> {
     );
 
     assert_eq!(0, eng.output.take_commands().len(), "in used log won't be deleted");
+
+    Ok(())
+}
+
+#[test]
+fn test_trigger_purge_log_in_use_not_moved_back_by_snapshot() -> anyhow::Result<()> {
+    let mut eng = eng();
+    eng.config.max_in_snapshot_log_to_keep = 10;
+    eng.config.purge_batch_size = 1;
+    eng.state.snapshot_meta = SnapshotMeta {
+        last_log_id: Some(log_id(1, 0, 10)),
+        last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 0, 1)), m12()),
+    };
+    eng.state.purge_upto = Some(log_id(1, 0, 2));
+    eng.state.log_ids = LogIdList::new(Some(log_id(1, 0, 2)), [log_id(1, 0, 20)]);
+    let vote = Vote::new_committed(2, 1);
+    *eng.state.io_state = IOState::new(
+        "0",
+        &vote,
+        Some(log_id(1, 0, 15)),
+        Some(log_id(1, 0, 10)),
+        Some(log_id(1, 0, 2)),
+    );
+    eng.state.vote = Leased::new(UTConfig::<()>::now(), Duration::from_millis(500), vote);
+
+    eng.testing_new_leader();
+    let l = eng.leader.as_mut().unwrap();
+    l.progress
+        .update_entry_with(&2, |entry| {
+            entry.next_send(eng.state.deref_mut(), 10).unwrap();
+        })
+        .unwrap();
+
+    tracing::info!("--- purge up to 10, which replication to node 2 still reads: deferred");
+    {
+        eng.trigger_purge_log(10);
+
+        assert_eq!(Some(log_id(1, 0, 10)), eng.state.purge_upto);
+        assert_eq!(0, eng.output.take_commands().len(), "in used log won't be deleted");
+    }
+
+    tracing::info!("--- a snapshot at 15 completes: its policy purge, 15 - max_keep, is below 10");
+    {
+        eng.on_building_snapshot_done(Some(SnapshotMeta {
+            last_log_id: Some(log_id(1, 0, 15)),
+            last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 0, 1)), m12()),
+        }));
+
+        assert_eq!(
+            Some(log_id(1, 0, 10)),
+            eng.state.purge_upto,
+            "the scheduled purge does not move back"
+        );
+        assert_eq!(0, eng.output.take_commands().len(), "in used log won't be deleted");
+    }
 
     Ok(())
 }

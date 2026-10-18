@@ -69,7 +69,11 @@ where
     /// already included in the snapshot.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn schedule_policy_based_purge(&mut self) {
-        if let Some(purge_upto) = self.calc_purge_upto() {
+        // A purge that `trigger_purge_log()` scheduled may already reach beyond this point while it
+        // waits for replication to release the logs; never move it back.
+        if let Some(purge_upto) = self.calc_purge_upto()
+            && self.state.purge_upto() < Some(&purge_upto)
+        {
             self.update_purge_upto(purge_upto);
         }
     }
