@@ -37,6 +37,7 @@ pub enum InvariantViolation {
         leader: NodeId,
         leader_id: CLeaderId,
         missing_index: u64,
+        /// The entry was committed by this leader or an earlier one.
         committed_by: CLeaderId,
     },
 
@@ -77,11 +78,11 @@ pub enum InvariantViolation {
     },
 
     /// Monotonic Term (Vanlightly `MonotonicTerm`):
-    /// `current_term` must never decrease on a node across ticks.
+    /// `current_term` must never decrease on a node across ticks of one process.
     TermRegressed { node: NodeId, previous: u64, current: u64 },
 
     /// Monotonic Commit Index (Vanlightly `MonotonicCommitIndex`):
-    /// the `committed` index must never decrease on a node across ticks.
+    /// the `committed` index must never decrease on a node across ticks of one process.
     CommitIndexRegressed { node: NodeId, previous: u64, current: u64 },
 
     /// Monotonic Applied Index (derived — applied is implied monotonic in Raft):
@@ -106,6 +107,16 @@ pub enum InvariantViolation {
         key: String,
         previous: crate::typ::LogId,
         current: Option<crate::typ::LogId>,
+    },
+
+    /// Log Id Uniqueness (derived from Log Matching, Paper §3.5):
+    /// two nodes hold different entries under the same log id.
+    LogIdReused {
+        log_id: crate::typ::LogId,
+        /// A node holding the entry first seen under `log_id`.
+        holder: NodeId,
+        /// The node holding a different entry under it.
+        appender: NodeId,
     },
 }
 
@@ -136,7 +147,7 @@ impl std::fmt::Display for InvariantViolation {
             } => write!(
                 f,
                 "LeaderCompleteness: leader n{leader}@{leader_id} is missing \
-                 committed index {missing_index} (committed by {committed_by})"
+                 committed index {missing_index} (committed by {committed_by} or earlier)"
             ),
             Self::StateMachineDivergence { index, nodes } => {
                 write!(
@@ -214,6 +225,14 @@ impl std::fmt::Display for InvariantViolation {
                     "MonotonicSmKeys: n{node} key={key} written at {previous} -> {current:?}"
                 )
             }
+            Self::LogIdReused {
+                log_id,
+                holder,
+                appender,
+            } => write!(
+                f,
+                "LogIdUnique: n{holder} and n{appender} hold different entries under log id {log_id}"
+            ),
         }
     }
 }

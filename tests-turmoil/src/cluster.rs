@@ -10,6 +10,8 @@ use turmoil::net::TcpListener;
 
 use crate::network::TurmoilNetwork;
 use crate::network::handle_rpc;
+use crate::storage_model::StorageModel;
+use crate::store::AppendedEntry;
 use crate::store::LogStore;
 use crate::store::StateMachine;
 use crate::store::StateMachineData;
@@ -34,12 +36,17 @@ pub struct ClusterState {
     pub log_stores: BTreeMap<NodeId, Arc<LogStore>>,
     /// State machines for each node.
     pub state_machines: BTreeMap<NodeId, Arc<StateMachine>>,
+    /// How many times each node's Raft instance has started.
+    pub incarnations: BTreeMap<NodeId, u64>,
 }
 
 /// Combined snapshot of both Raft and State Machine state.
 pub struct FullNodeSnapshot {
     pub raft: RaftMetrics,
     pub sm: StateMachineData,
+    /// Which start of the node's process this snapshot comes from: it
+    /// changes at every restart, which may legitimately lose unflushed state.
+    pub incarnation: u64,
 }
 
 impl ClusterState {
@@ -48,6 +55,7 @@ impl ClusterState {
             rafts: BTreeMap::new(),
             log_stores: BTreeMap::new(),
             state_machines: BTreeMap::new(),
+            incarnations: BTreeMap::new(),
         }
     }
 
@@ -69,13 +77,30 @@ impl ClusterState {
             .map(|(&id, raft)| {
                 let sm = self.state_machines.get(&id).expect("sm not found").get_data();
                 let raft = raft.metrics().borrow_watched().clone();
-                (id, FullNodeSnapshot { raft, sm })
+                let incarnation = self.incarnations.get(&id).copied().unwrap_or_default();
+                (id, FullNodeSnapshot { raft, sm, incarnation })
             })
             .collect()
     }
 
+    /// The log ids on each node's disk, crashed nodes included.
     pub fn get_all_durable_log_ids(&self) -> BTreeMap<NodeId, LogIdListOf<TypeConfig>> {
         self.log_stores.iter().map(|(&id, log_store)| (id, log_store.log_id_list())).collect()
+    }
+
+    /// Take the entries every log store appended since the last call.
+    pub fn take_appended(&self) -> Vec<AppendedEntry> {
+        self.log_stores.values().flat_map(|log_store| log_store.take_appended()).collect()
+    }
+
+    /// The payload a node's log store holds under `log_id`, if any.
+    pub fn payload_at(&self, node_id: NodeId, log_id: &LogId) -> Option<Vec<u8>> {
+        self.log_stores.get(&node_id)?.payload_at(log_id)
+    }
+
+    /// Every node's log entries as `(log id, payload)`, crashed nodes included.
+    pub fn all_entries(&self) -> BTreeMap<NodeId, Vec<(LogId, Vec<u8>)>> {
+        self.log_stores.iter().map(|(&id, log_store)| (id, log_store.entries())).collect()
     }
 
     /// Find a Raft node that is currently the leader.
@@ -112,6 +137,7 @@ impl ClusterState {
     /// Register a freshly started Raft instance as live.
     pub fn register_raft(&mut self, node_id: NodeId, raft: Arc<Raft>) {
         self.rafts.insert(node_id, raft);
+        *self.incarnations.entry(node_id).or_default() += 1;
     }
 
     /// Drop the live handle for a crashed node.
@@ -127,10 +153,17 @@ impl Default for ClusterState {
 }
 
 /// Register a node's storage in the shared state BEFORE starting it.
-pub fn register_node_storage(node_id: NodeId, cluster_state: &Arc<std::sync::Mutex<ClusterState>>) {
+///
+/// `seed` drives the node's storage delays; give each node its own.
+pub fn register_node_storage(
+    node_id: NodeId,
+    cluster_state: &Arc<std::sync::Mutex<ClusterState>>,
+    model: &StorageModel,
+    seed: u64,
+) {
     let mut state = cluster_state.lock().unwrap();
     if let std::collections::btree_map::Entry::Vacant(e) = state.log_stores.entry(node_id) {
-        let (log_store, state_machine) = new_store();
+        let (log_store, state_machine) = new_store(node_id, model, seed);
         e.insert(log_store);
         state.state_machines.insert(node_id, state_machine);
     }
@@ -215,11 +248,22 @@ pub fn spawn_host(
 /// — `sim.bounce()` alone is an instant restart that only exercises the
 /// software-restart / persistence-recovery path, not the "node unreachable
 /// long enough to lose quorum" case.
-pub fn crash_node(sim: &mut Sim, node_id: NodeId, cluster_state: &Arc<std::sync::Mutex<ClusterState>>) {
+///
+/// A `power_loss` also drops every log write the node had not flushed.
+pub fn crash_node(
+    sim: &mut Sim,
+    node_id: NodeId,
+    cluster_state: &Arc<std::sync::Mutex<ClusterState>>,
+    power_loss: bool,
+) {
     let host_name = host_name(node_id);
-    tracing::info!("CRASH: {}", host_name);
+    tracing::info!("CRASH: {} (power loss: {})", host_name, power_loss);
     sim.crash(host_name);
-    cluster_state.lock().unwrap().unregister_raft(node_id);
+    let mut state = cluster_state.lock().unwrap();
+    if let Some(log_store) = state.log_stores.get(&node_id) {
+        log_store.crash(power_loss);
+    }
+    state.unregister_raft(node_id);
 }
 
 /// Restart a previously crashed node's software.

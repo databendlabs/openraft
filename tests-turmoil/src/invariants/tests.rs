@@ -52,6 +52,7 @@ struct SnapshotBuilder {
     membership: Vec<Vec<NodeId>>,
     sm_last_applied: Option<LogId>,
     sm_data: std::collections::BTreeMap<String, crate::store::ValueMeta>,
+    incarnation: u64,
 }
 
 impl SnapshotBuilder {
@@ -72,7 +73,14 @@ impl SnapshotBuilder {
             membership: Vec::new(),
             sm_last_applied: None,
             sm_data: std::collections::BTreeMap::new(),
+            incarnation: 1,
         }
+    }
+
+    /// Which start of the node's process the snapshot comes from.
+    fn incarnation(mut self, n: u64) -> Self {
+        self.incarnation = n;
+        self
     }
 
     fn term(mut self, t: u64) -> Self {
@@ -179,7 +187,11 @@ impl SnapshotBuilder {
             data: self.sm_data,
         };
 
-        (self.node_id, FullNodeSnapshot { raft, sm })
+        (self.node_id, FullNodeSnapshot {
+            raft,
+            sm,
+            incarnation: self.incarnation,
+        })
     }
 }
 
@@ -746,4 +758,231 @@ fn monotonic_vote_regression() {
     let tick2 = vec![SnapshotBuilder::new(1).term(5).leader(5, 2, false).build()];
     let r = checker.check(&tick2);
     assert_variant!(r.violations, InvariantViolation::VoteRegressed { .. });
+}
+
+#[test]
+fn term_and_commit_may_regress_across_restart() {
+    let mut checker = InvariantChecker::default();
+
+    let tick1 = vec![
+        SnapshotBuilder::new(1)
+            .term(5)
+            .log_entries([log_id(1, 1, 1), log_id(1, 1, 5)])
+            .committed(log_id(1, 1, 5))
+            .build(),
+    ];
+    assert_no_violations!(checker.check(&tick1).violations);
+
+    // A power loss dropped an unflushed vote and `save_committed`: the next
+    // process starts from what was on disk.
+    let tick2 = vec![
+        SnapshotBuilder::new(1)
+            .incarnation(2)
+            .term(3)
+            .log_entries([log_id(1, 1, 1), log_id(1, 1, 5)])
+            .committed(log_id(1, 1, 3))
+            .build(),
+    ];
+    assert_no_violations!(checker.check(&tick2).violations);
+
+    // Within that process they must not go back again.
+    let tick3 = vec![
+        SnapshotBuilder::new(1)
+            .incarnation(2)
+            .term(3)
+            .log_entries([log_id(1, 1, 1), log_id(1, 1, 5)])
+            .committed(log_id(1, 1, 2))
+            .build(),
+    ];
+    let r = checker.check(&tick3);
+    assert_variant!(r.violations, InvariantViolation::CommitIndexRegressed {
+        previous: 3,
+        current: 2,
+        ..
+    });
+}
+
+#[test]
+fn vote_and_applied_checked_across_restart() {
+    let mut checker = InvariantChecker::default();
+
+    let tick1 = vec![SnapshotBuilder::new(1).term(5).leader(5, 2, true).applied(log_id(5, 2, 7)).build()];
+    assert_no_violations!(checker.check(&tick1).violations);
+
+    // The flushed vote and the state machine are durable: a restart keeps them.
+    let tick2 =
+        vec![SnapshotBuilder::new(1).incarnation(2).term(5).leader(4, 2, true).applied(log_id(4, 2, 4)).build()];
+    let r = checker.check(&tick2);
+    assert_variant!(r.violations, InvariantViolation::VoteRegressed { .. });
+    assert_variant!(r.violations, InvariantViolation::AppliedIndexRegressed {
+        previous: 7,
+        current: 4,
+        ..
+    });
+}
+
+fn appended(node: NodeId, lid: LogId, payload: &str) -> crate::store::AppendedEntry {
+    crate::store::AppendedEntry {
+        node,
+        log_id: lid,
+        payload: payload.as_bytes().to_vec(),
+    }
+}
+
+#[test]
+fn log_id_reuse_detected_while_first_entry_is_held() {
+    let mut checker = InvariantChecker::default();
+    let lid = log_id(3, 1, 10);
+
+    // Leader 1 replicates X to node 2.
+    let r = checker.check_appended(vec![appended(1, lid, "X"), appended(2, lid, "X")], |_, _| None);
+    assert_no_violations!(r.violations);
+
+    // Leader 1 lost X with the power and reissues its log id for Y, while
+    // node 2 still holds X.
+    let held = |node: NodeId, _: &LogId| (node == 2).then(|| b"X".to_vec());
+    let r = checker.check_appended(vec![appended(1, lid, "Y")], held);
+    assert_variant!(r.violations, InvariantViolation::LogIdReused {
+        holder: 2,
+        appender: 1,
+        ..
+    });
+}
+
+#[test]
+fn log_id_reissue_allowed_once_first_entry_is_gone() {
+    let mut checker = InvariantChecker::default();
+    let lid = log_id(3, 1, 10);
+
+    let r = checker.check_appended(vec![appended(1, lid, "X")], |_, _| None);
+    assert_no_violations!(r.violations);
+
+    // X never left the leader and was lost with the power: no node holds it.
+    let r = checker.check_appended(vec![appended(1, lid, "Y"), appended(2, lid, "Y")], |_, _| None);
+    assert_no_violations!(r.violations);
+
+    // The same entry under the same log id is no reuse.
+    let held = |_: NodeId, _: &LogId| Some(b"Y".to_vec());
+    let r = checker.check_appended(vec![appended(3, lid, "Y")], held);
+    assert_no_violations!(r.violations);
+}
+
+#[test]
+fn final_log_id_check_flags_two_entries_under_one_log_id() {
+    let lid = log_id(3, 1, 10);
+    let logs = std::collections::BTreeMap::from([
+        (1, vec![(log_id(3, 1, 9), b"W".to_vec()), (lid, b"Y".to_vec())]),
+        (2, vec![(log_id(3, 1, 9), b"W".to_vec()), (lid, b"X".to_vec())]),
+        (3, vec![(lid, b"Y".to_vec())]),
+    ]);
+    let mut violations = Vec::new();
+    super::log_id_unique::check_final(&logs, &mut violations);
+    assert_eq!(violations.len(), 1, "one report per log id: {violations:?}");
+    assert_variant!(violations, InvariantViolation::LogIdReused {
+        holder: 1,
+        appender: 2,
+        ..
+    });
+}
+
+#[test]
+fn leader_completeness_judges_an_entry_by_the_term_it_committed_in() {
+    let mut checker = InvariantChecker::default();
+
+    // Leader (2,1) wrote index 2 but committed only index 1. Node 2 led term
+    // 3 without index 2, which was legal: it was not committed yet.
+    let tick1 = vec![
+        SnapshotBuilder::new(1)
+            .term(2)
+            .leader(2, 1, true)
+            .log_entries([log_id(2, 1, 1), log_id(2, 1, 2)])
+            .committed(log_id(2, 1, 1))
+            .build(),
+    ];
+    assert_no_violations!(checker.check(&tick1).violations);
+
+    // Node 1 is elected for term 4 and commits index 2 along with its own
+    // entry. Node 2, back from a crash, still holds its vote of term 3.
+    let tick2 = vec![
+        SnapshotBuilder::new(1)
+            .term(4)
+            .leader(4, 1, true)
+            .log_entries([log_id(2, 1, 1), log_id(2, 1, 2), log_id(4, 1, 3)])
+            .committed(log_id(4, 1, 3))
+            .build(),
+        SnapshotBuilder::new(2)
+            .term(3)
+            .leader(3, 2, true)
+            .log_entries([log_id(2, 1, 1)])
+            .committed(log_id(2, 1, 1))
+            .build(),
+    ];
+    let r = checker.check(&tick2);
+    assert!(
+        !r.violations.iter().any(|v| matches!(v, InvariantViolation::LeaderMissingCommitted { .. })),
+        "index 2 committed in term 4 is not required of term 3's leader: {:?}",
+        r.violations
+    );
+
+    // A leader of term 5 must hold it.
+    let tick3 = vec![
+        SnapshotBuilder::new(2)
+            .term(5)
+            .leader(5, 2, true)
+            .log_entries([log_id(2, 1, 1)])
+            .committed(log_id(2, 1, 1))
+            .build(),
+    ];
+    let r = checker.check(&tick3);
+    assert_variant!(r.violations, InvariantViolation::LeaderMissingCommitted {
+        leader: 2,
+        missing_index: 2,
+        ..
+    });
+}
+
+#[test]
+fn committed_on_quorum_checks_earlier_term_entries_a_leader_commits() {
+    let mut checker = InvariantChecker::default();
+    let leader = |committed: LogId| {
+        SnapshotBuilder::new(1)
+            .term(2)
+            .leader(2, 1, true)
+            .state(openraft::ServerState::Leader)
+            .log_entries([log_id(1, 1, 1), log_id(1, 1, 2), log_id(1, 1, 3)])
+            .committed(committed)
+            .membership_voters(vec![vec![1, 2, 3]])
+            .build()
+    };
+    let follower = |id: NodeId, entries: Vec<LogId>| SnapshotBuilder::new(id).log_entries(entries).build();
+
+    // Elected for term 2 holding the tail 2..=3 of term 1, committed up to 1.
+    let tick1 = vec![
+        leader(log_id(1, 1, 1)),
+        follower(2, vec![log_id(1, 1, 1)]),
+        follower(3, vec![log_id(1, 1, 1)]),
+    ];
+    assert_no_violations!(checker.check(&tick1).violations);
+
+    // It commits that tail, which no follower holds: it counted its own
+    // unflushed tail as matched (openraft #2118).
+    let tick2 = vec![
+        leader(log_id(1, 1, 3)),
+        follower(2, vec![log_id(1, 1, 1)]),
+        follower(3, vec![log_id(1, 1, 1)]),
+    ];
+    let r = checker.check(&tick2);
+    assert_variant!(r.violations, InvariantViolation::CommittedNotOnQuorum {
+        leader: 1,
+        index: 3,
+        ..
+    });
+
+    // With a follower holding it, the commit is sound.
+    let tick3 = vec![
+        leader(log_id(1, 1, 3)),
+        follower(2, vec![log_id(1, 1, 1), log_id(1, 1, 2), log_id(1, 1, 3)]),
+        follower(3, vec![log_id(1, 1, 1)]),
+    ];
+    assert_no_violations!(checker.check(&tick3).violations);
 }

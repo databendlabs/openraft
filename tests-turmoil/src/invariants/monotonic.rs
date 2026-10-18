@@ -7,17 +7,27 @@
 //!
 //! # Properties covered
 //!
-//! | Property                 | Source          | What it says               |
-//! |--------------------------|-----------------|----------------------------|
-//! | `MonotonicTerm`          | Vanlightly      | `current_term` never decreases |
-//! | `MonotonicCommitIndex`   | Vanlightly      | `committed.index` never decreases |
-//! | `MonotonicAppliedIndex`  | derived         | `applied.index` never decreases |
-//! | `MonotonicVote`          | Vanlightly      | persisted vote is non-decreasing in `(term, leader_id, committed)` order |
+//! | Property                 | Source          | What it says                          | Scope        |
+//! |--------------------------|-----------------|---------------------------------------|--------------|
+//! | `MonotonicTerm`          | Vanlightly      | `current_term` never decreases        | one process  |
+//! | `MonotonicCommitIndex`   | Vanlightly      | `committed.index` never decreases     | one process  |
+//! | `MonotonicAppliedIndex`  | derived         | `applied.index` never decreases       | all restarts |
+//! | `MonotonicVote`          | Vanlightly      | flushed vote is non-decreasing in `(term, leader_id, committed)` order | all restarts |
 //!
 //! Applied-monotonic is not named in Vanlightly's spec but follows from two
 //! invariants the spec does have: `applied ≤ committed` and `MonotonicCommit`.
 //! Checking it explicitly catches bugs where an apply step accidentally
 //! re-runs on a rolled-back state.
+//!
+//! # Restarts
+//!
+//! A restarted node reloads its state from storage, which may hold less than
+//! the process had: a power loss drops a vote whose `save_vote` had not
+//! returned, so `current_term` (the accepted vote's term) can go back, and an
+//! unflushed `save_committed`, so `committed` can. Both are checked within
+//! one process only. The vote metric is the *flushed* vote, which storage
+//! made durable before openraft reported it, and the state machine is durable
+//! when `apply` returns; neither may go back across a restart.
 
 use std::collections::BTreeMap;
 
@@ -29,6 +39,8 @@ use crate::typ::Vote;
 /// Last-seen-per-node snapshot of the four monotonic quantities.
 #[derive(Debug, Clone)]
 pub struct LastSeen {
+    /// The process the other fields were seen in.
+    pub incarnation: u64,
     pub term: u64,
     pub committed_index: u64,
     pub applied_index: u64,
@@ -62,6 +74,7 @@ impl MonotonicHistory {
 /// Extract the monotonic quantities from one full snapshot.
 fn observe(s: &FullNodeSnapshot) -> LastSeen {
     LastSeen {
+        incarnation: s.incarnation,
         term: s.raft.current_term,
         committed_index: s.raft.local_committed.as_ref().map(|id| id.index()).unwrap_or(0),
         applied_index: s.raft.last_applied.as_ref().map(|id| id.index()).unwrap_or(0),
@@ -71,7 +84,9 @@ fn observe(s: &FullNodeSnapshot) -> LastSeen {
 
 /// Compare `current` against `prev`, pushing a violation for each regression.
 fn diff_against_previous(node: NodeId, prev: &LastSeen, current: &LastSeen, violations: &mut Vec<InvariantViolation>) {
-    if current.term < prev.term {
+    let same_process = current.incarnation == prev.incarnation;
+
+    if same_process && current.term < prev.term {
         violations.push(InvariantViolation::TermRegressed {
             node,
             previous: prev.term,
@@ -79,7 +94,7 @@ fn diff_against_previous(node: NodeId, prev: &LastSeen, current: &LastSeen, viol
         });
     }
 
-    if current.committed_index < prev.committed_index {
+    if same_process && current.committed_index < prev.committed_index {
         violations.push(InvariantViolation::CommitIndexRegressed {
             node,
             previous: prev.committed_index,

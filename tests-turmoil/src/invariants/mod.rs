@@ -24,6 +24,7 @@
 //! | Monotonic AppliedIndex  | derived     | (follows `applied ≤ committed`)  | [`monotonic`]            |
 //! | Monotonic Vote          | §3.3        | `MonotonicVote`                  | [`monotonic`]            |
 //! | Monotonic SM Keys       | derived     | —                                | [`sm_monotonic`]         |
+//! | Log Id Uniqueness       | §3.5        | (implied by `NoLogDivergence`)   | [`log_id_unique`]        |
 //!
 //! Leader Append-Only (Paper §3.6.3) is not checked directly: its safety
 //! content for committed entries is already covered by Log Matching +
@@ -49,6 +50,7 @@ pub mod committed_immutable;
 pub mod committed_on_quorum;
 pub mod election_safety;
 pub mod leader_completeness;
+pub mod log_id_unique;
 pub mod log_matching;
 pub mod monotonic;
 pub mod sm_monotonic;
@@ -63,6 +65,8 @@ use openraft::alias::LogIdListOf;
 pub use violation::InvariantViolation;
 
 use crate::cluster::FullNodeSnapshot;
+use crate::store::AppendedEntry;
+use crate::typ::LogId;
 use crate::typ::NodeId;
 use crate::typ::TypeConfig;
 
@@ -93,8 +97,11 @@ pub struct InvariantCheckResult {
 #[derive(Default)]
 pub struct InvariantChecker {
     witnesses: committed_immutable::Witness,
+    commits: leader_completeness::CommitHistory,
+    leader_commits: committed_on_quorum::LeaderCommits,
     monotonic: monotonic::MonotonicHistory,
     sm_monotonic: sm_monotonic::SmMonotonicHistory,
+    log_ids: log_id_unique::LogIdWitness,
 }
 
 impl InvariantChecker {
@@ -119,8 +126,7 @@ impl InvariantChecker {
 
         // --- Single-tick cross-node checks ---
         election_safety::check(snapshots, &mut violations);
-        leader_completeness::check(snapshots, &mut violations);
-        committed_on_quorum::check(snapshots, durable_logs, &mut violations);
+        self.leader_commits.check_and_record(snapshots, durable_logs, &mut violations);
 
         // --- Pairwise cross-node checks ---
         for i in 0..snapshots.len() {
@@ -132,9 +138,25 @@ impl InvariantChecker {
 
         // --- Cross-tick checks (must update internal state) ---
         self.witnesses.check_and_record(snapshots, &mut violations);
+        self.commits.check_and_record(snapshots, &mut violations);
         self.monotonic.check_and_record(snapshots, &mut violations);
         self.sm_monotonic.check_and_record(snapshots, &mut violations);
 
+        InvariantCheckResult { violations }
+    }
+
+    /// Check the entries log stores appended since the last call against the
+    /// entries every node holds now (Log Id Uniqueness).
+    ///
+    /// `payload_at(node, log_id)` returns what `node`'s log holds under
+    /// `log_id`, if anything.
+    pub fn check_appended(
+        &mut self,
+        appended: Vec<AppendedEntry>,
+        payload_at: impl Fn(NodeId, &LogId) -> Option<Vec<u8>>,
+    ) -> InvariantCheckResult {
+        let mut violations = Vec::new();
+        self.log_ids.check_and_record(appended, payload_at, &mut violations);
         InvariantCheckResult { violations }
     }
 }

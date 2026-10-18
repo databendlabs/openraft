@@ -151,7 +151,11 @@ mod tests {
             log_id: log_id(1, 1, 1),
         });
 
-        (id, FullNodeSnapshot { raft, sm })
+        (id, FullNodeSnapshot {
+            raft,
+            sm,
+            incarnation: 1,
+        })
     }
 
     #[test]
