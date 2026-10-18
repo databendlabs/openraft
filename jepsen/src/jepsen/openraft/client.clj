@@ -343,6 +343,12 @@
 (defn change-membership! [endpoint node-ids]
   (ok-value (post! endpoint "/change-membership" node-ids)))
 
+(defn transfer-leader!
+  "Asks the node at endpoint to hand leadership to node-id. A node that does not
+  lead ignores the request, so only metrics show whether it took effect."
+  [endpoint node-id]
+  (ok-value (post! endpoint "/transfer-leader" node-id)))
+
 ;; These functions make one HTTP attempt. KVClient performs leader routing and
 ;; classifies errors based on whether the operation may have taken effect.
 (defn write! [endpoint key value]

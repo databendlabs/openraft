@@ -360,6 +360,19 @@
                      :final-workload-2}
                    operations)))))
 
+(deftest selects-three-nodes-for-leader-outside-joint
+  (let [parsed (tools-cli/parse-opts ["--liveness=leader-outside-joint"] cli/cli-opts)
+        options (assoc (:options parsed) :nodes ["n1" "n2" "n3" "n4" "n5"])]
+    (is (empty? (:errors (#'cli/prepare-options {:options options}))))
+    (let [test (cli/openraft-test options)]
+      (is (= ["n1" "n2" "n3"] (:nodes test)))
+      (is (= "openraft leader-outside-joint" (:name test)))))
+  (doseq [nodes [["n1" "n2"] ["n1" "n2" "n2"]]]
+    (is (some #(re-find #"at least three distinct nodes" %)
+              (:errors (#'cli/prepare-options
+                        {:options {:liveness :leader-outside-joint
+                                   :nodes nodes}}))))))
+
 (deftest selects-two-nodes-for-leader-removal
   (doseq [nodes [["n1" "n2"] ["n1" "n2" "n3" "n4" "n5"]]]
     (let [parsed (tools-cli/parse-opts ["--liveness=leader-removal-recovery"] cli/cli-opts)
