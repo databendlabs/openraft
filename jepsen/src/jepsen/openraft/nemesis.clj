@@ -10,6 +10,7 @@
             [jepsen.openraft.cluster :as cluster]
             [jepsen.openraft.interruption :as interruption]
             [jepsen.openraft.nemesis.outcome :as outcome]
+            [jepsen.openraft.replicas :as replicas]
             [jepsen.openraft.worker :as worker]))
 
 (def ^:private initial-healthy-seconds 5)
@@ -19,6 +20,7 @@
     :no-reachable-pause-target
     :no-safe-packet-target
     :no-safe-partition-target
+    :no-snapshot-lag-target
     :no-supported-leader})
 
 (defn- jittered-interval [interval]
@@ -195,7 +197,7 @@
   "Requires that a composed run installed at least one recognized fault.
 
   Every class relaxes its own coverage in a composed run, so without this gate
-  a run in which each of the six classes was absent or skipped would pass on
+  a run in which each of the eight classes was absent or skipped would pass on
   the workload, the cleanup and the final recovery alone, and an entirely
   inert Nemesis would look successful. Only a class reporting
   `:fault-class-executed? true` counts, and that flag reads the class's own
@@ -203,7 +205,7 @@
   satisfy the gate.
 
   The gate depends on wall-clock timing, like the per-class coverage it
-  replaces, but far more weakly: it needs one installation out of six classes
+  replaces, but far more weakly: it needs one installation out of eight classes
   over the whole run rather than every mode of every class."
   [composed]
   (reify checker/Checker
@@ -234,7 +236,10 @@
               %))))
 
 (defn compose-packages
-  "Composes interval-bearing fault packages and confirms final recovery."
+  "Composes interval-bearing fault packages and confirms final recovery.
+
+  The composed Nemesis also answers `replicas/converge-op`, which only the
+  lifecycle generator issues."
   [failure-state packages]
   (when-not (seq packages)
     (throw (ex-info "At least one nemesis package is required" {})))
@@ -251,7 +256,7 @@
                       cleanup-order
                       (mapv schedule-package))
         composed (combined/compose-packages
-                  (conj packages (recovery-package)))
+                  (conj packages (recovery-package) (replicas/package)))
         checkers (into {}
                        (map (fn [{:keys [name checker]}]
                               [name (fault-class-checker checker)])

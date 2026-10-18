@@ -9,6 +9,11 @@
 (def node-panic-pattern
   #"OPENRAFT_JEPSEN_PANIC")
 
+;; Emitted by openraft-test-app when a metric that never decreases within one
+;; process decreases.
+(def node-invariant-pattern
+  #"OPENRAFT_JEPSEN_INVARIANT_VIOLATION")
+
 (defn- checker-exception-evidence [throwable]
   {:class (.getName (class throwable))
    :message (ex-message throwable)})
@@ -110,6 +115,29 @@
                        {:node node
                         :line line})))
           (line-seq reader))))
+
+(defn log-file-pattern-counts
+  "Counts the lines matching pattern in each node's stored log file.
+
+  A node whose file is missing is absent from the result."
+  [test pattern filename]
+  (into {}
+        (keep (fn [node]
+                (let [file (store/path test node filename)]
+                  (when (.isFile ^java.io.File file)
+                    [node (count (log-matches pattern node file))]))))
+        (:nodes test)))
+
+(defn log-file-pattern-report
+  "Reports how often pattern occurs in each node's log, without a verdict."
+  [pattern filename]
+  (reject-checker-exceptions
+   (reify checker/Checker
+     (check [_ test _history _opts]
+       (let [counts (log-file-pattern-counts test pattern filename)]
+         {:valid? true
+          :count (reduce + 0 (vals counts))
+          :by-node counts})))))
 
 (defn required-log-file-pattern [pattern filename]
   (reject-checker-exceptions

@@ -13,7 +13,11 @@ These tests cover a different layer from OpenRaft's deterministic simulation tes
 The Clojure/Leiningen harness and its Rust test application are self-contained
 inside the OpenRaft repository. The Rust crate is excluded from the root Cargo
 workspace, so normal Rust builds and tests do not depend on Jepsen. The Jepsen
-Docker environment builds the application explicitly from its own manifest.
+Docker environment builds the application explicitly from its own manifest,
+with its `jepsen` profile: release optimizations plus debug assertions and
+overflow checks. OpenRaft states many invariants as `debug_assert!`, and a
+failed one panics, which the crash checker reports, rather than leaving a
+state that a client may never observe.
 
 The Docker test environment separates the Jepsen control plane from the OpenRaft data plane:
 
@@ -63,6 +67,8 @@ The `jepsen.openraft` namespace contains the OpenRaft-specific Jepsen code:
 - `nemesis/packet.clj`: packet delay and loss faults.
 - `nemesis/partition.clj`: leader-aware network partition faults and recovery.
 - `nemesis/process.clj`: process kill/restart and pause/resume faults.
+- `nemesis/restart.clj`: leader kill followed at once by a restart.
+- `nemesis/snapshot.clj`: a follower left behind until it needs a snapshot install.
 - `quorum.clj`: stable and joint-consensus quorum calculations.
 - `scenario/bridge_partition.clj`: old-leader bridge liveness scenario.
 - `scenario/leader_removal_recovery.clj`: interrupted leader-removal recovery scenario.
@@ -111,8 +117,17 @@ $ make -C jepsen safety NEMESIS=membership
 # Run only the wall-clock fault test.
 $ make -C jepsen safety NEMESIS=clock
 
+# Run only the snapshot-install test.
+$ make -C jepsen safety NEMESIS=snapshot
+
+# Run only the immediate leader restart test.
+$ make -C jepsen safety NEMESIS=restart
+
 # Run only one Packet mode; MODE must be slow or flaky.
 $ make -C jepsen safety NEMESIS=packet PACKET_MODE=slow
+
+# Run the Elle list-append workload instead of the CAS registers.
+$ make -C jepsen safety NEMESIS=chaos WORKLOAD=list-append
 
 # Compose selected fault classes with overlapping schedules.
 $ make -C jepsen safety NEMESIS=partition,process,pause
@@ -122,6 +137,9 @@ $ make -C jepsen safety NEMESIS=partition SEED=123456
 
 # Override the committed-log threshold that triggers snapshots.
 $ make -C jepsen test SNAPSHOT_THRESHOLD=250
+
+# Keep 1000 applied logs after each snapshot, as OpenRaft does by default.
+$ make -C jepsen test SNAPSHOT_LOGS_TO_KEEP=1000
 
 # Run only the bridge-partition liveness scenario.
 $ make -C jepsen liveness SCENARIO=bridge-partition
@@ -168,6 +186,23 @@ all runs require cleanup and final recovery. The separate Liveness scenario
 below retains these common safety checks while testing progress under a fixed
 network topology.
 
+### List-append workload
+
+`WORKLOAD=list-append` (`--workload list-append`) replaces the registers with
+Elle's list-append workload for a safety run. Each operation appends a unique
+integer to one of five lists, or reads one list after a ReadIndex check, and
+Elle checks the history for strict serializability, which for single-operation
+transactions is linearizability of each list. A register keeps only its last
+value: an entry applied twice writes the value it already holds, and a
+replayed CAS fails its version check. A list keeps every element, so Elle sees
+an element applied twice (`:duplicate-elements`), lost, or applied out of order.
+
+Ambiguous appends are `:info` and failed reads `:fail`, as in the register
+workload. After recovery, the final phase reads every list an append touched,
+and each read must succeed. Elle writes its explanations under `elle/` in the
+store directory and renders cycles with GraphViz, which the control image
+installs. CI runs it under the chaos Nemesis.
+
 ### Nemesis Design
 
 Target policies are specific to each fault class. Network Partition and Packet
@@ -213,6 +248,16 @@ progress, but never relaxes safety. The target set is fixed for one fault
 episode. Each episode restarts the selected processes, and final recovery waits
 for every node to rejoin a healthy cluster.
 
+SIGKILL alone keeps every write the process handed to the kernel. The test
+application therefore opens RocksDB with manual WAL flush: a write stays in
+RocksDB's in-process buffer until the stores call `flush_wal`, so a kill drops
+everything not yet flushed, as a power loss would. Log appends are flushed
+before their IO callback, votes and snapshots before the call returns, so only
+what OpenRaft has not been told is durable can be lost. Every kill, by the
+Process or Snapshot Nemesis, uses this model. A leader killed after it
+replicated an entry it had not flushed restarts without that entry, which is
+the window of #2167.
+
 #### Process Pause Nemesis
 
 The pause Nemesis suspends a uniformly random non-empty subset of reachable
@@ -231,17 +276,27 @@ client timeout.
 
 #### Membership Nemesis
 
-The membership Nemesis exercises two membership-change cases:
+The membership Nemesis exercises two membership-change cases and leadership
+transfer:
 
 - `shrink`: remove a voter only when the resulting configuration retains a
   quorum;
 - `grow`: add a non-voter back through learner initialization and committed
-  membership change.
+  membership change;
+- `transfer-leader`: ask the quorum-supported leader to hand leadership to a
+  random other voter through `Trigger::transfer_leader`, then wait up to three
+  seconds for that voter to lead.
 
-It starts with one shrink and grow for deterministic coverage, then randomly
-mixes additional membership changes. Removed nodes are stopped and wiped only
-after the new voter set is committed. Final recovery restores all five nodes as
-voters and waits for every node to agree on a leader.
+It starts with one shrink, one grow and one transfer for deterministic
+coverage, then randomly mixes further operations. Removed nodes are stopped and
+wiped only after the new voter set is committed. Final recovery restores all
+five nodes as voters and waits for every node to agree on a leader.
+
+A focused run requires one transfer whose target took over. A transfer whose
+target never led is reported under `:transfers :unelected`, with both nodes'
+last log index, but does not reject the run, since a membership change or an
+ordinary election may have intervened. A target behind the leader is the case
+of #2168.
 
 #### Packet Nemesis
 
@@ -312,16 +367,69 @@ leader, and whether that leader was selected. The Clock checker validates fault
 coverage and cleanup; the common workload checker remains responsible for
 linearizability and final data recovery.
 
+#### Snapshot Nemesis
+
+The Snapshot Nemesis leaves one follower behind until the leader has snapshotted
+and purged the log that follower still needs, so the follower can only catch up
+through a snapshot install. It alternates two modes:
+
+- `isolate`: the follower stays running behind a full network partition, so the
+  install reaches a process that still holds its log and state machine;
+- `kill`: the follower is stopped with SIGKILL and restarted, so the install
+  follows a restart from its own last snapshot and log.
+
+The follower is a non-leader voter whose loss keeps a quorum of the voters
+that answer at that moment, so an episode never starts while other faults
+already hold the quorum down. The stop operation waits up to 20 seconds for the
+quorum-supported leader's `purged` index to pass the follower's last log index,
+then heals or restarts it and waits up to 30 seconds for its `last_applied` to
+reach that purge point. The follower's last log index is sampled before the
+fault, so the wait uses the larger of that sample and the leader's last log
+index right after the fault, which bounds what the follower can hold. The
+purge wait gives up once the leader's commit index has not moved for 5
+seconds, or no leader has quorum support: no purge can come, and in a chaos run
+waiting on would hold the shared Nemesis thread while the operations that end
+the other faults queue behind it. Such an episode records
+`:purge-wait-gave-up` and does not count towards coverage. The test application prints
+`OPENRAFT_JEPSEN_SNAPSHOT_INSTALLED` once per install from a leader, and the
+Nemesis counts those lines in the follower's log over SSH before and after each
+episode. A focused run requires both modes to have an episode in which the
+leader purged past the follower and the follower's count rose, rejects an
+episode whose follower did not catch up, and requires final recovery.
+`results.edn` also reports the install count of every node under
+`:snapshot-installs`, in every run.
+
+Isolation uses Jepsen's partitioner, as the Network Partition Nemesis does, so
+in a chaos run healing either one heals both.
+
+#### Restart Nemesis
+
+The Restart Nemesis kills the quorum-supported leader with SIGKILL and starts it
+again at once, then waits up to 15 seconds for a supported leader. The Process
+Nemesis keeps a node down for several seconds, long enough for the followers to
+elect another leader; a leader back within an election timeout instead resumes
+in its own term through leader restore, which is on by default. With the
+unflushed writes a kill drops, that is the setting of #2167: a restored leader
+that lost an entry it had already replicated may assign the same log id to
+another entry, and the replica comparison reports the follower that kept the
+first one.
+
+Each outcome records the leader and term before and after and
+`:leader-restored?`. A focused run requires one restart and final recovery;
+whether the leader comes back in time depends on how fast it restarts, so
+`results.edn` reports the restores under `:leader-restores` without requiring
+one. A leader another fault already stopped is skipped and left to that fault.
+
 #### Chaos Composition
 
 The default `chaos` profile independently schedules partition, process, pause,
-membership, packet, and clock faults. It composes the package, generator, final
-recovery, and checker supplied by each Nemesis, and changes only how the
-composed verdict treats per-class coverage. Packet chooses one of `slow` or
+membership, packet, clock, snapshot, and restart faults. It composes the
+package, generator, final recovery, and checker supplied by each Nemesis, and
+changes only how the composed verdict treats per-class coverage. Packet chooses one of `slow` or
 `flaky` for each independent Packet episode, and never overlaps those two modes
 with each other. Different fault classes may remain active at the same time.
 
-A chaos run does not require every fault class to install. All six classes draw
+A chaos run does not require every fault class to install. All eight classes draw
 from one 60-second random schedule, so whether a class ever meets a healthy
 cluster depends on wall-clock timing. `results.edn` therefore records
 `:fault-class-executed?` next to the observed and missing entries of each class,
@@ -338,16 +446,17 @@ counts those under `:malformed-outcomes`, and a positive count rejects the run,
 in a chaos run and in a focused run alike.
 
 A chaos run must still install one fault. Relaxing every class on its own would
-otherwise let a run in which all six classes were absent or skipped pass on the
+otherwise let a run in which all eight classes were absent or skipped pass on the
 workload, the cleanup and the final recovery alone, so an entirely inert Nemesis
 would look successful. `results.edn` reports how many classes installed a
 recognized fault under `:fault-classes-executed`, and zero rejects the run.
 Cleanup, clock reset and recovery operations do not count toward it.
 
-Every Jepsen node builds a snapshot after 100 newly committed logs by default.
-The regular write workload therefore exercises snapshot construction during
-short fault tests without a snapshot-specific Nemesis. Set
-`SNAPSHOT_THRESHOLD` to override the threshold for a run.
+Every Jepsen node builds a snapshot after 20 newly committed logs by default and
+keeps no applied log after it. The regular write workload therefore builds a
+snapshot every few seconds, and a follower that misses those seconds under any
+fault, a partition or a kill, can only catch up through a snapshot install. Set
+`SNAPSHOT_THRESHOLD` and `SNAPSHOT_LOGS_TO_KEEP` to override either for a run.
 
 After the fault schedule ends, Jepsen heals partitions, restarts killed
 processes, resumes paused processes, restores membership, and then performs one
@@ -360,6 +469,35 @@ for local recovery, but does not open the client API until recovery completes.
 This wait has no node-local deadline: Jepsen's shared readiness check provides
 the external 60-second recovery bound, reports a recovery timeout, and leaves
 the process alive for diagnosis and teardown.
+
+### Cross-replica checks
+
+Linearizability checks only what clients read. Two further oracles compare the
+replicas themselves.
+
+After the final workload, with no client write left, a safety run polls every
+node's `/consistency` endpoint for up to 30 seconds until all of them report the
+same `last_applied`. Each node reports, from one instant under the state
+machine's lock:
+
+- `applied_chain`, a digest folded over every entry it applied, log id and
+  payload, and carried in snapshots, so a node that installed a snapshot
+  continues the chain of the log the snapshot covers;
+- `state_digest`, a digest of its key-value map and membership;
+- the log ids it still retains up to `last_applied`.
+
+The `replicas` checker requires both digests to match on every node and every
+index two nodes retain to hold the same log id. It rejects a run whose nodes do
+not reach one `last_applied` within the bound, and reports `:unknown` when the
+comparison never ran. Liveness scenarios do not run it.
+
+Every test application also watches its own metrics channel and prints
+`OPENRAFT_JEPSEN_INVARIANT_VIOLATION` when `current_term`, `local_committed`,
+`last_applied`, `snapshot` or `purged` decreases within one process. The
+watcher wakes on every change notification, so it sees far more of the
+published values than an HTTP sampler would, although a watch channel keeps
+only the latest value. A restarted process starts a new sequence. The
+`invariants` checker rejects a run whose node logs contain the marker.
 
 ## Liveness tests
 
@@ -540,8 +678,8 @@ A run normally stores its artifacts under
   fault injection, teardown, and analysis. Checkers do not use it as an
   observation source.
 - `<node>/openraft.log` is the collected runtime log of the OpenRaft test
-  application on that node. The crash checker scans it for the test
-  application's stable panic marker.
+  application on that node. The crash, invariant and snapshot-install
+  checkers scan it for the test application's stable markers.
 - `results.edn` contains the composed checker results and top-level verdict. It
   is a summary, not the raw execution record.
 - `test.jepsen` contains the original test map, including run options and the
@@ -612,6 +750,14 @@ of the fault schedule; the seed is only an aid for rerunning similar conditions.
 - [x] Add a read, write, and compare-and-set workload.
 - [x] Add linearizability checking with Knossos.
 - [x] Exercise snapshot construction during ordinary workloads.
+- [x] Exercise snapshot installs on followers left behind a purged log.
+- [x] Build the node image with debug assertions and overflow checks.
+- [x] Compare replicas' applied logs, state and retained log ids after a run.
+- [x] Report metrics that decrease within one process.
+- [x] Drop unflushed RocksDB writes when a process is killed.
+- [x] Transfer leadership in the membership Nemesis.
+- [x] Restart a killed leader at once, so leader restore can resume it.
+- [x] Add an Elle list-append workload.
 - [x] Add a five-voter partial-network liveness regression that checks timely
   successful writes while the old leader remains connected through a bridge.
 

@@ -335,6 +335,9 @@
 (defn metrics! [endpoint]
   (ok-value (get! endpoint "/metrics")))
 
+(defn consistency! [endpoint]
+  (ok-value (get! endpoint "/consistency")))
+
 (defn init! [endpoint]
   (ok-value (post! endpoint "/init" [])))
 
@@ -349,6 +352,12 @@
 
 (defn change-membership! [endpoint node-ids]
   (ok-value (post! endpoint "/change-membership" node-ids)))
+
+(defn transfer-leader!
+  "Asks the node at endpoint to hand leadership to node-id. A node that does not
+  lead ignores the request, so only metrics show whether it took effect."
+  [endpoint node-id]
+  (ok-value (post! endpoint "/transfer-leader" node-id)))
 
 ;; These functions make one HTTP attempt. KVClient performs leader routing and
 ;; classifies errors based on whether the operation may have taken effect.
@@ -384,3 +393,23 @@
   (let [response (post! endpoint "/linearizable_read" key)
         payload (ok-value response)]
     (response-value response payload [:value] true)))
+
+(defn append! [endpoint key value]
+  (let [response (post! endpoint "/write"
+                        {:Append {:key key
+                                  :value value}})
+        payload (ok-value response)
+        versioned-value (response-value response
+                                        payload
+                                        [:data :value]
+                                        false)]
+    (require-echoed-value response versioned-value value)))
+
+(defn linearizable-list-read! [endpoint key]
+  (let [response (post! endpoint "/linearizable_read_list" key)
+        payload (ok-value response)]
+    (if (and (sequential? payload) (every? string? payload))
+      (vec payload)
+      (invalid-response! response
+                         :invalid-list
+                         {:payload-path []}))))

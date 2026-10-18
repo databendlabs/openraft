@@ -108,7 +108,9 @@
          :value (independent/tuple k new-value)}))))
 
 (defn- mutation? [op]
-  (#{:write :cas} (:f op)))
+  (or (#{:write :cas} (:f op))
+      (and (= :txn (:f op))
+           (some #(= :append (first %)) (:value op)))))
 
 (defn- complete-with-error [op type error unexpected-sut-response?]
   (cond-> (assoc op
@@ -124,7 +126,7 @@
                        error
                        unexpected-sut-response?))
 
-(defn- handle-operation-exception
+(defn handle-operation-exception
   "Classifies a client exception and returns a completed Jepsen operation.
   Thread interruptions are rethrown so Jepsen's control signals survive."
   [op e]
@@ -179,7 +181,7 @@
       (assoc :exception-message (ex-message e)
              :exception-data (ex-data e)))))
 
-(defn- unexpected-sut-responses-checker []
+(defn unexpected-sut-responses-checker []
   (reify checker/Checker
     (check [_ _test history _opts]
       (let [responses (filter :unexpected-sut-response? history)]
@@ -187,7 +189,7 @@
          :count (count responses)
          :responses (vec (take 10 responses))}))))
 
-(defn- final-workload-checker []
+(defn final-workload-checker []
   (reify checker/Checker
     (check [_ _test history _opts]
       (let [failures (filter #(and (:final? %)

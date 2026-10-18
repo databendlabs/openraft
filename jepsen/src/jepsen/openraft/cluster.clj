@@ -91,7 +91,10 @@
     :transport-error
     :unreachable})
 
-(defn- modeled-metrics-failure? [e]
+(defn modeled-metrics-failure?
+  "True when a metrics request failed in a way the SUT can produce, rather
+  than in the Harness."
+  [e]
   (contains? modeled-metrics-failure-kinds (:kind (ex-data e))))
 
 (def ^:private probe-drain-seconds 10)

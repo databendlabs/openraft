@@ -20,20 +20,160 @@ use rocksdb::Options;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::SNAPSHOT_INSTALLED_MARKER;
 use crate::TypeConfig;
+use crate::request::Request;
 use crate::typ::*;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StoredSnapshot {
     pub meta: SnapshotMeta,
 
-    /// The data of the state machine at the time of this snapshot.
+    /// The data of the state machine at the time of this snapshot, a serialized
+    /// [`SnapshotPayload`].
     pub data: Vec<u8>,
+}
+
+/// The state machine data a snapshot carries besides its meta.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+pub struct SnapshotPayload {
+    /// The [`AppliedState::applied_chain`] at the snapshot's last log id.
+    pub applied_chain: u64,
+
+    pub kvs: BTreeMap<String, types_kv::VersionedValue>,
+
+    #[serde(default)]
+    pub lists: BTreeMap<String, Vec<String>>,
+}
+
+/// The applied state, behind one lock so that the snapshot builder and the consistency endpoint
+/// each read `last_applied`, the membership and the data of a single instant.
+#[derive(Debug, Clone, Default)]
+pub struct AppliedState {
+    pub last_applied: Option<LogId>,
+
+    pub last_membership: StoredMembership,
+
+    /// Rolling digest of every entry applied so far, carried in snapshots.
+    ///
+    /// Two replicas at the same `last_applied` agree on it only if they applied the same log, so
+    /// comparing it compares every applied log id and payload, including the ones a snapshot has
+    /// since covered.
+    pub applied_chain: u64,
+
+    pub kvs: BTreeMap<String, types_kv::VersionedValue>,
+
+    /// Lists built by `Append`, in apply order.
+    pub lists: BTreeMap<String, Vec<String>>,
+}
+
+pub type SharedState = Arc<Mutex<AppliedState>>;
+
+impl AppliedState {
+    fn apply(&mut self, entry: Entry) -> Result<types_kv::Response, io::Error> {
+        self.applied_chain = chain(self.applied_chain, &entry)?;
+        self.last_applied = Some(entry.log_id.clone());
+
+        let version = entry.log_id.index();
+
+        let response = match entry.payload {
+            EntryPayload::Blank => types_kv::Response::none(),
+            EntryPayload::Normal(req) => match req {
+                Request::Set { key, value } => {
+                    self.kvs.insert(key, types_kv::VersionedValue {
+                        value: value.clone(),
+                        version,
+                    });
+                    types_kv::Response::new(value, version)
+                }
+                Request::CompareAndSet {
+                    key,
+                    expected_version,
+                    value,
+                } => {
+                    let matches = self.kvs.get(&key).is_some_and(|current| current.version == expected_version);
+
+                    if matches {
+                        self.kvs.insert(key, types_kv::VersionedValue {
+                            value: value.clone(),
+                            version,
+                        });
+                        types_kv::Response::new(value, version)
+                    } else {
+                        types_kv::Response::none()
+                    }
+                }
+                Request::Append { key, value } => {
+                    self.lists.entry(key).or_default().push(value.clone());
+                    types_kv::Response::new(value, version)
+                }
+            },
+            EntryPayload::Membership(mem) => {
+                self.last_membership = StoredMembership::new(Some(entry.log_id), mem);
+                types_kv::Response::none()
+            }
+        };
+
+        Ok(response)
+    }
+
+    fn snapshot_meta(&self) -> SnapshotMeta {
+        SnapshotMeta {
+            last_log_id: self.last_applied.clone(),
+            last_membership: self.last_membership.clone(),
+        }
+    }
+
+    fn snapshot_payload(&self) -> SnapshotPayload {
+        SnapshotPayload {
+            applied_chain: self.applied_chain,
+            kvs: self.kvs.clone(),
+            lists: self.lists.clone(),
+        }
+    }
+
+    fn restore(&mut self, snapshot: &StoredSnapshot) -> Result<(), io::Error> {
+        let payload: SnapshotPayload = serde_json::from_slice(&snapshot.data).map_err(invalid_data)?;
+
+        self.last_applied = snapshot.meta.last_log_id.clone();
+        self.last_membership = snapshot.meta.last_membership.clone();
+        self.applied_chain = payload.applied_chain;
+        self.kvs = payload.kvs;
+        self.lists = payload.lists;
+        Ok(())
+    }
+
+    /// Digest of the registers, the lists and the membership.
+    pub fn state_digest(&self) -> Result<u64, io::Error> {
+        let bytes = serde_json::to_vec(&(&self.last_membership, &self.kvs, &self.lists)).map_err(invalid_data)?;
+        Ok(fnv1a(FNV_OFFSET, &bytes))
+    }
+}
+
+/// Folds one applied entry, its log id and payload, into the digest of the applied log.
+fn chain(prev: u64, entry: &Entry) -> Result<u64, io::Error> {
+    let bytes = serde_json::to_vec(entry).map_err(invalid_data)?;
+    Ok(fnv1a(fnv1a(FNV_OFFSET, &prev.to_le_bytes()), &bytes))
+}
+
+const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+
+/// 64-bit FNV-1a, which unlike `DefaultHasher` is specified, so every build agrees on it.
+fn fnv1a(mut hash: u64, bytes: &[u8]) -> u64 {
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
+}
+
+fn invalid_data(e: serde_json::Error) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, e)
 }
 
 #[derive(Debug)]
 pub struct StateMachineStore {
-    pub data: StateMachineData,
+    pub state: SharedState,
 
     /// State machine stores snapshot in db.
     snapshots: SnapshotStore,
@@ -50,23 +190,13 @@ struct SnapshotStore {
     lock: Arc<std::sync::Mutex<()>>,
 }
 
-#[derive(Debug, Clone)]
-pub struct StateMachineData {
-    pub last_applied_log_id: Option<LogId>,
-
-    pub last_membership: StoredMembership,
-
-    /// State built from applying the raft logs
-    pub kvs: Arc<Mutex<BTreeMap<String, types_kv::VersionedValue>>>,
-}
-
 /// A frozen copy of the state machine, taken when the build was requested.
 ///
 /// OpenRaft runs `build_snapshot` in a spawned task while later entries keep applying, so the
 /// builder must not share the live map: its data could then be newer than `meta.last_log_id`.
 pub struct SnapshotBuilder {
     meta: SnapshotMeta,
-    kvs: BTreeMap<String, types_kv::VersionedValue>,
+    payload: SnapshotPayload,
     snapshots: SnapshotStore,
 }
 
@@ -74,11 +204,9 @@ impl RaftSnapshotBuilder<TypeConfig> for SnapshotBuilder {
     type SnapshotData = Cursor<Vec<u8>>;
 
     async fn build_snapshot(&mut self) -> Result<Snapshot, io::Error> {
-        let kv_json = serde_json::to_vec(&self.kvs).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-
         let snapshot = StoredSnapshot {
             meta: self.meta.clone(),
-            data: kv_json,
+            data: serde_json::to_vec(&self.payload).map_err(invalid_data)?,
         };
 
         if !self.snapshots.save_if_newer(&snapshot)? {
@@ -140,36 +268,20 @@ impl SnapshotStore {
 
 impl StateMachineStore {
     async fn new(db: Arc<DB>) -> Result<StateMachineStore, io::Error> {
-        let mut sm = Self {
-            data: StateMachineData {
-                last_applied_log_id: None,
-                last_membership: Default::default(),
-                kvs: Arc::new(Mutex::new(BTreeMap::new())),
-            },
-            snapshots: SnapshotStore {
-                db,
-                lock: Arc::new(std::sync::Mutex::new(())),
-            },
+        let snapshots = SnapshotStore {
+            db,
+            lock: Arc::new(std::sync::Mutex::new(())),
         };
 
-        let snapshot = sm.snapshots.get()?;
-        if let Some(snap) = snapshot {
-            sm.update_state_machine_(snap).await?;
+        let mut state = AppliedState::default();
+        if let Some(snap) = snapshots.get()? {
+            state.restore(&snap)?;
         }
 
-        Ok(sm)
-    }
-
-    async fn update_state_machine_(&mut self, snapshot: StoredSnapshot) -> Result<(), io::Error> {
-        let kvs: BTreeMap<String, types_kv::VersionedValue> =
-            serde_json::from_slice(&snapshot.data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-
-        self.data.last_applied_log_id = snapshot.meta.last_log_id;
-        self.data.last_membership = snapshot.meta.last_membership.clone();
-        let mut x = self.data.kvs.lock().await;
-        *x = kvs;
-
-        Ok(())
+        Ok(Self {
+            state: Arc::new(Mutex::new(state)),
+            snapshots,
+        })
     }
 }
 
@@ -179,50 +291,14 @@ impl RaftStateMachine<TypeConfig> for StateMachineStore {
     type SnapshotBuilder = SnapshotBuilder;
 
     async fn applied_state(&mut self) -> Result<(Option<LogId>, StoredMembership), io::Error> {
-        Ok((self.data.last_applied_log_id.clone(), self.data.last_membership.clone()))
+        let state = self.state.lock().await;
+        Ok((state.last_applied.clone(), state.last_membership.clone()))
     }
 
     async fn apply<Strm>(&mut self, mut entries: Strm) -> Result<(), io::Error>
     where Strm: Stream<Item = Result<EntryResponder<TypeConfig>, io::Error>> + Unpin + OptionalSend {
         while let Some((entry, responder)) = entries.try_next().await? {
-            let version = entry.log_id.index();
-            self.data.last_applied_log_id = Some(entry.log_id.clone());
-
-            let response = match entry.payload {
-                EntryPayload::Blank => types_kv::Response::none(),
-                EntryPayload::Normal(req) => match req {
-                    types_kv::Request::Set { key, value } => {
-                        let mut st = self.data.kvs.lock().await;
-                        st.insert(key, types_kv::VersionedValue {
-                            value: value.clone(),
-                            version,
-                        });
-                        types_kv::Response::new(value, version)
-                    }
-                    types_kv::Request::CompareAndSet {
-                        key,
-                        expected_version,
-                        value,
-                    } => {
-                        let mut st = self.data.kvs.lock().await;
-                        let matches = st.get(&key).is_some_and(|current| current.version == expected_version);
-
-                        if matches {
-                            st.insert(key, types_kv::VersionedValue {
-                                value: value.clone(),
-                                version,
-                            });
-                            types_kv::Response::new(value, version)
-                        } else {
-                            types_kv::Response::none()
-                        }
-                    }
-                },
-                EntryPayload::Membership(mem) => {
-                    self.data.last_membership = StoredMembership::new(Some(entry.log_id), mem);
-                    types_kv::Response::none()
-                }
-            };
+            let response = self.state.lock().await.apply(entry)?;
 
             if let Some(responder) = responder {
                 responder.send(response);
@@ -232,15 +308,11 @@ impl RaftStateMachine<TypeConfig> for StateMachineStore {
     }
 
     async fn get_snapshot_builder(&mut self) -> Self::SnapshotBuilder {
-        // No entry applies while this runs, so the copy matches `last_applied_log_id`.
-        let kvs = self.data.kvs.lock().await.clone();
+        let state = self.state.lock().await;
 
         SnapshotBuilder {
-            meta: SnapshotMeta {
-                last_log_id: self.data.last_applied_log_id.clone(),
-                last_membership: self.data.last_membership.clone(),
-            },
-            kvs,
+            meta: state.snapshot_meta(),
+            payload: state.snapshot_payload(),
             snapshots: self.snapshots.clone(),
         }
     }
@@ -251,9 +323,13 @@ impl RaftStateMachine<TypeConfig> for StateMachineStore {
             data: snapshot.into_inner(),
         };
 
-        self.update_state_machine_(new_snapshot.clone()).await?;
+        self.state.lock().await.restore(&new_snapshot)?;
 
         self.snapshots.save(&new_snapshot)?;
+
+        // Startup restores the stored snapshot in `StateMachineStore::new`, so OpenRaft never
+        // calls this to restore one and every marker is an install from a leader.
+        eprintln!("{SNAPSHOT_INSTALLED_MARKER} last_log_id={:?}", meta.last_log_id);
 
         Ok(())
     }
@@ -271,6 +347,11 @@ pub(crate) async fn new_storage<P: AsRef<Path>>(db_path: P) -> (RocksLogStore<Ty
     let mut db_opts = Options::default();
     db_opts.create_missing_column_families(true);
     db_opts.create_if_missing(true);
+    // Keep each write in RocksDB's in-process WAL buffer until a `flush_wal`, so a SIGKILL drops
+    // what was written but never flushed, as a power loss would. Everything the stores report
+    // durable is flushed first: log appends before their IO callback, votes and snapshots before
+    // returning. Truncation and purge are not, which OpenRaft allows.
+    db_opts.set_manual_wal_flush(true);
 
     let store = ColumnFamilyDescriptor::new("store", Options::default());
     let meta = ColumnFamilyDescriptor::new("meta", Options::default());
@@ -299,8 +380,10 @@ mod tests {
     use openraft::testing::log_id;
     use types_kv::VersionedValue;
 
+    use super::SnapshotPayload;
     use super::new_storage;
     use crate::TypeConfig;
+    use crate::request::Request;
     use crate::store::StateMachineStore;
     use crate::typ::*;
 
@@ -321,21 +404,35 @@ mod tests {
     }
 
     fn set(term: u64, index: u64, key: &str, value: &str) -> Entry {
-        Entry::new_normal(
-            log_id::<TypeConfig>(term, "n1".to_string(), index),
-            types_kv::Request::Set {
-                key: key.to_string(),
-                value: value.to_string(),
-            },
-        )
+        Entry::new_normal(log_id::<TypeConfig>(term, "n1".to_string(), index), Request::Set {
+            key: key.to_string(),
+            value: value.to_string(),
+        })
+    }
+
+    fn append(term: u64, index: u64, key: &str, value: &str) -> Entry {
+        Entry::new_normal(log_id::<TypeConfig>(term, "n1".to_string(), index), Request::Append {
+            key: key.to_string(),
+            value: value.to_string(),
+        })
     }
 
     async fn apply(sm: &mut StateMachineStore, entries: Vec<Entry>) {
         sm.apply(stream::iter(entries.into_iter().map(|entry| Ok((entry, None))))).await.unwrap();
     }
 
-    fn kvs(snapshot: &Snapshot) -> BTreeMap<String, VersionedValue> {
+    fn payload(snapshot: &Snapshot) -> SnapshotPayload {
         serde_json::from_slice(snapshot.snapshot.get_ref()).unwrap()
+    }
+
+    /// The applied log id, chain and state digest a replica reports for comparison.
+    async fn fingerprint(sm: &StateMachineStore) -> (Option<LogId>, u64, u64) {
+        let state = sm.state.lock().await;
+        (
+            state.last_applied.clone(),
+            state.applied_chain,
+            state.state_digest().unwrap(),
+        )
     }
 
     #[tokio::test]
@@ -344,6 +441,7 @@ mod tests {
         let (_log_store, mut sm) = new_storage(&dir.0).await;
 
         apply(&mut sm, vec![set(1, 1, "a", "1")]).await;
+        let chain_at_request = sm.state.lock().await.applied_chain;
         let mut builder = sm.get_snapshot_builder().await;
         apply(&mut sm, vec![set(1, 2, "a", "2"), set(1, 3, "b", "3")]).await;
 
@@ -354,11 +452,15 @@ mod tests {
             snapshot.meta.last_log_id
         );
         assert_eq!(
-            BTreeMap::from([("a".to_string(), VersionedValue {
-                value: "1".to_string(),
-                version: 1,
-            })]),
-            kvs(&snapshot)
+            SnapshotPayload {
+                applied_chain: chain_at_request,
+                kvs: BTreeMap::from([("a".to_string(), VersionedValue {
+                    value: "1".to_string(),
+                    version: 1,
+                })]),
+                lists: BTreeMap::new(),
+            },
+            payload(&snapshot)
         );
     }
 
@@ -370,10 +472,14 @@ mod tests {
         apply(&mut sm, vec![set(1, 1, "a", "1")]).await;
         let mut builder = sm.get_snapshot_builder().await;
 
-        let installed = BTreeMap::from([("a".to_string(), VersionedValue {
-            value: "5".to_string(),
-            version: 5,
-        })]);
+        let installed = SnapshotPayload {
+            applied_chain: 7,
+            kvs: BTreeMap::from([("a".to_string(), VersionedValue {
+                value: "5".to_string(),
+                version: 5,
+            })]),
+            lists: BTreeMap::new(),
+        };
         let meta = SnapshotMeta {
             last_log_id: Some(log_id::<TypeConfig>(2, "n2".to_string(), 5)),
             last_membership: Default::default(),
@@ -384,6 +490,103 @@ mod tests {
 
         let stored = sm.get_current_snapshot().await.unwrap().unwrap();
         assert_eq!(meta.last_log_id, stored.meta.last_log_id);
-        assert_eq!(installed, kvs(&stored));
+        assert_eq!(installed, payload(&stored));
+    }
+
+    #[tokio::test]
+    async fn a_snapshot_carries_the_applied_chain() {
+        let dirs = [
+            TempDir::new("chain-a"),
+            TempDir::new("chain-b"),
+            TempDir::new("chain-c"),
+        ];
+        let (_, mut replayed) = new_storage(&dirs[0].0).await;
+        let (_, mut installed) = new_storage(&dirs[1].0).await;
+        let (_, mut diverged) = new_storage(&dirs[2].0).await;
+
+        apply(&mut replayed, vec![set(1, 1, "a", "1"), set(1, 2, "b", "2")]).await;
+        let snapshot = replayed.get_snapshot_builder().await.build_snapshot().await.unwrap();
+        installed.install_snapshot(&snapshot.meta, snapshot.snapshot).await.unwrap();
+
+        // Same final state, reached through a different entry at index 1.
+        apply(&mut diverged, vec![set(1, 1, "a", "0"), set(1, 2, "b", "2")]).await;
+        diverged.state.lock().await.kvs.get_mut("a").unwrap().value = "1".to_string();
+
+        for sm in [&mut replayed, &mut installed, &mut diverged] {
+            apply(sm, vec![set(1, 3, "c", "3")]).await;
+        }
+
+        let replayed = fingerprint(&replayed).await;
+        assert_eq!(replayed, fingerprint(&installed).await);
+
+        let diverged = fingerprint(&diverged).await;
+        assert_eq!(replayed.0, diverged.0);
+        assert_eq!(replayed.2, diverged.2, "the state alone does not show the divergence");
+        assert_ne!(replayed.1, diverged.1, "the applied chain does");
+    }
+
+    #[tokio::test]
+    async fn an_unflushed_write_is_lost_on_a_crash() {
+        let dir = TempDir::new("manual-flush");
+        let crashed = TempDir::new("manual-flush-crash");
+
+        let db = {
+            let (log_store, sm) = new_storage(&dir.0).await;
+            drop(log_store);
+            sm.snapshots.db.clone()
+        };
+        let cf = db.cf_handle("logs").unwrap();
+        db.put_cf(cf, b"flushed", b"1").unwrap();
+        db.flush_wal(true).unwrap();
+        db.put_cf(cf, b"unflushed", b"1").unwrap();
+        assert!(
+            db.get_cf(cf, b"unflushed").unwrap().is_some(),
+            "readable before the flush"
+        );
+
+        // A copy of the files as they are on disk is what a SIGKILL leaves behind.
+        std::fs::create_dir_all(&crashed.0).unwrap();
+        for file in std::fs::read_dir(&dir.0).unwrap() {
+            let file = file.unwrap();
+            std::fs::copy(file.path(), crashed.0.join(file.file_name())).unwrap();
+        }
+
+        let (log_store, sm) = new_storage(&crashed.0).await;
+        drop(log_store);
+        let db = sm.snapshots.db.clone();
+        let cf = db.cf_handle("logs").unwrap();
+        assert!(db.get_cf(cf, b"flushed").unwrap().is_some());
+        assert!(db.get_cf(cf, b"unflushed").unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn appends_survive_a_snapshot_install_in_order() {
+        let dirs = [TempDir::new("append-a"), TempDir::new("append-b")];
+        let (_, mut source) = new_storage(&dirs[0].0).await;
+        let (_, mut installed) = new_storage(&dirs[1].0).await;
+
+        apply(&mut source, vec![append(1, 1, "l", "1"), append(1, 2, "l", "2")]).await;
+        let snapshot = source.get_snapshot_builder().await.build_snapshot().await.unwrap();
+        installed.install_snapshot(&snapshot.meta, snapshot.snapshot).await.unwrap();
+        apply(&mut installed, vec![append(1, 3, "l", "3")]).await;
+
+        assert_eq!(
+            Some(&vec!["1".to_string(), "2".to_string(), "3".to_string()]),
+            installed.state.lock().await.lists.get("l")
+        );
+    }
+
+    #[tokio::test]
+    async fn restart_restores_the_applied_chain() {
+        let dir = TempDir::new("restart");
+        let expected = {
+            let (_log_store, mut sm) = new_storage(&dir.0).await;
+            apply(&mut sm, vec![set(1, 1, "a", "1"), set(1, 2, "b", "2")]).await;
+            sm.get_snapshot_builder().await.build_snapshot().await.unwrap();
+            fingerprint(&sm).await
+        };
+
+        let (_log_store, sm) = new_storage(&dir.0).await;
+        assert_eq!(expected, fingerprint(&sm).await);
     }
 }

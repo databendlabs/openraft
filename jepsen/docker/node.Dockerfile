@@ -32,7 +32,9 @@ ENV ROCKSDB_LIB_DIR=/usr/lib/x86_64-linux-gnu \
 WORKDIR /openraft
 COPY . .
 
-RUN cargo build --release \
+# The `jepsen` profile is release with debug assertions and overflow checks;
+# see the test app's Cargo.toml.
+RUN cargo build --profile jepsen \
       --manifest-path jepsen/openraft-test-app/Cargo.toml
 
 FROM ubuntu:24.04
@@ -91,7 +93,7 @@ COPY jepsen/docker/strobe-faketime /usr/local/bin/strobe-faketime
 RUN chmod 755 /usr/local/bin/strobe-faketime
 
 COPY --from=builder \
-  /openraft/jepsen/openraft-test-app/target/release/openraft-jepsen-app \
+  /openraft/jepsen/openraft-test-app/target/jepsen/openraft-jepsen-app \
   /usr/local/bin/openraft-jepsen-app
 
 EXPOSE 22 21001 22001

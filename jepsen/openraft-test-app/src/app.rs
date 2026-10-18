@@ -1,8 +1,13 @@
-use std::collections::BTreeMap;
-use std::sync::Arc;
+use crate::LogStore;
+use crate::store::SharedState;
 
-use futures::lock::Mutex;
+/// What the HTTP handlers read besides Raft itself.
+pub struct AppData {
+    /// The state machine's applied state.
+    pub state: SharedState,
 
-pub type KeyValues = Arc<Mutex<BTreeMap<String, types_kv::VersionedValue>>>;
+    /// A handle on the log store, for reporting the retained log ids.
+    pub log_store: LogStore,
+}
 
-pub type App = app_http::App<crate::TypeConfig, crate::StateMachineStore, KeyValues>;
+pub type App = app_http::App<crate::TypeConfig, crate::StateMachineStore, AppData>;

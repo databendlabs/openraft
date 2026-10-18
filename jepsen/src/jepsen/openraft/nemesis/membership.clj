@@ -15,6 +15,9 @@
 (def change-seconds 10)
 (def minimum-voters 3)
 (def learner-wait-timeout-ms 60000)
+;; A transfer target that holds the leader's last log id elects itself at once;
+;; one that lacks it waits up to election_timeout_min (299 ms) for it.
+(def transfer-timeout-ms 3000)
 
 (def ^:private membership-error-arm-limit 8)
 (def ^:private membership-error-arm-name-limit 128)
@@ -848,6 +851,73 @@
           :else
           (throw e))))))
 
+(defn- await-leader!
+  "Waits until target leads with quorum support. Returns the last observed
+  supported leader, which is target on success."
+  [test target]
+  (let [observed (atom nil)]
+    (try
+      (await/until!
+       :transfer-target-leads
+       #(let [leader (:leader (cluster/membership-status test))]
+          (reset! observed leader)
+          (if (= target leader)
+            leader
+            (await/retry! :transfer-target-leads {:leader leader})))
+       {:log-message (str "Waiting for " target " to take over leadership")
+        :timeout transfer-timeout-ms
+        :retry-interval 100})
+      (catch Exception e
+        (if (await/condition-timeout? e :transfer-target-leads)
+          @observed
+          (throw e))))))
+
+(defn- transfer-leader!
+  "Asks the leader to hand leadership to a random other voter, then waits
+  for that voter to lead."
+  [test]
+  (if-let [{:keys [leader metrics voters stable?]}
+           (cluster/membership-status test)]
+    (let [candidates (filter #(and (contains? voters %)
+                                   (contains? metrics %)
+                                   (not= leader %))
+                             (:nodes test))
+          target (select-node test candidates)
+          details {:leader leader
+                   :target target
+                   :stable? stable?
+                   :leader-last-log-index
+                   (get-in metrics [leader :last_log_index])
+                   :target-last-log-index
+                   (get-in metrics [target :last_log_index])}]
+      (if-not target
+        (outcome/skipped :no-transfer-target details)
+        (let [requested
+              (try
+                (client/transfer-leader! (client/api-endpoint test leader)
+                                         (client/node-host target))
+                :requested
+                (catch Exception e
+                  (cond
+                    (leader-routing-error? e) :no-supported-leader
+                    (ambiguous-request-error? e) :indeterminate
+                    :else (throw e))))]
+          (case requested
+            :no-supported-leader
+            (outcome/skipped :no-supported-leader details)
+
+            :indeterminate
+            (outcome/indeterminate :request-result-unknown details)
+
+            :requested
+            (let [new-leader (await-leader! test target)]
+              (info "OpenRaft leadership transfer"
+                    (assoc details :new-leader new-leader))
+              (outcome/installed (assoc details
+                                        :new-leader new-leader
+                                        :elected? (= target new-leader))))))))
+    (outcome/skipped :no-supported-leader {})))
+
 (defrecord MembershipNemesis [database pending-change]
   nemesis/Nemesis
   (setup! [_ _test]
@@ -871,6 +941,9 @@
                     :shrink)]
         (assoc op :value (membership-operation-outcome :shrink result)))
 
+      :transfer-leader
+      (assoc op :value (transfer-leader! test))
+
       :restore-membership
       (assoc op
              :value (restore-membership-outcome!
@@ -882,7 +955,7 @@
 
   nemesis/Reflection
   (fs [_]
-    #{:grow :shrink :restore-membership}))
+    #{:grow :shrink :transfer-leader :restore-membership}))
 
 (defn membership-nemesis [database]
   (MembershipNemesis. database (atom nil)))
@@ -893,10 +966,14 @@
     :f :shrink}
    {:type :info
     :f :grow}
+   {:type :info
+    :f :transfer-leader}
    (gen/mix [(repeat {:type :info
                       :f :grow})
              (repeat {:type :info
-                      :f :shrink})])))
+                      :f :shrink})
+             (repeat {:type :info
+                      :f :transfer-leader})])))
 
 (defn- membership-change-installed? [required-changes change]
   (and (= :installed (:status change))
@@ -968,12 +1045,23 @@
                                 (filter #(= :await-recovery (:f %)))
                                 last)
             recovered? (boolean
-                        (recovery-installed? (:value final-recovery)))]
+                        (recovery-installed? (:value final-recovery)))
+            transfers (->> history
+                           (filter #(= :transfer-leader (:f %)))
+                           (map :value)
+                           (filter #(= :installed (:status %))))
+            elected (filter :elected? transfers)]
         {:valid? (and (zero? malformed)
                       (empty? errors)
                       (empty? missing-changes)
+                      (boolean (seq elected))
                       restored?
                       recovered?)
+         ;; A transfer whose target never led is reported, not rejected: a
+         ;; membership change or another election may have intervened.
+         :transfers {:installed (count transfers)
+                     :elected (count elected)
+                     :unelected (vec (take 10 (remove :elected? transfers)))}
          :observed-changes (vec (sort observed-changes))
          :missing-changes (vec (sort missing-changes))
          :malformed-outcomes malformed

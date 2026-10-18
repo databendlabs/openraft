@@ -754,6 +754,43 @@
             "the entry may still commit through the new leader")
         (is (nil? (harness/primary-failure failure-state)))))))
 
+(deftest transfers-leadership-to-another-voter
+  (let [requests (atom [])
+        statuses (atom [(stable-status (set nodes))
+                        (stable-status (set nodes))
+                        (assoc (stable-status (set nodes)) :leader "n2")])]
+    (with-redefs [cluster/membership-status
+                  (fn [_test]
+                    (let [status (first @statuses)]
+                      (when (next @statuses)
+                        (swap! statuses rest))
+                      status))
+                  random/shuffle identity
+                  client/transfer-leader!
+                  (fn [endpoint node-id]
+                    (swap! requests conj [endpoint node-id]))]
+      (let [value (:value (nemesis/invoke! (membership-nemesis)
+                                           test-config
+                                           {:type :info
+                                            :f :transfer-leader}))]
+        (is (= [["n1:21001" "n2"]] @requests)
+            "the leader is asked to hand over to another voter")
+        (is (= :installed (:status value)))
+        (is (= "n2" (:new-leader value)))
+        (is (true? (:elected? value)))))))
+
+(deftest a-transfer-without-a-reachable-leader-is-skipped
+  (with-redefs [cluster/membership-status (constantly (stable-status (set nodes)))
+                random/shuffle identity
+                client/transfer-leader!
+                (fn [& _]
+                  (throw (ex-info "unreachable" {:kind :unreachable})))]
+    (is (= :no-supported-leader
+           (get-in (nemesis/invoke! (membership-nemesis)
+                                    test-config
+                                    {:type :info :f :transfer-leader})
+                   [:value :reason])))))
+
 (deftest final-restoration-resolves-a-pending-removal
   (let [before (set nodes)
         after (disj before "n5")
@@ -1219,6 +1256,12 @@
                                  :leader "n1"
                                  :before four-voters
                                  :after all-voters})}
+        transfer {:type :info
+                  :f :transfer-leader
+                  :value (installed {:leader "n1"
+                                     :target "n2"
+                                     :new-leader "n2"
+                                     :elected? true})}
         restore {:type :info
                  :f :restore-membership
                  :value (installed {:leader "n1"
@@ -1229,8 +1272,24 @@
     (testing "a resolved change is attributed to its actual fault class"
       (is (:valid? (checker/check subject
                                   test-config
-                                  [shrink grow restore recovery]
+                                  [shrink grow transfer restore recovery]
                                   {}))))
+
+    (testing "a focused run requires a transfer whose target took over"
+      (let [unelected (assoc transfer
+                             :value (installed {:leader "n1"
+                                                :target "n2"
+                                                :new-leader "n1"
+                                                :elected? false}))
+            result (checker/check subject
+                                  test-config
+                                  [shrink grow unelected restore recovery]
+                                  {})]
+        (is (false? (:valid? result)))
+        (is (= {:installed 1
+                :elected 0
+                :unelected [(:value unelected)]}
+               (:transfers result)))))
 
     (testing "an installed change without its evidence is a defect"
       (let [result (checker/check subject
@@ -1288,6 +1347,7 @@
                                      :before all-voters
                                      :target four-voters}))
                      grow
+                     transfer
                      (assoc-in restore
                                [:value :resolved-change]
                                (:value shrink))

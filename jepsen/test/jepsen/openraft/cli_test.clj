@@ -77,6 +77,35 @@
         (is (some #(re-find #"Must be a positive integer" %)
                   (:errors parsed)))))))
 
+(deftest selects-the-list-append-workload
+  (testing "register is the default and list-append is accepted"
+    (is (= :register (get-in (tools-cli/parse-opts [] cli/cli-opts)
+                             [:options :workload])))
+    (is (= :list-append (get-in (tools-cli/parse-opts ["--workload" "list-append"]
+                                                      cli/cli-opts)
+                                [:options :workload])))
+    (is (some #(re-find #"Must be register or list-append" %)
+              (:errors (tools-cli/parse-opts ["--workload" "bank"] cli/cli-opts)))))
+
+  (testing "list-append names the run after its workload"
+    (is (= "openraft list-append partition"
+           (:name (cli/openraft-test {:nemesis :partition
+                                      :workload :list-append
+                                      :nodes ["n1" "n2" "n3"]
+                                      :time-limit 10}))))))
+
+(deftest validates-the-snapshot-logs-to-keep
+  (testing "the default purges every log a snapshot covers"
+    (is (zero? (get-in (tools-cli/parse-opts [] cli/cli-opts)
+                       [:options :snapshot-logs-to-keep]))))
+
+  (testing "malformed and negative counts are rejected"
+    (doseq [value ["abc" "-1"]]
+      (let [parsed (tools-cli/parse-opts ["--snapshot-logs-to-keep" value]
+                                         cli/cli-opts)]
+        (is (some #(re-find #"Must be a non-negative integer" %)
+                  (:errors parsed)))))))
+
 (deftest validates-liveness-options
   (let [options {:liveness :bridge-partition
                  :nodes ["n1" "n2" "n3" "n4" "n5"]
@@ -100,7 +129,8 @@
                            ["--nemesis" ["--nemesis=chaos"]]
                            ["--packet-mode" ["--packet-mode" "slow"]]
                            ["--time-limit" ["--time-limit" "10"]]
-                           ["--time-limit" ["--time-limit=60"]]]]
+                           ["--time-limit" ["--time-limit=60"]]
+                           ["--workload" ["--workload=list-append"]]]]
         (let [errors (:errors (prepare (into ["--liveness=bridge-partition"] argv) {}))]
           (is (some #(and (str/includes? % flag)
                           (str/includes? % "--liveness")) errors))
@@ -108,7 +138,7 @@
 
 (deftest selects-composable-nemeses
   (testing "chaos is the default"
-    (is (= [:partition :process :pause :membership :packet :clock]
+    (is (= [:partition :process :pause :membership :packet :clock :snapshot :restart]
            (#'cli/normalize-nemeses nil))))
 
   (testing "comma-separated faults are parsed and canonically ordered"
@@ -117,7 +147,7 @@
             (#'cli/parse-nemeses "process, partition")))))
 
   (testing "chaos expands to every composable fault without duplicates"
-    (is (= [:partition :process :pause :membership :packet :clock]
+    (is (= [:partition :process :pause :membership :packet :clock :snapshot :restart]
            (#'cli/normalize-nemeses [:chaos :partition]))))
 
   (testing "membership can be combined with another fault"
@@ -129,7 +159,7 @@
 
 (deftest selects-clock-in-focused-and-chaos-runs
   (is (= [:clock] (#'cli/normalize-nemeses :clock)))
-  (is (= [:partition :process :pause :membership :packet :clock]
+  (is (= [:partition :process :pause :membership :packet :clock :snapshot :restart]
          (#'cli/normalize-nemeses :chaos))))
 
 (deftest validates-focused-packet-mode
@@ -180,7 +210,7 @@
 
 (deftest validates-packet-mode-selection
   (testing "the default chaos profile does not require --packet-mode"
-    (is (= "openraft linearizable registers partition,process,pause,membership,packet,clock"
+    (is (= "openraft linearizable registers partition,process,pause,membership,packet,clock,snapshot,restart"
            (:name (cli/openraft-test {:nodes ["n1" "n2" "n3" "n4" "n5"]
                                       :time-limit 10})))))
 
@@ -262,8 +292,11 @@
                                  :nodes ["n1" "n2" "n3" "n4" "n5"]
                                  :time-limit 10})
         result (checker/check (:checker test) test (history/history []) {})]
-    (is (= #{:valid? :seed :stats :exceptions :crash :nemesis :workload}
+    (is (= #{:valid? :seed :stats :exceptions :crash :invariants
+             :snapshot-installs :nemesis :workload :replicas}
            (set (keys result))))
+    (is (= :not-compared (get-in result [:replicas :reason]))
+        "a safety run without a replica comparison is not accepted")
     (is (= #{:valid? :fault-classes-executed :partition :membership}
            (set (keys (:nemesis result)))))))
 
@@ -318,11 +351,16 @@
                      (< (:time operation) (:time recovery-end))))
               history))
     (is (= [:final-nemesis-1 :final-nemesis-2
-            :final-workload-1 :final-workload-2]
+            :final-workload-1 :final-workload-2
+            :converge-replicas]
            (filter #{:final-nemesis-1 :final-nemesis-2
                      :final-workload-1
-                     :final-workload-2}
-                   operations)))))
+                     :final-workload-2
+                     :converge-replicas}
+                   operations)))
+    (is (= :nemesis
+           (:process (first (filter #(= :converge-replicas (:f %))
+                                    history)))))))
 
 (deftest recovers-and-skips-final-workload-after-a-harness-failure
   (let [failure-state (harness/failure-state)
@@ -346,7 +384,8 @@
     (is (= [:final-nemesis-1 :final-nemesis-2]
            (filter #{:final-nemesis-1 :final-nemesis-2
                      :final-workload-1
-                     :final-workload-2}
+                     :final-workload-2
+                     :converge-replicas}
                    operations)))))
 
 (deftest stops-final-workload-after-a-harness-failure
@@ -357,7 +396,8 @@
     (is (= [:final-nemesis-1 :final-nemesis-2 :final-workload-1]
            (filter #{:final-nemesis-1 :final-nemesis-2
                      :final-workload-1
-                     :final-workload-2}
+                     :final-workload-2
+                     :converge-replicas}
                    operations)))))
 
 (deftest selects-two-nodes-for-leader-removal

@@ -22,8 +22,16 @@ ifneq ($(SNAPSHOT_THRESHOLD),)
 override ARGS += --snapshot-threshold $(SNAPSHOT_THRESHOLD)
 endif
 
+ifneq ($(SNAPSHOT_LOGS_TO_KEEP),)
+override ARGS += --snapshot-logs-to-keep $(SNAPSHOT_LOGS_TO_KEEP)
+endif
+
 ifneq ($(PACKET_MODE),)
 PACKET_ARGS := --packet-mode $(PACKET_MODE)
+endif
+
+ifneq ($(WORKLOAD),)
+WORKLOAD_ARGS := --workload $(WORKLOAD)
 endif
 
 app-lint:
@@ -69,7 +77,7 @@ test:
 
 safety:
 	@echo "[jepsen] running safety test"
-	@$(COMPOSE) exec control lein run test $(ARGS) --nemesis=$(NEMESIS) $(PACKET_ARGS)
+	@$(COMPOSE) exec control lein run test $(ARGS) --nemesis=$(NEMESIS) $(PACKET_ARGS) $(WORKLOAD_ARGS)
 
 liveness:
 	@test -n "$(SELECTED_SCENARIOS)" && test -z "$(filter-out $(LIVENESS_SCENARIOS),$(SELECTED_SCENARIOS))" || \

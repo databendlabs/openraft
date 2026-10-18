@@ -23,3 +23,11 @@ serde_json         = { version = "1.0.57" }
 tokio              = { version = "1.35.1", features = ["full"] }
 tracing            = { version = "0.1.40" }
 tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }
+
+# Release speed with OpenRaft's debug assertions and overflow checks, which turn
+# a broken invariant into a panic the Jepsen crash checker reports instead of a
+# state that may or may not reach a client. The node image builds this profile.
+[profile.jepsen]
+inherits = "release"
+debug-assertions = true
+overflow-checks = true

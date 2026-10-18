@@ -303,3 +303,34 @@
       (finally
         (doseq [file (reverse (file-seq temp-dir))]
           (io/delete-file file true))))))
+
+(deftest counts-a-log-marker-per-node
+  (let [^java.io.File temp-dir
+        (.toFile
+         (java.nio.file.Files/createTempDirectory
+          "openraft-jepsen-checker"
+          (make-array java.nio.file.attribute.FileAttribute 0)))
+        test {:name "marker-count-test"
+              :start-time "run"
+              :nodes ["n1" "n2" "n3"]}
+        subject (openraft-checker/log-file-pattern-report
+                 #"OPENRAFT_JEPSEN_SNAPSHOT_INSTALLED"
+                 "openraft.log")]
+    (try
+      (with-redefs [store/base-dir (.getPath temp-dir)]
+        (doseq [[node content]
+                {"n1" "INFO started\n"
+                 "n2" (str "OPENRAFT_JEPSEN_SNAPSHOT_INSTALLED last_log_id=1\n"
+                           "INFO applied\n"
+                           "OPENRAFT_JEPSEN_SNAPSHOT_INSTALLED last_log_id=2\n")}]
+          (let [file (store/path test node "openraft.log")]
+            (io/make-parents file)
+            (spit file content)))
+        (is (= {:valid? true
+                :count 2
+                :by-node {"n1" 0 "n2" 2}}
+               (checker/check subject test (history/history []) {}))
+            "a missing log is left out rather than counted as zero"))
+      (finally
+        (doseq [file (reverse (file-seq temp-dir))]
+          (io/delete-file file true))))))

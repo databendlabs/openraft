@@ -1,8 +1,11 @@
 FROM clojure:temurin-21-lein
 
+# Elle renders the cycles behind an anomaly with GraphViz's `dot`; without it,
+# the list-append checker throws instead of reporting the anomaly.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       git \
+      graphviz \
       openssh-client \
  && rm -rf /var/lib/apt/lists/*
 

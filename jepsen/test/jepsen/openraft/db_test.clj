@@ -49,6 +49,8 @@
           (is (= "n1:21001" (argument-after start-command :--api-addr)))
           (is (= "n1:22001" (argument-after start-command :--raft-addr)))
           (is (= 250 (argument-after start-command :--snapshot-threshold)))
+          (is (= openraft-db/default-snapshot-logs-to-keep
+                 (argument-after start-command :--max-in-snapshot-log-to-keep)))
           (is (= (= :leader-removal-recovery (:liveness options))
                  (boolean (some #{:--disable-leader-restore} start-command))))
           (is (= (if (:two-leaf-partition options) 1 0) (count pre-vote-flags)))

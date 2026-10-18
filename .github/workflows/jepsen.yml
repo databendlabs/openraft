@@ -93,6 +93,16 @@ jobs:
           - name: clock
             target: safety
             nemesis: clock
+          - name: snapshot
+            target: safety
+            nemesis: snapshot
+          - name: restart
+            target: safety
+            nemesis: restart
+          - name: list-append
+            target: safety
+            nemesis: chaos
+            workload: list-append
           - name: chaos
             target: safety
             nemesis: chaos
@@ -108,7 +118,7 @@ jobs:
           make -C jepsen build
           make -C jepsen up
           docker compose -f jepsen/docker/docker-compose.yml exec control lein test
-          make -C jepsen ${{ matrix.target }} NEMESIS=${{ matrix.nemesis }} PACKET_MODE=${{ matrix.packet_mode }}
+          make -C jepsen ${{ matrix.target }} NEMESIS=${{ matrix.nemesis }} PACKET_MODE=${{ matrix.packet_mode }} WORKLOAD=${{ matrix.workload }}
 
       - name: Debug | Docker logs
         if: failure()

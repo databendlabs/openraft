@@ -6,24 +6,28 @@
              [generator :as gen]
              [random :as random]
              [tests :as tests]]
-            [jepsen.openraft [checker :as openraft-checker]
+            [jepsen.openraft [append-workload :as append-workload]
+             [checker :as openraft-checker]
              [db :as openraft-db]
              [generator :as openraft-generator]
              [harness :as harness]
              [nemesis :as openraft-nemesis]
+             [replicas :as replicas]
              [worker :as worker]
              [workload :as workload]]
             [jepsen.openraft.nemesis [membership :as membership]
              [clock :as clock]
              [packet :as packet]
              [partition :as partition]
-             [process :as process]]
+             [process :as process]
+             [restart :as restart]
+             [snapshot :as snapshot]]
             [jepsen.openraft.scenario [bridge-partition :as bridge-partition]
              [leader-removal-recovery :as leader-removal]
              [two-leaf-partition :as two-leaf-partition]]))
 
 (def ^:private concrete-nemesis-types
-  [:partition :process :pause :membership :packet :clock])
+  [:partition :process :pause :membership :packet :clock :snapshot :restart])
 
 (def nemesis-types
   (conj (set concrete-nemesis-types) :chaos))
@@ -84,11 +88,24 @@
     :validate [#(and (some? %) (pos? %))
                "Must be a positive integer."]]
 
+   [nil "--snapshot-logs-to-keep COUNT"
+    "Applied logs kept after a snapshot. 0 makes a lagging follower need a snapshot install."
+    :default openraft-db/default-snapshot-logs-to-keep
+    :parse-fn parse-long
+    :validate [#(and (some? %) (not (neg? %)))
+               "Must be a non-negative integer."]]
+
    [nil "--nemesis TYPES"
-    "Comma-separated faults: clock, membership, packet, partition, process, pause, or chaos."
+    "Comma-separated faults: clock, membership, packet, partition, process, pause, restart, snapshot, or chaos."
     :default [:chaos]
     :parse-fn parse-nemeses
     :validate [valid-nemeses? "Unknown fault."]]
+
+   [nil "--workload NAME"
+    "Client workload: register (Knossos CAS registers) or list-append (Elle)."
+    :default :register
+    :parse-fn keyword
+    :validate [#{:register :list-append} "Must be register or list-append."]]
 
    [nil "--packet-mode MODE" "Packet mode: slow or flaky."
     :parse-fn keyword
@@ -120,6 +137,9 @@
 
             (supplied-option? (:argv options) "--packet-mode")
             (conj "--packet-mode cannot be used with --liveness.")
+
+            (supplied-option? (:argv options) "--workload")
+            (conj "--workload cannot be used with --liveness.")
 
             (supplied-option? (:argv options) "--time-limit")
             (conj "--time-limit cannot be used with --liveness; each scenario has a fixed observation window.")))
@@ -165,7 +185,10 @@
      (when-not (harness/primary-failure failure-state)
        (openraft-generator/stop-on-harness-failure
         failure-state
-        (:final-generator workload))))))
+        (gen/phases
+         (:final-generator workload)
+         ;; Compare replicas once no client write remains in flight.
+         (gen/nemesis replicas/converge-op)))))))
 
 (defn openraft-test [opts]
   (let [opts (cond-> opts
@@ -181,6 +204,10 @@
                    (select-keys tests/noop-test [:client :checker])
                    (workload/workload opts))
         roles (atom nil)
+        workload (if (and (= :list-append (:workload opts))
+                          (not (:liveness opts)))
+                   (append-workload/workload opts)
+                   workload)
         nemesis-types (normalize-nemeses (:nemesis opts))
         mode-config
         (cond
@@ -223,6 +250,12 @@
                            :clock
                            (clock/clock-package)
 
+                           :snapshot
+                           (snapshot/snapshot-package database)
+
+                           :restart
+                           (restart/restart-package database)
+
                            :packet
                            (let [packet-mode (:packet-mode opts)]
                              (when (and (= [:packet] nemesis-types)
@@ -232,9 +265,13 @@
                                        {:nemesis nemesis-types})))
                              (packet/packet-package database packet-mode))))
                        nemesis-types))]
-            {:name (str "openraft linearizable registers "
+            {:name (str (if (= :list-append (:workload opts))
+                          "openraft list-append "
+                          "openraft linearizable registers ")
                         (str/join "," (map name nemesis-types)))
              :nemesis-package nemesis-package
+             ;; lifecycle-generator ends with replicas/converge-op.
+             :compare-replicas? true
              :client (:client workload)
              :generator (lifecycle-generator failure-state
                                              (:time-limit opts)
@@ -255,16 +292,30 @@
                        failure-state
                        (openraft-checker/reject-checker-exceptions
                         (checker/compose
-                         {:seed (openraft-checker/random-seed-checker)
-                          :stats (openraft-checker/reject-checker-exceptions
-                                  (checker/stats))
-                          :exceptions
-                          (openraft-checker/strict-unhandled-exceptions)
-                          :crash (openraft-checker/required-log-file-pattern
-                                  openraft-checker/node-panic-pattern
-                                  "openraft.log")
-                          :nemesis (:checker nemesis-package)
-                          :workload (:checker workload)}))
+                         (cond->
+                          {:seed (openraft-checker/random-seed-checker)
+                           :stats (openraft-checker/reject-checker-exceptions
+                                   (checker/stats))
+                           :exceptions
+                           (openraft-checker/strict-unhandled-exceptions)
+                           :crash (openraft-checker/required-log-file-pattern
+                                   openraft-checker/node-panic-pattern
+                                   "openraft.log")
+                           :invariants
+                           (openraft-checker/required-log-file-pattern
+                            openraft-checker/node-invariant-pattern
+                            "openraft.log")
+                           :snapshot-installs
+                           (openraft-checker/log-file-pattern-report
+                            snapshot/snapshot-installed-pattern
+                            "openraft.log")
+                           :nemesis (:checker nemesis-package)
+                           :workload (:checker workload)}
+
+                           (:compare-replicas? mode-config)
+                           (assoc :replicas
+                                  (openraft-checker/reject-checker-exceptions
+                                   (replicas/checker))))))
                        :exceptions))})))
 
 (defn -main [& args]
