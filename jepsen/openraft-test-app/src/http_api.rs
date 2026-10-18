@@ -24,6 +24,12 @@ pub async fn linearizable_read(app: Arc<App>, key: String) -> Result<types_kv::R
     Ok(types_kv::Response { value: value.cloned() })
 }
 
+/// Ask this node, if it leads, to hand leadership to `to`. A non-leader ignores the request, so
+/// the caller observes the outcome in the metrics.
+pub async fn transfer_leader(app: Arc<App>, to: crate::NodeId) -> Result<(), Fatal> {
+    app.raft.trigger().transfer_leader(to).await
+}
+
 /// Append one explicit membership, allowing a test to separate joint and final entries.
 pub(crate) async fn append_membership(
     app: Arc<App>,

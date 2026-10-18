@@ -124,6 +124,7 @@ pub async fn start_raft_node(options: Opt) -> std::io::Result<()> {
             .post("/append-membership", http_api::append_membership)
             .post("/read", http_api::read)
             .post("/linearizable_read", http_api::linearizable_read)
+            .post("/transfer-leader", http_api::transfer_leader)
             .run(api_addr)
             .await
     };
