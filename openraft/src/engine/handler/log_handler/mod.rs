@@ -84,7 +84,7 @@ where
     /// Calculate the log id up to which to purge, inclusive.
     ///
     /// Only logs included in the snapshot will be purged.
-    /// It may return None if there is no log to purge.
+    /// It may return None if there is no log to purge beyond the scheduled `purge_upto`.
     ///
     /// `max_keep` specifies the number of applied logs to keep.
     /// `max_keep==0` means every applied log can be purged.
@@ -123,6 +123,19 @@ where
             st
         );
 
-        log_id.to_log_id()
+        // A purge scheduled at or beyond this log already covers it, e.g., one requested by
+        // `trigger_purge_log()` that waits for replication to release its logs: the scheduled
+        // purge must not move back.
+        let log_id = log_id.to_log_id();
+        if log_id.as_ref() <= st.purge_upto() {
+            tracing::debug!(
+                "skip purge: already scheduled up to {}, policy purge up to {}",
+                st.purge_upto().display(),
+                log_id.display()
+            );
+            return None;
+        }
+
+        log_id
     }
 }
