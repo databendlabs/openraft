@@ -19,6 +19,7 @@
              [partition :as partition]
              [process :as process]]
             [jepsen.openraft.scenario [bridge-partition :as bridge-partition]
+             [leader-outside-joint :as leader-outside-joint]
              [leader-removal-recovery :as leader-removal]
              [two-leaf-partition :as two-leaf-partition]]))
 
@@ -65,10 +66,11 @@
 
 (def cli-opts
   [[nil "--liveness SCENARIO"
-    "Run bridge-partition (10 s window), two-leaf-partition (20 s window), or leader-removal-recovery (60 s recovery deadline). Rejects --nemesis, --packet-mode, and --time-limit."
+    "Run bridge-partition (10 s window), two-leaf-partition (20 s window), leader-removal-recovery or leader-outside-joint (60 s recovery deadline). Rejects --nemesis, --packet-mode, and --time-limit."
     :parse-fn keyword
-    :validate [#{:bridge-partition :two-leaf-partition :leader-removal-recovery}
-               "Must be bridge-partition, two-leaf-partition, or leader-removal-recovery."]]
+    :validate [#{:bridge-partition :two-leaf-partition :leader-removal-recovery
+                 :leader-outside-joint}
+               "Must be bridge-partition, two-leaf-partition, leader-removal-recovery, or leader-outside-joint."]]
    [nil "--api-port PORT" "OpenRaft application HTTP port."
     :default 21001
     :parse-fn parse-long]
@@ -100,9 +102,15 @@
 
 (defn- liveness-node-error [{:keys [liveness nodes]}]
   (when liveness
-    (if (= :leader-removal-recovery liveness)
+    (case liveness
+      :leader-removal-recovery
       (when-not (and (<= 2 (count nodes)) (= (count nodes) (count (set nodes))))
         "--liveness=leader-removal-recovery requires at least two distinct nodes.")
+
+      :leader-outside-joint
+      (when-not (and (<= 3 (count nodes)) (= (count nodes) (count (set nodes))))
+        "--liveness=leader-outside-joint requires at least three distinct nodes.")
+
       (when-not (= 5 (count nodes) (count (set nodes)))
         "--liveness requires five distinct nodes."))))
 
@@ -171,13 +179,16 @@
   (let [opts (cond-> opts
                (= :leader-removal-recovery (:liveness opts))
                (update :nodes #(vec (take 2 %)))
+               (= :leader-outside-joint (:liveness opts))
+               (update :nodes #(vec (take 3 %)))
                (= :two-leaf-partition (:liveness opts))
                (assoc :two-leaf-partition true
                       :bootstrap-state (atom nil)
                       :client-nodes (vec (take 3 (:nodes opts)))))
         failure-state (harness/failure-state)
         database (openraft-db/db opts)
-        workload (if (= :leader-removal-recovery (:liveness opts))
+        workload (if (#{:leader-removal-recovery :leader-outside-joint}
+                      (:liveness opts))
                    (select-keys tests/noop-test [:client :checker])
                    (workload/workload opts))
         roles (atom nil)
@@ -189,6 +200,12 @@
            :nemesis-package (leader-removal/package database)
            :client (:client workload)
            :generator (leader-removal/generator failure-state)}
+
+          (= :leader-outside-joint (:liveness opts))
+          {:name "openraft leader-outside-joint"
+           :nemesis-package (leader-outside-joint/package)
+           :client (:client workload)
+           :generator (leader-outside-joint/generator failure-state)}
 
           (= :bridge-partition (:liveness opts))
           {:name "openraft bridge-partition"

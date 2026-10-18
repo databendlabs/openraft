@@ -72,6 +72,7 @@ The `jepsen.openraft` namespace contains the OpenRaft-specific Jepsen code:
 - `nemesis/process.clj`: process kill/restart and pause/resume faults.
 - `quorum.clj`: stable and joint-consensus quorum calculations.
 - `scenario/bridge_partition.clj`: old-leader bridge liveness scenario.
+- `scenario/leader_outside_joint.clj`: membership change requested of a leader outside a joint config's new half.
 - `scenario/leader_removal_recovery.clj`: interrupted leader-removal recovery scenario.
 - `scenario/two_leaf_partition.clj`: stable-leader two-leaf scenario.
 - `worker.clj`: bounded concurrent operation workers.
@@ -142,13 +143,17 @@ $ make -C jepsen liveness SCENARIO=two-leaf-partition
 # Run only the leader-removal-recovery liveness scenario.
 $ make -C jepsen liveness SCENARIO=leader-removal-recovery
 
+# Run only the leader-outside-joint liveness scenario.
+$ make -C jepsen liveness SCENARIO=leader-outside-joint
+
 # Stop and remove the Jepsen containers.
 $ make -C jepsen down
 ```
 
 Use `make -C jepsen liveness` (equivalent to `SCENARIO=all`) to run all
 available liveness scenarios. Available scenarios are `bridge-partition`,
-`two-leaf-partition`, and `leader-removal-recovery`. `SCENARIO` also accepts a
+`two-leaf-partition`, `leader-removal-recovery`, and `leader-outside-joint`.
+`SCENARIO` also accepts a
 comma-separated list; each selected scenario runs independently with its own
 setup, teardown, and results.
 Unknown scenarios are rejected before any liveness run starts.
@@ -511,6 +516,26 @@ of running the random register workload. The scenario checker, panic checks, and
 harness-error checks determine the result. Missing setup evidence or recovery timeout
 fails the run; partition cleanup runs even after an error.
 
+### Membership change by a leader outside the joint config's new half
+
+Run `make -C jepsen liveness SCENARIO=leader-outside-joint`. This scenario uses
+the first three configured nodes as A, X and Z, with V = {A, X, Z}. It covers
+[#2169](https://github.com/databendlabs/openraft/issues/2169).
+
+After a sentinel write, A appends the joint config [V, V\\{X}] with
+`/append-membership` and the scenario waits for it to commit. A then hands
+leadership to X through `/transfer-leader`, so the leader belongs to the old
+half only. X is asked to change the membership to {Z}. Bridging that change
+through [V\\{X}, {Z}] leaves X in neither half. X can still complete the change
+while it remains leader.
+
+X must complete the change. `InProgress` and `UncommittedLeaderLog` only mean X
+is not ready yet, so the scenario retries them for up to 10 seconds. Any other
+error fails the run. Within 60 seconds the cluster must reach the requested
+stable membership {Z} and serve a fresh write, its linearizable read, and the
+sentinel. The recovery check waits for that membership without issuing another
+membership change.
+
 ## Results and Stored Evidence
 
 [Jepsen error-handling semantics](error-handling-semantics.md) defines the
@@ -588,8 +613,8 @@ three possible values:
   diagnostic fields.
 
 Safety test names begin with `openraft linearizable registers`; liveness tests
-are named `openraft bridge-partition`, `openraft two-leaf-partition`, and
-`openraft leader-removal-recovery`. Each
+are named `openraft bridge-partition`, `openraft two-leaf-partition`,
+`openraft leader-removal-recovery`, and `openraft leader-outside-joint`. Each
 name also identifies its directory under `jepsen/store`. The independent linearizability checker
 lists failing keys at `[:workload :linearizable :failures]` and stores each
 key's result at `[:workload :linearizable :results <key>]`. Per-key histories
