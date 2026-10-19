@@ -43,6 +43,13 @@ the Jepsen harness. It uses string node IDs so each Docker hostname can also be
 the corresponding OpenRaft node ID. Test-specific application changes can be
 made there without increasing the complexity of the general-purpose example.
 
+Storage uses the shared `log-rocks` and `sm-rocks` crates in separate `log/`
+and `sm/` directories under the application's data directory. Reads go through
+the Raft state-machine worker, and checkpoint snapshots use the RocksDB
+example's HTTP directory-transfer module. Each Jepsen run starts with clean
+storage; process restarts within a run retain it. The old single-database
+layout is not migrated, so a manual upgrade must start with a fresh directory.
+
 The `jepsen.openraft` namespace contains the OpenRaft-specific Jepsen code:
 
 - `await.clj`: bounded polling helpers for scenario conditions.

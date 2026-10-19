@@ -12,14 +12,16 @@ use openraft::SnapshotPolicy;
 use openraft::storage::RaftLogStorage;
 
 use crate::app::App;
-use crate::store::new_storage;
 
 pub mod app;
 pub mod http_api;
-pub mod store;
+
+// Share the RocksDB example's checkpoint transport with Jepsen's type configuration.
+#[path = "../../../examples/raft-kv-rocksdb/src/network/mod.rs"]
+pub mod network;
 
 pub type NodeId = String;
-pub type SnapshotData = std::io::Cursor<Vec<u8>>;
+pub type SnapshotData = sm_rocks::RocksSnapshotData;
 
 openraft::declare_raft_types!(
     pub TypeConfig:
@@ -30,7 +32,7 @@ openraft::declare_raft_types!(
 );
 
 pub type LogStore = log_rocks::RocksLogStore<TypeConfig>;
-pub type StateMachineStore = store::StateMachineStore;
+pub type StateMachineStore = sm_rocks::RocksStateMachine<TypeConfig>;
 pub type Raft = openraft::Raft<TypeConfig, StateMachineStore>;
 
 #[derive(Parser, Clone, Debug)]
@@ -77,6 +79,8 @@ pub async fn start_raft_node(options: Opt) -> std::io::Result<()> {
     let mut config = Config {
         heartbeat_interval: 50,
         election_timeout_min: 299,
+        // A snapshot transfers a whole RocksDB checkpoint in one request.
+        install_snapshot_timeout: 10_000,
         // 700 ms exceeds the 600 ms minimum: leader lease + max election timeout.
         quorum_loss_probe_interval: Some(700),
         enable_pre_vote: Some(enable_pre_vote),
@@ -90,12 +94,12 @@ pub async fn start_raft_node(options: Opt) -> std::io::Result<()> {
 
     let config = Arc::new(config.validate().unwrap());
 
-    let (mut log_store, state_machine_store) = new_storage(&dir).await;
+    let mut log_store = LogStore::open(dir.join("log"))?;
+    let state_machine_dir = dir.join("sm");
+    let state_machine_store = StateMachineStore::open(&state_machine_dir)?;
     let is_restart = log_store.get_log_state().await?.last_log_id.is_some();
 
-    let kvs = state_machine_store.data.kvs.clone();
-
-    let network = network_v2_http::NetworkFactory::new();
+    let network = network::NetworkFactory::new();
 
     // Create a local raft instance.
     let raft = openraft::Raft::new(node_id.clone(), config.clone(), network, log_store, state_machine_store)
@@ -107,10 +111,10 @@ pub async fn start_raft_node(options: Opt) -> std::io::Result<()> {
         api_addr: api_addr.clone(),
         raft_addr: raft_addr.clone(),
         raft,
-        data: kvs,
+        data: (),
     });
 
-    let raft_server = network_v2_http::Server::new(app.raft.clone()).run(raft_addr);
+    let raft_server = network::Server::new(app.raft.clone(), state_machine_dir).run(raft_addr);
     let app_server = async move {
         if is_restart {
             // Jepsen bounds final cluster recovery externally. A local
