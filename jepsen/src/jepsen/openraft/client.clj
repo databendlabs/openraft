@@ -302,8 +302,13 @@
              (throw value))
            (do
              (when (reroute-next-operation? value)
-               (when-let [endpoint (next-endpoint endpoints attempted value)]
-                 (reset! leader-endpoint endpoint)))
+               ;; Advance past the failed endpoint across logical operations,
+               ;; instead of bouncing between the first two paused nodes.
+               (let [offset (inc (.indexOf ^java.util.List endpoints endpoint))
+                     candidates (concat (drop offset endpoints)
+                                        (take offset endpoints))]
+                 (when-let [endpoint (next-endpoint candidates attempted value)]
+                   (reset! leader-endpoint endpoint))))
              (throw value))))))))
 
 (defn get! [endpoint path]
