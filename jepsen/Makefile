@@ -19,7 +19,7 @@ override ARGS += --seed $(SEED)
 endif
 
 ifneq ($(TIME_LIMIT),)
-override ARGS += --time-limit $(TIME_LIMIT)
+TIME_LIMIT_ARGS := --time-limit $(TIME_LIMIT)
 endif
 
 ifneq ($(SNAPSHOT_THRESHOLD),)
@@ -73,7 +73,7 @@ test:
 
 safety:
 	@echo "[jepsen] running safety test"
-	@$(COMPOSE) exec control lein run test $(ARGS) --nemesis=$(NEMESIS) $(PACKET_ARGS)
+	@$(COMPOSE) exec control lein run test $(ARGS) --nemesis=$(NEMESIS) $(PACKET_ARGS) $(TIME_LIMIT_ARGS)
 
 liveness:
 	@test -n "$(SELECTED_SCENARIOS)" && test -z "$(filter-out $(LIVENESS_SCENARIOS),$(SELECTED_SCENARIOS))" || \

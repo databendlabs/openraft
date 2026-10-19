@@ -112,6 +112,9 @@ $ make -C jepsen safety NEMESIS=process
 # Run only the process pause/resume test.
 $ make -C jepsen safety NEMESIS=pause
 
+# Run pause/resume for 180 seconds to cover more complete pause episodes.
+$ make -C jepsen safety NEMESIS=pause TIME_LIMIT=180
+
 # Run only the membership change test.
 $ make -C jepsen safety NEMESIS=membership
 
@@ -153,7 +156,13 @@ Unknown scenarios are rejected before any liveness run starts.
 `make -C jepsen safety` runs the default chaos safety test; use `NEMESIS=...`
 to select faults. `make -C jepsen test` runs safety followed by liveness,
 sequentially even with `make -j`. It attempts both categories and fails if
-either fails. `PACKET_MODE` applies only to safety. The `jepsen` target builds
+either fails. `NEMESIS`, `PACKET_MODE`, and `TIME_LIMIT` apply only to safety,
+including when it is run through `test` or `jepsen`. `TIME_LIMIT` is in seconds;
+when unset, Jepsen defaults to 60 seconds. Liveness scenarios keep their fixed
+observation windows. `SEED` and `SNAPSHOT_THRESHOLD` apply to both categories.
+`ARGS` replaces the common CLI arguments for both categories; use the dedicated
+Make variables for safety-only options when running combined targets.
+The `jepsen` target builds
 and starts the containers, runs unit tests, then runs this combined test target.
 
 The harness uses each Jepsen node's container hostname, such as `n1`, directly
