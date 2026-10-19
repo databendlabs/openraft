@@ -1,9 +1,12 @@
 (ns jepsen.openraft.nemesis-test
   (:require [clojure.test :refer [deftest is testing]]
             [jepsen.checker :as checker]
+            [jepsen.control :as c]
+            [jepsen.db :as jepsen-db]
             [jepsen.generator :as gen]
             [jepsen.generator.test :as gen-test]
             [jepsen.nemesis :as nemesis]
+            [jepsen.random :as random]
             [jepsen.openraft [await :as await]
              [cluster :as cluster]
              [db :as db]
@@ -79,15 +82,86 @@
                   (process/process-package database)
                   (process/pause-package database)
                   (packet/packet-package database nil)
-                  (clock/clock-package)])]
-    (is (= [:stop-partition
-            :restart-process
-            :resume-process
-            :stop-packet
-            :reset-clock
-            :restore-membership
-            :await-recovery]
-           (mapv :f (:final-generator package))))))
+                  (clock/clock-package)])
+        expected [:stop-partition
+                  :restart-process
+                  :resume-process
+                  :stop-packet
+                  :reset-clock
+                  :restore-membership
+                  :await-recovery]
+        actual (mapv :f (:final-generator package))]
+    (is (= expected actual))))
+
+(deftest recovers-pause-after-killing-all-processes
+  (let [nodes (:nodes test-config)
+        test (assoc test-config :sessions (zipmap nodes (repeat :unused-session)))
+        running-states (zipmap nodes (repeat :running))
+        absent-states (zipmap nodes (repeat :absent))
+        states (atom running-states)
+        targets (atom ["n2"])
+        history (atom [])
+        database (reify
+                   jepsen-db/Process
+                   (kill! [_ _test node]
+                     (swap! states assoc node :absent)
+                     :killed)
+                   (start! [_ _test node]
+                     (swap! states assoc node :running)
+                     :start-confirmed)
+
+                   jepsen-db/Pause
+                   (pause! [_ _test node]
+                     (swap! states assoc node :paused)
+                     :paused)
+                   (resume! [_ _test node]
+                     (if (= :absent (get @states node))
+                       :target-absent
+                       (do
+                         (swap! states assoc node :running)
+                         :resumed))))
+        failure-state (harness/failure-state)
+        package (openraft-nemesis/compose-packages
+                 failure-state
+                 [(process/process-package database)
+                  (process/pause-package database)])
+        subject (nemesis/setup! (:nemesis package) test)
+        invoke! (fn [operation]
+                  (let [time (gen/secs->nanos (count @history))
+                        invocation (assoc operation :time time :process :nemesis)
+                        completion (nemesis/invoke! subject test invocation)]
+                    (swap! history conj invocation completion)
+                    completion))]
+    (with-redefs [c/exec (fn [& _] (name (get @states c/*host*)))
+                  cluster/membership-status
+                  (fn [_test]
+                    (let [running (filter #(= :running (get @states %)) nodes)]
+                      {:leader "n1" :metrics (zipmap running (repeat {}))}))
+                  cluster/voter-configs (fn [_test _status] [(set nodes)])
+                  cluster/await-ready!
+                  (fn [_test]
+                    (when-not (= running-states @states)
+                      (throw (ex-info "Processes have not recovered" {:states @states})))
+                    {:leader "n1"})
+                  random/nonempty-subset (fn [_nodes] @targets)]
+      (testing "a minority pause is followed by a kill of every process"
+        (invoke! {:type :info :f :pause-process :value :random})
+        (let [expected (assoc running-states "n2" :paused)]
+          (is (= expected @states)))
+        (reset! targets nodes)
+        (invoke! {:type :info :f :kill-process :value :random})
+        (is (= absent-states @states)))
+      (testing "final cleanup restores both processes and checker evidence"
+        (doseq [operation (:final-generator package)]
+          (invoke! operation))
+        (is (= running-states @states))
+        (let [result (checker/check (:checker package) test @history {})
+              valid? (:valid? result)
+              pause-verdict (select-keys (:pause result) [:valid? :cluster-state])
+              process-verdict (select-keys (:process result) [:valid? :cluster-state])]
+          (is (= true valid?))
+          (is (= {:valid? true :cluster-state :intact} pause-verdict))
+          (is (= {:valid? true :cluster-state :intact} process-verdict)))))))
 
 (deftest reports-composed-fault-class-coverage-without-requiring-it
   (let [failure-state (harness/failure-state)

@@ -2,12 +2,14 @@
   (:require [clojure.set :as set]
             [clojure.tools.logging :refer [info]]
             [jepsen [checker :as checker]
+             [db :as db]
              [generator :as gen]
              [nemesis :as nemesis]
              [random :as random]]
             [jepsen.nemesis.combined :as combined]
             [jepsen.openraft.cluster :as cluster]
             [jepsen.openraft.checker :as openraft-checker]
+            [jepsen.openraft.db :as openraft-db]
             [jepsen.openraft.interruption :as interruption]
             [jepsen.openraft.nemesis.outcome :as outcome]
             [jepsen.openraft.quorum :as quorum]
@@ -73,7 +75,7 @@
   #{:killed :target-absent :target-already-exited})
 
 (def ^:private start-results
-  #{:already-running :start-confirmed})
+  #{:already-running :already-paused :start-confirmed})
 
 (def ^:private pause-results
   #{:paused :target-absent :target-already-exited})
@@ -133,13 +135,19 @@
        (outcome/skipped :target-already-exited details))]))
 
 (defn- stop-outcome [disruption completion]
-  (control-outcome disruption
-                   completion
-                   (:nodes disruption)
-                   stop-results
-                   :kill
-                   :stop-results
-                   :killed))
+  (let [[details value] (control-outcome disruption
+                                         completion
+                                         (:nodes disruption)
+                                         stop-results
+                                         :kill
+                                         :stop-results
+                                         :killed)
+        results (:stop-results details)
+        restart-nodes (filterv #(not= :target-absent (get results %))
+                               (:nodes details))
+        active (when (seq restart-nodes)
+                 (assoc details :restart-nodes restart-nodes))]
+    [active value]))
 
 (defn- pause-outcome [disruption completion]
   (control-outcome disruption
@@ -238,8 +246,9 @@
       (start-disruption! delegate killed :process test op)
 
       :restart-process
-      (if-let [{:keys [nodes] :as disruption} @killed]
-        (let [_ (info "Restarting OpenRaft processes" {:nodes nodes})
+      (if-let [disruption @killed]
+        (let [nodes (or (:restart-nodes disruption) (:nodes disruption))
+              _ (info "Restarting OpenRaft processes" {:nodes nodes})
               completion
               (invoke-delegate! delegate
                                 test
@@ -264,8 +273,13 @@
   (fs [_]
     #{:kill-process :restart-process}))
 
-(defn process-nemesis [db]
-  (ProcessNemesis. (combined/db-nemesis db) (atom nil)))
+(defn process-nemesis [database]
+  (let [recovery-db (reify db/Kill
+                      (start! [_ test node]
+                        (openraft-db/recover-process! database test node))
+                      (kill! [_ test node]
+                        (db/kill! database test node)))]
+    (ProcessNemesis. (combined/db-nemesis recovery-db) (atom nil))))
 
 (defrecord PauseNemesis [delegate paused]
   nemesis/Nemesis

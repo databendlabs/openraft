@@ -4,8 +4,11 @@
             [jepsen.control.util :as cu]
             [jepsen.core :as jepsen]
             [jepsen.db :as db]
+            [jepsen.nemesis :as nemesis]
             [jepsen.openraft.cluster :as cluster]
-            [jepsen.openraft.db :as openraft-db]))
+            [jepsen.openraft.db :as openraft-db]
+            [jepsen.openraft.nemesis.process :as process]
+            [jepsen.random :as random]))
 
 (def test-config
   {:api-port 21001
@@ -26,6 +29,89 @@
   (let [index (.indexOf command argument)]
     (when-not (neg? index)
       (nth command (inc index)))))
+
+(deftest process-recovery-preserves-pause-after-node-recreation
+  (doseq [initial-state [:absent :running]]
+    (testing (str "n1 was " initial-state " before the kill")
+      (let [nodes ["n1" "n2" "n3"]
+            test (assoc test-config
+                        :nodes nodes
+                        :sessions (zipmap nodes (repeat :unused-session)))
+            states (atom {"n1" initial-state
+                          "n2" :running
+                          "n3" :running})
+            selected (atom ["n3" "n1"])
+            starts (atom [])
+            database (openraft-db/db {})
+            process-nemesis (process/process-nemesis database)
+            pause-nemesis (process/pause-nemesis database)]
+        (with-redefs [c/exec
+                      (fn [& command]
+                        (let [node c/*host*]
+                          (case (command-kind command)
+                            :probe (name (get @states node))
+                            :kill (do
+                                    (swap! states assoc node :absent)
+                                    "")
+                            :pause (do
+                                     (swap! states assoc node :paused)
+                                     "")
+                            :resume (do
+                                      (swap! states assoc node :running)
+                                      "")
+                            :start (do
+                                     (swap! starts conj node)
+                                     (swap! states assoc node :running)
+                                     "")
+                            "")))
+                      cu/await-tcp-port (fn [& _])
+                      cluster/membership-status
+                      (constantly {:leader "n2"
+                                   :metrics (zipmap nodes (repeat {}))})
+                      cluster/voter-configs (fn [_test _status] [(set nodes)])
+                      random/nonempty-subset (fn [_nodes] @selected)]
+          (testing "kill records each target's actual state"
+            (let [op {:type :info :f :kill-process :value :random}
+                  result (nemesis/invoke! process-nemesis test op)
+                  stop-results (get-in result [:value :stop-results])
+                  n1-result (if (= :absent initial-state) :target-absent :killed)]
+              (is (= {"n1" n1-result "n3" :killed} stop-results))))
+          (testing "membership recreates n1 before another fault pauses it"
+            (openraft-db/start-empty-node! database test "n1")
+            (reset! selected ["n1" "n2"])
+            (let [op {:type :info :f :pause-process :value :random}
+                  result (nemesis/invoke! pause-nemesis test op)
+                  pause-results (get-in result [:value :pause-results])]
+              (is (= {"n1" :paused "n2" :paused} pause-results))))
+          (testing "restart preserves the pause and restores the absent n3"
+            (reset! starts [])
+            (let [result (nemesis/invoke! process-nemesis test
+                                          {:type :info :f :restart-process})
+                  start-results (get-in result [:value :start-results])
+                  expected (cond-> {"n3" :start-confirmed}
+                             (= :running initial-state)
+                             (assoc "n1" :already-paused))]
+              (is (= expected start-results))
+              (is (= ["n3"] @starts))
+              (is (= {"n1" :paused "n2" :paused "n3" :running} @states))))
+          (testing "pause recovery completes restoration"
+            (let [result (nemesis/invoke! pause-nemesis test
+                                          {:type :info :f :resume-process})
+                  status (get-in result [:value :status])]
+              (is (= :installed status))
+              (is (= {"n1" :running "n2" :running "n3" :running} @states)))))))))
+
+(deftest process-recovery-reports-existing-processes-without-changing-them
+  (let [database (openraft-db/db {})]
+    (doseq [[state expected] [["running" :already-running]
+                              ["paused" :already-paused]]]
+      (let [commands (atom [])
+            result (with-redefs [c/exec (fn [& command]
+                                          (swap! commands conj (command-kind command))
+                                          state)]
+                     (openraft-db/recover-process! database test-config "n1"))]
+        (is (= expected result))
+        (is (= [:probe] @commands))))))
 
 (deftest starts-and-confirms-the-test-app
   (doseq [options [{} {:two-leaf-partition true} {:liveness :leader-removal-recovery}]]
@@ -410,6 +496,16 @@
                     ""))}
          {:label :start-command
           :operation #(db/start! database test-config "n1")
+          :exec (fn [error command]
+                  (case (command-kind command)
+                    :probe "absent"
+                    :start (throw error)
+                    ""))}
+         {:label :recovery-probe
+          :operation #(openraft-db/recover-process! database test-config "n1")
+          :exec (fn [error _command] (throw error))}
+         {:label :recovery-start-command
+          :operation #(openraft-db/recover-process! database test-config "n1")
           :exec (fn [error command]
                   (case (command-kind command)
                     :probe "absent"
