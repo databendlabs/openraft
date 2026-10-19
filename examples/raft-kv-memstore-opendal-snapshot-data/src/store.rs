@@ -108,7 +108,10 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
 
         {
             let mut current_snapshot = self.current_snapshot.lock().unwrap();
-            *current_snapshot = Some(snapshot);
+            // A newer snapshot may have been installed while this upload was in flight.
+            if current_snapshot.as_ref().is_none_or(|current| current.meta.last_log_id < meta.last_log_id) {
+                *current_snapshot = Some(snapshot);
+            }
         }
 
         Ok(Snapshot {
