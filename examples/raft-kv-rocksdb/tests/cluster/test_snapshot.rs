@@ -35,8 +35,13 @@ async fn test_snapshot_replication_inner() -> anyhow::Result<()> {
         ..example_config()
     };
 
-    util::spawn_nodes_with_config(PORT_BASE, 2, config);
-    TypeConfig::sleep(Duration::from_millis(1_000)).await;
+    tracing::info!(
+        port_base = PORT_BASE,
+        "wait for both nodes to serve before initializing the cluster"
+    );
+    {
+        util::spawn_nodes_with_config(PORT_BASE, 2, config).await?;
+    }
 
     let leader = util::init_leader(PORT_BASE).await?;
 

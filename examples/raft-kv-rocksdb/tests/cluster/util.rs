@@ -14,6 +14,9 @@ use raft_kv_rocksdb::start_example_raft_node_with_config;
 use tempfile::TempDir;
 use tracing_subscriber::EnvFilter;
 
+use crate::node::POLL_INTERVAL;
+use crate::node::TIMEOUT;
+
 /// Install a panic hook and tracing subscriber, exactly once per test process.
 ///
 /// `cargo test` runs every `#[test]` in one process on parallel threads, and the
@@ -67,8 +70,8 @@ pub fn raft_addr(base: u16, node_id: u64) -> String {
 }
 
 /// Start `count` example raft nodes running `config`, each on its own thread, runtime, and
-/// temporary data directory.
-pub fn spawn_nodes_with_config(base: u16, count: u64, config: Config) {
+/// temporary data directory, and wait for their API and Raft listeners.
+pub async fn spawn_nodes_with_config(base: u16, count: u64, config: Config) -> anyhow::Result<()> {
     init_observability();
 
     for id in 1..=count {
@@ -85,6 +88,14 @@ pub fn spawn_nodes_with_config(base: u16, count: u64, config: Config) {
             ));
         });
     }
+
+    for id in 1..=count {
+        let api_addr = api_addr(base, id);
+        let raft_addr = raft_addr(base, id);
+        wait_listening(&api_addr).await?;
+        wait_listening(&raft_addr).await?;
+    }
+    Ok(())
 }
 
 /// Initialize node 1 as a single-node cluster and return a client once it leads.
@@ -101,4 +112,23 @@ pub async fn init_leader(base: u16) -> anyhow::Result<Client<TypeConfig>> {
     }
 
     Ok(leader)
+}
+
+/// Wait for a TCP listener with a finite deadline, retrying only refused connections.
+pub async fn wait_listening(addr: &str) -> anyhow::Result<()> {
+    let wait = async {
+        loop {
+            let connected = tokio::net::TcpStream::connect(addr).await;
+            match connected {
+                Ok(_) => return Ok(()),
+                Err(error) if error.kind() == std::io::ErrorKind::ConnectionRefused => {
+                    tokio::time::sleep(POLL_INTERVAL).await;
+                }
+                Err(error) => return Err(error.into()),
+            }
+        }
+    };
+    let result: anyhow::Result<()> = tokio::time::timeout(TIMEOUT, wait).await?;
+    result?;
+    Ok(())
 }
