@@ -19,6 +19,7 @@
 
 (def default-api-port 21001)
 (def default-raft-port 22001)
+(def request-timeout-seconds 5)
 
 (def ^:private max-u64 18446744073709551615N)
 (def ^:private response-body-preview-limit 1024)
@@ -59,7 +60,7 @@
 
 (defn- request-builder [endpoint path]
   (doto (HttpRequest/newBuilder (URI/create (node-url endpoint path)))
-    (.timeout (Duration/ofSeconds 5))))
+    (.timeout (Duration/ofSeconds request-timeout-seconds))))
 
 (defn- response-evidence [response]
   (let [body (:body response)]

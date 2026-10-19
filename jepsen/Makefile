@@ -18,6 +18,10 @@ ifneq ($(SEED),)
 override ARGS += --seed $(SEED)
 endif
 
+ifneq ($(TIME_LIMIT),)
+override ARGS += --time-limit $(TIME_LIMIT)
+endif
+
 ifneq ($(SNAPSHOT_THRESHOLD),)
 override ARGS += --snapshot-threshold $(SNAPSHOT_THRESHOLD)
 endif

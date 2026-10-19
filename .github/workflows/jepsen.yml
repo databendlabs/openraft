@@ -79,6 +79,7 @@ jobs:
           - name: pause
             target: safety
             nemesis: pause
+            time_limit: 180
           - name: process
             target: safety
             nemesis: process
@@ -108,7 +109,7 @@ jobs:
           make -C jepsen build
           make -C jepsen up
           docker compose -f jepsen/docker/docker-compose.yml exec control lein test
-          make -C jepsen ${{ matrix.target }} NEMESIS=${{ matrix.nemesis }} PACKET_MODE=${{ matrix.packet_mode }}
+          make -C jepsen ${{ matrix.target }} NEMESIS=${{ matrix.nemesis }} PACKET_MODE=${{ matrix.packet_mode }} TIME_LIMIT=${{ matrix.time_limit }}
 
       - name: Debug | Docker logs
         if: failure()
