@@ -144,9 +144,10 @@ fn active_database_and_snapshot_are_peer_generations() {
     TypeConfig::run(async {
         let (base_dir, mut state_machine) = new_state_machine();
         let snapshot = build_snapshot(&mut state_machine).await;
+        let base_path = fs::canonicalize(base_dir.path()).unwrap();
 
-        assert_eq!(base_dir.path(), active_path(&state_machine).parent().unwrap());
-        assert_eq!(base_dir.path(), snapshot.snapshot.db_path().parent().unwrap());
+        assert_eq!(base_path, active_path(&state_machine).parent().unwrap());
+        assert_eq!(base_path, snapshot.snapshot.db_path().parent().unwrap());
         assert_ne!(active_path(&state_machine), snapshot.snapshot.db_path());
     });
 }
@@ -255,6 +256,33 @@ fn checkpoint_transfer_installs_full_state() {
         assert_eq!(target.base_dir.as_path(), received_path.parent().unwrap());
         assert!(received_path.exists());
         assert!(transport.is_empty());
+    });
+}
+
+#[test]
+fn relative_path_preserves_active_database_for_snapshot() {
+    TypeConfig::run(async {
+        let working_dir = std::env::current_dir().unwrap();
+        let temp_dir = TempDir::new_in(&working_dir).unwrap();
+        let relative_dir = temp_dir.path().strip_prefix(&working_dir).unwrap().join("sm");
+        assert!(relative_dir.is_relative());
+
+        tracing::info!(path = %relative_dir.display(), "Open a relative path without changing the process working directory");
+        let mut state_machine = {
+            let state_machine = RocksStateMachine::<TypeConfig>::open(&relative_dir).unwrap();
+            let current = fs::read_to_string(relative_dir.join(CURRENT_FILE)).unwrap();
+            assert!(
+                relative_dir.join(current.trim()).is_dir(),
+                "startup must keep the active generation"
+            );
+            state_machine
+        };
+
+        tracing::info!("Persist a value and build a checkpoint from the active generation");
+        {
+            apply_set(&mut state_machine, 1, "key", "value").await;
+            build_snapshot(&mut state_machine).await;
+        }
     });
 }
 

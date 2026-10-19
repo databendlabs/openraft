@@ -4,6 +4,7 @@ pub(crate) mod active_db;
 
 use std::collections::BTreeMap;
 use std::fmt::Debug;
+use std::fs;
 use std::io;
 use std::path::Path;
 use std::path::PathBuf;
@@ -63,7 +64,10 @@ where C: RaftTypeConfig
     /// The log store lives in the `log-rocks` crate and is opened separately.
     pub fn open<P>(base_dir: P) -> Result<Self, io::Error>
     where P: AsRef<Path> {
-        let base_dir = base_dir.as_ref().to_path_buf();
+        fs::create_dir_all(base_dir.as_ref())?;
+        // Generation directories created by tempfile are absolute. Use the same path form
+        // during startup cleanup so a relative base never makes the active generation look stale.
+        let base_dir = fs::canonicalize(base_dir.as_ref())?;
         let active = ActiveDb::open_or_create(&base_dir)?;
 
         Ok(Self {
