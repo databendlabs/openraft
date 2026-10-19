@@ -219,9 +219,13 @@
                :fault-classes-executed executed)))))
 
 (defn- cleanup-order [packages]
-  (let [membership? #(= :membership (:name %))]
-    (vec (concat (remove membership? packages)
-                 (filter membership? packages)))))
+  (let [priority {:partition 0
+                  :pause 1
+                  :process 2
+                  :packet 3
+                  :clock 4
+                  :membership 5}]
+    (vec (sort-by #(get priority (:name %) 0) packages))))
 
 (defn- schedule-package [package]
   (let [interval (:interval package)]

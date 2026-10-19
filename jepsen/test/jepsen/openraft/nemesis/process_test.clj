@@ -1,6 +1,7 @@
 (ns jepsen.openraft.nemesis.process-test
   (:require [clojure.test :refer [deftest is testing]]
             [jepsen [checker :as checker]
+             [control :as c]
              [db :as db]
              [generator :as gen]
              [nemesis :as nemesis]
@@ -498,6 +499,7 @@
                                 :metrics (zipmap voters (repeat {}))})
                               cluster/voter-configs
                               (fn [_test _status] [(set voters)])
+                              c/exec (constantly "absent")
                               random/nonempty-subset
                               (constantly ["n2" "n3"])
                               random/shuffle prefer-planned]

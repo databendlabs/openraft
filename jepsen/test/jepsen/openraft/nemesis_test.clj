@@ -79,15 +79,31 @@
                   (process/process-package database)
                   (process/pause-package database)
                   (packet/packet-package database nil)
-                  (clock/clock-package)])]
-    (is (= [:stop-partition
-            :restart-process
-            :resume-process
-            :stop-packet
-            :reset-clock
-            :restore-membership
-            :await-recovery]
-           (mapv :f (:final-generator package))))))
+                  (clock/clock-package)])
+        expected [:stop-partition
+                  :resume-process
+                  :restart-process
+                  :stop-packet
+                  :reset-clock
+                  :restore-membership
+                  :await-recovery]
+        actual (mapv :f (:final-generator package))]
+    (is (= expected actual))))
+
+(deftest cleanup-resumes-before-restarting-regardless-of-package-order
+  (let [database (db/db {})
+        packages {:process (process/process-package database)
+                  :pause (process/pause-package database)
+                  :membership (membership/membership-package database test-config)}]
+    (doseq [names [[:process :pause :membership]
+                   [:membership :pause :process]
+                   [:pause :membership :process]]]
+      (let [selected (mapv packages names)
+            failure-state (harness/failure-state)
+            package (openraft-nemesis/compose-packages failure-state selected)
+            actual (mapv :f (:final-generator package))]
+        (is (= [:resume-process :restart-process :restore-membership :await-recovery]
+               actual))))))
 
 (deftest reports-composed-fault-class-coverage-without-requiring-it
   (let [failure-state (harness/failure-state)
