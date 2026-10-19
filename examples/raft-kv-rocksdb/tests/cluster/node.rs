@@ -251,28 +251,8 @@ impl Node {
 
     async fn wait_ready(&self) -> anyhow::Result<()> {
         for addr in [&self.settings.api_addr, &self.settings.raft_addr] {
-            self.wait_listening(addr).await?;
+            util::wait_listening(addr).await?;
         }
-        Ok(())
-    }
-
-    async fn wait_listening(&self, addr: &str) -> anyhow::Result<()> {
-        let wait = async {
-            loop {
-                match tokio::net::TcpStream::connect(addr).await {
-                    Ok(connection) => {
-                        drop(connection);
-                        return Ok(());
-                    }
-                    Err(error) if error.kind() == std::io::ErrorKind::ConnectionRefused => {
-                        tokio::time::sleep(POLL_INTERVAL).await;
-                    }
-                    Err(error) => return Err(error.into()),
-                }
-            }
-        };
-        let result: anyhow::Result<()> = tokio::time::timeout(TIMEOUT, wait).await?;
-        result?;
         Ok(())
     }
 }
