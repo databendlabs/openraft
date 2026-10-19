@@ -6,6 +6,7 @@
             [jepsen.checker :as checker]
             [jepsen.client :as client]
             [jepsen.generator :as gen]
+            [jepsen.generator.interpreter :as interpreter]
             [jepsen.generator.test :as gen-test]
             [jepsen.history :as history]
             [jepsen.independent :as independent]
@@ -90,6 +91,28 @@
           (is (not (contains? result :unexpected-sut-response?)))
           (is (= :request-timeout
                  (-> result :exception-data :kind))))))))
+
+(deftest client-keeps-failover-route-across-indeterminate-writes
+  (let [test {:nodes ["n1" "n2" "n3" "n4" "n5"]
+              :client (client/validate
+                       (workload/->KVClient nil nil nil (atom {})))}
+        worker (interpreter/->ClientWorker "n1" nil nil #{})
+        requests (atom [])]
+    (with-redefs [http/write!
+                  (fn [endpoint _key value]
+                    (swap! requests conj endpoint)
+                    (if (= "n3:21001" endpoint)
+                      {:value value :version 1}
+                      (throw (ex-info "paused node" {:kind :request-timeout}))))]
+      (let [results (mapv (fn [process]
+                            (interpreter/invoke!
+                             worker test
+                             {:type :invoke :process process :f :write
+                              :value (keyed (str "value-" process))}))
+                          [0 3 6])]
+        (is (= [:info :info :ok] (mapv :type results)))
+        (is (= ["n1:21001" "n2:21001" "n3:21001"] @requests))))
+    (interpreter/close! worker test)))
 
 (deftest classifies-cas-outcomes
   (let [op {:type :invoke

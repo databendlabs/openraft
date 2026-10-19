@@ -70,6 +70,28 @@
                 (:time next-fault)
                 (+ (:time retry) (gen/secs->nanos 15))))))))
 
+(deftest pause-window-allows-client-timeouts-before-resume
+  (with-redefs [random/double (fn
+                                (^double [^double _upper] 0.0)
+                                (^double [^double lower ^double _upper] lower))]
+    (let [package (#'openraft-nemesis/schedule-package
+                   (process/pause-package nil))
+          history (gen-test/simulate
+                   (gen/nemesis (gen/limit 2 (:generator package)))
+                   (fn [_ operation]
+                     (cond-> (assoc operation :type :ok)
+                       (= :pause-process (:f operation))
+                       (update :time + (gen/secs->nanos 1)))))
+          [paused resumed] (filter #(and (= :nemesis (:process %))
+                                         (= :ok (:type %)))
+                                   history)]
+      (is (= [:pause-process :resume-process]
+             (mapv :f [paused resumed])))
+      ;; With a surviving majority, two of five endpoints can be paused.
+      ;; Allow both 5-second HTTP timeouts after pause installation.
+      (is (> (- (:time resumed) (:time paused))
+             (gen/secs->nanos 10))))))
+
 (deftest cleans-up-all-faults-before-confirming-recovery
   (let [failure-state (harness/failure-state)
         database (db/db {})

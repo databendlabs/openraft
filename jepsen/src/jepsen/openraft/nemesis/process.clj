@@ -16,6 +16,9 @@
             [jepsen.openraft.worker :as worker]))
 
 (def downtime-seconds 10)
+;; Scheduling jitter can halve the interval. Leave time for two paused
+;; endpoints' 5-second HTTP timeouts, pause installation and a successful retry.
+(def ^:private pause-interval-seconds 30)
 (def required-process-modes
   #{:random})
 (def required-pause-modes
@@ -778,7 +781,7 @@
 
 (defn pause-package [db]
   {:name :pause
-   :interval downtime-seconds
+   :interval pause-interval-seconds
    :nemesis (pause-nemesis db)
    :generator (pause-generator)
    :final-generator {:type :info

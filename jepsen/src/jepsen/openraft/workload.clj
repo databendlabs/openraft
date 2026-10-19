@@ -281,7 +281,13 @@
 
   (teardown! [_ _test])
 
-  (close! [_ _test]))
+  (close! [_ _test])
+
+  client/Reusable
+  (reusable? [_ _test]
+    ;; HTTP timeouts leave the client usable. Keep the failover route when
+    ;; Jepsen starts a new logical process after an indeterminate mutation.
+    true))
 
 (defn workload [opts]
   (let [latest-values (atom {})
