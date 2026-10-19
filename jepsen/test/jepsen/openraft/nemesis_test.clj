@@ -8,6 +8,7 @@
             [jepsen.nemesis :as nemesis]
             [jepsen.random :as random]
             [jepsen.openraft [await :as await]
+             [client :as http]
              [cluster :as cluster]
              [db :as db]
              [harness :as harness]
@@ -88,9 +89,9 @@
       (is (= [:pause-process :resume-process]
              (mapv :f [paused resumed])))
       ;; With a surviving majority, two of five endpoints can be paused.
-      ;; Allow both 5-second HTTP timeouts after pause installation.
+      ;; Allow both HTTP timeouts after pause installation.
       (is (> (- (:time resumed) (:time paused))
-             (gen/secs->nanos 10))))))
+             (gen/secs->nanos (* 2 http/request-timeout-seconds)))))))
 
 (deftest cleans-up-all-faults-before-confirming-recovery
   (let [failure-state (harness/failure-state)
