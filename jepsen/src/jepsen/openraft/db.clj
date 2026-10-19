@@ -256,6 +256,16 @@
       (c/su
        (resume-process!)))))
 
+(defn recover-process!
+  "Restores a killed process while preserving a pause installed by another fault."
+  [database test node]
+  (c/su
+   (let [state (probe-process!)]
+     (case state
+       :running :already-running
+       :paused :already-paused
+       (db/start! database test node)))))
+
 (defn- start-empty-node-on-current-node! [database test node]
   (info node "starting an empty OpenRaft node")
   (db/kill! database test node)
