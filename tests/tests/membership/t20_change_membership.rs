@@ -6,14 +6,31 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::EntryPayload;
 use openraft::LogIdOptionExt;
+use openraft::Membership;
+use openraft::Precondition;
+use openraft::RPCTypes;
 use openraft::RaftLogReader;
 use openraft::ServerState;
+use openraft::async_runtime::WatchReceiver;
 use openraft::errors::ChangeMembershipError;
 use openraft::errors::ClientWriteError;
+use openraft::errors::ForwardReason;
+use openraft::errors::ForwardToLeader;
+use openraft::errors::NetworkError;
+use openraft::errors::PreconditionFailed;
+use openraft::errors::RPCError;
+use openraft::errors::RaftError;
+use openraft::errors::UncommittedLeaderLog;
 use openraft::raft::ChangeMembershipRequest;
+use openraft::type_config::TypeConfigExt;
+use openraft::type_config::alias::LeaderIdOf;
+use openraft::type_config::alias::LogIdOf;
+use openraft::vote::RaftLeaderIdExt;
 use openraft_memstore::MemNodeId;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::rpc_request::RpcRequest;
 use crate::fixtures::ut_harness;
 
 /// When a change-membership log is committed, the `RaftState.membership_state` should be updated.
@@ -261,6 +278,178 @@ async fn change_with_turn_removed_voter_to_learner() -> anyhow::Result<()> {
                 )
                 .await?;
         }
+    }
+
+    Ok(())
+}
+
+/// The leader must commit a log of its own term before it changes membership, even to add a
+/// learner.
+///
+/// Without this barrier, two leaders of different terms could each change membership from the
+/// same committed parent, for example leave the joint `[{0,1,2}, {3,4,5}]` for `{0,1,2}` and for
+/// `{3,4,5}`, and the two results share no node.
+///
+/// A valid leader lease does not imply the barrier, so this test keeps the two apart: the
+/// pre-hook drops only the AppendEntries that carry entries, so the new leader's blank log never
+/// reaches a quorum, while the entry-less heartbeats still get acked and keep its lease valid.
+/// Heartbeats and ticking therefore stay on here.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn uncommitted_leader_log_blocks_the_change() -> anyhow::Result<()> {
+    let config = Arc::new(
+        Config {
+            enable_elect: false,
+            heartbeat_interval: 50,
+            election_timeout_min: 500,
+            election_timeout_max: 501,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+    let mut router = RaftRouter::new(config.clone());
+
+    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3}).await?;
+    let old_leader = router.get_raft_handle(&0)?;
+    let new_leader = router.get_raft_handle(&1)?;
+
+    tracing::info!(log_index, "--- drop every AppendEntries that carries entries");
+    {
+        router
+            .set_rpc_pre_hook(RPCTypes::AppendEntries, |_router, req, from, to| {
+                let mut carries_entries = false;
+                if let RpcRequest::AppendEntries(append) = &req {
+                    carries_entries = !append.entries.is_empty();
+                }
+
+                let res = if carries_entries {
+                    let msg = format!("blocked: {}->{} append-entries with entries", from, to);
+                    Err(RPCError::Network(NetworkError::<TypeConfig>::from_string(msg)))
+                } else {
+                    Ok(())
+                };
+                Box::pin(futures::future::ready(res))
+            })
+            .await;
+    }
+
+    tracing::info!(
+        log_index,
+        "--- transfer leadership to node 1, whose blank log cannot commit"
+    );
+    {
+        old_leader.trigger().transfer_leader(1).await?;
+        new_leader
+            .wait(timeout())
+            .metrics(
+                |m| {
+                    let is_leader = m.state == ServerState::Leader;
+                    let commit_tracking_reset = m.cluster_committed.is_none();
+                    let quorum_acked = m.last_quorum_acked.is_some();
+
+                    is_leader && commit_tracking_reset && quorum_acked
+                },
+                "node 1 leads with reset commit tracking and a quorum keeps acking it",
+            )
+            .await?;
+    }
+
+    let blocked_metrics = new_leader.metrics().borrow_watched().clone();
+    let noop_log_id = {
+        let leader_id = LeaderIdOf::<TypeConfig>::new_committed(blocked_metrics.current_term, 1);
+        LogIdOf::<TypeConfig>::new(leader_id, blocked_metrics.last_log_index.unwrap())
+    };
+
+    tracing::info!(
+        log_index,
+        "--- change_membership() and add_learner() are blocked by the uncommitted blank log"
+    );
+    {
+        let uncommitted = UncommittedLeaderLog {
+            committed: None,
+            leader_log_id: noop_log_id,
+        };
+        let want = ClientWriteError::ChangeMembershipError(ChangeMembershipError::UncommittedLeaderLog(uncommitted));
+
+        let fu = new_leader.change_membership([0, 1, 2, 3], false);
+        let res = TypeConfig::timeout(Duration::from_secs(1), fu).await;
+        let err = res.expect("the uncommitted blank log rejects change_membership() at once").unwrap_err();
+        assert_eq!(RaftError::APIError(want.clone()), err);
+
+        let fu = new_leader.add_learner(3, (), false);
+        let res = TypeConfig::timeout(Duration::from_secs(1), fu).await;
+        let err = res.expect("the uncommitted blank log rejects add_learner() at once").unwrap_err();
+        assert_eq!(RaftError::APIError(want), err);
+    }
+
+    tracing::info!(
+        log_index,
+        "--- a stale precondition is reported instead of the blank-log barrier"
+    );
+    {
+        // An initialized node always has an effective membership log id, so `None` never holds.
+        let stale = Precondition::LastMembershipLogId {
+            last_membership_log_id: None,
+        };
+        let err = new_leader.change_membership_if([0, 1, 2, 3], false, [stale]).await.unwrap_err();
+
+        let want = PreconditionFailed::LastMembershipLogIdMismatch {
+            expected: None,
+            actual: *blocked_metrics.membership_config.log_id(),
+        };
+        assert_eq!(RaftError::APIError(ClientWriteError::PreconditionFailed(want)), err);
+    }
+
+    tracing::info!(
+        log_index,
+        "--- an expired lease takes precedence over the blank-log barrier"
+    );
+    {
+        router.set_network_error(1, true);
+        let leader_lease = Duration::from_millis(config.election_timeout_max);
+        TypeConfig::sleep(leader_lease).await;
+
+        let forward = ForwardToLeader::empty().with_reason(ForwardReason::LeaseExpired);
+        let want = ClientWriteError::ForwardToLeader(forward);
+        let want = RaftError::APIError(want);
+
+        let res = new_leader.change_membership([0, 1, 2, 3], false).await;
+        let err = res.unwrap_err();
+        assert_eq!(want, err);
+
+        let res = new_leader.add_learner(3, (), false).await;
+        let err = res.unwrap_err();
+        assert_eq!(want, err);
+
+        let res = new_leader.change_membership_if([0, 1, 2, 3], false, []).await;
+        let err = res.unwrap_err();
+        assert_eq!(want, err);
+
+        let request = ChangeMembershipRequest::new([0, 1, 2, 3], false);
+        let res = new_leader.change_membership_with_payload(request).await;
+        let err = res.unwrap_err();
+        assert_eq!(want, err);
+    }
+
+    tracing::info!(log_index, "--- the blocked calls wrote nothing");
+    {
+        let metrics = new_leader.metrics().borrow_watched().clone();
+        assert_eq!(blocked_metrics.last_log_index, metrics.last_log_index);
+        assert_eq!(blocked_metrics.membership_config, metrics.membership_config);
+    }
+
+    tracing::info!(log_index, "--- the same change succeeds once the blank log commits");
+    {
+        router.set_network_error(1, false);
+        router.rpc_pre_hook(RPCTypes::AppendEntries, None).await;
+        new_leader.wait(timeout()).applied_index(Some(noop_log_id.index), "blank log committed").await?;
+
+        let resp = new_leader.change_membership([0, 1, 2, 3], false).await?;
+
+        // The joint entry comes first, then the uniform entry this response is for.
+        assert_eq!(noop_log_id.index + 2, resp.log_id.index);
+        let want = Membership::new_with_defaults(vec![btreeset! {0,1,2,3}], []);
+        assert_eq!(Some(want), resp.membership);
     }
 
     Ok(())

@@ -90,8 +90,10 @@
     (when (and (map? payload) (= 1 (count payload)))
       (ffirst payload))))
 
+;; `UncommittedLeaderLog` refuses a change the way `InProgress` does: it writes
+;; nothing, and the change can start once the new leader commits its blank log.
 (defn- membership-change-in-progress? [e]
-  (= :InProgress (membership-error-variant e)))
+  (contains? #{:InProgress :UncommittedLeaderLog} (membership-error-variant e)))
 
 (defn- unexpected-membership-error-outcome [e]
   (when-let [evidence (malformed-membership-error-evidence e)]

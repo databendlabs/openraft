@@ -93,12 +93,12 @@ For example, given the current committed membership `c1c2`:
 - `L1` proposes `c1c3`
 - `L2` proposes `c2c4`
 
-Although `c1c3` and `c2c4` have no common nodes, neither leader can commit their proposal:
+Although `c1c3` and `c2c4` have no common nodes, only one of them can be committed:
 
 1. Both `c1c3` and `c2c4` must satisfy **old-new-intersect** with the committed membership `c1c2`
-2. To commit, each leader must obtain a quorum in both their proposed membership and the old membership `c1c2`
-3. Any quorum in `c1c2` requires nodes from both `c1` and `c2`
-4. This shared quorum requirement prevents both leaders from simultaneously committing conflicting memberships
+2. Say `L2` has the greater term. By (3) **initial-log**, `L2` replicates a log of its term to a quorum in `c1c2` before it proposes `c2c4`
+3. Every quorum in `c1c3` holds a node of that quorum, which rejects replication from `L1` and refuses to vote for a candidate whose last log is `c1c3`
+4. So `c1c3` can never be committed, and no node holding it can become a leader
 5. Only one leader can successfully commit, preventing brain split
 
 
@@ -128,7 +128,8 @@ This algorithm relies on four constraints for proper functioning:
 
 -   (3) **initial-log**:
     A leader must replicate an initial empty log to a quorum in the last seen
-    membership to commit all previous logs.
+    membership to commit all previous logs, before it proposes a new
+    membership.
 
 OpenRaft implements constraint (2) **old-new-intersect** by ensuring that
 the new membership includes a config entry identical to one in the last
@@ -196,11 +197,12 @@ and names every rejected transition unsupported rather than unsafe.
 ### The current-term guard
 
 The two rules prove that a new membership intersects its parent. They say
-nothing about two children of the same parent. A direct append therefore also
-enforces the corrected Raft single-server rule: the leader must commit a log
-entry of its own term before it appends a configuration entry. Openraft records
-that entry as `Leader::noop_log_id` and the quorum-granted commit as
-[`RaftState::cluster_committed()`][], and rejects the append until:
+nothing about two children of the same parent. Every membership change, a
+direct append included, therefore enforces (3) **initial-log**, the corrected
+Raft single-server rule: the leader must commit a log entry of its own term
+before it appends a configuration entry. Openraft records that entry as
+`Leader::noop_log_id` and the quorum-granted commit as
+[`RaftState::cluster_committed()`][], and rejects the change until:
 
 ```text
 cluster_committed >= leader.noop_log_id
@@ -212,9 +214,11 @@ proposes `[{a,b,c,d,u}]` and a later leader proposes `[{a,b,c,d,v}]`. Both pass
 rule 1, yet the quorum `{a,b,u}` and the quorum `{c,d,v}` share no node.
 [`UncommittedLeaderLog`][] walks through the full run.
 
-[`Raft::change_membership()`][] does not need this guard. Its joint proposal
-shares an exact voter set with the parent, so two joint proposals from the same
-parent intersect through the two strict majorities of that shared set.
+[`Raft::change_membership()`][] needs the guard too. Each of its proposals
+shares an exact voter set with the parent, but two of its proposals from one
+parent may share none. From the committed `[{a,b,c}, {x,y,z}]`, one leader
+proposes `[{a,b,c}]` and a later leader proposes `[{x,y,z}]`, which share no
+node.
 
 
 ## Proof of correctness

@@ -479,13 +479,24 @@ where
         payloads: MembershipPayloads<C>,
         tx: ProgressResponder<C, ClientWriteResult<C>>,
     ) {
-        if let Err(e) = self.ensure_leader_handler() {
-            tx.on_complete(Err(ClientWriteError::ForwardToLeader(e)));
-            return;
-        }
+        let lh = match self.ensure_writable_leader_handler() {
+            Ok(lh) => lh,
+            Err(e) => {
+                tx.on_complete(Err(ClientWriteError::ForwardToLeader(e)));
+                return;
+            }
+        };
+
+        // Report the barrier after the preconditions, in the same order as `append_membership()`.
+        let leader_log_committed = Self::ensure_leader_log_committed(lh.state, lh.leader);
 
         if let Err(e) = self.ensure_preconditions_satisfied(preconditions) {
             tx.on_complete(Err(e.into()));
+            return;
+        }
+
+        if let Err(e) = leader_log_committed {
+            tx.on_complete(Err(ClientWriteError::ChangeMembershipError(e.into())));
             return;
         }
 
@@ -565,18 +576,18 @@ where
 
     /// Ensure the leader has committed a log entry proposed in its own term.
     ///
-    /// A direct membership append needs this barrier on top of a valid leader lease. Without it,
-    /// two configurations proposed in different terms from the same committed parent can both
-    /// become committed, even when their quorums do not intersect. See [`UncommittedLeaderLog`]
-    /// for a run that loses a committed membership this way.
+    /// Every membership change needs this barrier. Without it, two configurations proposed in
+    /// different terms from the same committed parent can both become committed, even when their
+    /// quorums do not intersect. See [`UncommittedLeaderLog`] for a run that loses a committed
+    /// membership this way.
     ///
     /// A valid lease does not imply the barrier. The lease reads the quorum acknowledgement clock,
     /// which the heartbeat worker advances even when a follower reports a log conflict, so the
     /// lease proves a quorum still sees this leader but not that a quorum stored the blank log.
     ///
-    /// [`Raft::change_membership()`] deliberately does not take this barrier: its two proposals
-    /// share an exact constituent voter set, so every pair of quorums intersects through the two
-    /// strict majorities of that set.
+    /// [`Raft::change_membership()`] needs the barrier too. Each of its proposals shares a voter
+    /// set with the parent, but two proposals from one parent may share none: from the committed
+    /// joint `[c0, c1]`, one leader may propose `[c0]` and a later leader `[c1]`.
     ///
     /// [`Raft::change_membership()`]: crate::raft::Raft::change_membership
     fn ensure_leader_log_committed(
@@ -909,9 +920,9 @@ where
             //
             // When adding new learners after initialization, we should not wait for the log to be applied.
             // But this introduces an issue, if the client send a change membership at once after
-            // initialization, it may receive a InProgress error:
-            // `"InProgress": { "committed": null, "membership_log_id": { "leader_id": { "term": 0,
-            //             "node_id": 0 }, "index": 0 } }`
+            // initialization, it may receive an UncommittedLeaderLog error:
+            // `"UncommittedLeaderLog": { "committed": null, "leader_log_id": { "leader_id": { "term": 1,
+            //             "node_id": 0 }, "index": 1 } }`
             // TODO: change-membership should check leadership or wait for leader to establish?
 
             // Wait for the generated IO to be flushed before respond.

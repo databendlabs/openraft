@@ -399,12 +399,12 @@
     (info "Initializing OpenRaft cluster on" leader)
     (client/init! leader-endpoint)
 
-    ;; OpenRaft rejects a membership change until the previous membership log
-    ;; entry is committed. `init!` only waits for the initial membership entry
-    ;; to be flushed, and `current_leader` is set as soon as the vote commits,
-    ;; which is still before that entry commits. Waiting for the leader alone
-    ;; therefore races with the first add-learner, which fails with
-    ;; `ChangeMembershipError::InProgress`.
+    ;; OpenRaft rejects a membership change until the leader commits its blank
+    ;; log, which also commits the initial membership entry. `init!` only waits
+    ;; for the initial membership entry to be flushed, and `current_leader` is
+    ;; set as soon as the vote commits, which is still before that entry
+    ;; commits. Waiting for the leader alone therefore races with the first
+    ;; add-learner, which fails with `ChangeMembershipError::UncommittedLeaderLog`.
     (await/until!
      :bootstrap-membership
      #(try

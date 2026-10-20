@@ -127,8 +127,8 @@ router.wait(&0, timeout()).applied_index(Some(1), "init").await?;
 `Raft::initialize()` returns once the membership entry at index 0 is flushed,
 not once it is committed. A node also reports `ServerState::Leader` before it
 commits its own blank log at index 1. A membership call that arrives in that
-window is rejected with `ChangeMembershipError::InProgress`, which surfaces as
-a test that fails only now and then on CI.
+window is rejected with `ChangeMembershipError::UncommittedLeaderLog`, which
+surfaces as a test that fails only now and then on CI.
 
 
 ## Track the expected log index

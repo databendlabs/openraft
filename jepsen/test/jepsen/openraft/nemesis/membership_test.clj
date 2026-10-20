@@ -671,6 +671,30 @@
         (is (= :change-membership (:stage value)))
         (is (false? @cleaned?))))))
 
+(deftest skips-a-membership-change-before-the-leader-commits-its-blank-log
+  (let [cleaned? (atom false)]
+    (with-redefs [cluster/membership-status
+                  (constantly (stable-status (set nodes)))
+                  random/shuffle reverse
+                  client/change-membership!
+                  (fn [& _]
+                    (throw (ex-info
+                            "leader blank log is not committed"
+                            {:kind :openraft-error
+                             :error {:ChangeMembershipError
+                                     {:UncommittedLeaderLog {}}}})))
+                  openraft-db/stop-and-wipe-node!
+                  (fn [& _]
+                    (reset! cleaned? true))]
+      (let [value (:value
+                   (nemesis/invoke! (membership-nemesis)
+                                    test-config
+                                    {:type :info :f :shrink}))]
+        (is (= :skipped (:status value)))
+        (is (= :membership-change-in-progress (:reason value)))
+        (is (= :change-membership (:stage value)))
+        (is (false? @cleaned?))))))
+
 (deftest advances-a-joint-membership-without-waiting
   (let [before #{"n1" "n2" "n3"}
         target (conj before "n4")
