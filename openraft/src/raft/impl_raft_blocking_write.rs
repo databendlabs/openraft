@@ -60,6 +60,9 @@ where
     /// If it loses leadership or crashed before committing the second **uniform** config log, the
     /// cluster is left in the **joint** config.
     ///
+    /// Until this leader commits a log entry of its own term, it fails with
+    /// [`UncommittedLeaderLog`] and writes no log.
+    ///
     /// # Examples
     ///
     /// ```ignore
@@ -73,6 +76,8 @@ where
     /// let new_voters = BTreeSet::from([3, 4, 5]);
     /// raft.change_membership(new_voters, false).await?;
     /// ```
+    ///
+    /// [`UncommittedLeaderLog`]: crate::errors::UncommittedLeaderLog
     #[tracing::instrument(level = "info", skip_all)]
     pub async fn change_membership(
         &self,
@@ -282,6 +287,9 @@ where
     ///
     /// If the node to add is already a voter or learner, it will still re-add it.
     ///
+    /// Until this leader commits a log entry of its own term, it fails with
+    /// [`UncommittedLeaderLog`] and writes no log.
+    ///
     /// A `node` is able to store the network address of a node. Thus, an application does not
     /// need another store for mapping node-id to ip-addr when implementing the RaftNetwork.
     ///
@@ -298,6 +306,8 @@ where
     /// let node = BasicNode { addr: "127.0.0.1:8084".to_string() };
     /// raft.add_learner(5, node, true).await?;
     /// ```
+    ///
+    /// [`UncommittedLeaderLog`]: crate::errors::UncommittedLeaderLog
     #[tracing::instrument(level = "debug", skip(self, id), fields(target=display(&id)))]
     pub async fn add_learner(
         &self,

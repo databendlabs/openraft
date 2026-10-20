@@ -19,6 +19,7 @@ use openraft::errors::RPCError;
 use openraft::errors::RaftError;
 use openraft::errors::UncommittedLeaderLog;
 use openraft::errors::UnsupportedMembershipTransition;
+use openraft::type_config::TypeConfigExt;
 use openraft::type_config::alias::LeaderIdOf;
 use openraft::type_config::alias::LogIdOf;
 use openraft::vote::RaftLeaderIdExt;
@@ -330,7 +331,9 @@ async fn uncommitted_leader_log_blocks_the_append() -> Result<()> {
 
     tracing::info!(log_index, "--- the append is blocked by the uncommitted blank log");
     {
-        let err = new_leader.append_membership(proposed.clone(), EntryPayload::Blank, []).await.unwrap_err();
+        let fu = new_leader.append_membership(proposed.clone(), EntryPayload::Blank, []);
+        let res = TypeConfig::timeout(Duration::from_secs(1), fu).await;
+        let err = res.expect("the uncommitted blank log rejects append_membership() at once").unwrap_err();
 
         let uncommitted = UncommittedLeaderLog {
             committed: None,

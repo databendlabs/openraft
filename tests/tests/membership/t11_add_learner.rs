@@ -223,7 +223,7 @@ async fn add_learner_when_previous_membership_not_committed() -> Result<()> {
 
     tracing::info!(log_index, "--- block replication to prevent committing any log");
     {
-        router.set_network_error(1, true);
+        router.set_append_entries_quota(Some(0));
 
         let node = router.get_raft_handle(&0)?;
         TypeConfig::spawn(async move {
@@ -232,7 +232,21 @@ async fn add_learner_when_previous_membership_not_committed() -> Result<()> {
             unreachable!("do not expect any res");
         });
 
-        TypeConfig::sleep(Duration::from_millis(500)).await;
+        let node = router.get_raft_handle(&0)?;
+        node.wait(timeout()).log_index(Some(log_index + 1), "joint membership appended").await?;
+    }
+
+    tracing::info!(
+        log_index,
+        "--- refresh the lease without committing the joint membership"
+    );
+    {
+        let node = router.get_raft_handle(&0)?;
+        let refresh_started = TypeConfig::now();
+        node.trigger().heartbeat().await?;
+        node.wait(timeout())
+            .leader_with_quorum_acked(Some(refresh_started), "leader lease refreshed")
+            .await?;
     }
 
     tracing::info!(log_index, "--- add new node node-1, in non blocking mode");
