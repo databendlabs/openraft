@@ -151,48 +151,57 @@ might be: `[{a, b, c}]`, or `[{x, y, z}]`.
 prove (2) **old-new-intersect** for it, and reaches the target through a joint
 config otherwise. [`Raft::append_membership()`][] writes the caller's exact
 membership as one log entry. It must still satisfy (2) **old-new-intersect**,
-and it accepts a transition only when one of the two rules below proves that
-constraint.
+and it accepts a transition only when the rule below proves that constraint.
 
-### Rule 1: two uniform memberships one voter apart
+### Two voter sets with intersecting majorities
 
-The old membership `m` and the new membership `m'` each have exactly one voter
-set, `V` and `V'`, and the **total symmetric difference** of those sets holds at
-most one node id:
+To find two disjoint majorities of voter sets `V` and `V'`, build each one to
+use as few shared node ids as possible: a majority of `V` first takes the node
+ids that `V'` lacks, and a majority of `V'` first takes the node ids that `V`
+lacks. Each then takes shared node ids only to reach its majority size. So two
+disjoint majorities exist exactly when the shared node ids are enough for both.
 
-`|(V \ V') ∪ (V' \ V)| ≤ 1`
+Adding or removing one voter always keeps the majorities intersecting. Take
+`V' = V ∪ {x}` with `|V| = n`. Any majority of `V` holds at least `⌊n/2⌋ + 1`
+nodes of `V`. Any majority of `V'` holds at least `⌊(n+1)/2⌋ + 1` nodes of
+`V'`, so setting `x` aside it holds at least `⌊(n+1)/2⌋` nodes of `V`. The two
+counts add up to at least `n + 1`, which is more than `|V| = n`, so the two
+majorities intersect. Removing one voter is the same statement with `V` and
+`V'` swapped.
 
-This proves **old-new-intersect**. Take `V' = V ∪ {x}` with `|V| = n`. Any
-`qᵢ ∈ m` holds at least `⌊n/2⌋ + 1` nodes of `V`. Any `qⱼ ∈ m'` holds at least
-`⌊(n+1)/2⌋ + 1` nodes of `V'`, so setting `x` aside it holds at least
-`⌊(n+1)/2⌋` nodes of `V`. The two counts add up to at least `n + 1`, which is
-more than `|V| = n`, so `qᵢ ∩ qⱼ ≠ ø`. Removing one voter is the same statement
-with `m` and `m'` swapped.
+Replacing one voter keeps the majorities intersecting exactly when the voter set
+has an even number `n` of nodes. A smallest majority of either set holds its one
+node id that the other set lacks, plus `⌊n/2⌋` of the `n - 1` shared node ids.
+Two such majorities fit in the shared node ids without overlap exactly when
+`2⌊n/2⌋ ≤ n - 1`, that is, when `n` is odd. From `{a,b,c}` to `{b,c,d}`, the
+majority `{a,b}` and the majority `{c,d}` share no node. From `{a,b,c,d}` to
+`{a,b,c,x}`, every majority of either set holds at least two of `{a,b,c}`, so a
+majority of one and a majority of the other always share a node.
 
-A difference of two node ids breaks the argument. From `[{a,b,c}]` to
-`[{b,c,d}]`, the quorum `{a,b}` of the old membership and the quorum `{c,d}` of
-the new one share no node.
+A uniform membership has one voter set, so between two uniform memberships this
+check decides (2) **old-new-intersect** exactly:
 
-| Transition | Symmetric difference | Result |
+| Transition | Disjoint majorities | Result |
 | --- | --- | --- |
-| `[{a,b,c}]` → `[{a,b,c}]` | `{}` | accept |
-| `[{a,b,c}]` → `[{a,b,c,x}]` | `{x}` | accept |
-| `[{a,b,c,x}]` → `[{a,b,c}]` | `{x}` | accept |
-| `[{a,b,c}]` → `[{b,c,d}]` | `{a, d}` | reject |
-| `[{a,b,c}]` → `[{a,b,c,x,y}]` | `{x, y}` | reject |
+| `[{a,b,c}]` → `[{a,b,c}]` | none | accept |
+| `[{a,b,c}]` → `[{a,b,c,x}]` | none | accept |
+| `[{a,b,c,x}]` → `[{a,b,c}]` | none | accept |
+| `[{a,b,c,d}]` → `[{a,b,c,x}]` | none | accept |
+| `[{a,b,c}]` → `[{b,c,d}]` | `{a,b}` and `{c,d}` | reject |
+| `[{a,b,c}]` → `[{a,b,c,x,y}]` | `{a,b}` and `{c,x,y}` | reject |
 
-### Rule 2: a pair of voter sets with intersecting majorities
+### The rule: a pair of voter sets with intersecting majorities
 
-When either membership has more than one voter set, the old membership must
-hold a voter set `V` and the new membership a voter set `V'`, such that every
-majority of `V` intersects every majority of `V'`. Every quorum of a membership
-holds a majority of each of its voter sets, so every `qᵢ ∈ m` and `qⱼ ∈ m'` then
-intersect. This is the condition the extended algorithm already uses.
+The old membership `m` must hold a voter set `V` and the new membership `m'` a
+voter set `V'`, such that every majority of `V` intersects every majority of
+`V'`. Every quorum of a membership holds a majority of each of its voter sets,
+so every `qᵢ ∈ m` and `qⱼ ∈ m'` then intersect. This is the condition the
+extended algorithm already uses.
 
 Two equal voter sets form such a pair, so the rule puts no maximum on the
 number of voter sets: `c1` → `c1c2c3c4` is accepted because `c1` appears in
-both. Two voter sets one node id apart form such a pair as well, by the proof of
-rule 1: `[{a,b,c}, {d,e,f}]` → `[{a,b,c,x}, {d,e,f,y}]` is accepted through
+both. Two voter sets one node id apart form such a pair as well, by the proof
+above: `[{a,b,c}, {d,e,f}]` → `[{a,b,c,x}, {d,e,f,y}]` is accepted through
 `{a,b,c}` and `{a,b,c,x}`.
 
 Shared members alone prove nothing. From `[{a,b,c}, {a,b,d}]` to `[{a,b,e}]`,
@@ -201,14 +210,14 @@ every voter set holds `a` and `b`, yet the majorities `{a,c}` of `{a,b,c}` and
 is rejected, and rightly so: the quorum `{a,c,d}` of the old membership and the
 quorum `{b,e}` of the new one share no node.
 
-The rule is conservative, so it also rejects transitions that are safe but that
-it cannot prove. [`UnsupportedMembershipTransition`][] carries such an example,
-and names every rejected transition unsupported rather than unsafe.
+When either membership has more than one voter set, the rule is conservative:
+it also rejects transitions that are safe but that it cannot prove.
+[`UnsupportedMembershipTransition`][] carries such an example.
 
 ### The current-term guard
 
-The two rules prove that a new membership intersects its parent. They say
-nothing about two children of the same parent. Every membership change, a
+The rule proves that a new membership intersects its parent. It says nothing
+about two children of the same parent. Every membership change, a
 direct append included, therefore enforces (3) **initial-log**, the corrected
 Raft single-server rule: the leader must commit a log entry of its own term
 before it appends a configuration entry. Openraft records that entry as
@@ -222,14 +231,14 @@ cluster_committed >= leader.noop_log_id
 Without the guard, two children proposed in different terms can both commit
 while not intersecting each other. From the committed `[{a,b,c,d}]`, one leader
 proposes `[{a,b,c,d,u}]` and a later leader proposes `[{a,b,c,d,v}]`. Both pass
-rule 1, yet the quorum `{a,b,u}` and the quorum `{c,d,v}` share no node.
+the rule, yet the quorum `{a,b,u}` and the quorum `{c,d,v}` share no node.
 [`UncommittedLeaderLog`][] walks through the full run.
 
 [`Raft::change_membership()`][] needs the guard too. Each of its proposals
-shares an exact voter set with the parent, but two of its proposals from one
-parent may share none. From the committed `[{a,b,c}, {x,y,z}]`, one leader
-proposes `[{a,b,c}]` and a later leader proposes `[{x,y,z}]`, which share no
-node.
+passes the rule against the parent, but two of its proposals from one parent
+need not pass it against each other. From the committed `[{a,b,c}, {x,y,z}]`,
+one leader proposes `[{a,b,c}]` and a later leader proposes `[{x,y,z}]`, which
+share no node.
 
 
 ## Proof of correctness

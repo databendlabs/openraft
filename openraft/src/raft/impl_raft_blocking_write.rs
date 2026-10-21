@@ -81,6 +81,10 @@ where
     /// ```
     ///
     /// [`UncommittedLeaderLog`]: crate::errors::UncommittedLeaderLog
+    #[since(
+        version = "0.10.0",
+        change = "skip the joint entry when every old quorum intersects every new quorum"
+    )]
     #[tracing::instrument(level = "info", skip_all)]
     pub async fn change_membership(
         &self,
@@ -123,6 +127,10 @@ where
     /// joint response when the change entered joint consensus.
     #[since(
         version = "0.10.0",
+        change = "skip the joint entry when every old quorum intersects every new quorum"
+    )]
+    #[since(
+        version = "0.10.0",
         change = "accept a request with an optional payload and preconditions"
     )]
     #[since(version = "0.10.0", change = "added payload-aware membership change API")]
@@ -156,6 +164,10 @@ where
     /// nothing was written: the joint config is already committed and the cluster is left in joint
     /// consensus, as it is when leadership is lost mid-change. Its `expected` field then holds the
     /// joint entry's log id, a value the caller never passed.
+    #[since(
+        version = "0.10.0",
+        change = "skip the joint entry when every old quorum intersects every new quorum"
+    )]
     #[since(version = "0.10.0")]
     #[tracing::instrument(level = "info", skip_all)]
     pub async fn change_membership_if(
@@ -196,14 +208,13 @@ where
     /// # Accepted transitions
     ///
     /// The proposed membership must be reachable from the last committed one by a transition whose
-    /// quorum intersection openraft can prove cheaply:
+    /// quorum intersection openraft can prove cheaply: a voter set of one membership and a voter
+    /// set of the other have intersecting majorities, i.e. every majority of the first intersects
+    /// every majority of the second.
     ///
-    /// - Both memberships are uniform, and their voter sets differ by at most one node id.
-    /// - Otherwise, a voter set of one membership and a voter set of the other have intersecting
-    ///   majorities, i.e. every majority of the first intersects every majority of the second.
-    ///
-    /// Anything else fails with [`UnsupportedMembershipTransition`], which is a limit of this
-    /// rule, not proof that the transition is unsafe.
+    /// Anything else fails with [`UnsupportedMembershipTransition`]. When either membership has
+    /// more than one voter set, the error is a limit of this rule, not proof that the transition
+    /// is unsafe.
     ///
     /// # Rejections that write no log
     ///
@@ -264,6 +275,10 @@ where
     /// [`InProgress`]: crate::errors::InProgress
     /// [`UncommittedLeaderLog`]: crate::errors::UncommittedLeaderLog
     /// [`NodeMetadataChanged`]: crate::errors::NodeMetadataChanged
+    #[since(
+        version = "0.10.0",
+        change = "accept a transition when an old voter set and a new voter set have intersecting majorities"
+    )]
     #[since(version = "0.10.0")]
     #[tracing::instrument(level = "info", skip_all)]
     pub async fn append_membership(

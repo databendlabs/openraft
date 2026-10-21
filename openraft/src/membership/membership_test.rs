@@ -343,6 +343,7 @@ fn test_membership_next_coherent_with_nodes() -> anyhow::Result<()> {
         btreemap! {1=>node("1"), 2=>node("2")},
         res.nodes().map(|(nid, n)| (*nid, n.clone())).collect::<BTreeMap<_, _>>()
     );
+    assert_eq!(&vec![btreeset! {1,2}], res.get_joint_config());
 
     // Removed to learner
 
@@ -420,6 +421,7 @@ fn test_membership_ensure_quorum_defined() -> anyhow::Result<()> {
 fn test_membership_is_direct_append_compatible_with_uniform() -> anyhow::Result<()> {
     let abc = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1,2,3}], []);
     let abcx = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1,2,3,4}], []);
+    let abcy = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1,2,3,5}], []);
     let bcd = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {2,3,4}], []);
     let abcxy = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1,2,3,4,5}], []);
 
@@ -430,10 +432,15 @@ fn test_membership_is_direct_append_compatible_with_uniform() -> anyhow::Result<
     assert!(abc.is_direct_append_compatible_with(&abcx));
     assert!(abcx.is_direct_append_compatible_with(&abc));
 
-    // One voter added and one removed: the symmetric difference is 2.
+    // One of three voters replaced: majority `{1,2}` of `{1,2,3}` misses majority `{3,4}` of
+    // `{2,3,4}`.
     assert!(!abc.is_direct_append_compatible_with(&bcd));
 
-    // Two voters added.
+    // One of four voters replaced: a majority of either set holds at least two of `{1,2,3}`, so
+    // the two majorities intersect.
+    assert!(abcx.is_direct_append_compatible_with(&abcy));
+
+    // Two voters added: majority `{1,2}` of `{1,2,3}` misses majority `{3,4,5}` of `{1,2,3,4,5}`.
     assert!(!abc.is_direct_append_compatible_with(&abcxy));
 
     Ok(())
@@ -545,14 +552,13 @@ fn test_membership_find_changed_node_metadata() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// `is_direct_append_compatible_with` accepts a transition between two uniform memberships when
-/// their voter sets differ by at most one node, and quorum intersection must follow. Checked
-/// against the definition over every pair of non-empty voter sets over five ids; the rule is
-/// conservative, so only this direction holds. A transition that involves a joint membership is
-/// decided by `QuorumIntersection::intersects_with()`, which the `quorum-set` crate tests against
-/// the same definition.
+/// `is_direct_append_compatible_with` accepts a transition between two uniform memberships exactly
+/// when every quorum of one intersects every quorum of the other. Checked against the definition
+/// over every pair of non-empty voter sets over five ids. Joint memberships are left out: the
+/// check is conservative for them, and the `quorum-set` crate tests it against the same
+/// definition.
 #[test]
-fn test_is_direct_append_compatible_implies_intersecting_quorums() {
+fn test_is_direct_append_compatible_is_exact_for_uniform() {
     const UNIVERSE: u64 = 5;
 
     let configs = (1..1u64 << UNIVERSE)
@@ -565,12 +571,11 @@ fn test_is_direct_append_compatible_implies_intersecting_quorums() {
 
     for previous in &memberships {
         for proposed in &memberships {
-            if !previous.is_direct_append_compatible_with(proposed) {
-                continue;
-            }
-            assert!(
-                verify_intersection(previous.get_joint_config(), proposed.get_joint_config()),
-                "appending {proposed} directly on {previous} must keep quorums intersecting"
+            let compatible = previous.is_direct_append_compatible_with(proposed);
+            let intersecting = verify_intersection(previous.get_joint_config(), proposed.get_joint_config());
+            assert_eq!(
+                intersecting, compatible,
+                "appending {proposed} directly on {previous} must be accepted iff quorums intersect"
             );
         }
     }

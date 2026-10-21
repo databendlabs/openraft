@@ -142,7 +142,7 @@ What sets OpenRaft apart from a standard Raft implementation:
 - ✅ **Non-voter(learner) Role**: refer to [`add_learner()`][].
 - ✅ **Log Compaction**(snapshot of state machine): by policy or manually ([`Trigger::snapshot()`][]).
 - ✅ **Snapshot replication**.
-- ✅ **Dynamic Membership**: using joint membership config change. Refer to [dynamic membership](https://docs.rs/openraft/0.10.0-alpha.37/openraft/docs/cluster_control/dynamic_membership/index.html)
+- ✅ **Dynamic Membership**: one log entry when every old quorum intersects every new quorum, otherwise a joint membership config change. Refer to [dynamic membership](https://docs.rs/openraft/0.10.0-alpha.37/openraft/docs/cluster_control/dynamic_membership/index.html)
 - ✅ **Linearizable read**: [`ensure_linearizable()`][].
 - ✅ **Metrics**: [`Raft::metrics()`][], [`Raft::data_metrics()`][], and [`Raft::server_metrics()`][].
 - ✅ **Single-step config change**: [`append_membership()`][] writes a caller-built membership, without joint config. It accepts only a restricted set of transitions.

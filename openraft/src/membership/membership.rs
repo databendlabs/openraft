@@ -383,19 +383,15 @@ where
     /// Returns true if one membership can be appended directly on top of the other, as a single
     /// log entry without an intermediate joint membership.
     ///
-    /// The predicate is symmetric, and it accepts a transition only when quorum intersection
-    /// follows from one of two cases:
+    /// The predicate is symmetric, and it accepts a transition only when a voter set of one
+    /// membership and a voter set of the other have intersecting majorities, as
+    /// [`QuorumIntersection::intersects_with()`] checks. A quorum of a membership holds a majority
+    /// of each of its voter sets, so every quorum of one membership then intersects every quorum
+    /// of the other.
     ///
-    /// - Both memberships are uniform, i.e. each has exactly one voter set, and the two voter sets
-    ///   differ by at most one node id. The majority sizes then leave no room for two disjoint
-    ///   quorums.
-    /// - Otherwise, a voter set of one membership and a voter set of the other have intersecting
-    ///   majorities, as [`QuorumIntersection::intersects_with()`] checks. A quorum of a membership
-    ///   holds a majority of each of its voter sets, so every quorum of one membership intersects
-    ///   every quorum of the other.
-    ///
-    /// The rule is conservative: it rejects some transitions whose quorums do intersect. See
-    /// [`UnsupportedMembershipTransition`] for examples.
+    /// The rule is exact for two uniform memberships. When either membership has more than one
+    /// voter set, the rule is conservative: it rejects some transitions whose quorums do
+    /// intersect. See [`UnsupportedMembershipTransition`] for examples.
     ///
     /// [`UnsupportedMembershipTransition`]: crate::errors::UnsupportedMembershipTransition
     pub(crate) fn is_direct_append_compatible_with(&self, other: &Self) -> bool {
@@ -404,13 +400,6 @@ where
         }
         if other.ensure_quorum_defined().is_err() {
             return false;
-        }
-
-        let both_uniform = self.configs.len() == 1 && other.configs.len() == 1;
-
-        if both_uniform {
-            let differing = self.configs[0].symmetric_difference(&other.configs[0]).count();
-            return differing <= 1;
         }
 
         let intersects = self.configs.intersects_with(&other.configs);
