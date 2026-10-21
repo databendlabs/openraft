@@ -56,10 +56,8 @@ This generalization rolls out in phases:
   one log entry when Openraft can prove that every old quorum intersects every
   new quorum, such as when it adds or removes one voter. Otherwise it goes
   through joint consensus. [`Raft::append_membership()`][] writes the caller's
-  exact membership as one log entry, for the two transition shapes whose quorum
-  intersection Openraft can prove cheaply: two uniform memberships whose voter
-  sets differ by at most one node id, or two memberships where a voter set of
-  one and a voter set of the other have intersecting majorities. Both enforce
+  exact membership as one log entry, when a voter set of the old membership and
+  a voter set of the new one have intersecting majorities. Both enforce
   the corrected single-server rule, which requires the leader to commit a log
   entry of its own term before it appends a configuration entry. See
   [`extended membership`][].

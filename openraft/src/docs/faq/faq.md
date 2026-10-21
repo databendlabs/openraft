@@ -103,10 +103,8 @@ This generalization rolls out in phases:
   one log entry when Openraft can prove that every old quorum intersects every
   new quorum, such as when it adds or removes one voter. Otherwise it goes
   through joint consensus. [`Raft::append_membership()`][] writes the caller's
-  exact membership as one log entry, for the two transition shapes whose quorum
-  intersection Openraft can prove cheaply: two uniform memberships whose voter
-  sets differ by at most one node id, or two memberships where a voter set of
-  one and a voter set of the other have intersecting majorities. Both enforce
+  exact membership as one log entry, when a voter set of the old membership and
+  a voter set of the new one have intersecting majorities. Both enforce
   the corrected single-server rule, which requires the leader to commit a log
   entry of its own term before it appends a configuration entry. See
   [`extended membership`][].
@@ -731,25 +729,32 @@ Yes, OpenRaft does support this scenario, but with some important caveats.
 A `change_membership` call that needs a joint configuration is a two-step
 process—first transitioning to a joint configuration and then to a final
 uniform configuration. When multiple `change_membership` calls occur
-concurrently, their steps can interleave, potentially leaving the cluster in a
-joint config state. This state is valid in OpenRaft.
+concurrently, their steps can interleave. The second step of a call requires
+the last membership log to still be the joint config of its first step, so a
+call whose joint config another call has replaced fails instead of finishing.
+A call that stops after its first step, for example because the leader
+crashes, leaves the cluster in a joint config state. This state is valid in
+OpenRaft.
 
-Here's an example of how such interleaving might play out:
+Here's an example of how such interleaving might play out, where `d` and `e`
+are learners:
 
-1. **Initial State**: `{y}`
-2. **Task 1** calls `change_membership(AddVoters(x))`
-   → Transitions to joint config `[{y}, {y, x}]`
-3. **Task 2** calls `change_membership(RemoveVoters(x))`
-   → Transitions from `[{y}, {y, x}]` to `[{y, x}, {y}]`
-4. **Task 2 (Step 2)** finalizes config to `{y}` and reports success to its client
-5. **Task 1 (Step 2)** proceeds unaware, adding `x` again
-   → Transitions from `{y}` to `[{y}, {y, x}]`
+1. **Initial State**: `{a,b,c}`
+2. **Task 1** calls `change_membership(ReplaceAllVoters({a,b,d}))`
+   → Transitions to joint config `[{a,b,c}, {a,b,d}]`
+3. **Task 2** calls `change_membership(ReplaceAllVoters({a,b,e}))`
+   → Transitions from `[{a,b,c}, {a,b,d}]` to `[{a,b,d}, {a,b,e}]`
+4. **Task 1 (Step 2)** fails with `PreconditionFailed`, because the last
+   membership log is now Task 2's joint config
+5. **Task 2 (Step 2)** finalizes config to `{a,b,e}` and reports success to its
+   client
 
-At this point, both tasks report success to their respective clients, but the
-cluster is left in a **joint configuration** state: `[{y}, {y, x}]`.
+Task 1's error does not mean that nothing was written: its joint config was
+committed, and Task 2 started from it. The cluster ends in Task 2's target
+`{a,b,e}` and never reaches Task 1's target `{a,b,d}`.
 
 This illustrates how concurrent changes can lead to a final configuration that
-may not reflect the full intent of either request. However, this does **not**
+may not reflect the intent of every request. However, this does **not**
 violate OpenRaft's consistency model, and joint configs are treated as valid
 operating states.
 

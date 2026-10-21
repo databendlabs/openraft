@@ -8,27 +8,26 @@ use crate::node::NodeId;
 ///
 /// A direct append writes the caller's exact membership as one log entry, without an intermediate
 /// joint membership. It is accepted only when quorum intersection can be proved by a simple rule:
-/// two uniform memberships whose voter sets differ by at most one node id, or two memberships where
-/// a voter set of one and a voter set of the other have intersecting majorities, i.e. every
-/// majority of the first intersects every majority of the second.
+/// a voter set of one membership and a voter set of the other have intersecting majorities, i.e.
+/// every majority of the first intersects every majority of the second.
 ///
-/// The rule is conservative, so a rejected transition is **unsupported**, not necessarily unsafe.
-/// Some rejected transitions do have intersecting quorums; Openraft does not run a general
-/// quorum-intersection solver to find them.
+/// For two uniform memberships the rule is exact, so a rejected transition between them is unsafe.
+/// When either membership has more than one voter set, the rule is conservative, so a rejected
+/// transition is **unsupported**, not necessarily unsafe. Some rejected transitions do have
+/// intersecting quorums; Openraft does not run a general quorum-intersection solver to find them.
 ///
 /// # Rejected transitions
 ///
-/// Replacing one voter with another in one step:
+/// Replacing one of three voters with another in one step:
 ///
 /// ```text
 /// [{a,b,c}] -> [{b,c,d}]
 /// ```
 ///
-/// The two uniform voter sets differ by two node ids, `a` and `d`. Quorum `{a,b}` of the previous
-/// membership and quorum `{c,d}` of the proposed one do not intersect, so the transition is
-/// unsafe. Append `[{a,b,c,d}]` first, then `[{b,c,d}]`.
+/// Quorum `{a,b}` of the previous membership and quorum `{c,d}` of the proposed one do not
+/// intersect, so the transition is unsafe. Append `[{a,b,c,d}]` first, then `[{b,c,d}]`.
 ///
-/// Adding two voters in one step:
+/// Adding two voters to three in one step:
 ///
 /// ```text
 /// [{a,b,c}] -> [{a,b,c,x,y}]

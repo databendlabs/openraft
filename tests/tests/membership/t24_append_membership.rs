@@ -82,7 +82,7 @@ async fn add_and_remove_one_voter_write_one_entry_each() -> Result<()> {
     Ok(())
 }
 
-/// Replacing one voter with another is outside the direct-append rule, and writes no log.
+/// Replacing one of three voters with another is outside the direct-append rule, and writes no log.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn unsupported_transition_writes_no_log() -> Result<()> {

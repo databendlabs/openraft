@@ -585,9 +585,10 @@ where
     /// which the heartbeat worker advances even when a follower reports a log conflict, so the
     /// lease proves a quorum still sees this leader but not that a quorum stored the blank log.
     ///
-    /// [`Raft::change_membership()`] needs the barrier too. Each of its proposals shares a voter
-    /// set with the parent, but two proposals from one parent may share none: from the committed
-    /// joint `[c0, c1]`, one leader may propose `[c0]` and a later leader `[c1]`.
+    /// [`Raft::change_membership()`] needs the barrier too. Every quorum of each of its proposals
+    /// intersects every quorum of the parent, but two proposals from one parent may have disjoint
+    /// quorums: from the committed joint `[c0, c1]`, one leader may propose `[c0]` and a later
+    /// leader `[c1]`.
     ///
     /// [`Raft::change_membership()`]: crate::raft::Raft::change_membership
     fn ensure_leader_log_committed(

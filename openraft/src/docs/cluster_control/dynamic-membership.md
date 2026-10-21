@@ -114,16 +114,12 @@ picked itself.
 - `preconditions`: Compare-and-set guards, all checked before anything is
   validated or written
 
-**Accepted transitions:**
-- Both the effective and the proposed membership are uniform, and their voter
-  sets differ by at most one node ID
-- Otherwise, a voter set of one membership and a voter set of the other have
-  intersecting majorities: every majority of the first intersects every
-  majority of the second
+**Accepted transitions:** a voter set of the effective membership and a voter
+set of the proposed one have intersecting majorities: every majority of the
+first intersects every majority of the second.
 
 Any other transition returns [`UnsupportedMembershipTransition`] and writes no
-log. [`extended membership`] proves why these two rules keep quorums
-intersecting.
+log. [`extended membership`] proves why this rule keeps quorums intersecting.
 
 **Rejections that write no log:**
 - [`InProgress`], while the preceding membership is not yet committed
