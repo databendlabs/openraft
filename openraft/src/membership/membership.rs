@@ -389,8 +389,10 @@ where
     /// - Both memberships are uniform, i.e. each has exactly one voter set, and the two voter sets
     ///   differ by at most one node id. The majority sizes then leave no room for two disjoint
     ///   quorums.
-    /// - Otherwise, the two memberships share an exactly equal voter set, which is the same
-    ///   argument [`QuorumIntersection::intersects_with()`] makes for joint consensus.
+    /// - Otherwise, a voter set of one membership and a voter set of the other have intersecting
+    ///   majorities, as [`QuorumIntersection::intersects_with()`] checks. A quorum of a membership
+    ///   holds a majority of each of its voter sets, so every quorum of one membership intersects
+    ///   every quorum of the other.
     ///
     /// The rule is conservative: it rejects some transitions whose quorums do intersect. See
     /// [`UnsupportedMembershipTransition`] for examples.
@@ -421,12 +423,17 @@ where
     /// `retain` specifies whether to retain the removed voters as learners, i.e., nodes that
     /// continue to receive log replication from the leader.
     ///
-    /// E.g.(`cicj` is a joint membership of `ci` and `cj`):
+    /// E.g.(`cicj` is a joint membership of `ci` and `cj`, and for any two of `c1`, `c2`, `c3`, a
+    /// quorum of one can miss a quorum of the other):
     /// - `c1.next_step(c1)` returns `c1`
     /// - `c1.next_step(c2)` returns `c1c2`
     /// - `c1c2.next_step(c2)` returns `c2`
     /// - `c1c2.next_step(c1)` returns `c1`
     /// - `c1c2.next_step(c3)` returns `c2c3`
+    ///
+    /// When [`QuorumIntersection::intersects_with()`] proves that every quorum of `self` intersects
+    /// every quorum of `goal`, such as when `goal` adds or removes one voter, it returns `goal`
+    /// without a joint step.
     ///
     /// With this method the membership change algo is simplified to:
     /// ```ignore
@@ -590,7 +597,7 @@ mod tests {
             let res = m().change(ChangeMembers::AddVoterIds(btreeset! {3}), true);
             assert_eq!(
                 Ok(Membership::<u64, ()> {
-                    configs: vec![btreeset! {1,2}, btreeset! {1,2,3}],
+                    configs: vec![btreeset! {1,2,3}],
                     nodes: btreemap! {1=>(),2=>(),3=>()}
                 }),
                 res
@@ -602,7 +609,7 @@ mod tests {
             let res = m().change(ChangeMembers::AddVoters(btreemap! {5=>()}), true);
             assert_eq!(
                 Ok(Membership::<u64, ()> {
-                    configs: vec![btreeset! {1,2}, btreeset! {1,2,5}],
+                    configs: vec![btreeset! {1,2,5}],
                     nodes: btreemap! {1=>(),2=>(),3=>(),5=>()}
                 }),
                 res
@@ -632,7 +639,7 @@ mod tests {
             let res = m().change(ChangeMembers::RemoveVoters(btreeset! {1}), true);
             assert_eq!(
                 Ok(Membership::<u64, ()> {
-                    configs: vec![btreeset! {1,2}, btreeset! {2}],
+                    configs: vec![btreeset! {2}],
                     nodes: btreemap! {1=>(),2=>(),3=>()}
                 }),
                 res
@@ -644,8 +651,8 @@ mod tests {
             let res = m().change(ChangeMembers::RemoveVoters(btreeset! {1}), false);
             assert_eq!(
                 Ok(Membership::<u64, ()> {
-                    configs: vec![btreeset! {1,2}, btreeset! {2}],
-                    nodes: btreemap! {1=>(),2=>(),3=>()}
+                    configs: vec![btreeset! {2}],
+                    nodes: btreemap! {2=>(),3=>()}
                 }),
                 res
             );
@@ -672,8 +679,8 @@ mod tests {
             let res = m().change(ChangeMembers::ReplaceAllVoters(btreeset! {2}), false);
             assert_eq!(
                 Ok(Membership::<u64, ()> {
-                    configs: vec![btreeset! {1,2}, btreeset! {2}],
-                    nodes: btreemap! {1=>(),2=>(),3=>()}
+                    configs: vec![btreeset! {2}],
+                    nodes: btreemap! {2=>(),3=>()}
                 }),
                 res
             );
@@ -772,11 +779,12 @@ mod tests {
     /// Test membership change described by a batch operation.
     ///
     /// The batch operations add one voter and remove another.
-    /// It still finishes in a two-step joint config change.
+    /// It still finishes in a two-step joint config change, because quorum `{1,2}` of `{1,2,3}` and
+    /// quorum `{3,5}` of `{1,3,5}` are disjoint.
     #[test]
     fn test_membership_change_batch() -> anyhow::Result<()> {
         let m = || Membership::<u64, ()> {
-            configs: vec![btreeset! {1,2}],
+            configs: vec![btreeset! {1,2,3}],
             nodes: btreemap! {1=>(),2=>(),3=>()},
         };
 
@@ -790,14 +798,14 @@ mod tests {
         let step1 = m().change(rm_2_add_5(), false)?;
 
         assert_eq!(step1, Membership::<u64, ()> {
-            configs: vec![btreeset! {1,2}, btreeset! {1,5}],
+            configs: vec![btreeset! {1,2,3}, btreeset! {1,3,5}],
             nodes: btreemap! {1=>(),2=>(),3=>(),5=>()}
         });
 
         let step2 = step1.change(rm_2_add_5(), false)?;
 
         assert_eq!(step2, Membership::<u64, ()> {
-            configs: vec![btreeset! {1,5}],
+            configs: vec![btreeset! {1,3,5}],
             nodes: btreemap! {1=>(),3=>(), 5=>()}
         });
 

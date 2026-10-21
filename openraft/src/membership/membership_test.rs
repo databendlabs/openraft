@@ -336,7 +336,7 @@ fn test_membership_next_coherent_with_nodes() -> anyhow::Result<()> {
 
     let initial = Membership::<u64, TestNode>::new_unchecked(vec![c1(), c2()], btreemap! {1=>node("1"), 2=>node("2")});
 
-    // joint [{2}, {1,2}]
+    // uniform [{1,2}]
 
     let res = initial.next_coherent(btreeset! {1,2}, false);
     assert_eq!(
@@ -448,17 +448,18 @@ fn test_membership_is_direct_append_compatible_with_joint() -> anyhow::Result<()
     assert!(uniform.is_direct_append_compatible_with(&joint));
     assert!(joint.is_direct_append_compatible_with(&uniform));
 
-    // Sharing voters is not sharing a voter set: `{1,2}` is in every set below, and no set is
-    // shared.
+    // Sharing voters is not enough: `{1,2}` is in every set below, but no pair of sets has
+    // intersecting majorities. Majority `{1,3}` of `{1,2,3}` misses majority `{2,5}` of `{1,2,5}`.
     let overlapping = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1,2,3}, btreeset! {1,2,4}], []);
     let target = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1,2,5}], []);
     assert!(!overlapping.is_direct_append_compatible_with(&target));
 
-    // The one-voter-difference rule applies to uniform memberships only: every set below differs
-    // by one voter from its counterpart, and the transition is still rejected.
+    // Every set below differs by one voter from its counterpart. A quorum of `two_sets` holds a
+    // majority of `{1,2,3}`, a quorum of `two_sets_grown` holds a majority of `{1,2,3,7}`, and
+    // these two majorities always intersect.
     let two_sets = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1,2,3}, btreeset! {4,5,6}], []);
     let two_sets_grown = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1,2,3,7}, btreeset! {4,5,6,8}], []);
-    assert!(!two_sets.is_direct_append_compatible_with(&two_sets_grown));
+    assert!(two_sets.is_direct_append_compatible_with(&two_sets_grown));
 
     Ok(())
 }
@@ -468,7 +469,7 @@ fn test_membership_is_direct_append_compatible_with_many_sets() -> anyhow::Resul
     let shared = || btreeset! {1,2,3};
     let previous = Membership::<u64, ()>::new_with_defaults(vec![shared()], []);
 
-    // The shared-set rule imposes no maximum on the number of voter sets.
+    // The transition rule imposes no maximum on the number of voter sets.
     for extra_sets in [
         vec![btreeset! {4,5,6}],
         vec![btreeset! {4,5,6}, btreeset! {7,8,9}],

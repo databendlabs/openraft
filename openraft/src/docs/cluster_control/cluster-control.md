@@ -41,7 +41,7 @@ Bootstrap a new cluster by initializing the first node with an initial membershi
 
 See: [`dynamic_membership`], [`joint_consensus`]
 
-Add or remove nodes using safe, two-phase joint consensus protocol that maintains availability during configuration changes.
+Add or remove nodes safely, in one log entry when every old quorum intersects every new quorum, or otherwise through the two-phase joint consensus protocol, which maintains availability during configuration changes.
 
 ### Node Management
 

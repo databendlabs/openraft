@@ -32,7 +32,9 @@ raft.add_learner(4, node, true).await?;
 
 ### [`Raft::change_membership()`]
 
-Changes the voting membership through a two-phase [joint consensus][`joint_consensus`] process.
+Changes the voting membership in one log entry when every old quorum intersects
+every new quorum, or otherwise through a two-phase
+[joint consensus][`joint_consensus`] process.
 
 **Parameters:**
 - `members`: New voter set or node updates
@@ -45,8 +47,12 @@ Changes the voting membership through a two-phase [joint consensus][`joint_conse
   fails with [`UncommittedLeaderLog`] and writes no log
 
 **Process:**
-1. Proposes joint config: `[old_config, new_config]`
-2. After joint config commits, proposes uniform config: `new_config`
+- If Openraft can prove that every quorum of `old_config` intersects every
+  quorum of `new_config`, such as when the change adds or removes one voter, it
+  proposes the uniform config `new_config` in one log entry.
+- Otherwise:
+  1. Proposes joint config: `[old_config, new_config]`
+  2. After joint config commits, proposes uniform config: `new_config`
 
 **Behavior of `retain`:**
 
@@ -92,8 +98,8 @@ from the cluster without an intermediate learner state.
 ### [`Raft::append_membership()`]
 
 Writes a caller-built membership as **one** log entry, with no intermediate
-joint config. Use it when a one-voter change must cost a single entry, or when
-the cluster must land on a joint membership the caller picked itself.
+joint config. Use it when the cluster must land on a joint membership the caller
+picked itself.
 
 **Parameters:**
 - `membership`: The exact membership to store, uniform or joint
@@ -111,7 +117,9 @@ the cluster must land on a joint membership the caller picked itself.
 **Accepted transitions:**
 - Both the effective and the proposed membership are uniform, and their voter
   sets differ by at most one node ID
-- Otherwise, the two memberships share an exactly equal voter set
+- Otherwise, a voter set of one membership and a voter set of the other have
+  intersecting majorities: every majority of the first intersects every
+  majority of the second
 
 Any other transition returns [`UnsupportedMembershipTransition`] and writes no
 log. [`extended membership`] proves why these two rules keep quorums

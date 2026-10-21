@@ -99,14 +99,17 @@ This generalization rolls out in phases:
   `c1c2c3 → c1`), as long as the **old-new-intersect** constraint holds between
   adjacent memberships. See [`extended membership`][].
 
-- **Single-step change is a separate API.** [`Raft::change_membership()`][]
-  always goes through joint consensus. [`Raft::append_membership()`][] writes
-  the caller's exact membership as one log entry, for the two transition shapes
-  whose quorum intersection Openraft can prove cheaply: two uniform memberships
-  whose voter sets differ by at most one node id, or two memberships sharing an
-  exactly equal voter set. It also enforces the corrected single-server rule,
-  which requires the leader to commit a log entry of its own term before it
-  appends a configuration entry. See [`extended membership`][].
+- **Single-step change.** [`Raft::change_membership()`][] writes its target in
+  one log entry when Openraft can prove that every old quorum intersects every
+  new quorum, such as when it adds or removes one voter. Otherwise it goes
+  through joint consensus. [`Raft::append_membership()`][] writes the caller's
+  exact membership as one log entry, for the two transition shapes whose quorum
+  intersection Openraft can prove cheaply: two uniform memberships whose voter
+  sets differ by at most one node id, or two memberships where a voter set of
+  one and a voter set of the other have intersecting majorities. Both enforce
+  the corrected single-server rule, which requires the leader to commit a log
+  entry of its own term before it appends a configuration entry. See
+  [`extended membership`][].
 
 - **`change_membership` is concurrency-safe.** Parallel calls may interleave
   and leave the cluster in a valid joint state. This is by design — it
@@ -725,11 +728,11 @@ split-brain. See:
 ### Does OpenRaft support calling `change_membership` in parallel?
 
 Yes, OpenRaft does support this scenario, but with some important caveats.
-`change_membership` is a two-step process—first transitioning to a joint
-configuration and then to a final uniform configuration. When multiple
-`change_membership` calls occur concurrently, their steps can interleave,
-potentially leaving the cluster in a joint config state. This state is valid in
-OpenRaft.
+A `change_membership` call that needs a joint configuration is a two-step
+process—first transitioning to a joint configuration and then to a final
+uniform configuration. When multiple `change_membership` calls occur
+concurrently, their steps can interleave, potentially leaving the cluster in a
+joint config state. This state is valid in OpenRaft.
 
 Here's an example of how such interleaving might play out:
 

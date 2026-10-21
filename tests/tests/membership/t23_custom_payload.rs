@@ -438,15 +438,19 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
     let router = Router::default();
     let log0 = TestLogStore::default();
     let log1 = TestLogStore::default();
+    let log2 = TestLogStore::default();
     let sm0 = TestStateMachine::default();
     let sm1 = TestStateMachine::default();
+    let sm2 = TestStateMachine::default();
 
     let node0 = new_node(0, config.clone(), router.clone(), log0.clone(), sm0.clone()).await?;
     let node1 = new_node(1, config.clone(), router.clone(), log1.clone(), sm1.clone()).await?;
+    let node2 = new_node(2, config.clone(), router.clone(), log2, sm2).await?;
     router.insert(0, node0.clone());
     router.insert(1, node1.clone());
+    router.insert(2, node2.clone());
 
-    tracing::info!("--- initialize node 0 and add node 1 as a learner");
+    tracing::info!("--- initialize node 0 and add nodes 1 and 2 as learners");
     {
         node0.initialize(btreeset! {0}).await?;
         node0.wait(timeout()).applied_index(Some(1), "initial leader blank").await?;
@@ -454,32 +458,37 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
         let response = node0.add_learner(1, (), true).await?;
         assert_eq!(2, response.log_id.index);
         node1.wait(timeout()).applied_index(Some(2), "learner applied membership").await?;
+
+        let response = node0.add_learner(2, (), true).await?;
+        assert_eq!(3, response.log_id.index);
+        node2.wait(timeout()).applied_index(Some(3), "learner applied membership").await?;
     }
 
-    let joint_membership = Membership::new_with_defaults(vec![btreeset! {0}, btreeset! {0,1}], []);
-    let uniform_membership = Membership::new_with_defaults(vec![btreeset! {0,1}], []);
+    // Quorum `{1,2}` of `{0,1,2}` misses quorum `{0}` of `{0}`, so this change needs a joint entry.
+    let joint_membership = Membership::new_with_defaults(vec![btreeset! {0}, btreeset! {0,1,2}], []);
+    let uniform_membership = Membership::new_with_defaults(vec![btreeset! {0,1,2}], []);
 
-    tracing::info!("--- promote node 1 with distinct payloads for the joint and uniform entries");
+    tracing::info!("--- promote nodes 1 and 2 with distinct payloads for the joint and uniform entries");
     let (joint_log_id, uniform_log_id) = {
         let joint_payload = CustomPayload::normal("joint application data".to_string());
         let uniform_payload = CustomPayload::normal("uniform application data".to_string());
-        let request = ChangeMembershipRequest::new([0, 1], false).with_payload(joint_payload, uniform_payload);
+        let request = ChangeMembershipRequest::new([0, 1, 2], false).with_payload(joint_payload, uniform_payload);
         let outcome = node0.change_membership_with_payload(request).await?;
         let joint = outcome.joint.expect("voter change should enter joint consensus");
 
         assert_eq!(Some(joint_membership.clone()), joint.membership);
         assert_eq!(Some(uniform_membership.clone()), outcome.uniform.membership);
-        assert_eq!(3, joint.log_id.index);
-        assert_eq!(4, outcome.uniform.log_id.index);
+        assert_eq!(4, joint.log_id.index);
+        assert_eq!(5, outcome.uniform.log_id.index);
         assert!(joint.log_id < outcome.uniform.log_id);
 
         (joint.log_id, outcome.uniform.log_id)
     };
 
-    tracing::info!("--- both nodes store and apply both custom membership payloads");
+    tracing::info!("--- nodes 0 and 1 store and apply both custom membership payloads");
     {
-        node0.wait(timeout()).applied_index(Some(4), "leader applied uniform membership").await?;
-        node1.wait(timeout()).applied_index(Some(4), "follower applied uniform membership").await?;
+        node0.wait(timeout()).applied_index(Some(5), "leader applied uniform membership").await?;
+        node1.wait(timeout()).applied_index(Some(5), "follower applied uniform membership").await?;
 
         let expected_payloads = vec![
             (joint_log_id, CustomPayload {
@@ -491,8 +500,8 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
                 membership: Some(uniform_membership.clone()),
             }),
         ];
-        assert_eq!(expected_payloads, read_payloads(&log0, 3..=4).await?);
-        assert_eq!(expected_payloads, read_payloads(&log1, 3..=4).await?);
+        assert_eq!(expected_payloads, read_payloads(&log0, 4..=5).await?);
+        assert_eq!(expected_payloads, read_payloads(&log1, 4..=5).await?);
 
         let expected_state = AppliedState {
             last_applied: Some(uniform_log_id),
@@ -511,7 +520,7 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
         assert_eq!(&expected_state.membership, follower_metrics.membership_config.as_ref());
     }
 
-    let final_joint_membership = Membership::new_with_defaults(vec![btreeset! {0,1}, btreeset! {0}], []);
+    let final_joint_membership = Membership::new_with_defaults(vec![btreeset! {0,1,2}, btreeset! {0}], []);
     let final_membership = Membership::new_with_defaults(vec![btreeset! {0}], []);
 
     tracing::info!("--- a request without payload creates a separate blank for each membership entry");
@@ -523,8 +532,8 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
         let new_blank_calls = BLANK_CALLS.load(Ordering::SeqCst);
 
         assert_eq!(blank_calls + 2, new_blank_calls);
-        assert_eq!(5, joint.log_id.index);
-        assert_eq!(6, outcome.uniform.log_id.index);
+        assert_eq!(6, joint.log_id.index);
+        assert_eq!(7, outcome.uniform.log_id.index);
         assert_eq!(Some(final_joint_membership.clone()), joint.membership);
         assert_eq!(Some(final_membership.clone()), outcome.uniform.membership);
 
@@ -538,7 +547,7 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
                 membership: Some(final_membership.clone()),
             }),
         ];
-        assert_eq!(expected_payloads, read_payloads(&log0, 5..=6).await?);
+        assert_eq!(expected_payloads, read_payloads(&log0, 6..=7).await?);
     }
 
     // Voters `{0}` unchanged, node 1 back as a learner: one voter set on both sides, so this is a
@@ -554,14 +563,14 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
         let outcome = node0.change_membership_with_payload(request).await?;
 
         assert!(outcome.joint.is_none(), "adding a learner needs no joint membership");
-        assert_eq!(7, outcome.uniform.log_id.index);
+        assert_eq!(8, outcome.uniform.log_id.index);
         assert_eq!(Some(learner_membership.clone()), outcome.uniform.membership);
 
         let expected_payloads = vec![(outcome.uniform.log_id, CustomPayload {
             normal: Some("learner application data".to_string()),
             membership: Some(learner_membership.clone()),
         })];
-        assert_eq!(expected_payloads, read_payloads(&log0, 7..=7).await?);
+        assert_eq!(expected_payloads, read_payloads(&log0, 8..=8).await?);
 
         outcome.uniform.log_id
     };
@@ -579,7 +588,7 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
         let resp = node0.append_membership(learner_membership.clone(), base, []).await?;
 
         assert_eq!(blank_calls, BLANK_CALLS.load(Ordering::SeqCst));
-        assert_eq!(8, resp.log_id.index);
+        assert_eq!(9, resp.log_id.index);
         assert_eq!(Some(learner_membership.clone()), resp.membership);
 
         // One entry holds both the application data and the proposed membership.
@@ -587,7 +596,7 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
             normal: Some("appended application data".to_string()),
             membership: Some(learner_membership.clone()),
         })];
-        assert_eq!(expected_payloads, read_payloads(&log0, 8..=8).await?);
+        assert_eq!(expected_payloads, read_payloads(&log0, 9..=9).await?);
 
         resp.log_id
     };
@@ -613,7 +622,7 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
         let recovered_sm = TestStateMachine::default();
         let recovered = new_node(0, config.clone(), router.clone(), log0, recovered_sm.clone()).await?;
         router.insert(0, recovered.clone());
-        recovered.wait(timeout()).applied_index(Some(8), "reapply committed log").await?;
+        recovered.wait(timeout()).applied_index(Some(9), "reapply committed log").await?;
 
         assert_eq!(expected_final_state, recovered_sm.state());
         let metrics = recovered.metrics().borrow_watched().clone();
@@ -622,15 +631,15 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
     };
 
     tracing::info!("--- install node 0 snapshot into a fresh node");
-    let node2 = {
+    let node3 = {
         recovered_node.trigger().snapshot().await?;
         recovered_node.wait(timeout()).snapshot(appended_log_id, "custom payload snapshot").await?;
         let snapshot = recovered_node.get_snapshot().await?.expect("snapshot should exist");
         let vote = recovered_node.metrics().borrow_watched().vote;
 
         let snapshot_sm = TestStateMachine::default();
-        let node = new_node(2, config, router.clone(), TestLogStore::default(), snapshot_sm.clone()).await?;
-        router.insert(2, node.clone());
+        let node = new_node(3, config, router.clone(), TestLogStore::default(), snapshot_sm.clone()).await?;
+        router.insert(3, node.clone());
         node.install_full_snapshot(vote, snapshot).await?;
         // `install_full_snapshot()` answers as soon as the snapshot is installed, before the
         // RaftCore loop publishes the next metrics. Wait for the installed index, so that the
@@ -646,6 +655,7 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
     recovered_node.shutdown().await?;
     node1.shutdown().await?;
     node2.shutdown().await?;
+    node3.shutdown().await?;
     Ok(())
 }
 

@@ -1,11 +1,11 @@
 ### Does OpenRaft support calling `change_membership` in parallel?
 
 Yes, OpenRaft does support this scenario, but with some important caveats.
-`change_membership` is a two-step process—first transitioning to a joint
-configuration and then to a final uniform configuration. When multiple
-`change_membership` calls occur concurrently, their steps can interleave,
-potentially leaving the cluster in a joint config state. This state is valid in
-OpenRaft.
+A `change_membership` call that needs a joint configuration is a two-step
+process—first transitioning to a joint configuration and then to a final
+uniform configuration. When multiple `change_membership` calls occur
+concurrently, their steps can interleave, potentially leaving the cluster in a
+joint config state. This state is valid in OpenRaft.
 
 Here's an example of how such interleaving might play out:
 

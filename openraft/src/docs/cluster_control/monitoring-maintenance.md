@@ -99,7 +99,7 @@ Remove nodes when:
    - `retain=true`: Node becomes learner (can be re-promoted later)
    - `retain=false`: Node removed completely from cluster
 
-**Important:** Node can be terminated after the uniform config is committed (after the two-phase change completes).
+**Important:** Node can be terminated after the uniform config is committed (after the membership change completes).
 
 ## Automated Maintenance Cautions
 

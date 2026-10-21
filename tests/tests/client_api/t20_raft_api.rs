@@ -131,7 +131,7 @@ async fn api_learner_ids() -> Result<()> {
     );
     {
         leader.change_membership(btreeset! {0,1,2}, true).await?;
-        log_index += 2;
+        log_index += 1;
 
         router.wait(&leader_id, timeout()).applied_index(Some(log_index), "promote learner 2").await?;
         router.wait(&2, timeout()).state(openraft::ServerState::Follower, "promoted voter").await?;

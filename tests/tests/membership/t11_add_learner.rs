@@ -233,13 +233,10 @@ async fn add_learner_when_previous_membership_not_committed() -> Result<()> {
         });
 
         let node = router.get_raft_handle(&0)?;
-        node.wait(timeout()).log_index(Some(log_index + 1), "joint membership appended").await?;
+        node.wait(timeout()).log_index(Some(log_index + 1), "membership appended").await?;
     }
 
-    tracing::info!(
-        log_index,
-        "--- refresh the lease without committing the joint membership"
-    );
+    tracing::info!(log_index, "--- refresh the lease without committing the membership");
     {
         let node = router.get_raft_handle(&0)?;
         let refresh_started = TypeConfig::now();
