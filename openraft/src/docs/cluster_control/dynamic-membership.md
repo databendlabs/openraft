@@ -17,7 +17,7 @@ Adds a learner to the cluster and starts log replication from the leader.
 **Behavior:**
 - Learner immediately receives log replication
 - Learner does not participate in voting or elections
-- If the node already exists as learner or voter, it is re-added with updated metadata
+- If the node already exists as learner or voter, it won't override the existing metadata
 - Until the leader commits a log entry of its own term, it fails with
   [`UncommittedLeaderLog`] and writes no log
 
