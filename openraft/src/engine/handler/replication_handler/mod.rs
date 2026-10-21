@@ -9,7 +9,6 @@ use crate::LogIdOptionExt;
 use crate::Membership;
 use crate::RaftState;
 use crate::RaftTypeConfig;
-use crate::ServerState;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
@@ -94,15 +93,6 @@ where
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn append_membership(&mut self, log_id: &LogIdOf<C>, m: &Membership<C::NodeId, C::Node>) {
         tracing::debug!("update effective membership: log_id:{} {}", log_id, m);
-
-        debug_assert!(
-            self.state.server_state == ServerState::Leader,
-            "Only leader is allowed to call update_effective_membership()"
-        );
-        debug_assert!(
-            self.state.is_leader(&self.config.id),
-            "Only leader is allowed to call update_effective_membership()"
-        );
 
         self.state
             .membership_state
