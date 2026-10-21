@@ -105,8 +105,8 @@ async fn remove_leader() -> Result<()> {
         let cfg = &metrics.membership_config.membership();
 
         assert_eq!(metrics.current_term, 1);
-        assert_eq!(metrics.last_log_index, Some(8));
-        assert_eq!(metrics.last_applied, Some(log_id(1, 0, 8)));
+        assert_eq!(metrics.last_log_index, Some(7));
+        assert_eq!(metrics.last_applied, Some(log_id(1, 0, 7)));
         assert_eq!(metrics.membership_config.membership().get_joint_config().clone(), vec![
             btreeset![1, 2, 3]
         ]);
@@ -203,7 +203,7 @@ async fn remove_leader_auto_transfer() -> Result<()> {
     {
         let node = router.get_raft_handle(&0)?;
         node.change_membership([1, 2], false).await?;
-        log_index += 2;
+        log_index += 1;
     }
 
     tracing::info!(
@@ -256,7 +256,7 @@ async fn remove_leader_manual_step_down() -> Result<()> {
     {
         let node = router.get_raft_handle(&0)?;
         node.change_membership([1, 2], false).await?;
-        log_index += 2;
+        log_index += 1;
     }
 
     tracing::info!(log_index, "--- the removed leader keeps leading");
@@ -311,13 +311,13 @@ async fn remove_leader_fenced_step_down() -> Result<()> {
     {
         let node = router.get_raft_handle(&0)?;
         node.change_membership([1, 2], false).await?;
-        log_index += 2;
+        log_index += 1;
     }
 
     let node = router.get_raft_handle(&0)?;
     let metrics = router
         .wait(&0, timeout())
-        .applied_index(Some(log_index), "the removed leader applies the membership logs")
+        .applied_index(Some(log_index), "the removed leader applies the membership log")
         .await?;
     let vote = metrics.vote;
     let membership_log_id =

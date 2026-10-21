@@ -37,7 +37,7 @@ async fn matching_membership_log_id_completes_joint_change() -> Result<()> {
     );
     let mut router = RaftRouter::new(config.clone());
 
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3}).await?;
+    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3,4}).await?;
     let leader = router.get_raft_handle(&0)?;
 
     let membership_log_id = {
@@ -47,13 +47,13 @@ async fn matching_membership_log_id_completes_joint_change() -> Result<()> {
 
     tracing::info!(
         log_index,
-        "--- add voter 3 guarded by the membership log id it was read at"
+        "--- add voters 3 and 4 guarded by the membership log id it was read at"
     );
     {
         let precondition = Precondition::LastMembershipLogId {
             last_membership_log_id: membership_log_id,
         };
-        let request = ChangeMembershipRequest::<TypeConfig>::new([0, 1, 2, 3], false)
+        let request = ChangeMembershipRequest::<TypeConfig>::new([0, 1, 2, 3, 4], false)
             .with_payload(EntryPayload::Blank, EntryPayload::Blank)
             .with_preconditions([precondition]);
         let change = leader.change_membership_with_payload(request);
@@ -65,13 +65,13 @@ async fn matching_membership_log_id_completes_joint_change() -> Result<()> {
         log_index += 2;
 
         let voters = resp.membership.as_ref().unwrap().voter_ids().collect::<std::collections::BTreeSet<_>>();
-        assert_eq!(btreeset! {0,1,2,3}, voters);
+        assert_eq!(btreeset! {0,1,2,3,4}, voters);
         assert_eq!(1, resp.membership.as_ref().unwrap().get_joint_config().len());
     }
 
     tracing::info!(log_index, "--- every node applies both membership logs");
     {
-        for node_id in [0, 1, 2, 3] {
+        for node_id in [0, 1, 2, 3, 4] {
             router.wait(&node_id, timeout()).applied_index(Some(log_index), "uniform config applied").await?;
         }
     }
@@ -106,7 +106,7 @@ async fn stale_membership_log_id_rejects_change() -> Result<()> {
     );
     {
         leader.change_membership([0, 1, 2, 3], false).await?;
-        log_index += 2;
+        log_index += 1;
     }
 
     let current_log_id = {
@@ -184,7 +184,7 @@ async fn committed_leader_id_guards_the_change() -> Result<()> {
             committed_leader_id: established,
         };
         leader.change_membership_if([0, 1, 2, 3], false, [precondition]).await?;
-        log_index += 2;
+        log_index += 1;
 
         router.wait(&0, timeout()).applied_index(Some(log_index), "uniform config applied").await?;
     }
@@ -232,7 +232,7 @@ async fn last_log_id_guards_the_change() -> Result<()> {
     {
         let precondition = Precondition::LastLogId { last_log_id };
         leader.change_membership_if([0, 1, 2, 3], false, [precondition]).await?;
-        log_index += 2;
+        log_index += 1;
 
         router.wait(&0, timeout()).applied_index(Some(log_index), "uniform config applied").await?;
     }

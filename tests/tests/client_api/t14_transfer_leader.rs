@@ -402,7 +402,7 @@ async fn transfer_leader_to_promoted_learner_without_promotion_log_does_not_pani
     router.set_network_error(3, true);
 
     n0.change_membership([0, 1, 2, 3], false).await?;
-    log_index += 2;
+    log_index += 1;
 
     router
         .wait(&0, timeout())

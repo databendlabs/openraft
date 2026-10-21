@@ -400,7 +400,10 @@ impl TypedRaftRouter {
 
             let node = self.get_raft_handle(&MemNodeId::default())?;
             node.change_membership(voter_ids.clone(), false).await?;
-            log_index += 2;
+            // Every majority of two voters holds node 0, so the change from `{0}` writes one
+            // uniform entry. Three or more voters need a joint entry first.
+            let needs_joint = voter_ids.len() > 2;
+            log_index += if needs_joint { 2 } else { 1 };
 
             for id in voter_ids.iter() {
                 self.wait(id, timeout())

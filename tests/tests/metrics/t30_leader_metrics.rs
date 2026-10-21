@@ -113,7 +113,7 @@ async fn leader_metrics() -> Result<()> {
     {
         let node = router.get_raft_handle(&0)?;
         node.change_membership(c0123.clone(), false).await?;
-        log_index += 2; // two member-change logs
+        log_index += 1; // one member-change log
 
         for id in c0123.iter() {
             router

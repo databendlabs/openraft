@@ -8,8 +8,9 @@ use crate::node::NodeId;
 ///
 /// A direct append writes the caller's exact membership as one log entry, without an intermediate
 /// joint membership. It is accepted only when quorum intersection can be proved by a simple rule:
-/// two uniform memberships whose voter sets differ by at most one node id, or two memberships that
-/// share an exactly equal voter set.
+/// two uniform memberships whose voter sets differ by at most one node id, or two memberships where
+/// a voter set of one and a voter set of the other have intersecting majorities, i.e. every
+/// majority of the first intersects every majority of the second.
 ///
 /// The rule is conservative, so a rejected transition is **unsupported**, not necessarily unsafe.
 /// Some rejected transitions do have intersecting quorums; Openraft does not run a general
@@ -36,24 +37,29 @@ use crate::node::NodeId;
 /// Quorum `{a,b}` of the previous membership and quorum `{c,x,y}` of the proposed one do not
 /// intersect. Append `x` and `y` one at a time.
 ///
-/// Overlapping, but not exactly equal, voter sets:
+/// Voter sets that overlap too little:
 ///
 /// ```text
 /// [{a,b,c}, {a,b,d}] -> [{a,b,e}]
 /// ```
 ///
-/// No previous voter set equals `{a,b,e}`. Sharing `a` and `b` does not help: quorum `{a,c,d}` of
-/// the previous membership and quorum `{b,e}` of the proposed one do not intersect.
+/// No previous voter set has majorities that intersect those of `{a,b,e}`: majority `{a,c}` of
+/// `{a,b,c}` and majority `{a,d}` of `{a,b,d}` each miss majority `{b,e}`. Sharing `a` and `b` does
+/// not help: quorum `{a,c,d}` of the previous membership and quorum `{b,e}` of the proposed one do
+/// not intersect.
 ///
 /// A safe transition this rule still rejects:
 ///
 /// ```text
-/// [{a,b,c,d}, {a,b,c,e}] -> [{a,b,d,e}, {a,c,d,e}]
+/// [{a,b,c}, {a,d,e}] -> [{b,c,d,e}]
 /// ```
 ///
-/// Every voter set holds four of the five node ids `{a,b,c,d,e}`, so every quorum holds at least
-/// three of them, and any two such quorums intersect. No voter set is equal across the two
-/// memberships, so this rule cannot see that and rejects the transition.
+/// Every previous quorum holds at least two of `{a,b,c}` and at least two of `{a,d,e}`, and only
+/// `a` is in both, so it holds at least two of `{b,c,d,e}`. Every proposed quorum holds at least
+/// three of these four node ids, so any two such quorums intersect. No voter set pair shows it:
+/// majority `{a,b}` of `{a,b,c}` misses majority `{c,d,e}` of `{b,c,d,e}`, and majority `{a,d}`
+/// of `{a,d,e}` misses `{b,c,e}`. So this rule cannot see the intersection and rejects the
+/// transition.
 #[since(version = "0.10.0")]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]

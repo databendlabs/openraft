@@ -47,7 +47,7 @@ async fn add_remove_voter() -> Result<()> {
     {
         let node = router.get_raft_handle(&0)?;
         node.change_membership(c0123.clone(), false).await?;
-        log_index += 2; // two member-change logs
+        log_index += 1; // one member-change log
 
         for id in c0123.iter() {
             router.wait(id, timeout()).applied_index(Some(log_index), "removed node-4 from membership").await?;

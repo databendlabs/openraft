@@ -36,8 +36,11 @@ where
     /// error.
     ///
     /// Internally:
-    /// - It proposes a **joint** config.
-    /// - When the **joint** config is committed, it proposes a uniform config.
+    /// - If openraft can prove that every quorum of the current config intersects every quorum of
+    ///   the proposed one, such as when the change adds or removes one voter, it proposes the
+    ///   uniform config directly.
+    /// - Otherwise, it proposes a **joint** config first. When the **joint** config is committed,
+    ///   it proposes the uniform config.
     ///
     /// Read more about the behavior of [joint
     /// consensus](crate::docs::cluster_control::joint_consensus).
@@ -103,10 +106,12 @@ where
     ///
     /// A voter change may append a joint entry followed by a uniform entry. `with_payload()`
     /// binds each payload to the shape of the membership it carries: the joint payload to the
-    /// joint entry, the uniform payload to the uniform entry. A change that moves no voter needs
-    /// no joint entry, so it drops the joint payload and writes its single entry with the uniform
-    /// payload. If `with_membership()` preserves application data, the state machine applies each
-    /// payload at its corresponding log ID.
+    /// joint entry, the uniform payload to the uniform entry. A change needs no joint entry when
+    /// openraft can prove that every quorum of the current config intersects every quorum of the
+    /// proposed one, such as when it moves no voter, or adds or removes one voter. Such a change
+    /// drops the joint payload and writes its single entry with the uniform payload. If
+    /// `with_membership()` preserves application data, the state machine applies each payload at
+    /// its corresponding log ID.
     ///
     /// Both supplied payloads are serialized, stored, and replicated when the change requires two
     /// physical entries.
@@ -141,11 +146,11 @@ where
     ///
     /// # Preconditions and the two-step change
     ///
-    /// A voter change is proposed in two steps, a **joint** config and then a **uniform** config
-    /// that flattens it, and the preconditions given here guard only the first. Appending the
-    /// joint entry moves the last log id and the effective membership log id past what the caller
-    /// observed, so only [`Precondition::CommittedLeaderId`] carries over; openraft re-guards the
-    /// flattening step itself with the joint entry's log id.
+    /// A voter change that needs a joint config is proposed in two steps, a **joint** config and
+    /// then a **uniform** config that flattens it, and the preconditions given here guard only the
+    /// first. Appending the joint entry moves the last log id and the effective membership log id
+    /// past what the caller observed, so only [`Precondition::CommittedLeaderId`] carries over;
+    /// openraft re-guards the flattening step itself with the joint entry's log id.
     ///
     /// A [`ClientWriteError::PreconditionFailed`] from the flattening step therefore does not mean
     /// nothing was written: the joint config is already committed and the cluster is left in joint
@@ -174,8 +179,8 @@ where
     /// rule below. Prefer [`Self::change_membership()`], which derives all of that from the
     /// current membership, unless you know exactly what this method will write.
     ///
-    /// Unlike [`Self::change_membership()`], which computes a joint config and then flattens it in
-    /// a second entry, this method writes exactly the `membership` given, in one physical log
+    /// Unlike [`Self::change_membership()`], which may compute a joint config and then flatten it
+    /// in a second entry, this method writes exactly the `membership` given, in one physical log
     /// entry. It never adds a joint membership and never flattens one, so a caller-built joint
     /// membership of any number of voter sets is stored as it is. It returns after that entry is
     /// committed and applied.
@@ -194,7 +199,8 @@ where
     /// quorum intersection openraft can prove cheaply:
     ///
     /// - Both memberships are uniform, and their voter sets differ by at most one node id.
-    /// - Otherwise, the two memberships share an exactly equal voter set.
+    /// - Otherwise, a voter set of one membership and a voter set of the other have intersecting
+    ///   majorities, i.e. every majority of the first intersects every majority of the second.
     ///
     /// Anything else fails with [`UnsupportedMembershipTransition`], which is a limit of this
     /// rule, not proof that the transition is unsafe.
@@ -234,8 +240,7 @@ where
     /// ```
     ///
     /// Move from the uniform `{1,2,3}` to a joint membership of three voter sets, where nodes `4`
-    /// through `7` are already learners. It is accepted because `{1,2,3}` appears in both, exactly
-    /// equal:
+    /// through `7` are already learners. It is accepted because `{1,2,3}` appears in both:
     ///
     /// ```ignore
     /// let observed = raft.metrics().borrow().membership_config.clone();

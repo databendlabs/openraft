@@ -132,11 +132,14 @@ This algorithm relies on four constraints for proper functioning:
     membership.
 
 OpenRaft implements constraint (2) **old-new-intersect** by ensuring that
-the new membership includes a config entry identical to one in the last
-committed membership.
+a config entry of the new membership and a config entry of the last committed
+membership have intersecting majorities: every majority of one intersects
+every majority of the other. A config entry identical to one in the last
+committed membership is the simplest such pair.
 
 For example, if the last committed membership is `[{a, b, c}]`, then a valid new membership could be:
-a joint membership: `[{a, b, c}, {x, y, z}]`.
+a joint membership: `[{a, b, c}, {x, y, z}]`, or the uniform `[{a, b, c, d}]`,
+because every majority of `{a, b, c}` intersects every majority of `{a, b, c, d}`.
 
 If the last committed membership is `[{a, b, c}, {x, y, z}]`, a valid new membership
 might be: `[{a, b, c}]`, or `[{x, y, z}]`.
@@ -144,11 +147,12 @@ might be: `[{a, b, c}]`, or `[{x, y, z}]`.
 
 ## Direct membership append
 
-[`Raft::change_membership()`][] always reaches its target through a joint
-config, so changing one voter costs two log entries.
-[`Raft::append_membership()`][] writes the caller's exact membership as one log
-entry instead. It must still satisfy (2) **old-new-intersect**, and it accepts a
-transition only when one of the two rules below proves that constraint.
+[`Raft::change_membership()`][] writes its target in one log entry when it can
+prove (2) **old-new-intersect** for it, and reaches the target through a joint
+config otherwise. [`Raft::append_membership()`][] writes the caller's exact
+membership as one log entry. It must still satisfy (2) **old-new-intersect**,
+and it accepts a transition only when one of the two rules below proves that
+constraint.
 
 ### Rule 1: two uniform memberships one voter apart
 
@@ -177,18 +181,25 @@ the new one share no node.
 | `[{a,b,c}]` → `[{b,c,d}]` | `{a, d}` | reject |
 | `[{a,b,c}]` → `[{a,b,c,x,y}]` | `{x, y}` | reject |
 
-### Rule 2: an exactly equal voter set
+### Rule 2: a pair of voter sets with intersecting majorities
 
-When either membership has more than one voter set, the two memberships must
-hold one voter set that is exactly equal. This is the condition the extended
-algorithm already uses, and it puts no maximum on the number of voter sets:
-`c1` → `c1c2c3c4` is accepted because `c1` appears in both.
+When either membership has more than one voter set, the old membership must
+hold a voter set `V` and the new membership a voter set `V'`, such that every
+majority of `V` intersects every majority of `V'`. Every quorum of a membership
+holds a majority of each of its voter sets, so every `qᵢ ∈ m` and `qⱼ ∈ m'` then
+intersect. This is the condition the extended algorithm already uses.
 
-The rule compares whole voter sets, never their members. From
-`[{a,b,c}, {a,b,d}]` to `[{a,b,e}]`, every voter set holds `a` and `b`, yet no
-voter set is equal across the two memberships. The transition is rejected, and
-rightly so: the quorum `{a,c,d}` of the old membership and the quorum `{b,e}` of
-the new one share no node.
+Two equal voter sets form such a pair, so the rule puts no maximum on the
+number of voter sets: `c1` → `c1c2c3c4` is accepted because `c1` appears in
+both. Two voter sets one node id apart form such a pair as well, by the proof of
+rule 1: `[{a,b,c}, {d,e,f}]` → `[{a,b,c,x}, {d,e,f,y}]` is accepted through
+`{a,b,c}` and `{a,b,c,x}`.
+
+Shared members alone prove nothing. From `[{a,b,c}, {a,b,d}]` to `[{a,b,e}]`,
+every voter set holds `a` and `b`, yet the majorities `{a,c}` of `{a,b,c}` and
+`{a,d}` of `{a,b,d}` each miss the majority `{b,e}` of `{a,b,e}`. The transition
+is rejected, and rightly so: the quorum `{a,c,d}` of the old membership and the
+quorum `{b,e}` of the new one share no node.
 
 The rule is conservative, so it also rejects transitions that are safe but that
 it cannot prove. [`UnsupportedMembershipTransition`][] carries such an example,

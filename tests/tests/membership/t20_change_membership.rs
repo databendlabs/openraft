@@ -144,7 +144,7 @@ async fn change_with_new_learner_blocking() -> anyhow::Result<()> {
 
         let node = router.get_raft_handle(&0)?;
         let res = node.change_membership([0, 1], false).await?;
-        log_index += 2;
+        log_index += 1;
         tracing::info!(log_index, "--- change_membership blocks until success: {:?}", res);
 
         for node_id in 0..2 {
@@ -237,8 +237,8 @@ async fn change_with_turn_removed_voter_to_learner() -> anyhow::Result<()> {
     {
         let node = router.get_raft_handle(&0)?;
         node.change_membership([0, 1], true).await?;
-        // 2 for change_membership
-        log_index += 2;
+        // 1 for change_membership
+        log_index += 1;
 
         // all the nodes MUST recv the change_membership log
         for id in [0, 1] {
@@ -446,8 +446,8 @@ async fn uncommitted_leader_log_blocks_the_change() -> anyhow::Result<()> {
 
         let resp = new_leader.change_membership([0, 1, 2, 3], false).await?;
 
-        // The joint entry comes first, then the uniform entry this response is for.
-        assert_eq!(noop_log_id.index + 2, resp.log_id.index);
+        // Adding one voter writes a single uniform entry.
+        assert_eq!(noop_log_id.index + 1, resp.log_id.index);
         let want = Membership::new_with_defaults(vec![btreeset! {0,1,2,3}], []);
         assert_eq!(Some(want), resp.membership);
     }

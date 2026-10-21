@@ -17,6 +17,10 @@ OpenRaft implements membership changes using a two-phase joint consensus approac
 2. **Second Phase:** Apply an **empty change request** (`AddVoterIds({})`) to the last configuration in the current
    joint config. This transitions the cluster from joint configuration to a uniform configuration and is then committed.
 
+When OpenRaft can prove that every quorum of the current configuration intersects every quorum of the new one, such as
+when the change adds or removes one voter, the first phase writes the new uniform configuration directly, and there is
+no second phase.
+
 ## Problem in Previous Versions of OpenRaft (prior to 2025-04-03)
 
 In earlier implementations, the second phase of a membership change would reapply the original change operation to the

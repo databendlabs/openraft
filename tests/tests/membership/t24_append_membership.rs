@@ -43,9 +43,6 @@ fn config() -> Result<Arc<Config>> {
 }
 
 /// Adding one voter and removing one voter each write exactly one membership entry.
-///
-/// `change_membership()` writes two entries for the same transition: a joint config and then a
-/// uniform config.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn add_and_remove_one_voter_write_one_entry_each() -> Result<()> {
@@ -122,8 +119,9 @@ async fn unsupported_transition_writes_no_log() -> Result<()> {
 
 /// A caller-built joint membership is stored exactly as given, and left again in one entry.
 ///
-/// The joint membership below has three voter sets, which shows that the shared-set rule imposes
-/// no maximum. Both transitions share the voter set `{0,1,2}` exactly.
+/// The joint membership below has three voter sets, which shows that the transition rule imposes
+/// no maximum. Both transitions keep the voter set `{0,1,2}`, and two majorities of one voter set
+/// always intersect.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn joint_membership_is_entered_and_left_in_one_entry_each() -> Result<()> {

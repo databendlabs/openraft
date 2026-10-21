@@ -16,55 +16,55 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn m0_change_m12() -> anyhow::Result<()> {
-    change_from_to(btreeset! {0}, btreeset! {1,2}).await
+    change_from_to(btreeset! {0}, btreeset! {1,2}, 2).await
 }
 
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn m0_change_m123() -> anyhow::Result<()> {
-    change_from_to(btreeset! {0}, btreeset! {1,2,3}).await
+    change_from_to(btreeset! {0}, btreeset! {1,2,3}, 2).await
 }
 
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn m01_change_m12() -> anyhow::Result<()> {
-    change_from_to(btreeset! {0, 1}, btreeset! {1,2}).await
+    change_from_to(btreeset! {0, 1}, btreeset! {1,2}, 1).await
 }
 
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn m01_change_m1() -> anyhow::Result<()> {
-    change_from_to(btreeset! {0, 1}, btreeset! {1}).await
+    change_from_to(btreeset! {0, 1}, btreeset! {1}, 1).await
 }
 
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn m01_change_m2() -> anyhow::Result<()> {
-    change_from_to(btreeset! {0, 1}, btreeset! {2}).await
+    change_from_to(btreeset! {0, 1}, btreeset! {2}, 2).await
 }
 
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn m01_change_m3() -> anyhow::Result<()> {
-    change_from_to(btreeset! {0, 1}, btreeset! {3}).await
+    change_from_to(btreeset! {0, 1}, btreeset! {3}, 2).await
 }
 
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn m012_change_m4() -> anyhow::Result<()> {
-    change_from_to(btreeset! {0, 1, 2}, btreeset! {4}).await
+    change_from_to(btreeset! {0, 1, 2}, btreeset! {4}, 2).await
 }
 
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn m012_change_m456() -> anyhow::Result<()> {
-    change_from_to(btreeset! {0, 1, 2}, btreeset! {4,5,6}).await
+    change_from_to(btreeset! {0, 1, 2}, btreeset! {4,5,6}, 2).await
 }
 
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn m01234_change_m0123() -> anyhow::Result<()> {
-    change_from_to(btreeset! {0, 1, 2, 3, 4}, btreeset! {0,1,2,3}).await
+    change_from_to(btreeset! {0, 1, 2, 3, 4}, btreeset! {0,1,2,3}, 1).await
 }
 
 // --- add ---
@@ -72,19 +72,19 @@ async fn m01234_change_m0123() -> anyhow::Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn m0_add_m01() -> anyhow::Result<()> {
-    change_by_add(btreeset! {0}, &[0, 1]).await
+    change_by_add(btreeset! {0}, &[0, 1], 1).await
 }
 
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn m0_add_m12() -> anyhow::Result<()> {
-    change_by_add(btreeset! {0}, &[1, 2]).await
+    change_by_add(btreeset! {0}, &[1, 2], 2).await
 }
 
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn m01_add_m() -> anyhow::Result<()> {
-    change_by_add(btreeset! {0,1}, &[]).await
+    change_by_add(btreeset! {0,1}, &[], 1).await
 }
 
 // --- remove ---
@@ -92,29 +92,35 @@ async fn m01_add_m() -> anyhow::Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn m012_remove_m01() -> anyhow::Result<()> {
-    change_by_remove(btreeset! {0,1,2}, &[0, 1]).await
+    change_by_remove(btreeset! {0,1,2}, &[0, 1], 2).await
 }
 
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn m012_remove_m3() -> anyhow::Result<()> {
-    change_by_remove(btreeset! {0,1,2}, &[3]).await
+    change_by_remove(btreeset! {0,1,2}, &[3], 1).await
 }
 
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn m012_remove_m() -> anyhow::Result<()> {
-    change_by_remove(btreeset! {0,1,2}, &[]).await
+    change_by_remove(btreeset! {0,1,2}, &[], 1).await
 }
 
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn m012_remove_m13() -> anyhow::Result<()> {
-    change_by_remove(btreeset! {0,1,2}, &[1, 3]).await
+    change_by_remove(btreeset! {0,1,2}, &[1, 3], 1).await
 }
 
+/// `membership_entries` is 1 when every quorum of `old` intersects every quorum of the new
+/// voter set, and 2 when the change needs a joint config first.
 #[tracing::instrument(level = "debug")]
-async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: BTreeSet<MemNodeId>) -> anyhow::Result<()> {
+async fn change_from_to(
+    old: BTreeSet<MemNodeId>,
+    change_members: BTreeSet<MemNodeId>,
+    membership_entries: u64,
+) -> anyhow::Result<()> {
     let new = change_members;
 
     let mes = format!("from {:?} to {:?}", old, new);
@@ -162,11 +168,7 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: BTreeSet<MemNo
 
         let node = router.get_raft_handle(&0)?;
         node.change_membership(new.clone(), false).await?;
-        log_index += 1;
-        if new != old {
-            // Two member-change logs.
-            log_index += 1;
-        }
+        log_index += membership_entries;
 
         tracing::info!(log_index, "--- wait for old leader or its transfer target");
         {
@@ -258,8 +260,10 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: BTreeSet<MemNo
 }
 
 /// Test change-membership by adding voters.
+///
+/// `membership_entries` is the same as in [`change_from_to`].
 #[tracing::instrument(level = "debug")]
-async fn change_by_add(old: BTreeSet<MemNodeId>, add: &[MemNodeId]) -> anyhow::Result<()> {
+async fn change_by_add(old: BTreeSet<MemNodeId>, add: &[MemNodeId], membership_entries: u64) -> anyhow::Result<()> {
     let change = ChangeMembers::AddVoterIds(add.iter().copied().collect());
 
     let mes = format!("from {:?} {:?}", old, change);
@@ -302,10 +306,7 @@ async fn change_by_add(old: BTreeSet<MemNodeId>, add: &[MemNodeId]) -> anyhow::R
     {
         let node = router.get_raft_handle(&0)?;
         node.change_membership(change, false).await?;
-        log_index += 1;
-        if new != old {
-            log_index += 1; // two member-change logs
-        }
+        log_index += membership_entries;
 
         for id in new.iter() {
             router
@@ -329,8 +330,13 @@ async fn change_by_add(old: BTreeSet<MemNodeId>, add: &[MemNodeId]) -> anyhow::R
     Ok(())
 }
 
+/// `membership_entries` is the same as in [`change_from_to`].
 #[tracing::instrument(level = "debug")]
-async fn change_by_remove(old: BTreeSet<MemNodeId>, remove: &[MemNodeId]) -> anyhow::Result<()> {
+async fn change_by_remove(
+    old: BTreeSet<MemNodeId>,
+    remove: &[MemNodeId],
+    membership_entries: u64,
+) -> anyhow::Result<()> {
     let change = ChangeMembers::RemoveVoters(remove.iter().copied().collect());
 
     let mes = format!("from {:?} {:?}", old, change);
@@ -364,11 +370,7 @@ async fn change_by_remove(old: BTreeSet<MemNodeId>, remove: &[MemNodeId]) -> any
     {
         let node = router.get_raft_handle(&0)?;
         node.change_membership(change.clone(), false).await?;
-        log_index += 1;
-        if new != old {
-            // Two member-change logs
-            log_index += 1;
-        }
+        log_index += membership_entries;
 
         tracing::info!(log_index, "--- wait for old leader or its transfer target");
         {

@@ -139,7 +139,10 @@ should hold, and update it right after each write:
 - cluster init: 2 logs, the membership entry at index 0 and the leader blank
   log at index 1.
 - `add_learner()`: 1 log.
-- `change_membership()`: 2 logs, the joint config and then the uniform config.
+- `change_membership()`: 1 log, the uniform config, when every quorum of the old
+  voter set intersects every quorum of the new one, such as when it adds or
+  removes one voter. Otherwise 2 logs, the joint config and then the uniform
+  config.
 - `client_request()`: 1 log. `client_request_many()` returns how many it wrote.
 
 Assert progress with a wait, never with a sleep:
