@@ -95,7 +95,7 @@ struct DerivedConfig {
 }
 
 impl DerivedConfig {
-    fn from_seed(seed: u64) -> Self {
+    fn from_seed(seed: u64, max_steps: u64) -> Self {
         let mut rng = StdRng::seed_from_u64(seed);
         let heartbeat_interval = 50 + rng.random_range(0..100);
         let election_timeout_min = heartbeat_interval * rng.random_range(2..4);
@@ -113,6 +113,11 @@ impl DerivedConfig {
         } else {
             rng.random_range(30..=80)
         };
+        // At least four multiples of the interval fall in the safety phase.
+        // The default `--max-steps 100000` keeps the range `10000..25000`, and
+        // the floors keep the range non-empty for a tiny `--max-steps`.
+        let membership_interval_min = (max_steps / 10).max(1);
+        let membership_interval_max = (max_steps / 4).max(2);
         Self {
             num_initial_nodes,
             max_potential_nodes: 10,
@@ -123,7 +128,7 @@ impl DerivedConfig {
             enable_chaos,                                 // 80% chance
             restart_chance: rng.random_range(0.01..0.05), // 1-5%
             chaos_interval: rng.random_range(2000..5000),
-            membership_interval: rng.random_range(10000..25000),
+            membership_interval: rng.random_range(membership_interval_min..membership_interval_max),
             snapshot_logs_threshold,
             max_in_snapshot_log_to_keep,
             replication_lag_threshold: snapshot_logs_threshold * 2,
@@ -223,7 +228,7 @@ fn main() {
         println!("Seed: {seed}, Max steps: {}", config.max_steps);
         println!(
             "\n{}\n======================================\n",
-            DerivedConfig::from_seed(seed)
+            DerivedConfig::from_seed(seed, config.max_steps)
         );
         (seed, 1)
     } else {
@@ -324,7 +329,7 @@ fn run_fuzz_loop(base_seed: u64, max_steps: u64, iterations: u64, crash_file: Op
         }
 
         let iteration_seed = base_seed.wrapping_add(iteration);
-        let derived = DerivedConfig::from_seed(iteration_seed);
+        let derived = DerivedConfig::from_seed(iteration_seed, max_steps);
 
         println!(
             "--- Iteration {} (seed: {}, nodes: {}, fail_rate: {:.2}%, chaos: {}, leader_restore: {}) ---",
