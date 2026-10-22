@@ -144,7 +144,8 @@ guide:
 test-turmoil:
 	cd tests-turmoil && cargo test --lib
 
-DETSIM_ARGS ?= --iterations 5 --max-steps 10000
+# As in CI: durable storage until the storage faults stop failing on main.
+DETSIM_ARGS ?= --iterations 5 --max-steps 10000 --storage durable
 
 detsim:
 	cd tests-turmoil && cargo run --bin fuzz -- $(DETSIM_ARGS)

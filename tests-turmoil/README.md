@@ -54,7 +54,7 @@ The fuzzer draws these switches from each seed, on an RNG stream of its own, so 
 
 A flush, its late report included, stays within a quarter of `heartbeat_interval`, stalls aside. A follower acks an append once it has flushed it, and openraft gives the whole round trip 3/4 of `heartbeat_interval`: with flushes near that deadline every append times out and replication stops for good, which says more about the configuration than about openraft.
 
-Until the invariant checks allow for a restart that reloads less than the process had, `durable` is the default.
+CI and `make detsim` pass `--storage durable`, so they run as before. With storage faults the fuzzer still fails on `main`, through the two purge bugs that [#2177](https://github.com/databendlabs/openraft/pull/2177) fixes, so `seeded` and `lossy` are for runs by hand until it lands; then CI can drop `--storage durable`. Until the invariant checks allow for a restart that reloads less than the process had, `durable` is also the default.
 
 ## Invariants Checked
 
@@ -149,7 +149,7 @@ cargo run --release --bin fuzz -- --seed 500 --iterations 20 --max-steps 50000
 | `--iterations` | 100 (0=∞)      | Number of iterations; stops at the first failure                   |
 | `--max-steps`  | 100000         | Safety-phase length in ticks; liveness phases run after            |
 | `--crash-file` | —              | Where to write crash info                                          |
-| `--storage`    | `durable`      | Storage faults: drawn from each seed (`seeded`), none (`durable`, as before they existed), or always lossy (`lossy`) |
+| `--storage`    | `durable`      | Storage faults: drawn from each seed (`seeded`), none (`durable`, as before they existed, and what CI runs), or always lossy (`lossy`) |
 
 Environment variables:
 
