@@ -2,11 +2,14 @@
   (:require [clojure.test :refer [deftest is testing]]
             [jepsen [checker :as checker]
              [nemesis :as nemesis]]
+            [jepsen.generator :as gen]
+            [jepsen.generator.test :as gen-test]
             [jepsen.openraft [await :as await]
              [client :as client]
              [cluster :as cluster]
              [db :as openraft-db]
              [harness :as harness]
+             [nemesis :as openraft-nemesis]
              [worker :as worker]]
             [jepsen.openraft.nemesis.membership :as membership]
             [jepsen.random :as random]))
@@ -1199,22 +1202,24 @@
            (:nodes (ex-data error))))))
 
 (deftest checks-membership-coverage-and-restoration
-  (let [subject (:checker (membership/membership-package
+  (let [test-config (assoc test-config :nodes (pop nodes))
+        nodes (:nodes test-config)
+        subject (:checker (membership/membership-package
                            :database
                            test-config))
         all-voters (set nodes)
-        four-voters (disj all-voters "n5")
+        four-voters (disj all-voters "n4")
         shrink {:type :info
                 :f :grow
                 :value (installed {:change :shrink
-                                   :node "n5"
+                                   :node "n4"
                                    :leader "n1"
                                    :before all-voters
                                    :after four-voters})}
         grow {:type :info
               :f :grow
               :value (installed {:change :grow
-                                 :node "n5"
+                                 :node "n4"
                                  :leader "n1"
                                  :before four-voters
                                  :after all-voters})}
@@ -1325,3 +1330,198 @@
                                   {})]
         (is (false? (:valid? result)))
         (is (false? (:restored? result)))))))
+
+(deftest shrinks-twice-through-the-removed-leader
+  (let [before (set nodes)
+        intermediate (disj before "n1")
+        after (disj intermediate "n2")
+        status (atom (stable-status before))
+        calls (atom [])
+        subject (membership-nemesis)]
+    (with-redefs [random/shuffle sort
+                  cluster/membership-status (fn [_] @status)
+                  client/with-leader! (fn [& _] (throw (ex-info "must not route" {})))
+                  client/change-membership!
+                  (fn [endpoint voters]
+                    (swap! calls conj [:change endpoint voters])
+                    (reset! status (stable-status (set voters))))
+                  openraft-db/stop-and-wipe-node!
+                  (fn [_ _ node] (swap! calls conj [:stop node]))]
+      (let [result (:value (nemesis/invoke! subject test-config {:f :shrink-twice}))]
+        (is (= [[:change "n1:21001" ["n2" "n3" "n4" "n5"]]
+                [:change "n1:21001" ["n3" "n4" "n5"]]
+                [:stop "n1"] [:stop "n2"]]
+               @calls))
+        (is (= :installed (:status result)))
+        (is (= :shrink-twice (:change result)))
+        (is (= intermediate (:intermediate result)))
+        (is (= after (:after result)))
+        (is (nil? @(:pending-change subject)))
+        (let [subject (:checker (membership/membership-package :database test-config))
+              history [{:f :shrink :value (installed {:change :shrink :node "n2" :leader "n1"
+                                                      :before before :after intermediate})}
+                       {:f :grow :value (installed {:change :grow :node "n2" :leader "n1"
+                                                    :before intermediate :after before})}
+                       {:f :shrink-twice :value result}
+                       {:f :restore-membership :value (installed {:leader "n3" :voters before})}
+                       {:f :await-recovery :value (installed {:leader "n3"})}]]
+          (is (:valid? (checker/check subject test-config history {})))
+          (is (= [:shrink-twice]
+                 (:missing-changes (checker/check subject test-config
+                                                  (remove #(= :shrink-twice (:f %)) history) {}))))
+          (doseq [bad-result [(dissoc result :removed-leader)
+                              (assoc-in result [:removed-leader :leader] "n2")
+                              (assoc-in result [:removed-leader :learners] #{"n1"})
+                              (assoc-in result [:removed-leader :stable?] false)]]
+            (is (= 1 (:malformed-outcomes
+                      (checker/check subject test-config
+                                     (assoc-in history [2 :value] bad-result) {}))))))))))
+
+(deftest resumes-the-second-shrink-after-metrics-catch-up
+  (let [status (atom (stable-status (set nodes)))
+        calls (atom [])
+        subject (membership-nemesis)]
+    (with-redefs [random/shuffle sort
+                  cluster/membership-status (fn [_] @status)
+                  client/with-leader! (fn [& _] (throw (ex-info "must not route" {})))
+                  client/change-membership! (fn [endpoint voters] (swap! calls conj [endpoint voters]))
+                  openraft-db/stop-and-wipe-node! (fn [& _])]
+      (is (= :skipped (:status (:value (nemesis/invoke! subject test-config {:f :shrink-twice})))))
+      (is (= 1 (count @calls)))
+      (reset! status (stable-status (disj (set nodes) "n1")))
+      (let [result (:value (nemesis/invoke! subject test-config {:f :grow}))]
+        (is (= :shrink-twice (get-in result [:resolved-change :change])))
+        (is (= :installed (get-in result [:resolved-change :status])))
+        (is (= ["n1:21001" "n1:21001"] (mapv first @calls)))))))
+
+(deftest interrupted-double-shrink-only-earns-ordinary-shrink-coverage
+  (doseq [failure [:first-timeout :second-timeout :new-leader]]
+    (let [status (atom (stable-status (set nodes)))
+          calls (atom [])
+          stops (atom [])
+          subject (membership-nemesis)]
+      (with-redefs [random/shuffle sort
+                    cluster/membership-status (fn [_] @status)
+                    client/with-leader! (fn [endpoint _ request] (request @endpoint))
+                    client/change-membership!
+                    (fn [endpoint voters]
+                      (swap! calls conj [endpoint voters])
+                      (reset! status (cond-> (stable-status (set voters))
+                                       (= :new-leader failure) (assoc :leader "n2")))
+                      (when (or (and (= failure :first-timeout) (= 1 (count @calls)))
+                                (and (= failure :second-timeout) (= 2 (count @calls))))
+                        (throw (ex-info "timeout" {:kind :request-timeout}))))
+                    openraft-db/stop-and-wipe-node! (fn [_ _ node] (swap! stops conj node))]
+        (let [initial (:value (nemesis/invoke! subject test-config {:f :shrink-twice}))
+              _ (when (not= failure :new-leader) (is (empty? @stops)))
+              resolved (if (= failure :new-leader)
+                         (:resolved-change initial)
+                         (:value (nemesis/invoke! subject test-config {:f :shrink})))]
+          (is (= :shrink (:change resolved)))
+          (is (= :installed (:status resolved)))
+          (is (= (if (= failure :second-timeout) ["n1" "n2"] ["n1"]) @stops))
+          (is (= (if (= failure :second-timeout) 2 1) (count @calls)))
+          (is (nil? @(:pending-change subject))))))))
+
+(deftest double-shrink-preserves-pending-cleanup-on-harness-failure
+  (let [status (atom (stable-status (set nodes)))
+        subject (membership-nemesis)]
+    (with-redefs [random/shuffle sort
+                  cluster/membership-status (fn [_] @status)
+                  client/change-membership! (fn [_ voters] (reset! status (stable-status (set voters))))
+                  openraft-db/stop-and-wipe-node! (fn [& _] (throw (ex-info "SSH failed" {})))]
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo #"SSH failed"
+                            (nemesis/invoke! subject test-config {:f :shrink-twice})))
+      (is (= ["n1" "n2"] (:removed-nodes @(:pending-change subject)))))))
+
+(deftest membership-schedule-keeps-grow-and-shrink
+  (doseq [node-count [4 5]
+          full? [false true]]
+    (let [package (membership/membership-package :database
+                                                 (assoc test-config :nodes (take node-count nodes)))
+          history (gen-test/simulate
+                   (gen/nemesis (gen/limit 50 (:generator package)))
+                   (fn [_ op]
+                     (assoc op :type :ok
+                            :value (if (and full? (= :grow (:f op)))
+                                     (skipped :membership-full {})
+                                     (installed {:change (:f op)})))))
+          changes (mapv :f (filter #(= :ok (:type %)) history))]
+      (is (= [:shrink :grow] (subvec changes 0 2)))
+      (if (= 5 node-count)
+        (is (= :shrink-twice (nth changes 2)))
+        (is (= #{:grow :shrink} (set changes)))))))
+
+(deftest double-shrink-requires-enough-voters-and-a-reachable-quorum
+  (doseq [[status reason] [[(stable-status #{"n1" "n2" "n3" "n4"}) :minimum-membership]
+                           [(assoc (stable-status (set nodes)) :learners #{"n6"}) :learner-pending]
+                           [(assoc (stable-status (set nodes)) :metrics {"n1" {}}) :no-quorum-safe-shrink]]]
+    (with-redefs [cluster/membership-status (constantly status)
+                  client/change-membership! (fn [& _] (throw (ex-info "must not change" {})))]
+      (let [subject (membership-nemesis)
+            result (:value (nemesis/invoke! subject test-config {:f :shrink-twice}))]
+        (is (= :skipped (:status result)))
+        (is (= reason (:reason result)))
+        (is (nil? @(:pending-change subject)))))))
+
+(deftest final-restoration-cleans-up-both-removed-nodes-without-double-shrink-credit
+  (let [before (set nodes)
+        target #{"n3" "n4" "n5"}
+        pending (atom {:change :shrink :node "n1" :leader "n1"
+                       :removed-nodes ["n1" "n2"] :before before :target target
+                       :status :indeterminate :stage :change-membership})
+        subject (membership/->MembershipNemesis :database pending)
+        calls (atom [])
+        statuses (atom [(stable-status target) (stable-status before)])]
+    (with-redefs-fn
+      {#'membership/stable-membership!
+       (fn [& _]
+         (let [status (first @statuses)]
+           (swap! statuses subvec 1)
+           status))
+       #'openraft-db/stop-and-wipe-node!
+       (fn [_ _ node] (swap! calls conj node))}
+      (fn []
+        (let [result (:value (nemesis/invoke! subject test-config {:f :restore-membership}))]
+          (is (= ["n1" "n2"] @calls))
+          (is (= :installed (:status result)))
+          (is (= :shrink (get-in result [:resolved-change :change])))
+          (is (= :installed (get-in result [:resolved-change :status])))
+          (is (nil? @pending)))))))
+
+(deftest initial-grow-completes-before-double-shrink-within-the-default-time-limit
+  (doseq [seed (range 10)]
+    (testing (str "healthy cluster, seed " seed)
+      (let [voters (atom (set nodes))
+            reachable (atom (set nodes))
+            leader (atom "n1")
+            subject (membership-nemesis)
+            package (membership/membership-package :database test-config)]
+        (random/with-seed seed
+          (with-redefs [cluster/membership-status
+                        (fn [_]
+                          (assoc (stable-status @voters)
+                                 :leader @leader
+                                 :metrics (zipmap @reachable (repeat {}))))
+                        client/with-leader! (fn [endpoint _ request] (request @endpoint))
+                        client/change-membership! (fn [_ ids] (reset! voters (set ids)))
+                        client/add-learner! (fn [& _])
+                        openraft-db/stop-and-wipe-node!
+                        (fn [_ _ node]
+                          (swap! reachable disj node)
+                          (when (= node @leader)
+                            (reset! leader (first (sort @voters)))))
+                        openraft-db/start-empty-node-without-wait!
+                        (fn [_ _ node] (swap! reachable conj node))]
+            (let [scheduled (#'openraft-nemesis/schedule-package package)
+                  history (gen-test/simulate
+                           (gen/nemesis (gen/time-limit 60 (:generator scheduled)))
+                           (fn [_ op] (nemesis/invoke! subject test-config op)))
+                  completed (filter #(get-in % [:value :status]) history)
+                  result (checker/check (:checker package) test-config history {})]
+              (is (= [:shrink :grow :grow :shrink-twice]
+                     (mapv :f (take 4 completed))))
+              (is (= [:installed :skipped :installed :installed]
+                     (mapv #(get-in % [:value :status]) (take 4 completed))))
+              (is (= [:grow :shrink :shrink-twice] (:observed-changes result)))
+              (is (empty? (:missing-changes result))))))))))

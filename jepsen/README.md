@@ -247,17 +247,35 @@ client timeout.
 
 #### Membership Nemesis
 
-The membership Nemesis exercises two membership-change cases:
+The membership Nemesis exercises these membership-change cases:
 
 - `shrink`: remove a voter only when the resulting configuration retains a
   quorum;
 - `grow`: add a non-voter back through learner initialization and committed
-  membership change.
+  membership change;
+- `shrink-twice` (at least five voters): send two consecutive changes directly
+  to the same leader A: `{A,B,C,D,E} -> {B,C,D,E} -> {C,D,E}`. Before the second
+  request, confirm the first configuration is committed and A remains leader
+  despite being neither a voter nor a learner. Neither request follows leader
+  redirects.
 
-It starts with one shrink and grow for deterministic coverage, then randomly
-mixes additional membership changes. Removed nodes are stopped and wiped only
-after the new voter set is committed. Final recovery restores all five nodes as
-voters and waits for every node to agree on a leader.
+The test application disables automatic step-down for removed leaders. It can
+still step down on a higher term. This setting is local to the Jepsen app.
+
+The generator starts with shrink and grow, then attempts shrink-twice on clusters
+of at least five nodes, before randomly mixing the applicable operations. On
+these clusters the initial grow phase repeats until it completes (or membership
+is already full), so starting a wiped node cannot consume the double-shrink step.
+Pending changes are resolved before starting another operation. A focused
+membership run on five or more nodes requires successful shrink-twice coverage;
+chaos retains its existing policy of reporting missing per-class coverage.
+Timeouts or a changed leader can be recovered through ordinary membership
+operations, but do not count as successful shrink-twice coverage.
+
+Removed nodes are stopped and wiped only after the target configuration commits;
+shrink-twice keeps both removed nodes running until the second change completes.
+Final recovery restores all configured nodes as voters and waits for every node
+to agree on a leader.
 
 #### Packet Nemesis
 
