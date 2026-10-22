@@ -63,7 +63,7 @@ where C: RaftTypeConfig
 impl<C> ProgressEntry<C>
 where C: RaftTypeConfig
 {
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn testing_new(id: C::NodeId, matching: Option<LogIdOf<C>>) -> Self {
         Self {
             id,
@@ -88,7 +88,7 @@ where C: RaftTypeConfig
     }
 
     // This method is only used by tests.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn with_inflight(mut self, inflight: Inflight<C>) -> Self {
         debug_assert_eq!(self.data.inflight, Inflight::None);
 

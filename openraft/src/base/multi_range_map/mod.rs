@@ -42,7 +42,6 @@ where
     /// batch boundary, within the intersection range where all ranges have data.
     ///
     /// `begin` is the left boundary of the first segment.
-    #[allow(dead_code)]
     pub fn segments(&self, begin: Bound) -> SegmentIter<'_, Bound, V, N> {
         SegmentIter::new(begin, &self.range_maps)
     }
