@@ -40,6 +40,11 @@ observations, including timeouts, connection failures, or quorum-related
 rejections. Unknown Client, Nemesis, or other Harness exceptions must not
 receive the marker. They are Harness failures.
 
+OpenRaft's `LogEntryDiscarded` write error is such an ambiguous observation:
+the entry was appended, then discarded on a leader change, and may still
+commit. Record the write as `:info` and never retry it. The test application
+has no request deduplication, so a retry could apply one mutation twice.
+
 ## Nemesis Outcomes
 
 A Nemesis operation has only three modeled outcomes:

@@ -24,7 +24,7 @@
 (def ^:private max-u64 18446744073709551615N)
 (def ^:private response-body-preview-limit 1024)
 (def ^:private modeled-error-variants
-  #{:ForwardToLeader :QuorumNotEnough})
+  #{:ForwardToLeader :LogEntryDiscarded :QuorumNotEnough})
 
 (def ^:private ^JsonFactory preflight-json-factory
   (json-factory/make-json-factory {}))
