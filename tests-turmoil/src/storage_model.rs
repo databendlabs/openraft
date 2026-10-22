@@ -1,0 +1,120 @@
+//! How the simulated disks keep what openraft writes to them.
+
+use serde::Serialize;
+
+/// The storage faults one fuzz iteration runs with.
+///
+/// [`StorageModel::durable`] is the model this harness had before these
+/// switches existed: a write is on disk when its call returns, every append
+/// reports its flush before `append` returns, and nothing is ever lost. Each
+/// switch below departs from it only as far as openraft's storage contract
+/// allows (`RaftLogStorage` and `IOFlushed` docs, and the `log-rocks` and
+/// `log-wal` example stores):
+///
+/// - Log writes reach the disk in the order they were submitted. A crash keeps a prefix of them,
+///   never a later write without an earlier one.
+/// - `append` returns once its entries are readable; its callback fires once they are durable, and
+///   callbacks may fire in any order.
+/// - With leader restore on, an entry is durable before it is readable ([#2172]): `append` returns
+///   once its entries are flushed.
+/// - `save_vote` returns only once the vote, and so every write before it, is durable.
+/// - `truncate_after`, `purge` and `save_committed` need no flush: a crash may undo them.
+/// - The state machine is durable when `apply` returns, like `sm-rocks`.
+///
+/// [#2172]: https://github.com/databendlabs/openraft/pull/2172
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct StorageModel {
+    /// Flush log writes from a background task, a flush latency after they
+    /// are submitted, instead of before the call returns. Until then a write
+    /// is readable but not durable.
+    pub async_flush: bool,
+
+    /// Make each append durable before it is readable, as leader restore
+    /// requires ([#2172]): readers see the entries only once they are
+    /// flushed, and `append` waits until then, as `log-rocks` does with a
+    /// synchronous write. The callback may still come late
+    /// (`async_flush` only). Other writes keep their contract.
+    ///
+    /// [#2172]: https://github.com/databendlabs/openraft/pull/2172
+    pub durable_append: bool,
+
+    /// Bounds, inclusive, of one flush's latency in ms (`async_flush` only).
+    pub flush_delay_ms: (u64, u64),
+
+    /// The chance that a flush stalls instead, for up to `flush_stall_ms`
+    /// (`async_flush` only): the long tail of `fsync` latency.
+    pub flush_stall_chance: f64,
+
+    /// Upper bound, in ms, of a stalled flush.
+    pub flush_stall_ms: u64,
+
+    /// Deliver each flushed append's callback after its own random delay of
+    /// up to this many ms, so callbacks reach openraft out of submission
+    /// order (`async_flush` only). 0 delivers them at once, in order.
+    pub callback_jitter_ms: u64,
+
+    /// The chance that a crash drops every write not yet flushed
+    /// (`async_flush` only): a power loss, or any crash of a store that
+    /// buffers writes in the process, as `log-wal` does. Any other crash
+    /// kills only the process, and the page cache still reaches the disk.
+    pub power_loss_chance: f64,
+
+    /// Upper bound, in ms, of a random delay before each `apply` batch.
+    /// 0 applies at once.
+    pub apply_delay_ms: u64,
+}
+
+impl StorageModel {
+    /// Synchronous, lossless storage: the harness before these switches.
+    pub fn durable() -> Self {
+        Self {
+            async_flush: false,
+            durable_append: false,
+            flush_delay_ms: (0, 0),
+            flush_stall_chance: 0.0,
+            flush_stall_ms: 0,
+            callback_jitter_ms: 0,
+            power_loss_chance: 0.0,
+            apply_delay_ms: 0,
+        }
+    }
+
+    /// Whether any switch departs from [`Self::durable`].
+    pub fn is_durable(&self) -> bool {
+        *self == Self::durable()
+    }
+}
+
+impl std::fmt::Display for StorageModel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.is_durable() {
+            return write!(f, "durable");
+        }
+        if self.async_flush {
+            write!(f, "flush {}..={}ms", self.flush_delay_ms.0, self.flush_delay_ms.1)?;
+            if self.durable_append {
+                write!(f, ", durable append")?;
+            }
+            if self.flush_stall_chance > 0.0 {
+                write!(
+                    f,
+                    " (stall ≤{}ms {:.0}%)",
+                    self.flush_stall_ms,
+                    self.flush_stall_chance * 100.0
+                )?;
+            }
+            write!(
+                f,
+                ", callback jitter ≤{}ms, power loss {:.0}%",
+                self.callback_jitter_ms,
+                self.power_loss_chance * 100.0
+            )?;
+        } else {
+            write!(f, "sync flush")?;
+        }
+        if self.apply_delay_ms > 0 {
+            write!(f, ", apply delay ≤{}ms", self.apply_delay_ms)?;
+        }
+        Ok(())
+    }
+}

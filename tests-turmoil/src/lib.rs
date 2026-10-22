@@ -24,6 +24,7 @@ pub mod network;
 pub mod oracle;
 #[cfg(test)]
 mod scenarios;
+pub mod storage_model;
 pub mod store;
 pub mod typ;
 

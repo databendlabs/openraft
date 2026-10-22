@@ -9,10 +9,10 @@
 //! until the node happens to share an applied log id with another node
 //! (State Machine Safety) or until the final durability scan.
 //!
-//! No reset-on-restart is needed: storage in this harness is durable across
-//! crashes (a bounced node keeps its log store and state machine), and a
-//! crashed node drops out of the snapshot list while down, so it resumes
-//! at-or-ahead of its last observed state.
+//! No reset-on-restart is needed: the state machine in this harness is
+//! durable when `apply` returns, even where the log store loses unflushed
+//! writes in a crash, and a crashed node drops out of the snapshot list while
+//! down, so it resumes at-or-ahead of its last observed state.
 
 use std::collections::BTreeMap;
 

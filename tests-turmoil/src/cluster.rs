@@ -10,6 +10,7 @@ use turmoil::net::TcpListener;
 
 use crate::network::TurmoilNetwork;
 use crate::network::handle_rpc;
+use crate::storage_model::StorageModel;
 use crate::store::LogStore;
 use crate::store::StateMachine;
 use crate::store::StateMachineData;
@@ -127,10 +128,17 @@ impl Default for ClusterState {
 }
 
 /// Register a node's storage in the shared state BEFORE starting it.
-pub fn register_node_storage(node_id: NodeId, cluster_state: &Arc<std::sync::Mutex<ClusterState>>) {
+///
+/// `seed` drives the node's storage delays; give each node its own.
+pub fn register_node_storage(
+    node_id: NodeId,
+    cluster_state: &Arc<std::sync::Mutex<ClusterState>>,
+    model: &StorageModel,
+    seed: u64,
+) {
     let mut state = cluster_state.lock().unwrap();
     if let std::collections::btree_map::Entry::Vacant(e) = state.log_stores.entry(node_id) {
-        let (log_store, state_machine) = new_store();
+        let (log_store, state_machine) = new_store(model, seed);
         e.insert(log_store);
         state.state_machines.insert(node_id, state_machine);
     }
@@ -215,11 +223,22 @@ pub fn spawn_host(
 /// — `sim.bounce()` alone is an instant restart that only exercises the
 /// software-restart / persistence-recovery path, not the "node unreachable
 /// long enough to lose quorum" case.
-pub fn crash_node(sim: &mut Sim, node_id: NodeId, cluster_state: &Arc<std::sync::Mutex<ClusterState>>) {
+///
+/// A `power_loss` also drops every log write the node had not flushed.
+pub fn crash_node(
+    sim: &mut Sim,
+    node_id: NodeId,
+    cluster_state: &Arc<std::sync::Mutex<ClusterState>>,
+    power_loss: bool,
+) {
     let host_name = host_name(node_id);
-    tracing::info!("CRASH: {}", host_name);
+    tracing::info!("CRASH: {} (power loss: {})", host_name, power_loss);
     sim.crash(host_name);
-    cluster_state.lock().unwrap().unregister_raft(node_id);
+    let mut state = cluster_state.lock().unwrap();
+    if let Some(log_store) = state.log_stores.get(&node_id) {
+        log_store.crash(power_loss);
+    }
+    state.unregister_raft(node_id);
 }
 
 /// Restart a previously crashed node's software.

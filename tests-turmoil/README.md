@@ -1,6 +1,6 @@
 # OpenRaft Turmoil Simulation Tests
 
-This package provides a deterministic simulation environment for OpenRaft using the [Turmoil](https://github.com/tokio-rs/turmoil) framework. It is designed to detect deep protocol violations and edge cases by simulating complex network conditions like partitions, packet loss, and message delays in a controlled, repeatable manner.
+This package provides a deterministic simulation environment for OpenRaft using the [Turmoil](https://github.com/tokio-rs/turmoil) framework. It is designed to detect deep protocol violations and edge cases by simulating complex network conditions like partitions, packet loss, and message delays, and storage that flushes late, reports flushes out of order and loses unflushed writes in a crash, in a controlled, repeatable manner.
 
 **Build from this directory, with `RUSTFLAGS` unset.** The workspace requires `--cfg tokio_unstable` (set in `.cargo/config.toml`, which cargo only reads when invoked from inside `tests-turmoil/`, and which any `RUSTFLAGS` environment variable overrides — in CI, `actions-rust-lang/setup-rust-toolchain` exports `RUSTFLAGS="-D warnings"` unless given `rustflags: ""`). Either mistake fails with a deliberate `compile_error!` instead of silently producing a non-deterministic binary.
 
@@ -35,6 +35,26 @@ A cluster that cannot heal without faults has a liveness bug (stuck replication,
 - Trigger ops on random nodes: `elect` (with/without Pre-Vote), `snapshot`, `purge_log`, `transfer_leader`, and `compact` (snapshot then purge-to-snapshot, biased toward the leader — on an idle leader this purges the log to its tip).
 - Membership churn: grow/shrink between 3 and 7 voters, reusing removed nodes, with demotion (`retain=true`) and full removal; a failed change retries the same plan after a cooldown.
 - Workload shape: quiet windows during the run, plus an optional pre-liveness tail-off so traps armed late in the safety phase survive into the liveness phase.
+- Storage faults: see below.
+
+### Storage faults
+
+Each node's log store (`src/store.rs`) keeps two copies of what it holds: what a reader sees, and what is on disk. `StorageModel` (`src/storage_model.rs`) sets how far they drift apart. Each switch departs from a synchronous, lossless store only as far as openraft's storage contract allows: the `RaftLogStorage` and `IOFlushed` docs, and the `log-rocks`, `log-wal` and `sm-rocks` example stores.
+
+| Switch | Models | Contract it relies on |
+|--------|--------|-----------------------|
+| `async_flush`, `flush_delay_ms` | `append` returns once its entries are readable; a flush task makes writes durable a latency later, in submission order, and only then reports the appends flushed | the callback may fire after `append` returns; write IO is serialized, so a crash keeps a prefix of it |
+| `flush_stall_chance`, `flush_stall_ms` | the long tail of `fsync` latency | — |
+| `durable_append` | with leader restore on, an append is readable only once flushed, and `append` returns then, as `log-rocks` does with a synchronous write | leader restore requires an entry to be durable before it is readable ([#2172](https://github.com/databendlabs/openraft/pull/2172)) |
+| `callback_jitter_ms` | each flushed append is reported after its own delay, so reports reach openraft out of order | `IOFlushed` keeps a watermark and ignores an older completion |
+| `power_loss_chance` | a crash drops every unflushed write: a power loss, or any crash of a store that buffers writes in the process, as `log-wal` does; otherwise the page cache still reaches the disk | `save_vote` is durable before it returns, so it waits for every write before it; `truncate_after`, `purge` and `save_committed` need no flush |
+| `apply_delay_ms` | a slow `apply` | the state machine is durable when `apply` returns, as in `sm-rocks` |
+
+The fuzzer draws these switches from each seed, on an RNG stream of its own, so every older field of a seed keeps its value; `--storage durable` turns them all off and replays any seed exactly as before they existed (checked on `FUZZ_DEBUG_OPS` traces), and `--storage lossy` makes every seed flush asynchronously and every crash a power loss. A seed with `enable_leader_restore` keeps appends durable before they are readable, as openraft then requires: a restored leader could otherwise reissue the log id of an entry it sent and then lost ([#2167](https://github.com/databendlabs/openraft/issues/2167)). Only seeds with leader restore off have readable entries that a crash can lose. With async flush the fuzzer also crashes an active voter every 1,000–5,000 ticks (`storage_crash_interval`), the leader half of the time; half of these are quick restarts, back within `election_timeout_min`, as under a process supervisor.
+
+A flush, its late report included, stays within a quarter of `heartbeat_interval`, stalls aside. A follower acks an append once it has flushed it, and openraft gives the whole round trip 3/4 of `heartbeat_interval`: with flushes near that deadline every append times out and replication stops for good, which says more about the configuration than about openraft.
+
+Until the invariant checks allow for a restart that reloads less than the process had, `durable` is the default.
 
 ## Invariants Checked
 
@@ -63,7 +83,7 @@ The checker is **stateful**: `InvariantChecker` retains per-index committed hist
 
 Host panics, all-clients-exited, and simulation-duration overrun also fail the run: `sim.step()` errors are converted into violations, and each iteration runs under `catch_unwind`.
 
-Unit tests under `src/invariants/tests.rs`, `src/oracle.rs`, and `src/liveness.rs` exercise each check with synthetic snapshots — run with `cargo test --lib`.
+Unit tests under `src/invariants/tests.rs`, `src/oracle.rs`, and `src/liveness.rs` exercise each check with synthetic snapshots, and `src/store.rs` the storage model — run with `cargo test --lib`.
 
 ## State Access via RaftMetrics
 
@@ -129,6 +149,7 @@ cargo run --release --bin fuzz -- --seed 500 --iterations 20 --max-steps 50000
 | `--iterations` | 100 (0=∞)      | Number of iterations; stops at the first failure                   |
 | `--max-steps`  | 100000         | Safety-phase length in ticks; liveness phases run after            |
 | `--crash-file` | —              | Where to write crash info                                          |
+| `--storage`    | `durable`      | Storage faults: drawn from each seed (`seeded`), none (`durable`, as before they existed), or always lossy (`lossy`) |
 
 Environment variables:
 
