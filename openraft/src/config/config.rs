@@ -727,7 +727,6 @@ impl Config {
     /// Get the lifecycle latency ring buffer capacity per stage.
     ///
     /// Defaults to 1024 if not specified.
-    #[allow(dead_code)]
     pub(crate) fn log_stage_capacity(&self) -> usize {
         self.log_stage_capacity.unwrap_or(1024) as usize
     }

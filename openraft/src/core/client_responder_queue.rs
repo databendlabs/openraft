@@ -87,7 +87,6 @@ impl<T> ClientResponderQueue<T> {
     }
 
     /// Returns the first (smallest) log index in the queue, if any.
-    #[allow(dead_code)]
     pub(crate) fn first_index(&self) -> Option<u64> {
         self.responders.front().map(|(index, _)| *index)
     }
