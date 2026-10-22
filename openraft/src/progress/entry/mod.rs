@@ -270,15 +270,6 @@ where C: RaftTypeConfig
         Ok(&self.data.inflight)
     }
 
-    /// Return the index range (`[start,end]`) of the first log in the next AppendEntries.
-    ///
-    /// The returned range is left close and right close.
-    #[allow(dead_code)]
-    pub(crate) fn sending_start(&self) -> (u64, u64) {
-        let mid = Self::calc_mid(self.matching().next_index(), self.data.searching_end);
-        (mid, self.data.searching_end)
-    }
-
     fn calc_mid(matching_next: u64, end: u64) -> u64 {
         debug_assert!(matching_next <= end);
         let d = end - matching_next;
