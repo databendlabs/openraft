@@ -36,6 +36,7 @@ use tests_turmoil::cluster::spawn_host;
 use tests_turmoil::invariants::InvariantChecker;
 use tests_turmoil::liveness;
 use tests_turmoil::oracle::ClientHistory;
+use tests_turmoil::storage_model::StorageModel;
 use tests_turmoil::store::StateMachineData;
 use tests_turmoil::typ::*;
 use tests_turmoil::write_configs::WriteConfigs;
@@ -98,10 +99,31 @@ struct DerivedConfig {
     /// an unestablished follower) survive into the liveness phase only if no
     /// write undoes them; a traffic tail-off makes that window real.
     pre_liveness_quiet_ticks: u64,
+    /// How the nodes' disks keep what openraft writes.
+    storage: StorageModel,
+    /// Crash an active voter every this many ticks, the leader half of the
+    /// time (0 = never). Half of these are quick restarts, back within
+    /// `election_timeout_min`; the rest are down for up to
+    /// `2 * election_timeout_max`. On top of the `restart_chance` crashes, and
+    /// only with `storage.async_flush`: these exist to lose unflushed writes,
+    /// often enough that a 10k-tick run sees several.
+    storage_crash_interval: u64,
+}
+
+/// Which storage faults an iteration runs with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum StorageMode {
+    /// Each switch drawn from the seed.
+    Seeded,
+    /// No storage faults: every seed runs as it did before they existed.
+    Durable,
+    /// As `seeded`, but every seed flushes asynchronously and every crash
+    /// is a power loss.
+    Lossy,
 }
 
 impl DerivedConfig {
-    fn from_seed(seed: u64, max_steps: u64) -> Self {
+    fn from_seed(seed: u64, max_steps: u64, storage_mode: StorageMode) -> Self {
         let mut rng = StdRng::seed_from_u64(seed);
         let heartbeat_interval = 50 + rng.random_range(0..100);
         let election_timeout_min = heartbeat_interval * rng.random_range(2..4);
@@ -154,7 +176,73 @@ impl DerivedConfig {
             } else {
                 0
             },
+            storage: StorageModel::baseline(),
+            storage_crash_interval: 0,
         }
+        .with_storage(seed, storage_mode)
+    }
+
+    /// Draw the storage switches from a stream of their own, so that every
+    /// field above keeps the value it had for this seed before they existed.
+    fn with_storage(mut self, seed: u64, mode: StorageMode) -> Self {
+        let mut rng = StdRng::seed_from_u64(seed.wrapping_add(7000));
+        let async_flush = rng.random_bool(0.5);
+        // A follower acks an append once it is flushed, and openraft gives
+        // the round trip 3/4 of `heartbeat_interval`: with flushes near that
+        // deadline every append times out and replication stalls for good.
+        // Keep a flush, its late callback included, within a quarter of it.
+        let flush_budget = (self.heartbeat_interval / 4).max(3);
+        let flush_min = rng.random_range(0..=2);
+        let flush_max = flush_min + rng.random_range(1..=flush_budget * 2 / 3);
+        let callback_jitter_ms = if rng.random_bool(0.5) {
+            rng.random_range(1..=flush_budget / 3)
+        } else {
+            0
+        };
+        let power_loss_chance = if rng.random_bool(0.75) {
+            rng.random_range(0.5..=1.0)
+        } else {
+            0.0
+        };
+        let apply_delay_ms = if rng.random_bool(0.5) {
+            rng.random_range(5..=100)
+        } else {
+            0
+        };
+        let storage_crash_interval = if rng.random_bool(0.75) {
+            rng.random_range(1000..=5000)
+        } else {
+            0
+        };
+        // A stall outlasts the append deadline, but other flushes don't, so
+        // replication slows down without stopping. Stalls let a leader commit
+        // and apply entries its own log has not flushed yet.
+        let (flush_stall_chance, flush_stall_ms) = if rng.random_bool(0.5) {
+            (rng.random_range(0.01..=0.3), rng.random_range(50..=300))
+        } else {
+            (0.0, 0)
+        };
+
+        let (async_flush, power_loss_chance) = match mode {
+            StorageMode::Durable => return self,
+            StorageMode::Seeded => (async_flush, power_loss_chance),
+            StorageMode::Lossy => (true, 1.0),
+        };
+        self.storage = StorageModel {
+            async_flush,
+            flush_delay_ms: if async_flush { (flush_min, flush_max) } else { (0, 0) },
+            flush_stall_chance: if async_flush { flush_stall_chance } else { 0.0 },
+            flush_stall_ms: if async_flush { flush_stall_ms } else { 0 },
+            callback_jitter_ms,
+            power_loss_chance: if async_flush { power_loss_chance } else { 0.0 },
+            apply_delay_ms,
+        };
+        self.storage_crash_interval = if async_flush && self.enable_chaos {
+            storage_crash_interval
+        } else {
+            0
+        };
+        self
     }
 }
 
@@ -185,7 +273,9 @@ impl std::fmt::Display for DerivedConfig {
         writeln!(f, "  enable_trigger_ops: {}", self.enable_trigger_ops)?;
         writeln!(f, "  trigger_interval: {}", self.trigger_interval)?;
         writeln!(f, "  quiet_window_chance: {:.4}", self.quiet_window_chance)?;
-        write!(f, "  pre_liveness_quiet_ticks: {}", self.pre_liveness_quiet_ticks)
+        writeln!(f, "  pre_liveness_quiet_ticks: {}", self.pre_liveness_quiet_ticks)?;
+        writeln!(f, "  storage: {}", self.storage)?;
+        write!(f, "  storage_crash_interval: {}", self.storage_crash_interval)
     }
 }
 
@@ -212,6 +302,11 @@ struct FuzzConfig {
     /// Where to write crash info
     #[arg(long)]
     crash_file: Option<String>,
+
+    /// Storage faults: drawn from each seed, none (as before they
+    /// existed), or always lossy
+    #[arg(long, value_enum, default_value = "durable")]
+    storage: StorageMode,
 }
 
 /// Quiet default so fuzz throughput is not bounded by log formatting.
@@ -234,7 +329,7 @@ fn main() {
         println!("Seed: {seed}, Max steps: {}", config.max_steps);
         println!(
             "\n{}\n======================================\n",
-            DerivedConfig::from_seed(seed, config.max_steps)
+            DerivedConfig::from_seed(seed, config.max_steps, config.storage)
         );
         (seed, 1)
     } else {
@@ -250,7 +345,13 @@ fn main() {
         (seed, config.iterations)
     };
 
-    run_fuzz_loop(base_seed, config.max_steps, iterations, config.crash_file);
+    run_fuzz_loop(
+        base_seed,
+        config.max_steps,
+        iterations,
+        config.crash_file,
+        config.storage,
+    );
 }
 
 fn setup_ctrlc() -> Arc<AtomicBool> {
@@ -290,10 +391,28 @@ const FEATURE_ARGS: &str = "";
 #[cfg(feature = "threshold-membership")]
 const FEATURE_ARGS: &str = " --features threshold-membership";
 
-fn report_failure(iteration_seed: u64, max_steps: u64, result: &FuzzResult, derived: &DerivedConfig) {
+/// The `--storage` argument that reproduces a run.
+fn storage_arg(mode: StorageMode) -> &'static str {
+    match mode {
+        StorageMode::Seeded => " --storage seeded",
+        StorageMode::Durable => " --storage durable",
+        StorageMode::Lossy => " --storage lossy",
+    }
+}
+
+fn report_failure(
+    iteration_seed: u64,
+    max_steps: u64,
+    result: &FuzzResult,
+    derived: &DerivedConfig,
+    storage_mode: StorageMode,
+) {
     println!("\n{derived}\n\n{result}");
     println!("REPRODUCE WITH:");
-    println!("  cargo run --bin fuzz{FEATURE_ARGS} -- --reproduce {iteration_seed} --max-steps {max_steps}");
+    println!(
+        "  cargo run --bin fuzz{FEATURE_ARGS} -- --reproduce {iteration_seed} --max-steps {max_steps}{}",
+        storage_arg(storage_mode)
+    );
 }
 
 fn write_crash_file(
@@ -304,6 +423,7 @@ fn write_crash_file(
     max_steps: u64,
     result: &FuzzResult,
     config: &DerivedConfig,
+    storage_mode: StorageMode,
 ) {
     let crash_info = serde_json::json!({
         "base_seed": base_seed,
@@ -315,8 +435,12 @@ fn write_crash_file(
         "config": serde_json::to_value(config).unwrap(),
         "reproduce": {
             "command": format!(
-                "cargo run --bin fuzz{} -- --reproduce {} --max-steps {} --crash-file {}",
-                FEATURE_ARGS, iteration_seed, max_steps, path
+                "cargo run --bin fuzz{} -- --reproduce {} --max-steps {}{} --crash-file {}",
+                FEATURE_ARGS,
+                iteration_seed,
+                max_steps,
+                storage_arg(storage_mode),
+                path
             ),
             "iteration_seed": iteration_seed,
             "max_steps": max_steps
@@ -327,7 +451,13 @@ fn write_crash_file(
     }
 }
 
-fn run_fuzz_loop(base_seed: u64, max_steps: u64, iterations: u64, crash_file: Option<String>) {
+fn run_fuzz_loop(
+    base_seed: u64,
+    max_steps: u64,
+    iterations: u64,
+    crash_file: Option<String>,
+    storage_mode: StorageMode,
+) {
     let running = setup_ctrlc();
     let mut iteration = 0u64;
     let mut total_steps = 0u64;
@@ -342,16 +472,17 @@ fn run_fuzz_loop(base_seed: u64, max_steps: u64, iterations: u64, crash_file: Op
         }
 
         let iteration_seed = base_seed.wrapping_add(iteration);
-        let derived = DerivedConfig::from_seed(iteration_seed, max_steps);
+        let derived = DerivedConfig::from_seed(iteration_seed, max_steps, storage_mode);
 
         println!(
-            "--- Iteration {} (seed: {}, nodes: {}, fail_rate: {:.2}%, chaos: {}, leader_restore: {}) ---",
+            "--- Iteration {} (seed: {}, nodes: {}, fail_rate: {:.2}%, chaos: {}, leader_restore: {}, storage: {}) ---",
             iteration + 1,
             iteration_seed,
             derived.num_initial_nodes,
             derived.fail_rate * 100.0,
             derived.enable_chaos,
             derived.enable_leader_restore,
+            derived.storage,
         );
 
         // A panic escaping the simulation (e.g. out of a host's `Drop` or the
@@ -383,9 +514,18 @@ fn run_fuzz_loop(base_seed: u64, max_steps: u64, iterations: u64, crash_file: Op
                 "\n=== FAILED at iteration {} (seed: {iteration_seed}) ===",
                 iteration + 1
             );
-            report_failure(iteration_seed, max_steps, &result, &derived);
+            report_failure(iteration_seed, max_steps, &result, &derived, storage_mode);
             if let Some(path) = &crash_file {
-                write_crash_file(path, base_seed, iteration, iteration_seed, max_steps, &result, &derived);
+                write_crash_file(
+                    path,
+                    base_seed,
+                    iteration,
+                    iteration_seed,
+                    max_steps,
+                    &result,
+                    &derived,
+                    storage_mode,
+                );
             }
             std::process::exit(1);
         }
@@ -1566,7 +1706,9 @@ fn run_single_iteration(
         .collect();
 
     for id in 1..=derived.max_potential_nodes {
-        register_node_storage(id, &cluster_state);
+        // Seeds of their own per node, apart from every stream above.
+        let storage_seed = iteration_seed.wrapping_add(9000).wrapping_add(id * 2);
+        register_node_storage(id, &cluster_state, &derived.storage, storage_seed);
         spawn_host(
             &mut sim,
             id,
@@ -1588,6 +1730,8 @@ fn run_single_iteration(
     // Main simulation loop
     let mut st = IterationState::new();
     let mut chaos_rng = StdRng::seed_from_u64(iteration_seed.wrapping_add(3000));
+    // Draws only under lossy storage, so a durable run replays as before.
+    let mut storage_rng = StdRng::seed_from_u64(iteration_seed.wrapping_add(8000));
     let mut member_rng = StdRng::seed_from_u64(iteration_seed.wrapping_add(5000));
     let mut workload = WorkloadCtx {
         schedule: WorkloadSchedule::new(
@@ -1716,11 +1860,49 @@ fn run_single_iteration(
                     let max_downtime = derived.election_timeout_max * 2;
                     chaos_rng.random_range(min_downtime..=max_downtime)
                 };
-                crash_node(&mut sim, victim, &cluster_state);
+                let power_loss = derived.storage.power_loss_chance > 0.0
+                    && storage_rng.random_bool(derived.storage.power_loss_chance);
+                crash_node(&mut sim, victim, &cluster_state, power_loss);
                 pending_bounces.push((victim, st.steps + downtime));
-                let kind = if is_long_outage { "CRASH(long)" } else { "CRASH" };
+                let kind = match (is_long_outage, power_loss) {
+                    (false, false) => "CRASH",
+                    (true, false) => "CRASH(long)",
+                    (false, true) => "CRASH(power)",
+                    (true, true) => "CRASH(long, power)",
+                };
                 println!(
                     "{kind}: node {victim} for {downtime} ticks (bounce at step {})",
+                    st.steps + downtime
+                );
+            }
+        }
+
+        // Storage crashes: lose unflushed writes, the leader's included. A
+        // quick restart, as a supervisor does, brings a restored leader back
+        // before anyone else takes over: the window of openraft #2167.
+        if derived.storage_crash_interval > 0 && st.steps > 0 && st.steps.is_multiple_of(derived.storage_crash_interval)
+        {
+            let leader = cluster_state.lock().unwrap().find_leader_id();
+            let crashable: Vec<_> =
+                active_voters.iter().copied().filter(|id| !pending_bounces.iter().any(|(p, _)| p == id)).collect();
+            let victim = match leader {
+                Some(leader) if crashable.contains(&leader) && storage_rng.random_bool(0.5) => Some(leader),
+                _ if crashable.is_empty() => None,
+                _ => Some(crashable[storage_rng.random_range(0..crashable.len())]),
+            };
+            if let Some(victim) = victim {
+                let downtime = if storage_rng.random_bool(0.5) {
+                    storage_rng.random_range(1..=derived.election_timeout_min)
+                } else {
+                    storage_rng.random_range(1..=derived.election_timeout_max * 2)
+                };
+                let power_loss = storage_rng.random_bool(derived.storage.power_loss_chance);
+                crash_node(&mut sim, victim, &cluster_state, power_loss);
+                pending_bounces.push((victim, st.steps + downtime));
+                let kind = if power_loss { "CRASH(power)" } else { "CRASH" };
+                println!(
+                    "{kind}: node {victim}{} for {downtime} ticks (bounce at step {})",
+                    if leader == Some(victim) { " (leader)" } else { "" },
                     st.steps + downtime
                 );
             }

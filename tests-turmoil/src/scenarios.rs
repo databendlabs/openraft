@@ -16,6 +16,7 @@ use crate::cluster::host_name;
 use crate::cluster::register_node_storage;
 use crate::cluster::spawn_host;
 use crate::liveness;
+use crate::storage_model::StorageModel;
 use crate::typ::*;
 
 /// Poll `f` until it returns `Some`, panicking after a virtual-time deadline.
@@ -81,7 +82,7 @@ fn learner_added_while_partitioned_catches_up_from_fully_purged_leader() {
         all_nodes.iter().filter(|(id, _)| **id <= 2).map(|(id, n)| (*id, n.clone())).collect();
 
     for id in 1..=3 {
-        register_node_storage(id, &cluster);
+        register_node_storage(id, &cluster, &StorageModel::baseline(), SEED.wrapping_add(id));
         spawn_host(
             &mut sim,
             id,

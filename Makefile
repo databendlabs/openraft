@@ -157,7 +157,7 @@ test-turmoil:
 	cd tests-turmoil && cargo test --lib
 	cd tests-turmoil && cargo test --lib --features threshold-membership
 
-DETSIM_ARGS ?= --iterations 5 --max-steps 10000
+DETSIM_ARGS ?= --iterations 5 --max-steps 10000 --storage lossy
 
 detsim:
 	cd tests-turmoil && cargo run --bin fuzz -- $(DETSIM_ARGS)
