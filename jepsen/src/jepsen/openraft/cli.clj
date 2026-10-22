@@ -84,6 +84,13 @@
     :validate [#(and (some? %) (pos? %))
                "Must be a positive integer."]]
 
+   [nil "--snapshot-logs-to-keep COUNT"
+    "Logs kept behind the latest snapshot; a follower needing purged logs installs a snapshot."
+    :default openraft-db/default-snapshot-logs-to-keep
+    :parse-fn parse-long
+    :validate [#(and (some? %) (not (neg? %)))
+               "Must be a non-negative integer."]]
+
    [nil "--nemesis TYPES"
     "Comma-separated faults: clock, membership, packet, partition, process, pause, or chaos."
     :default [:chaos]

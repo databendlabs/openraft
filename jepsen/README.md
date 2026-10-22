@@ -133,6 +133,9 @@ $ make -C jepsen safety NEMESIS=partition SEED=123456
 # Override the committed-log threshold that triggers snapshots.
 $ make -C jepsen test SNAPSHOT_THRESHOLD=250
 
+# Override how many logs each node keeps behind its latest snapshot.
+$ make -C jepsen test SNAPSHOT_LOGS_TO_KEEP=1000
+
 # Run only the bridge-partition liveness scenario.
 $ make -C jepsen liveness SCENARIO=bridge-partition
 
@@ -159,7 +162,8 @@ sequentially even with `make -j`. It attempts both categories and fails if
 either fails. `NEMESIS`, `PACKET_MODE`, and `TIME_LIMIT` apply only to safety,
 including when it is run through `test` or `jepsen`. `TIME_LIMIT` is in seconds;
 when unset, Jepsen defaults to 60 seconds. Liveness scenarios keep their fixed
-observation windows. `SEED` and `SNAPSHOT_THRESHOLD` apply to both categories.
+observation windows. `SEED`, `SNAPSHOT_THRESHOLD`, and `SNAPSHOT_LOGS_TO_KEEP`
+apply to both categories.
 `ARGS` replaces the common CLI arguments for both categories; use the dedicated
 Make variables for safety-only options when running combined targets.
 The `jepsen` target builds
@@ -386,10 +390,18 @@ would look successful. `results.edn` reports how many classes installed a
 recognized fault under `:fault-classes-executed`, and zero rejects the run.
 Cleanup, clock reset and recovery operations do not count toward it.
 
-Every Jepsen node builds a snapshot after 100 newly committed logs by default.
-The regular write workload therefore exercises snapshot construction during
-short fault tests without a snapshot-specific Nemesis. Set
-`SNAPSHOT_THRESHOLD` to override the threshold for a run.
+Every Jepsen node builds a snapshot after 50 newly committed logs by default
+and keeps 20 logs behind it. The regular write workload therefore exercises
+snapshot construction without a snapshot-specific Nemesis. A follower that
+misses more than 20 logs during a partition, process kill, or pause may need
+logs the leader has already purged; it then installs the leader's snapshot.
+This typically happens past about 70 logs, roughly ten seconds of writes.
+Snapshot construction and purging are asynchronous, so the actual cutoff
+varies. A follower whose missing logs remain available can catch up from
+the log. Not every run installs a snapshot, and a run without one does not
+fail. Each install logs
+`Done install complete snapshot` in that node's `openraft.log`. Set
+`SNAPSHOT_THRESHOLD` or `SNAPSHOT_LOGS_TO_KEEP` to override either for a run.
 
 After the fault schedule ends, Jepsen heals partitions, restarts killed
 processes, resumes paused processes, restores membership, and then performs one
@@ -658,7 +670,8 @@ of the fault schedule; the seed is only an aid for rerunning similar conditions.
 - [x] Add a Packet nemesis for delay and probabilistic loss.
 - [x] Add a read, write, and compare-and-set workload.
 - [x] Add linearizability checking with Knossos.
-- [x] Exercise snapshot construction during ordinary workloads.
+- [x] Exercise snapshot construction, and installation after faults, during
+  ordinary workloads.
 - [x] Add a five-voter partial-network liveness regression that checks timely
   successful writes while the old leader remains connected through a bridge.
 

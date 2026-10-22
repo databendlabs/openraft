@@ -14,7 +14,8 @@
 (def data-dir "/var/lib/openraft")
 (def log-dir "/var/log/openraft")
 (def log-file (str log-dir "/openraft.log"))
-(def default-snapshot-threshold 100)
+(def default-snapshot-threshold 50)
+(def default-snapshot-logs-to-keep 20)
 
 (def ^:private process-confirm-timeout-ms 30000)
 (def ^:private process-confirm-interval-ms 100)
@@ -143,7 +144,8 @@
   (signal-and-confirm! "CONT" :running :resumed))
 
 (defn- start-command!
-  [node-id api-addr raft-addr snapshot-threshold enable-pre-vote? disable-leader-restore? removed-leader-step-down]
+  [node-id api-addr raft-addr snapshot-threshold snapshot-logs-to-keep
+   enable-pre-vote? disable-leader-restore? removed-leader-step-down]
   (apply control-exec!
          (concat
           [(c/env (merge clock/application-env
@@ -161,14 +163,16 @@
            :--id node-id
            :--api-addr api-addr
            :--raft-addr raft-addr
-           :--snapshot-threshold snapshot-threshold]
+           :--snapshot-threshold snapshot-threshold
+           :--max-in-snapshot-log-to-keep snapshot-logs-to-keep]
           (when enable-pre-vote? [:--enable-pre-vote])
           (when disable-leader-restore? [:--disable-leader-restore])
           (when (= :never removed-leader-step-down) [:--disable-removed-leader-step-down])
           [:>> log-file (c/lit "2>&1")])))
 
 (defn- start-process!
-  [node-id api-addr raft-addr snapshot-threshold enable-pre-vote? disable-leader-restore? removed-leader-step-down]
+  [node-id api-addr raft-addr snapshot-threshold snapshot-logs-to-keep
+   enable-pre-vote? disable-leader-restore? removed-leader-step-down]
   (let [state (probe-process!)]
     (case state
       :running
@@ -178,8 +182,8 @@
       (do
         ;; --oknodo makes a start race succeed without broadly suppressing exit
         ;; status 1, which may instead mean a control or permission failure.
-        (start-command! node-id api-addr raft-addr snapshot-threshold enable-pre-vote? disable-leader-restore?
-                        removed-leader-step-down)
+        (start-command! node-id api-addr raft-addr snapshot-threshold snapshot-logs-to-keep
+                        enable-pre-vote? disable-leader-restore? removed-leader-step-down)
         (await-process-state! :running)
         :start-confirmed)
 
@@ -243,6 +247,7 @@
                          api-addr
                          raft-addr
                          (:snapshot-threshold test)
+                         (:snapshot-logs-to-keep test)
                          (:two-leaf-partition test)
                          (= :leader-removal-recovery (:liveness test))
                          (:removed-leader-step-down test)))))
