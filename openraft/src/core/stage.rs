@@ -49,7 +49,6 @@ pub enum Stage {
     Applied = 5,
 }
 
-#[allow(dead_code)]
 impl Stage {
     /// Total number of lifecycle stages.
     pub const COUNT: usize = 6;

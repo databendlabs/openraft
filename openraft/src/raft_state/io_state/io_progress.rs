@@ -185,7 +185,6 @@ where
     }
 
     // Not used until Command reorder is implemented.
-    #[allow(dead_code)]
     pub(crate) fn submitted(&self) -> Option<&T> {
         self.submitted.as_ref()
     }
