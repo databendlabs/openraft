@@ -103,38 +103,42 @@
   (cluster/await-node-metrics! test node learner-wait-timeout-ms))
 
 (defn- request-membership-change!
-  [test leader-endpoint target-voters]
-  (try
-    (request-leader!
-     test
-     leader-endpoint
-     #(client/change-membership! % (voter-ids test target-voters)))
-    :completed
-    (catch Exception e
-      (let [unexpected (unexpected-membership-error-outcome e)]
-        (cond
-          (leader-routing-error? e)
-          :no-supported-leader
+  ([test leader-endpoint target-voters]
+   (request-membership-change! test leader-endpoint target-voters false))
+  ([test leader-endpoint target-voters direct?]
+   (try
+     (if direct?
+       (client/change-membership! @leader-endpoint (voter-ids test target-voters))
+       (request-leader!
+        test
+        leader-endpoint
+        #(client/change-membership! % (voter-ids test target-voters))))
+     :completed
+     (catch Exception e
+       (let [unexpected (unexpected-membership-error-outcome e)]
+         (cond
+           (leader-routing-error? e)
+           :no-supported-leader
 
-          unexpected
-          unexpected
+           unexpected
+           unexpected
 
-          (ambiguous-request-error? e)
-          (do
-            (info "OpenRaft membership change result is indeterminate"
-                  {:target-voters target-voters
-                   :error (ex-message e)})
-            :indeterminate)
+           (ambiguous-request-error? e)
+           (do
+             (info "OpenRaft membership change result is indeterminate"
+                   {:target-voters target-voters
+                    :error (ex-message e)})
+             :indeterminate)
 
-          (membership-change-in-progress? e)
-          (do
-            (info "OpenRaft membership change is already in progress"
-                  {:target-voters target-voters
-                   :error (ex-message e)})
-            :in-progress)
+           (membership-change-in-progress? e)
+           (do
+             (info "OpenRaft membership change is already in progress"
+                   {:target-voters target-voters
+                    :error (ex-message e)})
+             :in-progress)
 
-          :else
-          (throw e))))))
+           :else
+           (throw e)))))))
 
 (def ^:private restoration-outcome-kind ::restoration-outcome)
 
@@ -628,9 +632,13 @@
                                       result))))
         :no-quorum-safe-shrink))))
 
+(defn- stop-removed-nodes! [database test pending]
+  (doseq [node (or (:removed-nodes pending) [(:node pending)])]
+    (openraft-db/stop-and-wipe-node! database test node)))
+
 (defn- resolve-pending-removal!
   [database pending-change test status]
-  (let [{:keys [node target] :as pending} @pending-change
+  (let [{:keys [target] :as pending} @pending-change
         completed? (and (:stable? status)
                         (= target (:voters status)))
         result (if completed?
@@ -641,12 +649,78 @@
                   target))]
     (if (= :completed result)
       (do
-        (openraft-db/stop-and-wipe-node! database test node)
+        (stop-removed-nodes! database test pending)
         (complete-pending-change!
          pending-change
          pending
          (:leader status)))
       (retain-pending-change! pending-change pending result))))
+
+(defn- continue-shrink-twice! [database pending-change test status]
+  (let [{:keys [node second-node target] :as pending} @pending-change]
+    (cond
+      (not= node (:leader status))
+      (resolve-pending-removal! database pending-change test status)
+
+      (not (and (:stable? status)
+                (= target (:voters status))
+                (not (contains? (:learners status) node))))
+      (retain-pending-change! pending-change pending :in-progress)
+
+      :else
+      (let [evidence (select-keys status [:leader :voters :learners :stable?])
+            pending (-> pending
+                        (dissoc :status :reason)
+                        (assoc :stage :change-membership
+                               :intermediate target
+                               :removed-leader evidence
+                               :target (disj target second-node)
+                               :removed-nodes [node second-node]))]
+        ;; Recovery may finish this target through another leader, but only
+        ;; two acknowledged direct requests earn :shrink-twice coverage.
+        (reset! pending-change pending)
+        (let [result (request-membership-change!
+                      test (atom (client/api-endpoint test node))
+                      (:target pending) true)]
+          (if (= :completed result)
+            (do
+              (stop-removed-nodes! database test pending)
+              (assoc (complete-pending-change! pending-change pending node)
+                     :change :shrink-twice))
+            (retain-pending-change! pending-change pending result)))))))
+
+(defn- request-shrink-twice! [database pending-change test status]
+  (let [{:keys [leader voters learners metrics]} status
+        intermediate (disj voters leader)]
+    (cond
+      (seq learners) :learner-pending
+      (< (count voters) (+ minimum-voters 2)) :minimum-membership
+      (not (contains? voters leader)) :no-supported-leader
+      :else
+      (if-let [second-node
+               (select-node test
+                            (filter #(and (quorum/quorum? [intermediate] (set (keys metrics)))
+                                          (quorum/quorum? [(disj intermediate %)] (set (keys metrics))))
+                                    intermediate))]
+        (let [pending {:change :shrink
+                       :node leader
+                       :second-node second-node
+                       :leader leader
+                       :before voters
+                       :target intermediate
+                       :stage :change-membership}]
+          (reset! pending-change pending)
+          (let [result (request-membership-change!
+                        test (atom (client/api-endpoint test leader))
+                        intermediate true)]
+            (if (= :completed result)
+              (let [pending (assoc pending :stage :shrink-again)]
+                (reset! pending-change pending)
+                (if-let [status (cluster/membership-status test)]
+                  (continue-shrink-twice! database pending-change test status)
+                  (retain-pending-change! pending-change pending :no-supported-leader)))
+              (retain-pending-change! pending-change pending result))))
+        :no-quorum-safe-shrink))))
 
 (defn- complete-joint-once! [test status]
   (let [target-voters (peek (:effective-voter-configs status))
@@ -665,11 +739,9 @@
       @pending-change
       (case (:change @pending-change)
         :grow (resolve-pending-grow! pending-change test status)
-        :shrink (resolve-pending-removal!
-                 database
-                 pending-change
-                 test
-                 status))
+        :shrink (if (= :shrink-again (:stage @pending-change))
+                  (continue-shrink-twice! database pending-change test status)
+                  (resolve-pending-removal! database pending-change test status)))
 
       (not (:stable? status))
       (complete-joint-once! test status)
@@ -678,7 +750,10 @@
       (request-grow! database pending-change test status)
 
       (= :shrink operation)
-      (request-shrink! database pending-change test status))
+      (request-shrink! database pending-change test status)
+
+      (= :shrink-twice operation)
+      (request-shrink-twice! database pending-change test status))
     :no-supported-leader))
 
 (def ^:private skipped-results
@@ -763,7 +838,7 @@
 
 (defn- complete-pending-removal-and-await!
   [database pending-change test context]
-  (when-let [{:keys [node target] :as pending} @pending-change]
+  (when-let [{:keys [target] :as pending} @pending-change]
     (let [status (stable-membership! test context)
           final-status (if (= target (:voters status))
                          status
@@ -772,7 +847,7 @@
                           (atom (client/api-endpoint test (:leader status)))
                           target
                           context))]
-      (openraft-db/stop-and-wipe-node! database test node)
+      (stop-removed-nodes! database test pending)
       (reset! pending-change nil)
       (-> pending
           (dissoc :target)
@@ -870,6 +945,11 @@
                     :shrink)]
         (assoc op :value (membership-operation-outcome :shrink result)))
 
+      :shrink-twice
+      (let [result (request-membership-operation!
+                    database pending-change test :shrink-twice)]
+        (assoc op :value (membership-operation-outcome :shrink-twice result)))
+
       :restore-membership
       (assoc op
              :value (restore-membership-outcome!
@@ -881,21 +961,43 @@
 
   nemesis/Reflection
   (fs [_]
-    #{:grow :shrink :restore-membership}))
+    #{:grow :shrink :shrink-twice :restore-membership}))
 
 (defn membership-nemesis [database]
   (MembershipNemesis. database (atom nil)))
 
-(defn- membership-generator []
-  (gen/phases
-   {:type :info
-    :f :shrink}
-   {:type :info
-    :f :grow}
-   (gen/mix [(repeat {:type :info
-                      :f :grow})
-             (repeat {:type :info
-                      :f :shrink})])))
+(defn- membership-generator [test]
+  (let [twice? (<= (+ minimum-voters 2) (count (:nodes test)))
+        changes (cond-> [:grow :shrink] twice? (conj :shrink-twice))]
+    (gen/phases
+     {:type :info :f :shrink}
+     (if twice?
+       (gen/on-update
+        (fn [this test context event]
+          ;; Starting a wiped node is only the first grow step. Keep this
+          ;; phase until the pending change finishes, so it cannot consume
+          ;; the following double-shrink operation.
+          (when-not (and (= :nemesis (:process event))
+                         (= :grow (:f event))
+                         (or (= :installed (get-in event [:value :status]))
+                             (= :membership-full (get-in event [:value :reason]))))
+            (update this :gen gen/update test context event)))
+        (repeat {:type :info :f :grow}))
+       {:type :info :f :grow})
+     (when twice? {:type :info :f :shrink-twice})
+     (gen/mix (mapv #(repeat {:type :info :f %}) changes)))))
+
+(defn- shrink-twice-evidence? [change]
+  (let [{:keys [node leader second-node before intermediate after removed-leader]} change]
+    (and (= node leader (:leader removed-leader))
+         (:stable? removed-leader)
+         (contains? (set before) node)
+         (= intermediate (disj (set before) node) (:voters removed-leader))
+         (set? (:learners removed-leader))
+         (not (contains? (:learners removed-leader) node))
+         (contains? intermediate second-node)
+         (= after (disj intermediate second-node))
+         (<= minimum-voters (count after)))))
 
 (defn- membership-change-installed? [required-changes change]
   (and (= :installed (:status change))
@@ -904,7 +1006,9 @@
        (:leader change)
        (coll? (:before change))
        (coll? (:after change))
-       (not= (:before change) (:after change))))
+       (not= (:before change) (:after change))
+       (or (not= :shrink-twice (:change change))
+           (shrink-twice-evidence? change))))
 
 (defn- membership-restored? [expected-voters value]
   (and (= :installed (:status value))
@@ -918,7 +1022,9 @@
 (defn- coverage-checker []
   (reify checker/Checker
     (check [_ test history _opts]
-      (let [required-changes #{:grow :shrink}
+      (let [required-changes (cond-> #{:grow :shrink}
+                               (<= (+ minimum-voters 2) (count (:nodes test)))
+                               (conj :shrink-twice))
             change-installed? #(membership-change-installed?
                                 required-changes
                                 %)
@@ -927,16 +1033,17 @@
                                     (filter
                                      #(#{:grow
                                          :shrink
+                                         :shrink-twice
                                          :restore-membership} (:f %)))
                                     vec)
             ;; A restore reports the change it completed under
             ;; :resolved-change, and its own value describes the restored
-            ;; membership rather than a change, so only :grow and :shrink
+            ;; membership rather than a change, so only change operations
             ;; contribute their outer value. A :resolved-change becomes a
             ;; candidate only when the key is present, so an outcome that
             ;; carries no nested change is not mistaken for a malformed one.
             change-values (->> membership-history
-                               (filter #(#{:grow :shrink} (:f %)))
+                               (filter #(#{:grow :shrink :shrink-twice} (:f %)))
                                (map :value))
             resolved-changes (->> membership-history
                                   (map :value)
@@ -989,7 +1096,7 @@
   {:name :membership
    :interval change-seconds
    :nemesis (membership-nemesis database)
-   :generator (membership-generator)
+   :generator (membership-generator test)
    :final-generator {:type :info
                      :f :restore-membership}
    :checker (openraft-checker/reject-checker-exceptions

@@ -9,6 +9,7 @@ use clap::Parser;
 use openraft::Config;
 use openraft::NodeInfo as Node;
 use openraft::SnapshotPolicy;
+use openraft::StepDownPolicy;
 use openraft::storage::RaftLogStorage;
 
 use crate::app::App;
@@ -85,6 +86,8 @@ pub async fn start_raft_node(options: Opt) -> std::io::Result<()> {
         quorum_loss_probe_interval: Some(700),
         enable_pre_vote: Some(enable_pre_vote),
         enable_leader_restore: disable_leader_restore.then_some(false),
+        // Keep removed leaders available for subsequent membership changes until the nemesis stops them.
+        removed_leader_step_down: StepDownPolicy::Never,
         ..Default::default()
     };
 
