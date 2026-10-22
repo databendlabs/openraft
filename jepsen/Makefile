@@ -26,6 +26,10 @@ ifneq ($(SNAPSHOT_THRESHOLD),)
 override ARGS += --snapshot-threshold $(SNAPSHOT_THRESHOLD)
 endif
 
+ifneq ($(SNAPSHOT_LOGS_TO_KEEP),)
+override ARGS += --snapshot-logs-to-keep $(SNAPSHOT_LOGS_TO_KEEP)
+endif
+
 ifneq ($(PACKET_MODE),)
 PACKET_ARGS := --packet-mode $(PACKET_MODE)
 endif

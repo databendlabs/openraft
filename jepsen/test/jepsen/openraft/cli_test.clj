@@ -89,6 +89,24 @@
         (is (= policy (:removed-leader-step-down
                        (cli/openraft-test (:options first-run)))))))))
 
+(deftest validates-the-snapshot-logs-to-keep
+  (testing "the default is passed to every node"
+    (is (= openraft-db/default-snapshot-logs-to-keep
+           (get-in (tools-cli/parse-opts [] cli/cli-opts)
+                   [:options :snapshot-logs-to-keep]))))
+
+  (testing "zero purges every log a snapshot covers"
+    (let [parsed (tools-cli/parse-opts ["--snapshot-logs-to-keep" "0"] cli/cli-opts)]
+      (is (empty? (:errors parsed)))
+      (is (zero? (get-in parsed [:options :snapshot-logs-to-keep])))))
+
+  (testing "malformed and negative counts are rejected"
+    (doseq [value ["abc" "-1"]]
+      (let [parsed (tools-cli/parse-opts ["--snapshot-logs-to-keep" value]
+                                         cli/cli-opts)]
+        (is (some #(re-find #"Must be a non-negative integer" %)
+                  (:errors parsed)))))))
+
 (deftest validates-liveness-options
   (let [options {:liveness :bridge-partition
                  :nodes ["n1" "n2" "n3" "n4" "n5"]

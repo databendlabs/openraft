@@ -13,7 +13,8 @@
 (def test-config
   {:api-port 21001
    :raft-port 22001
-   :snapshot-threshold 250})
+   :snapshot-threshold 250
+   :snapshot-logs-to-keep 0})
 
 (defn- command-kind [command]
   (cond
@@ -135,6 +136,7 @@
           (is (= "n1:21001" (argument-after start-command :--api-addr)))
           (is (= "n1:22001" (argument-after start-command :--raft-addr)))
           (is (= 250 (argument-after start-command :--snapshot-threshold)))
+          (is (= 0 (argument-after start-command :--max-in-snapshot-log-to-keep)))
           (is (= (= :leader-removal-recovery (:liveness options))
                  (boolean (some #{:--disable-leader-restore} start-command))))
           (is (= (if (:two-leaf-partition options) 1 0) (count pre-vote-flags)))
