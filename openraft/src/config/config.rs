@@ -579,6 +579,21 @@ pub struct Config {
     /// When disabled (`false`), a restarted leader must always trigger a new election to become
     /// leader again.
     ///
+    /// **Log storage requirement**: When this setting is enabled, which is the default, a log
+    /// entry must be durable before the log store's [`RaftLogReader`] can read it: for example,
+    /// [`RaftLogStorage::append`] persists the entries before it returns, and makes them readable
+    /// only once they are persisted.
+    ///
+    /// Openraft replicates entries once they are submitted to the log store, before the leader's
+    /// own flush completes. A restored leader keeps its leader id and assigns log ids after the
+    /// last entry in its log store, so an entry it sent and then lost in a crash can be reissued
+    /// under the same log id with other contents, and the state machines diverge. See
+    /// [issue #2167](https://github.com/databendlabs/openraft/issues/2167).
+    ///
+    /// The requirement must already have held before the restart: a node that was leader while
+    /// its log store did not meet it must not restore leadership. To keep persistence and
+    /// replication running in parallel, disable this setting.
+    ///
     /// **Important**: When this setting is enabled, it can introduce inconsistencies when the
     /// following conditions are true:
     ///
@@ -597,6 +612,8 @@ pub struct Config {
     /// See: [`docs::data::log_pointers`].
     ///
     /// [`docs::data::log_pointers`]: `crate::docs::data::log_pointers#optionally-persisted-committed`
+    /// [`RaftLogReader`]: `crate::storage::RaftLogReader`
+    /// [`RaftLogStorage::append`]: `crate::storage::RaftLogStorage::append`
     // clap 4 requires `num_args = 0..=1`, or it complains about missing arg error
     // https://github.com/clap-rs/clap/discussions/4374
     #[since(version = "0.10.0")]
