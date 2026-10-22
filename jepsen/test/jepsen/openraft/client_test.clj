@@ -326,6 +326,7 @@
 
   (doseq [[variant payload]
           [[:ForwardToLeader "not-an-object"]
+           [:LogEntryDiscarded "not-an-object"]
            [:QuorumNotEnough ["not" "an" "object"]]]]
     (testing (name variant)
       (let [thrown (with-redefs [client/post! (fn [& _]

@@ -165,6 +165,12 @@
             (contains? error :QuorumNotEnough)
             (complete-with-error op :fail :quorum-not-enough false)
 
+            ;; The entry was appended, then discarded on a leader change, so
+            ;; it may still commit. with-leader! never retries it: the test
+            ;; app has no request deduplication.
+            (contains? error :LogEntryDiscarded)
+            (complete-with-ambiguous-outcome op :log-entry-discarded false)
+
             :else
             (complete-with-ambiguous-outcome op :openraft-error true))
 

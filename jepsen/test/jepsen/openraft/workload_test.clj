@@ -480,6 +480,37 @@
           (is (= expected-error (:error result)))
           (is (not (contains? result :unexpected-sut-response?))))))))
 
+(deftest a-discarded-log-entry-is-an-unretried-indeterminate-mutation
+  (let [error {:LogEntryDiscarded {:leader_id "n2"
+                                   :leader_node {:raft_addr "n2:22001"
+                                                 :data "n2:21001"}
+                                   :reason "NotLeader"}}]
+    (doseq [op [{:type :invoke :f :write :value (keyed "value")}
+                {:type :invoke
+                 :f :cas
+                 :value (keyed ["old" "new"])
+                 :expected-version 1}]]
+      (testing (name (:f op))
+        (let [failure-state (harness/failure-state)
+              subject (worker/wrap-client
+                       failure-state
+                       (workload/->KVClient nil
+                                            (atom "n1:21001")
+                                            ["n1:21001" "n2:21001"]
+                                            (atom {})))
+              requests (atom [])
+              result (with-redefs [http/post!
+                                   (fn [endpoint & _]
+                                     (swap! requests conj endpoint)
+                                     (http-response {:Err error}))]
+                       (client/invoke! subject {} op))]
+          (is (= :info (:type result)))
+          (is (= :log-entry-discarded (:error result)))
+          (is (not (contains? result :unexpected-sut-response?)))
+          (is (= ["n1:21001"] @requests)
+              "the entry may still commit, so the mutation is not retried")
+          (is (nil? (harness/primary-failure failure-state))))))))
+
 (deftest validates-http-200-application-responses
   (testing "a valid Ok payload completes successfully"
     (let [op {:type :invoke :f :write :value (keyed "value")}
