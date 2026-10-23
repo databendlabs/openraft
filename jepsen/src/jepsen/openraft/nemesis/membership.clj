@@ -102,43 +102,49 @@
 (defn- await-reachable-learner! [test node]
   (cluster/await-node-metrics! test node learner-wait-timeout-ms))
 
-(defn- request-membership-change!
-  ([test leader-endpoint target-voters]
-   (request-membership-change! test leader-endpoint target-voters false))
-  ([test leader-endpoint target-voters direct?]
-   (try
-     (if direct?
-       (client/change-membership! @leader-endpoint (voter-ids test target-voters))
-       (request-leader!
-        test
-        leader-endpoint
-        #(client/change-membership! % (voter-ids test target-voters))))
-     :completed
-     (catch Exception e
-       (let [unexpected (unexpected-membership-error-outcome e)]
-         (cond
-           (leader-routing-error? e)
-           :no-supported-leader
+(defn- membership-change-result! [target-voters request]
+  (try
+    (request)
+    :completed
+    (catch Exception e
+      (let [unexpected (unexpected-membership-error-outcome e)]
+        (cond
+          (leader-routing-error? e)
+          :no-supported-leader
 
-           unexpected
-           unexpected
+          unexpected
+          unexpected
 
-           (ambiguous-request-error? e)
-           (do
-             (info "OpenRaft membership change result is indeterminate"
-                   {:target-voters target-voters
-                    :error (ex-message e)})
-             :indeterminate)
+          (ambiguous-request-error? e)
+          (do
+            (info "OpenRaft membership change result is indeterminate"
+                  {:target-voters target-voters
+                   :error (ex-message e)})
+            :indeterminate)
 
-           (membership-change-in-progress? e)
-           (do
-             (info "OpenRaft membership change is already in progress"
-                   {:target-voters target-voters
-                    :error (ex-message e)})
-             :in-progress)
+          (membership-change-in-progress? e)
+          (do
+            (info "OpenRaft membership change is already in progress"
+                  {:target-voters target-voters
+                   :error (ex-message e)})
+            :in-progress)
 
-           :else
-           (throw e)))))))
+          :else
+          (throw e))))))
+
+(defn- request-membership-change! [test leader-endpoint target-voters]
+  (membership-change-result!
+   target-voters
+   #(request-leader!
+     test leader-endpoint
+     (fn [endpoint] (client/change-membership! endpoint (voter-ids test target-voters))))))
+
+(defn- request-direct-membership-change! [test endpoint target-voters]
+  (info "Requesting OpenRaft double-shrink membership change"
+        {:endpoint endpoint :target-voters target-voters})
+  (membership-change-result!
+   target-voters
+   #(client/change-membership! endpoint (voter-ids test target-voters))))
 
 (def ^:private restoration-outcome-kind ::restoration-outcome)
 
@@ -679,9 +685,9 @@
         ;; Recovery may finish this target through another leader, but only
         ;; two acknowledged direct requests earn :shrink-twice coverage.
         (reset! pending-change pending)
-        (let [result (request-membership-change!
-                      test (atom (client/api-endpoint test node))
-                      (:target pending) true)]
+        (let [result (request-direct-membership-change!
+                      test (client/api-endpoint test node)
+                      (:target pending))]
           (if (= :completed result)
             (do
               (stop-removed-nodes! database test pending)
@@ -696,12 +702,9 @@
       (seq learners) :learner-pending
       (< (count voters) (+ minimum-voters 2)) :minimum-membership
       (not (contains? voters leader)) :no-supported-leader
+      (not (quorum/quorum? [intermediate] (set (keys metrics)))) :no-quorum-safe-shrink
       :else
-      (if-let [second-node
-               (select-node test
-                            (filter #(and (quorum/quorum? [intermediate] (set (keys metrics)))
-                                          (quorum/quorum? [(disj intermediate %)] (set (keys metrics))))
-                                    intermediate))]
+      (if-let [second-node (select-node test (shrink-candidates (assoc status :voters intermediate)))]
         (let [pending {:change :shrink
                        :node leader
                        :second-node second-node
@@ -710,9 +713,9 @@
                        :target intermediate
                        :stage :change-membership}]
           (reset! pending-change pending)
-          (let [result (request-membership-change!
-                        test (atom (client/api-endpoint test leader))
-                        intermediate true)]
+          (let [result (request-direct-membership-change!
+                        test (client/api-endpoint test leader)
+                        intermediate)]
             (if (= :completed result)
               (let [pending (assoc pending :stage :shrink-again)]
                 (reset! pending-change pending)
@@ -999,9 +1002,9 @@
          (= after (disj intermediate second-node))
          (<= minimum-voters (count after)))))
 
-(defn- membership-change-installed? [required-changes change]
+(defn- membership-change-installed? [change]
   (and (= :installed (:status change))
-       (required-changes (:change change))
+       (#{:grow :shrink :shrink-twice} (:change change))
        (:node change)
        (:leader change)
        (coll? (:before change))
@@ -1023,11 +1026,10 @@
   (reify checker/Checker
     (check [_ test history _opts]
       (let [required-changes (cond-> #{:grow :shrink}
-                               (<= (+ minimum-voters 2) (count (:nodes test)))
+                               (and (= :never (:removed-leader-step-down test))
+                                    (<= (+ minimum-voters 2) (count (:nodes test))))
                                (conj :shrink-twice))
-            change-installed? #(membership-change-installed?
-                                required-changes
-                                %)
+            change-installed? membership-change-installed?
             expected-voters (set (:nodes test))
             membership-history (->> history
                                     (filter

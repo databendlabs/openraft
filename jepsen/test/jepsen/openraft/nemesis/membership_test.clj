@@ -1208,20 +1208,20 @@
                            :database
                            test-config))
         all-voters (set nodes)
-        four-voters (disj all-voters "n4")
+        three-voters (disj all-voters "n4")
         shrink {:type :info
                 :f :grow
                 :value (installed {:change :shrink
                                    :node "n4"
                                    :leader "n1"
                                    :before all-voters
-                                   :after four-voters})}
+                                   :after three-voters})}
         grow {:type :info
               :f :grow
               :value (installed {:change :grow
                                  :node "n4"
                                  :leader "n1"
-                                 :before four-voters
+                                 :before three-voters
                                  :after all-voters})}
         restore {:type :info
                  :f :restore-membership
@@ -1273,7 +1273,7 @@
                                     :request-result-unknown
                                     {:change :shrink
                                      :before all-voters
-                                     :target four-voters}))
+                                     :target three-voters}))
                      grow
                      restore
                      recovery]
@@ -1290,7 +1290,7 @@
                                     :request-result-unknown
                                     {:change :shrink
                                      :before all-voters
-                                     :target four-voters}))
+                                     :target three-voters}))
                      grow
                      (assoc-in restore
                                [:value :resolved-change]
@@ -1365,17 +1365,21 @@
                        {:f :shrink-twice :value result}
                        {:f :restore-membership :value (installed {:leader "n3" :voters before})}
                        {:f :await-recovery :value (installed {:leader "n3"})}]]
-          (is (:valid? (checker/check subject test-config history {})))
-          (is (= [:shrink-twice]
-                 (:missing-changes (checker/check subject test-config
-                                                  (remove #(= :shrink-twice (:f %)) history) {}))))
-          (doseq [bad-result [(dissoc result :removed-leader)
-                              (assoc-in result [:removed-leader :leader] "n2")
-                              (assoc-in result [:removed-leader :learners] #{"n1"})
-                              (assoc-in result [:removed-leader :stable?] false)]]
-            (is (= 1 (:malformed-outcomes
-                      (checker/check subject test-config
-                                     (assoc-in history [2 :value] bad-result) {}))))))))))
+          (doseq [policy [:default :never]]
+            (let [test (assoc test-config :removed-leader-step-down policy)
+                  without-double (checker/check subject test
+                                                (remove #(= :shrink-twice (:f %)) history) {})]
+              (is (:valid? (checker/check subject test history {})))
+              (is (= (= :default policy) (:valid? without-double)))
+              (is (= (if (= :never policy) [:shrink-twice] [])
+                     (:missing-changes without-double)))
+              (doseq [bad-result [(dissoc result :removed-leader)
+                                  (assoc-in result [:removed-leader :leader] "n2")
+                                  (assoc-in result [:removed-leader :learners] #{"n1"})
+                                  (assoc-in result [:removed-leader :stable?] false)]]
+                (is (= 1 (:malformed-outcomes
+                          (checker/check subject test
+                                         (assoc-in history [2 :value] bad-result) {}))))))))))))
 
 (deftest resumes-the-second-shrink-after-metrics-catch-up
   (let [status (atom (stable-status (set nodes)))
@@ -1455,7 +1459,8 @@
 (deftest double-shrink-requires-enough-voters-and-a-reachable-quorum
   (doseq [[status reason] [[(stable-status #{"n1" "n2" "n3" "n4"}) :minimum-membership]
                            [(assoc (stable-status (set nodes)) :learners #{"n6"}) :learner-pending]
-                           [(assoc (stable-status (set nodes)) :metrics {"n1" {}}) :no-quorum-safe-shrink]]]
+                           [(assoc (stable-status (set nodes)) :metrics {"n1" {}}) :no-quorum-safe-shrink]
+                           [(assoc (stable-status (set nodes)) :metrics {"n2" {} "n3" {}}) :no-quorum-safe-shrink]]]
     (with-redefs [cluster/membership-status (constantly status)
                   client/change-membership! (fn [& _] (throw (ex-info "must not change" {})))]
       (let [subject (membership-nemesis)

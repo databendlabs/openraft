@@ -143,6 +143,25 @@
                    (.indexOf start-command :--enable-pre-vote)
                    (.indexOf start-command :>>)))))))))
 
+(deftest preserves-removed-leader-policy-across-node-starts
+  (doseq [policy [:default :never]]
+    (let [commands (atom [])
+          database (openraft-db/db {})
+          test (assoc test-config :removed-leader-step-down policy)]
+      (with-redefs [c/exec
+                    (fn [& command]
+                      (case (command-kind command)
+                        :probe "absent"
+                        :start (do (swap! commands conj (vec command)) "")
+                        ""))]
+        (with-redefs-fn {#'openraft-db/await-process-state! (fn [_])}
+          (fn []
+            (doseq [node ["n1" "n2" "n1"]]
+              (db/start! database test node)))))
+      (is (= ["n1" "n2" "n1"] (mapv #(argument-after % :--id) @commands)))
+      (is (= (repeat 3 (= :never policy))
+             (map #(boolean (some #{:--disable-removed-leader-step-down} %)) @commands))))))
+
 (deftest retains-the-existing-bootstrap-observation-when-requested
   (doseq [node ["n1" "n2"]
           capture? [false true]]

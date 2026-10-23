@@ -143,7 +143,7 @@
   (signal-and-confirm! "CONT" :running :resumed))
 
 (defn- start-command!
-  [node-id api-addr raft-addr snapshot-threshold enable-pre-vote? disable-leader-restore?]
+  [node-id api-addr raft-addr snapshot-threshold enable-pre-vote? disable-leader-restore? removed-leader-step-down]
   (apply control-exec!
          (concat
           [(c/env (merge clock/application-env
@@ -164,10 +164,11 @@
            :--snapshot-threshold snapshot-threshold]
           (when enable-pre-vote? [:--enable-pre-vote])
           (when disable-leader-restore? [:--disable-leader-restore])
+          (when (= :never removed-leader-step-down) [:--disable-removed-leader-step-down])
           [:>> log-file (c/lit "2>&1")])))
 
 (defn- start-process!
-  [node-id api-addr raft-addr snapshot-threshold enable-pre-vote? disable-leader-restore?]
+  [node-id api-addr raft-addr snapshot-threshold enable-pre-vote? disable-leader-restore? removed-leader-step-down]
   (let [state (probe-process!)]
     (case state
       :running
@@ -177,7 +178,8 @@
       (do
         ;; --oknodo makes a start race succeed without broadly suppressing exit
         ;; status 1, which may instead mean a control or permission failure.
-        (start-command! node-id api-addr raft-addr snapshot-threshold enable-pre-vote? disable-leader-restore?)
+        (start-command! node-id api-addr raft-addr snapshot-threshold enable-pre-vote? disable-leader-restore?
+                        removed-leader-step-down)
         (await-process-state! :running)
         :start-confirmed)
 
@@ -234,14 +236,16 @@
             raft-addr (client/raft-addr test node)]
         (info node "starting OpenRaft" {:id node-id
                                         :api-addr api-addr
-                                        :raft-addr raft-addr})
+                                        :raft-addr raft-addr
+                                        :removed-leader-step-down (:removed-leader-step-down test)})
         (c/su
          (start-process! node-id
                          api-addr
                          raft-addr
                          (:snapshot-threshold test)
                          (:two-leaf-partition test)
-                         (= :leader-removal-recovery (:liveness test))))))
+                         (= :leader-removal-recovery (:liveness test))
+                         (:removed-leader-step-down test)))))
 
     (kill! [_ _ _node]
       (c/su
