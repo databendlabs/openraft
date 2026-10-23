@@ -229,7 +229,10 @@ async fn transfer_leader_resets_target_backoff_by_default() -> Result<()> {
                     "disabled reset keeps node-2 in backoff"
                 );
             } else {
-                router.wait(&2, timeout()).applied_index(Some(log_index), "transfer resumes replication").await?;
+                router
+                    .wait(&2, timeout())
+                    .applied_index_at_least(Some(log_index), "transfer resumes replication")
+                    .await?;
             }
         }
     }
