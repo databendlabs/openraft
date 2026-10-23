@@ -601,7 +601,7 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
         resp.log_id
     };
 
-    let expected_final_state = AppliedState {
+    let mut expected_final_state = AppliedState {
         last_applied: Some(appended_log_id),
         membership: StoredMembership::new(Some(appended_log_id), learner_membership),
         commands: vec![
@@ -613,7 +613,12 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
     };
     assert_eq!(expected_final_state, sm0.state());
 
-    tracing::info!("--- restart node 0 from its log with an empty state machine");
+    let mut recovery_log_id = appended_log_id;
+    recovery_log_id.leader_id.term += 1;
+    recovery_log_id.index += 1;
+    expected_final_state.last_applied = Some(recovery_log_id);
+
+    tracing::info!("--- re-elect node 0 after rebuilding its empty state machine from the log");
     let recovered_node = {
         let removed = router.remove(0);
         assert!(removed.is_some());
@@ -622,9 +627,13 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
         let recovered_sm = TestStateMachine::default();
         let recovered = new_node(0, config.clone(), router.clone(), log0, recovered_sm.clone()).await?;
         router.insert(0, recovered.clone());
-        recovered.wait(timeout()).applied_index(Some(9), "reapply committed log").await?;
+        recovered
+            .wait(timeout())
+            .applied_index(Some(recovery_log_id.index), "recovery leader blank")
+            .await?;
 
-        assert_eq!(expected_final_state, recovered_sm.state());
+        let recovered_state = recovered_sm.state();
+        assert_eq!(expected_final_state, recovered_state);
         let metrics = recovered.metrics().borrow_watched().clone();
         assert_eq!(&expected_final_state.membership, metrics.membership_config.as_ref());
         recovered
@@ -633,7 +642,7 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
     tracing::info!("--- install node 0 snapshot into a fresh node");
     let node3 = {
         recovered_node.trigger().snapshot().await?;
-        recovered_node.wait(timeout()).snapshot(appended_log_id, "custom payload snapshot").await?;
+        recovered_node.wait(timeout()).snapshot(recovery_log_id, "custom payload snapshot").await?;
         let snapshot = recovered_node.get_snapshot().await?.expect("snapshot should exist");
         let vote = recovered_node.metrics().borrow_watched().vote;
 
@@ -644,7 +653,7 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
         // `install_full_snapshot()` answers as soon as the snapshot is installed, before the
         // RaftCore loop publishes the next metrics. Wait for the installed index, so that the
         // membership assertion below reads the metrics the snapshot produced.
-        node.wait(timeout()).applied_index(Some(appended_log_id.index), "install snapshot").await?;
+        node.wait(timeout()).applied_index(Some(recovery_log_id.index), "install snapshot").await?;
 
         assert_eq!(expected_final_state, snapshot_sm.state());
         let metrics = node.metrics().borrow_watched().clone();

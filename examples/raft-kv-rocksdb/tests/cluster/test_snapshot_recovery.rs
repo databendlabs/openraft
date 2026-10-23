@@ -131,6 +131,9 @@ fn test_restarted_leader_rebuilds_snapshot_for_learner() -> anyhow::Result<()> {
         tracing::info!(dir = %leader.dir().display(), "Recover the active database and rebuild its snapshot");
         {
             leader.restart().await?;
+            let snapshot_log_id = snapshot.meta.last_log_id.context("snapshot covers the persisted write")?;
+            let recovery_index = snapshot_log_id.index() + 1;
+            leader.wait_applied(recovery_index).await?;
             let actual = leader.read("key").await?;
             assert_eq!(expected, actual);
             let actual_current = leader.current()?;

@@ -35,9 +35,9 @@ fn restored_leader_preserves_entry_identity() {
 ///
 /// Sequence: leader 1 stops flushing → partition node 3 → write X, which only
 /// node 2 persists → power-loss crash of node 1, which loses X → restart node
-/// 1 and heal → node 1 leads again, either resumed at startup by leader
-/// restore or elected in a new term → write Y. Y must get a log id other than
-/// X's, and the cluster must converge on Y.
+/// 1 and heal → node 1 wins a higher-term election through its startup
+/// campaign or a manual retry → write Y. Y must get a log id other than X's,
+/// and the cluster must converge on Y.
 ///
 /// [#2167]: https://github.com/databendlabs/openraft/issues/2167
 fn leader_restart_preserves_entry_identity(restore: bool) {
@@ -53,7 +53,7 @@ fn leader_restart_preserves_entry_identity(restore: bool) {
         .max_message_latency(Duration::from_millis(5))
         .rng_seed(SEED)
         .build();
-    // Heartbeats keep the leader lease that every write requires. Only this test starts elections.
+    // Heartbeats keep the leader lease that every write requires. Timer-driven elections are disabled.
     let config = Arc::new(openraft::Config {
         enable_elect: false,
         enable_leader_restore: Some(restore),
@@ -171,7 +171,7 @@ fn leader_restart_preserves_entry_identity(restore: bool) {
 
         tracing::info!(
             ?follower_lease,
-            "Elect node 1 if it has not resumed leadership once the followers' lease on its old term expires"
+            "Elect node 1 if it has not won leadership once the followers' lease on its old term expires"
         );
         {
             tokio::time::sleep(follower_lease).await;

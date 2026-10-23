@@ -80,10 +80,11 @@ This generalization rolls out in phases:
   previously-committed entries can be re-applied to the state machine without
   a fresh commit round. Standard Raft does not persist commit progress.
 
-- **Restarted leader stays leader when possible.** After a restart, a node
-  whose saved `Vote` still names itself as leader resumes the Leader role
-  immediately, subject to lease checks. Standard Raft always restarts as a
-  follower.
+- **Restarted leaders can campaign immediately.** With
+  [`Config::enable_leader_restore`][] enabled, the default, an eligible former leader
+  starts a higher-term election at startup. It still needs election quorum
+  approval and follows leader-lease checks. Standard Raft restarts as a
+  follower and waits for its normal election timeout.
 
 
 #### Read
@@ -115,3 +116,4 @@ This generalization rolls out in phases:
 [`Linearizable Read`]: `crate::docs::protocol::read`
 [`RaftLogStorage::save_committed()`]: `crate::storage::RaftLogStorage::save_committed`
 [`ReadPolicy::LeaseRead`]: `crate::raft::ReadPolicy::LeaseRead`
+[`Config::enable_leader_restore`]: `field@crate::Config::enable_leader_restore`
