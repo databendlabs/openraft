@@ -170,8 +170,6 @@ where
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn startup(&mut self) {
-        // Allows starting up as a leader.
-
         tracing::info!(
             "startup begin: state: {:?}, is_leader: {}, is_campaigner: {}",
             self.state,
@@ -179,31 +177,31 @@ where
             self.state.is_campaigner(&self.config.id)
         );
 
-        // TODO: replace all the following codes with one update_internal_server_state;
-        // Previously it is a leader. restore it as leader at once if leader restore enabled.
-        if self.state.is_leader(&self.config.id) {
-            if self.config.enable_leader_restore {
-                self.vote_handler().update_internal_server_state();
-                return;
-            } else {
-                // Demote the vote in memory only; do not persist it.
-                //
-                // Saving a non-committed vote would revert the vote value in storage
-                // (non-committed < committed for the same leader), breaking the
-                // monotonicity invariant of vote storage and of IO progress tracking.
-                //
-                // Keeping the committed vote in storage is safe: there is no vote `x`
-                // such that `(term, node, non-committed) < x < (term, node, committed)`,
-                // so any vote accepted later is also greater than the stored one and
-                // the next `SaveVote` automatically heals the divergence.
-                let uncommitted: VoteOf<C> = self.state.vote.to_non_committed().into_vote();
-                self.state.vote.update(C::now(), Duration::default(), uncommitted);
-                debug_assert!(!self.state.is_leader(&self.config.id))
-            }
+        let was_leader = self.state.is_leader(&self.config.id);
+        if was_leader {
+            // Demote the vote in memory only; do not persist it.
+            //
+            // Saving a non-committed vote would revert the vote value in storage
+            // (non-committed < committed for the same leader), breaking the
+            // monotonicity invariant of vote storage and of IO progress tracking.
+            //
+            // Keeping the committed vote in storage is safe: there is no vote `x`
+            // such that `(term, node, non-committed) < x < (term, node, committed)`,
+            // so any vote accepted later is also greater than the stored one and
+            // the next `SaveVote` automatically heals the divergence.
+            let uncommitted: VoteOf<C> = self.state.vote.to_non_committed().into_vote();
+            self.state.vote.update(C::now(), Duration::default(), uncommitted);
+            debug_assert!(!self.state.is_leader(&self.config.id))
         }
 
         let server_state = self.state.calc_following_state(&self.config.id);
         self.state.server_state = server_state;
+
+        let restore_leader = was_leader && self.config.enable_leader_restore;
+        let may_campaign = self.state.membership_state.is_campaigner_in_effective_or_committed(&self.config.id);
+        if restore_leader && may_campaign {
+            self.elect();
+        }
 
         tracing::info!(
             "startup done, id={}, target_state: {:?}",

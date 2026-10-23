@@ -569,36 +569,39 @@ pub struct Config {
     ))]
     pub allow_log_reversion: Option<bool>,
 
-    /// Whether to allow a restarted leader to restore leadership without a vote.
+    /// Whether a restarted former leader immediately campaigns to regain leadership.
     ///
-    /// When enabled (`true`), if a node that was leader before a restart comes back quickly
-    /// enough, before any other node triggers and election, it can continue serving as leader
-    /// without re-election. This differs from standard Raft, but can help improve availability
-    /// after a leader restart.
+    /// Enabled by default. A node whose saved vote identifies it as the former leader starts an
+    /// election in a higher term if its membership permits campaigning. It becomes leader only
+    /// after winning the election quorum. The campaign follows the usual log-freshness and
+    /// leader-lease checks, so voters may reject it.
     ///
-    /// When disabled (`false`), a restarted leader must always trigger a new election to become
-    /// leader again.
+    /// This startup campaign runs independently of [`enable_tick`](Self::enable_tick) and
+    /// [`enable_elect`](Self::enable_elect), without waiting for an election timeout. When disabled
+    /// (`false`), the former leader starts as a follower or learner and follows normal election
+    /// timing. The setting leaves follower, learner, and unfinished-candidate startup unchanged.
     ///
-    /// **Important**: When this setting is enabled, it can introduce inconsistencies when the
-    /// following conditions are true:
+    /// The higher term prevents reuse of a log ID for different entries if the old leader
+    /// replicated an entry but crashed before its local flush. Winning the election appends a
+    /// blank entry in the new term, increasing the log index before the next client write. See
+    /// [issue #2167](https://github.com/databendlabs/openraft/issues/2167) and
+    /// [PR #2172](https://github.com/databendlabs/openraft/pull/2172).
+    /// [`RaftLogStorage::append`] may still return before local persistence completes; its
+    /// completion callback reports durability.
     ///
-    /// - The state machine does not flush state to disk before returning from
-    ///   [`openraft::storage::RaftLogStorage::apply`].
-    /// - The last committed log id is not persisted.
+    /// **State-machine recovery**: If [`RaftStateMachine::apply`] does not flush state and the last
+    /// committed log ID is not persisted, restart may restore an older state machine. Persist the
+    /// committed log ID through [`RaftLogStorage::save_committed`], or call
+    /// [`Raft::wait_for_recovery`] before serving reads. See [`docs::data::log_pointers`].
     ///
-    /// When the above conditions are met and this setting is enabled, then a leader can restart
-    /// with a stale state machine and restore itself as leader without any mechanism to detect
-    /// the staleness.
-    ///
-    /// When the above conditions are met and this setting is disabled, then a restarted leader can
-    /// learn the current commit log id by participating in a new election or receiving a message
-    /// from the new leader.
-    ///
-    /// See: [`docs::data::log_pointers`].
-    ///
+    /// [`Raft::wait_for_recovery`]: `crate::Raft::wait_for_recovery`
+    /// [`RaftLogStorage::append`]: `crate::storage::RaftLogStorage::append`
+    /// [`RaftLogStorage::save_committed`]: `crate::storage::RaftLogStorage::save_committed`
+    /// [`RaftStateMachine::apply`]: `crate::storage::RaftStateMachine::apply`
     /// [`docs::data::log_pointers`]: `crate::docs::data::log_pointers#optionally-persisted-committed`
     // clap 4 requires `num_args = 0..=1`, or it complains about missing arg error
     // https://github.com/clap-rs/clap/discussions/4374
+    #[since(version = "0.10.0", change = "restore leadership through a higher-term election")]
     #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long,
            action = clap::ArgAction::Set,
@@ -681,10 +684,9 @@ impl Config {
         self.allow_log_reversion.unwrap_or(false)
     }
 
-    /// Whether a node that was a leader before a restart restores leadership at startup, without
-    /// an election.
+    /// Whether a former leader starts a higher-term election immediately after restart.
     ///
-    /// By default, it restores leadership at once for better availability.
+    /// Enabled by default; leadership still requires election quorum approval.
     #[since(version = "0.10.0")]
     pub(crate) fn enable_leader_restore(&self) -> bool {
         self.enable_leader_restore.unwrap_or(true)

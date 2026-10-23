@@ -14,6 +14,7 @@ use crate::cluster::crash_node;
 use crate::cluster::host_name;
 use crate::cluster::register_node_storage;
 use crate::cluster::spawn_host;
+use crate::invariants::InvariantChecker;
 use crate::liveness;
 use crate::storage_model::StorageModel;
 use crate::store::ValueMeta;
@@ -35,9 +36,9 @@ fn restored_leader_preserves_entry_identity() {
 ///
 /// Sequence: leader 1 stops flushing → partition node 3 → write X, which only
 /// node 2 persists → power-loss crash of node 1, which loses X → restart node
-/// 1 and heal → node 1 leads again, either resumed at startup by leader
-/// restore or elected in a new term → write Y. Y must get a log id other than
-/// X's, and the cluster must converge on Y.
+/// 1 and heal → node 1 wins a higher-term election through its startup
+/// campaign or a manual retry → write Y. Y must get a log id other than X's,
+/// and the cluster must converge on Y.
 ///
 /// [#2167]: https://github.com/databendlabs/openraft/issues/2167
 fn leader_restart_preserves_entry_identity(restore: bool) {
@@ -53,7 +54,7 @@ fn leader_restart_preserves_entry_identity(restore: bool) {
         .max_message_latency(Duration::from_millis(5))
         .rng_seed(SEED)
         .build();
-    // Heartbeats keep the leader lease that every write requires. Only this test starts elections.
+    // Heartbeats keep the leader lease that every write requires. Timer-driven elections are disabled.
     let config = Arc::new(openraft::Config {
         enable_elect: false,
         enable_leader_restore: Some(restore),
@@ -148,6 +149,15 @@ fn leader_restart_preserves_entry_identity(restore: bool) {
         assert!(!finished || ready, "scenario exited before preparing the crash");
     }
     let (base, lost) = armed.lock().unwrap().take().unwrap();
+    let mut invariants = InvariantChecker::default();
+    {
+        let state = cluster.lock().unwrap();
+        let snapshots = state.get_all_full_snapshots();
+        let durable_logs = state.get_all_durable_log_ids();
+        let result = invariants.check_with_durable_logs(&snapshots, &durable_logs);
+        let passed = result.violations.is_empty();
+        assert!(passed, "{result:?}");
+    }
     tracing::info!(
         ?base,
         ?lost,
@@ -155,6 +165,7 @@ fn leader_restart_preserves_entry_identity(restore: bool) {
     );
     {
         crash_node(&mut sim, 1, &cluster, true);
+        invariants.on_node_crash(1);
         let store = cluster.lock().unwrap().log_stores[&1].clone();
         let recovered = store.log_id_list();
         let last = recovered.last().copied();
@@ -171,7 +182,7 @@ fn leader_restart_preserves_entry_identity(restore: bool) {
 
         tracing::info!(
             ?follower_lease,
-            "Elect node 1 if it has not resumed leadership once the followers' lease on its old term expires"
+            "Elect node 1 if it has not won leadership once the followers' lease on its old term expires"
         );
         {
             tokio::time::sleep(follower_lease).await;
@@ -224,5 +235,16 @@ fn leader_restart_preserves_entry_identity(restore: bool) {
         }
         Ok(())
     });
-    sim.run().expect("leader restart violated entry identity or convergence");
+    loop {
+        let finished = sim.step().expect("leader restart violated entry identity or convergence");
+        let state = cluster.lock().unwrap();
+        let snapshots = state.get_all_full_snapshots();
+        let durable_logs = state.get_all_durable_log_ids();
+        let result = invariants.check_with_durable_logs(&snapshots, &durable_logs);
+        let passed = result.violations.is_empty();
+        assert!(passed, "{result:?}");
+        if finished {
+            break;
+        }
+    }
 }
