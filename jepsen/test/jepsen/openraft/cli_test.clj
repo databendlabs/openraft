@@ -77,6 +77,18 @@
         (is (some #(re-find #"Must be a positive integer" %)
                   (:errors parsed)))))))
 
+(deftest selects-removed-leader-policy-from-the-seed
+  (doseq [[seed policy] [[0 :default] [1 :never] [42 :default] [-1 :never]]]
+    (testing (str "seed " seed)
+      (let [opts {:nemesis :membership :nodes ["n1" "n2" "n3" "n4" "n5"]
+                  :time-limit 10 :seed seed}
+            first-run (#'cli/prepare-options {:options opts})
+            replay (#'cli/prepare-options {:options opts})]
+        (is (= policy (get-in first-run [:options :removed-leader-step-down])))
+        (is (= (:options first-run) (:options replay)))
+        (is (= policy (:removed-leader-step-down
+                       (cli/openraft-test (:options first-run)))))))))
+
 (deftest validates-liveness-options
   (let [options {:liveness :bridge-partition
                  :nodes ["n1" "n2" "n3" "n4" "n5"]

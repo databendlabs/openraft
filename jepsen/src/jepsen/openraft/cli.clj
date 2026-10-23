@@ -141,7 +141,9 @@
         seed (or (:seed options)
                  (random/long Long/MAX_VALUE))]
     (random/set-seed! seed)
-    (cond-> (assoc-in parsed [:options :seed] seed)
+    (cond-> (update parsed :options assoc
+                    :seed seed
+                    :removed-leader-step-down (if (even? seed) :default :never))
       (seq liveness-errors)
       (update :errors (fnil into []) liveness-errors)
 

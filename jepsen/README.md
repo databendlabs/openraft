@@ -259,16 +259,24 @@ The membership Nemesis exercises these membership-change cases:
   despite being neither a voter nor a learner. Neither request follows leader
   redirects.
 
-The test application disables automatic step-down for removed leaders. It can
-still step down on a higher term. This setting is local to the Jepsen app.
+Each run selects the removed-leader step-down policy from its seed: even seeds
+use OpenRaft's default policy (currently `After(150)`), and odd seeds use `Never`.
+The selected policy is stored in the test configuration and logged at every node
+start, including restarts. `Never` is passed to the test app with
+`--disable-removed-leader-step-down`; without that flag the app keeps OpenRaft's
+default. Either policy still allows a leader to step down on a higher term.
+Use `SEED=0` and `SEED=1` to exercise both policies in membership runs.
 
 The generator starts with shrink and grow, then attempts shrink-twice on clusters
 of at least five nodes, before randomly mixing the applicable operations. On
 these clusters the initial grow phase repeats until it completes (or membership
 is already full), so starting a wiped node cannot consume the double-shrink step.
 Pending changes are resolved before starting another operation. A focused
-membership run on five or more nodes requires successful shrink-twice coverage;
-chaos retains its existing policy of reporting missing per-class coverage.
+membership run on five or more nodes requires successful shrink-twice coverage
+only with `Never`. Default-policy runs accept ordinary shrink recovery when the
+removed leader steps down before the second request, and also accept successful
+shrink-twice operations. Chaos retains its existing policy of reporting missing
+per-class coverage.
 Timeouts or a changed leader can be recovered through ordinary membership
 operations, but do not count as successful shrink-twice coverage.
 

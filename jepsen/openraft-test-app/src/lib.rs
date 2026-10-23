@@ -59,6 +59,9 @@ pub struct Opt {
 
     #[clap(long)]
     disable_leader_restore: bool,
+
+    #[clap(long)]
+    disable_removed_leader_step_down: bool,
 }
 
 #[path = "../../../examples/utils/declare_types.rs"]
@@ -73,6 +76,7 @@ pub async fn start_raft_node(options: Opt) -> std::io::Result<()> {
         snapshot_threshold,
         enable_pre_vote,
         disable_leader_restore,
+        disable_removed_leader_step_down,
     } = options;
     let dir = data_dir.unwrap_or_else(|| PathBuf::from(format!("{api_addr}.db")));
 
@@ -86,10 +90,12 @@ pub async fn start_raft_node(options: Opt) -> std::io::Result<()> {
         quorum_loss_probe_interval: Some(700),
         enable_pre_vote: Some(enable_pre_vote),
         enable_leader_restore: disable_leader_restore.then_some(false),
-        // Keep removed leaders available for subsequent membership changes until the nemesis stops them.
-        removed_leader_step_down: StepDownPolicy::Never,
         ..Default::default()
     };
+
+    if disable_removed_leader_step_down {
+        config.removed_leader_step_down = StepDownPolicy::Never;
+    }
 
     if let Some(threshold) = snapshot_threshold {
         config.snapshot_policy = SnapshotPolicy::LogsSinceLast(threshold.get());
@@ -146,6 +152,22 @@ mod tests {
     use clap::Parser;
 
     use super::Opt;
+
+    #[test]
+    fn removed_leader_step_down_is_disabled_only_when_requested() {
+        let args = [
+            "openraft-jepsen-app",
+            "--id",
+            "n1",
+            "--api-addr",
+            "n1:21001",
+            "--raft-addr",
+            "n1:22001",
+        ];
+        assert!(!Opt::try_parse_from(args).unwrap().disable_removed_leader_step_down);
+        let options = Opt::try_parse_from(args.into_iter().chain(["--disable-removed-leader-step-down"])).unwrap();
+        assert!(options.disable_removed_leader_step_down);
+    }
 
     #[test]
     fn snapshot_threshold_must_be_positive() {
