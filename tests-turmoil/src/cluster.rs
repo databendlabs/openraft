@@ -190,6 +190,8 @@ pub fn spawn_host(
                         .await
                         .expect("Failed to create Raft");
 
+                    // Startup may await save_vote before publishing the recovered metrics.
+                    raft.with_raft_state(|_| ()).await.expect("Failed to finish Raft startup");
                     let raft = Arc::new(raft);
 
                     cluster_state.lock().unwrap().register_raft(node_id, raft.clone());

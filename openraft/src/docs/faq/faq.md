@@ -127,10 +127,11 @@ This generalization rolls out in phases:
   previously-committed entries can be re-applied to the state machine without
   a fresh commit round. Standard Raft does not persist commit progress.
 
-- **Restarted leader stays leader when possible.** After a restart, a node
-  whose saved `Vote` still names itself as leader resumes the Leader role
-  immediately, subject to lease checks. Standard Raft always restarts as a
-  follower.
+- **Restarted leaders can campaign immediately.** With
+  [`Config::enable_leader_restore`][] enabled, the default, an eligible former leader
+  starts a higher-term election at startup. It still needs election quorum
+  approval and follows leader-lease checks. Standard Raft restarts as a
+  follower and waits for its normal election timeout.
 
 
 #### Read
@@ -162,6 +163,7 @@ This generalization rolls out in phases:
 [`Linearizable Read`]: `crate::docs::protocol::read`
 [`RaftLogStorage::save_committed()`]: `crate::storage::RaftLogStorage::save_committed`
 [`ReadPolicy::LeaseRead`]: `crate::raft::ReadPolicy::LeaseRead`
+[`Config::enable_leader_restore`]: `field@crate::Config::enable_leader_restore`
 
 
 ### Why is log id a tuple of `(term, node_id, log_index)`?
@@ -535,7 +537,6 @@ same time. However, only one of them is the **legal leader** at any specific
 point in time - only one can actually commit logs successfully.
 
 This commonly happens when:
-- A leader node restarts and immediately resumes as Leader (by design)
 - Network partitions occur
 - There are message delays or concurrent elections
 
@@ -707,9 +708,23 @@ nodes in the cluster, including voters and non-voters (learners).  When a
 `follower` or `learner` restarts, the leader will automatically re-establish
 replication.
 
+An eligible former leader starts a higher-term election immediately after
+restart when [`Config::enable_leader_restore`] is enabled, as it is by default. It
+becomes leader only after winning the election quorum. With this setting
+disabled, the node follows normal follower or learner startup and election
+timing. A successful election appends a blank entry in the new term, so the log
+index advances before the next client write.
+
+If the state machine can lose applied state on restart, persist the committed
+log ID through [`RaftLogStorage::save_committed`] or call
+[`Raft::wait_for_recovery`] before serving reads.
+
 [`add_learner()`]: `crate::Raft::add_learner`
 [`change_membership()`]: `crate::Raft::change_membership`
 [`Membership`]: `crate::Membership`
+[`Config::enable_leader_restore`]: `field@crate::Config::enable_leader_restore`
+[`RaftLogStorage::save_committed`]: `crate::storage::RaftLogStorage::save_committed`
+[`Raft::wait_for_recovery`]: `crate::Raft::wait_for_recovery`
 
 
 ### How to remove node-2 safely from a cluster `{1, 2, 3}`?

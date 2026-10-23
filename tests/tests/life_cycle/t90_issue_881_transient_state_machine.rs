@@ -79,9 +79,10 @@ async fn issue_881_transient_state_machine() -> anyhow::Result<()> {
 
     tracing::info!(
         log_index,
-        "--- node-0 should recover: install snapshot first, then re-apply remaining logs"
+        "--- node-0 should recover: install snapshot, replay logs, and apply the new term's blank"
     );
     {
+        log_index += 1;
         router.wait(&0).applied_index(Some(log_index), "node-0 recovered by snapshot + log replay").await?;
     }
 

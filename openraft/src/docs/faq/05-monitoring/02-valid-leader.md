@@ -5,7 +5,6 @@ same time. However, only one of them is the **legal leader** at any specific
 point in time - only one can actually commit logs successfully.
 
 This commonly happens when:
-- A leader node restarts and immediately resumes as Leader (by design)
 - Network partitions occur
 - There are message delays or concurrent elections
 

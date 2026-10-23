@@ -2,10 +2,11 @@ use std::time::Duration;
 
 use openraft::Config;
 use openraft::ServerState;
-use openraft::metrics::WaitError;
+use openraft::impls::Vote;
 
 use crate::fixtures::Node;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::expect_timeout;
 use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
@@ -67,11 +68,12 @@ async fn wait_for_recovery_recovers_state_machine() -> anyhow::Result<()> {
 /// `wait_for_recovery` times out when no cluster commit can be re-established.
 ///
 /// A restarted leader that has lost its quorum never perceives a non-null cluster commit, so the
-/// recovery wait cannot complete and returns [`WaitError::Timeout`].
+/// recovery wait cannot complete and reports a timeout.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn wait_for_recovery_times_out_without_quorum() -> anyhow::Result<()> {
     let config = Config {
+        enable_tick: false,
         enable_heartbeat: false,
         enable_elect: false,
         ..Default::default()
@@ -87,7 +89,7 @@ async fn wait_for_recovery_times_out_without_quorum() -> anyhow::Result<()> {
         router.stop_node(id).await?;
     }
 
-    tracing::info!("--- restart node-0; it restores leadership but cannot re-establish the commit");
+    tracing::info!("--- restart node-0; its startup campaign cannot win without a quorum");
     {
         let Node {
             log_store: ls,
@@ -96,17 +98,14 @@ async fn wait_for_recovery_times_out_without_quorum() -> anyhow::Result<()> {
         } = router.stop_node(0).await?;
 
         router.new_raft_node_with_sto(0, ls, sm).await?;
-        router.wait(&0).state(ServerState::Leader, "restore leadership without election").await?;
+        router.wait(&0).vote(Vote::new(2, 0), "startup campaign advances the term").await?;
+        router.wait(&0).state(ServerState::Candidate, "no quorum to establish leadership").await?;
     }
 
     tracing::info!("--- with no quorum the cluster commit stays null, so recovery times out");
     {
         let res = router.get_raft_handle(&0)?.wait_for_recovery(Some(Duration::from_millis(500))).await;
-        assert!(
-            matches!(res, Err(WaitError::Timeout(..))),
-            "expected a timeout, got {:?}",
-            res
-        );
+        expect_timeout(res)?;
     }
 
     Ok(())

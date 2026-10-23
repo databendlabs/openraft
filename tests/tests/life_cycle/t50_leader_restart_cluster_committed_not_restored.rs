@@ -1,37 +1,27 @@
-use std::sync::Arc;
-use std::sync::atomic::AtomicU64;
-use std::sync::atomic::Ordering;
-use std::time::Duration;
-
 use openraft::Config;
+use openraft::RaftLogReader;
 use openraft::ServerState;
-use openraft::errors::Infallible;
-use openraft::errors::RPCError;
-use openraft::type_config::TypeConfigExt;
+use openraft::errors::ClientWriteError;
+use openraft::errors::ForwardToLeader;
+use openraft::errors::RaftError;
+use openraft::impls::Vote;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::Node;
 use crate::fixtures::RaftRouter;
-use crate::fixtures::rpc_kind::RpcKind;
-use crate::fixtures::rpc_request::RpcRequest;
+use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
 
-/// A leader that restarts and restores leadership without a re-election must not surface a
-/// cluster-committed log id that was read back from storage.
+/// A former leader without a quorum stays a candidate and restores only its local commit.
 ///
 /// `cluster_committed` is established only by replicating to a quorum; it is never restored from
-/// `RaftStorage`. So a restored leader that has lost its quorum reports `local_committed` (the
-/// apply ceiling, restored from storage) while `cluster_committed` stays `None`. This guarantees a
-/// non-null `cluster_committed` in the metrics is always a genuine, freshly quorum-granted commit
-/// — never a stale value resurrected from storage and broadcast to followers.
-///
-/// Beyond the metric, the test triggers a heartbeat and asserts the broadcast
-/// `AppendEntriesRequest.leader_commit` is null, proving the restored commit never reaches the
-/// wire.
+/// storage. The startup campaign must win before the node can propose entries, so a rejected
+/// client write must leave the complete log unchanged.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn leader_restart_cluster_committed_not_restored() -> anyhow::Result<()> {
     let config = Config {
+        enable_tick: false,
         enable_heartbeat: false,
         enable_elect: false,
         ..Default::default()
@@ -41,16 +31,13 @@ async fn leader_restart_cluster_committed_not_restored() -> anyhow::Result<()> {
 
     tracing::info!("--- bring up a 3-node cluster; node-0 is the leader");
     let log_index = router.new_cluster([0, 1, 2], []).await?;
+    let committed = Some(log_id(1, 0, log_index));
 
     tracing::info!(log_index, "--- the live leader has an established cluster commit");
     {
         let m = router.get_metrics(&0)?;
-        assert_eq!(
-            Some(log_index),
-            m.cluster_committed.as_ref().map(|x| x.index()),
-            "cluster_committed established by quorum replication"
-        );
-        assert_eq!(Some(log_index), m.local_committed.as_ref().map(|x| x.index()));
+        assert_eq!(committed, m.cluster_committed);
+        assert_eq!(committed, m.local_committed);
     }
 
     tracing::info!(
@@ -63,7 +50,7 @@ async fn leader_restart_cluster_committed_not_restored() -> anyhow::Result<()> {
 
     tracing::info!(
         log_index,
-        "--- restart node-0 with its persisted state; it restores leadership"
+        "--- restart node-0 with its persisted state; it campaigns in a higher term"
     );
     {
         let Node {
@@ -73,7 +60,8 @@ async fn leader_restart_cluster_committed_not_restored() -> anyhow::Result<()> {
         } = router.stop_node(0).await?;
 
         router.new_raft_node_with_sto(0, ls, sm).await?;
-        router.wait(&0).state(ServerState::Leader, "restore leadership without election").await?;
+        router.wait(&0).vote(Vote::new(2, 0), "startup campaign advances the term").await?;
+        router.wait(&0).state(ServerState::Candidate, "no quorum to establish leadership").await?;
         router.wait(&0).applied_index(Some(log_index), "applied restored from storage").await?;
     }
 
@@ -84,67 +72,35 @@ async fn leader_restart_cluster_committed_not_restored() -> anyhow::Result<()> {
     {
         let m = router.get_metrics(&0)?;
 
-        // The committed value persisted in `RaftStorage` is restored into the local apply ceiling.
-        assert_eq!(
-            Some(log_index),
-            m.local_committed.as_ref().map(|x| x.index()),
-            "local_committed restored from storage"
-        );
-
-        // Without a quorum the restored leader can never re-establish the cluster commit, so the
-        // restored value is never promoted to `cluster_committed` nor broadcast to followers.
-        assert_eq!(
-            None, m.cluster_committed,
-            "cluster_committed must not be restored from storage"
-        );
+        assert_eq!(committed, m.local_committed);
+        assert_eq!(committed, m.last_applied);
+        assert_eq!(None, m.cluster_committed);
+        assert_eq!(None, m.current_leader);
     }
 
     tracing::info!(
         log_index,
-        "--- a triggered heartbeat must broadcast a null leader_commit"
+        "--- a client write must be rejected without creating a log entry"
     );
     {
-        // Intercept node-0's outgoing AppendEntries (heartbeats use the same RPC) and record the
-        // `leader_commit` carried on the wire.
-        let total = Arc::new(AtomicU64::new(0));
-        let non_null = Arc::new(AtomicU64::new(0));
-        {
-            let total = total.clone();
-            let non_null = non_null.clone();
-            router
-                .set_rpc_pre_hook(RpcKind::AppendEntries, move |call| {
-                    if call.from == 0
-                        && let RpcRequest::AppendEntries(ae) = &call.request
-                    {
-                        total.fetch_add(1, Ordering::Relaxed);
-                        if ae.leader_commit.is_some() {
-                            non_null.fetch_add(1, Ordering::Relaxed);
-                        }
-                    }
-                    futures::future::ready(Ok::<(), RPCError<TypeConfig, Infallible>>(()))
-                })
-                .await;
-        }
+        let (mut ls, _) = router.get_storage_handle(&0)?;
+        let entries = ls.try_get_log_entries(..).await?;
+        let before = bincode::serialize(&entries)?;
+        let result = router.client_request(0, "rejected", 0).await;
+        let error = result.expect_err("a candidate must reject client writes");
+        let forward = ForwardToLeader::<TypeConfig>::empty();
+        let write_error = ClientWriteError::ForwardToLeader(forward);
+        let want = RaftError::APIError(write_error);
+        assert_eq!(want, error);
 
-        router.get_raft_handle(&0)?.trigger().heartbeat().await?;
-
-        // Wait until the heartbeat workers have actually emitted the broadcast.
-        let mut sent = 0;
-        for _ in 0..100 {
-            sent = total.load(Ordering::Relaxed);
-            if sent > 0 {
-                break;
-            }
-            TypeConfig::sleep(Duration::from_millis(10)).await;
-        }
-        assert!(sent > 0, "the restored leader must broadcast at least one heartbeat");
-
-        // The commit restored from storage is never put on the wire.
-        assert_eq!(
-            0,
-            non_null.load(Ordering::Relaxed),
-            "a restored leader's heartbeat must broadcast a null leader_commit"
-        );
+        let entries = ls.try_get_log_entries(..).await?;
+        let after = bincode::serialize(&entries)?;
+        assert_eq!(before, after);
+        let m = router.get_metrics(&0)?;
+        assert_eq!(ServerState::Candidate, m.state);
+        assert_eq!(Some(log_index), m.last_log_index);
+        assert_eq!(committed, m.local_committed);
+        assert_eq!(None, m.cluster_committed);
     }
 
     Ok(())

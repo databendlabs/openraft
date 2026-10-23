@@ -1,4 +1,5 @@
 use openraft::Config;
+use openraft::ServerState;
 
 use crate::fixtures::Node;
 use crate::fixtures::RaftRouter;
@@ -43,6 +44,7 @@ async fn single_restart() -> anyhow::Result<()> {
 
     tracing::info!(log_index, "--- write to 1 log after restart");
     {
+        router.wait(&0).state(ServerState::Leader, "startup election completes before writing").await?;
         let response = router.client_request(0, "foo", 0).await?;
         log_index = response.log_id.index();
 
