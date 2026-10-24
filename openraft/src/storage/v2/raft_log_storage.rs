@@ -110,7 +110,8 @@ where C: RaftTypeConfig
     /// Append log entries and call the `callback` once logs are persisted on disk.
     ///
     /// It should return immediately after saving the input log entries in memory and calls the
-    /// `callback` when the entries are persisted on disk, i.e., avoid blocking.
+    /// `callback` when the entries are persisted on disk, i.e., avoid blocking. With leader
+    /// restore enabled, it must instead persist the entries before they are readable; see below.
     ///
     /// This method is still async because preparing the IO is usually async.
     ///
@@ -123,8 +124,18 @@ where C: RaftTypeConfig
     ///
     ///   NOTE that: the `callback` can be called either before or after this method returns.
     ///
+    /// - With [`Config::enable_leader_restore`] enabled, which is the default, an entry must be
+    ///   persisted on disk before a `LogReader` can read it. Given the first rule, this method then
+    ///   persists the entries before it returns, for example with a synchronous write that makes
+    ///   them readable only once they are on disk, and may call the `callback` at once. Openraft
+    ///   replicates entries before the leader's own flush, so a restored leader could otherwise
+    ///   reissue the log id of an entry it sent and then lost in a crash. To return before the
+    ///   entries are persisted, disable leader restore.
+    ///
     /// - There must not be a **hole** in logs. Because Raft only examines the last log id to ensure
     ///   correctness.
+    ///
+    /// [`Config::enable_leader_restore`]: `field@crate::Config::enable_leader_restore`
     async fn append<I>(&mut self, entries: I, callback: IOFlushed<C>) -> Result<(), io::Error>
     where
         I: IntoIterator<Item = C::Entry> + OptionalSend,

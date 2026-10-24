@@ -515,6 +515,16 @@ and links the trait, protocol page, or test suite that defines it.
   and [`purge()`] must also leave no hole in the log, because Raft examines only
   the last log id.
 
+- **Durable appends before leader restore.** With
+  [`Config::enable_leader_restore`] enabled, the default, a log entry must be on
+  disk before the log reader can return it: [`append()`] persists the entries
+  before it returns and makes them readable only then, as the
+  [`log-rocks` example](https://github.com/databendlabs/openraft/blob/main/examples/log-rocks/src/lib.rs)
+  does. Openraft replicates entries before the leader's own flush, and a
+  restored leader keeps its leader id, so it could otherwise reissue the log id
+  of an entry it sent and then lost in a crash. To keep the leader's flush in
+  parallel with replication, disable leader restore.
+
 - **Storage conformance.** Run `Suite::test_all(builder)` from the
   [storage test suite][`LogSuite`] against the store the deployment actually
   uses, passing a [`StoreBuilder`] that constructs that store, as the
@@ -625,6 +635,7 @@ and links the trait, protocol page, or test suite that defines it.
 [`save_vote()`]:                        `crate::storage::RaftLogStorage::save_vote`
 [`get_log_state()`]:                    `crate::storage::RaftLogStorage::get_log_state`
 [`get_log_reader()`]:                   `crate::storage::RaftLogStorage::get_log_reader`
+[`Config::enable_leader_restore`]:      `field@crate::Config::enable_leader_restore`
 
 [`RaftStateMachine`]:                   `crate::storage::RaftStateMachine`
 [`SnapshotData`]:                       `crate::storage::RaftStateMachine::SnapshotData`

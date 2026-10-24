@@ -33,6 +33,7 @@ use rocksdb::DB;
 use rocksdb::Direction;
 use rocksdb::Options;
 use rocksdb::WriteBatch;
+use rocksdb::WriteOptions;
 
 #[derive(Debug, Clone)]
 pub struct RocksLogStore<C>
@@ -190,19 +191,21 @@ where C: RaftTypeConfig
             let value = serde_json::to_vec(&entry).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
             batch.put_cf(self.cf_logs(), id, value);
         }
-        self.db.write(batch).map_err(|e| io::Error::other(e.to_string()))?;
 
-        // Make sure the logs are persisted to disk before invoking the callback.
-        //
-        // But the above `write()` must be called in this function, not in another task.
-        // Because when the function returns, it requires the log entries can be read.
+        // A synchronous write syncs the WAL before the entries become readable, as
+        // `Config::enable_leader_restore` requires. It must finish before this method returns,
+        // because the entries must be readable by then.
         let db = self.db.clone();
-        std::thread::spawn(move || {
-            let res = db.flush_wal(true).map_err(io::Error::other);
-            callback.io_completed(res);
-        });
+        C::spawn_blocking(move || {
+            let mut write_options = WriteOptions::default();
+            write_options.set_sync(true);
+            db.write_opt(batch, &write_options)
+        })
+        .await?
+        .map_err(|e| io::Error::other(e.to_string()))?;
 
-        // Return now, and the callback will be invoked later when IO is done.
+        // The entries are on disk.
+        callback.io_completed(Ok(()));
         Ok(())
     }
 
