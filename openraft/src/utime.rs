@@ -65,7 +65,6 @@ impl<T, I: Instant> Leased<T, I> {
     }
 
     /// Creates a new object that has no last-updated time.
-    #[allow(dead_code)]
     pub(crate) fn without_last_update(data: T) -> Self {
         Self {
             data,
