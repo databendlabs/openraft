@@ -1,12 +1,24 @@
-//! In-memory storage for turmoil tests.
+//! In-memory storage for turmoil tests, with the faults of a real disk.
+//!
+//! The log store keeps two copies of everything it holds: `live`, what a
+//! reader sees, and `durable`, what survives a power loss. Under
+//! [`StorageModel::durable`] both move together, as in the harness before
+//! these faults existed. With `async_flush`, each write lands in `live` at
+//! once and joins a queue; a flush task moves the queue to `durable` in
+//! submission order and only then reports the appends flushed. With
+//! `durable_append`, which leader restore requires, an append joins the
+//! queue without reaching `live`: the flush task adds it to both at once. See
+//! [`StorageModel`] for what the openraft storage contract allows.
 
 use std::collections::BTreeMap;
+use std::collections::VecDeque;
 use std::fmt::Debug;
 use std::io;
 use std::io::Cursor;
 use std::ops::RangeBounds;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::time::Duration;
 
 use futures::Stream;
 use openraft::EntryPayload;
@@ -19,9 +31,13 @@ use openraft::storage::RaftLogReader;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftSnapshotBuilder;
 use openraft::storage::RaftStateMachine;
+use rand::RngExt;
+use rand::SeedableRng;
+use rand::rngs::StdRng;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::storage_model::StorageModel;
 use crate::typ::*;
 
 /// A versioned value in the KV store.
@@ -50,35 +66,226 @@ pub struct StateMachineData {
     pub data: BTreeMap<String, ValueMeta>,
 }
 
-/// In-memory log store.
-pub struct LogStore {
-    vote: Mutex<Option<Vote>>,
-    committed: Mutex<Option<LogId>>,
-    last_purged: Mutex<Option<LogId>>,
-    log: Mutex<BTreeMap<u64, Entry>>,
+/// Everything a log store holds, as one copy: what a reader sees, or what is
+/// on disk.
+#[derive(Debug, Clone, Default)]
+struct LogDisk {
+    vote: Option<Vote>,
+    committed: Option<LogId>,
+    last_purged: Option<LogId>,
+    log: BTreeMap<u64, Entry>,
 }
 
-impl Default for LogStore {
-    fn default() -> Self {
-        Self::new()
-    }
+/// One write to a log store, kept until it is flushed.
+enum LogWrite {
+    Append(Vec<Entry>),
+    /// Keep entries up to and including this log id.
+    Truncate(Option<LogId>),
+    Purge(LogId),
+    Vote(Vote),
+    Committed(Option<LogId>),
 }
 
-impl LogStore {
-    pub fn new() -> Self {
-        Self {
-            vote: Mutex::new(None),
-            committed: Mutex::new(None),
-            last_purged: Mutex::new(None),
-            log: Mutex::new(BTreeMap::new()),
+/// Who waits for a write to be flushed.
+enum FlushWaiter {
+    None,
+    Append(IOFlushed<TypeConfig>),
+    /// An append readable only once flushed; `append` waits on the sender.
+    DurableAppend(IOFlushed<TypeConfig>, tokio::sync::oneshot::Sender<()>),
+    Vote(tokio::sync::oneshot::Sender<()>),
+}
+
+impl LogDisk {
+    fn apply(&mut self, write: &LogWrite) {
+        match write {
+            LogWrite::Append(entries) => {
+                for entry in entries {
+                    self.log.insert(entry.log_id.index, entry.clone());
+                }
+            }
+            LogWrite::Truncate(last_log_id) => {
+                let start_index = match last_log_id {
+                    Some(log_id) => log_id.index + 1,
+                    None => 0,
+                };
+                self.log.split_off(&start_index);
+            }
+            LogWrite::Purge(log_id) => {
+                self.last_purged = Some(*log_id);
+                self.log = self.log.split_off(&(log_id.index + 1));
+            }
+            LogWrite::Vote(vote) => self.vote = Some(*vote),
+            LogWrite::Committed(committed) => self.committed = *committed,
         }
     }
 
-    pub fn log_id_list(&self) -> LogIdListOf<TypeConfig> {
-        let last_purged = *self.last_purged.lock().unwrap();
-        let log = self.log.lock().unwrap();
+    fn log_id_list(&self) -> LogIdListOf<TypeConfig> {
+        LogIdListOf::<TypeConfig>::new(self.last_purged, self.log.values().map(|entry| entry.log_id))
+    }
+}
 
-        LogIdListOf::<TypeConfig>::new(last_purged, log.values().map(|entry| entry.log_id))
+impl FlushWaiter {
+    /// Tell the waiter its write is durable. An append's callback comes
+    /// `callback_delay_ms` later: only the report is late, and it may
+    /// overtake the report of a later append.
+    fn notify(self, callback_delay_ms: u64) {
+        let callback = match self {
+            FlushWaiter::None => return,
+            FlushWaiter::Vote(tx) => {
+                let _ = tx.send(());
+                return;
+            }
+            FlushWaiter::Append(callback) => callback,
+            FlushWaiter::DurableAppend(callback, readable) => {
+                let _ = readable.send(());
+                callback
+            }
+        };
+        if callback_delay_ms == 0 {
+            callback.io_completed(Ok(()));
+        } else {
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(callback_delay_ms)).await;
+                callback.io_completed(Ok(()));
+            });
+        }
+    }
+}
+
+struct LogStoreInner {
+    /// What a reader sees: every write submitted so far, but a durable
+    /// append not yet flushed.
+    live: LogDisk,
+    /// What survives a power loss: every write flushed so far.
+    durable: LogDisk,
+    /// Writes submitted but not flushed, oldest first.
+    unflushed: VecDeque<(LogWrite, FlushWaiter)>,
+    /// Bumped by every crash, so a flush task left from before it stops.
+    epoch: u64,
+    /// Whether a flush task is running for the current epoch.
+    flushing: bool,
+    rng: StdRng,
+}
+
+/// In-memory log store.
+pub struct LogStore {
+    model: StorageModel,
+    inner: Mutex<LogStoreInner>,
+}
+
+impl LogStore {
+    pub fn new(model: StorageModel, seed: u64) -> Self {
+        Self {
+            model,
+            inner: Mutex::new(LogStoreInner {
+                live: LogDisk::default(),
+                durable: LogDisk::default(),
+                unflushed: VecDeque::new(),
+                epoch: 0,
+                flushing: false,
+                rng: StdRng::seed_from_u64(seed),
+            }),
+        }
+    }
+
+    /// The log ids a reader sees.
+    pub fn log_id_list(&self) -> LogIdListOf<TypeConfig> {
+        self.inner.lock().unwrap().live.log_id_list()
+    }
+
+    /// The process holding this store crashed. Its flush task is gone and
+    /// nobody waits for the unflushed writes any more. A power loss drops
+    /// them; otherwise the page cache still reaches the disk. Either way, the
+    /// restarted process reads what is on disk.
+    pub fn crash(&self, power_loss: bool) {
+        let mut inner = self.inner.lock().unwrap();
+        inner.epoch += 1;
+        inner.flushing = false;
+        let unflushed = std::mem::take(&mut inner.unflushed);
+        if !power_loss {
+            for (write, _) in &unflushed {
+                inner.durable.apply(write);
+            }
+        }
+        inner.live = inner.durable.clone();
+    }
+
+    /// Submit one write: readable at once, durable now or once flushed. A
+    /// durable append is readable only once flushed.
+    ///
+    /// Without `async_flush` the write is durable before this returns, and
+    /// `waiter` hears so here.
+    fn submit(self: &Arc<Self>, write: LogWrite, waiter: FlushWaiter) {
+        let mut inner = self.inner.lock().unwrap();
+
+        if !self.model.async_flush {
+            inner.live.apply(&write);
+            inner.durable.apply(&write);
+            drop(inner);
+            waiter.notify(0);
+            return;
+        }
+
+        if !matches!(waiter, FlushWaiter::DurableAppend(..)) {
+            inner.live.apply(&write);
+        }
+
+        inner.unflushed.push_back((write, waiter));
+        if !inner.flushing {
+            inner.flushing = true;
+            let epoch = inner.epoch;
+            tokio::spawn(self.clone().flush_loop(epoch));
+        }
+    }
+
+    /// Flush in rounds, like `fsync`: a round covers the writes submitted
+    /// when it started and completes one flush latency later.
+    async fn flush_loop(self: Arc<Self>, epoch: u64) {
+        loop {
+            let (round, delay) = {
+                let mut inner = self.inner.lock().unwrap();
+                let (lo, hi) = self.model.flush_delay_ms;
+                let stall = self.model.flush_stall_chance;
+                let delay = if stall > 0.0 && inner.rng.random_bool(stall) {
+                    inner.rng.random_range(hi..=self.model.flush_stall_ms.max(hi))
+                } else {
+                    inner.rng.random_range(lo..=hi)
+                };
+                (inner.unflushed.len(), delay)
+            };
+            tokio::time::sleep(Duration::from_millis(delay)).await;
+
+            let mut flushed = Vec::with_capacity(round);
+            let jitter: Vec<u64>;
+            {
+                let mut inner = self.inner.lock().unwrap();
+                if inner.epoch != epoch {
+                    return;
+                }
+                for _ in 0..round {
+                    let (write, waiter) = inner.unflushed.pop_front().expect("only a crash shrinks the queue");
+                    inner.durable.apply(&write);
+                    if matches!(waiter, FlushWaiter::DurableAppend(..)) {
+                        // Readable and durable at once: no reader sees it unflushed.
+                        inner.live.apply(&write);
+                    }
+                    flushed.push(waiter);
+                }
+                let max = self.model.callback_jitter_ms;
+                jitter = flushed.iter().map(|_| if max == 0 { 0 } else { inner.rng.random_range(0..=max) }).collect();
+                if inner.unflushed.is_empty() {
+                    inner.flushing = false;
+                }
+            }
+
+            for (waiter, delay) in flushed.into_iter().zip(jitter) {
+                waiter.notify(delay);
+            }
+
+            if !self.inner.lock().unwrap().flushing {
+                return;
+            }
+        }
     }
 }
 
@@ -87,13 +294,13 @@ impl RaftLogReader<TypeConfig> for Arc<LogStore> {
         &mut self,
         range: RB,
     ) -> Result<Vec<Entry>, io::Error> {
-        let log = self.log.lock().unwrap();
-        let entries: Vec<Entry> = log.range(range).map(|(_, e)| e.clone()).collect();
+        let inner = self.inner.lock().unwrap();
+        let entries: Vec<Entry> = inner.live.log.range(range).map(|(_, e)| e.clone()).collect();
         Ok(entries)
     }
 
     async fn read_vote(&mut self) -> Result<Option<Vote>, io::Error> {
-        Ok(*self.vote.lock().unwrap())
+        Ok(self.inner.lock().unwrap().live.vote)
     }
 
     async fn limited_get_log_entries(&mut self, start: u64, end: u64) -> Result<Vec<Entry>, io::Error> {
@@ -105,9 +312,9 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
     type LogReader = Self;
 
     async fn get_log_state(&mut self) -> Result<LogState<TypeConfig>, io::Error> {
-        let last_purged = *self.last_purged.lock().unwrap();
-        let log = self.log.lock().unwrap();
-        let last = log.iter().next_back().map(|(_, e)| e.log_id);
+        let inner = self.inner.lock().unwrap();
+        let last_purged = inner.live.last_purged;
+        let last = inner.live.log.iter().next_back().map(|(_, e)| e.log_id);
 
         Ok(LogState {
             last_purged_log_id: last_purged,
@@ -119,64 +326,71 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
         self.clone()
     }
 
+    /// Durable before it returns, and so is every write before it.
     async fn save_vote(&mut self, vote: &Vote) -> Result<(), io::Error> {
-        *self.vote.lock().unwrap() = Some(*vote);
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.submit(LogWrite::Vote(*vote), FlushWaiter::Vote(tx));
+        if self.model.async_flush {
+            rx.await.map_err(|_| io::Error::other("the log store crashed before flushing the vote"))?;
+        }
         Ok(())
     }
 
+    /// Needs no flush, as in the example stores: losing it only re-applies
+    /// some entries at startup.
     async fn save_committed(&mut self, committed: Option<LogId>) -> Result<(), io::Error> {
-        *self.committed.lock().unwrap() = committed;
+        self.submit(LogWrite::Committed(committed), FlushWaiter::None);
         Ok(())
     }
 
     async fn read_committed(&mut self) -> Result<Option<LogId>, io::Error> {
-        Ok(*self.committed.lock().unwrap())
+        Ok(self.inner.lock().unwrap().live.committed)
     }
 
+    /// Returns once the entries are readable: at once, or, with
+    /// `durable_append`, once they are flushed.
     async fn append<I>(&mut self, entries: I, callback: IOFlushed<TypeConfig>) -> Result<(), io::Error>
     where I: IntoIterator<Item = Entry> + OptionalSend {
-        let mut log = self.log.lock().unwrap();
-        for entry in entries {
-            log.insert(entry.log_id.index, entry);
+        let write = LogWrite::Append(entries.into_iter().collect());
+        if !(self.model.async_flush && self.model.durable_append) {
+            self.submit(write, FlushWaiter::Append(callback));
+            return Ok(());
         }
-        callback.io_completed(Ok(()));
-        Ok(())
+
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.submit(write, FlushWaiter::DurableAppend(callback, tx));
+        rx.await.map_err(|_| io::Error::other("the log store crashed before flushing the append"))
     }
 
+    /// Needs no flush: after a crash openraft truncates again.
     async fn truncate_after(&mut self, last_log_id: Option<LogId>) -> Result<(), io::Error> {
-        let start_index = match last_log_id {
-            Some(log_id) => log_id.index + 1,
-            None => 0,
-        };
-        self.log.lock().unwrap().split_off(&start_index);
+        self.submit(LogWrite::Truncate(last_log_id), FlushWaiter::None);
         Ok(())
     }
 
+    /// Needs no flush: after a crash openraft purges again.
     async fn purge(&mut self, log_id: LogId) -> Result<(), io::Error> {
-        *self.last_purged.lock().unwrap() = Some(log_id);
-        let mut log = self.log.lock().unwrap();
-        *log = log.split_off(&(log_id.index + 1));
+        self.submit(LogWrite::Purge(log_id), FlushWaiter::None);
         Ok(())
     }
 }
 
-/// In-memory state machine.
+/// In-memory state machine, durable when `apply` returns.
 pub struct StateMachine {
     data: Mutex<StateMachineData>,
     snapshot: Mutex<Option<(SnapshotMeta, Vec<u8>)>>,
-}
-
-impl Default for StateMachine {
-    fn default() -> Self {
-        Self::new()
-    }
+    /// Upper bound of the delay before each apply batch, in ms.
+    apply_delay_ms: u64,
+    rng: Mutex<StdRng>,
 }
 
 impl StateMachine {
-    pub fn new() -> Self {
+    pub fn new(model: &StorageModel, seed: u64) -> Self {
         Self {
             data: Mutex::new(StateMachineData::default()),
             snapshot: Mutex::new(None),
+            apply_delay_ms: model.apply_delay_ms,
+            rng: Mutex::new(StdRng::seed_from_u64(seed)),
         }
     }
 
@@ -234,6 +448,11 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachine> {
 
         tracing::info!("Applying {} entries to state machine", collected.len());
 
+        if self.apply_delay_ms > 0 {
+            let delay = self.rng.lock().unwrap().random_range(0..=self.apply_delay_ms);
+            tokio::time::sleep(Duration::from_millis(delay)).await;
+        }
+
         // Now apply all entries while holding the lock
         let mut data = self.data.lock().unwrap();
 
@@ -290,7 +509,154 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachine> {
     }
 }
 
-/// Create a new log store and state machine pair.
-pub fn new_store() -> (Arc<LogStore>, Arc<StateMachine>) {
-    (Arc::new(LogStore::new()), Arc::new(StateMachine::new()))
+/// Create a node's log store and state machine.
+///
+/// The log store draws its flush latencies from `seed`, the state machine its
+/// apply delays from `seed + 1`.
+pub fn new_store(model: &StorageModel, seed: u64) -> (Arc<LogStore>, Arc<StateMachine>) {
+    (
+        Arc::new(LogStore::new(model.clone(), seed)),
+        Arc::new(StateMachine::new(model, seed.wrapping_add(1))),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use openraft::EntryPayload;
+    use openraft::storage::IOFlushed;
+    use openraft::storage::RaftLogReader;
+    use openraft::storage::RaftLogStorage;
+    use openraft::type_config::TypeConfigExt;
+    use openraft::vote::RaftLeaderId;
+
+    use super::LogStore;
+    use crate::storage_model::StorageModel;
+    use crate::typ::*;
+
+    fn async_flush(flush_delay_ms: u64) -> StorageModel {
+        StorageModel {
+            async_flush: true,
+            durable_append: false,
+            flush_delay_ms: (flush_delay_ms, flush_delay_ms),
+            flush_stall_chance: 0.0,
+            flush_stall_ms: 0,
+            callback_jitter_ms: 0,
+            power_loss_chance: 1.0,
+            apply_delay_ms: 0,
+        }
+    }
+
+    fn log_id(index: u64) -> LogId {
+        LogId::new(openraft::impls::leader_id_adv::LeaderId::new(1, 1), index)
+    }
+
+    fn blank(index: u64) -> Entry {
+        Entry {
+            log_id: log_id(index),
+            payload: EntryPayload::Blank,
+        }
+    }
+
+    async fn last_index(store: &mut Arc<LogStore>) -> Option<u64> {
+        store.get_log_state().await.unwrap().last_log_id.map(|id| id.index)
+    }
+
+    #[tokio::test]
+    async fn power_loss_drops_unflushed_appends() {
+        let mut store = Arc::new(LogStore::new(async_flush(1_000), 0));
+        let (tx, mut rx) = TypeConfig::oneshot();
+        store.append([blank(1), blank(2)], IOFlushed::signal(tx)).await.unwrap();
+
+        // Readable at once, not reported flushed.
+        assert_eq!(last_index(&mut store).await, Some(2));
+        assert!(rx.try_recv().is_err());
+
+        store.crash(true);
+        assert_eq!(last_index(&mut store).await, None);
+    }
+
+    #[tokio::test]
+    async fn process_crash_keeps_unflushed_appends() {
+        let mut store = Arc::new(LogStore::new(async_flush(1_000), 0));
+        store.append([blank(1), blank(2)], IOFlushed::noop()).await.unwrap();
+
+        store.crash(false);
+        assert_eq!(last_index(&mut store).await, Some(2));
+    }
+
+    #[tokio::test]
+    async fn saved_vote_is_durable_with_every_write_before_it() {
+        let mut store = Arc::new(LogStore::new(async_flush(2), 0));
+        store.append([blank(1), blank(2), blank(3)], IOFlushed::noop()).await.unwrap();
+        store.truncate_after(Some(log_id(1))).await.unwrap();
+        let vote = Vote::new_committed(2, 1);
+        store.save_vote(&vote).await.unwrap();
+
+        store.crash(true);
+        assert_eq!(store.read_vote().await.unwrap(), Some(vote));
+        assert_eq!(last_index(&mut store).await, Some(1));
+    }
+
+    #[tokio::test]
+    async fn lazy_writes_are_lost_with_unflushed_appends() {
+        let mut store = Arc::new(LogStore::new(async_flush(2), 0));
+        let (tx, rx) = TypeConfig::oneshot();
+        store.append([blank(1), blank(2), blank(3)], IOFlushed::signal(tx)).await.unwrap();
+        rx.await.unwrap().unwrap();
+
+        // Neither needs a flush; a power loss before the next one undoes both.
+        store.truncate_after(Some(log_id(1))).await.unwrap();
+        store.save_committed(Some(log_id(1))).await.unwrap();
+        store.crash(true);
+        assert_eq!(last_index(&mut store).await, Some(3));
+        assert_eq!(store.read_committed().await.unwrap(), None);
+
+        // Flushed, they survive.
+        store.truncate_after(Some(log_id(1))).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        store.crash(true);
+        assert_eq!(last_index(&mut store).await, Some(1));
+    }
+
+    #[tokio::test]
+    async fn durable_append_is_readable_only_once_flushed() {
+        let model = StorageModel {
+            durable_append: true,
+            ..async_flush(5)
+        };
+        let mut store = Arc::new(LogStore::new(model, 0));
+        store.append([blank(1)], IOFlushed::noop()).await.unwrap();
+
+        let (tx, mut rx) = TypeConfig::oneshot();
+        let mut appending = store.clone();
+        let append = tokio::spawn(async move { appending.append([blank(2)], IOFlushed::signal(tx)).await });
+        tokio::task::yield_now().await;
+
+        // Submitted but not flushed: a reader does not see it yet.
+        assert!(!append.is_finished());
+        assert_eq!(last_index(&mut store).await, Some(1));
+
+        // `append` returns once the entry is flushed, and readable.
+        append.await.unwrap().unwrap();
+        assert_eq!(last_index(&mut store).await, Some(2));
+        assert!(rx.try_recv().is_ok());
+
+        // Nothing readable was unflushed, so a power loss keeps it all.
+        store.crash(true);
+        assert_eq!(last_index(&mut store).await, Some(2));
+    }
+
+    #[tokio::test]
+    async fn durable_model_writes_through() {
+        let mut store = Arc::new(LogStore::new(StorageModel::durable(), 0));
+        let (tx, mut rx) = TypeConfig::oneshot();
+        store.append([blank(1)], IOFlushed::signal(tx)).await.unwrap();
+        assert!(rx.try_recv().is_ok(), "reported flushed before append returns");
+
+        store.crash(true);
+        assert_eq!(last_index(&mut store).await, Some(1));
+    }
 }

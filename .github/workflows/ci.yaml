@@ -493,7 +493,10 @@ jobs:
           rustflags: ""
 
       - name: Run deterministic simulation
-        run: cd tests-turmoil && cargo run --release --bin fuzz -- --iterations 5 --max-steps 10000
+        # Durable storage until #2177 lands: with storage faults the fuzzer
+        # still fails on main through the purge bugs it fixes. See
+        # tests-turmoil/README.md, "Storage faults".
+        run: cd tests-turmoil && cargo run --release --bin fuzz -- --iterations 5 --max-steps 10000 --storage durable
         env:
           RUST_LOG: info
           RUST_BACKTRACE: full
