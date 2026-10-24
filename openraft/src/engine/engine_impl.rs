@@ -886,6 +886,13 @@ where
             let apply_submitted = apply_progress.submitted();
             let apply_accepted = apply_progress.accepted();
 
+            // Accepting a full snapshot purges the log ids it covers at once, but apply progress
+            // moves only when RaftCore runs the queued install. Until then, the next entry to apply
+            // may be purged: the install covers it.
+            if apply_submitted.next_index() < self.state.last_purged_log_id().next_index() {
+                return None;
+            }
+
             let log_submitted = log_progress.submitted().and_then(|io_id| io_id.last_log_id());
 
             let applicable_upto = log_submitted.min(apply_accepted);

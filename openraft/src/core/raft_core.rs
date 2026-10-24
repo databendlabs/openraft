@@ -2639,7 +2639,9 @@ where
         let io_id = command.get_log_progress();
 
         if let Some(io_id) = io_id {
-            self.engine.state.log_progress_mut().submit(io_id);
+            // A snapshot may end inside the local log: the log I/O accepted before it is then
+            // greater and, since commands run in order, already submitted. Keep it.
+            self.engine.state.log_progress_mut().try_submit(io_id);
         }
 
         // If this command update the last-applied log id, mark it as submitted(to state machine).
