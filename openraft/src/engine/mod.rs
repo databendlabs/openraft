@@ -41,6 +41,7 @@ pub(crate) mod leader_log_ids;
 pub(crate) mod leader_log_ids_iter;
 pub(crate) mod log_id_list;
 pub(crate) mod pending_responds;
+pub(crate) mod quorum_loss_probe;
 pub(crate) mod replication_progress;
 pub(crate) mod time_state;
 
