@@ -6,7 +6,6 @@ use validit::Valid;
 use crate::LogIdOptionExt;
 use crate::Membership;
 use crate::RaftTypeConfig;
-use crate::core::ServerState;
 use crate::core::raft_msg::AppendEntriesTx;
 use crate::engine::Command;
 use crate::engine::Condition;
@@ -1003,12 +1002,6 @@ where
         self.seen_greater_log = None;
     }
 
-    // Only used by tests
-    #[allow(dead_code)]
-    pub(crate) fn calc_server_state(&self) -> ServerState {
-        self.state.calc_server_state(&self.config.id)
-    }
-
     // --- handlers ---
 
     pub(crate) fn vote_handler(&mut self) -> VoteHandler<'_, C, SM> {
@@ -1107,6 +1100,7 @@ where
 #[cfg(any(test, feature = "bench"))]
 mod engine_testing {
     use crate::RaftTypeConfig;
+    use crate::core::ServerState;
     use crate::engine::Engine;
     use crate::engine::EngineConfig;
     use crate::proposer::WriteQuorumSet;
@@ -1124,6 +1118,11 @@ mod engine_testing {
             let leader = self.state.new_leader();
             self.leader = Some(Box::new(leader));
             self.leader.as_mut().unwrap()
+        }
+
+        // Only used by tests and benchmarks.
+        pub(crate) fn calc_server_state(&self) -> ServerState {
+            self.state.calc_server_state(&self.config.id)
         }
     }
 
