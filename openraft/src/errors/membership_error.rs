@@ -4,12 +4,14 @@ use crate::errors::ChangeMembershipError;
 use crate::errors::EmptyMembership;
 use crate::errors::LearnerNotFound;
 use crate::errors::NodeNotFound;
+use crate::errors::UnprovenReadWriteIntersection;
 use crate::node::NodeId;
 use crate::vote::RaftCommittedLeaderId;
 
 /// Errors occur when building a [`Membership`].
 ///
 /// [`Membership`]: crate::membership::Membership
+#[since(version = "0.10.0", change = "added `UnprovenReadWriteIntersection` variant")]
 #[since(version = "0.10.0", change = "removed `C: RaftTypeConfig` generic parameter")]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
@@ -23,6 +25,11 @@ where NID: NodeId
     /// A required node was not found.
     #[error(transparent)]
     NodeNotFound(#[from] NodeNotFound<NID>),
+
+    /// OpenRaft cannot prove that every read quorum intersects every write quorum.
+    #[since(version = "0.10.0")]
+    #[error(transparent)]
+    UnprovenReadWriteIntersection(#[from] UnprovenReadWriteIntersection),
 }
 
 /// Translate a membership validation failure into a rejected change request.
@@ -47,6 +54,9 @@ where
             MembershipError::EmptyMembership(e) => ChangeMembershipError::EmptyMembership(e),
             MembershipError::NodeNotFound(e) => {
                 ChangeMembershipError::LearnerNotFound(LearnerNotFound { node_id: e.node_id })
+            }
+            MembershipError::UnprovenReadWriteIntersection(e) => {
+                ChangeMembershipError::UnprovenReadWriteIntersection(e)
             }
         }
     }
