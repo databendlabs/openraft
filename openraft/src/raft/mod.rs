@@ -1493,7 +1493,8 @@ where
     /// from a `BTreeMap` or a `HashMap` of nodes, and from a `BTreeSet` of node ids when the node
     /// type is `()` or `EmptyNode`.
     /// Initialization fails with `InitializeError::InvalidMembership` when the read or the write
-    /// quorum set has no usable quorum, or when a quorum ID has no node.
+    /// quorum set has no usable quorum, when a quorum ID has no node, or when OpenRaft cannot prove
+    /// that the read quorums intersect the write quorums.
     ///
     /// [`Membership`]: crate::Membership
     ///
