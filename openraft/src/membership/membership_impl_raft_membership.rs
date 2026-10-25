@@ -1,13 +1,9 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
-use openraft_macros::since;
-
 use crate::Membership;
 use crate::Node;
 use crate::NodeId;
-use crate::errors::MembershipError;
-use crate::impls::ChangeMembers;
 use crate::membership::NodeRef;
 use crate::membership::NodeRole;
 use crate::membership::RaftMembership;
@@ -82,27 +78,6 @@ where
     NID: NodeId,
     N: Node,
 {
-    /// Applies a built-in edit to the target configuration.
-    ///
-    /// # Panics
-    ///
-    /// Panics if this membership has no configuration.
-    #[since(version = "0.10.0")]
-    pub fn change(&self, change: ChangeMembers<NID, N>) -> Result<Self, MembershipError<NID>> {
-        tracing::debug!("{}: change: {:?}", func_name!(), change);
-
-        let Membership { mut configs, nodes } = self.clone().compute_target_membership(change);
-
-        // Safe unwrap(): membership changes are only evaluated on an initialized leader.
-        let target_voter_ids = configs.pop().unwrap();
-
-        let target = Membership::new_unchecked(vec![target_voter_ids], nodes);
-
-        tracing::debug!("target membership: {}", target);
-
-        Ok(target)
-    }
-
     /// Returns the capabilities this majority-based membership gives a known node.
     ///
     /// Every known node receives logs, and every voter may campaign.

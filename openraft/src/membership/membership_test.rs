@@ -11,11 +11,11 @@ use quorum_set::verify_intersection;
 use crate::EmptyNode;
 use crate::Membership;
 use crate::errors::EmptyMembership;
-use crate::errors::MembershipError;
 use crate::errors::NodeMetadataChanged;
 use crate::errors::NodeNotFound;
 use crate::errors::Operation;
 use crate::impls::ChangeMembers;
+use crate::membership::RaftMembershipEdit;
 use crate::membership::RaftMembershipExt;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
@@ -122,7 +122,8 @@ fn test_membership_with_learners() -> anyhow::Result<()> {
     // test multi membership with learners
     {
         let m1_2 = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1}], btreeset! {2});
-        let m1_23 = m1_2.clone().change(ChangeMembers::AddNodes(btreemap! {3=>()}))?;
+        let change = ChangeMembers::AddNodes(btreemap! {3=>()});
+        let m1_23 = change.apply(&m1_2)?;
 
         // test learner and membership
         assert_eq!(vec![1], m1_2.voter_ids().collect::<Vec<_>>());
@@ -133,13 +134,15 @@ fn test_membership_with_learners() -> anyhow::Result<()> {
 
         // Adding a member as learner has no effect:
 
-        let m = m1_23.clone().change(ChangeMembers::AddNodes(btreemap! {1=>()}))?;
+        let change = ChangeMembers::AddNodes(btreemap! {1=>()});
+        let m = change.apply(&m1_23)?;
         // let m = m1_23.add_learner(1, ());
         assert_eq!(vec![1], m.voter_ids().collect::<Vec<_>>());
 
         // Adding a existent learner has no effect:
 
-        let m = m1_23.change(ChangeMembers::AddNodes(btreemap! {3=>()}))?;
+        let change = ChangeMembers::AddNodes(btreemap! {3=>()});
+        let m = change.apply(&m1_23)?;
         assert_eq!(vec![1], m.voter_ids().collect::<Vec<_>>());
         assert_eq!(btreeset! {2,3}, m.non_write_voter_ids().collect());
     }
@@ -169,7 +172,8 @@ fn test_membership_add_learner() -> anyhow::Result<()> {
 
     // Add learner that presents in old cluster has no effect.
 
-    let res = m_1_2.clone().change(ChangeMembers::AddNodes(btreemap! {1=>node("3")}))?;
+    let change = ChangeMembers::AddNodes(btreemap! {1=>node("3")});
+    let res = change.apply(&m_1_2)?;
     assert_eq!(
         Membership::<u64, TestNode>::new_unchecked(vec![btreeset! {2}], btreemap! {1=>node("1"), 2=>node("2")},),
         res
@@ -177,7 +181,8 @@ fn test_membership_add_learner() -> anyhow::Result<()> {
 
     // Success to add a learner
 
-    let m_1_2_3 = m_1_2.change(ChangeMembers::AddNodes(btreemap! {3=>node("3")}))?;
+    let change = ChangeMembers::AddNodes(btreemap! {3=>node("3")});
+    let m_1_2_3 = change.apply(&m_1_2)?;
     assert_eq!(
         Membership::<u64, TestNode>::new_unchecked(
             vec![btreeset! {2}],
@@ -201,7 +206,8 @@ fn test_membership_update_nodes() -> anyhow::Result<()> {
         btreemap! {1=>node("1"), 2=>node("2")},
     );
 
-    let m_1_2_3 = m_1_2.change(ChangeMembers::SetNodes(btreemap! {2=>node("20"), 3=>node("30")}))?;
+    let change = ChangeMembers::SetNodes(btreemap! {2=>node("20"), 3=>node("30")});
+    let m_1_2_3 = change.apply(&m_1_2)?;
     assert_eq!(
         Membership::<u64, TestNode>::new_unchecked(
             vec![btreeset! {2}],
@@ -262,10 +268,7 @@ fn test_membership_new() -> anyhow::Result<()> {
     );
 
     let res = with_nodes(btreemap! {1=>node()});
-    assert_eq!(
-        res.unwrap_err(),
-        MembershipError::NodeNotFound(NodeNotFound::new(2, Operation::None))
-    );
+    assert_eq!(res.unwrap_err(), NodeNotFound::new(2, Operation::None));
 
     Ok(())
 }
@@ -344,7 +347,8 @@ fn test_membership_change_with_nodes() -> anyhow::Result<()> {
 
     // uniform [{1,2}]
 
-    let res = initial.change(ChangeMembers::ReplaceAllVoters(btreeset! {1,2}))?;
+    let change = ChangeMembers::ReplaceAllVoters(btreeset! {1,2});
+    let res = change.apply(&initial)?;
     assert_eq!(
         btreemap! {1=>node("1"), 2=>node("2")},
         res.nodes().map(|(nid, n)| (*nid, n.clone())).collect::<BTreeMap<_, _>>()
@@ -353,7 +357,8 @@ fn test_membership_change_with_nodes() -> anyhow::Result<()> {
 
     // Removed to learner
 
-    let res = initial.change(ChangeMembers::ReplaceAllVoters(btreeset! {1}))?;
+    let change = ChangeMembers::ReplaceAllVoters(btreeset! {1});
+    let res = change.apply(&initial)?;
     assert_eq!(
         btreemap! {1=>node("1"), 2=>node("2")},
         res.nodes().map(|(nid, n)| (*nid, n.clone())).collect::<BTreeMap<_, _>>()
@@ -376,7 +381,8 @@ fn test_membership_drop_voters_demoted_to_learners_keeps_existing_learners() -> 
     let initial =
         Membership::<u64, TestNode>::new_unchecked(vec![c1(), c2()], btreemap! {1=>node(1), 2=>node(2), 3=>node(3)});
 
-    let goal = initial.change(ChangeMembers::ReplaceAllVoters(btreeset! {2}))?;
+    let change = ChangeMembers::ReplaceAllVoters(btreeset! {2});
+    let goal = change.apply(&initial)?;
     let res = initial.drop_voters_demoted_to_learners(goal);
     assert_eq!(&vec![btreeset! {2}], res.get_joint_config());
     assert_eq!(
@@ -396,7 +402,7 @@ fn test_membership_new_checks_only_voter_nodes() -> anyhow::Result<()> {
 
     // A voter without node data.
     let res = Membership::<u64, ()>::new(vec![btreeset! {1,2}], btreemap! {1=>()});
-    let want = MembershipError::NodeNotFound(NodeNotFound::new(2, Operation::None));
+    let want = NodeNotFound::new(2, Operation::None);
     assert_eq!(Err(want), res);
 
     // Zero voter sets is the value `Membership::default()` carries, so the checking constructor

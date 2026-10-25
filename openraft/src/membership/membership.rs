@@ -5,8 +5,7 @@ use std::collections::HashMap;
 
 use openraft_macros::since;
 
-use crate::errors::MembershipError;
-use crate::impls::ChangeMembers;
+use crate::errors::NodeNotFound;
 use crate::membership::IntoNodes;
 use crate::membership::RaftMembershipExt;
 use crate::node::EmptyNode;
@@ -19,9 +18,13 @@ use crate::node::NodeId;
 /// of a majority of every config.
 #[since(
     version = "0.10.0",
+    change = "removed change(); use RaftMembershipEdit::apply() instead"
+)]
+#[since(
+    version = "0.10.0",
     change = "replaced `C: RaftTypeConfig` with `NID: NodeId, N: Node`"
 )]
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct Membership<NID, N>
 where
@@ -37,6 +40,19 @@ where
     ///
     /// A node-id key that is in `nodes` but is not in `configs` is a **learner**.
     pub(crate) nodes: BTreeMap<NID, N>,
+}
+
+impl<NID, N> fmt::Debug for Membership<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut debug = f.debug_struct("Membership");
+        debug.field("configs", &self.configs);
+        debug.field("nodes", &self.nodes);
+        debug.finish()
+    }
 }
 
 impl<NID, N> Default for Membership<NID, N>
@@ -154,7 +170,8 @@ where
     ///
     /// [`Raft::initialize()`]: crate::Raft::initialize
     /// [`Raft::append_membership()`]: crate::Raft::append_membership
-    pub fn new<T>(config: Vec<BTreeSet<NID>>, nodes: T) -> Result<Self, MembershipError<NID>>
+    #[since(version = "0.10.0", change = "returns NodeNotFound directly")]
+    pub fn new<T>(config: Vec<BTreeSet<NID>>, nodes: T) -> Result<Self, NodeNotFound<NID>>
     where T: IntoNodes<NID, N> {
         let m = Membership {
             configs: config,
@@ -320,76 +337,6 @@ where
 
         res
     }
-
-    // ---
-    // Quorum related internal API
-    // ---
-    /// Compute the target membership configuration by applying a membership change.
-    ///
-    /// This method:
-    /// - Uses only the last config entry from the current membership. If there are multiple
-    ///   entries, it indicates an ongoing joint consensus change. The last entry represents the
-    ///   target configuration toward which the cluster is transitioning.
-    /// - Applies the specified membership change to create a new target configuration
-    /// - Returns a new `Membership` with the target voter IDs and nodes
-    ///
-    /// Note: This is an intermediate step in membership changes. The result may need to be
-    /// transformed into a coherent configuration before being applied.
-    pub(crate) fn compute_target_membership(mut self, change: ChangeMembers<NID, N>) -> Membership<NID, N> {
-        let last = self.get_joint_config().last().cloned().unwrap_or_default();
-
-        // `None` means the change does not touch the voter set, only `nodes`.
-        let new_voter_ids: Option<BTreeSet<NID>> = match change {
-            ChangeMembers::AddVoterIds(add_voter_ids) => Some(last.union(&add_voter_ids).cloned().collect()),
-            ChangeMembers::AddVoters(add_voters) => {
-                // Add nodes without overriding existent
-                self.nodes = Self::extend_nodes(self.nodes, &add_voters);
-
-                let add_voter_ids = add_voters.keys().cloned().collect::<BTreeSet<_>>();
-                Some(last.union(&add_voter_ids).cloned().collect())
-            }
-            ChangeMembers::RemoveVoters(remove_voter_ids) => {
-                Some(last.difference(&remove_voter_ids).cloned().collect())
-            }
-            ChangeMembers::ReplaceAllVoters(all_voter_ids) => Some(all_voter_ids),
-            ChangeMembers::AddNodes(add_nodes) => {
-                // When adding nodes, do not override existing node
-                for (node_id, node) in add_nodes.into_iter() {
-                    self.nodes.entry(node_id).or_insert(node);
-                }
-                None
-            }
-            ChangeMembers::SetNodes(set_nodes) => {
-                for (node_id, node) in set_nodes.into_iter() {
-                    self.nodes.insert(node_id, node);
-                }
-                None
-            }
-            ChangeMembers::RemoveNodes(remove_node_ids) => {
-                for node_id in remove_node_ids.iter() {
-                    self.nodes.remove(node_id);
-                }
-                None
-            }
-            ChangeMembers::ReplaceAllNodes(all_nodes) => {
-                self.nodes = all_nodes;
-                None
-            }
-            ChangeMembers::Batch(batch) => {
-                // Each nested change already updated `configs` as needed.
-                for change in batch {
-                    self = self.compute_target_membership(change);
-                }
-                None
-            }
-        };
-
-        if let Some(voter_ids) = new_voter_ids {
-            self.configs = vec![voter_ids];
-        }
-
-        self
-    }
 }
 
 #[cfg(test)]
@@ -401,6 +348,7 @@ mod tests {
     use crate::errors::NodeNotFound;
     use crate::errors::Operation;
     use crate::impls::ChangeMembers;
+    use crate::membership::RaftMembershipEdit;
     use crate::membership::RaftMembershipExt;
 
     #[test]
@@ -423,7 +371,9 @@ mod tests {
 
         // Add: no such learner; `next_membership()` rejects this result
         {
-            let res = m().change(ChangeMembers::AddVoterIds(btreeset! {4}));
+            let membership = m();
+            let change = ChangeMembers::AddVoterIds(btreeset! {4});
+            let res = change.apply(&membership);
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {1,2,4}],
@@ -435,7 +385,9 @@ mod tests {
 
         // Add: ok
         {
-            let res = m().change(ChangeMembers::AddVoterIds(btreeset! {3}));
+            let membership = m();
+            let change = ChangeMembers::AddVoterIds(btreeset! {3});
+            let res = change.apply(&membership);
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {1,2,3}],
@@ -447,7 +399,9 @@ mod tests {
 
         // AddVoters
         {
-            let res = m().change(ChangeMembers::AddVoters(btreemap! {5=>()}));
+            let membership = m();
+            let change = ChangeMembers::AddVoters(btreemap! {5=>()});
+            let res = change.apply(&membership);
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {1,2,5}],
@@ -459,7 +413,9 @@ mod tests {
 
         // Remove: no such voter
         {
-            let res = m().change(ChangeMembers::RemoveVoters(btreeset! {5}));
+            let membership = m();
+            let change = ChangeMembers::RemoveVoters(btreeset! {5});
+            let res = change.apply(&membership);
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {1,2}],
@@ -471,7 +427,9 @@ mod tests {
 
         // Remove: become empty; `next_membership()` rejects this result
         {
-            let res = m().change(ChangeMembers::RemoveVoters(btreeset! {1,2}));
+            let membership = m();
+            let change = ChangeMembers::RemoveVoters(btreeset! {1,2});
+            let res = change.apply(&membership);
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {}],
@@ -483,7 +441,9 @@ mod tests {
 
         // Remove: OK retain
         {
-            let res = m().change(ChangeMembers::RemoveVoters(btreeset! {1}));
+            let membership = m();
+            let change = ChangeMembers::RemoveVoters(btreeset! {1});
+            let res = change.apply(&membership);
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {2}],
@@ -495,7 +455,9 @@ mod tests {
 
         // Remove: OK, not retain; learner not removed
         {
-            let goal = m().change(ChangeMembers::RemoveVoters(btreeset! {1}))?;
+            let membership = m();
+            let change = ChangeMembers::RemoveVoters(btreeset! {1});
+            let goal = change.apply(&membership)?;
             let res = m().drop_voters_demoted_to_learners(goal);
             assert_eq!(
                 Membership::<u64, ()> {
@@ -512,7 +474,8 @@ mod tests {
                 configs: vec![btreeset! {1,2}, btreeset! {2}],
                 nodes: btreemap! {1=>(),2=>(),3=>()},
             };
-            let goal = mem.change(ChangeMembers::RemoveVoters(btreeset! {1}))?;
+            let change = ChangeMembers::RemoveVoters(btreeset! {1});
+            let goal = change.apply(&mem)?;
             let res = mem.drop_voters_demoted_to_learners(goal);
             assert_eq!(
                 Membership::<u64, ()> {
@@ -525,7 +488,9 @@ mod tests {
 
         // Replace:
         {
-            let goal = m().change(ChangeMembers::ReplaceAllVoters(btreeset! {2}))?;
+            let membership = m();
+            let change = ChangeMembers::ReplaceAllVoters(btreeset! {2});
+            let goal = change.apply(&membership)?;
             let res = m().drop_voters_demoted_to_learners(goal);
             assert_eq!(
                 Membership::<u64, ()> {
@@ -538,7 +503,9 @@ mod tests {
 
         // AddNodes: existent voter
         {
-            let res = m().change(ChangeMembers::AddNodes(btreemap! {2=>()}));
+            let membership = m();
+            let change = ChangeMembers::AddNodes(btreemap! {2=>()});
+            let res = change.apply(&membership);
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {1,2}],
@@ -550,7 +517,9 @@ mod tests {
 
         // AddNodes: existent learner
         {
-            let res = m().change(ChangeMembers::AddNodes(btreemap! {3=>()}));
+            let membership = m();
+            let change = ChangeMembers::AddNodes(btreemap! {3=>()});
+            let res = change.apply(&membership);
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {1,2}],
@@ -562,7 +531,9 @@ mod tests {
 
         // AddNodes: Ok
         {
-            let res = m().change(ChangeMembers::AddNodes(btreemap! {4=>()}));
+            let membership = m();
+            let change = ChangeMembers::AddNodes(btreemap! {4=>()});
+            let res = change.apply(&membership);
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {1,2}],
@@ -579,7 +550,9 @@ mod tests {
                 nodes: btreemap! {1=>1,2=>2,3=>3},
             };
 
-            let res = m().change(ChangeMembers::SetNodes(btreemap! {3=>30, 4=>40}));
+            let membership = m();
+            let change = ChangeMembers::SetNodes(btreemap! {3=>30, 4=>40});
+            let res = change.apply(&membership);
             assert_eq!(
                 Ok(Membership::<u64, u64> {
                     configs: vec![btreeset! {1,2}],
@@ -591,7 +564,9 @@ mod tests {
 
         // RemoveNodes: cannot remove node for voter; `next_membership()` rejects this result
         {
-            let res = m().change(ChangeMembers::RemoveNodes(btreeset! {2}));
+            let membership = m();
+            let change = ChangeMembers::RemoveNodes(btreeset! {2});
+            let res = change.apply(&membership);
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {1,2}],
@@ -603,7 +578,9 @@ mod tests {
 
         // RemoveNodes: Ok
         {
-            let res = m().change(ChangeMembers::RemoveNodes(btreeset! {3}));
+            let membership = m();
+            let change = ChangeMembers::RemoveNodes(btreeset! {3});
+            let res = change.apply(&membership);
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {1,2}],
@@ -615,7 +592,9 @@ mod tests {
 
         // ReplaceAllNodes: Ok
         {
-            let res = m().change(ChangeMembers::ReplaceAllNodes(btreemap! {1=>(),2=>(),4=>()}));
+            let membership = m();
+            let change = ChangeMembers::ReplaceAllNodes(btreemap! {1=>(),2=>(),4=>()});
+            let res = change.apply(&membership);
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {1,2}],
@@ -645,7 +624,9 @@ mod tests {
             ])
         };
 
-        let goal = m().change(rm_2_add_5())?;
+        let membership = m();
+        let change = rm_2_add_5();
+        let goal = change.apply(&membership)?;
 
         assert_eq!(goal, Membership::<u64, ()> {
             configs: vec![btreeset! {1,3,5}],
