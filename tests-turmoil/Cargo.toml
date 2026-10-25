@@ -10,11 +10,16 @@ publish = false
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(tokio_unstable)"] }
 
+[features]
+# Run the cluster with `ThresholdMembership` instead of the default `Membership`.
+threshold-membership = []
+
 [[bin]]
 name = "fuzz"
 path = "src/bin/fuzz.rs"
 
 [dependencies]
+openraft-membership = { path = "../membership", version = "0.10.0-alpha.37" }
 openraft = { path = "../openraft", features = ["type-alias", "serde", "metrics-logids"] }
 openraft-rt = { path = "../rt" }
 openraft-rt-tokio = { path = "../rt-tokio" }
