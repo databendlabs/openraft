@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::fmt::Formatter;
 
@@ -8,6 +9,7 @@ use maplit::btreeset;
 use quorum_set::verify_intersection;
 
 use crate::ChangeMembers;
+use crate::EmptyNode;
 use crate::Membership;
 use crate::errors::EmptyMembership;
 use crate::errors::MembershipError;
@@ -286,6 +288,20 @@ fn test_membership_new_unchecked() -> anyhow::Result<()> {
     );
 
     Ok(())
+}
+
+#[test]
+fn test_membership_from_hash_map_and_empty_node_ids() {
+    let node = TestNode::default;
+
+    let nodes = HashMap::from([(1, node()), (2, node())]);
+    let got = Membership::<u64, TestNode>::from(nodes);
+    let want = Membership::new_unchecked(vec![btreeset! {1, 2}], btreemap! {1=>node(), 2=>node()});
+    assert_eq!(want, got);
+
+    let got = Membership::<u64, EmptyNode>::from(btreeset! {1, 2});
+    let want = Membership::new_unchecked(vec![btreeset! {1, 2}], btreemap! {1=>EmptyNode {}, 2=>EmptyNode {}});
+    assert_eq!(want, got);
 }
 
 #[test]
