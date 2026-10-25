@@ -21,6 +21,7 @@ repository    = { workspace = true }
 openraft-rt-sim    = { path = "../rt-sim", features = ["sim-log"], optional = true }
 
 [dev-dependencies]
+openraft-membership = { path = "../membership", version = "0.10.0-alpha.37" }
 openraft           = { path = "../openraft", version = "0.10.0-alpha.37", features = ["type-alias"] }
 openraft-memstore  = { path = "../stores/memstore" }
 openraft-legacy    = { path = "../legacy", features = ["serde"] }

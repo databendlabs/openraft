@@ -93,6 +93,7 @@ declare_raft_types!(
         R = (),
         Node = (),
         Payload = CustomPayload,
+        ErrorSource = anyerror::AnyError,
         AsyncRuntime = TokioRuntime,
 );
 
