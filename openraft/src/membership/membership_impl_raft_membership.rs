@@ -93,12 +93,17 @@ where
 {
     /// Applies a built-in edit to the target configuration.
     ///
+    /// Kept for backward compatibility. Prefer [`RaftMembershipEdit::apply()`] on the edit.
+    ///
     /// # Panics
     ///
-    /// Panics if this membership has no configuration.
+    /// Panics if this membership has no configuration after applying the edit.
+    #[since(version = "0.10.0", change = "deprecated in favor of RaftMembershipEdit::apply()")]
     #[since(version = "0.10.0")]
+    #[deprecated(since = "0.10.0", note = "use RaftMembershipEdit::apply() on the edit instead")]
     pub fn change(&self, change: ChangeMembers<NID, N>) -> Result<Self, MembershipError<NID>> {
-        change.apply(self)
+        let result = change.apply(self);
+        result.map_err(|error| error.map_user_defined(|never| match never {}))
     }
 
     /// Returns the capabilities this majority-based membership gives a known node.
@@ -119,9 +124,22 @@ mod tests {
     use maplit::btreeset;
 
     use crate::Membership;
+    use crate::errors::MembershipError;
+    use crate::impls::ChangeMembers;
     use crate::membership::NodeRef;
     use crate::membership::NodeRole;
     use crate::membership::RaftMembership;
+
+    #[test]
+    #[allow(deprecated)]
+    fn change_preserves_legacy_result_type() {
+        let membership = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1, 2}], btreeset! {});
+        let change = ChangeMembers::AddNodes(btreemap! {3 => ()});
+        let actual: Result<Membership<u64, ()>, MembershipError<u64>> = membership.change(change);
+        let expected = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1, 2}], btreeset! {3});
+        let expected = Ok(expected);
+        assert_eq!(expected, actual);
+    }
 
     #[test]
     fn get_node_derives_role_and_voter_flags() {

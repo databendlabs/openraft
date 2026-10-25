@@ -138,8 +138,9 @@ pub trait RaftTypeConfig:
 
     /// Membership operations, selected independently of the membership representation.
     ///
-    /// The macro defaults to [`ChangeMembers`](crate::impls::ChangeMembers). A custom edit
-    /// implements [`RaftMembershipEdit`] for the selected membership.
+    /// The macro defaults to [`ChangeMembers`](crate::impls::ChangeMembers). Select
+    /// `openraft_membership::ThresholdChange` for threshold membership, or a custom
+    /// edit that implements [`RaftMembershipEdit`] for the selected membership.
     #[since(version = "0.10.0")]
     type MembershipEdit: RaftMembershipEdit<Self::Membership>;
 
@@ -175,9 +176,9 @@ pub trait RaftTypeConfig:
     type Batch<T>: Batch<T>
     where T: OptionalSend + 'static;
 
-    /// Error wrapper type for storage and network errors.
+    /// Error wrapper type for storage, network, and membership errors.
     ///
-    /// This type is used to wrap underlying errors in storage and network operations.
+    /// This type is used to wrap underlying errors in storage, network, and membership operations.
     /// The default implementation uses [`anyerror::AnyError`].
     ///
     /// Custom implementations can provide:
@@ -278,7 +279,8 @@ pub mod alias {
     pub type SnapshotOf<C, SD> = crate::storage::Snapshot<CommittedLeaderIdOf<C>, MembershipOf<C>, SD>;
     pub type SmSnapshotOf<C, SM> = SnapshotOf<C, SnapshotDataOf<C, SM>>;
     pub type MembershipStateOf<C> = crate::MembershipState<CommittedLeaderIdOf<C>, MembershipOf<C>>;
-    pub type ChangeMembershipErrorOf<C> = crate::errors::ChangeMembershipError<CommittedLeaderIdOf<C>, NodeIdOf<C>>;
+    pub type ChangeMembershipErrorOf<C> =
+        crate::errors::ChangeMembershipError<CommittedLeaderIdOf<C>, NodeIdOf<C>, ErrorSourceOf<C>>;
     pub type InProgressOf<C> = crate::errors::InProgress<CommittedLeaderIdOf<C>>;
     pub type SerdeInstantOf<C> = crate::metrics::SerdeInstant<InstantOf<C>>;
 

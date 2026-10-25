@@ -257,6 +257,7 @@ mod tests {
     impl RaftMembership for RoleMembership {
         type NodeId = u64;
         type Node = ();
+
         type QuorumSet = Vec<BTreeSet<u64>>;
 
         fn read_quorum_set(&self) -> &Self::QuorumSet {

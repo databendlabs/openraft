@@ -15,7 +15,7 @@ A test file name starts with `t[\d\d]_`, where `\d\d` is the test case number in
 - `t10`: basic behaviors.
 - `t20`: life cycle test cases. 
 - `t30`: special cases for an API. 
-- `t40`: not used. 
+- `t40`: behaviors under a provided membership type other than the default `Membership`.
 - `t50`: environment depended behaviors.  
 - `t60`: config related behaviors. 
 - `t70`: not used.

@@ -563,7 +563,7 @@ where
         let membership = payload.get_membership().unwrap();
 
         let membership_state = &self.engine.state.membership_state;
-        if let Err(e) = membership_state.validate_append_membership(&membership) {
+        if let Err(e) = membership_state.validate_append_membership::<C::ErrorSource>(&membership) {
             tx.on_complete(Err(ClientWriteError::ChangeMembershipError(e)));
             return;
         }
@@ -2830,6 +2830,7 @@ mod tests {
             R = (),
             Node = (),
             Payload = TestPayload,
+            ErrorSource = anyerror::AnyError,
             AsyncRuntime = TokioRuntime,
     );
 
