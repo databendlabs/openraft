@@ -2,10 +2,12 @@ use core::fmt;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
+use std::marker::PhantomData;
 
 use openraft_macros::since;
 
 use crate::ChangeMembers;
+use crate::errors::ErrorSource;
 use crate::errors::MembershipError;
 use crate::membership::IntoNodes;
 use crate::membership::RaftMembershipExt;
@@ -17,16 +19,22 @@ use crate::node::NodeId;
 ///
 /// It could be a joint of one, two or more configs, i.e., a quorum is a node set that is superset
 /// of a majority of every config.
+///
+/// `E` wraps membership errors and must match [`RaftTypeConfig::ErrorSource`].
+/// It defaults to [`anyerror::AnyError`].
+///
+/// [`RaftTypeConfig::ErrorSource`]: crate::RaftTypeConfig::ErrorSource
 #[since(
     version = "0.10.0",
-    change = "replaced `C: RaftTypeConfig` with `NID: NodeId, N: Node`"
+    change = "replaced `C: RaftTypeConfig` with `NID: NodeId, N: Node, E: ErrorSource`"
 )]
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct Membership<NID, N>
+pub struct Membership<NID, N, E = anyerror::AnyError>
 where
     NID: NodeId,
     N: Node,
+    E: ErrorSource,
 {
     /// Multi configs of members.
     ///
@@ -37,25 +45,45 @@ where
     ///
     /// A node-id key that is in `nodes` but is not in `configs` is a **learner**.
     pub(crate) nodes: BTreeMap<NID, N>,
+
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub(crate) _error_source: PhantomData<E>,
 }
 
-impl<NID, N> Default for Membership<NID, N>
+impl<NID, N, E> fmt::Debug for Membership<NID, N, E>
 where
     NID: NodeId,
     N: Node,
+    E: ErrorSource,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut debug = f.debug_struct("Membership");
+        debug.field("configs", &self.configs);
+        debug.field("nodes", &self.nodes);
+        debug.finish()
+    }
+}
+
+impl<NID, N, E> Default for Membership<NID, N, E>
+where
+    NID: NodeId,
+    N: Node,
+    E: ErrorSource,
 {
     fn default() -> Self {
         Membership {
+            _error_source: PhantomData,
             configs: vec![],
             nodes: BTreeMap::new(),
         }
     }
 }
 
-impl<NID, N> From<BTreeMap<NID, N>> for Membership<NID, N>
+impl<NID, N, E> From<BTreeMap<NID, N>> for Membership<NID, N, E>
 where
     NID: NodeId,
     N: Node,
+    E: ErrorSource,
 {
     fn from(b: BTreeMap<NID, N>) -> Self {
         let member_ids = b.keys().cloned().collect::<BTreeSet<NID>>();
@@ -63,8 +91,10 @@ where
     }
 }
 
-impl<NID> From<BTreeSet<NID>> for Membership<NID, ()>
-where NID: NodeId
+impl<NID, E> From<BTreeSet<NID>> for Membership<NID, (), E>
+where
+    NID: NodeId,
+    E: ErrorSource,
 {
     fn from(node_ids: BTreeSet<NID>) -> Self {
         let nodes: BTreeMap<NID, ()> = node_ids.into_nodes();
@@ -72,8 +102,10 @@ where NID: NodeId
     }
 }
 
-impl<NID> From<BTreeSet<NID>> for Membership<NID, EmptyNode>
-where NID: NodeId
+impl<NID, E> From<BTreeSet<NID>> for Membership<NID, EmptyNode, E>
+where
+    NID: NodeId,
+    E: ErrorSource,
 {
     fn from(node_ids: BTreeSet<NID>) -> Self {
         let nodes: BTreeMap<NID, EmptyNode> = node_ids.into_nodes();
@@ -81,10 +113,11 @@ where NID: NodeId
     }
 }
 
-impl<NID, N> From<HashMap<NID, N>> for Membership<NID, N>
+impl<NID, N, E> From<HashMap<NID, N>> for Membership<NID, N, E>
 where
     NID: NodeId,
     N: Node,
+    E: ErrorSource,
 {
     fn from(nodes: HashMap<NID, N>) -> Self {
         let nodes: BTreeMap<NID, N> = nodes.into_nodes();
@@ -92,10 +125,11 @@ where
     }
 }
 
-impl<NID, N> fmt::Display for Membership<NID, N>
+impl<NID, N, E> fmt::Display for Membership<NID, N, E>
 where
     NID: NodeId,
     N: Node,
+    E: ErrorSource,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{{voters:[",)?;
@@ -133,10 +167,11 @@ where
 }
 
 // Public APIs
-impl<NID, N> Membership<NID, N>
+impl<NID, N, E> Membership<NID, N, E>
 where
     NID: NodeId,
     N: Node,
+    E: ErrorSource,
 {
     /// Create a new Membership from a joint config of voter-ids and a collection of all
     /// `Node` (voter nodes and learner nodes).
@@ -154,9 +189,10 @@ where
     ///
     /// [`Raft::initialize()`]: crate::Raft::initialize
     /// [`Raft::append_membership()`]: crate::Raft::append_membership
-    pub fn new<T>(config: Vec<BTreeSet<NID>>, nodes: T) -> Result<Self, MembershipError<NID>>
+    pub fn new<T>(config: Vec<BTreeSet<NID>>, nodes: T) -> Result<Self, MembershipError<NID, E>>
     where T: IntoNodes<NID, N> {
         let m = Membership {
+            _error_source: PhantomData,
             configs: config,
             nodes: nodes.into_nodes(),
         };
@@ -183,7 +219,11 @@ where
 
         let nodes = Self::extend_nodes(nodes.into_iter().map(|x| (x, N::default())).collect(), &voter_nodes);
 
-        Membership { configs: config, nodes }
+        Membership {
+            _error_source: PhantomData,
+            configs: config,
+            nodes,
+        }
     }
 
     /// Returns reference to the joint config.
@@ -228,10 +268,11 @@ where
     }
 }
 
-impl<NID, N> Membership<NID, N>
+impl<NID, N, E> Membership<NID, N, E>
 where
     NID: NodeId,
     N: Node,
+    E: ErrorSource,
 {
     /// Format one node as `<node_id>:<node>`, or `<node_id>:None` if this membership has no such
     /// node.
@@ -301,7 +342,11 @@ where
     pub(crate) fn new_unchecked<T>(configs: Vec<BTreeSet<NID>>, nodes: T) -> Self
     where T: IntoNodes<NID, N> {
         let nodes = nodes.into_nodes();
-        Membership { configs, nodes }
+        Membership {
+            _error_source: PhantomData,
+            configs,
+            nodes,
+        }
     }
 
     /// Extends nodes btreemap with another.
@@ -335,7 +380,7 @@ where
     ///
     /// Note: This is an intermediate step in membership changes. The result may need to be
     /// transformed into a coherent configuration before being applied.
-    pub(crate) fn compute_target_membership(mut self, change: ChangeMembers<NID, N>) -> Membership<NID, N> {
+    pub(crate) fn compute_target_membership(mut self, change: ChangeMembers<NID, N>) -> Membership<NID, N, E> {
         let last = self.get_joint_config().last().cloned().unwrap_or_default();
 
         // `None` means the change does not touch the voter set, only `nodes`.
@@ -407,6 +452,7 @@ mod tests {
     #[test]
     fn test_membership_ensure_voters_have_nodes() -> anyhow::Result<()> {
         let m = Membership::<u64, ()> {
+            _error_source: std::marker::PhantomData,
             configs: vec![btreeset! {1,2}],
             nodes: btreemap! {1=>()},
         };
@@ -418,6 +464,7 @@ mod tests {
     #[test]
     fn test_membership_change() -> anyhow::Result<()> {
         let m = || Membership::<u64, ()> {
+            _error_source: std::marker::PhantomData,
             configs: vec![btreeset! {1,2}],
             nodes: btreemap! {1=>(),2=>(),3=>()},
         };
@@ -427,6 +474,7 @@ mod tests {
             let res = m().change(ChangeMembers::AddVoterIds(btreeset! {4}));
             assert_eq!(
                 Ok(Membership::<u64, ()> {
+                    _error_source: std::marker::PhantomData,
                     configs: vec![btreeset! {1,2,4}],
                     nodes: btreemap! {1=>(),2=>(),3=>()}
                 }),
@@ -439,6 +487,7 @@ mod tests {
             let res = m().change(ChangeMembers::AddVoterIds(btreeset! {3}));
             assert_eq!(
                 Ok(Membership::<u64, ()> {
+                    _error_source: std::marker::PhantomData,
                     configs: vec![btreeset! {1,2,3}],
                     nodes: btreemap! {1=>(),2=>(),3=>()}
                 }),
@@ -451,6 +500,7 @@ mod tests {
             let res = m().change(ChangeMembers::AddVoters(btreemap! {5=>()}));
             assert_eq!(
                 Ok(Membership::<u64, ()> {
+                    _error_source: std::marker::PhantomData,
                     configs: vec![btreeset! {1,2,5}],
                     nodes: btreemap! {1=>(),2=>(),3=>(),5=>()}
                 }),
@@ -463,6 +513,7 @@ mod tests {
             let res = m().change(ChangeMembers::RemoveVoters(btreeset! {5}));
             assert_eq!(
                 Ok(Membership::<u64, ()> {
+                    _error_source: std::marker::PhantomData,
                     configs: vec![btreeset! {1,2}],
                     nodes: btreemap! {1=>(),2=>(),3=>()}
                 }),
@@ -475,6 +526,7 @@ mod tests {
             let res = m().change(ChangeMembers::RemoveVoters(btreeset! {1,2}));
             assert_eq!(
                 Ok(Membership::<u64, ()> {
+                    _error_source: std::marker::PhantomData,
                     configs: vec![btreeset! {}],
                     nodes: btreemap! {1=>(),2=>(),3=>()}
                 }),
@@ -487,6 +539,7 @@ mod tests {
             let res = m().change(ChangeMembers::RemoveVoters(btreeset! {1}));
             assert_eq!(
                 Ok(Membership::<u64, ()> {
+                    _error_source: std::marker::PhantomData,
                     configs: vec![btreeset! {2}],
                     nodes: btreemap! {1=>(),2=>(),3=>()}
                 }),
@@ -500,6 +553,7 @@ mod tests {
             let res = m().drop_voters_demoted_to_learners(goal);
             assert_eq!(
                 Membership::<u64, ()> {
+                    _error_source: std::marker::PhantomData,
                     configs: vec![btreeset! {2}],
                     nodes: btreemap! {2=>(),3=>()}
                 },
@@ -510,6 +564,7 @@ mod tests {
         // Remove: OK, not retain; learner removed
         {
             let mem = Membership::<u64, ()> {
+                _error_source: std::marker::PhantomData,
                 configs: vec![btreeset! {1,2}, btreeset! {2}],
                 nodes: btreemap! {1=>(),2=>(),3=>()},
             };
@@ -517,6 +572,7 @@ mod tests {
             let res = mem.drop_voters_demoted_to_learners(goal);
             assert_eq!(
                 Membership::<u64, ()> {
+                    _error_source: std::marker::PhantomData,
                     configs: vec![btreeset! {2}],
                     nodes: btreemap! {2=>(),3=>()}
                 },
@@ -530,6 +586,7 @@ mod tests {
             let res = m().drop_voters_demoted_to_learners(goal);
             assert_eq!(
                 Membership::<u64, ()> {
+                    _error_source: std::marker::PhantomData,
                     configs: vec![btreeset! {2}],
                     nodes: btreemap! {2=>(),3=>()}
                 },
@@ -542,6 +599,7 @@ mod tests {
             let res = m().change(ChangeMembers::AddNodes(btreemap! {2=>()}));
             assert_eq!(
                 Ok(Membership::<u64, ()> {
+                    _error_source: std::marker::PhantomData,
                     configs: vec![btreeset! {1,2}],
                     nodes: btreemap! {1=>(),2=>(),3=>()}
                 }),
@@ -554,6 +612,7 @@ mod tests {
             let res = m().change(ChangeMembers::AddNodes(btreemap! {3=>()}));
             assert_eq!(
                 Ok(Membership::<u64, ()> {
+                    _error_source: std::marker::PhantomData,
                     configs: vec![btreeset! {1,2}],
                     nodes: btreemap! {1=>(),2=>(),3=>()}
                 }),
@@ -566,6 +625,7 @@ mod tests {
             let res = m().change(ChangeMembers::AddNodes(btreemap! {4=>()}));
             assert_eq!(
                 Ok(Membership::<u64, ()> {
+                    _error_source: std::marker::PhantomData,
                     configs: vec![btreeset! {1,2}],
                     nodes: btreemap! {1=>(),2=>(),3=>(), 4=>()}
                 }),
@@ -576,6 +636,7 @@ mod tests {
         // SetNodes: Ok
         {
             let m = || Membership::<u64, u64> {
+                _error_source: std::marker::PhantomData,
                 configs: vec![btreeset! {1,2}],
                 nodes: btreemap! {1=>1,2=>2,3=>3},
             };
@@ -583,6 +644,7 @@ mod tests {
             let res = m().change(ChangeMembers::SetNodes(btreemap! {3=>30, 4=>40}));
             assert_eq!(
                 Ok(Membership::<u64, u64> {
+                    _error_source: std::marker::PhantomData,
                     configs: vec![btreeset! {1,2}],
                     nodes: btreemap! {1=>1,2=>2,3=>30, 4=>40}
                 }),
@@ -595,6 +657,7 @@ mod tests {
             let res = m().change(ChangeMembers::RemoveNodes(btreeset! {2}));
             assert_eq!(
                 Ok(Membership::<u64, ()> {
+                    _error_source: std::marker::PhantomData,
                     configs: vec![btreeset! {1,2}],
                     nodes: btreemap! {1=>(),3=>()}
                 }),
@@ -607,6 +670,7 @@ mod tests {
             let res = m().change(ChangeMembers::RemoveNodes(btreeset! {3}));
             assert_eq!(
                 Ok(Membership::<u64, ()> {
+                    _error_source: std::marker::PhantomData,
                     configs: vec![btreeset! {1,2}],
                     nodes: btreemap! {1=>(),2=>()}
                 }),
@@ -619,6 +683,7 @@ mod tests {
             let res = m().change(ChangeMembers::ReplaceAllNodes(btreemap! {1=>(),2=>(),4=>()}));
             assert_eq!(
                 Ok(Membership::<u64, ()> {
+                    _error_source: std::marker::PhantomData,
                     configs: vec![btreeset! {1,2}],
                     nodes: btreemap! {1=>(),2=>(),4=>()}
                 }),
@@ -635,6 +700,7 @@ mod tests {
     #[test]
     fn test_membership_change_batch() -> anyhow::Result<()> {
         let m = || Membership::<u64, ()> {
+            _error_source: std::marker::PhantomData,
             configs: vec![btreeset! {1,2,3}],
             nodes: btreemap! {1=>(),2=>(),3=>()},
         };
@@ -649,6 +715,7 @@ mod tests {
         let goal = m().change(rm_2_add_5())?;
 
         assert_eq!(goal, Membership::<u64, ()> {
+            _error_source: std::marker::PhantomData,
             configs: vec![btreeset! {1,3,5}],
             nodes: btreemap! {1=>(),2=>(),3=>(),5=>()}
         });

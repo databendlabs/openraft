@@ -10,6 +10,10 @@ publish = false
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(tokio_unstable)"] }
 
+[features]
+# Run the cluster with `ThresholdMembership` instead of the default `Membership`.
+threshold-membership = []
+
 [[bin]]
 name = "fuzz"
 path = "src/bin/fuzz.rs"

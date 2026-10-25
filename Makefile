@@ -1,6 +1,6 @@
 all: test defensive_test send_delay_test check_all
 
-check_all: lint doc unused_dep typos detsim
+check_all: lint doc unused_dep typos detsim detsim-threshold
 
 compile:
 	cargo test --lib
@@ -146,11 +146,16 @@ guide:
 
 test-turmoil:
 	cd tests-turmoil && cargo test --lib
+	cd tests-turmoil && cargo test --lib --features threshold-membership
 
 DETSIM_ARGS ?= --iterations 5 --max-steps 10000
 
 detsim:
 	cd tests-turmoil && cargo run --bin fuzz -- $(DETSIM_ARGS)
+
+# The same simulation with `ThresholdMembership` and random read and write sizes.
+detsim-threshold:
+	cd tests-turmoil && cargo run --bin fuzz --features threshold-membership -- $(DETSIM_ARGS)
 
 # Extra arguments passed to every `cargo fmt` below. Empty rewrites the files;
 # `fmt_check` overrides it with `-- --check` to report without rewriting.
@@ -226,6 +231,7 @@ clippy: clippy-basic
 	@# which supplies `--cfg tokio_unstable`; `--manifest-path` from the repo
 	@# root would not pick it up.
 	cd tests-turmoil && cargo clippy --no-deps --all-targets -- -D warnings
+	cd tests-turmoil && cargo clippy --no-deps --all-targets --features threshold-membership -- -D warnings
 	cargo clippy --no-deps --manifest-path jepsen/openraft-test-app/Cargo.toml                        --all-targets -- -D warnings
 	@# Bug: clippy --all-targets reports false warning about unused dep in
 	@# `[dev-dependencies]`:
@@ -318,4 +324,4 @@ clean:
 	cargo clean --manifest-path jepsen/openraft-test-app/Cargo.toml
 	rm -rf tests/_log
 
-.PHONY: test test-runtime test-turmoil verify verify-full basic_check fmt fmt_check fix clippy-basic clippy lint clean doc docs-check guide detsim typos
+.PHONY: test test-runtime test-turmoil verify verify-full basic_check fmt fmt_check fix clippy-basic clippy lint clean doc docs-check guide detsim detsim-threshold typos

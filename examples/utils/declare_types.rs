@@ -13,6 +13,7 @@ pub type EntryPayload = openraft::alias::EntryPayloadOf<TypeConfig>;
 pub type Membership = openraft::membership::Membership<
     <TypeConfig as openraft::RaftTypeConfig>::NodeId,
     <TypeConfig as openraft::RaftTypeConfig>::Node,
+    <TypeConfig as openraft::RaftTypeConfig>::ErrorSource,
 >;
 pub type StoredMembership = openraft::alias::StoredMembershipOf<TypeConfig>;
 
