@@ -25,6 +25,10 @@ use crate::vote::RaftCommittedLeaderId;
 /// just created.
 #[since(
     version = "0.10.0",
+    change = "membership helpers and QuorumSet support custom error sources"
+)]
+#[since(
+    version = "0.10.0",
     change = "from `StoredMembership<C>` to `StoredMembership<CLID, Mem>`"
 )]
 #[since(version = "0.8.0")]
