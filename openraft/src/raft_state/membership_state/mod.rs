@@ -7,6 +7,7 @@ use validit::Validate;
 
 use crate::LogIdOptionExt;
 use crate::errors::ChangeMembershipError;
+use crate::errors::ErrorSource;
 use crate::errors::InProgress;
 use crate::errors::MembershipError;
 use crate::errors::UnsupportedMembershipTransition;
@@ -154,20 +155,23 @@ where
     ///
     /// This function ensures that the cluster will have at least one voter in the new membership
     /// configuration.
-    pub(crate) fn next_membership<Edit>(
+    pub(crate) fn next_membership<Edit, E>(
         &self,
         change: Edit,
         retain: bool,
-    ) -> Result<(Mem, bool), ChangeMembershipError<CLID, Mem::NodeId>>
+    ) -> Result<(Mem, bool), ChangeMembershipError<CLID, Mem::NodeId, E>>
     where
         Edit: RaftMembershipEdit<Mem>,
+        E: ErrorSource,
     {
         self.ensure_committed()?;
 
         let effective = self.effective().membership();
-        let mut goal = change.apply(effective)?;
+        let wrap = |error| E::from_error(&error);
+        let goal = change.apply(effective);
+        let mut goal = goal.map_err(|error| error.map_user_defined(wrap))?;
         goal.ensure_non_empty_config()?;
-        goal.ensure_voters_have_nodes().map_err(MembershipError::from)?;
+        goal.ensure_voters_have_nodes().map_err(MembershipError::<_, E>::from)?;
         goal.ensure_write_voters_receive_logs()?;
         goal.ensure_read_write_quorums_intersect()?;
         if !retain {
@@ -205,13 +209,16 @@ where
     /// [`Membership::new_with_defaults()`]: crate::Membership::new_with_defaults
     /// [`Node`]: crate::Node
     /// [`NodeRole::ReceiveLogs`]: crate::membership::NodeRole::ReceiveLogs
-    pub(crate) fn validate_append_membership(
+    pub(crate) fn validate_append_membership<E>(
         &self,
         proposed: &Mem,
-    ) -> Result<(), ChangeMembershipError<CLID, Mem::NodeId>> {
+    ) -> Result<(), ChangeMembershipError<CLID, Mem::NodeId, E>>
+    where
+        E: ErrorSource,
+    {
         self.ensure_committed()?;
         proposed.ensure_non_empty_config()?;
-        proposed.ensure_voters_have_nodes().map_err(MembershipError::from)?;
+        proposed.ensure_voters_have_nodes().map_err(MembershipError::<_, E>::from)?;
         proposed.ensure_write_voters_receive_logs()?;
         proposed.ensure_read_write_quorums_intersect()?;
 
