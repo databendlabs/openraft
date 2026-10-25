@@ -30,6 +30,7 @@ mod membership;
 mod membership_impl_quorum_set;
 mod membership_impl_raft_membership;
 mod stored_membership;
+mod unproven_read_write_intersection;
 
 #[cfg(test)]
 mod membership_test;
@@ -51,6 +52,8 @@ pub use raft_membership::RaftMembership;
 pub use raft_membership_edit::RaftMembershipEdit;
 pub(crate) use raft_membership_ext::RaftMembershipExt;
 pub use stored_membership::StoredMembership;
+#[since(version = "0.10.0")]
+pub use unproven_read_write_intersection::UnprovenReadWriteIntersection;
 
 mod node_ref;
 mod node_role;

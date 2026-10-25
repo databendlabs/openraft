@@ -56,6 +56,7 @@ pub use self::uncommitted_leader_log::UncommittedLeaderLog;
 pub use self::unsupported_membership_transition::UnsupportedMembershipTransition;
 use crate::LogId;
 use crate::RaftTypeConfig;
+pub use crate::membership::UnprovenReadWriteIntersection;
 use crate::network::RPCTypes;
 use crate::node::NodeId;
 use crate::try_as_ref::TryAsRef;
@@ -138,6 +139,7 @@ where C: RaftTypeConfig
 }
 
 /// The set of errors which may take place when requesting to propose a config change.
+#[since(version = "0.10.0", change = "added `UnprovenReadWriteIntersection` variant")]
 #[since(
     version = "0.10.0",
     change = "added `UnsupportedMembershipTransition`, `UncommittedLeaderLog` and `NodeMetadataChanged` variants"
@@ -179,6 +181,12 @@ where
     #[since(version = "0.10.0")]
     #[error(transparent)]
     NodeMetadataChanged(#[from] NodeMetadataChanged<NID>),
+
+    /// OpenRaft cannot prove that every read quorum of the proposed membership intersects every
+    /// write quorum.
+    #[since(version = "0.10.0")]
+    #[error(transparent)]
+    UnprovenReadWriteIntersection(#[from] UnprovenReadWriteIntersection),
 }
 
 /// The set of errors which may take place when initializing a pristine Raft node.
@@ -196,7 +204,8 @@ where C: RaftTypeConfig
     #[error(transparent)]
     NotInMembers(#[from] NotInMembers<C>),
 
-    /// The initial membership configuration defines no quorum, or a quorum ID has no node.
+    /// The initial membership configuration defines no quorum, a quorum ID has no node, or
+    /// OpenRaft cannot prove that its read quorums intersect its write quorums.
     #[since(version = "0.10.0")]
     #[error(transparent)]
     InvalidMembership(#[from] MembershipError<C::NodeId>),
