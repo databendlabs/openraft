@@ -5,6 +5,7 @@ use crate::errors::EmptyMembership;
 use crate::errors::NodeMetadataChanged;
 use crate::errors::NodeNotFound;
 use crate::errors::Operation;
+use crate::errors::UnprovenReadWriteIntersection;
 use crate::membership::NodeRole;
 use crate::membership::RaftMembership;
 use crate::quorum::QuorumBridge;
@@ -126,6 +127,29 @@ pub(crate) trait RaftMembershipExt: RaftMembership {
         Ok(())
     }
 
+    /// Returns [`UnprovenReadWriteIntersection`] unless [`QuorumIntersection::intersects_with()`]
+    /// proves that every read quorum intersects every write quorum.
+    ///
+    /// With `allow_unproven`, it also accepts a configuration for which `intersects_with()` returns
+    /// `None`. It rejects `Some(false)` either way.
+    ///
+    /// OpenRaft calls it before it uses the quorums of a membership that an application supplies.
+    fn ensure_read_write_quorums_intersect(&self, allow_unproven: bool) -> Result<(), UnprovenReadWriteIntersection> {
+        let read = self.read_quorum_set();
+        let write = self.write_quorum_set();
+        let intersects = read.intersects_with(write);
+
+        let proven = intersects == Some(true);
+        let trusted = allow_unproven && intersects.is_none();
+        if proven || trusted {
+            return Ok(());
+        }
+
+        Err(UnprovenReadWriteIntersection {
+            membership: self.to_string(),
+        })
+    }
+
     /// Returns whether `other` can be appended directly after `self`, as one log entry without an
     /// intermediate joint configuration.
     ///
@@ -216,6 +240,7 @@ mod tests {
 
     use crate::ChangeMembers;
     use crate::errors::MembershipError;
+    use crate::errors::UnprovenReadWriteIntersection;
     use crate::membership::NodeRef;
     use crate::membership::NodeRole;
     use crate::membership::RaftMembership;
@@ -316,6 +341,53 @@ mod tests {
             roles: btreemap! {1 => voter, 2 => voter, 4 => learner},
         };
         assert_eq!(want, res);
+    }
+
+    #[test]
+    fn ensure_read_write_quorums_intersect_accepts_unproven_only_when_allowed() {
+        let with_quorum_sets = |read, write| RoleMembership {
+            read,
+            write,
+            roles: BTreeMap::new(),
+        };
+
+        // Every majority of `{1,2}` intersects every majority of `{1,2,3}`.
+        let proven = with_quorum_sets(vec![btreeset! {1, 2}], vec![btreeset! {1, 2, 3}]);
+
+        let res = proven.ensure_read_write_quorums_intersect(false);
+        assert_eq!(Ok(()), res);
+
+        let res = proven.ensure_read_write_quorums_intersect(true);
+        assert_eq!(Ok(()), res);
+
+        // Read quorum `{1,2}` misses write quorum `{4,5}`.
+        let disjoint = with_quorum_sets(vec![btreeset! {1, 2, 3}], vec![btreeset! {3, 4, 5}]);
+        let want = Err(UnprovenReadWriteIntersection {
+            membership: disjoint.to_string(),
+        });
+
+        let res = disjoint.ensure_read_write_quorums_intersect(false);
+        assert_eq!(want, res);
+
+        let res = disjoint.ensure_read_write_quorums_intersect(true);
+        assert_eq!(want, res);
+
+        // Every read quorum holds at least two of `{2,3,4,5}`, and every write quorum holds three
+        // of them, so they intersect. No pair of configs shows it: majority `{1,2}` of `{1,2,3}`
+        // and majority `{1,4}` of `{1,4,5}` each miss a majority of `{2,3,4,5}`, so
+        // `intersects_with()` returns `None`.
+        let read = vec![btreeset! {1, 2, 3}, btreeset! {1, 4, 5}];
+        let write = vec![btreeset! {2, 3, 4, 5}];
+        let unproven = with_quorum_sets(read, write);
+        let want = Err(UnprovenReadWriteIntersection {
+            membership: unproven.to_string(),
+        });
+
+        let res = unproven.ensure_read_write_quorums_intersect(false);
+        assert_eq!(want, res);
+
+        let res = unproven.ensure_read_write_quorums_intersect(true);
+        assert_eq!(Ok(()), res);
     }
 
     #[test]
