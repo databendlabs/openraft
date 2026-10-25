@@ -9,6 +9,11 @@
 //! - [`IntoNodes`] - Trait for converting node sets with metadata
 //! - [`QuorumSet`], [`QuorumIntersection`] and [`QuorumBridge`] - Traits from the quorum-set crate
 //!   that the quorum set of a [`RaftMembership`] implements
+//! - [`ThresholdQuorumSet`] - Quorum rule that accepts any `quorum_size` of its IDs
+//! - [`Joint`] - Quorum rule that accepts an ID set only when each of its rules accepts it
+//! - [`ThresholdMembership`] - Membership whose quorums are any `read_size` or any `write_size`
+//!   voters of a config
+//! - [`ThresholdChange`] - Change to the voters, nodes, or sizes of a [`ThresholdMembership`]
 //!
 //! ## Overview
 //!
@@ -35,8 +40,11 @@ mod stored_membership;
 mod membership_test;
 #[cfg(test)]
 mod stored_membership_test;
+#[cfg(test)]
+mod threshold_membership_test;
 
 pub use into_nodes::IntoNodes;
+pub use invalid_thresholds::InvalidThresholds;
 pub use membership::Membership;
 pub use node_ref::NodeRef;
 pub use node_role::NodeRole;
@@ -51,9 +59,18 @@ pub use raft_membership::RaftMembership;
 pub use raft_membership_edit::RaftMembershipEdit;
 pub(crate) use raft_membership_ext::RaftMembershipExt;
 pub use stored_membership::StoredMembership;
+pub use threshold_change::ThresholdChange;
+pub use threshold_membership::ThresholdMembership;
 
+pub use crate::quorum::Joint;
+pub use crate::quorum::ThresholdQuorumSet;
+
+mod invalid_thresholds;
 mod node_ref;
 mod node_role;
 mod raft_membership;
 mod raft_membership_edit;
 mod raft_membership_ext;
+mod threshold_change;
+mod threshold_membership;
+mod threshold_membership_impl_raft_membership;

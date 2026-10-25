@@ -43,6 +43,12 @@ See: [`dynamic_membership`], [`joint_consensus`]
 
 Add or remove nodes safely, in one log entry when every old quorum intersects every new quorum, or otherwise through the two-phase joint consensus protocol, which maintains availability during configuration changes.
 
+### Separate Read and Write Quorums
+
+See: [`threshold_membership`]
+
+Choose how many votes an election needs and how many copies a commit needs, with `ThresholdMembership`.
+
 ### Node Management
 
 See: [`node_lifecycle`]
@@ -68,5 +74,6 @@ Monitor cluster health using metrics and perform automated maintenance operation
 [`cluster_formation`]: `crate::docs::cluster_control::cluster_formation`
 [`dynamic_membership`]: `crate::docs::cluster_control::dynamic_membership`
 [`joint_consensus`]: `crate::docs::cluster_control::joint_consensus`
+[`threshold_membership`]: `crate::docs::cluster_control::threshold_membership`
 [`node_lifecycle`]: `crate::docs::cluster_control::node_lifecycle`
 [`monitoring_maintenance`]: `crate::docs::cluster_control::monitoring_maintenance`

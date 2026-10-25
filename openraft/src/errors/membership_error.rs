@@ -1,3 +1,4 @@
+use anyerror::AnyError;
 use openraft_macros::since;
 
 use crate::errors::ChangeMembershipError;
@@ -11,6 +12,7 @@ use crate::vote::RaftCommittedLeaderId;
 /// Errors occur when building a [`Membership`].
 ///
 /// [`Membership`]: crate::membership::Membership
+#[since(version = "0.10.0", change = "added `UserDefined` variant")]
 #[since(version = "0.10.0", change = "added `UnprovenReadWriteIntersection` variant")]
 #[since(version = "0.10.0", change = "removed `C: RaftTypeConfig` generic parameter")]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -30,6 +32,13 @@ where NID: NodeId
     #[since(version = "0.10.0")]
     #[error(transparent)]
     UnprovenReadWriteIntersection(#[from] UnprovenReadWriteIntersection),
+
+    /// The [`RaftMembership`] implementation rejected the membership for a reason of its own.
+    ///
+    /// [`RaftMembership`]: crate::membership::RaftMembership
+    #[since(version = "0.10.0")]
+    #[error("user-defined membership error: {0}")]
+    UserDefined(AnyError),
 }
 
 /// Translate a membership validation failure into a rejected change request.
@@ -58,6 +67,7 @@ where
             MembershipError::UnprovenReadWriteIntersection(e) => {
                 ChangeMembershipError::UnprovenReadWriteIntersection(e)
             }
+            MembershipError::UserDefined(e) => ChangeMembershipError::UserDefined(e),
         }
     }
 }
