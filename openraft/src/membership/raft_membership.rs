@@ -10,6 +10,7 @@ use crate::Node;
 use crate::NodeId;
 use crate::base::OptionalFeatures;
 use crate::base::OptionalSend;
+use crate::base::OptionalSerde;
 use crate::base::OptionalSync;
 use crate::membership::NodeRef;
 use crate::membership::NodeRole;
@@ -64,6 +65,7 @@ where Self: OptionalFeatures + Clone + Default + Eq + Debug + Display + Sized + 
         + Debug
         + OptionalSend
         + OptionalSync
+        + OptionalSerde
         + 'static;
 
     /// Returns the read quorum rule for this configuration.

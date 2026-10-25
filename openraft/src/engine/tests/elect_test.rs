@@ -52,6 +52,7 @@ crate::declare_raft_types!(
         R = (),
         Node = (),
         AsyncRuntime = SeededRuntime,
+        ErrorSource = anyerror::AnyError,
 );
 
 fn run_seeded<F, T>(seed: u64, test: F) -> T
