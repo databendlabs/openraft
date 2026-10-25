@@ -45,12 +45,13 @@ pub enum InvariantViolation {
     StateMachineDivergence { index: u64, nodes: Vec<NodeId> },
 
     /// Committed On Quorum (Vanlightly `CommittedEntriesReachMajority`):
-    /// a leader's recently-committed entry is not replicated on a voter quorum
+    /// a leader's recently-committed entry is not replicated on a write quorum
     /// in its own current membership.
     CommittedNotOnQuorum {
         leader: NodeId,
         index: u64,
         voters: Vec<NodeId>,
+        write_size: usize,
         matching: Vec<NodeId>,
     },
 
@@ -148,11 +149,12 @@ impl std::fmt::Display for InvariantViolation {
                 leader,
                 index,
                 voters,
+                write_size,
                 matching,
             } => write!(
                 f,
                 "CommittedOnQuorum: leader n{leader} committed index {index}; \
-                 only {matching:?} of voters {voters:?} have matching entry"
+                 only {matching:?} of voters {voters:?} have matching entry, fewer than write size {write_size}"
             ),
             Self::CommittedChanged {
                 index,

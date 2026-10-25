@@ -291,6 +291,11 @@ use openraft_legacy::network_v1::InstallSnapshotResponse;
 use openraft_legacy::network_v1::SnapshotMismatch;
 use openraft_legacy::network_v1::SnapshotReceiverFactory;
 use openraft_legacy::network_v1::SnapshotSegmentId;
+use openraft_membership::ThresholdChange as ProvidedThresholdChange;
+use openraft_membership::ThresholdMembership as ProvidedThresholdMembership;
+use openraft_membership::errors::InvalidThresholds as ProvidedInvalidThresholds;
+use openraft_membership::quorum::Joint as ProvidedJoint;
+use openraft_membership::quorum::ThresholdQuorumSet as ProvidedThresholdQuorumSet;
 // =============================================================================
 // Macros
 // =============================================================================

@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use std::convert::Infallible;
 use std::fmt;
 use std::time::Duration;
 
@@ -134,7 +135,9 @@ impl RaftMembership for UnprovenMembership {
 
 /// Applies each edit as it applies to the default `Membership`.
 impl RaftMembershipEdit<UnprovenMembership> for ChangeMembers<u64, ()> {
-    fn apply(self, membership: &UnprovenMembership) -> Result<UnprovenMembership, MembershipError<u64>> {
+    type Error = Infallible;
+
+    fn apply(self, membership: &UnprovenMembership) -> Result<UnprovenMembership, MembershipError<u64, Infallible>> {
         let target = <Self as RaftMembershipEdit<Membership<u64, ()>>>::apply(self, &membership.membership)?;
         Ok(UnprovenMembership::from(target))
     }
