@@ -1,5 +1,6 @@
 #![allow(missing_docs)]
 
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::future::Future;
@@ -8,7 +9,8 @@ use std::marker::PhantomData;
 use std::ops::RangeBounds;
 use std::time::Duration;
 
-use crate::Membership;
+use openraft_macros::since;
+
 use crate::OptionalSend;
 use crate::RaftLogReader;
 use crate::RaftSnapshotBuilder;
@@ -27,11 +29,8 @@ use crate::storage::RaftStateMachine;
 use crate::storage::StorageHelper;
 use crate::testing::log::StoreBuilder;
 use crate::type_config::TypeConfigExt;
-use crate::type_config::alias::ErrorSourceOf;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
-use crate::type_config::alias::NodeIdOf;
-use crate::type_config::alias::NodeOf;
 use crate::type_config::alias::StoredMembershipOf;
 use crate::type_config::alias::TermOf;
 use crate::type_config::alias::VoteOf;
@@ -100,6 +99,12 @@ where
 /// Additional traits are required to be implemented by the store builder for testing:
 /// - `C::D` and `C::R` requires `Debug` for debugging.
 /// - `C::NodeId` requires `From<u64>` to build a node id.
+/// - `C::Membership` requires `From<BTreeMap<C::NodeId, C::Node>>` to build a membership from voter
+///   IDs.
+#[since(
+    version = "0.10.0",
+    change = "run with any membership that implements `From<BTreeMap<NodeId, Node>>`"
+)]
 pub struct Suite<C, LS, SM, B, G>
 where
     C: RaftTypeConfig,
@@ -116,7 +121,8 @@ where
 #[allow(unused)]
 impl<C, LS, SM, B, G> Suite<C, LS, SM, B, G>
 where
-    C: RaftTypeConfig<Membership = Membership<NodeIdOf<C>, NodeOf<C>, ErrorSourceOf<C>>>,
+    C: RaftTypeConfig,
+    C::Membership: From<BTreeMap<C::NodeId, C::Node>>,
     C::D: Debug,
     C::R: Debug,
     C::Term: From<u64>,
@@ -216,18 +222,12 @@ where
             let mem = StorageHelper::new(&mut store, &mut sm).last_membership_in_log(0).await?;
             assert_eq!(1, mem.len());
             let mem = mem[0].clone();
-            assert_eq!(
-                &Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], []),
-                mem.membership(),
-            );
+            assert_eq!(&voters::<C>(btreeset! {1, 2, 3}), mem.membership());
 
             let mem = StorageHelper::new(&mut store, &mut sm).last_membership_in_log(1).await?;
             assert_eq!(1, mem.len());
             let mem = mem[0].clone();
-            assert_eq!(
-                &Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], []),
-                mem.membership(),
-            );
+            assert_eq!(&voters::<C>(btreeset! {1, 2, 3}), mem.membership());
 
             let mem = StorageHelper::new(&mut store, &mut sm).last_membership_in_log(2).await?;
             assert!(mem.is_empty());
@@ -246,16 +246,10 @@ where
             assert_eq!(2, mems.len());
 
             let mem = mems[0].clone();
-            assert_eq!(
-                &Membership::new_with_defaults(vec![btreeset! {1,2,3}], []),
-                mem.membership(),
-            );
+            assert_eq!(&voters::<C>(btreeset! {1,2,3}), mem.membership());
 
             let mem = mems[1].clone();
-            assert_eq!(
-                &Membership::new_with_defaults(vec![btreeset! {7,8,9}], []),
-                mem.membership(),
-            );
+            assert_eq!(&voters::<C>(btreeset! {7,8,9}), mem.membership());
         }
 
         tracing::info!(
@@ -274,16 +268,10 @@ where
             assert_eq!(2, mems.len());
 
             let mem = mems[0].clone();
-            assert_eq!(
-                &Membership::new_with_defaults(vec![btreeset! {7,8,9}], []),
-                mem.membership(),
-            );
+            assert_eq!(&voters::<C>(btreeset! {7,8,9}), mem.membership());
 
             let mem = mems[1].clone();
-            assert_eq!(
-                &Membership::new_with_defaults(vec![btreeset! {10,11}], []),
-                mem.membership(),
-            );
+            assert_eq!(&voters::<C>(btreeset! {10,11}), mem.membership());
         }
 
         Ok(())
@@ -308,16 +296,10 @@ where
             let mems = StorageHelper::new(&mut store, &mut sm).last_membership_in_log(0).await?;
             assert_eq!(2, mems.len());
             let mem = mems[0].clone();
-            assert_eq!(
-                &Membership::new_with_defaults(vec![btreeset! {3,4,5}], []),
-                mem.membership(),
-            );
+            assert_eq!(&voters::<C>(btreeset! {3,4,5}), mem.membership());
 
             let mem = mems[1].clone();
-            assert_eq!(
-                &Membership::new_with_defaults(vec![btreeset! {5,6,7}], []),
-                mem.membership(),
-            );
+            assert_eq!(&voters::<C>(btreeset! {5,6,7}), mem.membership());
         }
 
         Ok(())
@@ -342,10 +324,7 @@ where
             let mem_state = StorageHelper::new(&mut store, &mut sm).get_membership().await?;
 
             assert_eq!(&StoredMembership::default(), mem_state.committed().as_ref());
-            assert_eq!(
-                &Membership::new_with_defaults(vec![btreeset! {1,2,3}], []),
-                mem_state.effective().membership(),
-            );
+            assert_eq!(&voters::<C>(btreeset! {1,2,3}), mem_state.effective().membership());
         }
 
         Ok(())
@@ -362,14 +341,8 @@ where
 
             let mem_state = StorageHelper::new(&mut store, &mut sm).get_membership().await?;
 
-            assert_eq!(
-                &Membership::new_with_defaults(vec![btreeset! {3,4,5}], []),
-                mem_state.committed().membership(),
-            );
-            assert_eq!(
-                &Membership::new_with_defaults(vec![btreeset! {3,4,5}], []),
-                mem_state.effective().membership(),
-            );
+            assert_eq!(&voters::<C>(btreeset! {3,4,5}), mem_state.committed().membership());
+            assert_eq!(&voters::<C>(btreeset! {3,4,5}), mem_state.effective().membership());
         }
         Ok(())
     }
@@ -396,14 +369,8 @@ where
 
             let mem_state = StorageHelper::new(&mut store, &mut sm).get_membership().await?;
 
-            assert_eq!(
-                &Membership::new_with_defaults(vec![btreeset! {3,4,5}], []),
-                mem_state.committed().membership(),
-            );
-            assert_eq!(
-                &Membership::new_with_defaults(vec![btreeset! {3,4,5}], []),
-                mem_state.effective().membership(),
-            );
+            assert_eq!(&voters::<C>(btreeset! {3,4,5}), mem_state.committed().membership());
+            assert_eq!(&voters::<C>(btreeset! {3,4,5}), mem_state.effective().membership());
         }
         Ok(())
     }
@@ -426,14 +393,8 @@ where
 
             let mem_state = StorageHelper::new(&mut store, &mut sm).get_membership().await?;
 
-            assert_eq!(
-                &Membership::new_with_defaults(vec![btreeset! {3,4,5}], []),
-                mem_state.committed().membership(),
-            );
-            assert_eq!(
-                &Membership::new_with_defaults(vec![btreeset! {7,8,9}], []),
-                mem_state.effective().membership(),
-            );
+            assert_eq!(&voters::<C>(btreeset! {3,4,5}), mem_state.committed().membership());
+            assert_eq!(&voters::<C>(btreeset! {7,8,9}), mem_state.effective().membership());
         }
         Ok(())
     }
@@ -458,14 +419,8 @@ where
 
             let mem_state = StorageHelper::new(&mut store, &mut sm).get_membership().await?;
 
-            assert_eq!(
-                &Membership::new_with_defaults(vec![btreeset! {7,8,9}], []),
-                mem_state.committed().membership(),
-            );
-            assert_eq!(
-                &Membership::new_with_defaults(vec![btreeset! {10,11}], []),
-                mem_state.effective().membership(),
-            );
+            assert_eq!(&voters::<C>(btreeset! {7,8,9}), mem_state.committed().membership());
+            assert_eq!(&voters::<C>(btreeset! {10,11}), mem_state.effective().membership());
         }
 
         Ok(())
@@ -544,7 +499,7 @@ where
             let initial = StorageHelper::new(&mut store, &mut sm).with_id(NODE_ID.into()).get_initial_state().await?;
 
             assert_eq!(
-                &Membership::new_with_defaults(vec![btreeset! {3,4,5}], []),
+                &voters::<C>(btreeset! {3,4,5}),
                 initial.membership_state.effective().membership(),
             );
         }
@@ -573,7 +528,7 @@ where
             let initial = StorageHelper::new(&mut store, &mut sm).with_id(NODE_ID.into()).get_initial_state().await?;
 
             assert_eq!(
-                &Membership::new_with_defaults(vec![btreeset! {3,4,5}], []),
+                &voters::<C>(btreeset! {3,4,5}),
                 initial.membership_state.effective().membership(),
             );
         }
@@ -603,7 +558,7 @@ where
             let initial = StorageHelper::new(&mut store, &mut sm).with_id(NODE_ID.into()).get_initial_state().await?;
 
             assert_eq!(
-                &Membership::new_with_defaults(vec![btreeset! {1,2,3}], []),
+                &voters::<C>(btreeset! {1,2,3}),
                 initial.membership_state.effective().membership(),
             );
         }
@@ -1374,10 +1329,7 @@ where
             let (applied, mem) = sm.applied_state().await?;
             assert_eq!(Some(log_id_0::<C>(1, 3)), applied);
             assert_eq!(
-                StoredMembershipOf::<C>::new(
-                    Some(log_id_0::<C>(1, 3)),
-                    Membership::new_with_defaults(vec![btreeset! {1,2}], [])
-                ),
+                StoredMembershipOf::<C>::new(Some(log_id_0::<C>(1, 3)), voters::<C>(btreeset! {1,2})),
                 mem
             );
         }
@@ -1389,10 +1341,7 @@ where
             let (applied, mem) = sm.applied_state().await?;
             assert_eq!(Some(log_id_0::<C>(1, 5)), applied);
             assert_eq!(
-                StoredMembershipOf::<C>::new(
-                    Some(log_id_0::<C>(1, 3)),
-                    Membership::new_with_defaults(vec![btreeset! {1,2}], [])
-                ),
+                StoredMembershipOf::<C>::new(Some(log_id_0::<C>(1, 3)), voters::<C>(btreeset! {1,2})),
                 mem
             );
         }
@@ -1586,10 +1535,7 @@ where
             let meta = snap.meta;
             assert_eq!(Some(log_id_0::<C>(0, 0)), meta.last_log_id);
             assert_eq!(&Some(log_id_0::<C>(0, 0)), meta.last_membership.log_id());
-            assert_eq!(
-                &Membership::new_with_defaults(vec![btreeset! {1,2}], []),
-                meta.last_membership.membership()
-            );
+            assert_eq!(&voters::<C>(btreeset! {1,2}), meta.last_membership.membership());
         }
 
         tracing::info!("--- one app log, one membership log");
@@ -1605,10 +1551,7 @@ where
             let meta = snap.meta;
             assert_eq!(Some(log_id_0::<C>(2, 2)), meta.last_log_id);
             assert_eq!(&Some(log_id_0::<C>(2, 2)), meta.last_membership.log_id());
-            assert_eq!(
-                &Membership::new_with_defaults(vec![btreeset! {3,4}], []),
-                meta.last_membership.membership()
-            );
+            assert_eq!(&voters::<C>(btreeset! {3,4}), meta.last_membership.membership());
         }
 
         Ok(())
@@ -1647,10 +1590,7 @@ where
             let (last_applied, mem) = sm.applied_state().await?;
 
             assert_eq!(last_applied, Some(log_id_0::<C>(1, 1)),);
-            assert_eq!(
-                mem.membership(),
-                &Membership::new_with_defaults(vec![btreeset! {1,2}], [])
-            );
+            assert_eq!(mem.membership(), &voters::<C>(btreeset! {1,2}));
         }
 
         // TODO: figure out how to test applying normal entry. `C::D` cannot be built by Openraft
@@ -1682,10 +1622,7 @@ where
 
         let (last_applied, mem) = sm.applied_state().await?;
         assert_eq!(last_applied, Some(log_id_0::<C>(1, 1)),);
-        assert_eq!(
-            mem.membership(),
-            &Membership::new_with_defaults(vec![btreeset! {1,2}], [])
-        );
+        assert_eq!(mem.membership(), &voters::<C>(btreeset! {1,2}));
 
         Ok(())
     }
@@ -1706,10 +1643,8 @@ where
         let snapshot_entries = vec![membership_ent_0::<C>(1, 2, btreeset! {1, 2, 3}), blank_ent_0::<C>(3, 3)];
         apply(&mut sm_l, snapshot_entries).await?;
         let snapshot_last_log_id = Some(log_id_0::<C>(3, 3));
-        let snapshot_last_membership = StoredMembershipOf::<C>::new(
-            Some(log_id_0::<C>(1, 2)),
-            Membership::new_with_defaults(vec![btreeset![1, 2, 3]], []),
-        );
+        let snapshot_last_membership =
+            StoredMembershipOf::<C>::new(Some(log_id_0::<C>(1, 2)), voters::<C>(btreeset![1, 2, 3]));
         let snapshot_applied_state = (snapshot_last_log_id.clone(), snapshot_last_membership.clone());
 
         tracing::info!("--- build and get snapshot on leader state machine");
@@ -1783,14 +1718,27 @@ where
     C::Entry::new_blank(log_id::<C>(term, 0, index))
 }
 
+/// Build a membership in which every ID of `ids` is a voter with a default node.
+fn voters<C>(ids: BTreeSet<C::NodeId>) -> C::Membership
+where
+    C: RaftTypeConfig,
+    C::Membership: From<BTreeMap<C::NodeId, C::Node>>,
+    C::Node: Default,
+{
+    let nodes = ids.into_iter().map(|id| (id, C::Node::default()));
+    let nodes: BTreeMap<_, _> = nodes.collect();
+    C::Membership::from(nodes)
+}
+
 /// Create a membership entry with node_id 0 for test.
 fn membership_ent_0<C>(term: impl Into<C::Term>, index: u64, bs: BTreeSet<C::NodeId>) -> C::Entry
 where
-    C: RaftTypeConfig<Membership = Membership<NodeIdOf<C>, NodeOf<C>, ErrorSourceOf<C>>>,
+    C: RaftTypeConfig,
+    C::Membership: From<BTreeMap<C::NodeId, C::Node>>,
     C::NodeId: From<u64>,
     C::Node: Default,
 {
-    C::Entry::new_membership(log_id_0::<C>(term, index), Membership::new_with_defaults(vec![bs], []))
+    C::Entry::new_membership(log_id_0::<C>(term, index), voters::<C>(bs))
 }
 
 /// Build a `RaftLogStorage` and `RaftStateMachine` implementation and run a test on it.
