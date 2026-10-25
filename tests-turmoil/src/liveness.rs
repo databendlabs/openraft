@@ -9,8 +9,11 @@
 
 use std::collections::BTreeSet;
 
+use openraft::membership::RaftMembership;
+
 use crate::cluster::FullNodeSnapshot;
 use crate::typ::NodeId;
+use crate::write_configs::WriteConfigs;
 
 /// The healed state: the leader and the members that were verified identical.
 #[derive(Debug, Clone)]
@@ -42,7 +45,7 @@ pub fn check_converged(snapshots: &[(NodeId, FullNodeSnapshot)]) -> Result<Conve
         .filter(|id| {
             let (_, s) = snapshots.iter().find(|(sid, _)| sid == id).expect("claimant must be in snapshots");
             let m = s.raft.membership_config.membership();
-            let mut member_ids = m.voter_ids().chain(m.non_write_voter_ids());
+            let mut member_ids = m.node_ids();
             member_ids.any(|member| member == *id)
         })
         .collect();
@@ -56,11 +59,11 @@ pub fn check_converged(snapshots: &[(NodeId, FullNodeSnapshot)]) -> Result<Conve
     let (_, ls) = snapshots.iter().find(|(id, _)| *id == leader).expect("leader must be in snapshots");
 
     let membership = ls.raft.membership_config.membership();
-    if membership.get_joint_config().len() != 1 {
+    if membership.write_configs().len() != 1 {
         return Err(format!("leader n{leader} still in joint membership {membership}"));
     }
 
-    let member_ids = membership.voter_ids().chain(membership.non_write_voter_ids());
+    let member_ids = membership.node_ids();
     let members: BTreeSet<NodeId> = member_ids.collect();
 
     // The leader itself must have applied everything it holds.
@@ -140,7 +143,7 @@ mod tests {
 
         let sets: Vec<std::collections::BTreeSet<NodeId>> =
             voters.into_iter().map(|v| v.into_iter().collect()).collect();
-        let mem = openraft::Membership::new_with_defaults(sets, learners);
+        let mem = crate::typ::majority_membership(sets, learners);
         raft.membership_config = Arc::new(StoredMembership::new(Some(log_id(1, 1, 1)), mem));
 
         let mut sm = StateMachineData {
