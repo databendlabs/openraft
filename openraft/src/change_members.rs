@@ -5,6 +5,7 @@
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::convert::Infallible;
 use std::fmt;
 
 use display_more::DisplayBTreeSetExt;
@@ -142,8 +143,77 @@ where
     NID: NodeId,
     N: Node,
 {
-    fn apply(self, membership: &Membership<NID, N>) -> Result<Membership<NID, N>, MembershipError<NID>> {
-        membership.change(self)
+    type Error = Infallible;
+
+    fn apply(self, membership: &Membership<NID, N>) -> Result<Membership<NID, N>, MembershipError<NID, Self::Error>> {
+        tracing::debug!("{}: change: {:?}", func_name!(), self);
+
+        let mut target = membership.clone();
+        let mut pending = vec![self];
+        while let Some(change) = pending.pop() {
+            let configs = target.get_joint_config();
+            let last = configs.last();
+            let last = last.cloned().unwrap_or_default();
+
+            let new_voter_ids = match change {
+                ChangeMembers::AddVoterIds(add_voter_ids) => {
+                    let voter_ids = last.union(&add_voter_ids);
+                    let voter_ids = voter_ids.cloned().collect();
+                    Some(voter_ids)
+                }
+                ChangeMembers::AddVoters(add_voters) => {
+                    target.nodes = Membership::extend_nodes(target.nodes, &add_voters);
+                    let node_ids = add_voters.keys();
+                    let add_voter_ids = node_ids.cloned().collect::<BTreeSet<_>>();
+                    let voter_ids = last.union(&add_voter_ids);
+                    let voter_ids = voter_ids.cloned().collect();
+                    Some(voter_ids)
+                }
+                ChangeMembers::RemoveVoters(remove_voter_ids) => {
+                    let voter_ids = last.difference(&remove_voter_ids);
+                    let voter_ids = voter_ids.cloned().collect();
+                    Some(voter_ids)
+                }
+                ChangeMembers::ReplaceAllVoters(all_voter_ids) => Some(all_voter_ids),
+                ChangeMembers::AddNodes(add_nodes) => {
+                    for (node_id, node) in add_nodes {
+                        target.nodes.entry(node_id).or_insert(node);
+                    }
+                    None
+                }
+                ChangeMembers::SetNodes(set_nodes) => {
+                    for (node_id, node) in set_nodes {
+                        target.nodes.insert(node_id, node);
+                    }
+                    None
+                }
+                ChangeMembers::RemoveNodes(remove_node_ids) => {
+                    for node_id in &remove_node_ids {
+                        target.nodes.remove(node_id);
+                    }
+                    None
+                }
+                ChangeMembers::ReplaceAllNodes(all_nodes) => {
+                    target.nodes = all_nodes;
+                    None
+                }
+                ChangeMembers::Batch(batch) => {
+                    let changes = batch.into_iter().rev();
+                    pending.extend(changes);
+                    None
+                }
+            };
+
+            if let Some(voter_ids) = new_voter_ids {
+                target.configs = vec![voter_ids];
+            }
+        }
+
+        // Membership changes are evaluated on an initialized leader.
+        let target_voter_ids = target.configs.pop().unwrap();
+        target.configs = vec![target_voter_ids];
+        tracing::debug!("target membership: {}", target);
+        Ok(target)
     }
 
     fn add_learner(node_id: NID, node: N) -> Self {
@@ -153,5 +223,31 @@ where
 
     fn make_uniform() -> Self {
         ChangeMembers::AddVoterIds(BTreeSet::new())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use maplit::btreemap;
+    use maplit::btreeset;
+
+    use super::ChangeMembers;
+    use crate::Membership;
+    use crate::membership::RaftMembershipEdit;
+
+    #[test]
+    fn nested_batch_applies_edits_in_order_before_finishing_target() {
+        let add = ChangeMembers::AddNodes(btreemap! {1 => 10, 2 => 20});
+        let voters = ChangeMembers::ReplaceAllVoters(btreeset! {1, 2});
+        let update = ChangeMembers::SetNodes(btreemap! {2 => 21});
+        let nested = ChangeMembers::Batch(vec![voters, update]);
+        let remove = ChangeMembers::RemoveVoters(btreeset! {1});
+        let edit = ChangeMembers::Batch(vec![add, nested, remove]);
+        let membership = Membership::<u64, u64>::default();
+        let actual = edit.apply(&membership);
+        let expected = Membership::new(vec![btreeset! {2}], btreemap! {1 => 10, 2 => 21});
+        let expected = expected.unwrap();
+        let expected = Ok(expected);
+        assert_eq!(expected, actual);
     }
 }
