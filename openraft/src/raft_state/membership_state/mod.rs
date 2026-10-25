@@ -180,7 +180,7 @@ where
         change: Edit,
         retain: bool,
         allow_unproven: bool,
-    ) -> Result<(Mem, bool), ChangeMembershipError<CLID, Mem::NodeId>>
+    ) -> Result<(Mem, bool), ChangeMembershipError<CLID, Mem::NodeId, Mem::ErrorSource>>
     where
         Edit: RaftMembershipEdit<Mem>,
     {
@@ -189,7 +189,7 @@ where
         let effective = self.effective().membership();
         let mut goal = change.apply(effective)?;
         goal.ensure_non_empty_config()?;
-        goal.ensure_voters_have_nodes().map_err(MembershipError::from)?;
+        goal.ensure_voters_have_nodes().map_err(MembershipError::<_, Mem::ErrorSource>::from)?;
         goal.ensure_read_write_quorums_intersect(allow_unproven)?;
         if !retain {
             goal = effective.drop_voters_demoted_to_learners(goal);
@@ -229,10 +229,10 @@ where
         &self,
         proposed: &Mem,
         allow_unproven: bool,
-    ) -> Result<(), ChangeMembershipError<CLID, Mem::NodeId>> {
+    ) -> Result<(), ChangeMembershipError<CLID, Mem::NodeId, Mem::ErrorSource>> {
         self.ensure_committed()?;
         proposed.ensure_non_empty_config()?;
-        proposed.ensure_voters_have_nodes().map_err(MembershipError::from)?;
+        proposed.ensure_voters_have_nodes().map_err(MembershipError::<_, Mem::ErrorSource>::from)?;
         proposed.ensure_read_write_quorums_intersect(allow_unproven)?;
 
         let effective = self.effective().membership();

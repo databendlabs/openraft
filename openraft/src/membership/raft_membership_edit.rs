@@ -30,7 +30,7 @@ where
     /// satisfy the intersection requirements of [`RaftMembership::QuorumSet`]. OpenRaft checks
     /// these conditions before appending it.
     #[since(version = "0.10.0")]
-    fn apply(self, membership: &M) -> Result<M, MembershipError<M::NodeId>>;
+    fn apply(self, membership: &M) -> Result<M, MembershipError<M::NodeId, M::ErrorSource>>;
 
     /// Returns an edit that adds `node_id` with `node` as a learner.
     ///

@@ -1,14 +1,16 @@
 use std::collections::BTreeSet;
 
 use crate::Membership;
+use crate::errors::ErrorSource;
 use crate::node::Node;
 use crate::node::NodeId;
 use crate::quorum::QuorumSet;
 
-impl<NID, N> QuorumSet for Membership<NID, N>
+impl<NID, N, E> QuorumSet for Membership<NID, N, E>
 where
     NID: NodeId,
     N: Node,
+    E: ErrorSource,
 {
     type Id = NID;
     type Iter = std::collections::btree_set::IntoIter<NID>;
@@ -48,6 +50,7 @@ mod tests {
         // Single config: simple majority.
         {
             let m12345 = Membership::<u64, ()> {
+                _error_source: std::marker::PhantomData,
                 configs: vec![btreeset! {1,2,3,4,5}],
                 nodes: btreemap! {},
             };
@@ -63,6 +66,7 @@ mod tests {
         // Joint config: must be a majority in every config.
         {
             let m12345_678 = Membership::<u64, ()> {
+                _error_source: std::marker::PhantomData,
                 configs: vec![btreeset! {1,2,3,4,5}, btreeset! {6,7,8}],
                 nodes: btreemap! {},
             };
@@ -81,6 +85,7 @@ mod tests {
     #[test]
     fn test_membership_ids() -> anyhow::Result<()> {
         let m12345_678 = Membership::<u64, ()> {
+            _error_source: std::marker::PhantomData,
             configs: vec![btreeset! {1,2,3,4,5}, btreeset! {4,5,6,7,8}],
             nodes: btreemap! {},
         };

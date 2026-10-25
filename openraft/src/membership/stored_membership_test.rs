@@ -1,10 +1,30 @@
 use maplit::btreeset;
 
 use crate::Membership;
+use crate::StoredMembership;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
+use crate::impls::BoxedErrorSource;
 use crate::quorum::QuorumSet;
 use crate::type_config::alias::StoredMembershipOf;
+
+#[test]
+fn test_stored_membership_custom_error_source() {
+    let configs = vec![btreeset! {1, 2, 3}];
+    let membership = Membership::<u64, (), BoxedErrorSource>::new_with_defaults(configs.clone(), [4]);
+    let log_id = Some(log_id(1, 1, 1));
+    let stored = StoredMembership::new(log_id, membership);
+    let nodes = stored.nodes().collect::<Vec<_>>();
+    assert_eq!(nodes, vec![(&1, &()), (&2, &()), (&3, &()), (&4, &())]);
+    let joint_config = stored.get_joint_config();
+    assert_eq!(joint_config, &configs);
+    let ids = stored.ids().collect::<Vec<_>>();
+    assert_eq!(ids, vec![1, 2, 3]);
+    let has_quorum = stored.is_quorum([1, 2].iter());
+    assert!(has_quorum);
+    let lacks_quorum = stored.is_quorum([1, 4].iter());
+    assert!(!lacks_quorum);
+}
 
 #[test]
 fn test_stored_membership_campaigners() {

@@ -13,6 +13,7 @@ use openraft_macros::since;
 
 use crate::Membership;
 use crate::display_ext::DisplayBTreeMapDebugValueExt;
+use crate::errors::ErrorSource;
 use crate::errors::MembershipError;
 use crate::membership::RaftMembershipEdit;
 use crate::node::Node;
@@ -137,12 +138,13 @@ where
     }
 }
 
-impl<NID, N> RaftMembershipEdit<Membership<NID, N>> for ChangeMembers<NID, N>
+impl<NID, N, E> RaftMembershipEdit<Membership<NID, N, E>> for ChangeMembers<NID, N>
 where
     NID: NodeId,
     N: Node,
+    E: ErrorSource,
 {
-    fn apply(self, membership: &Membership<NID, N>) -> Result<Membership<NID, N>, MembershipError<NID>> {
+    fn apply(self, membership: &Membership<NID, N, E>) -> Result<Membership<NID, N, E>, MembershipError<NID, E>> {
         membership.change(self)
     }
 

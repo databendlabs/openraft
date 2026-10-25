@@ -26,5 +26,6 @@ pub mod oracle;
 mod scenarios;
 pub mod store;
 pub mod typ;
+pub mod write_configs;
 
 pub use typ::*;

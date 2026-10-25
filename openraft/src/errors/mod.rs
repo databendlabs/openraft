@@ -31,6 +31,7 @@ use std::collections::BTreeSet;
 use std::error::Error;
 use std::time::Duration;
 
+use anyerror::AnyError;
 use openraft_macros::since;
 
 pub use self::allow_next_revert_error::AllowNextRevertError;
@@ -118,7 +119,7 @@ where C: RaftTypeConfig
 
     /// When writing a change-membership entry.
     #[error(transparent)]
-    ChangeMembershipError(#[from] ChangeMembershipError<CommittedLeaderIdOf<C>, C::NodeId>),
+    ChangeMembershipError(#[from] ChangeMembershipError<CommittedLeaderIdOf<C>, C::NodeId, C::ErrorSource>),
 
     /// A [`Precondition`] attached to the request is not satisfied.
     ///
@@ -140,6 +141,10 @@ where C: RaftTypeConfig
 }
 
 /// The set of errors which may take place when requesting to propose a config change.
+#[since(
+    version = "0.10.0",
+    change = "added `UserDefined` variant and configurable error source `E`"
+)]
 #[since(version = "0.10.0", change = "added `UnprovenReadWriteIntersection` variant")]
 #[since(
     version = "0.10.0",
@@ -151,10 +156,11 @@ where C: RaftTypeConfig
 )]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum ChangeMembershipError<CLID, NID>
+pub enum ChangeMembershipError<CLID, NID, E = AnyError>
 where
     CLID: RaftCommittedLeaderId,
     NID: NodeId,
+    E: ErrorSource,
 {
     /// A membership change is already in progress.
     #[error(transparent)]
@@ -188,6 +194,13 @@ where
     #[since(version = "0.10.0")]
     #[error(transparent)]
     UnprovenReadWriteIntersection(#[from] UnprovenReadWriteIntersection),
+
+    /// The [`RaftMembership`] implementation rejected the change for a reason of its own.
+    ///
+    /// [`RaftMembership`]: crate::membership::RaftMembership
+    #[since(version = "0.10.0")]
+    #[error("user-defined membership error: {0}")]
+    UserDefined(E),
 }
 
 /// The set of errors which may take place when initializing a pristine Raft node.
@@ -209,7 +222,7 @@ where C: RaftTypeConfig
     /// OpenRaft cannot prove that its read quorums intersect its write quorums.
     #[since(version = "0.10.0")]
     #[error(transparent)]
-    InvalidMembership(#[from] MembershipError<C::NodeId>),
+    InvalidMembership(#[from] MembershipError<C::NodeId, C::ErrorSource>),
 }
 
 /// Error occurs when invoking a remote raft API.

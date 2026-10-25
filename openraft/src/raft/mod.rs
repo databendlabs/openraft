@@ -246,7 +246,7 @@ macro_rules! declare_raft_types {
                 (Term         , , u64                                          ),
                 (LeaderId     , , $crate::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId> ),
                 (Vote           , , $crate::impls::Vote<Self::LeaderId>            ),
-                (Membership     , , $crate::impls::Membership<Self::NodeId, Self::Node> ),
+                (Membership     , , $crate::impls::Membership<Self::NodeId, Self::Node, Self::ErrorSource> ),
                 (MembershipEdit , , $crate::ChangeMembers<Self::NodeId, Self::Node> ),
                 (Payload        , , $crate::EntryPayload<Self::D, Self::Membership> ),
                 (Entry          , , $crate::Entry<<Self::LeaderId as $crate::vote::RaftLeaderId>::Committed, Self::Payload> ),

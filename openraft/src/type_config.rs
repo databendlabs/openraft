@@ -64,7 +64,7 @@ use crate::vote::raft_vote::RaftVote;
 ///         Term             = u64,
 ///         LeaderId         = openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>,
 ///         Vote             = openraft::impls::Vote<Self::LeaderId>,
-///         Membership       = openraft::impls::Membership<Self::NodeId, Self::Node>,
+///         Membership       = openraft::impls::Membership<Self::NodeId, Self::Node, Self::ErrorSource>,
 ///         MembershipEdit   = openraft::ChangeMembers<Self::NodeId, Self::Node>,
 ///         Payload          = openraft::EntryPayload<Self::D, Self::Membership>,
 ///         Entry            = openraft::impls::Entry<
@@ -134,12 +134,13 @@ pub trait RaftTypeConfig:
     ///
     /// It defines the read and write quorum rules and the roles of each node.
     #[since(version = "0.10.0")]
-    type Membership: RaftMembership<NodeId = Self::NodeId, Node = Self::Node>;
+    type Membership: RaftMembership<NodeId = Self::NodeId, Node = Self::Node, ErrorSource = Self::ErrorSource>;
 
     /// Membership operations, selected independently of the membership representation.
     ///
-    /// The macro defaults to [`ChangeMembers`](crate::ChangeMembers). A custom edit implements
-    /// [`RaftMembershipEdit`] for the selected membership.
+    /// The macro defaults to [`ChangeMembers`](crate::ChangeMembers). Select
+    /// [`ThresholdChange`](crate::impls::ThresholdChange) for threshold membership, or a custom
+    /// edit that implements [`RaftMembershipEdit`] for the selected membership.
     #[since(version = "0.10.0")]
     type MembershipEdit: RaftMembershipEdit<Self::Membership>;
 
@@ -175,9 +176,9 @@ pub trait RaftTypeConfig:
     type Batch<T>: Batch<T>
     where T: OptionalSend + 'static;
 
-    /// Error wrapper type for storage and network errors.
+    /// Error wrapper type for storage, network, and membership errors.
     ///
-    /// This type is used to wrap underlying errors in storage and network operations.
+    /// This type is used to wrap underlying errors in storage, network, and membership operations.
     /// The default implementation uses [`anyerror::AnyError`].
     ///
     /// Custom implementations can provide:
@@ -279,7 +280,8 @@ pub mod alias {
     pub type SnapshotOf<C, SD> = crate::storage::Snapshot<CommittedLeaderIdOf<C>, MembershipOf<C>, SD>;
     pub type SmSnapshotOf<C, SM> = SnapshotOf<C, SnapshotDataOf<C, SM>>;
     pub type MembershipStateOf<C> = crate::MembershipState<CommittedLeaderIdOf<C>, MembershipOf<C>>;
-    pub type ChangeMembershipErrorOf<C> = crate::errors::ChangeMembershipError<CommittedLeaderIdOf<C>, NodeIdOf<C>>;
+    pub type ChangeMembershipErrorOf<C> =
+        crate::errors::ChangeMembershipError<CommittedLeaderIdOf<C>, NodeIdOf<C>, ErrorSourceOf<C>>;
     pub type InProgressOf<C> = crate::errors::InProgress<CommittedLeaderIdOf<C>>;
     pub type SerdeInstantOf<C> = crate::metrics::SerdeInstant<InstantOf<C>>;
 

@@ -129,6 +129,7 @@ impl fmt::Display for MinimalQuorumsMembership {
 impl RaftMembership for MinimalQuorumsMembership {
     type NodeId = u64;
     type Node = ();
+    type ErrorSource = openraft::impls::BoxedErrorSource;
     type QuorumSet = MinimalQuorums;
 
     fn read_quorum_set(&self) -> &MinimalQuorums {
@@ -175,7 +176,10 @@ impl RaftMembership for MinimalQuorumsMembership {
 }
 
 impl RaftMembershipEdit<MinimalQuorumsMembership> for ChangeMembers<u64, ()> {
-    fn apply(self, _membership: &MinimalQuorumsMembership) -> Result<MinimalQuorumsMembership, MembershipError<u64>> {
+    fn apply(
+        self,
+        _membership: &MinimalQuorumsMembership,
+    ) -> Result<MinimalQuorumsMembership, MembershipError<u64, openraft::impls::BoxedErrorSource>> {
         unimplemented!("the test never changes the membership")
     }
 
