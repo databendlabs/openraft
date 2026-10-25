@@ -15,7 +15,7 @@ use crate::raft::ChangeMembershipRequest;
 
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-struct CustomPayload(EntryPayload<u64, u64, ()>);
+struct CustomPayload(EntryPayload<u64, Membership<u64, ()>>);
 
 impl fmt::Display for CustomPayload {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -25,8 +25,7 @@ impl fmt::Display for CustomPayload {
 
 impl RaftPayload for CustomPayload {
     type D = u64;
-    type NodeId = u64;
-    type Node = ();
+    type Membership = Membership<u64, ()>;
 
     fn blank() -> Self {
         Self(EntryPayload::blank())
@@ -108,7 +107,7 @@ fn test_payload_type() {
 
     assert_payload::<WithCustomPayload, CustomPayload>();
     #[cfg(feature = "tokio-rt")]
-    assert_payload::<Empty, EntryPayload<String, u64, crate::impls::BasicNode>>();
+    assert_payload::<Empty, EntryPayload<String, Membership<u64, crate::impls::BasicNode>>>();
 }
 
 #[test]

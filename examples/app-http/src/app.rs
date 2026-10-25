@@ -9,12 +9,14 @@ use openraft::RaftMetrics;
 use openraft::RaftTypeConfig;
 use openraft::ReadPolicy;
 use openraft::alias::LogIdOf;
+use openraft::alias::MembershipEditOf;
 use openraft::async_runtime::WatchReceiver;
 use openraft::errors::ClientWriteError;
 use openraft::errors::Infallible;
 use openraft::errors::InitializeError;
 use openraft::errors::LinearizableReadError;
 use openraft::errors::decompose::DecomposeResult;
+use openraft::membership::RaftMembershipEdit;
 use openraft::raft::ClientWriteResponse;
 use openraft::raft::linearizable_read::Linearizer;
 use openraft::raft::linearizable_read::ReadLogId;
@@ -76,10 +78,12 @@ where
         self: Arc<Self>,
         node_ids: BTreeSet<C::NodeId>,
     ) -> Result<ClientWriteResponse<C>, ClientWriteError<C>> {
-        self.raft.change_membership(node_ids, false).await.decompose().unwrap()
+        let edit = MembershipEditOf::<C>::replace_all_voters(node_ids);
+        self.raft.change_membership(edit, false).await.decompose().unwrap()
     }
 
-    pub async fn init(self: Arc<Self>, req: Vec<(C::NodeId, NodeInfo)>) -> Result<(), InitializeError<C>> {
+    pub async fn init(self: Arc<Self>, req: Vec<(C::NodeId, NodeInfo)>) -> Result<(), InitializeError<C>>
+    where C::Membership: From<BTreeMap<C::NodeId, NodeInfo>> {
         let mut nodes = BTreeMap::new();
         if req.is_empty() {
             nodes.insert(
@@ -126,7 +130,7 @@ where
         };
 
         let metrics = self.raft.metrics().borrow_watched().clone();
-        let Some(leader_node) = metrics.membership_config.membership().get_node(&leader_id) else {
+        let Some(leader_node) = metrics.membership_config.get_node(&leader_id) else {
             return Err(FollowerReadError {
                 message: format!("Leader node {} not found in membership", leader_id),
             });

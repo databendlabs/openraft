@@ -37,6 +37,8 @@ pub use openraft_rt_tokio::TokioRuntime;
 pub use crate::entry::Entry;
 #[since(version = "0.10.0", change = "re-exported from `impls`")]
 pub use crate::entry::EntryPayload;
+#[since(version = "0.10.0", change = "re-exported from `impls`")]
+pub use crate::membership::Membership;
 pub use crate::node::BasicNode;
 pub use crate::node::EmptyNode;
 pub use crate::node::NodeInfo;

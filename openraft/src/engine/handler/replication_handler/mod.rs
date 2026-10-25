@@ -6,7 +6,6 @@ use progress::entry::update::Updater;
 use validit::Valid;
 
 use crate::LogIdOptionExt;
-use crate::Membership;
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::engine::Command;
@@ -16,6 +15,7 @@ use crate::engine::TargetProgress;
 use crate::engine::handler::log_handler::LogHandler;
 use crate::errors::NodeNotFound;
 use crate::errors::Operation;
+use crate::membership::RaftMembership;
 use crate::progress;
 use crate::progress::IdVal;
 use crate::progress::Inflight;
@@ -91,7 +91,7 @@ where
     ///
     /// It is called by the leader when a new membership log is appended to the log store.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn append_membership(&mut self, log_id: &LogIdOf<C>, m: &Membership<C::NodeId, C::Node>) {
+    pub(crate) fn append_membership(&mut self, log_id: &LogIdOf<C>, m: &C::Membership) {
         tracing::debug!("update effective membership: log_id:{} {}", log_id, m);
 
         self.state

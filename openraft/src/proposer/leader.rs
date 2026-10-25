@@ -6,11 +6,12 @@ use std::time::Duration;
 use validit::Valid;
 
 use crate::LogIdOptionExt;
-use crate::Membership;
 use crate::RaftTypeConfig;
 use crate::base::shared_id_generator::SharedIdGenerator;
 use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::errors::QuorumNotEnough;
+use crate::membership::RaftMembership;
+use crate::membership::RaftMembershipExt;
 use crate::progress::IdVal;
 use crate::progress::VecProgress;
 use crate::progress::entry::ProgressEntry;
@@ -108,7 +109,7 @@ where C: RaftTypeConfig
     #[allow(clippy::clone_on_copy)]
     pub(crate) fn new(
         vote: CommittedVoteOf<C>,
-        membership: Membership<C::NodeId, C::Node>,
+        membership: C::Membership,
         last_leader_log_ids: Option<LeaderLogIds<CommittedLeaderIdOf<C>>>,
         id_gen: SharedIdGenerator,
     ) -> Self {
@@ -270,8 +271,7 @@ where
     /// out because they never grant a value. This leader is always included when it is a voter: it
     /// grants its own RPCs, while [`Self::update_clock`] records that grant only once a follower
     /// responds.
-    pub(crate) fn clock_quorum_not_enough(&self, min_acked_at: SendStamp<InstantOf<C>>) -> QuorumNotEnough<C>
-    where QS: fmt::Display {
+    pub(crate) fn clock_quorum_not_enough(&self, min_acked_at: SendStamp<InstantOf<C>>) -> QuorumNotEnough<C> {
         let voter_count = self.clock_progress.voter_count();
 
         let mut got: BTreeSet<C::NodeId> = self
@@ -288,7 +288,7 @@ where
         }
 
         QuorumNotEnough {
-            cluster: self.clock_progress.quorum_set().to_string(),
+            cluster: format!("{:?}", self.clock_progress.quorum_set()),
             got,
         }
     }
@@ -573,7 +573,7 @@ mod tests {
     fn test_clock_quorum_not_enough() {
         // Voters {1,2,3} with learner {4}; node 1 is the leader.
         let membership = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1, 2, 3}], [4]);
-        let cluster = membership.to_string();
+        let cluster = "[{1, 2, 3}]";
         let vote = Vote::new(2, 1).to_committed();
         let mut leading = Leader::<UTConfig, _>::new(vote, membership, None, SharedIdGenerator::new());
 

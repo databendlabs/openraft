@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::fmt::Display;
@@ -94,6 +95,7 @@ where D: Send + Sync + 'static
 impl<C, SM, Data> Server<App<C, SM, Data>>
 where
     C: RaftTypeConfig<Node = NodeInfo>,
+    C::Membership: From<BTreeMap<C::NodeId, NodeInfo>>,
     SM: RaftStateMachine<C>,
     App<C, SM, Data>: Send + Sync + 'static,
 {
