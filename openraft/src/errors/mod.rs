@@ -31,6 +31,7 @@ use std::collections::BTreeSet;
 use std::error::Error;
 use std::time::Duration;
 
+use anyerror::AnyError;
 use openraft_macros::since;
 
 pub use self::allow_next_revert_error::AllowNextRevertError;
@@ -140,6 +141,7 @@ where C: RaftTypeConfig
 }
 
 /// The set of errors which may take place when requesting to propose a config change.
+#[since(version = "0.10.0", change = "added `UserDefined` variant")]
 #[since(version = "0.10.0", change = "added `UnprovenReadWriteIntersection` variant")]
 #[since(
     version = "0.10.0",
@@ -188,6 +190,13 @@ where
     #[since(version = "0.10.0")]
     #[error(transparent)]
     UnprovenReadWriteIntersection(#[from] UnprovenReadWriteIntersection),
+
+    /// The [`RaftMembership`] implementation rejected the change for a reason of its own.
+    ///
+    /// [`RaftMembership`]: crate::membership::RaftMembership
+    #[since(version = "0.10.0")]
+    #[error("user-defined membership error: {0}")]
+    UserDefined(AnyError),
 }
 
 /// The set of errors which may take place when initializing a pristine Raft node.

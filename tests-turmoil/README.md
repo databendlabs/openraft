@@ -46,7 +46,7 @@ The checker lives in `src/invariants/`, with one file per property. Each propert
 | Log Matching            | §3.5     | `NoLogDivergence`               | Same index ⇒ same committed-leader id on any two committed logs                      |
 | Leader Completeness     | §3.6.3   | `LeaderHasAllAckedValues`       | A later leader must have every entry committed by any earlier leader                 |
 | State Machine Safety    | §3.6.3   | (implicit)                      | Same applied log id ⇒ identical state machine data                                   |
-| Committed On Quorum     | —        | `CommittedEntriesReachMajority` | A leader's own just-committed index is present on a voter quorum                     |
+| Committed On Quorum     | —        | `CommittedEntriesReachMajority` | A leader's own just-committed index is present on a write quorum                     |
 | Committed Immutable     | derived  | (history-based)                 | Once an index is reported committed, its leader id never changes across ticks        |
 | State Ordering          | —        | (implementation sanity)         | `purged ≤ snapshot ≤ applied ≤ committed ≤ last_log` on every node                   |
 | Monotonic Term          | §3.3     | `MonotonicTerm`                 | A node's `current_term` never decreases across ticks                                 |
@@ -121,6 +121,10 @@ The harness was validated by re-introducing a fixed bug and confirming detection
 cd tests-turmoil            # required: picks up .cargo/config.toml
 cargo run --release --bin fuzz -- --seed 500 --iterations 20 --max-steps 50000
 ```
+
+Build with `--features threshold-membership` to run the cluster with `ThresholdMembership` instead of the default `Membership`.
+Every membership change then also picks a random write size, and some changes set only that size. The read size is derived automatically.
+`make detsim-threshold` runs this mode.
 
 | Argument       | Default        | Description                                                        |
 |----------------|----------------|--------------------------------------------------------------------|
