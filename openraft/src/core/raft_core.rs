@@ -12,9 +12,7 @@ use tracing::Instrument;
 use tracing::Level;
 use tracing::Span;
 
-use crate::ChangeMembers;
 use crate::Instant;
-use crate::Membership;
 use crate::OptionalSend;
 use crate::RaftState;
 use crate::RaftTypeConfig;
@@ -131,6 +129,7 @@ use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::MembershipEditOf;
 use crate::type_config::alias::MembershipStateOf;
 use crate::type_config::alias::MpscReceiverOf;
 use crate::type_config::alias::MpscSenderOf;
@@ -175,15 +174,16 @@ impl<C: RaftTypeConfig> fmt::Display for ApplyResult<C> {
 
 fn apply_membership_to_payload<C>(
     membership_state: &MembershipStateOf<C>,
-    changes: ChangeMembers<C::NodeId, C::Node>,
+    changes: MembershipEditOf<C>,
     retain: bool,
     payloads: MembershipPayloads<C>,
 ) -> Result<C::Payload, ChangeMembershipErrorOf<C>>
 where
     C: RaftTypeConfig,
 {
-    let membership = membership_state.next_membership(changes, retain)?;
-    let payload = payloads.select(membership);
+    let (membership, joint) = membership_state.next_membership(changes, retain)?;
+    let finished = !joint;
+    let payload = payloads.select(membership, finished);
     Ok(payload)
 }
 
@@ -473,7 +473,7 @@ where
     #[tracing::instrument(level = "debug", skip(self, payloads, tx, preconditions))]
     pub(super) fn change_membership(
         &mut self,
-        changes: ChangeMembers<C::NodeId, C::Node>,
+        changes: MembershipEditOf<C>,
         retain: bool,
         preconditions: BatchOf<C, Precondition<C>>,
         payloads: MembershipPayloads<C>,
@@ -894,14 +894,8 @@ where
     ///
     /// [precondition]: crate::docs::cluster_control::cluster_formation#preconditions-for-initialization
     #[tracing::instrument(level = "debug", skip(self, tx))]
-    pub(crate) fn handle_initialize(
-        &mut self,
-        member_nodes: BTreeMap<C::NodeId, C::Node>,
-        tx: ResultSender<C, (), InitializeError<C>>,
-    ) {
-        tracing::debug!("{}: member_nodes: {:?}", func_name!(), member_nodes);
-
-        let membership = Membership::from(member_nodes);
+    pub(crate) fn handle_initialize(&mut self, membership: C::Membership, tx: ResultSender<C, (), InitializeError<C>>) {
+        tracing::debug!("{}: membership: {}", func_name!(), membership);
 
         let res = self.engine.initialize(membership);
 
@@ -2778,8 +2772,7 @@ mod tests {
 
     impl RaftPayload for TestPayload {
         type D = u64;
-        type NodeId = u64;
-        type Node = ();
+        type Membership = Membership<u64, ()>;
 
         fn blank() -> Self {
             Self {
@@ -2883,11 +2876,11 @@ mod tests {
         assert_eq!(expected, actual);
 
         let returned = unused_rx.try_recv().unwrap();
-        assert_eq!(TestPayload::normal(2), returned);
+        assert_eq!(Some(TestPayload::normal(2)), returned);
     }
 
     /// Adding a node moves no voter, so the computed membership is uniform and the uniform
-    /// payload carries it, sending the joint payload back to the caller.
+    /// payload carries it. The caller gets `None` back, because no second step follows.
     #[test]
     fn uniform_membership_selects_uniform_payload() {
         let current = Membership::new_with_defaults(vec![btreeset! {1}], []);
@@ -2913,6 +2906,6 @@ mod tests {
         assert_eq!(expected, actual);
 
         let returned = unused_rx.try_recv().unwrap();
-        assert_eq!(TestPayload::normal(1), returned);
+        assert_eq!(None, returned);
     }
 }

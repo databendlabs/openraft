@@ -74,8 +74,7 @@ impl fmt::Display for CustomPayload {
 
 impl RaftPayload for CustomPayload {
     type D = String;
-    type NodeId = u64;
-    type Node = ();
+    type Membership = Membership<u64, ()>;
 
     fn blank() -> Self {
         BLANK_CALLS.fetch_add(1, Ordering::SeqCst);

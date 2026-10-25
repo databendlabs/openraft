@@ -2,6 +2,8 @@ use std::fmt::Debug;
 use std::fmt::Display;
 
 use openraft_macros::since;
+use quorum_set::QuorumBridge;
+use quorum_set::QuorumIntersection;
 use quorum_set::QuorumSet;
 
 use crate::Node;
@@ -9,8 +11,10 @@ use crate::NodeId;
 use crate::base::OptionalFeatures;
 use crate::base::OptionalSend;
 use crate::base::OptionalSync;
+use crate::errors::MembershipError;
 use crate::membership::NodeRef;
 use crate::membership::NodeRole;
+use crate::membership::RaftMembershipEdit;
 
 /// An immutable membership configuration with read and write quorum rules.
 ///
@@ -39,7 +43,31 @@ where Self: OptionalFeatures + Clone + Default + Eq + Debug + Display + Sized + 
     type Node: Node;
 
     /// The quorum rule type used for both reads and writes.
-    type QuorumSet: QuorumSet<Id = Self::NodeId> + Clone + Debug + OptionalSend + OptionalSync + 'static;
+    ///
+    /// OpenRaft appends a configuration directly after another, without a joint configuration,
+    /// only when [`intersects_with()`](QuorumIntersection::intersects_with) returns `Some(true)`
+    /// for the old read quorum set against the new write quorum set, and for the old write quorum
+    /// set against the new read quorum set. Returning `None` is always safe.
+    ///
+    /// When it cannot append the target of a change directly, OpenRaft first appends a joint
+    /// configuration. Its read quorum set is the [`joint_with()`](QuorumBridge::joint_with) of the
+    /// old and the new read quorum sets, and its write quorum set comes from the write quorum sets
+    /// the same way. Every read quorum of it is a read quorum of both the old and the new
+    /// configuration, and the same holds for write quorums. So on the step into it and on the step
+    /// out of it, every read quorum of one side intersects every write quorum of the other side.
+    ///
+    /// `intersects_with()` must return `Some(true)` for the joint read quorum set against the new
+    /// write quorum set, and for the joint write quorum set against the new read quorum set.
+    /// Otherwise the second step of [`Raft::change_membership()`](crate::Raft::change_membership)
+    /// appends a second joint configuration instead of the new one.
+    type QuorumSet: QuorumSet<Id = Self::NodeId>
+        + QuorumIntersection<Self::QuorumSet>
+        + QuorumBridge<Self::QuorumSet>
+        + Clone
+        + Debug
+        + OptionalSend
+        + OptionalSync
+        + 'static;
 
     /// Returns the read quorum rule for this configuration.
     ///
@@ -73,4 +101,24 @@ where Self: OptionalFeatures + Clone + Default + Eq + Debug + Display + Sized + 
     #[since(version = "0.10.0")]
     fn new<I>(read_quorum_set: Self::QuorumSet, write_quorum_set: Self::QuorumSet, nodes: I) -> Self
     where I: IntoIterator<Item = (Self::NodeId, Self::Node, NodeRole)>;
+
+    /// The edit type that [`change()`](Self::change) applies.
+    #[since(version = "0.10.0")]
+    type Edit: RaftMembershipEdit<NodeId = Self::NodeId, Node = Self::Node>;
+
+    /// Returns the target configuration of `change`.
+    ///
+    /// OpenRaft appends the target directly, or first appends a joint configuration that it builds
+    /// with [`joint_with()`](QuorumBridge::joint_with). The edit from
+    /// [`RaftMembershipEdit::leave_joint()`] on a joint configuration must return its target.
+    ///
+    /// A node stays in the target unless `change` removes it, so a voter that `change` removes
+    /// from the quorum sets stays with the role that the target gives it. When
+    /// [`Raft::change_membership()`](crate::Raft::change_membership) gets `retain = false`,
+    /// OpenRaft drops each such voter that the target makes a learner.
+    ///
+    /// OpenRaft rejects the result when its read or its write quorum set has no usable quorum, or
+    /// when a quorum ID has no node.
+    #[since(version = "0.10.0")]
+    fn change(&self, change: Self::Edit) -> Result<Self, MembershipError<Self::NodeId>>;
 }

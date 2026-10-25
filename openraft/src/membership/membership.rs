@@ -5,15 +5,11 @@ use std::collections::BTreeSet;
 use openraft_macros::since;
 
 use crate::ChangeMembers;
-use crate::errors::EmptyMembership;
 use crate::errors::MembershipError;
-use crate::errors::NodeNotFound;
-use crate::errors::Operation;
 use crate::membership::IntoNodes;
+use crate::membership::RaftMembershipExt;
 use crate::node::Node;
 use crate::node::NodeId;
-use crate::quorum::QuorumBridge;
-use crate::quorum::QuorumIntersection;
 
 /// The membership configuration of the cluster.
 ///
@@ -62,6 +58,15 @@ where
     fn from(b: BTreeMap<NID, N>) -> Self {
         let member_ids = b.keys().cloned().collect::<BTreeSet<NID>>();
         Membership::new_unchecked(vec![member_ids], b)
+    }
+}
+
+impl<NID> From<BTreeSet<NID>> for Membership<NID, ()>
+where NID: NodeId
+{
+    fn from(node_ids: BTreeSet<NID>) -> Self {
+        let nodes: BTreeMap<NID, ()> = node_ids.into_nodes();
+        Membership::from(nodes)
     }
 }
 
@@ -118,8 +123,15 @@ where
     ///
     /// A node presents in `config` but not in `nodes` result in an error return.
     ///
+    /// `config` may hold an empty voter set, or no voter set at all. [`Raft::initialize()`] and
+    /// [`Raft::append_membership()`] check that a membership has a usable quorum before they write
+    /// it to the log.
+    ///
     /// The `nodes` implements [`IntoNodes`] thus it can be `BTreeMap<NodeId, Node>` or
     /// `HashMap<NodeId,Node>` including all Voter and Learner nodes.
+    ///
+    /// [`Raft::initialize()`]: crate::Raft::initialize
+    /// [`Raft::append_membership()`]: crate::Raft::append_membership
     pub fn new<T>(config: Vec<BTreeSet<NID>>, nodes: T) -> Result<Self, MembershipError<NID>>
     where T: IntoNodes<NID, N> {
         let m = Membership {
@@ -127,7 +139,7 @@ where
             nodes: nodes.into_nodes(),
         };
 
-        m.ensure_valid()?;
+        m.ensure_voters_have_nodes()?;
         Ok(m)
     }
 
@@ -161,11 +173,6 @@ where
     /// uniform config, otherwise, it is in a joint consensus.
     pub fn get_joint_config(&self) -> &Vec<BTreeSet<NID>> {
         &self.configs
-    }
-
-    /// Returns true if this membership is in joint consensus, i.e. it has more than one config.
-    pub(crate) fn is_joint(&self) -> bool {
-        self.configs.len() > 1
     }
 
     /// Returns an Iterator of all nodes(voters and learners).
@@ -217,20 +224,6 @@ where
     /// Returns whether `node_id` belongs to this membership.
     pub(crate) fn contains(&self, node_id: &NID) -> bool {
         self.nodes.contains_key(node_id)
-    }
-
-    /// Returns the read quorum definition.
-    ///
-    /// This majority-based membership uses the same definition for read and write quorums.
-    pub(crate) fn read_quorum_set(&self) -> &Self {
-        self
-    }
-
-    /// Returns the write quorum definition.
-    ///
-    /// This majority-based membership uses the same definition for read and write quorums.
-    pub(crate) fn write_quorum_set(&self) -> &Self {
-        self
     }
 
     /// Returns whether `node_id` may start an election under this configuration.
@@ -306,173 +299,9 @@ where
         res
     }
 
-    /// Ensure the membership config is valid:
-    /// - No empty sub-config in it.
-    /// - Every voter has a corresponding Node.
-    pub(crate) fn ensure_valid(&self) -> Result<(), MembershipError<NID>> {
-        self.ensure_non_empty_config()?;
-        self.ensure_voter_nodes().map_err(|nid| NodeNotFound::new(nid, Operation::None))?;
-        Ok(())
-    }
-
-    /// Ensures that no sub-config in this joint config is empty.
-    pub(crate) fn ensure_non_empty_config(&self) -> Result<(), EmptyMembership> {
-        for c in self.get_joint_config().iter() {
-            if c.is_empty() {
-                return Err(EmptyMembership {});
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Ensures that this membership defines a quorum: it holds at least one sub-config, and none
-    /// of them is empty.
-    ///
-    /// Zero sub-configs is as unusable as an empty sub-config: [`QuorumSet::is_quorum()`] iterates
-    /// the sub-configs, so with none of them it returns true for every node set.
-    ///
-    /// [`Membership::default()`] carries exactly that value as the empty sentinel, and storage
-    /// implementations round-trip it through [`Membership::new()`], so this check is not part of
-    /// [`Membership::ensure_valid()`]. Only a path that reads quorums out of a caller-supplied
-    /// membership calls it.
-    ///
-    /// [`QuorumSet::is_quorum()`]: crate::quorum::QuorumSet::is_quorum
-    pub(crate) fn ensure_quorum_defined(&self) -> Result<(), EmptyMembership> {
-        if self.get_joint_config().is_empty() {
-            return Err(EmptyMembership {});
-        }
-
-        self.ensure_non_empty_config()
-    }
-
-    /// Ensures that every vote has a corresponding Node.
-    ///
-    /// If a voter is found not having a Node, it returns the voter node id in an `Err()`
-    pub(crate) fn ensure_voter_nodes(&self) -> Result<(), NID> {
-        for voter_id in self.voter_ids() {
-            if !self.nodes.contains_key(&voter_id) {
-                return Err(voter_id);
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Returns the first node id that both memberships know but describe with a different [`Node`].
-    ///
-    /// A node id that only one of the two memberships knows is skipped: adding a node and removing
-    /// a node are not metadata changes.
-    pub(crate) fn find_changed_node_metadata(&self, other: &Self) -> Option<NID> {
-        for (node_id, node) in self.nodes.iter() {
-            let Some(other_node) = other.nodes.get(node_id) else {
-                continue;
-            };
-
-            if other_node != node {
-                return Some(node_id.clone());
-            }
-        }
-
-        None
-    }
-
     // ---
     // Quorum related internal API
     // ---
-    /// Returns true if one membership can be appended directly on top of the other, as a single
-    /// log entry without an intermediate joint membership.
-    ///
-    /// The predicate is symmetric, and it accepts a transition only when a voter set of one
-    /// membership and a voter set of the other have intersecting majorities, as
-    /// [`QuorumIntersection::intersects_with()`] checks. A quorum of a membership holds a majority
-    /// of each of its voter sets, so every quorum of one membership then intersects every quorum
-    /// of the other.
-    ///
-    /// The rule is exact for two uniform memberships. When either membership has more than one
-    /// voter set, the rule is conservative: it rejects some transitions whose quorums do
-    /// intersect. See [`UnsupportedMembershipTransition`] for examples.
-    ///
-    /// [`UnsupportedMembershipTransition`]: crate::errors::UnsupportedMembershipTransition
-    pub(crate) fn is_direct_append_compatible_with(&self, other: &Self) -> bool {
-        if self.ensure_quorum_defined().is_err() {
-            return false;
-        }
-        if other.ensure_quorum_defined().is_err() {
-            return false;
-        }
-
-        let intersects = self.configs.intersects_with(&other.configs);
-        intersects == Some(true)
-    }
-
-    /// Returns the next coherent membership to change to, while the expected final membership is
-    /// `goal`.
-    ///
-    /// `retain` specifies whether to retain the removed voters as learners, i.e., nodes that
-    /// continue to receive log replication from the leader.
-    ///
-    /// E.g.(`cicj` is a joint membership of `ci` and `cj`, and for any two of `c1`, `c2`, `c3`, a
-    /// quorum of one can miss a quorum of the other):
-    /// - `c1.next_step(c1)` returns `c1`
-    /// - `c1.next_step(c2)` returns `c1c2`
-    /// - `c1c2.next_step(c2)` returns `c2`
-    /// - `c1c2.next_step(c1)` returns `c1`
-    /// - `c1c2.next_step(c3)` returns `c2c3`
-    ///
-    /// When [`QuorumIntersection::intersects_with()`] proves that every quorum of `self` intersects
-    /// every quorum of `goal`, such as when `goal` adds or removes one voter, it returns `goal`
-    /// without a joint step.
-    ///
-    /// With this method the membership change algo is simplified to:
-    /// ```ignore
-    /// while curr != goal {
-    ///     let next = curr.next_coherent(goal);
-    ///     change_membership(next);
-    ///     curr = next;
-    /// }
-    /// ```
-    pub(crate) fn next_coherent(&self, goal: BTreeSet<NID>, retain: bool) -> Self {
-        let config = self.configs.bridge_to(goal);
-
-        let mut nodes = self.nodes.clone();
-
-        if !retain {
-            let old_voter_ids = self.configs.iter().flatten().cloned().collect::<BTreeSet<_>>();
-            let new_voter_ids = config.iter().flatten().cloned().collect::<BTreeSet<_>>();
-
-            for node_id in old_voter_ids.difference(&new_voter_ids) {
-                nodes.remove(node_id);
-            }
-        };
-
-        Membership::new_unchecked(config, nodes)
-    }
-
-    /// Apply a change-membership request and return a new instance.
-    ///
-    /// It ensures that the returned instance is valid.
-    ///
-    /// `retain` specifies whether to retain the removed voters as learners, i.e., nodes that
-    /// continue to receive log replication from the leader.
-    pub(crate) fn change(mut self, change: ChangeMembers<NID, N>, retain: bool) -> Result<Self, MembershipError<NID>> {
-        tracing::debug!("{}: change: {:?}", func_name!(), change);
-
-        let Membership { mut configs, nodes } = self.clone().compute_target_membership(change);
-
-        // Safe unwrap(): membership changes are only evaluated on an initialized leader.
-        let target_voter_ids = configs.pop().unwrap();
-
-        self.nodes = nodes;
-        let new_membership = self.next_coherent(target_voter_ids, retain);
-
-        tracing::debug!("new membership: {}", new_membership);
-
-        new_membership.ensure_valid()?;
-
-        Ok(new_membership)
-    }
-
     /// Compute the target membership configuration by applying a membership change.
     ///
     /// This method:
@@ -484,7 +313,7 @@ where
     ///
     /// Note: This is an intermediate step in membership changes. The result may need to be
     /// transformed into a coherent configuration before being applied.
-    fn compute_target_membership(mut self, change: ChangeMembers<NID, N>) -> Membership<NID, N> {
+    pub(crate) fn compute_target_membership(mut self, change: ChangeMembers<NID, N>) -> Membership<NID, N> {
         let last = self.get_joint_config().last().cloned().unwrap_or_default();
 
         // `None` means the change does not touch the voter set, only `nodes`.
@@ -548,19 +377,19 @@ mod tests {
 
     use crate::ChangeMembers;
     use crate::Membership;
-    use crate::errors::ChangeMembershipError;
-    use crate::errors::EmptyMembership;
-    use crate::errors::LearnerNotFound;
-    use crate::errors::MembershipError;
-    use crate::type_config::alias::ChangeMembershipErrorOf;
+    use crate::errors::NodeNotFound;
+    use crate::errors::Operation;
+    use crate::membership::RaftMembership;
+    use crate::membership::RaftMembershipExt;
 
     #[test]
-    fn test_membership_ensure_voter_nodes() -> anyhow::Result<()> {
+    fn test_membership_ensure_voters_have_nodes() -> anyhow::Result<()> {
         let m = Membership::<u64, ()> {
             configs: vec![btreeset! {1,2}],
             nodes: btreemap! {1=>()},
         };
-        assert_eq!(Err(2), m.ensure_voter_nodes());
+        let res = m.ensure_voters_have_nodes();
+        assert_eq!(Err(NodeNotFound::new(2, Operation::None)), res);
         Ok(())
     }
 
@@ -571,19 +400,21 @@ mod tests {
             nodes: btreemap! {1=>(),2=>(),3=>()},
         };
 
-        // Add: no such learner
+        // Add: no such learner; `next_membership()` rejects this result
         {
-            let res = m().change(ChangeMembers::AddVoterIds(btreeset! {4}), true);
-            let err: ChangeMembershipErrorOf<crate::engine::testing::UTConfig> = res.unwrap_err().into();
+            let res = m().change(ChangeMembers::AddVoterIds(btreeset! {4}));
             assert_eq!(
-                ChangeMembershipError::LearnerNotFound(LearnerNotFound { node_id: 4 }),
-                err
+                Ok(Membership::<u64, ()> {
+                    configs: vec![btreeset! {1,2,4}],
+                    nodes: btreemap! {1=>(),2=>(),3=>()}
+                }),
+                res
             );
         }
 
         // Add: ok
         {
-            let res = m().change(ChangeMembers::AddVoterIds(btreeset! {3}), true);
+            let res = m().change(ChangeMembers::AddVoterIds(btreeset! {3}));
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {1,2,3}],
@@ -595,7 +426,7 @@ mod tests {
 
         // AddVoters
         {
-            let res = m().change(ChangeMembers::AddVoters(btreemap! {5=>()}), true);
+            let res = m().change(ChangeMembers::AddVoters(btreemap! {5=>()}));
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {1,2,5}],
@@ -607,7 +438,7 @@ mod tests {
 
         // Remove: no such voter
         {
-            let res = m().change(ChangeMembers::RemoveVoters(btreeset! {5}), true);
+            let res = m().change(ChangeMembers::RemoveVoters(btreeset! {5}));
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {1,2}],
@@ -617,15 +448,21 @@ mod tests {
             );
         }
 
-        // Remove: become empty
+        // Remove: become empty; `next_membership()` rejects this result
         {
-            let res = m().change(ChangeMembers::RemoveVoters(btreeset! {1,2}), true);
-            assert_eq!(Err(MembershipError::EmptyMembership(EmptyMembership {})), res);
+            let res = m().change(ChangeMembers::RemoveVoters(btreeset! {1,2}));
+            assert_eq!(
+                Ok(Membership::<u64, ()> {
+                    configs: vec![btreeset! {}],
+                    nodes: btreemap! {1=>(),2=>(),3=>()}
+                }),
+                res
+            );
         }
 
         // Remove: OK retain
         {
-            let res = m().change(ChangeMembers::RemoveVoters(btreeset! {1}), true);
+            let res = m().change(ChangeMembers::RemoveVoters(btreeset! {1}));
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {2}],
@@ -637,12 +474,13 @@ mod tests {
 
         // Remove: OK, not retain; learner not removed
         {
-            let res = m().change(ChangeMembers::RemoveVoters(btreeset! {1}), false);
+            let goal = m().change(ChangeMembers::RemoveVoters(btreeset! {1}))?;
+            let res = m().drop_voters_demoted_to_learners(goal);
             assert_eq!(
-                Ok(Membership::<u64, ()> {
+                Membership::<u64, ()> {
                     configs: vec![btreeset! {2}],
                     nodes: btreemap! {2=>(),3=>()}
-                }),
+                },
                 res
             );
         }
@@ -653,31 +491,33 @@ mod tests {
                 configs: vec![btreeset! {1,2}, btreeset! {2}],
                 nodes: btreemap! {1=>(),2=>(),3=>()},
             };
-            let res = mem.change(ChangeMembers::RemoveVoters(btreeset! {1}), false);
+            let goal = mem.change(ChangeMembers::RemoveVoters(btreeset! {1}))?;
+            let res = mem.drop_voters_demoted_to_learners(goal);
             assert_eq!(
-                Ok(Membership::<u64, ()> {
+                Membership::<u64, ()> {
                     configs: vec![btreeset! {2}],
                     nodes: btreemap! {2=>(),3=>()}
-                }),
+                },
                 res
             );
         }
 
         // Replace:
         {
-            let res = m().change(ChangeMembers::ReplaceAllVoters(btreeset! {2}), false);
+            let goal = m().change(ChangeMembers::ReplaceAllVoters(btreeset! {2}))?;
+            let res = m().drop_voters_demoted_to_learners(goal);
             assert_eq!(
-                Ok(Membership::<u64, ()> {
+                Membership::<u64, ()> {
                     configs: vec![btreeset! {2}],
                     nodes: btreemap! {2=>(),3=>()}
-                }),
+                },
                 res
             );
         }
 
         // AddNodes: existent voter
         {
-            let res = m().change(ChangeMembers::AddNodes(btreemap! {2=>()}), false);
+            let res = m().change(ChangeMembers::AddNodes(btreemap! {2=>()}));
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {1,2}],
@@ -689,7 +529,7 @@ mod tests {
 
         // AddNodes: existent learner
         {
-            let res = m().change(ChangeMembers::AddNodes(btreemap! {3=>()}), false);
+            let res = m().change(ChangeMembers::AddNodes(btreemap! {3=>()}));
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {1,2}],
@@ -701,7 +541,7 @@ mod tests {
 
         // AddNodes: Ok
         {
-            let res = m().change(ChangeMembers::AddNodes(btreemap! {4=>()}), false);
+            let res = m().change(ChangeMembers::AddNodes(btreemap! {4=>()}));
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {1,2}],
@@ -718,7 +558,7 @@ mod tests {
                 nodes: btreemap! {1=>1,2=>2,3=>3},
             };
 
-            let res = m().change(ChangeMembers::SetNodes(btreemap! {3=>30, 4=>40}), false);
+            let res = m().change(ChangeMembers::SetNodes(btreemap! {3=>30, 4=>40}));
             assert_eq!(
                 Ok(Membership::<u64, u64> {
                     configs: vec![btreeset! {1,2}],
@@ -728,19 +568,21 @@ mod tests {
             );
         }
 
-        // RemoveNodes: cannot remove node for voter
+        // RemoveNodes: cannot remove node for voter; `next_membership()` rejects this result
         {
-            let res = m().change(ChangeMembers::RemoveNodes(btreeset! {2}), false);
-            let err: ChangeMembershipErrorOf<crate::engine::testing::UTConfig> = res.unwrap_err().into();
+            let res = m().change(ChangeMembers::RemoveNodes(btreeset! {2}));
             assert_eq!(
-                ChangeMembershipError::LearnerNotFound(LearnerNotFound { node_id: 2 }),
-                err
+                Ok(Membership::<u64, ()> {
+                    configs: vec![btreeset! {1,2}],
+                    nodes: btreemap! {1=>(),3=>()}
+                }),
+                res
             );
         }
 
         // RemoveNodes: Ok
         {
-            let res = m().change(ChangeMembers::RemoveNodes(btreeset! {3}), false);
+            let res = m().change(ChangeMembers::RemoveNodes(btreeset! {3}));
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {1,2}],
@@ -752,7 +594,7 @@ mod tests {
 
         // ReplaceAllNodes: Ok
         {
-            let res = m().change(ChangeMembers::ReplaceAllNodes(btreemap! {1=>(),2=>(),4=>()}), false);
+            let res = m().change(ChangeMembers::ReplaceAllNodes(btreemap! {1=>(),2=>(),4=>()}));
             assert_eq!(
                 Ok(Membership::<u64, ()> {
                     configs: vec![btreeset! {1,2}],
@@ -768,8 +610,6 @@ mod tests {
     /// Test membership change described by a batch operation.
     ///
     /// The batch operations add one voter and remove another.
-    /// It still finishes in a two-step joint config change, because quorum `{1,2}` of `{1,2,3}` and
-    /// quorum `{3,5}` of `{1,3,5}` are disjoint.
     #[test]
     fn test_membership_change_batch() -> anyhow::Result<()> {
         let m = || Membership::<u64, ()> {
@@ -784,18 +624,11 @@ mod tests {
             ])
         };
 
-        let step1 = m().change(rm_2_add_5(), false)?;
+        let goal = m().change(rm_2_add_5())?;
 
-        assert_eq!(step1, Membership::<u64, ()> {
-            configs: vec![btreeset! {1,2,3}, btreeset! {1,3,5}],
-            nodes: btreemap! {1=>(),2=>(),3=>(),5=>()}
-        });
-
-        let step2 = step1.change(rm_2_add_5(), false)?;
-
-        assert_eq!(step2, Membership::<u64, ()> {
+        assert_eq!(goal, Membership::<u64, ()> {
             configs: vec![btreeset! {1,3,5}],
-            nodes: btreemap! {1=>(),3=>(), 5=>()}
+            nodes: btreemap! {1=>(),2=>(),3=>(),5=>()}
         });
 
         Ok(())
