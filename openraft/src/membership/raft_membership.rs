@@ -44,6 +44,11 @@ where Self: OptionalFeatures + Clone + Default + Eq + Debug + Display + Sized + 
 
     /// The quorum rule type used for both reads and writes.
     ///
+    /// OpenRaft accepts a configuration from the application only when
+    /// [`intersects_with()`](QuorumIntersection::intersects_with) returns `Some(true)` for its read
+    /// quorum set against its write quorum set. With
+    /// [`Config::allow_unproven_read_write_intersection`] set, it also accepts `None`.
+    ///
     /// OpenRaft appends a configuration directly after another, without a joint configuration,
     /// only when [`intersects_with()`](QuorumIntersection::intersects_with) returns `Some(true)`
     /// for the old read quorum set against the new write quorum set, and for the old write quorum
@@ -60,6 +65,8 @@ where Self: OptionalFeatures + Clone + Default + Eq + Debug + Display + Sized + 
     /// write quorum set, and for the joint write quorum set against the new read quorum set.
     /// Otherwise the second step of [`Raft::change_membership()`](crate::Raft::change_membership)
     /// appends a second joint configuration instead of the new one.
+    ///
+    /// [`Config::allow_unproven_read_write_intersection`]: crate::Config::allow_unproven_read_write_intersection
     type QuorumSet: QuorumSet<Id = Self::NodeId>
         + QuorumIntersection<Self::QuorumSet>
         + QuorumBridge<Self::QuorumSet>
@@ -117,8 +124,9 @@ where Self: OptionalFeatures + Clone + Default + Eq + Debug + Display + Sized + 
     /// [`Raft::change_membership()`](crate::Raft::change_membership) gets `retain = false`,
     /// OpenRaft drops each such voter that the target makes a learner.
     ///
-    /// OpenRaft rejects the result when its read or its write quorum set has no usable quorum, or
-    /// when a quorum ID has no node.
+    /// OpenRaft rejects the result when its read or its write quorum set has no usable quorum,
+    /// when a quorum ID has no node, or when OpenRaft cannot prove that its read quorums intersect
+    /// its write quorums, as [`QuorumSet`](Self::QuorumSet) describes.
     #[since(version = "0.10.0")]
     fn change(&self, change: Self::Edit) -> Result<Self, MembershipError<Self::NodeId>>;
 }

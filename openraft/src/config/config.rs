@@ -178,6 +178,7 @@ impl SnapshotPolicy {
 ///
 /// [`Raft::new`]: crate::Raft::new
 #[since]
+#[since(version = "0.10.0", change = "added allow_unproven_read_write_intersection option")]
 #[since(version = "0.10.0", change = "added broadcast_submitted_on_append option")]
 #[since(version = "0.10.0", change = "added reset_backoff_on_transfer_leader option")]
 #[since(version = "0.10.0", change = "added opt-in quorum-loss inactivity setting")]
@@ -606,6 +607,35 @@ pub struct Config {
            default_missing_value = "true"
     ))]
     pub enable_leader_restore: Option<bool>,
+
+    /// Whether to accept a membership for which OpenRaft cannot prove that every read quorum
+    /// intersects every write quorum.
+    ///
+    /// OpenRaft checks every membership that the application supplies: the one passed to
+    /// [`Raft::initialize()`] or [`Raft::append_membership()`], and the target that
+    /// [`RaftMembership::change()`] returns for [`Raft::change_membership()`]. It calls
+    /// [`intersects_with()`] on the read quorum set of the membership against its write quorum
+    /// set. `None` (the default) and `Some(false)` accept the membership only when the call
+    /// returns `Some(true)`. `Some(true)` also accepts it when the call returns `None`.
+    ///
+    /// Set this to `Some(true)` when a custom quorum set is valid but `intersects_with()` cannot
+    /// prove it. OpenRaft then trusts the application that every read quorum intersects every
+    /// write quorum. A membership for which `intersects_with()` returns `Some(false)` is always
+    /// rejected with [`UnprovenReadWriteIntersection`].
+    ///
+    /// [`Raft::initialize()`]: crate::Raft::initialize
+    /// [`Raft::append_membership()`]: crate::Raft::append_membership
+    /// [`Raft::change_membership()`]: crate::Raft::change_membership
+    /// [`RaftMembership::change()`]: crate::membership::RaftMembership::change
+    /// [`intersects_with()`]: quorum_set::QuorumIntersection::intersects_with
+    /// [`UnprovenReadWriteIntersection`]: crate::errors::UnprovenReadWriteIntersection
+    #[since(version = "0.10.0")]
+    #[cfg_attr(feature = "clap", clap(long,
+           action = clap::ArgAction::Set,
+           num_args = 0..=1,
+           default_missing_value = "true"
+    ))]
+    pub allow_unproven_read_write_intersection: Option<bool>,
 }
 
 impl Default for Config {
@@ -643,6 +673,7 @@ impl Default for Config {
             reset_backoff_on_transfer_leader: None,
             allow_log_reversion: None,
             enable_leader_restore: None,
+            allow_unproven_read_write_intersection: None,
         }
     }
 }
@@ -679,6 +710,16 @@ impl Config {
     #[since(version = "0.10.0")]
     pub(crate) fn get_allow_log_reversion(&self) -> bool {
         self.allow_log_reversion.unwrap_or(false)
+    }
+
+    /// Whether to accept a membership for which
+    /// [`intersects_with()`](quorum_set::QuorumIntersection::intersects_with) returns `None` on
+    /// its read quorum set against its write quorum set.
+    ///
+    /// By default, it rejects such a membership, because OpenRaft cannot prove that its read
+    /// quorums intersect its write quorums.
+    pub(crate) fn get_allow_unproven_read_write_intersection(&self) -> bool {
+        self.allow_unproven_read_write_intersection.unwrap_or(false)
     }
 
     /// Whether a node that was a leader before a restart restores leadership at startup, without
