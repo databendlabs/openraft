@@ -498,6 +498,26 @@ jobs:
           RUST_LOG: info
           RUST_BACKTRACE: full
 
+  # The same simulation with `ThresholdMembership` and random read and write sizes.
+  detsim-threshold:
+    name: Deterministic simulation test with ThresholdMembership
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          # See the `detsim` job for both settings.
+          cache-workspaces: tests-turmoil
+          rustflags: ""
+
+      - name: Run deterministic simulation with ThresholdMembership
+        run: cd tests-turmoil && cargo run --release --bin fuzz --features threshold-membership -- --iterations 5 --max-steps 10000
+        env:
+          RUST_LOG: info
+          RUST_BACKTRACE: full
+
   lint:
     name: lint
     runs-on: ubuntu-latest
@@ -528,7 +548,10 @@ jobs:
         # action), which would otherwise replace the config's rustflags and
         # drop `--cfg tokio_unstable`. Warnings still fail via clippy's own
         # `-D warnings` argument.
-        run: cd tests-turmoil && cargo clippy --no-deps --all-targets -- -D warnings
+        run: |
+          cd tests-turmoil
+          cargo clippy --no-deps --all-targets -- -D warnings
+          cargo clippy --no-deps --all-targets --features threshold-membership -- -D warnings
         env:
           RUSTFLAGS: --cfg tokio_unstable
 
