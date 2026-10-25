@@ -76,6 +76,7 @@ resolver = "3"
 members = [
     "rt",
     "openraft",
+    "membership",
     "legacy",
     "macros",
     "tests",

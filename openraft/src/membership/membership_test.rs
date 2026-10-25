@@ -11,7 +11,6 @@ use quorum_set::verify_intersection;
 use crate::EmptyNode;
 use crate::Membership;
 use crate::errors::EmptyMembership;
-use crate::errors::MembershipError;
 use crate::errors::NodeMetadataChanged;
 use crate::errors::NodeNotFound;
 use crate::errors::Operation;
@@ -269,10 +268,7 @@ fn test_membership_new() -> anyhow::Result<()> {
     );
 
     let res = with_nodes(btreemap! {1=>node()});
-    assert_eq!(
-        res.unwrap_err(),
-        MembershipError::NodeNotFound(NodeNotFound::new(2, Operation::None))
-    );
+    assert_eq!(res.unwrap_err(), NodeNotFound::new(2, Operation::None));
 
     Ok(())
 }
@@ -406,7 +402,7 @@ fn test_membership_new_checks_only_voter_nodes() -> anyhow::Result<()> {
 
     // A voter without node data.
     let res = Membership::<u64, ()>::new(vec![btreeset! {1,2}], btreemap! {1=>()});
-    let want = MembershipError::NodeNotFound(NodeNotFound::new(2, Operation::None));
+    let want = NodeNotFound::new(2, Operation::None);
     assert_eq!(Err(want), res);
 
     // Zero voter sets is the value `Membership::default()` carries, so the checking constructor

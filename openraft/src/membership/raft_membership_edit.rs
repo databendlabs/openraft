@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::fmt::Debug;
 use std::fmt::Display;
 
@@ -12,6 +13,8 @@ use crate::membership::RaftMembership;
 /// [`RaftTypeConfig::MembershipEdit`] selects the edit independently of the membership type.
 /// OpenRaft applies it to the current effective membership inside the Raft core, and builds the
 /// edits it needs itself with the constructors of this trait.
+/// [`Self::Error`] is the edit's native error. OpenRaft wraps user-defined errors with
+/// [`RaftTypeConfig::ErrorSource`](crate::RaftTypeConfig::ErrorSource) when applying the edit.
 ///
 /// [`RaftTypeConfig::MembershipEdit`]: crate::RaftTypeConfig::MembershipEdit
 #[since(version = "0.10.0")]
@@ -20,6 +23,10 @@ where
     Self: Debug + Display + OptionalSend + Sized + 'static,
     M: RaftMembership,
 {
+    /// The native error for an application-specific rejection of this edit.
+    #[since(version = "0.10.0")]
+    type Error: Error + 'static;
+
     /// Returns the target configuration of this edit.
     ///
     /// OpenRaft validates the result, then appends it directly or first appends a joint
@@ -29,7 +36,7 @@ where
     /// satisfy the intersection requirements of [`RaftMembership::QuorumSet`]. OpenRaft checks
     /// these conditions before appending it.
     #[since(version = "0.10.0")]
-    fn apply(self, membership: &M) -> Result<M, MembershipError<M::NodeId>>;
+    fn apply(self, membership: &M) -> Result<M, MembershipError<M::NodeId, Self::Error>>;
 
     /// Returns an edit that adds `node_id` with `node` as a learner.
     ///
