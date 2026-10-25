@@ -139,6 +139,16 @@ impl RaftMembership for MinimalQuorumsMembership {
         &self.write
     }
 
+    fn supports_direct_transition_to(&self, other: &Self) -> bool {
+        let read_meets_write = self.read.intersects_with(&other.write);
+        if read_meets_write != Some(true) {
+            return false;
+        }
+
+        let write_meets_read = self.write.intersects_with(&other.read);
+        write_meets_read == Some(true)
+    }
+
     fn get_node(&self, node_id: &u64) -> Option<NodeRef<'_, ()>> {
         let is_read_voter = self.read.ids().any(|id| id == *node_id);
         let is_write_voter = self.write.ids().any(|id| id == *node_id);

@@ -151,9 +151,9 @@ where
     /// It returns the target of `change` when `supports_direct_transition_to()` holds from the
     /// effective membership to the target. Otherwise it returns the `joint_with()` of the two,
     /// which needs no check: every read quorum of the joint is a read quorum of both memberships,
-    /// and the same holds for write quorums. `RaftMembership` requires each membership to keep
-    /// every read quorum intersecting every write quorum, so on each step to and from the joint,
-    /// every read quorum of one side intersects every write quorum of the other side.
+    /// and the same holds for write quorums. Both memberships passed
+    /// `ensure_read_write_quorums_intersect()`, so on each step to and from the joint, every read
+    /// quorum of one side intersects every write quorum of the other side.
     ///
     /// E.g.(`cicj` is a joint membership of `ci` and `cj`, and for any two of `c1`, `c2`, `c3`, a
     /// quorum of one can miss a quorum of the other):
@@ -186,11 +186,12 @@ where
         let mut goal = change.apply(effective)?;
         goal.ensure_non_empty_config()?;
         goal.ensure_voters_have_nodes().map_err(MembershipError::from)?;
+        goal.ensure_read_write_quorums_intersect()?;
         if !retain {
             goal = effective.drop_voters_demoted_to_learners(goal);
         }
 
-        if effective.supports_direct_transition_to(&goal) {
+        if effective.allows_direct_transition_to(&goal) {
             return Ok((goal, false));
         }
 
@@ -209,6 +210,8 @@ where
     ///   is not enough of a guarantee: deserialization, [`Membership::new()`],
     ///   [`Membership::default()`] and [`Membership::new_with_defaults()`] can all produce a value
     ///   with no voter set at all, or with an empty one.
+    /// - `read_write_quorums_intersect()` returns `Some(true)` for `proposed`, so every read quorum
+    ///   of it intersects every write quorum.
     /// - `proposed` keeps the [`Node`] of every node id the effective membership already knows.
     /// - The transition from the effective membership to `proposed` is one that a direct append
     ///   supports.
@@ -224,12 +227,13 @@ where
         self.ensure_committed()?;
         proposed.ensure_non_empty_config()?;
         proposed.ensure_voters_have_nodes().map_err(MembershipError::from)?;
+        proposed.ensure_read_write_quorums_intersect()?;
 
         let effective = self.effective().membership();
 
         effective.ensure_node_metadata_unchanged(proposed)?;
 
-        let compatible = effective.supports_direct_transition_to(proposed);
+        let compatible = effective.allows_direct_transition_to(proposed);
         if !compatible {
             let err = UnsupportedMembershipTransition {
                 previous: effective.to_string(),
