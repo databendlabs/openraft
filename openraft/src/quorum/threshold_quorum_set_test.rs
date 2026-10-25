@@ -16,7 +16,7 @@ pub(super) fn threshold(quorum_size: u64, ids: BTreeSet<u64>) -> ThresholdQuorum
 }
 
 /// Returns every subset of `ids`, ordered by the bit mask that selects it.
-pub(super) fn all_subsets(ids: &BTreeSet<u64>) -> Vec<BTreeSet<u64>> {
+pub(crate) fn all_subsets(ids: &BTreeSet<u64>) -> Vec<BTreeSet<u64>> {
     let ids = ids.iter().copied().collect::<Vec<_>>();
     let mut subsets = vec![];
     for mask in 0..1u64 << ids.len() {
