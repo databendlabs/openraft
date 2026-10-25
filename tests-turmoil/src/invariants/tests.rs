@@ -169,7 +169,7 @@ impl SnapshotBuilder {
         if !self.membership.is_empty() {
             let sets: Vec<std::collections::BTreeSet<NodeId>> =
                 self.membership.into_iter().map(|v| v.into_iter().collect()).collect();
-            let mem = openraft::Membership::new_with_defaults(sets, std::iter::empty::<NodeId>());
+            let mem = crate::typ::majority_membership(sets, Vec::new());
             raft.membership_config = Arc::new(StoredMembership::new(self.membership_log_id, mem));
         }
 
@@ -554,6 +554,50 @@ fn committed_on_quorum_counts_crashed_voter_durable_log() {
         !violations.iter().any(|v| matches!(v, InvariantViolation::CommittedNotOnQuorum { .. })),
         "durable log on crashed voter must count toward quorum: {violations:?}"
     );
+}
+
+#[cfg(feature = "threshold-membership")]
+#[test]
+fn committed_on_quorum_counts_write_size() {
+    // 5 voters with read_size 4 and write_size 2: an entry commits once 2 voters store it.
+    let leader = || {
+        let nodes: std::collections::BTreeMap<NodeId, crate::typ::Node> =
+            (1..=5).map(|id| (id, crate::typ::Node::default())).collect();
+        let voters = nodes.keys().copied().collect();
+        let membership = crate::typ::Membership::new(voters, 4, 2, nodes).unwrap();
+
+        let (id, mut snapshot) = SnapshotBuilder::new(1)
+            .term(1)
+            .leader(1, 1, true)
+            .state(openraft::ServerState::Leader)
+            .log_entries([log_id(1, 1, 1), log_id(1, 1, 2)])
+            .committed(log_id(1, 1, 2))
+            .build();
+        snapshot.raft.membership_config = Arc::new(StoredMembership::new(Some(log_id(1, 1, 1)), membership));
+        (id, snapshot)
+    };
+
+    let stored_by_two = vec![
+        leader(),
+        SnapshotBuilder::new(2).log_entries([log_id(1, 1, 1), log_id(1, 1, 2)]).build(),
+    ];
+    let violations = check(&stored_by_two);
+    assert!(
+        !violations.iter().any(|v| matches!(v, InvariantViolation::CommittedNotOnQuorum { .. })),
+        "2 of 5 voters reach write size 2: {violations:?}"
+    );
+
+    let stored_by_leader = vec![leader(), SnapshotBuilder::new(2).build()];
+    let violations = check(&stored_by_leader);
+    let mut got = Vec::new();
+    for violation in &violations {
+        if matches!(violation, InvariantViolation::CommittedNotOnQuorum { .. }) {
+            got.push(violation.to_string());
+        }
+    }
+    let want = "CommittedOnQuorum: leader n1 committed index 2; only [1] of voters [1, 2, 3, 4, 5] \
+                have matching entry, fewer than write size 2";
+    assert_eq!(vec![want.to_string()], got);
 }
 
 #[test]
