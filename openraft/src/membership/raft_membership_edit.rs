@@ -25,8 +25,9 @@ where
     /// OpenRaft validates the result, then appends it directly or first appends a joint
     /// configuration. With `retain = false`, removed voters that become learners are dropped.
     /// An edit must preserve known nodes unless it explicitly removes them.
-    /// The target must have usable read and write quorums and resolve every quorum node ID.
-    /// OpenRaft checks these conditions before appending it.
+    /// The target must have usable read and write quorums, resolve every quorum node ID, and
+    /// satisfy the intersection requirements of [`RaftMembership::QuorumSet`]. OpenRaft checks
+    /// these conditions before appending it.
     #[since(version = "0.10.0")]
     fn apply(self, membership: &M) -> Result<M, MembershipError<M::NodeId>>;
 
