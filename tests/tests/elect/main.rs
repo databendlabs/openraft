@@ -14,3 +14,4 @@ mod t13_elect_while_leader;
 mod t14_one_way_isolation;
 mod t15_lease_gates;
 mod t16_disjoint_read_quorums;
+mod t17_leader_alone_is_write_quorum;

@@ -321,14 +321,16 @@ where
         self.last_quorum_acked_time().is_some_and(|acked| now < acked + leader_lease)
     }
 
-    /// Return whether this leader alone constitutes a quorum.
+    /// Return whether this leader alone forms a write quorum.
+    ///
+    /// Such a leader needs no acknowledgment to keep its lease. Every read quorum must share a node
+    /// with the write quorum `{leader}`, so every read quorum contains this leader, and no
+    /// candidate can win without its vote. The leader refuses that vote while it leads, except
+    /// for a leadership transfer that it started.
     pub(crate) fn is_self_quorum(&self) -> bool {
-        if self.clock_progress.voter_count() != 1 {
-            return false;
-        }
-
         let leader_node_id = self.committed_vote.to_leader_node_id();
-        self.clock_progress.iter().next().unwrap().id == leader_node_id
+        let write_quorum_set = self.clock_progress.quorum_set();
+        write_quorum_set.is_quorum(std::iter::once(&leader_node_id))
     }
 
     /// Decide whether a heartbeat needs to be sent to `target` at time `now`.

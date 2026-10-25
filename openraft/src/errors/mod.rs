@@ -519,9 +519,9 @@ pub struct SnapshotMismatch {}
 /// Error indicating that not enough nodes responded to form a quorum.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[error("not enough for a quorum, cluster: {cluster}, got: {got:?}")]
+#[error("not enough for a quorum, write quorum set: {cluster}, got: {got:?}")]
 pub struct QuorumNotEnough<C: RaftTypeConfig> {
-    /// A description of the cluster membership.
+    /// The write quorum set, formatted with `Debug`.
     pub cluster: String,
     /// The set of nodes that responded.
     pub got: BTreeSet<C::NodeId>,
