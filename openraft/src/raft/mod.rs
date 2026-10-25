@@ -1490,7 +1490,8 @@ where
     /// leader.
     ///
     /// `members` converts into the first membership config. The default [`Membership`] converts
-    /// from a `BTreeMap` of nodes, and from a `BTreeSet` of node ids when the node type is `()`.
+    /// from a `BTreeMap` or a `HashMap` of nodes, and from a `BTreeSet` of node ids when the node
+    /// type is `()` or `EmptyNode`.
     /// Initialization fails with `InitializeError::InvalidMembership` when the read or the write
     /// quorum set has no usable quorum, when a quorum ID has no node, or when OpenRaft cannot prove
     /// that the read quorums intersect the write quorums.

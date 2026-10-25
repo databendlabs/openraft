@@ -1,6 +1,7 @@
 use core::fmt;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::collections::HashMap;
 
 use openraft_macros::since;
 
@@ -8,6 +9,7 @@ use crate::ChangeMembers;
 use crate::errors::MembershipError;
 use crate::membership::IntoNodes;
 use crate::membership::RaftMembershipExt;
+use crate::node::EmptyNode;
 use crate::node::Node;
 use crate::node::NodeId;
 
@@ -66,6 +68,26 @@ where NID: NodeId
 {
     fn from(node_ids: BTreeSet<NID>) -> Self {
         let nodes: BTreeMap<NID, ()> = node_ids.into_nodes();
+        Membership::from(nodes)
+    }
+}
+
+impl<NID> From<BTreeSet<NID>> for Membership<NID, EmptyNode>
+where NID: NodeId
+{
+    fn from(node_ids: BTreeSet<NID>) -> Self {
+        let nodes: BTreeMap<NID, EmptyNode> = node_ids.into_nodes();
+        Membership::from(nodes)
+    }
+}
+
+impl<NID, N> From<HashMap<NID, N>> for Membership<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
+    fn from(nodes: HashMap<NID, N>) -> Self {
+        let nodes: BTreeMap<NID, N> = nodes.into_nodes();
         Membership::from(nodes)
     }
 }
