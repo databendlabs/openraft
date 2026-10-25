@@ -231,6 +231,8 @@ where
         self.check_members_contain_me(&membership)?;
         membership.ensure_non_empty_config().map_err(MembershipError::from)?;
         membership.ensure_voters_have_nodes().map_err(MembershipError::from)?;
+        let allow_unproven = self.config.allow_unproven_read_write_intersection;
+        membership.ensure_read_write_quorums_intersect(allow_unproven).map_err(MembershipError::from)?;
 
         // FollowingHandler requires vote to be committed.
         let leader_id = LeaderIdOf::<C>::new(TermOf::<C>::default(), self.config.id.clone());
