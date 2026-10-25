@@ -16,7 +16,11 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use clap::Parser;
+use openraft::alias::MembershipEditOf;
 use openraft::async_runtime::WatchReceiver;
+use openraft::impls::ChangeMembers;
+#[cfg(feature = "threshold-membership")]
+use openraft_membership::ThresholdChange;
 use rand::RngExt;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -33,6 +37,7 @@ use tests_turmoil::liveness;
 use tests_turmoil::oracle::ClientHistory;
 use tests_turmoil::store::StateMachineData;
 use tests_turmoil::typ::*;
+use tests_turmoil::write_configs::WriteConfigs;
 
 /// Liveness phase A: max ticks for the healed cluster to fully converge.
 const LIVENESS_CONVERGE_DEADLINE: u64 = 30_000;
@@ -277,10 +282,17 @@ impl std::fmt::Display for FuzzResult {
     }
 }
 
+/// The `cargo run` arguments that build the fuzzer with the features of this binary, so a
+/// reproduce command replays the same membership type.
+#[cfg(not(feature = "threshold-membership"))]
+const FEATURE_ARGS: &str = "";
+#[cfg(feature = "threshold-membership")]
+const FEATURE_ARGS: &str = " --features threshold-membership";
+
 fn report_failure(iteration_seed: u64, max_steps: u64, result: &FuzzResult, derived: &DerivedConfig) {
     println!("\n{derived}\n\n{result}");
     println!("REPRODUCE WITH:");
-    println!("  cargo run --bin fuzz -- --reproduce {iteration_seed} --max-steps {max_steps}");
+    println!("  cargo run --bin fuzz{FEATURE_ARGS} -- --reproduce {iteration_seed} --max-steps {max_steps}");
 }
 
 fn write_crash_file(
@@ -302,8 +314,8 @@ fn write_crash_file(
         "config": serde_json::to_value(config).unwrap(),
         "reproduce": {
             "command": format!(
-                "cargo run --bin fuzz -- --reproduce {} --max-steps {} --crash-file {}",
-                iteration_seed, max_steps, path
+                "cargo run --bin fuzz{} -- --reproduce {} --max-steps {} --crash-file {}",
+                FEATURE_ARGS, iteration_seed, max_steps, path
             ),
             "iteration_seed": iteration_seed,
             "max_steps": max_steps
@@ -475,6 +487,9 @@ struct MembershipPlan {
     /// Passed to `change_membership`: removed voters stay as learners
     /// (demotion) instead of being dropped from the config.
     retain: bool,
+    /// Passed to `change_membership`: makes `desired` the voters, and with
+    /// `threshold-membership` also sets the write size.
+    edit: MembershipEditOf<TypeConfig>,
 }
 
 #[derive(Default)]
@@ -843,7 +858,7 @@ fn apply_network_chaos(
 async fn membership_change_once(
     raft: Arc<Raft>,
     learners_to_add: Vec<(NodeId, Node)>,
-    new_set: BTreeSet<NodeId>,
+    edit: MembershipEditOf<TypeConfig>,
     retain: bool,
     workload_paused: Arc<AtomicBool>,
     done: Arc<AtomicBool>,
@@ -857,13 +872,8 @@ async fn membership_change_once(
         }
     }
 
-    println!("MEMBERSHIP-CLIENT: executing change to {new_set:?} (retain={retain})");
-    match tokio::time::timeout(
-        Duration::from_millis(5000),
-        raft.change_membership(new_set.clone(), retain),
-    )
-    .await
-    {
+    println!("MEMBERSHIP-CLIENT: executing change {edit} (retain={retain})");
+    match tokio::time::timeout(Duration::from_millis(5000), raft.change_membership(edit, retain)).await {
         Ok(Ok(_)) => {
             success.store(true, Ordering::SeqCst);
         }
@@ -888,7 +898,8 @@ async fn finalize_joint_once(
     done: Arc<AtomicBool>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     println!("MEMBERSHIP-CLIENT: finalizing joint config to {goal:?}");
-    match tokio::time::timeout(Duration::from_millis(5000), raft.change_membership(goal, false)).await {
+    let edit = ChangeMembers::<NodeId, Node>::from(goal);
+    match tokio::time::timeout(Duration::from_millis(5000), raft.change_membership(edit, false)).await {
         Ok(Ok(_)) => {}
         Ok(Err(e)) => println!("MEMBERSHIP-CLIENT: finalize failed: {e}"),
         Err(_) => println!("MEMBERSHIP-CLIENT: finalize timed out"),
@@ -926,11 +937,11 @@ fn maybe_finalize_joint(
     else {
         return;
     };
-    let joint = membership.get_joint_config();
+    let joint = membership.write_configs();
     if joint.len() <= 1 {
         return;
     }
-    let goal = joint.last().expect("joint config has entries").clone();
+    let (goal, _) = joint.last().expect("joint config has entries").clone();
     let done = Arc::new(AtomicBool::new(false));
     sim.client(
         format!("finalize-{steps}"),
@@ -960,7 +971,7 @@ fn schedule_membership_change(
         membership_change_once(
             raft,
             plan.learners_to_add.clone(),
-            plan.desired.clone(),
+            plan.edit.clone(),
             plan.retain,
             workload_paused,
             done.clone(),
@@ -973,11 +984,25 @@ fn schedule_membership_change(
 /// Pick the next random membership change: grow towards 7 voters, shrink
 /// above 3, and reuse previously removed nodes so stale rejoin paths
 /// (snapshot install onto an outdated member) stay covered.
+///
+/// With `threshold-membership`, every change also sets a random write size, and some
+/// changes set only that size.
 fn new_membership_plan(
     rng: &mut StdRng,
     active_voters: &BTreeSet<NodeId>,
     potential_nodes: &BTreeMap<NodeId, Node>,
 ) -> Option<MembershipPlan> {
+    #[cfg(feature = "threshold-membership")]
+    if rng.random_bool(0.3) {
+        let write_size = random_write_size(rng, active_voters.len());
+        return Some(MembershipPlan {
+            desired: active_voters.clone(),
+            learners_to_add: Vec::new(),
+            retain: false,
+            edit: ThresholdChange::write_size(write_size),
+        });
+    }
+
     let add = active_voters.len() < 3 || (active_voters.len() < 7 && rng.random_bool(0.7));
     if add {
         let candidates: Vec<NodeId> =
@@ -985,24 +1010,48 @@ fn new_membership_plan(
         let joiner = *candidates.get(rng.random_range(0..candidates.len().max(1)))?;
         let mut desired = active_voters.clone();
         desired.insert(joiner);
+        let edit = membership_edit(rng, &desired);
         Some(MembershipPlan {
             desired,
             learners_to_add: vec![(joiner, potential_nodes.get(&joiner).cloned()?)],
             retain: rng.random::<bool>(),
+            edit,
         })
     } else if active_voters.len() > 3 {
         let voters: Vec<NodeId> = active_voters.iter().copied().collect();
         let victim = voters[rng.random_range(0..voters.len())];
         let mut desired = active_voters.clone();
         desired.remove(&victim);
+        let edit = membership_edit(rng, &desired);
         Some(MembershipPlan {
             desired,
             learners_to_add: Vec::new(),
             retain: rng.random::<bool>(),
+            edit,
         })
     } else {
         None
     }
+}
+
+/// The edit that makes `desired` the voters.
+#[cfg(not(feature = "threshold-membership"))]
+fn membership_edit(_rng: &mut StdRng, desired: &BTreeSet<NodeId>) -> MembershipEditOf<TypeConfig> {
+    ChangeMembers::from(desired.clone())
+}
+
+/// The edit that makes `desired` the voters, with a random write size that fits them.
+#[cfg(feature = "threshold-membership")]
+fn membership_edit(rng: &mut StdRng, desired: &BTreeSet<NodeId>) -> MembershipEditOf<TypeConfig> {
+    let write_size = random_write_size(rng, desired.len());
+    ThresholdChange::members(desired.clone()).with_write_size(write_size)
+}
+
+/// A random write size in `1..=voter_count`; the membership derives the read size.
+#[cfg(feature = "threshold-membership")]
+fn random_write_size(rng: &mut StdRng, voter_count: usize) -> u64 {
+    let voter_count = voter_count as u64;
+    rng.random_range(1..=voter_count)
 }
 
 /// Executes queued driver ops inside the simulation.

@@ -794,6 +794,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "openraft-membership"
+version = "0.10.0-alpha.37"
+dependencies = [
+ "display-more",
+ "openraft",
+ "openraft-macros",
+ "quorum-set",
+ "serde",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
 name = "openraft-rt"
 version = "0.10.0-alpha.37"
 dependencies = [
@@ -1258,6 +1271,7 @@ dependencies = [
  "ctrlc",
  "futures",
  "openraft",
+ "openraft-membership",
  "openraft-rt",
  "openraft-rt-tokio",
  "rand 0.10.1",
