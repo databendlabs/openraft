@@ -102,6 +102,7 @@ openraft::declare_raft_types!(
         R = (),
         Node = (),
         Payload = CustomPayload,
+        ErrorSource = anyerror::AnyError,
         AsyncRuntime = AsyncRuntimeOf<openraft_memstore::TypeConfig>,
 );
 

@@ -4,6 +4,7 @@ use std::fmt::Display;
 use openraft_macros::since;
 
 use crate::base::OptionalSend;
+use crate::errors::ErrorSource;
 use crate::errors::MembershipError;
 use crate::membership::RaftMembership;
 
@@ -12,14 +13,18 @@ use crate::membership::RaftMembership;
 /// [`RaftTypeConfig::MembershipEdit`] selects the edit independently of the membership type.
 /// OpenRaft applies it to the current effective membership inside the Raft core, and builds the
 /// edits it needs itself with the constructors of this trait.
+/// `E` is the configured [`RaftTypeConfig::ErrorSource`](crate::RaftTypeConfig::ErrorSource),
+/// independent of the membership representation.
 ///
 /// [`RaftTypeConfig::MembershipEdit`]: crate::RaftTypeConfig::MembershipEdit
+#[since(version = "0.10.0", change = "takes error source E independently of membership")]
 #[since(version = "0.10.0", change = "parameterized by membership and added apply()")]
 #[since(version = "0.10.0")]
-pub trait RaftMembershipEdit<M>
+pub trait RaftMembershipEdit<M, E = anyerror::AnyError>
 where
     Self: Debug + Display + OptionalSend + Sized + 'static,
     M: RaftMembership,
+    E: ErrorSource,
 {
     /// Returns the target configuration of this edit.
     ///
@@ -30,7 +35,7 @@ where
     /// satisfy the intersection requirements of [`RaftMembership::QuorumSet`]. OpenRaft checks
     /// these conditions before appending it.
     #[since(version = "0.10.0")]
-    fn apply(self, membership: &M) -> Result<M, MembershipError<M::NodeId>>;
+    fn apply(self, membership: &M) -> Result<M, MembershipError<M::NodeId, E>>;
 
     /// Returns an edit that adds `node_id` with `node` as a learner.
     ///

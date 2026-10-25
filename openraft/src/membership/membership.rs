@@ -5,8 +5,7 @@ use std::collections::HashMap;
 
 use openraft_macros::since;
 
-use crate::ChangeMembers;
-use crate::errors::MembershipError;
+use crate::errors::NodeNotFound;
 use crate::membership::IntoNodes;
 use crate::membership::RaftMembershipExt;
 use crate::node::EmptyNode;
@@ -17,11 +16,12 @@ use crate::node::NodeId;
 ///
 /// It could be a joint of one, two or more configs, i.e., a quorum is a node set that is superset
 /// of a majority of every config.
+#[since(version = "0.10.0", change = "removed error-source parameter E")]
 #[since(
     version = "0.10.0",
-    change = "replaced `C: RaftTypeConfig` with `NID: NodeId, N: Node`"
+    change = "replaced `C: RaftTypeConfig` with `NID: NodeId, N: Node, E: ErrorSource`"
 )]
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct Membership<NID, N>
 where
@@ -37,6 +37,19 @@ where
     ///
     /// A node-id key that is in `nodes` but is not in `configs` is a **learner**.
     pub(crate) nodes: BTreeMap<NID, N>,
+}
+
+impl<NID, N> fmt::Debug for Membership<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut debug = f.debug_struct("Membership");
+        debug.field("configs", &self.configs);
+        debug.field("nodes", &self.nodes);
+        debug.finish()
+    }
 }
 
 impl<NID, N> Default for Membership<NID, N>
@@ -154,7 +167,8 @@ where
     ///
     /// [`Raft::initialize()`]: crate::Raft::initialize
     /// [`Raft::append_membership()`]: crate::Raft::append_membership
-    pub fn new<T>(config: Vec<BTreeSet<NID>>, nodes: T) -> Result<Self, MembershipError<NID>>
+    #[since(version = "0.10.0", change = "returns NodeNotFound directly")]
+    pub fn new<T>(config: Vec<BTreeSet<NID>>, nodes: T) -> Result<Self, NodeNotFound<NID>>
     where T: IntoNodes<NID, N> {
         let m = Membership {
             configs: config,
@@ -163,6 +177,12 @@ where
 
         m.ensure_voters_have_nodes()?;
         Ok(m)
+    }
+
+    /// Consumes the membership and returns its voter configurations and node metadata.
+    #[since(version = "0.10.0")]
+    pub fn into_parts(self) -> (Vec<BTreeSet<NID>>, BTreeMap<NID, N>) {
+        (self.configs, self.nodes)
     }
 
     /// Create a new Membership with default nodes from voter configurations and a collection of all
@@ -319,76 +339,6 @@ where
         }
 
         res
-    }
-
-    // ---
-    // Quorum related internal API
-    // ---
-    /// Compute the target membership configuration by applying a membership change.
-    ///
-    /// This method:
-    /// - Uses only the last config entry from the current membership. If there are multiple
-    ///   entries, it indicates an ongoing joint consensus change. The last entry represents the
-    ///   target configuration toward which the cluster is transitioning.
-    /// - Applies the specified membership change to create a new target configuration
-    /// - Returns a new `Membership` with the target voter IDs and nodes
-    ///
-    /// Note: This is an intermediate step in membership changes. The result may need to be
-    /// transformed into a coherent configuration before being applied.
-    pub(crate) fn compute_target_membership(mut self, change: ChangeMembers<NID, N>) -> Membership<NID, N> {
-        let last = self.get_joint_config().last().cloned().unwrap_or_default();
-
-        // `None` means the change does not touch the voter set, only `nodes`.
-        let new_voter_ids: Option<BTreeSet<NID>> = match change {
-            ChangeMembers::AddVoterIds(add_voter_ids) => Some(last.union(&add_voter_ids).cloned().collect()),
-            ChangeMembers::AddVoters(add_voters) => {
-                // Add nodes without overriding existent
-                self.nodes = Self::extend_nodes(self.nodes, &add_voters);
-
-                let add_voter_ids = add_voters.keys().cloned().collect::<BTreeSet<_>>();
-                Some(last.union(&add_voter_ids).cloned().collect())
-            }
-            ChangeMembers::RemoveVoters(remove_voter_ids) => {
-                Some(last.difference(&remove_voter_ids).cloned().collect())
-            }
-            ChangeMembers::ReplaceAllVoters(all_voter_ids) => Some(all_voter_ids),
-            ChangeMembers::AddNodes(add_nodes) => {
-                // When adding nodes, do not override existing node
-                for (node_id, node) in add_nodes.into_iter() {
-                    self.nodes.entry(node_id).or_insert(node);
-                }
-                None
-            }
-            ChangeMembers::SetNodes(set_nodes) => {
-                for (node_id, node) in set_nodes.into_iter() {
-                    self.nodes.insert(node_id, node);
-                }
-                None
-            }
-            ChangeMembers::RemoveNodes(remove_node_ids) => {
-                for node_id in remove_node_ids.iter() {
-                    self.nodes.remove(node_id);
-                }
-                None
-            }
-            ChangeMembers::ReplaceAllNodes(all_nodes) => {
-                self.nodes = all_nodes;
-                None
-            }
-            ChangeMembers::Batch(batch) => {
-                // Each nested change already updated `configs` as needed.
-                for change in batch {
-                    self = self.compute_target_membership(change);
-                }
-                None
-            }
-        };
-
-        if let Some(voter_ids) = new_voter_ids {
-            self.configs = vec![voter_ids];
-        }
-
-        self
     }
 }
 

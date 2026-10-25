@@ -2,7 +2,9 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
+use openraft::alias::ErrorSourceOf;
 use openraft::async_runtime::WatchReceiver;
+use openraft::errors::MembershipError;
 use openraft::errors::decompose::DecomposeResult;
 
 use crate::StateMachineStore;
@@ -42,7 +44,11 @@ pub(crate) async fn append_membership(
         .nodes()
         .map(|(id, node)| (id.clone(), node.clone()))
         .collect::<BTreeMap<_, _>>();
-    let membership = openraft::Membership::new(configs, nodes)
-        .map_err(|error| ClientWriteError::ChangeMembershipError(error.into()))?;
+    let membership = openraft::Membership::new(configs, nodes);
+    let membership = membership.map_err(|error| {
+        let membership_error = MembershipError::<_, ErrorSourceOf<TypeConfig>>::from(error);
+        let change_error = membership_error.into();
+        ClientWriteError::ChangeMembershipError(change_error)
+    })?;
     app.raft.append_membership(membership, openraft::EntryPayload::Blank, []).await.decompose().unwrap()
 }

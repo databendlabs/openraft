@@ -10,6 +10,7 @@ use crate::Node;
 use crate::NodeId;
 use crate::base::OptionalFeatures;
 use crate::base::OptionalSend;
+use crate::base::OptionalSerde;
 use crate::base::OptionalSync;
 use crate::membership::NodeRef;
 use crate::membership::NodeRole;
@@ -30,6 +31,7 @@ use crate::membership::NodeRole;
 ///
 /// Quorum rules, node information, and capabilities must remain unchanged for the configuration's
 /// lifetime. A membership change creates a new configuration.
+#[since(version = "0.10.0", change = "removed ErrorSource associated type")]
 #[since(version = "0.10.0", change = "moved edits to RaftTypeConfig::MembershipEdit")]
 #[since(version = "0.10.0")]
 pub trait RaftMembership
@@ -73,6 +75,7 @@ where Self: OptionalFeatures + Clone + Default + Eq + Debug + Display + Sized + 
         + Debug
         + OptionalSend
         + OptionalSync
+        + OptionalSerde
         + 'static;
 
     /// Returns the read quorum rule for this configuration.

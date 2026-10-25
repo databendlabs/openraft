@@ -169,7 +169,7 @@ where C: RaftTypeConfig
         let (tx, rx) = ProgressResponder::<C, _>::complete_only();
 
         // The second step, send an edit that leaves the joint config for its target.
-        let changes = <MembershipEditOf<C> as RaftMembershipEdit<C::Membership>>::make_uniform();
+        let changes = <MembershipEditOf<C> as RaftMembershipEdit<C::Membership, C::ErrorSource>>::make_uniform();
         let client_write_result = self
             .inner
             .call_core(
@@ -236,7 +236,10 @@ where C: RaftTypeConfig
         let (tx, rx) = ProgressResponder::<C, _>::complete_only();
 
         let msg = RaftMsg::ChangeMembership {
-            changes: <MembershipEditOf<C> as RaftMembershipEdit<C::Membership>>::add_learner(id.clone(), node),
+            changes: <MembershipEditOf<C> as RaftMembershipEdit<C::Membership, C::ErrorSource>>::add_learner(
+                id.clone(),
+                node,
+            ),
             payloads: MembershipPayloads::Uniform(C::Payload::blank()),
             retain: true,
             preconditions: Batch::of([]),

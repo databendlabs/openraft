@@ -7,6 +7,7 @@
 //!
 //! - [`Entry`] - Default log entry implementation
 //! - [`EntryPayload`] - Default log entry payload implementation
+//! - [`Membership`] - Membership with majority quorums
 //! - [`LogId`] - Default log identifier
 //! - [`Vote`] - Default vote implementation
 //! - [`BasicNode`] - Simple node information with address

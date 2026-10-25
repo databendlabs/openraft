@@ -90,6 +90,10 @@ use crate::vote::raft_vote::RaftVote;
 ///
 /// [`Raft`]: crate::Raft
 /// [`declare_raft_types!`]: crate::declare_raft_types
+#[since(
+    version = "0.10.0",
+    change = "configures membership error source through MembershipEdit"
+)]
 #[since(version = "0.10.0", change = "added `MembershipEdit` associated type")]
 #[since(version = "0.10.0", change = "added `Membership` associated type")]
 #[since(version = "0.10.0", change = "added `Payload` associated type")]
@@ -133,15 +137,18 @@ pub trait RaftTypeConfig:
     /// Cluster membership configuration type.
     ///
     /// It defines the read and write quorum rules and the roles of each node.
+    #[since(version = "0.10.0", change = "removed ErrorSource constraint")]
     #[since(version = "0.10.0")]
     type Membership: RaftMembership<NodeId = Self::NodeId, Node = Self::Node>;
 
     /// Membership operations, selected independently of the membership representation.
     ///
-    /// The macro defaults to [`ChangeMembers`](crate::ChangeMembers). A custom edit implements
-    /// [`RaftMembershipEdit`] for the selected membership.
+    /// The macro defaults to [`ChangeMembers`](crate::ChangeMembers). Select
+    /// `openraft_membership::ThresholdChange` for threshold membership, or a custom
+    /// edit that implements [`RaftMembershipEdit`] for the selected membership.
+    #[since(version = "0.10.0", change = "passes ErrorSource to the edit trait")]
     #[since(version = "0.10.0")]
-    type MembershipEdit: RaftMembershipEdit<Self::Membership>;
+    type MembershipEdit: RaftMembershipEdit<Self::Membership, Self::ErrorSource>;
 
     /// Raft log entry payload.
     #[since(version = "0.10.0", change = "added configurable log payload type")]
@@ -175,9 +182,9 @@ pub trait RaftTypeConfig:
     type Batch<T>: Batch<T>
     where T: OptionalSend + 'static;
 
-    /// Error wrapper type for storage and network errors.
+    /// Error wrapper type for storage, network, and membership errors.
     ///
-    /// This type is used to wrap underlying errors in storage and network operations.
+    /// This type is used to wrap underlying errors in storage, network, and membership operations.
     /// The default implementation uses [`anyerror::AnyError`].
     ///
     /// Custom implementations can provide:
@@ -279,7 +286,8 @@ pub mod alias {
     pub type SnapshotOf<C, SD> = crate::storage::Snapshot<CommittedLeaderIdOf<C>, MembershipOf<C>, SD>;
     pub type SmSnapshotOf<C, SM> = SnapshotOf<C, SnapshotDataOf<C, SM>>;
     pub type MembershipStateOf<C> = crate::MembershipState<CommittedLeaderIdOf<C>, MembershipOf<C>>;
-    pub type ChangeMembershipErrorOf<C> = crate::errors::ChangeMembershipError<CommittedLeaderIdOf<C>, NodeIdOf<C>>;
+    pub type ChangeMembershipErrorOf<C> =
+        crate::errors::ChangeMembershipError<CommittedLeaderIdOf<C>, NodeIdOf<C>, ErrorSourceOf<C>>;
     pub type InProgressOf<C> = crate::errors::InProgress<CommittedLeaderIdOf<C>>;
     pub type SerdeInstantOf<C> = crate::metrics::SerdeInstant<InstantOf<C>>;
 

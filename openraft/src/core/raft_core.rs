@@ -567,7 +567,7 @@ where
 
         let membership_state = &self.engine.state.membership_state;
         let allow_unproven = self.engine.config.allow_unproven_read_write_intersection;
-        if let Err(e) = membership_state.validate_append_membership(&membership, allow_unproven) {
+        if let Err(e) = membership_state.validate_append_membership::<C::ErrorSource>(&membership, allow_unproven) {
             tx.on_complete(Err(ClientWriteError::ChangeMembershipError(e)));
             return;
         }
@@ -2834,6 +2834,7 @@ mod tests {
             R = (),
             Node = (),
             Payload = TestPayload,
+            ErrorSource = anyerror::AnyError,
             AsyncRuntime = TokioRuntime,
     );
 

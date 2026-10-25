@@ -1,6 +1,6 @@
 //! Committed On Quorum (Vanlightly `CommittedEntriesReachMajority`).
 //!
-//! A current leader's latest committed entry must be present on a voter quorum
+//! A current leader's latest committed entry must be present on a write quorum
 //! of its own membership (every sub-config in a joint config).
 //!
 //! # Why only the *current-term* frontier?
@@ -13,6 +13,7 @@
 //! committed — for which the quorum must reside in the current membership.
 
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
 use openraft::alias::LogIdListOf;
 use openraft::vote::RaftLeaderId;
@@ -21,9 +22,10 @@ use super::violation::InvariantViolation;
 use crate::cluster::FullNodeSnapshot;
 use crate::typ::NodeId;
 use crate::typ::TypeConfig;
+use crate::write_configs::WriteConfigs;
 
 /// On every current leader, if the newest committed entry is the leader's own,
-/// verify a quorum of voters have that entry in durable log storage.
+/// verify a write quorum of voters have that entry in durable log storage.
 pub fn check(
     snapshots: &[(NodeId, FullNodeSnapshot)],
     durable_logs: &BTreeMap<NodeId, LogIdListOf<TypeConfig>>,
@@ -53,32 +55,31 @@ pub fn check(
         };
 
         let membership = s.raft.membership_config.as_ref();
-        let joint_config = membership.membership().get_joint_config();
+        let joint_config = membership.membership().write_configs();
         let membership_log_index = membership.log_id().map(|id| id.index());
 
-        let voter_sets: Vec<Vec<NodeId>> = if membership_log_index.is_some_and(|i| idx < i) {
+        let configs: Vec<(BTreeSet<NodeId>, usize)> = if membership_log_index.is_some_and(|i| idx < i) {
             let Some(old_config) = joint_config.first() else {
                 continue;
             };
             if joint_config.len() == 1 {
                 continue;
             }
-            vec![old_config.iter().copied().collect()]
+            vec![old_config.clone()]
         } else {
-            joint_config.iter().map(|voter_set| voter_set.iter().copied().collect()).collect()
+            joint_config
         };
 
-        for voters in voter_sets {
+        for (voters, write_size) in configs {
+            let voters: Vec<NodeId> = voters.into_iter().collect();
             let matching: Vec<NodeId> = voters.iter().copied().filter(has_entry).collect();
 
-            // Strict-majority check: `matching` must be > half of `voters`.
-            // `matching * 2 <= voters` catches both "less than half" and
-            // "exactly half of an even voter count" (not a majority).
-            if matching.len() * 2 <= voters.len() {
+            if matching.len() < write_size {
                 violations.push(InvariantViolation::CommittedNotOnQuorum {
                     leader: *leader_id,
                     index: idx,
                     voters,
+                    write_size,
                     matching,
                 });
             }
