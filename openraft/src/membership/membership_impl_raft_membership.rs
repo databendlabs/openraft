@@ -11,6 +11,7 @@ use crate::errors::MembershipError;
 use crate::membership::NodeRef;
 use crate::membership::NodeRole;
 use crate::membership::RaftMembership;
+use crate::membership::RaftMembershipEdit;
 
 impl<NID, N> RaftMembership for Membership<NID, N>
 where
@@ -86,21 +87,11 @@ where
     ///
     /// # Panics
     ///
-    /// Panics if this membership has no configuration.
+    /// Panics if this membership has no configuration after applying the edit.
+    #[since(version = "0.10.0", change = "delegates to RaftMembershipEdit::apply()")]
     #[since(version = "0.10.0")]
     pub fn change(&self, change: ChangeMembers<NID, N>) -> Result<Self, MembershipError<NID>> {
-        tracing::debug!("{}: change: {:?}", func_name!(), change);
-
-        let Membership { mut configs, nodes } = self.clone().compute_target_membership(change);
-
-        // Safe unwrap(): membership changes are only evaluated on an initialized leader.
-        let target_voter_ids = configs.pop().unwrap();
-
-        let target = Membership::new_unchecked(vec![target_voter_ids], nodes);
-
-        tracing::debug!("target membership: {}", target);
-
-        Ok(target)
+        change.apply(self)
     }
 
     /// Returns the capabilities this majority-based membership gives a known node.

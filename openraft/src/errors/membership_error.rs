@@ -1,22 +1,28 @@
+use anyerror::AnyError;
 use openraft_macros::since;
 
 use crate::errors::ChangeMembershipError;
 use crate::errors::EmptyMembership;
+use crate::errors::ErrorSource;
 use crate::errors::LearnerNotFound;
 use crate::errors::NodeNotFound;
 use crate::errors::UnprovenReadWriteIntersection;
 use crate::node::NodeId;
 use crate::vote::RaftCommittedLeaderId;
 
-/// Errors occur when building a [`Membership`].
-///
-/// [`Membership`]: crate::membership::Membership
+/// Errors from applying a membership edit or validating its target.
+#[since(
+    version = "0.10.0",
+    change = "added `UserDefined` variant and configurable error source `E`"
+)]
 #[since(version = "0.10.0", change = "added `UnprovenReadWriteIntersection` variant")]
 #[since(version = "0.10.0", change = "removed `C: RaftTypeConfig` generic parameter")]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum MembershipError<NID>
-where NID: NodeId
+pub enum MembershipError<NID, E = AnyError>
+where
+    NID: NodeId,
+    E: ErrorSource,
 {
     /// The membership configuration is empty.
     #[error(transparent)]
@@ -30,6 +36,11 @@ where NID: NodeId
     #[since(version = "0.10.0")]
     #[error(transparent)]
     UnprovenReadWriteIntersection(#[from] UnprovenReadWriteIntersection),
+
+    /// A membership edit rejected the target for a reason of its own.
+    #[since(version = "0.10.0")]
+    #[error("user-defined membership error: {0}")]
+    UserDefined(E),
 }
 
 /// Translate a membership validation failure into a rejected change request.
@@ -44,12 +55,13 @@ where NID: NodeId
 /// a node it never added. `LearnerNotFound` says exactly that, whereas `NodeNotFound` would only
 /// say the node is missing. The `operation` field dropped in the process is always
 /// `Operation::None` on this path, so nothing diagnostic is lost.
-impl<CLID, NID> From<MembershipError<NID>> for ChangeMembershipError<CLID, NID>
+impl<CLID, NID, E> From<MembershipError<NID, E>> for ChangeMembershipError<CLID, NID, E>
 where
     CLID: RaftCommittedLeaderId,
+    E: ErrorSource,
     NID: NodeId,
 {
-    fn from(me: MembershipError<NID>) -> Self {
+    fn from(me: MembershipError<NID, E>) -> Self {
         match me {
             MembershipError::EmptyMembership(e) => ChangeMembershipError::EmptyMembership(e),
             MembershipError::NodeNotFound(e) => {
@@ -58,6 +70,7 @@ where
             MembershipError::UnprovenReadWriteIntersection(e) => {
                 ChangeMembershipError::UnprovenReadWriteIntersection(e)
             }
+            MembershipError::UserDefined(e) => ChangeMembershipError::UserDefined(e),
         }
     }
 }
