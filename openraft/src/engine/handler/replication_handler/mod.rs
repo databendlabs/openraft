@@ -148,6 +148,7 @@ where
                 non_write_voter_ids,
                 IdVal::new_default,
             ));
+            self.leader.update_self_quorum();
         }
     }
 

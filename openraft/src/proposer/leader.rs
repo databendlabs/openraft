@@ -97,6 +97,13 @@ where
     ///
     /// [`docs::leader_lease`]: `crate::docs::protocol::replication::leader_lease`
     pub(crate) clock_progress: Valid<VecProgress<IdVal<C::NodeId, Option<SendStamp<InstantOf<C>>>>, QS>>,
+
+    /// Whether this leader alone forms a write quorum; see [`Self::is_self_quorum()`].
+    ///
+    /// [`QuorumSet::is_quorum()`] runs application code with no bound on its running time. So
+    /// [`Self::update_self_quorum()`] computes this value once per write quorum set, instead of on
+    /// every lease check, read, and metrics report.
+    self_quorum: bool,
 }
 
 impl<C> Leader<C, WriteQuorumSet<C>>
@@ -162,7 +169,7 @@ where C: RaftTypeConfig
         let leader_node_id = vote.to_leader_node_id();
         clock_progress.increase_to(&leader_node_id, Some(SendStamp::new(now, 0)));
 
-        Self {
+        let mut leader = Self {
             transfer_to: None,
             committed_vote: vote,
             next_heartbeat: now,
@@ -171,7 +178,10 @@ where C: RaftTypeConfig
             noop_log_id,
             progress: Valid::new(progress),
             clock_progress: Valid::new(clock_progress),
-        }
+            self_quorum: false,
+        };
+        leader.update_self_quorum();
+        leader
     }
 }
 
@@ -310,6 +320,25 @@ where
     /// candidate can win without its vote. The leader refuses that vote while it leads, except
     /// for a leadership transfer that it started.
     pub(crate) fn is_self_quorum(&self) -> bool {
+        #[cfg(debug_assertions)]
+        {
+            let calculated = self.calc_self_quorum();
+            debug_assert_eq!(
+                calculated, self.self_quorum,
+                "update_self_quorum() must run after clock_progress gets a new quorum set"
+            );
+        }
+
+        self.self_quorum
+    }
+
+    /// Recompute [`Self::self_quorum`]. Call it after [`Self::clock_progress`] gets a new quorum
+    /// set.
+    pub(crate) fn update_self_quorum(&mut self) {
+        self.self_quorum = self.calc_self_quorum();
+    }
+
+    fn calc_self_quorum(&self) -> bool {
         let leader_node_id = self.committed_vote.to_leader_node_id();
         let write_quorum_set = self.clock_progress.quorum_set();
         write_quorum_set.is_quorum(std::iter::once(&leader_node_id))
