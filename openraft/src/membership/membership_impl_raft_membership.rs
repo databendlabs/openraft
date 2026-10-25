@@ -5,18 +5,21 @@ use crate::ChangeMembers;
 use crate::Membership;
 use crate::Node;
 use crate::NodeId;
+use crate::errors::ErrorSource;
 use crate::errors::MembershipError;
 use crate::membership::NodeRef;
 use crate::membership::NodeRole;
 use crate::membership::RaftMembership;
 
-impl<NID, N> RaftMembership for Membership<NID, N>
+impl<NID, N, E> RaftMembership for Membership<NID, N, E>
 where
     NID: NodeId,
     N: Node,
+    E: ErrorSource,
 {
     type NodeId = NID;
     type Node = N;
+    type ErrorSource = E;
     type QuorumSet = Vec<BTreeSet<NID>>;
 
     fn read_quorum_set(&self) -> &Self::QuorumSet {
@@ -60,6 +63,7 @@ where
         );
 
         let mut membership = Membership {
+            _error_source: std::marker::PhantomData,
             configs: read_quorum_set,
             nodes: BTreeMap::new(),
         };
@@ -76,10 +80,10 @@ where
 
     type Edit = ChangeMembers<NID, N>;
 
-    fn change(&self, change: ChangeMembers<NID, N>) -> Result<Self, MembershipError<NID>> {
+    fn change(&self, change: ChangeMembers<NID, N>) -> Result<Self, MembershipError<NID, E>> {
         tracing::debug!("{}: change: {:?}", func_name!(), change);
 
-        let Membership { mut configs, nodes } = self.clone().compute_target_membership(change);
+        let Membership { mut configs, nodes, .. } = self.clone().compute_target_membership(change);
 
         // Safe unwrap(): membership changes are only evaluated on an initialized leader.
         let target_voter_ids = configs.pop().unwrap();
@@ -92,10 +96,11 @@ where
     }
 }
 
-impl<NID, N> Membership<NID, N>
+impl<NID, N, E> Membership<NID, N, E>
 where
     NID: NodeId,
     N: Node,
+    E: ErrorSource,
 {
     /// Returns the capabilities this majority-based membership gives a known node.
     ///

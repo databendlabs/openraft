@@ -6,6 +6,7 @@ use display_more::DisplayOptionExt;
 use openraft_macros::since;
 
 use crate::Membership;
+use crate::errors::ErrorSource;
 use crate::log_id::LogId;
 use crate::membership::RaftMembership;
 use crate::membership::RaftMembershipExt;
@@ -23,6 +24,10 @@ use crate::vote::RaftCommittedLeaderId;
 ///
 /// It derives `Default` for building an uninitialized membership state, e.g., when a raft-node is
 /// just created.
+#[since(
+    version = "0.10.0",
+    change = "membership helpers and QuorumSet support custom error sources"
+)]
 #[since(
     version = "0.10.0",
     change = "from `StoredMembership<C>` to `StoredMembership<CLID, Mem>`"
@@ -105,11 +110,12 @@ where
     }
 }
 
-impl<CLID, NID, N> StoredMembership<CLID, Membership<NID, N>>
+impl<CLID, NID, N, E> StoredMembership<CLID, Membership<NID, N, E>>
 where
     CLID: RaftCommittedLeaderId,
     NID: NodeId,
     N: Node,
+    E: ErrorSource,
 {
     /// Get an iterator over all nodes (ID and node information).
     pub fn nodes(&self) -> impl Iterator<Item = (&NID, &N)> {
@@ -137,11 +143,12 @@ where
 }
 
 /// Implement node-id joint quorum set.
-impl<CLID, NID, N> QuorumSet for StoredMembership<CLID, Membership<NID, N>>
+impl<CLID, NID, N, E> QuorumSet for StoredMembership<CLID, Membership<NID, N, E>>
 where
     CLID: RaftCommittedLeaderId,
     NID: NodeId,
     N: Node,
+    E: ErrorSource,
 {
     type Id = NID;
     type Iter = std::collections::btree_set::IntoIter<NID>;

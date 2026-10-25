@@ -93,6 +93,7 @@ declare_raft_types!(
         R = (),
         Node = (),
         Payload = CustomPayload,
+        ErrorSource = anyerror::AnyError,
         AsyncRuntime = TokioRuntime,
 );
 
@@ -107,7 +108,10 @@ fn test_payload_type() {
 
     assert_payload::<WithCustomPayload, CustomPayload>();
     #[cfg(feature = "tokio-rt")]
-    assert_payload::<Empty, EntryPayload<String, Membership<u64, crate::impls::BasicNode>>>();
+    assert_payload::<
+        Empty,
+        EntryPayload<String, Membership<u64, crate::impls::BasicNode, crate::impls::BoxedErrorSource>>,
+    >();
 }
 
 #[test]

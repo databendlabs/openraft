@@ -7,6 +7,12 @@
 //!
 //! - [`Entry`] - Default log entry implementation
 //! - [`EntryPayload`] - Default log entry payload implementation
+//! - [`Membership`] - Membership with majority quorums
+//! - [`ThresholdMembership`] - Membership with a configurable write quorum size
+//! - [`ThresholdChange`] - Voter, node, or write size change for threshold membership
+//! - [`InvalidThresholds`] - Invalid write quorum size for threshold membership
+//! - [`ThresholdQuorumSet`] - Quorum rule with a configurable size
+//! - [`Joint`] - Quorum rule that requires every constituent rule to accept
 //! - [`LogId`] - Default log identifier
 //! - [`Vote`] - Default vote implementation
 //! - [`BasicNode`] - Simple node information with address
@@ -38,10 +44,20 @@ pub use crate::entry::Entry;
 #[since(version = "0.10.0", change = "re-exported from `impls`")]
 pub use crate::entry::EntryPayload;
 #[since(version = "0.10.0", change = "re-exported from `impls`")]
+pub use crate::membership::InvalidThresholds;
+#[since(version = "0.10.0", change = "re-exported from `impls`")]
 pub use crate::membership::Membership;
+#[since(version = "0.10.0", change = "re-exported from `impls`")]
+pub use crate::membership::ThresholdChange;
+#[since(version = "0.10.0", change = "re-exported from `impls`")]
+pub use crate::membership::ThresholdMembership;
 pub use crate::node::BasicNode;
 pub use crate::node::EmptyNode;
 pub use crate::node::NodeInfo;
+#[since(version = "0.10.0", change = "re-exported from `impls`")]
+pub use crate::quorum::Joint;
+#[since(version = "0.10.0", change = "re-exported from `impls`")]
+pub use crate::quorum::ThresholdQuorumSet;
 pub use crate::raft::responder::impls::OneshotResponder;
 pub use crate::raft::responder::impls::ProgressResponder;
 
