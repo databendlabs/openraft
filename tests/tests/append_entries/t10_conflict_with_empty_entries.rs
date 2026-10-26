@@ -44,7 +44,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
 
     let mut router = RaftRouter::new(config.clone());
 
-    router.new_raft_node(0).await;
+    router.new_raft_node(0).await?;
 
     // Expect conflict even if the message contains no entries.
 

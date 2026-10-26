@@ -34,7 +34,7 @@ async fn install_snapshot_lower_vote() -> Result<()> {
     tracing::info!(log_index, "--- initializing cluster");
     log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
 
-    let (n0, _, _) = router.remove_node(0).unwrap();
+    let (n0, _, _) = router.detach_node(0).unwrap();
     let make_req = || InstallSnapshotRequest {
         vote: Vote::new_committed(2, 1),
         meta: SnapshotMeta::<openraft_memstore::TypeConfig> {

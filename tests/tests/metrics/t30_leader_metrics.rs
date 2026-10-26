@@ -63,10 +63,10 @@ async fn leader_metrics() -> Result<()> {
         .await?;
 
     // Sync some new nodes.
-    router.new_raft_node(1).await;
-    router.new_raft_node(2).await;
-    router.new_raft_node(3).await;
-    router.new_raft_node(4).await;
+    router.new_raft_node(1).await?;
+    router.new_raft_node(2).await?;
+    router.new_raft_node(3).await?;
+    router.new_raft_node(4).await?;
 
     tracing::info!(log_index, "--- adding 4 new nodes to cluster");
     {

@@ -39,10 +39,10 @@ async fn feature_loosen_follower_log_revert() -> Result<()> {
 
     tracing::info!(log_index, "--- erase node 3 and restart");
     {
-        let (_raft, _ls, _sm) = router.remove_node(3).unwrap();
+        router.stop_node(3).await?;
         let (log, sm) = openraft_memstore::new_mem_store();
 
-        router.new_raft_node_with_sto(3, log, sm).await;
+        router.new_raft_node_with_sto(3, log, sm).await?;
         router.add_learner(0, 3).await?;
         log_index += 1; // add learner
     }

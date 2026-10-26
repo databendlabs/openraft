@@ -12,9 +12,7 @@ use openraft::errors::RPCError;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
 
-use crate::fixtures::MemLogStore;
-use crate::fixtures::MemRaft;
-use crate::fixtures::MemStateMachine;
+use crate::fixtures::Node;
 use crate::fixtures::RaftRouter;
 use crate::fixtures::rpc_request::RpcRequest;
 use crate::fixtures::ut_harness;
@@ -64,8 +62,7 @@ async fn leader_restart_cluster_committed_not_restored() -> anyhow::Result<()> {
         "--- take both followers offline so the leader loses its quorum"
     );
     for id in [1, 2] {
-        let (node, _ls, _sm): (MemRaft, MemLogStore, MemStateMachine) = router.remove_node(id).unwrap();
-        node.shutdown().await?;
+        router.stop_node(id).await?;
     }
 
     tracing::info!(
@@ -73,10 +70,13 @@ async fn leader_restart_cluster_committed_not_restored() -> anyhow::Result<()> {
         "--- restart node-0 with its persisted state; it restores leadership"
     );
     {
-        let (node, ls, sm): (MemRaft, MemLogStore, MemStateMachine) = router.remove_node(0).unwrap();
-        node.shutdown().await?;
+        let Node {
+            log_store: ls,
+            state_machine: sm,
+            ..
+        } = router.stop_node(0).await?;
 
-        router.new_raft_node_with_sto(0, ls, sm).await;
+        router.new_raft_node_with_sto(0, ls, sm).await?;
         router.wait(&0).state(ServerState::Leader, "restore leadership without election").await?;
         router.wait(&0).applied_index(Some(log_index), "applied restored from storage").await?;
     }

@@ -23,7 +23,7 @@ async fn add_learner_on_uninitialized_node() -> Result<()> {
     );
 
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0).await;
+    router.new_raft_node(0).await?;
 
     let n0 = router.get_raft_handle(&0)?;
     let err = n0.add_learner(0, (), false).await.unwrap_err();

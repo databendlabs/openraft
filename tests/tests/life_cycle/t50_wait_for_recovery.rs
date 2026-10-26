@@ -6,9 +6,7 @@ use openraft::Config;
 use openraft::ServerState;
 use openraft::metrics::WaitError;
 
-use crate::fixtures::MemLogStore;
-use crate::fixtures::MemRaft;
-use crate::fixtures::MemStateMachine;
+use crate::fixtures::Node;
 use crate::fixtures::RaftRouter;
 use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
@@ -40,13 +38,16 @@ async fn wait_for_recovery_recovers_state_machine() -> anyhow::Result<()> {
 
     tracing::info!(log_index, "--- restart follower node-1 with a cleared state machine");
     {
-        let (node, ls, sm): (MemRaft, MemLogStore, MemStateMachine) = router.remove_node(1).unwrap();
-        node.shutdown().await?;
+        let Node {
+            log_store: ls,
+            state_machine: sm,
+            ..
+        } = router.stop_node(1).await?;
 
         // Transient state machine: in-memory applied state is lost on restart.
         sm.clear_state_machine().await;
 
-        router.new_raft_node_with_sto(1, ls, sm).await;
+        router.new_raft_node_with_sto(1, ls, sm).await?;
     }
 
     tracing::info!(
@@ -91,16 +92,18 @@ async fn wait_for_recovery_times_out_without_quorum() -> anyhow::Result<()> {
 
     tracing::info!("--- take both followers offline so the leader loses its quorum");
     for id in [1, 2] {
-        let (node, _ls, _sm): (MemRaft, MemLogStore, MemStateMachine) = router.remove_node(id).unwrap();
-        node.shutdown().await?;
+        router.stop_node(id).await?;
     }
 
     tracing::info!("--- restart node-0; it restores leadership but cannot re-establish the commit");
     {
-        let (node, ls, sm): (MemRaft, MemLogStore, MemStateMachine) = router.remove_node(0).unwrap();
-        node.shutdown().await?;
+        let Node {
+            log_store: ls,
+            state_machine: sm,
+            ..
+        } = router.stop_node(0).await?;
 
-        router.new_raft_node_with_sto(0, ls, sm).await;
+        router.new_raft_node_with_sto(0, ls, sm).await?;
         router.wait(&0).state(ServerState::Leader, "restore leadership without election").await?;
     }
 

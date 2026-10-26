@@ -5,6 +5,7 @@ use openraft::Config;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
 
+use crate::fixtures::Node;
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
@@ -38,7 +39,11 @@ async fn startup_build_snapshot() -> anyhow::Result<()> {
     }
 
     tracing::info!(log_index, "--- shut down and purge to log index: {}", 5);
-    let (_, mut log_store, mut sm) = router.remove_node(0).unwrap();
+    let Node {
+        mut log_store,
+        state_machine: mut sm,
+        ..
+    } = router.stop_node(0).await?;
     log_store.purge(log_id(1, 0, 19)).await?;
 
     tracing::info!(log_index, "--- drop current snapshot");
@@ -54,7 +59,7 @@ async fn startup_build_snapshot() -> anyhow::Result<()> {
         log_index
     );
     {
-        router.new_raft_node_with_sto(0, log_store, sm).await;
+        router.new_raft_node_with_sto(0, log_store, sm).await?;
         router.wait(&0).snapshot(log_id(1, 0, log_index), "node-1 snapshot").await?;
     }
 

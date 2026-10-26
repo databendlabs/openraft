@@ -27,6 +27,7 @@ use openraft_memstore::MemNodeId;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::MemRaft;
+use crate::fixtures::Node;
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
@@ -70,8 +71,11 @@ async fn startup_rejects_inverted_log_store() -> anyhow::Result<()> {
     let (config, mut router) = single_node_cluster().await?;
 
     tracing::info!("--- corrupt the store: purge to (3,0,0), above the term-1 tail by log id order");
-    let (node, mut log_store, sm) = router.remove_node(NODE).unwrap();
-    node.shutdown().await?;
+    let Node {
+        mut log_store,
+        state_machine: sm,
+        ..
+    } = router.stop_node(NODE).await?;
     log_store.purge(log_id(SNAPSHOT_TERM, NODE, 0)).await?;
 
     let res = MemRaft::new(NODE, config, router.clone(), log_store, sm).await;
@@ -94,10 +98,11 @@ async fn startup_rejects_inverted_applied_state() -> anyhow::Result<()> {
     let (config, mut router) = single_node_cluster().await?;
     let _snapshot = higher_term_snapshot(&mut router).await?;
 
-    let (n0, log_store, _sm0) = router.remove_node(NODE).unwrap();
-    n0.shutdown().await?;
-    let (helper, _helper_log, helper_sm) = router.remove_node(HELPER).unwrap();
-    helper.shutdown().await?;
+    let Node { log_store, .. } = router.stop_node(NODE).await?;
+    let Node {
+        state_machine: helper_sm,
+        ..
+    } = router.stop_node(HELPER).await?;
 
     tracing::info!("--- pair the term-1 log store with the state machine applied at (3,0,0)");
     let res = MemRaft::new(NODE, config, router.clone(), log_store, helper_sm).await;
@@ -134,7 +139,7 @@ async fn single_node_cluster() -> anyhow::Result<(Arc<Config>, RaftRouter)> {
 /// The membership keeps [`NODE`] a voter, so installing the snapshot does not evict the
 /// receiving node from its own config.
 async fn higher_term_snapshot(router: &mut RaftRouter) -> anyhow::Result<SnapshotOf<TypeConfig, Cursor<Vec<u8>>>> {
-    router.new_raft_node(HELPER).await;
+    router.new_raft_node(HELPER).await?;
     let helper = router.get_raft_handle(&HELPER)?;
 
     let snapshot_log_id = log_id(SNAPSHOT_TERM, NODE, 0);
@@ -156,8 +161,11 @@ async fn higher_term_snapshot(router: &mut RaftRouter) -> anyhow::Result<Snapsho
 }
 
 async fn restart(router: &mut RaftRouter, id: MemNodeId) -> anyhow::Result<()> {
-    let (node, log_store, sm) = router.remove_node(id).unwrap();
-    node.shutdown().await?;
-    router.new_raft_node_with_sto(id, log_store, sm).await;
+    let Node {
+        log_store,
+        state_machine: sm,
+        ..
+    } = router.stop_node(id).await?;
+    router.new_raft_node_with_sto(id, log_store, sm).await?;
     Ok(())
 }

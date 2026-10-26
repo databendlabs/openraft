@@ -5,6 +5,7 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::storage::RaftLogStorage;
 
+use crate::fixtures::Node;
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
@@ -33,7 +34,7 @@ async fn write_committed_log_id_to_log_store() -> Result<()> {
     }
 
     for id in [0, 1, 2] {
-        let (_, mut ls, _) = router.remove_node(id).unwrap();
+        let Node { log_store: mut ls, .. } = router.stop_node(id).await?;
         let committed = ls.read_committed().await?;
         assert_eq!(Some(log_id(1, 0, log_index)), committed, "node-{} committed", id);
     }

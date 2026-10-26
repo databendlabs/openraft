@@ -78,7 +78,7 @@ async fn storage_error_stops_replication() -> Result<()> {
     }
 
     tracing::info!("--- inject one storage read error and add a fresh learner");
-    router.new_raft_node(1).await;
+    router.new_raft_node(1).await?;
     router.set_fail_next_limited_get(&0, true)?;
 
     let leader = router.get_raft_handle(&0)?;

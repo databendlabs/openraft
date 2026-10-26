@@ -3,6 +3,7 @@ use std::sync::Arc;
 use maplit::btreeset;
 use openraft::Config;
 
+use crate::fixtures::Node;
 use crate::fixtures::RaftRouter;
 use crate::fixtures::ut_harness;
 
@@ -35,12 +36,15 @@ async fn single_restart() -> anyhow::Result<()> {
 
     tracing::info!(log_index, "--- stop and restart node 0");
     {
-        let (node, sto, sm) = router.remove_node(0).unwrap();
-        node.shutdown().await?;
+        let Node {
+            log_store: sto,
+            state_machine: sm,
+            ..
+        } = router.stop_node(0).await?;
 
         tracing::info!(log_index, "--- restart node 0");
 
-        router.new_raft_node_with_sto(0, sto, sm).await;
+        router.new_raft_node_with_sto(0, sto, sm).await?;
     }
 
     tracing::info!(log_index, "--- write to 1 log after restart");

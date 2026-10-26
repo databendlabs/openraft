@@ -71,7 +71,7 @@ async fn removed_leader_accepts_writes_and_membership_changes() -> Result<()> {
 
     tracing::info!(log_index, "--- add a learner through node 0");
     {
-        router.new_raft_node(4).await;
+        router.new_raft_node(4).await?;
         let response = leader.add_learner(4, (), false).await?;
         log_index += 1;
         assert_eq!(log_index, response.log_id.index);

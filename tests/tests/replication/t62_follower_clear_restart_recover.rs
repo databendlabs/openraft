@@ -3,9 +3,6 @@ use std::sync::Arc;
 use maplit::btreeset;
 use openraft::Config;
 
-use crate::fixtures::MemLogStore;
-use crate::fixtures::MemRaft;
-use crate::fixtures::MemStateMachine;
 use crate::fixtures::RaftRouter;
 use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
@@ -38,12 +35,11 @@ async fn follower_clear_restart_recover() -> anyhow::Result<()> {
 
     tracing::info!(log_index, "--- stop node-1");
     {
-        let (n1, _log, _sm): (MemRaft, MemLogStore, MemStateMachine) = router.remove_node(1).unwrap();
-        n1.shutdown().await?;
+        router.stop_node(1).await?;
     }
 
     tracing::info!(log_index, "--- restart node-1 with empty log and sm");
-    router.new_raft_node(1).await;
+    router.new_raft_node(1).await?;
 
     tracing::info!(
         log_index,

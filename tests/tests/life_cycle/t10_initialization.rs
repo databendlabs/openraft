@@ -43,9 +43,9 @@ async fn initialization() -> anyhow::Result<()> {
     );
 
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0).await;
-    router.new_raft_node(1).await;
-    router.new_raft_node(2).await;
+    router.new_raft_node(0).await?;
+    router.new_raft_node(1).await?;
+    router.new_raft_node(2).await?;
 
     #[allow(clippy::bool_assert_comparison)]
     {
@@ -190,8 +190,8 @@ async fn initialize_err_target_not_include_target() -> anyhow::Result<()> {
 
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0).await;
-    router.new_raft_node(1).await;
+    router.new_raft_node(0).await?;
+    router.new_raft_node(1).await?;
 
     for node in [0, 1] {
         router
@@ -228,7 +228,7 @@ async fn initialize_err_not_allowed() -> anyhow::Result<()> {
 
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0).await;
+    router.new_raft_node(0).await?;
 
     for node in [0] {
         router

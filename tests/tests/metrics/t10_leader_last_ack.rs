@@ -89,8 +89,8 @@ async fn leader_last_ack_3_nodes() -> Result<()> {
 
     tracing::info!(log_index, "--- remove node 1 and node 2");
     {
-        router.remove_node(1);
-        router.remove_node(2);
+        router.stop_node(1).await?;
+        router.stop_node(2).await?;
     }
 
     tracing::info!(
@@ -181,8 +181,8 @@ async fn leader_last_ack_3_nodes_abs_time() -> Result<()> {
 
     tracing::info!(log_index, "--- remove node 1 and node 2");
     {
-        router.remove_node(1);
-        router.remove_node(2);
+        router.stop_node(1).await?;
+        router.stop_node(2).await?;
     }
 
     tracing::info!(

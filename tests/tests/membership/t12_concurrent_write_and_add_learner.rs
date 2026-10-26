@@ -67,7 +67,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
     // Concurrently add Learner and write another log.
     tracing::info!(log_index, "--- concurrently add learner and write another log");
     {
-        router.new_raft_node(3).await;
+        router.new_raft_node(3).await?;
         let r = router.clone();
 
         let handle = {

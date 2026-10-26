@@ -10,6 +10,7 @@ use openraft::storage::RaftLogStorage;
 use openraft::vote::RaftLeaderId;
 use openraft::vote::RaftLeaderIdExt;
 
+use crate::fixtures::Node;
 use crate::fixtures::RaftRouter;
 use crate::fixtures::ut_harness;
 
@@ -43,8 +44,11 @@ async fn single_follower_restart() -> anyhow::Result<()> {
 
     tracing::info!(log_index, "--- stop and restart node-0");
     {
-        let (node, mut sto, sm) = router.remove_node(0).unwrap();
-        node.shutdown().await?;
+        let Node {
+            log_store: mut sto,
+            state_machine: sm,
+            ..
+        } = router.stop_node(0).await?;
         let v = sto.read_vote().await?;
 
         if let Some(v) = v {
@@ -54,7 +58,7 @@ async fn single_follower_restart() -> anyhow::Result<()> {
 
         tracing::info!(log_index, "--- restart node-0");
 
-        router.new_raft_node_with_sto(0, sto, sm).await;
+        router.new_raft_node_with_sto(0, sto, sm).await?;
         router
             .wait_with_timeout(&0, Duration::from_millis(1_000))
             .state(ServerState::Leader, "single node restarted an became leader quickly")

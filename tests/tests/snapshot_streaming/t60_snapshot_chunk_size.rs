@@ -65,7 +65,7 @@ async fn snapshot_chunk_size() -> Result<()> {
 
     tracing::info!(log_index, "--- add learner to receive snapshot and logs");
     {
-        router.new_raft_node(1).await;
+        router.new_raft_node(1).await?;
         router.add_learner(0, 1).await.expect("failed to add new node as learner");
         log_index += 1;
 

@@ -7,6 +7,7 @@ use openraft::Config;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
 
+use crate::fixtures::Node;
 use crate::fixtures::RaftRouter;
 use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
@@ -40,7 +41,11 @@ async fn append_entries_backoff_rejoin() -> Result<()> {
     tracing::info!(log_index, "--- set node 0 to unreachable and remove it");
     router.set_unreachable(0, true);
 
-    let (_, ls0, sm0) = router.remove_node(0).unwrap();
+    let Node {
+        log_store: ls0,
+        state_machine: sm0,
+        ..
+    } = router.stop_node(0).await?;
     let n1 = router.get_raft_handle(&1)?;
 
     tracing::info!(log_index, "--- elect node-1");
@@ -64,7 +69,7 @@ async fn append_entries_backoff_rejoin() -> Result<()> {
 
     tracing::info!(log_index, "--- restart node-0, check replication");
     {
-        router.new_raft_node_with_sto(0, ls0, sm0).await;
+        router.new_raft_node_with_sto(0, ls0, sm0).await?;
         router.set_unreachable(0, false);
 
         router

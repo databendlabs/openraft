@@ -82,6 +82,8 @@ use crate::fixtures::rpc_response::RpcResponse;
 
 pub mod custom_membership;
 pub mod logging;
+mod node;
+pub use node::Node;
 mod post_hook;
 mod pre_hook;
 pub mod rpc_error_type;
@@ -357,7 +359,7 @@ impl TypedRaftRouter {
         let leader_id = MemNodeId::default();
         assert!(voter_ids.contains(&leader_id));
 
-        self.new_raft_node(leader_id).await;
+        self.new_raft_node(leader_id).await?;
 
         tracing::info!("--- wait for init node to ready");
 
@@ -399,7 +401,7 @@ impl TypedRaftRouter {
             }
             tracing::info!(log_index, "--- add voter: {}", id);
 
-            self.new_raft_node(*id).await;
+            self.new_raft_node(*id).await?;
             self.add_learner(leader_id, *id).await?;
             log_index += 1;
 
@@ -427,7 +429,7 @@ impl TypedRaftRouter {
 
         for id in learners.clone() {
             tracing::info!(log_index, "--- add learner: {}", id);
-            self.new_raft_node(id).await;
+            self.new_raft_node(id).await?;
             self.add_learner(MemNodeId::default(), id).await?;
             log_index += 1;
         }
@@ -439,7 +441,7 @@ impl TypedRaftRouter {
     }
 
     /// Create and register a new Raft node bearing the given ID.
-    pub async fn new_raft_node(&mut self, id: MemNodeId) {
+    pub async fn new_raft_node(&mut self, id: MemNodeId) -> anyhow::Result<()> {
         let (log_store, sm) = self.new_store();
         self.new_raft_node_with_sto(id, log_store, sm).await
     }
@@ -451,23 +453,38 @@ impl TypedRaftRouter {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn new_raft_node_with_sto(&mut self, id: MemNodeId, log_store: MemLogStore, sm: MemStateMachine) {
-        let node = Raft::new(id, self.config.clone(), self.clone(), log_store.clone(), sm.clone()).await.unwrap();
+    pub async fn new_raft_node_with_sto(
+        &mut self,
+        id: MemNodeId,
+        log_store: MemLogStore,
+        sm: MemStateMachine,
+    ) -> anyhow::Result<()> {
+        {
+            let nodes = self.nodes.lock().unwrap();
+            anyhow::ensure!(!nodes.contains_key(&id), "node {id} is already registered");
+        }
+        let node = Raft::new(id, self.config.clone(), self.clone(), log_store.clone(), sm.clone()).await?;
         let mut rt = self.nodes.lock().unwrap();
         rt.insert(id, (node, log_store, sm));
+        Ok(())
     }
 
-    /// Remove the target node from the routing table & isolation.
-    pub fn remove_node(&mut self, id: MemNodeId) -> Option<(MemRaft, MemLogStore, MemStateMachine)> {
-        let opt_handles = {
-            let mut rt = self.nodes.lock().unwrap();
-            rt.remove(&id)
-        };
+    /// Detach a live node from routing while preserving its network faults.
+    pub fn detach_node(&mut self, id: MemNodeId) -> Option<(MemRaft, MemLogStore, MemStateMachine)> {
+        let mut nodes = self.nodes.lock().unwrap();
+        nodes.remove(&id)
+    }
 
-        self.set_network_error(id, false);
-        self.set_unreachable(id, false);
-
-        opt_handles
+    /// Stop a node and retain its handle and stores without healing its network.
+    pub async fn stop_node(&mut self, id: MemNodeId) -> anyhow::Result<Node> {
+        let detached = self.detach_node(id);
+        let (raft, log_store, state_machine) = detached.with_context(|| format!("node {id} is not registered"))?;
+        raft.shutdown().await?;
+        Ok(Node {
+            raft,
+            log_store,
+            state_machine,
+        })
     }
 
     /// Initialize cluster with the config that contains all nodes.

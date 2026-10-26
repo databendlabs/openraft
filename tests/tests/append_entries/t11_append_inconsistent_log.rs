@@ -11,6 +11,7 @@ use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftLogStorageExt;
 use openraft::testing::blank_ent;
 
+use crate::fixtures::Node;
 use crate::fixtures::RaftRouter;
 use crate::fixtures::ut_harness;
 
@@ -43,19 +44,26 @@ async fn append_inconsistent_log() -> Result<()> {
         .validate()?,
     );
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0).await;
 
     let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
 
     tracing::info!(log_index, "--- remove all nodes and fake the logs");
 
-    let (r0, mut sto0, sm0) = router.remove_node(0).unwrap();
-    let (r1, sto1, sm1) = router.remove_node(1).unwrap();
-    let (r2, mut sto2, sm2) = router.remove_node(2).unwrap();
-
-    r0.shutdown().await?;
-    r1.shutdown().await?;
-    r2.shutdown().await?;
+    let Node {
+        log_store: mut sto0,
+        state_machine: sm0,
+        ..
+    } = router.stop_node(0).await?;
+    let Node {
+        log_store: sto1,
+        state_machine: sm1,
+        ..
+    } = router.stop_node(1).await?;
+    let Node {
+        log_store: mut sto2,
+        state_machine: sm2,
+        ..
+    } = router.stop_node(2).await?;
 
     for i in log_index + 1..=100 {
         sto0.blocking_append([blank_ent::<openraft_memstore::TypeConfig>(2, 1, i)]).await?;
@@ -72,14 +80,14 @@ async fn append_inconsistent_log() -> Result<()> {
         "--- restart node 1 and isolate. To let node-2 to become leader, node-1 should not vote for node-0"
     );
     {
-        router.new_raft_node_with_sto(1, sto1.clone(), sm1.clone()).await;
+        router.new_raft_node_with_sto(1, sto1.clone(), sm1.clone()).await?;
         router.set_network_error(1, true);
     }
 
     tracing::info!(log_index, "--- restart node 0 and 2");
     {
-        router.new_raft_node_with_sto(0, sto0.clone(), sm0.clone()).await;
-        router.new_raft_node_with_sto(2, sto2.clone(), sm2.clone()).await;
+        router.new_raft_node_with_sto(0, sto0.clone(), sm0.clone()).await?;
+        router.new_raft_node_with_sto(2, sto2.clone(), sm2.clone()).await?;
     }
 
     // leader appends at least one blank log. There may be more than one transient leaders
