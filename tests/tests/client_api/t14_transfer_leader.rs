@@ -181,6 +181,9 @@ async fn transfer_leader_with_dead_target_does_not_block_election() -> anyhow::R
     tracing::info!("--- isolate n1: it cannot receive TransferLeaderRequest or vote");
     router.set_network_error(1, true);
 
+    tracing::info!("--- disable election on n0: it would campaign itself once the transfer expires");
+    n0.runtime_config().elect(false);
+
     tracing::info!("--- background task: drive ReadIndex on n0 in a tight loop");
     let r = router.clone();
     TypeConfig::spawn(async move {
@@ -446,6 +449,144 @@ async fn transfer_leader_to_promoted_learner_without_promotion_log_does_not_pani
         "stale transfer target should ignore the transfer without panicking: {:?}",
         alive
     );
+
+    Ok(())
+}
+
+/// The only voter steps down after a transfer to a learner, wins a new term, and serves writes
+/// again.
+///
+/// A learner never campaigns, and no other node can win an election, so the transfer can never
+/// complete. Node 0 steps down once the transfer has not completed within an election timeout.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn only_voter_steps_down_after_transfer_to_learner() -> anyhow::Result<()> {
+    let config = Arc::new(
+        Config {
+            election_timeout_min: 150,
+            election_timeout_max: 300,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
+    let mut router = RaftRouter::new(config.clone());
+
+    tracing::info!("--- bring up voter 0 and learner 1");
+    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {1}).await?;
+
+    let n0 = router.get_raft_handle(&0)?;
+    let vote_before = n0.metrics().borrow_watched().vote;
+
+    tracing::info!(
+        log_index,
+        "--- node 0 transfers leadership to learner 1 and rejects writes"
+    );
+    {
+        n0.trigger().transfer_leader(1).await?;
+
+        let err = n0
+            .client_write(ClientRequest::make_request("transfer", 1))
+            .await
+            .expect_err("write must be rejected during leadership transfer");
+        let ClientWriteError::ForwardToLeader(fwd) = err.into_api_error().expect("write returns an API error") else {
+            panic!("expected ForwardToLeader");
+        };
+        assert_eq!(Some(1), fwd.leader_id);
+        assert_eq!(ForwardReason::LeadershipTransfer, fwd.reason);
+    }
+
+    tracing::info!(
+        log_index,
+        "--- node 0 steps down after an election timeout and leads a new term"
+    );
+    {
+        n0.wait(Some(Duration::from_millis(5 * config.election_timeout_max)))
+            .metrics(
+                |m| m.state == ServerState::Leader && m.vote.is_committed() && m.vote > vote_before,
+                "node 0 leads a new term",
+            )
+            .await?;
+
+        log_index += 1;
+        n0.wait(timeout())
+            .applied_index(Some(log_index), "node 0 applies the blank entry of its new term")
+            .await?;
+    }
+
+    tracing::info!(log_index, "--- node 0 commits a write in the new term");
+    {
+        let resp = n0.client_write(ClientRequest::make_request("after-transfer", 1)).await?;
+        log_index += 1;
+
+        assert_eq!(log_index, resp.log_id.index());
+    }
+
+    Ok(())
+}
+
+/// A leader steps down after a failed transfer when no other voter campaigns, wins a new term, and
+/// serves writes again.
+///
+/// Elections are disabled on nodes 1 and 2, and the transfer target, node 3, does not exist. So
+/// only node 0 can end the transfer.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn leader_steps_down_after_transfer_when_no_other_voter_campaigns() -> anyhow::Result<()> {
+    let config = Arc::new(
+        Config {
+            election_timeout_min: 150,
+            election_timeout_max: 300,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
+    let mut router = RaftRouter::new(config.clone());
+
+    tracing::info!("--- initializing cluster");
+    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+
+    let n0 = router.get_raft_handle(&0)?;
+    let vote_before = n0.metrics().borrow_watched().vote;
+
+    tracing::info!(
+        log_index,
+        "--- disable election on nodes 1 and 2, then transfer to node 3"
+    );
+    {
+        for id in [1, 2] {
+            router.get_raft_handle(&id)?.runtime_config().elect(false);
+        }
+
+        n0.trigger().transfer_leader(3).await?;
+    }
+
+    tracing::info!(
+        log_index,
+        "--- node 0 steps down after an election timeout and leads a new term"
+    );
+    {
+        n0.wait(Some(Duration::from_millis(5 * config.election_timeout_max)))
+            .metrics(
+                |m| m.state == ServerState::Leader && m.vote.is_committed() && m.vote > vote_before,
+                "node 0 leads a new term",
+            )
+            .await?;
+
+        log_index += 1;
+        n0.wait(timeout())
+            .applied_index(Some(log_index), "node 0 applies the blank entry of its new term")
+            .await?;
+    }
+
+    tracing::info!(log_index, "--- node 0 commits a write in the new term");
+    {
+        let resp = n0.client_write(ClientRequest::make_request("after-transfer", 1)).await?;
+        log_index += 1;
+
+        assert_eq!(log_index, resp.log_id.index());
+    }
 
     Ok(())
 }

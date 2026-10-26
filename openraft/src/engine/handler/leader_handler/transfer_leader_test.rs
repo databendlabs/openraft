@@ -51,7 +51,11 @@ fn test_leader_send_heartbeat() -> anyhow::Result<()> {
 
     lh.transfer_leader(2);
 
-    assert_eq!(lh.leader.transfer_to, Some(2));
+    assert_eq!(lh.leader.get_transfer_to(), Some(&2));
+    assert!(
+        !lh.leader.is_transfer_expired(),
+        "the transfer has an election timeout to complete"
+    );
 
     let lease_info = lh.state.vote.lease_info();
     assert_eq!(lease_info.1, Duration::default());
