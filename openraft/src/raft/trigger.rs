@@ -107,6 +107,10 @@ where C: RaftTypeConfig
     /// By default, this also resets the target's active replication backoff. Set
     /// [`Config::reset_backoff_on_transfer_leader`] to `Some(false)` to disable the reset.
     ///
+    /// While the transfer is in progress, this node forwards client requests to `to`. If `to` has
+    /// not taken over within an election timeout, this node steps down and starts an election,
+    /// which it may win again.
+    ///
     /// If this node is not a Leader, it is just ignored.
     ///
     /// [`Config::reset_backoff_on_transfer_leader`]: crate::Config::reset_backoff_on_transfer_leader

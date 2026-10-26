@@ -45,14 +45,17 @@ where
     C: RaftTypeConfig,
     QS: QuorumSet<Id = C::NodeId>,
 {
-    /// Whether this Leader is marked as transferring to another node.
+    /// The node this Leader is transferring leadership to, and the deadline of the transfer.
     ///
     /// Proposing is disabled when Leader has been transferring to another node.
     /// Indicates whether the current Leader is in the process of transferring leadership to another
     /// node.
     ///
     /// Leadership transfers disable proposing new logs.
-    pub(crate) transfer_to: Option<C::NodeId>,
+    ///
+    /// If no other node has taken over by the deadline, this Leader steps down and starts an
+    /// election, so that a failed transfer does not leave the cluster without a serving leader.
+    pub(crate) transfer_to: Option<(C::NodeId, InstantOf<C>)>,
 
     /// The vote this leader works in.
     ///
@@ -195,12 +198,27 @@ where
         &self.committed_vote
     }
 
-    pub(crate) fn mark_transfer(&mut self, to: C::NodeId) {
-        self.transfer_to = Some(to);
+    /// Mark this Leader as transferring leadership to `to`, which has to take over within
+    /// `timeout`.
+    pub(crate) fn mark_transfer(&mut self, to: C::NodeId, timeout: Duration) {
+        let deadline = C::now() + timeout;
+        self.transfer_to = Some((to, deadline));
     }
 
     pub(crate) fn get_transfer_to(&self) -> Option<&C::NodeId> {
-        self.transfer_to.as_ref()
+        let (to, _deadline) = self.transfer_to.as_ref()?;
+        Some(to)
+    }
+
+    /// Return whether a leadership transfer is in progress and its deadline has passed.
+    ///
+    /// Such a Leader steps down and starts an election.
+    pub(crate) fn is_transfer_expired(&self) -> bool {
+        let Some((_to, deadline)) = self.transfer_to.as_ref() else {
+            return false;
+        };
+        let now = C::now();
+        now >= *deadline
     }
 
     /// Allocate a range of log IDs for new entries.

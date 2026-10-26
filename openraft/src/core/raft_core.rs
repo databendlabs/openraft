@@ -2176,8 +2176,12 @@ where
         tracing::debug!("try to trigger election, now: {}", now.display());
 
         if self.engine.state.server_state == ServerState::Leader {
-            tracing::debug!("skip election, already a leader");
-            return;
+            let transfer_expired = self.engine.leader_ref().is_some_and(|leader| leader.is_transfer_expired());
+            if !transfer_expired {
+                tracing::debug!("skip election, already a leader");
+                return;
+            }
+            tracing::info!("leadership transfer has not completed in time, start an election");
         }
 
         if !self.engine.state.membership_state.is_campaigner_in_effective_or_committed(&self.id) {

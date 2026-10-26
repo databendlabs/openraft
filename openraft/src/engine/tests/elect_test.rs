@@ -352,6 +352,63 @@ fn test_election_on_leader_is_ignored() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_elect_on_leader_with_expired_transfer_steps_down() -> anyhow::Result<()> {
+    let mut eng = eng();
+    eng.config.id = 1;
+    eng.state.membership_state.set_effective(Arc::new(StoredMembershipOf::<UTConfig>::new(
+        Some(log_id(0, 1, 1)),
+        m12(),
+    )));
+
+    eng.elect();
+    eng.candidate_mut().unwrap().grant_by(&1);
+    eng.handle_vote_resp(2, VoteResponse::new(Vote::new(1, 1), Some(log_id(0, 0, 0)), true));
+    eng.output.take_commands();
+
+    tracing::info!("--- a transfer before its deadline keeps the leadership");
+    {
+        eng.leader.as_mut().unwrap().mark_transfer(2, Duration::from_secs(60));
+
+        eng.elect();
+
+        assert_eq!(Vote::new_committed(1, 1), *eng.state.vote_ref());
+        assert!(eng.leader.is_some(), "leadership is preserved");
+        assert_eq!(Vec::<Command<UTConfig>>::new(), eng.output.take_commands());
+    }
+
+    tracing::info!("--- a transfer past its deadline steps down and campaigns in the next term");
+    {
+        eng.leader.as_mut().unwrap().mark_transfer(2, Duration::ZERO);
+
+        eng.elect();
+
+        assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
+        assert!(eng.leader.is_none(), "the leader steps down");
+        assert!(eng.candidate_ref().is_some(), "candidate state is pending");
+        assert_eq!(ServerState::Candidate, eng.state.server_state);
+
+        assert_eq!(
+            vec![
+                //
+                Command::FailPendingReads,
+                Command::CloseReplicationStreams,
+                Command::SaveVote { vote: Vote::new(2, 1) },
+                Command::SendVote {
+                    vote_req: VoteRequest {
+                        vote: Vote::new(2, 1),
+                        last_log_id: Some(log_id(1, 1, 1)),
+                        leadership_transfer_from: None,
+                    },
+                },
+            ],
+            eng.output.take_commands()
+        );
+    }
+
+    Ok(())
+}
+
+#[test]
 fn test_elect_multi_node_enter_candidate() -> anyhow::Result<()> {
     tracing::info!("--- multi nodes: enter candidate state");
     {

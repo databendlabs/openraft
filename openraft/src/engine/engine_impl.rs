@@ -263,9 +263,18 @@ where
         // An election attempt supersedes any in-flight Pre-Vote round.
         self.pre_candidate = None;
 
-        if self.leader.is_some() {
-            tracing::info!("skip election, already a leader");
-            return;
+        if let Some(leader) = self.leader.as_deref() {
+            if !leader.is_transfer_expired() {
+                tracing::info!("skip election, already a leader");
+                return;
+            }
+
+            // The transfer target has not taken over in time: step down and campaign. The new vote
+            // below, `(term + 1, self, uncommitted)`, is greater than this Leader's committed vote.
+            tracing::info!("leadership transfer has not completed in time, step down to campaign");
+            self.leader = None;
+            self.output.prepend_command(Command::FailPendingReads);
+            self.output.push_command(Command::CloseReplicationStreams);
         }
 
         // A real campaign consumes the timeout selected before it. Sample the

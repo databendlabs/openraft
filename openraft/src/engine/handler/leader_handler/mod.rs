@@ -183,8 +183,14 @@ where
     }
 
     /// Disable proposing new logs for this Leader and transfer Leader to another node
+    ///
+    /// If `to` has not taken over within an election timeout, this Leader steps down and starts an
+    /// election. Otherwise a transfer to a learner, or to a node that is down, would block the
+    /// cluster forever when no other node can win an election, such as in a cluster with one
+    /// voter.
     pub(crate) fn transfer_leader(&mut self, to: C::NodeId) {
-        self.leader.mark_transfer(to.clone());
+        let timeout = self.config.timer_config.election_timeout;
+        self.leader.mark_transfer(to.clone(), timeout);
         self.state.vote.disable_lease();
 
         self.output.push_command(Command::BroadcastTransferLeader {
