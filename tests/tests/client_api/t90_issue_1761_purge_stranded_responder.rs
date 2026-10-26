@@ -82,18 +82,18 @@ async fn write_then_superseded_by_snapshot_install() -> Result<()> {
         let n1 = router.get_raft_handle(&1)?;
         n1.trigger().elect(false).await?;
         // node 1 becomes leader at term 2 and commits its blank log at index log_index+1.
-        router.wait(&1, timeout()).applied_index(Some(log_index + 1), "node 1 leader blank").await?;
+        router.wait(&1).applied_index(Some(log_index + 1), "node 1 leader blank").await?;
     }
 
     tracing::info!(log_index, "--- advance node 1 well past node 0, then snapshot it");
     let snap_index = log_index + 1 + router.client_request_many(1, "foo", 10).await?;
-    router.wait(&1, timeout()).applied_index(Some(snap_index), "node 1 advanced").await?;
-    router.wait(&2, timeout()).applied_index(Some(snap_index), "node 2 advanced").await?;
+    router.wait(&1).applied_index(Some(snap_index), "node 1 advanced").await?;
+    router.wait(&2).applied_index(Some(snap_index), "node 2 advanced").await?;
 
     let snap = {
         let n1 = router.get_raft_handle(&1)?;
         n1.trigger().snapshot().await?;
-        router.wait(&1, timeout()).snapshot(log_id(2, 1, snap_index), "node 1 snapshot").await?;
+        router.wait(&1).snapshot(log_id(2, 1, snap_index), "node 1 snapshot").await?;
         n1.get_snapshot().await?.unwrap()
     };
 
@@ -131,8 +131,4 @@ async fn write_then_superseded_by_snapshot_install() -> Result<()> {
     );
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
 }

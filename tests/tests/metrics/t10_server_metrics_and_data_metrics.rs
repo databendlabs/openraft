@@ -14,6 +14,7 @@ use pretty_assertions::assert_eq;
 use pretty_assertions::assert_ne;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 /// Server metrics and data metrics method should work.
@@ -51,7 +52,7 @@ async fn server_metrics_and_data_metrics() -> Result<()> {
     tracing::info!(log_index, "--- write {} logs", n);
     log_index += router.client_request_many(0, "foo", n).await?;
 
-    router.wait(&0, timeout()).applied_index(Some(log_index), "applied log index").await?;
+    router.wait(&0).applied_index(Some(log_index), "applied log index").await?;
 
     let last_log_index = data_metrics.borrow_watched().last_log.map(|x| x.index()).unwrap_or_default();
     assert_eq!(last_log_index, log_index, "last_log_index should be {:?}", log_index);
@@ -196,7 +197,7 @@ async fn committed_membership_config() -> Result<()> {
     );
     {
         let metrics = router
-            .wait(&0, Some(Duration::from_millis(3_000)))
+            .wait_with_timeout(&0, Duration::from_millis(3_000))
             .metrics(
                 |x| x.membership_config.membership() == &new_membership,
                 "the effective membership config contains the new learner",
@@ -216,7 +217,7 @@ async fn committed_membership_config() -> Result<()> {
         add_learner_handle.await??;
 
         let metrics = router
-            .wait(&0, Some(Duration::from_millis(3_000)))
+            .wait_with_timeout(&0, Duration::from_millis(3_000))
             .metrics(
                 |x| x.committed_membership_config == x.membership_config,
                 "the committed membership config catches up with the effective one",
@@ -258,7 +259,7 @@ async fn cluster_committed_metric() -> Result<()> {
     for id in [0, 1, 2] {
         // Once applied reaches the last log, the local committed and the cluster committed have
         // both converged to it (applied <= local_committed <= cluster_committed).
-        router.wait(&id, timeout()).applied_index(Some(log_index), "applied log index").await?;
+        router.wait(&id).applied_index(Some(log_index), "applied log index").await?;
 
         let node = router.get_raft_handle(&id)?;
         let metrics = node.metrics().borrow_watched().clone();
@@ -330,8 +331,4 @@ async fn cluster_committed_metric() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(500))
 }

@@ -10,6 +10,7 @@ use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 /// Leader logs should be deleted up to snapshot.last_log_id-max_in_snapshot_log_to_keep after
@@ -59,7 +60,7 @@ async fn purge_in_snapshot_logs() -> Result<()> {
         router.set_network_error(1, true);
 
         log_index += router.client_request_many(0, "0", 5).await?;
-        router.wait(&0, timeout()).applied_index(Some(log_index), "write another 5 logs").await?;
+        router.wait(&0).applied_index(Some(log_index), "write another 5 logs").await?;
 
         leader.trigger().snapshot().await?;
         leader.wait(timeout()).snapshot(log_id(1, 0, log_index), "building 2nd snapshot").await?;
@@ -92,8 +93,4 @@ async fn purge_in_snapshot_logs() -> Result<()> {
     );
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(2_000))
 }

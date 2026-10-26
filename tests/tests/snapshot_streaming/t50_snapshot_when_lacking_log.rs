@@ -43,9 +43,9 @@ async fn switch_to_snapshot_replication_when_lacking_log() -> Result<()> {
         router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await?;
         log_index = snapshot_threshold - 1;
 
-        router.wait(&0, None).applied_index(Some(log_index), "send log to trigger snapshot").await?;
+        router.wait(&0).applied_index(Some(log_index), "send log to trigger snapshot").await?;
 
-        router.wait(&0, None).snapshot(log_id(1, 0, log_index), "snapshot").await?;
+        router.wait(&0).snapshot(log_id(1, 0, log_index), "snapshot").await?;
 
         let (mut sto, mut sm) = router.get_storage_handle(&0)?;
         assert_eq!(sto.get_log_state().await?.last_log_id, Some(log_id(1, 0, log_index)));
@@ -74,9 +74,9 @@ async fn switch_to_snapshot_replication_when_lacking_log() -> Result<()> {
         log_index += 1;
 
         for id in [0, 1] {
-            router.wait(&id, None).applied_index(Some(log_index), "add learner").await?;
+            router.wait(&id).applied_index(Some(log_index), "add learner").await?;
         }
-        router.wait(&1, None).snapshot(log_id(1, 0, snapshot_threshold - 1), "").await?;
+        router.wait(&1).snapshot(log_id(1, 0, snapshot_threshold - 1), "").await?;
 
         for id in [0, 1] {
             let (mut sto, mut sm) = router.get_storage_handle(&id)?;

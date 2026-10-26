@@ -9,6 +9,7 @@ use openraft::impls::ChangeMembers;
 use openraft_memstore::MemNodeId;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::expect_timeout;
 use crate::fixtures::ut_harness;
 
 // --- change ---
@@ -146,10 +147,7 @@ async fn change_from_to(
         log_index += 10;
 
         for id in old.iter() {
-            router
-                .wait(id, timeout())
-                .applied_index(Some(log_index), &format!("write 10 logs, {}", mes))
-                .await?;
+            router.wait(id).applied_index(Some(log_index), &format!("write 10 logs, {}", mes)).await?;
         }
     }
 
@@ -162,7 +160,7 @@ async fn change_from_to(
             router.add_learner(0, *id).await?;
             log_index += 1;
             for id in old.iter() {
-                router.wait(id, timeout()).applied_index(Some(log_index), &format!("add learner, {}", mes)).await?;
+                router.wait(id).applied_index(Some(log_index), &format!("add learner, {}", mes)).await?;
             }
         }
 
@@ -174,7 +172,7 @@ async fn change_from_to(
         {
             for id in new.iter() {
                 router
-                    .wait(id, Some(Duration::from_millis(5_000)))
+                    .wait_with_timeout(id, Duration::from_millis(5_000))
                     .metrics(
                         |x| x.current_leader.is_some() && new.contains(&x.current_leader.unwrap()),
                         format!("node {} in new cluster has leader in new cluster, {}", id, mes),
@@ -186,14 +184,11 @@ async fn change_from_to(
         let new_leader = router.leader().expect("expected the cluster to have a leader");
         for id in new.iter() {
             // new leader may already elected and committed a blank log.
-            router
-                .wait(id, timeout())
-                .applied_index_at_least(Some(log_index), format!("new cluster, {}", mes))
-                .await?;
+            router.wait(id).applied_index_at_least(Some(log_index), format!("new cluster, {}", mes)).await?;
 
             if new_leader != orig_leader {
                 router
-                    .wait(id, timeout())
+                    .wait(id)
                     .metrics(
                         |x| x.current_term >= 2,
                         "new cluster has term >= 2 because of new election",
@@ -207,7 +202,7 @@ async fn change_from_to(
     {
         for id in only_in_old.clone() {
             router
-                .wait(id, timeout())
+                .wait(id)
                 .metrics(
                     |x| {
                         x.state == ServerState::Follower
@@ -223,7 +218,7 @@ async fn change_from_to(
     tracing::info!(log_index, "--- write another 10 logs");
     {
         let m = router
-            .wait(new.iter().next().unwrap(), timeout())
+            .wait(new.iter().next().unwrap())
             .metrics(|x| x.current_leader.is_some(), format!("wait for new leader, {}", mes))
             .await?;
 
@@ -236,7 +231,7 @@ async fn change_from_to(
 
     for id in new.iter() {
         router
-            .wait(id, timeout())
+            .wait(id)
             // new leader may commit a blank log
             .applied_index_at_least(Some(log_index), format!("new cluster recv logs 10~20, {}", mes))
             .await?;
@@ -246,13 +241,13 @@ async fn change_from_to(
     {
         for id in only_in_old {
             let res = router
-                .wait(id, timeout())
+                .wait_with_timeout(id, Duration::from_millis(1000))
                 .applied_index(
                     Some(log_index),
                     format!("node {} in old cluster wont recv new logs, {}", id, mes),
                 )
                 .await;
-            assert!(res.is_err());
+            expect_timeout(res)?;
         }
     }
 
@@ -286,7 +281,7 @@ async fn change_by_add(old: BTreeSet<MemNodeId>, add: &[MemNodeId], membership_e
     {
         log_index += router.client_request_many(0, "client", 10).await?;
         for id in old.iter() {
-            router.wait(id, timeout()).applied_index(Some(log_index), format!("write 10 logs, {}", mes)).await?;
+            router.wait(id).applied_index(Some(log_index), format!("write 10 logs, {}", mes)).await?;
         }
     }
 
@@ -298,7 +293,7 @@ async fn change_by_add(old: BTreeSet<MemNodeId>, add: &[MemNodeId], membership_e
             router.new_raft_node(*id).await;
             router.add_learner(0, *id).await?;
             log_index += 1;
-            router.wait(id, timeout()).applied_index(Some(log_index), format!("add learner, {}", mes)).await?;
+            router.wait(id).applied_index(Some(log_index), format!("add learner, {}", mes)).await?;
         }
     }
 
@@ -309,10 +304,7 @@ async fn change_by_add(old: BTreeSet<MemNodeId>, add: &[MemNodeId], membership_e
         log_index += membership_entries;
 
         for id in new.iter() {
-            router
-                .wait(id, timeout())
-                .applied_index_at_least(Some(log_index), format!("new cluster, {}", mes))
-                .await?;
+            router.wait(id).applied_index_at_least(Some(log_index), format!("new cluster, {}", mes)).await?;
         }
     }
 
@@ -323,7 +315,7 @@ async fn change_by_add(old: BTreeSet<MemNodeId>, add: &[MemNodeId], membership_e
         let mes = format!("new cluster recv logs 10~20, {}", mes);
 
         for id in new.iter() {
-            router.wait(id, timeout()).applied_index_at_least(Some(log_index), &mes).await?;
+            router.wait(id).applied_index_at_least(Some(log_index), &mes).await?;
         }
     }
 
@@ -360,7 +352,7 @@ async fn change_by_remove(
     {
         log_index += router.client_request_many(0, "client", 10).await?;
         for id in old.iter() {
-            router.wait(id, timeout()).applied_index(Some(log_index), format!("write 10 logs, {}", mes)).await?;
+            router.wait(id).applied_index(Some(log_index), format!("write 10 logs, {}", mes)).await?;
         }
     }
 
@@ -376,7 +368,7 @@ async fn change_by_remove(
         {
             for id in new.iter() {
                 router
-                    .wait(id, Some(Duration::from_millis(5_000)))
+                    .wait_with_timeout(id, Duration::from_millis(5_000))
                     .metrics(
                         |x| x.current_leader.is_some() && new.contains(&x.current_leader.unwrap()),
                         format!("node {} in new cluster has leader in new cluster, {}", id, mes),
@@ -388,14 +380,11 @@ async fn change_by_remove(
         let new_leader = router.leader().expect("expected the cluster to have a leader");
         for id in new.iter() {
             // new leader may already elected and committed a blank log.
-            router
-                .wait(id, timeout())
-                .applied_index_at_least(Some(log_index), format!("new cluster, {}", mes))
-                .await?;
+            router.wait(id).applied_index_at_least(Some(log_index), format!("new cluster, {}", mes)).await?;
 
             if new_leader != orig_leader {
                 router
-                    .wait(id, timeout())
+                    .wait(id)
                     .metrics(
                         |x| x.current_term >= 2,
                         "new cluster has term >= 2 because of new election",
@@ -411,7 +400,7 @@ async fn change_by_remove(
             // The removed node will be left in follower state, it can never elect itself
             // successfully.
             router
-                .wait(id, timeout())
+                .wait(id)
                 .metrics(
                     |x| x.state != ServerState::Leader,
                     format!("node {} only in old, {}", id, mes),
@@ -423,7 +412,7 @@ async fn change_by_remove(
     tracing::info!(log_index, "--- write another 10 logs");
     {
         let m = router
-            .wait(new.iter().next().unwrap(), timeout())
+            .wait(new.iter().next().unwrap())
             .metrics(|x| x.current_leader.is_some(), format!("wait for new leader, {}", mes))
             .await?;
 
@@ -435,7 +424,7 @@ async fn change_by_remove(
 
     for id in new.iter() {
         router
-            .wait(id, timeout())
+            .wait(id)
             // new leader may commit a blank log
             .applied_index_at_least(Some(log_index), format!("new cluster recv logs 10~20, {}", mes))
             .await?;
@@ -445,13 +434,13 @@ async fn change_by_remove(
     {
         for id in only_in_old {
             let res = router
-                .wait(id, timeout())
+                .wait_with_timeout(id, Duration::from_millis(1000))
                 .applied_index(
                     Some(log_index),
                     format!("node {} in old cluster wont recv new logs, {}", id, mes),
                 )
                 .await;
-            assert!(res.is_err());
+            expect_timeout(res)?;
         }
     }
 
@@ -460,13 +449,9 @@ async fn change_by_remove(
 
 async fn wait_for_leader_lease(router: &RaftRouter, leader_id: MemNodeId, mes: &str) -> anyhow::Result<()> {
     router
-        .wait(&leader_id, timeout())
+        .wait(&leader_id)
         .leader_with_quorum_acked(None, format!("leader establishes its quorum lease, {}", mes))
         .await?;
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1000))
 }

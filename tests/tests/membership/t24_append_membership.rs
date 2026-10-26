@@ -27,6 +27,7 @@ use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::rpc_request::RpcRequest;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 /// Election, heartbeat and ticking stay off: every log this test counts must come from its own
@@ -61,7 +62,7 @@ async fn add_and_remove_one_voter_write_one_entry_each() -> Result<()> {
         assert_eq!(Some(proposed), resp.membership);
 
         for node_id in [0, 1, 2, 3] {
-            router.wait(&node_id, timeout()).applied_index(Some(log_index), "voter 3 added").await?;
+            router.wait(&node_id).applied_index(Some(log_index), "voter 3 added").await?;
         }
     }
 
@@ -75,7 +76,7 @@ async fn add_and_remove_one_voter_write_one_entry_each() -> Result<()> {
         assert_eq!(Some(proposed), resp.membership);
 
         for node_id in [0, 1, 2] {
-            router.wait(&node_id, timeout()).applied_index(Some(log_index), "voter 3 removed").await?;
+            router.wait(&node_id).applied_index(Some(log_index), "voter 3 removed").await?;
         }
     }
 
@@ -141,7 +142,7 @@ async fn joint_membership_is_entered_and_left_in_one_entry_each() -> Result<()> 
         assert_eq!(Some(proposed), resp.membership);
 
         for node_id in [0, 1, 2, 3, 4] {
-            router.wait(&node_id, timeout()).applied_index(Some(log_index), "joint config applied").await?;
+            router.wait(&node_id).applied_index(Some(log_index), "joint config applied").await?;
         }
     }
 
@@ -158,7 +159,7 @@ async fn joint_membership_is_entered_and_left_in_one_entry_each() -> Result<()> 
         assert_eq!(Some(proposed), resp.membership);
 
         for node_id in [0, 1, 2] {
-            router.wait(&node_id, timeout()).applied_index(Some(log_index), "uniform config applied").await?;
+            router.wait(&node_id).applied_index(Some(log_index), "uniform config applied").await?;
         }
     }
 
@@ -229,7 +230,7 @@ async fn follower_answers_forward_to_leader() -> Result<()> {
     // follower 1 may still be one entry behind here. Pin its log before the append, so that the
     // last phase can tell an unchanged log from one the append grew.
     router
-        .wait(&1, timeout())
+        .wait(&1)
         .metrics(
             |m| m.last_log_index == Some(log_index),
             "follower 1 receives every entry the cluster wrote",
@@ -378,8 +379,4 @@ async fn uncommitted_leader_log_blocks_the_append() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1000))
 }

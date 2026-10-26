@@ -1,6 +1,5 @@
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::time::Duration;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -26,6 +25,7 @@ use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 /// A removed voter retries a failed automatic campaign against its single remote voter.
@@ -166,7 +166,7 @@ async fn restart_in_final_window(retain: bool, pre_vote: bool) -> Result<(RaftRo
         leader.append_membership(joint, EntryPayload::Blank, []).await?;
         log_index += 1;
         for id in [0, 1] {
-            router.wait(&id, timeout()).applied_index(Some(log_index), "joint applied on both nodes").await?;
+            router.wait(&id).applied_index(Some(log_index), "joint applied on both nodes").await?;
         }
     }
 
@@ -237,7 +237,7 @@ async fn restart_in_final_window(retain: bool, pre_vote: bool) -> Result<(RaftRo
         assert_eq!(Some(log_id(1, 0, log_index - 1)), store.read_committed().await?);
         router.new_raft_node_with_sto(0, store, sm).await;
         router
-            .wait(&0, timeout())
+            .wait(&0)
             .metrics(
                 |m| {
                     m.state == ServerState::Learner
@@ -273,8 +273,4 @@ async fn block_election_requests(router: &RaftRouter) -> OneshotReceiverOf<TypeC
         })
         .await;
     rx
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_secs(5))
 }

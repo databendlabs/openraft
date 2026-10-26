@@ -49,7 +49,7 @@ async fn runtime_stats_log_stage_counts_batched_entries_per_entry() -> Result<()
     tracing::info!(log_index, "--- warm up log-stage stats with one client write");
     router.client_request(0, "warmup", 0).await?;
     log_index += 1;
-    router.wait(&0, None).applied_index(Some(log_index), "warmup write applied").await?;
+    router.wait(&0).applied_index(Some(log_index), "warmup write applied").await?;
 
     let before_runtime_stats = n0.runtime_stats().await?;
     let before = log_stage_totals(&before_runtime_stats);
@@ -70,7 +70,7 @@ async fn runtime_stats_log_stage_counts_batched_entries_per_entry() -> Result<()
     );
 
     log_index += 5;
-    router.wait(&0, None).applied_index(Some(log_index), "batched writes applied").await?;
+    router.wait(&0).applied_index(Some(log_index), "batched writes applied").await?;
 
     let runtime_stats = n0.runtime_stats().await?;
     println!("{}", runtime_stats.log_stage);

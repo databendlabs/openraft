@@ -15,6 +15,7 @@ use pretty_assertions::assert_ne;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 /// Cluster leader_metrics test.
@@ -46,7 +47,7 @@ async fn leader_metrics() -> Result<()> {
     let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
 
     router
-        .wait(&0, timeout())
+        .wait(&0)
         .metrics(
             |x| {
                 if let Some(ref q) = x.replication {
@@ -76,7 +77,7 @@ async fn leader_metrics() -> Result<()> {
     }
     log_index += 4; // 4 add_learner log
     for id in c01234.iter() {
-        router.wait(id, timeout()).applied_index(Some(log_index), "add learner 1,2,3,4").await?;
+        router.wait(id).applied_index(Some(log_index), "add learner 1,2,3,4").await?;
     }
 
     tracing::info!(log_index, "--- changing cluster config to 01234");
@@ -86,13 +87,13 @@ async fn leader_metrics() -> Result<()> {
     log_index += 2; // 2 member-change logs
 
     for id in c01234.iter() {
-        router.wait(id, timeout()).applied_index(Some(log_index), "change members to 0,1,2,3,4").await?;
+        router.wait(id).applied_index(Some(log_index), "change members to 0,1,2,3,4").await?;
     }
 
     let ww = Some(log_id(1, 0, log_index));
     let want_repl = btreemap! { 0u64=>ww, 1u64=>ww, 2=>ww, 3=>ww, 4=>ww, };
     router
-        .wait(&0, timeout())
+        .wait(&0)
         .metrics(
             |x| {
                 if let Some(ref q) = x.replication {
@@ -117,7 +118,7 @@ async fn leader_metrics() -> Result<()> {
 
         for id in c0123.iter() {
             router
-                .wait(id, timeout())
+                .wait(id)
                 .applied_index(Some(log_index), "other nodes should commit the membership change log")
                 .await?;
         }
@@ -131,7 +132,7 @@ async fn leader_metrics() -> Result<()> {
         let ww = Some(log_id(1, 0, log_index));
         let want_repl = btreemap! { 0=>ww, 1=>ww, 2=>ww, 3=>ww};
         router
-            .wait(&0, timeout())
+            .wait(&0)
             .metrics(
                 |x| {
                     if let Some(ref q) = x.replication {
@@ -164,8 +165,4 @@ async fn leader_metrics() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1000))
 }

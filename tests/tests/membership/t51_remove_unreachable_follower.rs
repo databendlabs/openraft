@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
@@ -42,7 +41,7 @@ async fn stop_replication_to_removed_unreachable_follower_network_failure() -> R
 
         for i in &[0, 1, 2] {
             router
-                .wait(i, timeout())
+                .wait(i)
                 .metrics(
                     |x| x.last_log_index >= Some(log_index),
                     "0,1,2 recv 2 change-membership logs",
@@ -54,7 +53,7 @@ async fn stop_replication_to_removed_unreachable_follower_network_failure() -> R
     tracing::info!(log_index, "--- replication to node 4 will be removed");
     {
         router
-            .wait(&0, timeout())
+            .wait(&0)
             .metrics(
                 |x| x.replication.as_ref().map(|y| y.contains_key(&4)) == Some(false),
                 "stopped replication to node 4",
@@ -70,7 +69,7 @@ async fn stop_replication_to_removed_unreachable_follower_network_failure() -> R
         router.set_network_error(4, false);
 
         router
-            .wait(&4, timeout())
+            .wait(&4)
             .metrics(
                 |x| {
                     x.last_log_index == Some(node4_log_index)
@@ -82,8 +81,4 @@ async fn stop_replication_to_removed_unreachable_follower_network_failure() -> R
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1000))
 }

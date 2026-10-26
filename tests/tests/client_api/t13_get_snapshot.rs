@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use maplit::btreeset;
 use openraft::Config;
@@ -38,7 +37,7 @@ async fn get_snapshot() -> anyhow::Result<()> {
         let n1 = router.get_raft_handle(&1)?;
         n1.trigger().snapshot().await?;
 
-        router.wait(&1, timeout()).snapshot(log_id(1, 0, log_index), "node-1 snapshot").await?;
+        router.wait(&1).snapshot(log_id(1, 0, log_index), "node-1 snapshot").await?;
 
         let curr_snap = n1.get_snapshot().await?;
         let snap = curr_snap.unwrap();
@@ -46,8 +45,4 @@ async fn get_snapshot() -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
 }

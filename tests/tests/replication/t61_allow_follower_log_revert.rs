@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
@@ -37,7 +36,7 @@ async fn allow_follower_log_revert() -> Result<()> {
     {
         log_index += router.client_request_many(0, "0", 10).await?;
         for i in [0, 1] {
-            router.wait(&i, timeout()).applied_index(Some(log_index), format!("{} writes", 10)).await?;
+            router.wait(&i).applied_index(Some(log_index), format!("{} writes", 10)).await?;
         }
     }
     tracing::info!(log_index, "--- allow next detected log revert");
@@ -60,7 +59,7 @@ async fn allow_follower_log_revert() -> Result<()> {
     {
         log_index += router.client_request_many(0, "0", 10).await?;
         for i in [0, 1] {
-            router.wait(&i, timeout()).applied_index(Some(log_index), format!("{} writes", 10)).await?;
+            router.wait(&i).applied_index(Some(log_index), format!("{} writes", 10)).await?;
         }
     }
 
@@ -109,8 +108,4 @@ async fn allow_follower_log_revert_errors() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
 }

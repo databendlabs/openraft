@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
@@ -52,9 +51,9 @@ async fn snapshot_overrides_membership() -> Result<()> {
         router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await?;
         log_index = snapshot_threshold - 1;
 
-        router.wait(&0, timeout()).applied_index(Some(log_index), "send log to trigger snapshot").await?;
+        router.wait(&0).applied_index(Some(log_index), "send log to trigger snapshot").await?;
 
-        router.wait(&0, timeout()).snapshot(log_id(1, 0, log_index), "snapshot").await?;
+        router.wait(&0).snapshot(log_id(1, 0, log_index), "snapshot").await?;
 
         let (mut sto, mut sm) = router.get_storage_handle(&0)?;
         assert_eq!(sto.get_log_state().await?.last_log_id, Some(log_id(1, 0, log_index)));
@@ -116,9 +115,9 @@ async fn snapshot_overrides_membership() -> Result<()> {
             tracing::info!(log_index, "--- DONE add learner");
 
             for id in [0, 1] {
-                router.wait(&id, timeout()).applied_index(Some(log_index), "add learner").await?;
+                router.wait(&id).applied_index(Some(log_index), "add learner").await?;
             }
-            router.wait(&1, timeout()).snapshot(log_id(1, 0, snapshot_index), "").await?;
+            router.wait(&1).snapshot(log_id(1, 0, snapshot_index), "").await?;
 
             for id in [0, 1] {
                 let (mut sto, mut sm) = router.get_storage_handle(&id)?;
@@ -148,8 +147,4 @@ async fn snapshot_overrides_membership() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
 }

@@ -13,6 +13,7 @@ use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 /// A leader reverts to follower if a higher vote is seen when append-entries.
@@ -68,7 +69,7 @@ async fn append_sees_higher_vote() -> Result<()> {
     // n1: vote=(10,1)
     tracing::info!("--- a write operation will see a higher vote, then the leader revert to follower");
     {
-        router.wait(&0, timeout()).state(ServerState::Leader, "node-0 is leader").await?;
+        router.wait(&0).state(ServerState::Leader, "node-0 is leader").await?;
 
         TypeConfig::spawn(async move {
             let res = n0
@@ -84,10 +85,7 @@ async fn append_sees_higher_vote() -> Result<()> {
 
         TypeConfig::sleep(Duration::from_millis(500)).await;
 
-        router
-            .wait(&0, timeout())
-            .state(ServerState::Follower, "node-0 becomes follower due to a higher vote")
-            .await?;
+        router.wait(&0).state(ServerState::Follower, "node-0 becomes follower due to a higher vote").await?;
 
         router
             .external_request(0, |st| {
@@ -97,8 +95,4 @@ async fn append_sees_higher_vote() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
 }

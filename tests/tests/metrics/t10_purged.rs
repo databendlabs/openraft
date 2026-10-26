@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
@@ -8,6 +7,7 @@ use openraft::storage::RaftLogStorage;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 /// Metric `purged` should be the last purged log id.
@@ -54,8 +54,4 @@ async fn metrics_purged() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
 }

@@ -80,7 +80,7 @@ async fn issue_1829_lost_snapshot_trigger() -> Result<()> {
     {
         let count = (FIRST - log_index) as usize;
         router.client_request_many(0, "cli", count).await?;
-        router.wait(&0, timeout()).applied_index(Some(FIRST), "applied up to the first threshold").await?;
+        router.wait(&0).applied_index(Some(FIRST), "applied up to the first threshold").await?;
     }
 
     tracing::info!(
@@ -97,7 +97,7 @@ async fn issue_1829_lost_snapshot_trigger() -> Result<()> {
         "--- confirm build A is in flight: committed reached {} but apply is pinned",
         FINAL
     );
-    let m = router.wait(&0, timeout()).committed_index(Some(FINAL), "fire-and-forget writes committed").await?;
+    let m = router.wait(&0).committed_index(Some(FINAL), "fire-and-forget writes committed").await?;
     assert!(
         m.last_applied.index() < Some(FINAL),
         "apply must be pinned behind committed while build A holds the sm lock: last_applied={:?}, committed={:?}",
@@ -110,13 +110,13 @@ async fn issue_1829_lost_snapshot_trigger() -> Result<()> {
         FINAL
     );
     router
-        .wait(&0, long_timeout())
+        .wait_with_timeout(&0, long_timeout())
         .applied_index(Some(FINAL), "build A released; applies catch up")
         .await?;
 
     tracing::info!("--- snapshot must re-arm and converge to committed == {}", FINAL);
     router
-        .wait(&0, long_timeout())
+        .wait_with_timeout(&0, long_timeout())
         .snapshot(
             log_id(1, 0, FINAL),
             "snapshot converges after the in-flight build completes",
@@ -126,10 +126,6 @@ async fn issue_1829_lost_snapshot_trigger() -> Result<()> {
     Ok(())
 }
 
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
-}
-
-fn long_timeout() -> Option<Duration> {
-    Some(Duration::from_millis(6_000))
+fn long_timeout() -> Duration {
+    Duration::from_millis(6_000)
 }

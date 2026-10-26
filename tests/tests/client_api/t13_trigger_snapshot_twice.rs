@@ -45,7 +45,7 @@ async fn trigger_snapshot_twice_at_same_last_applied() -> anyhow::Result<()> {
 
     tracing::info!(log_index, "--- first trigger().snapshot(): build at {}", snap_at);
     n0.trigger().snapshot().await?;
-    router.wait(&0, timeout()).snapshot(snap_at, "first snapshot built").await?;
+    router.wait(&0).snapshot(snap_at, "first snapshot built").await?;
 
     tracing::info!(
         log_index,
@@ -74,14 +74,7 @@ async fn trigger_snapshot_twice_at_same_last_applied() -> anyhow::Result<()> {
     // `BuildSnapshotDone`, and this write would hang until the test timeout.
     router.client_request_many(0, "after_dup_snap", 1).await?;
     let log_index = log_index + 1;
-    router
-        .wait(&0, timeout())
-        .applied_index(Some(log_index), "raft core survived duplicate snapshot")
-        .await?;
+    router.wait(&0).applied_index(Some(log_index), "raft core survived duplicate snapshot").await?;
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
 }

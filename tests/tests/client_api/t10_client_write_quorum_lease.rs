@@ -17,6 +17,7 @@ use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 /// A leader with an expired quorum lease rejects new writes without abandoning pending writes or
@@ -84,8 +85,4 @@ async fn client_write_requires_valid_quorum_lease() -> Result<()> {
     assert_eq!(log_id(1, 0, log_index - 1), pending.log_id);
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_secs(3))
 }

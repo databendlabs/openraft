@@ -42,16 +42,13 @@ async fn storage_error_stops_replication() -> Result<()> {
     router.client_request_many(0, "snapshot", (snapshot_threshold - 1 - log_index) as usize).await?;
     log_index = snapshot_threshold - 1;
 
-    router.wait(&0, timeout()).applied_index(Some(log_index), "snapshot trigger entries").await?;
-    router.wait(&0, timeout()).snapshot(log_id(1, 0, log_index), "leader has built snapshot").await?;
-    router
-        .wait(&0, timeout())
-        .purged(Some(log_id(1, 0, log_index)), "leader has purged snapshot logs")
-        .await?;
+    router.wait(&0).applied_index(Some(log_index), "snapshot trigger entries").await?;
+    router.wait(&0).snapshot(log_id(1, 0, log_index), "leader has built snapshot").await?;
+    router.wait(&0).purged(Some(log_id(1, 0, log_index)), "leader has purged snapshot logs").await?;
 
     router.client_request_many(0, "suffix", (live_log_index - log_index) as usize).await?;
     log_index = live_log_index;
-    router.wait(&0, timeout()).applied_index(Some(log_index), "leader has live suffix").await?;
+    router.wait(&0).applied_index(Some(log_index), "leader has live suffix").await?;
 
     let sent_malformed = Arc::new(AtomicBool::new(false));
     {
@@ -100,8 +97,4 @@ async fn storage_error_stops_replication() -> Result<()> {
     );
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(2_000))
 }

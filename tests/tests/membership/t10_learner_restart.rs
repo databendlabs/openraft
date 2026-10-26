@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
@@ -8,6 +7,7 @@ use openraft::Raft;
 use openraft::ServerState;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 /// Cluster learner_restart test.
@@ -41,7 +41,7 @@ async fn learner_restart() -> Result<()> {
     log_index += 1;
 
     for id in [0, 1] {
-        router.wait(&id, None).applied_index(Some(log_index), "write one log").await?;
+        router.wait(&id).applied_index(Some(log_index), "write one log").await?;
     }
 
     let (node0, _sto0, _sm0) = router.remove_node(0).unwrap();
@@ -56,8 +56,4 @@ async fn learner_restart() -> Result<()> {
     restarted.wait(timeout()).state(ServerState::Learner, "server state after restart").await?;
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(2000))
 }

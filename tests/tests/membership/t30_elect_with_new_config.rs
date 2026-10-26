@@ -50,11 +50,11 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
         node_1.trigger().elect(false).await?;
         log_index += 1;
 
-        router.wait(&1, timeout()).metrics(|x| x.current_leader == Some(1), "wait for new leader").await?;
+        router.wait(&1).metrics(|x| x.current_leader == Some(1), "wait for new leader").await?;
 
         for node_id in [1, 2, 3, 4] {
             router
-                .wait(&node_id, timeout())
+                .wait(&node_id)
                 .applied_index(Some(log_index), "replicate and apply log to every node")
                 .await?;
         }
@@ -70,7 +70,7 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
     {
         router.set_network_error(0, false);
         router
-            .wait(&0, timeout())
+            .wait(&0)
             .metrics(
                 |x| x.current_leader == Some(leader_id) && x.last_applied.index() == Some(log_index),
                 "wait for restored node-0 to sync",
@@ -85,8 +85,4 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
 }

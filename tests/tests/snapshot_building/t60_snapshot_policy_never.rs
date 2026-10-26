@@ -8,6 +8,7 @@ use openraft::Config;
 use openraft::SnapshotPolicy;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::expect_timeout;
 use crate::fixtures::ut_harness;
 
 /// Compaction test.
@@ -66,22 +67,15 @@ async fn snapshot_policy_never() -> Result<()> {
 
     tracing::info!(log_index, "--- verify all logs apply without building a snapshot");
     {
-        router
-            .wait(&0, timeout())
-            .applied_index(Some(log_index), format_args!("write log up to {}", log_index))
-            .await?;
+        router.wait(&0).applied_index(Some(log_index), format!("write log up to {}", log_index)).await?;
 
         let wait_snapshot_res = router
-            .wait(&0, Some(Duration::from_millis(3_000)))
+            .wait_with_timeout(&0, Duration::from_millis(3_000))
             .metrics(|m| m.snapshot.is_some(), "no snapshot will be built")
             .await;
 
-        assert!(wait_snapshot_res.is_err(), "no snapshot should be built");
+        expect_timeout(wait_snapshot_res)?;
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
 }

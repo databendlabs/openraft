@@ -45,6 +45,7 @@ use openraft::errors::ReplicationClosed;
 use openraft::errors::StreamingError;
 use openraft::errors::Unreachable;
 use openraft::metrics::Wait;
+use openraft::metrics::WaitError;
 use openraft::network::RPCOption;
 use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
@@ -97,6 +98,9 @@ pub type MemStateMachine = Arc<SMInner>;
 /// A concrete Raft type used during testing.
 pub type MemRaft = Raft<MemConfig, MemStateMachine>;
 
+pub const WAIT_TIMEOUT: Duration = Duration::from_secs(5);
+const TEST_TIMEOUT: Duration = Duration::from_secs(120);
+
 pub fn log_id(term: u64, node_id: u64, index: u64) -> LogIdOf<TypeConfig> {
     LogIdOf::<TypeConfig>::new(
         <TypeConfig as RaftTypeConfig>::LeaderId::new_committed(term, node_id),
@@ -108,7 +112,7 @@ pub fn log_id(term: u64, node_id: u64, index: u64) -> LogIdOf<TypeConfig> {
 pub fn ut_harness<F, Fut>(f: F) -> anyhow::Result<()>
 where
     F: FnOnce() -> Fut + 'static,
-    Fut: Future<Output = anyhow::Result<()>> + 'static,
+    Fut: Future<Output = anyhow::Result<()>> + OptionalSend + 'static,
 {
     fn func_name<F: std::any::Any>() -> &'static str {
         let full_name = std::any::type_name::<F>();
@@ -118,7 +122,19 @@ where
     #[allow(clippy::let_unit_value)]
     let _g = init_default_ut_tracing();
 
-    let res = TypeConfig::run(f());
+    let duration = match env::var("OPENRAFT_TEST_TIMEOUT_SECS") {
+        Ok(value) => {
+            let seconds = value.parse().context("invalid OPENRAFT_TEST_TIMEOUT_SECS")?;
+            Duration::from_secs(seconds)
+        }
+        Err(env::VarError::NotPresent) => TEST_TIMEOUT,
+        Err(error) => return Err(error.into()),
+    };
+    anyhow::ensure!(!duration.is_zero(), "OPENRAFT_TEST_TIMEOUT_SECS must be positive");
+    let res = TypeConfig::run(async move {
+        let result = TypeConfig::timeout(duration, f()).await;
+        result.context("test exceeded its deadline")?
+    });
     if let Err(e) = &res {
         tracing::error!("{} error: {:?}", func_name::<F>(), e);
     }
@@ -365,7 +381,7 @@ impl TypedRaftRouter {
             })
             .await?;
         }
-        self.wait(&leader_id, timeout()).applied_index(None, "empty").await?;
+        self.wait(&leader_id).applied_index(None, "empty").await?;
 
         tracing::info!("--- initializing single node cluster: {}", 0);
 
@@ -374,8 +390,8 @@ impl TypedRaftRouter {
 
         tracing::info!(log_index, "--- wait for init node to become leader");
 
-        self.wait(&leader_id, timeout()).applied_index(Some(log_index), "init").await?;
-        self.wait(&leader_id, timeout()).vote(VoteOf::<MemConfig>::new_committed(1, 0), "init vote").await?;
+        self.wait(&leader_id).applied_index(Some(log_index), "init").await?;
+        self.wait(&leader_id).vote(VoteOf::<MemConfig>::new_committed(1, 0), "init vote").await?;
 
         for id in voter_ids.iter() {
             if *id == leader_id {
@@ -387,13 +403,11 @@ impl TypedRaftRouter {
             self.add_learner(leader_id, *id).await?;
             log_index += 1;
 
-            self.wait(id, timeout()).state(ServerState::Learner, "empty node").await?;
+            self.wait(id).state(ServerState::Learner, "empty node").await?;
         }
 
         for id in voter_ids.iter() {
-            self.wait(id, timeout())
-                .applied_index(Some(log_index), &format!("learners of {:?}", voter_ids))
-                .await?;
+            self.wait(id).applied_index(Some(log_index), &format!("learners of {:?}", voter_ids)).await?;
         }
 
         if voter_ids.len() > 1 {
@@ -407,9 +421,7 @@ impl TypedRaftRouter {
             log_index += if needs_joint { 2 } else { 1 };
 
             for id in voter_ids.iter() {
-                self.wait(id, timeout())
-                    .applied_index(Some(log_index), &format!("cluster of {:?}", voter_ids))
-                    .await?;
+                self.wait(id).applied_index(Some(log_index), &format!("cluster of {:?}", voter_ids)).await?;
             }
         }
 
@@ -420,9 +432,7 @@ impl TypedRaftRouter {
             log_index += 1;
         }
         for id in learners.iter() {
-            self.wait(id, timeout())
-                .applied_index(Some(log_index), &format!("learners of {:?}", learners))
-                .await?;
+            self.wait(id).applied_index(Some(log_index), &format!("learners of {:?}", learners)).await?;
         }
 
         Ok(log_index)
@@ -682,13 +692,22 @@ impl TypedRaftRouter {
         Ok(())
     }
 
-    pub fn wait(&self, node_id: &MemNodeId, timeout: Option<Duration>) -> Wait<MemConfig> {
+    /// Wait for a node's metrics with the shared finite deadline.
+    pub fn wait(&self, node_id: &MemNodeId) -> Wait<MemConfig> {
+        self.wait_with_timeout(node_id, WAIT_TIMEOUT)
+    }
+
+    /// Wait for a node's metrics within a specific observation window.
+    pub fn wait_with_timeout(&self, node_id: &MemNodeId, duration: Duration) -> Wait<MemConfig> {
+        let faults = self.fail_rpc.lock().unwrap();
+        tracing::debug!(node_id, ?duration, ?faults, "waiting for node metrics");
+        drop(faults);
         let node = {
             let rt = self.nodes.lock().unwrap();
             rt.get(node_id).expect("target node not found in routing table").clone().0
         };
 
-        node.wait(timeout)
+        node.wait(Some(duration))
     }
 
     /// Get the ID of the current leader.
@@ -1041,8 +1060,18 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
     }
 }
 
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(5_000))
+/// Shared finite deadline for calls made directly to a Raft handle.
+pub fn timeout() -> Option<Duration> {
+    Some(WAIT_TIMEOUT)
+}
+
+/// Require a full timeout window; a stopped node fails the observation.
+pub fn expect_timeout<T>(result: Result<T, WaitError>) -> anyhow::Result<()> {
+    match result {
+        Err(WaitError::Timeout(_, _)) => Ok(()),
+        Err(error) => Err(error.into()),
+        Ok(_) => anyhow::bail!("expected a timeout, but the condition was met"),
+    }
 }
 
 /// A trait for extending the functionality of a Raft vote.

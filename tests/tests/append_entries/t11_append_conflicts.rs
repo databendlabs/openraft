@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use openraft::Config;
@@ -35,8 +34,8 @@ async fn append_conflicts() -> Result<()> {
 
     tracing::info!("--- wait for init node to ready");
 
-    router.wait(&0, timeout()).applied_index(None, "empty").await?;
-    router.wait(&0, timeout()).state(ServerState::Learner, "empty").await?;
+    router.wait(&0).applied_index(None, "empty").await?;
+    router.wait(&0).state(ServerState::Learner, "empty").await?;
 
     let (r0, mut sto0, _sm0) = router.remove_node(0).unwrap();
     check_logs(&mut sto0, vec![]).await?;
@@ -245,8 +244,4 @@ where
     assert_eq!(w, g);
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1000))
 }

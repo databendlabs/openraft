@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
@@ -39,7 +38,7 @@ async fn add_remove_voter() -> Result<()> {
         log_index += 100;
 
         for id in c01234.iter() {
-            router.wait(id, timeout()).applied_index(Some(log_index), "write 100 logs").await?;
+            router.wait(id).applied_index(Some(log_index), "write 100 logs").await?;
         }
     }
 
@@ -50,7 +49,7 @@ async fn add_remove_voter() -> Result<()> {
         log_index += 1; // one member-change log
 
         for id in c0123.iter() {
-            router.wait(id, timeout()).applied_index(Some(log_index), "removed node-4 from membership").await?;
+            router.wait(id).applied_index(Some(log_index), "removed node-4 from membership").await?;
         }
     }
 
@@ -61,7 +60,7 @@ async fn add_remove_voter() -> Result<()> {
     }
 
     for id in c0123.iter() {
-        router.wait(id, timeout()).applied_index(Some(log_index), "4 nodes recv logs 100~200").await?;
+        router.wait(id).applied_index(Some(log_index), "4 nodes recv logs 100~200").await?;
     }
 
     tracing::info!(log_index, "--- log will not be sync to removed node");
@@ -71,7 +70,7 @@ async fn add_remove_voter() -> Result<()> {
     }
 
     router
-        .wait(&4, timeout())
+        .wait(&4)
         .metrics(
             |x| x.state == ServerState::Learner || x.state == ServerState::Candidate,
             "node-4 is left a learner or follower, depending on if it received the uniform config",
@@ -79,8 +78,4 @@ async fn add_remove_voter() -> Result<()> {
         .await?;
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(2000))
 }

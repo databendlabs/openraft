@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
@@ -36,7 +35,7 @@ async fn replication_1_voter_to_isolated_learner() -> Result<()> {
         router.client_request_many(0, "0", (10 - log_index) as usize).await?;
         log_index = 10;
 
-        router.wait(&0, timeout()).applied_index(Some(log_index), "send log to trigger snapshot").await?;
+        router.wait(&0).applied_index(Some(log_index), "send log to trigger snapshot").await?;
     }
 
     tracing::info!(log_index, "--- restore replication to node 1");
@@ -46,11 +45,7 @@ async fn replication_1_voter_to_isolated_learner() -> Result<()> {
         router.client_request_many(0, "0", (10 - log_index) as usize).await?;
         log_index = 10;
 
-        router.wait(&0, timeout()).applied_index(Some(log_index), "send log to trigger snapshot").await?;
+        router.wait(&0).applied_index(Some(log_index), "send log to trigger snapshot").await?;
     }
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1000))
 }

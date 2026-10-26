@@ -73,7 +73,7 @@ async fn t99_issue_1500_heartbeat_cause_reversion_panic() -> anyhow::Result<()> 
     tracing::info!(log_index, "--- write some logs");
     {
         log_index += router.client_request_many(0, "foo", 500).await?;
-        router.wait(&0, timeout()).applied_index(Some(log_index), "commit all written entries").await?;
+        router.wait(&0).applied_index(Some(log_index), "commit all written entries").await?;
     }
 
     tracing::info!(log_index, "--- check if panic occurs");
@@ -83,8 +83,4 @@ async fn t99_issue_1500_heartbeat_cause_reversion_panic() -> anyhow::Result<()> 
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
 }

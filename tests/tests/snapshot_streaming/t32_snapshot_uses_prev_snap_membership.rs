@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
@@ -55,9 +54,9 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
         log_index = snapshot_threshold - 1;
 
         for id in [0, 1] {
-            router.wait(&id, timeout()).applied_index(Some(log_index), "send log to trigger snapshot").await?;
+            router.wait(&id).applied_index(Some(log_index), "send log to trigger snapshot").await?;
         }
-        router.wait(&0, timeout()).snapshot(log_id(1, 0, log_index), "1st snapshot").await?;
+        router.wait(&0).snapshot(log_id(1, 0, log_index), "1st snapshot").await?;
 
         {
             let logs = sto0.try_get_log_entries(..).await?;
@@ -83,9 +82,9 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
         log_index = snapshot_threshold * 2 - 1;
 
         for id in [0, 1] {
-            router.wait(&id, None).applied_index(Some(log_index), "send log to trigger snapshot").await?;
+            router.wait(&id).applied_index(Some(log_index), "send log to trigger snapshot").await?;
         }
-        router.wait(&0, None).snapshot(log_id(1, 0, log_index), "2nd snapshot").await?;
+        router.wait(&0).snapshot(log_id(1, 0, log_index), "2nd snapshot").await?;
     }
 
     tracing::info!(log_index, "--- check membership");
@@ -109,8 +108,4 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(500))
 }

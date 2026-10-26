@@ -47,10 +47,7 @@ async fn setup() -> Result<TypedRaftRouter> {
     // parked inside the hung AppendEntries RPC.
     router.client_request(0, "before-remove", 1).await?;
     log_index += 1;
-    router
-        .wait(&0, timeout())
-        .applied_index(Some(log_index), "write commits via the {0,1} quorum")
-        .await?;
+    router.wait(&0).applied_index(Some(log_index), "write commits via the {0,1} quorum").await?;
 
     Ok(router)
 }
@@ -89,7 +86,7 @@ async fn remove_hung_follower_must_not_block_raft_core_loop_2() -> Result<()> {
     let refresh_started = TypeConfig::now();
     router.get_raft_handle(&0)?.trigger().heartbeat().await?;
     router
-        .wait(&0, timeout())
+        .wait(&0)
         .leader_with_quorum_acked(
             Some(refresh_started),
             "leader lease recovered through the surviving quorum",
@@ -103,8 +100,4 @@ async fn remove_hung_follower_must_not_block_raft_core_loop_2() -> Result<()> {
         .expect("write completed within the window")?;
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1000))
 }

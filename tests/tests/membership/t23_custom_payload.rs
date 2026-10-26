@@ -9,7 +9,6 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::time::Duration;
 
 use futures::Stream;
 use futures::TryStreamExt;
@@ -56,6 +55,7 @@ use openraft::storage::RaftStateMachine;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 static BLANK_CALLS: AtomicUsize = AtomicUsize::new(0);
@@ -657,8 +657,4 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
     node2.shutdown().await?;
     node3.shutdown().await?;
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_secs(2))
 }

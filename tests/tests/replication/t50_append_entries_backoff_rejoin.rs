@@ -8,6 +8,7 @@ use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 /// A restarted unreachable node should recover correctly, and catch up with the leader:
@@ -67,14 +68,10 @@ async fn append_entries_backoff_rejoin() -> Result<()> {
         router.set_unreachable(0, false);
 
         router
-            .wait(&0, timeout())
+            .wait(&0)
             .applied_index_at_least(Some(log_index), format!("node-0 commit {} writes", n))
             .await?;
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
 }

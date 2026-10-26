@@ -130,7 +130,7 @@ async fn test_metrics_recorder_all_fields() -> Result<()> {
 
     // Wait for all nodes to apply - this ensures replication completed
     for node_id in [0, 1, 2] {
-        router.wait(&node_id, timeout()).applied_index(Some(log_index), "applied").await?;
+        router.wait(&node_id).applied_index(Some(log_index), "applied").await?;
     }
 
     // --- Trigger heartbeat ---
@@ -142,13 +142,13 @@ async fn test_metrics_recorder_all_fields() -> Result<()> {
     // This should trigger set_snapshot_index
     tracing::info!(log_index, "--- trigger snapshot");
     leader.trigger().snapshot().await?;
-    router.wait(&leader_id, timeout()).snapshot(log_id(1, leader_id, log_index), "snapshot").await?;
+    router.wait(&leader_id).snapshot(log_id(1, leader_id, log_index), "snapshot").await?;
 
     // --- Trigger purge ---
     // This should trigger set_purged_index
     tracing::info!(log_index, "--- trigger purge");
     leader.trigger().purge_log(log_index).await?;
-    router.wait(&leader_id, timeout()).purged(Some(log_id(1, leader_id, log_index)), "purged").await?;
+    router.wait(&leader_id).purged(Some(log_id(1, leader_id, log_index)), "purged").await?;
 
     // Wait a bit for metrics to be recorded
     TypeConfig::sleep(Duration::from_millis(100)).await;
@@ -244,7 +244,7 @@ async fn test_metrics_recorder_on_follower() -> Result<()> {
     log_index += router.client_request_many(leader_id, "test", 5).await?;
 
     // Wait for follower to receive and apply
-    router.wait(&1, timeout()).applied_index(Some(log_index), "follower applied").await?;
+    router.wait(&1).applied_index(Some(log_index), "follower applied").await?;
 
     // Trigger an election from another node to test vote_count
     // Node 2 will send vote requests to node 1 (which has our recorder)
@@ -308,8 +308,4 @@ async fn test_metrics_recorder_on_follower() -> Result<()> {
     );
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(2000))
 }

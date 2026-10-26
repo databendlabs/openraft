@@ -15,6 +15,7 @@ use crate::fixtures::MemRaft;
 use crate::fixtures::MemStateMachine;
 use crate::fixtures::RaftRouter;
 use crate::fixtures::rpc_response::RpcResponse;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 /// A Conflict response to regular replication proves that the follower accepted the Leader's
@@ -98,8 +99,4 @@ async fn conflict_updates_clock_progress() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_secs(1))
 }

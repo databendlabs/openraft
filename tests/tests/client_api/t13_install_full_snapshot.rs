@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use maplit::btreeset;
 use openraft::Config;
@@ -32,8 +31,8 @@ async fn install_full_snapshot() -> anyhow::Result<()> {
     tracing::info!(log_index, "--- write to make node-0,1 have more logs");
     {
         log_index += router.client_request_many(0, "foo", 3).await?;
-        router.wait(&0, timeout()).applied_index(Some(log_index), "write more log").await?;
-        router.wait(&1, timeout()).applied_index(Some(log_index), "write more log").await?;
+        router.wait(&0).applied_index(Some(log_index), "write more log").await?;
+        router.wait(&1).applied_index(Some(log_index), "write more log").await?;
     }
 
     let snap;
@@ -43,7 +42,7 @@ async fn install_full_snapshot() -> anyhow::Result<()> {
         let n0 = router.get_raft_handle(&0)?;
         n0.trigger().snapshot().await?;
 
-        router.wait(&0, timeout()).snapshot(log_id(1, 0, log_index), "node-1 snapshot").await?;
+        router.wait(&0).snapshot(log_id(1, 0, log_index), "node-1 snapshot").await?;
 
         snap = n0.get_snapshot().await?.unwrap();
     }
@@ -102,8 +101,4 @@ async fn install_full_snapshot() -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
 }

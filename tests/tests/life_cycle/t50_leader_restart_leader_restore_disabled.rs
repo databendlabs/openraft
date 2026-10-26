@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use maplit::btreeset;
 use openraft::Config;
@@ -47,20 +46,16 @@ async fn leader_restart_leader_restore_disabled() -> anyhow::Result<()> {
 
     tracing::info!(log_index, "--- node-0 must re-elect instead of restoring leadership");
     {
-        router.wait(&0, timeout()).state(ServerState::Leader, "leader again via election").await?;
+        router.wait(&0).state(ServerState::Leader, "leader again via election").await?;
 
         // Term 2 proves a real election happened: restoring leadership would have
         // kept the committed vote at term 1.
-        router.wait(&0, timeout()).vote(Vote::new_committed(2, 0), "vote moved to term 2").await?;
+        router.wait(&0).vote(Vote::new_committed(2, 0), "vote moved to term 2").await?;
 
         // The new leader appends a blank log entry for its term.
         log_index += 1;
-        router.wait(&0, timeout()).applied_index(Some(log_index), "logs re-applied, plus the noop").await?;
+        router.wait(&0).applied_index(Some(log_index), "logs re-applied, plus the noop").await?;
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
 }

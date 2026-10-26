@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
@@ -14,6 +13,7 @@ use openraft::testing::blank_ent;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 /// append-entries should update membership correctly when adding new logs and deleting
@@ -36,8 +36,8 @@ async fn append_updates_membership() -> Result<()> {
 
     tracing::info!("--- wait for init node to ready");
 
-    router.wait(&0, None).applied_index(None, "empty").await?;
-    router.wait(&0, None).state(ServerState::Learner, "empty").await?;
+    router.wait(&0).applied_index(None, "empty").await?;
+    router.wait(&0).state(ServerState::Learner, "empty").await?;
 
     let (r0, _sto0, _sm0) = router.remove_node(0).unwrap();
 
@@ -87,8 +87,4 @@ async fn append_updates_membership() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(5000))
 }

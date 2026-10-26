@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
@@ -61,7 +60,7 @@ async fn total_order_apply() -> Result<()> {
 
     let want = n as u64;
     router
-        .wait(&1u64, timeout())
+        .wait(&1u64)
         .metrics(
             |x| x.last_applied.index() >= Some(want),
             &format!("n{}.last_applied -> {}", 1, want),
@@ -69,8 +68,4 @@ async fn total_order_apply() -> Result<()> {
         .await?;
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(2000))
 }

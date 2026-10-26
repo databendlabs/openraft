@@ -1,6 +1,5 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
@@ -89,7 +88,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
 
     wait_log(&router, &candidates, log_index).await?;
     router
-        .wait(&3u64, timeout())
+        .wait(&3u64)
         .metrics(
             |x| x.state == ServerState::Learner,
             &format!("n{}.state -> {:?}", 3, ServerState::Learner),
@@ -98,7 +97,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
 
     // THe learner should receive the last written log
     router
-        .wait(&3u64, timeout())
+        .wait(&3u64)
         .metrics(
             |x| x.last_log_index == Some(log_index),
             &format!("n{}.last_log_index -> {}", 3, log_index),
@@ -111,14 +110,14 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
 async fn wait_log(router: &RaftRouter, node_ids: &BTreeSet<u64>, want_log: u64) -> anyhow::Result<()> {
     for i in node_ids.iter() {
         router
-            .wait(i, timeout())
+            .wait(i)
             .metrics(
                 |x| x.last_log_index == Some(want_log),
                 &format!("n{}.last_log_index -> {}", i, want_log),
             )
             .await?;
         router
-            .wait(i, timeout())
+            .wait(i)
             .metrics(
                 |x| x.last_applied.index() == Some(want_log),
                 &format!("n{}.last_applied -> {}", i, want_log),
@@ -126,8 +125,4 @@ async fn wait_log(router: &RaftRouter, node_ids: &BTreeSet<u64>, want_log: u64) 
             .await?;
     }
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(500))
 }

@@ -10,6 +10,7 @@ use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 /// Triggering an election on the current Leader is ignored.
@@ -69,8 +70,4 @@ async fn elect_on_leader_is_ignored() -> Result<()> {
     router.client_request_many(0, "foo", 1).await?;
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(2000))
 }

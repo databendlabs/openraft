@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
@@ -41,7 +40,7 @@ async fn single_node() -> Result<()> {
 
     // Write some data to the single node cluster.
     log_index += router.client_request_many(0, "0", 1000).await?;
-    router.wait(&0, timeout()).applied_index(Some(log_index), "client_request_many").await?;
+    router.wait(&0).applied_index(Some(log_index), "client_request_many").await?;
 
     let (mut sto, mut sm) = router.get_storage_handle(&0)?;
     assert_eq!(sto.get_log_state().await?.last_log_id, Some(log_id(1, 0, log_index)));
@@ -54,8 +53,4 @@ async fn single_node() -> Result<()> {
     router.ensure_linearizable(0, ReadPolicy::ReadIndex).await?;
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1000))
 }

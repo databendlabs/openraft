@@ -14,7 +14,9 @@ use openraft_memstore::IntoMemClientRequest;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::expect_timeout;
 use crate::fixtures::log_id;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 /// Change membership from {0,1} to {1,2,3}.
@@ -43,7 +45,7 @@ async fn remove_leader() -> Result<()> {
     let orig_leader = router.leader().expect("expected the cluster to have a leader");
     assert_eq!(0, orig_leader, "expected original leader to be node 0");
     for id in [0, 1] {
-        router.wait(&id, timeout()).applied_index(Some(log_index), "add learner").await?;
+        router.wait(&id).applied_index(Some(log_index), "add learner").await?;
     }
 
     let node = router.get_raft_handle(&orig_leader)?;
@@ -54,7 +56,7 @@ async fn remove_leader() -> Result<()> {
     tracing::info!(log_index, "--- old leader commits 2 membership log");
     {
         router
-            .wait(&orig_leader, timeout())
+            .wait(&orig_leader)
             .applied_index(Some(log_index), "old leader commits 2 membership log")
             .await?;
     }
@@ -63,7 +65,7 @@ async fn remove_leader() -> Result<()> {
     // Because to commit the 2nd log it only need a quorum of the new cluster.
 
     router
-        .wait(&1, timeout())
+        .wait(&1)
         .applied_index_at_least(Some(log_index), "node in old cluster commits at least 1 membership log")
         .await?;
 
@@ -77,7 +79,7 @@ async fn remove_leader() -> Result<()> {
             // There may be a log conflict when running with `single-term-leader` feature flag enabled.
             // Thus wait a little bit longer for this check
             router
-                .wait(&id, Some(Duration::from_millis(10_000)))
+                .wait_with_timeout(&id, Duration::from_millis(10_000))
                 .applied_index_at_least(
                     Some(log_index),
                     "node in new cluster finally commit at least one blank leader-initialize log",
@@ -90,7 +92,7 @@ async fn remove_leader() -> Result<()> {
     {
         for id in [1, 2, 3] {
             router
-                .wait(&id, timeout())
+                .wait(&id)
                 .metrics(
                     |x| x.current_term >= 2,
                     "new cluster has term >= 2 because of new election",
@@ -101,7 +103,7 @@ async fn remove_leader() -> Result<()> {
 
     tracing::info!(log_index, "--- check state of the old leader");
     {
-        let metrics = router.wait(&0, timeout()).state(ServerState::Learner, "old leader steps down").await?;
+        let metrics = router.wait(&0).state(ServerState::Learner, "old leader steps down").await?;
         let cfg = &metrics.membership_config.membership();
 
         assert_eq!(metrics.current_term, 1);
@@ -148,7 +150,7 @@ async fn remove_leader_and_convert_to_learner() -> Result<()> {
     tracing::info!(log_index, "--- old leader commits 2 membership log");
     {
         router
-            .wait(&old_leader, timeout())
+            .wait(&old_leader)
             .applied_index(Some(log_index), "old leader commits 2 membership log")
             .await?;
     }
@@ -157,7 +159,7 @@ async fn remove_leader_and_convert_to_learner() -> Result<()> {
     // Because to commit the 2nd log it only need a quorum of the new cluster.
 
     router
-        .wait(&1, timeout())
+        .wait(&1)
         .applied_index_at_least(
             Some(log_index - 1),
             "node in old cluster commits at least 1 membership log",
@@ -169,7 +171,7 @@ async fn remove_leader_and_convert_to_learner() -> Result<()> {
         TypeConfig::sleep(Duration::from_millis(1_000)).await;
 
         router
-            .wait(&0, timeout())
+            .wait(&0)
             .state(
                 ServerState::Leader,
                 "old leader is not removed from membership, it is still a leader",
@@ -212,7 +214,7 @@ async fn remove_leader_auto_transfer() -> Result<()> {
     );
     {
         router
-            .wait(&1, timeout())
+            .wait(&1)
             .metrics(
                 |x| matches!(x.current_leader, Some(1) | Some(2)) && x.current_term >= 2,
                 "a new leader is established by transfer-leader",
@@ -222,7 +224,7 @@ async fn remove_leader_auto_transfer() -> Result<()> {
 
     tracing::info!(log_index, "--- the removed leader reverts to learner");
     {
-        let metrics = router.wait(&0, timeout()).state(ServerState::Learner, "removed leader steps down").await?;
+        let metrics = router.wait(&0).state(ServerState::Learner, "removed leader steps down").await?;
         assert_eq!(
             metrics.current_term, 1,
             "the removed leader is not disturbed by the new election"
@@ -262,17 +264,14 @@ async fn remove_leader_manual_step_down() -> Result<()> {
     tracing::info!(log_index, "--- the removed leader keeps leading");
     {
         let res = router
-            .wait(&0, Some(Duration::from_millis(1_000)))
+            .wait_with_timeout(&0, Duration::from_millis(1_000))
             .metrics(
                 |x| x.state != ServerState::Leader,
                 "the removed leader leaves the Leader state",
             )
             .await;
 
-        assert!(
-            res.is_err(),
-            "the automated step down is disabled, the removed leader keeps leading"
-        );
+        expect_timeout(res)?;
     }
 
     tracing::info!(log_index, "--- manually revert the removed leader to a learner");
@@ -280,7 +279,7 @@ async fn remove_leader_manual_step_down() -> Result<()> {
         let node = router.get_raft_handle(&0)?;
         node.trigger().refresh_server_state(None, None).await?;
 
-        router.wait(&0, timeout()).state(ServerState::Learner, "removed leader reverts to learner").await?;
+        router.wait(&0).state(ServerState::Learner, "removed leader reverts to learner").await?;
     }
 
     Ok(())
@@ -316,7 +315,7 @@ async fn remove_leader_fenced_step_down() -> Result<()> {
 
     let node = router.get_raft_handle(&0)?;
     let metrics = router
-        .wait(&0, timeout())
+        .wait(&0)
         .applied_index(Some(log_index), "the removed leader applies the membership log")
         .await?;
     let vote = metrics.vote;
@@ -329,13 +328,13 @@ async fn remove_leader_fenced_step_down() -> Result<()> {
         node.trigger().refresh_server_state(Some(mismatching), None).await?;
 
         let res = router
-            .wait(&0, Some(Duration::from_millis(1_000)))
+            .wait_with_timeout(&0, Duration::from_millis(1_000))
             .metrics(
                 |x| x.state != ServerState::Leader,
                 "the removed leader leaves the Leader state",
             )
             .await;
-        assert!(res.is_err(), "the expected vote does not match, the refresh is dropped");
+        expect_timeout(res)?;
     }
 
     tracing::info!(
@@ -347,16 +346,13 @@ async fn remove_leader_fenced_step_down() -> Result<()> {
         node.trigger().refresh_server_state(None, Some(mismatching)).await?;
 
         let res = router
-            .wait(&0, Some(Duration::from_millis(1_000)))
+            .wait_with_timeout(&0, Duration::from_millis(1_000))
             .metrics(
                 |x| x.state != ServerState::Leader,
                 "the removed leader leaves the Leader state",
             )
             .await;
-        assert!(
-            res.is_err(),
-            "the expected membership log id does not match, the refresh is dropped"
-        );
+        expect_timeout(res)?;
     }
 
     tracing::info!(
@@ -366,7 +362,7 @@ async fn remove_leader_fenced_step_down() -> Result<()> {
     {
         node.trigger().refresh_server_state(Some(vote), Some(membership_log_id)).await?;
 
-        router.wait(&0, timeout()).state(ServerState::Learner, "removed leader reverts to learner").await?;
+        router.wait(&0).state(ServerState::Learner, "removed leader reverts to learner").await?;
     }
 
     Ok(())
@@ -403,7 +399,7 @@ async fn remove_leader_access_new_cluster() -> Result<()> {
         log_index += 2;
 
         router
-            .wait(&2, timeout())
+            .wait(&2)
             .metrics(
                 |x| x.last_log_index == Some(log_index),
                 "node-2 receives 2 membership logs",
@@ -414,7 +410,7 @@ async fn remove_leader_access_new_cluster() -> Result<()> {
     tracing::info!(log_index, "--- old leader commits 2 membership log");
     {
         router
-            .wait(&orig_leader, timeout())
+            .wait(&orig_leader)
             .applied_index(Some(log_index), "old leader commits 2 membership log")
             .await?;
     }
@@ -451,8 +447,4 @@ async fn remove_leader_access_new_cluster() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(3_000))
 }

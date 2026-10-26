@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
@@ -57,8 +56,8 @@ async fn build_snapshot() -> Result<()> {
 
     tracing::info!(log_index, "--- log_index: {}", log_index);
 
-    router.wait(&0, timeout()).applied_index(Some(log_index), "write").await?;
-    router.wait(&0, None).snapshot(log_id(1, 0, log_index), "snapshot").await?;
+    router.wait(&0).applied_index(Some(log_index), "write").await?;
+    router.wait(&0).snapshot(log_id(1, 0, log_index), "snapshot").await?;
 
     {
         let (mut sto, mut sm) = router.get_storage_handle(&0)?;
@@ -93,7 +92,7 @@ async fn build_snapshot() -> Result<()> {
     tracing::info!(log_index, "--- log_index: {}", log_index);
 
     for id in [0, 1] {
-        router.wait(&id, timeout()).applied_index(Some(log_index), "add follower").await?;
+        router.wait(&id).applied_index(Some(log_index), "add follower").await?;
     }
 
     tracing::info!(
@@ -141,8 +140,4 @@ async fn build_snapshot() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1000))
 }

@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
@@ -15,6 +14,7 @@ use openraft_memstore::ClientResponse;
 use openraft_memstore::IntoMemClientRequest;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 /// Election, heartbeat and ticking stay off, and a removed leader does not step down by itself,
@@ -102,7 +102,7 @@ async fn removed_leader_accepts_writes_and_membership_changes() -> Result<()> {
         assert_eq!(expected, response.data);
 
         for node_id in [0, 1, 2] {
-            router.wait(&node_id, timeout()).applied_index(Some(log_index), "writes are applied").await?;
+            router.wait(&node_id).applied_index(Some(log_index), "writes are applied").await?;
         }
 
         let metrics = leader.metrics().borrow_watched().clone();
@@ -168,7 +168,7 @@ async fn change_from_joint_can_leave_out_the_leader() -> Result<()> {
             assert_eq!(ClientResponse(None), response.data);
 
             for node_id in [0, 1, 2] {
-                router.wait(&node_id, timeout()).applied_index(Some(log_index), "write after joint change").await?;
+                router.wait(&node_id).applied_index(Some(log_index), "write after joint change").await?;
             }
 
             let metrics = leader.metrics().borrow_watched().clone();
@@ -177,8 +177,4 @@ async fn change_from_joint_can_leave_out_the_leader() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
 }
