@@ -41,7 +41,8 @@ async fn partial_success_updates_clock_progress() -> Result<()> {
     tracing::info!(log_index, "--- isolate voter 1 and append two logs through voter 2");
     {
         router.set_unreachable(1, true);
-        log_index += router.client_request_many(0, "partial", 2).await?;
+        let written = router.client_request_many(0, "partial", 2).await?;
+        log_index += written.count;
     }
 
     let (partial_tx, partial_rx) = TypeConfig::oneshot();

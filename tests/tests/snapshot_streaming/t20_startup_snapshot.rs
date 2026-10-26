@@ -31,7 +31,8 @@ async fn startup_build_snapshot() -> anyhow::Result<()> {
 
     tracing::info!(log_index, "--- send client requests");
     {
-        log_index += router.client_request_many(0, "0", (20 - 1 - log_index) as usize).await?;
+        let written = router.client_request_many(0, "0", (20 - 1 - log_index) as usize).await?;
+        log_index += written.count;
 
         router.wait(&0).applied_index(Some(log_index), "node-0 applied all requests").await?;
         router.get_raft_handle(&0)?.trigger().snapshot().await?;

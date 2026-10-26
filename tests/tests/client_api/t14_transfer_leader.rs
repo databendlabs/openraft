@@ -304,7 +304,7 @@ async fn transfer_leader_blocks_lease_read() -> anyhow::Result<()> {
     tracing::info!("--- a write on n0 must identify leadership transfer as the rejection reason");
     {
         let err = router
-            .send_client_request(0, ClientRequest::make_request("transfer", 1))
+            .write(0, ClientRequest::make_request("transfer", 1))
             .await
             .expect_err("write must be rejected during leadership transfer");
         let ClientWriteError::ForwardToLeader(fwd) = err.into_api_error().expect("write returns an API error") else {

@@ -87,7 +87,8 @@ async fn first_two_probes_with_quota_zero(n_writes: usize) -> Result<FirstTwoPro
         "--- write logs so a probe has a search range to bisect"
     );
     {
-        log_index += router.client_request_many(0, "foo", n_writes).await?;
+        let written = router.client_request_many(0, "foo", n_writes).await?;
+        log_index += written.count;
 
         for id in [0, 1, 2] {
             router.wait(&id).applied_index(Some(log_index), format!("{n_writes} writes")).await?;

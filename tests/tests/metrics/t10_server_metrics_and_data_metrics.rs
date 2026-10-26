@@ -50,7 +50,8 @@ async fn server_metrics_and_data_metrics() -> Result<()> {
     // Write some logs.
     let n = 10;
     tracing::info!(log_index, "--- write {} logs", n);
-    log_index += router.client_request_many(0, "foo", n).await?;
+    let written = router.client_request_many(0, "foo", n).await?;
+    log_index += written.count;
 
     router.wait(&0).applied_index(Some(log_index), "applied log index").await?;
 
@@ -254,7 +255,8 @@ async fn cluster_committed_metric() -> Result<()> {
     let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
 
     tracing::info!(log_index, "--- write logs to advance the commit");
-    log_index += router.client_request_many(0, "foo", 10).await?;
+    let written = router.client_request_many(0, "foo", 10).await?;
+    log_index += written.count;
 
     for id in [0, 1, 2] {
         // Once applied reaches the last log, the local committed and the cluster committed have

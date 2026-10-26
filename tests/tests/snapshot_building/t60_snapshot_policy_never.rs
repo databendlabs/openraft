@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use futures::StreamExt;
+use futures::TryStreamExt;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::SnapshotPolicy;
@@ -62,7 +62,7 @@ async fn snapshot_policy_never() -> Result<()> {
             log_index += per_client;
         }
 
-        while clients.next().await.is_some() {}
+        while clients.try_next().await?.is_some() {}
     }
 
     tracing::info!(log_index, "--- verify all logs apply without building a snapshot");

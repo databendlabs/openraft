@@ -179,7 +179,8 @@ async fn get_read_log_id() -> Result<()> {
         n1.wait(timeout()).applied_index(Some(log_index + 1), "commit blank log").await?;
         log_index += 1;
 
-        log_index += router.client_request_many(1, "foo", 1).await?;
+        let written = router.client_request_many(1, "foo", 1).await?;
+        log_index += written.count;
         n1.wait(timeout()).applied_index(Some(log_index), "log applied to state-machine").await?;
 
         let (read_log_id, applied) = n1.get_read_log_id(ReadPolicy::ReadIndex).await?;
@@ -651,7 +652,8 @@ async fn ensure_linearizable_process_from_followers() -> Result<()> {
     tracing::info!("--- block follower n1, leader write a log, n1 unable to apply last log, but n2 does");
     {
         router.set_rpc_pre_hook(RPCTypes::AppendEntries, block_to_follower_n1).await;
-        log_index += router.client_request_many(leader_node_id, "foo", 1).await?;
+        let written = router.client_request_many(leader_node_id, "foo", 1).await?;
+        log_index += written.count;
         leader.wait(timeout()).applied_index(Some(log_index), "log applied to state-machine").await?;
 
         let linearizer = leader.get_read_linearizer(ReadPolicy::ReadIndex).await?;

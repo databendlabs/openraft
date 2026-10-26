@@ -44,7 +44,8 @@ async fn building_snapshot_does_not_block_apply() -> Result<()> {
 
     tracing::info!(log_index, "--- build snapshot on follower, it should block");
     {
-        log_index += router.client_request_many(0, "0", 10).await?;
+        let written = router.client_request_many(0, "0", 10).await?;
+        log_index += written.count;
         router.wait(&1).applied_index(Some(log_index), "written 10 logs").await?;
 
         follower.trigger().snapshot().await?;

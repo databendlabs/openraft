@@ -38,7 +38,8 @@ async fn snapshot_to_unreachable_node_should_not_block() -> Result<()> {
     let n = 10;
     tracing::info!(log_index, "--- write {} logs", n);
     {
-        log_index += router.client_request_many(0, "0", n).await?;
+        let written = router.client_request_many(0, "0", n).await?;
+        log_index += written.count;
         router.wait(&0).applied_index(Some(log_index), format!("{} writes", n)).await?;
     }
 

@@ -72,7 +72,8 @@ async fn t99_issue_1500_heartbeat_cause_reversion_panic() -> anyhow::Result<()> 
 
     tracing::info!(log_index, "--- write some logs");
     {
-        log_index += router.client_request_many(0, "foo", 500).await?;
+        let written = router.client_request_many(0, "foo", 500).await?;
+        log_index += written.count;
         router.wait(&0).applied_index(Some(log_index), "commit all written entries").await?;
     }
 

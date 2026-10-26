@@ -34,7 +34,8 @@ async fn allow_follower_log_revert() -> Result<()> {
 
     tracing::info!(log_index, "--- write 10 logs");
     {
-        log_index += router.client_request_many(0, "0", 10).await?;
+        let written = router.client_request_many(0, "0", 10).await?;
+        log_index += written.count;
         for i in [0, 1] {
             router.wait(&i).applied_index(Some(log_index), format!("{} writes", 10)).await?;
         }
@@ -57,7 +58,8 @@ async fn allow_follower_log_revert() -> Result<()> {
 
     tracing::info!(log_index, "--- write another 10 logs, leader should not panic");
     {
-        log_index += router.client_request_many(0, "0", 10).await?;
+        let written = router.client_request_many(0, "0", 10).await?;
+        log_index += written.count;
         for i in [0, 1] {
             router.wait(&i).applied_index(Some(log_index), format!("{} writes", 10)).await?;
         }

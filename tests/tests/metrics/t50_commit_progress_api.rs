@@ -55,7 +55,8 @@ async fn commit_progress_api() -> Result<()> {
     });
 
     tracing::info!(log_index, "--- send client requests to trigger wait_until_ge return");
-    log_index += router.client_request_many(0, "foo", 5).await?;
+    let written = router.client_request_many(0, "foo", 5).await?;
+    log_index += written.count;
 
     tracing::info!(log_index, "--- verify wait_until_ge returns after logs are committed");
     let got_wait = handle.await??;
