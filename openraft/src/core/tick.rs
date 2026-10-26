@@ -480,7 +480,13 @@ mod tests {
 
         let first_wait = run_seeded(SEED, async { Tick::<SeededTickConfig>::sample_first_wait(PERIOD) });
 
-        run_seeded(SEED, async {
+        // A paused clock advances only when every task waits, so a late wake-up of this thread on
+        // a busy machine cannot shift the windows checked below. `LocalSet` lets `spawn()` work in
+        // the `single-threaded` build, where it calls `spawn_local()`.
+        let rt = tokio::runtime::Builder::new_current_thread().enable_time().start_paused(true).build().unwrap();
+        let local = tokio::task::LocalSet::new();
+
+        let scenario = SeededRuntime::scope(SEED, async {
             // Capacity one: the second tick stays blocked in `send()` for the whole stall, so the
             // loop sleeps through the deadlines at `first_wait + 3 * PERIOD` and `+ 4 * PERIOD`.
             let (tx, mut rx) = SeededTickConfig::mpsc(1);
@@ -506,6 +512,7 @@ mod tests {
 
             th.shutdown().unwrap().await.unwrap();
         });
+        local.block_on(&rt, scenario);
     }
 
     /// Counts how often the wrapped future is polled: one poll per wakeup of the tick task.
