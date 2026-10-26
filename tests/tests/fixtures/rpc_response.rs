@@ -20,6 +20,9 @@ where C: RaftTypeConfig
     InstallSnapshot(InstallSnapshotResponse<C>),
     InstallFullSnapshot(SnapshotResponse<C>),
     Vote(VoteResponse<C>),
+    #[from(skip)]
+    #[try_into(ignore)]
+    PreVote(VoteResponse<C>),
     TransferLeader(TransferLeaderResponse<C>),
 }
 
@@ -32,6 +35,7 @@ where C: RaftTypeConfig
             RpcResponse::InstallSnapshot(_) => RPCTypes::InstallSnapshot,
             RpcResponse::InstallFullSnapshot(_) => RPCTypes::InstallSnapshot,
             RpcResponse::Vote(_) => RPCTypes::Vote,
+            RpcResponse::PreVote(_) => RPCTypes::Vote,
             RpcResponse::TransferLeader(_) => RPCTypes::TransferLeader,
         }
     }
@@ -46,6 +50,7 @@ where C: RaftTypeConfig
             RpcResponse::InstallSnapshot(req) => write!(f, "InstallSnapshot({})", req),
             RpcResponse::InstallFullSnapshot(resp) => write!(f, "InstallFullSnapshot({})", resp),
             RpcResponse::Vote(resp) => write!(f, "Vote({})", resp),
+            RpcResponse::PreVote(resp) => write!(f, "PreVote({})", resp),
             RpcResponse::TransferLeader(resp) => write!(f, "TransferLeader({:?})", resp),
         }
     }

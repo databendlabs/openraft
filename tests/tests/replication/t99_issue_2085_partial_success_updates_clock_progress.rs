@@ -1,7 +1,5 @@
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -11,11 +9,13 @@ use openraft::RPCTypes;
 use openraft::async_runtime::WatchReceiver;
 use openraft::errors::RPCError;
 use openraft::errors::Unreachable;
+use openraft::raft::AppendEntriesResponse;
 use openraft::type_config::OneshotSender;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::log_id;
 use crate::fixtures::rpc_request::RpcRequest;
 use crate::fixtures::rpc_response::RpcResponse;
 use crate::fixtures::ut_harness;
@@ -46,18 +46,15 @@ async fn partial_success_updates_clock_progress() -> Result<()> {
 
     let (partial_tx, partial_rx) = TypeConfig::oneshot();
     let partial_tx = Arc::new(Mutex::new(Some(partial_tx)));
-    let request_had_multiple_entries = Arc::new(AtomicBool::new(false));
 
     tracing::info!(log_index, "--- accept only the first entry, then isolate voter 1 again");
     {
         router.set_append_entries_quota(Some(1));
 
-        let request_had_multiple_entries_pre = request_had_multiple_entries.clone();
         router
             .set_rpc_pre_hook(RPCTypes::AppendEntries, move |_router, req, _from, target| {
                 let result = if target == 1 {
                     let multiple_entries = matches!(&req, RpcRequest::AppendEntries(req) if req.entries.len() > 1);
-                    request_had_multiple_entries_pre.store(multiple_entries, Ordering::SeqCst);
 
                     if multiple_entries {
                         Ok(())
@@ -75,15 +72,14 @@ async fn partial_success_updates_clock_progress() -> Result<()> {
             .await;
 
         router
-            .set_rpc_post_hook(RPCTypes::AppendEntries, move |router, req, resp, _from, target| {
+            .set_rpc_post_hook(RPCTypes::AppendEntries, move |router, _req, resp, _from, target| {
                 if target == 1 {
-                    let is_strict_partial = request_had_multiple_entries.swap(false, Ordering::SeqCst)
-                        && matches!(&req, RpcRequest::AppendEntries(req) if req.entries.len() == 1)
-                        && matches!(&resp, RpcResponse::AppendEntries(resp) if resp.is_success());
-                    assert!(
-                        is_strict_partial,
-                        "unexpected response before PartialSuccess: req={req:?}, resp={resp:?}"
-                    );
+                    let RpcResponse::AppendEntries(response) = resp else {
+                        panic!("expected an AppendEntries response");
+                    };
+                    let matching = Some(log_id(1, 0, log_index - 1));
+                    let expected = AppendEntriesResponse::PartialSuccess(matching);
+                    assert_eq!(expected, response);
 
                     router.set_unreachable(target, true);
 

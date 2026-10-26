@@ -177,6 +177,21 @@ The router owns the simulated network, so a case shapes failures through it:
 - `network_send_delay(ms)` delays every send.
 - `get_rpc_count()` reports how many RPCs of each type were sent.
 
+Use `RpcRule` for one RPC kind on a directed link:
+
+```rust
+let rule = RpcRule::new(0, 1, RpcKind::AppendEntries);
+let blocked = router.add_rpc_rule(rule);
+// Run the isolated phase.
+router.remove_rpc_rule(blocked);
+```
+
+Rules apply in insertion order, before custom pre-hooks. Removing one rule
+leaves the other rules active. `RpcRule::matching()` restricts a rule by its
+request contents. `get_rpc_kind_count()` distinguishes Vote from PreVote and
+snapshot chunks from full snapshot transfers. Post-hooks observe the final
+transport response, including quota-induced `PartialSuccess`.
+
 CI runs the whole suite a second time with `OPENRAFT_NETWORK_SEND_DELAY=30`,
 which delays every RPC by 30 ms. A case must therefore never assume an RPC
 completes quickly.

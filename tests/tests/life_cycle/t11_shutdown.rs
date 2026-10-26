@@ -6,6 +6,7 @@ use openraft::Config;
 use openraft::ServerState;
 use openraft::async_runtime::WatchReceiver;
 use openraft::errors::Fatal;
+use openraft::errors::Infallible;
 use openraft::errors::RPCError;
 
 use crate::fixtures::RaftRouter;
@@ -44,7 +45,7 @@ async fn shutdown() -> Result<()> {
             assert!(same_log);
             let same_sm = Arc::ptr_eq(&state_machine, &node.state_machine);
             assert!(same_sm);
-            let result = router.emit_rpc_error(3, i);
+            let result = router.emit_rpc_error::<Infallible>(3, i);
             let error = result.unwrap_err();
             let unreachable = matches!(error, RPCError::Unreachable(_));
             assert!(unreachable);
