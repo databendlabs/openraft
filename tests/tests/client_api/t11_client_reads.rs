@@ -23,7 +23,9 @@ use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::expect_timeout;
+use crate::fixtures::rpc_kind::RpcKind;
 use crate::fixtures::rpc_request::RpcRequest;
+use crate::fixtures::rpc_rule::RpcRule;
 use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
@@ -126,36 +128,16 @@ async fn get_read_log_id() -> Result<()> {
     tracing::info!("--- initializing cluster");
     let mut log_index = router.new_cluster(btreeset! {0,1}, btreeset! {}).await?;
 
-    // Blocks append-entries to node 0, but let heartbeat pass.
-    let block_to_n0 = |_router: &_, req, _id, target| {
-        let err = || {
-            // Block append-entries to block commit.
-            Err(RPCError::Network(NetworkError::<TypeConfig>::from_string(
-                "block append-entries to node 0",
-            )))
+    tracing::info!("--- block data entries from node 1 to node 0 while allowing heartbeats");
+    let rule = RpcRule::new(1, 0, RpcKind::AppendEntries);
+    let rule = rule.matching(|request| {
+        let RpcRequest::AppendEntries(request) = request else {
+            return false;
         };
-
-        let res = if target == 0 {
-            match req {
-                RpcRequest::AppendEntries(a) => {
-                    // Heartbeat is not blocked.
-                    if a.entries.is_empty() { Ok(()) } else { err() }
-                }
-                _ => {
-                    unreachable!();
-                }
-            }
-        } else {
-            Ok(())
-        };
-
-        let fu = futures::future::ready(res);
-        let x: BoxFuture<_> = Box::pin(fu);
-        x
-    };
-
-    tracing::info!("--- block append-entries to node 0");
-    router.set_rpc_pre_hook(RPCTypes::AppendEntries, block_to_n0).await;
+        let empty = request.entries.is_empty();
+        !empty
+    });
+    let blocked_to_n0 = router.add_rpc_rule(rule);
 
     // Expire current leader
     TypeConfig::sleep(Duration::from_millis(200)).await;
@@ -192,7 +174,7 @@ async fn get_read_log_id() -> Result<()> {
 
     tracing::info!("--- stop blocking, write another log, get_read_log_id returns last log id");
     {
-        router.rpc_pre_hook(RPCTypes::AppendEntries, None).await;
+        router.remove_rpc_rule(blocked_to_n0);
 
         n1.wait(timeout()).applied_index(Some(log_index + 1), "commit blank log").await?;
         log_index += 1;
@@ -215,7 +197,15 @@ async fn get_read_log_id() -> Result<()> {
         "--- block append again, write 1 log that wont commit, get_read_log_id returns last committed log id"
     );
     {
-        router.set_rpc_pre_hook(RPCTypes::AppendEntries, block_to_n0).await;
+        let rule = RpcRule::new(1, 0, RpcKind::AppendEntries);
+        let rule = rule.matching(|request| {
+            let RpcRequest::AppendEntries(request) = request else {
+                return false;
+            };
+            let empty = request.entries.is_empty();
+            !empty
+        });
+        router.add_rpc_rule(rule);
 
         let r = router.clone();
         TypeConfig::spawn(async move {

@@ -8,7 +8,7 @@ use openraft::errors::Unreachable;
 use crate::fixtures::Direction;
 
 /// Type of RPC error to inject during testing.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RpcErrorType {
     /// Returns [`Unreachable`](`openraft::error::Unreachable`).
     Unreachable,
@@ -17,8 +17,11 @@ pub enum RpcErrorType {
 }
 
 impl RpcErrorType {
-    pub fn make_error<C>(&self, id: C::NodeId, dir: Direction) -> RPCError<C>
-    where C: RaftTypeConfig {
+    pub fn make_error<C, E>(&self, id: C::NodeId, dir: Direction) -> RPCError<C, E>
+    where
+        C: RaftTypeConfig,
+        E: std::error::Error,
+    {
         let msg = format!("error {} id={}", dir, id);
 
         match self {

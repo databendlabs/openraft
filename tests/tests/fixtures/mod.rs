@@ -37,6 +37,7 @@ use openraft::alias::SnapshotOf;
 use openraft::async_runtime::Mutex as AsyncMutex;
 use openraft::errors::ClientWriteError;
 use openraft::errors::Fatal;
+use openraft::errors::Infallible;
 use openraft::errors::LinearizableReadError;
 use openraft::errors::NetworkError;
 use openraft::errors::RPCError;
@@ -80,8 +81,10 @@ use tracing_appender::non_blocking::WorkerGuard;
 
 use crate::fixtures::chunked_network::ChunkedNetwork;
 use crate::fixtures::logging::init_file_logging;
+use crate::fixtures::rpc_kind::RpcKind;
 use crate::fixtures::rpc_request::RpcRequest;
 use crate::fixtures::rpc_response::RpcResponse;
+use crate::fixtures::rpc_rule::RpcRule;
 
 mod chunked_network;
 pub mod custom_membership;
@@ -92,8 +95,10 @@ pub use node::Node;
 mod post_hook;
 mod pre_hook;
 pub mod rpc_error_type;
+pub mod rpc_kind;
 pub mod rpc_request;
 pub mod rpc_response;
+pub mod rpc_rule;
 
 type MemSnapshotData = Cursor<Vec<u8>>;
 type MemRpcRequest = RpcRequest<TypeConfig, MemSnapshotData>;
@@ -264,7 +269,9 @@ pub struct TypedRaftRouter {
     append_entries_quota: Arc<Mutex<Option<u64>>>,
 
     /// Count of RPCs sent.
-    rpc_count: Arc<Mutex<HashMap<RPCTypes, u64>>>,
+    rpc_count: Arc<Mutex<HashMap<RpcKind, u64>>>,
+    rpc_rules: Arc<Mutex<BTreeMap<u64, RpcRule>>>,
+    next_rpc_rule: Arc<AtomicU64>,
 
     /// A hook function to be called when before an RPC is sent to target node.
     rpc_pre_hook: Arc<MutexOf<TypeConfig, HashMap<RPCTypes, PreHook>>>,
@@ -321,6 +328,8 @@ impl Builder {
             send_delay: Arc::new(AtomicU64::new(send_delay)),
             append_entries_quota: Arc::new(Mutex::new(None)),
             rpc_count: Default::default(),
+            rpc_rules: Default::default(),
+            next_rpc_rule: Default::default(),
             rpc_pre_hook: Arc::new(TypeConfig::mutex(HashMap::new())),
             rpc_post_hook: Arc::new(TypeConfig::mutex(HashMap::new())),
             snapshot_chunks,
@@ -369,14 +378,43 @@ impl TypedRaftRouter {
         *append_entries_quota = quota;
     }
 
-    fn count_rpc(&self, rpc_type: RPCTypes) {
-        let mut rpc_count = self.rpc_count.lock().unwrap();
-        let count = rpc_count.entry(rpc_type).or_insert(0);
+    fn count_rpc(&self, kind: RpcKind) {
+        let mut counts = self.rpc_count.lock().unwrap();
+        let count = counts.entry(kind).or_insert(0);
         *count += 1;
     }
 
+    /// Read attempt counts grouped by the production API's RPC types.
     pub fn get_rpc_count(&self) -> HashMap<RPCTypes, u64> {
-        self.rpc_count.lock().unwrap().clone()
+        let counts = self.rpc_count.lock().unwrap();
+        let mut grouped = HashMap::new();
+        for (kind, count) in counts.iter() {
+            let rpc_type = kind.rpc_type();
+            let total = grouped.entry(rpc_type).or_insert(0);
+            *total += count;
+        }
+        grouped
+    }
+
+    /// Read counts that distinguish Vote from PreVote and full snapshots from chunks.
+    pub fn get_rpc_kind_count(&self) -> HashMap<RpcKind, u64> {
+        let counts = self.rpc_count.lock().unwrap();
+        counts.clone()
+    }
+
+    /// Add a fault rule after all existing rules and return its removal ID.
+    pub fn add_rpc_rule(&self, rule: RpcRule) -> u64 {
+        let id = self.next_rpc_rule.fetch_add(1, Ordering::Relaxed);
+        let mut rules = self.rpc_rules.lock().unwrap();
+        rules.insert(id, rule);
+        id
+    }
+
+    /// Remove exactly one fault rule while retaining all other rules.
+    pub fn remove_rpc_rule(&self, id: u64) {
+        let mut rules = self.rpc_rules.lock().unwrap();
+        let removed = rules.remove(&id);
+        removed.expect("RPC rule is not installed");
     }
 
     /// Create a cluster: 0 is the initial leader, others are voters and learners
@@ -578,6 +616,7 @@ impl TypedRaftRouter {
         self.rpc_pre_hook(rpc_type, Some(Box::new(hook))).await;
     }
 
+    /// Observe the final response returned by the transport.
     pub async fn set_rpc_post_hook<F>(&self, rpc_type: RPCTypes, hook: F)
     where F: Fn(&TypedRaftRouter, MemRpcRequest, MemRpcResponse, MemNodeId, MemNodeId) -> PostHookResult + Send + 'static
     {
@@ -603,6 +642,24 @@ impl TypedRaftRouter {
         }
     }
 
+    async fn before_rpc<E>(
+        &self,
+        request: impl Into<MemRpcRequest>,
+        from: MemNodeId,
+        to: MemNodeId,
+    ) -> Result<(), RPCError<MemConfig, E>>
+    where
+        E: std::error::Error,
+    {
+        let request = request.into();
+        let kind = request.kind();
+        self.count_rpc(kind);
+        self.call_rpc_pre_hook(request, from, to).await?;
+        self.emit_rpc_error(from, to)?;
+        self.rand_send_delay().await;
+        Ok(())
+    }
+
     /// Call pre-hook before an RPC is sent.
     #[allow(clippy::result_large_err)]
     async fn call_rpc_pre_hook<E>(
@@ -616,6 +673,17 @@ impl TypedRaftRouter {
     {
         let request = request.into();
         let typ = request.get_type();
+
+        {
+            let rules = self.rpc_rules.lock().unwrap();
+            for (id, rule) in rules.iter() {
+                if rule.matches(&request, from, to) {
+                    tracing::debug!(id, ?rule, "RPC blocked by fault rule");
+                    let error = rule.error.make_error(from, NetSend);
+                    return Err(error);
+                }
+            }
+        }
 
         let fu = {
             let rpc_pre_hook = self.rpc_pre_hook.lock().await;
@@ -646,7 +714,7 @@ impl TypedRaftRouter {
         }
     }
 
-    /// Call pre-hook before an RPC is sent.
+    /// Call the post-hook after the final transport response is formed.
     #[allow(clippy::result_large_err)]
     async fn call_rpc_post_hook<E>(
         &self,
@@ -751,6 +819,10 @@ impl TypedRaftRouter {
         let faults = self.fail_rpc.lock().unwrap();
         tracing::debug!(node_id, ?duration, ?faults, "waiting for node metrics");
         drop(faults);
+        {
+            let rules = self.rpc_rules.lock().unwrap();
+            tracing::debug!(?rules, "active RPC fault rules");
+        }
         let node = {
             let rt = self.nodes.lock().unwrap();
             rt.get(node_id).expect("target node not found in routing table").clone().0
@@ -894,7 +966,8 @@ impl TypedRaftRouter {
     }
 
     #[allow(clippy::result_large_err)]
-    pub fn emit_rpc_error(&self, id: MemNodeId, target: MemNodeId) -> Result<(), RPCError<MemConfig>> {
+    pub fn emit_rpc_error<E>(&self, id: MemNodeId, target: MemNodeId) -> Result<(), RPCError<MemConfig, E>>
+    where E: std::error::Error {
         let fails = self.fail_rpc.lock().unwrap();
 
         for key in [(id, NetSend), (target, NetRecv)] {
@@ -935,10 +1008,7 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
         let from_id = rpc.vote.to_leader_node_id();
 
         tracing::debug!("append_entries to id={} {}", self.target, rpc);
-        self.owner.count_rpc(RPCTypes::AppendEntries);
-        self.owner.call_rpc_pre_hook(rpc.clone(), from_id, self.target).await?;
-        self.owner.emit_rpc_error(from_id, self.target)?;
-        self.owner.rand_send_delay().await;
+        self.owner.before_rpc::<Infallible>(rpc.clone(), from_id, self.target).await?;
 
         // decrease quota if quota is set
         let truncated = {
@@ -984,17 +1054,17 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
             )))
         })?;
 
-        self.owner.call_rpc_post_hook(rpc, resp.clone(), from_id, self.target).await?;
-
         // If entries are truncated by quota, return an partial success response.
-        if let Some(truncated) = truncated {
+        let resp = if let Some(truncated) = truncated {
             match resp {
-                AppendEntriesResponse::Success => Ok(AppendEntriesResponse::PartialSuccess(truncated)),
-                _ => Ok(resp),
+                AppendEntriesResponse::Success => AppendEntriesResponse::PartialSuccess(truncated),
+                response => response,
             }
         } else {
-            Ok(resp)
-        }
+            resp
+        };
+        self.owner.call_rpc_post_hook(rpc, resp.clone(), from_id, self.target).await?;
+        Ok(resp)
     }
 
     async fn full_snapshot(
@@ -1006,16 +1076,14 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
     ) -> Result<SnapshotResponse<MemConfig>, StreamingError<MemConfig>> {
         let from_id = vote.leader_id().to_node_id();
 
-        self.owner.count_rpc(RPCTypes::InstallSnapshot);
-        self.owner.call_rpc_pre_hook(snapshot.clone(), from_id, self.target).await?;
-        self.owner.emit_rpc_error(from_id, self.target)?;
-        self.owner.rand_send_delay().await;
+        self.owner.before_rpc::<Infallible>(snapshot.clone(), from_id, self.target).await?;
 
         let node = self.owner.get_raft_handle(&self.target)?;
 
         let resp = if let Some(chunks) = &self.owner.snapshot_chunks {
             let network = ChunkedNetwork {
                 node,
+                owner: self.owner.clone(),
                 requests: chunks.clone(),
             };
             let mut network = network.into_v2::<MemSnapshotData>();
@@ -1043,10 +1111,7 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
     ) -> Result<VoteResponse<MemConfig>, RPCError<MemConfig>> {
         let from_id = rpc.vote.leader_id().to_node_id();
 
-        self.owner.count_rpc(RPCTypes::Vote);
-        self.owner.call_rpc_pre_hook(rpc.clone(), from_id, self.target).await?;
-        self.owner.emit_rpc_error(from_id, self.target)?;
-        self.owner.rand_send_delay().await;
+        self.owner.before_rpc::<Infallible>(rpc.clone(), from_id, self.target).await?;
 
         let node = self.owner.get_raft_handle(&self.target)?;
 
@@ -1070,10 +1135,8 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
     ) -> Result<VoteResponse<MemConfig>, RPCError<MemConfig>> {
         let from_id = rpc.vote.leader_id().to_node_id();
 
-        self.owner.count_rpc(RPCTypes::Vote);
-        self.owner.call_rpc_pre_hook(rpc.clone(), from_id, self.target).await?;
-        self.owner.emit_rpc_error(from_id, self.target)?;
-        self.owner.rand_send_delay().await;
+        let request = RpcRequest::PreVote(rpc.clone());
+        self.owner.before_rpc::<Infallible>(request, from_id, self.target).await?;
 
         let node = self.owner.get_raft_handle(&self.target)?;
 
@@ -1085,7 +1148,9 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
             )))
         })?;
 
-        self.owner.call_rpc_post_hook(rpc, resp.clone(), from_id, self.target).await?;
+        let request = RpcRequest::PreVote(rpc);
+        let response = RpcResponse::PreVote(resp.clone());
+        self.owner.call_rpc_post_hook(request, response, from_id, self.target).await?;
 
         Ok(resp)
     }
@@ -1097,10 +1162,7 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
     ) -> Result<TransferLeaderResponse<MemConfig>, RPCError<MemConfig>> {
         let from_id = rpc.from_leader().leader_id().to_node_id();
 
-        self.owner.count_rpc(RPCTypes::TransferLeader);
-        self.owner.call_rpc_pre_hook(rpc.clone(), from_id, self.target).await?;
-        self.owner.emit_rpc_error(from_id, self.target)?;
-        self.owner.rand_send_delay().await;
+        self.owner.before_rpc::<Infallible>(rpc.clone(), from_id, self.target).await?;
 
         let node = self.owner.get_raft_handle(&self.target)?;
 

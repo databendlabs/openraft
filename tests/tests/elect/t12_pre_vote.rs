@@ -8,12 +8,19 @@ use openraft::RaftMetrics;
 use openraft::ServerState;
 use openraft::Vote;
 use openraft::async_runtime::WatchReceiver;
+use openraft::errors::RPCError;
+use openraft::network::RPCOption;
+use openraft::network::RaftNetworkFactory;
+use openraft::network::v2::RaftNetworkV2;
 use openraft::raft::VoteRequest;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
+use crate::fixtures::rpc_error_type::RpcErrorType;
+use crate::fixtures::rpc_kind::RpcKind;
+use crate::fixtures::rpc_rule::RpcRule;
 use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
@@ -314,12 +321,51 @@ async fn pre_vote_rejection_with_higher_vote_catches_up_requester() -> Result<()
     assert!(resp.vote_granted);
     router.wait(&2).vote(Vote::new(10, 2), "node 2 has a higher vote").await?;
 
+    let rule = RpcRule::new(1, 2, RpcKind::Vote);
+    let network_error_rule = router.add_rpc_rule(rule);
+    let mut rule = RpcRule::new(1, 2, RpcKind::Vote);
+    rule.error = RpcErrorType::Unreachable;
+    let unreachable_rule = router.add_rpc_rule(rule);
+
     tracing::info!("--- node 1 sees node 2's higher vote through a rejected Pre-Vote response");
     n1.trigger().elect(true).await?;
     router
         .wait_with_timeout(&1, Duration::from_millis(1_000))
         .vote(Vote::new(10, 2), "node 1 catches up from a higher Pre-Vote rejection")
         .await?;
+
+    tracing::info!("--- Vote faults leave PreVote deliverable and count the phases separately");
+    {
+        let counts = router.get_rpc_kind_count();
+        let pre_votes = counts.get(&RpcKind::PreVote).copied().unwrap_or(0);
+        let sent_pre_vote = pre_votes > 0;
+        assert!(sent_pre_vote);
+        let votes = counts.get(&RpcKind::Vote).copied().unwrap_or(0);
+        assert_eq!(0, votes);
+    }
+
+    tracing::info!("--- fault rules apply in order and are removed individually");
+    {
+        let mut network = router.new_client(2, &()).await;
+        let vote = Vote::new(11, 1);
+        let last_log_id = log_id(1, 0, log_index);
+        let request = VoteRequest::new(vote, Some(last_log_id));
+        let option = RPCOption::new(Duration::from_secs(1));
+        for (id, expected) in [
+            (network_error_rule, RpcErrorType::NetworkError),
+            (unreachable_rule, RpcErrorType::Unreachable),
+        ] {
+            let result = network.vote(request.clone(), option.clone()).await;
+            let error = result.unwrap_err();
+            let actual = match error {
+                RPCError::Network(_) => RpcErrorType::NetworkError,
+                RPCError::Unreachable(_) => RpcErrorType::Unreachable,
+                other => panic!("unexpected RPC error: {other:?}"),
+            };
+            assert_eq!(expected, actual);
+            router.remove_rpc_rule(id);
+        }
+    }
 
     tracing::info!("--- node 1 retries and wins with node 2's vote");
     n1.trigger().elect(true).await?;

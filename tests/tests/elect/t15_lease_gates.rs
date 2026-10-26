@@ -7,12 +7,12 @@ use openraft::Config;
 use openraft::RPCTypes;
 use openraft::ServerState;
 use openraft::async_runtime::WatchReceiver;
-use openraft::errors::NetworkError;
-use openraft::errors::RPCError;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::rpc_kind::RpcKind;
+use crate::fixtures::rpc_rule::RpcRule;
 use crate::fixtures::ut_harness;
 
 const ELECTION_TIMEOUT_MIN: u64 = 150;
@@ -35,22 +35,6 @@ fn config() -> Result<Arc<Config>> {
     }
     .validate()?;
     Ok(Arc::new(config))
-}
-
-/// Block one direction of one link for AppendEntries only, so heartbeats stop flowing on
-/// that link while every Vote and Pre-Vote RPC stays deliverable.
-async fn block_append_entries(router: &RaftRouter, from: u64, to: u64) {
-    router
-        .set_rpc_pre_hook(RPCTypes::AppendEntries, move |_router, _req, f, t| {
-            let res = if f == from && t == to {
-                let err = NetworkError::<TypeConfig>::from_string(format!("blocked: {}->{} append-entries", f, t));
-                Err(RPCError::Network(err))
-            } else {
-                Ok(())
-            };
-            Box::pin(futures::future::ready(res))
-        })
-        .await;
 }
 
 /// Wait until `node`'s local `state.vote` lease has expired: its `vote_last_modified` stops
@@ -110,7 +94,8 @@ async fn manual_pre_vote_from_lease_expired_follower() -> Result<()> {
         "--- drop 0->1 AppendEntries and wait for node 1's lease to expire"
     );
     {
-        block_append_entries(&router, 0, 1).await;
+        let rule = RpcRule::new(0, 1, RpcKind::AppendEntries);
+        router.add_rpc_rule(rule);
         wait_vote_lease_expired(&router, 1).await?;
     }
 
@@ -196,7 +181,8 @@ async fn manual_pre_vote_from_healthy_follower_with_stale_peer() -> Result<()> {
         "--- drop 0->2 AppendEntries and wait for node 2's lease to expire"
     );
     {
-        block_append_entries(&router, 0, 2).await;
+        let rule = RpcRule::new(0, 2, RpcKind::AppendEntries);
+        router.add_rpc_rule(rule);
         wait_vote_lease_expired(&router, 2).await?;
     }
 
