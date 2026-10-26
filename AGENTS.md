@@ -5,9 +5,12 @@
 Always use `make` targets for checking and linting:
 
 ```bash
-# Completion gate: check format, Clippy, tests, doctests, and doc.
+# Fast completion gate: format, workspace Clippy, and library tests.
 # Never writes to the worktree.
 make verify
+
+# Full check: features, full Clippy, docs, and integration/runtime/benchmark tests.
+make verify-full
 
 # Rewrite the worktree: Clippy fixes, typo fixes, formatting
 make fix
@@ -26,10 +29,13 @@ Do not run `cargo clippy` or `cargo fmt` directly. The Makefile targets apply th
 
 Read-only:
 
-- `make verify`: format check, Clippy, tests, doctests, and documentation build
+- `make verify`: format check across all crates, default-feature workspace Clippy
+  (all targets), and workspace library tests; use before pushing or opening a PR
+- `make verify-full`: `verify` plus isolated feature checks, full Clippy coverage,
+  documentation, doctests, integration tests, benchmark tests, and runtime tests
 - `make test`: run all tests
 - `make docs-check`: documentation build, doctests, and repository-link check;
-  both `make verify` and the CI lint job run it
+  both `make verify-full` and the CI lint job run it
 
 Modifies files:
 
