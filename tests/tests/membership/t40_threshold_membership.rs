@@ -92,10 +92,11 @@ where
 {
     let cluster = TestCluster::<C>::start(btreeset! {1, 2, 3, 4, 5}, five_voters(&[(4, 2)])).await?;
 
-    tracing::info!("--- node 1 wins term 1, and every node stores its blank entry");
+    tracing::info!("--- node 1 wins term 1 and commits its blank entry to start its lease; all nodes store the entry");
     {
         cluster.raft(1).trigger().elect(false).await?;
         cluster.raft(1).wait(timeout()).state(ServerState::Leader, "node 1 becomes leader").await?;
+        cluster.raft(1).wait(timeout()).applied_index(Some(1), "node 1 commits its blank entry").await?;
         for node_id in 1..=5 {
             cluster.raft(node_id).wait(timeout()).log_index(Some(1), "store the blank entry").await?;
         }
