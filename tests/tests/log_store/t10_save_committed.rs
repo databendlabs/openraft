@@ -27,7 +27,8 @@ async fn write_committed_log_id_to_log_store() -> Result<()> {
     tracing::info!("--- initializing cluster");
     let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
 
-    log_index += router.client_request_many(0, "0", 10).await?;
+    let written = router.client_request_many(0, "0", 10).await?;
+    log_index += written.count;
 
     for i in [0, 1, 2] {
         router.wait(&i).applied_index(Some(log_index), "write logs").await?;

@@ -46,7 +46,8 @@ async fn replication_does_not_block_purge() -> Result<()> {
 
     tracing::info!(log_index, "--- build snapshot on leader, check purged log");
     {
-        log_index += router.client_request_many(0, "0", 10).await?;
+        let written = router.client_request_many(0, "0", 10).await?;
+        log_index += written.count;
 
         leader.trigger().snapshot().await?;
         leader.wait(timeout()).snapshot(log_id(1, 0, log_index), "built snapshot").await?;

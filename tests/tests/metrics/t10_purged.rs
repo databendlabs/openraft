@@ -31,7 +31,8 @@ async fn metrics_purged() -> Result<()> {
 
     let n = 10;
     tracing::info!(log_index, "--- write {} logs", n);
-    log_index += router.client_request_many(0, "foo", n).await?;
+    let written = router.client_request_many(0, "foo", n).await?;
+    log_index += written.count;
 
     tracing::info!(log_index, "--- trigger snapshot");
     {

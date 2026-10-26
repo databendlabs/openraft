@@ -61,7 +61,8 @@ async fn append_entries_backoff_rejoin() -> Result<()> {
 
     tracing::info!(log_index, "--- write {} entries to node-1", n);
     {
-        log_index += router.client_request_many(1, "1", n as usize).await?;
+        let written = router.client_request_many(1, "1", n as usize).await?;
+        log_index += written.count;
         n1.wait(timeout())
             .applied_index_at_least(Some(log_index), format!("node-1 commit {} writes", n))
             .await?;

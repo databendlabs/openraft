@@ -36,7 +36,8 @@ async fn empty_limited_get_log_entries() -> Result<()> {
     let mut log_index = router.new_cluster(btreeset! {0, 1, 2}, btreeset! {}).await?;
 
     tracing::info!(log_index, "--- write some logs to establish replication");
-    log_index += router.client_request_many(0, "foo", 5).await?;
+    let written = router.client_request_many(0, "foo", 5).await?;
+    log_index += written.count;
     router.wait(&1).applied_index(Some(log_index), "node 1 replicated").await?;
     router.wait(&2).applied_index(Some(log_index), "node 2 replicated").await?;
 

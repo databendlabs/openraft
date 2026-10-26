@@ -69,7 +69,8 @@ async fn after_snapshot_add_learner_and_request_a_log() -> Result<()> {
 
         router.wait(&1).snapshot(log_id(1, 0, snapshot_index), "learner-1 receives snapshot").await?;
 
-        log_index += router.client_request_many(0, "0", 1).await?;
+        let written = router.client_request_many(0, "0", 1).await?;
+        log_index += written.count;
         tracing::info!(log_index, "--- after request a log");
 
         for id in [0, 1] {

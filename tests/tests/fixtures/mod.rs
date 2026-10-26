@@ -65,7 +65,6 @@ use openraft::vote::RaftLeaderId;
 use openraft_legacy::network_v1::InstallSnapshotRequest;
 use openraft_legacy::network_v1::RaftNetwork as LegacyRaftNetwork;
 use openraft_memstore::ClientRequest;
-use openraft_memstore::ClientResponse;
 use openraft_memstore::IntoMemClientRequest;
 use openraft_memstore::MemLogStore as LogStoreInner;
 use openraft_memstore::MemNodeId;
@@ -99,6 +98,8 @@ pub mod rpc_kind;
 pub mod rpc_request;
 pub mod rpc_response;
 pub mod rpc_rule;
+mod write_summary;
+pub use write_summary::WriteSummary;
 
 type MemSnapshotData = Cursor<Vec<u8>>;
 type MemRpcRequest = RpcRequest<TypeConfig, MemSnapshotData>;
@@ -472,8 +473,8 @@ impl TypedRaftRouter {
             tracing::info!(log_index, "--- add voter: {}", id);
 
             self.new_raft_node(*id).await?;
-            self.add_learner(leader_id, *id).await?;
-            log_index += 1;
+            let response = self.add_learner(leader_id, *id).await?;
+            log_index = response.log_id.index();
 
             self.wait(id).state(ServerState::Learner, "empty node").await?;
         }
@@ -486,11 +487,8 @@ impl TypedRaftRouter {
             tracing::info!(log_index, "--- change membership to setup voters: {:?}", voter_ids);
 
             let node = self.get_raft_handle(&MemNodeId::default())?;
-            node.change_membership(voter_ids.clone(), false).await?;
-            // Every majority of two voters holds node 0, so the change from `{0}` writes one
-            // uniform entry. Three or more voters need a joint entry first.
-            let needs_joint = voter_ids.len() > 2;
-            log_index += if needs_joint { 2 } else { 1 };
+            let response = node.change_membership(voter_ids.clone(), false).await?;
+            log_index = response.log_id.index();
 
             for id in voter_ids.iter() {
                 self.wait(id).applied_index(Some(log_index), &format!("cluster of {:?}", voter_ids)).await?;
@@ -500,8 +498,8 @@ impl TypedRaftRouter {
         for id in learners.clone() {
             tracing::info!(log_index, "--- add learner: {}", id);
             self.new_raft_node(id).await?;
-            self.add_learner(MemNodeId::default(), id).await?;
-            log_index += 1;
+            let response = self.add_learner(leader_id, id).await?;
+            log_index = response.log_id.index();
         }
         for id in learners.iter() {
             self.wait(id).applied_index(Some(log_index), &format!("learners of {:?}", learners)).await?;
@@ -870,43 +868,37 @@ impl TypedRaftRouter {
         n.get_read_log_id(read_policy).await.map_err(|e| e.into_api_error().unwrap())
     }
 
-    /// Send a client request to the target node, causing test failure on error.
+    /// Write to exactly the requested node and preserve the acknowledged log ID.
     pub async fn client_request(
         &self,
-        mut target: MemNodeId,
+        target: MemNodeId,
         client_id: &str,
         serial: u64,
-    ) -> Result<(), RaftError<MemConfig, ClientWriteError<MemConfig>>> {
-        for ith in 0..3 {
-            let req = ClientRequest::make_request(client_id, serial);
-            if let Err(err) = self.send_client_request(target, req).await {
-                tracing::error!({error=%err}, "error from client request");
+    ) -> Result<ClientWriteResponse<MemConfig>, RaftError<MemConfig, ClientWriteError<MemConfig>>> {
+        let request = ClientRequest::make_request(client_id, serial);
+        self.write(target, request).await
+    }
 
-                #[allow(clippy::single_match)]
-                match &err {
-                    RaftError::APIError(ClientWriteError::ForwardToLeader(e)) => {
-                        tracing::info!(
-                            "{}-th request: target is not leader anymore. New leader is: {:?}",
-                            ith,
-                            e.leader_id
-                        );
-                        if let Some(l) = e.leader_id {
-                            target = l;
-                            continue;
-                        }
-                    }
-                    _ => {}
-                }
-                return Err(err);
-            } else {
-                return Ok(());
+    /// Follow at most three leader redirects, returning the last error on exhaustion.
+    pub async fn write_following_leader(
+        &self,
+        mut target: MemNodeId,
+        request: ClientRequest,
+    ) -> Result<ClientWriteResponse<MemConfig>, RaftError<MemConfig, ClientWriteError<MemConfig>>> {
+        const MAX_REDIRECTS: usize = 3;
+        for attempt in 0..=MAX_REDIRECTS {
+            let error = match self.write(target, request.clone()).await {
+                Ok(response) => return Ok(response),
+                Err(error) => error,
+            };
+            let leader = error.forward_to_leader().and_then(|forward| forward.leader_id);
+            let Some(leader) = leader else { return Err(error) };
+            if attempt == MAX_REDIRECTS {
+                return Err(error);
             }
+            target = leader;
         }
-
-        unreachable!(
-            "Max retry times exceeded. cannot finish client_request, target={}, client_id={} serial={}",
-            target, client_id, serial
-        )
+        unreachable!("all redirect attempts return a result")
     }
 
     /// Send external request to the particular node.
@@ -935,34 +927,33 @@ impl TypedRaftRouter {
         node.current_leader().await
     }
 
-    /// Send multiple client requests to the target node, causing test failure on error.
-    /// Returns the number of log written to raft.
+    /// Write a sequential workload, stopping at the first error.
+    /// An empty workload has no acknowledged log ID.
     pub async fn client_request_many(
         &self,
         target: MemNodeId,
         client_id: &str,
         count: usize,
-    ) -> Result<u64, RaftError<MemConfig, ClientWriteError<MemConfig>>> {
-        for idx in 0..count {
-            self.client_request(target, client_id, idx as u64).await?;
+    ) -> Result<WriteSummary, RaftError<MemConfig, ClientWriteError<MemConfig>>> {
+        let mut last_log_id = None;
+        for serial in 0..count {
+            let response = self.client_request(target, client_id, serial as u64).await?;
+            last_log_id = Some(response.log_id);
         }
-
-        Ok(count as u64)
+        Ok(WriteSummary {
+            count: count as u64,
+            last_log_id,
+        })
     }
 
-    pub async fn send_client_request(
+    /// Write to exactly the requested node and return the complete Raft response.
+    pub async fn write(
         &self,
         target: MemNodeId,
-        req: ClientRequest,
-    ) -> Result<ClientResponse, RaftError<MemConfig, ClientWriteError<MemConfig>>> {
-        let node = {
-            let rt = self.nodes.lock().unwrap();
-            rt.get(&target)
-                .unwrap_or_else(|| panic!("node '{}' does not exist in routing table", target))
-                .clone()
-        };
-
-        node.0.client_write(req).await.map(|res| res.data)
+        request: ClientRequest,
+    ) -> Result<ClientWriteResponse<MemConfig>, RaftError<MemConfig, ClientWriteError<MemConfig>>> {
+        let node = self.get_raft_handle(&target).expect("write target must be registered");
+        node.client_write(request).await
     }
 
     #[allow(clippy::result_large_err)]

@@ -39,7 +39,8 @@ async fn single_node() -> Result<()> {
     let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
 
     // Write some data to the single node cluster.
-    log_index += router.client_request_many(0, "0", 1000).await?;
+    let written = router.client_request_many(0, "0", 1000).await?;
+    log_index += written.count;
     router.wait(&0).applied_index(Some(log_index), "client_request_many").await?;
 
     let (mut sto, mut sm) = router.get_storage_handle(&0)?;

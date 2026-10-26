@@ -18,6 +18,7 @@ use openraft_memstore::IntoMemClientRequest;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::WriteSummary;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
 
@@ -44,6 +45,31 @@ async fn client_writes() -> Result<()> {
     tracing::info!("--- initializing cluster");
     let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
 
+    tracing::info!(
+        log_index,
+        "--- strict writes preserve redirects and empty workloads do not write"
+    );
+    {
+        let error = router.client_request(1, "redirect", 0).await.expect_err("follower rejects writes");
+        let forward = error.forward_to_leader().expect("leader hint");
+        assert_eq!(Some(0), forward.leader_id);
+        let empty = router.client_request_many(0, "empty", 0).await?;
+        assert_eq!(
+            WriteSummary {
+                count: 0,
+                last_log_id: None
+            },
+            empty
+        );
+        let request = ClientRequest::make_request("redirect", 0);
+        let response = router.write_following_leader(1, request).await?;
+        log_index += 1;
+        let expected_log_id = log_id(1, 0, log_index);
+        assert_eq!(expected_log_id, response.log_id);
+        assert_eq!(ClientResponse(None), response.data);
+        assert_eq!(None, response.membership);
+    }
+
     tracing::info!(log_index, "--- run concurrent writes while the cluster remains stable");
     {
         let leader = router.leader().expect("leader not found");
@@ -54,7 +80,7 @@ async fn client_writes() -> Result<()> {
         clients.push(router.client_request_many(leader, "3", 100));
         clients.push(router.client_request_many(leader, "4", 100));
         clients.push(router.client_request_many(leader, "5", 100));
-        while clients.next().await.is_some() {}
+        while clients.try_next().await?.is_some() {}
 
         log_index += 100 * 6;
         for id in [0, 1, 2] {

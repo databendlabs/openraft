@@ -44,7 +44,8 @@ async fn issue_881_transient_state_machine() -> anyhow::Result<()> {
 
     tracing::info!(log_index, "--- write 10 logs");
     {
-        log_index += router.client_request_many(0, "foo", 10).await?;
+        let written = router.client_request_many(0, "foo", 10).await?;
+        log_index += written.count;
         router.wait(&0).applied_index(Some(log_index), "node-0 applied").await?;
     }
 
@@ -59,7 +60,8 @@ async fn issue_881_transient_state_machine() -> anyhow::Result<()> {
 
     tracing::info!(log_index, "--- write 5 more logs after snapshot");
     {
-        log_index += router.client_request_many(0, "bar", 5).await?;
+        let written = router.client_request_many(0, "bar", 5).await?;
+        log_index += written.count;
         router.wait(&0).applied_index(Some(log_index), "node-0 applied new logs").await?;
     }
 

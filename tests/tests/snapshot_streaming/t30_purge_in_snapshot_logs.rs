@@ -41,7 +41,8 @@ async fn purge_in_snapshot_logs() -> Result<()> {
 
     tracing::info!(log_index, "--- build snapshot on leader, check purged log");
     {
-        log_index += router.client_request_many(0, "0", 10).await?;
+        let written = router.client_request_many(0, "0", 10).await?;
+        log_index += written.count;
         leader.trigger().snapshot().await?;
         leader.wait(timeout()).snapshot(log_id(1, 0, log_index), "building 1st snapshot").await?;
         let (mut sto0, mut _sm0) = router.get_storage_handle(&0)?;
@@ -59,7 +60,8 @@ async fn purge_in_snapshot_logs() -> Result<()> {
     {
         router.set_network_error(1, true);
 
-        log_index += router.client_request_many(0, "0", 5).await?;
+        let written = router.client_request_many(0, "0", 5).await?;
+        log_index += written.count;
         router.wait(&0).applied_index(Some(log_index), "write another 5 logs").await?;
 
         leader.trigger().snapshot().await?;

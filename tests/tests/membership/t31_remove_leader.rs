@@ -415,7 +415,7 @@ async fn remove_leader_access_new_cluster() -> Result<()> {
             .await?;
     }
 
-    let res = router.send_client_request(2, ClientRequest::make_request("foo", 1)).await;
+    let res = router.write(2, ClientRequest::make_request("foo", 1)).await;
     match res {
         Ok(_) => {
             unreachable!("expect error");
@@ -438,7 +438,7 @@ async fn remove_leader_access_new_cluster() -> Result<()> {
         n2.wait(timeout()).state(ServerState::Leader, "node-2 elect itself").await?;
         log_index += 1;
 
-        router.send_client_request(2, ClientRequest::make_request("foo", 1)).await?;
+        router.write(2, ClientRequest::make_request("foo", 1)).await?;
         log_index += 1;
 
         n2.wait(timeout())

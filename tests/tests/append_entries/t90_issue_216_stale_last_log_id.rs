@@ -51,14 +51,17 @@ async fn stale_last_log_id() -> Result<()> {
             let tx = tx.clone();
 
             async move {
-                router.client_request_many(0, &format!("{}", i), n_ops).await.unwrap();
-                let _ = tx.send(()).await;
+                let client_id = format!("{}", i);
+                let result = router.client_request_many(0, &client_id, n_ops).await;
+                tx.send(result).await.expect("test receives every workload result");
             }
         });
     }
 
     for _i in 0..n_threads {
-        let _ = rx.recv().await;
+        let result = TypeConfig::timeout(crate::fixtures::WAIT_TIMEOUT, rx.recv()).await?;
+        let written = result.expect("client task dropped its sender")?;
+        assert_eq!(n_ops as u64, written.count);
         log_index += n_ops as u64;
     }
 

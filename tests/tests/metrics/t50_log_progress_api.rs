@@ -64,7 +64,8 @@ async fn log_progress_api() -> Result<()> {
     });
 
     tracing::info!(log_index, "--- send client requests to trigger wait_until_ge return");
-    log_index += router.client_request_many(0, "foo", 5).await?;
+    let written = router.client_request_many(0, "foo", 5).await?;
+    log_index += written.count;
 
     tracing::info!(log_index, "--- verify wait_until_ge returns after writes are flushed");
     let got_wait = handle.await??;
@@ -150,7 +151,8 @@ async fn log_progress_with_leader_change() -> Result<()> {
         .leader_with_quorum_acked(None, "wait for node 1 to become leader and establish its leader lease")
         .await?;
     log_index += 1;
-    log_index += router.client_request_many(1, "foo", 3).await?;
+    let written = router.client_request_many(1, "foo", 3).await?;
+    log_index += written.count;
 
     tracing::info!(log_index, "--- verify wait_until_ge returns with new leader's progress");
     let got_wait = handle.await??;

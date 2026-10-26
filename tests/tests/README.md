@@ -140,7 +140,16 @@ should hold, and update it right after each write:
   voter set intersects every quorum of the new one, such as when it adds or
   removes one voter. Otherwise 2 logs, the joint config and then the uniform
   config.
-- `client_request()`: 1 log. `client_request_many()` returns how many it wrote.
+- `client_request()`: one strict write to the requested node, returning the full
+  `ClientWriteResponse`. `write()` accepts an explicit `ClientRequest`.
+- `write_following_leader()`: follows up to three redirects when a workload
+  explicitly needs leader discovery.
+- `client_request_many()`: stops on the first error and returns `WriteSummary`
+  with the acknowledged count and final log ID (`None` for an empty workload).
+
+Use response log IDs for ordinary synchronization. Keep independent index
+arithmetic when the test verifies entry counts or ordering. Consume concurrent
+workload results with `try_next().await?` so write errors reach the test.
 
 Assert progress with a wait, never with a sleep:
 

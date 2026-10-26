@@ -279,7 +279,8 @@ async fn change_by_add(old: BTreeSet<MemNodeId>, add: &[MemNodeId], membership_e
 
     tracing::info!(log_index, "--- write 10 logs");
     {
-        log_index += router.client_request_many(0, "client", 10).await?;
+        let written = router.client_request_many(0, "client", 10).await?;
+        log_index += written.count;
         for id in old.iter() {
             router.wait(id).applied_index(Some(log_index), format!("write 10 logs, {}", mes)).await?;
         }
@@ -310,7 +311,8 @@ async fn change_by_add(old: BTreeSet<MemNodeId>, add: &[MemNodeId], membership_e
 
     tracing::info!(log_index, "--- write another 10 logs");
     {
-        log_index += router.client_request_many(leader_id, "client", 10).await?;
+        let written = router.client_request_many(leader_id, "client", 10).await?;
+        log_index += written.count;
 
         let mes = format!("new cluster recv logs 10~20, {}", mes);
 
@@ -350,7 +352,8 @@ async fn change_by_remove(
 
     tracing::info!(log_index, "--- write 10 logs");
     {
-        log_index += router.client_request_many(0, "client", 10).await?;
+        let written = router.client_request_many(0, "client", 10).await?;
+        log_index += written.count;
         for id in old.iter() {
             router.wait(id).applied_index(Some(log_index), format!("write 10 logs, {}", mes)).await?;
         }
@@ -419,7 +422,8 @@ async fn change_by_remove(
         let leader_id = m.current_leader.unwrap();
         wait_for_leader_lease(&router, leader_id, &mes).await?;
 
-        log_index += router.client_request_many(leader_id, "client", 10).await?;
+        let written = router.client_request_many(leader_id, "client", 10).await?;
+        log_index += written.count;
     }
 
     for id in new.iter() {

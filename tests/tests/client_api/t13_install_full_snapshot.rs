@@ -30,7 +30,8 @@ async fn install_full_snapshot() -> anyhow::Result<()> {
 
     tracing::info!(log_index, "--- write to make node-0,1 have more logs");
     {
-        log_index += router.client_request_many(0, "foo", 3).await?;
+        let written = router.client_request_many(0, "foo", 3).await?;
+        log_index = written.last_log_id.expect("nonempty workload").index();
         router.wait(&0).applied_index(Some(log_index), "write more log").await?;
         router.wait(&1).applied_index(Some(log_index), "write more log").await?;
     }

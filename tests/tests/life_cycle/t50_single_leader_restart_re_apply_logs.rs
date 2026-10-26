@@ -32,7 +32,8 @@ async fn single_leader_restart_re_apply_logs() -> anyhow::Result<()> {
 
     tracing::info!(log_index, "--- write to 1 log");
     {
-        log_index += router.client_request_many(0, "foo", 1).await?;
+        let written = router.client_request_many(0, "foo", 1).await?;
+        log_index = written.last_log_id.expect("nonempty workload").index();
     }
 
     tracing::info!(log_index, "--- stop and restart node-0");

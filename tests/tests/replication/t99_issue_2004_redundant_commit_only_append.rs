@@ -64,7 +64,8 @@ async fn no_redundant_commit_only_append_entries() -> Result<()> {
 
     tracing::info!(log_index, "--- write {} logs, one at a time", WRITES);
     {
-        log_index += router.client_request_many(0, "foo", WRITES).await?;
+        let written = router.client_request_many(0, "foo", WRITES).await?;
+        log_index += written.count;
 
         router.wait(&1).applied_index(Some(log_index), "node 1 applied").await?;
         router.wait(&2).applied_index(Some(log_index), "node 2 applied").await?;

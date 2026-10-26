@@ -126,7 +126,8 @@ async fn test_metrics_recorder_all_fields() -> Result<()> {
     // - record_apply_batch (applying to state machine)
     // - record_replicate_batch (leader replicating to followers)
     tracing::info!(log_index, "--- write 10 client requests");
-    log_index += router.client_request_many(leader_id, "test", 10).await?;
+    let written = router.client_request_many(leader_id, "test", 10).await?;
+    log_index += written.count;
 
     // Wait for all nodes to apply - this ensures replication completed
     for node_id in [0, 1, 2] {
@@ -241,7 +242,8 @@ async fn test_metrics_recorder_on_follower() -> Result<()> {
     // Write some entries from leader
     let leader_id = router.leader().expect("cluster should have a leader");
     tracing::info!(log_index, "--- write 5 client requests");
-    log_index += router.client_request_many(leader_id, "test", 5).await?;
+    let written = router.client_request_many(leader_id, "test", 5).await?;
+    log_index += written.count;
 
     // Wait for follower to receive and apply
     router.wait(&1).applied_index(Some(log_index), "follower applied").await?;

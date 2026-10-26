@@ -44,7 +44,8 @@ async fn snapshot_progress_api() -> Result<()> {
     assert_eq!(got, None);
 
     tracing::info!(log_index, "--- write some logs");
-    log_index += router.client_request_many(0, "foo", 5).await?;
+    let written = router.client_request_many(0, "foo", 5).await?;
+    log_index += written.count;
 
     tracing::info!(log_index, "--- spawn task to wait for future snapshot progress");
     let target = Some(log_id(1, 0, log_index));
