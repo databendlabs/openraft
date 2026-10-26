@@ -81,6 +81,7 @@ use crate::fixtures::rpc_request::RpcRequest;
 use crate::fixtures::rpc_response::RpcResponse;
 
 pub mod custom_membership;
+pub mod events;
 pub mod logging;
 mod node;
 pub use node::Node;

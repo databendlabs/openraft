@@ -1,17 +1,18 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
-use openraft::LogIdOptionExt;
 use openraft::SnapshotPolicy;
+use openraft::type_config::TypeConfigExt;
 use openraft_memstore::BlockOperation;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::IntoMemClientRequest;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 /// A `SnapshotPolicy::LogsSinceLast` trigger that races an in-flight build must not be lost.
@@ -64,13 +65,10 @@ async fn issue_1829_lost_snapshot_trigger() -> Result<()> {
     let n0 = router.get_raft_handle(&0)?;
 
     tracing::info!(log_index, "--- hold the state machine's snapshot build open");
-    {
-        // The build captures its position (9) before sleeping and holds the state-machine lock
-        // across the sleep, so `applied` cannot advance past 9 while it is in flight. The duration
-        // only has to cover the writes below.
+    let gate = {
         let (_, sm) = router.get_storage_handle(&0)?;
-        sm.block.set_blocking(BlockOperation::BuildSnapshot, Duration::from_millis(2_000));
-    }
+        sm.block.pause(BlockOperation::BuildSnapshot)
+    };
 
     tracing::info!(
         log_index,
@@ -81,6 +79,7 @@ async fn issue_1829_lost_snapshot_trigger() -> Result<()> {
         let count = (FIRST - log_index) as usize;
         router.client_request_many(0, "cli", count).await?;
         router.wait(&0).applied_index(Some(FIRST), "applied up to the first threshold").await?;
+        TypeConfig::timeout(timeout().unwrap(), gate.entered()).await?;
     }
 
     tracing::info!(
@@ -98,25 +97,19 @@ async fn issue_1829_lost_snapshot_trigger() -> Result<()> {
         FINAL
     );
     let m = router.wait(&0).committed_index(Some(FINAL), "fire-and-forget writes committed").await?;
-    assert!(
-        m.last_applied.index() < Some(FINAL),
-        "apply must be pinned behind committed while build A holds the sm lock: last_applied={:?}, committed={:?}",
-        m.last_applied.index(),
-        m.local_committed.index(),
-    );
+    let last_applied = m.last_applied;
+    assert_eq!(Some(log_id(1, 0, FIRST)), last_applied);
 
     tracing::info!(
         "--- release build A: it completes at 9, then the pinned applies catch up to {}",
         FINAL
     );
-    router
-        .wait_with_timeout(&0, long_timeout())
-        .applied_index(Some(FINAL), "build A released; applies catch up")
-        .await?;
+    gate.release();
+    router.wait(&0).applied_index(Some(FINAL), "build A released; applies catch up").await?;
 
     tracing::info!("--- snapshot must re-arm and converge to committed == {}", FINAL);
     router
-        .wait_with_timeout(&0, long_timeout())
+        .wait(&0)
         .snapshot(
             log_id(1, 0, FINAL),
             "snapshot converges after the in-flight build completes",
@@ -124,8 +117,4 @@ async fn issue_1829_lost_snapshot_trigger() -> Result<()> {
         .await?;
 
     Ok(())
-}
-
-fn long_timeout() -> Duration {
-    Duration::from_millis(6_000)
 }
