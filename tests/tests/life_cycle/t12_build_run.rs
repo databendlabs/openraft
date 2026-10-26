@@ -13,6 +13,7 @@ use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 /// A built Raft node does not process state machine requests or campaign until `run()`.
@@ -81,8 +82,4 @@ async fn build_then_run() -> Result<()> {
 
     node.shutdown().await?;
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_secs(2))
 }

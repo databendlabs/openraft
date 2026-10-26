@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
@@ -7,6 +6,7 @@ use openraft::Config;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 /// When transferring snapshot to unreachable node, it should not block for ever.
@@ -39,7 +39,7 @@ async fn snapshot_to_unreachable_node_should_not_block() -> Result<()> {
     tracing::info!(log_index, "--- write {} logs", n);
     {
         log_index += router.client_request_many(0, "0", n).await?;
-        router.wait(&0, timeout()).applied_index(Some(log_index), format!("{} writes", n)).await?;
+        router.wait(&0).applied_index(Some(log_index), format!("{} writes", n)).await?;
     }
 
     let n0 = router.get_raft_handle(&0)?;
@@ -62,8 +62,4 @@ async fn snapshot_to_unreachable_node_should_not_block() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(2_000))
 }

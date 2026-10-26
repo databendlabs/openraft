@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use maplit::btreeset;
 use openraft::Config;
@@ -49,12 +48,8 @@ async fn single_restart() -> anyhow::Result<()> {
         router.client_request_many(0, "foo", 1).await?;
         log_index += 1;
 
-        router.wait(&0, timeout()).applied_index(Some(log_index), "node-0 works").await?;
+        router.wait(&0).applied_index(Some(log_index), "node-0 works").await?;
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1000))
 }

@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
@@ -38,29 +37,25 @@ async fn lagging_network_write() -> Result<()> {
     router.client_request_many(0, "client", 1).await?;
     log_index += 1;
     for id in [0, 1, 2] {
-        router.wait(&id, timeout()).applied_index(Some(log_index), "write one log").await?;
+        router.wait(&id).applied_index(Some(log_index), "write one log").await?;
     }
 
     let node = router.get_raft_handle(&0)?;
     node.change_membership([0, 1, 2], false).await?;
     log_index += 2;
-    router.wait(&0, None).state(ServerState::Leader, "changed").await?;
+    router.wait(&0).state(ServerState::Leader, "changed").await?;
     for node in [1, 2] {
-        router.wait(&node, None).state(ServerState::Follower, "changed").await?;
+        router.wait(&node).state(ServerState::Follower, "changed").await?;
     }
     for id in [0, 1, 2] {
-        router.wait(&id, timeout()).applied_index(Some(log_index), "3 candidates").await?;
+        router.wait(&id).applied_index(Some(log_index), "3 candidates").await?;
     }
 
     router.client_request_many(0, "client", 1).await?;
     log_index += 1;
     for id in [0, 1, 2] {
-        router.wait(&id, timeout()).applied_index(Some(log_index), "write 2nd log").await?;
+        router.wait(&id).applied_index(Some(log_index), "write 2nd log").await?;
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(2000))
 }

@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
@@ -65,8 +64,8 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
 
         router.new_raft_node_with_sto(0, sto0, sm0).await;
 
-        router.wait(&0, timeout()).state(ServerState::Leader, "init node-0 server-state").await?;
-        router.wait(&0, timeout()).applied_index(Some(log_index), "init node-0 log").await?;
+        router.wait(&0).state(ServerState::Leader, "init node-0 server-state").await?;
+        router.wait(&0).applied_index(Some(log_index), "init node-0 log").await?;
     }
 
     tracing::info!(log_index, "--- send just enough logs to trigger snapshot");
@@ -74,8 +73,8 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
         router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await?;
         log_index = snapshot_threshold - 1;
 
-        router.wait(&0, timeout()).applied_index(Some(log_index), "trigger snapshot").await?;
-        router.wait(&0, timeout()).snapshot(log_id(5, 0, log_index), "build snapshot").await?;
+        router.wait(&0).applied_index(Some(log_index), "trigger snapshot").await?;
+        router.wait(&0).snapshot(log_id(5, 0, log_index), "build snapshot").await?;
     }
 
     tracing::info!(log_index, "--- create node-1 and add conflicting logs");
@@ -146,7 +145,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
 
         tracing::info!(log_index, "--- DONE installing snapshot");
 
-        router.wait(&1, timeout()).snapshot(log_id(5, 0, log_index), "node-1 snapshot").await?;
+        router.wait(&1).snapshot(log_id(5, 0, log_index), "node-1 snapshot").await?;
     }
 
     tracing::info!(
@@ -184,8 +183,4 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(5000))
 }

@@ -16,7 +16,7 @@ use openraft_memstore::TypeConfig;
 use crate::fixtures::RaftRouter;
 use crate::fixtures::ut_harness;
 
-/// A constant 5-second backoff delay, much longer than `timeout()`.
+/// A constant 5-second backoff delay, longer than the one-second recovery window.
 const BACKOFF: &str = "5s ...5s";
 
 /// `Trigger::reset_backoff()` ends the active backoff wait, so a reachable follower catches up
@@ -84,11 +84,14 @@ async fn reset_backoff_ends_active_backoff() -> Result<()> {
         );
     }
 
-    tracing::info!(log_index, "--- reset the backoff, node-2 catches up within timeout()");
+    tracing::info!(log_index, "--- reset the backoff, node-2 catches up within one second");
     {
         n0.trigger().reset_backoff([2]).await?;
 
-        router.wait(&2, timeout()).applied_index(Some(log_index), "node-2 catches up after reset").await?;
+        router
+            .wait_with_timeout(&2, Duration::from_secs(1))
+            .applied_index(Some(log_index), "node-2 catches up after reset")
+            .await?;
     }
 
     Ok(())
@@ -230,7 +233,7 @@ async fn transfer_leader_resets_target_backoff_by_default() -> Result<()> {
                 );
             } else {
                 router
-                    .wait(&2, timeout())
+                    .wait_with_timeout(&2, Duration::from_secs(1))
                     .applied_index_at_least(Some(log_index), "transfer resumes replication")
                     .await?;
             }
@@ -238,8 +241,4 @@ async fn transfer_leader_resets_target_backoff_by_default() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
 }

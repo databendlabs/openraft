@@ -60,7 +60,7 @@ async fn state_machine_apply_membership() -> Result<()> {
         router.add_learner(0, 4).await?;
     }
     log_index += 4;
-    router.wait(&0, None).applied_index(Some(log_index), "add learner").await?;
+    router.wait(&0).applied_index(Some(log_index), "add learner").await?;
 
     tracing::info!(log_index, "--- changing cluster config");
     let node = router.get_raft_handle(&0)?;
@@ -71,7 +71,7 @@ async fn state_machine_apply_membership() -> Result<()> {
     tracing::info!(log_index, "--- every node receives joint log");
     for i in 0..5 {
         router
-            .wait(&i, None)
+            .wait(&i)
             .metrics(|x| x.last_applied.index() >= Some(log_index - 1), "joint log applied")
             .await?;
     }
@@ -79,7 +79,7 @@ async fn state_machine_apply_membership() -> Result<()> {
     tracing::info!(log_index, "--- only 3 node applied membership config");
     for i in 0..3 {
         router
-            .wait(&i, None)
+            .wait(&i)
             .metrics(|x| x.last_applied.index() == Some(log_index), "uniform log applied")
             .await?;
 

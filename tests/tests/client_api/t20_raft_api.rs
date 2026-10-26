@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
@@ -133,8 +132,8 @@ async fn api_learner_ids() -> Result<()> {
         leader.change_membership(btreeset! {0,1,2}, true).await?;
         log_index += 1;
 
-        router.wait(&leader_id, timeout()).applied_index(Some(log_index), "promote learner 2").await?;
-        router.wait(&2, timeout()).state(openraft::ServerState::Follower, "promoted voter").await?;
+        router.wait(&leader_id).applied_index(Some(log_index), "promote learner 2").await?;
+        router.wait(&2).state(openraft::ServerState::Follower, "promoted voter").await?;
 
         let learners: Vec<u64> = leader.learner_ids().collect();
         assert_eq!(vec![3], learners);
@@ -172,7 +171,7 @@ async fn api_after_add_learner() -> Result<()> {
     tracing::info!("--- adding node 3 as learner");
     router.new_raft_node(3).await;
     router.add_learner(leader_id, 3).await?;
-    router.wait(&3, None).state(openraft::ServerState::Learner, "become learner").await?;
+    router.wait(&3).state(openraft::ServerState::Learner, "become learner").await?;
 
     // Check learners after adding node 3
     let learners: Vec<u64> = leader.learner_ids().collect();
@@ -235,8 +234,4 @@ async fn api_as_leader() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_secs(1))
 }

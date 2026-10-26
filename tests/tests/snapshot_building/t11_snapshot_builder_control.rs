@@ -46,7 +46,7 @@ async fn sm_can_refuse_snapshot_building() -> Result<()> {
     tracing::info!(log_index, "--- send some logs");
     log_index += router.client_request_many(0, "0", 10).await?;
 
-    router.wait(&0, timeout()).applied_index(Some(log_index), "write logs").await?;
+    router.wait(&0).applied_index(Some(log_index), "write logs").await?;
 
     tracing::info!(
         log_index,
@@ -101,7 +101,7 @@ async fn sm_can_refuse_snapshot_building() -> Result<()> {
         let n0 = router.get_raft_handle(&0)?;
         n0.trigger().snapshot().await?;
 
-        router.wait(&0, timeout()).snapshot(log_id(1, 0, log_index), "snapshot created").await?;
+        router.wait(&0).snapshot(log_id(1, 0, log_index), "snapshot created").await?;
     }
 
     tracing::info!(log_index, "--- verify snapshot was created with correct state");
@@ -161,7 +161,7 @@ async fn sm_can_refuse_snapshot_building() -> Result<()> {
     {
         log_index += router.client_request_many(0, "0", 3).await?;
 
-        router.wait(&0, timeout()).applied_index(Some(log_index), "write final logs").await?;
+        router.wait(&0).applied_index(Some(log_index), "write final logs").await?;
 
         let (_, mut sm) = router.get_storage_handle(&0)?;
         sm.allow_build_snapshot(true);
@@ -169,7 +169,7 @@ async fn sm_can_refuse_snapshot_building() -> Result<()> {
         let n0 = router.get_raft_handle(&0)?;
         n0.trigger().snapshot().await?;
 
-        router.wait(&0, timeout()).snapshot(log_id(1, 0, log_index), "final snapshot").await?;
+        router.wait(&0).snapshot(log_id(1, 0, log_index), "final snapshot").await?;
 
         // Verify final snapshot in storage
         let snapshot = sm.get_current_snapshot().await?;
@@ -235,7 +235,7 @@ async fn sm_refuse_with_logs_since_last_policy() -> Result<()> {
         "--- apply upto index=4 logs to trigger first snapshot attempt"
     );
     log_index += router.client_request_many(0, "0", 4 - log_index as usize).await?;
-    router.wait(&0, timeout()).applied_index(Some(log_index), "applied upto index=4 logs").await?;
+    router.wait(&0).applied_index(Some(log_index), "applied upto index=4 logs").await?;
 
     tracing::info!(log_index, "--- applied upto index=4 logs");
 
@@ -248,7 +248,7 @@ async fn sm_refuse_with_logs_since_last_policy() -> Result<()> {
 
     tracing::info!(log_index, "--- apply 3 more logs (not enough to reach threshold)");
     log_index += router.client_request_many(0, "0", 3).await?;
-    router.wait(&0, timeout()).applied_index(Some(log_index), "applied 3 more logs").await?;
+    router.wait(&0).applied_index(Some(log_index), "applied 3 more logs").await?;
 
     // Reset counter after applying logs to isolate the idle period
     take_snapshot_builder_count(&router, 0)?;
@@ -256,7 +256,7 @@ async fn sm_refuse_with_logs_since_last_policy() -> Result<()> {
     // Apply a small write to trigger routine actions during the idle period
     TypeConfig::sleep(Duration::from_millis(300)).await;
     log_index += router.client_request_many(0, "0", 1).await?;
-    router.wait(&0, timeout()).applied_index(Some(log_index), "trigger check").await?;
+    router.wait(&0).applied_index(Some(log_index), "trigger check").await?;
 
     let second_count = take_snapshot_builder_count(&router, 0)?;
 
@@ -272,7 +272,7 @@ async fn sm_refuse_with_logs_since_last_policy() -> Result<()> {
 
     tracing::info!(log_index, "--- apply 5 more logs to definitely reach threshold");
     log_index += router.client_request_many(0, "0", 5).await?;
-    router.wait(&0, timeout()).applied_index(Some(log_index), "applied 5 more logs").await?;
+    router.wait(&0).applied_index(Some(log_index), "applied 5 more logs").await?;
 
     let third_count = take_snapshot_builder_count(&router, 0)?;
     tracing::info!(third_count, log_index, "third measurement");
@@ -299,8 +299,4 @@ async fn sm_refuse_with_logs_since_last_policy() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
 }

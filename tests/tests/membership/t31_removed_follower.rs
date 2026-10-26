@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
@@ -34,7 +33,7 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
     router.add_learner(0, 4).await?;
     log_index += 2;
     for id in [0, 1, 2] {
-        router.wait(&id, None).applied_index(Some(log_index), "cluster of 2 learners").await?;
+        router.wait(&id).applied_index(Some(log_index), "cluster of 2 learners").await?;
     }
 
     tracing::info!(log_index, "--- changing config to 0,3,4");
@@ -45,7 +44,7 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
 
         for i in [0, 3, 4] {
             router
-                .wait(&i, timeout())
+                .wait(&i)
                 .metrics(
                     |x| x.last_log_index >= Some(log_index),
                     "new cluster nodes recv 2 change-membership logs",
@@ -54,7 +53,7 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
         }
 
         let res1 = router
-            .wait(&1, timeout())
+            .wait(&1)
             .metrics(
                 |x| x.last_log_index >= Some(log_index - 1),
                 "removed node-1 recv at least 1 change-membership log",
@@ -62,7 +61,7 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
             .await;
 
         let res2 = router
-            .wait(&2, timeout())
+            .wait(&2)
             .metrics(
                 |x| x.last_log_index >= Some(log_index - 1),
                 "removed node-2 recv at least 1 change-membership log",
@@ -88,7 +87,7 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
 
         for i in &[0, 3, 4] {
             router
-                .wait(i, timeout())
+                .wait(i)
                 .metrics(
                     |x| x.last_applied.index() >= Some(log_index),
                     "new cluster recv new logs",
@@ -99,7 +98,7 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
 
     for i in &[1, 2] {
         router
-            .wait(i, timeout())
+            .wait(i)
             .metrics(
                 |x| x.last_applied.index() < Some(log_index),
                 "old cluster does not recv new logs",
@@ -108,8 +107,4 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1000))
 }

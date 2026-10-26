@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use maplit::btreeset;
 use openraft::Config;
@@ -48,7 +47,7 @@ async fn issue_881_transient_state_machine() -> anyhow::Result<()> {
     tracing::info!(log_index, "--- write 10 logs");
     {
         log_index += router.client_request_many(0, "foo", 10).await?;
-        router.wait(&0, timeout()).applied_index(Some(log_index), "node-0 applied").await?;
+        router.wait(&0).applied_index(Some(log_index), "node-0 applied").await?;
     }
 
     let snapshot_log_index = log_index;
@@ -57,13 +56,13 @@ async fn issue_881_transient_state_machine() -> anyhow::Result<()> {
     {
         let n = router.get_raft_handle(&0)?;
         n.trigger().snapshot().await?;
-        router.wait(&0, timeout()).snapshot(log_id(1, 0, snapshot_log_index), "snapshot created").await?;
+        router.wait(&0).snapshot(log_id(1, 0, snapshot_log_index), "snapshot created").await?;
     }
 
     tracing::info!(log_index, "--- write 5 more logs after snapshot");
     {
         log_index += router.client_request_many(0, "bar", 5).await?;
-        router.wait(&0, timeout()).applied_index(Some(log_index), "node-0 applied new logs").await?;
+        router.wait(&0).applied_index(Some(log_index), "node-0 applied new logs").await?;
     }
 
     tracing::info!(log_index, "--- stop node-0 and clear its state machine");
@@ -84,15 +83,8 @@ async fn issue_881_transient_state_machine() -> anyhow::Result<()> {
         "--- node-0 should recover: install snapshot first, then re-apply remaining logs"
     );
     {
-        router
-            .wait(&0, timeout())
-            .applied_index(Some(log_index), "node-0 recovered by snapshot + log replay")
-            .await?;
+        router.wait(&0).applied_index(Some(log_index), "node-0 recovered by snapshot + log replay").await?;
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(2_000))
 }

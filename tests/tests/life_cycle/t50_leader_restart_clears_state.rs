@@ -9,6 +9,8 @@ use crate::fixtures::MemLogStore;
 use crate::fixtures::MemRaft;
 use crate::fixtures::MemStateMachine;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::expect_timeout;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 /// Test leader restart with complete state loss and recovery.
@@ -53,8 +55,8 @@ async fn leader_restart_clears_state() -> anyhow::Result<()> {
     tracing::info!(log_index, "--- write to 1 log");
     {
         log_index += router.client_request_many(0, "foo", 1).await?;
-        router.wait(&1, timeout()).applied_index(Some(log_index), "node-1 applied log").await?;
-        router.wait(&2, timeout()).applied_index(Some(log_index), "node-2 applied log").await?;
+        router.wait(&1).applied_index(Some(log_index), "node-1 applied log").await?;
+        router.wait(&2).applied_index(Some(log_index), "node-2 applied log").await?;
     }
 
     tracing::info!(log_index, "--- stop and restart node-0");
@@ -73,13 +75,12 @@ async fn leader_restart_clears_state() -> anyhow::Result<()> {
         tracing::info!(log_index, "--- trigger election for node-0 after restart");
         n0.trigger().elect(false).await?;
 
-        let res = n0.wait(timeout()).state(ServerState::Leader, "should not become leader upon restart").await;
-        assert!(res.is_err());
+        let res = n0
+            .wait(Some(Duration::from_millis(1_000)))
+            .state(ServerState::Leader, "should not become leader upon restart")
+            .await;
+        expect_timeout(res)?;
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
 }

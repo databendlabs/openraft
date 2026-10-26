@@ -7,6 +7,7 @@ use openraft::Config;
 use openraft::metrics::WaitError;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::expect_timeout;
 use crate::fixtures::ut_harness;
 
 /// Test wait() utils
@@ -36,27 +37,22 @@ async fn metrics_wait() -> Result<()> {
 
     let never_written = log_index + 1;
     let msg = format!("timeout waiting for log {}", never_written);
-    let rst = router.wait(&0, timeout()).applied_index(Some(never_written), msg).await;
+    let duration = Duration::from_millis(20);
+    let rst = router.wait_with_timeout(&0, duration).applied_index(Some(never_written), msg).await;
+    expect_timeout(rst)?;
 
-    match rst {
-        Ok(_) => {
-            panic!("expect timeout error");
-        }
-        Err(e) => {
-            match e {
-                WaitError::Timeout(_, _) => {
-                    // ok
-                }
-                WaitError::ShuttingDown => {
-                    panic!("unexpected error")
-                }
-            }
-        }
+    tracing::info!("--- shutdown must fail a negative observation");
+    {
+        let node = router.get_raft_handle(&0)?;
+        node.shutdown().await?;
+        let result = router.wait(&0).applied_index(Some(never_written), "node stopped").await;
+        let error = result.unwrap_err();
+        assert_eq!(WaitError::ShuttingDown, error);
+        let result = expect_timeout::<()>(Err(error));
+        let error = result.unwrap_err();
+        let wait_error = error.downcast_ref::<WaitError>();
+        assert_eq!(Some(&WaitError::ShuttingDown), wait_error);
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1000))
 }

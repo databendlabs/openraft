@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use maplit::btreeset;
 use openraft::Config;
@@ -33,9 +32,9 @@ async fn startup_build_snapshot() -> anyhow::Result<()> {
     {
         log_index += router.client_request_many(0, "0", (20 - 1 - log_index) as usize).await?;
 
-        router.wait(&0, timeout()).applied_index(Some(log_index), "node-0 applied all requests").await?;
+        router.wait(&0).applied_index(Some(log_index), "node-0 applied all requests").await?;
         router.get_raft_handle(&0)?.trigger().snapshot().await?;
-        router.wait(&0, timeout()).snapshot(log_id(1, 0, log_index), "node-0 snapshot").await?;
+        router.wait(&0).snapshot(log_id(1, 0, log_index), "node-0 snapshot").await?;
     }
 
     tracing::info!(log_index, "--- shut down and purge to log index: {}", 5);
@@ -56,12 +55,8 @@ async fn startup_build_snapshot() -> anyhow::Result<()> {
     );
     {
         router.new_raft_node_with_sto(0, log_store, sm).await;
-        router.wait(&0, timeout()).snapshot(log_id(1, 0, log_index), "node-1 snapshot").await?;
+        router.wait(&0).snapshot(log_id(1, 0, log_index), "node-1 snapshot").await?;
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
 }

@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use maplit::btreeset;
 use openraft::Config;
@@ -49,17 +48,13 @@ async fn single_leader_restart_re_apply_logs() -> anyhow::Result<()> {
         tracing::info!(log_index, "--- restart node-0");
 
         router.new_raft_node_with_sto(0, ls, sm).await;
-        router.wait(&0, timeout()).state(ServerState::Leader, "become leader upon restart").await?;
+        router.wait(&0).state(ServerState::Leader, "become leader upon restart").await?;
     }
 
     tracing::info!(log_index, "--- a single leader should re-apply all logs");
     {
-        router.wait(&0, timeout()).applied_index(Some(log_index), "node-0 works").await?;
+        router.wait(&0).applied_index(Some(log_index), "node-0 works").await?;
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
 }

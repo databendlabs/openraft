@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use openraft::Config;
 use openraft::ServerState;
@@ -29,14 +28,7 @@ async fn issue_920_non_member_leader_restart() -> anyhow::Result<()> {
     log_store.save_vote(&Vote::new_committed(1, 0)).await?;
     router.new_raft_node_with_sto(0, log_store, sm).await;
 
-    router
-        .wait(&0, timeout())
-        .state(ServerState::Learner, "node 0 becomes learner when startup")
-        .await?;
+    router.wait(&0).state(ServerState::Learner, "node 0 becomes learner when startup").await?;
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1000))
 }

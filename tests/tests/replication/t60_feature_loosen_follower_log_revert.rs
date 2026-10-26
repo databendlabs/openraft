@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
@@ -34,7 +33,7 @@ async fn feature_loosen_follower_log_revert() -> Result<()> {
     {
         log_index += router.client_request_many(0, "0", 10).await?;
         for i in [0, 1, 2, 3] {
-            router.wait(&i, timeout()).applied_index(Some(log_index), format!("{} writes", 10)).await?;
+            router.wait(&i).applied_index(Some(log_index), format!("{} writes", 10)).await?;
         }
     }
 
@@ -52,13 +51,9 @@ async fn feature_loosen_follower_log_revert() -> Result<()> {
     {
         log_index += router.client_request_many(0, "0", 10).await?;
         for i in [0, 1, 2, 3] {
-            router.wait(&i, timeout()).applied_index(Some(log_index), format!("{} writes", 10)).await?;
+            router.wait(&i).applied_index(Some(log_index), format!("{} writes", 10)).await?;
         }
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
 }

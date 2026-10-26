@@ -5,6 +5,7 @@ use maplit::btreeset;
 use openraft::Config;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::expect_timeout;
 use crate::fixtures::ut_harness;
 
 /// A follower that restarted should not interrupt a stable cluster by a too quick election.
@@ -48,14 +49,14 @@ async fn follower_restart_does_not_interrupt() -> anyhow::Result<()> {
         router.new_raft_node_with_sto(1, sto1, sm1).await;
         router.new_raft_node_with_sto(2, sto2, sm2).await;
         let res = router
-            .wait(&1, Some(Duration::from_millis(1_000)))
+            .wait_with_timeout(&1, Duration::from_millis(1_000))
             .metrics(|x| x.current_term > term, "node increase term to start election")
             .await;
 
-        assert!(res.is_err(), "term should not increase");
+        expect_timeout(res)?;
 
         router
-            .wait(&1, Some(Duration::from_millis(9_000)))
+            .wait_with_timeout(&1, Duration::from_millis(9_000))
             .metrics(
                 |x| x.current_term > term,
                 concat!(

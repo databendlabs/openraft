@@ -90,7 +90,7 @@ async fn first_two_probes_with_quota_zero(n_writes: usize) -> Result<FirstTwoPro
         log_index += router.client_request_many(0, "foo", n_writes).await?;
 
         for id in [0, 1, 2] {
-            router.wait(&id, timeout()).applied_index(Some(log_index), format!("{n_writes} writes")).await?;
+            router.wait(&id).applied_index(Some(log_index), format!("{n_writes} writes")).await?;
         }
     }
 
@@ -140,7 +140,7 @@ async fn first_two_probes_with_quota_zero(n_writes: usize) -> Result<FirstTwoPro
     tracing::info!(log_index, "--- elect node 1: its progress restarts in probing mode");
     {
         router.get_raft_handle(&1)?.trigger().elect(false).await?;
-        router.wait(&1, timeout()).state(ServerState::Leader, "node 1 is leader").await?;
+        router.wait(&1).state(ServerState::Leader, "node 1 is leader").await?;
 
         // The blank log node 1 appends at the start of its term.
         log_index += 1;
@@ -161,14 +161,10 @@ async fn first_two_probes_with_quota_zero(n_writes: usize) -> Result<FirstTwoPro
     {
         router.set_append_entries_quota(None);
 
-        router.wait(&0, timeout()).applied_index(Some(log_index), "node 0 caught up").await?;
-        router.wait(&2, timeout()).applied_index(Some(log_index), "node 2 caught up").await?;
+        router.wait(&0).applied_index(Some(log_index), "node 0 caught up").await?;
+        router.wait(&2).applied_index(Some(log_index), "node 2 caught up").await?;
     }
 
     let probes = probes.lock().unwrap();
     Ok(probes.clone())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(5_000))
 }

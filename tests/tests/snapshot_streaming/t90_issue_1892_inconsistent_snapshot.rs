@@ -37,7 +37,7 @@ const SNAPSHOT_TERM: u64 = 3;
 const NODE: MemNodeId = 0;
 const HELPER: MemNodeId = 1;
 
-const TIMEOUT: Option<Duration> = Some(Duration::from_millis(1000));
+const TIMEOUT: Duration = Duration::from_millis(1000);
 
 /// A snapshot whose last log id is beyond the leadership of the vote installing it is
 /// protocol-impossible input: `install_full_snapshot` panics instead of installing it.
@@ -147,10 +147,10 @@ async fn higher_term_snapshot(router: &mut RaftRouter) -> anyhow::Result<Snapsho
             leader_commit: Some(snapshot_log_id),
         })
         .await?;
-    router.wait(&HELPER, TIMEOUT).applied_index(Some(0), "helper applied").await?;
+    router.wait_with_timeout(&HELPER, TIMEOUT).applied_index(Some(0), "helper applied").await?;
 
     helper.trigger().snapshot().await?;
-    router.wait(&HELPER, TIMEOUT).snapshot(snapshot_log_id, "snapshot built").await?;
+    router.wait_with_timeout(&HELPER, TIMEOUT).snapshot(snapshot_log_id, "snapshot built").await?;
 
     Ok(helper.get_snapshot().await?.unwrap())
 }

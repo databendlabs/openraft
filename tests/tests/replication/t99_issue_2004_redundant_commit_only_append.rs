@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
-use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
@@ -67,8 +66,8 @@ async fn no_redundant_commit_only_append_entries() -> Result<()> {
     {
         log_index += router.client_request_many(0, "foo", WRITES).await?;
 
-        router.wait(&1, timeout()).applied_index(Some(log_index), "node 1 applied").await?;
-        router.wait(&2, timeout()).applied_index(Some(log_index), "node 2 applied").await?;
+        router.wait(&1).applied_index(Some(log_index), "node 1 applied").await?;
+        router.wait(&2).applied_index(Some(log_index), "node 2 applied").await?;
     }
 
     let entry_less = entry_less.load(Ordering::Relaxed);
@@ -85,8 +84,4 @@ async fn no_redundant_commit_only_append_entries() -> Result<()> {
     );
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(5_000))
 }

@@ -14,6 +14,7 @@ use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 /// With Pre-Vote enabled, an isolated follower does not inflate its term.
@@ -218,7 +219,7 @@ async fn pre_vote_elects_new_leader_after_leader_isolated() -> Result<()> {
     tracing::info!("--- a new leader must emerge among 1,2 via the Pre-Vote path");
     for id in [1, 2] {
         router
-            .wait(&id, Some(Duration::from_secs(5)))
+            .wait_with_timeout(&id, Duration::from_secs(5))
             .metrics(
                 |m| m.current_leader == Some(1) || m.current_leader == Some(2),
                 "a new leader is elected via Pre-Vote after the old leader is isolated",
@@ -311,12 +312,12 @@ async fn pre_vote_rejection_with_higher_vote_catches_up_requester() -> Result<()
         })
         .await?;
     assert!(resp.vote_granted);
-    router.wait(&2, timeout()).vote(Vote::new(10, 2), "node 2 has a higher vote").await?;
+    router.wait(&2).vote(Vote::new(10, 2), "node 2 has a higher vote").await?;
 
     tracing::info!("--- node 1 sees node 2's higher vote through a rejected Pre-Vote response");
     n1.trigger().elect(true).await?;
     router
-        .wait(&1, Some(Duration::from_millis(1_000)))
+        .wait_with_timeout(&1, Duration::from_millis(1_000))
         .vote(Vote::new(10, 2), "node 1 catches up from a higher Pre-Vote rejection")
         .await?;
 
@@ -325,8 +326,4 @@ async fn pre_vote_rejection_with_higher_vote_catches_up_requester() -> Result<()
     n1.wait(timeout()).state(ServerState::Leader, "node 1 becomes leader").await?;
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(2000))
 }

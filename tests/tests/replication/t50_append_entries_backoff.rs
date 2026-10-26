@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
@@ -55,7 +54,7 @@ async fn append_entries_backoff() -> Result<()> {
         router.client_request_many(0, "0", n as usize).await?;
         log_index += n;
 
-        router.wait(&0, timeout()).applied_index(Some(log_index), format!("{} writes", n)).await?;
+        router.wait(&0).applied_index(Some(log_index), format!("{} writes", n)).await?;
     }
 
     let counts1 = router.get_rpc_count();
@@ -71,8 +70,4 @@ async fn append_entries_backoff() -> Result<()> {
     );
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
 }

@@ -58,7 +58,7 @@ async fn client_writes() -> Result<()> {
 
         log_index += 100 * 6;
         for id in [0, 1, 2] {
-            router.wait(&id, None).applied_index(Some(log_index), "sync logs").await?;
+            router.wait(&id).applied_index(Some(log_index), "sync logs").await?;
         }
     }
 
@@ -201,7 +201,7 @@ async fn write_with_leader() -> Result<()> {
     n0.write(ClientRequest::make_request("foo", 2)).with_leader(leader_id).responder(responder).await?;
 
     log_index += 1;
-    router.wait(&0, None).applied_index(Some(log_index), "write with correct leader").await?;
+    router.wait(&0).applied_index(Some(log_index), "write with correct leader").await?;
 
     let got = complete_rx.await??;
     assert_eq!(&ClientResponse(None), got.response());
@@ -230,7 +230,7 @@ async fn write_with_leader() -> Result<()> {
     n0.write(ClientRequest::make_request("foo", 4)).responder(responder).await?;
 
     log_index += 1;
-    router.wait(&0, None).applied_index(Some(log_index), "write without leader check").await?;
+    router.wait(&0).applied_index(Some(log_index), "write without leader check").await?;
 
     let got = complete_rx.await??;
     // Should see request-2 (request-3 failed)
@@ -271,7 +271,7 @@ async fn write_blank() -> Result<()> {
         assert_eq!(&log_id(1, 0, log_index), resp.log_id());
 
         for id in [0, 1, 2] {
-            router.wait(&id, None).applied_index(Some(log_index), "blank entry applied").await?;
+            router.wait(&id).applied_index(Some(log_index), "blank entry applied").await?;
         }
 
         let (mut sto, _sm) = router.get_storage_handle(&0)?;
@@ -292,7 +292,7 @@ async fn write_blank() -> Result<()> {
         log_index += 1;
 
         for id in [0, 1, 2] {
-            router.wait(&id, None).applied_index(Some(log_index), "normal entry after blank").await?;
+            router.wait(&id).applied_index(Some(log_index), "normal entry after blank").await?;
         }
     }
 

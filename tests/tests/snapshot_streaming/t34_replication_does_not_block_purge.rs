@@ -10,6 +10,7 @@ use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 /// Replication blocks purge, but it should not purge for ever.
@@ -58,8 +59,4 @@ async fn replication_does_not_block_purge() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(3_000))
 }

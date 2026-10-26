@@ -10,6 +10,8 @@ use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::expect_timeout;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 /// Get the last timestamp when a leader is acknowledged by a quorum,
@@ -101,14 +103,14 @@ async fn leader_last_ack_3_nodes() -> Result<()> {
         n0.trigger().heartbeat().await?;
 
         let got = n0
-            .wait(timeout())
+            .wait(Some(Duration::from_millis(500)))
             .metrics(
                 #[allow(deprecated)]
                 |x| x.millis_since_quorum_ack < Some(100),
                 "millis_since_quorum_ack refreshed again",
             )
             .await;
-        assert!(got.is_err(), "millis_since_quorum_ack does not refresh");
+        expect_timeout(got)?;
     }
 
     Ok(())
@@ -193,8 +195,11 @@ async fn leader_last_ack_3_nodes_abs_time() -> Result<()> {
         let now = TypeConfig::now();
         n0.trigger().heartbeat().await?;
 
-        let got = n0.wait(timeout()).leader_with_quorum_acked(Some(now), "last_quorum_acked refreshed again").await;
-        assert!(got.is_err(), "last_quorum_acked does not refresh");
+        let got = n0
+            .wait(Some(Duration::from_millis(500)))
+            .leader_with_quorum_acked(Some(now), "last_quorum_acked refreshed again")
+            .await;
+        expect_timeout(got)?;
     }
 
     Ok(())
@@ -245,8 +250,4 @@ async fn leader_last_ack_1_node() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(500))
 }

@@ -22,7 +22,9 @@ use openraft::vote::RaftLeaderId;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::expect_timeout;
 use crate::fixtures::rpc_request::RpcRequest;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 /// Client read tests.
@@ -168,8 +170,11 @@ async fn get_read_log_id() -> Result<()> {
 
     tracing::info!(log_index = log_index, "--- node 1 appends blank log but cannot commit");
     {
-        let res = n1.wait(timeout()).applied_index_at_least(Some(log_index + 1), "blank log cannot commit").await;
-        assert!(res.is_err());
+        let res = n1
+            .wait(Some(Duration::from_millis(1_000)))
+            .applied_index_at_least(Some(log_index + 1), "blank log cannot commit")
+            .await;
+        expect_timeout(res)?;
     }
 
     let blank_log_index = log_index + 1;
@@ -716,8 +721,4 @@ async fn ensure_linearizable_process_from_followers() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
 }

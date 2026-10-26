@@ -17,6 +17,8 @@ use openraft_memstore::IntoMemClientRequest;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::expect_timeout;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 /// Test handling of transfer leader request.
@@ -85,7 +87,7 @@ async fn transfer_leader() -> anyhow::Result<()> {
             .state(ServerState::Leader, "node-0 cannot become leader with old leader vote")
             .await;
 
-        assert!(n0_res.is_err());
+        expect_timeout(n0_res)?;
     }
 
     Ok(())
@@ -390,7 +392,7 @@ async fn transfer_leader_to_promoted_learner_without_promotion_log_does_not_pani
     let n3 = router.get_raft_handle(&3)?;
 
     router
-        .wait(&3, timeout())
+        .wait(&3)
         .metrics(
             |m| {
                 m.state == ServerState::Learner
@@ -408,7 +410,7 @@ async fn transfer_leader_to_promoted_learner_without_promotion_log_does_not_pani
     log_index += 1;
 
     router
-        .wait(&0, timeout())
+        .wait(&0)
         .metrics(
             |m| {
                 m.membership_config.voter_ids().any(|id| id == 3)
@@ -419,7 +421,7 @@ async fn transfer_leader_to_promoted_learner_without_promotion_log_does_not_pani
         .await?;
 
     router
-        .wait(&3, timeout())
+        .wait(&3)
         .metrics(
             |m| !m.membership_config.voter_ids().any(|id| id == 3) && m.last_log_index < Some(log_index),
             "node 3 has not received its promotion log",
@@ -589,8 +591,4 @@ async fn leader_steps_down_after_transfer_when_no_other_voter_campaigns() -> any
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(500))
 }

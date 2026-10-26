@@ -77,8 +77,8 @@ async fn leader_restart_cluster_committed_not_restored() -> anyhow::Result<()> {
         node.shutdown().await?;
 
         router.new_raft_node_with_sto(0, ls, sm).await;
-        router.wait(&0, timeout()).state(ServerState::Leader, "restore leadership without election").await?;
-        router.wait(&0, timeout()).applied_index(Some(log_index), "applied restored from storage").await?;
+        router.wait(&0).state(ServerState::Leader, "restore leadership without election").await?;
+        router.wait(&0).applied_index(Some(log_index), "applied restored from storage").await?;
     }
 
     tracing::info!(
@@ -152,8 +152,4 @@ async fn leader_restart_cluster_committed_not_restored() -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
 }

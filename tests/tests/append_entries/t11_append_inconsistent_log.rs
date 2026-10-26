@@ -88,18 +88,18 @@ async fn append_inconsistent_log() -> Result<()> {
     tracing::info!(log_index, "--- wait for node states");
     {
         router
-            .wait(&0, Some(Duration::from_millis(2000)))
+            .wait_with_timeout(&0, Duration::from_millis(2000))
             .state(ServerState::Follower, "node 0 become follower")
             .await?;
 
         router
-            .wait(&2, Some(Duration::from_millis(5000)))
+            .wait_with_timeout(&2, Duration::from_millis(5000))
             .state(ServerState::Leader, "node 2 become leader")
             .await?;
     }
 
     router
-        .wait(&0, Some(Duration::from_millis(2000)))
+        .wait_with_timeout(&0, Duration::from_millis(2000))
         // leader appends at least one blank log. There may be more than one transient leaders
         .applied_index_at_least(Some(log_index), "sync log to node 0")
         .await?;

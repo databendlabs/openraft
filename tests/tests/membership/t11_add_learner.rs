@@ -20,6 +20,7 @@ use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 #[tracing::instrument]
@@ -50,7 +51,7 @@ async fn add_learner_basic() -> Result<()> {
         log_index += 1;
 
         assert_eq!(log_index, res.log_id.index());
-        router.wait(&0, timeout()).applied_index(Some(log_index), "commit re-adding leader log").await?;
+        router.wait(&0).applied_index(Some(log_index), "commit re-adding leader log").await?;
     }
 
     tracing::info!(log_index, "--- add new node node-1");
@@ -61,7 +62,7 @@ async fn add_learner_basic() -> Result<()> {
             log_index = 1000;
 
             tracing::info!(log_index, "--- write up to 1000 logs done");
-            router.wait(&0, timeout()).applied_index(Some(log_index), "write 1000 logs to leader").await?;
+            router.wait(&0).applied_index(Some(log_index), "write 1000 logs to leader").await?;
         }
 
         router.new_raft_node(1).await;
@@ -69,7 +70,7 @@ async fn add_learner_basic() -> Result<()> {
         log_index += 1;
 
         for id in [0, 1] {
-            router.wait(&id, timeout()).applied_index(Some(log_index), "add learner").await?;
+            router.wait(&id).applied_index(Some(log_index), "add learner").await?;
         }
 
         tracing::info!(log_index, "--- add_learner blocks until the replication catches up");
@@ -83,7 +84,7 @@ async fn add_learner_basic() -> Result<()> {
             assert_eq!(log_index + 1, logs.len() as u64);
 
             for id in [0, 1] {
-                router.wait(&id, timeout()).applied_index(Some(log_index), "replication to learner").await?;
+                router.wait(&id).applied_index(Some(log_index), "replication to learner").await?;
             }
         }
     }
@@ -94,7 +95,7 @@ async fn add_learner_basic() -> Result<()> {
         log_index += 1;
 
         assert_eq!(log_index, res.log_id.index());
-        router.wait(&0, timeout()).applied_index(Some(log_index), "commit re-adding node-1 log").await?;
+        router.wait(&0).applied_index(Some(log_index), "commit re-adding node-1 log").await?;
 
         let metrics = router.get_raft_handle(&0)?.metrics().borrow_watched().clone();
         let node_ids = metrics.membership_config.membership().nodes().map(|x| *x.0).collect::<Vec<_>>();
@@ -131,7 +132,7 @@ async fn add_learner_non_blocking() -> Result<()> {
         router.client_request_many(0, "learner_add", 100 - log_index as usize).await?;
         log_index = 100;
 
-        router.wait(&0, timeout()).applied_index(Some(log_index), "received 100 logs").await?;
+        router.wait(&0).applied_index(Some(log_index), "received 100 logs").await?;
 
         router.new_raft_node(1).await;
 
@@ -192,7 +193,7 @@ async fn add_learner_with_set_nodes() -> Result<()> {
         raft.change_membership(ChangeMembers::SetNodes(btreemap! {2=>(), 4=>()}), true).await?;
 
         router
-            .wait(&0, timeout())
+            .wait(&0)
             .metrics(
                 |m| m.membership_config.membership().nodes().map(|x| *x.0).collect::<Vec<_>>() == vec![0, 1, 2, 4],
                 "set node 2 and 4",
@@ -293,7 +294,7 @@ async fn check_learner_after_leader_transferred() -> Result<()> {
     router.add_learner(orig_leader_id, 4).await?;
     log_index += 2;
     for id in [0, 1] {
-        router.wait(&id, timeout()).applied_index(Some(log_index), "add learner").await?;
+        router.wait(&id).applied_index(Some(log_index), "add learner").await?;
     }
 
     let node = router.get_raft_handle(&orig_leader_id)?;
@@ -303,7 +304,7 @@ async fn check_learner_after_leader_transferred() -> Result<()> {
     tracing::info!(log_index, "--- old leader commits 2 membership log");
     {
         router
-            .wait(&orig_leader_id, timeout())
+            .wait(&orig_leader_id)
             .applied_index(Some(log_index), "old leader commits 2 membership log")
             .await?;
     }
@@ -315,7 +316,7 @@ async fn check_learner_after_leader_transferred() -> Result<()> {
 
         for id in [1, 3, 4] {
             router
-                .wait(&id, timeout())
+                .wait(&id)
                 .applied_index_at_least(
                     Some(log_index),
                     "node in new cluster finally commit at least one blank leader-initialize log",
@@ -348,7 +349,7 @@ async fn check_learner_after_leader_transferred() -> Result<()> {
         // Find the leader from a node in the new cluster {1,3,4}.
         // Node 0 is no longer in the membership and may still hold a stale
         // committed vote pointing to itself, so we must not rely on it.
-        let metrics = router.wait(&1, timeout()).metrics(|m| m.current_leader.is_some(), "wait for new leader").await?;
+        let metrics = router.wait(&1).metrics(|m| m.current_leader.is_some(), "wait for new leader").await?;
         let new_leader = metrics.current_leader.unwrap();
 
         let request = ClientRequest::make_request("0", 0);
@@ -357,13 +358,9 @@ async fn check_learner_after_leader_transferred() -> Result<()> {
         log_index = response.log_id.index();
 
         for i in [1, 2, 3, 4] {
-            router.wait(&i, timeout()).applied_index_at_least(Some(log_index), "learner recv new log").await?;
+            router.wait(&i).applied_index_at_least(Some(log_index), "learner recv new log").await?;
         }
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(3_000))
 }

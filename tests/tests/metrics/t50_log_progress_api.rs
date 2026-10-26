@@ -146,7 +146,7 @@ async fn log_progress_with_leader_change() -> Result<()> {
 
     tracing::info!(log_index, "--- send client requests to new leader");
     router
-        .wait(&1, Some(Duration::from_millis(2000)))
+        .wait_with_timeout(&1, Duration::from_millis(2000))
         .leader_with_quorum_acked(None, "wait for node 1 to become leader and establish its leader lease")
         .await?;
     log_index += 1;

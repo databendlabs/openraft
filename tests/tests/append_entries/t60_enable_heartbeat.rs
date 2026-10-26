@@ -37,7 +37,7 @@ async fn enable_heartbeat() -> Result<()> {
         for node_id in [1, 2, 3] {
             // no new log will be sent, .
             router
-                .wait(&node_id, timeout())
+                .wait(&node_id)
                 .applied_index_at_least(Some(log_index), format!("node {} emit heartbeat log", node_id))
                 .await?;
 
@@ -51,8 +51,4 @@ async fn enable_heartbeat() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
 }

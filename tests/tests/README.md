@@ -70,14 +70,10 @@ async fn my_case() -> Result<()> {
         router.client_request(0, "foo", 1).await?;
         log_index += 1;
 
-        router.wait(&0, timeout()).applied_index(Some(log_index), "write one log").await?;
+        router.wait(&0).applied_index(Some(log_index), "write one log").await?;
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
 }
 ```
 
@@ -86,8 +82,9 @@ a background timer would disturb what the case observes. Set the flag before
 creating the router, and use `Raft::runtime_config()` only when the case must
 flip it in the middle of a run.
 
-Each file defines its own finite `timeout()` at the bottom and uses it for
-every `wait()` that expects progress. One second suits most cases.
+`router.wait(&id)` uses the shared five-second deadline. Use
+`router.wait_with_timeout(&id, duration)` for a specific observation window.
+Direct Raft API calls can use `fixtures::timeout()`.
 
 `ut_harness` installs the tracing subscriber and the panic hook, and runs the
 test body on the async runtime. It writes every log line to `tests/_log/`,
@@ -121,7 +118,7 @@ calls `add_learner()` or `change_membership()`:
 
 ```rust
 n0.initialize(btreeset! {0}).await?;
-router.wait(&0, timeout()).applied_index(Some(1), "init").await?;
+router.wait(&0).applied_index(Some(1), "init").await?;
 ```
 
 `Raft::initialize()` returns once the membership entry at index 0 is flushed,
@@ -148,13 +145,16 @@ should hold, and update it right after each write:
 Assert progress with a wait, never with a sleep:
 
 ```rust
-router.wait(&node_id, timeout()).applied_index(Some(log_index), "write one log").await?;
+router.wait(&node_id).applied_index(Some(log_index), "write one log").await?;
 ```
 
 `Wait` also offers `committed_index()`, `state()`, `vote()`, `members()`,
 `voter_ids()`, `snapshot()`, `purged()`, and `current_leader()`. Passing
-`None` creates a 100-year timeout. Use it only when an explicit finite
-`TypeConfig::timeout()` bounds the whole wait.
+`None` to `Raft::wait()` disables its deadline. Use it only inside a finite
+outer timeout. `ut_harness` bounds each test to 120 seconds; set
+`OPENRAFT_TEST_TIMEOUT_SECS` to a positive integer to change that limit.
+Use `fixtures::expect_timeout(result)?` for negative metric observations, so
+node shutdown fails the case instead of satisfying the observation.
 
 Sleep only to show that something does not happen. A `TypeConfig::sleep()`
 followed by an assertion that the term did not grow, or that the node is

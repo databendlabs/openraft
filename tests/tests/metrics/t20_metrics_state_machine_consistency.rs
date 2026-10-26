@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
@@ -40,14 +39,10 @@ async fn metrics_state_machine_consistency() -> Result<()> {
     tracing::info!(log_index, "--- wait for log to sync");
     log_index += 1;
     for node_id in 0..2 {
-        router.wait(&node_id, timeout()).applied_index(Some(log_index), "write one log").await?;
+        router.wait(&node_id).applied_index(Some(log_index), "write one log").await?;
         let (_sto, sm) = router.get_storage_handle(&node_id)?;
         assert!(sm.get_state_machine().await.client_status.contains_key("foo"));
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
 }

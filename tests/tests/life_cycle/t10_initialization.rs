@@ -1,7 +1,6 @@
 #![allow(clippy::single_element_loop)]
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use maplit::btreeset;
 use openraft::Config;
@@ -18,6 +17,7 @@ use openraft::storage::RaftStateMachine;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 /// Cluster initialization test.
@@ -58,8 +58,8 @@ async fn initialization() -> anyhow::Result<()> {
 
     // Assert all nodes are in learner state & have no entries.
     for node in [0, 1, 2] {
-        router.wait(&node, timeout()).applied_index(None, "empty").await?;
-        router.wait(&node, timeout()).state(ServerState::Learner, "empty").await?;
+        router.wait(&node).applied_index(None, "empty").await?;
+        router.wait(&node).state(ServerState::Learner, "empty").await?;
     }
 
     // Sending an external requests will also find all nodes in Learner state.
@@ -91,7 +91,7 @@ async fn initialization() -> anyhow::Result<()> {
         log_index += 1;
 
         for node_id in [0, 1, 2] {
-            router.wait(&node_id, timeout()).applied_index(Some(log_index), "init").await?;
+            router.wait(&node_id).applied_index(Some(log_index), "init").await?;
         }
 
         #[allow(clippy::bool_assert_comparison)]
@@ -263,8 +263,4 @@ async fn initialize_err_not_allowed() -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1000))
 }

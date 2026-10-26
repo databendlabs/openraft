@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use maplit::btreeset;
 use openraft::Config;
@@ -8,6 +7,7 @@ use crate::fixtures::MemLogStore;
 use crate::fixtures::MemRaft;
 use crate::fixtures::MemStateMachine;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 /// Test follower restart after state cleared to be able to recovery.
@@ -58,8 +58,4 @@ async fn follower_clear_restart_recover() -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
 }

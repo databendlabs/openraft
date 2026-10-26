@@ -6,6 +6,7 @@ use openraft::Config;
 use openraft::SnapshotPolicy;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::expect_timeout;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
 
@@ -35,10 +36,7 @@ async fn trigger_purge_log() -> anyhow::Result<()> {
         log_index += router.client_request_many(0, "0", 10).await?;
 
         for id in [0, 1, 2] {
-            router
-                .wait(&id, timeout())
-                .applied_index(Some(log_index), format_args!("node-{} write logs", id))
-                .await?;
+            router.wait(&id).applied_index(Some(log_index), format!("node-{} write logs", id)).await?;
         }
     }
 
@@ -47,7 +45,7 @@ async fn trigger_purge_log() -> anyhow::Result<()> {
         let n0 = router.get_raft_handle(&0)?;
         n0.trigger().snapshot().await?;
 
-        router.wait(&0, timeout()).snapshot(log_id(1, 0, log_index), "node-1 snapshot").await?;
+        router.wait(&0).snapshot(log_id(1, 0, log_index), "node-1 snapshot").await?;
     }
 
     let snapshot_index = log_index;
@@ -57,10 +55,7 @@ async fn trigger_purge_log() -> anyhow::Result<()> {
         log_index += router.client_request_many(0, "0", 10).await?;
 
         for id in [0, 1, 2] {
-            router
-                .wait(&id, timeout())
-                .applied_index(Some(log_index), format_args!("node-{} write logs", id))
-                .await?;
+            router.wait(&id).applied_index(Some(log_index), format!("node-{} write logs", id)).await?;
         }
     }
 
@@ -70,28 +65,24 @@ async fn trigger_purge_log() -> anyhow::Result<()> {
         n0.trigger().purge_log(snapshot_index).await?;
 
         router
-            .wait(&0, timeout())
+            .wait(&0)
             .purged(
                 Some(log_id(1, 0, snapshot_index)),
-                format_args!("node-0 purged up to {}", snapshot_index),
+                format!("node-0 purged up to {}", snapshot_index),
             )
             .await?;
 
         n0.trigger().purge_log(log_index).await?;
         let res = router
-            .wait(&0, timeout())
+            .wait_with_timeout(&0, Duration::from_millis(1_000))
             .purged(
                 Some(log_id(1, 0, log_index)),
-                format_args!("node-0 wont purged up to {}", log_index),
+                format!("node-0 wont purged up to {}", log_index),
             )
             .await;
 
-        assert!(res.is_err(), "cannot purge logs not in snapshot");
+        expect_timeout(res)?;
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
 }

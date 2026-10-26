@@ -66,7 +66,7 @@ async fn client_write_many() -> Result<()> {
 
     // Verify all nodes have applied the writes
     for id in [0, 1, 2] {
-        router.wait(&id, None).applied_index(Some(log_index), "batch writes applied").await?;
+        router.wait(&id).applied_index(Some(log_index), "batch writes applied").await?;
     }
 
     Ok(())

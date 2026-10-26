@@ -12,6 +12,7 @@ use openraft_memstore::BlockOperation;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::expect_timeout;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
 
@@ -41,7 +42,7 @@ async fn building_snapshot_does_not_block_append() -> Result<()> {
     tracing::info!(log_index, "--- build snapshot on follower, it should block");
     {
         log_index += router.client_request_many(0, "0", 10).await?;
-        router.wait(&1, timeout()).applied_index(Some(log_index), "written 10 logs").await?;
+        router.wait(&1).applied_index(Some(log_index), "written 10 logs").await?;
 
         follower.trigger().snapshot().await?;
 
@@ -49,10 +50,10 @@ async fn building_snapshot_does_not_block_append() -> Result<()> {
         TypeConfig::sleep(Duration::from_millis(500)).await;
 
         let res = router
-            .wait(&1, Some(Duration::from_millis(500)))
+            .wait_with_timeout(&1, Duration::from_millis(500))
             .snapshot(log_id(1, 0, log_index), "building snapshot is blocked")
             .await;
-        assert!(res.is_err(), "snapshot should be blocked and cannot finish");
+        expect_timeout(res)?;
     }
 
     tracing::info!(
@@ -75,8 +76,4 @@ async fn building_snapshot_does_not_block_append() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1_000))
 }

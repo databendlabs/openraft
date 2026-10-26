@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
@@ -72,7 +71,7 @@ async fn matching_membership_log_id_completes_joint_change() -> Result<()> {
     tracing::info!(log_index, "--- every node applies both membership logs");
     {
         for node_id in [0, 1, 2, 3, 4] {
-            router.wait(&node_id, timeout()).applied_index(Some(log_index), "uniform config applied").await?;
+            router.wait(&node_id).applied_index(Some(log_index), "uniform config applied").await?;
         }
     }
 
@@ -186,7 +185,7 @@ async fn committed_leader_id_guards_the_change() -> Result<()> {
         leader.change_membership_if([0, 1, 2, 3], false, [precondition]).await?;
         log_index += 1;
 
-        router.wait(&0, timeout()).applied_index(Some(log_index), "uniform config applied").await?;
+        router.wait(&0).applied_index(Some(log_index), "uniform config applied").await?;
     }
 
     Ok(())
@@ -234,7 +233,7 @@ async fn last_log_id_guards_the_change() -> Result<()> {
         leader.change_membership_if([0, 1, 2, 3], false, [precondition]).await?;
         log_index += 1;
 
-        router.wait(&0, timeout()).applied_index(Some(log_index), "uniform config applied").await?;
+        router.wait(&0).applied_index(Some(log_index), "uniform config applied").await?;
     }
 
     Ok(())
@@ -276,8 +275,4 @@ async fn follower_answers_forward_to_leader() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1000))
 }

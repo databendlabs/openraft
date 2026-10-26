@@ -10,6 +10,7 @@ use crate::fixtures::MemLogStore;
 use crate::fixtures::MemRaft;
 use crate::fixtures::MemStateMachine;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 /// `wait_for_recovery` returns once the cluster commit is re-established and the state machine has
@@ -100,7 +101,7 @@ async fn wait_for_recovery_times_out_without_quorum() -> anyhow::Result<()> {
         node.shutdown().await?;
 
         router.new_raft_node_with_sto(0, ls, sm).await;
-        router.wait(&0, timeout()).state(ServerState::Leader, "restore leadership without election").await?;
+        router.wait(&0).state(ServerState::Leader, "restore leadership without election").await?;
     }
 
     tracing::info!("--- with no quorum the cluster commit stays null, so recovery times out");
@@ -114,8 +115,4 @@ async fn wait_for_recovery_times_out_without_quorum() -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(2_000))
 }

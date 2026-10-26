@@ -164,7 +164,7 @@ async fn missing_inbound_heartbeats_start_election() -> Result<()> {
     tracing::info!(log_index, "--- node 1 misses heartbeats and starts a direct election");
     {
         let campaigned = router
-            .wait(&1, Some(WAIT_TIMEOUT))
+            .wait_with_timeout(&1, WAIT_TIMEOUT)
             .metrics(
                 |metrics| metrics.current_term > before.current_term,
                 "node 1 advances its term after its leader lease expires",

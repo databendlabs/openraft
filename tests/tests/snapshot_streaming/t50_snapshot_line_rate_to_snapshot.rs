@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
@@ -44,7 +43,7 @@ async fn snapshot_line_rate_to_snapshot() -> Result<()> {
         log_index = snapshot_threshold / 2 + 2;
 
         for id in [0, 1] {
-            router.wait(&id, timeout()).applied_index(Some(log_index), "send log to trigger snapshot").await?;
+            router.wait(&id).applied_index(Some(log_index), "send log to trigger snapshot").await?;
         }
     }
 
@@ -56,21 +55,17 @@ async fn snapshot_line_rate_to_snapshot() -> Result<()> {
         router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await?;
         log_index = snapshot_threshold - 1;
 
-        router.wait(&0, timeout()).applied_index(Some(log_index), "send log to trigger snapshot").await?;
-        router.wait(&0, timeout()).snapshot(log_id(1, 0, log_index), "snapshot on node 0").await?;
+        router.wait(&0).applied_index(Some(log_index), "send log to trigger snapshot").await?;
+        router.wait(&0).snapshot(log_id(1, 0, log_index), "snapshot on node 0").await?;
     }
 
     tracing::info!(log_index, "--- restore node 1 and replication");
     {
         router.set_network_error(1, false);
 
-        router.wait(&1, timeout()).applied_index(Some(log_index), "replicate by snapshot").await?;
-        router.wait(&1, timeout()).snapshot(log_id(1, 0, log_index), "snapshot on node 1").await?;
+        router.wait(&1).applied_index(Some(log_index), "replicate by snapshot").await?;
+        router.wait(&1).snapshot(log_id(1, 0, log_index), "snapshot on node 1").await?;
     }
 
     Ok(())
-}
-
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(2_000))
 }
