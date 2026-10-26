@@ -109,6 +109,58 @@ where
     Ok(())
 }
 
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn transferring_leader_alone_loses_lease_with_standard_leader_ids() -> Result<()> {
+    transferring_leader_alone_loses_lease::<StdConfig>().await
+}
+
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn transferring_leader_alone_loses_lease_with_advanced_leader_ids() -> Result<()> {
+    transferring_leader_alone_loses_lease::<AdvConfig>().await
+}
+
+/// A leader that alone forms a write quorum gives up its lease while it transfers leadership.
+///
+/// The transfer target, node 4, is not running, so the transfer never completes. The leader sends
+/// no heartbeat during a transfer, so its lease runs out, and it votes for a candidate whose log
+/// is as new as its own.
+async fn transferring_leader_alone_loses_lease<C>() -> Result<()>
+where
+    C: TestConfig + RaftTypeConfig<D = String, Membership = MinimalQuorumsMembership>,
+    EntryOf<C>: Clone + PartialEq + fmt::Debug,
+{
+    let cluster = TestCluster::<C>::start(btreeset! {1, 2, 3}, every_node_is_a_write_quorum()).await?;
+
+    tracing::info!("--- node 1 wins term 1, and every node stores its blank entry");
+    {
+        cluster.raft(1).trigger().elect(false).await?;
+        cluster.raft(1).wait(timeout()).state(ServerState::Leader, "node 1 becomes leader").await?;
+        for node_id in 1..=3 {
+            cluster.raft(node_id).wait(timeout()).log_index(Some(1), "store the blank entry").await?;
+        }
+    }
+
+    tracing::info!("--- node 1 transfers leadership to node 4, which is not running; wait until the lease runs out");
+    {
+        cluster.raft(1).trigger().transfer_leader(4).await?;
+
+        // `leader_lease` equals `election_timeout_max`, see `EngineConfig::new`.
+        let leader_lease = Duration::from_millis(cluster.raft(1).config().election_timeout_max);
+        C::sleep(leader_lease + Duration::from_millis(200)).await;
+    }
+
+    tracing::info!("--- node 2 campaigns in term 2, and node 1 votes for it and steps down");
+    {
+        cluster.raft(2).trigger().elect(false).await?;
+        cluster.raft(2).wait(timeout()).state(ServerState::Leader, "node 2 becomes leader").await?;
+        cluster.raft(1).wait(timeout()).state(ServerState::Follower, "node 1 steps down").await?;
+    }
+
+    Ok(())
+}
+
 fn timeout() -> Option<Duration> {
     Some(Duration::from_millis(2_000))
 }
