@@ -8,6 +8,7 @@ use openraft::alias::SnapshotOf;
 use openraft::raft::AppendEntriesRequest;
 use openraft_legacy::prelude::*;
 
+use crate::fixtures::Node;
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
@@ -29,7 +30,7 @@ async fn install_snapshot_lower_vote() -> Result<()> {
     tracing::info!(log_index, "--- initializing cluster");
     log_index = router.new_cluster([0], []).await?;
 
-    let (n0, _, _) = router.detach_node(0).unwrap();
+    let Node { raft: n0, .. } = router.detach_node(0).unwrap();
     let make_req = || InstallSnapshotRequest {
         vote: Vote::new_committed(2, 1),
         meta: SnapshotMeta::<openraft_memstore::TypeConfig> {

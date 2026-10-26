@@ -9,6 +9,7 @@ use openraft::raft::AppendEntriesRequest;
 use openraft::storage::RaftLogStorage;
 use openraft::testing::blank_ent;
 
+use crate::fixtures::Node;
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
@@ -32,7 +33,11 @@ async fn append_conflicts() -> Result<()> {
     router.wait(&0).applied_index(None, "empty").await?;
     router.wait(&0).state(ServerState::Learner, "empty").await?;
 
-    let (r0, mut sto0, _sm0) = router.detach_node(0).unwrap();
+    let Node {
+        raft: r0,
+        log_store: mut sto0,
+        ..
+    } = router.detach_node(0).unwrap();
     check_logs(&mut sto0, vec![]).await?;
 
     tracing::info!("--- case 0: prev_log_id == None, no logs");
