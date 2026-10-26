@@ -9,6 +9,7 @@ use openraft::errors::Fatal;
 use openraft::errors::Infallible;
 use openraft::errors::RPCError;
 
+use crate::fixtures::Node;
 use crate::fixtures::RaftRouter;
 use crate::fixtures::ut_harness;
 
@@ -94,7 +95,7 @@ async fn shutdown() -> Result<()> {
     {
         router.new_raft_node(3).await?;
         let detached = router.detach_node(3);
-        let (node, _, _) = detached.unwrap();
+        let Node { raft: node, .. } = detached.unwrap();
         let state = node.with_raft_state(|state| state.server_state).await?;
         assert_eq!(ServerState::Learner, state);
         node.shutdown().await?;

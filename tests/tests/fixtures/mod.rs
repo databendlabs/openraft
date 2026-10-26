@@ -3,28 +3,21 @@
 #![allow(dead_code)]
 #![allow(clippy::uninlined_format_args)]
 
-#[cfg(feature = "bt")]
-use std::backtrace::Backtrace;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::env;
 use std::fmt;
-use std::future::Future;
 use std::io::Cursor;
-use std::panic::PanicHookInfo;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::Once;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use anyhow::Context;
-use lazy_static::lazy_static;
 use openraft::AsyncRuntime;
 use openraft::Config;
-use openraft::OptionalSend;
 use openraft::RPCTypes;
 use openraft::Raft;
 use openraft::RaftMetrics;
@@ -32,38 +25,23 @@ use openraft::RaftState;
 use openraft::RaftTypeConfig;
 use openraft::ReadPolicy;
 use openraft::ServerState;
-use openraft::Vote;
-use openraft::alias::SnapshotOf;
 use openraft::async_runtime::Mutex as AsyncMutex;
 use openraft::errors::ClientWriteError;
 use openraft::errors::Fatal;
-use openraft::errors::Infallible;
 use openraft::errors::LinearizableReadError;
 use openraft::errors::NetworkError;
 use openraft::errors::RPCError;
 use openraft::errors::RaftError;
-use openraft::errors::ReplicationClosed;
-use openraft::errors::StreamingError;
-use openraft::errors::Unreachable;
 use openraft::metrics::Wait;
 use openraft::metrics::WaitError;
-use openraft::network::RPCOption;
-use openraft::network::RaftNetworkFactory;
-use openraft::raft::AppendEntriesRequest;
-use openraft::raft::AppendEntriesResponse;
 use openraft::raft::ClientWriteResponse;
-use openraft::raft::SnapshotResponse;
-use openraft::raft::TransferLeaderRequest;
-use openraft::raft::TransferLeaderResponse;
-use openraft::raft::VoteRequest;
-use openraft::raft::VoteResponse;
 use openraft::raft::linearizable_read::ReadLogId;
 use openraft::type_config::TypeConfigExt;
 use openraft::type_config::alias::AsyncRuntimeOf;
 use openraft::type_config::alias::MutexOf;
 use openraft::vote::RaftLeaderId;
+use openraft::vote::RaftLeaderIdExt;
 use openraft_legacy::network_v1::InstallSnapshotRequest;
-use openraft_legacy::network_v1::RaftNetwork as LegacyRaftNetwork;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::IntoMemClientRequest;
 use openraft_memstore::MemLogStore as LogStoreInner;
@@ -76,10 +54,7 @@ use pretty_assertions::assert_eq;
 #[allow(unused_imports)]
 use pretty_assertions::assert_ne;
 use rand::RngExt;
-use tracing_appender::non_blocking::WorkerGuard;
 
-use crate::fixtures::chunked_network::ChunkedNetwork;
-use crate::fixtures::logging::init_file_logging;
 use crate::fixtures::rpc_kind::RpcKind;
 use crate::fixtures::rpc_request::RpcRequest;
 use crate::fixtures::rpc_response::RpcResponse;
@@ -88,7 +63,10 @@ use crate::fixtures::rpc_rule::RpcRule;
 mod chunked_network;
 pub mod custom_membership;
 pub mod events;
+mod harness;
+pub use harness::ut_harness;
 pub mod logging;
+mod network;
 mod node;
 pub use node::Node;
 mod post_hook;
@@ -112,103 +90,12 @@ pub type MemStateMachine = Arc<SMInner>;
 pub type MemRaft = Raft<MemConfig, MemStateMachine>;
 
 pub const WAIT_TIMEOUT: Duration = Duration::from_secs(5);
-const TEST_TIMEOUT: Duration = Duration::from_secs(120);
 
 pub fn log_id(term: u64, node_id: u64, index: u64) -> LogIdOf<TypeConfig> {
     LogIdOf::<TypeConfig>::new(
         <TypeConfig as RaftTypeConfig>::LeaderId::new_committed(term, node_id),
         index,
     )
-}
-
-/// Create a harness that sets up tracing and an async runtime for testing.
-pub fn ut_harness<F, Fut>(f: F) -> anyhow::Result<()>
-where
-    F: FnOnce() -> Fut + 'static,
-    Fut: Future<Output = anyhow::Result<()>> + OptionalSend + 'static,
-{
-    fn func_name<F: std::any::Any>() -> &'static str {
-        let full_name = std::any::type_name::<F>();
-        full_name.rsplit("::").find(|name| *name != "{{closure}}").unwrap()
-    }
-
-    #[allow(clippy::let_unit_value)]
-    let _g = init_default_ut_tracing();
-
-    let duration = match env::var("OPENRAFT_TEST_TIMEOUT_SECS") {
-        Ok(value) => {
-            let seconds = value.parse().context("invalid OPENRAFT_TEST_TIMEOUT_SECS")?;
-            Duration::from_secs(seconds)
-        }
-        Err(env::VarError::NotPresent) => TEST_TIMEOUT,
-        Err(error) => return Err(error.into()),
-    };
-    anyhow::ensure!(!duration.is_zero(), "OPENRAFT_TEST_TIMEOUT_SECS must be positive");
-    let res = TypeConfig::run(async move {
-        let result = TypeConfig::timeout(duration, f()).await;
-        result.context("test exceeded its deadline")?
-    });
-    if let Err(e) = &res {
-        tracing::error!("{} error: {:?}", func_name::<F>(), e);
-    }
-    res
-}
-
-pub fn init_default_ut_tracing() {
-    static START: Once = Once::new();
-
-    START.call_once(|| {
-        let mut g = GLOBAL_UT_LOG_GUARD.as_ref().lock().unwrap();
-        *g = Some(init_global_tracing("ut", "_log", "DEBUG"));
-    });
-}
-
-lazy_static! {
-    static ref GLOBAL_UT_LOG_GUARD: Arc<Mutex<Option<WorkerGuard>>> = Arc::new(Mutex::new(None));
-}
-
-pub fn init_global_tracing(app_name: &str, dir: &str, level: &str) -> WorkerGuard {
-    set_panic_hook();
-
-    let (g, sub) = init_file_logging(app_name, dir, level);
-    tracing::subscriber::set_global_default(sub).expect("error setting global tracing subscriber");
-
-    tracing::info!("initialized global tracing: in {}/{} at {}", dir, app_name, level);
-    g
-}
-
-pub fn set_panic_hook() {
-    let prev_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |panic| {
-        log_panic(panic);
-        prev_hook(panic);
-    }));
-}
-
-pub fn log_panic(panic: &PanicHookInfo) {
-    let backtrace = {
-        #[cfg(feature = "bt")]
-        {
-            format!("{:?}", Backtrace::force_capture())
-        }
-
-        #[cfg(not(feature = "bt"))]
-        {
-            "backtrace is disabled without --features 'bt'".to_string()
-        }
-    };
-
-    if let Some(location) = panic.location() {
-        tracing::error!(
-            message = %panic.to_string().replace('\n', " "),
-            backtrace = %backtrace,
-            panic.file = location.file(),
-            panic.line = location.line(),
-            panic.column = location.column(),
-        );
-    } else {
-        tracing::error!(message = %panic.to_string().replace('\n', " "), backtrace = %backtrace);
-    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -233,9 +120,6 @@ use Direction::NetSend;
 use openraft::alias::LogIdOf;
 use openraft::alias::VoteOf;
 use openraft::async_runtime::WatchReceiver;
-use openraft::entry::RaftEntry;
-use openraft::network::v2::RaftNetworkV2;
-use openraft::vote::RaftLeaderIdExt;
 use post_hook::PostHook;
 use post_hook::PostHookResult;
 use pre_hook::PreHook;
@@ -244,13 +128,12 @@ use rpc_error_type::RpcErrorType;
 
 /// A type which emulates a network transport and implements the `RaftNetworkFactory` trait.
 #[derive(Clone)]
-pub struct TypedRaftRouter {
+pub struct RaftRouter {
     /// The Raft runtime config which all nodes are using.
     config: Arc<Config>,
 
     /// The table of all nodes currently known to this router instance.
-    #[allow(clippy::type_complexity)]
-    nodes: Arc<Mutex<BTreeMap<MemNodeId, (MemRaft, MemLogStore, MemStateMachine)>>>,
+    nodes: Arc<Mutex<BTreeMap<MemNodeId, Node>>>,
 
     /// Whether to save the committed entries to the RaftLogStorage.
     pub enable_saving_committed: bool,
@@ -284,9 +167,6 @@ pub struct TypedRaftRouter {
     snapshot_chunks: Option<Arc<Mutex<Vec<InstallSnapshotRequest<MemConfig>>>>>,
 }
 
-/// Default `RaftRouter` for memstore.
-pub type RaftRouter = TypedRaftRouter;
-
 pub struct Builder {
     config: Arc<Config>,
     send_delay: u64,
@@ -305,7 +185,7 @@ impl Builder {
         self
     }
 
-    pub fn build(self) -> TypedRaftRouter {
+    pub fn build(self) -> RaftRouter {
         let send_delay = {
             let send_delay = env::var("OPENRAFT_NETWORK_SEND_DELAY").ok();
 
@@ -321,12 +201,15 @@ impl Builder {
         } else {
             None
         };
-        TypedRaftRouter {
+        tracing::info!(send_delay_ms = send_delay, "router network delay");
+        let send_delay = Arc::new(AtomicU64::new(send_delay));
+        harness::record_network_delay(&send_delay);
+        RaftRouter {
             config: self.config,
             nodes: Default::default(),
             enable_saving_committed: true,
             fail_rpc: Default::default(),
-            send_delay: Arc::new(AtomicU64::new(send_delay)),
+            send_delay,
             append_entries_quota: Arc::new(Mutex::new(None)),
             rpc_count: Default::default(),
             rpc_rules: Default::default(),
@@ -338,7 +221,7 @@ impl Builder {
     }
 }
 
-impl TypedRaftRouter {
+impl RaftRouter {
     /// Validate the visible scenario config and prepare a router builder.
     pub fn builder(config: Config) -> anyhow::Result<Builder> {
         let config = config.validate()?;
@@ -356,6 +239,7 @@ impl TypedRaftRouter {
     }
 
     pub fn network_send_delay(&mut self, ms: u64) {
+        tracing::info!(send_delay_ms = ms, "router network delay changed");
         self.send_delay.store(ms, Ordering::Relaxed);
     }
 
@@ -530,12 +414,16 @@ impl TypedRaftRouter {
         }
         let node = Raft::new(id, self.config.clone(), self.clone(), log_store.clone(), sm.clone()).await?;
         let mut rt = self.nodes.lock().unwrap();
-        rt.insert(id, (node, log_store, sm));
+        rt.insert(id, Node {
+            raft: node,
+            log_store,
+            state_machine: sm,
+        });
         Ok(())
     }
 
     /// Detach a live node from routing while preserving its network faults.
-    pub fn detach_node(&mut self, id: MemNodeId) -> Option<(MemRaft, MemLogStore, MemStateMachine)> {
+    pub fn detach_node(&mut self, id: MemNodeId) -> Option<Node> {
         let mut nodes = self.nodes.lock().unwrap();
         nodes.remove(&id)
     }
@@ -543,13 +431,9 @@ impl TypedRaftRouter {
     /// Stop a node and retain its handle and stores without healing its network.
     pub async fn stop_node(&mut self, id: MemNodeId) -> anyhow::Result<Node> {
         let detached = self.detach_node(id);
-        let (raft, log_store, state_machine) = detached.with_context(|| format!("node {id} is not registered"))?;
-        raft.shutdown().await?;
-        Ok(Node {
-            raft,
-            log_store,
-            state_machine,
-        })
+        let node = detached.with_context(|| format!("node {id} is not registered"))?;
+        node.raft.shutdown().await?;
+        Ok(node)
     }
 
     /// Initialize cluster with the config that contains all nodes.
@@ -607,13 +491,13 @@ impl TypedRaftRouter {
 
     /// Set a hook function to be called when before an RPC is sent to target node.
     pub async fn set_rpc_pre_hook<F>(&self, rpc_type: RPCTypes, hook: F)
-    where F: Fn(&TypedRaftRouter, MemRpcRequest, MemNodeId, MemNodeId) -> PreHookResult + Send + 'static {
+    where F: Fn(&RaftRouter, MemRpcRequest, MemNodeId, MemNodeId) -> PreHookResult + Send + 'static {
         self.rpc_pre_hook(rpc_type, Some(Box::new(hook))).await;
     }
 
     /// Observe the final response returned by the transport.
     pub async fn set_rpc_post_hook<F>(&self, rpc_type: RPCTypes, hook: F)
-    where F: Fn(&TypedRaftRouter, MemRpcRequest, MemRpcResponse, MemNodeId, MemNodeId) -> PostHookResult + Send + 'static
+    where F: Fn(&RaftRouter, MemRpcRequest, MemRpcResponse, MemNodeId, MemNodeId) -> PostHookResult + Send + 'static
     {
         self.rpc_post_hook(rpc_type, Some(Box::new(hook))).await;
     }
@@ -760,7 +644,7 @@ impl TypedRaftRouter {
         let rt = self.nodes.lock().unwrap();
         let mut metrics = vec![];
         for node in rt.values() {
-            let m = node.0.metrics().borrow_watched().clone();
+            let m = node.raft.metrics().borrow_watched().clone();
             tracing::debug!("router::latest_metrics: {:?}", m);
             metrics.push(m);
         }
@@ -775,18 +659,17 @@ impl TypedRaftRouter {
 
     pub fn get_raft_handle(&self, node_id: &MemNodeId) -> Result<MemRaft, NetworkError<MemConfig>> {
         let rt = self.nodes.lock().unwrap();
-        let raft_and_sto = rt
+        let node = rt
             .get(node_id)
             .ok_or_else(|| NetworkError::<MemConfig>::from_string(format!("node {} not found", *node_id)))?;
-        let r = raft_and_sto.clone().0;
+        let r = node.raft.clone();
         Ok(r)
     }
 
     pub fn get_storage_handle(&self, node_id: &MemNodeId) -> anyhow::Result<(MemLogStore, MemStateMachine)> {
         let rt = self.nodes.lock().unwrap();
-        let addr = rt.get(node_id).with_context(|| format!("could not find node {} in routing table", node_id))?;
-        let x = addr.clone();
-        Ok((x.1, x.2))
+        let node = rt.get(node_id).with_context(|| format!("could not find node {} in routing table", node_id))?;
+        Ok((node.log_store.clone(), node.state_machine.clone()))
     }
 
     /// Set whether `limited_get_log_entries` should return empty results for a node.
@@ -820,7 +703,8 @@ impl TypedRaftRouter {
         }
         let node = {
             let rt = self.nodes.lock().unwrap();
-            rt.get(node_id).expect("target node not found in routing table").clone().0
+            let node = rt.get(node_id).expect("target node not found in routing table");
+            node.raft.clone()
         };
 
         node.wait(Some(duration))
@@ -980,206 +864,6 @@ impl TypedRaftRouter {
         }
 
         Ok(())
-    }
-}
-
-impl RaftNetworkFactory<MemConfig> for TypedRaftRouter {
-    type Network = RaftRouterNetwork;
-
-    async fn new_client(&mut self, target: MemNodeId, _node: &()) -> Self::Network {
-        RaftRouterNetwork {
-            target,
-            owner: self.clone(),
-        }
-    }
-}
-
-pub struct RaftRouterNetwork {
-    target: MemNodeId,
-    owner: TypedRaftRouter,
-}
-
-impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
-    type SnapshotData = MemSnapshotData;
-
-    /// Send an AppendEntries RPC to the target Raft node (§5).
-    async fn append_entries(
-        &mut self,
-        mut rpc: AppendEntriesRequest<MemConfig>,
-        _option: RPCOption,
-    ) -> Result<AppendEntriesResponse<MemConfig>, RPCError<MemConfig>> {
-        let from_id = rpc.vote.to_leader_node_id();
-
-        tracing::debug!("append_entries to id={} {}", self.target, rpc);
-        self.owner.before_rpc::<Infallible>(rpc.clone(), from_id, self.target).await?;
-
-        // decrease quota if quota is set
-        let truncated = {
-            let n = rpc.entries.len() as u64;
-
-            let mut x = self.owner.append_entries_quota.lock().unwrap();
-            let q = *x;
-            tracing::debug!("current quota: {:?}", q);
-
-            if let Some(quota) = q {
-                if quota < n {
-                    rpc.entries.truncate(quota as usize);
-                    *x = Some(0);
-                    if let Some(last) = rpc.entries.last() {
-                        Some(Some(last.log_id()))
-                    } else {
-                        Some(rpc.prev_log_id)
-                    }
-                } else {
-                    *x = Some(quota - n);
-                    None
-                }
-            } else {
-                None
-            }
-        };
-
-        {
-            let x = self.owner.append_entries_quota.lock().unwrap();
-            tracing::debug!("quota after consumption: {:?}", *x);
-        }
-        tracing::debug!("append_entries truncated: {:?}", truncated);
-
-        let node = self.owner.get_raft_handle(&self.target)?;
-
-        let resp = node.append_entries(rpc.clone()).await;
-
-        tracing::debug!("append_entries: recv resp from id={} {:?}", self.target, resp);
-        let resp = resp.map_err(|e| {
-            RPCError::Unreachable(Unreachable::<MemConfig>::from_string(format!(
-                "error: {} target={}",
-                e, self.target
-            )))
-        })?;
-
-        // If entries are truncated by quota, return an partial success response.
-        let resp = if let Some(truncated) = truncated {
-            match resp {
-                AppendEntriesResponse::Success => AppendEntriesResponse::PartialSuccess(truncated),
-                response => response,
-            }
-        } else {
-            resp
-        };
-        self.owner.call_rpc_post_hook(rpc, resp.clone(), from_id, self.target).await?;
-        Ok(resp)
-    }
-
-    async fn full_snapshot(
-        &mut self,
-        vote: Vote<<MemConfig as RaftTypeConfig>::LeaderId>,
-        snapshot: SnapshotOf<MemConfig, Self::SnapshotData>,
-        cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
-        option: RPCOption,
-    ) -> Result<SnapshotResponse<MemConfig>, StreamingError<MemConfig>> {
-        let from_id = vote.leader_id().to_node_id();
-
-        self.owner.before_rpc::<Infallible>(snapshot.clone(), from_id, self.target).await?;
-
-        let node = self.owner.get_raft_handle(&self.target)?;
-
-        let resp = if let Some(chunks) = &self.owner.snapshot_chunks {
-            let network = ChunkedNetwork {
-                node,
-                owner: self.owner.clone(),
-                requests: chunks.clone(),
-            };
-            let mut network = network.into_v2::<MemSnapshotData>();
-            network.full_snapshot(vote, snapshot.clone(), cancel, option).await?
-        } else {
-            let response = node.install_full_snapshot(vote, snapshot.clone()).await;
-            response.map_err(|e| {
-                RPCError::Unreachable(Unreachable::<MemConfig>::from_string(format!(
-                    "error: {} target={}",
-                    e, self.target
-                )))
-            })?
-        };
-
-        self.owner.call_rpc_post_hook(snapshot, resp.clone(), from_id, self.target).await?;
-
-        Ok(resp)
-    }
-
-    /// Send a RequestVote RPC to the target Raft node (§5).
-    async fn vote(
-        &mut self,
-        rpc: VoteRequest<MemConfig>,
-        _option: RPCOption,
-    ) -> Result<VoteResponse<MemConfig>, RPCError<MemConfig>> {
-        let from_id = rpc.vote.leader_id().to_node_id();
-
-        self.owner.before_rpc::<Infallible>(rpc.clone(), from_id, self.target).await?;
-
-        let node = self.owner.get_raft_handle(&self.target)?;
-
-        let resp = node.vote(rpc.clone()).await;
-        let resp = resp.map_err(|e| {
-            RPCError::Unreachable(Unreachable::<MemConfig>::from_string(format!(
-                "error: {} target={}",
-                e, self.target
-            )))
-        })?;
-
-        self.owner.call_rpc_post_hook(rpc, resp.clone(), from_id, self.target).await?;
-
-        Ok(resp)
-    }
-
-    async fn pre_vote(
-        &mut self,
-        rpc: VoteRequest<MemConfig>,
-        _option: RPCOption,
-    ) -> Result<VoteResponse<MemConfig>, RPCError<MemConfig>> {
-        let from_id = rpc.vote.leader_id().to_node_id();
-
-        let request = RpcRequest::PreVote(rpc.clone());
-        self.owner.before_rpc::<Infallible>(request, from_id, self.target).await?;
-
-        let node = self.owner.get_raft_handle(&self.target)?;
-
-        let resp = node.pre_vote(rpc.clone()).await;
-        let resp = resp.map_err(|e| {
-            RPCError::Unreachable(Unreachable::<MemConfig>::from_string(format!(
-                "error: {} target={}",
-                e, self.target
-            )))
-        })?;
-
-        let request = RpcRequest::PreVote(rpc);
-        let response = RpcResponse::PreVote(resp.clone());
-        self.owner.call_rpc_post_hook(request, response, from_id, self.target).await?;
-
-        Ok(resp)
-    }
-
-    async fn transfer_leader(
-        &mut self,
-        rpc: TransferLeaderRequest<MemConfig>,
-        _option: RPCOption,
-    ) -> Result<TransferLeaderResponse<MemConfig>, RPCError<MemConfig>> {
-        let from_id = rpc.from_leader().leader_id().to_node_id();
-
-        self.owner.before_rpc::<Infallible>(rpc.clone(), from_id, self.target).await?;
-
-        let node = self.owner.get_raft_handle(&self.target)?;
-
-        let resp = node.handle_transfer_leader(rpc.clone()).await;
-        let resp = resp.map_err(|err| {
-            RPCError::Unreachable(Unreachable::<MemConfig>::from_string(format!(
-                "error: {} target={}",
-                err, self.target
-            )))
-        })?;
-
-        self.owner.call_rpc_post_hook(rpc, resp.clone(), from_id, self.target).await?;
-
-        Ok(resp)
     }
 }
 

@@ -83,7 +83,9 @@ Direct Raft API calls can use `fixtures::timeout()`.
 
 `ut_harness` installs the tracing subscriber and the panic hook, and runs the
 test body on the async runtime. It writes every log line to `tests/_log/`,
-which is the first place to look when a case fails.
+which is the first place to look when a case fails. Failed results and panics
+also print the full test identity, log path, simulation seed, and current
+network delays. The harness rethrows panics after reporting their context.
 
 A case that touches no cluster, such as the serialization checks in
 `snapshot_streaming/t10_wire_compat_09.rs`, is a plain `#[test]` function

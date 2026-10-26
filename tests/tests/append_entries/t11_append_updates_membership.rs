@@ -9,6 +9,7 @@ use openraft::Vote;
 use openraft::raft::AppendEntriesRequest;
 use openraft::testing::blank_ent;
 
+use crate::fixtures::Node;
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::timeout;
@@ -34,7 +35,7 @@ async fn append_updates_membership() -> Result<()> {
     router.wait(&0).applied_index(None, "empty").await?;
     router.wait(&0).state(ServerState::Learner, "empty").await?;
 
-    let (r0, _sto0, _sm0) = router.detach_node(0).unwrap();
+    let Node { raft: r0, .. } = router.detach_node(0).unwrap();
 
     tracing::info!("--- append-entries update membership");
     {
