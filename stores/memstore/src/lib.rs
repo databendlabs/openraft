@@ -1,6 +1,7 @@
 #![deny(unused_crate_dependencies)]
 #![deny(unused_qualifications)]
 #![allow(clippy::uninlined_format_args)]
+mod operation_gate;
 #[cfg(test)]
 mod test;
 
@@ -36,6 +37,7 @@ use openraft::storage::RaftSnapshotBuilder;
 use openraft::storage::RaftStateMachine;
 use openraft::type_config::TypeConfigExt;
 use openraft_legacy::network_v1::SnapshotReceiverFactory;
+pub use operation_gate::OperationGate;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::sync::RwLock;
@@ -141,12 +143,35 @@ pub enum BlockOperation {
 }
 
 /// Block operations for testing purposes.
+#[openraft::macros::since(version = "0.10.0", change = "add explicit operation gates")]
 #[derive(Clone, Debug, Default)]
 pub struct BlockConfig {
     inner: Arc<Mutex<BTreeMap<BlockOperation, Duration>>>,
+    gates: Arc<Mutex<BTreeMap<BlockOperation, OperationGate>>>,
 }
 
 impl BlockConfig {
+    /// Hold an operation at its blocking point until the returned gate is released.
+    pub fn pause(&self, operation: BlockOperation) -> OperationGate {
+        let gate = OperationGate::default();
+        let mut gates = self.gates.lock().unwrap();
+        gates.insert(operation, gate.clone());
+        gate
+    }
+
+    async fn wait(&self, operation: BlockOperation) {
+        let gate = {
+            let gates = self.gates.lock().unwrap();
+            gates.get(&operation).cloned()
+        };
+        if let Some(gate) = gate {
+            gate.block().await;
+        }
+        if let Some(duration) = self.get_blocking(&operation) {
+            TypeConfig::sleep(duration).await;
+        }
+    }
+
     /// Block an operation for testing purposes.
     pub fn set_blocking(&self, block: BlockOperation, d: Duration) {
         self.inner.lock().unwrap().insert(block, d);
@@ -160,6 +185,10 @@ impl BlockConfig {
     /// Clear a blocking flag for an operation.
     pub fn clear_blocking(&mut self, block: BlockOperation) {
         self.inner.lock().unwrap().remove(&block);
+        let gate = self.gates.lock().unwrap().remove(&block);
+        if let Some(gate) = gate {
+            gate.release();
+        }
     }
 }
 
@@ -352,10 +381,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<MemStateMachine> {
         let last_applied_log;
         let last_membership;
 
-        if let Some(d) = self.block.get_blocking(&BlockOperation::DelayBuildingSnapshot) {
-            tracing::info!(?d, "delay snapshot build");
-            TypeConfig::sleep(d).await;
-        }
+        self.block.wait(BlockOperation::DelayBuildingSnapshot).await;
 
         {
             // Serialize the data of the state machine.
@@ -365,10 +391,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<MemStateMachine> {
             last_applied_log = sm.last_applied_log;
             last_membership = sm.last_membership.clone();
 
-            if let Some(d) = self.block.get_blocking(&BlockOperation::BuildSnapshot) {
-                tracing::info!(?d, "blocking snapshot build");
-                TypeConfig::sleep(d).await;
-            }
+            self.block.wait(BlockOperation::BuildSnapshot).await;
         }
 
         let snapshot_size = data.len();
@@ -499,10 +522,7 @@ impl RaftLogStorage<TypeConfig> for Arc<MemLogStore> {
     async fn purge(&mut self, log_id: LogIdOf<TypeConfig>) -> Result<(), io::Error> {
         tracing::debug!("purge_log_upto: {:?}", log_id);
 
-        if let Some(d) = self.block.get_blocking(&BlockOperation::PurgeLog) {
-            tracing::info!(?d, "block purging log");
-            TypeConfig::sleep(d).await;
-        }
+        self.block.wait(BlockOperation::PurgeLog).await;
 
         {
             let mut ld = self.last_purged_log_id.write().await;

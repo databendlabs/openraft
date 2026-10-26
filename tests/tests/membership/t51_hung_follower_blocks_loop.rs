@@ -8,16 +8,14 @@ use openraft::RPCTypes;
 use openraft::errors::Infallible;
 use openraft::errors::RPCError;
 use openraft::type_config::TypeConfigExt;
+use openraft_memstore::OperationGate;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
-use crate::fixtures::TypedRaftRouter;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
-/// How long an AppendEntries RPC to the removed follower stays in flight.
-const HANG: Duration = Duration::from_secs(30);
-
-async fn setup() -> Result<TypedRaftRouter> {
+async fn setup() -> Result<(RaftRouter, OperationGate)> {
     let config = Arc::new(
         Config {
             enable_heartbeat: false,
@@ -30,13 +28,16 @@ async fn setup() -> Result<TypedRaftRouter> {
     let mut router = RaftRouter::new(config.clone());
     let mut log_index = router.new_cluster(btreeset! {0, 1, 2}, btreeset! {}).await?;
 
-    // After the cluster is formed, make every AppendEntries to node 2 hang.
+    let gate = OperationGate::default();
+    let rpc_gate = gate.clone();
+
+    // Hold AppendEntries to node 2 until each scenario explicitly releases it.
     router
         .set_rpc_pre_hook(RPCTypes::AppendEntries, move |_router, _req, _from, target| {
-            // let hang = target == 2;
+            let gate = rpc_gate.clone();
             Box::pin(async move {
                 if target == 2 {
-                    TypeConfig::sleep(HANG).await;
+                    gate.block().await;
                 }
                 Ok::<(), RPCError<TypeConfig, Infallible>>(())
             })
@@ -49,13 +50,14 @@ async fn setup() -> Result<TypedRaftRouter> {
     log_index += 1;
     router.wait(&0).applied_index(Some(log_index), "write commits via the {0,1} quorum").await?;
 
-    Ok(router)
+    TypeConfig::timeout(timeout().unwrap(), gate.entered()).await?;
+    Ok((router, gate))
 }
 
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn remove_hung_follower_must_not_block_raft_core_loop_1() -> Result<()> {
-    let router = setup().await?;
+    let (router, gate) = setup().await?;
 
     // Remove the hung follower.
     let leader = router.get_raft_handle(&0)?;
@@ -64,22 +66,21 @@ async fn remove_hung_follower_must_not_block_raft_core_loop_1() -> Result<()> {
         .await
         .expect("membership change completed within the window")?;
 
+    gate.release();
     Ok(())
 }
 
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn remove_hung_follower_must_not_block_raft_core_loop_2() -> Result<()> {
-    let router = setup().await?;
+    let (router, gate) = setup().await?;
 
     // Remove the hung follower in separate task.
     let leader = router.get_raft_handle(&0)?;
-    let _membership = TypeConfig::spawn(async move {
-        let _ = leader.change_membership([0, 1], false).await;
-    });
+    let membership = TypeConfig::spawn(async move { leader.change_membership([0, 1], false).await });
 
-    // HACK: wait for the leader to reach `close_membership()` to await the replication task.
-    TypeConfig::sleep(Duration::from_millis(500)).await;
+    tracing::info!("--- wait until the removal changes the leader's membership");
+    router.wait(&0).voter_ids([0, 1], "membership removal processed").await?;
 
     // Refresh the quorum lease after waiting for the core loop to reach the suspected blocking
     // point. Heartbeats are disabled in this test, so the previous lease may have expired.
@@ -99,5 +100,7 @@ async fn remove_hung_follower_must_not_block_raft_core_loop_2() -> Result<()> {
         .await
         .expect("write completed within the window")?;
 
+    gate.release();
+    membership.await??;
     Ok(())
 }
