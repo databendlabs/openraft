@@ -329,6 +329,25 @@
     ;; write. The guaranteed write slot remains second in every group of three.
     (is (every? #(= [:read :write :write] (mapv :f %)) (partition 3 operations)))))
 
+(deftest bridge-workload-keeps-attempting-writes-after-bootstrap-fails
+  (let [subject (workload/workload {:liveness :bridge-partition})
+        history (gen-test/simulate
+                 (gen/limit 23 (:generator subject))
+                 (fn [_test op]
+                   (assoc op :type (if (= :bootstrap (:phase op)) :fail :ok))))
+        invocations (filter #(= :invoke (:type %)) history)
+        bootstrap (filter #(= :bootstrap (:phase %)) invocations)
+        main (filter #(= :main (:phase %)) invocations)
+        bootstrap-operations (mapv :f bootstrap)
+        operations (mapv :f main)
+        expected-operations (apply concat (repeat 6 [:read :write :write]))
+        times (map :time main)
+        intervals (mapv - (rest times) times)
+        expected-intervals (repeat 17 100000000)]
+    (is (= [:write :write :write :write :write] bootstrap-operations))
+    (is (= expected-operations operations))
+    (is (= expected-intervals intervals))))
+
 (deftest two-leaf-recovery-reads-before-overwriting-values
   (let [keys @#'workload/key-names
         invocations (->> (gen-test/simulate

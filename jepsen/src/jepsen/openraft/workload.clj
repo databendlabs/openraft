@@ -301,11 +301,15 @@
         choices [(partial read-op key-names)
                  (write-op key-names value-counter)
                  (cas-op key-names latest-values value-counter)]
-        ;; A bounded write-gap check needs regular write attempts, not a random
-        ;; mix that can itself go a whole window without scheduling a write.
-        operations (if (:two-leaf-partition opts)
+        regular-writes? (or (:two-leaf-partition opts)
+                            (= :bridge-partition (:liveness opts)))
+        ;; Liveness deadlines require regular write attempts and fixed spacing.
+        operations (if regular-writes?
                      (gen/cycle (mapv gen/once choices))
                      (gen/mix choices))
+        paced-operations (if regular-writes?
+                           (gen/delay 0.1 operations)
+                           (gen/stagger 0.1 operations))
         bootstrap (apply gen/phases
                          (map #(gen/once
                                 (bootstrap-write-op % value-counter))
@@ -324,7 +328,7 @@
      :generator (gen/clients
                  (gen/phases
                   bootstrap
-                  (gen/stagger 0.1 operations)))
+                  paced-operations))
      :final-generator (gen/clients final)
      :checker (openraft-checker/reject-checker-exceptions
                (checker/compose
