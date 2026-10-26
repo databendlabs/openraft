@@ -2,7 +2,9 @@
 
 ## Validate your changes
 
-Run `make verify` before opening a pull request. It runs the project's formatting, lint, test, and documentation checks, and never modifies your worktree, so what you reviewed is what you submit.
+Run `make verify` before pushing or opening a pull request. It checks formatting across all crates, runs default-feature workspace Clippy on all targets, and runs workspace library tests.
+
+Run `make verify-full` for isolated feature checks, full Clippy coverage, documentation, doctests, and integration, benchmark, and runtime tests. It includes `make verify`. Both commands leave your worktree unchanged. Run the relevant checks when changing features, documentation, examples, benchmarks, or runtimes; CI provides broader coverage.
 
 `make fix` is the mutating counterpart: it applies Clippy fixes, typo fixes, and formatting.
 
@@ -36,6 +38,6 @@ PRs that read as unreviewed AI output will be sent back for a cleanup pass befor
 
 ## Release checklist
 
-- `make verify` passes.
+- `make verify-full` passes.
 - The `[workspace.package]` version in the root `Cargo.toml` and every sibling `path` dependency that pins it are updated. Use a prior `chore: bump version` commit as the complete reference.
 - After release CI finishes, open the release page, update the release notes, and publish.

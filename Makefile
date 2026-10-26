@@ -7,11 +7,14 @@ compile:
 	cargo test --test '*'
 	cargo test --features single-threaded --lib
 
-# Read-only completion gate: it never writes to the worktree, so a
-# human-reviewed diff stays exactly as reviewed. `make fix` is the mutating
-# counterpart.
-verify: fmt_check feature-check clippy docs-check test-bench-minimal test-runtime
+# Fast, read-only gate before pushing or opening a PR. Checks formatting across
+# all crates, lints workspace targets, and runs workspace library tests.
+verify: fmt_check clippy-basic
 	cargo test --lib
+
+# Complete, read-only check: adds isolated features, full lint coverage,
+# documentation, integrations, benchmarks, and runtime tests.
+verify-full: verify feature-check clippy docs-check test-bench-minimal test-runtime
 	cargo test --test '*'
 	# cargo test --features single-threaded --lib
 	# test result in different output on CI are ignored and only run locally
@@ -183,11 +186,13 @@ fmt:
 	cargo fmt --manifest-path tests-turmoil/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path jepsen/openraft-test-app/Cargo.toml $(FMT_ARGS)
 
-clippy:
-	@# The three workspace clippy runs mirror the CI lint job
+clippy-basic:
+	@# This workspace run and the two feature runs in `clippy` mirror the CI lint job
 	@# (.github/workflows/ci.yaml); keep them in sync so `make lint` fails
 	@# exactly where CI would, feature unification included.
 	cargo clippy --no-deps --workspace --all-targets -- -D warnings
+
+clippy: clippy-basic
 	cargo clippy --no-deps --workspace --all-targets --features "bt,serde,bench,compat" -- -D warnings
 	cargo clippy --no-deps --workspace --all-targets --features "metrics-logids,serde" -- -D warnings
 	cargo clippy --no-deps --manifest-path multiraft/Cargo.toml                                       --all-targets -- -D warnings
@@ -313,4 +318,4 @@ clean:
 	cargo clean --manifest-path jepsen/openraft-test-app/Cargo.toml
 	rm -rf tests/_log
 
-.PHONY: test test-runtime test-turmoil verify basic_check fmt fmt_check fix clippy lint clean doc docs-check guide detsim typos
+.PHONY: test test-runtime test-turmoil verify verify-full basic_check fmt fmt_check fix clippy-basic clippy lint clean doc docs-check guide detsim typos
