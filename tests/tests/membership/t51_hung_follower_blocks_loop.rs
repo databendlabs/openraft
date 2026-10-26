@@ -1,8 +1,6 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::RPCTypes;
 use openraft::errors::Infallible;
@@ -16,17 +14,14 @@ use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 async fn setup() -> Result<(RaftRouter, OperationGate)> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_elect: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: false,
+        enable_elect: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
-    let mut log_index = router.new_cluster(btreeset! {0, 1, 2}, btreeset! {}).await?;
+    let mut router = RaftRouter::new(config)?;
+    let mut log_index = router.new_cluster([0, 1, 2], []).await?;
 
     let gate = OperationGate::default();
     let rpc_gate = gate.clone();

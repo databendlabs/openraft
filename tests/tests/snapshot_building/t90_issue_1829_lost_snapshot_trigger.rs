@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::SnapshotPolicy;
 use openraft::type_config::TypeConfigExt;
@@ -48,20 +45,17 @@ async fn issue_1829_lost_snapshot_trigger() -> Result<()> {
     /// way here, and 23 stays below the `snapshot_tried_at + threshold` re-fire point.
     const FINAL: u64 = 23;
 
-    let config = Arc::new(
-        Config {
-            snapshot_policy: SnapshotPolicy::LogsSinceLast(10),
-            enable_heartbeat: false,
-            enable_tick: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        snapshot_policy: SnapshotPolicy::LogsSinceLast(10),
+        enable_heartbeat: false,
+        enable_tick: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing single-node cluster");
-    let log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
+    let log_index = router.new_cluster([0], []).await?;
     let n0 = router.get_raft_handle(&0)?;
 
     tracing::info!(log_index, "--- hold the state machine's snapshot build open");

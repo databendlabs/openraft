@@ -1,8 +1,6 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::Vote;
 use openraft::async_runtime::OneshotSender;
@@ -27,22 +25,19 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn write_when_leader_quit_and_log_revert() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            heartbeat_interval: 100,
-            election_timeout_min: 200,
-            election_timeout_max: 300,
-            enable_tick: false,
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        heartbeat_interval: 100,
+        election_timeout_min: 200,
+        election_timeout_max: 300,
+        enable_tick: false,
+        enable_heartbeat: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let log_index = router.new_cluster(btreeset! {0,1}, btreeset! {}).await?;
+    let log_index = router.new_cluster([0, 1], []).await?;
 
     tracing::info!(log_index, "--- block replication so that no log will be committed");
     router.set_unreachable(1, true);
@@ -113,22 +108,19 @@ async fn write_when_leader_quit_and_log_revert() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn write_when_leader_switched() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            heartbeat_interval: 100,
-            election_timeout_min: 200,
-            election_timeout_max: 300,
-            enable_tick: false,
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        heartbeat_interval: 100,
+        election_timeout_min: 200,
+        election_timeout_max: 300,
+        enable_tick: false,
+        enable_heartbeat: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let log_index = router.new_cluster(btreeset! {0,1}, btreeset! {}).await?;
+    let log_index = router.new_cluster([0, 1], []).await?;
 
     tracing::info!(log_index, "--- block replication so that no log will be committed");
     router.set_unreachable(1, true);

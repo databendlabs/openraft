@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
@@ -21,25 +19,20 @@ async fn add_remove_voter() -> Result<()> {
     let c01234 = btreeset![0, 1, 2, 3, 4];
     let c0123 = btreeset![0, 1, 2, 3];
 
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_heartbeat: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
-    let mut log_index = router.new_cluster(c01234.clone(), btreeset! {}).await?;
+    let mut log_index = router.new_cluster(c01234.clone(), []).await?;
 
     tracing::info!(log_index, "--- write 100 logs");
     {
         router.client_request_many(0, "client", 100).await?;
         log_index += 100;
 
-        for id in c01234.iter() {
-            router.wait(id).applied_index(Some(log_index), "write 100 logs").await?;
-        }
+        router.wait_applied_at_least(c01234.iter().copied(), log_index, "write 100 logs").await?;
     }
 
     tracing::info!(log_index, "--- remove n{}", 4);
@@ -48,9 +41,9 @@ async fn add_remove_voter() -> Result<()> {
         node.change_membership(c0123.clone(), false).await?;
         log_index += 1; // one member-change log
 
-        for id in c0123.iter() {
-            router.wait(id).applied_index(Some(log_index), "removed node-4 from membership").await?;
-        }
+        router
+            .wait_applied_at_least(c0123.iter().copied(), log_index, "removed node-4 from membership")
+            .await?;
     }
 
     tracing::info!(log_index, "--- write another 100 logs");

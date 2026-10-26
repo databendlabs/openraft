@@ -3,7 +3,6 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::RPCTypes;
 use openraft::type_config::OneshotSender;
@@ -20,24 +19,21 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn conflict_updates_clock_progress() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            heartbeat_interval: 100,
-            election_timeout_min: 5_000,
-            election_timeout_max: 10_000,
-            enable_tick: false,
-            enable_heartbeat: false,
-            enable_elect: false,
-            allow_log_reversion: Some(true),
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        heartbeat_interval: 100,
+        election_timeout_min: 5_000,
+        election_timeout_max: 10_000,
+        enable_tick: false,
+        enable_heartbeat: false,
+        enable_elect: false,
+        allow_log_reversion: Some(true),
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config);
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initialize a 3-voter cluster");
-    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let log_index = router.new_cluster([0, 1, 2], []).await?;
 
     tracing::info!(log_index, "--- restart voter 1 with empty state");
     {

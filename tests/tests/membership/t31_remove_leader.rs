@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -28,18 +27,15 @@ use crate::fixtures::ut_harness;
 #[test_harness::test(harness = ut_harness)]
 async fn remove_leader() -> Result<()> {
     // Setup test dependencies.
-    let config = Arc::new(
-        Config {
-            election_timeout_min: 800,
-            election_timeout_max: 1000,
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        election_timeout_min: 800,
+        election_timeout_max: 1000,
+        enable_heartbeat: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
-    let mut log_index = router.new_cluster(btreeset! {0,1}, btreeset! {2,3}).await?;
+    let mut log_index = router.new_cluster([0, 1], [2, 3]).await?;
 
     // Submit a config change which adds two new nodes and removes the current leader.
     let orig_leader = router.leader().expect("expected the cluster to have a leader");
@@ -124,19 +120,16 @@ async fn remove_leader() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn remove_leader_and_convert_to_learner() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            election_timeout_min: 800,
-            election_timeout_max: 1000,
-            enable_elect: false,
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        election_timeout_min: 800,
+        election_timeout_max: 1000,
+        enable_elect: false,
+        enable_heartbeat: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
-    let mut log_index = router.new_cluster(btreeset! {0,1}, btreeset! {2,3}).await?;
+    let mut log_index = router.new_cluster([0, 1], [2, 3]).await?;
 
     let old_leader = 0;
 
@@ -189,17 +182,14 @@ async fn remove_leader_and_convert_to_learner() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn remove_leader_auto_transfer() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_elect: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_heartbeat: false,
+        enable_elect: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], []).await?;
 
     tracing::info!(log_index, "--- change membership 012 to 12");
     {
@@ -241,18 +231,15 @@ async fn remove_leader_auto_transfer() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn remove_leader_manual_step_down() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_elect: false,
-            removed_leader_step_down: StepDownPolicy::Never,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_heartbeat: false,
+        enable_elect: false,
+        removed_leader_step_down: StepDownPolicy::Never,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], []).await?;
 
     tracing::info!(log_index, "--- change membership 012 to 12");
     {
@@ -293,18 +280,15 @@ async fn remove_leader_manual_step_down() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn remove_leader_fenced_step_down() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_elect: false,
-            removed_leader_step_down: StepDownPolicy::Never,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_heartbeat: false,
+        enable_elect: false,
+        removed_leader_step_down: StepDownPolicy::Never,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], []).await?;
 
     tracing::info!(log_index, "--- change membership 012 to 12");
     {
@@ -375,19 +359,16 @@ async fn remove_leader_fenced_step_down() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn remove_leader_access_new_cluster() -> Result<()> {
     // Setup test dependencies.
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_elect: false,
-            // Disable the automated step down, to keep the new cluster leaderless.
-            removed_leader_step_down: StepDownPolicy::Never,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_heartbeat: false,
+        enable_elect: false,
+        // Disable the automated step down, to keep the new cluster leaderless.
+        removed_leader_step_down: StepDownPolicy::Never,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], []).await?;
 
     let orig_leader = 0;
 

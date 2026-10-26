@@ -4,7 +4,6 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::Raft;
 use openraft::ServerState;
@@ -21,22 +20,19 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn build_then_run() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            election_timeout_min: 100,
-            election_timeout_max: 200,
-            enable_heartbeat: false,
-            enable_leader_restore: Some(false),
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        election_timeout_min: 100,
+        election_timeout_max: 200,
+        enable_heartbeat: false,
+        enable_leader_restore: Some(false),
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config.clone())?;
 
     tracing::info!("--- create an initialized node whose persisted membership permits campaigning");
     let (log_store, sm) = {
-        router.new_cluster(btreeset! {0}, btreeset! {}).await?;
+        router.new_cluster([0], []).await?;
         let Node {
             log_store,
             state_machine: sm,
@@ -46,7 +42,7 @@ async fn build_then_run() -> Result<()> {
     };
 
     tracing::info!("--- build the node and queue a state machine request before run");
-    let node = Raft::build(0, config, router, log_store, sm).await?;
+    let node = Raft::build(0, Arc::new(config), router, log_store, sm).await?;
     let invoked = Arc::new(AtomicBool::new(false));
     let invoked_for_worker = invoked.clone();
     {

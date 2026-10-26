@@ -1,9 +1,7 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
 use futures::TryStreamExt;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::SnapshotPolicy;
 
@@ -35,18 +33,15 @@ async fn snapshot_policy_never() -> Result<()> {
     );
 
     // Setup test dependencies.
-    let config = Arc::new(
-        Config {
-            snapshot_policy: SnapshotPolicy::Never,
-            enable_tick: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        snapshot_policy: SnapshotPolicy::Never,
+        enable_tick: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0], []).await?;
 
     tracing::info!(n_logs, "--- write enough logs to exceed the default snapshot threshold");
     {

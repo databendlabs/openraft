@@ -67,19 +67,16 @@ async fn probe_acked_at_prev_advances_to_next_midpoint() -> Result<()> {
 /// Returns the `prev_log_id` of the first two such probes node 1 sends to each follower, after
 /// checking that lifting the quota lets the probes catch the followers up.
 async fn first_two_probes_with_quota_zero(n_writes: usize) -> Result<FirstTwoProbes> {
-    let config = Arc::new(
-        Config {
-            enable_elect: false,
-            // Heartbeats refresh the leader lease, which would reject the election below.
-            enable_heartbeat: false,
-            enable_tick: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_elect: false,
+        // Heartbeats refresh the leader lease, which would reject the election below.
+        enable_heartbeat: false,
+        enable_tick: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let mut router = RaftRouter::new(config)?;
+    let mut log_index = router.new_cluster([0, 1, 2], []).await?;
 
     tracing::info!(
         log_index,

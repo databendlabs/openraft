@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::SnapshotPolicy;
 
@@ -25,17 +22,14 @@ use crate::fixtures::ut_harness;
 async fn snapshot_line_rate_to_snapshot() -> Result<()> {
     let snapshot_threshold: u64 = 10;
 
-    let config = Arc::new(
-        Config {
-            snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
+        enable_heartbeat: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
-    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {1}).await?;
+    let mut log_index = router.new_cluster([0], [1]).await?;
 
     tracing::info!(log_index, "--- send more than half threshold logs");
     {

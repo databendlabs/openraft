@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
@@ -27,16 +25,13 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn matching_membership_log_id_completes_joint_change() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_heartbeat: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3,4}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], [3, 4]).await?;
     let leader = router.get_raft_handle(&0)?;
 
     let membership_log_id = {
@@ -82,16 +77,13 @@ async fn matching_membership_log_id_completes_joint_change() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn stale_membership_log_id_rejects_change() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_heartbeat: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], [3]).await?;
     let leader = router.get_raft_handle(&0)?;
 
     let stale_log_id = {
@@ -141,16 +133,13 @@ async fn stale_membership_log_id_rejects_change() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn committed_leader_id_guards_the_change() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_heartbeat: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], [3]).await?;
     let leader = router.get_raft_handle(&0)?;
 
     let established = {
@@ -195,16 +184,13 @@ async fn committed_leader_id_guards_the_change() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn last_log_id_guards_the_change() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_heartbeat: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], [3]).await?;
     let leader = router.get_raft_handle(&0)?;
 
     let metrics = leader.metrics().borrow_watched().clone();
@@ -247,16 +233,13 @@ async fn last_log_id_guards_the_change() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn follower_answers_forward_to_leader() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_heartbeat: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
-    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3}).await?;
+    let log_index = router.new_cluster([0, 1, 2], [3]).await?;
     let follower = router.get_raft_handle(&1)?;
 
     tracing::info!(

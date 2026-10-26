@@ -4,7 +4,6 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::RPCTypes;
 use openraft::SnapshotPolicy;
@@ -24,21 +23,18 @@ async fn storage_error_stops_replication() -> Result<()> {
     let snapshot_threshold = 20;
     let live_log_index = snapshot_threshold + 11;
 
-    let config = Arc::new(
-        Config {
-            snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
-            max_in_snapshot_log_to_keep: 0,
-            purge_batch_size: 1,
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
+        max_in_snapshot_log_to_keep: 0,
+        purge_batch_size: 1,
+        enable_heartbeat: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- build a leader with a purged prefix and a live log suffix");
-    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0], []).await?;
     router.client_request_many(0, "snapshot", (snapshot_threshold - 1 - log_index) as usize).await?;
     log_index = snapshot_threshold - 1;
 

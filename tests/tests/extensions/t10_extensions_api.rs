@@ -5,7 +5,6 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 
 use crate::fixtures::RaftRouter;
@@ -30,17 +29,14 @@ impl Counter {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn test_extensions_with_counter() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_tick: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_tick: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing single node cluster");
-    router.new_cluster(btreeset! {0}, btreeset! {}).await?;
+    router.new_cluster([0], []).await?;
 
     let raft = router.get_raft_handle(&0)?;
 

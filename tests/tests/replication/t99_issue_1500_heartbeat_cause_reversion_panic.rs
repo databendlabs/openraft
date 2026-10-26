@@ -1,7 +1,5 @@
-use std::sync::Arc;
 use std::time::Duration;
 
-use maplit::btreeset;
 use openraft::Config;
 use openraft::RPCTypes;
 use openraft::type_config::TypeConfigExt;
@@ -25,22 +23,19 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn t99_issue_1500_heartbeat_cause_reversion_panic() -> anyhow::Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: true,
-            allow_log_reversion: Some(false),
-            election_timeout_min: 800,
-            election_timeout_max: 801,
-            heartbeat_interval: 100,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: true,
+        allow_log_reversion: Some(false),
+        election_timeout_min: 800,
+        election_timeout_max: 801,
+        heartbeat_interval: 100,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- bring up cluster of 3 node");
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], []).await?;
 
     // Set a hook to delay heartbeat response from node 2, but bypass normal replication
     // (non-empty payload). This creates a race condition where the heartbeat conflict response

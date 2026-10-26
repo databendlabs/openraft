@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::RaftLogReader;
 use openraft::SnapshotPolicy;
@@ -19,20 +16,17 @@ use crate::fixtures::ut_harness;
 async fn after_snapshot_add_learner_and_request_a_log() -> Result<()> {
     let snapshot_threshold: u64 = 10;
 
-    let config = Arc::new(
-        Config {
-            snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
-            max_in_snapshot_log_to_keep: 2, /* do not let add-learner log and client-write log to
-                                             * trigger a snapshot. */
-            purge_batch_size: 1,
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
+        max_in_snapshot_log_to_keep: 2, /* do not let add-learner log and client-write log to
+                                         * trigger a snapshot. */
+        purge_batch_size: 1,
+        enable_heartbeat: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
-    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0], []).await?;
     let snapshot_index;
 
     tracing::info!(log_index, "--- send just enough logs to trigger snapshot");

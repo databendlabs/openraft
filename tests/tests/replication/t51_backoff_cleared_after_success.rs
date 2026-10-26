@@ -4,7 +4,6 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::RPCTypes;
 use openraft::errors::RPCError;
@@ -41,20 +40,17 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn backoff_cleared_after_success_in_stream() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            heartbeat_interval: 5_000,
-            election_timeout_min: 10_000,
-            election_timeout_max: 10_001,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        heartbeat_interval: 5_000,
+        election_timeout_min: 10_000,
+        election_timeout_max: 10_001,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing 2-node cluster");
-    router.new_cluster(btreeset! {0, 1}, btreeset! {}).await?;
+    router.new_cluster([0, 1], []).await?;
 
     // Inject two transient `Unreachable` errors on AppendEntries to node 1. See the
     // doc comment above for why two are needed.

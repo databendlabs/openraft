@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreemap;
@@ -17,16 +16,13 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn leader_restart_clears_state() -> anyhow::Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_elect: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: false,
+        enable_elect: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
     router.enable_saving_committed = false;
 
     let mut log_index;
@@ -53,8 +49,7 @@ async fn leader_restart_clears_state() -> anyhow::Result<()> {
     {
         let written = router.client_request_many(0, "foo", 1).await?;
         log_index = written.last_log_id.expect("nonempty workload").index();
-        router.wait(&1).applied_index(Some(log_index), "node-1 applied log").await?;
-        router.wait(&2).applied_index(Some(log_index), "node-2 applied log").await?;
+        router.wait_applied_at_least([1, 2], log_index, "followers applied log").await?;
     }
 
     tracing::info!(log_index, "--- stop and restart node-0");

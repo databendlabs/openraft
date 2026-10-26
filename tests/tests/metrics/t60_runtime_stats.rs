@@ -1,8 +1,5 @@
-use std::sync::Arc;
-
 use anyhow::Result;
 use futures::TryStreamExt;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::stats::RuntimeStats;
 use openraft_memstore::ClientRequest;
@@ -32,17 +29,14 @@ fn subtract(after: [u64; 6], before: [u64; 6]) -> [u64; 6] {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn runtime_stats_log_stage_counts_batched_entries_per_entry() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_tick: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config);
+    let config = Config {
+        enable_tick: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing single-node cluster");
-    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0], []).await?;
 
     let n0 = router.get_raft_handle(&0)?;
 

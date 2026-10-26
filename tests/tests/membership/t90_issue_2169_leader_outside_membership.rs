@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
@@ -19,7 +17,7 @@ use crate::fixtures::ut_harness;
 
 /// Election, heartbeat and ticking stay off, and a removed leader does not step down by itself,
 /// so it stays a leader outside the membership for as long as a test needs.
-fn config() -> Result<Arc<Config>> {
+fn config() -> Result<Config> {
     let config = Config {
         enable_tick: false,
         enable_heartbeat: false,
@@ -28,16 +26,16 @@ fn config() -> Result<Arc<Config>> {
         ..Default::default()
     }
     .validate()?;
-    Ok(Arc::new(config))
+    Ok(config)
 }
 
 /// A removed leader continues accepting writes and every membership API until it steps down.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn removed_leader_accepts_writes_and_membership_changes() -> Result<()> {
-    let mut router = RaftRouter::new(config()?);
+    let mut router = RaftRouter::new(config()?)?;
 
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], [3]).await?;
     let leader = router.get_raft_handle(&0)?;
 
     tracing::info!(log_index, "--- node 0 removes itself and stays the leader");
@@ -123,9 +121,9 @@ async fn removed_leader_accepts_writes_and_membership_changes() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn change_from_joint_can_leave_out_the_leader() -> Result<()> {
     for retain in [false, true] {
-        let mut router = RaftRouter::new(config()?);
+        let mut router = RaftRouter::new(config()?)?;
 
-        let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3}).await?;
+        let mut log_index = router.new_cluster([0, 1, 2], [3]).await?;
         let leader = router.get_raft_handle(&0)?;
 
         tracing::info!(

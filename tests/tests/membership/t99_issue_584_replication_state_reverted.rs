@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 
 use crate::fixtures::RaftRouter;
@@ -16,17 +13,14 @@ async fn t99_issue_584_replication_state_reverted() -> Result<()> {
     //
     // This case asserts it does not break the internal monotonic-replication-progress guarantee.
 
-    let config = Arc::new(
-        Config {
-            max_in_snapshot_log_to_keep: 2000, // prevent snapshot
-            enable_tick: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        max_in_snapshot_log_to_keep: 2000, // prevent snapshot
+        enable_tick: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
-    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {1}).await?;
+    let mut log_index = router.new_cluster([0], [1]).await?;
 
     let n = 500u64;
     tracing::info!(log_index, "--- write up to {} logs", n);

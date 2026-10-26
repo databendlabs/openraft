@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use std::sync::Mutex;
 
 use anyhow::Context;
@@ -147,18 +146,15 @@ async fn explicit_recovery_election_reaches_remote_voter() -> Result<()> {
 
 /// Use two public appends to put both nodes at committed joint, then persist final only on node 0.
 async fn restart_in_final_window(retain: bool, pre_vote: bool) -> Result<(RaftRouter, u64)> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_elect: false,
-            enable_leader_restore: Some(false),
-            enable_pre_vote: Some(pre_vote),
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config);
-    let mut log_index = router.new_cluster(btreeset! {0, 1}, btreeset! {}).await?;
+    let config = Config {
+        enable_heartbeat: false,
+        enable_elect: false,
+        enable_leader_restore: Some(false),
+        enable_pre_vote: Some(pre_vote),
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
+    let mut log_index = router.new_cluster([0, 1], []).await?;
     let leader = router.get_raft_handle(&0)?;
 
     tracing::info!(log_index, "--- commit joint on both nodes before blocking replication");

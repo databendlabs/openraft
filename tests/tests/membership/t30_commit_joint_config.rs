@@ -1,8 +1,6 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::LogIdOptionExt;
 use openraft::type_config::TypeConfigExt;
@@ -24,18 +22,15 @@ use crate::fixtures::ut_harness;
 #[test_harness::test(harness = ut_harness)]
 async fn commit_joint_config_during_0_to_012() -> Result<()> {
     // Setup test dependencies.
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- bring up node 0 as leader, with node 1,2 as learners");
-    let log_index = router.new_cluster(btreeset! {0}, btreeset! {1,2}).await?;
+    let log_index = router.new_cluster([0], [1, 2]).await?;
 
     tracing::info!(
         log_index,
@@ -79,16 +74,13 @@ async fn commit_joint_config_during_0_to_012() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn commit_joint_config_during_012_to_234() -> Result<()> {
     // Setup test dependencies.
-    let config = Arc::new(
-        Config {
-            enable_tick: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_tick: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
-    let mut log_index = router.new_cluster(btreeset! {0,1,2,3,4}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2, 3, 4], []).await?;
 
     tracing::info!(log_index, "--- isolate 3,4");
 

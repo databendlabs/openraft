@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use openraft::Config;
 use openraft::ServerState;
 use openraft::Vote;
@@ -13,15 +11,12 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn issue_920_non_member_leader_restart() -> anyhow::Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     let (mut log_store, sm) = router.new_store();
     // Set committed vote that believes node 0 is the leader.

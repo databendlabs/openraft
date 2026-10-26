@@ -3,7 +3,6 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::RPCTypes;
 
@@ -27,18 +26,15 @@ const WRITES: usize = 100;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn no_redundant_commit_only_append_entries() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            // Heartbeats send entry-less AppendEntries of their own, which would blur the count.
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        // Heartbeats send entry-less AppendEntries of their own, which would blur the count.
+        enable_heartbeat: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
-    let mut log_index = router.new_cluster(btreeset! {0, 1, 2}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], []).await?;
 
     let entry_less = Arc::new(AtomicU64::new(0));
     let with_entries = Arc::new(AtomicU64::new(0));

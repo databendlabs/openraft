@@ -1,8 +1,6 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::RPCTypes;
 use openraft::ServerState;
@@ -26,7 +24,7 @@ const WAIT_TIMEOUT: Duration = Duration::from_millis(5_000);
 /// Both tests park one node on an expired leader lease, where a tick election would race the
 /// manual `trigger().elect()`. `enable_elect` gates only the tick path, so the manual trigger
 /// still starts its round.
-fn config() -> Result<Arc<Config>> {
+fn config() -> Result<Config> {
     let config = Config {
         election_timeout_min: ELECTION_TIMEOUT_MIN,
         election_timeout_max: ELECTION_TIMEOUT_MAX,
@@ -34,7 +32,7 @@ fn config() -> Result<Arc<Config>> {
         ..Default::default()
     }
     .validate()?;
-    Ok(Arc::new(config))
+    Ok(config)
 }
 
 /// Wait until `node`'s local `state.vote` lease has expired: its `vote_last_modified` stops
@@ -72,10 +70,10 @@ async fn wait_vote_lease_expired(router: &RaftRouter, node: u64) -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn manual_pre_vote_from_lease_expired_follower() -> Result<()> {
-    let mut router = RaftRouter::new(config()?);
+    let mut router = RaftRouter::new(config()?)?;
 
     tracing::info!("--- establish node 0 as leader of a three-voter cluster");
-    let log_index = router.new_cluster(btreeset! {0, 1, 2}, btreeset! {}).await?;
+    let log_index = router.new_cluster([0, 1, 2], []).await?;
 
     let n0 = router.get_raft_handle(&0)?;
     let n1 = router.get_raft_handle(&1)?;
@@ -159,10 +157,10 @@ async fn manual_pre_vote_from_lease_expired_follower() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn manual_pre_vote_from_healthy_follower_with_stale_peer() -> Result<()> {
-    let mut router = RaftRouter::new(config()?);
+    let mut router = RaftRouter::new(config()?)?;
 
     tracing::info!("--- establish node 0 as leader of a three-voter cluster");
-    let log_index = router.new_cluster(btreeset! {0, 1, 2}, btreeset! {}).await?;
+    let log_index = router.new_cluster([0, 1, 2], []).await?;
 
     let n0 = router.get_raft_handle(&0)?;
     let n1 = router.get_raft_handle(&1)?;

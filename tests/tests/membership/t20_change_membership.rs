@@ -1,5 +1,4 @@
 use std::collections::BTreeSet;
-use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
@@ -38,16 +37,13 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn update_membership_state() -> anyhow::Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_heartbeat: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3,4}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], [3, 4]).await?;
 
     tracing::info!(log_index, "--- change membership from 012 to 01234");
     {
@@ -113,17 +109,14 @@ async fn change_with_new_learner_blocking() -> anyhow::Result<()> {
 
     let lag_threshold = 1;
 
-    let config = Arc::new(
-        Config {
-            replication_lag_threshold: lag_threshold,
-            enable_tick: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        replication_lag_threshold: lag_threshold,
+        enable_tick: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
-    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0], []).await?;
 
     tracing::info!(log_index, "--- write up to 100 logs");
     {
@@ -160,10 +153,10 @@ async fn change_with_new_learner_blocking() -> anyhow::Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn change_without_adding_learner() -> anyhow::Result<()> {
-    let config = Arc::new(Config { ..Default::default() }.validate()?);
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config { ..Default::default() };
+    let mut router = RaftRouter::new(config)?;
 
-    let log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
+    let log_index = router.new_cluster([0], []).await?;
     router.wait(&0).applied_index(Some(log_index), "received 100 logs").await?;
 
     router.new_raft_node(1).await?;
@@ -210,16 +203,13 @@ async fn change_without_adding_learner() -> anyhow::Result<()> {
 async fn change_with_turn_removed_voter_to_learner() -> anyhow::Result<()> {
     // Add a member without adding it as learner, in blocking mode it should finish successfully.
 
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_heartbeat: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
     let timeout = Duration::from_millis(1000);
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], []).await?;
 
     tracing::info!(log_index, "--- write up to 1 logs");
     {
@@ -295,19 +285,16 @@ async fn change_with_turn_removed_voter_to_learner() -> anyhow::Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn uncommitted_leader_log_blocks_the_change() -> anyhow::Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_elect: false,
-            heartbeat_interval: 50,
-            election_timeout_min: 500,
-            election_timeout_max: 501,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_elect: false,
+        heartbeat_interval: 50,
+        election_timeout_min: 500,
+        election_timeout_max: 501,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config.clone())?;
 
-    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3}).await?;
+    let log_index = router.new_cluster([0, 1, 2], [3]).await?;
     let old_leader = router.get_raft_handle(&0)?;
     let new_leader = router.get_raft_handle(&1)?;
 

@@ -1,8 +1,6 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::RaftMetrics;
 use openraft::ServerState;
@@ -33,18 +31,15 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn pre_vote_prevents_term_inflation() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_pre_vote: Some(true),
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_pre_vote: Some(true),
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- create cluster of 0,1,2; node 0 becomes leader at term 1");
-    router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    router.new_cluster([0, 1, 2], []).await?;
 
     let n0 = router.get_raft_handle(&0)?;
     let n1 = router.get_raft_handle(&1)?;
@@ -83,18 +78,15 @@ async fn pre_vote_prevents_term_inflation() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn without_pre_vote_term_inflates() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_pre_vote: Some(false),
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_pre_vote: Some(false),
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- create cluster of 0,1,2");
-    router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    router.new_cluster([0, 1, 2], []).await?;
 
     let n0 = router.get_raft_handle(&0)?;
     let n1 = router.get_raft_handle(&1)?;
@@ -124,12 +116,12 @@ async fn without_pre_vote_term_inflates() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn manual_elect_with_pre_vote_does_not_disrupt_leader() -> Result<()> {
-    let config = Arc::new(Config::default().validate()?);
+    let config = Config::default();
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- create cluster of 0,1,2; node 0 becomes leader");
-    router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    router.new_cluster([0, 1, 2], []).await?;
 
     let n0 = router.get_raft_handle(&0)?;
     let n1 = router.get_raft_handle(&1)?;
@@ -166,12 +158,12 @@ async fn manual_elect_with_pre_vote_does_not_disrupt_leader() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn manual_elect_without_pre_vote_inflates_term() -> Result<()> {
-    let config = Arc::new(Config::default().validate()?);
+    let config = Config::default();
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- create cluster of 0,1,2; node 0 becomes leader");
-    router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    router.new_cluster([0, 1, 2], []).await?;
 
     let n0 = router.get_raft_handle(&0)?;
     let n1 = router.get_raft_handle(&1)?;
@@ -204,18 +196,15 @@ async fn manual_elect_without_pre_vote_inflates_term() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn pre_vote_elects_new_leader_after_leader_isolated() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_pre_vote: Some(true),
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_pre_vote: Some(true),
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- create cluster of 0,1,2; node 0 becomes leader");
-    router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    router.new_cluster([0, 1, 2], []).await?;
 
     let n0 = router.get_raft_handle(&0)?;
     n0.wait(timeout()).state(ServerState::Leader, "node 0 is leader").await?;
@@ -248,18 +237,15 @@ async fn pre_vote_elects_new_leader_after_leader_isolated() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn pre_vote_unreachable_peer_is_not_a_grant() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_pre_vote: Some(true),
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_pre_vote: Some(true),
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- create cluster of 0,1,2; node 0 becomes leader at term 1");
-    router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    router.new_cluster([0, 1, 2], []).await?;
 
     let n1 = router.get_raft_handle(&1)?;
     n1.wait(timeout()).state(ServerState::Follower, "node 1 is follower").await?;
@@ -288,18 +274,15 @@ async fn pre_vote_unreachable_peer_is_not_a_grant() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn pre_vote_rejection_with_higher_vote_catches_up_requester() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_elect: false,
-            enable_pre_vote: Some(true),
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: false,
+        enable_elect: false,
+        enable_pre_vote: Some(true),
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
-    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let mut router = RaftRouter::new(config.clone())?;
+    let log_index = router.new_cluster([0, 1, 2], []).await?;
 
     let n1 = router.get_raft_handle(&1)?;
     let n2 = router.get_raft_handle(&2)?;

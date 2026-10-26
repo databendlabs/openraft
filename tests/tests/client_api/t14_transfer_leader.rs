@@ -1,7 +1,5 @@
-use std::sync::Arc;
 use std::time::Duration;
 
-use maplit::btreeset;
 use openraft::Config;
 use openraft::ReadPolicy;
 use openraft::ServerState;
@@ -28,19 +26,16 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn transfer_leader() -> anyhow::Result<()> {
-    let config = Arc::new(
-        Config {
-            election_timeout_min: 150,
-            election_timeout_max: 300,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        election_timeout_min: 150,
+        election_timeout_max: 300,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let _log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let _log_index = router.new_cluster([0, 1, 2], []).await?;
 
     let n0 = router.get_raft_handle(&0)?;
     let n1 = router.get_raft_handle(&1)?;
@@ -100,19 +95,16 @@ async fn transfer_leader() -> anyhow::Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn trigger_transfer_leader() -> anyhow::Result<()> {
-    let config = Arc::new(
-        Config {
-            election_timeout_min: 150,
-            election_timeout_max: 300,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        election_timeout_min: 150,
+        election_timeout_max: 300,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let _log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let _log_index = router.new_cluster([0, 1, 2], []).await?;
 
     let n0 = router.get_raft_handle(&0)?;
     let n1 = router.get_raft_handle(&1)?;
@@ -158,24 +150,21 @@ async fn trigger_transfer_leader() -> anyhow::Result<()> {
 async fn transfer_leader_with_dead_target_does_not_block_election() -> anyhow::Result<()> {
     let election_timeout_max = 300;
 
-    let config = Arc::new(
-        Config {
-            // The only AE traffic should come from ReadIndex; otherwise heartbeat AE
-            // would also bump follower last_update and the bug is no longer attributable
-            // to ReadIndex specifically.
-            enable_heartbeat: false,
-            election_timeout_min: 150,
-            election_timeout_max,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        // The only AE traffic should come from ReadIndex; otherwise heartbeat AE
+        // would also bump follower last_update and the bug is no longer attributable
+        // to ReadIndex specifically.
+        enable_heartbeat: false,
+        election_timeout_min: 150,
+        election_timeout_max,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
     router.network_send_delay(0);
 
     tracing::info!("--- initializing cluster");
-    let _log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let _log_index = router.new_cluster([0, 1, 2], []).await?;
 
     let n0 = router.get_raft_handle(&0)?;
     let n2 = router.get_raft_handle(&2)?;
@@ -245,26 +234,23 @@ async fn transfer_leader_with_dead_target_does_not_block_election() -> anyhow::R
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn transfer_leader_blocks_lease_read() -> anyhow::Result<()> {
-    let config = Arc::new(
-        Config {
-            // Large lease so `last_quorum_acked + leader_lease` stays in the future for the
-            // whole test. If the lease lapses, pre-fix `LeaseRead` returns
-            // `ForwardToLeader::empty` for the wrong reason and masks the bug.
-            heartbeat_interval: 1000,
-            election_timeout_min: 1001,
-            election_timeout_max: 1002,
-            enable_heartbeat: false,
-            enable_elect: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        // Large lease so `last_quorum_acked + leader_lease` stays in the future for the
+        // whole test. If the lease lapses, pre-fix `LeaseRead` returns
+        // `ForwardToLeader::empty` for the wrong reason and masks the bug.
+        heartbeat_interval: 1000,
+        election_timeout_min: 1001,
+        election_timeout_max: 1002,
+        enable_heartbeat: false,
+        enable_elect: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
     router.network_send_delay(0);
 
     tracing::info!("--- initializing cluster");
-    router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    router.new_cluster([0, 1, 2], []).await?;
 
     let n0 = router.get_raft_handle(&0)?;
 
@@ -328,23 +314,20 @@ async fn transfer_leader_blocks_lease_read() -> anyhow::Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn transfer_leader_overrides_lease() -> anyhow::Result<()> {
-    let config = Arc::new(
-        Config {
-            // A lease far longer than the test: the voters' leases stay fresh throughout,
-            // so a granted vote can only result from the leadership-transfer override.
-            election_timeout_min: 10_000,
-            election_timeout_max: 10_001,
-            enable_heartbeat: false,
-            enable_elect: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        // A lease far longer than the test: the voters' leases stay fresh throughout,
+        // so a granted vote can only result from the leadership-transfer override.
+        election_timeout_min: 10_000,
+        election_timeout_max: 10_001,
+        enable_heartbeat: false,
+        enable_elect: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    router.new_cluster([0, 1, 2], []).await?;
 
     let n0 = router.get_raft_handle(&0)?;
     let n2 = router.get_raft_handle(&2)?;
@@ -371,22 +354,19 @@ async fn transfer_leader_overrides_lease() -> anyhow::Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn transfer_leader_to_promoted_learner_without_promotion_log_does_not_panic() -> anyhow::Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_tick: false,
-            election_timeout_min: 100,
-            election_timeout_max: 200,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: false,
+        enable_tick: false,
+        election_timeout_min: 100,
+        election_timeout_max: 200,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
     router.network_send_delay(0);
 
     tracing::info!("--- initialize 3 voters and node 3 as a learner");
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], [3]).await?;
 
     let n0 = router.get_raft_handle(&0)?;
     let n3 = router.get_raft_handle(&3)?;
@@ -462,19 +442,16 @@ async fn transfer_leader_to_promoted_learner_without_promotion_log_does_not_pani
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn only_voter_steps_down_after_transfer_to_unreachable_learner() -> anyhow::Result<()> {
-    let config = Arc::new(
-        Config {
-            election_timeout_min: 150,
-            election_timeout_max: 300,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        election_timeout_min: 150,
+        election_timeout_max: 300,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config.clone())?;
 
     tracing::info!("--- bring up voter 0 and learner 1");
-    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {1}).await?;
+    let mut log_index = router.new_cluster([0], [1]).await?;
 
     let n0 = router.get_raft_handle(&0)?;
     let vote_before = n0.metrics().borrow_watched().vote;
@@ -535,19 +512,16 @@ async fn only_voter_steps_down_after_transfer_to_unreachable_learner() -> anyhow
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn leader_steps_down_after_transfer_when_no_other_voter_campaigns() -> anyhow::Result<()> {
-    let config = Arc::new(
-        Config {
-            election_timeout_min: 150,
-            election_timeout_max: 300,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        election_timeout_min: 150,
+        election_timeout_max: 300,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config.clone())?;
 
     tracing::info!("--- initializing cluster");
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], []).await?;
 
     let n0 = router.get_raft_handle(&0)?;
     let vote_before = n0.metrics().borrow_watched().vote;

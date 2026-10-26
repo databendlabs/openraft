@@ -52,25 +52,20 @@ A test case is one async function that carries both attributes, returns
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn my_case() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_tick: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_tick: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- bring up a 3-node cluster");
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let log_index = router.new_cluster([0, 1, 2], []).await?;
 
     tracing::info!(log_index, "--- write one log");
     {
-        router.client_request(0, "foo", 1).await?;
-        log_index += 1;
-
-        router.wait(&0).applied_index(Some(log_index), "write one log").await?;
+        let response = router.client_request(0, "foo", 1).await?;
+        let index = response.log_id.index();
+        router.wait_applied_at_least([0, 1, 2], index, "write applied").await?;
     }
 
     Ok(())
@@ -102,8 +97,15 @@ initializes the cluster, turns the remaining voters into voters, adds the
 learners, waits for all of them to catch up, and returns the last log index:
 
 ```rust
-let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3}).await?;
+let log_index = router.new_cluster([0, 1, 2], [3]).await?;
 ```
+
+The constructor validates `Config` and shares it internally. `new_cluster()`
+accepts arrays or other iterators. It checks that voter 0 is present, voters and
+learners are disjoint, and all requested IDs are unused before starting nodes.
+`wait_applied_at_least()` gives the whole node group one five-second deadline
+and accepts progress beyond the requested index. Keep exact-index waits when
+advancing beyond that boundary would indicate a bug.
 
 Use it in every case that only needs a running cluster. Call
 `Raft::initialize()` by hand only when the case observes initialization

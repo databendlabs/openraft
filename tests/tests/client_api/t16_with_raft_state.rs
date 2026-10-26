@@ -1,8 +1,6 @@
-use std::sync::Arc;
-
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
+use openraft::ServerState;
 use openraft::errors::Fatal;
 
 use crate::fixtures::RaftRouter;
@@ -13,18 +11,29 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn with_raft_state() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let log_index = {
+        router.new_raft_node(0).await?;
+        let node = router.get_raft_handle(&0)?;
+        node.external_request(|state| assert_eq!(ServerState::Learner, state.server_state)).await?;
+        router.initialize(0).await?;
+        router.wait(&0).applied_index(Some(1), "initial leader blank").await?;
+        for id in [1, 2] {
+            router.new_raft_node(id).await?;
+            router.add_learner(0, id).await?;
+        }
+        let response = node.change_membership([0, 1, 2], false).await?;
+        let index = response.log_id.index();
+        router.wait_applied_at_least([0, 1, 2], index, "cluster ready").await?;
+        index
+    };
 
     let n0 = router.get_raft_handle(&0)?;
 
