@@ -50,6 +50,7 @@ criterion         = { workspace = true }
 openraft-rt-tokio = { path = "../rt-tokio", version = "0.10.0-alpha.37" }
 pretty_assertions = { workspace = true }
 serde_json        = { workspace = true }
+tokio             = { workspace = true, features = ["test-util"] }
 
 
 [[bench]]
