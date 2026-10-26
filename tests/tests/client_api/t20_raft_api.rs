@@ -169,7 +169,7 @@ async fn api_after_add_learner() -> Result<()> {
 
     // Add node 3 as learner
     tracing::info!("--- adding node 3 as learner");
-    router.new_raft_node(3).await;
+    router.new_raft_node(3).await?;
     router.add_learner(leader_id, 3).await?;
     router.wait(&3).state(openraft::ServerState::Learner, "become learner").await?;
 

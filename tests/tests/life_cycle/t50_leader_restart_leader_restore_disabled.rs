@@ -5,9 +5,7 @@ use openraft::Config;
 use openraft::ServerState;
 use openraft::Vote;
 
-use crate::fixtures::MemLogStore;
-use crate::fixtures::MemRaft;
-use crate::fixtures::MemStateMachine;
+use crate::fixtures::Node;
 use crate::fixtures::RaftRouter;
 use crate::fixtures::ut_harness;
 
@@ -38,10 +36,13 @@ async fn leader_restart_leader_restore_disabled() -> anyhow::Result<()> {
 
     tracing::info!(log_index, "--- stop and restart node-0");
     {
-        let (node, ls, sm): (MemRaft, MemLogStore, MemStateMachine) = router.remove_node(0).unwrap();
-        node.shutdown().await?;
+        let Node {
+            log_store: ls,
+            state_machine: sm,
+            ..
+        } = router.stop_node(0).await?;
 
-        router.new_raft_node_with_sto(0, ls, sm).await;
+        router.new_raft_node_with_sto(0, ls, sm).await?;
     }
 
     tracing::info!(log_index, "--- node-0 must re-elect instead of restoring leadership");

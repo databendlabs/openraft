@@ -3,9 +3,7 @@ use std::sync::Arc;
 use maplit::btreeset;
 use openraft::Config;
 
-use crate::fixtures::MemLogStore;
-use crate::fixtures::MemRaft;
-use crate::fixtures::MemStateMachine;
+use crate::fixtures::Node;
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
@@ -67,15 +65,18 @@ async fn issue_881_transient_state_machine() -> anyhow::Result<()> {
 
     tracing::info!(log_index, "--- stop node-0 and clear its state machine");
     {
-        let (node, ls, sm): (MemRaft, MemLogStore, MemStateMachine) = router.remove_node(0).unwrap();
-        node.shutdown().await?;
+        let Node {
+            log_store: ls,
+            state_machine: sm,
+            ..
+        } = router.stop_node(0).await?;
 
         // Clear state machine to simulate transient (in-memory) data loss.
         // The committed log id is preserved in log storage.
         sm.clear_state_machine().await;
 
         tracing::info!(log_index, "--- restart node-0 with cleared state machine");
-        router.new_raft_node_with_sto(0, ls, sm).await;
+        router.new_raft_node_with_sto(0, ls, sm).await?;
     }
 
     tracing::info!(

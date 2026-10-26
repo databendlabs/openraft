@@ -79,7 +79,7 @@ async fn build_snapshot() -> Result<()> {
     }])
     .await?;
 
-    router.new_raft_node_with_sto(1, sto1.clone(), sm1.clone()).await;
+    router.new_raft_node_with_sto(1, sto1.clone(), sm1.clone()).await?;
     router.add_learner(0, 1).await.expect("failed to add new node as learner");
     log_index += 1; // add_learner log
 

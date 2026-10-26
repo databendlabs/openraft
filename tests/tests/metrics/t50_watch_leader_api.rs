@@ -68,7 +68,7 @@ async fn on_cluster_leader_change_api() -> Result<()> {
     }
 
     tracing::info!("--- shutdown node 0 (current leader)");
-    router.remove_node(0);
+    router.stop_node(0).await?;
 
     // Wait for leader lease to expire so other nodes accept new vote
     TypeConfig::sleep(Duration::from_millis(700)).await;

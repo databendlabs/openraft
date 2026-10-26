@@ -12,6 +12,7 @@ use openraft::async_runtime::WatchReceiver;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
 
+use crate::fixtures::Node;
 use crate::fixtures::RaftRouter;
 use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
@@ -36,8 +37,11 @@ async fn build_then_run() -> Result<()> {
     tracing::info!("--- create an initialized node whose persisted membership permits campaigning");
     let (log_store, sm) = {
         router.new_cluster(btreeset! {0}, btreeset! {}).await?;
-        let (node, log_store, sm) = router.remove_node(0).unwrap();
-        node.shutdown().await?;
+        let Node {
+            log_store,
+            state_machine: sm,
+            ..
+        } = router.stop_node(0).await?;
         (log_store, sm)
     };
 

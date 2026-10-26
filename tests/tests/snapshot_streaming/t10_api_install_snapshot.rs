@@ -35,7 +35,7 @@ async fn snapshot_arguments() -> Result<()> {
     tracing::info!(log_index, "--- initializing cluster");
     log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
 
-    let (raft, _, _) = router.remove_node(0).unwrap();
+    let (raft, _, _) = router.detach_node(0).unwrap();
     let make_req = || InstallSnapshotRequest {
         // force it to be a follower
         vote: Vote::new_committed(2, 1),

@@ -10,9 +10,6 @@ use openraft::type_config::OneshotSender;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
 
-use crate::fixtures::MemLogStore;
-use crate::fixtures::MemRaft;
-use crate::fixtures::MemStateMachine;
 use crate::fixtures::RaftRouter;
 use crate::fixtures::rpc_response::RpcResponse;
 use crate::fixtures::timeout;
@@ -44,8 +41,7 @@ async fn conflict_updates_clock_progress() -> Result<()> {
 
     tracing::info!(log_index, "--- restart voter 1 with empty state");
     {
-        let (n1, _log, _sm): (MemRaft, MemLogStore, MemStateMachine) = router.remove_node(1).unwrap();
-        n1.shutdown().await?;
+        router.stop_node(1).await?;
     }
 
     let (conflict_tx, conflict_rx) = TypeConfig::oneshot();
@@ -74,7 +70,7 @@ async fn conflict_updates_clock_progress() -> Result<()> {
     tracing::info!(log_index, "--- trigger regular replication to the empty voter");
     let refresh_started = TypeConfig::now();
     {
-        router.new_raft_node(1).await;
+        router.new_raft_node(1).await?;
         router.client_request(0, "conflict", 1).await?;
         TypeConfig::timeout(Duration::from_secs(1), conflict_rx).await??;
     }

@@ -5,9 +5,6 @@ use maplit::btreemap;
 use openraft::Config;
 use openraft::ServerState;
 
-use crate::fixtures::MemLogStore;
-use crate::fixtures::MemRaft;
-use crate::fixtures::MemStateMachine;
 use crate::fixtures::RaftRouter;
 use crate::fixtures::expect_timeout;
 use crate::fixtures::timeout;
@@ -39,9 +36,9 @@ async fn leader_restart_clears_state() -> anyhow::Result<()> {
     // Otherwise after restart, the restarted leader has greater vote.
     tracing::info!("--- bring up cluster of 3 node");
     {
-        router.new_raft_node(0).await;
-        router.new_raft_node(1).await;
-        router.new_raft_node(2).await;
+        router.new_raft_node(0).await?;
+        router.new_raft_node(1).await?;
+        router.new_raft_node(2).await?;
 
         tracing::info!("--- initialize node-0 with [0,1,2]");
         let n0 = router.get_raft_handle(&0)?;
@@ -61,12 +58,11 @@ async fn leader_restart_clears_state() -> anyhow::Result<()> {
 
     tracing::info!(log_index, "--- stop and restart node-0");
     {
-        let (node, _log, _sm): (MemRaft, MemLogStore, MemStateMachine) = router.remove_node(0).unwrap();
-        node.shutdown().await?;
+        router.stop_node(0).await?;
 
         tracing::info!(log_index, "--- restart node-0 with empty log and sm");
 
-        router.new_raft_node(0).await;
+        router.new_raft_node(0).await?;
         let n0 = router.get_raft_handle(&0)?;
 
         tracing::info!(log_index, "--- initialize node-0 after restart");

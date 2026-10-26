@@ -27,7 +27,7 @@ async fn stream_append_success() -> Result<()> {
     );
 
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0).await;
+    router.new_raft_node(0).await?;
 
     let raft = router.get_raft_handle(&0)?;
 
@@ -84,7 +84,7 @@ async fn stream_append_conflict() -> Result<()> {
     );
 
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0).await;
+    router.new_raft_node(0).await?;
 
     let raft = router.get_raft_handle(&0)?;
 
@@ -140,7 +140,7 @@ async fn stream_append_higher_vote() -> Result<()> {
     );
 
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0).await;
+    router.new_raft_node(0).await?;
 
     let raft = router.get_raft_handle(&0)?;
 

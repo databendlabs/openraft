@@ -185,7 +185,7 @@ async fn committed_membership_config() -> Result<()> {
         log_index,
         "--- block node-1, add a learner: the membership log can not commit"
     );
-    router.new_raft_node(2).await;
+    router.new_raft_node(2).await?;
     router.set_network_error(1, true);
 
     let n0 = node.clone();

@@ -65,7 +65,7 @@ async fn add_learner_basic() -> Result<()> {
             router.wait(&0).applied_index(Some(log_index), "write 1000 logs to leader").await?;
         }
 
-        router.new_raft_node(1).await;
+        router.new_raft_node(1).await?;
         router.add_learner(0, 1).await?;
         log_index += 1;
 
@@ -134,7 +134,7 @@ async fn add_learner_non_blocking() -> Result<()> {
 
         router.wait(&0).applied_index(Some(log_index), "received 100 logs").await?;
 
-        router.new_raft_node(1).await;
+        router.new_raft_node(1).await?;
 
         // Replication problem should not block adding-learner in non-blocking mode.
         router.set_network_error(1, true);
@@ -187,7 +187,7 @@ async fn add_learner_with_set_nodes() -> Result<()> {
 
     tracing::info!(log_index, "--- set node 2 and 4");
     {
-        router.new_raft_node(4).await;
+        router.new_raft_node(4).await?;
 
         let raft = router.get_raft_handle(&0)?;
         raft.change_membership(ChangeMembers::SetNodes(btreemap! {2=>(), 4=>()}), true).await?;
@@ -288,8 +288,8 @@ async fn check_learner_after_leader_transferred() -> Result<()> {
     let orig_leader_id = router.leader().expect("expected the cluster to have a leader");
     assert_eq!(0, orig_leader_id, "expected original leader to be node 0");
 
-    router.new_raft_node(3).await;
-    router.new_raft_node(4).await;
+    router.new_raft_node(3).await?;
+    router.new_raft_node(4).await?;
     router.add_learner(orig_leader_id, 3).await?;
     router.add_learner(orig_leader_id, 4).await?;
     log_index += 2;

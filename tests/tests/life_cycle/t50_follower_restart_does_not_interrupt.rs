@@ -4,6 +4,7 @@ use std::time::Duration;
 use maplit::btreeset;
 use openraft::Config;
 
+use crate::fixtures::Node;
 use crate::fixtures::RaftRouter;
 use crate::fixtures::expect_timeout;
 use crate::fixtures::ut_harness;
@@ -35,19 +36,24 @@ async fn follower_restart_does_not_interrupt() -> anyhow::Result<()> {
         let m = router.get_metrics(&0)?;
         let term = m.current_term;
 
-        let (n2, sto2, sm2) = router.remove_node(2).unwrap();
-        n2.shutdown().await?;
+        let Node {
+            log_store: sto2,
+            state_machine: sm2,
+            ..
+        } = router.stop_node(2).await?;
 
-        let (n1, sto1, sm1) = router.remove_node(1).unwrap();
-        n1.shutdown().await?;
+        let Node {
+            log_store: sto1,
+            state_machine: sm1,
+            ..
+        } = router.stop_node(1).await?;
 
-        let (n0, _sto0, _sm0) = router.remove_node(0).unwrap();
-        n0.shutdown().await?;
+        router.stop_node(0).await?;
 
         tracing::info!(log_index, "--- restart node 1,2");
 
-        router.new_raft_node_with_sto(1, sto1, sm1).await;
-        router.new_raft_node_with_sto(2, sto2, sm2).await;
+        router.new_raft_node_with_sto(1, sto1, sm1).await?;
+        router.new_raft_node_with_sto(2, sto2, sm2).await?;
         let res = router
             .wait_with_timeout(&1, Duration::from_millis(1_000))
             .metrics(|x| x.current_term > term, "node increase term to start election")

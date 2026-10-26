@@ -6,6 +6,7 @@ use openraft::Config;
 use openraft::Raft;
 use openraft::ServerState;
 
+use crate::fixtures::Node;
 use crate::fixtures::RaftRouter;
 use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
@@ -44,11 +45,13 @@ async fn learner_restart() -> Result<()> {
         router.wait(&id).applied_index(Some(log_index), "write one log").await?;
     }
 
-    let (node0, _sto0, _sm0) = router.remove_node(0).unwrap();
-    node0.shutdown().await?;
+    router.stop_node(0).await?;
 
-    let (node1, sto1, sm1) = router.remove_node(1).unwrap();
-    node1.shutdown().await?;
+    let Node {
+        log_store: sto1,
+        state_machine: sm1,
+        ..
+    } = router.stop_node(1).await?;
 
     // restart node-1, assert the state as expected.
     let restarted = Raft::new(1, config.clone(), router.clone(), sto1, sm1).await?;

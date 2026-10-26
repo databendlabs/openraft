@@ -69,7 +69,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
     tracing::info!(log_index, "--- create learner");
     {
         tracing::info!(log_index, "--- create learner");
-        router.new_raft_node(1).await;
+        router.new_raft_node(1).await?;
         let (mut sto, mut sm) = router.get_storage_handle(&1)?;
 
         tracing::info!(log_index, "--- add a membership config log to the learner");

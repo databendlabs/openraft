@@ -26,7 +26,7 @@ async fn issue_920_non_member_leader_restart() -> anyhow::Result<()> {
     let (mut log_store, sm) = router.new_store();
     // Set committed vote that believes node 0 is the leader.
     log_store.save_vote(&Vote::new_committed(1, 0)).await?;
-    router.new_raft_node_with_sto(0, log_store, sm).await;
+    router.new_raft_node_with_sto(0, log_store, sm).await?;
 
     router.wait(&0).state(ServerState::Learner, "node 0 becomes learner when startup").await?;
 

@@ -30,14 +30,14 @@ async fn append_conflicts() -> Result<()> {
     );
 
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0).await;
+    router.new_raft_node(0).await?;
 
     tracing::info!("--- wait for init node to ready");
 
     router.wait(&0).applied_index(None, "empty").await?;
     router.wait(&0).state(ServerState::Learner, "empty").await?;
 
-    let (r0, mut sto0, _sm0) = router.remove_node(0).unwrap();
+    let (r0, mut sto0, _sm0) = router.detach_node(0).unwrap();
     check_logs(&mut sto0, vec![]).await?;
 
     tracing::info!("--- case 0: prev_log_id == None, no logs");

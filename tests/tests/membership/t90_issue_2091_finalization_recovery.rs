@@ -23,6 +23,7 @@ use openraft_memstore::ClientRequest;
 use openraft_memstore::IntoMemClientRequest;
 use openraft_memstore::TypeConfig;
 
+use crate::fixtures::Node;
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::timeout;
@@ -230,12 +231,15 @@ async fn restart_in_final_window(retain: bool, pre_vote: bool) -> Result<(RaftRo
             "final has not reached node 1"
         );
 
-        let (node, mut store, sm) = router.remove_node(0).unwrap();
-        node.shutdown().await?;
+        let Node {
+            log_store: mut store,
+            state_machine: sm,
+            ..
+        } = router.stop_node(0).await?;
         assert!(TypeConfig::timeout(timeout().unwrap(), pending).await??.is_err());
         assert_eq!(Some(log_id(1, 0, log_index)), store.get_log_state().await?.last_log_id);
         assert_eq!(Some(log_id(1, 0, log_index - 1)), store.read_committed().await?);
-        router.new_raft_node_with_sto(0, store, sm).await;
+        router.new_raft_node_with_sto(0, store, sm).await?;
         router
             .wait(&0)
             .metrics(

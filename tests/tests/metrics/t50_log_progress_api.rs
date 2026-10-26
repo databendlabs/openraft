@@ -138,7 +138,7 @@ async fn log_progress_with_leader_change() -> Result<()> {
     });
 
     tracing::info!(log_index, "--- shutdown node 0");
-    router.remove_node(0);
+    router.stop_node(0).await?;
 
     tracing::info!(log_index, "--- trigger election on node 1");
     let n1 = router.get_raft_handle(&1)?;

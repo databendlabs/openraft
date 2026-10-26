@@ -47,10 +47,10 @@ async fn allow_follower_log_revert() -> Result<()> {
 
     tracing::info!(log_index, "--- erase Learner-1 and restart");
     {
-        let (_raft, _ls, _sm) = router.remove_node(1).unwrap();
+        router.stop_node(1).await?;
         let (log, sm) = openraft_memstore::new_mem_store();
 
-        router.new_raft_node_with_sto(1, log, sm).await;
+        router.new_raft_node_with_sto(1, log, sm).await?;
         router.add_learner(0, 1).await?;
         log_index += 1; // add learner
     }

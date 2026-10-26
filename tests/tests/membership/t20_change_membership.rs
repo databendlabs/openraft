@@ -135,7 +135,7 @@ async fn change_with_new_learner_blocking() -> anyhow::Result<()> {
 
     tracing::info!(log_index, "--- change membership without adding-learner");
     {
-        router.new_raft_node(1).await;
+        router.new_raft_node(1).await?;
         router.add_learner(0, 1).await?;
         log_index += 1;
         router.wait(&0).applied_index(Some(log_index), "add learner").await?;
@@ -166,7 +166,7 @@ async fn change_without_adding_learner() -> anyhow::Result<()> {
     let log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
     router.wait(&0).applied_index(Some(log_index), "received 100 logs").await?;
 
-    router.new_raft_node(1).await;
+    router.new_raft_node(1).await?;
     let leader = router.get_raft_handle(&0)?;
 
     tracing::info!(

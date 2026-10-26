@@ -6,6 +6,7 @@ use openraft::Config;
 use openraft::ServerState;
 use openraft::async_runtime::WatchReceiver;
 use openraft::errors::Fatal;
+use openraft::errors::RPCError;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::ut_harness;
@@ -25,14 +26,41 @@ async fn shutdown() -> Result<()> {
     let mut router = RaftRouter::new(config.clone());
     let _log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
 
-    tracing::info!("--- performing node shutdowns");
+    tracing::info!("--- duplicate IDs must preserve the registered node");
+    {
+        let result = router.new_raft_node(0).await;
+        let error = result.unwrap_err();
+        let message = error.to_string();
+        assert_eq!("node 0 is already registered", message);
+    }
+
+    tracing::info!("--- stop nodes while preserving their storage and network faults");
     {
         for i in [0, 1, 2] {
-            let (node, _, _) = router.remove_node(i).unwrap();
-            node.shutdown().await?;
-            let m = node.metrics();
+            let (log_store, state_machine) = router.get_storage_handle(&i)?;
+            router.set_unreachable(i, true);
+            let node = router.stop_node(i).await?;
+            let same_log = Arc::ptr_eq(&log_store, &node.log_store);
+            assert!(same_log);
+            let same_sm = Arc::ptr_eq(&state_machine, &node.state_machine);
+            assert!(same_sm);
+            let result = router.emit_rpc_error(3, i);
+            let error = result.unwrap_err();
+            let unreachable = matches!(error, RPCError::Unreachable(_));
+            assert!(unreachable);
+            let m = node.raft.metrics();
             assert_eq!(ServerState::Shutdown, m.borrow_watched().state, "shutdown node-{}", i);
         }
+    }
+
+    tracing::info!("--- a detached node remains available to direct API calls");
+    {
+        router.new_raft_node(3).await?;
+        let detached = router.detach_node(3);
+        let (node, _, _) = detached.unwrap();
+        let state = node.with_raft_state(|state| state.server_state).await?;
+        assert_eq!(ServerState::Learner, state);
+        node.shutdown().await?;
     }
 
     Ok(())
