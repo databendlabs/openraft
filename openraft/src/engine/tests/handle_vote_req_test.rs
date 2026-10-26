@@ -53,7 +53,7 @@ fn test_handle_vote_req_rejected_by_leader_lease() -> anyhow::Result<()> {
     let resp = eng.handle_vote_req(VoteRequest {
         vote: Vote::new(3, 2),
         last_log_id: Some(log_id(2, 1, 3)),
-        leadership_transfer: false,
+        leadership_transfer_from: None,
     });
 
     assert_eq!(VoteResponse::new(Vote::new_committed(2, 1), None, false), resp);
@@ -83,7 +83,7 @@ fn test_handle_vote_req_leadership_transfer_overrides_leader_lease() -> anyhow::
     let resp = eng.handle_vote_req(VoteRequest {
         vote: Vote::new(3, 2),
         last_log_id: Some(log_id(2, 1, 3)),
-        leadership_transfer: true,
+        leadership_transfer_from: Some(Vote::new_committed(2, 1)),
     });
 
     assert_eq!(VoteResponse::new(Vote::new(3, 2), None, true), resp);
@@ -106,6 +106,31 @@ fn test_handle_vote_req_leadership_transfer_overrides_leader_lease() -> anyhow::
 }
 
 #[test]
+fn test_handle_vote_req_transfer_by_another_leader_rejected_by_leader_lease() -> anyhow::Result<()> {
+    // A leadership transfer authorized by a Leader this node does not follow, such as a delayed one
+    // from an older Leader, does not override the lease of the Leader it follows.
+    let mut eng = eng();
+    eng.state.vote.update(
+        UTConfig::<()>::now(),
+        Duration::from_millis(500),
+        Vote::new_committed(2, 1),
+    );
+
+    let resp = eng.handle_vote_req(VoteRequest {
+        vote: Vote::new(3, 2),
+        last_log_id: Some(log_id(2, 1, 3)),
+        leadership_transfer_from: Some(Vote::new_committed(1, 0)),
+    });
+
+    assert_eq!(VoteResponse::new(Vote::new_committed(2, 1), None, false), resp);
+
+    assert_eq!(Vote::new_committed(2, 1), *eng.state.vote_ref());
+    assert_eq!(0, eng.output.take_commands().len());
+
+    Ok(())
+}
+
+#[test]
 fn test_handle_vote_req_rejected_by_quorum_ack_lease() -> anyhow::Result<()> {
     // A Leader never renews the lease on its own `state.vote`, so that lease is expired here.
     // A quorum keeps acking it, and the quorum-ack lease alone rejects the vote.
@@ -121,7 +146,7 @@ fn test_handle_vote_req_rejected_by_quorum_ack_lease() -> anyhow::Result<()> {
     let resp = eng.handle_vote_req(VoteRequest {
         vote: Vote::new(3, 2),
         last_log_id: Some(log_id(2, 1, 3)),
-        leadership_transfer: false,
+        leadership_transfer_from: None,
     });
 
     assert_eq!(VoteResponse::new(Vote::new_committed(2, 1), None, false), resp);
@@ -149,7 +174,7 @@ fn test_handle_vote_req_leadership_transfer_overrides_quorum_ack_lease() -> anyh
     let resp = eng.handle_vote_req(VoteRequest {
         vote: Vote::new(3, 2),
         last_log_id: Some(log_id(2, 1, 3)),
-        leadership_transfer: true,
+        leadership_transfer_from: Some(Vote::new_committed(2, 1)),
     });
 
     assert_eq!(VoteResponse::new(Vote::new(3, 2), None, true), resp);
@@ -161,13 +186,41 @@ fn test_handle_vote_req_leadership_transfer_overrides_quorum_ack_lease() -> anyh
 }
 
 #[test]
+fn test_handle_vote_req_transfer_by_another_leader_rejected_by_quorum_ack_lease() -> anyhow::Result<()> {
+    // Same quorum-acked Leader as above, but the transfer is authorized by another Leader, so the
+    // quorum-ack lease still rejects the vote.
+    let mut eng = eng();
+    eng.state.vote = Leased::new(
+        UTConfig::<()>::now() - Duration::from_secs(1),
+        Duration::from_millis(500),
+        Vote::new_committed(2, 1),
+    );
+    let acked_at = SendStamp::new(UTConfig::<()>::now(), 0);
+    eng.testing_new_leader().update_clock(&0, acked_at);
+
+    let resp = eng.handle_vote_req(VoteRequest {
+        vote: Vote::new(3, 2),
+        last_log_id: Some(log_id(2, 1, 3)),
+        leadership_transfer_from: Some(Vote::new_committed(1, 0)),
+    });
+
+    assert_eq!(VoteResponse::new(Vote::new_committed(2, 1), None, false), resp);
+
+    assert_eq!(Vote::new_committed(2, 1), *eng.state.vote_ref());
+    assert!(eng.leader.is_some(), "the Leader stays");
+    assert_eq!(0, eng.output.take_commands().len());
+
+    Ok(())
+}
+
+#[test]
 fn test_handle_vote_req_reject_smaller_vote() -> anyhow::Result<()> {
     let mut eng = eng();
 
     let resp = eng.handle_vote_req(VoteRequest {
         vote: Vote::new(1, 2),
         last_log_id: None,
-        leadership_transfer: false,
+        leadership_transfer_from: None,
     });
 
     assert_eq!(VoteResponse::new(Vote::new(2, 1), None, false), resp);
@@ -190,7 +243,7 @@ fn test_handle_vote_req_reject_smaller_last_log_id() -> anyhow::Result<()> {
     let resp = eng.handle_vote_req(VoteRequest {
         vote: Vote::new(3, 2),
         last_log_id: Some(log_id(1, 1, 3)),
-        leadership_transfer: false,
+        leadership_transfer_from: None,
     });
 
     assert_eq!(VoteResponse::new(Vote::new(2, 1), Some(log_id(2, 1, 3)), false), resp);
@@ -218,7 +271,7 @@ fn test_handle_vote_req_granted_equal_vote_and_last_log_id() -> anyhow::Result<(
     let resp = eng.handle_vote_req(VoteRequest {
         vote: Vote::new(2, 1),
         last_log_id: Some(log_id(2, 1, 3)),
-        leadership_transfer: false,
+        leadership_transfer_from: None,
     });
 
     assert_eq!(VoteResponse::new(Vote::new(2, 1), Some(log_id(2, 1, 3)), true), resp);
@@ -245,7 +298,7 @@ fn test_handle_vote_req_granted_greater_vote() -> anyhow::Result<()> {
     let resp = eng.handle_vote_req(VoteRequest {
         vote: Vote::new(3, 1),
         last_log_id: Some(log_id(2, 1, 3)),
-        leadership_transfer: false,
+        leadership_transfer_from: None,
     });
 
     // respond the updated vote.
@@ -279,7 +332,7 @@ fn test_handle_vote_req_granted_follower_learner_does_not_emit_update_server_sta
         eng.handle_vote_req(VoteRequest {
             vote: Vote::new(3, 1),
             last_log_id: Some(log_id(2, 1, 3)),
-            leadership_transfer: false,
+            leadership_transfer_from: None,
         });
 
         assert_eq!(st, eng.state.server_state);
@@ -301,7 +354,7 @@ fn test_handle_vote_req_granted_follower_learner_does_not_emit_update_server_sta
         eng.handle_vote_req(VoteRequest {
             vote: Vote::new(3, 1),
             last_log_id: Some(log_id(2, 1, 3)),
-            leadership_transfer: false,
+            leadership_transfer_from: None,
         });
 
         assert_eq!(st, eng.state.server_state);

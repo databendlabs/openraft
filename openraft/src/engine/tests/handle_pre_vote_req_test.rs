@@ -54,7 +54,7 @@ fn test_handle_pre_vote_req_rejected_by_leader_lease() -> anyhow::Result<()> {
     let resp = eng.handle_pre_vote_req(VoteRequest {
         vote: Vote::new(3, 2),
         last_log_id: Some(log_id(2, 1, 3)),
-        leadership_transfer: false,
+        leadership_transfer_from: None,
     });
 
     assert_eq!(
@@ -86,7 +86,7 @@ fn test_handle_pre_vote_req_rejected_by_quorum_ack_lease() -> anyhow::Result<()>
     let resp = eng.handle_pre_vote_req(VoteRequest {
         vote: Vote::new(3, 2),
         last_log_id: Some(log_id(2, 1, 3)),
-        leadership_transfer: false,
+        leadership_transfer_from: None,
     });
 
     assert_eq!(
@@ -110,7 +110,7 @@ fn test_handle_pre_vote_req_reject_smaller_last_log_id() -> anyhow::Result<()> {
     let resp = eng.handle_pre_vote_req(VoteRequest {
         vote: Vote::new(3, 0),
         last_log_id: None,
-        leadership_transfer: false,
+        leadership_transfer_from: None,
     });
 
     assert_eq!(VoteResponse::new(Vote::new(2, 1), Some(log_id(1, 1, 1)), false), resp);
@@ -129,7 +129,7 @@ fn test_handle_pre_vote_req_granted_without_mutation() -> anyhow::Result<()> {
     let resp = eng.handle_pre_vote_req(VoteRequest {
         vote: Vote::new(3, 0),
         last_log_id: Some(log_id(1, 1, 1)),
-        leadership_transfer: false,
+        leadership_transfer_from: None,
     });
 
     assert_eq!(VoteResponse::new(Vote::new(2, 1), Some(log_id(1, 1, 1)), true), resp);

@@ -62,9 +62,13 @@ message VoteRequest {
   Vote vote = 1;
   LogId last_log_id = 2;
 
-  // True if the election is part of a leadership transfer authorized by the current Leader.
-  // A voter grants such a request even if the leader lease has not expired.
-  bool leadership_transfer = 3;
+  // Was `bool leadership_transfer`; keep the tag from being reused with a different meaning.
+  reserved 3;
+
+  // The vote of the Leader that authorized this election as a leadership transfer; unset for an
+  // ordinary election. A voter that follows that Leader grants such a request even if the leader
+  // lease has not expired.
+  Vote leadership_transfer_from = 4;
 }
 
 // VoteResponse represents the response to a vote request

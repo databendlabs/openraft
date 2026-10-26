@@ -18,15 +18,24 @@ pub struct VoteRequest<C: RaftTypeConfig> {
     /// The candidate's last log id.
     pub last_log_id: Option<LogIdOf<C>>,
 
-    /// True if the election is part of a leadership transfer authorized by the current Leader.
+    /// The vote of the Leader that authorized this election as a leadership transfer, or `None`
+    /// for an ordinary election.
     ///
-    /// A voter processes such a request even if the leader lease has not expired: the disruption
-    /// the lease protects against is legitimate when the Leader itself initiates the election
-    /// ("I have permission to disrupt the leader--it told me to!").
+    /// A voter whose vote equals it processes the request even if the leader lease has not
+    /// expired: the disruption the lease protects against is legitimate when the Leader itself
+    /// initiates the election ("I have permission to disrupt the leader--it told me to!").
     /// See: Raft dissertation, section 4.2.3.
+    ///
+    /// A voter that follows another Leader still applies its lease. Otherwise a delayed transfer
+    /// authorized by an older Leader could elect its target while a newer Leader holds a valid
+    /// lease, and a lease read on that newer Leader could miss writes.
+    #[since(
+        version = "0.10.0",
+        change = "replaced `leadership_transfer: bool` with the authorizing Leader's vote"
+    )]
     #[since(version = "0.10.0")]
     #[cfg_attr(feature = "serde", serde(default))]
-    pub leadership_transfer: bool,
+    pub leadership_transfer_from: Option<VoteOf<C>>,
 }
 
 impl<C> fmt::Display for VoteRequest<C>
@@ -35,10 +44,10 @@ where C: RaftTypeConfig
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{{vote:{}, last_log:{}, leadership_transfer:{}}}",
+            "{{vote:{}, last_log:{}, leadership_transfer_from:{}}}",
             self.vote,
             self.last_log_id.display(),
-            self.leadership_transfer,
+            self.leadership_transfer_from.display(),
         )
     }
 }
@@ -51,7 +60,7 @@ where C: RaftTypeConfig
         Self {
             vote,
             last_log_id,
-            leadership_transfer: false,
+            leadership_transfer_from: None,
         }
     }
 }
@@ -103,5 +112,44 @@ where C: RaftTypeConfig
             self.vote,
             self.last_log_id.as_ref().map(|x| x.to_string())
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_vote_request_serde() {
+        use crate::Vote;
+        use crate::engine::testing::UTConfig;
+        use crate::engine::testing::log_id;
+        use crate::raft::VoteRequest;
+
+        let req = VoteRequest::<UTConfig> {
+            vote: Vote::new(2, 1),
+            last_log_id: Some(log_id(1, 2, 3)),
+            leadership_transfer_from: Some(Vote::new_committed(1, 2)),
+        };
+
+        let want = r#"{"vote":{"leader_id":{"term":2,"node_id":1},"committed":false},"last_log_id":{"leader_id":{"term":1,"node_id":2},"index":3},"leadership_transfer_from":{"leader_id":{"term":1,"node_id":2},"committed":true}}"#;
+
+        let got = serde_json::to_string(&req).unwrap();
+        assert_eq!(want, got);
+
+        let decoded = serde_json::from_str::<VoteRequest<UTConfig>>(want).unwrap();
+        assert_eq!(req, decoded);
+
+        // A request from 0.10.0-alpha.22 onward carries the replaced `leadership_transfer: bool`.
+        // It deserializes as an ordinary election, so a voter of this version applies its lease
+        // instead of failing the RPC.
+        let old = r#"{"vote":{"leader_id":{"term":2,"node_id":1},"committed":false},"last_log_id":{"leader_id":{"term":1,"node_id":2},"index":3},"leadership_transfer":true}"#;
+        let ordinary = VoteRequest::<UTConfig> {
+            leadership_transfer_from: None,
+            ..req
+        };
+
+        let decoded = serde_json::from_str::<VoteRequest<UTConfig>>(old).unwrap();
+        assert_eq!(ordinary, decoded);
     }
 }
