@@ -17,7 +17,11 @@ impl NodeRole {
     #[since(version = "0.10.0")]
     pub const Empty: Self = Self(0);
 
-    /// Allows the node to campaign for leadership.
+    /// Allows the node to start an election on its own.
+    ///
+    /// A leadership transfer authorized by the current leader may start an election on a node
+    /// without this capability. The target must still have an up-to-date log and win the election
+    /// quorum.
     #[since(version = "0.10.0")]
     pub const Campaigner: Self = Self(1 << 0);
 
