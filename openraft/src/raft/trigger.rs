@@ -107,6 +107,10 @@ where C: RaftTypeConfig
     /// By default, this also resets the target's active replication backoff. Set
     /// [`Config::reset_backoff_on_transfer_leader`] to `Some(false)` to disable the reset.
     ///
+    /// A leader that alone forms a write quorum, such as the only voter of a cluster, ends the
+    /// transfer if it has not completed within an election timeout, and then serves requests
+    /// again.
+    ///
     /// If this node is not a Leader, it is just ignored.
     ///
     /// [`Config::reset_backoff_on_transfer_leader`]: crate::Config::reset_backoff_on_transfer_leader

@@ -196,6 +196,40 @@ where
         });
     }
 
+    /// Abort the leadership transfer if it has not completed within an election timeout, and
+    /// this leader alone forms a write quorum.
+    ///
+    /// Such a leader may otherwise wait forever: when no other node can win an election, as in a
+    /// cluster with one voter, it keeps forwarding every request to the target. The abort is safe
+    /// because every candidate needs this leader's vote, and granting that vote steps this leader
+    /// down. Any other leader keeps the transfer: a delayed transfer request could still elect the
+    /// target without this leader's vote, while this leader serves lease reads.
+    ///
+    /// See: Raft dissertation, section 3.10.
+    pub(crate) fn abort_expired_transfer(&mut self) {
+        let Some(started_at) = self.leader.transfer_started_at() else {
+            return;
+        };
+
+        if !self.leader.is_self_quorum() {
+            return;
+        }
+
+        let election_timeout = self.config.timer_config.election_timeout;
+        let expires_at = started_at + election_timeout;
+        let now = C::now();
+        if now < expires_at {
+            return;
+        }
+
+        tracing::info!(
+            "abort leadership transfer to {:?}: not completed within election timeout {:?}",
+            self.leader.get_transfer_to(),
+            election_timeout
+        );
+        self.leader.abort_transfer();
+    }
+
     /// Return a replication session id
     #[allow(dead_code)]
     pub(crate) fn replication_session_id(&self) -> ReplicationSessionId<C> {

@@ -2081,6 +2081,10 @@ where
 
         self.handle_tick_election();
 
+        if let Ok(mut lh) = self.engine.try_leader_handler() {
+            lh.abort_expired_transfer();
+        }
+
         // Leader send heartbeat
         let heartbeat_at = self.engine.leader_ref().map(|l| l.next_heartbeat);
         if let Some(t) = heartbeat_at

@@ -450,6 +450,72 @@ async fn transfer_leader_to_promoted_learner_without_promotion_log_does_not_pani
     Ok(())
 }
 
+/// The only voter ends a transfer to a learner, and then serves writes again.
+///
+/// A learner never campaigns, and no other node can win an election, so the transfer can never
+/// complete. Node 0 aborts it once it has not completed within an election timeout (Raft
+/// dissertation, section 3.10).
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn only_voter_aborts_transfer_to_learner() -> anyhow::Result<()> {
+    let config = Arc::new(
+        Config {
+            election_timeout_min: 150,
+            election_timeout_max: 300,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
+    let mut router = RaftRouter::new(config.clone());
+
+    tracing::info!("--- bring up voter 0 and learner 1");
+    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {1}).await?;
+
+    let n0 = router.get_raft_handle(&0)?;
+
+    tracing::info!(
+        log_index,
+        "--- node 0 transfers leadership to learner 1 and rejects writes"
+    );
+    {
+        n0.trigger().transfer_leader(1).await?;
+
+        let err = n0
+            .client_write(ClientRequest::make_request("transfer", 1))
+            .await
+            .expect_err("write must be rejected during leadership transfer");
+        let ClientWriteError::ForwardToLeader(fwd) = err.into_api_error().expect("write returns an API error") else {
+            panic!("expected ForwardToLeader");
+        };
+        assert_eq!(Some(1), fwd.leader_id);
+        assert_eq!(ForwardReason::LeadershipTransfer, fwd.reason);
+    }
+
+    tracing::info!(
+        log_index,
+        "--- node 0 aborts the transfer after an election timeout, then commits a write"
+    );
+    {
+        let max_attempts = 40;
+        let mut attempts = 0;
+        let resp = loop {
+            let res = n0.client_write(ClientRequest::make_request("abort", 1)).await;
+            attempts += 1;
+            if res.is_ok() || attempts == max_attempts {
+                break res?;
+            }
+            TypeConfig::sleep(Duration::from_millis(50)).await;
+        };
+        log_index += 1;
+
+        assert_eq!(log_index, resp.log_id.index());
+        n0.wait(timeout()).applied_index(Some(log_index), "node 0 applies the write").await?;
+    }
+
+    Ok(())
+}
+
 fn timeout() -> Option<Duration> {
     Some(Duration::from_millis(500))
 }

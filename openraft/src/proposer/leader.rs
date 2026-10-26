@@ -46,14 +46,14 @@ where
     C: RaftTypeConfig,
     QS: QuorumSet<Id = C::NodeId>,
 {
-    /// Whether this Leader is marked as transferring to another node.
+    /// The node this Leader is transferring leadership to, and the time the transfer started.
     ///
     /// Proposing is disabled when Leader has been transferring to another node.
     /// Indicates whether the current Leader is in the process of transferring leadership to another
     /// node.
     ///
     /// Leadership transfers disable proposing new logs.
-    pub(crate) transfer_to: Option<C::NodeId>,
+    pub(crate) transfer_to: Option<(C::NodeId, InstantOf<C>)>,
 
     /// The vote this leader works in.
     ///
@@ -207,11 +207,24 @@ where
     }
 
     pub(crate) fn mark_transfer(&mut self, to: C::NodeId) {
-        self.transfer_to = Some(to);
+        let now = C::now();
+        self.transfer_to = Some((to, now));
     }
 
     pub(crate) fn get_transfer_to(&self) -> Option<&C::NodeId> {
-        self.transfer_to.as_ref()
+        let (to, _started_at) = self.transfer_to.as_ref()?;
+        Some(to)
+    }
+
+    /// Return when the leadership transfer started, or `None` if no transfer is in progress.
+    pub(crate) fn transfer_started_at(&self) -> Option<InstantOf<C>> {
+        let (_to, started_at) = self.transfer_to.as_ref()?;
+        Some(*started_at)
+    }
+
+    /// End the leadership transfer, so that this Leader proposes logs and sends heartbeats again.
+    pub(crate) fn abort_transfer(&mut self) {
+        self.transfer_to = None;
     }
 
     /// Allocate a range of log IDs for new entries.
@@ -307,8 +320,8 @@ where
     ///
     /// A leader that alone forms a write quorum keeps its lease without acknowledgments, except
     /// while it transfers leadership. A transfer stops heartbeats so that the lease runs out and
-    /// this leader votes for another candidate. Otherwise a transfer whose target never campaigns
-    /// would keep this node leader forever, refusing every write and every vote.
+    /// this leader votes for another candidate. Otherwise only the transfer target could replace
+    /// this leader before the transfer is aborted.
     pub(crate) fn is_lease_valid(&self, leader_lease: Duration) -> bool {
         let is_transferring = self.transfer_to.is_some();
         if self.is_self_quorum() && !is_transferring {
