@@ -130,7 +130,7 @@ fn test_direct_transfer_and_pre_vote_campaigns_resample_timeout() {
         engine.elect();
         observed.push(engine.config.timer_config.election_timeout);
 
-        engine.elect_by_leadership_transfer();
+        engine.elect_by_leadership_transfer(Vote::new_committed(1, 2));
         observed.push(engine.config.timer_config.election_timeout);
 
         engine.pre_elect();
@@ -230,7 +230,7 @@ fn test_elect_single_node() -> anyhow::Result<()> {
                     vote_req: VoteRequest {
                         vote: Vote::new(1, 1),
                         last_log_id: Some(log_id(0, 0, 0)),
-                        leadership_transfer: false,
+                        leadership_transfer_from: None,
                     },
                 },
             ],
@@ -242,9 +242,10 @@ fn test_elect_single_node() -> anyhow::Result<()> {
 }
 
 #[test]
-fn test_elect_by_leadership_transfer_sets_flag() -> anyhow::Result<()> {
-    // An election started by a leadership transfer marks the vote request, so that voters
-    // grant it even when the leader lease has not expired.
+fn test_elect_by_leadership_transfer_carries_leader_vote() -> anyhow::Result<()> {
+    // An election started by a leadership transfer carries the vote of the Leader that authorized
+    // it, so that voters following that Leader grant it even when the leader lease has not
+    // expired.
     let mut eng = eng();
     eng.config.id = 1;
     eng.state.membership_state.set_effective(Arc::new(StoredMembershipOf::<UTConfig>::new(
@@ -252,7 +253,7 @@ fn test_elect_by_leadership_transfer_sets_flag() -> anyhow::Result<()> {
         m12(),
     )));
 
-    eng.elect_by_leadership_transfer();
+    eng.elect_by_leadership_transfer(Vote::new_committed(0, 2));
 
     assert_eq!(Vote::new(1, 1), *eng.state.vote_ref());
     assert!(eng.candidate_ref().is_some(), "candidate state is pending");
@@ -266,7 +267,7 @@ fn test_elect_by_leadership_transfer_sets_flag() -> anyhow::Result<()> {
                 vote_req: VoteRequest {
                     vote: Vote::new(1, 1),
                     last_log_id: Some(log_id(0, 0, 0)),
-                    leadership_transfer: true,
+                    leadership_transfer_from: Some(Vote::new_committed(0, 2)),
                 },
             },
         ],
@@ -310,7 +311,7 @@ fn test_elect_again_overrides_previous_campaign() -> anyhow::Result<()> {
                     vote_req: VoteRequest {
                         vote: Vote::new(2, 1),
                         last_log_id: Some(log_id(0, 0, 0)),
-                        leadership_transfer: false,
+                        leadership_transfer_from: None,
                     },
                 },
             ],
@@ -338,7 +339,7 @@ fn test_election_on_leader_is_ignored() -> anyhow::Result<()> {
     assert_eq!(Vote::new(2, 1), *eng.pre_candidate_ref().unwrap().vote_ref());
 
     eng.elect();
-    eng.elect_by_leadership_transfer();
+    eng.elect_by_leadership_transfer(Vote::new_committed(1, 1));
 
     assert_eq!(Vote::new_committed(1, 1), *eng.state.vote_ref());
     assert!(eng.leader.is_some(), "leadership is preserved");

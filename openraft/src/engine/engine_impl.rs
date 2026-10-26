@@ -246,19 +246,20 @@ where
     /// Start to elect this node as leader
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn elect(&mut self) {
-        self.do_elect(false);
+        self.do_elect(None);
     }
 
-    /// Start an election as part of a leadership transfer.
+    /// Start an election as part of a leadership transfer authorized by the Leader whose vote is
+    /// `from`.
     ///
-    /// The emitted vote request is marked so that voters grant it even when the leader lease
-    /// has not expired. See: Raft dissertation, section 4.2.3.
+    /// The emitted vote request carries `from`, so that voters following that Leader grant it
+    /// even when the leader lease has not expired. See: Raft dissertation, section 4.2.3.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub(crate) fn elect_by_leadership_transfer(&mut self) {
-        self.do_elect(true);
+    pub(crate) fn elect_by_leadership_transfer(&mut self, from: VoteOf<C>) {
+        self.do_elect(Some(from));
     }
 
-    fn do_elect(&mut self, leadership_transfer: bool) {
+    fn do_elect(&mut self, leadership_transfer_from: Option<VoteOf<C>>) {
         // An election attempt supersedes any in-flight Pre-Vote round.
         self.pre_candidate = None;
 
@@ -289,7 +290,7 @@ where
             vote_req: VoteRequest {
                 vote: new_vote,
                 last_log_id,
-                leadership_transfer,
+                leadership_transfer_from,
             },
         });
 
@@ -388,10 +389,13 @@ where
             local_leased_vote.display_lease_info(now)
         );
 
-        // A leadership-transfer election is authorized by the current Leader, thus it proceeds
-        // even when the leader lease has not expired.
-        // See: Raft dissertation, section 4.2.3.
-        if local_leased_vote.is_committed() && !req.leadership_transfer {
+        // A leadership-transfer election authorized by the Leader this node follows proceeds even
+        // when that Leader's lease has not expired. See: Raft dissertation, section 4.2.3.
+        // A transfer authorized by another Leader, such as a delayed one from an older Leader,
+        // does not override the lease of the Leader this node follows.
+        let authorized_transfer = req.leadership_transfer_from.as_ref() == Some(self.state.vote_ref());
+
+        if local_leased_vote.is_committed() && !authorized_transfer {
             // Current leader lease has not yet expired, reject voting request
             if !local_leased_vote.is_expired(now, Duration::from_millis(0)) {
                 tracing::info!(
@@ -405,9 +409,9 @@ where
 
         // A Leader never renews the lease on its own `state.vote`: heartbeat replies renew that
         // lease only on followers. The Leader's live lease is the quorum-ack lease, so while a
-        // quorum keeps acking this Leader, reject the vote. A leadership-transfer election is
-        // authorized by this very Leader, so it proceeds.
-        if !req.leadership_transfer
+        // quorum keeps acking this Leader, reject the vote. A leadership-transfer election
+        // authorized by this very Leader proceeds.
+        if !authorized_transfer
             && let Some(leader) = self.leader.as_deref()
             && leader.is_lease_valid(self.config.timer_config.leader_lease)
         {

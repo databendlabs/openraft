@@ -307,7 +307,7 @@ async fn pre_vote_rejection_with_higher_vote_catches_up_requester() -> Result<()
         .vote(VoteRequest {
             vote: Vote::new(10, 2),
             last_log_id: Some(log_id(1, 0, log_index)),
-            leadership_transfer: true,
+            leadership_transfer_from: Some(Vote::new_committed(1, 0)),
         })
         .await?;
     assert!(resp.vote_granted);

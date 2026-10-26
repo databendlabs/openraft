@@ -1855,7 +1855,7 @@ where
                             return;
                         }
 
-                        self.engine.elect_by_leadership_transfer();
+                        self.engine.elect_by_leadership_transfer(current_leader_vote);
                     }
                 }
             }
