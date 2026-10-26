@@ -165,6 +165,10 @@ loaded CI runner also slows down every green run.
 
 ## Fault injection
 
+The router sends full snapshots directly by default. Select
+`Builder::chunked_snapshots()` to exercise the legacy chunking adapter.
+`router.snapshot_chunks()` returns the complete wire chunk sequence for assertions.
+
 The router owns the simulated network, so a case shapes failures through it:
 
 - `set_network_error(id, bool)` and `set_unreachable(id, bool)` cut a node off.

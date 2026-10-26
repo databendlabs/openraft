@@ -8,10 +8,14 @@ use openraft::SnapshotPolicy;
 use openraft::Vote;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
+use openraft_legacy::network_v1::InstallSnapshotRequest;
+use openraft_legacy::network_v1::SnapshotMeta;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
+
+const CHUNK_SIZE: usize = 10;
 
 /// Test transfer snapshot in small chunks
 ///
@@ -28,14 +32,16 @@ async fn snapshot_chunk_size() -> Result<()> {
     let config = Arc::new(
         Config {
             snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
-            snapshot_max_chunk_size: 10,
+            snapshot_max_chunk_size: CHUNK_SIZE as u64,
             enable_heartbeat: false,
             max_in_snapshot_log_to_keep: 0,
             ..Default::default()
         }
         .validate()?,
     );
-    let mut router = RaftRouter::new(config.clone());
+    let builder = RaftRouter::builder(config.clone());
+    let builder = builder.chunked_snapshots();
+    let mut router = builder.build();
 
     tracing::info!("--- bring up a single node cluster");
     let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
@@ -100,6 +106,42 @@ async fn snapshot_chunk_size() -> Result<()> {
             let snap = sm.get_current_snapshot().await?.unwrap();
             assert_eq!(snap.meta.last_log_id, Some(log_id(1, 0, log_index - 1)));
         }
+    }
+
+    tracing::info!(log_index, "--- verify the exact chunks delivered by the legacy adapter");
+    {
+        let leader = router.get_raft_handle(&0)?;
+        let snapshot = leader.get_snapshot().await?;
+        let snapshot = snapshot.unwrap();
+        let bytes = snapshot.snapshot.get_ref().clone();
+        let meta = snapshot.meta.clone();
+        let vote = Vote::new_committed(1, 0);
+        let requests = router.snapshot_chunks();
+        let snapshot_id = requests[0].meta.snapshot_id.clone();
+        let wire_meta = SnapshotMeta::new(meta.clone(), snapshot_id);
+        let mut expected = Vec::new();
+        for (index, chunk) in bytes.chunks(CHUNK_SIZE).enumerate() {
+            let offset = index * CHUNK_SIZE;
+            let end = offset + chunk.len();
+            let done = end == bytes.len();
+            let request = InstallSnapshotRequest {
+                vote,
+                meta: wire_meta.clone(),
+                offset: offset as u64,
+                data: chunk.to_vec(),
+                done,
+            };
+            expected.push(request);
+        }
+        assert_eq!(expected, requests);
+
+        let node = router.get_raft_handle(&1)?;
+
+        let installed = node.get_snapshot().await?;
+        let installed = installed.unwrap();
+        assert_eq!(meta, installed.meta);
+        let installed_bytes = installed.snapshot.into_inner();
+        assert_eq!(bytes, installed_bytes);
     }
 
     Ok(())

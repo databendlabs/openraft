@@ -61,6 +61,8 @@ use openraft::type_config::TypeConfigExt;
 use openraft::type_config::alias::AsyncRuntimeOf;
 use openraft::type_config::alias::MutexOf;
 use openraft::vote::RaftLeaderId;
+use openraft_legacy::network_v1::InstallSnapshotRequest;
+use openraft_legacy::network_v1::RaftNetwork as LegacyRaftNetwork;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::ClientResponse;
 use openraft_memstore::IntoMemClientRequest;
@@ -76,10 +78,12 @@ use pretty_assertions::assert_ne;
 use rand::RngExt;
 use tracing_appender::non_blocking::WorkerGuard;
 
+use crate::fixtures::chunked_network::ChunkedNetwork;
 use crate::fixtures::logging::init_file_logging;
 use crate::fixtures::rpc_request::RpcRequest;
 use crate::fixtures::rpc_response::RpcResponse;
 
+mod chunked_network;
 pub mod custom_membership;
 pub mod events;
 pub mod logging;
@@ -267,6 +271,9 @@ pub struct TypedRaftRouter {
 
     /// A hook function to be called when after an RPC is received from target node.
     rpc_post_hook: Arc<MutexOf<TypeConfig, HashMap<RPCTypes, PostHook>>>,
+
+    /// Recorded wire chunks when the legacy snapshot transport is selected.
+    snapshot_chunks: Option<Arc<Mutex<Vec<InstallSnapshotRequest<MemConfig>>>>>,
 }
 
 /// Default `RaftRouter` for memstore.
@@ -275,9 +282,16 @@ pub type RaftRouter = TypedRaftRouter;
 pub struct Builder {
     config: Arc<Config>,
     send_delay: u64,
+    chunked_snapshots: bool,
 }
 
 impl Builder {
+    /// Exercise the legacy chunking adapter when replicating snapshots.
+    pub fn chunked_snapshots(mut self) -> Self {
+        self.chunked_snapshots = true;
+        self
+    }
+
     pub fn send_delay(mut self, ms: u64) -> Self {
         self.send_delay = ms;
         self
@@ -294,6 +308,11 @@ impl Builder {
                 self.send_delay
             }
         };
+        let snapshot_chunks = if self.chunked_snapshots {
+            Some(Arc::new(Mutex::new(Vec::new())))
+        } else {
+            None
+        };
         TypedRaftRouter {
             config: self.config,
             nodes: Default::default(),
@@ -304,13 +323,18 @@ impl Builder {
             rpc_count: Default::default(),
             rpc_pre_hook: Arc::new(TypeConfig::mutex(HashMap::new())),
             rpc_post_hook: Arc::new(TypeConfig::mutex(HashMap::new())),
+            snapshot_chunks,
         }
     }
 }
 
 impl TypedRaftRouter {
     pub fn builder(config: Arc<Config>) -> Builder {
-        Builder { config, send_delay: 0 }
+        Builder {
+            config,
+            send_delay: 0,
+            chunked_snapshots: false,
+        }
     }
 
     /// Create a new instance.
@@ -320,6 +344,13 @@ impl TypedRaftRouter {
 
     pub fn network_send_delay(&mut self, ms: u64) {
         self.send_delay.store(ms, Ordering::Relaxed);
+    }
+
+    /// Read the complete chunk sequence sent through the selected legacy transport.
+    pub fn snapshot_chunks(&self) -> Vec<InstallSnapshotRequest<MemConfig>> {
+        let chunks = self.snapshot_chunks.as_ref().expect("select the chunked snapshot transport");
+        let chunks = chunks.lock().unwrap();
+        chunks.clone()
     }
 
     async fn rand_send_delay(&self) {
@@ -970,8 +1001,8 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
         &mut self,
         vote: Vote<<MemConfig as RaftTypeConfig>::LeaderId>,
         snapshot: SnapshotOf<MemConfig, Self::SnapshotData>,
-        _cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
-        _option: RPCOption,
+        cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
+        option: RPCOption,
     ) -> Result<SnapshotResponse<MemConfig>, StreamingError<MemConfig>> {
         let from_id = vote.leader_id().to_node_id();
 
@@ -982,13 +1013,22 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
 
         let node = self.owner.get_raft_handle(&self.target)?;
 
-        let resp = node.install_full_snapshot(vote, snapshot.clone()).await;
-        let resp = resp.map_err(|e| {
-            RPCError::Unreachable(Unreachable::<MemConfig>::from_string(format!(
-                "error: {} target={}",
-                e, self.target
-            )))
-        })?;
+        let resp = if let Some(chunks) = &self.owner.snapshot_chunks {
+            let network = ChunkedNetwork {
+                node,
+                requests: chunks.clone(),
+            };
+            let mut network = network.into_v2::<MemSnapshotData>();
+            network.full_snapshot(vote, snapshot.clone(), cancel, option).await?
+        } else {
+            let response = node.install_full_snapshot(vote, snapshot.clone()).await;
+            response.map_err(|e| {
+                RPCError::Unreachable(Unreachable::<MemConfig>::from_string(format!(
+                    "error: {} target={}",
+                    e, self.target
+                )))
+            })?
+        };
 
         self.owner.call_rpc_post_hook(snapshot, resp.clone(), from_id, self.target).await?;
 
