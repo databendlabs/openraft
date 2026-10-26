@@ -304,8 +304,14 @@ where
     }
 
     /// Return whether this leader's lease is valid.
+    ///
+    /// A leader that alone forms a write quorum keeps its lease without acknowledgments, except
+    /// while it transfers leadership. A transfer stops heartbeats so that the lease runs out and
+    /// this leader votes for another candidate. Otherwise a transfer whose target never campaigns
+    /// would keep this node leader forever, refusing every write and every vote.
     pub(crate) fn is_lease_valid(&self, leader_lease: Duration) -> bool {
-        if self.is_self_quorum() {
+        let is_transferring = self.transfer_to.is_some();
+        if self.is_self_quorum() && !is_transferring {
             return true;
         }
 
