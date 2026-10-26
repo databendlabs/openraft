@@ -1,8 +1,6 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::metrics::WaitError;
 
@@ -21,17 +19,14 @@ use crate::fixtures::ut_harness;
 #[test_harness::test(harness = ut_harness)]
 async fn metrics_wait() -> Result<()> {
     // Setup test dependencies.
-    let config = Arc::new(
-        Config {
-            enable_tick: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_tick: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- bring up a single node cluster");
-    let log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
+    let log_index = router.new_cluster([0], []).await?;
 
     tracing::info!(log_index, "--- wait for a log that is never written, expect timeout");
 

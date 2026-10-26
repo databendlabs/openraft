@@ -1,8 +1,6 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::Vote;
 use openraft::raft::FlushPoint;
@@ -26,17 +24,14 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn log_progress_api() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_tick: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_tick: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0], []).await?;
 
     tracing::info!(log_index, "--- get log progress watcher");
     let n0 = router.get_raft_handle(&0)?;
@@ -95,17 +90,14 @@ async fn log_progress_api() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn log_progress_with_leader_change() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_tick: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_tick: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing 3-node cluster");
-    let mut log_index = router.new_cluster(btreeset! {0, 1, 2}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], []).await?;
 
     tracing::info!(log_index, "--- get log progress watcher on node 1");
     let n1 = router.get_raft_handle(&1)?;
@@ -180,18 +172,15 @@ async fn log_progress_with_leader_change() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn vote_progress_api() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_tick: false,
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_tick: false,
+        enable_heartbeat: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing 3-node cluster");
-    let _log_index = router.new_cluster(btreeset! {0, 1, 2}, btreeset! {}).await?;
+    let _log_index = router.new_cluster([0, 1, 2], []).await?;
 
     tracing::info!("--- get vote progress watcher on node 1");
     let n1 = router.get_raft_handle(&1)?;

@@ -1,8 +1,6 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
@@ -19,22 +17,19 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn append_entries_backoff_rejoin() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            election_timeout_min: 100,
-            election_timeout_max: 200,
-            enable_elect: false,
-            // Disable heartbeat to make the problem clear.
-            enable_heartbeat: true,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        election_timeout_min: 100,
+        election_timeout_max: 200,
+        enable_elect: false,
+        // Disable heartbeat to make the problem clear.
+        enable_heartbeat: true,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], []).await?;
 
     let n = 10;
 

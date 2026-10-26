@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use anyhow::Result;
 use openraft::Config;
 use openraft::Entry;
@@ -34,15 +32,12 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn conflict_with_empty_entries() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     router.new_raft_node(0).await?;
 

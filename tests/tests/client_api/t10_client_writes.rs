@@ -1,8 +1,5 @@
-use std::sync::Arc;
-
 use anyhow::Result;
 use futures::prelude::*;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::RaftLogReader;
 use openraft::SnapshotPolicy;
@@ -28,22 +25,19 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn client_writes() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            snapshot_policy: SnapshotPolicy::LogsSinceLast(500),
-            // The write load is heavy in this test, need a relatively long timeout.
-            election_timeout_min: 500,
-            election_timeout_max: 1000,
-            enable_tick: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        snapshot_policy: SnapshotPolicy::LogsSinceLast(500),
+        // The write load is heavy in this test, need a relatively long timeout.
+        election_timeout_min: 500,
+        election_timeout_max: 1000,
+        enable_tick: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], []).await?;
 
     tracing::info!(
         log_index,
@@ -83,9 +77,8 @@ async fn client_writes() -> Result<()> {
         while clients.try_next().await?.is_some() {}
 
         log_index += 100 * 6;
-        for id in [0, 1, 2] {
-            router.wait(&id).applied_index(Some(log_index), "sync logs").await?;
-        }
+        router.wait_applied_at_least([0, 1, 2], log_index, "sync logs").await?;
+        router.wait_applied_at_least([0, 1, 2], log_index - 1, "already passed boundary").await?;
     }
 
     tracing::info!(
@@ -122,18 +115,15 @@ async fn client_writes() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn client_write_ff() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_tick: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_tick: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let log_index = router.new_cluster([0, 1, 2], []).await?;
     let _ = log_index;
 
     let n0 = router.get_raft_handle(&0)?;
@@ -162,18 +152,15 @@ async fn client_write_ff() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn write_builder() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_tick: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_tick: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let log_index = router.new_cluster([0, 1, 2], []).await?;
     let _ = log_index;
 
     let n0 = router.get_raft_handle(&0)?;
@@ -205,18 +192,15 @@ async fn write_with_leader() -> Result<()> {
     use openraft::errors::ClientWriteError;
     use openraft::vote::RaftLeaderId;
 
-    let config = Arc::new(
-        Config {
-            enable_tick: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_tick: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], []).await?;
 
     let n0 = router.get_raft_handle(&0)?;
 
@@ -275,18 +259,15 @@ async fn write_with_leader() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn write_blank() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_tick: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_tick: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], []).await?;
 
     let n0 = router.get_raft_handle(&0)?;
 

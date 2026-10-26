@@ -1,8 +1,6 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::ServerState;
 use openraft::async_runtime::WatchReceiver;
@@ -25,21 +23,18 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn client_write_requires_valid_quorum_lease() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            heartbeat_interval: 20,
-            election_timeout_min: 100,
-            election_timeout_max: 200,
-            enable_tick: false,
-            enable_heartbeat: false,
-            enable_elect: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        heartbeat_interval: 20,
+        election_timeout_min: 100,
+        election_timeout_max: 200,
+        enable_tick: false,
+        enable_heartbeat: false,
+        enable_elect: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let mut router = RaftRouter::new(config.clone())?;
+    let mut log_index = router.new_cluster([0, 1, 2], []).await?;
     let n0 = router.get_raft_handle(&0)?;
 
     router.set_unreachable(1, true);

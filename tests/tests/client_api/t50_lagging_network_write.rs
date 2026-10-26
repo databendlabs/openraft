@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::ServerState;
 
@@ -19,20 +16,17 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn lagging_network_write() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            heartbeat_interval: 100,
-            election_timeout_min: 300,
-            election_timeout_max: 600,
-            enable_tick: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::builder(config).send_delay(50).build();
+    let config = Config {
+        heartbeat_interval: 100,
+        election_timeout_min: 300,
+        election_timeout_max: 600,
+        enable_tick: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::builder(config)?.send_delay(50).build();
 
     tracing::info!("--- initializing cluster");
-    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {1,2}).await?;
+    let mut log_index = router.new_cluster([0], [1, 2]).await?;
 
     router.client_request_many(0, "client", 1).await?;
     log_index += 1;

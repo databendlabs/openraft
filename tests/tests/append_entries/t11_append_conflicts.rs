@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use anyhow::Result;
 use openraft::Config;
 use openraft::RaftLogReader;
@@ -21,15 +19,12 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn append_conflicts() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
     router.new_raft_node(0).await?;
 
     tracing::info!("--- wait for init node to ready");

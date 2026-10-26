@@ -339,17 +339,20 @@ impl Builder {
 }
 
 impl TypedRaftRouter {
-    pub fn builder(config: Arc<Config>) -> Builder {
-        Builder {
-            config,
+    /// Validate the visible scenario config and prepare a router builder.
+    pub fn builder(config: Config) -> anyhow::Result<Builder> {
+        let config = config.validate()?;
+        Ok(Builder {
+            config: Arc::new(config),
             send_delay: 0,
             chunked_snapshots: false,
-        }
+        })
     }
 
-    /// Create a new instance.
-    pub fn new(config: Arc<Config>) -> Self {
-        Self::builder(config).build()
+    /// Create a router, validating the scenario config before starting any nodes.
+    pub fn new(config: Config) -> anyhow::Result<Self> {
+        let builder = Self::builder(config)?;
+        Ok(builder.build())
     }
 
     pub fn network_send_delay(&mut self, ms: u64) {
@@ -421,39 +424,21 @@ impl TypedRaftRouter {
     /// Create a cluster: 0 is the initial leader, others are voters and learners
     ///
     /// NOTE: it create a single node cluster first, then change it to a multi-voter cluster.
-    #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn new_cluster(
-        &mut self,
-        voter_ids: BTreeSet<MemNodeId>,
-        learners: BTreeSet<MemNodeId>,
-    ) -> anyhow::Result<u64> {
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub async fn new_cluster<V, L>(&mut self, voter_ids: V, learners: L) -> anyhow::Result<u64>
+    where
+        V: IntoIterator<Item = MemNodeId>,
+        L: IntoIterator<Item = MemNodeId>,
+    {
+        let voter_ids = voter_ids.into_iter().collect::<BTreeSet<_>>();
+        let learners = learners.into_iter().collect::<BTreeSet<_>>();
+        self.validate_cluster(&voter_ids, &learners)?;
         let leader_id = MemNodeId::default();
-        assert!(voter_ids.contains(&leader_id));
 
         self.new_raft_node(leader_id).await?;
 
         tracing::info!("--- wait for init node to ready");
 
-        // Sending an external requests will also find all nodes in Learner state.
-        //
-        // This demonstrates fire-and-forget external request, which will be serialized
-        // with other processing. It is not required for the correctness of the test
-        //
-        // Since the execution of API messages is serialized, even if the request executes
-        // some unknown time in the future (due to fire-and-forget semantics), it will
-        // properly receive the state before initialization, as that state will appear
-        // later in the sequence.
-        //
-        // Also, this external request will be definitely executed, since it's ordered
-        // before other requests in the Raft core API queue, which definitely are executed
-        // (since they are awaited).
-        #[allow(clippy::single_element_loop)]
-        for node in [0] {
-            self.external_request(node, |s| {
-                assert_eq!(s.server_state, ServerState::Learner);
-            })
-            .await?;
-        }
         self.wait(&leader_id).applied_index(None, "empty").await?;
 
         tracing::info!("--- initializing single node cluster: {}", 0);
@@ -495,7 +480,7 @@ impl TypedRaftRouter {
             }
         }
 
-        for id in learners.clone() {
+        for &id in &learners {
             tracing::info!(log_index, "--- add learner: {}", id);
             self.new_raft_node(id).await?;
             let response = self.add_learner(leader_id, id).await?;
@@ -506,6 +491,18 @@ impl TypedRaftRouter {
         }
 
         Ok(log_index)
+    }
+
+    fn validate_cluster(&self, voters: &BTreeSet<MemNodeId>, learners: &BTreeSet<MemNodeId>) -> anyhow::Result<()> {
+        anyhow::ensure!(voters.contains(&0), "cluster voters must include node 0");
+        let disjoint = voters.is_disjoint(learners);
+        anyhow::ensure!(disjoint, "cluster voters and learners must be disjoint");
+        let nodes = self.nodes.lock().unwrap();
+        for id in voters.union(learners) {
+            let registered = nodes.contains_key(id);
+            anyhow::ensure!(!registered, "node {id} is already registered");
+        }
+        Ok(())
     }
 
     /// Create and register a new Raft node bearing the given ID.
@@ -827,6 +824,21 @@ impl TypedRaftRouter {
         };
 
         node.wait(Some(duration))
+    }
+
+    /// Wait until every requested node has applied at least `index`.
+    /// One shared deadline covers the entire group; later applied indices also satisfy it.
+    pub async fn wait_applied_at_least<I>(&self, ids: I, index: u64, message: &str) -> anyhow::Result<()>
+    where I: IntoIterator<Item = MemNodeId> {
+        let ids = ids.into_iter().collect::<Vec<_>>();
+        let wait = async {
+            for id in ids {
+                self.wait(&id).applied_index_at_least(Some(index), message).await?;
+            }
+            Ok::<(), WaitError>(())
+        };
+        TypeConfig::timeout(WAIT_TIMEOUT, wait).await.context("group apply deadline exceeded")??;
+        Ok(())
     }
 
     /// Get the ID of the current leader.

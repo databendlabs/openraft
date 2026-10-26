@@ -32,9 +32,9 @@ async fn new_leader_auto_commit_uniform_config() -> Result<()> {
         .validate()?,
     );
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config.as_ref().clone())?;
 
-    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0], []).await?;
 
     let (mut sto, sm) = router.get_storage_handle(&0)?;
     router.stop_node(0).await?;

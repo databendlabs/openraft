@@ -3,7 +3,6 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::Vote;
 use openraft::raft::VoteRequest;
@@ -18,21 +17,18 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn heartbeat_reject_vote() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            heartbeat_interval: 200,
-            election_timeout_min: 1000,
-            election_timeout_max: 1001,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        heartbeat_interval: 200,
+        election_timeout_min: 1000,
+        election_timeout_max: 1001,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
     let now = TypeConfig::now();
     TypeConfig::sleep(Duration::from_millis(1)).await;
 
-    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3}).await?;
+    let log_index = router.new_cluster([0, 1, 2], [3]).await?;
 
     let vote_modified_time = Arc::new(Mutex::new(Some(TypeConfig::now())));
     tracing::info!(log_index, "--- leader lease is set by heartbeat");

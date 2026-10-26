@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
@@ -35,18 +33,15 @@ use crate::fixtures::ut_harness;
 async fn snapshot_delete_conflicting_logs() -> Result<()> {
     let snapshot_threshold: u64 = 10;
 
-    let config = Arc::new(
-        Config {
-            snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
-            max_in_snapshot_log_to_keep: 0,
-            purge_batch_size: 1,
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
+        max_in_snapshot_log_to_keep: 0,
+        purge_batch_size: 1,
+        enable_heartbeat: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
     let mut log_index;
 
     tracing::info!("--- manually init node-0 with a higher vote, in order to override conflict log on learner later");

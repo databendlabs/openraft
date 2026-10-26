@@ -1,5 +1,4 @@
 use std::collections::BTreeSet;
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -39,20 +38,17 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn client_reads() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config.clone())?;
     // This test is sensitive to network delay. Thus skip the network delay test
     router.network_send_delay(0);
 
     tracing::info!("--- initializing cluster");
-    let log_index = router.new_cluster(btreeset! {0,1,2,3}, btreeset! {}).await?;
+    let log_index = router.new_cluster([0, 1, 2, 3], []).await?;
 
     // Get the ID of the leader, and assert that ensure_linearizable succeeds.
     let leader = router.leader().expect("leader not found");
@@ -111,22 +107,19 @@ async fn client_reads() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn get_read_log_id() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_elect: false,
-            heartbeat_interval: 100,
-            election_timeout_min: 101,
-            election_timeout_max: 102,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: false,
+        enable_elect: false,
+        heartbeat_interval: 100,
+        election_timeout_min: 101,
+        election_timeout_max: 102,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let mut log_index = router.new_cluster(btreeset! {0,1}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0, 1], []).await?;
 
     tracing::info!("--- block data entries from node 1 to node 0 while allowing heartbeats");
     let rule = RpcRule::new(1, 0, RpcKind::AppendEntries);
@@ -231,23 +224,20 @@ async fn get_read_log_id() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn ensure_linearizable_with_read_index() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_elect: false,
-            heartbeat_interval: 100,
-            election_timeout_min: 101,
-            election_timeout_max: 102,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: false,
+        enable_elect: false,
+        heartbeat_interval: 100,
+        election_timeout_min: 101,
+        election_timeout_max: 102,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
     router.network_send_delay(0);
 
     tracing::info!("--- initializing cluster");
-    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let log_index = router.new_cluster([0, 1, 2], []).await?;
 
     // Get the ID of the leader
     let leader = router.leader().expect("leader not found");
@@ -304,23 +294,20 @@ async fn ensure_linearizable_with_read_index() -> Result<()> {
 async fn ensure_linearizable_with_wait_timeout() -> Result<()> {
     // The leader lease equals `election_timeout_max`, so both wait timeouts below are far shorter
     // than the wait a read would inherit from the lease.
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_elect: false,
-            heartbeat_interval: 100,
-            election_timeout_min: 999,
-            election_timeout_max: 1000,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: false,
+        enable_elect: false,
+        heartbeat_interval: 100,
+        election_timeout_min: 999,
+        election_timeout_max: 1000,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config.clone())?;
     router.network_send_delay(0);
 
     tracing::info!("--- initializing cluster");
-    router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    router.new_cluster([0, 1, 2], []).await?;
 
     let leader = router.get_raft_handle(&0)?;
 
@@ -388,23 +375,20 @@ fn expect_quorum_not_enough(err: RaftError<TypeConfig, LinearizableReadError<Typ
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn ensure_linearizable_with_lease_read() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_elect: false,
-            heartbeat_interval: 1000,
-            election_timeout_min: 1001,
-            election_timeout_max: 1002,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: false,
+        enable_elect: false,
+        heartbeat_interval: 1000,
+        election_timeout_min: 1001,
+        election_timeout_max: 1002,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config.clone())?;
     router.network_send_delay(0);
 
     tracing::info!("--- initializing cluster");
-    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let log_index = router.new_cluster([0, 1, 2], []).await?;
 
     // Get the ID of the leader, and assert that ensure_linearizable succeeds.
     let leader = router.leader().expect("leader not found");
@@ -479,23 +463,20 @@ async fn ensure_linearizable_with_lease_read() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn linearizer_waits_for_periodic_heartbeat_when_immediate_heartbeat_disabled() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_elect: false,
-            heartbeat_interval: 100,
-            election_timeout_min: 1001,
-            election_timeout_max: 1002,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: false,
+        enable_elect: false,
+        heartbeat_interval: 100,
+        election_timeout_min: 1001,
+        election_timeout_max: 1002,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config.clone())?;
     router.network_send_delay(0);
 
     tracing::info!("--- initializing cluster");
-    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let log_index = router.new_cluster([0, 1, 2], []).await?;
 
     let leader = router.leader().expect("leader not found");
     assert_eq!(0, leader);
@@ -550,23 +531,20 @@ async fn linearizer_waits_for_periodic_heartbeat_when_immediate_heartbeat_disabl
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn ensure_linearizable_not_process_from_followers() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_elect: false,
-            heartbeat_interval: 100,
-            election_timeout_min: 101,
-            election_timeout_max: 102,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: false,
+        enable_elect: false,
+        heartbeat_interval: 100,
+        election_timeout_min: 101,
+        election_timeout_max: 102,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
     router.network_send_delay(0);
 
     tracing::info!("--- initializing cluster");
-    router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    router.new_cluster([0, 1, 2], []).await?;
 
     // Get the ID of the leader
     let leader = router.leader().expect("leader not found");
@@ -594,23 +572,20 @@ async fn ensure_linearizable_not_process_from_followers() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn ensure_linearizable_process_from_followers() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_elect: false,
-            heartbeat_interval: 100,
-            election_timeout_min: 101,
-            election_timeout_max: 102,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: false,
+        enable_elect: false,
+        heartbeat_interval: 100,
+        election_timeout_min: 101,
+        election_timeout_max: 102,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
     router.network_send_delay(0);
 
     tracing::info!("--- initializing cluster");
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], []).await?;
 
     // Get the ID of the leader
     let leader_node_id = router.leader().expect("leader not found");

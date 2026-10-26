@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 
 use crate::fixtures::RaftRouter;
@@ -17,18 +14,15 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn adding_learner_do_not_use_matched_leader_id() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            // Replicate log one by one, to trigger a state report with matched=(0,0,0), which is
-            // the first log id.
-            max_payload_entries: 1,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        // Replicate log one by one, to trigger a state report with matched=(0,0,0), which is
+        // the first log id.
+        max_payload_entries: 1,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
-    router.new_cluster(btreeset! {0}, btreeset! {}).await?;
+    router.new_cluster([0], []).await?;
 
     tracing::info!("--- feed 2 log to make replication busy");
     {

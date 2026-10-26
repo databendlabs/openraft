@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::Vote;
 use openraft_legacy::prelude::*;
@@ -19,21 +16,18 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn snapshot_arguments() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_tick: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: false,
+        enable_tick: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     let mut log_index = 0;
 
     tracing::info!(log_index, "--- initializing cluster");
-    log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
+    log_index = router.new_cluster([0], []).await?;
 
     let (raft, _, _) = router.detach_node(0).unwrap();
     let make_req = || InstallSnapshotRequest {

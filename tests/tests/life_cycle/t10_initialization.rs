@@ -34,15 +34,12 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn initialization() -> anyhow::Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
     router.new_raft_node(0).await?;
     router.new_raft_node(1).await?;
     router.new_raft_node(2).await?;
@@ -188,8 +185,8 @@ async fn initialize_err_target_not_include_target() -> anyhow::Result<()> {
     // Initialize a node with membership config that does not include the target node that accepts
     // the `initialize` request.
 
-    let config = Arc::new(Config::default().validate()?);
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config::default();
+    let mut router = RaftRouter::new(config)?;
     router.new_raft_node(0).await?;
     router.new_raft_node(1).await?;
 
@@ -226,8 +223,8 @@ async fn initialize_err_not_allowed() -> anyhow::Result<()> {
     // Initialize a node with membership config that does not include the target node that accepts
     // the `initialize` request.
 
-    let config = Arc::new(Config::default().validate()?);
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config::default();
+    let mut router = RaftRouter::new(config)?;
     router.new_raft_node(0).await?;
 
     for node in [0] {

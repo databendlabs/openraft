@@ -1,6 +1,3 @@
-use std::sync::Arc;
-
-use maplit::btreeset;
 use openraft::Config;
 use openraft::storage::RaftLogStorage;
 use openraft::storage::RaftStateMachine;
@@ -15,19 +12,16 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn startup_build_snapshot() -> anyhow::Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            max_in_snapshot_log_to_keep: 0,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: false,
+        max_in_snapshot_log_to_keep: 0,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0], []).await?;
 
     tracing::info!(log_index, "--- send client requests");
     {

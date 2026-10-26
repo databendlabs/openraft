@@ -1,7 +1,5 @@
-use std::sync::Arc;
 use std::time::Duration;
 
-use maplit::btreeset;
 use openraft::Config;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
@@ -26,19 +24,16 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn trigger_snapshot_twice_at_same_last_applied() -> anyhow::Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_tick: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: false,
+        enable_tick: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing single-node cluster");
-    let log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
+    let log_index = router.new_cluster([0], []).await?;
 
     let n0 = router.get_raft_handle(&0)?;
     let snap_at = log_id(1, 0, log_index);

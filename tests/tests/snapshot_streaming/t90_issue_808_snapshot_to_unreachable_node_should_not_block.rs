@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 
 use crate::fixtures::RaftRouter;
@@ -13,24 +10,21 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn snapshot_to_unreachable_node_should_not_block() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            purge_batch_size: 1,
-            max_in_snapshot_log_to_keep: 0,
-            enable_heartbeat: false,
-            enable_elect: false,
-            // Constant 10ms backoff: with two equal anchors the fit is `k · aˣ` with `a = 1`,
-            // so the sequence is `10ms, 10ms, …`. The default grows to a 1s cap, which is too
-            // slow for this test's 2s budget on loaded CI.
-            backoff: "10ms, 10ms".to_string(),
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        purge_batch_size: 1,
+        max_in_snapshot_log_to_keep: 0,
+        enable_heartbeat: false,
+        enable_elect: false,
+        // Constant 10ms backoff: with two equal anchors the fit is `k · aˣ` with `a = 1`,
+        // so the sequence is `10ms, 10ms, …`. The default grows to a 1s cap, which is too
+        // slow for this test's 2s budget on loaded CI.
+        backoff: "10ms, 10ms".to_string(),
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let mut log_index = router.new_cluster(btreeset! {0,1}, btreeset! {2}).await?;
+    let mut log_index = router.new_cluster([0, 1], [2]).await?;
 
     tracing::info!(log_index, "--- isolate replication 0 -> 2");
     router.set_network_error(2, true);

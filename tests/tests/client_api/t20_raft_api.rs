@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
@@ -15,17 +13,14 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn api_is_leader() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_tick: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_tick: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    router.new_cluster([0, 1, 2], []).await?;
 
     let leader_id = router.leader().expect("leader not found");
     let leader = router.get_raft_handle(&leader_id)?;
@@ -50,17 +45,14 @@ async fn api_is_leader() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn api_node_id() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_tick: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_tick: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    router.new_cluster([0, 1, 2], []).await?;
 
     // Each node should return its own ID
     for id in [0, 1, 2] {
@@ -75,17 +67,14 @@ async fn api_node_id() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn api_voter_ids() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_tick: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_tick: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster with voters 0,1,2");
-    router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    router.new_cluster([0, 1, 2], []).await?;
 
     let leader_id = router.leader().expect("leader not found");
     let leader = router.get_raft_handle(&leader_id)?;
@@ -103,17 +92,14 @@ async fn api_voter_ids() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn api_learner_ids() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_tick: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_tick: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster with voters 0,1 and learners 2,3");
-    let mut log_index = router.new_cluster(btreeset! {0,1}, btreeset! {2,3}).await?;
+    let mut log_index = router.new_cluster([0, 1], [2, 3]).await?;
 
     let leader_id = router.leader().expect("leader not found");
     let leader = router.get_raft_handle(&leader_id)?;
@@ -148,17 +134,14 @@ async fn api_learner_ids() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn api_after_add_learner() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_tick: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_tick: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster with voters 0,1,2");
-    router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    router.new_cluster([0, 1, 2], []).await?;
 
     let leader_id = router.leader().expect("leader not found");
     let leader = router.get_raft_handle(&leader_id)?;
@@ -190,17 +173,14 @@ async fn api_after_add_learner() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn api_as_leader() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_tick: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_tick: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    router.new_cluster([0, 1, 2], []).await?;
 
     let leader_id = router.leader().expect("leader not found");
     let leader = router.get_raft_handle(&leader_id)?;

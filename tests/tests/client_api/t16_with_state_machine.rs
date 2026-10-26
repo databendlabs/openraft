@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::errors::Fatal;
 
@@ -15,18 +12,15 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn with_state_machine() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let log_index = router.new_cluster([0, 1, 2], []).await?;
 
     let n0 = router.get_raft_handle(&0)?;
 

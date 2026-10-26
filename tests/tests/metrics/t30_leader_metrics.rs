@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -33,18 +32,15 @@ async fn leader_metrics() -> Result<()> {
     let c0123 = btreeset![0, 1, 2, 3];
 
     // Setup test dependencies.
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_elect: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_heartbeat: false,
+        enable_elect: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0], []).await?;
 
     router
         .wait(&0)

@@ -1,8 +1,6 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::LogIdOptionExt;
 use openraft::type_config::TypeConfigExt;
@@ -25,18 +23,15 @@ use crate::fixtures::ut_harness;
 #[test_harness::test(harness = ut_harness)]
 async fn leader_election_after_changing_0_to_01234() -> Result<()> {
     // Setup test dependencies.
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_elect: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_heartbeat: false,
+        enable_elect: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let mut log_index = router.new_cluster(btreeset! {0,1,2,3,4}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2, 3, 4], []).await?;
 
     tracing::info!(
         log_index,

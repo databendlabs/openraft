@@ -1,8 +1,6 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::async_runtime::MpscReceiver;
 use openraft::async_runtime::MpscSender;
@@ -24,22 +22,19 @@ use crate::fixtures::ut_harness;
 #[ignore]
 async fn stale_last_log_id() -> Result<()> {
     // Setup test dependencies.
-    let config = Arc::new(
-        Config {
-            election_timeout_min: 500,
-            election_timeout_max: 1000,
-            max_payload_entries: 1,
-            max_in_snapshot_log_to_keep: 0,
-            purge_batch_size: 1,
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        election_timeout_min: 500,
+        election_timeout_max: 1000,
+        max_payload_entries: 1,
+        max_in_snapshot_log_to_keep: 0,
+        purge_batch_size: 1,
+        enable_heartbeat: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
     router.network_send_delay(5);
 
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3,4}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], [3, 4]).await?;
 
     let n_threads: u64 = 4;
     let n_ops = 500;

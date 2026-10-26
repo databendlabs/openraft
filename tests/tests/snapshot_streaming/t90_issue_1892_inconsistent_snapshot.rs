@@ -128,8 +128,8 @@ async fn single_node_cluster() -> anyhow::Result<(Arc<Config>, RaftRouter)> {
         .validate()?,
     );
 
-    let mut router = RaftRouter::new(config.clone());
-    router.new_cluster(btreeset! {NODE}, btreeset! {}).await?;
+    let mut router = RaftRouter::new(config.as_ref().clone())?;
+    router.new_cluster([NODE], []).await?;
     Ok((config, router))
 }
 

@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::errors::AllowNextRevertError;
 use openraft::errors::ForwardToLeader;
@@ -16,21 +13,18 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn allow_follower_log_revert() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_tick: false,
-            enable_heartbeat: false,
-            // Make sure the replication is done in more than one steps
-            max_payload_entries: 1,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_tick: false,
+        enable_heartbeat: false,
+        // Make sure the replication is done in more than one steps
+        max_payload_entries: 1,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {1}).await?;
+    let mut log_index = router.new_cluster([0], [1]).await?;
 
     tracing::info!(log_index, "--- write 10 logs");
     {
@@ -72,19 +66,16 @@ async fn allow_follower_log_revert() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn allow_follower_log_revert_errors() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_tick: false,
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_tick: false,
+        enable_heartbeat: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let log_index = router.new_cluster(btreeset! {0}, btreeset! {1}).await?;
+    let log_index = router.new_cluster([0], [1]).await?;
 
     tracing::info!(log_index, "--- allow next detected log revert to unknown node");
     {

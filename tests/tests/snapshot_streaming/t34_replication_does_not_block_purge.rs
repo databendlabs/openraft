@@ -1,8 +1,6 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::RaftLogReader;
 use openraft::type_config::TypeConfigExt;
@@ -26,18 +24,15 @@ use crate::fixtures::ut_harness;
 async fn replication_does_not_block_purge() -> Result<()> {
     let max_keep = 2;
 
-    let config = Arc::new(
-        Config {
-            max_in_snapshot_log_to_keep: max_keep,
-            purge_batch_size: 1,
-            enable_tick: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        max_in_snapshot_log_to_keep: max_keep,
+        purge_batch_size: 1,
+        enable_tick: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
-    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {1,2}).await?;
+    let mut router = RaftRouter::new(config)?;
+    let mut log_index = router.new_cluster([0], [1, 2]).await?;
 
     let leader = router.get_raft_handle(&0)?;
 

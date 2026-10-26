@@ -1,6 +1,3 @@
-use std::sync::Arc;
-
-use maplit::btreeset;
 use openraft::Config;
 
 use crate::fixtures::RaftRouter;
@@ -17,21 +14,18 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn follower_clear_restart_recover() -> anyhow::Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_elect: false,
-            allow_log_reversion: Some(true),
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: false,
+        enable_elect: false,
+        allow_log_reversion: Some(true),
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
     router.enable_saving_committed = false;
 
     tracing::info!("--- bring up cluster of 3 node");
-    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let log_index = router.new_cluster([0, 1, 2], []).await?;
 
     tracing::info!(log_index, "--- stop node-1");
     {

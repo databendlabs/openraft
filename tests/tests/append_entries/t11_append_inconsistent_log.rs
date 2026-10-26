@@ -1,8 +1,6 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::RaftLogReader;
 use openraft::ServerState;
@@ -36,16 +34,13 @@ use crate::fixtures::ut_harness;
 #[test_harness::test(harness = ut_harness)]
 async fn append_inconsistent_log() -> Result<()> {
     // Setup test dependencies.
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_heartbeat: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], []).await?;
 
     tracing::info!(log_index, "--- remove all nodes and fake the logs");
 

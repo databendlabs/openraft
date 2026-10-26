@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
@@ -32,20 +30,17 @@ async fn build_snapshot() -> Result<()> {
     let snapshot_threshold: u64 = 50;
 
     // Setup test dependencies.
-    let config = Arc::new(
-        Config {
-            snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
-            max_in_snapshot_log_to_keep: 2,
-            purge_batch_size: 1,
-            enable_tick: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
+        max_in_snapshot_log_to_keep: 2,
+        purge_batch_size: 1,
+        enable_tick: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0], []).await?;
 
     // Send enough requests to the cluster that compaction on the node should be triggered.
     // Puts us exactly at the configured snapshot policy threshold.

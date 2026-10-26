@@ -1,8 +1,6 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::ServerState;
 use openraft::async_runtime::WatchReceiver;
@@ -24,19 +22,16 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn elect_on_leader_is_ignored() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: true,
-            enable_elect: true,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: true,
+        enable_elect: true,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- create cluster of 0,1,2; node 0 becomes leader");
-    router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    router.new_cluster([0, 1, 2], []).await?;
 
     let n0 = router.get_raft_handle(&0)?;
     n0.wait(timeout()).state(ServerState::Leader, "node 0 is the initial leader").await?;

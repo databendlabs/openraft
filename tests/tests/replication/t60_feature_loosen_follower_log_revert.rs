@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 
 use crate::fixtures::RaftRouter;
@@ -12,22 +9,19 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn feature_loosen_follower_log_revert() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_tick: false,
-            enable_heartbeat: false,
-            // Make sure the replication is done in more than one steps
-            max_payload_entries: 1,
-            allow_log_reversion: Some(true),
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_tick: false,
+        enable_heartbeat: false,
+        // Make sure the replication is done in more than one steps
+        max_payload_entries: 1,
+        allow_log_reversion: Some(true),
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], [3]).await?;
 
     tracing::info!(log_index, "--- write 10 logs");
     {

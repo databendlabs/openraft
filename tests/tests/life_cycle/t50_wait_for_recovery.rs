@@ -1,7 +1,5 @@
-use std::sync::Arc;
 use std::time::Duration;
 
-use maplit::btreeset;
 use openraft::Config;
 use openraft::ServerState;
 use openraft::metrics::WaitError;
@@ -20,21 +18,18 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn wait_for_recovery_recovers_state_machine() -> anyhow::Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: true,
-            enable_elect: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: true,
+        enable_elect: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
     // Recovery must come from the cluster commit, not a locally restored committed pointer.
     router.enable_saving_committed = false;
 
     tracing::info!("--- bring up a 3-node cluster; node-0 is the leader");
-    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let log_index = router.new_cluster([0, 1, 2], []).await?;
 
     tracing::info!(log_index, "--- restart follower node-1 with a cleared state machine");
     {
@@ -76,19 +71,16 @@ async fn wait_for_recovery_recovers_state_machine() -> anyhow::Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn wait_for_recovery_times_out_without_quorum() -> anyhow::Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_elect: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: false,
+        enable_elect: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- bring up a 3-node cluster; node-0 is the leader");
-    let _log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let _log_index = router.new_cluster([0, 1, 2], []).await?;
 
     tracing::info!("--- take both followers offline so the leader loses its quorum");
     for id in [1, 2] {

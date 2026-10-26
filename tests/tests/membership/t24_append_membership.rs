@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -32,7 +31,7 @@ use crate::fixtures::ut_harness;
 
 /// Election, heartbeat and ticking stay off: every log this test counts must come from its own
 /// `append_membership()` calls.
-fn config() -> Result<Arc<Config>> {
+fn config() -> Result<Config> {
     let config = Config {
         enable_tick: false,
         enable_heartbeat: false,
@@ -40,16 +39,16 @@ fn config() -> Result<Arc<Config>> {
         ..Default::default()
     }
     .validate()?;
-    Ok(Arc::new(config))
+    Ok(config)
 }
 
 /// Adding one voter and removing one voter each write exactly one membership entry.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn add_and_remove_one_voter_write_one_entry_each() -> Result<()> {
-    let mut router = RaftRouter::new(config()?);
+    let mut router = RaftRouter::new(config()?)?;
 
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], [3]).await?;
     let leader = router.get_raft_handle(&0)?;
 
     tracing::info!(log_index, "--- promote learner 3 to voter in one entry");
@@ -87,9 +86,9 @@ async fn add_and_remove_one_voter_write_one_entry_each() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn unsupported_transition_writes_no_log() -> Result<()> {
-    let mut router = RaftRouter::new(config()?);
+    let mut router = RaftRouter::new(config()?)?;
 
-    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3}).await?;
+    let log_index = router.new_cluster([0, 1, 2], [3]).await?;
     let leader = router.get_raft_handle(&0)?;
 
     let membership_before = leader.metrics().borrow_watched().membership_config.clone();
@@ -126,9 +125,9 @@ async fn unsupported_transition_writes_no_log() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn joint_membership_is_entered_and_left_in_one_entry_each() -> Result<()> {
-    let mut router = RaftRouter::new(config()?);
+    let mut router = RaftRouter::new(config()?)?;
 
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3,4}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], [3, 4]).await?;
     let leader = router.get_raft_handle(&0)?;
 
     tracing::info!(log_index, "--- enter a three-set joint membership in one entry");
@@ -171,9 +170,9 @@ async fn joint_membership_is_entered_and_left_in_one_entry_each() -> Result<()> 
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn membership_log_id_precondition_guards_the_append() -> Result<()> {
-    let mut router = RaftRouter::new(config()?);
+    let mut router = RaftRouter::new(config()?)?;
 
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], [3]).await?;
     let leader = router.get_raft_handle(&0)?;
 
     let observed_log_id = *leader.metrics().borrow_watched().membership_config.log_id();
@@ -221,9 +220,9 @@ async fn membership_log_id_precondition_guards_the_append() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn follower_answers_forward_to_leader() -> Result<()> {
-    let mut router = RaftRouter::new(config()?);
+    let mut router = RaftRouter::new(config()?)?;
 
-    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3}).await?;
+    let log_index = router.new_cluster([0, 1, 2], [3]).await?;
     let follower = router.get_raft_handle(&1)?;
 
     // `new_cluster()` waits for the learner to receive the last entry, not for the voters, so
@@ -264,19 +263,16 @@ async fn follower_answers_forward_to_leader() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn uncommitted_leader_log_blocks_the_append() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_elect: false,
-            heartbeat_interval: 50,
-            election_timeout_min: 500,
-            election_timeout_max: 501,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_elect: false,
+        heartbeat_interval: 50,
+        election_timeout_min: 500,
+        election_timeout_max: 501,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
-    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3}).await?;
+    let log_index = router.new_cluster([0, 1, 2], [3]).await?;
     let old_leader = router.get_raft_handle(&0)?;
     let new_leader = router.get_raft_handle(&1)?;
 

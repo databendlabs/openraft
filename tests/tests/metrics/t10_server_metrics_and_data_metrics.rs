@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -22,18 +21,15 @@ use crate::fixtures::ut_harness;
 #[test_harness::test(harness = ut_harness)]
 async fn server_metrics_and_data_metrics() -> Result<()> {
     // Setup test dependencies.
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_elect: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_heartbeat: false,
+        enable_elect: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], []).await?;
 
     let node = router.get_raft_handle(&0)?;
     let server_metrics = node.server_metrics();
@@ -70,19 +66,16 @@ async fn server_metrics_and_data_metrics() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn heartbeat_metrics() -> Result<()> {
     // Setup test dependencies.
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            heartbeat_interval: 50,
-            enable_elect: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_heartbeat: false,
+        heartbeat_interval: 50,
+        enable_elect: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let log_index = router.new_cluster([0, 1, 2], []).await?;
 
     let leader = router.get_raft_handle(&0)?;
 
@@ -154,18 +147,15 @@ async fn heartbeat_metrics() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn committed_membership_config() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_elect: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_heartbeat: false,
+        enable_elect: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let log_index = router.new_cluster(btreeset! {0,1}, btreeset! {}).await?;
+    let log_index = router.new_cluster([0, 1], []).await?;
 
     let node = router.get_raft_handle(&0)?;
 
@@ -241,18 +231,15 @@ async fn committed_membership_config() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn cluster_committed_metric() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_elect: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_heartbeat: false,
+        enable_elect: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], []).await?;
 
     tracing::info!(log_index, "--- write logs to advance the commit");
     let written = router.client_request_many(0, "foo", 10).await?;

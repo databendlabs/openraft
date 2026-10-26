@@ -1,5 +1,4 @@
 use std::collections::BTreeSet;
-use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
@@ -129,17 +128,14 @@ async fn change_from_to(
     let only_in_old = old.difference(&new);
     let only_in_new = new.difference(&old);
 
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_elect: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_heartbeat: false,
+        enable_elect: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
-    let mut log_index = router.new_cluster(old.clone(), btreeset! {}).await?;
+    let mut log_index = router.new_cluster(old.clone(), []).await?;
 
     tracing::info!(log_index, "--- write 10 logs");
     {
@@ -266,16 +262,13 @@ async fn change_by_add(old: BTreeSet<MemNodeId>, add: &[MemNodeId], membership_e
     let new = old.clone().union(&add.iter().copied().collect()).copied().collect::<BTreeSet<_>>();
     let only_in_new = new.difference(&old);
 
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_heartbeat: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
-    let mut log_index = router.new_cluster(old.clone(), btreeset! {}).await?;
+    let mut log_index = router.new_cluster(old.clone(), []).await?;
 
     tracing::info!(log_index, "--- write 10 logs");
     {
@@ -338,17 +331,14 @@ async fn change_by_remove(
     let new = old.clone().difference(&remove.iter().copied().collect()).copied().collect::<BTreeSet<_>>();
     let only_in_old = old.difference(&new);
 
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_elect: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_heartbeat: false,
+        enable_elect: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
-    let mut log_index = router.new_cluster(old.clone(), btreeset! {}).await?;
+    let mut log_index = router.new_cluster(old.clone(), []).await?;
 
     tracing::info!(log_index, "--- write 10 logs");
     {

@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 
 use crate::fixtures::RaftRouter;
@@ -11,20 +8,17 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn raft_config() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_tick: false,
-            election_timeout_min: 123,
-            election_timeout_max: 124,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_tick: false,
+        election_timeout_min: 123,
+        election_timeout_max: 124,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config.clone())?;
 
     tracing::info!("--- initializing cluster");
-    let log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
+    let log_index = router.new_cluster([0], []).await?;
 
     tracing::info!(log_index, "--- get config");
     {

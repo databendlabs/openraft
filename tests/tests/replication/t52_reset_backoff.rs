@@ -4,7 +4,6 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::RPCTypes;
 use openraft::async_runtime::WatchReceiver;
@@ -24,19 +23,16 @@ const BACKOFF: &str = "5s ...5s";
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn reset_backoff_ends_active_backoff() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_tick: false,
-            backoff: BACKOFF.to_string(),
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_tick: false,
+        backoff: BACKOFF.to_string(),
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- bring up a 3-node cluster");
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], []).await?;
 
     let n0 = router.get_raft_handle(&0)?;
     let n2 = router.get_raft_handle(&2)?;
@@ -102,19 +98,16 @@ async fn reset_backoff_ends_active_backoff() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn reset_backoff_before_backoff_is_dropped() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_tick: false,
-            backoff: BACKOFF.to_string(),
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_tick: false,
+        backoff: BACKOFF.to_string(),
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- bring up a 3-node cluster");
-    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], []).await?;
 
     let n0 = router.get_raft_handle(&0)?;
 
@@ -163,20 +156,17 @@ async fn reset_backoff_before_backoff_is_dropped() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn transfer_leader_resets_target_backoff_by_default() -> Result<()> {
     for reset_backoff_on_transfer_leader in [Some(false), None] {
-        let config = Arc::new(
-            Config {
-                enable_tick: false,
-                backoff: BACKOFF.to_string(),
-                reset_backoff_on_transfer_leader,
-                ..Default::default()
-            }
-            .validate()?,
-        );
+        let config = Config {
+            enable_tick: false,
+            backoff: BACKOFF.to_string(),
+            reset_backoff_on_transfer_leader,
+            ..Default::default()
+        };
 
-        let mut router = RaftRouter::new(config.clone());
+        let mut router = RaftRouter::new(config)?;
 
         tracing::info!(?reset_backoff_on_transfer_leader, "--- bring up a 3-node cluster");
-        let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+        let mut log_index = router.new_cluster([0, 1, 2], []).await?;
 
         let n0 = router.get_raft_handle(&0)?;
         let n2 = router.get_raft_handle(&2)?;

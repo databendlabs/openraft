@@ -1,8 +1,6 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::SnapshotPolicy;
 use openraft::alias::SnapshotMetaOf;
@@ -29,19 +27,16 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn sm_can_refuse_snapshot_building() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            snapshot_policy: SnapshotPolicy::Never,
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        snapshot_policy: SnapshotPolicy::Never,
+        enable_heartbeat: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0], []).await?;
 
     tracing::info!(log_index, "--- send some logs");
     let written = router.client_request_many(0, "0", 10).await?;
@@ -212,19 +207,16 @@ async fn sm_refuse_with_logs_since_last_policy() -> Result<()> {
         Ok(sm.take_try_create_snapshot_builder_count())
     }
 
-    let config = Arc::new(
-        Config {
-            snapshot_policy: SnapshotPolicy::LogsSinceLast(5),
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        snapshot_policy: SnapshotPolicy::LogsSinceLast(5),
+        enable_heartbeat: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0], []).await?;
 
     tracing::info!(log_index, "--- disable snapshot building from the start");
     {

@@ -1,5 +1,4 @@
 use std::collections::BTreeSet;
-use std::sync::Arc;
 
 use anyhow::Result;
 use maplit::btreeset;
@@ -42,17 +41,14 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
     let candidates = btreeset![0, 1, 2];
 
     // Setup test dependencies.
-    let config = Arc::new(
-        Config {
-            enable_tick: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_tick: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- bring up a cluster of the 3 candidates");
-    let mut log_index = router.new_cluster(candidates.clone(), btreeset! {}).await?;
+    let mut log_index = router.new_cluster(candidates.clone(), []).await?;
 
     let leader = router.leader().unwrap();
 

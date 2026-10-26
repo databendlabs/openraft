@@ -1,8 +1,6 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::ServerState;
 use openraft::type_config::TypeConfigExt;
@@ -26,18 +24,15 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn on_cluster_leader_change_api() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_elect: false,
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_elect: false,
+        enable_heartbeat: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing 3-node cluster");
-    let _log_index = router.new_cluster(btreeset! {0, 1, 2}, btreeset! {}).await?;
+    let _log_index = router.new_cluster([0, 1, 2], []).await?;
 
     tracing::info!("--- create on_cluster_leader_change on node 1");
     let n1 = router.get_raft_handle(&1)?;
@@ -135,18 +130,15 @@ async fn on_cluster_leader_change_api() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn on_leader_change_api() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_elect: false,
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_elect: false,
+        enable_heartbeat: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing 3-node cluster");
-    let _log_index = router.new_cluster(btreeset! {0, 1, 2}, btreeset! {}).await?;
+    let _log_index = router.new_cluster([0, 1, 2], []).await?;
 
     tracing::info!("--- create on_leader_change on node 0 (the leader)");
     let n0 = router.get_raft_handle(&0)?;
@@ -225,18 +217,15 @@ async fn on_leader_change_api() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn on_leader_change_future_is_awaited() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_elect: false,
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_elect: false,
+        enable_heartbeat: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing 3-node cluster");
-    let _log_index = router.new_cluster(btreeset! {0, 1, 2}, btreeset! {}).await?;
+    let _log_index = router.new_cluster([0, 1, 2], []).await?;
 
     let n0 = router.get_raft_handle(&0)?;
 
@@ -305,18 +294,15 @@ async fn on_leader_change_future_is_awaited() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn on_cluster_leader_change_future_is_awaited() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_elect: false,
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_elect: false,
+        enable_heartbeat: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing 3-node cluster");
-    let _log_index = router.new_cluster(btreeset! {0, 1, 2}, btreeset! {}).await?;
+    let _log_index = router.new_cluster([0, 1, 2], []).await?;
 
     let n1 = router.get_raft_handle(&1)?;
 

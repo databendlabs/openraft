@@ -1,8 +1,6 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::ServerState;
 use openraft::alias::VoteOf;
@@ -38,10 +36,10 @@ async fn inbound_heartbeats_prevent_election_when_outbound_rpcs_fail() -> Result
         ..Default::default()
     }
     .validate()?;
-    let mut router = RaftRouter::new(Arc::new(config));
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- establish node 0 as leader and node 1 as follower in a three-voter cluster");
-    let log_index = { router.new_cluster(btreeset! {0, 1, 2}, btreeset! {}).await? };
+    let log_index = { router.new_cluster([0, 1, 2], []).await? };
 
     let n0 = router.get_raft_handle(&0)?;
     let n1 = router.get_raft_handle(&1)?;
@@ -132,10 +130,10 @@ async fn missing_inbound_heartbeats_start_election() -> Result<()> {
         ..Default::default()
     }
     .validate()?;
-    let mut router = RaftRouter::new(Arc::new(config));
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- establish node 0 as leader and node 1 as follower in a three-voter cluster");
-    let log_index = { router.new_cluster(btreeset! {0, 1, 2}, btreeset! {}).await? };
+    let log_index = { router.new_cluster([0, 1, 2], []).await? };
 
     let n1 = router.get_raft_handle(&1)?;
     tracing::info!(

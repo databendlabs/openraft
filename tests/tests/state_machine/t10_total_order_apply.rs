@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::LogIdOptionExt;
 use openraft::async_runtime::WatchReceiver;
@@ -18,18 +15,15 @@ use crate::fixtures::ut_harness;
 #[test_harness::test(harness = ut_harness)]
 #[ignore]
 async fn total_order_apply() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- bring up one leader and one learner");
-    router.new_cluster(btreeset! {0}, btreeset! {1}).await?;
+    router.new_cluster([0], [1]).await?;
 
     let (tx, rx) = TypeConfig::watch_channel(false);
 

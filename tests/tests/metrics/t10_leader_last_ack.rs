@@ -1,8 +1,6 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::Instant;
 use openraft::async_runtime::WatchReceiver;
@@ -21,19 +19,16 @@ use crate::fixtures::ut_harness;
 #[allow(deprecated)]
 async fn leader_last_ack_3_nodes() -> Result<()> {
     let heartbeat_interval = 50; // ms
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            heartbeat_interval,
-            enable_elect: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: false,
+        heartbeat_interval,
+        enable_elect: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
-    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let log_index = router.new_cluster([0, 1, 2], []).await?;
 
     let n0 = router.get_raft_handle(&0)?;
     let millis = n0.metrics().borrow_watched().millis_since_quorum_ack;
@@ -122,19 +117,16 @@ async fn leader_last_ack_3_nodes() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn leader_last_ack_3_nodes_abs_time() -> Result<()> {
     let heartbeat_interval = 50; // ms
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            heartbeat_interval,
-            enable_elect: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: false,
+        heartbeat_interval,
+        enable_elect: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
-    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let log_index = router.new_cluster([0, 1, 2], []).await?;
 
     // Wait a short while so that all events finished.
     // Upon receiving a replication Response, it wakes up RaftCore and flush the metrics again.
@@ -211,18 +203,15 @@ async fn leader_last_ack_3_nodes_abs_time() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 #[allow(deprecated)]
 async fn leader_last_ack_1_node() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_elect: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: false,
+        enable_elect: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
-    let log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
+    let log_index = router.new_cluster([0], []).await?;
     let _ = log_index;
 
     let n0 = router.get_raft_handle(&0)?;

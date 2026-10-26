@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::RaftLogReader;
 use openraft::Vote;
@@ -22,16 +19,13 @@ use crate::fixtures::ut_harness;
 #[test_harness::test(harness = ut_harness)]
 async fn append_entries_with_bigger_term() -> Result<()> {
     // Setup test dependencies.
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_elect: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
-    let log_index = router.new_cluster(btreeset! {0}, btreeset! {1}).await?;
+    let config = Config {
+        enable_heartbeat: false,
+        enable_elect: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
+    let log_index = router.new_cluster([0], [1]).await?;
 
     // before append entries, check hard state in term 1 and vote for node 0
     for id in [0, 1] {

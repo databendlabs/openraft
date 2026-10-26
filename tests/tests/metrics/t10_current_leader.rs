@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 
 use crate::fixtures::RaftRouter;
@@ -16,17 +13,14 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn current_leader() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: false,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
-    let _log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let _log_index = router.new_cluster([0, 1, 2], []).await?;
 
     // Get the ID of the leader, and assert that current_leader succeeds.
     let leader = router.leader().expect("leader not found");

@@ -1,7 +1,5 @@
-use std::sync::Arc;
 use std::time::Duration;
 
-use maplit::btreeset;
 use openraft::Config;
 
 use crate::fixtures::Node;
@@ -13,20 +11,17 @@ use crate::fixtures::ut_harness;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn follower_restart_does_not_interrupt() -> anyhow::Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            election_timeout_min: 3_000,
-            election_timeout_max: 4_000,
-            ..Default::default()
-        }
-        .validate()?,
-    );
+    let config = Config {
+        enable_heartbeat: false,
+        election_timeout_min: 3_000,
+        election_timeout_max: 4_000,
+        ..Default::default()
+    };
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- bring up cluster of 3 nodes");
-    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
+    let log_index = router.new_cluster([0, 1, 2], []).await?;
     let _ = log_index;
 
     tracing::info!(log_index, "--- stop and restart follower nodes 1,2");

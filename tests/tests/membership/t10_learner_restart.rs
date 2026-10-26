@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::Raft;
 use openraft::ServerState;
@@ -33,10 +32,10 @@ async fn learner_restart() -> Result<()> {
         .validate()?,
     );
 
-    let mut router = RaftRouter::new(config.clone());
+    let mut router = RaftRouter::new(config.as_ref().clone())?;
 
     tracing::info!("--- initializing");
-    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {1}).await?;
+    let mut log_index = router.new_cluster([0], [1]).await?;
 
     router.client_request(0, "foo", 1).await?;
     log_index += 1;

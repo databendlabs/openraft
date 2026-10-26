@@ -4,7 +4,6 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use anyhow::Result;
-use maplit::btreeset;
 use openraft::Config;
 use openraft::metrics::MetricsRecorder;
 use openraft::type_config::TypeConfigExt;
@@ -97,21 +96,18 @@ impl MetricsRecorder for TestRecorder {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn test_metrics_recorder_all_fields() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_elect: false,
-            snapshot_policy: openraft::SnapshotPolicy::LogsSinceLast(5),
-            max_in_snapshot_log_to_keep: 0,
-            purge_batch_size: 1,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_heartbeat: false,
+        enable_elect: false,
+        snapshot_policy: openraft::SnapshotPolicy::LogsSinceLast(5),
+        max_in_snapshot_log_to_keep: 0,
+        purge_batch_size: 1,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let mut log_index = router.new_cluster(btreeset! {0, 1, 2}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], []).await?;
 
     // Create and install the recorder on the leader
     let recorder = Arc::new(TestRecorder::default());
@@ -221,18 +217,15 @@ async fn test_metrics_recorder_all_fields() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn test_metrics_recorder_on_follower() -> Result<()> {
-    let config = Arc::new(
-        Config {
-            enable_heartbeat: false,
-            enable_elect: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        enable_heartbeat: false,
+        enable_elect: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- initializing cluster");
-    let mut log_index = router.new_cluster(btreeset! {0, 1, 2}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0, 1, 2], []).await?;
 
     // Install recorder on follower (node 1)
     let recorder = Arc::new(TestRecorder::default());

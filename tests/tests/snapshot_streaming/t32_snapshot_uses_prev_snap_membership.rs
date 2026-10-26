@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
@@ -30,21 +28,18 @@ use crate::fixtures::ut_harness;
 async fn snapshot_uses_prev_snap_membership() -> Result<()> {
     let snapshot_threshold: u64 = 10;
 
-    let config = Arc::new(
-        Config {
-            snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
-            // Use 3, with 1 it triggers a compaction when replicating ent-1,
-            // because ent-0 is removed.
-            max_in_snapshot_log_to_keep: 3,
-            purge_batch_size: 1,
-            enable_tick: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
+    let config = Config {
+        snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
+        // Use 3, with 1 it triggers a compaction when replicating ent-1,
+        // because ent-0 is removed.
+        max_in_snapshot_log_to_keep: 3,
+        purge_batch_size: 1,
+        enable_tick: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
 
-    let mut log_index = router.new_cluster(btreeset! {0,1}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster([0, 1], []).await?;
 
     let (mut sto0, mut sm0) = router.get_storage_handle(&0)?;
 
