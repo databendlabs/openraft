@@ -452,8 +452,11 @@ uncommitted write from independently making the bridge's log newer.
 The test observes the original topology for ten seconds and requires a new
 write to complete within 1.5 seconds of installation. This budget includes the
 old leader's lease expiry, a first election that the bridge may reject while
-its follower lease remains valid, a retry, and the client write. In nine local
-runs, the first successful write completed 618--942 ms after installation,
+its follower lease remains valid, a retry, the wait for the next write attempt,
+and the client write. The workload issues read, write, and CAS operations in
+rotation, 100 ms apart, so write attempts are at most 300 ms apart while a
+client worker is free. In nine local runs with an earlier random operation mix,
+the first successful write completed 618--942 ms after installation,
 leaving 558--882 ms of margin. This is an engineering bound, not a Raft timing
 theorem. Leader and Vote metrics are retained for diagnosis, not used as a
 stability requirement.

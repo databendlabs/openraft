@@ -314,6 +314,8 @@
            (map (juxt :f :phase :final? (comp key :value))
                 invocations)))))
 
+(def liveness-operation-interval-nanos 100000000)
+
 (deftest two-leaf-workload-uses-core-and-regular-write-attempts
   (let [test {:nodes ["n1" "n2" "n3" "n4" "n5"]
               :client-nodes ["n1" "n2" "n3"]}
@@ -321,13 +323,17 @@
         operations (->> (gen-test/simulate
                          (gen/limit 23 (:generator (workload/workload {:two-leaf-partition true})))
                          (fn [_test op] (assoc op :type :ok)))
-                        (filter #(and (= :invoke (:type %)) (= :main (:phase %)))))]
+                        (filter #(and (= :invoke (:type %)) (= :main (:phase %)))))
+        times (map :time operations)
+        intervals (mapv - (rest times) times)
+        expected-intervals (repeat 17 liveness-operation-interval-nanos)]
     (is (= ["n1:21001" "n2:21001" "n3:21001"] (:endpoints subject)))
     (is (= "n1:21001" @(:leader-endpoint subject)))
     (is (= 18 (count operations)))
     ;; Without simulated version responses, each CAS attempt falls back to a
     ;; write. The guaranteed write slot remains second in every group of three.
-    (is (every? #(= [:read :write :write] (mapv :f %)) (partition 3 operations)))))
+    (is (every? #(= [:read :write :write] (mapv :f %)) (partition 3 operations)))
+    (is (= expected-intervals intervals))))
 
 (deftest bridge-workload-keeps-attempting-writes-after-bootstrap-fails
   (let [subject (workload/workload {:liveness :bridge-partition})
@@ -343,7 +349,7 @@
         expected-operations (apply concat (repeat 6 [:read :write :write]))
         times (map :time main)
         intervals (mapv - (rest times) times)
-        expected-intervals (repeat 17 100000000)]
+        expected-intervals (repeat 17 liveness-operation-interval-nanos)]
     (is (= [:write :write :write :write :write] bootstrap-operations))
     (is (= expected-operations operations))
     (is (= expected-intervals intervals))))
