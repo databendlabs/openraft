@@ -11,16 +11,18 @@ use openraft::entry::RaftEntry;
 use openraft::errors::ChangeMembershipError;
 use openraft::errors::ClientWriteError;
 use openraft::errors::EmptyMembership;
+use openraft::errors::ErrorSource;
 use openraft::errors::MembershipError;
 use openraft::errors::RaftError;
 use openraft::impls::BoxedErrorSource;
-use openraft::impls::ThresholdChange;
-use openraft::impls::ThresholdMembership;
 use openraft::membership::NodeRole;
 use openraft::membership::QuorumBridge;
 use openraft::membership::RaftMembership;
 use openraft::membership::RaftMembershipEdit;
 use openraft::testing::log_id;
+use openraft_membership::InvalidThresholds;
+use openraft_membership::ThresholdChange;
+use openraft_membership::ThresholdMembership;
 
 use crate::fixtures::custom_membership::TestCluster;
 use crate::fixtures::ut_harness;
@@ -145,6 +147,24 @@ async fn custom_edit_uses_current_membership_and_completes_joint_consensus() -> 
         assert_eq!(expected_last_log_index, metrics.last_log_index);
         let membership = metrics.membership_config.membership();
         assert_eq!(&target, membership);
+    }
+
+    tracing::info!(
+        log_index = 4,
+        "--- preserve the configured error source for an invalid threshold edit"
+    );
+    {
+        let change = ThresholdChange::write_size(5);
+        let result = cluster.raft(1).change_membership(CustomEdit::Standard(change), true).await;
+        let invalid = InvalidThresholds {
+            voter_count: 4,
+            write_size: 5,
+        };
+        let source = BoxedErrorSource::from_error(&invalid);
+        let error = ChangeMembershipError::UserDefined(source);
+        let expected = RaftError::APIError(ClientWriteError::ChangeMembershipError(error));
+        let actual = result.unwrap_err();
+        assert_eq!(expected, actual);
     }
 
     tracing::info!(

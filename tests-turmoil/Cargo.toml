@@ -19,6 +19,7 @@ name = "fuzz"
 path = "src/bin/fuzz.rs"
 
 [dependencies]
+openraft-membership = { path = "../membership", version = "0.10.0-alpha.37" }
 openraft = { path = "../openraft", features = ["type-alias", "serde", "metrics-logids"] }
 openraft-rt = { path = "../rt" }
 openraft-rt-tokio = { path = "../rt-tokio" }

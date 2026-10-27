@@ -104,6 +104,12 @@ jobs:
           RUST_LOG: debug
           RUST_BACKTRACE: full
 
+      - name: Test crate `membership/`
+        run: make test-membership
+        env:
+          RUST_LOG: debug
+          RUST_BACKTRACE: full
+
       - name: Test crate `openraft/`
         run: cargo test --features "${{ matrix.features }}" --manifest-path openraft/Cargo.toml
         env:

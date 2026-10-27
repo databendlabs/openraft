@@ -47,7 +47,7 @@ Add or remove nodes safely, in one log entry when every old quorum intersects ev
 
 See: [`threshold_membership`]
 
-Choose how many copies a commit needs with `ThresholdMembership`; OpenRaft derives the minimum intersecting election quorum.
+Choose how many copies a commit needs with `openraft_membership::ThresholdMembership`; OpenRaft derives the minimum intersecting election quorum.
 
 ### Node Management
 
@@ -74,6 +74,6 @@ Monitor cluster health using metrics and perform automated maintenance operation
 [`cluster_formation`]: `crate::docs::cluster_control::cluster_formation`
 [`dynamic_membership`]: `crate::docs::cluster_control::dynamic_membership`
 [`joint_consensus`]: `crate::docs::cluster_control::joint_consensus`
-[`threshold_membership`]: `crate::docs::cluster_control::threshold_membership`
+[`threshold_membership`]: https://docs.rs/openraft-membership/latest/openraft_membership/docs/index.html
 [`node_lifecycle`]: `crate::docs::cluster_control::node_lifecycle`
 [`monitoring_maintenance`]: `crate::docs::cluster_control::monitoring_maintenance`

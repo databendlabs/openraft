@@ -164,14 +164,9 @@ use openraft::errors::decompose;
 use openraft::impls::BasicNode as ImplsBasicNode;
 use openraft::impls::EmptyNode as ImplsEmptyNode;
 use openraft::impls::Entry as ImplsEntry;
-use openraft::impls::InvalidThresholds as ImplsInvalidThresholds;
-use openraft::impls::Joint as ImplsJoint;
 use openraft::impls::LogId as ImplsLogId;
 use openraft::impls::OneshotResponder;
 use openraft::impls::ProgressResponder;
-use openraft::impls::ThresholdChange as ImplsThresholdChange;
-use openraft::impls::ThresholdMembership as ImplsThresholdMembership;
-use openraft::impls::ThresholdQuorumSet as ImplsThresholdQuorumSet;
 use openraft::impls::TokioRuntime;
 use openraft::impls::Vote as ImplsVote;
 use openraft::impls::leader_id_adv;
@@ -296,6 +291,11 @@ use openraft_legacy::network_v1::InstallSnapshotResponse;
 use openraft_legacy::network_v1::SnapshotMismatch;
 use openraft_legacy::network_v1::SnapshotReceiverFactory;
 use openraft_legacy::network_v1::SnapshotSegmentId;
+use openraft_membership::InvalidThresholds as ProvidedInvalidThresholds;
+use openraft_membership::Joint as ProvidedJoint;
+use openraft_membership::ThresholdChange as ProvidedThresholdChange;
+use openraft_membership::ThresholdMembership as ProvidedThresholdMembership;
+use openraft_membership::ThresholdQuorumSet as ProvidedThresholdQuorumSet;
 // =============================================================================
 // Macros
 // =============================================================================

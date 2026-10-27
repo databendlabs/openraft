@@ -12,10 +12,6 @@ pub mod joint_consensus {
     #![doc = include_str!("joint-consensus.md")]
 }
 
-pub mod threshold_membership {
-    #![doc = include_str!("threshold-membership.md")]
-}
-
 pub mod node_lifecycle {
     #![doc = include_str!("node-lifecycle.md")]
 }

@@ -1,17 +1,17 @@
+use openraft::NodeId;
+use openraft::errors::ErrorSource;
+use openraft::errors::MembershipError;
 use openraft_macros::since;
-
-use crate::NodeId;
-use crate::errors::ErrorSource;
-use crate::errors::MembershipError;
 
 /// The write quorum size of a [`ThresholdMembership`] config does not fit its voters.
 ///
 /// [`ThresholdMembership`] returns it inside [`ThresholdMembershipError::InvalidThresholds`].
 /// Edits wrap it in [`MembershipError::UserDefined`] with the configured error source.
 ///
-/// [`ThresholdMembershipError::InvalidThresholds`]: crate::membership::ThresholdMembershipError::InvalidThresholds
+/// [`ThresholdMembershipError::InvalidThresholds`]: crate::ThresholdMembershipError::InvalidThresholds
 ///
-/// [`ThresholdMembership`]: crate::membership::ThresholdMembership
+/// [`ThresholdMembership`]: crate::ThresholdMembership
+#[since(version = "0.10.0", change = "moved to the openraft-membership crate")]
 #[since(version = "0.10.0")]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error(

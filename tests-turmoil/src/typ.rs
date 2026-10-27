@@ -57,13 +57,13 @@ pub type Membership = openraft::Membership<NodeId, Node>;
 
 /// The membership type that the cluster runs.
 #[cfg(feature = "threshold-membership")]
-pub type Membership = openraft::membership::ThresholdMembership<NodeId, Node>;
+pub type Membership = openraft_membership::ThresholdMembership<NodeId, Node>;
 
 #[cfg(not(feature = "threshold-membership"))]
 type MembershipEdit = openraft::ChangeMembers<NodeId, Node>;
 
 #[cfg(feature = "threshold-membership")]
-type MembershipEdit = openraft::impls::ThresholdChange<NodeId, Node>;
+type MembershipEdit = openraft_membership::ThresholdChange<NodeId, Node>;
 
 openraft::declare_raft_types!(
     pub TypeConfig:
@@ -107,10 +107,10 @@ pub(crate) fn majority_membership(voter_sets: Vec<BTreeSet<NodeId>>, learners: V
     use std::num::NonZeroU64;
     use std::sync::Arc;
 
-    use openraft::membership::Joint;
     use openraft::membership::NodeRole;
     use openraft::membership::RaftMembership;
-    use openraft::membership::ThresholdQuorumSet;
+    use openraft_membership::Joint;
+    use openraft_membership::ThresholdQuorumSet;
 
     let voter_role = NodeRole::Campaigner | NodeRole::ReceiveLogs;
     let mut roles = BTreeMap::new();

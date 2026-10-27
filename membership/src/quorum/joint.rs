@@ -20,7 +20,8 @@ use crate::quorum::QuorumSet;
 /// use std::collections::BTreeSet;
 /// use std::num::NonZeroU64;
 ///
-/// use openraft::membership::{Joint, QuorumSet, ThresholdQuorumSet};
+/// use openraft::membership::QuorumSet;
+/// use openraft_membership::{Joint, ThresholdQuorumSet};
 ///
 /// let two = NonZeroU64::new(2).unwrap();
 /// let old = ThresholdQuorumSet::new(two, BTreeSet::from([1, 2, 3]));
@@ -33,6 +34,7 @@ use crate::quorum::QuorumSet;
 /// let accepts_one_two_four = joint.is_quorum([1, 2, 4].iter());
 /// assert!(accepts_one_two_four);
 /// ```
+#[since(version = "0.10.0", change = "moved to the openraft-membership crate")]
 #[since(version = "0.10.0")]
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]

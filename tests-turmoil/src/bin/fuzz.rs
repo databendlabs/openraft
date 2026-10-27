@@ -20,7 +20,7 @@ use openraft::ChangeMembers;
 use openraft::alias::MembershipEditOf;
 use openraft::async_runtime::WatchReceiver;
 #[cfg(feature = "threshold-membership")]
-use openraft::membership::ThresholdChange;
+use openraft_membership::ThresholdChange;
 use rand::RngExt;
 use rand::SeedableRng;
 use rand::rngs::StdRng;

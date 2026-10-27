@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 use openraft::Membership;
 use openraft::membership::RaftMembership;
-use openraft::membership::ThresholdMembership;
+use openraft_membership::ThresholdMembership;
 
 use crate::typ::Node;
 use crate::typ::NodeId;

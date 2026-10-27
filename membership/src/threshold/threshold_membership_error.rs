@@ -1,12 +1,13 @@
+use openraft::NodeId;
+use openraft::errors::ErrorSource;
+use openraft::errors::MembershipError;
+use openraft::errors::NodeNotFound;
 use openraft_macros::since;
 
-use crate::NodeId;
-use crate::errors::ErrorSource;
-use crate::errors::MembershipError;
-use crate::errors::NodeNotFound;
-use crate::membership::InvalidThresholds;
+use crate::InvalidThresholds;
 
 /// A threshold membership has invalid sizes or missing voter metadata.
+#[since(version = "0.10.0", change = "moved to the openraft-membership crate")]
 #[since(version = "0.10.0")]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ThresholdMembershipError<NID>

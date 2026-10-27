@@ -17,14 +17,14 @@ use openraft::entry::RaftEntry;
 use openraft::errors::LinearizableReadError;
 use openraft::errors::QuorumNotEnough;
 use openraft::errors::RaftError;
-use openraft::membership::Joint;
 use openraft::membership::NodeRole;
 use openraft::membership::RaftMembership;
-use openraft::membership::ThresholdChange;
-use openraft::membership::ThresholdMembership;
-use openraft::membership::ThresholdQuorumSet;
 use openraft::testing::log_id;
 use openraft::type_config::TypeConfigExt;
+use openraft_membership::Joint;
+use openraft_membership::ThresholdChange;
+use openraft_membership::ThresholdMembership;
+use openraft_membership::ThresholdQuorumSet;
 
 use crate::fixtures::TestingVoteExt;
 use crate::fixtures::custom_membership::TestCluster;
@@ -38,7 +38,7 @@ openraft::declare_raft_types!(
         Node = (),
         LeaderId = openraft::impls::leader_id_std::LeaderId<u64, u64>,
         Membership = ThresholdMembership<u64, ()>,
-        MembershipEdit = openraft::impls::ThresholdChange<Self::NodeId, Self::Node>,
+        MembershipEdit = openraft_membership::ThresholdChange<Self::NodeId, Self::Node>,
         AsyncRuntime = AsyncRuntimeOf<openraft_memstore::TypeConfig>,
 );
 
@@ -48,7 +48,7 @@ openraft::declare_raft_types!(
         R = (),
         Node = (),
         Membership = ThresholdMembership<u64, ()>,
-        MembershipEdit = openraft::impls::ThresholdChange<Self::NodeId, Self::Node>,
+        MembershipEdit = openraft_membership::ThresholdChange<Self::NodeId, Self::Node>,
         AsyncRuntime = AsyncRuntimeOf<openraft_memstore::TypeConfig>,
 );
 

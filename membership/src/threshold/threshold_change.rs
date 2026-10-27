@@ -4,17 +4,17 @@ use std::fmt;
 use std::sync::Arc;
 
 use display_more::DisplayOptionExt;
+use openraft::ChangeMembers;
+use openraft::Membership;
+use openraft::Node;
+use openraft::NodeId;
+use openraft::errors::EmptyMembership;
+use openraft::errors::ErrorSource;
+use openraft::errors::MembershipError;
+use openraft::membership::RaftMembershipEdit;
 use openraft_macros::since;
 
-use crate::ChangeMembers;
-use crate::Membership;
-use crate::Node;
-use crate::NodeId;
-use crate::errors::EmptyMembership;
-use crate::errors::ErrorSource;
-use crate::errors::MembershipError;
-use crate::membership::RaftMembershipEdit;
-use crate::membership::ThresholdMembership;
+use crate::ThresholdMembership;
 
 /// A change to a [`ThresholdMembership`]. [`apply()`](RaftMembershipEdit::apply) applies `members`
 /// first, then the write size, and derives the read size from the new voter count.
@@ -29,7 +29,7 @@ use crate::membership::ThresholdMembership;
 /// use std::collections::BTreeSet;
 ///
 /// use openraft::ChangeMembers;
-/// use openraft::membership::{ThresholdChange, ThresholdMembership};
+/// use openraft_membership::{ThresholdChange, ThresholdMembership};
 ///
 /// let voters = BTreeSet::from([1, 2, 3, 4, 5]);
 /// let membership = ThresholdMembership::<u64, ()>::new(voters.clone(), 2, voters).unwrap();
@@ -47,9 +47,10 @@ use crate::membership::ThresholdMembership;
 /// assert_eq!(want, shrunk.to_string());
 /// ```
 ///
-/// [`ThresholdMembership`]: crate::membership::ThresholdMembership
-/// [`change()`]: crate::membership::ThresholdMembership::change
-/// [`MembershipError::UserDefined`]: crate::errors::MembershipError::UserDefined
+/// [`ThresholdMembership`]: crate::ThresholdMembership
+/// [`change()`]: crate::ThresholdMembership::change
+/// [`MembershipError::UserDefined`]: openraft::errors::MembershipError::UserDefined
+#[since(version = "0.10.0", change = "moved to the openraft-membership crate")]
 #[since(version = "0.10.0")]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ThresholdChange<NID, N>
@@ -132,7 +133,7 @@ where
         self,
         membership: &ThresholdMembership<NID, N>,
     ) -> Result<ThresholdMembership<NID, N>, MembershipError<NID, E>> {
-        tracing::debug!("{}: change: {}", func_name!(), self);
+        tracing::debug!("ThresholdChange::apply: change: {}", self);
 
         let Some(last_write) = membership.write.rules().last() else {
             return Err(EmptyMembership {}.into());

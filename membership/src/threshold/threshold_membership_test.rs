@@ -5,33 +5,45 @@ use std::sync::Arc;
 
 use maplit::btreemap;
 use maplit::btreeset;
+use openraft::ChangeMembers;
+use openraft::errors::EmptyMembership;
+use openraft::errors::MembershipError;
+use openraft::errors::NodeNotFound;
+use openraft::errors::Operation;
+use openraft::membership::NodeRef;
+use openraft::membership::NodeRole;
+use openraft::membership::RaftMembership;
+use openraft::membership::RaftMembershipEdit;
+use openraft::type_config::alias::MembershipOf;
 
-use crate::ChangeMembers;
-use crate::errors::EmptyMembership;
-use crate::errors::MembershipError;
-use crate::errors::NodeNotFound;
-use crate::errors::Operation;
-use crate::membership::InvalidThresholds;
-use crate::membership::NodeRef;
-use crate::membership::NodeRole;
-use crate::membership::RaftMembership;
-use crate::membership::RaftMembershipEdit;
-use crate::membership::RaftMembershipExt;
-use crate::membership::ThresholdChange;
-use crate::membership::ThresholdMembership;
-use crate::membership::ThresholdMembershipError;
+use crate::InvalidThresholds;
+use crate::ThresholdChange;
+use crate::ThresholdMembership;
+use crate::ThresholdMembershipError;
 use crate::quorum::Joint;
+use crate::quorum::QuorumBridge;
+use crate::quorum::QuorumIntersection;
 use crate::quorum::QuorumSet;
 use crate::quorum::ThresholdQuorumSet;
 use crate::quorum::threshold_quorum_set_test::all_subsets;
-use crate::type_config::alias::MembershipOf;
-use crate::type_config::alias::MembershipStateOf;
-use crate::type_config::alias::StoredMembershipOf;
 
 /// Returns a membership whose only config holds `voters` with this write size and `()` nodes.
 fn threshold(voters: BTreeSet<u64>, write_size: u64) -> ThresholdMembership<u64, ()> {
     let nodes = voters.clone();
     ThresholdMembership::new(voters, write_size, nodes).unwrap()
+}
+
+/// Builds a joint membership for tests from both sets of quorum rules and nodes.
+fn joint_membership(
+    left: &ThresholdMembership<u64, ()>,
+    right: &ThresholdMembership<u64, ()>,
+) -> ThresholdMembership<u64, ()> {
+    let read = left.read.joint_with(right.read.clone());
+    let write = left.write.joint_with(right.write.clone());
+    let configs = ThresholdMembership::<u64, ()>::configs_from_rules(&read, &write).unwrap();
+    let mut nodes = left.nodes.clone();
+    nodes.extend(right.nodes.clone());
+    ThresholdMembership::from_configs(configs, nodes)
 }
 
 /// Returns the error that `ThresholdMembership` returns for sizes that do not fit its voters.
@@ -167,17 +179,22 @@ fn test_transition_between_sizes() {
     let m33 = threshold(voters.clone(), 3);
     let m24 = threshold(voters, 4);
 
-    // Changing the write size also changes the read size, so one direction can miss a quorum.
-    let direct = m42.supports_direct_transition_to(&m33);
-    assert!(!direct);
+    // Increasing the write size lowers the read size, so the old writes may miss new reads.
+    for target in [&m33, &m24] {
+        let read = m42.read_quorum_set();
+        let write = target.write_quorum_set();
+        let intersects = read.intersects_with(write);
+        assert_eq!(Some(true), intersects);
 
-    // Write quorum {1,2} of (4,2) misses read quorum {3,4} of (2,4).
-    let direct = m42.supports_direct_transition_to(&m24);
-    assert!(!direct);
+        let write = m42.write_quorum_set();
+        let read = target.read_quorum_set();
+        let intersects = write.intersects_with(read);
+        assert_eq!(Some(false), intersects);
+    }
 
     // A quorum of the joint is a quorum of both configs, so it needs 4 voters for reads and for
     // writes.
-    let joint = m42.joint_with(&m24);
+    let joint = joint_membership(&m42, &m24);
     let want = subsets.iter().filter(|subset| subset.len() >= 4).cloned().collect::<Vec<_>>();
     let read_accepted = accepted(joint.read_quorum_set(), &subsets);
     assert_eq!(want, read_accepted);
@@ -232,7 +249,7 @@ fn test_change() {
     assert_eq!(want, res);
 
     // Leaving a joint membership keeps its target and the write size of the target.
-    let joint = m42.joint_with(&threshold(voters.clone(), 4));
+    let joint = joint_membership(&m42, &threshold(voters.clone(), 4));
     let change = <ThresholdChange<u64, ()> as RaftMembershipEdit<ThresholdMembership<u64, ()>>>::make_uniform();
     let res: Result<_, MembershipError<u64>> = change.apply(&joint);
     let want = Ok(threshold(voters, 4));
@@ -250,7 +267,7 @@ fn test_raft_membership_new_rebuilds_joint_membership() {
     let nodes = btreeset! {1, 2, 3, 4};
     let old = ThresholdMembership::<u64, ()>::new(btreeset! {1, 2, 3}, 2, nodes.clone()).unwrap();
     let new = ThresholdMembership::<u64, ()>::new(btreeset! {2, 3, 4}, 1, nodes).unwrap();
-    let joint = old.joint_with(&new);
+    let joint = joint_membership(&old, &new);
 
     let mut nodes = vec![];
     for node_id in joint.node_ids() {
@@ -349,7 +366,7 @@ fn test_display() {
 
     // Config i pairs read rule i with write rule i, so the two configs print different sizes.
     let m24 = ThresholdMembership::<u64, ()>::new(voters, 4, nodes).unwrap();
-    let joint = m42.joint_with(&m24);
+    let joint = joint_membership(&m42, &m24);
     let got = joint.to_string();
     let want = "{voters:[{1:(),2:(),3:(),4:(),5:()} read=4 write=2,{1:(),2:(),3:(),4:(),5:()} read=2 write=4], \
                 learners:[6:()]}";
@@ -386,7 +403,7 @@ fn test_serde() {
 fn test_binary_roundtrip_rebuilds_joint_read_rules() {
     let first = threshold(btreeset! {1, 2, 3, 4}, 3);
     let second = threshold(btreeset! {2, 3, 4, 5, 6}, 2);
-    let joint = first.joint_with(&second);
+    let joint = joint_membership(&first, &second);
     let binary = bincode::serialize(&joint).unwrap();
     let decoded = bincode::deserialize::<ThresholdMembership<u64, ()>>(&binary).unwrap();
     assert_eq!(joint, decoded);
@@ -432,7 +449,7 @@ fn test_serde_rejects_invalid_configs() {
 #[error("{0}")]
 struct TestErrorSource(String);
 
-impl crate::errors::ErrorSource for TestErrorSource {
+impl openraft::errors::ErrorSource for TestErrorSource {
     fn from_error<E>(error: &E) -> Self
     where E: std::error::Error + 'static {
         Self(format!("wrapped: {error}"))
@@ -443,7 +460,7 @@ impl crate::errors::ErrorSource for TestErrorSource {
     }
 }
 
-crate::declare_raft_types!(
+openraft::declare_raft_types!(
     CustomErrorConfig:
         D = u64,
         R = (),
@@ -454,7 +471,7 @@ crate::declare_raft_types!(
         AsyncRuntime = openraft_rt_tokio::TokioRuntime,
 );
 
-crate::declare_raft_types!(
+openraft::declare_raft_types!(
     DefaultMembershipConfig:
         D = u64,
         R = (),
@@ -473,16 +490,15 @@ fn constructor_returns_concrete_validation_error() {
 }
 
 #[test]
-fn membership_change_preserves_configured_error_source() {
+fn edit_preserves_configured_error_source() {
     type Membership = MembershipOf<CustomErrorConfig>;
     let membership = Membership::from(btreemap! {1 => (), 2 => (), 3 => ()});
-    let stored = Arc::new(StoredMembershipOf::<CustomErrorConfig>::new(None, membership));
-    let state = MembershipStateOf::<CustomErrorConfig>::new(stored.clone(), stored);
-    let result = state.next_membership::<_, TestErrorSource>(ThresholdChange::write_size(4), true, false);
+    let change = ThresholdChange::write_size(4);
+    let result: Result<_, MembershipError<u64, TestErrorSource>> = change.apply(&membership);
     let source = TestErrorSource(
         "wrapped: invalid threshold: write_size=4, voter_count=3; need 1 <= write_size <= voter_count".into(),
     );
-    let error = crate::errors::ChangeMembershipError::UserDefined(source);
+    let error = MembershipError::UserDefined(source);
     let expected = Err(error);
     assert_eq!(expected, result);
 }

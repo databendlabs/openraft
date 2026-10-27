@@ -1,6 +1,6 @@
 # Threshold membership: configure the copies required to commit
 
-[`ThresholdMembership`] is a built-in membership type with a configurable
+The `openraft-membership` crate provides [`ThresholdMembership`] with a configurable
 `write_size`. Each config holds a voter set and one write quorum size:
 
 - Any `write_size` voters form a write quorum. An entry commits once a write
@@ -21,8 +21,8 @@ openraft::declare_raft_types!(
     pub TypeConfig:
         D = Request,
         R = Response,
-        Membership = openraft::membership::ThresholdMembership<u64, BasicNode>,
-        MembershipEdit = openraft::impls::ThresholdChange<Self::NodeId, Self::Node>,
+        Membership = openraft_membership::ThresholdMembership<u64, BasicNode>,
+        MembershipEdit = openraft_membership::ThresholdChange<Self::NodeId, Self::Node>,
 );
 
 // 5 voters: a commit needs 2 copies, so an election needs 4 votes.
@@ -51,7 +51,7 @@ size in the same way.
 ```rust
 use std::collections::BTreeSet;
 
-use openraft::membership::ThresholdMembership;
+use openraft_membership::ThresholdMembership;
 
 let voters = BTreeSet::from([1, 2, 3, 4, 5]);
 
@@ -125,7 +125,7 @@ configured number of copies: shrinking from 5 voters to 3 with write size 4
 fails unless the same change sets a smaller write size.
 
 For application-specific operations, select your own `MembershipEdit` type
-and implement [`RaftMembershipEdit<ThresholdMembership<..>, MyErrorSource>`](crate::membership::RaftMembershipEdit).
+and implement [`RaftMembershipEdit<ThresholdMembership<..>, MyErrorSource>`](openraft::membership::RaftMembershipEdit).
 Its `apply()` receives the current effective membership inside the Raft
 core and returns the target. The edit can delegate standard operations to
 `ThresholdChange::apply()`. OpenRaft validates the target and handles joint
@@ -149,16 +149,16 @@ the read size from 4 to 2. Without a joint config, an old leader could
 commit on `{1,2}`, while a candidate using the new config wins votes from
 `{3,4}` and misses that committed entry.
 
-[`ThresholdMembership`]: crate::membership::ThresholdMembership
-[`ThresholdMembership::new()`]: crate::membership::ThresholdMembership::new
-[`ThresholdChange`]: crate::membership::ThresholdChange
-[`InvalidThresholds`]: crate::membership::InvalidThresholds
-[`ThresholdMembershipError::InvalidThresholds`]: crate::membership::ThresholdMembershipError::InvalidThresholds
-[`MembershipError::UserDefined`]: crate::errors::MembershipError::UserDefined
-[`Membership`]: crate::Membership
-[`ChangeMembers`]: crate::ChangeMembers
-[`Raft::initialize()`]: crate::Raft::initialize
-[`Raft::change_membership()`]: crate::Raft::change_membership
-[`leader_id_adv::LeaderId`]: crate::impls::leader_id_adv::LeaderId
-[`leader_id_std::LeaderId`]: crate::impls::leader_id_std::LeaderId
-[`election_quorum`]: crate::docs::protocol::election_quorum
+[`ThresholdMembership`]: crate::ThresholdMembership
+[`ThresholdMembership::new()`]: crate::ThresholdMembership::new
+[`ThresholdChange`]: crate::ThresholdChange
+[`InvalidThresholds`]: crate::InvalidThresholds
+[`ThresholdMembershipError::InvalidThresholds`]: crate::ThresholdMembershipError::InvalidThresholds
+[`MembershipError::UserDefined`]: openraft::errors::MembershipError::UserDefined
+[`Membership`]: openraft::Membership
+[`ChangeMembers`]: openraft::ChangeMembers
+[`Raft::initialize()`]: openraft::Raft::initialize
+[`Raft::change_membership()`]: openraft::Raft::change_membership
+[`leader_id_adv::LeaderId`]: openraft::impls::leader_id_adv::LeaderId
+[`leader_id_std::LeaderId`]: openraft::impls::leader_id_std::LeaderId
+[`election_quorum`]: openraft::docs::protocol::election_quorum

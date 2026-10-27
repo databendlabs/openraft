@@ -14,7 +14,7 @@ verify: fmt_check clippy-basic
 
 # Complete, read-only check: adds isolated features, full lint coverage,
 # documentation, integrations, benchmarks, and runtime tests.
-verify-full: verify feature-check clippy docs-check test-bench-minimal test-runtime
+verify-full: verify feature-check clippy docs-check test-membership test-bench-minimal test-runtime
 	cargo test --test '*'
 	# cargo test --features single-threaded --lib
 	# test result in different output on CI are ignored and only run locally
@@ -34,6 +34,9 @@ feature-check:
 	done
 	cargo check --manifest-path openraft/Cargo.toml --no-default-features --all-targets
 	cargo check --manifest-path openraft/Cargo.toml --no-default-features --features single-threaded --all-targets
+	cargo check --manifest-path membership/Cargo.toml --lib --no-default-features
+	cargo check --manifest-path membership/Cargo.toml --all-targets --no-default-features
+	cargo check --manifest-path membership/Cargo.toml --all-targets --features serde,single-threaded
 
 defensive_test:
 	OPENRAFT_STORE_DEFENSIVE=on cargo test
@@ -75,6 +78,12 @@ test-runtime:
 	cargo test --manifest-path rt-tokio/Cargo.toml --features single-threaded
 	cargo test --manifest-path rt-compio/Cargo.toml
 	cargo test --manifest-path rt-monoio/Cargo.toml
+
+# Exercise serialization, serialization-free builds, and single-threaded builds.
+test-membership:
+	cargo test --manifest-path membership/Cargo.toml
+	cargo test --manifest-path membership/Cargo.toml --no-default-features
+	cargo test --manifest-path membership/Cargo.toml --features single-threaded
 
 # Test one example, e.g. `make test-example-raft-kv-rocksdb`.
 test-example-%:

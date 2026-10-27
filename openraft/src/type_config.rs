@@ -144,7 +144,7 @@ pub trait RaftTypeConfig:
     /// Membership operations, selected independently of the membership representation.
     ///
     /// The macro defaults to [`ChangeMembers`](crate::ChangeMembers). Select
-    /// [`ThresholdChange`](crate::impls::ThresholdChange) for threshold membership, or a custom
+    /// `openraft_membership::ThresholdChange` for threshold membership, or a custom
     /// edit that implements [`RaftMembershipEdit`] for the selected membership.
     #[since(version = "0.10.0", change = "passes ErrorSource to the edit trait")]
     #[since(version = "0.10.0")]

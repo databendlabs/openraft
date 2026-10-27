@@ -1,16 +1,16 @@
 use std::collections::BTreeMap;
 
+use openraft::Node;
+use openraft::NodeId;
+use openraft::errors::MembershipError;
+use openraft::membership::NodeRef;
+use openraft::membership::NodeRole;
+use openraft::membership::RaftMembership;
+use openraft::membership::RaftMembershipEdit;
 use openraft_macros::since;
 
-use crate::Node;
-use crate::NodeId;
-use crate::errors::MembershipError;
-use crate::membership::NodeRef;
-use crate::membership::NodeRole;
-use crate::membership::RaftMembership;
-use crate::membership::RaftMembershipEdit;
-use crate::membership::ThresholdChange;
-use crate::membership::ThresholdMembership;
+use crate::ThresholdChange;
+use crate::ThresholdMembership;
 use crate::quorum::Joint;
 use crate::quorum::ThresholdQuorumSet;
 

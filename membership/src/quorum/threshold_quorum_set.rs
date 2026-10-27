@@ -24,7 +24,8 @@ use crate::quorum::QuorumSet;
 /// use std::num::NonZeroU64;
 /// use std::sync::Arc;
 ///
-/// use openraft::membership::{QuorumIntersection, QuorumSet, ThresholdQuorumSet};
+/// use openraft::membership::{QuorumIntersection, QuorumSet};
+/// use openraft_membership::ThresholdQuorumSet;
 ///
 /// let voters = Arc::new(BTreeSet::from([1, 2, 3, 4, 5]));
 /// let read = ThresholdQuorumSet::new(NonZeroU64::new(2).unwrap(), voters.clone());
@@ -42,6 +43,7 @@ use crate::quorum::QuorumSet;
 /// let shared = Arc::ptr_eq(read.id_set(), write.id_set());
 /// assert!(shared);
 /// ```
+#[since(version = "0.10.0", change = "moved to the openraft-membership crate")]
 #[since(version = "0.10.0")]
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(

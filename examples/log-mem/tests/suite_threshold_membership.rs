@@ -3,10 +3,10 @@
 
 use log_mem::LogStore;
 use openraft::StorageError;
-use openraft::membership::ThresholdMembership;
 use openraft::testing::log::StoreBuilder;
 use openraft::testing::log::Suite;
 use openraft::type_config::TypeConfigExt;
+use openraft_membership::ThresholdMembership;
 use sm_mem::StateMachineStore;
 
 openraft::declare_raft_types!(
@@ -15,7 +15,7 @@ openraft::declare_raft_types!(
         R = types_kv::Response,
         Node = (),
         Membership = ThresholdMembership<u64, ()>,
-        MembershipEdit = openraft::impls::ThresholdChange<Self::NodeId, Self::Node>,
+        MembershipEdit = openraft_membership::ThresholdChange<Self::NodeId, Self::Node>,
 );
 
 struct Builder;

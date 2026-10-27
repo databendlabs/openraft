@@ -19,6 +19,7 @@ futures = "0.3.31"
 openraft = { path = "../../openraft", default-features = false, features = ["type-alias", "tokio-rt"] }
 
 [dev-dependencies]
+openraft-membership = { path = "../../membership", version = "0.10.0-alpha.37" }
 sm-mem = { path = "../sm-mem" }
 types-kv = { path = "../types-kv" }
 

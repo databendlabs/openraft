@@ -4,15 +4,17 @@ use std::fmt;
 use std::num::NonZeroU64;
 use std::sync::Arc;
 
+use openraft::Node;
+use openraft::NodeId;
+use openraft::errors::NodeNotFound;
+use openraft::errors::Operation;
+use openraft::membership::IntoNodes;
 use openraft_macros::since;
 
-use crate::Node;
-use crate::NodeId;
-use crate::membership::IntoNodes;
-use crate::membership::InvalidThresholds;
-use crate::membership::RaftMembershipExt;
-use crate::membership::ThresholdMembershipError;
+use crate::InvalidThresholds;
+use crate::ThresholdMembershipError;
 use crate::quorum::Joint;
+use crate::quorum::QuorumSet;
 use crate::quorum::ThresholdQuorumSet;
 
 /// The voters of a config and its write quorum size.
@@ -27,12 +29,12 @@ pub(crate) type ThresholdConfig<NID> = (Arc<BTreeSet<NID>>, NonZeroU64);
 ///
 /// A membership holds two or more configs only during a joint change. Then a quorum must be a
 /// quorum of every config. Rule i of
-/// [`read_quorum_set()`](crate::membership::RaftMembership::read_quorum_set) gives the voters and
-/// the `read_size` of config i, and rule i of
-/// [`write_quorum_set()`](crate::membership::RaftMembership::write_quorum_set) gives its
+/// [`read_quorum_set()`](openraft::membership::RaftMembership::read_quorum_set) gives the voters
+/// and the `read_size` of config i, and rule i of
+/// [`write_quorum_set()`](openraft::membership::RaftMembership::write_quorum_set) gives its
 /// `write_size`.
 ///
-/// [`threshold_membership`](crate::docs::cluster_control::threshold_membership) explains how to
+/// [`threshold_membership`](crate::docs) explains how to
 /// choose the write size and how to change it.
 ///
 /// # Examples
@@ -40,7 +42,8 @@ pub(crate) type ThresholdConfig<NID> = (Arc<BTreeSet<NID>>, NonZeroU64);
 /// ```
 /// use std::collections::BTreeSet;
 ///
-/// use openraft::membership::{QuorumSet, RaftMembership, ThresholdMembership};
+/// use openraft::membership::{QuorumSet, RaftMembership};
+/// use openraft_membership::ThresholdMembership;
 ///
 /// // 5 voters: an election needs 4 votes, and a commit needs 2 copies.
 /// let voters = BTreeSet::from([1, 2, 3, 4, 5]);
@@ -51,6 +54,7 @@ pub(crate) type ThresholdConfig<NID> = (Arc<BTreeSet<NID>>, NonZeroU64);
 /// let write_accepts_two = membership.write_quorum_set().is_quorum([1, 2].iter());
 /// assert!(write_accepts_two);
 /// ```
+#[since(version = "0.10.0", change = "moved to the openraft-membership crate")]
 #[since(version = "0.10.0", change = "removed error-source parameter E")]
 #[since(version = "0.10.0")]
 #[derive(Clone, PartialEq, Eq)]
@@ -174,7 +178,7 @@ where
     ///
     /// Every voter needs a node in `nodes`, and the other nodes in `nodes` are learners. `nodes`
     /// implements [`IntoNodes`], so it can be a `BTreeMap<NID, N>`, a `HashMap<NID, N>`, or a
-    /// `BTreeSet<NID>` when `N` is `()` or [`EmptyNode`](crate::EmptyNode).
+    /// `BTreeSet<NID>` when `N` is `()` or [`EmptyNode`](openraft::EmptyNode).
     ///
     /// Returns [`ThresholdMembershipError::InvalidThresholds`] unless, with `n`
     /// voters, `1 <= write_size <= n`.
@@ -232,6 +236,15 @@ where
             write: Joint::new(write_rules),
             nodes,
         }
+    }
+
+    fn ensure_voters_have_nodes(&self) -> Result<(), NodeNotFound<NID>> {
+        for node_id in self.write.ids() {
+            if !self.nodes.contains_key(&node_id) {
+                return Err(NodeNotFound::new(node_id, Operation::None));
+            }
+        }
+        Ok(())
     }
 
     /// Returns the configs that `read` and `write` describe.
