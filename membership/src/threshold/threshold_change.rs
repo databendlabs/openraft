@@ -3,32 +3,32 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::sync::Arc;
 
+use display_more::DisplayDebugOptionExt;
 use display_more::DisplayOptionExt;
 use openraft::Node;
 use openraft::NodeId;
 use openraft::errors::EmptyMembership;
 use openraft::errors::MembershipError;
-use openraft::impls::ChangeMembers;
-use openraft::impls::Membership;
 use openraft::membership::RaftMembershipEdit;
 use openraft_macros::since;
 
 use crate::ThresholdMembership;
 use crate::errors::InvalidThresholds;
 
-/// A change to a [`ThresholdMembership`]. [`apply()`](RaftMembershipEdit::apply) applies `members`
-/// first, then the write size, and derives the read size from the new voter count.
+/// A change to a [`ThresholdMembership`]. [`apply()`](RaftMembershipEdit::apply) adds
+/// `add_nodes`, sets the voters and the write size, then removes `remove_nodes`. It derives the
+/// read size from the new voter count.
 ///
 /// A change keeps the write size unless it sets it. When removing voters leaves fewer voters
 /// than the write size, the change must also set a smaller write size. Otherwise `apply()` returns
-/// [`MembershipError::UserDefined`].
+/// [`MembershipError::UserDefined`]. A voter without a node makes `apply()` return
+/// [`MembershipError::NodeNotFound`].
 ///
 /// # Examples
 ///
 /// ```
 /// use std::collections::BTreeSet;
 ///
-/// use openraft::impls::ChangeMembers;
 /// use openraft::membership::RaftMembershipEdit;
 /// use openraft_membership::{ThresholdChange, ThresholdMembership};
 ///
@@ -42,8 +42,7 @@ use crate::errors::InvalidThresholds;
 /// assert_eq!(want, switched.to_string());
 ///
 /// // Remove voter 5 and require 3 copies. The read size stays 2; node 5 stays as a learner.
-/// let remove_five = ChangeMembers::RemoveVoters(BTreeSet::from([5]));
-/// let change = ThresholdChange::members(remove_five).with_write_size(3);
+/// let change = ThresholdChange::voters(BTreeSet::from([1, 2, 3, 4])).with_write_size(3);
 /// let shrunk = change.apply(&switched).unwrap();
 /// let want = "{voters:[{1:(),2:(),3:(),4:()} read=2 write=3], learners:[5:()]}";
 /// assert_eq!(want, shrunk.to_string());
@@ -51,6 +50,7 @@ use crate::errors::InvalidThresholds;
 ///
 /// [`ThresholdMembership`]: crate::ThresholdMembership
 /// [`MembershipError::UserDefined`]: openraft::errors::MembershipError::UserDefined
+/// [`MembershipError::NodeNotFound`]: openraft::errors::MembershipError::NodeNotFound
 #[since(
     version = "0.10.0",
     change = "returns native InvalidThresholds from edit application"
@@ -63,11 +63,17 @@ where
     NID: NodeId,
     N: Node,
 {
-    /// Voter and node changes; `None` keeps the voters and the nodes.
-    pub members: Option<ChangeMembers<NID, N>>,
+    /// Nodes to add as learners. A node that already exists keeps its metadata.
+    pub add_nodes: BTreeMap<NID, N>,
+
+    /// The new voters; `None` keeps the voters.
+    pub voters: Option<BTreeSet<NID>>,
 
     /// The new write size; `None` keeps the current one.
     pub write_size: Option<u64>,
+
+    /// Nodes to remove. Removing a voter of the result fails.
+    pub remove_nodes: BTreeSet<NID>,
 }
 
 impl<NID, N> ThresholdChange<NID, N>
@@ -75,20 +81,19 @@ where
     NID: NodeId,
     N: Node,
 {
-    /// Returns a change of the voters or the nodes that keeps the write size.
-    pub fn members(change: impl Into<ChangeMembers<NID, N>>) -> Self {
-        let members = change.into();
+    /// Returns a change of the voters that keeps the write size and the nodes.
+    pub fn voters(voters: BTreeSet<NID>) -> Self {
         Self {
-            members: Some(members),
-            write_size: None,
+            voters: Some(voters),
+            ..Self::default()
         }
     }
 
     /// Returns a change of the write size that keeps the voters and the nodes.
     pub fn write_size(write_size: u64) -> Self {
         Self {
-            members: None,
             write_size: Some(write_size),
+            ..Self::default()
         }
     }
 
@@ -101,13 +106,19 @@ where
     }
 }
 
-impl<NID, N> From<ChangeMembers<NID, N>> for ThresholdChange<NID, N>
+impl<NID, N> Default for ThresholdChange<NID, N>
 where
     NID: NodeId,
     N: Node,
 {
-    fn from(members: ChangeMembers<NID, N>) -> Self {
-        Self::members(members)
+    /// Returns the empty change, which keeps the voters, the write size and the nodes.
+    fn default() -> Self {
+        Self {
+            add_nodes: BTreeMap::new(),
+            voters: None,
+            write_size: None,
+            remove_nodes: BTreeSet::new(),
+        }
     }
 }
 
@@ -119,15 +130,17 @@ where
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{{members: {}, write_size: {}}}",
-            self.members.display(),
-            self.write_size.display()
+            "{{add_nodes: {:?}, voters: {}, write_size: {}, remove_nodes: {:?}}}",
+            self.add_nodes,
+            self.voters.display_debug(),
+            self.write_size.display(),
+            self.remove_nodes
         )
     }
 }
 
-/// Each edit changes only the members, as the same edit of [`ChangeMembers`] does, and keeps both
-/// sizes.
+/// `add_learner()` adds one node and keeps the voters and the write size.
+/// `make_uniform()` returns the empty change, which reduces a joint membership to its last config.
 impl<NID, N> RaftMembershipEdit<ThresholdMembership<NID, N>> for ThresholdChange<NID, N>
 where
     NID: NodeId,
@@ -145,37 +158,40 @@ where
             return Err(EmptyMembership {}.into());
         };
 
-        let (voters, nodes) = match self.members {
-            None => (last_write.id_set().clone(), membership.nodes.clone()),
-            Some(members) => {
-                let last_voters = last_write.id_set();
-                let last_voters = last_voters.as_ref().clone();
-                let current = Membership::<NID, N>::new(vec![last_voters], membership.nodes.clone())?;
-                let target = members.apply(&current);
-                let target = target.map_err(|error| error.map_user_defined(|never| match never {}))?;
-                let (mut configs, nodes) = target.into_parts();
-                let voters = configs.pop().unwrap();
-                (Arc::new(voters), nodes)
-            }
+        let mut nodes = membership.nodes.clone();
+        for (node_id, node) in self.add_nodes {
+            nodes.entry(node_id).or_insert(node);
+        }
+
+        let voters = match self.voters {
+            None => last_write.id_set().clone(),
+            Some(voters) => Arc::new(voters),
         };
 
         let write_size = self.write_size.unwrap_or(last_write.quorum_size());
         let voter_count = voters.len() as u64;
         let write_size = ThresholdMembership::<NID, N>::check_write_size(voter_count, write_size)?;
+
+        for node_id in &self.remove_nodes {
+            nodes.remove(node_id);
+        }
+
         let target = ThresholdMembership::from_configs([(voters, write_size)], nodes);
+        target.ensure_voters_have_nodes()?;
 
         tracing::debug!("target membership: {}", target);
         Ok(target)
     }
 
     fn add_learner(node_id: NID, node: N) -> Self {
-        let nodes = BTreeMap::from([(node_id, node)]);
-        let members = ChangeMembers::AddNodes(nodes);
-        Self::members(members)
+        let add_nodes = BTreeMap::from([(node_id, node)]);
+        Self {
+            add_nodes,
+            ..Self::default()
+        }
     }
 
     fn make_uniform() -> Self {
-        let members = ChangeMembers::AddVoterIds(BTreeSet::new());
-        Self::members(members)
+        Self::default()
     }
 }

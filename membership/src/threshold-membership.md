@@ -114,12 +114,12 @@ takes a [`ThresholdChange`]:
 raft.change_membership(ThresholdChange::write_size(4), false).await?;
 
 // Remove voter 5 and require 3 copies; the derived read size stays 2.
-let remove = ChangeMembers::RemoveVoters(btreeset! {5});
-raft.change_membership(ThresholdChange::members(remove).with_write_size(3), false).await?;
+let voters = btreeset! {1, 2, 3, 4};
+raft.change_membership(ThresholdChange::voters(voters).with_write_size(3), false).await?;
 ```
 
-A [`ChangeMembers`] value also works. It keeps `write_size`, while the new
-voter count determines the read size. Growing from 3 voters to 5 with write
+[`ThresholdChange::voters()`] keeps `write_size`, while the new voter count
+determines the read size. Growing from 3 voters to 5 with write
 size 2 raises the read size from 2 to 4. Removing voters preserves the
 configured number of copies: shrinking from 5 voters to 3 with write size 4
 fails unless the same change sets a smaller write size.
@@ -158,7 +158,7 @@ commit on `{1,2}`, while a candidate using the new config wins votes from
 [`ThresholdMembershipError::InvalidThresholds`]: crate::errors::ThresholdMembershipError::InvalidThresholds
 [`MembershipError::UserDefined`]: openraft::errors::MembershipError::UserDefined
 [`Membership`]: openraft::impls::Membership
-[`ChangeMembers`]: openraft::impls::ChangeMembers
+[`ThresholdChange::voters()`]: crate::ThresholdChange::voters
 [`Raft::initialize()`]: openraft::Raft::initialize
 [`Raft::change_membership()`]: openraft::Raft::change_membership
 [`leader_id_adv::LeaderId`]: openraft::impls::leader_id_adv::LeaderId

@@ -239,7 +239,7 @@ where
         }
     }
 
-    fn ensure_voters_have_nodes(&self) -> Result<(), NodeNotFound<NID>> {
+    pub(crate) fn ensure_voters_have_nodes(&self) -> Result<(), NodeNotFound<NID>> {
         for node_id in self.write.ids() {
             if !self.nodes.contains_key(&node_id) {
                 return Err(NodeNotFound::new(node_id, Operation::None));

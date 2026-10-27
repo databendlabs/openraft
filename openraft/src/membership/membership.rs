@@ -179,12 +179,6 @@ where
         Ok(m)
     }
 
-    /// Consumes the membership and returns its voter configurations and node metadata.
-    #[since(version = "0.10.0")]
-    pub fn into_parts(self) -> (Vec<BTreeSet<NID>>, BTreeMap<NID, N>) {
-        (self.configs, self.nodes)
-    }
-
     /// Create a new Membership with default nodes from voter configurations and a collection of all
     /// the node ids.
     ///

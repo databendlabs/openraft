@@ -18,6 +18,7 @@ use std::time::Duration;
 use clap::Parser;
 use openraft::alias::MembershipEditOf;
 use openraft::async_runtime::WatchReceiver;
+#[cfg(not(feature = "threshold-membership"))]
 use openraft::impls::ChangeMembers;
 #[cfg(feature = "threshold-membership")]
 use openraft_membership::ThresholdChange;
@@ -898,7 +899,7 @@ async fn finalize_joint_once(
     done: Arc<AtomicBool>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     println!("MEMBERSHIP-CLIENT: finalizing joint config to {goal:?}");
-    let edit = ChangeMembers::<NodeId, Node>::from(goal);
+    let edit = voters_edit(goal);
     match tokio::time::timeout(Duration::from_millis(5000), raft.change_membership(edit, false)).await {
         Ok(Ok(_)) => {}
         Ok(Err(e)) => println!("MEMBERSHIP-CLIENT: finalize failed: {e}"),
@@ -1044,7 +1045,19 @@ fn membership_edit(_rng: &mut StdRng, desired: &BTreeSet<NodeId>) -> MembershipE
 #[cfg(feature = "threshold-membership")]
 fn membership_edit(rng: &mut StdRng, desired: &BTreeSet<NodeId>) -> MembershipEditOf<TypeConfig> {
     let write_size = random_write_size(rng, desired.len());
-    ThresholdChange::members(desired.clone()).with_write_size(write_size)
+    ThresholdChange::voters(desired.clone()).with_write_size(write_size)
+}
+
+/// The edit that makes `voters` the voters.
+#[cfg(not(feature = "threshold-membership"))]
+fn voters_edit(voters: BTreeSet<NodeId>) -> MembershipEditOf<TypeConfig> {
+    ChangeMembers::from(voters)
+}
+
+/// The edit that makes `voters` the voters and keeps the write size.
+#[cfg(feature = "threshold-membership")]
+fn voters_edit(voters: BTreeSet<NodeId>) -> MembershipEditOf<TypeConfig> {
+    ThresholdChange::voters(voters)
 }
 
 /// A random write size in `1..=voter_count`; the membership derives the read size.

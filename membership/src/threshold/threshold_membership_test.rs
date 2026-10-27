@@ -9,7 +9,6 @@ use openraft::errors::EmptyMembership;
 use openraft::errors::MembershipError;
 use openraft::errors::NodeNotFound;
 use openraft::errors::Operation;
-use openraft::impls::ChangeMembers;
 use openraft::membership::NodeRef;
 use openraft::membership::NodeRole;
 use openraft::membership::RaftMembership;
@@ -213,9 +212,8 @@ fn test_apply() {
     let want = Ok(threshold(voters.clone(), 4));
     assert_eq!(want, res);
 
-    // A change of the members keeps the write size and derives the new read size.
-    let remove_five = ChangeMembers::RemoveVoters(btreeset! {5});
-    let change = ThresholdChange::members(remove_five);
+    // A change of the voters keeps the write size and derives the new read size.
+    let change = ThresholdChange::voters(btreeset! {1, 2, 3, 4});
     let res = change.apply(&m42);
     let want = ThresholdMembership::new(btreeset! {1, 2, 3, 4}, 2, voters.clone());
     let want = want.map_err(MembershipError::from);
@@ -227,9 +225,27 @@ fn test_apply() {
     let want = want.map_err(MembershipError::from);
     assert_eq!(want, res);
 
+    // Removing a learner drops its node. Removing a voter fails, because every voter needs a node.
+    let m42_with_six = ThresholdMembership::<u64, ()>::new(voters.clone(), 2, btreeset! {1, 2, 3, 4, 5, 6}).unwrap();
+    let change = ThresholdChange {
+        remove_nodes: btreeset! {6},
+        ..ThresholdChange::default()
+    };
+    let res = change.apply(&m42_with_six);
+    let want = Ok(m42.clone());
+    assert_eq!(want, res);
+
+    let change = ThresholdChange {
+        remove_nodes: btreeset! {5},
+        ..ThresholdChange::default()
+    };
+    let res = change.apply(&m42);
+    let want = Err(MembershipError::from(NodeNotFound::new(5, Operation::None)));
+    assert_eq!(want, res);
+
     // Growing the voter set keeps the write size and raises the read size automatically.
     let m22 = ThresholdMembership::<u64, ()>::new(btreeset! {1, 2, 3}, 2, voters.clone()).unwrap();
-    let add_four_five = ThresholdChange::members(ChangeMembers::AddVoterIds(btreeset! {4, 5}));
+    let add_four_five = ThresholdChange::voters(voters.clone());
 
     let change = add_four_five.clone();
     let res = change.apply(&m22);
@@ -243,7 +259,7 @@ fn test_apply() {
 
     // Removing too many voters needs an explicit reduction in the write size.
     let m24 = threshold(voters.clone(), 4);
-    let remove = ThresholdChange::members(ChangeMembers::RemoveVoters(btreeset! {4, 5}));
+    let remove = ThresholdChange::voters(btreeset! {1, 2, 3});
     let change = remove.clone();
     let res = change.apply(&m24);
     let want = Err(MembershipError::from(invalid_thresholds(3, 4)));
@@ -381,7 +397,7 @@ fn test_display() {
 
     let change = ThresholdChange::<u64, ()>::write_size(4);
     let got = change.to_string();
-    assert_eq!("{members: None, write_size: 4}", got);
+    assert_eq!("{add_nodes: {}, voters: None, write_size: 4, remove_nodes: {}}", got);
 }
 
 #[cfg(feature = "serde")]
