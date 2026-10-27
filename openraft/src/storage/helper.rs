@@ -130,21 +130,24 @@ where
         self.restore_from_snapshot().await?;
         let (mut last_applied, _) = self.state_machine.applied_state().await.sto_read_sm()?;
 
+        // The state machine must have applied every purged log: this node keeps no other copy of
+        // them, so neither re-applying logs nor rebuilding the snapshot can bring them back.
+        if last_applied < last_purged_log_id {
+            let start = last_applied.next_index();
+            let err = C::err_from_string(format!(
+                "state machine is behind the purged logs: last_applied({}) < last_purged_log_id({}); logs from index {} are lost on this node",
+                last_applied.display(),
+                last_purged_log_id.display(),
+                start,
+            ));
+            return Err(StorageError::read_log_at_index(start, err));
+        }
+
         // Re-apply log entries to recover SM to latest state.
         // For transient state machines, this re-applies logs from snapshot position to committed.
         if last_applied < committed {
             let start = last_applied.next_index();
             let end = committed.next_index();
-
-            // If required logs are purged, it's an error - we can't recover
-            if start < last_purged_log_id.next_index() {
-                let err = C::err_from_string(format!(
-                    "Cannot re-apply logs: need logs from index {}, but purged up to {}",
-                    start,
-                    last_purged_log_id.display()
-                ));
-                return Err(StorageError::read_log_at_index(start, err));
-            }
 
             tracing::info!(
                 "Re-applying committed logs to restore state machine to latest state: start: {}, end: {}",
