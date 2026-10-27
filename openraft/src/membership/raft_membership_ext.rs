@@ -7,7 +7,7 @@ use crate::errors::NodeNotFound;
 use crate::errors::Operation;
 use crate::membership::NodeRole;
 use crate::membership::RaftMembership;
-use crate::membership::UnprovenReadWriteIntersection;
+use crate::membership::errors::UnprovenReadWriteIntersection;
 use crate::quorum::QuorumBridge;
 use crate::quorum::QuorumIntersection;
 use crate::quorum::QuorumSet;
@@ -251,7 +251,7 @@ mod tests {
     use crate::membership::NodeRole;
     use crate::membership::RaftMembership;
     use crate::membership::RaftMembershipExt;
-    use crate::membership::UnprovenReadWriteIntersection;
+    use crate::membership::errors::UnprovenReadWriteIntersection;
 
     /// A configuration that stores the role of each node, so that a node outside the quorum sets
     /// can campaign. Its read and write quorum sets may differ.

@@ -628,7 +628,7 @@ pub struct Config {
     /// [`Raft::change_membership()`]: crate::Raft::change_membership
     /// [`RaftMembershipEdit::apply()`]: crate::membership::RaftMembershipEdit::apply
     /// [`intersects_with()`]: quorum_set::QuorumIntersection::intersects_with
-    /// [`UnprovenReadWriteIntersection`]: crate::membership::UnprovenReadWriteIntersection
+    /// [`UnprovenReadWriteIntersection`]: crate::membership::errors::UnprovenReadWriteIntersection
     #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long,
            action = clap::ArgAction::Set,

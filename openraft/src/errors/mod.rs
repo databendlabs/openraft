@@ -57,7 +57,7 @@ pub use self::uncommitted_leader_log::UncommittedLeaderLog;
 pub use self::unsupported_membership_transition::UnsupportedMembershipTransition;
 use crate::LogId;
 use crate::RaftTypeConfig;
-pub use crate::membership::UnprovenReadWriteIntersection;
+pub use crate::membership::errors::UnprovenReadWriteIntersection;
 use crate::network::RPCTypes;
 use crate::node::NodeId;
 use crate::try_as_ref::TryAsRef;

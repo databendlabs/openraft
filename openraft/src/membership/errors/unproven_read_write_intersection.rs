@@ -9,7 +9,7 @@ use openraft_macros::since;
 /// [`Config::allow_unproven_read_write_intersection`] is set.
 ///
 /// [`Config::allow_unproven_read_write_intersection`]: crate::Config::allow_unproven_read_write_intersection
-#[since(version = "0.10.0", change = "defined in membership; errors re-exports it")]
+#[since(version = "0.10.0", change = "defined in membership::errors; errors re-exports it")]
 #[since(version = "0.10.0")]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
