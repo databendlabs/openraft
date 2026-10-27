@@ -528,8 +528,10 @@ A has effective F but committed J, and B has not received F. Kill A with SIGKILL
 restart it with unchanged storage, and remove the partition. Leader restoration
 is disabled only in this scenario; pre-vote and snapshot settings are unchanged.
 
-Within 60 seconds after healing, B must lead and commit/apply the same F (including
-its log ID). A fresh write and its linearizable read must succeed through B, and
+Within 60 seconds after healing, the leader that B follows must commit/apply the same F
+(including its log ID). That leader may be A: A stays a learner in F, and B, the only
+voter in F, does not take over from the leader it voted for. A fresh write and its
+linearizable read must succeed through that leader, and
 another linearizable read must return the pre-crash sentinel. Recovery uses automatic
 elections, without resubmitting membership commands. The deadline is an engineering
 bound, not a Raft guarantee. No intermediate restart metrics or temporary leadership
