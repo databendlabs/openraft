@@ -36,13 +36,13 @@ use openraft_macros::since;
 #[deprecated(since = "0.10.0", note = "use `openraft_rt_tokio::TokioRuntime` directly")]
 pub use openraft_rt_tokio::TokioRuntime;
 
-#[since(version = "0.10.0", change = "re-exported from `impls`")]
-pub use crate::change_members::ChangeMembers;
 pub use crate::entry::Entry;
 #[since(version = "0.10.0", change = "re-exported from `impls`")]
 pub use crate::entry::EntryPayload;
 #[since(version = "0.10.0", change = "re-exported from `impls`")]
 pub use crate::membership::Membership;
+#[since(version = "0.10.0", change = "re-exported from `impls`")]
+pub use crate::membership::change_members::ChangeMembers;
 pub use crate::node::BasicNode;
 pub use crate::node::EmptyNode;
 pub use crate::node::NodeInfo;

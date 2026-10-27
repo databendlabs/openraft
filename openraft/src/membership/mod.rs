@@ -24,6 +24,7 @@
 //! - [Dynamic membership guide](crate::docs::cluster_control::dynamic_membership)
 //! - [Joint consensus guide](crate::docs::cluster_control::joint_consensus)
 
+pub(crate) mod change_members;
 pub mod errors;
 mod into_nodes;
 #[allow(clippy::module_inception)]

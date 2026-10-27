@@ -34,7 +34,6 @@ pub extern crate openraft_macros;
 pub extern crate openraft_macros as macros;
 pub extern crate openraft_rt as rt;
 
-mod change_members;
 mod config;
 mod core;
 mod display_ext;
@@ -118,7 +117,6 @@ use crate::base::OptionalFeatures;
 pub use crate::base::OptionalSend;
 pub use crate::base::OptionalSerde;
 pub use crate::base::OptionalSync;
-pub use crate::change_members::ChangeMembers;
 pub use crate::config::Config;
 pub use crate::config::ConfigError;
 pub use crate::config::SnapshotPolicy;
@@ -132,6 +130,7 @@ pub use crate::log_id::LogIdOptionExt;
 pub use crate::log_id::LogIndexOptionExt;
 pub use crate::membership::Membership;
 pub use crate::membership::StoredMembership;
+pub use crate::membership::change_members::ChangeMembers;
 pub use crate::metrics::RaftMetrics;
 pub use crate::network::RPCTypes;
 #[allow(deprecated)]
