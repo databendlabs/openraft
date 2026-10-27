@@ -7,6 +7,7 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use anyhow::Result;
+use anyhow::anyhow;
 use openraft::Config;
 use openraft::Raft;
 use openraft::RaftTypeConfig;
@@ -52,7 +53,9 @@ pub fn cluster_config(snapshot_policy: SnapshotPolicy) -> Config {
 pub struct TestCluster<C>
 where C: TestConfig
 {
+    config: Arc<Config>,
     router: Arc<Mutex<Router<C>>>,
+    log_stores: BTreeMap<u64, LogStore<C>>,
     state_machines: BTreeMap<u64, StateMachine<C>>,
 }
 
@@ -80,6 +83,7 @@ where
             cut_links: BTreeSet::new(),
             send_delay,
         }));
+        let mut log_stores = BTreeMap::new();
         let mut state_machines = BTreeMap::new();
 
         for node_id in node_ids {
@@ -87,6 +91,7 @@ where
             let initial_log_id = log_id::<C>(0, 0, 0);
             let membership_entry = EntryOf::<C>::new_membership(initial_log_id, membership.clone());
             log_store.blocking_append([membership_entry]).await?;
+            log_stores.insert(node_id, log_store.clone());
 
             let state_machine = StateMachine::<C>::default();
             let network = Network {
@@ -102,7 +107,12 @@ where
             state_machines.insert(node_id, state_machine);
         }
 
-        Ok(Self { router, state_machines })
+        Ok(Self {
+            config,
+            router,
+            log_stores,
+            state_machines,
+        })
     }
 
     pub fn raft(&self, node_id: u64) -> TestRaft<C> {
@@ -143,5 +153,24 @@ where
 
     pub fn applied(&self, node_id: u64) -> Vec<EntryOf<C>> {
         self.state_machines[&node_id].applied()
+    }
+
+    /// Shuts node `node_id` down, then starts it again on its log store and state machine, which
+    /// keep the log, the vote and the applied entries.
+    pub async fn restart(&self, node_id: u64) -> Result<()> {
+        let shutdown = self.raft(node_id).shutdown().await;
+        shutdown.map_err(|error| anyhow!("node {node_id} fails to shut down: {error}"))?;
+
+        let network = Network {
+            source: node_id,
+            router: self.router.clone(),
+        };
+        let log_store = self.log_stores[&node_id].clone();
+        let state_machine = self.state_machines[&node_id].clone();
+        let raft = Raft::new(node_id, self.config.clone(), network, log_store, state_machine).await?;
+
+        let mut router = self.router.lock().unwrap();
+        router.nodes.insert(node_id, raft);
+        Ok(())
     }
 }

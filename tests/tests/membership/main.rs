@@ -21,6 +21,7 @@ mod t31_add_remove_follower;
 mod t31_remove_leader;
 mod t31_removed_follower;
 mod t40_threshold_membership;
+mod t40_weighted_membership;
 mod t41_custom_membership_edit;
 mod t42_unproven_read_write_intersection;
 mod t43_network_send_delay;
