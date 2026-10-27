@@ -146,6 +146,8 @@ where
         run_test(builder, Self::get_initial_state_with_state).await?;
         run_test(builder, Self::get_initial_state_last_log_gt_sm).await?;
         run_test(builder, Self::get_initial_state_last_log_lt_sm).await?;
+        run_test(builder, Self::get_initial_state_last_log_lt_sm_past_snapshot).await?;
+        run_test(builder, Self::get_initial_state_sm_lt_purged).await?;
         run_test(builder, Self::get_initial_state_inverted_log_order).await?;
         run_test(builder, Self::get_initial_state_conflict_at_same_index).await?;
         run_test(builder, Self::get_initial_state_log_ids).await?;
@@ -647,6 +649,56 @@ where
         Ok(())
     }
 
+    pub async fn get_initial_state_last_log_lt_sm_past_snapshot(mut store: LS, mut sm: SM) -> Result<(), io::Error> {
+        Self::default_vote(&mut store).await?;
+
+        // The state machine is snapshotted at (1,1), then applies up to (1,3), which a crash took
+        // from the log store before it was flushed: the log store has only (1,2).
+        append(&mut store, [blank_ent_0::<C>(1, 1), blank_ent_0::<C>(1, 2)]).await?;
+        apply(&mut sm, [blank_ent_0::<C>(1, 1)]).await?;
+        sm.try_create_snapshot_builder(true).await.unwrap().build_snapshot().await?;
+        apply(&mut sm, [blank_ent_0::<C>(1, 2), blank_ent_0::<C>(1, 3)]).await?;
+
+        let initial = StorageHelper::new(&mut store, &mut sm).with_id(NODE_ID.into()).get_initial_state().await?;
+
+        assert_eq!(
+            initial.last_purged_log_id().cloned(),
+            Some(log_id_0::<C>(1, 3)),
+            "the hole up to the state machine is purged"
+        );
+        assert_eq!(
+            initial.snapshot_last_log_id().cloned(),
+            Some(log_id_0::<C>(1, 3)),
+            "a snapshot covers the purged logs"
+        );
+        // `Engine::startup()` validates the same state.
+        validit::Validate::validate(&initial).map_err(|e| io::Error::other(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn get_initial_state_sm_lt_purged(mut store: LS, mut sm: SM) -> Result<(), io::Error> {
+        Self::default_vote(&mut store).await?;
+
+        // The log store has purged up to (1,3), but the state machine and its snapshot stop at
+        // (1,1): this node has lost (1,2) and (1,3), so startup must fail.
+        append(&mut store, [
+            blank_ent_0::<C>(1, 1),
+            blank_ent_0::<C>(1, 2),
+            blank_ent_0::<C>(1, 3),
+        ])
+        .await?;
+        store.purge(log_id_0::<C>(1, 3)).await?;
+        apply(&mut sm, [blank_ent_0::<C>(1, 1)]).await?;
+        sm.try_create_snapshot_builder(true).await.unwrap().build_snapshot().await?;
+
+        let res = StorageHelper::new(&mut store, &mut sm).with_id(NODE_ID.into()).get_initial_state().await;
+
+        let err = res.unwrap_err().to_string();
+        let is_behind = err.contains("state machine is behind the purged logs");
+        assert!(is_behind, "expect state-machine-behind-purged error, got: {}", err);
+        Ok(())
+    }
+
     pub async fn get_initial_state_inverted_log_order(mut store: LS, mut sm: SM) -> Result<(), io::Error> {
         Self::default_vote(&mut store).await?;
 
@@ -757,6 +809,8 @@ where
         );
         {
             store.purge(log_id(0, 0, 0)).await?;
+            // `get_initial_state()` requires the state machine to cover the purged logs.
+            apply(&mut sm, [blank_ent_0::<C>(0, 0)]).await?;
 
             let initial = StorageHelper::new(&mut store, &mut sm).with_id(NODE_ID.into()).get_initial_state().await?;
             assert_eq!(Some(&log_id(0, 0, 0)), initial.log_ids.purged());
@@ -771,6 +825,7 @@ where
         );
         {
             store.purge(log_id(1, 0, 1)).await?;
+            apply(&mut sm, [blank_ent_0::<C>(1, 1)]).await?;
 
             let initial = StorageHelper::new(&mut store, &mut sm).with_id(NODE_ID.into()).get_initial_state().await?;
             assert_eq!(Some(&log_id(1, 0, 1)), initial.log_ids.purged());
@@ -783,6 +838,7 @@ where
         tracing::info!("--- log terms: [x,x,x,2,2,3,3], last_purged_log_id: (1,2), expect purged=(1,2), [(2,4),(3,6)]");
         {
             store.purge(log_id(1, 0, 2)).await?;
+            apply(&mut sm, [blank_ent_0::<C>(1, 2)]).await?;
 
             let initial = StorageHelper::new(&mut store, &mut sm).with_id(NODE_ID.into()).get_initial_state().await?;
             assert_eq!(Some(&log_id(1, 0, 2)), initial.log_ids.purged());
@@ -792,6 +848,7 @@ where
         tracing::info!("--- log terms: [x,x,x,x,2,3,3], last_purged_log_id: (2,3), expect purged=(2,3), [(2,4),(3,6)]");
         {
             store.purge(log_id(2, 0, 3)).await?;
+            apply(&mut sm, [blank_ent_0::<C>(2, 3)]).await?;
 
             let initial = StorageHelper::new(&mut store, &mut sm).with_id(NODE_ID.into()).get_initial_state().await?;
             assert_eq!(Some(&log_id(2, 0, 3)), initial.log_ids.purged());
@@ -803,6 +860,7 @@ where
         );
         {
             store.purge(log_id(2, 0, 4)).await?;
+            apply(&mut sm, [blank_ent_0::<C>(2, 4)]).await?;
 
             let initial = StorageHelper::new(&mut store, &mut sm).with_id(NODE_ID.into()).get_initial_state().await?;
             assert_eq!(Some(&log_id(2, 0, 4)), initial.log_ids.purged());
@@ -814,6 +872,7 @@ where
         );
         {
             store.purge(log_id(3, 0, 5)).await?;
+            apply(&mut sm, [blank_ent_0::<C>(3, 5)]).await?;
 
             let initial = StorageHelper::new(&mut store, &mut sm).with_id(NODE_ID.into()).get_initial_state().await?;
             assert_eq!(Some(&log_id(3, 0, 5)), initial.log_ids.purged());
@@ -825,6 +884,7 @@ where
         );
         {
             store.purge(log_id(3, 0, 6)).await?;
+            apply(&mut sm, [blank_ent_0::<C>(3, 6)]).await?;
 
             let initial = StorageHelper::new(&mut store, &mut sm).with_id(NODE_ID.into()).get_initial_state().await?;
             assert_eq!(Some(&log_id(3, 0, 6)), initial.log_ids.purged());
@@ -865,6 +925,7 @@ where
         );
         {
             store.purge(log_id(4, 0, 13)).await?;
+            apply(&mut sm, [blank_ent_0::<C>(4, 13)]).await?;
             append(&mut store, [
                 blank_ent_0::<C>(5, 14),
                 blank_ent_0::<C>(5, 15),
@@ -884,6 +945,7 @@ where
         );
         {
             store.purge(log_id(6, 0, 18)).await?;
+            apply(&mut sm, [blank_ent_0::<C>(6, 18)]).await?;
             append(&mut store, [
                 blank_ent_0::<C>(7, 19),
                 blank_ent_0::<C>(7, 20),
@@ -908,6 +970,7 @@ where
         );
         {
             store.purge(log_id(7, 0, 28)).await?;
+            apply(&mut sm, [blank_ent_0::<C>(7, 28)]).await?;
             append(&mut store, [
                 blank_ent_0::<C>(8, 29),
                 blank_ent_0::<C>(8, 30),
