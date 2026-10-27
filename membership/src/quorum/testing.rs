@@ -38,6 +38,39 @@ pub(super) fn all_thresholds(ids: &BTreeSet<u64>) -> Vec<ThresholdQuorumSet<u64>
     thresholds
 }
 
+/// Returns every sequence of `len` distinct IDs from `ids`.
+pub(crate) fn arrangements(ids: &[u64], len: usize) -> Vec<Vec<u64>> {
+    if len == 0 {
+        return vec![vec![]];
+    }
+
+    let mut sequences = vec![];
+    for (i, id) in ids.iter().enumerate() {
+        let mut rest = ids.to_vec();
+        rest.remove(i);
+        for tail in arrangements(&rest, len - 1) {
+            let mut sequence = vec![*id];
+            sequence.extend(tail);
+            sequences.push(sequence);
+        }
+    }
+    sequences
+}
+
+/// Returns every grid of at most 4 cells that holds distinct IDs of 1 to 4.
+pub(crate) fn small_grids() -> Vec<Vec<Vec<u64>>> {
+    let shapes = [(1, 1), (1, 2), (2, 1), (1, 3), (3, 1), (1, 4), (4, 1), (2, 2)];
+    let mut grids = vec![];
+    for (row_count, column_count) in shapes {
+        for cells in arrangements(&[1, 2, 3, 4], row_count * column_count) {
+            let rows = cells.chunks(column_count);
+            let grid: Vec<Vec<u64>> = rows.map(|row| row.to_vec()).collect();
+            grids.push(grid);
+        }
+    }
+    grids
+}
+
 /// Returns the sets in `subsets` that `quorum_set` accepts, in their order.
 pub(crate) fn accepted<Q>(quorum_set: &Q, subsets: &[BTreeSet<u64>]) -> Vec<BTreeSet<u64>>
 where Q: QuorumSet<Id = u64> {
@@ -61,6 +94,18 @@ pub(crate) fn holding_one_of(quorums: &[BTreeSet<u64>], subsets: &[BTreeSet<u64>
         }
     }
     holding
+}
+
+/// Returns the sets in `subsets` that share an ID with each of `sets`.
+pub(crate) fn meeting_each_of(sets: &[BTreeSet<u64>], subsets: &[BTreeSet<u64>]) -> Vec<BTreeSet<u64>> {
+    let mut meeting = vec![];
+    for subset in subsets {
+        let meets_each = sets.iter().all(|set| !set.is_disjoint(subset));
+        if meets_each {
+            meeting.push(subset.clone());
+        }
+    }
+    meeting
 }
 
 /// Asserts the [`QuorumSet`] contract on every subset of the IDs of `quorum_set`: the empty set
