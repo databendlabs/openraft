@@ -5,6 +5,7 @@
             [clojure.test :refer [deftest is testing]]
             [jepsen.generator.test :as gen-test]
             [jepsen.openraft.client :as http]
+            [jepsen.openraft.cluster :as cluster]
             [jepsen.openraft.harness :as harness]
             [jepsen.openraft.scenario.leader-removal-recovery :as sut]))
 
@@ -18,7 +19,7 @@
               :local_committed {:index 3} :last_applied {:index 3}}
              {:membership_config joint :committed_membership_config joint
               :last_log_index 3 :last_applied {:index 3}}])
-(def recovered {:status :recovered :elapsed-ms 1000 :fresh "after-heal" :sentinel "before-crash"
+(def recovered {:status :recovered :elapsed-ms 1000 :fresh "after-heal" :sentinel "before-crash" :node "n2"
                 :metrics {:state "Leader" :current_leader "n2" :last_applied {:index 5}
                           :membership_config final-membership
                           :committed_membership_config final-membership}})
@@ -42,15 +43,43 @@
                           [[3 :value :sentinel] nil]
                           [[3 :value :fresh] "wrong"]
                           [[3 :value :metrics :current_leader] "n1"]
+                          [[3 :value :node] "n1"]
                           [[3 :value :metrics :last_applied :index] 3]
                           [[3 :time] 1]]]
       (is (false? (valid? (assoc-in history path value))) (str path)))
+    (testing "A, a learner in F, may keep leading after F commits"
+      (is (true? (valid? (-> history
+                             (assoc-in [3 :value :node] "n1")
+                             (assoc-in [3 :value :metrics :current_leader] "n1"))))))
     (testing "recreating the same voter set at a different log ID cannot pass"
       (let [other (assoc-in final-membership [:log_id :index] 6)]
         (is (false? (valid? (-> history
                                 (assoc-in [3 :value :metrics :membership_config] other)
                                 (assoc-in [3 :value :metrics :committed_membership_config] other)
                                 (assoc-in [3 :value :metrics :last_applied :index] 7)))))))))
+
+(deftest recovery-calls-the-leader-that-b-follows
+  (doseq [[leader follower expected-calls]
+          [["n1" "n2" [[:metrics "n2"] [:metrics "n1"] [:write "n1:21001"] [:read "n1:21001"] [:read "n1:21001"]]]
+           ["n2" "n1" [[:metrics "n2"] [:write "n2:21001"] [:read "n2:21001"] [:read "n2:21001"]]]]]
+    (testing (str leader " leads")
+      (let [leader-metrics (assoc (:metrics recovered) :current_leader leader)
+            metrics-by-node {leader leader-metrics
+                             follower (assoc leader-metrics :state "Follower")}
+            values {@#'sut/fresh-key "after-heal" @#'sut/sentinel-key "before-crash"}
+            calls (atom [])
+            result (with-redefs [cluster/node-metrics! (fn [_ node]
+                                                         (swap! calls conj [:metrics node])
+                                                         (metrics-by-node node))
+                                 http/write! (fn [endpoint _ _] (swap! calls conj [:write endpoint]))
+                                 http/linearizable-read! (fn [endpoint key]
+                                                           (swap! calls conj [:read endpoint])
+                                                           {:value (values key)})]
+                     (#'sut/recover! {:nodes nodes} final-membership (System/nanoTime)))]
+        (is (= {:status :recovered :node leader :metrics leader-metrics
+                :fresh "after-heal" :sentinel "before-crash"}
+               (dissoc result :elapsed-ms)))
+        (is (= expected-calls @calls))))))
 
 (deftest partition-is-installed-before-final-is-submitted
   (let [calls (atom [])]

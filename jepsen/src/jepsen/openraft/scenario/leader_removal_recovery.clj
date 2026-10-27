@@ -109,20 +109,29 @@
 
 (defn- recover! [test f started]
   (let [b (second (:nodes test))
-        endpoint (http/api-endpoint test b)
         last-observation (atom nil)
-        elapsed #(quot (- (System/nanoTime) started) 1000000)]
+        elapsed #(quot (- (System/nanoTime) started) 1000000)
+        observe! (fn [node]
+                   (let [metrics (try
+                                   (cluster/node-metrics! test node)
+                                   (catch Exception e (retry-or-throw! e @last-observation)))]
+                     (reset! last-observation {:node node :metrics metrics})
+                     metrics))]
     (try
       (let [result
             (await/until!
              :leader-removal-recovery
-             #(let [metrics (try
-                              (cluster/node-metrics! test b)
-                              (catch Exception e (retry-or-throw! e @last-observation)))]
-                (reset! last-observation {:metrics metrics})
-                (when-not (final-ready? b f metrics)
+             #(let [b-metrics (observe! b)
+                    ;; A stays a learner in F and may keep leading after F commits: B, the only
+                    ;; voter in F, does not take over from the leader it voted for.
+                    followed (filter (fn [node] (= (:current_leader b-metrics) (http/node-host node))) (:nodes test))
+                    leader (or (first followed) b)
+                    metrics (if (= b leader) b-metrics (observe! leader))
+                    endpoint (http/api-endpoint test leader)]
+                (when-not (final-ready? leader f metrics)
                   (await/retry! :leader-removal-recovery @last-observation))
-                ;; Direct calls to B: no redirection or dependence on A's application API.
+                ;; Direct calls to the leader: no redirection, and no dependence on A's
+                ;; application API while B leads.
                 (try
                   (http/write! endpoint fresh-key "after-heal")
                   (assoc @last-observation
@@ -152,7 +161,7 @@
                       (= :healed (get-in healed [:value :status])))
         recovered? (and (= :recovered (:status result))
                         (<= 0 (:elapsed-ms result Long/MAX_VALUE) recovery-ms)
-                        (final-ready? (second (:nodes test)) (:membership_config (first window)) (:metrics result))
+                        (final-ready? (:node result) (:membership_config (first window)) (:metrics result))
                         (= "after-heal" (:fresh result))
                         (= "before-crash" (:sentinel result)))]
     {:valid? (boolean (and covered? recovered? (every? some? steps) (apply < (map :time steps))))
