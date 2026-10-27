@@ -4,6 +4,7 @@ use openraft::Node;
 use openraft::NodeId;
 use openraft::membership::NodeRef;
 use openraft::membership::NodeRole;
+use openraft::membership::QuorumIntersection;
 use openraft::membership::RaftMembership;
 
 use crate::ThresholdMembership;
@@ -25,6 +26,16 @@ where
 
     fn write_quorum_set(&self) -> &Self::QuorumSet {
         &self.write
+    }
+
+    fn supports_direct_transition_to(&self, other: &Self) -> bool {
+        let read_meets_write = self.read.intersects_with(&other.write);
+        if read_meets_write != Some(true) {
+            return false;
+        }
+
+        let write_meets_read = self.write.intersects_with(&other.read);
+        write_meets_read == Some(true)
     }
 
     fn get_node(&self, node_id: &Self::NodeId) -> Option<NodeRef<'_, Self::Node>> {

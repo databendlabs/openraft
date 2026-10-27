@@ -15,6 +15,7 @@ use crate::errors::NodeMetadataChanged;
 use crate::errors::NodeNotFound;
 use crate::errors::Operation;
 use crate::impls::ChangeMembers;
+use crate::membership::RaftMembership;
 use crate::membership::RaftMembershipEdit;
 use crate::membership::RaftMembershipExt;
 
@@ -523,19 +524,19 @@ fn test_membership_supports_direct_transition_to_many_sets() -> anyhow::Result<(
 }
 
 #[test]
-fn test_membership_supports_direct_transition_to_invalid_config() -> anyhow::Result<()> {
+fn test_membership_allows_direct_transition_to_invalid_config() -> anyhow::Result<()> {
     let previous = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1,2,3}], []);
 
     // A membership without any voter set is never appendable, in either direction.
     let no_set = Membership::<u64, ()>::new_with_defaults(vec![], []);
-    assert!(!previous.supports_direct_transition_to(&no_set));
-    assert!(!no_set.supports_direct_transition_to(&previous));
+    assert!(!previous.allows_direct_transition_to(&no_set));
+    assert!(!no_set.allows_direct_transition_to(&previous));
 
     // A membership with an empty voter set is never appendable either, even though it shares
     // `{1,2,3}` with `previous`.
     let empty_set = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1,2,3}, btreeset! {}], []);
-    assert!(!previous.supports_direct_transition_to(&empty_set));
-    assert!(!empty_set.supports_direct_transition_to(&previous));
+    assert!(!previous.allows_direct_transition_to(&empty_set));
+    assert!(!empty_set.allows_direct_transition_to(&previous));
 
     Ok(())
 }
