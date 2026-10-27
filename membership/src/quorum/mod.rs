@@ -15,4 +15,5 @@ pub(crate) use quorum_set::QuorumIntersection;
 pub(crate) use quorum_set::QuorumSet;
 pub use threshold_quorum_set::ThresholdQuorumSet;
 
+pub use crate::explicit::ExplicitQuorumSet;
 pub use crate::weighted::WeightedQuorumSet;
