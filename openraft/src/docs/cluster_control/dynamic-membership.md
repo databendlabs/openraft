@@ -282,8 +282,8 @@ Exercise additional care when:
 [`UncommittedLeaderLog`]: `crate::errors::UncommittedLeaderLog`
 [`UnsupportedMembershipTransition`]: `crate::errors::UnsupportedMembershipTransition`
 [`extended membership`]: `crate::docs::data::extended_membership`
-[`ChangeMembers::SetNodes`]: `crate::change_members::ChangeMembers::SetNodes`
-[`ChangeMembers::RemoveNodes`]: `crate::change_members::ChangeMembers::RemoveNodes`
+[`ChangeMembers::SetNodes`]: `crate::impls::ChangeMembers::SetNodes`
+[`ChangeMembers::RemoveNodes`]: `crate::impls::ChangeMembers::RemoveNodes`
 [`Config::allow_log_reversion`]: `crate::config::Config::allow_log_reversion`
 [`RaftNetworkFactory`]: `crate::network::RaftNetworkFactory`
 [`RaftNetworkV2`]: `crate::network::RaftNetworkV2`
