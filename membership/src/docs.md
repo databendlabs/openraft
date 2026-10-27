@@ -12,12 +12,15 @@ cluster:
 |----------------------------|-----------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------|
 | [`ThresholdMembership`]    | the voters and a write size                                                       | every voter counts the same, and you choose how many copies a commit needs                               |
 | [`WeightedMembership`]     | a weight for each voter and a write weight                                        | some voters, or the sites that hold them, must count more                                                |
+| [`GridMembership`]         | a rectangular grid of voters                                                      | a commit must wait for fewer voters than a majority, and so must an election with the default leader IDs |
 | [`ExplicitMembership`]     | the minimal read quorums and the minimal write quorums                            | no rule above states the policy, such as a backup voter in every write quorum and in no read quorum      |
 
 [`ThresholdMembership`]: crate::ThresholdMembership
 [`WeightedMembership`]: crate::WeightedMembership
+[`GridMembership`]: crate::GridMembership
 [`ExplicitMembership`]: crate::ExplicitMembership
 [`WeightedMembership::with_roles()`]: crate::WeightedMembership::with_roles
 [`threshold`]: crate::docs::threshold
 [`weighted`]: crate::docs::weighted
+[`grid`]: crate::docs::grid
 [`explicit`]: crate::docs::explicit
