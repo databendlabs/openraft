@@ -5,6 +5,7 @@
 //!
 //! - [`ThresholdMembership`] configures the write quorum size and derives the read quorum size.
 //! - [`WeightedMembership`] gives each voter a weight and configures the write weight.
+//! - [`HierarchicalMembership`] places voters in groups and needs enough voters in enough groups.
 //! - [`GridMembership`] places voters in a grid: a row elects a leader, and a column commits.
 //! - [`ExplicitMembership`] lists the minimal read quorums and write quorums of each config.
 //!
@@ -26,6 +27,7 @@ mod config;
 pub mod errors;
 mod explicit;
 mod grid;
+mod hierarchical;
 pub mod quorum;
 #[cfg(test)]
 mod testing;
@@ -36,6 +38,8 @@ pub use explicit::ExplicitChange;
 pub use explicit::ExplicitMembership;
 pub use grid::GridChange;
 pub use grid::GridMembership;
+pub use hierarchical::HierarchicalChange;
+pub use hierarchical::HierarchicalMembership;
 pub use threshold::ThresholdChange;
 pub use threshold::ThresholdMembership;
 pub use weighted::WeightedChange;
@@ -58,6 +62,11 @@ pub mod docs {
     /// Configure and change weighted memberships.
     pub mod weighted {
         #![doc = include_str!("weighted-membership.md")]
+    }
+
+    /// Configure and change hierarchical memberships.
+    pub mod hierarchical {
+        #![doc = include_str!("hierarchical-membership.md")]
     }
 
     /// Configure and change grid memberships.
