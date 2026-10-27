@@ -203,18 +203,20 @@ fn test_transition_between_sizes() {
 }
 
 #[test]
-fn test_change() {
+fn test_apply() {
     let voters = btreeset! {1, 2, 3, 4, 5};
     let m42 = threshold(voters.clone(), 2);
 
     // A change of the sizes keeps the voters.
-    let res = m42.change(ThresholdChange::write_size(4));
+    let change = ThresholdChange::write_size(4);
+    let res: Result<_, MembershipError<u64>> = change.apply(&m42);
     let want = Ok(threshold(voters.clone(), 4));
     assert_eq!(want, res);
 
     // A change of the members keeps the write size and derives the new read size.
     let remove_five = ChangeMembers::RemoveVoters(btreeset! {5});
-    let res = m42.change(ThresholdChange::members(remove_five));
+    let change = ThresholdChange::members(remove_five);
+    let res: Result<_, MembershipError<u64>> = change.apply(&m42);
     let want = ThresholdMembership::new(btreeset! {1, 2, 3, 4}, 2, voters.clone());
     let want = want.map_err(MembershipError::from);
     assert_eq!(want, res);
@@ -229,21 +231,25 @@ fn test_change() {
     let m22 = ThresholdMembership::<u64, ()>::new(btreeset! {1, 2, 3}, 2, voters.clone()).unwrap();
     let add_four_five = ThresholdChange::members(ChangeMembers::AddVoterIds(btreeset! {4, 5}));
 
-    let res = m22.change(add_four_five.clone());
+    let change = add_four_five.clone();
+    let res: Result<_, MembershipError<u64>> = change.apply(&m22);
     let want = Ok(threshold(voters.clone(), 2));
     assert_eq!(want, res);
 
-    let res = m22.change(add_four_five.with_write_size(3));
+    let change = add_four_five.with_write_size(3);
+    let res: Result<_, MembershipError<u64>> = change.apply(&m22);
     let want = Ok(threshold(voters.clone(), 3));
     assert_eq!(want, res);
 
     // Removing too many voters needs an explicit reduction in the write size.
     let m24 = threshold(voters.clone(), 4);
     let remove = ThresholdChange::members(ChangeMembers::RemoveVoters(btreeset! {4, 5}));
-    let res = m24.change(remove.clone());
+    let change = remove.clone();
+    let res: Result<_, MembershipError<u64>> = change.apply(&m24);
     let want = Err(MembershipError::from(invalid_thresholds(3, 4)));
     assert_eq!(want, res);
-    let res = m24.change(remove.with_write_size(3));
+    let change = remove.with_write_size(3);
+    let res: Result<_, MembershipError<u64>> = change.apply(&m24);
     let want = ThresholdMembership::new(btreeset! {1, 2, 3}, 3, voters.clone());
     let want = want.map_err(MembershipError::from);
     assert_eq!(want, res);
@@ -257,7 +263,8 @@ fn test_change() {
 
     // A membership with no config has no target to change.
     let empty = ThresholdMembership::<u64, ()>::default();
-    let res = empty.change(ThresholdChange::write_size(1));
+    let change = ThresholdChange::write_size(1);
+    let res: Result<_, MembershipError<u64>> = change.apply(&empty);
     let want = Err(MembershipError::EmptyMembership(EmptyMembership {}));
     assert_eq!(want, res);
 }

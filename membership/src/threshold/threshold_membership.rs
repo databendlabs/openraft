@@ -54,6 +54,7 @@ pub(crate) type ThresholdConfig<NID> = (Arc<BTreeSet<NID>>, NonZeroU64);
 /// let write_accepts_two = membership.write_quorum_set().is_quorum([1, 2].iter());
 /// assert!(write_accepts_two);
 /// ```
+#[since(version = "0.10.0", change = "removed change(); use RaftMembershipEdit::apply()")]
 #[since(version = "0.10.0", change = "moved to the openraft-membership crate")]
 #[since(version = "0.10.0", change = "removed error-source parameter E")]
 #[since(version = "0.10.0")]

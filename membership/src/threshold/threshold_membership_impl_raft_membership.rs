@@ -2,14 +2,10 @@ use std::collections::BTreeMap;
 
 use openraft::Node;
 use openraft::NodeId;
-use openraft::errors::MembershipError;
 use openraft::membership::NodeRef;
 use openraft::membership::NodeRole;
 use openraft::membership::RaftMembership;
-use openraft::membership::RaftMembershipEdit;
-use openraft_macros::since;
 
-use crate::ThresholdChange;
 use crate::ThresholdMembership;
 use crate::quorum::Joint;
 use crate::quorum::ThresholdQuorumSet;
@@ -81,16 +77,6 @@ where
     NID: NodeId,
     N: Node,
 {
-    /// Applies an edit through [`RaftMembershipEdit::apply()`].
-    ///
-    /// Returns [`MembershipError::EmptyMembership`] when there is no configuration and
-    /// [`MembershipError::UserDefined`] when the requested size does not fit the voters.
-    #[since(version = "0.10.0", change = "delegates to RaftMembershipEdit::apply()")]
-    #[since(version = "0.10.0")]
-    pub fn change(&self, change: ThresholdChange<NID, N>) -> Result<Self, MembershipError<NID>> {
-        change.apply(self)
-    }
-
     /// Returns the capabilities of a known node: every known node receives logs, and every voter
     /// may campaign.
     fn node_role(&self, node_id: &NID) -> NodeRole {

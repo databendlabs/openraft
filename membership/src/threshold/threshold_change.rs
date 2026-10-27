@@ -20,7 +20,7 @@ use crate::ThresholdMembership;
 /// first, then the write size, and derives the read size from the new voter count.
 ///
 /// A change keeps the write size unless it sets it. When removing voters leaves fewer voters
-/// than the write size, the change must also set a smaller write size. Otherwise `change()` returns
+/// than the write size, the change must also set a smaller write size. Otherwise `apply()` returns
 /// [`MembershipError::UserDefined`].
 ///
 /// # Examples
@@ -28,27 +28,31 @@ use crate::ThresholdMembership;
 /// ```
 /// use std::collections::BTreeSet;
 ///
+/// use openraft::errors::MembershipError;
 /// use openraft::impls::ChangeMembers;
+/// use openraft::membership::RaftMembershipEdit;
 /// use openraft_membership::{ThresholdChange, ThresholdMembership};
 ///
 /// let voters = BTreeSet::from([1, 2, 3, 4, 5]);
 /// let membership = ThresholdMembership::<u64, ()>::new(voters.clone(), 2, voters).unwrap();
 ///
 /// // Require 4 copies to commit; the read size becomes 2.
-/// let switched = membership.change(ThresholdChange::write_size(4)).unwrap();
+/// let change = ThresholdChange::write_size(4);
+/// let switched: Result<_, MembershipError<u64>> = change.apply(&membership);
+/// let switched = switched.unwrap();
 /// let want = "{voters:[{1:(),2:(),3:(),4:(),5:()} read=2 write=4], learners:[]}";
 /// assert_eq!(want, switched.to_string());
 ///
 /// // Remove voter 5 and require 3 copies. The read size stays 2; node 5 stays as a learner.
 /// let remove_five = ChangeMembers::RemoveVoters(BTreeSet::from([5]));
 /// let change = ThresholdChange::members(remove_five).with_write_size(3);
-/// let shrunk = switched.change(change).unwrap();
+/// let shrunk: Result<_, MembershipError<u64>> = change.apply(&switched);
+/// let shrunk = shrunk.unwrap();
 /// let want = "{voters:[{1:(),2:(),3:(),4:()} read=2 write=3], learners:[5:()]}";
 /// assert_eq!(want, shrunk.to_string());
 /// ```
 ///
 /// [`ThresholdMembership`]: crate::ThresholdMembership
-/// [`change()`]: crate::ThresholdMembership::change
 /// [`MembershipError::UserDefined`]: openraft::errors::MembershipError::UserDefined
 #[since(version = "0.10.0", change = "moved to the openraft-membership crate")]
 #[since(version = "0.10.0")]
