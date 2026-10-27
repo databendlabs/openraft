@@ -1,9 +1,11 @@
 //! Quorum rule generators and checks shared by unit tests.
 
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fmt;
 use std::num::NonZeroU64;
 
+use crate::quorum::Group;
 use crate::quorum::QuorumSet;
 use crate::quorum::ThresholdQuorumSet;
 
@@ -143,4 +145,36 @@ where Q: QuorumSet<Id = u64> + fmt::Debug {
             assert!(accepts_larger, "{quorum_set:?} accepts {subset:?} but not {larger:?}");
         }
     }
+}
+
+/// Returns every group over the tree of `layout`: each quorum size from 1 to the member count, in
+/// `layout` and in each group below it.
+pub(crate) fn all_group_sizes(layout: &Group<u64>) -> Vec<Group<u64>> {
+    let mut all_children = vec![BTreeMap::new()];
+    for (id, child) in &layout.groups {
+        let mut extended = vec![];
+        for children in &all_children {
+            for sized in all_group_sizes(child) {
+                let mut children = children.clone();
+                children.insert(id.clone(), sized);
+                extended.push(children);
+            }
+        }
+        all_children = extended;
+    }
+
+    let member_count = layout.voters.len() + layout.groups.len();
+    let mut groups = vec![];
+    for quorum_size in 1..=member_count as u64 {
+        for children in &all_children {
+            let voters = layout.voters.clone();
+            let groups_below = children.clone();
+            groups.push(Group {
+                quorum_size,
+                voters,
+                groups: groups_below,
+            });
+        }
+    }
+    groups
 }
