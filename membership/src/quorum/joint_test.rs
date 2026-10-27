@@ -6,9 +6,9 @@ use crate::quorum::QuorumBridge;
 use crate::quorum::QuorumIntersection;
 use crate::quorum::QuorumSet;
 use crate::quorum::ThresholdQuorumSet;
-use crate::quorum::threshold_quorum_set_test::all_subsets;
-use crate::quorum::threshold_quorum_set_test::all_thresholds;
-use crate::quorum::threshold_quorum_set_test::threshold;
+use crate::quorum::testing::all_subsets;
+use crate::quorum::testing::all_thresholds;
+use crate::quorum::testing::threshold;
 
 /// Returns the empty joint, and every joint of one or two rules over subsets of {1,2,3}.
 ///
