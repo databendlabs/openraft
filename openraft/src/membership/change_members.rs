@@ -229,38 +229,4 @@ where
 }
 
 #[cfg(test)]
-mod tests {
-    use maplit::btreemap;
-    use maplit::btreeset;
-
-    use super::ChangeMembers;
-    use crate::Membership;
-    use crate::errors::EmptyMembership;
-    use crate::errors::MembershipError;
-    use crate::membership::RaftMembershipEdit;
-
-    #[test]
-    fn nested_batch_applies_edits_in_order_before_finishing_target() {
-        let add = ChangeMembers::AddNodes(btreemap! {1 => 10, 2 => 20});
-        let voters = ChangeMembers::ReplaceAllVoters(btreeset! {1, 2});
-        let update = ChangeMembers::SetNodes(btreemap! {2 => 21});
-        let nested = ChangeMembers::Batch(vec![voters, update]);
-        let remove = ChangeMembers::RemoveVoters(btreeset! {1});
-        let edit = ChangeMembers::Batch(vec![add, nested, remove]);
-        let membership = Membership::<u64, u64>::default();
-        let actual = edit.apply(&membership);
-        let expected = Membership::new(vec![btreeset! {2}], btreemap! {1 => 10, 2 => 21});
-        let expected = expected.unwrap();
-        let expected = Ok(expected);
-        assert_eq!(expected, actual);
-    }
-
-    #[test]
-    fn node_edit_without_config_returns_empty_membership() {
-        let edit = ChangeMembers::AddNodes(btreemap! {1 => 10});
-        let membership = Membership::<u64, u64>::default();
-        let actual = edit.apply(&membership);
-        let expected = Err(MembershipError::EmptyMembership(EmptyMembership {}));
-        assert_eq!(expected, actual);
-    }
-}
+mod change_members_test;

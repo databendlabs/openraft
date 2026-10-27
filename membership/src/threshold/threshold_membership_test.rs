@@ -24,7 +24,7 @@ use crate::quorum::QuorumBridge;
 use crate::quorum::QuorumIntersection;
 use crate::quorum::QuorumSet;
 use crate::quorum::ThresholdQuorumSet;
-use crate::quorum::threshold_quorum_set_test::all_subsets;
+use crate::quorum::testing::all_subsets;
 
 /// Returns a membership whose only config holds `voters` with this write size and `()` nodes.
 fn threshold(voters: BTreeSet<u64>, write_size: u64) -> ThresholdMembership<u64, ()> {
