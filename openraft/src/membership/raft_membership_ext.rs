@@ -135,21 +135,14 @@ pub(crate) trait RaftMembershipExt: RaftMembership {
         Ok(())
     }
 
-    /// Returns [`UnprovenReadWriteIntersection`] unless [`QuorumIntersection::intersects_with()`]
-    /// proves that every read quorum intersects every write quorum.
-    ///
-    /// With `allow_unproven`, it also accepts a configuration for which `intersects_with()` returns
-    /// `None`. It rejects `Some(false)` either way.
+    /// Returns [`UnprovenReadWriteIntersection`] unless
+    /// [`read_write_quorums_intersect()`](RaftMembership::read_write_quorums_intersect) returns
+    /// `Some(true)`.
     ///
     /// OpenRaft calls it before it uses the quorums of a membership that an application supplies.
-    fn ensure_read_write_quorums_intersect(&self, allow_unproven: bool) -> Result<(), UnprovenReadWriteIntersection> {
-        let read = self.read_quorum_set();
-        let write = self.write_quorum_set();
-        let intersects = read.intersects_with(write);
-
-        let proven = intersects == Some(true);
-        let trusted = allow_unproven && intersects.is_none();
-        if proven || trusted {
+    fn ensure_read_write_quorums_intersect(&self) -> Result<(), UnprovenReadWriteIntersection> {
+        let intersects = self.read_write_quorums_intersect();
+        if intersects == Some(true) {
             return Ok(());
         }
 
@@ -319,6 +312,52 @@ mod tests {
         }
     }
 
+    /// A [`RoleMembership`] whose type vouches that its read quorums intersect its write quorums.
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+    struct TrustedMembership(RoleMembership);
+
+    impl fmt::Display for TrustedMembership {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            fmt::Display::fmt(&self.0, f)
+        }
+    }
+
+    impl RaftMembership for TrustedMembership {
+        type NodeId = u64;
+        type Node = ();
+
+        type QuorumSet = Vec<BTreeSet<u64>>;
+
+        fn read_quorum_set(&self) -> &Self::QuorumSet {
+            self.0.read_quorum_set()
+        }
+
+        fn write_quorum_set(&self) -> &Self::QuorumSet {
+            self.0.write_quorum_set()
+        }
+
+        fn read_write_quorums_intersect(&self) -> Option<bool> {
+            Some(true)
+        }
+
+        fn get_node(&self, node_id: &u64) -> Option<NodeRef<'_, ()>> {
+            self.0.get_node(node_id)
+        }
+
+        type Iter = std::vec::IntoIter<u64>;
+
+        fn node_ids(&self) -> Self::Iter {
+            self.0.node_ids()
+        }
+
+        fn new<I>(read_quorum_set: Self::QuorumSet, write_quorum_set: Self::QuorumSet, nodes: I) -> Self
+        where I: IntoIterator<Item = (u64, (), NodeRole)> {
+            let membership = RoleMembership::new(read_quorum_set, write_quorum_set, nodes);
+            Self(membership)
+        }
+    }
+
     #[test]
     fn drop_voters_demoted_to_learners_keeps_campaigners() {
         let voter = NodeRole::Campaigner | NodeRole::ReceiveLogs;
@@ -346,7 +385,7 @@ mod tests {
     }
 
     #[test]
-    fn ensure_read_write_quorums_intersect_accepts_unproven_only_when_allowed() {
+    fn ensure_read_write_quorums_intersect_accepts_unproven_only_when_overridden() {
         let with_quorum_sets = |read, write| RoleMembership {
             read,
             write,
@@ -356,10 +395,7 @@ mod tests {
         // Every majority of `{1,2}` intersects every majority of `{1,2,3}`.
         let proven = with_quorum_sets(vec![btreeset! {1, 2}], vec![btreeset! {1, 2, 3}]);
 
-        let res = proven.ensure_read_write_quorums_intersect(false);
-        assert_eq!(Ok(()), res);
-
-        let res = proven.ensure_read_write_quorums_intersect(true);
+        let res = proven.ensure_read_write_quorums_intersect();
         assert_eq!(Ok(()), res);
 
         // Read quorum `{1,2}` misses write quorum `{4,5}`.
@@ -368,10 +404,7 @@ mod tests {
             membership: disjoint.to_string(),
         });
 
-        let res = disjoint.ensure_read_write_quorums_intersect(false);
-        assert_eq!(want, res);
-
-        let res = disjoint.ensure_read_write_quorums_intersect(true);
+        let res = disjoint.ensure_read_write_quorums_intersect();
         assert_eq!(want, res);
 
         // Every read quorum holds at least two of `{2,3,4,5}`, and every write quorum holds three
@@ -385,10 +418,13 @@ mod tests {
             membership: unproven.to_string(),
         });
 
-        let res = unproven.ensure_read_write_quorums_intersect(false);
+        let res = unproven.ensure_read_write_quorums_intersect();
         assert_eq!(want, res);
 
-        let res = unproven.ensure_read_write_quorums_intersect(true);
+        // The type overrides `read_write_quorums_intersect()` to vouch for the same quorum sets.
+        let trusted = TrustedMembership(unproven);
+
+        let res = trusted.ensure_read_write_quorums_intersect();
         assert_eq!(Ok(()), res);
     }
 
