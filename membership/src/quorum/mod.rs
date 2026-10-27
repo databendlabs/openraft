@@ -1,3 +1,5 @@
+//! Quorum implementations for provided memberships.
+
 mod joint;
 mod threshold_quorum_set;
 

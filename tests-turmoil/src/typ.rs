@@ -109,8 +109,8 @@ pub(crate) fn majority_membership(voter_sets: Vec<BTreeSet<NodeId>>, learners: V
 
     use openraft::membership::NodeRole;
     use openraft::membership::RaftMembership;
-    use openraft_membership::Joint;
-    use openraft_membership::ThresholdQuorumSet;
+    use openraft_membership::quorum::Joint;
+    use openraft_membership::quorum::ThresholdQuorumSet;
 
     let voter_role = NodeRole::Campaigner | NodeRole::ReceiveLogs;
     let mut roles = BTreeMap::new();

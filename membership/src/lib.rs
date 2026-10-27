@@ -8,11 +8,9 @@
 #![deny(unused_qualifications)]
 
 pub mod errors;
-mod quorum;
+pub mod quorum;
 mod threshold;
 
-pub use quorum::Joint;
-pub use quorum::ThresholdQuorumSet;
 pub use threshold::ThresholdChange;
 pub use threshold::ThresholdMembership;
 

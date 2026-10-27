@@ -21,10 +21,10 @@ use openraft::membership::NodeRole;
 use openraft::membership::RaftMembership;
 use openraft::testing::log_id;
 use openraft::type_config::TypeConfigExt;
-use openraft_membership::Joint;
 use openraft_membership::ThresholdChange;
 use openraft_membership::ThresholdMembership;
-use openraft_membership::ThresholdQuorumSet;
+use openraft_membership::quorum::Joint;
+use openraft_membership::quorum::ThresholdQuorumSet;
 
 use crate::fixtures::TestingVoteExt;
 use crate::fixtures::custom_membership::TestCluster;

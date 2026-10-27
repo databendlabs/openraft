@@ -21,7 +21,7 @@ use crate::quorum::QuorumSet;
 /// use std::num::NonZeroU64;
 ///
 /// use openraft::membership::QuorumSet;
-/// use openraft_membership::{Joint, ThresholdQuorumSet};
+/// use openraft_membership::quorum::{Joint, ThresholdQuorumSet};
 ///
 /// let two = NonZeroU64::new(2).unwrap();
 /// let old = ThresholdQuorumSet::new(two, BTreeSet::from([1, 2, 3]));
