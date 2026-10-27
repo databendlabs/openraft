@@ -12,6 +12,7 @@ use crate::membership::NodeRef;
 use crate::membership::NodeRole;
 use crate::membership::RaftMembership;
 use crate::membership::RaftMembershipEdit;
+use crate::quorum::QuorumIntersection;
 
 impl<NID, N> RaftMembership for Membership<NID, N>
 where
@@ -28,6 +29,13 @@ where
 
     fn write_quorum_set(&self) -> &Self::QuorumSet {
         &self.configs
+    }
+
+    /// `Membership` uses one quorum set for reads and writes, so one
+    /// [`intersects_with()`](QuorumIntersection::intersects_with) call checks both directions.
+    fn supports_direct_transition_to(&self, other: &Self) -> bool {
+        let intersects = self.configs.intersects_with(&other.configs);
+        intersects == Some(true)
     }
 
     fn get_node(&self, node_id: &Self::NodeId) -> Option<NodeRef<'_, Self::Node>> {

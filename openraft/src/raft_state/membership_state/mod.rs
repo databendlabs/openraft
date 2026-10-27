@@ -195,7 +195,7 @@ where
             goal = effective.drop_voters_demoted_to_learners(goal);
         }
 
-        if effective.supports_direct_transition_to(&goal) {
+        if effective.allows_direct_transition_to(&goal) {
             return Ok((goal, false));
         }
 
@@ -240,7 +240,7 @@ where
 
         effective.ensure_node_metadata_unchanged(proposed)?;
 
-        let compatible = effective.supports_direct_transition_to(proposed);
+        let compatible = effective.allows_direct_transition_to(proposed);
         if !compatible {
             let err = UnsupportedMembershipTransition {
                 previous: effective.to_string(),

@@ -49,9 +49,8 @@ where Self: OptionalFeatures + Clone + Default + Eq + Debug + Display + Sized + 
     /// returns for the read quorum set against the write quorum set.
     ///
     /// OpenRaft appends a configuration directly after another, without a joint configuration,
-    /// only when [`intersects_with()`](QuorumIntersection::intersects_with) returns `Some(true)`
-    /// for the old read quorum set against the new write quorum set, and for the old write quorum
-    /// set against the new read quorum set. Returning `None` is always safe.
+    /// only when [`supports_direct_transition_to()`](Self::supports_direct_transition_to) returns
+    /// `true`.
     ///
     /// When it cannot append the target of a change directly, OpenRaft first appends a joint
     /// configuration. Its read quorum set is the [`joint_with()`](QuorumBridge::joint_with) of the
@@ -59,11 +58,6 @@ where Self: OptionalFeatures + Clone + Default + Eq + Debug + Display + Sized + 
     /// the same way. Every read quorum of it is a read quorum of both the old and the new
     /// configuration, and the same holds for write quorums. So on the step into it and on the step
     /// out of it, every read quorum of one side intersects every write quorum of the other side.
-    ///
-    /// `intersects_with()` must return `Some(true)` for the joint read quorum set against the new
-    /// write quorum set, and for the joint write quorum set against the new read quorum set.
-    /// Otherwise the second step of [`Raft::change_membership()`](crate::Raft::change_membership)
-    /// appends a second joint configuration instead of the new one.
     type QuorumSet: QuorumSet<Id = Self::NodeId>
         + QuorumIntersection<Self::QuorumSet>
         + QuorumBridge<Self::QuorumSet>
@@ -107,6 +101,31 @@ where Self: OptionalFeatures + Clone + Default + Eq + Debug + Display + Sized + 
         let write = self.write_quorum_set();
         read.intersects_with(write)
     }
+
+    /// Returns whether OpenRaft may append `other` right after `self`, as one log entry without a
+    /// joint configuration.
+    ///
+    /// Return `true` only when every read quorum of `self` intersects every write quorum of
+    /// `other`, and every write quorum of `self` intersects every read quorum of `other`. OpenRaft
+    /// trusts the answer, so a wrong `true` can lose committed entries. `false` is always safe:
+    /// OpenRaft then first appends the joint configuration of `self` and `other`.
+    ///
+    /// Return `true` at least when every config of `other` is also a config of `self`, with the
+    /// same voter set and the same quorum rule. Then every read quorum of `self` is a read quorum
+    /// of `other`, and every write quorum of `self` is a write quorum of `other`. Every read quorum
+    /// of `other` intersects every write quorum of `other`, so the step is safe. The second step of
+    /// [`Raft::change_membership()`] and [`Raft::add_learner()`] append such an `other`. If this
+    /// method returns `false` for it, each of them appends another joint configuration instead.
+    ///
+    /// OpenRaft calls it only for configurations whose quorum sets reject the empty set and accept
+    /// the set of all their voters. It also calls it only for an `other` for which
+    /// [`read_write_quorums_intersect()`](Self::read_write_quorums_intersect) returned
+    /// `Some(true)`.
+    ///
+    /// [`Raft::change_membership()`]: crate::Raft::change_membership
+    /// [`Raft::add_learner()`]: crate::Raft::add_learner
+    #[since(version = "0.10.0")]
+    fn supports_direct_transition_to(&self, other: &Self) -> bool;
 
     /// Returns a known node's metadata, capabilities, and derived voter status.
     ///

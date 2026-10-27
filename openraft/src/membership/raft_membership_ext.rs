@@ -9,7 +9,6 @@ use crate::membership::NodeRole;
 use crate::membership::RaftMembership;
 use crate::membership::errors::UnprovenReadWriteIntersection;
 use crate::quorum::QuorumBridge;
-use crate::quorum::QuorumIntersection;
 use crate::quorum::QuorumSet;
 
 /// Operations derived from the required methods of [`RaftMembership`].
@@ -155,10 +154,8 @@ pub(crate) trait RaftMembershipExt: RaftMembership {
     /// intermediate joint configuration.
     ///
     /// Both configurations must pass [`ensure_non_empty_config()`](Self::ensure_non_empty_config).
-    /// Then [`QuorumIntersection::intersects_with()`] must prove that every read quorum of `self`
-    /// intersects every write quorum of `other`, and that every write quorum of `self` intersects
-    /// every read quorum of `other`.
-    fn supports_direct_transition_to(&self, other: &Self) -> bool {
+    /// Then [`RaftMembership::supports_direct_transition_to()`] decides.
+    fn allows_direct_transition_to(&self, other: &Self) -> bool {
         if self.ensure_non_empty_config().is_err() {
             return false;
         }
@@ -166,13 +163,7 @@ pub(crate) trait RaftMembershipExt: RaftMembership {
             return false;
         }
 
-        let read_meets_write = self.read_quorum_set().intersects_with(other.write_quorum_set());
-        if read_meets_write != Some(true) {
-            return false;
-        }
-
-        let write_meets_read = self.write_quorum_set().intersects_with(other.read_quorum_set());
-        write_meets_read == Some(true)
+        self.supports_direct_transition_to(other)
     }
 
     /// Returns `goal` without the voters of `self` that are learners of `goal`.
@@ -245,6 +236,7 @@ mod tests {
     use crate::membership::RaftMembership;
     use crate::membership::RaftMembershipExt;
     use crate::membership::errors::UnprovenReadWriteIntersection;
+    use crate::quorum::QuorumIntersection;
 
     /// A configuration that stores the role of each node, so that a node outside the quorum sets
     /// can campaign. Its read and write quorum sets may differ.
@@ -274,6 +266,16 @@ mod tests {
 
         fn write_quorum_set(&self) -> &Self::QuorumSet {
             &self.write
+        }
+
+        fn supports_direct_transition_to(&self, other: &Self) -> bool {
+            let read_meets_write = self.read.intersects_with(&other.write);
+            if read_meets_write != Some(true) {
+                return false;
+            }
+
+            let write_meets_read = self.write.intersects_with(&other.read);
+            write_meets_read == Some(true)
         }
 
         fn get_node(&self, node_id: &u64) -> Option<NodeRef<'_, ()>> {
@@ -339,6 +341,10 @@ mod tests {
 
         fn read_write_quorums_intersect(&self) -> Option<bool> {
             Some(true)
+        }
+
+        fn supports_direct_transition_to(&self, other: &Self) -> bool {
+            self.0.supports_direct_transition_to(&other.0)
         }
 
         fn get_node(&self, node_id: &u64) -> Option<NodeRef<'_, ()>> {
