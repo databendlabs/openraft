@@ -21,6 +21,7 @@ mod t31_add_remove_follower;
 mod t31_remove_leader;
 mod t31_removed_follower;
 mod t40_explicit_membership;
+mod t40_grid_membership;
 mod t40_threshold_membership;
 mod t40_weighted_membership;
 mod t41_custom_membership_edit;
