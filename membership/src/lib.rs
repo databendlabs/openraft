@@ -5,6 +5,7 @@
 //!
 //! - [`ThresholdMembership`] configures the write quorum size and derives the read quorum size.
 //! - [`WeightedMembership`] gives each voter a weight and configures the write weight.
+//! - [`ExplicitMembership`] lists the minimal read quorums and write quorums of each config.
 //!
 //! [`docs`] tells which membership fits which cluster, and holds a guide for each.
 //! The default `serde` feature also enables `openraft/serde`.
@@ -22,12 +23,15 @@
 
 mod config;
 pub mod errors;
+mod explicit;
 pub mod quorum;
 #[cfg(test)]
 mod testing;
 mod threshold;
 mod weighted;
 
+pub use explicit::ExplicitChange;
+pub use explicit::ExplicitMembership;
 pub use threshold::ThresholdChange;
 pub use threshold::ThresholdMembership;
 pub use weighted::WeightedChange;
@@ -40,6 +44,11 @@ pub mod docs {
     /// Configure and change threshold memberships.
     pub mod threshold {
         #![doc = include_str!("threshold-membership.md")]
+    }
+
+    /// Configure and change explicit memberships.
+    pub mod explicit {
+        #![doc = include_str!("explicit-membership.md")]
     }
 
     /// Configure and change weighted memberships.

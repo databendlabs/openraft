@@ -14,6 +14,7 @@ To maintain an Openraft cluster, e.g., add or remove nodes, refer to
   - [`joint_consensus`](`crate::docs::cluster_control::joint_consensus`) describes detail of joint consensus implementation;
   - [`threshold_membership`](https://docs.rs/openraft-membership/latest/openraft_membership/docs/threshold/index.html) explains how to choose the write quorum size of `ThresholdMembership`;
   - [`weighted_membership`](https://docs.rs/openraft-membership/latest/openraft_membership/docs/weighted/index.html) explains how to choose the voter weights of `WeightedMembership`;
+  - [`explicit_membership`](https://docs.rs/openraft-membership/latest/openraft_membership/docs/explicit/index.html) explains how to list the quorums of `ExplicitMembership`;
   - [`node lifecycle`](`crate::docs::cluster_control::node_lifecycle`) describes the transition of a node's state;
 
 When upgrading an Openraft application, consult:
