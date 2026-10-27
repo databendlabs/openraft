@@ -34,7 +34,7 @@ pub(crate) type ThresholdConfig<NID> = (Arc<BTreeSet<NID>>, NonZeroU64);
 /// [`write_quorum_set()`](openraft::membership::RaftMembership::write_quorum_set) gives its
 /// `write_size`.
 ///
-/// [`threshold_membership`](crate::docs) explains how to
+/// [`threshold_membership`](crate::docs::threshold) explains how to
 /// choose the write size and how to change it.
 ///
 /// # Examples
