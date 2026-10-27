@@ -3,7 +3,6 @@ use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::sync::Arc;
 
-use openraft::ChangeMembers;
 use openraft::NodeInfo;
 use openraft::Raft;
 use openraft::RaftMetrics;
@@ -17,6 +16,7 @@ use openraft::errors::Infallible;
 use openraft::errors::InitializeError;
 use openraft::errors::LinearizableReadError;
 use openraft::errors::decompose::DecomposeResult;
+use openraft::impls::ChangeMembers;
 use openraft::raft::ClientWriteResponse;
 use openraft::raft::linearizable_read::Linearizer;
 use openraft::raft::linearizable_read::ReadLogId;

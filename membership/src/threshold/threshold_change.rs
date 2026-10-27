@@ -4,13 +4,13 @@ use std::fmt;
 use std::sync::Arc;
 
 use display_more::DisplayOptionExt;
-use openraft::ChangeMembers;
-use openraft::Membership;
 use openraft::Node;
 use openraft::NodeId;
 use openraft::errors::EmptyMembership;
 use openraft::errors::ErrorSource;
 use openraft::errors::MembershipError;
+use openraft::impls::ChangeMembers;
+use openraft::impls::Membership;
 use openraft::membership::RaftMembershipEdit;
 use openraft_macros::since;
 
@@ -28,7 +28,7 @@ use crate::ThresholdMembership;
 /// ```
 /// use std::collections::BTreeSet;
 ///
-/// use openraft::ChangeMembers;
+/// use openraft::impls::ChangeMembers;
 /// use openraft_membership::{ThresholdChange, ThresholdMembership};
 ///
 /// let voters = BTreeSet::from([1, 2, 3, 4, 5]);

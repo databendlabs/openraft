@@ -155,8 +155,8 @@ commit on `{1,2}`, while a candidate using the new config wins votes from
 [`InvalidThresholds`]: crate::InvalidThresholds
 [`ThresholdMembershipError::InvalidThresholds`]: crate::ThresholdMembershipError::InvalidThresholds
 [`MembershipError::UserDefined`]: openraft::errors::MembershipError::UserDefined
-[`Membership`]: openraft::Membership
-[`ChangeMembers`]: openraft::ChangeMembers
+[`Membership`]: openraft::impls::Membership
+[`ChangeMembers`]: openraft::impls::ChangeMembers
 [`Raft::initialize()`]: openraft::Raft::initialize
 [`Raft::change_membership()`]: openraft::Raft::change_membership
 [`leader_id_adv::LeaderId`]: openraft::impls::leader_id_adv::LeaderId

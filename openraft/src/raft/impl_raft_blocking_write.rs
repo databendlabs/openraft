@@ -4,14 +4,14 @@
 
 use openraft_macros::since;
 
-#[cfg(doc)]
-use crate::ChangeMembers;
 use crate::Raft;
 use crate::RaftTypeConfig;
 use crate::batch::Batch;
 use crate::errors::ClientWriteError;
 use crate::errors::RaftError;
 use crate::errors::into_raft_result::IntoRaftResult;
+#[cfg(doc)]
+use crate::impls::ChangeMembers;
 #[cfg(doc)]
 use crate::impls::OneshotResponder;
 use crate::raft::ChangeMembershipOutcome;

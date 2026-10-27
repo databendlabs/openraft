@@ -3,7 +3,6 @@ use std::sync::Arc;
 use maplit::btreemap;
 use maplit::btreeset;
 
-use crate::ChangeMembers;
 use crate::Membership;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
@@ -11,6 +10,7 @@ use crate::errors::ChangeMembershipError;
 use crate::errors::EmptyMembership;
 use crate::errors::InProgress;
 use crate::errors::LearnerNotFound;
+use crate::impls::ChangeMembers;
 use crate::type_config::alias::MembershipStateOf;
 use crate::type_config::alias::StoredMembershipOf;
 

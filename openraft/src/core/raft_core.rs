@@ -2781,10 +2781,10 @@ mod tests {
     use openraft_rt_tokio::TokioRuntime;
 
     use super::apply_membership_to_payload;
-    use crate::ChangeMembers;
     use crate::Membership;
     use crate::core::raft_msg::membership_payloads::MembershipPayloads;
     use crate::entry::RaftPayload;
+    use crate::impls::ChangeMembers;
     use crate::type_config::TypeConfigExt;
     use crate::type_config::alias::MembershipStateOf;
     use crate::type_config::alias::StoredMembershipOf;

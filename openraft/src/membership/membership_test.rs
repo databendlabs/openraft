@@ -8,13 +8,13 @@ use maplit::btreemap;
 use maplit::btreeset;
 use quorum_set::verify_intersection;
 
-use crate::ChangeMembers;
 use crate::EmptyNode;
 use crate::Membership;
 use crate::errors::EmptyMembership;
 use crate::errors::NodeMetadataChanged;
 use crate::errors::NodeNotFound;
 use crate::errors::Operation;
+use crate::impls::ChangeMembers;
 use crate::membership::RaftMembershipExt;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]

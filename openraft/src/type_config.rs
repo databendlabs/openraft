@@ -65,8 +65,8 @@ use crate::vote::raft_vote::RaftVote;
 ///         LeaderId         = openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>,
 ///         Vote             = openraft::impls::Vote<Self::LeaderId>,
 ///         Membership       = openraft::impls::Membership<Self::NodeId, Self::Node>,
-///         MembershipEdit   = openraft::ChangeMembers<Self::NodeId, Self::Node>,
-///         Payload          = openraft::EntryPayload<Self::D, Self::Membership>,
+///         MembershipEdit   = openraft::impls::ChangeMembers<Self::NodeId, Self::Node>,
+///         Payload          = openraft::impls::EntryPayload<Self::D, Self::Membership>,
 ///         Entry            = openraft::impls::Entry<
 ///             <Self::LeaderId as openraft::vote::RaftLeaderId>::Committed,
 ///             Self::Payload,
@@ -143,7 +143,7 @@ pub trait RaftTypeConfig:
 
     /// Membership operations, selected independently of the membership representation.
     ///
-    /// The macro defaults to [`ChangeMembers`](crate::ChangeMembers). Select
+    /// The macro defaults to [`ChangeMembers`](crate::impls::ChangeMembers). Select
     /// `openraft_membership::ThresholdChange` for threshold membership, or a custom
     /// edit that implements [`RaftMembershipEdit`] for the selected membership.
     #[since(version = "0.10.0", change = "passes ErrorSource to the edit trait")]
@@ -206,12 +206,12 @@ pub trait RaftTypeConfig:
 pub mod alias {
     use openraft_macros::since;
 
-    use crate::EntryPayload;
-    use crate::LogId;
     use crate::RaftTypeConfig;
     use crate::async_runtime::Mpsc;
     use crate::async_runtime::Oneshot;
     use crate::async_runtime::watch;
+    use crate::impls::EntryPayload;
+    use crate::impls::LogId;
     use crate::membership::RaftMembership;
     use crate::raft::message::ClientWriteResult;
     use crate::storage::RaftStateMachine;
@@ -279,7 +279,7 @@ pub mod alias {
     pub(crate) type RefLogIdOf<'a, C> = crate::log_id::ref_log_id::RefLogId<'a, CommittedLeaderIdOf<C>>;
     pub type EntryPayloadOf<C> = EntryPayload<DOf<C>, MembershipOf<C>>;
     #[since(version = "0.10.0", change = "use configured payload type")]
-    pub type DefaultEntryOf<C> = crate::Entry<CommittedLeaderIdOf<C>, PayloadOf<C>>;
+    pub type DefaultEntryOf<C> = crate::impls::Entry<CommittedLeaderIdOf<C>, PayloadOf<C>>;
     pub type StoredMembershipOf<C> = crate::StoredMembership<CommittedLeaderIdOf<C>, MembershipOf<C>>;
     pub type SnapshotSignatureOf<C> = crate::storage::SnapshotSignature<CommittedLeaderIdOf<C>>;
     pub type SnapshotMetaOf<C> = crate::storage::SnapshotMeta<CommittedLeaderIdOf<C>, MembershipOf<C>>;

@@ -16,9 +16,9 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use clap::Parser;
-use openraft::ChangeMembers;
 use openraft::alias::MembershipEditOf;
 use openraft::async_runtime::WatchReceiver;
+use openraft::impls::ChangeMembers;
 #[cfg(feature = "threshold-membership")]
 use openraft_membership::ThresholdChange;
 use rand::RngExt;

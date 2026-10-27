@@ -53,14 +53,14 @@ pub struct Response {
 
 /// The membership type that the cluster runs.
 #[cfg(not(feature = "threshold-membership"))]
-pub type Membership = openraft::Membership<NodeId, Node>;
+pub type Membership = openraft::impls::Membership<NodeId, Node>;
 
 /// The membership type that the cluster runs.
 #[cfg(feature = "threshold-membership")]
 pub type Membership = openraft_membership::ThresholdMembership<NodeId, Node>;
 
 #[cfg(not(feature = "threshold-membership"))]
-type MembershipEdit = openraft::ChangeMembers<NodeId, Node>;
+type MembershipEdit = openraft::impls::ChangeMembers<NodeId, Node>;
 
 #[cfg(feature = "threshold-membership")]
 type MembershipEdit = openraft_membership::ThresholdChange<NodeId, Node>;

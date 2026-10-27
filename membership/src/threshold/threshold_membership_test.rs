@@ -5,11 +5,11 @@ use std::sync::Arc;
 
 use maplit::btreemap;
 use maplit::btreeset;
-use openraft::ChangeMembers;
 use openraft::errors::EmptyMembership;
 use openraft::errors::MembershipError;
 use openraft::errors::NodeNotFound;
 use openraft::errors::Operation;
+use openraft::impls::ChangeMembers;
 use openraft::membership::NodeRef;
 use openraft::membership::NodeRole;
 use openraft::membership::RaftMembership;

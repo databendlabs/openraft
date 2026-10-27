@@ -347,10 +347,10 @@ mod tests {
     use maplit::btreemap;
     use maplit::btreeset;
 
-    use crate::ChangeMembers;
     use crate::Membership;
     use crate::errors::NodeNotFound;
     use crate::errors::Operation;
+    use crate::impls::ChangeMembers;
     use crate::membership::RaftMembershipExt;
 
     #[test]

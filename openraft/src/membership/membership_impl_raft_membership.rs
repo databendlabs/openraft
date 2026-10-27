@@ -3,11 +3,11 @@ use std::collections::BTreeSet;
 
 use openraft_macros::since;
 
-use crate::ChangeMembers;
 use crate::Membership;
 use crate::Node;
 use crate::NodeId;
 use crate::errors::MembershipError;
+use crate::impls::ChangeMembers;
 use crate::membership::NodeRef;
 use crate::membership::NodeRole;
 use crate::membership::RaftMembership;

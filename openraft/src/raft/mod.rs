@@ -172,18 +172,18 @@ use crate::vote::raft_vote::RaftVoteExt;
 ///        D            = ClientRequest,
 ///        R            = ClientResponse,
 ///        NodeId       = u64,
-///        Node         = openraft::BasicNode,
+///        Node         = openraft::impls::BasicNode,
 ///        Term         = u64,
 ///        LeaderId     = openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>,
 ///        Vote           = openraft::impls::Vote<Self::LeaderId>,
 ///        Membership     = openraft::impls::Membership<Self::NodeId, Self::Node>,
-///        Payload        = openraft::EntryPayload<Self::D, Self::Membership>,
-///        Entry          = openraft::Entry<
+///        Payload        = openraft::impls::EntryPayload<Self::D, Self::Membership>,
+///        Entry          = openraft::impls::Entry<
 ///            <Self::LeaderId as openraft::vote::RaftLeaderId>::Committed,
 ///            Self::Payload,
 ///        >,
 ///        Responder<T>   = openraft::impls::OneshotResponder<Self, T>,
-///        AsyncRuntime   = openraft::TokioRuntime,
+///        AsyncRuntime   = openraft::impls::TokioRuntime,
 /// );
 /// ```
 ///
@@ -196,7 +196,7 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// - `LeaderId`:     `::openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>`
 /// - `Vote`:           `::openraft::impls::Vote<Self::LeaderId>`
 /// - `Membership`:     `::openraft::impls::Membership<Self::NodeId, Self::Node>`
-/// - `Payload`:        `::openraft::EntryPayload<Self::D, Self::Membership>`
+/// - `Payload`:        `::openraft::impls::EntryPayload<Self::D, Self::Membership>`
 /// - `Entry`:          `::openraft::impls::Entry<CommittedLeaderId, Self::Payload>`
 /// - `Responder<T>`:   `::openraft::impls::OneshotResponder<Self, T>`
 /// - `AsyncRuntime`:   `::openraft::impls::TokioRuntime`
@@ -247,9 +247,9 @@ macro_rules! declare_raft_types {
                 (LeaderId     , , $crate::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId> ),
                 (Vote           , , $crate::impls::Vote<Self::LeaderId>            ),
                 (Membership     , , $crate::impls::Membership<Self::NodeId, Self::Node> ),
-                (MembershipEdit , , $crate::ChangeMembers<Self::NodeId, Self::Node> ),
-                (Payload        , , $crate::EntryPayload<Self::D, Self::Membership> ),
-                (Entry          , , $crate::Entry<<Self::LeaderId as $crate::vote::RaftLeaderId>::Committed, Self::Payload> ),
+                (MembershipEdit , , $crate::impls::ChangeMembers<Self::NodeId, Self::Node> ),
+                (Payload        , , $crate::impls::EntryPayload<Self::D, Self::Membership> ),
+                (Entry          , , $crate::impls::Entry<<Self::LeaderId as $crate::vote::RaftLeaderId>::Committed, Self::Payload> ),
                 (Responder<T>   , , $crate::impls::ProgressResponder<Self, T> where T: $crate::OptionalSend + 'static     ),
                 (Batch<T>       , , $crate::impls::InlineBatch<T> where T: $crate::OptionalSend + 'static     ),
                 (AsyncRuntime   , , $crate::impls::TokioRuntime                  ),

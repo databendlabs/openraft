@@ -74,6 +74,6 @@ where
     /// as it is. Its `apply()` applies an edit to the target and returns the result, so this edit
     /// returns `[{3,4,5}]`.
     ///
-    /// [`ChangeMembers`]: crate::ChangeMembers
+    /// [`ChangeMembers`]: crate::impls::ChangeMembers
     fn make_uniform() -> Self;
 }
