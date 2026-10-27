@@ -167,9 +167,6 @@ where
     /// * `changes`: The changes to apply to the current membership configuration.
     /// * `retain` specifies whether to retain the removed voters as learners, i.e., nodes that
     ///   continue to receive log replication from the leader.
-    /// * `allow_unproven` is `Config::allow_unproven_read_write_intersection`. It lets the new
-    ///   configuration pass when OpenRaft cannot prove that its read quorums intersect its write
-    ///   quorums.
     ///
     /// A Result containing the new membership configuration and whether it is the joint one, if
     /// the operation succeeds, or a `ChangeMembershipError` if an error occurs.
@@ -180,7 +177,6 @@ where
         &self,
         change: Edit,
         retain: bool,
-        allow_unproven: bool,
     ) -> Result<(Mem, bool), ChangeMembershipError<CLID, Mem::NodeId, E>>
     where
         Edit: RaftMembershipEdit<Mem>,
@@ -194,7 +190,7 @@ where
         let mut goal = goal.map_err(|error| error.map_user_defined(wrap))?;
         goal.ensure_non_empty_config()?;
         goal.ensure_voters_have_nodes().map_err(MembershipError::<_, E>::from)?;
-        goal.ensure_read_write_quorums_intersect(allow_unproven)?;
+        goal.ensure_read_write_quorums_intersect()?;
         if !retain {
             goal = effective.drop_voters_demoted_to_learners(goal);
         }
@@ -218,9 +214,8 @@ where
     ///   is not enough of a guarantee: deserialization, [`Membership::new()`],
     ///   [`Membership::default()`] and [`Membership::new_with_defaults()`] can all produce a value
     ///   with no voter set at all, or with an empty one.
-    /// - `intersects_with()` proves that every read quorum of `proposed` intersects every write
-    ///   quorum. With `allow_unproven`, which is `Config::allow_unproven_read_write_intersection`,
-    ///   it may also return `None`.
+    /// - `read_write_quorums_intersect()` returns `Some(true)` for `proposed`, so every read quorum
+    ///   of it intersects every write quorum.
     /// - `proposed` keeps the [`Node`] of every node id the effective membership already knows.
     /// - The transition from the effective membership to `proposed` is one that a direct append
     ///   supports.
@@ -232,7 +227,6 @@ where
     pub(crate) fn validate_append_membership<E>(
         &self,
         proposed: &Mem,
-        allow_unproven: bool,
     ) -> Result<(), ChangeMembershipError<CLID, Mem::NodeId, E>>
     where
         E: ErrorSource,
@@ -240,7 +234,7 @@ where
         self.ensure_committed()?;
         proposed.ensure_non_empty_config()?;
         proposed.ensure_voters_have_nodes().map_err(MembershipError::<_, E>::from)?;
-        proposed.ensure_read_write_quorums_intersect(allow_unproven)?;
+        proposed.ensure_read_write_quorums_intersect()?;
 
         let effective = self.effective().membership();
 

@@ -178,13 +178,12 @@ fn apply_membership_to_payload<C>(
     membership_state: &MembershipStateOf<C>,
     changes: MembershipEditOf<C>,
     retain: bool,
-    allow_unproven: bool,
     payloads: MembershipPayloads<C>,
 ) -> Result<C::Payload, ChangeMembershipErrorOf<C>>
 where
     C: RaftTypeConfig,
 {
-    let (membership, joint) = membership_state.next_membership(changes, retain, allow_unproven)?;
+    let (membership, joint) = membership_state.next_membership(changes, retain)?;
     let finished = !joint;
     let payload = payloads.select(membership, finished);
     Ok(payload)
@@ -503,9 +502,7 @@ where
             return;
         }
 
-        let membership_state = &self.engine.state.membership_state;
-        let allow_unproven = self.engine.config.allow_unproven_read_write_intersection;
-        let res = apply_membership_to_payload::<C>(membership_state, changes, retain, allow_unproven, payloads);
+        let res = apply_membership_to_payload::<C>(&self.engine.state.membership_state, changes, retain, payloads);
         let payload = match res {
             Ok(x) => x,
             Err(e) => {
@@ -566,8 +563,7 @@ where
         let membership = payload.get_membership().unwrap();
 
         let membership_state = &self.engine.state.membership_state;
-        let allow_unproven = self.engine.config.allow_unproven_read_write_intersection;
-        if let Err(e) = membership_state.validate_append_membership::<C::ErrorSource>(&membership, allow_unproven) {
+        if let Err(e) = membership_state.validate_append_membership::<C::ErrorSource>(&membership) {
             tx.on_complete(Err(ClientWriteError::ChangeMembershipError(e)));
             return;
         }
@@ -2852,7 +2848,7 @@ mod tests {
 
         let payloads = MembershipPayloads::<TestConfig>::Uniform(payload);
         let changes = ChangeMembers::AddNodes(btreemap! {2 => ()});
-        let result = apply_membership_to_payload::<TestConfig>(&membership_state, changes, false, false, payloads);
+        let result = apply_membership_to_payload::<TestConfig>(&membership_state, changes, false, payloads);
         let actual = result.unwrap();
 
         let expected_membership = Membership::new_with_defaults(vec![btreeset! {1}], btreeset! {2});
@@ -2871,7 +2867,7 @@ mod tests {
 
         let payloads = MembershipPayloads::<TestConfig>::Uniform(TestPayload::blank());
         let changes = ChangeMembers::AddNodes(btreemap! {2 => ()});
-        let result = apply_membership_to_payload::<TestConfig>(&membership_state, changes, false, false, payloads);
+        let result = apply_membership_to_payload::<TestConfig>(&membership_state, changes, false, payloads);
         let actual = result.unwrap();
 
         let expected_membership = Membership::new_with_defaults(vec![btreeset! {1}], btreeset! {2});
@@ -2898,7 +2894,7 @@ mod tests {
         };
 
         let changes = ChangeMembers::ReplaceAllVoters(btreeset! {3, 4, 5});
-        let result = apply_membership_to_payload::<TestConfig>(&membership_state, changes, false, false, payloads);
+        let result = apply_membership_to_payload::<TestConfig>(&membership_state, changes, false, payloads);
         let actual = result.unwrap();
 
         let joint_membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}, btreeset! {3, 4, 5}], []);
@@ -2928,7 +2924,7 @@ mod tests {
         };
 
         let changes = ChangeMembers::AddNodes(btreemap! {2 => ()});
-        let result = apply_membership_to_payload::<TestConfig>(&membership_state, changes, false, false, payloads);
+        let result = apply_membership_to_payload::<TestConfig>(&membership_state, changes, false, payloads);
         let actual = result.unwrap();
 
         let expected_membership = Membership::new_with_defaults(vec![btreeset! {1}], btreeset! {2});

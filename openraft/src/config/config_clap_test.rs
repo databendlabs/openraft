@@ -281,34 +281,6 @@ fn test_config_allow_log_reversion() -> anyhow::Result<()> {
 }
 
 #[test]
-fn test_config_allow_unproven_read_write_intersection() -> anyhow::Result<()> {
-    let config = Config::build(&["foo", "--allow-unproven-read-write-intersection=false"])?;
-    assert_eq!(Some(false), config.allow_unproven_read_write_intersection);
-
-    let config = Config::build(&["foo", "--allow-unproven-read-write-intersection=true"])?;
-    assert_eq!(Some(true), config.allow_unproven_read_write_intersection);
-
-    let config = Config::build(&["foo", "--allow-unproven-read-write-intersection"])?;
-    assert_eq!(Some(true), config.allow_unproven_read_write_intersection);
-
-    let mut config = Config::build(&["foo"])?;
-    assert_eq!(None, config.allow_unproven_read_write_intersection);
-
-    // `None` rejects a membership that `intersects_with()` cannot prove.
-
-    config.allow_unproven_read_write_intersection = None;
-    assert_eq!(false, config.get_allow_unproven_read_write_intersection());
-
-    config.allow_unproven_read_write_intersection = Some(true);
-    assert_eq!(true, config.get_allow_unproven_read_write_intersection());
-
-    config.allow_unproven_read_write_intersection = Some(false);
-    assert_eq!(false, config.get_allow_unproven_read_write_intersection());
-
-    Ok(())
-}
-
-#[test]
 fn test_config_enable_leader_restore() -> anyhow::Result<()> {
     let config = Config::build(&["foo", "--enable-leader-restore=false"])?;
     assert_eq!(Some(false), config.enable_leader_restore);

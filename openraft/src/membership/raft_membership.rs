@@ -44,9 +44,9 @@ where Self: OptionalFeatures + Clone + Default + Eq + Debug + Display + Sized + 
     /// The quorum rule type used for both reads and writes.
     ///
     /// OpenRaft accepts a configuration from the application only when
-    /// [`intersects_with()`](QuorumIntersection::intersects_with) returns `Some(true)` for its read
-    /// quorum set against its write quorum set. With
-    /// [`Config::allow_unproven_read_write_intersection`] set, it also accepts `None`.
+    /// [`read_write_quorums_intersect()`](Self::read_write_quorums_intersect) returns `Some(true)`.
+    /// By default, it returns what [`intersects_with()`](QuorumIntersection::intersects_with)
+    /// returns for the read quorum set against the write quorum set.
     ///
     /// OpenRaft appends a configuration directly after another, without a joint configuration,
     /// only when [`intersects_with()`](QuorumIntersection::intersects_with) returns `Some(true)`
@@ -64,8 +64,6 @@ where Self: OptionalFeatures + Clone + Default + Eq + Debug + Display + Sized + 
     /// write quorum set, and for the joint write quorum set against the new read quorum set.
     /// Otherwise the second step of [`Raft::change_membership()`](crate::Raft::change_membership)
     /// appends a second joint configuration instead of the new one.
-    ///
-    /// [`Config::allow_unproven_read_write_intersection`]: crate::Config::allow_unproven_read_write_intersection
     type QuorumSet: QuorumSet<Id = Self::NodeId>
         + QuorumIntersection<Self::QuorumSet>
         + QuorumBridge<Self::QuorumSet>
@@ -85,6 +83,30 @@ where Self: OptionalFeatures + Clone + Default + Eq + Debug + Display + Sized + 
     ///
     /// For a joint configuration, a write quorum must satisfy every component's write quorum rule.
     fn write_quorum_set(&self) -> &Self::QuorumSet;
+
+    /// Returns whether every read quorum of this configuration intersects every write quorum.
+    ///
+    /// It returns `Some(true)` when the intersection is proven, `Some(false)` when it is
+    /// disproven, and `None` when it is unknown. OpenRaft accepts a configuration from the
+    /// application only when it returns `Some(true)`: the one passed to [`Raft::initialize()`] or
+    /// [`Raft::append_membership()`], and the target that [`RaftMembershipEdit::apply()`] returns
+    /// for [`Raft::change_membership()`].
+    ///
+    /// The default returns what [`intersects_with()`](QuorumIntersection::intersects_with) returns
+    /// for the read quorum set against the write quorum set. Override it to return `Some(true)`
+    /// when the quorum rule is valid but `intersects_with()` cannot prove it. OpenRaft trusts the
+    /// answer, so a wrong `Some(true)` can lose committed entries.
+    ///
+    /// [`Raft::initialize()`]: crate::Raft::initialize
+    /// [`Raft::append_membership()`]: crate::Raft::append_membership
+    /// [`Raft::change_membership()`]: crate::Raft::change_membership
+    /// [`RaftMembershipEdit::apply()`]: crate::membership::RaftMembershipEdit::apply
+    #[since(version = "0.10.0")]
+    fn read_write_quorums_intersect(&self) -> Option<bool> {
+        let read = self.read_quorum_set();
+        let write = self.write_quorum_set();
+        read.intersects_with(write)
+    }
 
     /// Returns a known node's metadata, capabilities, and derived voter status.
     ///
