@@ -5,6 +5,7 @@
 //!
 //! - [`ThresholdMembership`] configures the write quorum size and derives the read quorum size.
 //! - [`WeightedMembership`] gives each voter a weight and configures the write weight.
+//! - [`GridMembership`] places voters in a grid: a row elects, and a voter of each row commits.
 //! - [`ExplicitMembership`] lists the minimal read quorums and write quorums of each config.
 //!
 //! [`docs`] tells which membership fits which cluster, and holds a guide for each.
@@ -24,6 +25,7 @@
 mod config;
 pub mod errors;
 mod explicit;
+mod grid;
 pub mod quorum;
 #[cfg(test)]
 mod testing;
@@ -32,6 +34,8 @@ mod weighted;
 
 pub use explicit::ExplicitChange;
 pub use explicit::ExplicitMembership;
+pub use grid::GridChange;
+pub use grid::GridMembership;
 pub use threshold::ThresholdChange;
 pub use threshold::ThresholdMembership;
 pub use weighted::WeightedChange;
@@ -54,5 +58,10 @@ pub mod docs {
     /// Configure and change weighted memberships.
     pub mod weighted {
         #![doc = include_str!("weighted-membership.md")]
+    }
+
+    /// Configure and change grid memberships.
+    pub mod grid {
+        #![doc = include_str!("grid-membership.md")]
     }
 }
