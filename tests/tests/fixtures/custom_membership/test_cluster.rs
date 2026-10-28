@@ -132,8 +132,7 @@ where
         };
         let mut connection = network.new_client(target, &()).await;
         let option = RPCOption::new(Duration::from_secs(1));
-        let response = connection.vote(request, option).await;
-        response
+        connection.vote(request, option).await
     }
 
     /// Fails every RPC between the two nodes of each link in `links`, and delivers all others.

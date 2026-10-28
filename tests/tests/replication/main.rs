@@ -1,8 +1,6 @@
 #![cfg_attr(feature = "bt", feature(error_generic_member_access))]
 #![allow(clippy::uninlined_format_args)]
-#[macro_use]
-#[path = "../fixtures/mod.rs"]
-mod fixtures;
+use tests::fixtures;
 
 mod t10_append_entries_partial_success;
 mod t11_probe_partial_success_without_entry;

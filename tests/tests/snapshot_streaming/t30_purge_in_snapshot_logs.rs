@@ -49,7 +49,7 @@ async fn purge_in_snapshot_logs() -> Result<()> {
         let logs = sto0.try_get_log_entries(..).await?;
         let mut got = Vec::new();
         for entry in &logs {
-            got.push(entry.log_id.clone());
+            got.push(entry.log_id);
         }
 
         let first = log_index + 1 - max_keep;
@@ -102,7 +102,7 @@ async fn purge_in_snapshot_logs() -> Result<()> {
     let logs = sto0.try_get_log_entries(..).await?;
     let mut got = Vec::new();
     for entry in &logs {
-        got.push(entry.log_id.clone());
+        got.push(entry.log_id);
     }
 
     let first = log_index + 1 - max_keep;

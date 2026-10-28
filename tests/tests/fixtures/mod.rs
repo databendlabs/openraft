@@ -67,7 +67,7 @@ pub mod logging;
 mod network;
 mod network_delay;
 #[allow(unused_imports)]
-pub(crate) use network_delay::delay_from_env;
+pub use network_delay::delay_from_env;
 mod node;
 pub use node::Node;
 mod post_hook;
@@ -80,9 +80,9 @@ pub mod rpc_rule;
 mod write_summary;
 pub use write_summary::WriteSummary;
 
-type MemSnapshotData = Cursor<Vec<u8>>;
-type MemRpcRequest = RpcRequest<TypeConfig, MemSnapshotData>;
-type MemRpcResponse = RpcResponse<TypeConfig>;
+pub type MemSnapshotData = Cursor<Vec<u8>>;
+pub type MemRpcRequest = RpcRequest<TypeConfig, MemSnapshotData>;
+pub type MemRpcResponse = RpcResponse<TypeConfig>;
 
 pub type MemLogStore = Arc<LogStoreInner>;
 pub type MemStateMachine = Arc<SMInner>;
@@ -925,7 +925,7 @@ pub fn expect_timeout<T>(result: Result<T, WaitError>) -> anyhow::Result<()> {
 /// A trait for extending the functionality of a Raft vote.
 ///
 /// This is used for testing.
-pub(crate) trait TestingVoteExt: openraft::vote::RaftVote {
+pub trait TestingVoteExt: openraft::vote::RaftVote {
     /// Creates a new vote for a node in a specific term, with uncommitted status.
     fn from_term_node_id(
         term: <Self::LeaderId as openraft::vote::RaftLeaderId>::Term,

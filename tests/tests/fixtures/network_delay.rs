@@ -10,12 +10,11 @@ use rand::RngExt;
 /// The delay in milliseconds from one `OPENRAFT_NETWORK_SEND_DELAY` value.
 ///
 /// `None` keeps `fallback_ms`. A decimal string replaces it.
-pub(crate) fn delay_from_env(raw: Option<&str>, fallback_ms: u64) -> u64 {
+pub fn delay_from_env(raw: Option<&str>, fallback_ms: u64) -> u64 {
     let Some(raw) = raw else {
         return fallback_ms;
     };
-    let delay_ms = raw.parse::<u64>().unwrap();
-    delay_ms
+    raw.parse::<u64>().unwrap()
 }
 
 /// Read `OPENRAFT_NETWORK_SEND_DELAY`, or keep `fallback_ms` when it is absent.
@@ -24,8 +23,7 @@ pub(super) fn configured_network_send_delay(fallback_ms: u64) -> u64 {
     if let Some(ref value) = raw {
         tracing::info!("OPENRAFT_NETWORK_SEND_DELAY set send-delay to {} ms", value);
     }
-    let delay_ms = delay_from_env(raw.as_deref(), fallback_ms);
-    delay_ms
+    delay_from_env(raw.as_deref(), fallback_ms)
 }
 
 /// Sleep for one send delay on `C`'s runtime.
