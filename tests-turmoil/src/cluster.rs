@@ -76,7 +76,7 @@ impl ClusterState {
     }
 
     pub fn get_all_durable_log_ids(&self) -> BTreeMap<NodeId, LogIdListOf<TypeConfig>> {
-        self.log_stores.iter().map(|(&id, log_store)| (id, log_store.log_id_list())).collect()
+        self.log_stores.iter().map(|(&id, log_store)| (id, log_store.durable_log_id_list())).collect()
     }
 
     /// Find a Raft node that is currently the leader.
