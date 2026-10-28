@@ -24,8 +24,8 @@ async fn single_restart() -> anyhow::Result<()> {
 
     tracing::info!(log_index, "--- write to 1 log");
     {
-        router.client_request_many(0, "foo", 1).await?;
-        log_index += 1;
+        let response = router.client_request(0, "foo", 0).await?;
+        log_index = response.log_id.index();
     }
 
     tracing::info!(log_index, "--- stop and restart node 0");
@@ -43,8 +43,8 @@ async fn single_restart() -> anyhow::Result<()> {
 
     tracing::info!(log_index, "--- write to 1 log after restart");
     {
-        router.client_request_many(0, "foo", 1).await?;
-        log_index += 1;
+        let response = router.client_request(0, "foo", 0).await?;
+        log_index = response.log_id.index();
 
         router.wait(&0).applied_index(Some(log_index), "node-0 works").await?;
     }

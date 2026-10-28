@@ -28,11 +28,11 @@ async fn trigger_snapshot() -> anyhow::Result<()> {
 
     tracing::info!(log_index, "--- send some logs");
     {
-        router.client_request_many(0, "0", 10).await?;
-        log_index += 10;
+        let written = router.client_request_many(0, "0", 10).await?;
+        let last_log_id = written.last_log_id.expect("nonempty workload");
+        log_index = last_log_id.index();
 
-        router.wait(&0).applied_index(Some(log_index), "node-0 write logs").await?;
-        router.wait(&1).applied_index(Some(log_index), "node-1 write logs").await?;
+        router.wait_applied_at_least([0, 1], log_index, "write logs").await?;
     }
 
     tracing::info!(log_index, "--- trigger snapshot for node-0");
