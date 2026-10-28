@@ -4,7 +4,6 @@ use std::time::Duration;
 
 use anyhow::Result;
 use openraft::Config;
-use openraft::RPCTypes;
 use openraft::async_runtime::WatchReceiver;
 use openraft::errors::RPCError;
 use openraft::errors::Unreachable;
@@ -15,6 +14,7 @@ use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
+use crate::fixtures::rpc_kind::RpcKind;
 use crate::fixtures::rpc_request::RpcRequest;
 use crate::fixtures::rpc_response::RpcResponse;
 use crate::fixtures::ut_harness;
@@ -49,9 +49,10 @@ async fn partial_success_updates_clock_progress() -> Result<()> {
         router.set_append_entries_quota(Some(1));
 
         router
-            .set_rpc_pre_hook(RPCTypes::AppendEntries, move |_router, req, _from, target| {
-                let result = if target == 1 {
-                    let multiple_entries = matches!(&req, RpcRequest::AppendEntries(req) if req.entries.len() > 1);
+            .set_rpc_pre_hook(RpcKind::AppendEntries, move |call| {
+                let result = if call.to == 1 {
+                    let multiple_entries =
+                        matches!(&call.request, RpcRequest::AppendEntries(req) if req.entries.len() > 1);
 
                     if multiple_entries {
                         Ok(())
@@ -64,24 +65,25 @@ async fn partial_success_updates_clock_progress() -> Result<()> {
                     Ok(())
                 };
 
-                Box::pin(futures::future::ready(result))
+                futures::future::ready(result)
             })
             .await;
 
         router
-            .set_rpc_post_hook(RPCTypes::AppendEntries, move |router, _req, resp, _from, target| {
-                if target == 1 {
-                    let RpcResponse::AppendEntries(response) = resp else {
+            .set_rpc_post_hook(RpcKind::AppendEntries, move |call| {
+                if call.to == 1 {
+                    let RpcResponse::AppendEntries(response) = call.response else {
                         panic!("expected an AppendEntries response");
                     };
                     let matching = Some(log_id(1, 0, log_index - 1));
                     let expected = AppendEntriesResponse::PartialSuccess(matching);
                     assert_eq!(expected, response);
 
-                    router.set_unreachable(target, true);
+                    call.router.set_unreachable(call.to, true);
 
                     if let Some(tx) = partial_tx.lock().unwrap().take() {
-                        let clock_before_response = router
+                        let clock_before_response = call
+                            .router
                             .get_raft_handle(&0)
                             .unwrap()
                             .metrics()
@@ -95,7 +97,7 @@ async fn partial_success_updates_clock_progress() -> Result<()> {
                     }
                 }
 
-                Box::pin(async { Ok(()) })
+                async { Ok(()) }
             })
             .await;
     }

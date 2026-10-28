@@ -5,7 +5,6 @@ use std::time::Duration;
 
 use anyhow::Result;
 use openraft::Config;
-use openraft::RPCTypes;
 use openraft::async_runtime::WatchReceiver;
 use openraft::errors::RPCError;
 use openraft::errors::Unreachable;
@@ -13,6 +12,7 @@ use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::rpc_kind::RpcKind;
 use crate::fixtures::ut_harness;
 
 /// A constant 5-second backoff delay, longer than the one-second recovery window.
@@ -41,8 +41,8 @@ async fn reset_backoff_ends_active_backoff() -> Result<()> {
     {
         let failures_remaining = failures_remaining.clone();
         router
-            .set_rpc_pre_hook(RPCTypes::AppendEntries, move |_router, _req, _from, to| {
-                let should_fail = to == 2 && failures_remaining.load(Ordering::SeqCst) > 0;
+            .set_rpc_pre_hook(RpcKind::AppendEntries, move |call| {
+                let should_fail = call.to == 2 && failures_remaining.load(Ordering::SeqCst) > 0;
                 let res = if should_fail {
                     failures_remaining.fetch_sub(1, Ordering::SeqCst);
                     Err(RPCError::Unreachable(Unreachable::<TypeConfig>::from_string(
@@ -51,7 +51,7 @@ async fn reset_backoff_ends_active_backoff() -> Result<()> {
                 } else {
                     Ok(())
                 };
-                Box::pin(futures::future::ready(res))
+                futures::future::ready(res)
             })
             .await;
     }
@@ -122,8 +122,8 @@ async fn reset_backoff_before_backoff_is_dropped() -> Result<()> {
     {
         let attempts = attempts.clone();
         router
-            .set_rpc_pre_hook(RPCTypes::AppendEntries, move |_router, _req, _from, to| {
-                let res = if to == 2 {
+            .set_rpc_pre_hook(RpcKind::AppendEntries, move |call| {
+                let res = if call.to == 2 {
                     attempts.fetch_add(1, Ordering::SeqCst);
                     Err(RPCError::Unreachable(Unreachable::<TypeConfig>::from_string(
                         "injected",
@@ -131,7 +131,7 @@ async fn reset_backoff_before_backoff_is_dropped() -> Result<()> {
                 } else {
                     Ok(())
                 };
-                Box::pin(futures::future::ready(res))
+                futures::future::ready(res)
             })
             .await;
 
@@ -176,8 +176,8 @@ async fn transfer_leader_resets_target_backoff_by_default() -> Result<()> {
         {
             let hook_failures_remaining = failures_remaining.clone();
             router
-                .set_rpc_pre_hook(RPCTypes::AppendEntries, move |_router, _req, _from, to| {
-                    let should_fail = to == 2 && hook_failures_remaining.load(Ordering::SeqCst) > 0;
+                .set_rpc_pre_hook(RpcKind::AppendEntries, move |call| {
+                    let should_fail = call.to == 2 && hook_failures_remaining.load(Ordering::SeqCst) > 0;
                     let res = if should_fail {
                         hook_failures_remaining.fetch_sub(1, Ordering::SeqCst);
                         Err(RPCError::Unreachable(Unreachable::<TypeConfig>::from_string(
@@ -186,7 +186,7 @@ async fn transfer_leader_resets_target_backoff_by_default() -> Result<()> {
                     } else {
                         Ok(())
                     };
-                    Box::pin(futures::future::ready(res))
+                    futures::future::ready(res)
                 })
                 .await;
 

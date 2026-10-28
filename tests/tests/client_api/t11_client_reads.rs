@@ -10,7 +10,6 @@ use openraft::RPCTypes;
 use openraft::ReadPolicy;
 use openraft::ServerState;
 use openraft::async_runtime::WatchReceiver;
-use openraft::base::BoxFuture;
 use openraft::errors::LinearizableReadError;
 use openraft::errors::NetworkError;
 use openraft::errors::RPCError;
@@ -21,6 +20,7 @@ use openraft::vote::RaftLeaderId;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::RpcCall;
 use crate::fixtures::expect_timeout;
 use crate::fixtures::rpc_kind::RpcKind;
 use crate::fixtures::rpc_request::RpcRequest;
@@ -597,7 +597,7 @@ async fn ensure_linearizable_process_from_followers() -> Result<()> {
     let leader = router.get_raft_handle(&leader_node_id).unwrap();
 
     // Blocks append-entries to node 1, but let heartbeat pass.
-    let block_to_follower_n1 = |_router: &_, req, _id, target| {
+    let block_to_follower_n1 = |call: RpcCall| {
         let err = || {
             // Block append-entries to block commit.
             Err(RPCError::Network(NetworkError::<TypeConfig>::from_string(
@@ -605,8 +605,8 @@ async fn ensure_linearizable_process_from_followers() -> Result<()> {
             )))
         };
 
-        let res = if target == 1 {
-            match req {
+        let res = if call.to == 1 {
+            match call.request {
                 RpcRequest::AppendEntries(a) => {
                     // Heartbeat is not blocked.
                     if a.entries.is_empty() { Ok(()) } else { err() }
@@ -619,14 +619,12 @@ async fn ensure_linearizable_process_from_followers() -> Result<()> {
             Ok(())
         };
 
-        let fu = futures::future::ready(res);
-        let x: BoxFuture<_> = Box::pin(fu);
-        x
+        futures::future::ready(res)
     };
 
     tracing::info!("--- block follower n1, leader write a log, n1 unable to apply last log, but n2 does");
     {
-        router.set_rpc_pre_hook(RPCTypes::AppendEntries, block_to_follower_n1).await;
+        router.set_rpc_pre_hook(RpcKind::AppendEntries, block_to_follower_n1).await;
         let written = router.client_request_many(leader_node_id, "foo", 1).await?;
         log_index += written.count;
         leader.wait(timeout()).applied_index(Some(log_index), "log applied to state-machine").await?;
@@ -668,7 +666,7 @@ async fn ensure_linearizable_process_from_followers() -> Result<()> {
 
     tracing::info!("--- stop blocking, follower n1 will apply last log");
     {
-        router.rpc_pre_hook(RPCTypes::AppendEntries, None).await;
+        router.clear_rpc_pre_hook(RpcKind::AppendEntries).await;
 
         let linearizer = leader.get_read_linearizer(ReadPolicy::ReadIndex).await?;
         assert_eq!(

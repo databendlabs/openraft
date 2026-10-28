@@ -7,7 +7,6 @@ use anyhow::Result;
 use maplit::btreemap;
 use maplit::btreeset;
 use openraft::Config;
-use openraft::RPCTypes;
 use openraft::ServerState;
 use openraft::async_runtime::MpscReceiver;
 use openraft::async_runtime::MpscSender;
@@ -17,6 +16,7 @@ use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
+use crate::fixtures::rpc_kind::RpcKind;
 use crate::fixtures::rpc_request::RpcRequest;
 use crate::fixtures::ut_harness;
 
@@ -103,26 +103,27 @@ async fn first_two_probes_with_quota_zero(n_writes: usize) -> Result<FirstTwoPro
         let recorder = probes.clone();
 
         router
-            .set_rpc_pre_hook(RPCTypes::AppendEntries, move |_router, req, from, to| {
+            .set_rpc_pre_hook(RpcKind::AppendEntries, move |call| {
                 let mut second = false;
-                if from == 1
-                    && let RpcRequest::AppendEntries(append) = &req
+                if call.from == 1
+                    && let RpcRequest::AppendEntries(append) = &call.request
                     && !append.entries.is_empty()
                 {
                     let mut recorded = recorder.lock().unwrap();
-                    let prevs = recorded.entry(to).or_default();
+                    let prevs = recorded.entry(call.to).or_default();
                     if prevs.len() < 2 {
                         prevs.push(append.prev_log_id);
                         second = prevs.len() == 2;
                     }
                 }
                 let second_tx = second_tx.clone();
-                Box::pin(async move {
+                let to = call.to;
+                async move {
                     if second {
                         second_tx.send(to).await.unwrap();
                     }
                     Ok(())
-                })
+                }
             })
             .await;
     }

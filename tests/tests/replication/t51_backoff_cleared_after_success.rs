@@ -5,13 +5,13 @@ use std::time::Duration;
 
 use anyhow::Result;
 use openraft::Config;
-use openraft::RPCTypes;
 use openraft::errors::RPCError;
 use openraft::errors::Unreachable;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::rpc_kind::RpcKind;
 use crate::fixtures::ut_harness;
 
 /// Regression test for [issue #1723](https://github.com/databendlabs/openraft/issues/1723):
@@ -58,8 +58,8 @@ async fn backoff_cleared_after_success_in_stream() -> Result<()> {
     {
         let failures_remaining = failures_remaining.clone();
         router
-            .set_rpc_pre_hook(RPCTypes::AppendEntries, move |_router, _req, _id, target| {
-                let should_fail = target == 1 && failures_remaining.load(Ordering::SeqCst) > 0;
+            .set_rpc_pre_hook(RpcKind::AppendEntries, move |call| {
+                let should_fail = call.to == 1 && failures_remaining.load(Ordering::SeqCst) > 0;
                 let res = if should_fail {
                     failures_remaining.fetch_sub(1, Ordering::SeqCst);
                     Err(RPCError::Unreachable(Unreachable::<TypeConfig>::from_string(
@@ -68,7 +68,7 @@ async fn backoff_cleared_after_success_in_stream() -> Result<()> {
                 } else {
                     Ok(())
                 };
-                Box::pin(futures::future::ready(res))
+                futures::future::ready(res)
             })
             .await;
     }
