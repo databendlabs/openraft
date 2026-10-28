@@ -10,7 +10,7 @@ use rand::RngExt;
 /// The delay in milliseconds from one `OPENRAFT_NETWORK_SEND_DELAY` value.
 ///
 /// `None` keeps `fallback_ms`. A decimal string replaces it.
-pub fn delay_from_env(raw: Option<&str>, fallback_ms: u64) -> u64 {
+fn delay_from_env(raw: Option<&str>, fallback_ms: u64) -> u64 {
     let Some(raw) = raw else {
         return fallback_ms;
     };
@@ -43,4 +43,20 @@ where C: RaftTypeConfig {
     let sleep_ms = offset + 1;
     let timeout = Duration::from_millis(sleep_ms);
     C::sleep(timeout).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::delay_from_env;
+
+    /// `OPENRAFT_NETWORK_SEND_DELAY` keeps the caller default when absent and overrides it when
+    /// set.
+    #[test]
+    fn delay_from_env_keeps_fallback_or_uses_decimal() {
+        let absent = delay_from_env(None, 15);
+        assert_eq!(15, absent);
+
+        let present = delay_from_env(Some("40"), 15);
+        assert_eq!(40, present);
+    }
 }

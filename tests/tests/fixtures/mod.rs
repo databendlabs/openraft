@@ -61,7 +61,6 @@ pub use harness::ut_harness;
 pub mod logging;
 mod network;
 mod network_delay;
-pub use network_delay::delay_from_env;
 mod node;
 pub use node::Node;
 mod post_hook;
