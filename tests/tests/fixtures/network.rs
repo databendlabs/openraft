@@ -272,3 +272,58 @@ impl RaftRouterNetwork {
         Ok(resp)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use anyhow::Result;
+    use openraft::Config;
+    use openraft::Instant;
+    use openraft::alias::VoteOf;
+    use openraft::network::RPCOption;
+    use openraft::network::RaftNetworkFactory;
+    use openraft::network::v2::RaftNetworkV2;
+    use openraft::raft::VoteRequest;
+    use openraft::type_config::TypeConfigExt;
+    use openraft_memstore::TypeConfig;
+
+    use crate::fixtures::RaftRouter;
+    use crate::fixtures::ut_harness;
+
+    const SEND_DELAY_MS: u64 = 50;
+
+    /// One router RPC observes the send delay set after build.
+    #[tracing::instrument]
+    #[test_harness::test(harness = ut_harness)]
+    async fn router_send_delay_bounds_one_rpc() -> Result<()> {
+        let config = Config {
+            enable_tick: false,
+            ..Default::default()
+        };
+        let mut router = RaftRouter::new(config)?;
+        router.new_raft_node(2).await?;
+        router.network_send_delay(SEND_DELAY_MS);
+
+        let mut client = RaftNetworkFactory::new_client(&mut router, 2, &()).await;
+        let vote = VoteOf::<TypeConfig>::new(1, 1);
+        let request = VoteRequest::new(vote, None);
+        let option = RPCOption::new(Duration::from_secs(1));
+
+        let started = TypeConfig::now();
+        let _response = client.vote(request, option).await?;
+        let finished = TypeConfig::now();
+        let elapsed = finished.saturating_duration_since(started);
+        let elapsed_ms = elapsed.as_millis();
+        assert!(elapsed_ms >= 1, "elapsed {elapsed_ms} ms, expected at least 1");
+
+        if cfg!(feature = "rt-sim") {
+            let upper_ms = u128::from(SEND_DELAY_MS);
+            assert!(
+                elapsed_ms <= upper_ms,
+                "elapsed {elapsed_ms} ms, expected at most {upper_ms}"
+            );
+        }
+        Ok(())
+    }
+}
