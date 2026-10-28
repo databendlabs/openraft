@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use anyhow::Result;
 use maplit::btreemap;
 use maplit::btreeset;
@@ -135,27 +133,25 @@ async fn add_learner_non_blocking() -> Result<()> {
         let raft = router.get_raft_handle(&0)?;
         raft.add_learner(1, (), false).await?;
 
-        let n = 6;
-        for i in 0..=n {
-            if i == n {
-                unreachable!("no replication status is reported to metrics!");
-            }
+        // `Some(&None)` means a replication slot exists and no successful match has been reported.
+        // `None` means metrics have no slot yet.
+        tracing::info!(log_index, "--- replication slot for node 1 is present and unmatched");
+        let metrics = router
+            .wait(&0)
+            .metrics(
+                |m| {
+                    let Some(replication) = &m.replication else {
+                        return false;
+                    };
+                    replication.contains_key(&1)
+                },
+                "replication slot for node 1 is present",
+            )
+            .await?;
 
-            let metrics = router.get_raft_handle(&0)?.metrics().borrow_watched().clone();
-            let repl = metrics.replication.as_ref().unwrap();
-
-            // The result is Some(&None) when there is no success replication is made,
-            // and is None if no replication attempt is made(no success or failure is reported to metrics).
-            let n1_repl = repl.get(&1);
-            if n1_repl.is_none() {
-                tracing::info!("--- no replication attempt is made, sleep and retry: {}-th attempt", i);
-
-                TypeConfig::sleep(Duration::from_millis(500)).await;
-                continue;
-            }
-            assert_eq!(Some(&None), n1_repl, "no replication state to the learner is reported");
-            break;
-        }
+        let replication = metrics.replication.as_ref().unwrap();
+        let n1_repl = replication.get(&1);
+        assert_eq!(Some(&None), n1_repl, "no replication state to the learner is reported");
     }
 
     Ok(())
