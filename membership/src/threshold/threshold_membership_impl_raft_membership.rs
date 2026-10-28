@@ -7,7 +7,6 @@ use openraft::membership::RaftMembership;
 
 use crate::ThresholdMembership;
 use crate::quorum::Joint;
-use crate::quorum::QuorumBridge;
 use crate::quorum::ThresholdQuorumSet;
 
 impl<NID, N> RaftMembership for ThresholdMembership<NID, N>

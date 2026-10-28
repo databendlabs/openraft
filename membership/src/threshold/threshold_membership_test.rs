@@ -19,7 +19,6 @@ use crate::ThresholdMembership;
 use crate::errors::InvalidThresholds;
 use crate::errors::ThresholdMembershipError;
 use crate::quorum::Joint;
-use crate::quorum::QuorumBridge;
 use crate::quorum::QuorumIntersection;
 use crate::quorum::QuorumSet;
 use crate::quorum::ThresholdQuorumSet;
