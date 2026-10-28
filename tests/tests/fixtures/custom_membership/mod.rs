@@ -9,13 +9,8 @@ mod network;
 mod state_machine;
 mod test_cluster;
 
-#[allow(unused_imports)]
 pub use minimal_quorums::MinimalQuorums;
-#[allow(unused_imports)]
 pub use minimal_quorums::MinimalQuorumsMembership;
-#[allow(unused_imports)]
 pub use test_cluster::TestCluster;
-#[allow(unused_imports)]
 pub use test_cluster::TestConfig;
-#[allow(unused_imports)]
 pub use test_cluster::cluster_config;

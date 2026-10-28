@@ -1,6 +1,5 @@
 //! Fixtures for testing Raft.
 
-#![allow(dead_code)]
 #![allow(clippy::uninlined_format_args)]
 
 use std::collections::BTreeMap;
@@ -48,10 +47,6 @@ use openraft_memstore::MemNodeId;
 use openraft_memstore::MemStateMachine as SMInner;
 use openraft_memstore::TypeConfig;
 use openraft_memstore::TypeConfig as MemConfig;
-#[allow(unused_imports)]
-use pretty_assertions::assert_eq;
-#[allow(unused_imports)]
-use pretty_assertions::assert_ne;
 
 use crate::fixtures::rpc_kind::RpcKind;
 use crate::fixtures::rpc_request::RpcRequest;
@@ -66,7 +61,6 @@ pub use harness::ut_harness;
 pub mod logging;
 mod network;
 mod network_delay;
-#[allow(unused_imports)]
 pub use network_delay::delay_from_env;
 mod node;
 pub use node::Node;
