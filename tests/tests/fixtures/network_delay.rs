@@ -10,7 +10,7 @@ use rand::RngExt;
 /// The delay in milliseconds from one `OPENRAFT_NETWORK_SEND_DELAY` value.
 ///
 /// `None` keeps `fallback_ms`. A decimal string replaces it.
-pub(crate) fn delay_from_env(raw: Option<&str>, fallback_ms: u64) -> u64 {
+pub fn delay_from_env(raw: Option<&str>, fallback_ms: u64) -> u64 {
     let Some(raw) = raw else {
         return fallback_ms;
     };
