@@ -737,13 +737,16 @@ impl RaftRouter {
     }
 
     /// Bring up a new learner and add it to the leader's membership.
+    ///
+    /// Returns the full `RaftError`, including `Fatal` when the leader has stopped.
     pub async fn add_learner(
         &self,
         leader: MemNodeId,
         target: MemNodeId,
-    ) -> Result<ClientWriteResponse<MemConfig>, ClientWriteError<MemConfig>> {
+    ) -> Result<ClientWriteResponse<MemConfig>, RaftError<MemConfig, ClientWriteError<MemConfig>>> {
         let node = self.get_raft_handle(&leader).unwrap();
-        node.add_learner(target, (), true).await.map_err(|e| e.into_api_error().unwrap())
+        let response = node.add_learner(target, (), true).await?;
+        Ok(response)
     }
 
     /// Ensure read linearizability with user-specified policy.
@@ -755,13 +758,19 @@ impl RaftRouter {
     }
 
     /// Get the `ReadLogId` and last applied log ID.
+    ///
+    /// Returns the full `RaftError`, including `Fatal` when the node has stopped.
     pub async fn get_read_log_id(
         &self,
         target: MemNodeId,
         read_policy: ReadPolicy,
-    ) -> Result<(ReadLogId<MemConfig>, Option<LogIdOf<MemConfig>>), LinearizableReadError<MemConfig>> {
+    ) -> Result<
+        (ReadLogId<MemConfig>, Option<LogIdOf<MemConfig>>),
+        RaftError<MemConfig, LinearizableReadError<MemConfig>>,
+    > {
         let n = self.get_raft_handle(&target).unwrap();
-        n.get_read_log_id(read_policy).await.map_err(|e| e.into_api_error().unwrap())
+        let read_state = n.get_read_log_id(read_policy).await?;
+        Ok(read_state)
     }
 
     /// Write to exactly the requested node and preserve the acknowledged log ID.
