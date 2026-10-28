@@ -5,7 +5,6 @@ use std::time::Duration;
 use anyhow::Result;
 use futures::future::Either;
 use openraft::Config;
-use openraft::RPCTypes;
 use openraft::RaftNetworkFactory;
 use openraft::RaftNetworkV2;
 use openraft::Vote;
@@ -21,6 +20,7 @@ use openraft_memstore::OperationGate;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::rpc_kind::RpcKind;
 use crate::fixtures::ut_harness;
 
 /// Direct snapshot transfer returns `Closed` when cancellation wins over a paused pre-hook.
@@ -49,13 +49,14 @@ async fn cancel_paused_snapshot(chunked: bool) -> Result<()> {
 
     let gate = OperationGate::default();
     let hook_gate = gate.clone();
+    // `transmit_full_snapshot` pauses here, before a chunked transfer sends `InstallSnapshot`.
     router
-        .set_rpc_pre_hook(RPCTypes::InstallSnapshot, move |_router, _request, _from, _to| {
+        .set_rpc_pre_hook(RpcKind::InstallFullSnapshot, move |_call| {
             let gate = hook_gate.clone();
-            Box::pin(async move {
+            async move {
                 gate.block().await;
                 Ok::<(), RPCError<TypeConfig, Infallible>>(())
-            })
+            }
         })
         .await;
 

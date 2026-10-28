@@ -4,7 +4,6 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use openraft::Config;
-use openraft::RPCTypes;
 use openraft::ServerState;
 use openraft::errors::Infallible;
 use openraft::errors::RPCError;
@@ -13,6 +12,7 @@ use openraft_memstore::TypeConfig;
 
 use crate::fixtures::Node;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::rpc_kind::RpcKind;
 use crate::fixtures::rpc_request::RpcRequest;
 use crate::fixtures::ut_harness;
 
@@ -112,16 +112,16 @@ async fn leader_restart_cluster_committed_not_restored() -> anyhow::Result<()> {
             let total = total.clone();
             let non_null = non_null.clone();
             router
-                .set_rpc_pre_hook(RPCTypes::AppendEntries, move |_router, req, from_id, _target| {
-                    if from_id == 0
-                        && let RpcRequest::AppendEntries(ae) = &req
+                .set_rpc_pre_hook(RpcKind::AppendEntries, move |call| {
+                    if call.from == 0
+                        && let RpcRequest::AppendEntries(ae) = &call.request
                     {
                         total.fetch_add(1, Ordering::Relaxed);
                         if ae.leader_commit.is_some() {
                             non_null.fetch_add(1, Ordering::Relaxed);
                         }
                     }
-                    Box::pin(futures::future::ready(Ok::<(), RPCError<TypeConfig, Infallible>>(())))
+                    futures::future::ready(Ok::<(), RPCError<TypeConfig, Infallible>>(()))
                 })
                 .await;
         }

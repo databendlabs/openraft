@@ -6,6 +6,7 @@ use openraft::errors::Unreachable;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::rpc_kind::RpcKind;
 use crate::fixtures::ut_harness;
 
 /// Append-entries should backoff when a `Unreachable` error is found.
@@ -30,16 +31,15 @@ async fn append_entries_backoff() -> Result<()> {
     tracing::info!(log_index, "--- set node 2 to unreachable, and write 10 entries");
     {
         router
-            .set_rpc_pre_hook(RPCTypes::AppendEntries, |_router, _req, _id, target| {
-                let res = if target == 2 {
+            .set_rpc_pre_hook(RpcKind::AppendEntries, |call| {
+                let res = if call.to == 2 {
                     Err(RPCError::Unreachable(Unreachable::<TypeConfig>::from_string(
                         "unreachable",
                     )))
                 } else {
                     Ok(())
                 };
-                let fu = futures::future::ready(res);
-                Box::pin(fu)
+                futures::future::ready(res)
             })
             .await;
         // The above is equivalent to the following:

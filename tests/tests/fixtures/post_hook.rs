@@ -9,11 +9,24 @@ use crate::fixtures::MemRpcRequest;
 use crate::fixtures::MemRpcResponse;
 use crate::fixtures::RaftRouter;
 
-/// Hook function called after an RPC response is received from a target node.
+/// Owned context for one RPC response the transport is about to return.
 ///
-/// Arguments: `(router, request, response, from_id, to_id)`
-pub type PostHook =
-    Box<dyn Fn(&RaftRouter, MemRpcRequest, MemRpcResponse, MemNodeId, MemNodeId) -> PostHookResult + Send + 'static>;
+/// A post-hook future is `'static`, so this context owns the router instead of borrowing it.
+pub struct RpcResponseCall {
+    /// Router that carries this call.
+    pub router: RaftRouter,
+    /// Request that produced `response`.
+    pub request: MemRpcRequest,
+    /// Final transport response.
+    pub response: MemRpcResponse,
+    /// Node that sent the request.
+    pub from: MemNodeId,
+    /// Node that produced the response.
+    pub to: MemNodeId,
+}
+
+/// Stored post-hook. The setter boxes the caller's future into this type.
+pub type PostHook = Box<dyn Fn(RpcResponseCall) -> PostHookResult + Send + Sync + 'static>;
 
 /// Result type for post-hook functions.
 pub type PostHookResult = BoxFuture<'static, Result<(), RPCError<TypeConfig>>>;

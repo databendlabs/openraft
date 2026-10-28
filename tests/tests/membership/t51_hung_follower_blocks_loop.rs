@@ -2,7 +2,6 @@ use std::time::Duration;
 
 use anyhow::Result;
 use openraft::Config;
-use openraft::RPCTypes;
 use openraft::errors::Infallible;
 use openraft::errors::RPCError;
 use openraft::type_config::TypeConfigExt;
@@ -10,6 +9,7 @@ use openraft_memstore::OperationGate;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::rpc_kind::RpcKind;
 use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
@@ -28,14 +28,14 @@ async fn setup() -> Result<(RaftRouter, OperationGate)> {
 
     // Hold AppendEntries to node 2 until each scenario explicitly releases it.
     router
-        .set_rpc_pre_hook(RPCTypes::AppendEntries, move |_router, _req, _from, target| {
+        .set_rpc_pre_hook(RpcKind::AppendEntries, move |call| {
             let gate = rpc_gate.clone();
-            Box::pin(async move {
-                if target == 2 {
+            async move {
+                if call.to == 2 {
                     gate.block().await;
                 }
                 Ok::<(), RPCError<TypeConfig, Infallible>>(())
-            })
+            }
         })
         .await;
 

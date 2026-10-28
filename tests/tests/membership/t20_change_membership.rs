@@ -7,7 +7,6 @@ use openraft::EntryPayload;
 use openraft::LogIdOptionExt;
 use openraft::Membership;
 use openraft::Precondition;
-use openraft::RPCTypes;
 use openraft::RaftLogReader;
 use openraft::ServerState;
 use openraft::async_runtime::WatchReceiver;
@@ -29,6 +28,7 @@ use openraft_memstore::MemNodeId;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::rpc_kind::RpcKind;
 use crate::fixtures::rpc_request::RpcRequest;
 use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
@@ -301,19 +301,19 @@ async fn uncommitted_leader_log_blocks_the_change() -> anyhow::Result<()> {
     tracing::info!(log_index, "--- drop every AppendEntries that carries entries");
     {
         router
-            .set_rpc_pre_hook(RPCTypes::AppendEntries, |_router, req, from, to| {
+            .set_rpc_pre_hook(RpcKind::AppendEntries, |call| {
                 let mut carries_entries = false;
-                if let RpcRequest::AppendEntries(append) = &req {
+                if let RpcRequest::AppendEntries(append) = &call.request {
                     carries_entries = !append.entries.is_empty();
                 }
 
                 let res = if carries_entries {
-                    let msg = format!("blocked: {}->{} append-entries with entries", from, to);
+                    let msg = format!("blocked: {}->{} append-entries with entries", call.from, call.to);
                     Err(RPCError::Network(NetworkError::<TypeConfig>::from_string(msg)))
                 } else {
                     Ok(())
                 };
-                Box::pin(futures::future::ready(res))
+                futures::future::ready(res)
             })
             .await;
     }
@@ -426,7 +426,7 @@ async fn uncommitted_leader_log_blocks_the_change() -> anyhow::Result<()> {
     tracing::info!(log_index, "--- the same change succeeds once the blank log commits");
     {
         router.set_network_error(1, false);
-        router.rpc_pre_hook(RPCTypes::AppendEntries, None).await;
+        router.clear_rpc_pre_hook(RpcKind::AppendEntries).await;
         new_leader.wait(timeout()).applied_index(Some(noop_log_id.index), "blank log committed").await?;
 
         let resp = new_leader.change_membership([0, 1, 2, 3], false).await?;
