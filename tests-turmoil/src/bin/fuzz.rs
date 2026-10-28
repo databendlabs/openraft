@@ -1863,6 +1863,7 @@ fn run_single_iteration(
                 let power_loss = derived.storage.power_loss_chance > 0.0
                     && storage_rng.random_bool(derived.storage.power_loss_chance);
                 crash_node(&mut sim, victim, &cluster_state, power_loss);
+                st.invariants.on_node_crash(victim);
                 pending_bounces.push((victim, st.steps + downtime));
                 let kind = match (is_long_outage, power_loss) {
                     (false, false) => "CRASH",
@@ -1898,6 +1899,7 @@ fn run_single_iteration(
                 };
                 let power_loss = storage_rng.random_bool(derived.storage.power_loss_chance);
                 crash_node(&mut sim, victim, &cluster_state, power_loss);
+                st.invariants.on_node_crash(victim);
                 pending_bounces.push((victim, st.steps + downtime));
                 let kind = if power_loss { "CRASH(power)" } else { "CRASH" };
                 println!(

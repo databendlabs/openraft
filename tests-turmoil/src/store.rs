@@ -185,6 +185,12 @@ impl LogStore {
         self.inner.lock().unwrap().live.log_id_list()
     }
 
+    /// The log ids that survive a power loss.
+    #[openraft::macros::since(version = "0.10.0", change = "Expose durable log IDs")]
+    pub fn durable_log_id_list(&self) -> LogIdListOf<TypeConfig> {
+        self.inner.lock().unwrap().durable.log_id_list()
+    }
+
     /// The process holding this store crashed. Its flush task is gone and
     /// nobody waits for the unflushed writes any more. A power loss drops
     /// them; otherwise the page cache still reaches the disk. Either way, the

@@ -8,16 +8,24 @@
 
 use std::sync::Arc;
 
+use openraft::EntryPayload;
 use openraft::alias::LogIdListOf;
 use openraft::metrics::RaftMetrics;
+use openraft::storage::IOFlushed;
+use openraft::storage::RaftLogStorage;
+use openraft::type_config::TypeConfigExt;
 use openraft::vote::RaftLeaderId;
 
 use super::CLeaderId;
 use super::DurableLogIds;
 use super::InvariantChecker;
 use super::InvariantViolation;
+use crate::cluster::ClusterState;
 use crate::cluster::FullNodeSnapshot;
+use crate::storage_model::StorageModel;
+use crate::store::LogStore;
 use crate::store::StateMachineData;
+use crate::typ::Entry;
 use crate::typ::LogId;
 use crate::typ::NodeId;
 use crate::typ::StoredMembership;
@@ -556,6 +564,67 @@ fn committed_on_quorum_counts_crashed_voter_durable_log() {
     );
 }
 
+#[tokio::test]
+async fn committed_on_quorum_excludes_unflushed_entries() {
+    let log_id = log_id(1, 1, 1);
+    let leader = SnapshotBuilder::new(1).term(1);
+    let leader = leader.leader(1, 1, true);
+    let leader = leader.state(openraft::ServerState::Leader);
+    let leader = leader.log_entries([log_id]);
+    let leader = leader.committed(log_id);
+    let leader = leader.membership_voters(vec![vec![1, 2, 3]]);
+    let snapshots = vec![leader.build()];
+    let model = StorageModel {
+        async_flush: true,
+        flush_delay_ms: (10, 10),
+        ..StorageModel::baseline()
+    };
+    let mut cluster = ClusterState::new();
+    let mut callbacks = Vec::new();
+
+    for node_id in [1, 2] {
+        let mut store = Arc::new(LogStore::new(model.clone(), node_id));
+        let entry = Entry {
+            log_id,
+            payload: EntryPayload::Blank,
+        };
+        let (tx, rx) = TypeConfig::oneshot();
+        let callback = IOFlushed::signal(tx);
+        let appended = store.append([entry], callback).await;
+        appended.unwrap();
+        cluster.log_stores.insert(node_id, store);
+        callbacks.push(rx);
+    }
+
+    let logs = cluster.get_all_durable_log_ids();
+    let violations = check_with_durable_logs(&snapshots, &logs);
+    match violations.as_slice() {
+        [
+            InvariantViolation::CommittedNotOnQuorum {
+                leader: 1,
+                index: 1,
+                voters,
+                write_size: 2,
+                matching,
+            },
+        ] => {
+            assert_eq!(voters, &[1, 2, 3]);
+            let expected_matching = Vec::<NodeId>::new();
+            assert_eq!(matching, &expected_matching);
+        }
+        _ => panic!("expected an unflushed quorum violation: {violations:?}"),
+    }
+
+    for callback in callbacks {
+        let flushed = callback.await.unwrap();
+        flushed.unwrap();
+    }
+    let logs = cluster.get_all_durable_log_ids();
+    let violations = check_with_durable_logs(&snapshots, &logs);
+    let no_violations = violations.is_empty();
+    assert!(no_violations, "flushed quorum rejected: {violations:?}");
+}
+
 #[cfg(feature = "threshold-membership")]
 #[test]
 fn committed_on_quorum_counts_write_size() {
@@ -696,6 +765,158 @@ fn monotonic_commit_index_regression() {
         current: 3,
         ..
     });
+}
+
+#[tokio::test]
+async fn commit_index_can_recover_from_its_durable_prefix() {
+    tracing::info!("Persist node 1's log and commit through index 3");
+    let mut store = {
+        let model = StorageModel {
+            async_flush: true,
+            flush_delay_ms: (10, 10),
+            ..StorageModel::baseline()
+        };
+        let mut store = Arc::new(LogStore::new(model, 0));
+        let vote = Vote::new_committed(1, 1);
+        let saved = store.save_vote(&vote).await;
+        saved.unwrap();
+        let entries: Vec<_> = (1..=3)
+            .map(|index| Entry {
+                log_id: log_id(1, 1, index),
+                payload: EntryPayload::Blank,
+            })
+            .collect();
+        let (tx, rx) = TypeConfig::oneshot();
+        let callback = IOFlushed::signal(tx);
+        let appended = store.append(entries, callback).await;
+        appended.unwrap();
+        let flushed = rx.await.unwrap();
+        flushed.unwrap();
+        let saved = store.save_committed(Some(log_id(1, 1, 3))).await;
+        saved.unwrap();
+        let saved = store.save_vote(&vote).await;
+        saved.unwrap();
+        store
+    };
+
+    tracing::info!("Observe node 1's unflushed commit through index 5");
+    let mut checker = {
+        let entries: Vec<_> = (4..=5)
+            .map(|index| Entry {
+                log_id: log_id(1, 1, index),
+                payload: EntryPayload::Blank,
+            })
+            .collect();
+        let appended = store.append(entries, IOFlushed::noop()).await;
+        appended.unwrap();
+        let saved = store.save_committed(Some(log_id(1, 1, 5))).await;
+        saved.unwrap();
+
+        let mut checker = InvariantChecker::default();
+        let before = SnapshotBuilder::new(1).term(1);
+        let before = before.leader(1, 1, true);
+        let before = before.log_entries([log_id(1, 1, 1), log_id(1, 1, 5)]);
+        let before = before.committed(log_id(1, 1, 5));
+        let before = before.applied(log_id(1, 1, 3));
+        let before = vec![before.build()];
+        let result = checker.check(&before);
+        let no_violations = result.violations.is_empty();
+        assert!(no_violations, "initial snapshot rejected: {:?}", result.violations);
+        checker
+    };
+
+    tracing::info!("Recover node 1 at index 3 after a power loss");
+    {
+        store.crash(true);
+        checker.on_node_crash(1);
+        let recovered = store.read_committed().await.unwrap();
+        assert_eq!(recovered, Some(log_id(1, 1, 3)));
+        let after = SnapshotBuilder::new(1).term(1);
+        let after = after.leader(1, 1, true);
+        let after = after.log_entries([log_id(1, 1, 1), log_id(1, 1, 3)]);
+        let after = after.committed(recovered.unwrap());
+        let after = after.applied(log_id(1, 1, 3));
+        let after = vec![after.build()];
+        let result = checker.check(&after);
+        let no_violations = result.violations.is_empty();
+        assert!(no_violations, "recovered snapshot rejected: {:?}", result.violations);
+    }
+}
+
+#[test]
+fn crash_resets_only_the_affected_node() {
+    let mut checker = InvariantChecker::default();
+    let mut before = Vec::new();
+    for node_id in [1, 2] {
+        let snapshot = SnapshotBuilder::new(node_id).log_entries([log_id(1, 1, 1), log_id(1, 1, 5)]);
+        let snapshot = snapshot.committed(log_id(1, 1, 5));
+        before.push(snapshot.build());
+    }
+    let result = checker.check(&before);
+    let no_violations = result.violations.is_empty();
+    assert!(no_violations, "initial snapshots rejected: {:?}", result.violations);
+
+    checker.on_node_crash(1);
+    let mut after = Vec::new();
+    for node_id in [1, 2] {
+        let snapshot = SnapshotBuilder::new(node_id).log_entries([log_id(1, 1, 1), log_id(1, 1, 3)]);
+        let snapshot = snapshot.committed(log_id(1, 1, 3));
+        after.push(snapshot.build());
+    }
+    let result = checker.check(&after);
+    match result.violations.as_slice() {
+        [
+            InvariantViolation::CommitIndexRegressed {
+                node: 2,
+                previous: 5,
+                current: 3,
+            },
+        ] => {}
+        _ => panic!("expected only node 2 to regress: {:?}", result.violations),
+    }
+}
+
+#[test]
+fn durable_history_is_still_checked_after_crash() {
+    let mut checker = InvariantChecker::default();
+    let before = SnapshotBuilder::new(1).term(2);
+    let before = before.leader(2, 1, true);
+    let before = before.log_entries([log_id(1, 1, 1), log_id(1, 1, 5)]);
+    let before = before.committed(log_id(1, 1, 5));
+    let before = before.applied(log_id(1, 1, 3));
+    let before = vec![before.build()];
+    let result = checker.check(&before);
+    let no_violations = result.violations.is_empty();
+    assert!(no_violations, "initial snapshot rejected: {:?}", result.violations);
+
+    checker.on_node_crash(1);
+    let after = SnapshotBuilder::new(1).term(2);
+    let after = after.leader(1, 1, true);
+    let after = after.log_entries([log_id(1, 1, 1), log_id(1, 1, 3)]);
+    let after = after.committed(log_id(1, 1, 3));
+    let after = after.applied(log_id(1, 1, 2));
+    let after = vec![after.build()];
+    let result = checker.check(&after);
+    match result.violations.as_slice() {
+        [
+            InvariantViolation::AppliedIndexRegressed {
+                node: 1,
+                previous: 3,
+                current: 2,
+            },
+            InvariantViolation::VoteRegressed {
+                node: 1,
+                previous,
+                current,
+            },
+        ] => {
+            let previous_vote = Vote::new_committed(2, 1).to_string();
+            let current_vote = Vote::new_committed(1, 1).to_string();
+            assert_eq!(previous, &previous_vote);
+            assert_eq!(current, &current_vote);
+        }
+        _ => panic!("expected durable regressions: {:?}", result.violations),
+    }
 }
 
 #[test]

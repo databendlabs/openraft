@@ -519,7 +519,7 @@ jobs:
           rustflags: ""
 
       - name: Run deterministic simulation with ThresholdMembership
-        run: cd tests-turmoil && cargo run --release --bin fuzz --features threshold-membership -- --iterations 5 --max-steps 10000
+        run: cd tests-turmoil && cargo run --release --bin fuzz --features threshold-membership -- --iterations 5 --max-steps 10000 --storage lossy
         env:
           RUST_LOG: info
           RUST_BACKTRACE: full

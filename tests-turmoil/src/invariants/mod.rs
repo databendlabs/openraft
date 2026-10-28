@@ -98,6 +98,12 @@ pub struct InvariantChecker {
 }
 
 impl InvariantChecker {
+    /// Reset the node's commit-index baseline after its process crashes.
+    #[openraft::macros::since(version = "0.10.0", change = "Reset commit-index history on crash")]
+    pub fn on_node_crash(&mut self, node_id: NodeId) {
+        self.monotonic.on_node_crash(node_id);
+    }
+
     /// Check every invariant against `snapshots`, updating temporal state.
     pub fn check(&mut self, snapshots: &[(NodeId, FullNodeSnapshot)]) -> InvariantCheckResult {
         let durable_logs: DurableLogIds = snapshots.iter().map(|(id, s)| (*id, s.raft.log_id_list.clone())).collect();

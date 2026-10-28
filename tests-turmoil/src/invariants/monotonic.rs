@@ -18,6 +18,9 @@
 //! invariants the spec does have: `applied ≤ committed` and `MonotonicCommit`.
 //! Checking it explicitly catches bugs where an apply step accidentally
 //! re-runs on a rolled-back state.
+//!
+//! The commit index is volatile, so its baseline resets after a process crash.
+//! Applied index and vote history remain comparable across restarts.
 
 use std::collections::BTreeMap;
 
@@ -42,6 +45,12 @@ pub struct MonotonicHistory {
 }
 
 impl MonotonicHistory {
+    pub(super) fn on_node_crash(&mut self, node_id: NodeId) {
+        if let Some(previous) = self.seen.get_mut(&node_id) {
+            previous.committed_index = 0;
+        }
+    }
+
     pub fn check_and_record(
         &mut self,
         snapshots: &[(NodeId, FullNodeSnapshot)],
