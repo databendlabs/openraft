@@ -1,4 +1,6 @@
 use std::future::Future;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 use openraft::OptionalSend;
 use openraft::RaftTypeConfig;
@@ -21,10 +23,12 @@ use openraft::raft::TransferLeaderResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft::vote::RaftLeaderIdExt;
+use openraft_legacy::network_v1::InstallSnapshotRequest;
 use openraft_legacy::network_v1::RaftNetwork as LegacyRaftNetwork;
 use openraft_memstore::MemNodeId;
 use openraft_memstore::TypeConfig as MemConfig;
 
+use crate::fixtures::MemRaft;
 use crate::fixtures::MemSnapshotData;
 use crate::fixtures::RaftRouter;
 use crate::fixtures::TestingVoteExt;
@@ -127,32 +131,14 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
         option: RPCOption,
     ) -> Result<SnapshotResponse<MemConfig>, StreamingError<MemConfig>> {
         let from_id = vote.leader_id().to_node_id();
-
-        self.owner.before_rpc::<Infallible>(snapshot.clone(), from_id, self.target).await?;
-
-        let node = self.owner.get_raft_handle(&self.target)?;
-
-        let resp = if let Some(chunks) = &self.owner.snapshot_chunks {
-            let network = ChunkedNetwork {
-                node,
-                owner: self.owner.clone(),
-                requests: chunks.clone(),
-            };
-            let mut network = network.into_v2::<MemSnapshotData>();
-            network.full_snapshot(vote, snapshot.clone(), cancel, option).await?
-        } else {
-            let response = node.install_full_snapshot(vote, snapshot.clone()).await;
-            response.map_err(|e| {
-                RPCError::Unreachable(Unreachable::<MemConfig>::from_string(format!(
-                    "error: {} target={}",
-                    e, self.target
-                )))
-            })?
-        };
-
-        self.owner.call_rpc_post_hook(snapshot, resp.clone(), from_id, self.target).await?;
-
-        Ok(resp)
+        let operation = self.transmit_full_snapshot(vote, snapshot, from_id, option);
+        let cancel = std::pin::pin!(cancel);
+        let operation = std::pin::pin!(operation);
+        let raced = futures::future::select(cancel, operation).await;
+        match raced {
+            futures::future::Either::Left((closed, _operation)) => Err(StreamingError::Closed(closed)),
+            futures::future::Either::Right((result, _cancel)) => result,
+        }
     }
 
     /// Send a RequestVote RPC to the target Raft node (§5).
@@ -228,6 +214,61 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
 
         self.owner.call_rpc_post_hook(rpc, resp.clone(), from_id, self.target).await?;
 
+        Ok(resp)
+    }
+}
+
+impl RaftRouterNetwork {
+    async fn transmit_full_snapshot(
+        &self,
+        vote: Vote<<MemConfig as RaftTypeConfig>::LeaderId>,
+        snapshot: SnapshotOf<MemConfig, MemSnapshotData>,
+        from_id: MemNodeId,
+        option: RPCOption,
+    ) -> Result<SnapshotResponse<MemConfig>, StreamingError<MemConfig>> {
+        self.owner.before_rpc::<Infallible>(snapshot.clone(), from_id, self.target).await?;
+        let node = self.owner.get_raft_handle(&self.target)?;
+        let chunks = self.owner.snapshot_chunks.clone();
+        let resp = if let Some(requests) = chunks {
+            self.deliver_chunked_snapshot(node, requests, vote, snapshot.clone(), option).await?
+        } else {
+            self.deliver_direct_snapshot(node, vote, snapshot.clone()).await?
+        };
+        self.owner.call_rpc_post_hook(snapshot, resp.clone(), from_id, self.target).await?;
+        Ok(resp)
+    }
+
+    async fn deliver_chunked_snapshot(
+        &self,
+        node: MemRaft,
+        requests: Arc<Mutex<Vec<InstallSnapshotRequest<MemConfig>>>>,
+        vote: Vote<<MemConfig as RaftTypeConfig>::LeaderId>,
+        snapshot: SnapshotOf<MemConfig, MemSnapshotData>,
+        option: RPCOption,
+    ) -> Result<SnapshotResponse<MemConfig>, StreamingError<MemConfig>> {
+        let network = ChunkedNetwork {
+            node,
+            owner: self.owner.clone(),
+            requests,
+        };
+        let mut network = network.into_v2::<MemSnapshotData>();
+        // The outer select owns cancellation. The adapter still requires a future.
+        let cancel = std::future::pending::<ReplicationClosed>();
+        network.full_snapshot(vote, snapshot, cancel, option).await
+    }
+
+    async fn deliver_direct_snapshot(
+        &self,
+        node: MemRaft,
+        vote: Vote<<MemConfig as RaftTypeConfig>::LeaderId>,
+        snapshot: SnapshotOf<MemConfig, MemSnapshotData>,
+    ) -> Result<SnapshotResponse<MemConfig>, StreamingError<MemConfig>> {
+        let response = node.install_full_snapshot(vote, snapshot).await;
+        let resp = response.map_err(|error| {
+            let message = format!("error: {} target={}", error, self.target);
+            let unreachable = Unreachable::<MemConfig>::from_string(message);
+            RPCError::Unreachable(unreachable)
+        })?;
         Ok(resp)
     }
 }
