@@ -3,6 +3,8 @@ use std::collections::BTreeSet;
 use std::future::Future;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 
 use openraft::OptionalSend;
 use openraft::RaftNetworkFactory;
@@ -24,6 +26,7 @@ use openraft::raft::VoteResponse;
 
 use crate::fixtures::custom_membership::test_cluster::TestConfig;
 use crate::fixtures::custom_membership::test_cluster::TestRaft;
+use crate::fixtures::network_delay::apply_send_delay;
 
 /// Delivers RPCs among the nodes of one test, except between the two nodes of a cut link.
 pub struct Router<C>
@@ -31,6 +34,7 @@ where C: TestConfig
 {
     pub(super) nodes: BTreeMap<u64, TestRaft<C>>,
     pub(super) cut_links: BTreeSet<(u64, u64)>,
+    pub(super) send_delay: Arc<AtomicU64>,
 }
 
 /// The network that node `source` sends its RPCs through.
@@ -83,6 +87,14 @@ where C: TestConfig
         };
         Ok(raft.clone())
     }
+
+    async fn delay_send(&self) {
+        let delay_ms = {
+            let router = self.router.lock().unwrap();
+            router.send_delay.load(Ordering::Relaxed)
+        };
+        apply_send_delay::<C>(delay_ms).await;
+    }
 }
 
 impl<C> RaftNetworkV2<C> for Connection<C>
@@ -95,18 +107,21 @@ where C: TestConfig
         request: AppendEntriesRequest<C>,
         _option: RPCOption,
     ) -> Result<AppendEntriesResponse<C>, RPCError<C>> {
+        self.delay_send().await;
         let target = self.target()?;
         let response = target.append_entries(request).await;
         response.map_err(|error| RPCError::Unreachable(Unreachable::new(&error)))
     }
 
     async fn vote(&mut self, request: VoteRequest<C>, _option: RPCOption) -> Result<VoteResponse<C>, RPCError<C>> {
+        self.delay_send().await;
         let target = self.target()?;
         let response = target.vote(request).await;
         response.map_err(|error| RPCError::Unreachable(Unreachable::new(&error)))
     }
 
     async fn pre_vote(&mut self, request: VoteRequest<C>, _option: RPCOption) -> Result<VoteResponse<C>, RPCError<C>> {
+        self.delay_send().await;
         let target = self.target()?;
         let response = target.pre_vote(request).await;
         response.map_err(|error| RPCError::Unreachable(Unreachable::new(&error)))
@@ -117,6 +132,7 @@ where C: TestConfig
         request: TransferLeaderRequest<C>,
         _option: RPCOption,
     ) -> Result<TransferLeaderResponse<C>, RPCError<C>> {
+        self.delay_send().await;
         let target = self.target()?;
         let response = target.handle_transfer_leader(request).await;
         response.map_err(|error| RPCError::Unreachable(Unreachable::new(&error)))
@@ -129,6 +145,7 @@ where C: TestConfig
         _cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         _option: RPCOption,
     ) -> Result<SnapshotResponse<C>, StreamingError<C>> {
+        self.delay_send().await;
         unimplemented!("the test sends no snapshot")
     }
 }

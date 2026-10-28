@@ -8,6 +8,7 @@ use maplit::btreeset;
 use openraft::RaftTypeConfig;
 use openraft::ReadPolicy;
 use openraft::ServerState;
+use openraft::SnapshotPolicy;
 use openraft::Vote;
 use openraft::alias::AsyncRuntimeOf;
 use openraft::alias::EntryOf;
@@ -29,6 +30,7 @@ use openraft_membership::quorum::ThresholdQuorumSet;
 use crate::fixtures::TestingVoteExt;
 use crate::fixtures::custom_membership::TestCluster;
 use crate::fixtures::custom_membership::TestConfig;
+use crate::fixtures::custom_membership::cluster_config;
 use crate::fixtures::ut_harness;
 
 openraft::declare_raft_types!(
@@ -93,7 +95,12 @@ where
     C: TestConfig + RaftTypeConfig<D = String, Membership = ThresholdMembership<u64, ()>>,
     EntryOf<C>: Clone + PartialEq + fmt::Debug,
 {
-    let cluster = TestCluster::<C>::start(btreeset! {1, 2, 3, 4, 5}, five_voters(&[2])).await?;
+    let cluster = TestCluster::<C>::start(
+        cluster_config(SnapshotPolicy::Never),
+        btreeset! {1, 2, 3, 4, 5},
+        five_voters(&[2]),
+    )
+    .await?;
 
     tracing::info!("--- node 1 wins term 1 and commits its blank entry to start its lease; all nodes store the entry");
     {
@@ -184,7 +191,7 @@ where
 async fn lease_blocks_election_by_read_quorum_without_leader() -> Result<()> {
     let voters = btreeset! {1, 2, 3, 4};
     let membership = <AdvConfig as RaftTypeConfig>::Membership::new(voters.clone(), 3, voters.clone())?;
-    let cluster = TestCluster::<AdvConfig>::start(voters, membership).await?;
+    let cluster = TestCluster::<AdvConfig>::start(cluster_config(SnapshotPolicy::Never), voters, membership).await?;
 
     tracing::info!("--- node 1 wins term 1, and every node stores its blank entry");
     {
@@ -240,7 +247,12 @@ async fn lease_blocks_election_by_read_quorum_without_leader() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn sizes_only_change_passes_through_joint_config() -> Result<()> {
-    let cluster = TestCluster::<AdvConfig>::start(btreeset! {1, 2, 3, 4, 5}, five_voters(&[2])).await?;
+    let cluster = TestCluster::<AdvConfig>::start(
+        cluster_config(SnapshotPolicy::Never),
+        btreeset! {1, 2, 3, 4, 5},
+        five_voters(&[2]),
+    )
+    .await?;
 
     tracing::info!("--- node 1 wins term 1 and commits its blank entry");
     {
@@ -299,7 +311,12 @@ async fn sizes_only_change_passes_through_joint_config() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn linearizable_read_needs_only_write_quorum() -> Result<()> {
     let membership = five_voters(&[2]);
-    let cluster = TestCluster::<AdvConfig>::start(btreeset! {1, 2, 3, 4, 5}, membership.clone()).await?;
+    let cluster = TestCluster::<AdvConfig>::start(
+        cluster_config(SnapshotPolicy::Never),
+        btreeset! {1, 2, 3, 4, 5},
+        membership.clone(),
+    )
+    .await?;
 
     tracing::info!("--- node 1 wins term 1 and commits its blank entry");
     {
