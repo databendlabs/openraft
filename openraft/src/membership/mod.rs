@@ -44,8 +44,6 @@ pub use node_ref::NodeRef;
 pub use node_role::NodeRole;
 use openraft_macros::since;
 #[since(version = "0.10.0")]
-pub use quorum_set::QuorumBridge;
-#[since(version = "0.10.0")]
 pub use quorum_set::QuorumIntersection;
 #[since(version = "0.10.0")]
 pub use quorum_set::QuorumSet;
