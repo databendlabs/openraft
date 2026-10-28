@@ -1,9 +1,8 @@
-use std::time::Duration;
-
 use anyhow::Result;
 use openraft::Config;
 use openraft::RaftLogReader;
 use openraft::type_config::TypeConfigExt;
+use openraft_memstore::BlockOperation;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
@@ -44,14 +43,45 @@ async fn replication_does_not_block_purge() -> Result<()> {
         let written = router.client_request_many(0, "0", 10).await?;
         log_index += written.count;
 
+        // `flush_metrics` runs on the next core loop, after `PurgeLog` returns.
+        // Holding the gate keeps both the snapshot metric and `purged` unpublished
+        // until this test releases it.
+        let gate = {
+            let (_log, sm) = router.get_storage_handle(&0)?;
+            sm.block.pause(BlockOperation::PurgeLog)
+        };
+
         leader.trigger().snapshot().await?;
+        TypeConfig::timeout(timeout().unwrap(), gate.entered()).await?;
+
+        let (mut sto0, _sm0) = router.get_storage_handle(&0)?;
+        let logs_before = sto0.try_get_log_entries(..).await?;
+        assert!(
+            logs_before.len() > max_keep as usize,
+            "purge has not removed logs while the gate is held"
+        );
+
+        gate.release();
+
+        let purged_index = log_index - max_keep;
+        let purged = log_id(1, 0, purged_index);
         leader.wait(timeout()).snapshot(log_id(1, 0, log_index), "built snapshot").await?;
+        leader.wait(timeout()).purged(Some(purged), "purged after snapshot").await?;
 
-        TypeConfig::sleep(Duration::from_millis(2_000)).await;
-
-        let (mut sto0, mut _sm0) = router.get_storage_handle(&0)?;
         let logs = sto0.try_get_log_entries(..).await?;
-        assert_eq!(max_keep as usize, logs.len(), "leader's local logs are purged");
+        let mut got = Vec::new();
+        for entry in &logs {
+            got.push(entry.log_id.clone());
+        }
+
+        let first = log_index + 1 - max_keep;
+        let mut want = Vec::new();
+        let mut index = first;
+        while index <= log_index {
+            want.push(log_id(1, 0, index));
+            index += 1;
+        }
+        assert_eq!(want, got, "leader's local logs are purged");
     }
 
     Ok(())

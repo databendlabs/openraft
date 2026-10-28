@@ -1,22 +1,21 @@
+use std::fmt;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
-use std::time::Duration;
 
 use anyhow::Result;
 use openraft::Config;
 use openraft::metrics::MetricsRecorder;
-use openraft::type_config::TypeConfigExt;
-use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::events::Events;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
 
 /// A simple MetricsRecorder implementation for testing.
 ///
 /// Captures all metric calls so they can be verified in tests.
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct TestRecorder {
     // Histograms (sum of all recorded values)
     pub apply_batch_total: AtomicU64,
@@ -36,6 +35,20 @@ pub struct TestRecorder {
     pub vote_count: AtomicU64,
     pub heartbeat_count: AtomicU64,
     pub append_count: AtomicU64,
+
+    pub purged_events: Events<u64>,
+    pub vote_events: Events<()>,
+}
+
+impl fmt::Debug for TestRecorder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TestRecorder")
+            .field("purged_index", &self.purged_index.load(Ordering::Relaxed))
+            .field("vote_count", &self.vote_count.load(Ordering::Relaxed))
+            .field("purged_events", &self.purged_events.get())
+            .field("vote_events", &self.vote_events.get())
+            .finish()
+    }
 }
 
 impl MetricsRecorder for TestRecorder {
@@ -72,7 +85,11 @@ impl MetricsRecorder for TestRecorder {
     }
 
     fn set_purged_index(&self, v: u64) {
-        self.purged_index.store(v, Ordering::Relaxed);
+        let previous = self.purged_index.swap(v, Ordering::Relaxed);
+        if previous == v {
+            return;
+        }
+        self.purged_events.push(v);
     }
 
     fn set_server_state(&self, v: u8) {
@@ -81,6 +98,7 @@ impl MetricsRecorder for TestRecorder {
 
     fn increment_vote(&self) {
         self.vote_count.fetch_add(1, Ordering::Relaxed);
+        self.vote_events.push(());
     }
 
     fn increment_heartbeat(&self) {
@@ -147,8 +165,9 @@ async fn test_metrics_recorder_all_fields() -> Result<()> {
     leader.trigger().purge_log(log_index).await?;
     router.wait(&leader_id).purged(Some(log_id(1, leader_id, log_index)), "purged").await?;
 
-    // Wait a bit for metrics to be recorded
-    TypeConfig::sleep(Duration::from_millis(100)).await;
+    let purged_events = recorder.purged_events.wait(1).await?;
+    let observed = purged_events.last().copied();
+    assert_eq!(Some(log_index), observed, "recorder observed the purged index");
 
     // --- Verify metrics ---
     tracing::info!("--- verifying metrics");
@@ -193,7 +212,11 @@ async fn test_metrics_recorder_all_fields() -> Result<()> {
     assert!(committed > 0, "committed_index should be > 0, got {}", committed);
     assert!(applied > 0, "applied_index should be > 0, got {}", applied);
     assert!(snapshot > 0, "snapshot_index should be > 0, got {}", snapshot);
-    assert!(purged > 0, "purged_index should be > 0, got {}", purged);
+    assert_eq!(
+        log_index, purged,
+        "purged_index should be the purged log, got {}",
+        purged
+    );
     assert_eq!(
         server_state, 3,
         "server_state should be Leader (3), got {}",
@@ -247,8 +270,8 @@ async fn test_metrics_recorder_on_follower() -> Result<()> {
     let node2 = router.get_raft_handle(&2)?;
     node2.trigger().elect(false).await?;
 
-    // Wait a bit for vote to be processed
-    TypeConfig::sleep(Duration::from_millis(200)).await;
+    let votes = recorder.vote_events.wait(1).await?;
+    assert_eq!(vec![()], votes, "follower recorder observed the vote");
 
     // Verify follower metrics
     let append_count = recorder.append_count.load(Ordering::Relaxed);
