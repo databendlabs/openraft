@@ -170,10 +170,9 @@ async fn get_read_log_id() -> Result<()> {
         router.remove_rpc_rule(blocked_to_n0);
 
         n1.wait(timeout()).applied_index(Some(log_index + 1), "commit blank log").await?;
-        log_index += 1;
 
-        let written = router.client_request_many(1, "foo", 1).await?;
-        log_index += written.count;
+        let response = router.client_request(1, "foo", 0).await?;
+        log_index = response.log_id.index();
         n1.wait(timeout()).applied_index(Some(log_index), "log applied to state-machine").await?;
 
         let (read_log_id, applied) = n1.get_read_log_id(ReadPolicy::ReadIndex).await?;
@@ -585,7 +584,7 @@ async fn ensure_linearizable_process_from_followers() -> Result<()> {
     router.network_send_delay(0);
 
     tracing::info!("--- initializing cluster");
-    let mut log_index = router.new_cluster([0, 1, 2], []).await?;
+    router.new_cluster([0, 1, 2], []).await?;
 
     // Get the ID of the leader
     let leader_node_id = router.leader().expect("leader not found");
@@ -622,11 +621,12 @@ async fn ensure_linearizable_process_from_followers() -> Result<()> {
         futures::future::ready(res)
     };
 
+    let log_index;
     tracing::info!("--- block follower n1, leader write a log, n1 unable to apply last log, but n2 does");
     {
         router.set_rpc_pre_hook(RpcKind::AppendEntries, block_to_follower_n1).await;
-        let written = router.client_request_many(leader_node_id, "foo", 1).await?;
-        log_index += written.count;
+        let response = router.client_request(leader_node_id, "foo", 0).await?;
+        log_index = response.log_id.index();
         leader.wait(timeout()).applied_index(Some(log_index), "log applied to state-machine").await?;
 
         let linearizer = leader.get_read_linearizer(ReadPolicy::ReadIndex).await?;

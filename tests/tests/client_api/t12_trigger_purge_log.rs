@@ -29,11 +29,10 @@ async fn trigger_purge_log() -> anyhow::Result<()> {
     tracing::info!(log_index, "--- write some logs");
     {
         let written = router.client_request_many(0, "0", 10).await?;
-        log_index += written.count;
+        let last_log_id = written.last_log_id.expect("nonempty workload");
+        log_index = last_log_id.index();
 
-        for id in [0, 1, 2] {
-            router.wait(&id).applied_index(Some(log_index), format!("node-{} write logs", id)).await?;
-        }
+        router.wait_applied_at_least([0, 1, 2], log_index, "write logs").await?;
     }
 
     tracing::info!(log_index, "--- trigger snapshot for node-0");
@@ -49,11 +48,10 @@ async fn trigger_purge_log() -> anyhow::Result<()> {
     tracing::info!(log_index, "--- write another bunch of logs");
     {
         let written = router.client_request_many(0, "0", 10).await?;
-        log_index += written.count;
+        let last_log_id = written.last_log_id.expect("nonempty workload");
+        log_index = last_log_id.index();
 
-        for id in [0, 1, 2] {
-            router.wait(&id).applied_index(Some(log_index), format!("node-{} write logs", id)).await?;
-        }
+        router.wait_applied_at_least([0, 1, 2], log_index, "write logs").await?;
     }
 
     tracing::info!(log_index, "--- purge log for node 0");

@@ -47,8 +47,8 @@ async fn leader_restart_clears_state() -> anyhow::Result<()> {
 
     tracing::info!(log_index, "--- write to 1 log");
     {
-        let written = router.client_request_many(0, "foo", 1).await?;
-        log_index = written.last_log_id.expect("nonempty workload").index();
+        let response = router.client_request(0, "foo", 0).await?;
+        log_index = response.log_id.index();
         router.wait_applied_at_least([1, 2], log_index, "followers applied log").await?;
     }
 
