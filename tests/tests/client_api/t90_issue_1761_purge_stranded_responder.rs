@@ -82,9 +82,9 @@ async fn write_then_superseded_by_snapshot_install() -> Result<()> {
 
     tracing::info!(log_index, "--- advance node 1 well past node 0, then snapshot it");
     let written = router.client_request_many(1, "foo", 10).await?;
-    let snap_index = log_index + 1 + written.count;
-    router.wait(&1).applied_index(Some(snap_index), "node 1 advanced").await?;
-    router.wait(&2).applied_index(Some(snap_index), "node 2 advanced").await?;
+    let last_log_id = written.last_log_id.expect("nonempty workload");
+    let snap_index = last_log_id.index();
+    router.wait_applied_at_least([1, 2], snap_index, "nodes 1 and 2 advanced").await?;
 
     let snap = {
         let n1 = router.get_raft_handle(&1)?;
