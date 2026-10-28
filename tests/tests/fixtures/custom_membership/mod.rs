@@ -17,3 +17,5 @@ pub use minimal_quorums::MinimalQuorumsMembership;
 pub use test_cluster::TestCluster;
 #[allow(unused_imports)]
 pub use test_cluster::TestConfig;
+#[allow(unused_imports)]
+pub use test_cluster::cluster_config;

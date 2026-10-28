@@ -25,6 +25,7 @@ mod t31_removed_follower;
 mod t40_threshold_membership;
 mod t41_custom_membership_edit;
 mod t42_unproven_read_write_intersection;
+mod t43_network_send_delay;
 mod t51_hung_follower_blocks_loop;
 mod t51_remove_unreachable_follower;
 mod t52_change_membership_on_uninitialized_node;

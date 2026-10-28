@@ -4,6 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::ServerState;
+use openraft::SnapshotPolicy;
 use openraft::Vote;
 use openraft::alias::AsyncRuntimeOf;
 use openraft::alias::EntryOf;
@@ -19,6 +20,7 @@ use openraft::type_config::TypeConfigExt;
 use crate::fixtures::custom_membership::MinimalQuorums;
 use crate::fixtures::custom_membership::MinimalQuorumsMembership;
 use crate::fixtures::custom_membership::TestCluster;
+use crate::fixtures::custom_membership::cluster_config;
 use crate::fixtures::ut_harness;
 
 /// The grid of `openraft/src/docs/protocol/election_quorum.md`: each row is a read quorum and each
@@ -66,7 +68,8 @@ fn links_between_rows() -> BTreeSet<(u64, u64)> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn standard_leader_ids_need_a_read_and_a_write_quorum() -> Result<()> {
-    let cluster = TestCluster::<StdConfig>::start(btreeset! {1, 2, 3, 4}, grid()).await?;
+    let cluster =
+        TestCluster::<StdConfig>::start(cluster_config(SnapshotPolicy::Never), btreeset! {1, 2, 3, 4}, grid()).await?;
 
     tracing::info!("--- cut the rows {{1,2}} and {{3,4}} apart, then campaign at nodes 1 and 4 in term 1");
     {
@@ -122,7 +125,8 @@ async fn standard_leader_ids_need_a_read_and_a_write_quorum() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn advanced_leader_ids_elect_by_read_quorum_and_commit_by_write_quorum() -> Result<()> {
-    let cluster = TestCluster::<AdvConfig>::start(btreeset! {1, 2, 3, 4}, grid()).await?;
+    let cluster =
+        TestCluster::<AdvConfig>::start(cluster_config(SnapshotPolicy::Never), btreeset! {1, 2, 3, 4}, grid()).await?;
 
     tracing::info!("--- cut the rows {{1,2}} and {{3,4}} apart; nodes 1 and 4 both win term 1");
     {

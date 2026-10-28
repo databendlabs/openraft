@@ -4,6 +4,7 @@ use anyhow::Result;
 use maplit::btreemap;
 use maplit::btreeset;
 use openraft::EntryPayload;
+use openraft::SnapshotPolicy;
 use openraft::alias::AsyncRuntimeOf;
 use openraft::alias::EntryOf;
 use openraft::async_runtime::WatchReceiver;
@@ -19,6 +20,7 @@ use openraft::type_config::TypeConfigExt;
 use crate::fixtures::custom_membership::MinimalQuorums;
 use crate::fixtures::custom_membership::MinimalQuorumsMembership;
 use crate::fixtures::custom_membership::TestCluster;
+use crate::fixtures::custom_membership::cluster_config;
 use crate::fixtures::ut_harness;
 
 openraft::declare_raft_types!(
@@ -47,7 +49,12 @@ async fn replication_respects_receive_logs() -> Result<()> {
             6 => campaigner,
         },
     };
-    let cluster = TestCluster::<TypeConfig>::start(btreeset! {1, 2, 3, 4, 5, 6}, initial.clone()).await?;
+    let cluster = TestCluster::<TypeConfig>::start(
+        cluster_config(SnapshotPolicy::Never),
+        btreeset! {1, 2, 3, 4, 5, 6},
+        initial.clone(),
+    )
+    .await?;
     let leader = cluster.raft(1);
 
     tracing::info!("--- node 1 wins the read quorum with node 2 and replicates only to log receivers");
@@ -154,7 +161,9 @@ async fn append_membership_rejects_write_voter_without_receive_logs() -> Result<
         write: MinimalQuorums(vec![btreeset! {1, 2}]),
         roles: btreemap! {},
     };
-    let cluster = TestCluster::<TypeConfig>::start(btreeset! {1, 2}, initial.clone()).await?;
+    let cluster =
+        TestCluster::<TypeConfig>::start(cluster_config(SnapshotPolicy::Never), btreeset! {1, 2}, initial.clone())
+            .await?;
     let leader = cluster.raft(1);
 
     tracing::info!("--- elect node 1 and commit its blank entry, so that it may append a membership");
