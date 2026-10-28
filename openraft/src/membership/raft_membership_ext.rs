@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 use crate::errors::EmptyMembership;
@@ -9,7 +8,6 @@ use crate::membership::NodeRole;
 use crate::membership::RaftMembership;
 use crate::membership::errors::UnprovenReadWriteIntersection;
 use crate::membership::errors::WriteVoterWithoutReceiveLogs;
-use crate::quorum::QuorumBridge;
 use crate::quorum::QuorumSet;
 
 /// Operations derived from the required methods of [`RaftMembership`].
@@ -34,14 +32,6 @@ pub(crate) trait RaftMembershipExt: RaftMembership {
             return false;
         };
         node.role.contains(NodeRole::ReceiveLogs)
-    }
-
-    /// Returns whether `node_id` is in the read quorum set.
-    fn is_read_voter(&self, node_id: &Self::NodeId) -> bool {
-        let Some(node) = self.get_node(node_id) else {
-            return false;
-        };
-        node.is_read_voter
     }
 
     /// Returns whether `node_id` is in the write quorum set.
@@ -182,59 +172,6 @@ pub(crate) trait RaftMembershipExt: RaftMembership {
         }
 
         self.supports_direct_transition_to(other)
-    }
-
-    /// Returns `goal` without the voters of `self` that are learners of `goal`.
-    ///
-    /// [`RaftMembershipEdit::apply()`](crate::membership::RaftMembershipEdit::apply) keeps a voter
-    /// that an edit removes. OpenRaft calls this method when a membership change does not
-    /// retain such voters as learners. A removed voter that keeps [`NodeRole::Campaigner`] in
-    /// `goal` is not a learner, so it stays.
-    fn drop_voters_demoted_to_learners(&self, goal: Self) -> Self {
-        let mut nodes = Vec::new();
-        for node_id in goal.node_ids() {
-            // Safe unwrap(): `node_ids()` lists only the IDs that `get_node()` knows.
-            let node = goal.get_node(&node_id).unwrap();
-            let was_voter = self.is_read_voter(&node_id) || self.is_write_voter(&node_id);
-            if was_voter && node.is_learner() {
-                continue;
-            }
-            nodes.push((node_id, node.node.clone(), node.role));
-        }
-
-        let read = goal.read_quorum_set().clone();
-        let write = goal.write_quorum_set().clone();
-        Self::new(read, write, nodes)
-    }
-
-    /// Returns the joint configuration of `self` and `goal`.
-    ///
-    /// Its read quorum set is the [`joint_with()`](QuorumBridge::joint_with) of the read quorum
-    /// sets of `self` and `goal`, and its write quorum set comes from the write quorum sets the
-    /// same way. It knows every node of `goal` and every voter of `self`. A node takes its
-    /// metadata from `goal` when `goal` knows it. A voter of `self` keeps its roles in `self` as
-    /// well.
-    fn joint_with(&self, goal: &Self) -> Self {
-        let read = self.read_quorum_set().joint_with(goal.read_quorum_set().clone());
-        let write = self.write_quorum_set().joint_with(goal.write_quorum_set().clone());
-
-        let mut nodes = BTreeMap::new();
-        for node_id in goal.node_ids() {
-            // Safe unwrap(): `node_ids()` lists only the IDs that `get_node()` knows.
-            let node = goal.get_node(&node_id).unwrap();
-            nodes.insert(node_id, (node.node.clone(), node.role));
-        }
-
-        for voter_id in self.voter_ids() {
-            // Safe unwrap(): a voter of `self` is a node that `get_node()` knows.
-            let node = self.get_node(&voter_id).unwrap();
-            let entry = nodes.entry(voter_id.clone());
-            let (_, role) = entry.or_insert_with(|| (node.node.clone(), NodeRole::Empty));
-            *role |= node.role;
-        }
-
-        let nodes = nodes.into_iter().map(|(node_id, (node, role))| (node_id, node, role));
-        Self::new(read, write, nodes)
     }
 }
 

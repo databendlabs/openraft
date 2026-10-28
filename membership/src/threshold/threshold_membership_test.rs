@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use std::num::NonZeroU64;
 use std::sync::Arc;
 
 use maplit::btreemap;
@@ -20,7 +19,6 @@ use crate::ThresholdMembership;
 use crate::errors::InvalidThresholds;
 use crate::errors::ThresholdMembershipError;
 use crate::quorum::Joint;
-use crate::quorum::QuorumBridge;
 use crate::quorum::QuorumIntersection;
 use crate::quorum::QuorumSet;
 use crate::quorum::ThresholdQuorumSet;
@@ -39,10 +37,9 @@ fn joint_membership(
 ) -> ThresholdMembership<u64, ()> {
     let read = left.read.joint_with(right.read.clone());
     let write = left.write.joint_with(right.write.clone());
-    let configs = ThresholdMembership::<u64, ()>::configs_from_rules(&read, &write).unwrap();
     let mut nodes = left.nodes.clone();
     nodes.extend(right.nodes.clone());
-    ThresholdMembership::from_configs(configs, nodes)
+    ThresholdMembership { read, write, nodes }
 }
 
 /// Returns the error that `ThresholdMembership` returns for sizes that do not fit its voters.
@@ -123,14 +120,14 @@ fn test_every_write_size_derives_minimum_intersecting_read_quorums() {
             let minimum_read = (voter_count - write_size + 1) as usize;
             let read_subsets = subsets.iter().filter(|ids| ids.len() >= minimum_read);
             let expected_reads: Vec<_> = read_subsets.cloned().collect();
-            let actual_reads = accepted(membership.read_quorum_set(), &subsets);
+            let actual_reads = accepted(&membership.read_quorum_set(), &subsets);
             assert_eq!(
                 expected_reads, actual_reads,
                 "voters={voter_count}, write_size={write_size}"
             );
             let write_subsets = subsets.iter().filter(|ids| ids.len() >= write_size as usize);
             let expected_writes: Vec<_> = write_subsets.cloned().collect();
-            let actual_writes = accepted(membership.write_quorum_set(), &subsets);
+            let actual_writes = accepted(&membership.write_quorum_set(), &subsets);
             assert_eq!(
                 expected_writes, actual_writes,
                 "voters={voter_count}, write_size={write_size}"
@@ -146,13 +143,13 @@ fn test_quorum_sets_accept_read_size_and_write_size_voters() {
     let membership = threshold(voters, 2);
 
     // 5 subsets hold 4 voters, and 1 holds all 5.
-    let read_accepted = accepted(membership.read_quorum_set(), &subsets);
+    let read_accepted = accepted(&membership.read_quorum_set(), &subsets);
     let want = subsets.iter().filter(|subset| subset.len() >= 4).cloned().collect::<Vec<_>>();
     assert_eq!(6, want.len());
     assert_eq!(want, read_accepted);
 
     // Only the empty set and the 5 single voters are not write quorums.
-    let write_accepted = accepted(membership.write_quorum_set(), &subsets);
+    let write_accepted = accepted(&membership.write_quorum_set(), &subsets);
     let want = subsets.iter().filter(|subset| subset.len() >= 2).cloned().collect::<Vec<_>>();
     assert_eq!(26, want.len());
     assert_eq!(want, write_accepted);
@@ -182,12 +179,12 @@ fn test_transition_between_sizes() {
     for target in [&m33, &m24] {
         let read = m42.read_quorum_set();
         let write = target.write_quorum_set();
-        let intersects = read.intersects_with(write);
+        let intersects = read.intersects_with(&write);
         assert_eq!(Some(true), intersects);
 
         let write = m42.write_quorum_set();
         let read = target.read_quorum_set();
-        let intersects = write.intersects_with(read);
+        let intersects = write.intersects_with(&read);
         assert_eq!(Some(false), intersects);
     }
 
@@ -195,9 +192,9 @@ fn test_transition_between_sizes() {
     // writes.
     let joint = joint_membership(&m42, &m24);
     let want = subsets.iter().filter(|subset| subset.len() >= 4).cloned().collect::<Vec<_>>();
-    let read_accepted = accepted(joint.read_quorum_set(), &subsets);
+    let read_accepted = accepted(&joint.read_quorum_set(), &subsets);
     assert_eq!(want, read_accepted);
-    let write_accepted = accepted(joint.write_quorum_set(), &subsets);
+    let write_accepted = accepted(&joint.write_quorum_set(), &subsets);
     assert_eq!(want, write_accepted);
 }
 
@@ -286,50 +283,25 @@ fn test_apply() {
 }
 
 #[test]
-fn test_raft_membership_new_rebuilds_joint_membership() {
-    let nodes = btreeset! {1, 2, 3, 4};
-    let old = ThresholdMembership::<u64, ()>::new(btreeset! {1, 2, 3}, 2, nodes.clone()).unwrap();
-    let new = ThresholdMembership::<u64, ()>::new(btreeset! {2, 3, 4}, 1, nodes).unwrap();
-    let joint = joint_membership(&old, &new);
+fn test_joint_with_keeps_new_nodes_and_old_voters() {
+    // Learner 4 replaces voter 1, and the new config no longer holds learner 5.
+    let old = ThresholdMembership::<u64, ()>::new(btreeset! {1, 2, 3}, 2, btreeset! {1, 2, 3, 4, 5}).unwrap();
+    let new = ThresholdMembership::<u64, ()>::new(btreeset! {2, 3, 4}, 1, btreeset! {2, 3, 4}).unwrap();
 
-    let mut nodes = vec![];
-    for node_id in joint.node_ids() {
-        let node = joint.get_node(&node_id).unwrap();
-        nodes.push((node_id, *node.node, node.role));
-    }
-    let read = joint.read_quorum_set().clone();
-    let write = joint.write_quorum_set().clone();
-
-    let rebuilt = <ThresholdMembership<u64, ()> as RaftMembership>::new(read, write, nodes);
-    assert_eq!(joint, rebuilt);
-
-    let shared = shares_voter_sets(&rebuilt);
+    let joint = old.joint_with(&new);
+    let want = ThresholdMembership {
+        read: old.read.joint_with(new.read.clone()),
+        write: old.write.joint_with(new.write.clone()),
+        nodes: btreemap! {1 => (), 2 => (), 3 => (), 4 => ()},
+    };
+    assert_eq!(want, joint);
+    let shared = shares_voter_sets(&joint);
     assert!(shared);
-}
 
-#[test]
-#[should_panic(expected = "a read rule holds the voters {1, 2, 3}, but its write rule holds {1, 2, 4}")]
-fn test_raft_membership_new_panics_on_different_voters() {
-    let two = NonZeroU64::new(2).unwrap();
-    let read_rule = ThresholdQuorumSet::new(two, btreeset! {1, 2, 3});
-    let write_rule = ThresholdQuorumSet::new(two, btreeset! {1, 2, 4});
-    let read = Joint::new([read_rule]);
-    let write = Joint::new([write_rule]);
-    let nodes: [(u64, (), NodeRole); 0] = [];
-
-    <ThresholdMembership<u64, ()> as RaftMembership>::new(read, write, nodes);
-}
-
-#[test]
-#[should_panic(expected = "read_size=3 must equal voter_count + 1 - write_size=2")]
-fn test_raft_membership_new_rejects_non_minimal_read_size() {
-    let three = NonZeroU64::new(3).unwrap();
-    let rule = ThresholdQuorumSet::new(three, btreeset! {1, 2, 3, 4});
-    let read = Joint::new([rule.clone()]);
-    let write = Joint::new([rule]);
-    let nodes: [(u64, (), NodeRole); 0] = [];
-
-    <ThresholdMembership<u64, ()> as RaftMembership>::new(read, write, nodes);
+    // A target that keeps voter 1 as a learner loses it when OpenRaft does not retain it.
+    let with_learner = ThresholdMembership::<u64, ()>::new(btreeset! {2, 3, 4}, 1, btreeset! {1, 2, 3, 4}).unwrap();
+    let dropped = old.drop_voters_demoted_to_learners(with_learner);
+    assert_eq!(new, dropped);
 }
 
 #[test]

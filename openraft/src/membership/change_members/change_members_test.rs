@@ -5,8 +5,8 @@ use super::ChangeMembers;
 use crate::Membership;
 use crate::errors::EmptyMembership;
 use crate::errors::MembershipError;
+use crate::membership::RaftMembership;
 use crate::membership::RaftMembershipEdit;
-use crate::membership::RaftMembershipExt;
 
 #[test]
 fn nested_batch_applies_edits_in_order_before_finishing_target() {

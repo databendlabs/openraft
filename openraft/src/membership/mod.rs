@@ -7,8 +7,8 @@
 //! - [`Membership`] - Cluster membership configuration (voters and learners)
 //! - [`StoredMembership`] - Membership state stored in state machine
 //! - [`IntoNodes`] - Trait for converting node sets with metadata
-//! - [`QuorumSet`], [`QuorumIntersection`] and [`QuorumBridge`] - Traits from the quorum-set crate
-//!   that the quorum set of a [`RaftMembership`] implements
+//! - [`QuorumSet`] and [`QuorumIntersection`] - Traits from the quorum-set crate that the quorum
+//!   set of a [`RaftMembership`] implements
 //!
 //! ## Overview
 //!
@@ -43,8 +43,6 @@ pub use membership::Membership;
 pub use node_ref::NodeRef;
 pub use node_role::NodeRole;
 use openraft_macros::since;
-#[since(version = "0.10.0")]
-pub use quorum_set::QuorumBridge;
 #[since(version = "0.10.0")]
 pub use quorum_set::QuorumIntersection;
 #[since(version = "0.10.0")]

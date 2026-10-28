@@ -1,6 +1,4 @@
 use std::fmt;
-use std::num::NonZeroU64;
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -18,14 +16,11 @@ use openraft::entry::RaftEntry;
 use openraft::errors::LinearizableReadError;
 use openraft::errors::QuorumNotEnough;
 use openraft::errors::RaftError;
-use openraft::membership::NodeRole;
 use openraft::membership::RaftMembership;
 use openraft::testing::log_id;
 use openraft::type_config::TypeConfigExt;
 use openraft_membership::ThresholdChange;
 use openraft_membership::ThresholdMembership;
-use openraft_membership::quorum::Joint;
-use openraft_membership::quorum::ThresholdQuorumSet;
 
 use crate::fixtures::TestingVoteExt;
 use crate::fixtures::custom_membership::TestCluster;
@@ -57,22 +52,19 @@ openraft::declare_raft_types!(
 /// The voters 1 to 5 with one config per write size, the oldest config first.
 /// Two configs form a joint membership.
 fn five_voters(sizes: &[u64]) -> ThresholdMembership<u64, ()> {
-    let voters = Arc::new(btreeset! {1, 2, 3, 4, 5});
-    let mut read_rules = vec![];
-    let mut write_rules = vec![];
+    let voters = btreeset! {1, 2, 3, 4, 5};
+    let mut configs = vec![];
     for &write_size in sizes {
-        let read_size = voters.len() as u64 - write_size + 1;
-        let read_size = NonZeroU64::new(read_size).unwrap();
-        let write_size = NonZeroU64::new(write_size).unwrap();
-        read_rules.push(ThresholdQuorumSet::new(read_size, voters.clone()));
-        write_rules.push(ThresholdQuorumSet::new(write_size, voters.clone()));
+        let config = ThresholdMembership::new(voters.clone(), write_size, voters.clone()).unwrap();
+        configs.push(config);
     }
 
-    let read = Joint::new(read_rules);
-    let write = Joint::new(write_rules);
-    let voter_role = NodeRole::Campaigner | NodeRole::ReceiveLogs;
-    let nodes = voters.iter().map(|id| (*id, (), voter_role));
-    RaftMembership::new(read, write, nodes)
+    let (first, rest) = configs.split_first().unwrap();
+    let mut membership = first.clone();
+    for config in rest {
+        membership = membership.joint_with(config);
+    }
+    membership
 }
 
 #[tracing::instrument]

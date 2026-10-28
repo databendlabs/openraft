@@ -104,33 +104,25 @@ pub(crate) fn majority_membership(voter_sets: Vec<BTreeSet<NodeId>>, learners: V
 #[cfg(all(test, feature = "threshold-membership"))]
 pub(crate) fn majority_membership(voter_sets: Vec<BTreeSet<NodeId>>, learners: Vec<NodeId>) -> Membership {
     use std::collections::BTreeMap;
-    use std::num::NonZeroU64;
-    use std::sync::Arc;
 
-    use openraft::membership::NodeRole;
     use openraft::membership::RaftMembership;
-    use openraft_membership::quorum::Joint;
-    use openraft_membership::quorum::ThresholdQuorumSet;
 
-    let voter_role = NodeRole::Campaigner | NodeRole::ReceiveLogs;
-    let mut roles = BTreeMap::new();
-    let mut read_rules = Vec::new();
-    let mut write_rules = Vec::new();
+    let mut nodes = BTreeMap::new();
+    for id in voter_sets.iter().flatten().chain(&learners) {
+        nodes.insert(*id, Node::default());
+    }
+
+    let mut configs = Vec::new();
     for voters in voter_sets {
-        for id in &voters {
-            roles.insert(*id, voter_role);
-        }
-        let majority = NonZeroU64::MIN.saturating_add(voters.len() as u64 / 2);
-        let read_size = voters.len() as u64 - majority.get() + 1;
-        let read_size = NonZeroU64::new(read_size).unwrap();
-        let voters = Arc::new(voters);
-        read_rules.push(ThresholdQuorumSet::new(read_size, voters.clone()));
-        write_rules.push(ThresholdQuorumSet::new(majority, voters));
-    }
-    for id in learners {
-        roles.entry(id).or_insert(NodeRole::ReceiveLogs);
+        let majority = voters.len() as u64 / 2 + 1;
+        let config = Membership::new(voters, majority, nodes.clone()).unwrap();
+        configs.push(config);
     }
 
-    let nodes = roles.into_iter().map(|(id, role)| (id, Node::default(), role));
-    RaftMembership::new(Joint::new(read_rules), Joint::new(write_rules), nodes)
+    let (first, rest) = configs.split_first().unwrap();
+    let mut membership = first.clone();
+    for config in rest {
+        membership = membership.joint_with(config);
+    }
+    membership
 }
