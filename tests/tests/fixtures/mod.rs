@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::fmt;
+use std::future::Future;
 use std::io::Cursor;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -26,6 +27,7 @@ use openraft::ServerState;
 use openraft::async_runtime::Mutex as AsyncMutex;
 use openraft::errors::ClientWriteError;
 use openraft::errors::Fatal;
+use openraft::errors::Infallible;
 use openraft::errors::LinearizableReadError;
 use openraft::errors::NetworkError;
 use openraft::errors::RPCError;
@@ -121,8 +123,10 @@ use openraft::alias::VoteOf;
 use openraft::async_runtime::WatchReceiver;
 use post_hook::PostHook;
 use post_hook::PostHookResult;
+pub use post_hook::RpcResponseCall;
 use pre_hook::PreHook;
 use pre_hook::PreHookResult;
+pub use pre_hook::RpcCall;
 use rpc_error_type::RpcErrorType;
 
 /// A type which emulates a network transport and implements the `RaftNetworkFactory` trait.
@@ -157,10 +161,10 @@ pub struct RaftRouter {
     next_rpc_rule: Arc<AtomicU64>,
 
     /// A hook function to be called when before an RPC is sent to target node.
-    rpc_pre_hook: Arc<MutexOf<TypeConfig, HashMap<RPCTypes, PreHook>>>,
+    rpc_pre_hook: Arc<MutexOf<TypeConfig, HashMap<RpcKind, PreHook>>>,
 
     /// A hook function to be called when after an RPC is received from target node.
-    rpc_post_hook: Arc<MutexOf<TypeConfig, HashMap<RPCTypes, PostHook>>>,
+    rpc_post_hook: Arc<MutexOf<TypeConfig, HashMap<RpcKind, PostHook>>>,
 
     /// Recorded wire chunks when the legacy snapshot transport is selected.
     snapshot_chunks: Option<Arc<Mutex<Vec<InstallSnapshotRequest<MemConfig>>>>>,
@@ -473,35 +477,64 @@ impl RaftRouter {
         }
     }
 
-    /// Set a hook function to be called when before an RPC is sent to target node.
-    pub async fn set_rpc_pre_hook<F>(&self, rpc_type: RPCTypes, hook: F)
-    where F: Fn(&RaftRouter, MemRpcRequest, MemNodeId, MemNodeId) -> PreHookResult + Send + 'static {
-        self.rpc_pre_hook(rpc_type, Some(Box::new(hook))).await;
-    }
-
-    /// Observe the final response returned by the transport.
-    pub async fn set_rpc_post_hook<F>(&self, rpc_type: RPCTypes, hook: F)
-    where F: Fn(&RaftRouter, MemRpcRequest, MemRpcResponse, MemNodeId, MemNodeId) -> PostHookResult + Send + 'static
+    /// Register a pre-hook for one exact [`RpcKind`].
+    ///
+    /// `hook` returns an ordinary future. This method boxes that future.
+    pub async fn set_rpc_pre_hook<F, Fut>(&self, kind: RpcKind, hook: F)
+    where
+        F: Fn(RpcCall) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<(), RPCError<TypeConfig, Infallible>>> + Send + 'static,
     {
-        self.rpc_post_hook(rpc_type, Some(Box::new(hook))).await;
+        let stored = move |call| -> PreHookResult {
+            let future = hook(call);
+            Box::pin(future)
+        };
+        let stored: PreHook = Box::new(stored);
+        self.rpc_pre_hook(kind, Some(stored)).await;
     }
 
-    /// Set or unset a hook function to be called when before an RPC is sent to target node.
-    pub async fn rpc_pre_hook(&self, rpc_type: RPCTypes, hook: Option<PreHook>) {
+    /// Register a post-hook for one exact [`RpcKind`].
+    ///
+    /// The hook sees the final transport response and returns an ordinary future.
+    /// This method boxes that future.
+    pub async fn set_rpc_post_hook<F, Fut>(&self, kind: RpcKind, hook: F)
+    where
+        F: Fn(RpcResponseCall) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<(), RPCError<TypeConfig>>> + Send + 'static,
+    {
+        let stored = move |call| -> PostHookResult {
+            let future = hook(call);
+            Box::pin(future)
+        };
+        let stored: PostHook = Box::new(stored);
+        self.rpc_post_hook(kind, Some(stored)).await;
+    }
+
+    /// Remove the pre-hook for one [`RpcKind`].
+    pub async fn clear_rpc_pre_hook(&self, kind: RpcKind) {
+        self.rpc_pre_hook(kind, None).await;
+    }
+
+    /// Remove the post-hook for one [`RpcKind`].
+    pub async fn clear_rpc_post_hook(&self, kind: RpcKind) {
+        self.rpc_post_hook(kind, None).await;
+    }
+
+    async fn rpc_pre_hook(&self, kind: RpcKind, hook: Option<PreHook>) {
         let mut rpc_pre_hook = self.rpc_pre_hook.lock().await;
         if let Some(hook) = hook {
-            rpc_pre_hook.insert(rpc_type, hook);
+            rpc_pre_hook.insert(kind, hook);
         } else {
-            rpc_pre_hook.remove(&rpc_type);
+            rpc_pre_hook.remove(&kind);
         }
     }
 
-    pub async fn rpc_post_hook(&self, rpc_type: RPCTypes, hook: Option<PostHook>) {
+    async fn rpc_post_hook(&self, kind: RpcKind, hook: Option<PostHook>) {
         let mut post_hook = self.rpc_post_hook.lock().await;
         if let Some(hook) = hook {
-            post_hook.insert(rpc_type, hook);
+            post_hook.insert(kind, hook);
         } else {
-            post_hook.remove(&rpc_type);
+            post_hook.remove(&kind);
         }
     }
 
@@ -535,7 +568,7 @@ impl RaftRouter {
         E: std::error::Error,
     {
         let request = request.into();
-        let typ = request.get_type();
+        let kind = request.kind();
 
         {
             let rules = self.rpc_rules.lock().unwrap();
@@ -551,11 +584,18 @@ impl RaftRouter {
         let fu = {
             let rpc_pre_hook = self.rpc_pre_hook.lock().await;
 
-            let Some(hook) = rpc_pre_hook.get(&typ) else {
+            let Some(hook) = rpc_pre_hook.get(&kind) else {
                 return Ok(());
             };
 
-            hook(self, request, from, to)
+            let router = self.clone();
+            let call = RpcCall {
+                router,
+                request,
+                from,
+                to,
+            };
+            hook(call)
         };
 
         let res = fu.await;
@@ -591,16 +631,24 @@ impl RaftRouter {
     {
         let request = request.into();
         let response = response.into();
-        let typ = request.get_type();
+        let kind = request.kind();
 
         let fu = {
             let rpc_post_hook = self.rpc_post_hook.lock().await;
 
-            let Some(hook) = rpc_post_hook.get(&typ) else {
+            let Some(hook) = rpc_post_hook.get(&kind) else {
                 return Ok(());
             };
 
-            hook(self, request, response, from, to)
+            let router = self.clone();
+            let call = RpcResponseCall {
+                router,
+                request,
+                response,
+                from,
+                to,
+            };
+            hook(call)
         };
 
         let res = fu.await;

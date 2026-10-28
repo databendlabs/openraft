@@ -4,12 +4,12 @@ use std::time::Duration;
 
 use anyhow::Result;
 use openraft::Config;
-use openraft::RPCTypes;
 use openraft::type_config::OneshotSender;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::rpc_kind::RpcKind;
 use crate::fixtures::rpc_response::RpcResponse;
 use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
@@ -49,16 +49,16 @@ async fn conflict_updates_clock_progress() -> Result<()> {
     );
     {
         router
-            .set_rpc_post_hook(RPCTypes::AppendEntries, move |router, _req, resp, _from, target| {
-                if target == 1 && matches!(resp, RpcResponse::AppendEntries(resp) if resp.is_conflict()) {
-                    router.set_unreachable(target, true);
+            .set_rpc_post_hook(RpcKind::AppendEntries, move |call| {
+                if call.to == 1 && matches!(call.response, RpcResponse::AppendEntries(resp) if resp.is_conflict()) {
+                    call.router.set_unreachable(call.to, true);
 
                     if let Some(tx) = conflict_tx.lock().unwrap().take() {
                         tx.send(()).ok();
                     }
                 }
 
-                Box::pin(async { Ok(()) })
+                async { Ok(()) }
             })
             .await;
     }

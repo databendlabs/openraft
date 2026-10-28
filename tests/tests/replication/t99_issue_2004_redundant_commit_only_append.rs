@@ -4,9 +4,9 @@ use std::sync::atomic::Ordering;
 
 use anyhow::Result;
 use openraft::Config;
-use openraft::RPCTypes;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::rpc_kind::RpcKind;
 use crate::fixtures::rpc_request::RpcRequest;
 use crate::fixtures::ut_harness;
 
@@ -45,15 +45,15 @@ async fn no_redundant_commit_only_append_entries() -> Result<()> {
         let with_entries = with_entries.clone();
 
         router
-            .set_rpc_pre_hook(RPCTypes::AppendEntries, move |_router, req, _from, _to| {
-                if let RpcRequest::AppendEntries(append) = &req {
+            .set_rpc_pre_hook(RpcKind::AppendEntries, move |call| {
+                if let RpcRequest::AppendEntries(append) = &call.request {
                     if append.entries.is_empty() {
                         entry_less.fetch_add(1, Ordering::Relaxed);
                     } else {
                         with_entries.fetch_add(1, Ordering::Relaxed);
                     }
                 }
-                Box::pin(async move { Ok(()) })
+                async move { Ok(()) }
             })
             .await;
     }

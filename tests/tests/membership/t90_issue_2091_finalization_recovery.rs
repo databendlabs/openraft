@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::sync::Mutex;
 
 use anyhow::Context;
@@ -7,7 +8,6 @@ use openraft::Config;
 use openraft::EntryPayload;
 use openraft::LogIdOptionExt;
 use openraft::Membership;
-use openraft::RPCTypes;
 use openraft::RaftLogReader;
 use openraft::ServerState;
 use openraft::Vote;
@@ -25,6 +25,7 @@ use openraft_memstore::TypeConfig;
 use crate::fixtures::Node;
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
+use crate::fixtures::rpc_kind::RpcKind;
 use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
@@ -77,7 +78,8 @@ async fn automatic_recovery_retries_single_remote_voter() -> Result<()> {
                 "--- heal voting and require a later automatic round to replicate final"
             );
             {
-                router.rpc_pre_hook(RPCTypes::Vote, None).await;
+                router.clear_rpc_pre_hook(RpcKind::Vote).await;
+                router.clear_rpc_pre_hook(RpcKind::PreVote).await;
                 survivor
                     .wait(timeout())
                     .metrics(
@@ -174,15 +176,15 @@ async fn restart_in_final_window(retain: bool, pre_vote: bool) -> Result<(RaftRo
     );
     let pending = {
         router
-            .set_rpc_pre_hook(RPCTypes::AppendEntries, |_router, _request, from, to| {
-                let result = if from == 0 && to == 1 {
+            .set_rpc_pre_hook(RpcKind::AppendEntries, |call| {
+                let result = if call.from == 0 && call.to == 1 {
                     Err(RPCError::Network(NetworkError::<TypeConfig>::from_string(
                         "hold final on node 0",
                     )))
                 } else {
                     Ok(())
                 };
-                Box::pin(futures::future::ready(result))
+                futures::future::ready(result)
             })
             .await;
         let learners = if retain {
@@ -247,30 +249,33 @@ async fn restart_in_final_window(retain: bool, pre_vote: bool) -> Result<(RaftRo
                 "restart retains final without restoring leader authority",
             )
             .await?;
-        router.rpc_pre_hook(RPCTypes::AppendEntries, None).await;
+        router.clear_rpc_pre_hook(RpcKind::AppendEntries).await;
     }
 
     Ok((router, log_index))
 }
 
-/// Both Vote and PreVote use the fixture's Vote hook; a notification proves an actual attempt.
+/// Vote and PreVote are separate kinds. A notification proves one attempt.
 async fn block_election_requests(router: &RaftRouter) -> OneshotReceiverOf<TypeConfig, ()> {
     let (tx, rx) = TypeConfig::oneshot();
-    let first_request = Mutex::new(Some(tx));
-    router
-        .set_rpc_pre_hook(RPCTypes::Vote, move |_router, _request, from, to| {
-            let result = if from == 0 && to == 1 {
-                if let Some(tx) = first_request.lock().unwrap().take() {
-                    let _ = tx.send(());
-                }
-                Err(RPCError::Network(NetworkError::<TypeConfig>::from_string(
-                    "fail recovery election round",
-                )))
-            } else {
-                Ok(())
-            };
-            Box::pin(futures::future::ready(result))
-        })
-        .await;
+    let first_request = Arc::new(Mutex::new(Some(tx)));
+    for kind in [RpcKind::Vote, RpcKind::PreVote] {
+        let first_request = first_request.clone();
+        router
+            .set_rpc_pre_hook(kind, move |call| {
+                let result = if call.from == 0 && call.to == 1 {
+                    if let Some(tx) = first_request.lock().unwrap().take() {
+                        let _ = tx.send(());
+                    }
+                    Err(RPCError::Network(NetworkError::<TypeConfig>::from_string(
+                        "fail recovery election round",
+                    )))
+                } else {
+                    Ok(())
+                };
+                futures::future::ready(result)
+            })
+            .await;
+    }
     rx
 }

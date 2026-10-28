@@ -1,11 +1,11 @@
 use std::time::Duration;
 
 use openraft::Config;
-use openraft::RPCTypes;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::rpc_kind::RpcKind;
 use crate::fixtures::rpc_request::RpcRequest;
 use crate::fixtures::ut_harness;
 
@@ -41,10 +41,10 @@ async fn t99_issue_1500_heartbeat_cause_reversion_panic() -> anyhow::Result<()> 
     // (non-empty payload). This creates a race condition where the heartbeat conflict response
     // may arrive after the follower has caught up via normal replication.
     router
-        .set_rpc_post_hook(RPCTypes::AppendEntries, |_router, req, _resp, _id, target| {
-            let sleep_ms = if target == 2 {
-                tracing::debug!("Post-hook for target {}: {}", target, req);
-                match req {
+        .set_rpc_post_hook(RpcKind::AppendEntries, |call| {
+            let sleep_ms = if call.to == 2 {
+                tracing::debug!("Post-hook for target {}: {}", call.to, call.request);
+                match call.request {
                     RpcRequest::AppendEntries(append) if append.entries.is_empty() => 10,
                     _ => 0,
                 }
@@ -52,16 +52,15 @@ async fn t99_issue_1500_heartbeat_cause_reversion_panic() -> anyhow::Result<()> 
                 0
             };
 
-            let fu = async move {
+            let target = call.to;
+            async move {
                 if sleep_ms > 0 {
                     tracing::debug!("Post-hook for target {}: delaying response by {}ms", target, sleep_ms);
                     TypeConfig::sleep(Duration::from_millis(sleep_ms)).await;
                     tracing::debug!("Post-hook for target {}: delay complete", target);
                 }
                 Ok::<_, _>(())
-            };
-
-            Box::pin(fu)
+            }
         })
         .await;
 

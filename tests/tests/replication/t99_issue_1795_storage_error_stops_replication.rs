@@ -5,7 +5,6 @@ use std::time::Duration;
 
 use anyhow::Result;
 use openraft::Config;
-use openraft::RPCTypes;
 use openraft::SnapshotPolicy;
 use openraft::errors::RPCError;
 use openraft::errors::Unreachable;
@@ -14,6 +13,7 @@ use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
+use crate::fixtures::rpc_kind::RpcKind;
 use crate::fixtures::rpc_request::RpcRequest;
 use crate::fixtures::ut_harness;
 
@@ -50,9 +50,9 @@ async fn storage_error_stops_replication() -> Result<()> {
     {
         let sent_malformed = sent_malformed.clone();
         router
-            .set_rpc_pre_hook(RPCTypes::AppendEntries, move |_router, req, _id, target| {
-                let malformed = match req {
-                    RpcRequest::AppendEntries(append) if target == 1 => {
+            .set_rpc_pre_hook(RpcKind::AppendEntries, move |call| {
+                let malformed = match call.request {
+                    RpcRequest::AppendEntries(append) if call.to == 1 => {
                         append.prev_log_id.is_none()
                             && append.entries.first().is_some_and(|entry| entry.log_id.index() > 0)
                     }
@@ -68,7 +68,7 @@ async fn storage_error_stops_replication() -> Result<()> {
                     Ok(())
                 };
 
-                Box::pin(futures::future::ready(res))
+                futures::future::ready(res)
             })
             .await;
     }

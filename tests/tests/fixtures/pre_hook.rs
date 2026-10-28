@@ -9,10 +9,22 @@ use openraft_memstore::TypeConfig;
 use crate::fixtures::MemRpcRequest;
 use crate::fixtures::RaftRouter;
 
-/// Hook function called before an RPC is sent to a target node.
+/// Owned context for one RPC that is about to be sent.
 ///
-/// Arguments: `(router, rpc, from_id, to_id)`
-pub type PreHook = Box<dyn Fn(&RaftRouter, MemRpcRequest, MemNodeId, MemNodeId) -> PreHookResult + Send + 'static>;
+/// A pre-hook future is `'static`, so this context owns the router instead of borrowing it.
+pub struct RpcCall {
+    /// Router that carries this call.
+    pub router: RaftRouter,
+    /// Request about to be sent.
+    pub request: MemRpcRequest,
+    /// Node sending the request.
+    pub from: MemNodeId,
+    /// Node receiving the request.
+    pub to: MemNodeId,
+}
+
+/// Stored pre-hook. The setter boxes the caller's future into this type.
+pub type PreHook = Box<dyn Fn(RpcCall) -> PreHookResult + Send + Sync + 'static>;
 
 /// Result type for pre-hook functions.
 ///
