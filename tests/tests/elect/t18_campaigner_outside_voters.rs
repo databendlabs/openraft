@@ -4,6 +4,7 @@ use anyhow::Result;
 use maplit::btreemap;
 use maplit::btreeset;
 use openraft::ServerState;
+use openraft::SnapshotPolicy;
 use openraft::Vote;
 use openraft::alias::AsyncRuntimeOf;
 use openraft::alias::EntryOf;
@@ -16,6 +17,7 @@ use openraft::type_config::TypeConfigExt;
 use crate::fixtures::custom_membership::MinimalQuorums;
 use crate::fixtures::custom_membership::MinimalQuorumsMembership;
 use crate::fixtures::custom_membership::TestCluster;
+use crate::fixtures::custom_membership::cluster_config;
 use crate::fixtures::ut_harness;
 
 /// Node 1 alone is the read and the write quorum. Node 2 is in neither quorum set, but it may
@@ -45,7 +47,12 @@ openraft::declare_raft_types!(
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn campaigner_outside_voters_runs_pre_vote() -> Result<()> {
-    let cluster = TestCluster::<TypeConfig>::start(btreeset! {1, 2}, voter_1_and_campaigner_2()).await?;
+    let cluster = TestCluster::<TypeConfig>::start(
+        cluster_config(SnapshotPolicy::Never),
+        btreeset! {1, 2},
+        voter_1_and_campaigner_2(),
+    )
+    .await?;
 
     tracing::info!("--- node 1 wins term 1, and node 2 stores its blank entry");
     {
@@ -79,7 +86,12 @@ async fn campaigner_outside_voters_runs_pre_vote() -> Result<()> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn campaigner_outside_voters_wins_election() -> Result<()> {
-    let cluster = TestCluster::<TypeConfig>::start(btreeset! {1, 2}, voter_1_and_campaigner_2()).await?;
+    let cluster = TestCluster::<TypeConfig>::start(
+        cluster_config(SnapshotPolicy::Never),
+        btreeset! {1, 2},
+        voter_1_and_campaigner_2(),
+    )
+    .await?;
 
     tracing::info!("--- node 2 campaigns in term 1, wins the vote of node 1, and commits its blank entry");
     {
@@ -113,7 +125,12 @@ async fn campaigner_outside_voters_wins_election() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn leadership_transfers_to_campaigner_outside_voters() -> Result<()> {
     let membership = voter_1_and_campaigner_2();
-    let cluster = TestCluster::<TypeConfig>::start(btreeset! {1, 2}, membership.clone()).await?;
+    let cluster = TestCluster::<TypeConfig>::start(
+        cluster_config(SnapshotPolicy::Never),
+        btreeset! {1, 2},
+        membership.clone(),
+    )
+    .await?;
 
     tracing::info!("--- elect node 1 and catch up the non-voter transfer target, node 2");
     {

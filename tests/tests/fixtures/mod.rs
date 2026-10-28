@@ -6,7 +6,6 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
-use std::env;
 use std::fmt;
 use std::io::Cursor;
 use std::sync::Arc;
@@ -16,7 +15,6 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use anyhow::Context;
-use openraft::AsyncRuntime;
 use openraft::Config;
 use openraft::RPCTypes;
 use openraft::Raft;
@@ -37,7 +35,6 @@ use openraft::metrics::WaitError;
 use openraft::raft::ClientWriteResponse;
 use openraft::raft::linearizable_read::ReadLogId;
 use openraft::type_config::TypeConfigExt;
-use openraft::type_config::alias::AsyncRuntimeOf;
 use openraft::type_config::alias::MutexOf;
 use openraft::vote::RaftLeaderId;
 use openraft::vote::RaftLeaderIdExt;
@@ -53,7 +50,6 @@ use openraft_memstore::TypeConfig as MemConfig;
 use pretty_assertions::assert_eq;
 #[allow(unused_imports)]
 use pretty_assertions::assert_ne;
-use rand::RngExt;
 
 use crate::fixtures::rpc_kind::RpcKind;
 use crate::fixtures::rpc_request::RpcRequest;
@@ -67,6 +63,9 @@ mod harness;
 pub use harness::ut_harness;
 pub mod logging;
 mod network;
+mod network_delay;
+#[allow(unused_imports)]
+pub(crate) use network_delay::delay_from_env;
 mod node;
 pub use node::Node;
 mod post_hook;
@@ -186,16 +185,7 @@ impl Builder {
     }
 
     pub fn build(self) -> RaftRouter {
-        let send_delay = {
-            let send_delay = env::var("OPENRAFT_NETWORK_SEND_DELAY").ok();
-
-            if let Some(d) = send_delay {
-                tracing::info!("OPENRAFT_NETWORK_SEND_DELAY set send-delay to {} ms", d);
-                d.parse::<u64>().unwrap()
-            } else {
-                self.send_delay
-            }
-        };
+        let send_delay = network_delay::configured_network_send_delay(self.send_delay);
         let snapshot_chunks = if self.chunked_snapshots {
             Some(Arc::new(Mutex::new(Vec::new())))
         } else {
@@ -252,13 +242,7 @@ impl RaftRouter {
 
     async fn rand_send_delay(&self) {
         let send_delay = self.send_delay.load(Ordering::Relaxed);
-        if send_delay == 0 {
-            return;
-        }
-
-        let r = AsyncRuntimeOf::<TypeConfig>::thread_rng().random::<u64>() % send_delay;
-        let timeout = Duration::from_millis(r);
-        TypeConfig::sleep(timeout).await;
+        network_delay::apply_send_delay::<TypeConfig>(send_delay).await;
     }
 
     pub fn set_append_entries_quota(&mut self, quota: Option<u64>) {

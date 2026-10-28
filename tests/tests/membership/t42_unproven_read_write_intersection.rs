@@ -6,6 +6,7 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::EntryPayload;
+use openraft::SnapshotPolicy;
 use openraft::alias::AsyncRuntimeOf;
 use openraft::entry::RaftEntry;
 use openraft::errors::MembershipError;
@@ -23,6 +24,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::fixtures::custom_membership::TestCluster;
+use crate::fixtures::custom_membership::cluster_config;
 use crate::fixtures::ut_harness;
 
 openraft::declare_raft_types!(
@@ -158,7 +160,12 @@ impl RaftMembershipEdit<UnprovenMembership> for ChangeMembers<u64, ()> {
 async fn change_membership_completes_with_unproven_intersection() -> Result<()> {
     let initial = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], [4]);
     let initial = UnprovenMembership::from(initial);
-    let cluster = TestCluster::<TypeConfig>::start(btreeset! {1, 2, 3, 4}, initial.clone()).await?;
+    let cluster = TestCluster::<TypeConfig>::start(
+        cluster_config(SnapshotPolicy::Never),
+        btreeset! {1, 2, 3, 4},
+        initial.clone(),
+    )
+    .await?;
 
     tracing::info!(
         node = 1,
@@ -209,7 +216,12 @@ async fn change_membership_completes_with_unproven_intersection() -> Result<()> 
 async fn keeping_voters_needs_no_joint_with_unproven_intersection() -> Result<()> {
     let initial = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], [4]);
     let initial = UnprovenMembership::from(initial);
-    let cluster = TestCluster::<TypeConfig>::start(btreeset! {1, 2, 3, 4}, initial.clone()).await?;
+    let cluster = TestCluster::<TypeConfig>::start(
+        cluster_config(SnapshotPolicy::Never),
+        btreeset! {1, 2, 3, 4},
+        initial.clone(),
+    )
+    .await?;
 
     tracing::info!(
         node = 1,

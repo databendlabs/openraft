@@ -6,6 +6,7 @@ use maplit::btreeset;
 use openraft::RaftTypeConfig;
 use openraft::ReadPolicy;
 use openraft::ServerState;
+use openraft::SnapshotPolicy;
 use openraft::alias::AsyncRuntimeOf;
 use openraft::alias::EntryOf;
 use openraft::entry::RaftEntry;
@@ -16,6 +17,7 @@ use crate::fixtures::custom_membership::MinimalQuorums;
 use crate::fixtures::custom_membership::MinimalQuorumsMembership;
 use crate::fixtures::custom_membership::TestCluster;
 use crate::fixtures::custom_membership::TestConfig;
+use crate::fixtures::custom_membership::cluster_config;
 use crate::fixtures::ut_harness;
 
 /// Each of nodes 1, 2 and 3 alone is a write quorum. The only read quorum holds all three nodes,
@@ -69,7 +71,12 @@ where
     C: TestConfig + RaftTypeConfig<D = String, Membership = MinimalQuorumsMembership>,
     EntryOf<C>: Clone + PartialEq + fmt::Debug,
 {
-    let cluster = TestCluster::<C>::start(btreeset! {1, 2, 3}, every_node_is_a_write_quorum()).await?;
+    let cluster = TestCluster::<C>::start(
+        cluster_config(SnapshotPolicy::Never),
+        btreeset! {1, 2, 3},
+        every_node_is_a_write_quorum(),
+    )
+    .await?;
 
     tracing::info!("--- node 1 wins the votes of all three nodes and commits its blank entry");
     {
@@ -132,7 +139,12 @@ where
     C: TestConfig + RaftTypeConfig<D = String, Membership = MinimalQuorumsMembership>,
     EntryOf<C>: Clone + PartialEq + fmt::Debug,
 {
-    let cluster = TestCluster::<C>::start(btreeset! {1, 2, 3}, every_node_is_a_write_quorum()).await?;
+    let cluster = TestCluster::<C>::start(
+        cluster_config(SnapshotPolicy::Never),
+        btreeset! {1, 2, 3},
+        every_node_is_a_write_quorum(),
+    )
+    .await?;
 
     tracing::info!("--- node 1 wins term 1, and every node stores its blank entry");
     {

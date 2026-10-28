@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::SnapshotPolicy;
 use openraft::alias::AsyncRuntimeOf;
 use openraft::alias::MembershipOf;
 use openraft::async_runtime::WatchReceiver;
@@ -25,6 +26,7 @@ use openraft_membership::ThresholdMembership;
 use openraft_membership::errors::InvalidThresholds;
 
 use crate::fixtures::custom_membership::TestCluster;
+use crate::fixtures::custom_membership::cluster_config;
 use crate::fixtures::ut_harness;
 
 openraft::declare_raft_types!(
@@ -90,7 +92,12 @@ impl RaftMembershipEdit<MembershipOf<TypeConfig>> for CustomEdit {
 async fn custom_edit_uses_current_membership_and_completes_joint_consensus() -> Result<()> {
     let voters = btreeset! {1, 2, 3};
     let initial = MembershipOf::<TypeConfig>::new(voters.clone(), 2, voters)?;
-    let cluster = TestCluster::<TypeConfig>::start(btreeset! {1, 2, 3, 4}, initial.clone()).await?;
+    let cluster = TestCluster::<TypeConfig>::start(
+        cluster_config(SnapshotPolicy::Never),
+        btreeset! {1, 2, 3, 4},
+        initial.clone(),
+    )
+    .await?;
 
     tracing::info!(
         node = 1,
