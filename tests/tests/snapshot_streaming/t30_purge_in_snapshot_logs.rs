@@ -40,13 +40,26 @@ async fn purge_in_snapshot_logs() -> Result<()> {
         log_index += written.count;
         leader.trigger().snapshot().await?;
         leader.wait(timeout()).snapshot(log_id(1, 0, log_index), "building 1st snapshot").await?;
+
+        let purged_index = log_index - max_keep;
+        let purged = log_id(1, 0, purged_index);
+        leader.wait(timeout()).purged(Some(purged), "purged after 1st snapshot").await?;
+
         let (mut sto0, mut _sm0) = router.get_storage_handle(&0)?;
-
-        // Wait for purge to complete.
-        TypeConfig::sleep(Duration::from_millis(500)).await;
-
         let logs = sto0.try_get_log_entries(..).await?;
-        assert_eq!(max_keep as usize, logs.len());
+        let mut got = Vec::new();
+        for entry in &logs {
+            got.push(entry.log_id);
+        }
+
+        let first = log_index + 1 - max_keep;
+        let mut want = Vec::new();
+        let mut index = first;
+        while index <= log_index {
+            want.push(log_id(1, 0, index));
+            index += 1;
+        }
+        assert_eq!(want, got, "leader keeps max_in_snapshot_log_to_keep logs");
     }
 
     // Leader:  -------15..20
@@ -82,12 +95,24 @@ async fn purge_in_snapshot_logs() -> Result<()> {
     }
 
     // finally logs are purged on leader.
+    let purged_index = log_index - max_keep;
+    let purged = log_id(1, 0, purged_index);
+    leader.wait(timeout()).purged(Some(purged), "purged after 2nd snapshot").await?;
+
     let logs = sto0.try_get_log_entries(..).await?;
-    assert_eq!(
-        log_index + 1 - max_keep,
-        logs[0].log_id.index(),
-        "leader's local logs are purged"
-    );
+    let mut got = Vec::new();
+    for entry in &logs {
+        got.push(entry.log_id);
+    }
+
+    let first = log_index + 1 - max_keep;
+    let mut want = Vec::new();
+    let mut index = first;
+    while index <= log_index {
+        want.push(log_id(1, 0, index));
+        index += 1;
+    }
+    assert_eq!(want, got, "leader's local logs are purged");
 
     Ok(())
 }
