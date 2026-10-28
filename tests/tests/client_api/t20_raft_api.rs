@@ -135,7 +135,7 @@ async fn api_learner_ids() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn api_after_add_learner() -> Result<()> {
     let config = Config {
-        enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;
