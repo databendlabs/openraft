@@ -92,10 +92,10 @@ async fn client_reads() -> Result<()> {
     tracing::debug!(?result, "ensure_linearizable with majority down");
 
     let err = result.unwrap_err();
-    let LinearizableReadError::QuorumNotEnough(err) = err else {
-        panic!("expected QuorumNotEnough");
+    let RaftError::APIError(LinearizableReadError::QuorumNotEnough(quorum_not_enough)) = err else {
+        panic!("expected QuorumNotEnough, got {err:?}");
     };
-    assert_eq!(btreeset! {0, 3}, err.got);
+    assert_eq!(btreeset! {0, 3}, quorum_not_enough.got);
 
     Ok(())
 }
