@@ -73,6 +73,10 @@ test-examples:
 	cargo test --manifest-path examples/sm-rocks/Cargo.toml
 	cargo test --manifest-path examples/multi-raft-kv/Cargo.toml
 
+# Run the capacity-one self-notification regression for issue 2232.
+test-self-notifications:
+	cargo test -p tests --test life_cycle t90_issue_2232_self_notifications
+
 test-runtime:
 	cargo test --manifest-path rt-tokio/Cargo.toml
 	cargo test --manifest-path rt-tokio/Cargo.toml --features single-threaded
@@ -333,4 +337,4 @@ clean:
 	cargo clean --manifest-path jepsen/openraft-test-app/Cargo.toml
 	rm -rf tests/_log
 
-.PHONY: test test-runtime test-turmoil verify verify-full basic_check fmt fmt_check fix clippy-basic clippy lint clean doc docs-check guide detsim detsim-threshold typos
+.PHONY: test test-self-notifications test-runtime test-turmoil verify verify-full basic_check fmt fmt_check fix clippy-basic clippy lint clean doc docs-check guide detsim detsim-threshold typos

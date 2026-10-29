@@ -23,7 +23,6 @@ use crate::async_runtime::Mutex;
 use crate::async_runtime::OneshotSender;
 use crate::async_runtime::Select4;
 use crate::async_runtime::TryRecvError;
-use crate::async_runtime::mpsc::PeekableReceiver;
 use crate::async_runtime::watch::WatchSender;
 use crate::batch::Batch;
 use crate::config::Config;
@@ -40,8 +39,10 @@ use crate::core::balancer::Balancer;
 use crate::core::core_state::CoreState;
 use crate::core::heartbeat::event::HeartbeatEvent;
 use crate::core::heartbeat::handle::HeartbeatWorkersHandle;
+use crate::core::local_delivery::LocalDelivery;
 use crate::core::merged_raft_msg_receiver::BatchRaftMsgReceiver;
 use crate::core::notification::Notification;
+use crate::core::notifications::Notifications;
 use crate::core::raft_msg::AppendEntriesTx;
 use crate::core::raft_msg::ClientReadTx;
 use crate::core::raft_msg::RaftMsg;
@@ -254,12 +255,10 @@ where
     /// `rx_api`, which is independent of the state machine type.
     pub(crate) rx_install_snapshot: MpscReceiverOf<C, InstallFullSnapshotRequest<C, SM>>,
 
-    /// A Sender to send callback by other components to [`RaftCore`], when an action is finished,
-    /// such as flushing log to disk, or applying log entries to state machine.
-    pub(crate) tx_notification: MpscSenderOf<C, Notification<C>>,
-
-    /// A Receiver to receive callback from other components.
-    pub(crate) rx_notification: PeekableReceiver<MpscReceiverOf<C, Notification<C>>, Notification<C>>,
+    /// The channel through which other components notify [`RaftCore`] when an action is finished,
+    /// such as flushing log to disk, or applying log entries to state machine, and the
+    /// notifications that [`RaftCore`] generates for itself.
+    pub(crate) notifications: Notifications<C>,
 
     /// The watch channels that broadcast local IO progress to storage callbacks and replication.
     pub(crate) io_broadcast: IoBroadcast<C>,
@@ -351,17 +350,20 @@ where
 
     #[tracing::instrument(level = "trace", skip_all, fields(id=display(&self.id), cluster=%self.config.cluster_name
     ))]
-    async fn do_main(&mut self, rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<Infallible, Fatal<C>> {
+    async fn do_main(&mut self, mut rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<Infallible, Fatal<C>> {
         tracing::debug!("raft node is initializing");
+
+        // Ratio control the ratio of number of RaftMsg to process to number of Notification to process.
+        let balancer = Balancer::new(10_000);
 
         self.engine.startup();
         // It may not finish running all the commands, if there is a command waiting for a callback.
-        self.run_engine_commands().await?;
+        self.run_engine_commands(&mut rx_shutdown, balancer.notification()).await?;
 
         // Initialize metrics.
         self.flush_metrics();
 
-        self.runtime_loop(rx_shutdown).await
+        self.runtime_loop(rx_shutdown, balancer).await
     }
 
     fn ensure_preconditions_satisfied(
@@ -1211,7 +1213,7 @@ where
             leader_vote,
             stream_id: prog.progress.data.stream_id,
             config: self.config.clone(),
-            tx_notify: self.tx_notification.clone(),
+            tx_notify: self.notifications.sender(),
             cancel_rx,
             replicate_batch: self.shared_replicate_batch.clone(),
         }
@@ -1230,8 +1232,15 @@ where
     ///
     /// If there is a command that waits for a callback, just return and wait for
     /// next RaftMsg.
+    ///
+    /// After each executed command, the self-notifications it generated are delivered by
+    /// [`Self::flush_local_notifications`] before the next command is popped.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) async fn run_engine_commands(&mut self) -> Result<(), StorageError<C>> {
+    pub(crate) async fn run_engine_commands(
+        &mut self,
+        rx_shutdown: &mut OneshotReceiverOf<C, ()>,
+        notification_quota: u64,
+    ) -> Result<(), Fatal<C>> {
         if tracing::enabled!(Level::DEBUG) {
             tracing::debug!("queued commands: start...");
             for c in self.engine.output.iter_commands() {
@@ -1243,6 +1252,11 @@ where
         self.send_satisfied_responds();
 
         loop {
+            debug_assert!(
+                !self.notifications.has_buffered(),
+                "self-notifications must be delivered before the next command"
+            );
+
             // Batch commands for better I/O performance (e.g., merge consecutive AppendEntries)
             self.engine.output.sched_commands(&self.config);
 
@@ -1253,11 +1267,18 @@ where
             let res = self.run_command(cmd).await?;
 
             let Some(cmd) = res else {
-                // cmd executed. Process next
+                // cmd executed. Deliver its self-notifications, then process next
+                self.flush_local_notifications(rx_shutdown, notification_quota).await?;
                 continue;
             };
 
             // cmd is returned, means it can not be executed now, postpone it.
+
+            debug_assert!(
+                !self.notifications.has_buffered(),
+                "a postponed command generates no self-notification: {}",
+                cmd
+            );
 
             tracing::debug!(
                 "RAFT_stats id={:<2}    cmd: postpone command: {}, pending: {}",
@@ -1284,19 +1305,37 @@ where
         }
 
         // Progress driven commands run at last because some command may generate progress changes.
-        self.run_progress_driven_command().await?;
+        self.run_progress_driven_command(rx_shutdown, notification_quota).await?;
 
         Ok(())
     }
 
     /// Run all commands that are automatically generated by progress changes.
-    async fn run_progress_driven_command(&mut self) -> Result<(), StorageError<C>> {
-        while let Some(cmd) = self.engine.next_progress_driven_command() {
+    ///
+    /// Like [`Self::run_engine_commands`], it delivers the self-notifications of each command
+    /// before generating the next one.
+    async fn run_progress_driven_command(
+        &mut self,
+        rx_shutdown: &mut OneshotReceiverOf<C, ()>,
+        notification_quota: u64,
+    ) -> Result<(), Fatal<C>> {
+        loop {
+            debug_assert!(
+                !self.notifications.has_buffered(),
+                "self-notifications must be delivered before the next command"
+            );
+
+            let Some(cmd) = self.engine.next_progress_driven_command() else {
+                break;
+            };
+
             tracing::debug!("RAFT_event id={:<2}    progress_driven cmd: {}", self.id, cmd);
 
             // IO progress generated command is always ready to run. no need to postpone.
             let res: Option<Command<C, SM>> = self.run_command(cmd).await?;
             debug_assert!(res.is_none(), "progress driven command should always be executed");
+
+            self.flush_local_notifications(rx_shutdown, notification_quota).await?;
         }
 
         Ok(())
@@ -1332,10 +1371,11 @@ where
     ///
     /// It always returns a [`Fatal`] error upon returning.
     #[tracing::instrument(level = "debug", skip_all, fields(id=display(&self.id)))]
-    async fn runtime_loop(&mut self, mut rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<Infallible, Fatal<C>> {
-        // Ratio control the ratio of number of RaftMsg to process to number of Notification to process.
-        let mut balancer = Balancer::new(10_000);
-
+    async fn runtime_loop(
+        &mut self,
+        mut rx_shutdown: OneshotReceiverOf<C, ()>,
+        mut balancer: Balancer,
+    ) -> Result<Infallible, Fatal<C>> {
         loop {
             self.flush_metrics();
 
@@ -1353,7 +1393,7 @@ where
             // Check shutdown first so that a message flood in `tx_api` won't block shutting down.
             let selected = C::select4(
                 &mut rx_shutdown,
-                self.rx_notification.recv(),
+                self.notifications.recv(),
                 self.rx_install_snapshot.recv(),
                 self.rx_api.ensure_buffered(),
             )
@@ -1389,12 +1429,17 @@ where
                 }
             };
 
-            self.run_engine_commands().await?;
+            self.run_engine_commands(&mut rx_shutdown, balancer.notification()).await?;
 
             // There is a message waking up the loop, process channels one by one.
 
-            let raft_msg_processed = self.process_raft_msg(balancer.raft_msg()).await?;
-            let notify_processed = self.process_notification(balancer.notification()).await?;
+            let raft_msg_processed =
+                self.process_raft_msg(&mut rx_shutdown, balancer.raft_msg(), balancer.notification()).await?;
+
+            let notify_processed = self.process_notification(balancer.notification())?;
+            if notify_processed > 0 {
+                self.run_engine_commands(&mut rx_shutdown, balancer.notification()).await?;
+            }
 
             // If one of the channel consumed all its budget, re-balance the budget ratio.
 
@@ -1412,7 +1457,7 @@ where
             // Trigger routine actions after processing all messages
             self.trigger_routine_actions();
 
-            self.run_engine_commands().await?;
+            self.run_engine_commands(&mut rx_shutdown, balancer.notification()).await?;
         }
     }
 
@@ -1420,7 +1465,12 @@ where
     ///
     /// It returns the number of processed message.
     /// If the input channel is closed, it returns `Fatal::Stopped`.
-    async fn process_raft_msg(&mut self, at_most: u64) -> Result<u64, Fatal<C>> {
+    async fn process_raft_msg(
+        &mut self,
+        rx_shutdown: &mut OneshotReceiverOf<C, ()>,
+        at_most: u64,
+        notification_quota: u64,
+    ) -> Result<u64, Fatal<C>> {
         self.runtime_stats.raft_msg_budget.record(at_most);
 
         let mut processed = 0u64;
@@ -1433,7 +1483,7 @@ where
         for _i in 0..at_most {
             // Process at least one RaftMsg so notifications cannot starve API traffic.
             if total > 0 && self.config.broadcast_submitted_on_append() {
-                match self.rx_notification.peek() {
+                match self.notifications.peek() {
                     Ok(_) => break,
                     Err(TryRecvError::Empty) => {}
                     Err(TryRecvError::Disconnected) => {
@@ -1458,7 +1508,7 @@ where
                 // After handling all the inputs, batch run all the commands for better performance
                 self.runtime_stats.raft_msg_per_run.record(processed);
                 self.runtime_stats.raft_msg_usage_permille.record(processed * 1000 / at_most);
-                self.run_engine_commands().await?;
+                self.run_engine_commands(rx_shutdown, notification_quota).await?;
 
                 last_log_index = index;
                 processed = 0;
@@ -1468,7 +1518,7 @@ where
         // After handling all the inputs, batch run all the commands for better performance
         self.runtime_stats.raft_msg_per_run.record(processed);
         self.runtime_stats.raft_msg_usage_permille.record(processed * 1000 / at_most);
-        self.run_engine_commands().await?;
+        self.run_engine_commands(rx_shutdown, notification_quota).await?;
 
         if total == at_most {
             tracing::debug!("at_most({}) reached, there are more queued RaftMsg to process", at_most);
@@ -1477,17 +1527,39 @@ where
         Ok(total)
     }
 
-    /// Process Notification as many as possible.
+    /// Process Notification as many as possible, without running the commands they generate.
     ///
     /// It returns the number of processed notifications.
     /// If the input channel is closed, it returns `Fatal::Stopped`.
-    async fn process_notification(&mut self, at_most: u64) -> Result<u64, Fatal<C>> {
+    fn process_notification(&mut self, at_most: u64) -> Result<u64, Fatal<C>> {
         self.runtime_stats.notification_budget.record(at_most);
 
+        let processed = self.handle_ready_notifications(at_most)?;
+
+        self.runtime_stats.notification_usage_permille.record(processed * 1000 / at_most);
+
+        if processed == at_most {
+            tracing::debug!(
+                "at_most({}) reached, there are more queued Notification to process",
+                at_most
+            );
+        }
+
+        Ok(processed)
+    }
+
+    /// Receive and handle at most `at_most` notifications that are already in the channel.
+    ///
+    /// It never waits and never runs engine commands: the commands generated by the handlers stay
+    /// in the engine output for the caller to run.
+    ///
+    /// It returns the number of handled notifications.
+    /// If the input channel is closed, it returns `Fatal::Stopped`.
+    fn handle_ready_notifications(&mut self, at_most: u64) -> Result<u64, Fatal<C>> {
         let mut processed = 0u64;
 
         for _i in 0..at_most {
-            let res = self.rx_notification.try_recv();
+            let res = self.notifications.try_recv();
             let notify = match res {
                 Ok(msg) => msg,
                 Err(e) => match e {
@@ -1506,20 +1578,67 @@ where
             processed += 1;
         }
 
-        if processed > 0 {
-            self.run_engine_commands().await?;
-        }
-
-        self.runtime_stats.notification_usage_permille.record(processed * 1000 / at_most);
-
-        if processed == at_most {
-            tracing::debug!(
-                "at_most({}) reached, there are more queued Notification to process",
-                at_most
-            );
-        }
-
         Ok(processed)
+    }
+
+    /// Deliver the self-notifications buffered by the last command into the notification channel.
+    ///
+    /// `RaftCore` is the only consumer of that channel, so it keeps receiving and handling
+    /// notifications while a send waits for capacity. Observing an empty channel reserves no slot
+    /// for a later send, and the second of two buffered notifications may need the slot that only
+    /// receiving the first one frees. Handling only updates the engine: the commands it generates
+    /// stay in the engine output for the caller to run after this returns.
+    ///
+    /// It first handles up to `quota` notifications that are already in the channel, then lets
+    /// [`Notifications::deliver_local`] send while receiving. After every `quota` notifications
+    /// received there, it flushes metrics and goes on with the same pending send.
+    ///
+    /// It returns once every buffered notification is in the channel. Shutdown and channel
+    /// closure return `Fatal::Stopped`; an error from a notification handler is returned as is.
+    async fn flush_local_notifications(
+        &mut self,
+        rx_shutdown: &mut OneshotReceiverOf<C, ()>,
+        quota: u64,
+    ) -> Result<(), Fatal<C>> {
+        if !self.notifications.has_buffered() {
+            return Ok(());
+        }
+
+        self.handle_ready_notifications(quota)?;
+
+        let mut received = 0u64;
+
+        loop {
+            let delivery = self.notifications.deliver_local(rx_shutdown).await;
+
+            match delivery {
+                LocalDelivery::Delivered => return Ok(()),
+
+                LocalDelivery::Received(notify) => {
+                    self.handle_notification(notify)?;
+
+                    received += 1;
+                    if received >= quota {
+                        tracing::debug!(
+                            "quota({}) reached while delivering self-notifications, flush metrics",
+                            quota
+                        );
+                        self.flush_metrics();
+                        received = 0;
+                    }
+                }
+
+                LocalDelivery::Shutdown => {
+                    tracing::info!("recv from rx_shutdown while delivering self-notifications");
+                    return Err(Fatal::Stopped);
+                }
+
+                LocalDelivery::Closed => {
+                    tracing::error!("notification channel is closed, can not deliver self-notifications");
+                    return Err(Fatal::Stopped);
+                }
+            }
+        }
     }
 
     /// Spawn parallel Vote or Pre-Vote requests to all other cluster members, selected by `kind`.
@@ -1533,7 +1652,7 @@ where
     async fn spawn_parallel_vote_requests(&mut self, vote_req: &VoteRequest<C>, kind: VoteRequestKind) {
         let vote = vote_req.vote.clone();
         let id = self.id.clone();
-        let tx = self.tx_notification.clone();
+        let tx = self.notifications.sender();
         let ttl = Duration::from_millis(self.config.election_timeout_min);
         let membership = self.engine.state.membership_state.effective();
         let voter_ids = membership.voter_ids();
@@ -2366,7 +2485,7 @@ where
             leader_vote,
             stream_id,
             config: self.config.clone(),
-            tx_notify: self.tx_notification.clone(),
+            tx_notify: self.notifications.sender(),
             cancel_rx,
             replicate_batch: self.shared_replicate_batch.clone(),
         };
@@ -2393,7 +2512,9 @@ where
     }
 
     /// Run [`Command::UpdateIOProgress`].
-    async fn run_update_io_progress(&mut self, io_id: IOId<C>) {
+    ///
+    /// The `LocalIO` notification is buffered and delivered after the command returns.
+    fn run_update_io_progress(&mut self, io_id: IOId<C>) {
         // Notify that I/O is about to be submitted.
         self.io_broadcast.accepted.send_if_greater(io_id.clone());
 
@@ -2401,7 +2522,7 @@ where
 
         let notify = Notification::LocalIO { io_id: io_id.clone() };
 
-        self.tx_notification.send(notify).await.ok();
+        self.notifications.enqueue(notify);
     }
 
     /// Run [`Command::AppendEntries`].
@@ -2453,6 +2574,8 @@ where
     }
 
     /// Run [`Command::SaveVote`].
+    ///
+    /// The notifications are buffered and delivered after the command returns.
     async fn run_save_vote(&mut self, vote: VoteOf<C>) -> Result<(), StorageError<C>> {
         let io_id = IOId::new(&vote);
 
@@ -2462,25 +2585,19 @@ where
         self.engine.state.log_progress_mut().submit(io_id.clone());
         self.log_store.save_vote(&vote).await.sto_write_vote()?;
 
-        self.tx_notification
-            .send(Notification::LocalIO {
-                io_id: IOId::new(&vote),
-            })
-            .await
-            .ok();
+        self.notifications.enqueue(Notification::LocalIO {
+            io_id: IOId::new(&vote),
+        });
 
         // If a non-committed vote is saved,
         // there may be a candidate waiting for the response.
         if let VoteStatus::Pending(non_committed) = vote.clone().into_vote_status() {
-            self.tx_notification
-                .send(Notification::VoteResponse {
-                    target: self.id.clone(),
-                    // last_log_id is not used when sending VoteRequest to local node
-                    resp: VoteResponse::new(vote, None, true),
-                    candidate_vote: non_committed,
-                })
-                .await
-                .ok();
+            self.notifications.enqueue(Notification::VoteResponse {
+                target: self.id.clone(),
+                // last_log_id is not used when sending VoteRequest to local node
+                resp: VoteResponse::new(vote, None, true),
+                candidate_vote: non_committed,
+            });
         }
 
         Ok(())
@@ -2610,7 +2727,7 @@ where
                 .spawn_workers::<NF>(
                     leader_vote.clone(),
                     &mut *factory,
-                    &self.tx_notification,
+                    &self.notifications.sender(),
                     &targets,
                     close_old_streams,
                 )
@@ -2712,7 +2829,7 @@ where
         self.runtime_stats.record_command(cmd.name());
 
         match cmd {
-            Command::UpdateIOProgress { io_id, .. } => self.run_update_io_progress(io_id).await,
+            Command::UpdateIOProgress { io_id, .. } => self.run_update_io_progress(io_id),
             Command::AppendEntries {
                 committed_vote,
                 entries,

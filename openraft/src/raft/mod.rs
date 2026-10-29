@@ -80,7 +80,6 @@ use crate::StorageHelper;
 use crate::async_runtime::MpscWeakSender;
 use crate::async_runtime::OneshotSender;
 use crate::async_runtime::Select2;
-use crate::async_runtime::mpsc::MpscReceiver;
 use crate::async_runtime::mpsc::MpscSender;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::async_runtime::watch::WatchSender;
@@ -108,6 +107,7 @@ use crate::core::io_flush_tracking::SnapshotProgress;
 use crate::core::io_flush_tracking::VoteProgress;
 use crate::core::merged_raft_msg_receiver::BatchRaftMsgReceiver;
 use crate::core::notification::Notification;
+use crate::core::notifications::Notifications;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::raft_msg::install_full_snapshot_request::InstallFullSnapshotRequest;
@@ -637,8 +637,7 @@ where
                     tx_install_snapshot: tx_install_snapshot.clone(),
                     rx_install_snapshot,
 
-                    tx_notification: tx_notify,
-                    rx_notification: rx_notify.peekable(),
+                    notifications: Notifications::new(tx_notify, rx_notify),
 
                     io_broadcast: IoBroadcast {
                         completed: tx_io_completed,
