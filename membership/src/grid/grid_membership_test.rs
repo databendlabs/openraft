@@ -22,6 +22,7 @@ use crate::quorum::QuorumSet;
 use crate::quorum::testing::accepted;
 use crate::quorum::testing::all_subsets;
 use crate::quorum::testing::holding_one_of;
+use crate::quorum::testing::meeting_each_of;
 use crate::quorum::testing::small_grids;
 use crate::testing::assert_apply_checks_roles;
 use crate::testing::assert_change_through_joint_keeps_node_metadata;
@@ -55,8 +56,9 @@ where
 #[test]
 fn test_new() {
     let membership = Membership::new(vec![vec![1, 2], vec![3, 4]], btreeset! {1, 2, 3, 4, 5}).unwrap();
-    let want = "{configs: [Config { read: GridQuorumSet { grid: [[1, 2], [3, 4]], line: Row }, write: GridQuorumSet { \
-                grid: [[1, 2], [3, 4]], line: Column }, nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), \
+    let want = "{configs: [Config { read: GridQuorumSet { grid: [[1, 2], [3, 4]], rule: FullRow }, \
+                write: GridQuorumSet { grid: [[1, 2], [3, 4]], rule: OnePerRow }, \
+                nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), \
                 2: ((), NodeRole(Campaigner | ReceiveLogs)), 3: ((), NodeRole(Campaigner | ReceiveLogs)), \
                 4: ((), NodeRole(Campaigner | ReceiveLogs)), 5: ((), NodeRole(ReceiveLogs))} }]}";
     let got = membership.to_string();
@@ -84,7 +86,7 @@ fn test_new() {
 }
 
 #[test]
-fn test_quorum_sets_accept_exactly_the_sets_holding_a_complete_row_or_column() {
+fn test_quorum_sets_accept_exactly_the_sets_holding_a_full_row_or_meeting_every_row() {
     let membership = grid(vec![vec![1, 2, 3], vec![4, 5, 6]]);
     let subsets = all_subsets(&btreeset! {1, 2, 3, 4, 5, 6});
 
@@ -95,11 +97,12 @@ fn test_quorum_sets_accept_exactly_the_sets_holding_a_complete_row_or_column() {
     assert_eq!(15, count);
     assert_eq!(want, read_accepted);
 
+    // A write quorum holds a voter of each row from any column, such as {1,5} or {3,4}, but not
+    // {1,2,3}, which misses row {4,5,6}.
     let write_accepted = accepted(&membership.write_quorum_set(), &subsets);
-    let columns = [btreeset! {1, 4}, btreeset! {2, 5}, btreeset! {3, 6}];
-    let want = holding_one_of(&columns, &subsets);
+    let want = meeting_each_of(&rows, &subsets);
     let count = want.len();
-    assert_eq!(37, count);
+    assert_eq!(49, count);
     assert_eq!(want, write_accepted);
 }
 
@@ -179,19 +182,20 @@ fn test_direct_transitions_need_the_same_grid() {
     let same = square.supports_direct_transition_to(&square);
     assert!(same);
 
-    // Swapping the voters of a row keeps the rows, and every new column meets every old row. The
-    // columns change, so the change still goes through a joint.
+    // Swapping the voters of a row keeps the rows, so both rules accept the same sets as before.
+    // The grid changes, so the change still goes through a joint.
     let swapped = grid(vec![vec![2, 1], vec![3, 4]]);
     let direct = square.supports_direct_transition_to(&swapped);
     assert!(!direct);
 
-    // Transposing turns the rows into columns: old row {1,2} misses new column {3,4}.
+    // Transposing turns the rows into columns: old row {1,2} misses new write quorum {3,4}, which
+    // holds a voter of new row {1,3} and of new row {2,4}.
     let transposed = grid(vec![vec![1, 3], vec![2, 4]]);
     let direct = square.supports_direct_transition_to(&transposed);
     assert!(!direct);
 
-    // A third row meets the old rules in one direction only. Every old row meets every new
-    // column, but new row {5,6} misses old column {1,3}.
+    // A third row meets the old rules in one direction only. Every new write quorum holds a voter
+    // of each old row, but new row {5,6} misses old write quorum {1,3}.
     let tall = grid(vec![vec![1, 2], vec![3, 4], vec![5, 6]]);
     let old_reads_meet_new_writes = square.read_quorum_set().intersects_with(&tall.write_quorum_set());
     assert_eq!(Some(true), old_reads_meet_new_writes);
@@ -249,8 +253,8 @@ fn test_placement_change_goes_through_joint_that_keeps_both_grids() {
     let direct = old.supports_direct_transition_to(&new);
     assert!(!direct);
 
-    // A read quorum holds a row of each grid, such as {1,2} and {1,3}, and a write quorum holds a
-    // column of each. Both take 3 of the 4 voters.
+    // A read quorum holds a row of each grid, such as {1,2} and {1,3}, so it takes 3 of the 4
+    // voters.
     let joint = old.joint_with(&new);
     let subsets = all_subsets(&btreeset! {1, 2, 3, 4});
     let any_three = [
@@ -264,14 +268,22 @@ fn test_placement_change_goes_through_joint_that_keeps_both_grids() {
     assert_eq!(5, count);
     let read_accepted = accepted(&joint.read_quorum_set(), &subsets);
     assert_eq!(want, read_accepted);
+
+    // A write quorum holds a voter of each row of both grids. A diagonal of the old grid, {1,4} or
+    // {2,3}, does that with 2 voters.
+    let diagonals = [btreeset! {1, 4}, btreeset! {2, 3}];
+    let want = holding_one_of(&diagonals, &subsets);
+    let count = want.len();
+    assert_eq!(7, count);
     let write_accepted = accepted(&joint.write_quorum_set(), &subsets);
     assert_eq!(want, write_accepted);
 
-    let want = "{configs: [Config { read: GridQuorumSet { grid: [[1, 2], [3, 4]], line: Row }, write: GridQuorumSet { \
-                grid: [[1, 2], [3, 4]], line: Column }, nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), \
+    let want = "{configs: [Config { read: GridQuorumSet { grid: [[1, 2], [3, 4]], rule: FullRow }, \
+                write: GridQuorumSet { grid: [[1, 2], [3, 4]], rule: OnePerRow }, \
+                nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), \
                 2: ((), NodeRole(Campaigner | ReceiveLogs)), 3: ((), NodeRole(Campaigner | ReceiveLogs)), \
                 4: ((), NodeRole(Campaigner | ReceiveLogs))} }, Config { read: GridQuorumSet { grid: [[1, 3], [2, \
-                4]], line: Row }, write: GridQuorumSet { grid: [[1, 3], [2, 4]], line: Column }, \
+                4]], rule: FullRow }, write: GridQuorumSet { grid: [[1, 3], [2, 4]], rule: OnePerRow }, \
                 nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), 2: ((), NodeRole(Campaigner | ReceiveLogs)), \
                 3: ((), NodeRole(Campaigner | ReceiveLogs)), 4: ((), NodeRole(Campaigner | ReceiveLogs))} }]}";
     let got = joint.to_string();
@@ -419,8 +431,8 @@ fn test_joint_keeps_old_roles_and_target_restores_new_roles() {
     let new = old.clone().with_roles(btreemap! {2 => NodeRole::ReceiveLogs}).unwrap();
     let target = assert_joint_keeps_old_roles_and_target_restores_new_roles::<_, GridChange<u64, ()>>(&old, &new, 2);
 
-    let want = "{configs: [Config { read: GridQuorumSet { grid: [[1, 2]], line: Row }, write: GridQuorumSet { \
-                grid: [[1, 2]], line: Column }, nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), \
+    let want = "{configs: [Config { read: GridQuorumSet { grid: [[1, 2]], rule: FullRow }, write: GridQuorumSet { \
+                grid: [[1, 2]], rule: OnePerRow }, nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), \
                 2: ((), NodeRole(ReceiveLogs)), 3: ((), NodeRole(ReceiveLogs))} }]}";
     let got = target.to_string();
     assert_eq!(want, got);
@@ -434,8 +446,8 @@ fn test_joint_keeps_old_roles_and_target_restores_new_roles() {
 
 #[test]
 fn test_with_roles() {
-    let want = "{configs: [Config { read: GridQuorumSet { grid: [[1, 2, 3]], line: Row }, write: GridQuorumSet { \
-                grid: [[1, 2, 3]], line: Column }, nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), \
+    let want = "{configs: [Config { read: GridQuorumSet { grid: [[1, 2, 3]], rule: FullRow }, write: GridQuorumSet { \
+                grid: [[1, 2, 3]], rule: OnePerRow }, nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), \
                 2: ((), NodeRole(Campaigner | ReceiveLogs)), 3: ((), NodeRole(ReceiveLogs)), \
                 4: ((), NodeRole(Campaigner | ReceiveLogs)), 5: ((), NodeRole(Empty))} }]}";
     assert_with_roles(one_row, Membership::with_roles, want);
@@ -443,8 +455,8 @@ fn test_with_roles() {
 
 #[test]
 fn test_role_and_quorum_change_through_joint() {
-    let want = "{configs: [Config { read: GridQuorumSet { grid: [[2, 3, 4]], line: Row }, write: GridQuorumSet { \
-                grid: [[2, 3, 4]], line: Column }, nodes: {1: ((), NodeRole(ReceiveLogs)), \
+    let want = "{configs: [Config { read: GridQuorumSet { grid: [[2, 3, 4]], rule: FullRow }, write: GridQuorumSet { \
+                grid: [[2, 3, 4]], rule: OnePerRow }, nodes: {1: ((), NodeRole(ReceiveLogs)), \
                 2: ((), NodeRole(Campaigner | ReceiveLogs)), 3: ((), NodeRole(ReceiveLogs)), \
                 4: ((), NodeRole(Campaigner | ReceiveLogs)), 5: ((), NodeRole(Empty))} }]}";
     assert_role_and_quorum_change_through_joint(one_row, Membership::with_roles, want, |voters, roles| {
@@ -482,7 +494,7 @@ fn test_serde() {
     let membership = Membership::new(vec![vec![1, 2], vec![3, 4]], btreeset! {1, 2, 3, 4, 5}).unwrap();
 
     let json = serde_json::to_string(&membership).unwrap();
-    let want = r#"{"configs":[{"read":{"grid":[[1,2],[3,4]],"line":"Row"},"write":{"grid":[[1,2],[3,4]],"line":"Column"},"nodes":{"1":[null,3],"2":[null,3],"3":[null,3],"4":[null,3],"5":[null,2]}}]}"#;
+    let want = r#"{"configs":[{"read":{"grid":[[1,2],[3,4]],"rule":"FullRow"},"write":{"grid":[[1,2],[3,4]],"rule":"OnePerRow"},"nodes":{"1":[null,3],"2":[null,3],"3":[null,3],"4":[null,3],"5":[null,2]}}]}"#;
     assert_eq!(want, json);
     let decoded = serde_json::from_str::<Membership>(&json).unwrap();
     assert_eq!(membership, decoded);
@@ -505,7 +517,7 @@ fn test_roundtrip_keeps_joint_configs_and_roles() {
     let joint = old.joint_with(&new);
 
     let json = serde_json::to_string(&joint).unwrap();
-    let want = r#"{"configs":[{"read":{"grid":[[1,2],[3,4]],"line":"Row"},"write":{"grid":[[1,2],[3,4]],"line":"Column"},"nodes":{"1":[null,3],"2":[null,3],"3":[null,3],"4":[null,3]}},{"read":{"grid":[[1,3],[2,4]],"line":"Row"},"write":{"grid":[[1,3],[2,4]],"line":"Column"},"nodes":{"1":[null,3],"2":[null,3],"3":[null,2],"4":[null,3]}}]}"#;
+    let want = r#"{"configs":[{"read":{"grid":[[1,2],[3,4]],"rule":"FullRow"},"write":{"grid":[[1,2],[3,4]],"rule":"OnePerRow"},"nodes":{"1":[null,3],"2":[null,3],"3":[null,3],"4":[null,3]}},{"read":{"grid":[[1,3],[2,4]],"rule":"FullRow"},"write":{"grid":[[1,3],[2,4]],"rule":"OnePerRow"},"nodes":{"1":[null,3],"2":[null,3],"3":[null,2],"4":[null,3]}}]}"#;
     assert_eq!(want, json);
     let decoded = serde_json::from_str::<Membership>(&json).unwrap();
     assert_eq!(joint, decoded);

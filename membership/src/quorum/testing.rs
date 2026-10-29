@@ -96,6 +96,18 @@ pub(crate) fn holding_one_of(quorums: &[BTreeSet<u64>], subsets: &[BTreeSet<u64>
     holding
 }
 
+/// Returns the sets in `subsets` that share an ID with each of `sets`.
+pub(crate) fn meeting_each_of(sets: &[BTreeSet<u64>], subsets: &[BTreeSet<u64>]) -> Vec<BTreeSet<u64>> {
+    let mut meeting = vec![];
+    for subset in subsets {
+        let meets_each = sets.iter().all(|set| !set.is_disjoint(subset));
+        if meets_each {
+            meeting.push(subset.clone());
+        }
+    }
+    meeting
+}
+
 /// Asserts the [`QuorumSet`] contract on every subset of the IDs of `quorum_set`: the empty set
 /// is no quorum, repeated IDs and an unknown ID change no result, and adding an ID to a quorum
 /// keeps it a quorum.

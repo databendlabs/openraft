@@ -307,8 +307,8 @@ use openraft_membership::errors::InvalidQuorumLists as ProvidedInvalidQuorumList
 use openraft_membership::errors::InvalidThresholds as ProvidedInvalidThresholds;
 use openraft_membership::errors::InvalidWeights as ProvidedInvalidWeights;
 use openraft_membership::quorum::ExplicitQuorumSet as ProvidedExplicitQuorumSet;
-use openraft_membership::quorum::GridLine as ProvidedGridLine;
 use openraft_membership::quorum::GridQuorumSet as ProvidedGridQuorumSet;
+use openraft_membership::quorum::GridRule as ProvidedGridRule;
 use openraft_membership::quorum::Group as ProvidedGroup;
 use openraft_membership::quorum::HierarchicalQuorumSet as ProvidedHierarchicalQuorumSet;
 use openraft_membership::quorum::Joint as ProvidedJoint;

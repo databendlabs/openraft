@@ -1,10 +1,11 @@
-# Grid membership: a complete row elects a leader, and a complete column commits an entry
+# Grid membership: a complete row elects a leader, and a voter of each row commits an entry
 
 [`GridMembership`] places the voters of each config in a rectangular grid, one
 voter per cell:
 
-- A write quorum holds every voter of some column. An entry commits once a
-  write quorum stores it.
+- A write quorum holds at least one voter of every row. Each row can
+  contribute a voter from a different column. An entry commits once a write
+  quorum stores it.
 - A read quorum holds every voter of some row. A candidate becomes leader only
   with votes from a read quorum.
 
@@ -23,13 +24,15 @@ let grid = vec![vec![1, 2, 3], vec![4, 5, 6], vec![7, 8, 9]];
 let nodes = BTreeSet::from([1, 2, 3, 4, 5, 6, 7, 8, 9]);
 let membership = GridMembership::<u64, ()>::new(grid, nodes).unwrap();
 
-// Column {2,5,8} commits an entry, and row {4,5,6} elects a leader.
-let commits = membership.write_quorum_set().is_quorum([2, 5, 8].iter());
+// {1,5,9} holds a voter of each row, from three columns, so it commits an
+// entry. Row {4,5,6} elects a leader.
+let commits = membership.write_quorum_set().is_quorum([1, 5, 9].iter());
 assert!(commits);
 let elects = membership.read_quorum_set().is_quorum([4, 5, 6].iter());
 assert!(elects);
 
-// Row {1,2,3} also holds 3 voters, but no complete column, so it commits nothing.
+// Row {1,2,3} also holds 3 voters, but none of row {4,5,6}, so it commits
+// nothing.
 let commits = membership.write_quorum_set().is_quorum([1, 2, 3].iter());
 assert!(!commits);
 ```
@@ -38,12 +41,13 @@ An application selects the type in its type config, and passes the membership
 to [`Raft::initialize()`], as [`weighted`] shows. The type config sets
 `Membership = GridMembership<..>` and `MembershipEdit = GridChange<..>`.
 
-## Every row meets every column in one cell
+## A write quorum holds a voter of every row, so it meets every read quorum
 
-Row `i` and column `j` share the voter of cell `(i, j)`. So every read quorum,
-which holds a row, shares a voter with every write quorum, which holds a
-column. Two rows share no voter, and neither do two columns. Safety needs only
-that reads meet writes, as [`election_quorum`] explains.
+A read quorum holds a complete row, and every write quorum holds a voter of
+that row. So every read quorum shares a voter with every write quorum. Two rows
+share no voter, and two write quorums, such as `{1,4,7}` and `{2,5,8}`, can
+share none either. Safety needs only that reads meet writes, as
+[`election_quorum`] explains.
 
 Because every read quorum meets every write quorum, the new leader holds every
 committed entry, as [`weighted`][weighted-intersection] explains.
@@ -68,11 +72,11 @@ let invalid = InvalidGrid::RaggedRow { row: 1, len: 3, column_count: 2 };
 assert_eq!(Err(MembershipError::UserDefined(invalid)), res);
 ```
 
-## A commit waits for one column, and an election for one row or more
+## A commit waits for a voter of each row, and an election for one row or more
 
-A commit waits until every voter of some column stores the entry. That column
-need not hold the leader, so the leader waits only for the first column whose
-voters all store the entry.
+A commit waits until some voter of each row stores the entry. These voters can
+sit in different columns, so the leader waits only for the first voter of each
+row that stores the entry.
 
 How many votes an election needs depends on the leader ID type:
 
@@ -80,8 +84,8 @@ How many votes an election needs depends on the leader ID type:
   election needs the votes of one complete row: `c` votes.
 - With standard leader IDs, [`leader_id_std::LeaderId`], the votes must form
   both a read quorum and a write quorum, because standard leader IDs allow
-  only one leader per term. The votes then hold a row and a column, which share
-  one cell: `r + c - 1` votes. [`election_quorum`] explains why.
+  only one leader per term. The votes then hold a complete row and a voter of
+  each other row: `r + c - 1` votes. [`election_quorum`] explains why.
 
 The new leader also needs a live write quorum, as
 [`weighted`][weighted-election] explains.
@@ -95,20 +99,23 @@ For 12 voters:
 | 2 x 6                | 2             | 6                            | 7                            |
 | 1 x 12               | 1             | 12                           | 12                           |
 
-## A few failures in the wrong cells stop a grid
+## Commits need a live voter in every row, and elections a complete live row
 
-A grid needs few voters for each quorum, but a few failures in the wrong cells
+A grid needs few voters for each quorum, and its rows decide which failures
 stop it:
 
-- `r` failed voters, one in each row, leave no complete row, so they stop every
-  election. The loss of a whole column does this.
-- `c` failed voters, one in each column, leave no complete column, so they stop
-  every commit. The loss of a whole row does this.
+- A commit needs a live voter in every row. Failures spread over the rows do
+  not stop commits. In the 3 x 3 grid above, leader 5 keeps committing with
+  voters 1 and 9 after the other 6 voters fail. Only the loss of a whole row,
+  all `c` of its voters, stops every commit.
+- An election needs a complete live row. `r` failed voters, one in each row,
+  leave no complete row, so they stop every election. The loss of a whole
+  column does this.
 
-Any `min(r, c) - 1` failed voters still leave a complete row and a complete
-column. So the 3 x 3 grid above survives any 2 failed voters, while a majority
-of 9 voters survives any 4. In return, each commit of the grid waits for 3
-voters instead of 5, and so does each election with advanced leader IDs.
+Any `min(r, c) - 1` failed voters still leave a complete row and a live voter
+in every row. So the 3 x 3 grid above survives any 2 failed voters, while a
+majority of 9 voters survives any 4. In return, each commit of the grid waits
+for 3 voters instead of 5, and so does each election with advanced leader IDs.
 
 A grid of one row needs every voter to elect a leader, and lets any one voter
 commit an entry alone, with one copy. Converting a node map into a
@@ -138,8 +145,8 @@ let membership = GridMembership::<u64, ()>::new(grid, nodes).unwrap();
 // Voter 10 takes the cell of voter 5, which `apply()` keeps as a learner.
 let change = GridChange::grid(vec![vec![1, 2, 3], vec![4, 10, 6], vec![7, 8, 9]]);
 let replaced = change.apply(&membership, true).unwrap();
-let want = "{configs: [Config { read: GridQuorumSet { grid: [[1, 2, 3], [4, 10, 6], [7, 8, 9]], line: Row }, \
-            write: GridQuorumSet { grid: [[1, 2, 3], [4, 10, 6], [7, 8, 9]], line: Column }, \
+let want = "{configs: [Config { read: GridQuorumSet { grid: [[1, 2, 3], [4, 10, 6], [7, 8, 9]], rule: FullRow }, \
+            write: GridQuorumSet { grid: [[1, 2, 3], [4, 10, 6], [7, 8, 9]], rule: OnePerRow }, \
             nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), 2: ((), NodeRole(Campaigner | ReceiveLogs)), \
             3: ((), NodeRole(Campaigner | ReceiveLogs)), 4: ((), NodeRole(Campaigner | ReceiveLogs)), \
             5: ((), NodeRole(ReceiveLogs)), 6: ((), NodeRole(Campaigner | ReceiveLogs)), \
@@ -148,14 +155,13 @@ let want = "{configs: [Config { read: GridQuorumSet { grid: [[1, 2, 3], [4, 10, 
 let got = replaced.to_string();
 assert_eq!(want, got);
 
-// The old row {4,5,6} misses the new column {2,10,8}, so OpenRaft first
+// The old row {4,5,6} misses the new write quorum {1,7,10}, so OpenRaft first
 // appends a joint config.
 let direct = membership.supports_direct_transition_to(&replaced);
 assert!(!direct);
 
-// Swapping voters 4 and 6 keeps every row, so every new column still meets
-// every old row, and every new row meets every old column. The grid changes,
-// so OpenRaft still first appends a joint config.
+// Swapping voters 4 and 6 keeps every row, so both rules accept the same sets
+// as before. The grid changes, so OpenRaft still first appends a joint config.
 let change = GridChange::grid(vec![vec![1, 2, 3], vec![6, 5, 4], vec![7, 8, 9]]);
 let swapped = change.apply(&membership, true).unwrap();
 let direct = membership.supports_direct_transition_to(&swapped);
@@ -166,16 +172,18 @@ assert!(!direct);
 
 OpenRaft appends a changed config directly only when every read quorum of each
 config intersects every write quorum of the other. Otherwise it first appends
-a joint config, as [`weighted`][weighted-joint] explains.
+a joint config, as [`weighted`][weighted-joint] explains. A read quorum of the
+joint config holds a complete row of each grid, and a write quorum holds a
+voter of every row of both grids.
 
 The grid membership proves this only when both memberships hold a config with
 the same grid. A read quorum of one membership then holds a row of that grid,
-and a write quorum of the other holds a column of it, so they share a cell.
-Every new grid therefore goes through a joint config, even one that only moves
-voters within their rows and would be safe directly. Changing only roles,
-adding a learner, and leaving a joint config go directly.
+and a write quorum of the other holds a voter of each of its rows, so they
+share a voter. Every new grid therefore goes through a joint config, even one
+that only moves voters within their rows and would be safe directly. Changing
+only roles, adding a learner, and leaving a joint config go directly.
 
-## The grid types connect like the weighted types, with a row rule and a column rule
+## The grid types connect like the weighted types, with a `FullRow` rule and a `OnePerRow` rule
 
 [`GridMembership`] implements [`RaftMembership`], and [`GridChange`]
 implements [`RaftMembershipEdit`], in the same way as the weighted types and
@@ -184,15 +192,18 @@ calls them during a change. It also lists what to copy to write a membership
 of your own, where `src/grid/` takes the place of `src/weighted/`. The grid
 differs in its rule and in how a change builds it:
 
-- [`GridQuorumSet`] holds the grid and a [`GridLine`]. Its [`QuorumSet`] impl
-  accepts a set that holds every voter of some row, or of some column, as the
-  `GridLine` selects. Each config holds the row rule as its read rule and the
-  column rule as its write rule.
-- The [`QuorumIntersection`] impl of `GridQuorumSet` is exact. It returns
-  `Some(false)` when a line of one rule and a line of the other share no
-  voter, and `Some(true)` otherwise. Every row of a grid shares a cell with
-  every column, so [`read_write_quorums_intersect()`] returns `Some(true)` for
-  the target of every change.
+- [`GridQuorumSet`] holds the grid and a [`GridRule`]. Its [`QuorumSet`] impl
+  accepts a set that holds every voter of some row, under `GridRule::FullRow`,
+  or at least one voter of every row, under `GridRule::OnePerRow`. Each config
+  holds the `FullRow` rule as its read rule and the `OnePerRow` rule as its
+  write rule.
+- The [`QuorumIntersection`] impl of `GridQuorumSet` is exact when either rule
+  is `FullRow`. A row meets every `OnePerRow` quorum of a grid exactly when it
+  holds a complete row of that grid. Otherwise each row of that grid has a
+  voter outside it, and these voters form a `OnePerRow` quorum that it misses.
+  Every row of a grid holds itself, so [`read_write_quorums_intersect()`]
+  returns `Some(true)` for the target of every change. The impl returns `None`
+  for two `OnePerRow` rules, which OpenRaft never compares.
 - [`GridChange`] builds both rules from the grid that it sets. A change that
   sets no grid keeps both rules of the last config.
 
@@ -212,7 +223,7 @@ differs in its rule and in how a change builds it:
 [weighted-election]: crate::docs::weighted#a-commit-waits-for-write_weight-and-an-election-for-the-read-weight-or-more
 [weighted-joint]: crate::docs::weighted#every-change-of-the-weights-or-the-write-weight-requires-a-joint-configuration
 [`GridQuorumSet`]: crate::quorum::GridQuorumSet
-[`GridLine`]: crate::quorum::GridLine
+[`GridRule`]: crate::quorum::GridRule
 [`QuorumSet`]: openraft::membership::QuorumSet
 [`QuorumIntersection`]: openraft::membership::QuorumIntersection
 [`RaftMembership`]: openraft::membership::RaftMembership

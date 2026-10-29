@@ -49,8 +49,8 @@ use crate::errors::InvalidGrid;
 /// // Learners 5 and 6 become a third column.
 /// let change = GridChange::grid(vec![vec![1, 2, 5], vec![3, 4, 6]]);
 /// let wider = change.apply(&membership, true).unwrap();
-/// let want = "{configs: [Config { read: GridQuorumSet { grid: [[1, 2, 5], [3, 4, 6]], line: Row }, \
-///             write: GridQuorumSet { grid: [[1, 2, 5], [3, 4, 6]], line: Column }, \
+/// let want = "{configs: [Config { read: GridQuorumSet { grid: [[1, 2, 5], [3, 4, 6]], rule: FullRow }, \
+///             write: GridQuorumSet { grid: [[1, 2, 5], [3, 4, 6]], rule: OnePerRow }, \
 ///             nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), 2: ((), NodeRole(Campaigner | ReceiveLogs)), \
 ///             3: ((), NodeRole(Campaigner | ReceiveLogs)), 4: ((), NodeRole(Campaigner | ReceiveLogs)), \
 ///             5: ((), NodeRole(Campaigner | ReceiveLogs)), 6: ((), NodeRole(Campaigner | ReceiveLogs))} }]}";

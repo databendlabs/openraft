@@ -6,7 +6,7 @@
 //! - [`ThresholdMembership`] configures the write quorum size and derives the read quorum size.
 //! - [`WeightedMembership`] gives each voter a weight and configures the write weight.
 //! - [`HierarchicalMembership`] places voters in groups and needs enough voters in enough groups.
-//! - [`GridMembership`] places voters in a grid: a row elects a leader, and a column commits.
+//! - [`GridMembership`] places voters in a grid: a row elects, and a voter of each row commits.
 //! - [`ExplicitMembership`] lists the minimal read quorums and write quorums of each config.
 //!
 //! [`docs`] tells which membership fits which cluster, and holds a guide for each.

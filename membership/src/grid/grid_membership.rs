@@ -12,33 +12,34 @@ use openraft_macros::since;
 
 use crate::config::Config;
 use crate::errors::InvalidGrid;
-use crate::quorum::GridLine;
 use crate::quorum::GridQuorumSet;
+use crate::quorum::GridRule;
 use crate::quorum::Joint;
 
 /// A membership whose voters form a grid: a read quorum holds every voter of some row, and a
-/// write quorum holds every voter of some column.
+/// write quorum holds at least one voter of every row.
 ///
 /// Each config places its voters in a rectangular grid, one distinct voter per cell, given as its
 /// rows. A candidate becomes leader only with votes from a complete row, and an entry commits
-/// once a complete column stores it. Every row shares a cell with every column, so every election
-/// reaches a voter that stores each committed entry. Two rows share no voter, and neither do two
-/// columns.
+/// once a voter of each row stores it. These voters can sit in different columns. A write quorum
+/// holds a voter of every row, so every election reaches a voter that stores each committed
+/// entry. Two rows share no voter.
 ///
-/// A grid of `r` rows and `c` columns holds `r * c` voters. A row holds `c` voters and a column
-/// `r`, so in a square grid of 9 voters, reads and writes each need 3 voters, while a majority
-/// needs 5. A grid tolerates fewer failures in return: `r` failed voters, one in each row, stop
-/// every election, and `c` failed voters, one in each column, stop every commit.
+/// A grid of `r` rows and `c` columns holds `r * c` voters. A read quorum needs the `c` voters of
+/// a row, and a write quorum `r` voters, one of each row. So in a square grid of 9 voters, reads
+/// and writes each need 3 voters, while a majority needs 5. Elections tolerate fewer failures in
+/// return: `r` failed voters, one in each row, stop every election. Commits continue while every
+/// row retains a live voter, so only the failure of a whole row stops every commit.
 ///
 /// A membership holds two or more configs only during a joint change. Then a quorum must be a
 /// quorum of every config. Rule i of
-/// [`read_quorum_set()`](openraft::membership::RaftMembership::read_quorum_set) is the row rule of
-/// config i, and rule i of
-/// [`write_quorum_set()`](openraft::membership::RaftMembership::write_quorum_set) is its column
-/// rule. Both share the grid of config i. A change of the voter placement or of the dimensions
-/// therefore keeps both grids until the joint reduces to its target. OpenRaft changes a config
-/// without a joint only when both memberships hold a config with the same grid, so every new grid
-/// goes through a joint.
+/// [`read_quorum_set()`](openraft::membership::RaftMembership::read_quorum_set) is the
+/// [`GridRule::FullRow`] rule of config i, and rule i of
+/// [`write_quorum_set()`](openraft::membership::RaftMembership::write_quorum_set) is its
+/// [`GridRule::OnePerRow`] rule. Both share the grid of config i. A change of the voter placement
+/// or of the dimensions therefore keeps both grids until the joint reduces to its target. OpenRaft
+/// changes a config without a joint only when both memberships hold a config with the same grid, so
+/// every new grid goes through a joint.
 ///
 /// [`grid_membership`](crate::docs::grid) explains how to choose the grid and how to change it.
 ///
@@ -51,8 +52,8 @@ use crate::quorum::Joint;
 /// them in its result. A voter with only [`NodeRole::ReceiveLogs`] stores logs and votes, but
 /// starts no election on its own; a leadership transfer from the leader can still make it leader.
 ///
-/// The grid alone decides which nodes are voters. Each voter is in a row and in a column, so it is
-/// a read voter and a write voter. Every voter therefore needs [`NodeRole::ReceiveLogs`], or a
+/// The grid alone decides which nodes are voters. Both rules count every row, so each voter is a
+/// read voter and a write voter. Every voter therefore needs [`NodeRole::ReceiveLogs`], or a
 /// write quorum that holds the voter never commits.
 ///
 /// Each config holds every one of its nodes with its role there. A change keeps a role of the last
@@ -72,16 +73,19 @@ use crate::quorum::Joint;
 /// use openraft::membership::{QuorumSet, RaftMembership};
 /// use openraft_membership::GridMembership;
 ///
-/// // Reads need row {1,2,3} or row {4,5,6}. Writes need a column, such as {2,5}.
+/// // Reads need row {1,2,3} or row {4,5,6}. Writes need a voter of each row, from any column.
 /// let grid = vec![vec![1, 2, 3], vec![4, 5, 6]];
 /// let nodes = BTreeSet::from([1, 2, 3, 4, 5, 6]);
 /// let membership = GridMembership::<u64, ()>::new(grid, nodes).unwrap();
 ///
 /// let read_accepts = membership.read_quorum_set().is_quorum([4, 5, 6].iter());
 /// assert!(read_accepts);
-/// let write_accepts = membership.write_quorum_set().is_quorum([2, 5].iter());
-/// assert!(write_accepts);
 /// let write_accepts = membership.write_quorum_set().is_quorum([1, 5].iter());
+/// assert!(write_accepts);
+/// let write_accepts = membership.write_quorum_set().is_quorum([3, 4].iter());
+/// assert!(write_accepts);
+/// // {1,2,3} holds no voter of row {4,5,6}.
+/// let write_accepts = membership.write_quorum_set().is_quorum([1, 2, 3].iter());
 /// assert!(!write_accepts);
 /// ```
 #[since(version = "0.10.0")]
@@ -203,7 +207,7 @@ where
     /// use openraft::membership::{NodeRef, NodeRole, RaftMembership};
     /// use openraft_membership::GridMembership;
     ///
-    /// // Reads need row {1,2} or row {3,4}. Writes need column {1,3} or column {2,4}.
+    /// // Reads need row {1,2} or row {3,4}. Writes need a voter of each row, such as {1,4}.
     /// let grid = vec![vec![1, 2], vec![3, 4]];
     /// let nodes = BTreeSet::from([1, 2, 3, 4]);
     /// let membership = GridMembership::<u64, ()>::new(grid, nodes).unwrap();
@@ -226,12 +230,13 @@ where
         Ok(Self { configs })
     }
 
-    /// Returns the row rule and the column rule of `grid`, checked like [`new()`](Self::new).
+    /// Returns the `FullRow` read rule and the `OnePerRow` write rule of `grid`, checked like
+    /// [`new()`](Self::new).
     pub(crate) fn rules_from_grid(
         grid: Vec<Vec<NID>>,
     ) -> Result<(GridQuorumSet<NID>, GridQuorumSet<NID>), InvalidGrid<NID>> {
-        let read = GridQuorumSet::new(grid.clone(), GridLine::Row)?;
-        let write = GridQuorumSet::new(grid, GridLine::Column)?;
+        let read = GridQuorumSet::new(grid.clone(), GridRule::FullRow)?;
+        let write = GridQuorumSet::new(grid, GridRule::OnePerRow)?;
         Ok((read, write))
     }
 }

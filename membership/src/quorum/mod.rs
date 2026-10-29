@@ -16,8 +16,8 @@ pub(crate) use quorum_set::QuorumSet;
 pub use threshold_quorum_set::ThresholdQuorumSet;
 
 pub use crate::explicit::ExplicitQuorumSet;
-pub use crate::grid::GridLine;
 pub use crate::grid::GridQuorumSet;
+pub use crate::grid::GridRule;
 pub use crate::hierarchical::Group;
 pub use crate::hierarchical::HierarchicalQuorumSet;
 pub use crate::weighted::WeightedQuorumSet;

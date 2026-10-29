@@ -10,6 +10,6 @@ mod grid_quorum_set_test;
 
 pub use grid_change::GridChange;
 pub use grid_membership::GridMembership;
-pub use grid_quorum_set::GridLine;
 pub use grid_quorum_set::GridQuorumSet;
+pub use grid_quorum_set::GridRule;
 pub use invalid_grid::InvalidGrid;
