@@ -1,6 +1,10 @@
 //! State machine control handle
 
+use std::future::Future;
+
+use crate::OptionalSend;
 use crate::RaftTypeConfig;
+use crate::StorageError;
 use crate::async_runtime::MpscSender;
 use crate::async_runtime::MpscWeakSender;
 use crate::async_runtime::SendError;
@@ -29,9 +33,30 @@ where
     C: RaftTypeConfig,
     SM: RaftStateMachine<C>,
 {
-    pub(crate) async fn send(&mut self, cmd: sm::Command<C, SM>) -> Result<(), SendError<sm::Command<C, SM>>> {
+    /// Returns a future that sends `cmd` to the worker.
+    ///
+    /// The future owns a clone of the sender and `cmd`, so it borrows nothing and can be retained
+    /// while other work runs. Polling the same future keeps its place among the senders waiting
+    /// for capacity. A failed send reports the storage error of the unsent command.
+    pub(crate) fn send(
+        &self,
+        cmd: sm::Command<C, SM>,
+    ) -> impl Future<Output = Result<(), StorageError<C>>> + OptionalSend + use<C, SM> {
         tracing::debug!("sending command to state machine worker: {:?}", cmd);
-        self.cmd_tx.send(cmd).await
+        let cmd_tx = self.cmd_tx.clone();
+        async move {
+            let res = cmd_tx.send(cmd).await;
+            res.map_err(Self::send_error)
+        }
+    }
+
+    /// Converts a failed send to the storage error of the unsent command.
+    fn send_error(err: SendError<sm::Command<C, SM>>) -> StorageError<C> {
+        let reason = err.to_string();
+        match err.0 {
+            sm::Command::Apply { last, .. } => StorageError::apply(last, C::err_from_string(reason)),
+            _ => StorageError::write_state_machine(C::err_from_string("cannot send to sm::Worker")),
+        }
     }
 
     /// Create a [`SnapshotReader`] to get the current snapshot from the state machine.
@@ -88,5 +113,78 @@ where
         };
 
         Ok(snapshot)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use futures_util::FutureExt;
+
+    use crate::StorageError;
+    use crate::async_runtime::MpscReceiver;
+    use crate::async_runtime::TryRecvError;
+    use crate::base::BoxFuture;
+    use crate::core::sm;
+    use crate::core::sm::handle::Handle;
+    use crate::engine::testing::UTConfig;
+    use crate::engine::testing::log_id;
+    use crate::type_config::TypeConfigExt;
+
+    type C = UTConfig;
+
+    /// A send retained while the channel is full delivers its command exactly once, after the
+    /// receiver frees a slot.
+    #[test]
+    fn retained_send_delivers_once_after_capacity_frees() {
+        C::run(async {
+            let (cmd_tx, mut cmd_rx) = C::mpsc(1);
+            let handle: Handle<C> = Handle {
+                cmd_tx,
+                join_handle: C::spawn(async {}),
+            };
+
+            let sent = handle.send(sm::Command::build_snapshot()).now_or_never();
+            assert_eq!(Some(Ok(())), sent);
+
+            let mut send: BoxFuture<'static, Result<(), StorageError<C>>> =
+                Box::pin(handle.send(sm::Command::apply(log_id(1, 1, 1), log_id(1, 1, 2), vec![])));
+            for _ in 0..3 {
+                let polled = send.as_mut().now_or_never();
+                assert_eq!(None, polled, "the channel is full");
+            }
+
+            let received = cmd_rx.try_recv();
+            assert_eq!(Ok(sm::Command::build_snapshot()), received);
+
+            let polled = send.as_mut().now_or_never();
+            assert_eq!(Some(Ok(())), polled);
+
+            let received = cmd_rx.try_recv();
+            let want = sm::Command::apply(log_id(1, 1, 1), log_id(1, 1, 2), vec![]);
+            assert_eq!(Ok(want), received);
+
+            let received = cmd_rx.try_recv();
+            assert_eq!(Err(TryRecvError::Empty), received);
+        });
+    }
+
+    #[test]
+    fn closed_channel_reports_the_unsent_command() {
+        C::run(async {
+            let (cmd_tx, cmd_rx) = C::mpsc(1);
+            drop(cmd_rx);
+            let handle: Handle<C> = Handle {
+                cmd_tx,
+                join_handle: C::spawn(async {}),
+            };
+
+            let res = handle.send(sm::Command::apply(log_id(1, 1, 1), log_id(1, 1, 2), vec![])).await;
+            let want = StorageError::apply(log_id(1, 1, 2), C::err_from_string("channel closed"));
+            assert_eq!(Err(want), res);
+
+            let res = handle.send(sm::Command::build_snapshot()).await;
+            let want = StorageError::write_state_machine(C::err_from_string("cannot send to sm::Worker"));
+            assert_eq!(Err(want), res);
+        });
     }
 }

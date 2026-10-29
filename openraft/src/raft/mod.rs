@@ -617,6 +617,7 @@ where
                     network_factory: Arc::new(C::mutex(network)),
                     log_store,
                     sm_handle,
+                    sm_commands: sm::command_fifo::CommandFifo::new(config.state_machine_channel_size()),
 
                     engine,
 
