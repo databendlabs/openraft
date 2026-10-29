@@ -17,36 +17,36 @@ use crate::quorum::Group;
 use crate::quorum::HierarchicalQuorumSet;
 use crate::quorum::Joint;
 
-/// The ID of the only group of a membership built from a node map.
-const DEFAULT_GROUP: &str = "default";
-
-/// A membership whose voters form groups, such as zones: a quorum needs enough voters in each of
-/// enough groups.
+/// A membership whose voters form a tree of groups, such as datacenters that hold racks: a quorum
+/// needs enough members in enough groups, at every level.
 ///
-/// A config places each voter in exactly one group, named by a stable ID. It sets `write_groups`
-/// and, for every group, a `write_size`. A write quorum holds `write_size` voters in each of
-/// `write_groups` groups. A read quorum holds `read_size` voters in each of `read_groups` groups,
-/// where `read_groups = group_count - write_groups + 1` and the `read_size` of a group is
-/// `voter_count - write_size + 1`. A candidate becomes leader only with votes from a read quorum,
-/// and an entry commits once a write quorum stores it.
+/// A config arranges its voters in a tree of [`Group`]s. Each group holds voters, child groups, or
+/// both: its members. Each group has an ID that is stable among its siblings, such as the name of
+/// a zone, and each voter belongs to exactly one group. The config gives every group a
+/// `write_size`. A set reaches a group when the voters of the group that it holds, plus the child
+/// groups that it reaches, number at least the size of the group. A write quorum reaches the root
+/// group with every group at its `write_size`. A read quorum reaches the root group with every
+/// group at its `read_size = member_count - write_size + 1`. A candidate becomes leader only with
+/// votes from a read quorum, and an entry commits once a write quorum stores it.
 ///
-/// A read quorum and a write quorum share a group, because `read_groups + write_groups` exceeds the
-/// group count. In that group they share a voter, because `read_size + write_size` exceeds the
-/// voter count of the group. The read quorums are exactly the sets that meet every write quorum,
-/// so an election needs no more votes than safety requires.
+/// A read quorum and a write quorum reach a common member of the root group, because
+/// `read_size + write_size` exceeds its member count. A common voter is a shared voter, and a
+/// common child group repeats the argument one level down. So the two quorums share a voter. The
+/// read quorums are exactly the sets that meet every write quorum, so an election needs no more
+/// votes than safety requires.
 ///
-/// Writes commit while `write_groups` groups each keep `write_size` live voters, and elections
-/// succeed while `read_groups` groups each keep `read_size` live voters. Raising a write threshold
-/// lowers the matching read threshold, so writes tolerate fewer failures and elections more.
+/// Writes commit while the live voters reach the root group with the write sizes, and elections
+/// succeed while they reach it with the read sizes. Raising the write size of a group lowers its
+/// read size, so writes tolerate fewer failures there and elections more.
 ///
 /// A membership holds two or more configs only during a joint change. Then a quorum must be a
 /// quorum of every config. Rule i of
 /// [`read_quorum_set()`](openraft::membership::RaftMembership::read_quorum_set) and rule i of
 /// [`write_quorum_set()`](openraft::membership::RaftMembership::write_quorum_set) belong to
-/// config i and share its groups.
+/// config i and share its tree.
 ///
-/// [`hierarchical_membership`](crate::docs::hierarchical) explains how to choose the groups and
-/// the write thresholds, and how to change them.
+/// [`hierarchical_membership`](crate::docs::hierarchical) explains how to arrange the groups and
+/// choose the write sizes, and how to change them.
 ///
 /// # Node roles
 ///
@@ -58,8 +58,8 @@ const DEFAULT_GROUP: &str = "default";
 /// [`NodeRole::ReceiveLogs`] stores logs and votes, but starts no election on its own; a
 /// leadership transfer from the leader can still make it leader.
 ///
-/// The groups alone decide which nodes are voters. Both rules of a config share its groups, so
-/// every voter is a read voter and a write voter. Every voter therefore needs
+/// The tree alone decides which nodes are voters. Both rules of a config share its tree, so every
+/// voter is a read voter and a write voter. Every voter therefore needs
 /// [`NodeRole::ReceiveLogs`], or a write quorum that holds the voter never commits.
 ///
 /// Each config holds every one of its nodes with its role there. A change keeps a role of the last
@@ -74,25 +74,20 @@ const DEFAULT_GROUP: &str = "default";
 /// # Examples
 ///
 /// ```
-/// use std::collections::BTreeMap;
 /// use std::collections::BTreeSet;
 ///
 /// use openraft::membership::{QuorumSet, RaftMembership};
 /// use openraft_membership::HierarchicalMembership;
+/// use openraft_membership::quorum::Group;
 ///
 /// // Three zones of three voters. Reads and writes each need 2 voters in each of 2 zones.
-/// let groups = BTreeMap::from([
-///     ("a".to_string(), BTreeSet::from([1, 2, 3])),
-///     ("b".to_string(), BTreeSet::from([4, 5, 6])),
-///     ("c".to_string(), BTreeSet::from([7, 8, 9])),
-/// ]);
-/// let write_sizes = BTreeMap::from([
-///     ("a".to_string(), 2),
-///     ("b".to_string(), 2),
-///     ("c".to_string(), 2),
+/// let groups = Group::of_groups(2, [
+///     ("a", Group::of_voters(2, [1, 2, 3])),
+///     ("b", Group::of_voters(2, [4, 5, 6])),
+///     ("c", Group::of_voters(2, [7, 8, 9])),
 /// ]);
 /// let nodes = BTreeSet::from([1, 2, 3, 4, 5, 6, 7, 8, 9]);
-/// let membership = HierarchicalMembership::<u64, ()>::new(groups, 2, write_sizes, nodes).unwrap();
+/// let membership = HierarchicalMembership::<u64, ()>::new(groups, nodes).unwrap();
 ///
 /// // Zone c is down, and zone a lost voter 1: writes still commit.
 /// let write = membership.write_quorum_set();
@@ -137,8 +132,8 @@ where
     }
 }
 
-/// Makes every node a voter of one group with the ID `default`, with `write_groups = 1` and
-/// `write_size = n / 2 + 1` for `n` voters. A read quorum then holds `n - n / 2` voters.
+/// Makes every node a voter of the root group, with `write_size = n / 2 + 1` for `n` voters. A read
+/// quorum then holds `n - n / 2` voters.
 impl<NID, N> From<BTreeMap<NID, N>> for HierarchicalMembership<NID, N>
 where
     NID: NodeId,
@@ -152,14 +147,10 @@ where
 
         let voter_count = voters.len() as u64;
         let write_size = voter_count / 2 + 1;
-        let group = Group {
-            voters,
-            quorum_size: write_size,
-        };
-        let groups = BTreeMap::from([(DEFAULT_GROUP.to_string(), group)]);
+        let groups = Group::of_voters(write_size, voters);
 
-        // Safe unwrap(): the only group holds a voter, and 1 <= write_size <= voter_count.
-        let write = HierarchicalQuorumSet::new(1, groups).unwrap();
+        // Safe unwrap(): the root group holds a voter, and 1 <= write_size <= voter_count.
+        let write = HierarchicalQuorumSet::new(groups).unwrap();
         let read = write.dual();
         // Safe unwrap(): every voter is a node, and the config sets no role.
         let config = Config::new(read, write, BTreeMap::new(), nodes).unwrap();
@@ -182,31 +173,20 @@ where
     NID: NodeId,
     N: Node,
 {
-    /// Builds a membership with one config that places the voters in `groups`. A write quorum
-    /// holds `write_sizes[group]` voters in each of `write_groups` groups.
+    /// Builds a membership with one config that arranges the voters in the tree of `groups`, the
+    /// root group. The `quorum_size` of each group is its write size, and the read sizes are
+    /// derived as the type docs describe.
     ///
-    /// `groups` maps each group ID to the voters of the group, and the read thresholds are derived
-    /// as the type docs describe. Every voter needs a node in `nodes`, and the other nodes in
-    /// `nodes` are learners. `nodes` implements [`IntoNodes`], so it can be a `BTreeMap<NID, N>`,
-    /// a `HashMap<NID, N>`, or a `BTreeSet<NID>` when `N` is `()` or
-    /// [`EmptyNode`](openraft::EmptyNode).
+    /// Every voter needs a node in `nodes`, and the other nodes in `nodes` are learners. `nodes`
+    /// implements [`IntoNodes`], so it can be a `BTreeMap<NID, N>`, a `HashMap<NID, N>`, or a
+    /// `BTreeSet<NID>` when `N` is `()` or [`EmptyNode`](openraft::EmptyNode).
     ///
-    /// Returns [`MembershipError::UserDefined`] when `write_sizes` names a group
-    /// that `groups` lacks, or misses a group of `groups`. Also returns it when the groups, with
-    /// their write sizes, and `write_groups` fail the checks of [`HierarchicalQuorumSet::new()`]
-    /// as the thresholds of the write rule. Returns [`MembershipError::NodeNotFound`]
-    /// for a voter with no node.
-    pub fn new<T>(
-        groups: BTreeMap<String, BTreeSet<NID>>,
-        write_groups: u64,
-        write_sizes: BTreeMap<String, u64>,
-        nodes: T,
-    ) -> Result<Self, MembershipError<NID, InvalidGroups<NID>>>
-    where
-        T: IntoNodes<NID, N>,
-    {
-        let groups = pair_groups(groups, write_sizes)?;
-        let write = HierarchicalQuorumSet::new(write_groups, groups)?;
+    /// Returns [`MembershipError::UserDefined`] when `groups` fails the checks of
+    /// [`HierarchicalQuorumSet::new()`]. Returns [`MembershipError::NodeNotFound`] for a voter with
+    /// no node.
+    pub fn new<T>(groups: Group<NID>, nodes: T) -> Result<Self, MembershipError<NID, InvalidGroups<NID>>>
+    where T: IntoNodes<NID, N> {
+        let write = HierarchicalQuorumSet::new(groups)?;
         let read = write.dual();
 
         let nodes = nodes.into_nodes();
@@ -229,12 +209,12 @@ where
     ///
     /// use openraft::membership::{NodeRef, NodeRole, RaftMembership};
     /// use openraft_membership::HierarchicalMembership;
+    /// use openraft_membership::quorum::Group;
     ///
     /// // One group of three voters; any two of them form a quorum.
-    /// let groups = BTreeMap::from([("a".to_string(), BTreeSet::from([1, 2, 3]))]);
-    /// let write_sizes = BTreeMap::from([("a".to_string(), 2)]);
+    /// let groups = Group::of_voters(2, [1, 2, 3]);
     /// let nodes = BTreeSet::from([1, 2, 3]);
-    /// let membership = HierarchicalMembership::<u64, ()>::new(groups, 1, write_sizes, nodes).unwrap();
+    /// let membership = HierarchicalMembership::<u64, ()>::new(groups, nodes).unwrap();
     ///
     /// // Voter 3 stores logs and votes, but never starts an election on its own.
     /// let roles = BTreeMap::from([(3, NodeRole::ReceiveLogs)]);
@@ -253,50 +233,6 @@ where
         let configs = Config::with_roles(self.configs, roles)?;
         Ok(Self { configs })
     }
-}
-
-/// Pairs the voters of each group of `groups` with its quorum size in `quorum_sizes`.
-///
-/// Returns [`InvalidGroups::UnknownGroup`] for a quorum size of a group that `groups` lacks, and
-/// [`InvalidGroups::MissingQuorumSize`] for a group without a quorum size.
-pub(crate) fn pair_groups<NID>(
-    groups: BTreeMap<String, BTreeSet<NID>>,
-    mut quorum_sizes: BTreeMap<String, u64>,
-) -> Result<BTreeMap<String, Group<NID>>, InvalidGroups<NID>>
-where
-    NID: NodeId,
-{
-    for group in quorum_sizes.keys() {
-        if !groups.contains_key(group) {
-            let unknown = InvalidGroups::UnknownGroup { group: group.clone() };
-            return Err(unknown);
-        }
-    }
-
-    let mut paired = BTreeMap::new();
-    for (group, voters) in groups {
-        let Some(quorum_size) = quorum_sizes.remove(&group) else {
-            let missing = InvalidGroups::MissingQuorumSize { group };
-            return Err(missing);
-        };
-        paired.insert(group, Group { voters, quorum_size });
-    }
-    Ok(paired)
-}
-
-/// Returns the voters and the quorum size of each group of `rule`, as two maps by group ID: the
-/// inverse of [`pair_groups()`].
-pub(crate) fn split_groups<NID>(
-    rule: &HierarchicalQuorumSet<NID>,
-) -> (BTreeMap<String, BTreeSet<NID>>, BTreeMap<String, u64>)
-where NID: NodeId {
-    let mut groups = BTreeMap::new();
-    let mut quorum_sizes = BTreeMap::new();
-    for (group, Group { voters, quorum_size }) in rule.groups() {
-        groups.insert(group.clone(), voters.clone());
-        quorum_sizes.insert(group.clone(), *quorum_size);
-    }
-    (groups, quorum_sizes)
 }
 
 impl<NID, N> RaftMembership for HierarchicalMembership<NID, N>

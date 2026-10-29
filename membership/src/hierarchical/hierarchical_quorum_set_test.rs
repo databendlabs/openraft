@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 use maplit::btreemap;
@@ -10,306 +9,329 @@ use crate::quorum::Group;
 use crate::quorum::HierarchicalQuorumSet;
 use crate::quorum::QuorumIntersection;
 use crate::quorum::QuorumSet;
+use crate::quorum::testing::accepted;
+use crate::quorum::testing::all_group_sizes;
 use crate::quorum::testing::all_subsets;
 use crate::quorum::testing::assert_quorum_set_contract;
+use crate::quorum::testing::holding_one_of;
 
-/// Returns the groups `a={1}`, `b={2,3}` and `c={4,5,6}`.
-fn uneven_groups() -> BTreeMap<String, BTreeSet<u64>> {
-    btreemap! {
-        "a".to_string() => btreeset! {1},
-        "b".to_string() => btreeset! {2, 3},
-        "c".to_string() => btreeset! {4, 5, 6},
+/// Returns the root group over the groups `a={1}`, `b={2,3}` and `c={4,5,6}`, with the quorum
+/// sizes `root`, `a`, `b` and `c`.
+fn two_levels(root: u64, a: u64, b: u64, c: u64) -> Group<u64> {
+    Group::of_groups(root, [
+        ("a", Group::of_voters(a, [1])),
+        ("b", Group::of_voters(b, [2, 3])),
+        ("c", Group::of_voters(c, [4, 5, 6])),
+    ])
+}
+
+/// Returns a tree of three levels whose branches have different depths, with the quorum sizes
+/// `root`, `x`, `a`, `b` and `c`. The root holds voter 7 and the groups `x` and `c={5,6}`, and
+/// group `x` holds the groups `a={1,2}` and `b={3,4}`.
+fn three_levels(root: u64, x: u64, a: u64, b: u64, c: u64) -> Group<u64> {
+    let x = Group::of_groups(x, [
+        ("a", Group::of_voters(a, [1, 2])),
+        ("b", Group::of_voters(b, [3, 4])),
+    ]);
+    Group {
+        quorum_size: root,
+        voters: btreeset! {7},
+        groups: btreemap! {"x".to_string() => x, "c".to_string() => Group::of_voters(c, [5, 6])},
     }
 }
 
-/// Returns the quorum sizes `sizes`, keyed by group ID.
-fn sizes(sizes: &[(&str, u64)]) -> BTreeMap<String, u64> {
-    let mut map = BTreeMap::new();
-    for (group, size) in sizes {
-        map.insert(group.to_string(), *size);
+/// Returns the path of a group from the IDs `ids`.
+fn path(ids: &[&str]) -> Vec<String> {
+    let mut path = vec![];
+    for id in ids {
+        path.push(id.to_string());
     }
-    map
+    path
 }
 
-/// Returns each group of `layout` with its quorum size in `sizes`, which names every group.
-fn sized(layout: &BTreeMap<String, BTreeSet<u64>>, sizes: &BTreeMap<String, u64>) -> BTreeMap<String, Group<u64>> {
-    let mut groups = BTreeMap::new();
-    for (group, voters) in layout {
-        let voters = voters.clone();
-        let quorum_size = sizes[group];
-        groups.insert(group.clone(), Group { voters, quorum_size });
-    }
-    groups
-}
-
-/// Returns every rule over `groups`: each number of groups to reach, with each quorum size of each
-/// group.
-fn all_rules(groups: &BTreeMap<String, BTreeSet<u64>>) -> Vec<HierarchicalQuorumSet<u64>> {
-    let mut all_sizes = vec![BTreeMap::new()];
-    for (group, voters) in groups {
-        let voter_count = voters.len() as u64;
-        let mut extended = vec![];
-        for sizes in &all_sizes {
-            for size in 1..=voter_count {
-                let mut sizes = sizes.clone();
-                sizes.insert(group.clone(), size);
-                extended.push(sizes);
-            }
-        }
-        all_sizes = extended;
-    }
-
-    let group_count = groups.len() as u64;
+/// Returns every rule over the tree of `layout`.
+fn all_rules(layout: &Group<u64>) -> Vec<HierarchicalQuorumSet<u64>> {
     let mut rules = vec![];
-    for quorum_groups in 1..=group_count {
-        for sizes in &all_sizes {
-            let rule = HierarchicalQuorumSet::new(quorum_groups, sized(groups, sizes));
-            rules.push(rule.unwrap());
-        }
+    for root in all_group_sizes(layout) {
+        let rule = HierarchicalQuorumSet::new(root).unwrap();
+        rules.push(rule);
     }
     rules
 }
 
 #[test]
 fn test_new_rejects_unusable_groups_and_thresholds() {
-    let shared = btreemap! {
-        "a".to_string() => btreeset! {1, 2},
-        "b".to_string() => btreeset! {2, 3},
+    let empty_root = Group::of_voters(1, []);
+    let empty_nested = Group::of_groups(1, [(
+        "x",
+        Group::of_groups(1, [("a", Group::of_voters(1, [1])), ("b", Group::of_voters(1, []))]),
+    )]);
+    let shared_by_siblings = Group::of_groups(1, [
+        ("a", Group::of_voters(1, [1, 2])),
+        ("b", Group::of_voters(1, [2, 3])),
+    ]);
+    // Voter 1 sits at the root and in group x.a, two levels below.
+    let shared_across_levels = Group {
+        quorum_size: 1,
+        voters: btreeset! {1},
+        groups: btreemap! {"x".to_string() => Group::of_groups(1, [("a", Group::of_voters(1, [1]))])},
     };
-    let with_empty = btreemap! {
-        "a".to_string() => btreeset! {1},
-        "b".to_string() => btreeset! {},
-    };
-    let all_one = sizes(&[("a", 1), ("b", 1), ("c", 1)]);
 
     let cases = vec![
-        (BTreeMap::new(), 1, sizes(&[]), InvalidGroups::NoGroup),
-        (with_empty, 1, sizes(&[("a", 1), ("b", 1)]), InvalidGroups::EmptyGroup {
-            group: "b".to_string(),
+        (empty_root, InvalidGroups::EmptyGroup { group: path(&[]) }),
+        (empty_nested, InvalidGroups::EmptyGroup {
+            group: path(&["x", "b"]),
         }),
-        (shared, 1, sizes(&[("a", 1), ("b", 1)]), InvalidGroups::SharedVoter {
+        (shared_by_siblings, InvalidGroups::SharedVoter {
             node_id: 2,
-            first: "a".to_string(),
-            second: "b".to_string(),
+            first: path(&["a"]),
+            second: path(&["b"]),
         }),
-        (
-            uneven_groups(),
-            0,
-            all_one.clone(),
-            InvalidGroups::InvalidQuorumGroups {
-                quorum_groups: 0,
-                group_count: 3,
-            },
-        ),
-        (uneven_groups(), 4, all_one, InvalidGroups::InvalidQuorumGroups {
-            quorum_groups: 4,
-            group_count: 3,
+        (shared_across_levels, InvalidGroups::SharedVoter {
+            node_id: 1,
+            first: path(&[]),
+            second: path(&["x", "a"]),
         }),
-        (
-            uneven_groups(),
-            1,
-            sizes(&[("a", 1), ("b", 0), ("c", 1)]),
-            InvalidGroups::InvalidQuorumSize {
-                group: "b".to_string(),
-                quorum_size: 0,
-                voter_count: 2,
-            },
-        ),
-        (
-            uneven_groups(),
-            1,
-            sizes(&[("a", 1), ("b", 3), ("c", 1)]),
-            InvalidGroups::InvalidQuorumSize {
-                group: "b".to_string(),
-                quorum_size: 3,
-                voter_count: 2,
-            },
-        ),
+        (three_levels(0, 1, 1, 1, 1), InvalidGroups::InvalidQuorumSize {
+            group: path(&[]),
+            quorum_size: 0,
+            member_count: 3,
+        }),
+        (three_levels(4, 1, 1, 1, 1), InvalidGroups::InvalidQuorumSize {
+            group: path(&[]),
+            quorum_size: 4,
+            member_count: 3,
+        }),
+        (three_levels(1, 3, 1, 1, 1), InvalidGroups::InvalidQuorumSize {
+            group: path(&["x"]),
+            quorum_size: 3,
+            member_count: 2,
+        }),
+        (three_levels(1, 1, 1, 0, 1), InvalidGroups::InvalidQuorumSize {
+            group: path(&["x", "b"]),
+            quorum_size: 0,
+            member_count: 2,
+        }),
     ];
-    for (layout, quorum_groups, quorum_sizes, invalid) in cases {
-        let groups = sized(&layout, &quorum_sizes);
-        let res = HierarchicalQuorumSet::new(quorum_groups, groups);
+    for (root, invalid) in cases {
+        let res = HierarchicalQuorumSet::new(root);
         assert_eq!(Err(invalid), res);
     }
 }
 
 #[test]
-fn test_is_quorum_reaches_quorum_groups_groups() {
-    let groups = uneven_groups();
-    let subsets = all_subsets(&btreeset! {1, 2, 3, 4, 5, 6});
+fn test_is_quorum_reaches_groups_at_every_level() {
+    let subsets = all_subsets(&btreeset! {1, 2, 3, 4, 5, 6, 7});
 
-    for rule in all_rules(&groups) {
-        for subset in &subsets {
-            let mut reached = 0;
-            for (group, voters) in &groups {
-                let held = voters.intersection(subset).count() as u64;
-                if held >= rule.groups()[group].quorum_size {
-                    reached += 1;
-                }
-            }
-            let want = reached >= rule.quorum_groups();
+    // A quorum reaches 2 of x, c and voter 7: x with a voter of a and a voter of b, c with both
+    // of its voters.
+    let root = three_levels(2, 2, 1, 1, 2);
+    let rule = HierarchicalQuorumSet::new(root).unwrap();
+    let minimal = vec![
+        btreeset! {1, 3, 5, 6},
+        btreeset! {1, 4, 5, 6},
+        btreeset! {2, 3, 5, 6},
+        btreeset! {2, 4, 5, 6},
+        btreeset! {1, 3, 7},
+        btreeset! {1, 4, 7},
+        btreeset! {2, 3, 7},
+        btreeset! {2, 4, 7},
+        btreeset! {5, 6, 7},
+    ];
+    let want = holding_one_of(&minimal, &subsets);
+    let got = accepted(&rule, &subsets);
+    assert_eq!(want, got);
 
-            let got = rule.is_quorum(subset.iter());
-            assert_eq!(want, got, "rule={rule:?}, subset={subset:?}");
-        }
-    }
+    // The dual reaches x with both voters of a or of b, and c with one voter.
+    let dual = rule.dual();
+    let want = three_levels(2, 1, 2, 2, 1);
+    assert_eq!(&want, dual.root());
+    let minimal = vec![
+        btreeset! {1, 2, 5},
+        btreeset! {1, 2, 6},
+        btreeset! {3, 4, 5},
+        btreeset! {3, 4, 6},
+        btreeset! {1, 2, 7},
+        btreeset! {3, 4, 7},
+        btreeset! {5, 7},
+        btreeset! {6, 7},
+    ];
+    let want = holding_one_of(&minimal, &subsets);
+    let got = accepted(&dual, &subsets);
+    assert_eq!(want, got);
 }
 
 #[test]
 fn test_is_quorum_ignores_unknown_and_repeated_ids() {
-    let quorum_sizes = sizes(&[("a", 1), ("b", 2), ("c", 2)]);
-    let rule = HierarchicalQuorumSet::new(2, sized(&uneven_groups(), &quorum_sizes)).unwrap();
+    let root = three_levels(2, 2, 1, 1, 2);
+    let rule = HierarchicalQuorumSet::new(root).unwrap();
 
-    // Voter 1 reaches group a, and voters 4 and 5 reach group c.
-    let accepts = rule.is_quorum([5, 1, 9, 4, 1].iter());
+    // Voters 1 and 3 reach group x, and voter 7 sits at the root.
+    let accepts = rule.is_quorum([7, 1, 9, 3, 1].iter());
     assert!(accepts);
-    // Voter 4 counts once, so group c is not reached.
-    let accepts = rule.is_quorum([4, 4, 1, 9].iter());
+    // Voter 5 counts once, so group c is not reached.
+    let accepts = rule.is_quorum([5, 5, 7, 9].iter());
     assert!(!accepts);
     let accepts = rule.is_quorum([].iter());
     assert!(!accepts);
 
     let ids: Vec<u64> = rule.ids().collect();
-    assert_eq!(vec![1, 2, 3, 4, 5, 6], ids);
+    assert_eq!(vec![1, 2, 3, 4, 5, 6, 7], ids);
 }
 
 #[test]
 fn test_rules_keep_the_quorum_set_contract() {
-    for rule in all_rules(&uneven_groups()) {
-        assert_quorum_set_contract(&rule);
+    for layout in [two_levels(1, 1, 1, 1), three_levels(1, 1, 1, 1, 1)] {
+        for rule in all_rules(&layout) {
+            assert_quorum_set_contract(&rule);
+        }
     }
 }
 
 #[test]
 fn test_intersects_with() {
-    let groups = uneven_groups();
-    let rule = |quorum_groups, quorum_sizes| {
-        let rule = HierarchicalQuorumSet::new(quorum_groups, sized(&groups, &quorum_sizes));
-        rule.unwrap()
+    let rule = |root, x, a, b, c| {
+        let root = three_levels(root, x, a, b, c);
+        HierarchicalQuorumSet::new(root).unwrap()
     };
 
-    // Two quorums share one of the 3 groups, and more than half of its voters.
-    let majority = rule(2, sizes(&[("a", 1), ("b", 2), ("c", 2)]));
+    // `read` is the dual of `write`: in every group, the two quorum sizes sum to one more than the
+    // member count.
+    let write = rule(2, 2, 1, 1, 2);
+    let read = rule(2, 1, 2, 2, 1);
+    let intersects = read.intersects_with(&write);
+    assert_eq!(Some(true), intersects);
+
+    // With a majority of the members of every group, two quorums reach a common member in every
+    // group that both reach.
+    let majority = rule(2, 2, 2, 2, 2);
     let intersects = majority.intersects_with(&majority);
     assert_eq!(Some(true), intersects);
 
-    // Quorums of one group each can reach different groups, such as {1} and {2,3}.
-    let one_group = rule(1, sizes(&[("a", 1), ("b", 2), ("c", 3)]));
-    let intersects = one_group.intersects_with(&one_group);
+    // Two write quorums reach group x through different voters of group a and of group b:
+    // {1,3,7} and {2,4,5,6} are disjoint.
+    let exact = verify_intersection(&write, &write);
+    assert!(!exact);
+    let intersects = write.intersects_with(&write);
     assert_eq!(None, intersects);
 
-    // Quorums of 2 groups share at least one group, and group b splits into {2} and {3}:
-    // {1,2} and {3,4,5} are disjoint quorums.
-    let two_groups = rule(2, sizes(&[("a", 1), ("b", 1), ("c", 2)]));
-    let intersects = two_groups.intersects_with(&two_groups);
-    assert_eq!(None, intersects);
-
-    // `two_groups` is the read rule that a config derives from the write rule `majority`. Each sum
-    // exceeds its bound by exactly 1: 2 + 2 groups of 3, and in each group two quorum sizes that
-    // sum to one more than its voter count.
-    let intersects = two_groups.intersects_with(&majority);
-    assert_eq!(Some(true), intersects);
-
-    // A quorum of all 3 groups shares 2 groups with a quorum of 2 groups. Only group b splits, so
-    // they share a voter in their other common group, but the check proves no pair where a group
-    // splits.
-    let all_groups = rule(3, sizes(&[("a", 1), ("b", 1), ("c", 2)]));
-    let exact = verify_intersection(&all_groups, &two_groups);
+    // A quorum of all 3 root members holds voter 7 and both voters of c, which every write quorum
+    // meets. Groups a and b split, so the check proves nothing.
+    let all_members = rule(3, 2, 1, 1, 2);
+    let exact = verify_intersection(&all_members, &write);
     assert!(exact);
-    let intersects = all_groups.intersects_with(&two_groups);
+    let intersects = all_members.intersects_with(&write);
     assert_eq!(None, intersects);
 
-    // Moving voter 3 to group c changes the groups, so the check proves nothing.
-    let moved = btreemap! {
-        "a".to_string() => btreeset! {1},
-        "b".to_string() => btreeset! {2},
-        "c".to_string() => btreeset! {3, 4, 5, 6},
+    // Moving voter 4 from group x.b to group c changes the tree, so the check proves nothing.
+    let x = Group::of_groups(2, [("a", Group::of_voters(2, [1, 2])), ("b", Group::of_voters(1, [3]))]);
+    let moved = Group {
+        quorum_size: 2,
+        voters: btreeset! {7},
+        groups: btreemap! {"x".to_string() => x, "c".to_string() => Group::of_voters(2, [4, 5, 6])},
     };
-    let moved = sized(&moved, &sizes(&[("a", 1), ("b", 1), ("c", 3)]));
-    let moved = HierarchicalQuorumSet::new(2, moved).unwrap();
+    let moved = HierarchicalQuorumSet::new(moved).unwrap();
     let intersects = majority.intersects_with(&moved);
     assert_eq!(None, intersects);
 }
 
 #[test]
 fn test_intersects_with_proves_only_true_intersections() {
-    let rules = all_rules(&uneven_groups());
+    for layout in [two_levels(1, 1, 1, 1), three_levels(1, 1, 1, 1, 1)] {
+        let rules = all_rules(&layout);
 
-    for a in &rules {
-        // A membership config uses the dual of its write rule as its read rule.
-        let read = a.dual();
-        let intersects = read.intersects_with(a);
-        assert_eq!(Some(true), intersects, "a={a:?}");
+        for a in &rules {
+            // A membership config uses the dual of its write rule as its read rule.
+            let read = a.dual();
+            let intersects = read.intersects_with(a);
+            assert_eq!(Some(true), intersects, "a={a:?}");
 
-        for b in &rules {
-            let intersects = a.intersects_with(b);
-            assert_ne!(Some(false), intersects, "a={a:?}, b={b:?}");
-            if intersects == Some(true) {
-                let exact = verify_intersection(a, b);
-                assert!(exact, "a={a:?}, b={b:?}");
+            for b in &rules {
+                let intersects = a.intersects_with(b);
+                assert_ne!(Some(false), intersects, "a={a:?}, b={b:?}");
+                if intersects == Some(true) {
+                    let exact = verify_intersection(a, b);
+                    assert!(exact, "a={a:?}, b={b:?}");
+                }
             }
         }
     }
 }
 
 #[test]
-fn test_intersects_with_proves_nothing_for_other_groups() {
-    let rules = all_rules(&uneven_groups());
+fn test_intersects_with_proves_nothing_for_other_trees() {
+    let rules = all_rules(&three_levels(1, 1, 1, 1, 1));
 
-    // The same group IDs and voters, with voter 3 moved from group b to group c.
-    let moved = btreemap! {
-        "a".to_string() => btreeset! {1},
-        "b".to_string() => btreeset! {2},
-        "c".to_string() => btreeset! {3, 4, 5, 6},
+    // The same voters, with voter 4 moved from group x.b to group c.
+    let x = Group::of_groups(1, [("a", Group::of_voters(1, [1, 2])), ("b", Group::of_voters(1, [3]))]);
+    let moved = Group {
+        quorum_size: 1,
+        voters: btreeset! {7},
+        groups: btreemap! {"x".to_string() => x, "c".to_string() => Group::of_voters(1, [4, 5, 6])},
     };
-    let moved_rules = all_rules(&moved);
+    // The same groups a, b and c, with a and b directly under the root.
+    let flat = Group {
+        quorum_size: 1,
+        voters: btreeset! {7},
+        groups: btreemap! {
+            "a".to_string() => Group::of_voters(1, [1, 2]),
+            "b".to_string() => Group::of_voters(1, [3, 4]),
+            "c".to_string() => Group::of_voters(1, [5, 6]),
+        },
+    };
 
-    for a in &rules {
-        for b in &moved_rules {
-            let intersects = a.intersects_with(b);
-            assert_eq!(None, intersects, "a={a:?}, b={b:?}");
+    for other_layout in [moved, flat] {
+        for a in &rules {
+            for b in &all_rules(&other_layout) {
+                let intersects = a.intersects_with(b);
+                assert_eq!(None, intersects, "a={a:?}, b={b:?}");
+            }
         }
     }
 }
 
 #[test]
 fn test_dual_accepts_exactly_the_sets_that_meet_every_quorum() {
-    let groups = uneven_groups();
-    let ids = btreeset! {1, 2, 3, 4, 5, 6};
-    let subsets = all_subsets(&ids);
-
-    let majority = HierarchicalQuorumSet::new(2, sized(&groups, &sizes(&[("a", 1), ("b", 2), ("c", 2)]))).unwrap();
-    let want = HierarchicalQuorumSet::new(2, sized(&groups, &sizes(&[("a", 1), ("b", 1), ("c", 2)]))).unwrap();
+    let majority = HierarchicalQuorumSet::new(two_levels(2, 1, 2, 2)).unwrap();
     let dual = majority.dual();
-    assert_eq!(want, dual);
+    let want = two_levels(2, 1, 1, 2);
+    assert_eq!(&want, dual.root());
 
-    for rule in all_rules(&groups) {
-        let dual = rule.dual();
-        for subset in &subsets {
-            // Some quorum misses `subset` exactly when the voters outside it form a quorum.
-            let outside: BTreeSet<u64> = ids.difference(subset).copied().collect();
-            let meets_every_quorum = !rule.is_quorum(outside.iter());
-            let accepts = dual.is_quorum(subset.iter());
-            assert_eq!(meets_every_quorum, accepts, "rule={rule:?}, subset={subset:?}");
+    for layout in [two_levels(1, 1, 1, 1), three_levels(1, 1, 1, 1, 1)] {
+        let rules = all_rules(&layout);
+        let ids: BTreeSet<u64> = rules[0].ids().collect();
+        let subsets = all_subsets(&ids);
+
+        for rule in rules {
+            let dual = rule.dual();
+            for subset in &subsets {
+                // Some quorum misses `subset` exactly when the voters outside it form a quorum.
+                let outside: BTreeSet<u64> = ids.difference(subset).copied().collect();
+                let meets_every_quorum = !rule.is_quorum(outside.iter());
+                let accepts = dual.is_quorum(subset.iter());
+                assert_eq!(meets_every_quorum, accepts, "rule={rule:?}, subset={subset:?}");
+            }
+
+            let dual_of_dual = dual.dual();
+            assert_eq!(rule, dual_of_dual);
         }
-
-        let dual_of_dual = dual.dual();
-        assert_eq!(rule, dual_of_dual);
     }
 }
 
 #[cfg(feature = "serde")]
 #[test]
 fn test_serde() {
-    let groups = btreemap! {
-        "a".to_string() => btreeset! {1, 2},
-        "b".to_string() => btreeset! {3},
+    // The root holds voter 3 and group a, which holds group b={1,2}.
+    let a = Group::of_groups(1, [("b", Group::of_voters(2, [1, 2]))]);
+    let root = Group {
+        quorum_size: 1,
+        voters: btreeset! {3},
+        groups: btreemap! {"a".to_string() => a},
     };
-    let rule = HierarchicalQuorumSet::new(1, sized(&groups, &sizes(&[("a", 2), ("b", 1)]))).unwrap();
+    let rule = HierarchicalQuorumSet::new(root).unwrap();
 
     let json = serde_json::to_string(&rule).unwrap();
-    let want =
-        r#"{"groups":{"a":{"voters":[1,2],"quorum_size":2},"b":{"voters":[3],"quorum_size":1}},"quorum_groups":1}"#;
+    let want = r#"{"root":{"quorum_size":1,"voters":[3],"groups":{"a":{"quorum_size":1,"voters":[],"groups":{"b":{"quorum_size":2,"voters":[1,2],"groups":{}}}}}}}"#;
     assert_eq!(want, json);
     let decoded = serde_json::from_str::<HierarchicalQuorumSet<u64>>(&json).unwrap();
     assert_eq!(rule, decoded);

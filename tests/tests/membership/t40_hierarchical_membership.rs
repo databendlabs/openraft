@@ -5,6 +5,7 @@ use openraft::alias::AsyncRuntimeOf;
 use openraft::membership::NodeRole;
 use openraft_membership::HierarchicalChange;
 use openraft_membership::HierarchicalMembership;
+use openraft_membership::quorum::Group;
 
 use crate::fixtures::custom_membership::ChangeScenario;
 use crate::fixtures::custom_membership::QuorumScenario;
@@ -31,35 +32,43 @@ openraft::declare_raft_types!(
         AsyncRuntime = AsyncRuntimeOf<openraft_memstore::TypeConfig>,
 );
 
-/// Groups a = {1, 2}, b = {3, 4} and c = {5, 6}. A write quorum holds both voters of 2 groups, so
-/// a read quorum holds a voter of 2 groups.
-fn three_groups() -> Result<QuorumScenario<HierarchicalMembership<u64, ()>>> {
-    let groups = btreemap! {
-        "a".to_string() => btreeset! {1, 2},
-        "b".to_string() => btreeset! {3, 4},
-        "c".to_string() => btreeset! {5, 6},
+/// Three levels: the root holds group a = {1, 2}, group b and voter 6, and group b holds group
+/// b1 = {3, 4} and voter 5. A write quorum reaches 2 of a, b and voter 6: a with both voters, b
+/// with voter 5 and a voter of b1. A read quorum reaches 2 of them: a with one voter, b with voter
+/// 5 or both voters of b1.
+fn three_levels() -> Result<QuorumScenario<HierarchicalMembership<u64, ()>>> {
+    let b = Group {
+        quorum_size: 2,
+        voters: btreeset! {5},
+        groups: btreemap! {"b1".to_string() => Group::of_voters(1, [3, 4])},
     };
-    let write_sizes = btreemap! {"a".to_string() => 2, "b".to_string() => 2, "c".to_string() => 2};
+    let groups = Group {
+        quorum_size: 2,
+        voters: btreeset! {6},
+        groups: btreemap! {"a".to_string() => Group::of_voters(2, [1, 2]), "b".to_string() => b},
+    };
     let node_ids = btreeset! {1, 2, 3, 4, 5, 6};
-    let membership = HierarchicalMembership::new(groups, 2, write_sizes, node_ids.clone())?;
+    let membership = HierarchicalMembership::new(groups, node_ids.clone())?;
 
     Ok(QuorumScenario {
         node_ids,
         membership,
-        partial: btreeset! {1, 3},
-        write_quorum: btreeset! {1, 2, 3, 4},
-        candidate: 3,
-        read_quorum: btreeset! {3, 5},
-        read_and_write_quorum: btreeset! {3, 4, 5, 6},
+        partial: btreeset! {1, 5},
+        write_quorum: btreeset! {1, 2, 3, 5},
+        candidate: 5,
+        read_quorum: btreeset! {5, 6},
+        read_and_write_quorum: btreeset! {3, 5, 6},
     })
 }
 
 /// Groups a = {1, 2} and b = {3, 4}. A write quorum holds both voters of one group, so a read
 /// quorum holds a voter of each group.
 fn changes() -> Result<ChangeScenario<AdvConfig>> {
-    let groups = btreemap! {"a".to_string() => btreeset! {1, 2}, "b".to_string() => btreeset! {3, 4}};
-    let write_sizes = btreemap! {"a".to_string() => 2, "b".to_string() => 2};
-    let old = HierarchicalMembership::new(groups, 1, write_sizes, btreeset! {1, 2, 3, 4})?;
+    let groups = Group::of_groups(1, [
+        ("a", Group::of_voters(2, [1, 2])),
+        ("b", Group::of_voters(2, [3, 4])),
+    ]);
+    let old = HierarchicalMembership::new(groups, btreeset! {1, 2, 3, 4})?;
 
     // Only a role changes, so every quorum stays.
     let roles = btreemap! {2 => NodeRole::ReceiveLogs};
@@ -67,61 +76,71 @@ fn changes() -> Result<ChangeScenario<AdvConfig>> {
 
     // Voter 3 leaves group b, which then writes with voter 4 alone. The old read quorum {1, 3}
     // misses the new write quorum {4}.
-    let groups = btreemap! {"a".to_string() => btreeset! {1, 2}, "b".to_string() => btreeset! {4}};
-    let write_sizes = btreemap! {"b".to_string() => 1};
-    let joint = HierarchicalChange::groups(groups).with_write_sizes(write_sizes);
+    let groups = Group::of_groups(1, [("a", Group::of_voters(2, [1, 2])), ("b", Group::of_voters(1, [4]))]);
+    let joint = HierarchicalChange::groups(groups);
 
     Ok(ChangeScenario {
         node_ids: btreeset! {1, 2, 3, 4},
         old,
         direct,
-        direct_membership: "{configs: [Config { read: HierarchicalQuorumSet { groups: {\"a\": Group { voters: {1, 2}, \
-                            quorum_size: 1 }, \"b\": Group { voters: {3, 4}, quorum_size: 1 }}, quorum_groups: 2 }, \
-                            write: HierarchicalQuorumSet { groups: {\"a\": Group { voters: {1, 2}, quorum_size: 2 }, \
-                            \"b\": Group { voters: {3, 4}, quorum_size: 2 }}, quorum_groups: 1 }, \
+        direct_membership: "{configs: [Config { read: HierarchicalQuorumSet { root: Group { quorum_size: 2, \
+                            voters: {}, groups: {\"a\": Group { quorum_size: 1, voters: {1, 2}, groups: {} }, \
+                            \"b\": Group { quorum_size: 1, voters: {3, 4}, groups: {} }} } }, \
+                            write: HierarchicalQuorumSet { root: Group { quorum_size: 1, voters: {}, \
+                            groups: {\"a\": Group { quorum_size: 2, voters: {1, 2}, groups: {} }, \"b\": Group { \
+                            quorum_size: 2, voters: {3, 4}, groups: {} }} } }, \
                             nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), 2: ((), NodeRole(ReceiveLogs)), \
                             3: ((), NodeRole(Campaigner | ReceiveLogs)), \
                             4: ((), NodeRole(Campaigner | ReceiveLogs))} }]}",
         joint,
-        joint_with_learner: "{configs: [Config { read: HierarchicalQuorumSet { groups: {\"a\": Group { \
-                             voters: {1, 2}, quorum_size: 1 }, \"b\": Group { voters: {3, 4}, quorum_size: 1 }}, \
-                             quorum_groups: 2 }, write: HierarchicalQuorumSet { groups: {\"a\": Group { \
-                             voters: {1, 2}, quorum_size: 2 }, \"b\": Group { voters: {3, 4}, quorum_size: 2 }}, \
-                             quorum_groups: 1 }, nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), \
-                             2: ((), NodeRole(ReceiveLogs)), 3: ((), NodeRole(Campaigner | ReceiveLogs)), \
+        joint_with_learner: "{configs: [Config { read: HierarchicalQuorumSet { root: Group { quorum_size: 2, \
+                             voters: {}, groups: {\"a\": Group { quorum_size: 1, voters: {1, 2}, groups: {} }, \
+                             \"b\": Group { quorum_size: 1, voters: {3, 4}, groups: {} }} } }, \
+                             write: HierarchicalQuorumSet { root: Group { quorum_size: 1, voters: {}, \
+                             groups: {\"a\": Group { quorum_size: 2, voters: {1, 2}, groups: {} }, \"b\": Group { \
+                             quorum_size: 2, voters: {3, 4}, groups: {} }} } }, \
+                             nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), 2: ((), NodeRole(ReceiveLogs)), \
+                             3: ((), NodeRole(Campaigner | ReceiveLogs)), \
                              4: ((), NodeRole(Campaigner | ReceiveLogs))} }, Config { read: HierarchicalQuorumSet { \
-                             groups: {\"a\": Group { voters: {1, 2}, quorum_size: 1 }, \"b\": Group { voters: {4}, \
-                             quorum_size: 1 }}, quorum_groups: 2 }, write: HierarchicalQuorumSet { \
-                             groups: {\"a\": Group { voters: {1, 2}, quorum_size: 2 }, \"b\": Group { voters: {4}, \
-                             quorum_size: 1 }}, quorum_groups: 1 }, \
+                             root: Group { quorum_size: 2, voters: {}, groups: {\"a\": Group { quorum_size: 1, \
+                             voters: {1, 2}, groups: {} }, \"b\": Group { quorum_size: 1, voters: {4}, \
+                             groups: {} }} } }, write: HierarchicalQuorumSet { root: Group { quorum_size: 1, \
+                             voters: {}, groups: {\"a\": Group { quorum_size: 2, voters: {1, 2}, groups: {} }, \
+                             \"b\": Group { quorum_size: 1, voters: {4}, groups: {} }} } }, \
                              nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), 2: ((), NodeRole(ReceiveLogs)), \
                              3: ((), NodeRole(ReceiveLogs)), 4: ((), NodeRole(Campaigner | ReceiveLogs))} }]}",
-        joint_without_learner: "{configs: [Config { read: HierarchicalQuorumSet { groups: {\"a\": Group { \
-                                voters: {1, 2}, quorum_size: 1 }, \"b\": Group { voters: {3, 4}, quorum_size: 1 }}, \
-                                quorum_groups: 2 }, write: HierarchicalQuorumSet { groups: {\"a\": Group { \
-                                voters: {1, 2}, quorum_size: 2 }, \"b\": Group { voters: {3, 4}, quorum_size: 2 }}, \
-                                quorum_groups: 1 }, nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), \
-                                2: ((), NodeRole(ReceiveLogs)), 3: ((), NodeRole(Campaigner | ReceiveLogs)), \
-                                4: ((), NodeRole(Campaigner | ReceiveLogs))} }, Config { \
-                                read: HierarchicalQuorumSet { groups: {\"a\": Group { voters: {1, 2}, \
-                                quorum_size: 1 }, \"b\": Group { voters: {4}, quorum_size: 1 }}, quorum_groups: 2 }, \
-                                write: HierarchicalQuorumSet { groups: {\"a\": Group { voters: {1, 2}, \
-                                quorum_size: 2 }, \"b\": Group { voters: {4}, quorum_size: 1 }}, quorum_groups: 1 }, \
+        joint_without_learner: "{configs: [Config { read: HierarchicalQuorumSet { root: Group { quorum_size: 2, \
+                                voters: {}, groups: {\"a\": Group { quorum_size: 1, voters: {1, 2}, groups: {} }, \
+                                \"b\": Group { quorum_size: 1, voters: {3, 4}, groups: {} }} } }, \
+                                write: HierarchicalQuorumSet { root: Group { quorum_size: 1, voters: {}, \
+                                groups: {\"a\": Group { quorum_size: 2, voters: {1, 2}, groups: {} }, \"b\": Group { \
+                                quorum_size: 2, voters: {3, 4}, groups: {} }} } }, \
+                                nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), 2: ((), NodeRole(ReceiveLogs)), \
+                                3: ((), NodeRole(Campaigner | ReceiveLogs)), \
+                                4: ((), NodeRole(Campaigner | ReceiveLogs))} }, Config { read: HierarchicalQuorumSet { \
+                                root: Group { quorum_size: 2, voters: {}, groups: {\"a\": Group { quorum_size: 1, \
+                                voters: {1, 2}, groups: {} }, \"b\": Group { quorum_size: 1, voters: {4}, \
+                                groups: {} }} } }, write: HierarchicalQuorumSet { root: Group { quorum_size: 1, \
+                                voters: {}, groups: {\"a\": Group { quorum_size: 2, voters: {1, 2}, groups: {} }, \
+                                \"b\": Group { quorum_size: 1, voters: {4}, groups: {} }} } }, \
                                 nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), 2: ((), NodeRole(ReceiveLogs)), \
                                 4: ((), NodeRole(Campaigner | ReceiveLogs))} }]}",
-        target_with_learner: "{configs: [Config { read: HierarchicalQuorumSet { groups: {\"a\": Group { \
-                              voters: {1, 2}, quorum_size: 1 }, \"b\": Group { voters: {4}, quorum_size: 1 }}, \
-                              quorum_groups: 2 }, write: HierarchicalQuorumSet { groups: {\"a\": Group { \
-                              voters: {1, 2}, quorum_size: 2 }, \"b\": Group { voters: {4}, quorum_size: 1 }}, \
-                              quorum_groups: 1 }, nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), \
-                              2: ((), NodeRole(ReceiveLogs)), 3: ((), NodeRole(ReceiveLogs)), \
-                              4: ((), NodeRole(Campaigner | ReceiveLogs))} }]}",
-        target_without_learner: "{configs: [Config { read: HierarchicalQuorumSet { groups: {\"a\": Group { \
-                                 voters: {1, 2}, quorum_size: 1 }, \"b\": Group { voters: {4}, quorum_size: 1 }}, \
-                                 quorum_groups: 2 }, write: HierarchicalQuorumSet { groups: {\"a\": Group { \
-                                 voters: {1, 2}, quorum_size: 2 }, \"b\": Group { voters: {4}, quorum_size: 1 }}, \
-                                 quorum_groups: 1 }, nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), \
-                                 2: ((), NodeRole(ReceiveLogs)), 4: ((), NodeRole(Campaigner | ReceiveLogs))} }]}",
+        target_with_learner: "{configs: [Config { read: HierarchicalQuorumSet { root: Group { quorum_size: 2, \
+                              voters: {}, groups: {\"a\": Group { quorum_size: 1, voters: {1, 2}, groups: {} }, \
+                              \"b\": Group { quorum_size: 1, voters: {4}, groups: {} }} } }, \
+                              write: HierarchicalQuorumSet { root: Group { quorum_size: 1, voters: {}, \
+                              groups: {\"a\": Group { quorum_size: 2, voters: {1, 2}, groups: {} }, \"b\": Group { \
+                              quorum_size: 1, voters: {4}, groups: {} }} } }, \
+                              nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), 2: ((), NodeRole(ReceiveLogs)), \
+                              3: ((), NodeRole(ReceiveLogs)), 4: ((), NodeRole(Campaigner | ReceiveLogs))} }]}",
+        target_without_learner: "{configs: [Config { read: HierarchicalQuorumSet { root: Group { quorum_size: 2, \
+                                 voters: {}, groups: {\"a\": Group { quorum_size: 1, voters: {1, 2}, groups: {} }, \
+                                 \"b\": Group { quorum_size: 1, voters: {4}, groups: {} }} } }, \
+                                 write: HierarchicalQuorumSet { root: Group { quorum_size: 1, voters: {}, \
+                                 groups: {\"a\": Group { quorum_size: 2, voters: {1, 2}, groups: {} }, \"b\": Group { \
+                                 quorum_size: 1, voters: {4}, groups: {} }} } }, \
+                                 nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), 2: ((), NodeRole(ReceiveLogs)), \
+                                 4: ((), NodeRole(Campaigner | ReceiveLogs))} }]}",
         removed: 3,
     })
 }
@@ -131,7 +150,7 @@ fn changes() -> Result<ChangeScenario<AdvConfig>> {
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn commit_waits_for_write_quorum_and_survives_leader_change_with_standard_leader_ids() -> Result<()> {
-    three_groups()?.run::<StdConfig>().await
+    three_levels()?.run::<StdConfig>().await
 }
 
 /// With advanced leader IDs, an entry commits once a write quorum stores it, and a read quorum
@@ -139,7 +158,7 @@ async fn commit_waits_for_write_quorum_and_survives_leader_change_with_standard_
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn commit_waits_for_write_quorum_and_survives_leader_change_with_advanced_leader_ids() -> Result<()> {
-    three_groups()?.run::<AdvConfig>().await
+    three_levels()?.run::<AdvConfig>().await
 }
 
 /// A role change goes directly; a change of the groups passes through a joint config and keeps

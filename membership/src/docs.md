@@ -12,7 +12,7 @@ cluster:
 |----------------------------|-----------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------|
 | [`ThresholdMembership`]    | the voters and a write size                                                       | every voter counts the same, and you choose how many copies a commit needs                               |
 | [`WeightedMembership`]     | a weight for each voter and a write weight                                        | some voters, or the sites that hold them, must count more                                                |
-| [`HierarchicalMembership`] | voter groups, such as zones, and how many voters in how many groups a write needs | the cluster must keep running after it loses a whole zone                                                |
+| [`HierarchicalMembership`] | a tree of voter groups, such as zones, and how many members of each a write needs | the cluster must keep running after it loses a whole zone                                                |
 | [`GridMembership`]         | a rectangular grid of voters                                                      | a commit must wait for fewer voters than a majority, and so must an election with the default leader IDs |
 | [`ExplicitMembership`]     | the minimal read quorums and the minimal write quorums                            | no rule above states the policy, such as a backup voter in every write quorum and in no read quorum      |
 

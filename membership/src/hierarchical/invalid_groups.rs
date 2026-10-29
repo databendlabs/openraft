@@ -2,12 +2,15 @@ use openraft::NodeId;
 use openraft::errors::MembershipError;
 use openraft_macros::since;
 
-/// The groups or the thresholds of a [`HierarchicalQuorumSet`] are not usable.
+/// The groups or the quorum sizes of a [`HierarchicalQuorumSet`] are not usable.
 ///
 /// [`HierarchicalQuorumSet::new()`] returns it, and [`HierarchicalMembership`] and its edits
-/// return it in [`MembershipError::UserDefined`]. The `write_groups` and the write sizes of a
-/// hierarchical config are the `quorum_groups` and the quorum sizes of its write rule. OpenRaft
-/// wraps it with the configured error source when applying an edit inside the Raft core.
+/// return it in [`MembershipError::UserDefined`]. The quorum sizes of a hierarchical config are
+/// the write sizes of its groups. OpenRaft wraps it with the configured error source when applying
+/// an edit inside the Raft core.
+///
+/// Each variant names a group by its path: the IDs of the groups from the root down to it. The
+/// path of the root group is empty.
 ///
 /// [`HierarchicalQuorumSet`]: crate::quorum::HierarchicalQuorumSet
 /// [`HierarchicalQuorumSet::new()`]: crate::quorum::HierarchicalQuorumSet::new
@@ -17,77 +20,41 @@ use openraft_macros::since;
 pub enum InvalidGroups<NID>
 where NID: NodeId
 {
-    /// The layout holds no group, so no set is a quorum.
-    #[error("the layout holds no group")]
-    NoGroup,
-
-    /// A group holds no voter, so no set reaches it.
-    #[error("group {group} holds no voter")]
+    /// A group holds no voter and no child group, so no set reaches it.
+    #[error("group {group:?} holds no member")]
     EmptyGroup {
-        /// The ID of the empty group.
-        group: String,
+        /// The path of the empty group.
+        group: Vec<String>,
     },
 
-    /// Two groups hold the same voter, but each voter belongs to exactly one group.
-    #[error("groups {first} and {second} both hold voter {node_id}")]
+    /// Two groups hold the same voter, but each voter belongs to exactly one group of the tree.
+    #[error("groups {first:?} and {second:?} both hold voter {node_id}")]
     SharedVoter {
         /// The voter that both groups hold.
         node_id: NID,
 
-        /// The group with the smaller ID.
-        first: String,
+        /// The path of the group that the check visits first. It visits a group before the groups
+        /// below it, and sibling groups in ID order.
+        first: Vec<String>,
 
-        /// The group with the larger ID.
-        second: String,
+        /// The path of the group that the check visits second.
+        second: Vec<String>,
     },
 
-    /// The number of groups that a quorum must reach is outside `1..=group_count`.
+    /// The number of members that a quorum must reach in a group is outside `1..=member_count`.
     #[error(
-        "a quorum must reach {quorum_groups} of {group_count} groups; \
-         need 1 <= quorum_groups <= group_count"
-    )]
-    InvalidQuorumGroups {
-        /// The number of groups that a quorum must reach.
-        quorum_groups: u64,
-
-        /// The number of groups of the layout.
-        group_count: u64,
-    },
-
-    /// A quorum size names a group that the layout lacks. Only the write sizes of a
-    /// [`HierarchicalMembership`](crate::HierarchicalMembership) or a
-    /// [`HierarchicalChange`](crate::HierarchicalChange), given separately from the groups, can do
-    /// so.
-    #[error("a quorum size names group {group}, which the layout lacks")]
-    UnknownGroup {
-        /// The ID that names no group of the layout.
-        group: String,
-    },
-
-    /// A group of the layout has no quorum size. Only the write sizes of a
-    /// [`HierarchicalMembership`](crate::HierarchicalMembership) or a
-    /// [`HierarchicalChange`](crate::HierarchicalChange), given separately from the groups, can
-    /// miss a group.
-    #[error("group {group} has no quorum size")]
-    MissingQuorumSize {
-        /// The ID of the group without a quorum size.
-        group: String,
-    },
-
-    /// The number of voters that a quorum must hold in a group is outside `1..=voter_count`.
-    #[error(
-        "a quorum must hold {quorum_size} of the {voter_count} voters of group {group}; \
-         need 1 <= quorum_size <= voter_count"
+        "a quorum must reach {quorum_size} of the {member_count} members of group {group:?}; \
+         need 1 <= quorum_size <= member_count"
     )]
     InvalidQuorumSize {
-        /// The ID of the group.
-        group: String,
+        /// The path of the group.
+        group: Vec<String>,
 
-        /// The number of voters of the group that a quorum must hold.
+        /// The number of members of the group that a quorum must reach.
         quorum_size: u64,
 
-        /// The number of voters of the group.
-        voter_count: u64,
+        /// The number of members of the group: its voters and its child groups.
+        member_count: u64,
     },
 }
 

@@ -17,9 +17,13 @@ use openraft::membership::RaftMembershipEdit;
 use crate::HierarchicalChange;
 use crate::HierarchicalMembership;
 use crate::errors::InvalidGroups;
+use crate::quorum::Group;
+use crate::quorum::HierarchicalQuorumSet;
 use crate::quorum::QuorumSet;
 use crate::quorum::testing::accepted;
+use crate::quorum::testing::all_group_sizes;
 use crate::quorum::testing::all_subsets;
+use crate::quorum::testing::holding_one_of;
 use crate::testing::assert_apply_checks_roles;
 use crate::testing::assert_change_through_joint_keeps_node_metadata;
 use crate::testing::assert_claims_hold;
@@ -33,42 +37,47 @@ use crate::testing::voter_role;
 type Membership = HierarchicalMembership<u64, ()>;
 type Change = HierarchicalChange<u64, ()>;
 
-/// Returns the groups `groups`, keyed by group ID.
-fn groups(groups: &[(&str, &[u64])]) -> BTreeMap<String, BTreeSet<u64>> {
-    let mut map = BTreeMap::new();
-    for (group, voters) in groups {
-        let voters: BTreeSet<u64> = voters.iter().copied().collect();
-        map.insert(group.to_string(), voters);
+/// Returns the path of a group from the IDs `ids`.
+fn path(ids: &[&str]) -> Vec<String> {
+    let mut path = vec![];
+    for id in ids {
+        path.push(id.to_string());
     }
-    map
+    path
 }
 
-/// Returns the sizes `sizes`, keyed by group ID.
-fn sizes(sizes: &[(&str, u64)]) -> BTreeMap<String, u64> {
-    let mut map = BTreeMap::new();
-    for (group, size) in sizes {
-        map.insert(group.to_string(), *size);
+/// Returns the root group over the zones `a={1,2,3}`, `b={4,5,6}` and `c={7,8,9}`, with the write
+/// sizes `root`, `a`, `b` and `c`.
+fn zones(root: u64, a: u64, b: u64, c: u64) -> Group<u64> {
+    Group::of_groups(root, [
+        ("a", Group::of_voters(a, [1, 2, 3])),
+        ("b", Group::of_voters(b, [4, 5, 6])),
+        ("c", Group::of_voters(c, [7, 8, 9])),
+    ])
+}
+
+/// Returns a tree of three levels whose branches have different depths. Datacenter `dc1` holds the
+/// racks `r1={1,2}` and `r2={3,4}`, datacenter `dc2` holds voters 5 and 6, and the root holds the
+/// witness voter 7. A write reaches 2 of `dc1`, `dc2` and voter 7: `dc1` with a voter of each rack,
+/// and `dc2` with both of its voters.
+fn datacenters() -> Group<u64> {
+    let dc1 = Group::of_groups(2, [
+        ("r1", Group::of_voters(1, [1, 2])),
+        ("r2", Group::of_voters(1, [3, 4])),
+    ]);
+    Group {
+        quorum_size: 2,
+        voters: btreeset! {7},
+        groups: btreemap! {"dc1".to_string() => dc1, "dc2".to_string() => Group::of_voters(2, [5, 6])},
     }
-    map
 }
 
-/// Returns the groups `a={1,2,3}`, `b={4,5,6}` and `c={7,8,9}`.
-fn three_by_three() -> BTreeMap<String, BTreeSet<u64>> {
-    groups(&[("a", &[1, 2, 3]), ("b", &[4, 5, 6]), ("c", &[7, 8, 9])])
-}
-
-/// Returns a membership whose only config places its voters in `groups`, with a `()` node for
+/// Returns a membership whose only config arranges its voters in `groups`, with a `()` node for
 /// each voter.
-fn hierarchical(
-    groups: BTreeMap<String, BTreeSet<u64>>,
-    write_groups: u64,
-    write_sizes: BTreeMap<String, u64>,
-) -> Membership {
-    let mut nodes = BTreeSet::new();
-    for voters in groups.values() {
-        nodes.extend(voters);
-    }
-    HierarchicalMembership::new(groups, write_groups, write_sizes, nodes).unwrap()
+fn hierarchical(groups: Group<u64>) -> Membership {
+    let rule = HierarchicalQuorumSet::new(groups.clone()).unwrap();
+    let nodes: BTreeSet<u64> = rule.ids().collect();
+    HierarchicalMembership::new(groups, nodes).unwrap()
 }
 
 /// Returns a membership whose only config places `voters` in group a, where a write needs 2 of
@@ -78,20 +87,24 @@ where
     N: Node,
     T: IntoNodes<u64, N>,
 {
-    let groups = btreemap! {"a".to_string() => voters};
-    HierarchicalMembership::new(groups, 1, sizes(&[("a", 2)]), nodes).unwrap()
+    let groups = Group::of_groups(1, [("a", Group::of_voters(2, voters))]);
+    HierarchicalMembership::new(groups, nodes).unwrap()
 }
 
-/// Returns the voters of [`three_by_three()`], where reads and writes each need 2 voters in each
-/// of 2 groups.
+/// Returns the voters of [`zones()`], where reads and writes each need 2 voters in each of 2
+/// zones.
 fn nine_voters() -> Membership {
-    hierarchical(three_by_three(), 2, sizes(&[("a", 2), ("b", 2), ("c", 2)]))
+    hierarchical(zones(2, 2, 2, 2))
 }
 
-/// Returns `old` with voter 3 moved from group a to group b. In the result, voter 3 receives logs
+/// Returns `old` with voter 3 moved from zone a to zone b. In the result, voter 3 receives logs
 /// but never starts an election.
 fn move_voter_3_to_b(old: &Membership) -> Membership {
-    let moved = groups(&[("a", &[1, 2]), ("b", &[3, 4, 5, 6]), ("c", &[7, 8, 9])]);
+    let moved = Group::of_groups(2, [
+        ("a", Group::of_voters(2, [1, 2])),
+        ("b", Group::of_voters(2, [3, 4, 5, 6])),
+        ("c", Group::of_voters(2, [7, 8, 9])),
+    ]);
     let change = Change::groups(moved);
     let moved = change.apply(old, true).unwrap();
 
@@ -99,24 +112,19 @@ fn move_voter_3_to_b(old: &Membership) -> Membership {
     moved.with_roles(roles).unwrap()
 }
 
-/// Returns the sets in `subsets` that hold `sizes[group]` voters of each of at least
-/// `quorum_groups` groups of `groups`, in their order.
-fn reaching(
-    groups: &BTreeMap<String, BTreeSet<u64>>,
-    quorum_groups: u64,
-    sizes: &BTreeMap<String, u64>,
-    subsets: &[BTreeSet<u64>],
-) -> Vec<BTreeSet<u64>> {
+/// Returns the sets in `subsets` that reach `root`, a group of groups of voters: the sets that
+/// hold the quorum size of voters in each of at least `root.quorum_size` groups, in their order.
+fn reaching(root: &Group<u64>, subsets: &[BTreeSet<u64>]) -> Vec<BTreeSet<u64>> {
     let mut reaching = vec![];
     for subset in subsets {
         let mut reached = 0;
-        for (group, voters) in groups {
-            let held = voters.intersection(subset).count() as u64;
-            if held >= sizes[group] {
+        for group in root.groups.values() {
+            let held = group.voters.intersection(subset).count() as u64;
+            if held >= group.quorum_size {
                 reached += 1;
             }
         }
-        if reached >= quorum_groups {
+        if reached >= root.quorum_size {
             reaching.push(subset.clone());
         }
     }
@@ -125,75 +133,63 @@ fn reaching(
 
 #[test]
 fn test_new() {
-    let two_groups = groups(&[("a", &[1, 2]), ("b", &[3, 4])]);
-    let res = Membership::new(
-        two_groups.clone(),
-        2,
-        sizes(&[("a", 1), ("b", 2)]),
-        btreeset! {1, 2, 3, 4, 5},
-    );
+    let two_groups = |root, a, b| {
+        Group::of_groups(root, [
+            ("a", Group::of_voters(a, [1, 2])),
+            ("b", Group::of_voters(b, [3, 4])),
+        ])
+    };
+    let res = Membership::new(two_groups(2, 1, 2), btreeset! {1, 2, 3, 4, 5});
     let membership = res.unwrap();
-    let want = "{configs: [Config { read: HierarchicalQuorumSet { groups: {\"a\": Group { voters: {1, 2}, \
-                quorum_size: 2 }, \"b\": Group { voters: {3, 4}, quorum_size: 1 }}, quorum_groups: 1 }, \
-                write: HierarchicalQuorumSet { groups: {\"a\": Group { voters: {1, 2}, quorum_size: 1 }, \
-                \"b\": Group { voters: {3, 4}, quorum_size: 2 }}, quorum_groups: 2 }, \
+    let want = "{configs: [Config { read: HierarchicalQuorumSet { root: Group { quorum_size: 1, voters: {}, \
+                groups: {\"a\": Group { quorum_size: 2, voters: {1, 2}, groups: {} }, \"b\": Group { quorum_size: 1, \
+                voters: {3, 4}, groups: {} }} } }, write: HierarchicalQuorumSet { root: Group { quorum_size: 2, \
+                voters: {}, groups: {\"a\": Group { quorum_size: 1, voters: {1, 2}, groups: {} }, \"b\": Group { \
+                quorum_size: 2, voters: {3, 4}, groups: {} }} } }, \
                 nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), 2: ((), NodeRole(Campaigner | ReceiveLogs)), \
                 3: ((), NodeRole(Campaigner | ReceiveLogs)), 4: ((), NodeRole(Campaigner | ReceiveLogs)), \
                 5: ((), NodeRole(ReceiveLogs))} }]}";
     let display = membership.to_string();
     assert_eq!(want, display);
 
-    // The groups and the write thresholds get the checks of the write rule.
-    let shared_voter = groups(&[("a", &[1, 2]), ("b", &[2])]);
-    let res = Membership::new(shared_voter, 1, sizes(&[("a", 1), ("b", 1)]), btreeset! {1, 2});
+    // The groups and their write sizes get the checks of the write rule, at every level.
+    let shared_voter = Group::of_groups(1, [
+        ("a", Group::of_voters(1, [1, 2])),
+        ("b", Group::of_groups(1, [("c", Group::of_voters(1, [2]))])),
+    ]);
+    let res = Membership::new(shared_voter, btreeset! {1, 2});
     let shared = InvalidGroups::SharedVoter {
         node_id: 2,
-        first: "a".to_string(),
-        second: "b".to_string(),
+        first: path(&["a"]),
+        second: path(&["b", "c"]),
     };
     assert_eq!(Err(MembershipError::UserDefined(shared)), res);
 
-    let res = Membership::new(
-        two_groups.clone(),
-        3,
-        sizes(&[("a", 1), ("b", 2)]),
-        btreeset! {1, 2, 3, 4},
-    );
-    let invalid = InvalidGroups::InvalidQuorumGroups {
-        quorum_groups: 3,
-        group_count: 2,
+    let empty_rack = Group::of_groups(1, [("a", Group::of_groups(1, [("r1", Group::of_voters(1, []))]))]);
+    let res = Membership::new(empty_rack, btreeset! {1});
+    let empty = InvalidGroups::EmptyGroup {
+        group: path(&["a", "r1"]),
     };
-    assert_eq!(Err(MembershipError::UserDefined(invalid)), res);
+    assert_eq!(Err(MembershipError::UserDefined(empty)), res);
 
-    let res = Membership::new(
-        two_groups.clone(),
-        2,
-        sizes(&[("a", 1), ("b", 3)]),
-        btreeset! {1, 2, 3, 4},
-    );
+    let res = Membership::new(two_groups(3, 1, 2), btreeset! {1, 2, 3, 4});
     let invalid = InvalidGroups::InvalidQuorumSize {
-        group: "b".to_string(),
+        group: path(&[]),
         quorum_size: 3,
-        voter_count: 2,
+        member_count: 2,
     };
     assert_eq!(Err(MembershipError::UserDefined(invalid)), res);
 
-    // The write sizes name exactly the groups.
-    let res = Membership::new(
-        two_groups.clone(),
-        2,
-        sizes(&[("a", 1), ("b", 2), ("c", 1)]),
-        btreeset! {1, 2, 3, 4},
-    );
-    let unknown = InvalidGroups::UnknownGroup { group: "c".to_string() };
-    assert_eq!(Err(MembershipError::UserDefined(unknown)), res);
-
-    let res = Membership::new(two_groups.clone(), 2, sizes(&[("a", 1)]), btreeset! {1, 2, 3, 4});
-    let missing = InvalidGroups::MissingQuorumSize { group: "b".to_string() };
-    assert_eq!(Err(MembershipError::UserDefined(missing)), res);
+    let res = Membership::new(two_groups(2, 1, 3), btreeset! {1, 2, 3, 4});
+    let invalid = InvalidGroups::InvalidQuorumSize {
+        group: path(&["b"]),
+        quorum_size: 3,
+        member_count: 2,
+    };
+    assert_eq!(Err(MembershipError::UserDefined(invalid)), res);
 
     // Voter 4 has no node.
-    let res = Membership::new(two_groups, 2, sizes(&[("a", 1), ("b", 2)]), btreeset! {1, 2, 3});
+    let res = Membership::new(two_groups(2, 1, 2), btreeset! {1, 2, 3});
     let want = Err(MembershipError::NodeNotFound(NodeNotFound::new(4, Operation::None)));
     assert_eq!(want, res);
 }
@@ -203,9 +199,9 @@ fn test_nine_voters_need_two_voters_in_each_of_two_groups() {
     let membership = nine_voters();
     let subsets = all_subsets(&btreeset! {1, 2, 3, 4, 5, 6, 7, 8, 9});
 
-    // 4 of the 8 subsets of a group hold 2 of its voters, so 3 * 4^3 sets reach exactly 2 groups
+    // 4 of the 8 subsets of a zone hold 2 of its voters, so 3 * 4^3 sets reach exactly 2 zones
     // and 4^3 sets reach all 3.
-    let want = reaching(&three_by_three(), 2, &sizes(&[("a", 2), ("b", 2), ("c", 2)]), &subsets);
+    let want = reaching(&zones(2, 2, 2, 2), &subsets);
     let want_count = want.len();
     assert_eq!(256, want_count);
 
@@ -214,11 +210,13 @@ fn test_nine_voters_need_two_voters_in_each_of_two_groups() {
     let write_accepted = accepted(&membership.write_quorum_set(), &subsets);
     assert_eq!(want, write_accepted);
 
-    let want = "{configs: [Config { read: HierarchicalQuorumSet { groups: {\"a\": Group { voters: {1, 2, 3}, \
-                quorum_size: 2 }, \"b\": Group { voters: {4, 5, 6}, quorum_size: 2 }, \"c\": Group { \
-                voters: {7, 8, 9}, quorum_size: 2 }}, quorum_groups: 2 }, write: HierarchicalQuorumSet { \
-                groups: {\"a\": Group { voters: {1, 2, 3}, quorum_size: 2 }, \"b\": Group { voters: {4, 5, 6}, \
-                quorum_size: 2 }, \"c\": Group { voters: {7, 8, 9}, quorum_size: 2 }}, quorum_groups: 2 }, \
+    let want = "{configs: [Config { read: HierarchicalQuorumSet { root: Group { quorum_size: 2, voters: {}, \
+                groups: {\"a\": Group { quorum_size: 2, voters: {1, 2, 3}, groups: {} }, \"b\": Group { \
+                quorum_size: 2, voters: {4, 5, 6}, groups: {} }, \"c\": Group { quorum_size: 2, voters: {7, 8, 9}, \
+                groups: {} }} } }, write: HierarchicalQuorumSet { root: Group { quorum_size: 2, voters: {}, \
+                groups: {\"a\": Group { quorum_size: 2, voters: {1, 2, 3}, groups: {} }, \"b\": Group { \
+                quorum_size: 2, voters: {4, 5, 6}, groups: {} }, \"c\": Group { quorum_size: 2, voters: {7, 8, 9}, \
+                groups: {} }} } }, \
                 nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), 2: ((), NodeRole(Campaigner | ReceiveLogs)), \
                 3: ((), NodeRole(Campaigner | ReceiveLogs)), 4: ((), NodeRole(Campaigner | ReceiveLogs)), \
                 5: ((), NodeRole(Campaigner | ReceiveLogs)), 6: ((), NodeRole(Campaigner | ReceiveLogs)), \
@@ -255,20 +253,82 @@ fn test_nine_voters_survive_a_lost_group_or_a_lost_voter_per_group() {
 }
 
 #[test]
+fn test_three_levels_need_enough_members_at_every_level() {
+    let membership = hierarchical(datacenters());
+    let subsets = all_subsets(&btreeset! {1, 2, 3, 4, 5, 6, 7});
+
+    // A write reaches 2 of dc1, dc2 and the witness 7.
+    let writes = vec![
+        btreeset! {1, 3, 5, 6},
+        btreeset! {1, 4, 5, 6},
+        btreeset! {2, 3, 5, 6},
+        btreeset! {2, 4, 5, 6},
+        btreeset! {1, 3, 7},
+        btreeset! {1, 4, 7},
+        btreeset! {2, 3, 7},
+        btreeset! {2, 4, 7},
+        btreeset! {5, 6, 7},
+    ];
+    let want = holding_one_of(&writes, &subsets);
+    let write_accepted = accepted(&membership.write_quorum_set(), &subsets);
+    assert_eq!(want, write_accepted);
+
+    // A read reaches dc1 with both voters of a rack, and dc2 with one voter.
+    let reads = vec![
+        btreeset! {1, 2, 5},
+        btreeset! {1, 2, 6},
+        btreeset! {3, 4, 5},
+        btreeset! {3, 4, 6},
+        btreeset! {1, 2, 7},
+        btreeset! {3, 4, 7},
+        btreeset! {5, 7},
+        btreeset! {6, 7},
+    ];
+    let want = holding_one_of(&reads, &subsets);
+    let read_accepted = accepted(&membership.read_quorum_set(), &subsets);
+    assert_eq!(want, read_accepted);
+
+    let read = membership.read_quorum_set();
+    let write = membership.write_quorum_set();
+    let cases = [
+        // dc2 is lost: dc1 and the witness commit and elect.
+        (btreeset! {1, 2, 3, 4, 7}, true, true),
+        // The witness is lost: both datacenters commit and elect.
+        (btreeset! {1, 2, 3, 4, 5, 6}, true, true),
+        // Rack r2 and voter 6 are lost: no write reaches dc1 or dc2, but a read reaches both.
+        (btreeset! {1, 2, 5, 7}, false, true),
+        // The witness and one voter of each rack are lost: no read reaches dc1.
+        (btreeset! {2, 4, 5, 6}, true, false),
+    ];
+    for (live, want_writes, want_reads) in cases {
+        let writes = write.is_quorum(live.iter());
+        assert_eq!(want_writes, writes, "live voters {live:?}");
+        let reads = read.is_quorum(live.iter());
+        assert_eq!(want_reads, reads, "live voters {live:?}");
+    }
+}
+
+#[test]
 fn test_moving_a_voter_between_groups_goes_through_a_joint() {
     let old = nine_voters();
     let subsets = all_subsets(&btreeset! {1, 2, 3, 4, 5, 6, 7, 8, 9});
 
-    // Voter 3 moves from group a to group b, and every group keeps its write size 2.
-    let moved = groups(&[("a", &[1, 2]), ("b", &[3, 4, 5, 6]), ("c", &[7, 8, 9])]);
-    let change = Change::groups(moved.clone());
+    // Voter 3 moves from zone a to zone b, and every zone keeps its write size 2.
+    let moved = |a, b, c| {
+        Group::of_groups(2, [
+            ("a", Group::of_voters(a, [1, 2])),
+            ("b", Group::of_voters(b, [3, 4, 5, 6])),
+            ("c", Group::of_voters(c, [7, 8, 9])),
+        ])
+    };
+    let change = Change::groups(moved(2, 2, 2));
     let new = change.apply(&old, true).unwrap();
 
-    // A read quorum reaches 2 groups, with 1 voter of a, 3 of b or 2 of c.
-    let new_reads = reaching(&moved, 2, &sizes(&[("a", 1), ("b", 3), ("c", 2)]), &subsets);
+    // A read quorum reaches 2 zones, with 1 voter of a, 3 of b or 2 of c.
+    let new_reads = reaching(&moved(1, 3, 2), &subsets);
     let read_accepted = accepted(&new.read_quorum_set(), &subsets);
     assert_eq!(new_reads, read_accepted);
-    let new_writes = reaching(&moved, 2, &sizes(&[("a", 2), ("b", 2), ("c", 2)]), &subsets);
+    let new_writes = reaching(&moved(2, 2, 2), &subsets);
     let write_accepted = accepted(&new.write_quorum_set(), &subsets);
     assert_eq!(new_writes, write_accepted);
 
@@ -278,7 +338,7 @@ fn test_moving_a_voter_between_groups_goes_through_a_joint() {
 
     // A joint quorum is a quorum of both configs.
     let joint = old.joint_with(&new);
-    let old_quorums = reaching(&three_by_three(), 2, &sizes(&[("a", 2), ("b", 2), ("c", 2)]), &subsets);
+    let old_quorums = reaching(&zones(2, 2, 2, 2), &subsets);
 
     let mut both_reads = old_quorums.clone();
     both_reads.retain(|subset| new_reads.contains(subset));
@@ -305,9 +365,62 @@ fn test_moving_a_voter_between_groups_goes_through_a_joint() {
 }
 
 #[test]
+fn test_nesting_groups_goes_through_a_joint() {
+    let old = nine_voters();
+    let subsets = all_subsets(&btreeset! {1, 2, 3, 4, 5, 6, 7, 8, 9});
+
+    // Zones a and b move into region ab. A write reaches region ab with 2 voters of zone a or of
+    // zone b, and zone c with 2 voters.
+    let ab = Group::of_groups(1, [
+        ("a", Group::of_voters(2, [1, 2, 3])),
+        ("b", Group::of_voters(2, [4, 5, 6])),
+    ]);
+    let nested = Group::of_groups(2, [("ab", ab), ("c", Group::of_voters(2, [7, 8, 9]))]);
+    let change = Change::groups(nested.clone());
+    let new = change.apply(&old, true).unwrap();
+    assert_eq!(hierarchical(nested), new);
+
+    // The new read quorum {7,8} misses the old write quorum {1,2,4,5}, so OpenRaft appends a joint
+    // first.
+    let new_reads = new.read_quorum_set().is_quorum([7, 8].iter());
+    assert!(new_reads);
+    let old_writes = old.write_quorum_set().is_quorum([1, 2, 4, 5].iter());
+    assert!(old_writes);
+    let direct = old.supports_direct_transition_to(&new);
+    assert!(!direct);
+
+    // A joint quorum is a quorum of both configs, at every level of the new tree.
+    let joint = old.joint_with(&new);
+
+    let old_reads = accepted(&old.read_quorum_set(), &subsets);
+    let new_reads = accepted(&new.read_quorum_set(), &subsets);
+    let mut both_reads = old_reads;
+    both_reads.retain(|subset| new_reads.contains(subset));
+    let joint_reads = accepted(&joint.read_quorum_set(), &subsets);
+    assert_eq!(both_reads, joint_reads);
+
+    let old_writes = accepted(&old.write_quorum_set(), &subsets);
+    let new_writes = accepted(&new.write_quorum_set(), &subsets);
+    let mut both_writes = old_writes;
+    both_writes.retain(|subset| new_writes.contains(subset));
+    let joint_writes = accepted(&joint.write_quorum_set(), &subsets);
+    assert_eq!(both_writes, joint_writes);
+
+    assert_claims_hold(&old, &new);
+    let change = <Change as RaftMembershipEdit<Membership>>::make_uniform();
+    let target = change.apply(&joint, true).unwrap();
+    assert_eq!(new, target);
+}
+
+#[test]
 fn test_get_node() {
-    let two_groups = groups(&[("a", &[1, 2]), ("b", &[3])]);
-    let membership = Membership::new(two_groups, 1, sizes(&[("a", 2), ("b", 1)]), btreeset! {1, 2, 3, 4}).unwrap();
+    // Voter 3 sits at the root, beside group a.
+    let groups = Group {
+        quorum_size: 1,
+        voters: btreeset! {3},
+        groups: btreemap! {"a".to_string() => Group::of_voters(2, [1, 2])},
+    };
+    let membership = Membership::new(groups, btreeset! {1, 2, 3, 4}).unwrap();
 
     for node_id in [1, 2, 3] {
         let got = membership.get_node(&node_id);
@@ -343,16 +456,16 @@ fn test_get_node() {
 }
 
 #[test]
-fn test_from_node_map_puts_every_node_in_one_group() {
+fn test_from_node_map_puts_every_node_in_the_root_group() {
     let nodes: BTreeMap<u64, ()> = btreemap! {1 => (), 2 => (), 3 => (), 4 => ()};
     let membership = Membership::from(nodes);
 
     // 4 voters: writes need 3 of them, and reads need 2.
-    let want = hierarchical(groups(&[("default", &[1, 2, 3, 4])]), 1, sizes(&[("default", 3)]));
+    let want = hierarchical(Group::of_voters(3, [1, 2, 3, 4]));
     assert_eq!(want, membership);
-    let want = "{configs: [Config { read: HierarchicalQuorumSet { groups: {\"default\": Group { voters: {1, 2, 3, 4}, \
-                quorum_size: 2 }}, quorum_groups: 1 }, write: HierarchicalQuorumSet { groups: {\"default\": Group { \
-                voters: {1, 2, 3, 4}, quorum_size: 3 }}, quorum_groups: 1 }, \
+    let want = "{configs: [Config { read: HierarchicalQuorumSet { root: Group { quorum_size: 2, \
+                voters: {1, 2, 3, 4}, groups: {} } }, write: HierarchicalQuorumSet { root: Group { quorum_size: 3, \
+                voters: {1, 2, 3, 4}, groups: {} } }, \
                 nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), 2: ((), NodeRole(Campaigner | ReceiveLogs)), \
                 3: ((), NodeRole(Campaigner | ReceiveLogs)), 4: ((), NodeRole(Campaigner | ReceiveLogs))} }]}";
     let display = membership.to_string();
@@ -372,25 +485,25 @@ fn test_direct_transitions_need_intersection_in_both_directions() {
     let same = membership.supports_direct_transition_to(&membership);
     assert!(same);
 
-    // Writes to 3 groups meet every old read, but new reads of 1 group miss old writes to the
-    // other 2 groups.
-    let change = Change::write_groups(3);
-    let three_groups = change.apply(&membership, true).unwrap();
-    let to_three = membership.supports_direct_transition_to(&three_groups);
+    // Writes to 3 zones meet every old read, but new reads of 1 zone miss old writes to the
+    // other 2 zones.
+    let change = Change::groups(zones(3, 2, 2, 2));
+    let three_zones = change.apply(&membership, true).unwrap();
+    let to_three = membership.supports_direct_transition_to(&three_zones);
     assert!(!to_three);
-    let from_three = three_groups.supports_direct_transition_to(&membership);
+    let from_three = three_zones.supports_direct_transition_to(&membership);
     assert!(!from_three);
 
-    // Writes of all 3 voters of group a meet every old read, but new reads of 1 voter of group a
+    // Writes of all 3 voters of zone a meet every old read, but new reads of 1 voter of zone a
     // miss old writes that hold the other 2.
-    let change = Change::write_sizes(sizes(&[("a", 3)]));
+    let change = Change::groups(zones(2, 3, 2, 2));
     let all_of_a = change.apply(&membership, true).unwrap();
     let to_all_of_a = membership.supports_direct_transition_to(&all_of_a);
     assert!(!to_all_of_a);
 
     // A joint goes directly to its target, and adding a learner changes no quorum.
-    let joint = membership.joint_with(&three_groups);
-    let to_target = joint.supports_direct_transition_to(&three_groups);
+    let joint = membership.joint_with(&three_zones);
+    let to_target = joint.supports_direct_transition_to(&three_zones);
     assert!(to_target);
 
     let add_learner = <Change as RaftMembershipEdit<Membership>>::add_learner(10, ());
@@ -401,9 +514,10 @@ fn test_direct_transitions_need_intersection_in_both_directions() {
 
 #[test]
 fn test_direct_transitions_are_exact_within_one_layout() {
-    // Every layout of voters {1,2,3,4} in one group, or in two groups where group a holds voter 1.
+    // Every tree of voters {1,2,3,4}: one group; two groups where group a holds voter 1; voter 1
+    // beside a group of the others; and three levels.
     let voters = btreeset! {1, 2, 3, 4};
-    let mut layouts = vec![groups(&[("a", &[1, 2, 3, 4])])];
+    let mut layouts = vec![Group::of_voters(1, [1, 2, 3, 4])];
     for others in all_subsets(&btreeset! {2, 3, 4}) {
         let mut a = others;
         a.insert(1);
@@ -411,33 +525,24 @@ fn test_direct_transitions_are_exact_within_one_layout() {
         if b.is_empty() {
             continue;
         }
-        layouts.push(btreemap! {"a".to_string() => a, "b".to_string() => b});
+        let layout = Group::of_groups(1, [("a", Group::of_voters(1, a)), ("b", Group::of_voters(1, b))]);
+        layouts.push(layout);
     }
+    layouts.push(Group {
+        quorum_size: 1,
+        voters: btreeset! {1},
+        groups: btreemap! {"a".to_string() => Group::of_voters(1, [2, 3, 4])},
+    });
+    let x = Group::of_groups(1, [("b", Group::of_voters(1, [2])), ("c", Group::of_voters(1, [3, 4]))]);
+    layouts.push(Group::of_groups(1, [("a", Group::of_voters(1, [1])), ("x", x)]));
 
-    // Every membership of these layouts: each number of groups that a write reaches, with each
-    // write size of each group.
+    // Every membership of these layouts: each write size of each group.
     let mut memberships = vec![];
-    for layout in &layouts {
-        let mut all_sizes = vec![BTreeMap::new()];
-        for (group, group_voters) in layout {
-            let mut extended = vec![];
-            for sizes in &all_sizes {
-                for size in 1..=group_voters.len() as u64 {
-                    let mut sizes = sizes.clone();
-                    sizes.insert(group.clone(), size);
-                    extended.push(sizes);
-                }
-            }
-            all_sizes = extended;
-        }
-
-        let group_count = layout.len() as u64;
-        for write_groups in 1..=group_count {
-            for write_sizes in &all_sizes {
-                let membership = hierarchical(layout.clone(), write_groups, write_sizes.clone());
-                assert_quorum_sets_are_valid(&membership);
-                memberships.push((layout, membership));
-            }
+    for (layout_index, layout) in layouts.iter().enumerate() {
+        for groups in all_group_sizes(layout) {
+            let membership = hierarchical(groups);
+            assert_quorum_sets_are_valid(&membership);
+            memberships.push((layout_index, membership));
         }
     }
 
@@ -458,83 +563,61 @@ fn test_direct_transitions_are_exact_within_one_layout() {
 }
 
 #[test]
-fn test_apply_keeps_write_sizes_of_groups_that_keep_their_ids() {
-    let two_groups = groups(&[("a", &[1, 2]), ("b", &[3, 4])]);
-    let membership = hierarchical(two_groups.clone(), 2, sizes(&[("a", 1), ("b", 2)]));
+fn test_apply_sets_the_groups_and_their_write_sizes() {
+    let membership = nine_voters();
 
-    // A change of one threshold keeps the others.
-    let change = Change::write_groups(1);
+    // The empty change keeps the groups and their write sizes.
+    let change = Change::default();
     let res = change.apply(&membership, true);
-    let want = hierarchical(two_groups.clone(), 1, sizes(&[("a", 1), ("b", 2)]));
-    assert_eq!(Ok(want), res);
+    assert_eq!(Ok(membership.clone()), res);
 
-    let change = Change::write_sizes(sizes(&[("b", 1)]));
+    // A new tree replaces the groups and every write size.
+    let change = Change::groups(datacenters());
     let res = change.apply(&membership, true);
-    let want = hierarchical(two_groups, 2, sizes(&[("a", 1), ("b", 1)]));
-    assert_eq!(Ok(want), res);
-
-    // Voter 2 moves to group b, and both groups keep their write sizes.
-    let moved = groups(&[("a", &[1]), ("b", &[2, 3, 4])]);
-    let change = Change::groups(moved.clone());
-    let res = change.apply(&membership, true);
-    let want = hierarchical(moved, 2, sizes(&[("a", 1), ("b", 2)]));
-    assert_eq!(Ok(want), res);
-
-    // Voter 3 moves to group a, which leaves group b fewer voters than its write size.
-    let shrunk = groups(&[("a", &[1, 2, 3]), ("b", &[4])]);
-    let change = Change::groups(shrunk.clone());
-    let res = change.apply(&membership, true);
-    let invalid = InvalidGroups::InvalidQuorumSize {
-        group: "b".to_string(),
-        quorum_size: 2,
-        voter_count: 1,
-    };
-    assert_eq!(Err(MembershipError::UserDefined(invalid)), res);
-
-    let change = Change::groups(shrunk.clone()).with_write_sizes(sizes(&[("b", 1)]));
-    let res = change.apply(&membership, true);
-    let want = hierarchical(shrunk, 2, sizes(&[("a", 1), ("b", 1)]));
-    assert_eq!(Ok(want), res);
-
-    // A group with a new ID needs a write size.
-    let with_c = groups(&[("a", &[1]), ("b", &[3, 4]), ("c", &[2])]);
-    let change = Change::groups(with_c.clone());
-    let res = change.apply(&membership, true);
-    let missing = InvalidGroups::MissingQuorumSize { group: "c".to_string() };
-    assert_eq!(Err(MembershipError::UserDefined(missing)), res);
-
-    let change = Change::groups(with_c.clone()).with_write_sizes(sizes(&[("c", 1)]));
-    let res = change.apply(&membership, true);
-    let want = hierarchical(with_c, 2, sizes(&[("a", 1), ("b", 2), ("c", 1)]));
-    assert_eq!(Ok(want), res);
-
-    // A write size for a group that the result lacks is an error.
-    let change = Change::write_sizes(sizes(&[("d", 1)]));
-    let res = change.apply(&membership, true);
-    let unknown = InvalidGroups::UnknownGroup { group: "d".to_string() };
-    assert_eq!(Err(MembershipError::UserDefined(unknown)), res);
-
-    // Removing group b needs a smaller `write_groups`, and voters 3 and 4 stay as learners.
-    let only_a = groups(&[("a", &[1, 2])]);
-    let change = Change::groups(only_a.clone());
-    let res = change.apply(&membership, true);
-    let invalid = InvalidGroups::InvalidQuorumGroups {
-        quorum_groups: 2,
-        group_count: 1,
-    };
-    assert_eq!(Err(MembershipError::UserDefined(invalid)), res);
-
-    let change = Change::groups(only_a.clone()).with_write_groups(1);
-    let res = change.apply(&membership, true);
-    let want = Membership::new(only_a, 1, sizes(&[("a", 1)]), btreeset! {1, 2, 3, 4});
+    let nodes = btreeset! {1, 2, 3, 4, 5, 6, 7, 8, 9};
+    let want = Membership::new(datacenters(), nodes);
     assert_eq!(want, res);
+
+    // A new tree gets the checks of the write rule at every level.
+    let shared = Group::of_groups(2, [
+        ("a", Group::of_voters(2, [1, 2, 3])),
+        ("b", Group::of_groups(1, [("r1", Group::of_voters(1, [3, 4]))])),
+    ]);
+    let res = Change::groups(shared).apply(&membership, true);
+    let invalid = InvalidGroups::SharedVoter {
+        node_id: 3,
+        first: path(&["a"]),
+        second: path(&["b", "r1"]),
+    };
+    assert_eq!(Err(MembershipError::UserDefined(invalid)), res);
+
+    let too_large = Group::of_groups(1, [(
+        "ab",
+        Group::of_groups(3, [
+            ("a", Group::of_voters(2, [1, 2, 3])),
+            ("b", Group::of_voters(2, [4, 5, 6])),
+        ]),
+    )]);
+    let res = Change::groups(too_large).apply(&membership, true);
+    let invalid = InvalidGroups::InvalidQuorumSize {
+        group: path(&["ab"]),
+        quorum_size: 3,
+        member_count: 2,
+    };
+    assert_eq!(Err(MembershipError::UserDefined(invalid)), res);
+
+    // Voter 10 of the new tree has no node.
+    let with_10 = Group::of_voters(2, [1, 2, 10]);
+    let res = Change::groups(with_10).apply(&membership, true);
+    let not_found = NodeNotFound::new(10, Operation::None);
+    assert_eq!(Err(MembershipError::NodeNotFound(not_found)), res);
 }
 
 #[test]
 fn test_apply_edits_nodes() {
     let nodes = btreemap! {1 => "n1".to_string(), 2 => "n2".to_string(), 3 => "n3".to_string()};
-    let one_group = groups(&[("a", &[1, 2, 3])]);
-    let membership = HierarchicalMembership::new(one_group.clone(), 1, sizes(&[("a", 2)]), nodes.clone()).unwrap();
+    let one_group = Group::of_voters(2, [1, 2, 3]);
+    let membership = HierarchicalMembership::new(one_group.clone(), nodes.clone()).unwrap();
 
     // Adding nodes keeps the metadata of a known node; removing a learner drops it.
     let change = HierarchicalChange {
@@ -544,7 +627,7 @@ fn test_apply_edits_nodes() {
     let with_four = change.apply(&membership, true).unwrap();
     let mut want_nodes = nodes;
     want_nodes.insert(4, "n4".to_string());
-    let want = HierarchicalMembership::new(one_group, 1, sizes(&[("a", 2)]), want_nodes).unwrap();
+    let want = HierarchicalMembership::new(one_group, want_nodes).unwrap();
     assert_eq!(want, with_four);
 
     let change = HierarchicalChange {
@@ -574,7 +657,7 @@ fn test_apply_edits_nodes() {
 
     // A membership with no config has no target to change.
     let empty = Target::default();
-    let change = StringChange::write_groups(1);
+    let change = StringChange::groups(Group::of_voters(1, [1]));
     let res = change.apply(&empty, true);
     let want = Err(MembershipError::EmptyMembership(EmptyMembership {}));
     assert_eq!(want, res);
@@ -584,9 +667,12 @@ fn test_apply_edits_nodes() {
 fn test_make_uniform_selects_target_and_keeps_old_voters_as_learners() {
     let old = nine_voters();
 
-    // Group c leaves, and a write quorum still needs both remaining groups.
-    let two_groups = groups(&[("a", &[1, 2, 3]), ("b", &[4, 5, 6])]);
-    let change = Change::groups(two_groups.clone());
+    // Zone c leaves, and a write quorum still needs both remaining zones.
+    let two_zones = Group::of_groups(2, [
+        ("a", Group::of_voters(2, [1, 2, 3])),
+        ("b", Group::of_voters(2, [4, 5, 6])),
+    ]);
+    let change = Change::groups(two_zones.clone());
     let new = change.apply(&old, true).unwrap();
     let joint = old.joint_with(&new);
 
@@ -595,7 +681,7 @@ fn test_make_uniform_selects_target_and_keeps_old_voters_as_learners() {
 
     // Voters 7, 8 and 9 of the old config stay as learners of the target.
     let nodes = btreeset! {1, 2, 3, 4, 5, 6, 7, 8, 9};
-    let want = Membership::new(two_groups, 2, sizes(&[("a", 2), ("b", 2)]), nodes).unwrap();
+    let want = Membership::new(two_zones, nodes).unwrap();
     assert_eq!(want, target);
     let direct = joint.supports_direct_transition_to(&target);
     assert!(direct);
@@ -610,9 +696,10 @@ fn test_joint_keeps_old_roles_and_target_restores_new_roles() {
 
 #[test]
 fn test_with_roles() {
-    let want = "{configs: [Config { read: HierarchicalQuorumSet { groups: {\"a\": Group { voters: {1, 2, 3}, \
-                quorum_size: 2 }}, quorum_groups: 1 }, write: HierarchicalQuorumSet { groups: {\"a\": Group { \
-                voters: {1, 2, 3}, quorum_size: 2 }}, quorum_groups: 1 }, \
+    let want = "{configs: [Config { read: HierarchicalQuorumSet { root: Group { quorum_size: 1, voters: {}, \
+                groups: {\"a\": Group { quorum_size: 2, voters: {1, 2, 3}, groups: {} }} } }, \
+                write: HierarchicalQuorumSet { root: Group { quorum_size: 1, voters: {}, groups: {\"a\": Group { \
+                quorum_size: 2, voters: {1, 2, 3}, groups: {} }} } }, \
                 nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), 2: ((), NodeRole(Campaigner | ReceiveLogs)), \
                 3: ((), NodeRole(ReceiveLogs)), 4: ((), NodeRole(Campaigner | ReceiveLogs)), \
                 5: ((), NodeRole(Empty))} }]}";
@@ -621,13 +708,14 @@ fn test_with_roles() {
 
 #[test]
 fn test_role_and_quorum_change_through_joint() {
-    let want = "{configs: [Config { read: HierarchicalQuorumSet { groups: {\"a\": Group { voters: {2, 3, 4}, \
-                quorum_size: 2 }}, quorum_groups: 1 }, write: HierarchicalQuorumSet { groups: {\"a\": Group { \
-                voters: {2, 3, 4}, quorum_size: 2 }}, quorum_groups: 1 }, nodes: {1: ((), NodeRole(ReceiveLogs)), \
+    let want = "{configs: [Config { read: HierarchicalQuorumSet { root: Group { quorum_size: 1, voters: {}, \
+                groups: {\"a\": Group { quorum_size: 2, voters: {2, 3, 4}, groups: {} }} } }, \
+                write: HierarchicalQuorumSet { root: Group { quorum_size: 1, voters: {}, groups: {\"a\": Group { \
+                quorum_size: 2, voters: {2, 3, 4}, groups: {} }} } }, nodes: {1: ((), NodeRole(ReceiveLogs)), \
                 2: ((), NodeRole(Campaigner | ReceiveLogs)), 3: ((), NodeRole(ReceiveLogs)), \
                 4: ((), NodeRole(Campaigner | ReceiveLogs)), 5: ((), NodeRole(Empty))} }]}";
     assert_role_and_quorum_change_through_joint(one_group, Membership::with_roles, want, |voters, roles| {
-        let groups = btreemap! {"a".to_string() => voters};
+        let groups = Group::of_groups(1, [("a", Group::of_voters(2, voters))]);
         Change::groups(groups).with_roles(roles)
     });
 }
@@ -635,7 +723,7 @@ fn test_role_and_quorum_change_through_joint() {
 #[test]
 fn test_change_through_joint_keeps_node_metadata() {
     assert_change_through_joint_keeps_node_metadata(one_group, |voters, remove_nodes| {
-        let groups = btreemap! {"a".to_string() => voters};
+        let groups = Group::of_groups(1, [("a", Group::of_voters(2, voters))]);
         HierarchicalChange {
             remove_nodes,
             ..HierarchicalChange::groups(groups)
@@ -658,11 +746,16 @@ fn test_apply_checks_roles() {
 #[cfg(feature = "serde")]
 #[test]
 fn test_serde() {
-    let two_groups = groups(&[("a", &[1, 2]), ("b", &[3])]);
-    let membership = Membership::new(two_groups, 1, sizes(&[("a", 2), ("b", 1)]), btreeset! {1, 2, 3, 4}).unwrap();
+    // Voter 3 sits at the root, beside group a.
+    let groups = Group {
+        quorum_size: 1,
+        voters: btreeset! {3},
+        groups: btreemap! {"a".to_string() => Group::of_voters(2, [1, 2])},
+    };
+    let membership = Membership::new(groups, btreeset! {1, 2, 3, 4}).unwrap();
 
     let json = serde_json::to_string(&membership).unwrap();
-    let want = r#"{"configs":[{"read":{"groups":{"a":{"voters":[1,2],"quorum_size":1},"b":{"voters":[3],"quorum_size":1}},"quorum_groups":2},"write":{"groups":{"a":{"voters":[1,2],"quorum_size":2},"b":{"voters":[3],"quorum_size":1}},"quorum_groups":1},"nodes":{"1":[null,3],"2":[null,3],"3":[null,3],"4":[null,2]}}]}"#;
+    let want = r#"{"configs":[{"read":{"root":{"quorum_size":2,"voters":[3],"groups":{"a":{"quorum_size":1,"voters":[1,2],"groups":{}}}}},"write":{"root":{"quorum_size":1,"voters":[3],"groups":{"a":{"quorum_size":2,"voters":[1,2],"groups":{}}}}},"nodes":{"1":[null,3],"2":[null,3],"3":[null,3],"4":[null,2]}}]}"#;
     assert_eq!(want, json);
     let decoded = serde_json::from_str::<Membership>(&json).unwrap();
     assert_eq!(membership, decoded);
@@ -676,15 +769,22 @@ fn test_serde() {
 #[cfg(feature = "serde")]
 #[test]
 fn test_binary_roundtrip_keeps_joint_configs_and_roles() {
+    // The joint of two zone layouts, and of zones and datacenters with a non-campaigning voter.
     let old = nine_voters();
-    let new = move_voter_3_to_b(&old);
-    let joint = old.joint_with(&new);
+    let moved = move_voter_3_to_b(&old);
+    let roles = btreemap! {5 => NodeRole::ReceiveLogs};
+    let change = Change::groups(datacenters()).with_roles(roles);
+    let nested = change.apply(&old, true).unwrap();
 
-    let binary = bincode::serialize(&joint).unwrap();
-    let decoded = bincode::deserialize::<Membership>(&binary).unwrap();
-    assert_eq!(joint, decoded);
+    for new in [moved, nested] {
+        let joint = old.joint_with(&new);
 
-    let json = serde_json::to_string(&joint).unwrap();
-    let decoded = serde_json::from_str::<Membership>(&json).unwrap();
-    assert_eq!(joint, decoded);
+        let binary = bincode::serialize(&joint).unwrap();
+        let decoded = bincode::deserialize::<Membership>(&binary).unwrap();
+        assert_eq!(joint, decoded);
+
+        let json = serde_json::to_string(&joint).unwrap();
+        let decoded = serde_json::from_str::<Membership>(&json).unwrap();
+        assert_eq!(joint, decoded);
+    }
 }

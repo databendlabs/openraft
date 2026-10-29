@@ -3,7 +3,6 @@ use std::collections::BTreeSet;
 use std::fmt;
 
 use display_more::DisplayDebugOptionExt;
-use display_more::DisplayOptionExt;
 use openraft::Node;
 use openraft::NodeId;
 use openraft::errors::EmptyMembership;
@@ -15,27 +14,24 @@ use openraft_macros::since;
 use crate::HierarchicalMembership;
 use crate::config::Config;
 use crate::errors::InvalidGroups;
-use crate::hierarchical::hierarchical_membership::pair_groups;
-use crate::hierarchical::hierarchical_membership::split_groups;
+use crate::quorum::Group;
 use crate::quorum::HierarchicalQuorumSet;
 
 /// A change to a [`HierarchicalMembership`]. [`apply()`](RaftMembershipEdit::apply) adds
-/// `add_nodes`, sets the groups and the write thresholds, removes `remove_nodes`, then sets
-/// `roles`. It derives the read thresholds from the result.
+/// `add_nodes`, sets the groups with their write sizes, removes `remove_nodes`, then sets `roles`.
+/// It derives the read sizes from the result.
 ///
-/// A change keeps the groups and `write_groups` unless it sets them. A group that keeps its ID
-/// keeps its write size unless `write_sizes` names it, and a group with a new ID must be named
-/// there. Moving a voter to another group is a change of `groups`. The roles that the last config
-/// sets stay for the nodes that remain.
+/// A change keeps the groups and their write sizes unless it sets a new root group, and keeps the
+/// roles that the last config sets for the nodes that remain. A new root group can move voters to
+/// other groups, add or remove groups at any level, and change any write size.
 ///
-/// The result must pass the checks of [`HierarchicalMembership::new()`]. For example, a group that
-/// loses voters keeps its write size only while that size fits its new voter count. A failed check
-/// makes `apply()` return [`MembershipError::UserDefined`]. A voter without a node makes `apply()`
-/// return [`MembershipError::NodeNotFound`].
+/// The result must pass the checks of [`HierarchicalMembership::new()`]. A failed check makes
+/// `apply()` return [`MembershipError::UserDefined`]. A voter without a node makes `apply()` return
+/// [`MembershipError::NodeNotFound`].
 ///
-/// OpenRaft moves to a result with other groups or other write thresholds through a joint config,
-/// which keeps the groups of both configs.
-/// [`make_uniform()`](RaftMembershipEdit::make_uniform) then selects the groups of the result.
+/// OpenRaft moves to a result with other groups or other write sizes through a joint config, which
+/// keeps the trees of both configs. [`make_uniform()`](RaftMembershipEdit::make_uniform) then
+/// selects the tree of the result.
 ///
 /// The result gives each voter [`NodeRole::Campaigner`] `|` [`NodeRole::ReceiveLogs`] and every
 /// other node [`NodeRole::ReceiveLogs`], unless it sets another role. A node of `roles` that the
@@ -51,31 +47,31 @@ use crate::quorum::HierarchicalQuorumSet;
 /// # Examples
 ///
 /// ```
-/// use std::collections::BTreeMap;
 /// use std::collections::BTreeSet;
 ///
 /// use openraft::membership::RaftMembershipEdit;
+/// use openraft_membership::quorum::Group;
 /// use openraft_membership::{HierarchicalChange, HierarchicalMembership};
 ///
-/// let groups = BTreeMap::from([
-///     ("a".to_string(), BTreeSet::from([1, 2, 3])),
-///     ("b".to_string(), BTreeSet::from([4, 5])),
+/// let groups = Group::of_groups(1, [
+///     ("a", Group::of_voters(2, [1, 2, 3])),
+///     ("b", Group::of_voters(2, [4, 5])),
 /// ]);
-/// let write_sizes = BTreeMap::from([("a".to_string(), 2), ("b".to_string(), 2)]);
 /// let nodes = BTreeSet::from([1, 2, 3, 4, 5]);
-/// let membership = HierarchicalMembership::<u64, ()>::new(groups, 1, write_sizes, nodes).unwrap();
+/// let membership = HierarchicalMembership::<u64, ()>::new(groups, nodes).unwrap();
 ///
-/// // Move voter 3 to group b. Both groups keep their write sizes.
-/// let groups = BTreeMap::from([
-///     ("a".to_string(), BTreeSet::from([1, 2])),
-///     ("b".to_string(), BTreeSet::from([3, 4, 5])),
+/// // Move voter 3 to group b, where a write still needs 2 voters.
+/// let groups = Group::of_groups(1, [
+///     ("a", Group::of_voters(2, [1, 2])),
+///     ("b", Group::of_voters(2, [3, 4, 5])),
 /// ]);
 /// let change = HierarchicalChange::groups(groups);
 /// let moved = change.apply(&membership, true).unwrap();
-/// let want = "{configs: [Config { read: HierarchicalQuorumSet { groups: {\"a\": Group { voters: {1, 2}, \
-///             quorum_size: 1 }, \"b\": Group { voters: {3, 4, 5}, quorum_size: 2 }}, quorum_groups: 2 }, \
-///             write: HierarchicalQuorumSet { groups: {\"a\": Group { voters: {1, 2}, quorum_size: 2 }, \
-///             \"b\": Group { voters: {3, 4, 5}, quorum_size: 2 }}, quorum_groups: 1 }, \
+/// let want = "{configs: [Config { read: HierarchicalQuorumSet { root: Group { quorum_size: 2, voters: {}, \
+///             groups: {\"a\": Group { quorum_size: 1, voters: {1, 2}, groups: {} }, \"b\": Group { \
+///             quorum_size: 2, voters: {3, 4, 5}, groups: {} }} } }, write: HierarchicalQuorumSet { \
+///             root: Group { quorum_size: 1, voters: {}, groups: {\"a\": Group { quorum_size: 2, \
+///             voters: {1, 2}, groups: {} }, \"b\": Group { quorum_size: 2, voters: {3, 4, 5}, groups: {} }} } }, \
 ///             nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), 2: ((), NodeRole(Campaigner | ReceiveLogs)), \
 ///             3: ((), NodeRole(Campaigner | ReceiveLogs)), 4: ((), NodeRole(Campaigner | ReceiveLogs)), \
 ///             5: ((), NodeRole(Campaigner | ReceiveLogs))} }]}";
@@ -96,15 +92,9 @@ where
     /// Nodes to add as learners. A node that already exists keeps its metadata.
     pub add_nodes: BTreeMap<NID, N>,
 
-    /// The new groups, the voters of each group by group ID; `None` keeps the groups.
-    pub groups: Option<BTreeMap<String, BTreeSet<NID>>>,
-
-    /// The new number of groups that a write quorum must reach; `None` keeps the current one.
-    pub write_groups: Option<u64>,
-
-    /// The new write sizes of the groups that it names. A group that it does not name keeps its
-    /// write size.
-    pub write_sizes: BTreeMap<String, u64>,
+    /// The new root group, whose tree holds every voter, with the write size of each group as its
+    /// `quorum_size`; `None` keeps the groups and their write sizes.
+    pub groups: Option<Group<NID>>,
 
     /// Nodes to remove. Removing a voter of the result fails.
     pub remove_nodes: BTreeSet<NID>,
@@ -119,43 +109,13 @@ where
     NID: NodeId,
     N: Node,
 {
-    /// Returns a change of the groups that keeps `write_groups`, the write sizes of the groups
-    /// that keep their IDs, and the nodes.
-    pub fn groups(groups: BTreeMap<String, BTreeSet<NID>>) -> Self {
+    /// Returns a change to the root group `groups`, with the write sizes that it sets, which keeps
+    /// the nodes.
+    pub fn groups(groups: Group<NID>) -> Self {
         Self {
             groups: Some(groups),
             ..Self::default()
         }
-    }
-
-    /// Returns a change of `write_groups` that keeps the groups, the write sizes and the nodes.
-    pub fn write_groups(write_groups: u64) -> Self {
-        Self {
-            write_groups: Some(write_groups),
-            ..Self::default()
-        }
-    }
-
-    /// Returns a change of the write sizes of the groups that `write_sizes` names, which keeps the
-    /// groups, `write_groups`, the other write sizes and the nodes.
-    pub fn write_sizes(write_sizes: BTreeMap<String, u64>) -> Self {
-        Self {
-            write_sizes,
-            ..Self::default()
-        }
-    }
-
-    /// Returns this change with `write_groups` set.
-    pub fn with_write_groups(self, write_groups: u64) -> Self {
-        Self {
-            write_groups: Some(write_groups),
-            ..self
-        }
-    }
-
-    /// Returns this change with `write_sizes` as the write sizes that it sets.
-    pub fn with_write_sizes(self, write_sizes: BTreeMap<String, u64>) -> Self {
-        Self { write_sizes, ..self }
     }
 
     /// Returns this change with `roles` as the roles that it sets.
@@ -169,13 +129,11 @@ where
     NID: NodeId,
     N: Node,
 {
-    /// Returns the empty change, which keeps the groups, the write thresholds and the nodes.
+    /// Returns the empty change, which keeps the groups, the write sizes and the nodes.
     fn default() -> Self {
         Self {
             add_nodes: BTreeMap::new(),
             groups: None,
-            write_groups: None,
-            write_sizes: BTreeMap::new(),
             remove_nodes: BTreeSet::new(),
             roles: BTreeMap::new(),
         }
@@ -190,18 +148,16 @@ where
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{{add_nodes: {:?}, groups: {}, write_groups: {}, write_sizes: {:?}, remove_nodes: {:?}, roles: {:?}}}",
+            "{{add_nodes: {:?}, groups: {}, remove_nodes: {:?}, roles: {:?}}}",
             self.add_nodes,
             self.groups.display_debug(),
-            self.write_groups.display(),
-            self.write_sizes,
             self.remove_nodes,
             self.roles
         )
     }
 }
 
-/// `add_learner()` adds one node and keeps the groups and the write thresholds.
+/// `add_learner()` adds one node and keeps the groups and the write sizes.
 /// `make_uniform()` returns the empty change, which reduces a joint membership to its last config.
 impl<NID, N> RaftMembershipEdit<HierarchicalMembership<NID, N>> for HierarchicalChange<NID, N>
 where
@@ -220,20 +176,11 @@ where
         let Some(last) = membership.configs.last() else {
             return Err(EmptyMembership {}.into());
         };
-        let last_rule = last.write();
-        let (last_groups, mut write_sizes) = split_groups(last_rule);
 
-        let groups = match self.groups {
-            None => last_groups,
-            Some(groups) => groups,
+        let write = match self.groups {
+            None => last.write().clone(),
+            Some(groups) => HierarchicalQuorumSet::new(groups)?,
         };
-        let write_groups = self.write_groups.unwrap_or(last_rule.quorum_groups());
-
-        write_sizes.retain(|group, _| groups.contains_key(group));
-        write_sizes.extend(self.write_sizes);
-
-        let groups = pair_groups(groups, write_sizes)?;
-        let write = HierarchicalQuorumSet::new(write_groups, groups)?;
         let read = write.dual();
 
         let nodes = Config::edit_nodes(&membership.configs, self.add_nodes, &self.remove_nodes);
