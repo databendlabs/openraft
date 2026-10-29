@@ -324,8 +324,9 @@ pub struct Config {
     /// The size of the bounded channel for sending commands to the state machine worker.
     ///
     /// This channel carries commands like Apply, BuildSnapshot, and InstallSnapshot.
-    /// When full, RaftCore will block until space becomes available, providing backpressure
-    /// when the state machine is slow.
+    /// A background receiver drains this channel into an unbounded buffer while the state machine
+    /// is busy. This setting bounds only the input channel, not the number of pending commands.
+    /// Memory use grows when commands arrive faster than the state machine processes them.
     #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long, default_value = "1024"))]
     pub state_machine_channel_size: Option<u64>,

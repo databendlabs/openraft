@@ -8,6 +8,7 @@ use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::async_runtime::MpscReceiver;
 use crate::async_runtime::OneshotSender;
+use crate::async_runtime::mpsc::BufferedReceiver;
 use crate::core::ApplyResult;
 use crate::core::notification::Notification;
 use crate::core::sm::Command;
@@ -46,7 +47,7 @@ where
     log_reader: LR,
 
     /// Read command from RaftCore to execute.
-    cmd_rx: MpscReceiverOf<C, Command<C, SM>>,
+    cmd_rx: BufferedReceiver<C::AsyncRuntime, Command<C, SM>>,
 
     /// Send back the result of the command to RaftCore.
     resp_tx: MpscSenderOf<C, Notification<C>>,
@@ -68,6 +69,7 @@ where
         span: tracing::Span,
     ) -> Handle<C, SM> {
         let (cmd_tx, cmd_rx) = cmd_channel;
+        let cmd_rx = cmd_rx.with_unbounded_buffer::<C::AsyncRuntime>();
 
         let worker = Worker {
             id,

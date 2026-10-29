@@ -1132,7 +1132,9 @@ where
         }
 
         let cmd = sm::Command::apply(first, last.clone(), responders);
-        self.sm_handle.send(cmd).await.map_err(|e| StorageError::apply(last, C::err_from_string(e)))?;
+        let sent = self.sm_handle.send(cmd).await;
+        let sent = sent.map_err(|e| StorageError::apply(last, C::err_from_string(e)));
+        self.handle_sm_send_result(sent)?;
 
         Ok(())
     }
@@ -2001,7 +2003,7 @@ where
 
     #[tracing::instrument(level = "debug", skip_all, fields(state = debug(self.engine.state.server_state), id=display(&self.id)
     ))]
-    pub(crate) fn handle_notification(&mut self, notify: Notification<C>) -> Result<(), Fatal<C>> {
+    pub(crate) fn handle_notification(&mut self, notify: Notification<C>) -> Result<(), StorageError<C>> {
         tracing::debug!("RAFT_event id={:<2} notify: {}", self.id, notify);
 
         self.runtime_stats.record_notification(notify.name());
@@ -2073,7 +2075,7 @@ where
             Notification::Tick { i } => self.handle_tick(i),
             Notification::StorageError { error } => {
                 tracing::error!("RaftCore received Notification::StorageError: {}", error);
-                return Err(Fatal::StorageError(error));
+                return Err(error);
             }
 
             Notification::LocalIO { io_id } => self.handle_local_io(io_id),
@@ -2159,7 +2161,7 @@ where
     }
 
     /// Handle [`Notification::StateMachine`]: the state machine worker finished a command.
-    fn handle_state_machine_result(&mut self, command_result: sm::CommandResult<C>) -> Result<(), Fatal<C>> {
+    fn handle_state_machine_result(&mut self, command_result: sm::CommandResult<C>) -> Result<(), StorageError<C>> {
         tracing::debug!("sm::StateMachine command result: {:?}", command_result);
 
         let res = command_result.result?;
@@ -2692,12 +2694,29 @@ where
         }
 
         // Just forward a state machine command to the worker.
-        self.sm_handle
-            .send(command)
-            .await
-            .map_err(|_e| StorageError::write_state_machine(C::err_from_string("cannot send to sm::Worker")))?;
+        let sent = self.sm_handle.send(command).await;
+        let sent =
+            sent.map_err(|_e| StorageError::write_state_machine(C::err_from_string("cannot send to sm::Worker")));
+        self.handle_sm_send_result(sent)?;
 
         Ok(())
+    }
+
+    /// Prefer an already reported storage error over the worker-channel closure it caused.
+    fn handle_sm_send_result(&mut self, result: Result<(), StorageError<C>>) -> Result<(), StorageError<C>> {
+        let Err(send_error) = result else {
+            return Ok(());
+        };
+        let channel_size = self.config.notification_channel_size();
+        let pending_limit = channel_size.saturating_add(1);
+        for _ in 0..pending_limit {
+            let notify = match self.notifications.try_recv() {
+                Ok(notify) => notify,
+                Err(TryRecvError::Empty | TryRecvError::Disconnected) => break,
+            };
+            self.handle_notification(notify)?;
+        }
+        Err(send_error)
     }
 }
 
