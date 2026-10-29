@@ -1,5 +1,8 @@
 //! State machine control handle
 
+use std::future::Future;
+
+use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::async_runtime::MpscSender;
 use crate::async_runtime::MpscWeakSender;
@@ -29,9 +32,13 @@ where
     C: RaftTypeConfig,
     SM: RaftStateMachine<C>,
 {
-    pub(crate) async fn send(&mut self, cmd: sm::Command<C, SM>) -> Result<(), SendError<sm::Command<C, SM>>> {
+    pub(crate) fn send(
+        &self,
+        cmd: sm::Command<C, SM>,
+    ) -> impl Future<Output = Result<(), SendError<sm::Command<C, SM>>>> + OptionalSend + use<C, SM> {
         tracing::debug!("sending command to state machine worker: {:?}", cmd);
-        self.cmd_tx.send(cmd).await
+        let sender = self.cmd_tx.clone();
+        async move { sender.send(cmd).await }
     }
 
     /// Create a [`SnapshotReader`] to get the current snapshot from the state machine.
