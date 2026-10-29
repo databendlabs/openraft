@@ -432,6 +432,7 @@ fn write_crash_file(
         "max_steps": max_steps,
         "steps_completed": result.steps_completed,
         "violation": result.violations.first(),
+        "violations": result.violations,
         "config": serde_json::to_value(config).unwrap(),
         "reproduce": {
             "command": format!(
@@ -1391,11 +1392,18 @@ impl IterationState {
         }
         self.steps += 1;
 
-        let (snapshots, durable_logs) = {
+        let (snapshots, durable_logs, log_violations) = {
             let state = cluster_state.lock().unwrap();
-            (state.get_all_full_snapshots(), state.get_all_durable_log_ids())
+            (
+                state.get_all_full_snapshots(),
+                state.get_all_durable_log_ids(),
+                state.drain_log_violations(),
+            )
         };
         self.invariant_checks += 1;
+        for v in log_violations {
+            self.record_violation(format!("Step {}: {v}", self.steps));
+        }
         let result = self.invariants.check_with_durable_logs(&snapshots, &durable_logs);
         for v in result.violations {
             self.record_violation(format!("Step {}: {v:?}", self.steps));

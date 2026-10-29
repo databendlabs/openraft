@@ -8,13 +8,13 @@ use openraft_rt_tokio::TokioRuntime;
 use turmoil::Sim;
 use turmoil::net::TcpListener;
 
+use crate::entry_history::EntryHistory;
 use crate::network::TurmoilNetwork;
 use crate::network::handle_rpc;
 use crate::storage_model::StorageModel;
 use crate::store::LogStore;
 use crate::store::StateMachine;
 use crate::store::StateMachineData;
-use crate::store::new_store;
 use crate::typ::*;
 
 /// Get the turmoil host name for a node.
@@ -23,6 +23,7 @@ pub fn host_name(id: NodeId) -> String {
 }
 
 /// Shared state for observing nodes from outside the simulation.
+#[openraft::macros::since(version = "0.10.0", change = "has a private field: construct it with `new()`")]
 pub struct ClusterState {
     /// Live Raft instances for each node (keyed by node ID).
     ///
@@ -35,6 +36,7 @@ pub struct ClusterState {
     pub log_stores: BTreeMap<NodeId, Arc<LogStore>>,
     /// State machines for each node.
     pub state_machines: BTreeMap<NodeId, Arc<StateMachine>>,
+    entry_history: Arc<std::sync::Mutex<EntryHistory>>,
 }
 
 /// Combined snapshot of both Raft and State Machine state.
@@ -49,7 +51,14 @@ impl ClusterState {
             rafts: BTreeMap::new(),
             log_stores: BTreeMap::new(),
             state_machines: BTreeMap::new(),
+            entry_history: Arc::new(std::sync::Mutex::new(EntryHistory::default())),
         }
+    }
+
+    /// Take violations of log entry identity observed since the previous check.
+    #[openraft::macros::since(version = "0.10.0")]
+    pub fn drain_log_violations(&self) -> Vec<String> {
+        self.entry_history.lock().unwrap().drain_violations()
     }
 
     /// Get metrics from all nodes.
@@ -137,10 +146,13 @@ pub fn register_node_storage(
     seed: u64,
 ) {
     let mut state = cluster_state.lock().unwrap();
+    let history = state.entry_history.clone();
     if let std::collections::btree_map::Entry::Vacant(e) = state.log_stores.entry(node_id) {
-        let (log_store, state_machine) = new_store(model, seed);
-        e.insert(log_store);
-        state.state_machines.insert(node_id, state_machine);
+        let log_store = LogStore::new(model.clone(), seed);
+        let log_store = log_store.with_history(node_id, history);
+        let state_machine = StateMachine::new(model, seed.wrapping_add(1));
+        e.insert(Arc::new(log_store));
+        state.state_machines.insert(node_id, Arc::new(state_machine));
     }
 }
 
