@@ -70,18 +70,21 @@ fn test_new_gives_default_roles() {
 
 #[test]
 fn test_new_sets_roles_of_its_nodes() {
-    // Voter 3 stops campaigning, learner 4 stops receiving logs, and node 5 is no node of the
-    // config, so its role is dropped.
+    // Read-only voter 1 needs no logs, write-only voter 3 stops campaigning, and learner 4 stops
+    // receiving logs. Node 5 is no node of the config, so its role is dropped.
     let roles = btreemap! {
+        1 => NodeRole::Empty,
         3 => NodeRole::ReceiveLogs,
         4 => NodeRole::Empty,
         5 => NodeRole::Empty,
     };
     let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40};
-    let config = config(2, btreeset! {1, 2, 3}, roles, nodes);
+    let read = threshold(2, btreeset! {1, 2});
+    let write = threshold(2, btreeset! {2, 3});
+    let config = TestConfig::new(read, write, roles, nodes).unwrap();
 
     let want = btreemap! {
-        1 => (10, voter_role()),
+        1 => (10, NodeRole::Empty),
         2 => (20, voter_role()),
         3 => (30, NodeRole::ReceiveLogs),
         4 => (40, NodeRole::Empty),
