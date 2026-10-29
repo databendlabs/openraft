@@ -30,6 +30,7 @@ pub(crate) mod io_broadcast;
 pub(crate) mod io_flush_tracking;
 pub(crate) mod merged_raft_msg_receiver;
 pub(crate) mod notification;
+pub(crate) mod notifications;
 pub(crate) mod raft_msg;
 pub(crate) mod runtime_stats;
 pub(crate) mod sm;
