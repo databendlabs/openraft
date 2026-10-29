@@ -600,6 +600,8 @@ where
 
             Box::new(move |inner: &RaftInner<C>| {
                 let tick_tx = tx_notify.clone();
+                let buffered = config.enable_unbounded_state_machine_buffer();
+                let sm_cmd_rx = sm::command_receiver::CommandReceiver::new(sm_cmd_rx, buffered);
                 let sm_handle = worker::Worker::spawn(
                     id.clone(),
                     state_machine,
@@ -636,6 +638,7 @@ where
                     ),
                     tx_install_snapshot: tx_install_snapshot.clone(),
                     rx_install_snapshot,
+                    rx_shutdown,
 
                     notifications: NotificationChannel::new(tx_notify, rx_notify),
 
@@ -672,7 +675,7 @@ where
                 );
 
                 let core = Box::new(core);
-                let core_fut = core.main(rx_shutdown).instrument(trace_span!("spawn").or_current());
+                let core_fut = core.main().instrument(trace_span!("spawn").or_current());
                 let join_handle = C::spawn(core_fut);
 
                 let tick_period = Duration::from_millis(config.tick_interval());
