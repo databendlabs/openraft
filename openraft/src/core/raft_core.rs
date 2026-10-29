@@ -22,6 +22,7 @@ use crate::async_runtime::MpscReceiver;
 use crate::async_runtime::Mutex;
 use crate::async_runtime::OneshotSender;
 use crate::async_runtime::Select2;
+use crate::async_runtime::Select3;
 use crate::async_runtime::Select4;
 use crate::async_runtime::TryRecvError;
 use crate::async_runtime::watch::WatchSender;
@@ -255,6 +256,8 @@ where
     /// `rx_api`, which is independent of the state machine type.
     pub(crate) rx_install_snapshot: MpscReceiverOf<C, InstallFullSnapshotRequest<C, SM>>,
 
+    pub(crate) rx_shutdown: OneshotReceiverOf<C, ()>,
+
     /// Shared notification channel and buffered self-notifications.
     pub(crate) notifications: NotificationChannel<C>,
 
@@ -313,12 +316,9 @@ where
     SM: RaftStateMachine<C>,
 {
     /// The main loop of the Raft protocol.
-    pub(crate) async fn main(
-        mut self: Box<Self>,
-        rx_shutdown: OneshotReceiverOf<C, ()>,
-    ) -> Result<Infallible, Fatal<C>> {
+    pub(crate) async fn main(mut self: Box<Self>) -> Result<Infallible, Fatal<C>> {
         let span = tracing::span!(parent: &self.span, Level::DEBUG, "main");
-        let res = self.do_main(rx_shutdown).instrument(span).await;
+        let res = self.do_main().instrument(span).await;
 
         // Flush buffered metrics
         self.flush_metrics();
@@ -348,7 +348,7 @@ where
 
     #[tracing::instrument(level = "trace", skip_all, fields(id=display(&self.id), cluster=%self.config.cluster_name
     ))]
-    async fn do_main(&mut self, rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<Infallible, Fatal<C>> {
+    async fn do_main(&mut self) -> Result<Infallible, Fatal<C>> {
         tracing::debug!("raft node is initializing");
 
         self.engine.startup();
@@ -358,7 +358,7 @@ where
         // Initialize metrics.
         self.flush_metrics();
 
-        self.runtime_loop(rx_shutdown).await
+        self.runtime_loop().await
     }
 
     fn ensure_preconditions_satisfied(
@@ -1090,11 +1090,7 @@ where
 
     /// Apply log entries to the state machine, from the `first`(inclusive) to `last`(inclusive).
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) async fn apply_to_state_machine(
-        &mut self,
-        first: LogIdOf<C>,
-        last: LogIdOf<C>,
-    ) -> Result<(), StorageError<C>> {
+    pub(crate) async fn apply_to_state_machine(&mut self, first: LogIdOf<C>, last: LogIdOf<C>) -> Result<(), Fatal<C>> {
         tracing::debug!("{}: {}..={}", func_name!(), first, last);
 
         debug_assert!(
@@ -1131,10 +1127,8 @@ where
             responder.on_commit(log_id);
         }
 
-        let cmd = sm::Command::apply(first, last.clone(), responders);
-        self.sm_handle.send(cmd).await.map_err(|e| StorageError::apply(last, C::err_from_string(e)))?;
-
-        Ok(())
+        let cmd = sm::Command::apply(first, last, responders);
+        self.send_sm_command(cmd).await
     }
 
     /// Spawn a new replication stream returning its replication state handle.
@@ -1334,7 +1328,7 @@ where
     ///
     /// It always returns a [`Fatal`] error upon returning.
     #[tracing::instrument(level = "debug", skip_all, fields(id=display(&self.id)))]
-    async fn runtime_loop(&mut self, mut rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<Infallible, Fatal<C>> {
+    async fn runtime_loop(&mut self) -> Result<Infallible, Fatal<C>> {
         // Ratio control the ratio of number of RaftMsg to process to number of Notification to process.
         let mut balancer = Balancer::new(10_000);
 
@@ -1354,7 +1348,7 @@ where
 
             // Check shutdown first so that a message flood in `tx_api` won't block shutting down.
             let selected = C::select4(
-                &mut rx_shutdown,
+                &mut self.rx_shutdown,
                 self.notifications.recv(),
                 self.rx_install_snapshot.recv(),
                 self.rx_api.ensure_buffered(),
@@ -2554,7 +2548,7 @@ where
         &mut self,
         already_applied: Option<LogIdOf<C>>,
         upto: LogIdOf<C>,
-    ) -> Result<(), StorageError<C>> {
+    ) -> Result<(), Fatal<C>> {
         self.runtime_stats.record_log_stage_now(Stage::Committed, upto.index() + 1);
 
         self.engine.state.apply_progress_mut().submit(upto.clone());
@@ -2675,7 +2669,7 @@ where
     }
 
     /// Run [`Command::StateMachine`], forwarding the inner command to the state machine worker.
-    async fn run_state_machine(&mut self, command: sm::Command<C, SM>) -> Result<(), StorageError<C>> {
+    async fn run_state_machine(&mut self, command: sm::Command<C, SM>) -> Result<(), Fatal<C>> {
         let io_id = command.get_log_progress();
 
         if let Some(io_id) = io_id {
@@ -2692,12 +2686,26 @@ where
         }
 
         // Just forward a state machine command to the worker.
-        self.sm_handle
-            .send(command)
-            .await
-            .map_err(|_e| StorageError::write_state_machine(C::err_from_string("cannot send to sm::Worker")))?;
+        self.send_sm_command(command).await
+    }
 
-        Ok(())
+    /// Retain the send while handling notifications, without running their engine commands here.
+    async fn send_sm_command(&mut self, command: sm::Command<C, SM>) -> Result<(), Fatal<C>> {
+        let send = self.sm_handle.send(command);
+        let mut send = std::pin::pin!(send);
+        loop {
+            let selected = C::select3(&mut self.rx_shutdown, send.as_mut(), self.notifications.recv()).await;
+            match selected {
+                Select3::First(_) | Select3::Third(None) => return Err(Fatal::Stopped),
+                Select3::Second(Ok(())) => return Ok(()),
+                Select3::Second(Err(_)) => {
+                    let source = C::err_from_string("cannot send to sm::Worker");
+                    let error = StorageError::write_state_machine(source);
+                    return Err(Fatal::StorageError(error));
+                }
+                Select3::Third(Some(notify)) => self.handle_notification(notify)?,
+            }
+        }
     }
 }
 
@@ -2709,7 +2717,7 @@ where
     LS: RaftLogStorage<C>,
     SM: RaftStateMachine<C>,
 {
-    async fn run_command(&mut self, cmd: Command<C, SM>) -> Result<Option<Command<C, SM>>, StorageError<C>> {
+    async fn run_command(&mut self, cmd: Command<C, SM>) -> Result<Option<Command<C, SM>>, Fatal<C>> {
         // tracing::debug!("RAFT_event id={:<2} trycmd: {}", self.id, cmd);
 
         let condition = cmd.condition();

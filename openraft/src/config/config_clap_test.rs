@@ -357,6 +357,17 @@ fn test_config_notification_channel_size() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_config_state_machine_buffer() -> anyhow::Result<()> {
+    let config = Config::build(&["foo"])?;
+    assert!(!config.enable_unbounded_state_machine_buffer);
+    let config = Config::build(&["foo", "--enable-unbounded-state-machine-buffer"])?;
+    assert!(config.enable_unbounded_state_machine_buffer);
+    let config = Config::build(&["foo", "--enable-unbounded-state-machine-buffer=false"])?;
+    assert!(!config.enable_unbounded_state_machine_buffer);
+    Ok(())
+}
+
+#[test]
 fn test_config_lifecycle_latency_capacity() -> anyhow::Result<()> {
     // Default: None (no clap default_value)
     let config = Config::build(&["foo"])?;
