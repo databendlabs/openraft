@@ -168,6 +168,24 @@ fn test_get_node_reports_asymmetric_voter_sets() {
     assert_eq!(vec![1, 2], read_ids);
     let write_ids: Vec<u64> = membership.write_quorum_set().ids().collect();
     assert_eq!(vec![2, 3], write_ids);
+
+    // Voters 1 and 3 exchange read/write roles. The joint keeps both roles for each voter.
+    let target = Membership::new([btreeset! {2, 3}], [btreeset! {1, 2}], btreeset! {1, 2, 3, 4}).unwrap();
+    let target = target.with_roles(btreemap! {1 => NodeRole::ReceiveLogs, 3 => NodeRole::Empty}).unwrap();
+    let joint = membership.joint_with(&target);
+    for node_id in 1..=3 {
+        let got = joint.get_node(&node_id);
+        let want = Some(NodeRef {
+            node: &(),
+            role: voter_role(),
+            is_read_voter: true,
+            is_write_voter: true,
+        });
+        assert_eq!(want, got, "node {node_id}");
+    }
+    let uniform_change = ExplicitChange::make_uniform();
+    let uniform = uniform_change.apply(&joint).unwrap();
+    assert_eq!(target, uniform);
 }
 
 #[test]
