@@ -16,6 +16,7 @@ mod t50_single_follower_restart;
 mod t50_single_leader_restart_re_apply_logs;
 mod t50_wait_for_recovery;
 mod t90_issue_2167_leader_restore_reuses_log_id;
+mod t90_issue_2230_sm_command_fifo;
 mod t90_issue_2232_self_notifications;
 mod t90_issue_607_single_restart;
 mod t90_issue_881_transient_state_machine;

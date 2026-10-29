@@ -5,6 +5,7 @@
 //! to the RaftCore.
 
 pub(crate) mod command;
+pub(crate) mod command_receiver;
 pub(crate) mod handle;
 pub(crate) mod response;
 pub(crate) mod worker;
