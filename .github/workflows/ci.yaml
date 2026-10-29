@@ -498,11 +498,38 @@ jobs:
           # the config applies.
           rustflags: ""
 
-      - name: Run deterministic simulation
-        run: cd tests-turmoil && cargo run --release --bin fuzz -- --iterations 5 --max-steps 10000 --storage lossy
+      - name: Run Turmoil unit and regression tests
+        shell: bash
+        run: make test-turmoil-default 2>&1 | tee "$RUNNER_TEMP/turmoil-tests.log"
+
+      - name: Replay log ID reuse regression (seed 812)
+        if: success() || failure()
+        shell: bash
+        run: |
+          cd tests-turmoil
+          cargo run --release --bin fuzz -- --reproduce 812 --max-steps 10000 --storage lossy \
+            --crash-file "$RUNNER_TEMP/turmoil-seed812.json" 2>&1 | tee "$RUNNER_TEMP/turmoil-seed812.log"
         env:
           RUST_LOG: info
           RUST_BACKTRACE: full
+
+      - name: Run deterministic simulation
+        if: success() || failure()
+        shell: bash
+        run: |
+          cd tests-turmoil
+          cargo run --release --bin fuzz -- --iterations 5 --max-steps 10000 --storage lossy \
+            --crash-file "$RUNNER_TEMP/turmoil-random.json" 2>&1 | tee "$RUNNER_TEMP/turmoil-random.log"
+        env:
+          RUST_LOG: info
+          RUST_BACKTRACE: full
+
+      - name: Upload simulation failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: turmoil-default
+          path: ${{ runner.temp }}/turmoil-*
 
   # The same simulation with `ThresholdMembership` and random read and write sizes.
   detsim-threshold:
@@ -518,11 +545,27 @@ jobs:
           cache-workspaces: tests-turmoil
           rustflags: ""
 
+      - name: Run Turmoil unit and regression tests with ThresholdMembership
+        shell: bash
+        run: make test-turmoil-threshold 2>&1 | tee "$RUNNER_TEMP/turmoil-tests.log"
+
       - name: Run deterministic simulation with ThresholdMembership
-        run: cd tests-turmoil && cargo run --release --bin fuzz --features threshold-membership -- --iterations 5 --max-steps 10000 --storage lossy
+        if: success() || failure()
+        shell: bash
+        run: |
+          cd tests-turmoil
+          cargo run --release --bin fuzz --features threshold-membership -- --iterations 5 --max-steps 10000 --storage lossy \
+            --crash-file "$RUNNER_TEMP/turmoil-random.json" 2>&1 | tee "$RUNNER_TEMP/turmoil-random.log"
         env:
           RUST_LOG: info
           RUST_BACKTRACE: full
+
+      - name: Upload simulation failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: turmoil-threshold
+          path: ${{ runner.temp }}/turmoil-*
 
   lint:
     name: lint

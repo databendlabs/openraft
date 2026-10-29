@@ -153,8 +153,12 @@ guide:
 	@echo "doc is built in:"
 	@echo "./guide/book/index.html"
 
-test-turmoil:
+test-turmoil: test-turmoil-default test-turmoil-threshold
+
+test-turmoil-default:
 	cd tests-turmoil && cargo test --lib
+
+test-turmoil-threshold:
 	cd tests-turmoil && cargo test --lib --features threshold-membership
 
 DETSIM_ARGS ?= --iterations 5 --max-steps 10000 --storage lossy
@@ -333,4 +337,4 @@ clean:
 	cargo clean --manifest-path jepsen/openraft-test-app/Cargo.toml
 	rm -rf tests/_log
 
-.PHONY: test test-runtime test-turmoil verify verify-full basic_check fmt fmt_check fix clippy-basic clippy lint clean doc docs-check guide detsim detsim-threshold typos
+.PHONY: test test-runtime test-turmoil test-turmoil-default test-turmoil-threshold verify verify-full basic_check fmt fmt_check fix clippy-basic clippy lint clean doc docs-check guide detsim detsim-threshold typos

@@ -22,7 +22,8 @@ impl std::fmt::Display for Node {
 }
 
 /// Client request - a simple key-value write operation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[openraft::macros::since(version = "0.10.0", change = "implement `PartialEq`")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Request {
     pub client_id: String,
     pub serial: u64,
