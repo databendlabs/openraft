@@ -18,6 +18,7 @@ compile_error!(
 );
 
 pub mod cluster;
+mod entry_history;
 pub mod invariants;
 pub mod liveness;
 pub mod network;

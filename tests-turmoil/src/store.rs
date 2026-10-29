@@ -35,6 +35,7 @@ use rand::rngs::StdRng;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::entry_history::EntryHistory;
 use crate::storage_model::StorageModel;
 use crate::typ::*;
 
@@ -155,6 +156,8 @@ struct LogStoreInner {
     epoch: u64,
     /// Whether a flush task is running for the current epoch.
     flushing: bool,
+    #[cfg(test)]
+    flush_paused: bool,
     rng: StdRng,
 }
 
@@ -162,6 +165,8 @@ struct LogStoreInner {
 pub struct LogStore {
     model: StorageModel,
     inner: Mutex<LogStoreInner>,
+    node_id: NodeId,
+    entry_history: Arc<Mutex<EntryHistory>>,
 }
 
 impl LogStore {
@@ -175,9 +180,26 @@ impl LogStore {
                 unflushed: VecDeque::new(),
                 epoch: 0,
                 flushing: false,
+                #[cfg(test)]
+                flush_paused: false,
                 rng: StdRng::seed_from_u64(seed),
             }),
+            node_id: 0,
+            entry_history: Arc::new(Mutex::new(EntryHistory::default())),
         }
+    }
+
+    /// Record every entry appended to this store in `history`, as appended by `node_id`.
+    pub(crate) fn with_history(mut self, node_id: NodeId, history: Arc<Mutex<EntryHistory>>) -> Self {
+        self.node_id = node_id;
+        self.entry_history = history;
+        self
+    }
+
+    /// Stop or resume flushing: while paused, writes stay readable but none becomes durable.
+    #[cfg(test)]
+    pub(crate) fn pause_flush(&self, paused: bool) {
+        self.inner.lock().unwrap().flush_paused = paused;
     }
 
     /// The log ids a reader sees.
@@ -256,6 +278,10 @@ impl LogStore {
                 let mut inner = self.inner.lock().unwrap();
                 if inner.epoch != epoch {
                     return;
+                }
+                #[cfg(test)]
+                if inner.flush_paused {
+                    continue;
                 }
                 for _ in 0..round {
                     let (write, waiter) = inner.unflushed.pop_front().expect("only a crash shrinks the queue");
@@ -341,7 +367,14 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
     /// Returns once the entries are readable; the callback reports persistence.
     async fn append<I>(&mut self, entries: I, callback: IOFlushed<TypeConfig>) -> Result<(), io::Error>
     where I: IntoIterator<Item = Entry> + OptionalSend {
-        let write = LogWrite::Append(entries.into_iter().collect());
+        let entries: Vec<_> = entries.into_iter().collect();
+        {
+            let mut history = self.entry_history.lock().unwrap();
+            for entry in &entries {
+                history.record(self.node_id, entry);
+            }
+        }
+        let write = LogWrite::Append(entries);
         self.submit(write, FlushWaiter::Append(callback));
         Ok(())
     }
@@ -491,17 +524,6 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachine> {
             None => Ok(None),
         }
     }
-}
-
-/// Create a node's log store and state machine.
-///
-/// The log store draws its flush latencies from `seed`, the state machine its
-/// apply delays from `seed + 1`.
-pub fn new_store(model: &StorageModel, seed: u64) -> (Arc<LogStore>, Arc<StateMachine>) {
-    (
-        Arc::new(LogStore::new(model.clone(), seed)),
-        Arc::new(StateMachine::new(model, seed.wrapping_add(1))),
-    )
 }
 
 #[cfg(test)]

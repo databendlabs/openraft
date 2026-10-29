@@ -4,6 +4,8 @@
 //! which the randomized fuzzer is unlikely to compose on its own. The
 //! simulation runs under a fixed seed, so a failure is always reproducible.
 
+mod leader_restore_test;
+
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::Mutex;

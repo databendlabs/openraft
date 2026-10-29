@@ -55,6 +55,8 @@ A flush, its late report included, stays within a quarter of `heartbeat_interval
 
 CI and `make detsim` pass `--storage lossy`, so every seed flushes asynchronously and every crash drops unflushed writes. Storage-fault failures block CI, including the purge bugs tracked by [#2177](https://github.com/databendlabs/openraft/pull/2177) and invariant checks that assume lossless restarts. Until those checks allow for a restart that reloads less than the process had, the CLI default remains `durable`.
 
+The `detsim` CI job, which uses the default membership type, also replays seed 812 (`--reproduce 812 --max-steps 10000 --storage lossy`), in which a restored leader reuses log id `T1-N1.90` for a different entry. This replay and the scenario test `restored_leader_preserves_entry_identity` fail until #2167 is fixed. When a detsim job fails, CI uploads the test log, the fuzzer logs and each fuzzer's `--crash-file` JSON as a workflow artifact.
+
 ## Invariants Checked
 
 The checker lives in `src/invariants/`, with one file per property. Each property is tagged with its authoritative source (Ongaro's paper/dissertation or Vanlightly's [TLA+ spec](https://github.com/Vanlightly/raft-tlaplus/blob/main/specifications/standard-raft/Raft.tla)).
@@ -80,9 +82,11 @@ All identity comparisons use `CommittedLeaderId` (not just `term`), so the same 
 
 The checker is **stateful**: `InvariantChecker` retains per-index committed history (for Committed Immutable) and per-node last-seen state (for the Monotonic family) across ticks, so cross-time invariants can be caught. `Leader Append-Only` (paper §3.6.3) is not checked directly; its safety content for committed entries is already covered by Log Matching + Committed Immutable + Leader Completeness.
 
+**Log Id Uniqueness** is checked when entries are appended, not on metrics: `src/entry_history.rs` records every entry any node appends, keyed by log id, and reports `LogIdReused` when one log id arrives with a different entry. The record outlives crashes, truncation and purge, so it also catches a log id that is reused after its first entry was lost, as in #2167. A node may still reuse the log id of an entry that only it appended: that entry was lost before any other node received it, so no node can mistake one entry for the other. If the lost entry later reaches any node, the check reports it.
+
 Host panics, all-clients-exited, and simulation-duration overrun also fail the run: `sim.step()` errors are converted into violations, and each iteration runs under `catch_unwind`.
 
-Unit tests under `src/invariants/tests.rs`, `src/oracle.rs`, and `src/liveness.rs` exercise each check with synthetic snapshots, and `src/store.rs` the storage model — run with `cargo test --lib`.
+Unit tests under `src/invariants/tests.rs`, `src/oracle.rs`, and `src/liveness.rs` exercise each check with synthetic snapshots, `src/entry_history/entry_history_test.rs` the log id record, and `src/store.rs` the storage model. Scenario tests in `src/scenarios.rs` and `src/scenarios/` replay fixed event sequences that arm known bugs. `make test-turmoil` runs all of them (`cargo test --lib`) with each membership type, and both CI detsim jobs run them.
 
 ## State Access via RaftMetrics
 
