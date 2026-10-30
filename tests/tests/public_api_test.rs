@@ -291,11 +291,29 @@ use openraft_legacy::network_v1::InstallSnapshotResponse;
 use openraft_legacy::network_v1::SnapshotMismatch;
 use openraft_legacy::network_v1::SnapshotReceiverFactory;
 use openraft_legacy::network_v1::SnapshotSegmentId;
+use openraft_membership::ExplicitChange as ProvidedExplicitChange;
+use openraft_membership::ExplicitMembership as ProvidedExplicitMembership;
+use openraft_membership::GridChange as ProvidedGridChange;
+use openraft_membership::GridMembership as ProvidedGridMembership;
+use openraft_membership::HierarchicalChange as ProvidedHierarchicalChange;
+use openraft_membership::HierarchicalMembership as ProvidedHierarchicalMembership;
 use openraft_membership::ThresholdChange as ProvidedThresholdChange;
 use openraft_membership::ThresholdMembership as ProvidedThresholdMembership;
+use openraft_membership::WeightedChange as ProvidedWeightedChange;
+use openraft_membership::WeightedMembership as ProvidedWeightedMembership;
+use openraft_membership::errors::InvalidGrid as ProvidedInvalidGrid;
+use openraft_membership::errors::InvalidGroups as ProvidedInvalidGroups;
+use openraft_membership::errors::InvalidQuorumLists as ProvidedInvalidQuorumLists;
 use openraft_membership::errors::InvalidThresholds as ProvidedInvalidThresholds;
+use openraft_membership::errors::InvalidWeights as ProvidedInvalidWeights;
+use openraft_membership::quorum::ExplicitQuorumSet as ProvidedExplicitQuorumSet;
+use openraft_membership::quorum::GridQuorumSet as ProvidedGridQuorumSet;
+use openraft_membership::quorum::GridRule as ProvidedGridRule;
+use openraft_membership::quorum::Group as ProvidedGroup;
+use openraft_membership::quorum::HierarchicalQuorumSet as ProvidedHierarchicalQuorumSet;
 use openraft_membership::quorum::Joint as ProvidedJoint;
 use openraft_membership::quorum::ThresholdQuorumSet as ProvidedThresholdQuorumSet;
+use openraft_membership::quorum::WeightedQuorumSet as ProvidedWeightedQuorumSet;
 // =============================================================================
 // Macros
 // =============================================================================

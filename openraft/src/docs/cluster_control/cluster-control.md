@@ -74,6 +74,6 @@ Monitor cluster health using metrics and perform automated maintenance operation
 [`cluster_formation`]: `crate::docs::cluster_control::cluster_formation`
 [`dynamic_membership`]: `crate::docs::cluster_control::dynamic_membership`
 [`joint_consensus`]: `crate::docs::cluster_control::joint_consensus`
-[`threshold_membership`]: https://docs.rs/openraft-membership/latest/openraft_membership/docs/index.html
+[`threshold_membership`]: https://docs.rs/openraft-membership/latest/openraft_membership/docs/threshold/index.html
 [`node_lifecycle`]: `crate::docs::cluster_control::node_lifecycle`
 [`monitoring_maintenance`]: `crate::docs::cluster_control::monitoring_maintenance`

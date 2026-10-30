@@ -3,7 +3,6 @@ use std::collections::btree_set;
 
 use openraft_macros::since;
 
-use crate::quorum::QuorumBridge;
 use crate::quorum::QuorumIntersection;
 use crate::quorum::QuorumSet;
 
@@ -137,15 +136,13 @@ where
 }
 
 /// Builds a joint that requires a quorum of both `self` and the target.
-impl<Q> QuorumBridge<Joint<Q>> for Joint<Q>
-where
-    Q: QuorumSet + Clone,
-    Q::Id: Ord,
+impl<Q> Joint<Q>
+where Q: Clone
 {
     /// Return the rules of `self` followed by the rules of `other`. Return an empty joint when
     /// `self` or `other` is empty: an empty joint has no quorum, so a joint with it has no quorum
     /// either.
-    fn joint_with(&self, other: Joint<Q>) -> Self {
+    pub fn joint_with(&self, other: Joint<Q>) -> Self {
         if self.rules.is_empty() || other.rules.is_empty() {
             return Self::default();
         }
