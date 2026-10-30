@@ -390,9 +390,22 @@ would look successful. `results.edn` reports how many classes installed a
 recognized fault under `:fault-classes-executed`, and zero rejects the run.
 Cleanup, clock reset and recovery operations do not count toward it.
 
-Every Jepsen node builds a snapshot after 50 newly committed logs by default
-and keeps 20 logs behind it. The regular write workload therefore exercises
-snapshot construction without a snapshot-specific Nemesis. A follower that
+Snapshot defaults use bit 1 (value `2`) of the recorded seed:
+
+| `SEED & 2` | Snapshot threshold | Logs to keep |
+| --- | --- | --- |
+| `0` | `100` | `1000` |
+| nonzero | `50` | `20` |
+
+Even/odd independently selects the removed-leader step-down policy, so seeds
+`0`, `1`, `2`, and `3` cover all four configuration combinations. Random CI
+seeds do not guarantee all four in a given run. Each explicit
+`SNAPSHOT_THRESHOLD` or `SNAPSHOT_LOGS_TO_KEEP` overrides only its own setting,
+including `SNAPSHOT_LOGS_TO_KEEP=0`.
+
+The 100/1000 configuration favors log recovery during short faults. The 50/20
+configuration makes snapshot recovery more likely without a snapshot-specific
+Nemesis. With 50/20, a follower that
 misses more than 20 logs during a partition, process kill, or pause may need
 logs the leader has already purged; it then installs the leader's snapshot.
 This typically happens past about 70 logs, roughly ten seconds of writes.

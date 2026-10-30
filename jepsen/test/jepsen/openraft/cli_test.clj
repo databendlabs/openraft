@@ -8,7 +8,6 @@
             [jepsen.history :as history]
             [jepsen.openraft.checker :as openraft-checker]
             [jepsen.openraft.cli :as cli]
-            [jepsen.openraft.db :as openraft-db]
             [jepsen.openraft.generator :as openraft-generator]
             [jepsen.openraft.harness :as harness]
             [jepsen.openraft.nemesis :as openraft-nemesis]
@@ -65,11 +64,6 @@
     (is (empty? (:errors (tools-cli/parse-opts [] cli/cli-opts))))))
 
 (deftest validates-the-snapshot-threshold
-  (testing "the default applies snapshot pressure"
-    (is (= openraft-db/default-snapshot-threshold
-           (get-in (tools-cli/parse-opts [] cli/cli-opts)
-                   [:options :snapshot-threshold]))))
-
   (testing "malformed and zero thresholds are rejected"
     (doseq [value ["abc" "0"]]
       (let [parsed (tools-cli/parse-opts ["--snapshot-threshold" value]
@@ -78,7 +72,8 @@
                   (:errors parsed)))))))
 
 (deftest selects-removed-leader-policy-from-the-seed
-  (doseq [[seed policy] [[0 :default] [1 :never] [42 :default] [-1 :never]]]
+  (doseq [[seed policy] [[0 :default] [1 :never] [2 :default] [3 :never]
+                         [42 :default] [-1 :never]]]
     (testing (str "seed " seed)
       (let [opts {:nemesis :membership :nodes ["n1" "n2" "n3" "n4" "n5"]
                   :time-limit 10 :seed seed}
@@ -89,12 +84,39 @@
         (is (= policy (:removed-leader-step-down
                        (cli/openraft-test (:options first-run)))))))))
 
-(deftest validates-the-snapshot-logs-to-keep
-  (testing "the default is passed to every node"
-    (is (= openraft-db/default-snapshot-logs-to-keep
-           (get-in (tools-cli/parse-opts [] cli/cli-opts)
-                   [:options :snapshot-logs-to-keep]))))
+(deftest selects-snapshot-defaults-from-the-seed
+  (doseq [[seed threshold logs-to-keep] [[0 100 1000] [1 100 1000]
+                                         [2 50 20] [3 50 20]
+                                         [-1 50 20] [-4 100 1000]]]
+    (testing (str "seed " seed)
+      (let [args ["--seed" (str seed)]
+            parsed (tools-cli/parse-opts args cli/cli-opts)
+            prepared (#'cli/prepare-options parsed)
+            options (:options prepared)
+            actual-threshold (:snapshot-threshold options)
+            actual-logs-to-keep (:snapshot-logs-to-keep options)]
+        (is (= threshold actual-threshold))
+        (is (= logs-to-keep actual-logs-to-keep))))))
 
+(deftest preserves-explicit-snapshot-options
+  (doseq [[seed threshold logs-to-keep] [[0 100 1000] [1 100 1000]
+                                         [2 50 20] [3 50 20]]
+          [args expected-threshold expected-logs-to-keep]
+          [[["--snapshot-threshold" "250"] 250 logs-to-keep]
+           [["--snapshot-logs-to-keep" "0"] threshold 0]
+           [["--snapshot-logs-to-keep" "20"] threshold 20]
+           [["--snapshot-threshold=250" "--snapshot-logs-to-keep=0"] 250 0]]]
+    (testing (str "seed " seed ", options " args)
+      (let [argv (into ["--seed" (str seed)] args)
+            parsed (tools-cli/parse-opts argv cli/cli-opts)
+            prepared (#'cli/prepare-options parsed)
+            options (:options prepared)
+            actual-threshold (:snapshot-threshold options)
+            actual-logs-to-keep (:snapshot-logs-to-keep options)]
+        (is (= expected-threshold actual-threshold))
+        (is (= expected-logs-to-keep actual-logs-to-keep))))))
+
+(deftest validates-the-snapshot-logs-to-keep
   (testing "zero purges every log a snapshot covers"
     (let [parsed (tools-cli/parse-opts ["--snapshot-logs-to-keep" "0"] cli/cli-opts)]
       (is (empty? (:errors parsed)))
@@ -392,15 +414,19 @@
 
 (deftest selects-two-nodes-for-leader-removal
   (doseq [nodes [["n1" "n2"] ["n1" "n2" "n3" "n4" "n5"]]]
-    (let [parsed (tools-cli/parse-opts ["--liveness=leader-removal-recovery"] cli/cli-opts)
-          options (assoc (:options parsed) :nodes nodes)]
-      (is (empty? (:errors (#'cli/prepare-options {:options options}))))
+    (let [args ["--liveness=leader-removal-recovery" "--seed" "2"]
+          parsed (tools-cli/parse-opts args cli/cli-opts)
+          input (update parsed :options assoc :nodes nodes)
+          prepared (#'cli/prepare-options input)
+          options (:options prepared)]
+      (is (empty? (:errors prepared)))
       (with-redefs [openraft-nemesis/compose-packages
                     (fn [& _] (throw (AssertionError. "Safety nemesis selected")))]
         (let [test (cli/openraft-test options)]
           (is (= ["n1" "n2"] (:nodes test)))
           (is (nil? (:two-leaf-partition test)))
-          (is (= openraft-db/default-snapshot-threshold (:snapshot-threshold test)))))))
+          (is (= 50 (:snapshot-threshold test)))
+          (is (= 20 (:snapshot-logs-to-keep test)))))))
   (doseq [nodes [["n1"] ["n1" "n1"]]]
     (is (seq (:errors (#'cli/prepare-options
                        {:options {:liveness :leader-removal-recovery :nodes nodes}}))))))
