@@ -17,6 +17,7 @@ use crate::membership::RaftMembership;
 /// [`RaftTypeConfig::ErrorSource`](crate::RaftTypeConfig::ErrorSource) when applying the edit.
 ///
 /// [`RaftTypeConfig::MembershipEdit`]: crate::RaftTypeConfig::MembershipEdit
+#[since(version = "0.10.0", change = "apply now takes retain to handle demoted voters")]
 #[since(version = "0.10.0")]
 pub trait RaftMembershipEdit<M>
 where
@@ -30,13 +31,19 @@ where
     /// Returns the target configuration of this edit.
     ///
     /// OpenRaft validates the result, then appends it directly or first appends a joint
-    /// configuration. With `retain = false`, removed voters that become learners are dropped.
-    /// An edit must preserve known nodes unless it explicitly removes them.
+    /// configuration. With `retain = true`, the edit keeps demoted voters' nodes unless it
+    /// explicitly removes them. With `retain = false`, the result drops each voter of
+    /// `membership` that becomes a learner, as [`NodeRef::is_learner()`] defines it. For a batch,
+    /// apply this rule after all edits, using the original membership and the final result.
+    /// The edit must preserve every other known node unless it explicitly removes it.
     /// The target must have usable read and write quorums, resolve every quorum node ID, and
     /// satisfy the intersection requirements of [`RaftMembership::QuorumSet`]. OpenRaft checks
     /// these conditions before appending it.
+    ///
+    /// [`NodeRef::is_learner()`]: crate::membership::NodeRef::is_learner
+    #[since(version = "0.10.0", change = "added the retain parameter")]
     #[since(version = "0.10.0")]
-    fn apply(self, membership: &M) -> Result<M, MembershipError<M::NodeId, Self::Error>>;
+    fn apply(self, membership: &M, retain: bool) -> Result<M, MembershipError<M::NodeId, Self::Error>>;
 
     /// Returns an edit that adds `node_id` with `node` as a learner.
     ///
@@ -48,8 +55,8 @@ where
     /// [`apply()`](Self::apply) must return:
     ///
     /// ```text
-    /// add_learner(4, node4).apply(&membership) == voters [{1,2,3}], learner 4 with node4
-    /// add_learner(3, other_node).apply(&membership) == membership
+    /// add_learner(4, node4).apply(&membership, true) == voters [{1,2,3}], learner 4 with node4
+    /// add_learner(3, other_node).apply(&membership, true) == membership
     /// ```
     ///
     /// Voter `3` keeps its role and its node, because replacing the node of a known ID, such as
@@ -58,8 +65,8 @@ where
 
     /// Returns an edit that reduces a joint configuration to its uniform target.
     ///
-    /// Applied to a joint configuration, [`apply()`](Self::apply) must return
-    /// the target of that joint configuration. The second step of
+    /// Applied to a joint configuration, [`apply()`](Self::apply) selects its target and handles
+    /// demoted voters according to its `retain` argument. The second step of
     /// [`Raft::change_membership()`](crate::Raft::change_membership) uses it.
     ///
     /// # Examples
@@ -68,7 +75,8 @@ where
     /// `apply()` must return:
     ///
     /// ```text
-    /// make_uniform().apply(&membership) == voters [{3,4,5}], learners {1,2}
+    /// make_uniform().apply(&membership, true) == voters [{3,4,5}], learners {1,2}
+    /// make_uniform().apply(&membership, false) == voters [{3,4,5}], learners {}
     /// ```
     ///
     /// [`ChangeMembers`] returns `AddVoterIds` with an empty set, which keeps the target `{3,4,5}`

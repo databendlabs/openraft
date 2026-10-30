@@ -160,7 +160,7 @@ where C: RaftTypeConfig
 
         let last_log_id = last_ref.map(|r| r.into_log_id());
 
-        let write_quorum_set = Arc::new(membership.write_quorum_set().clone());
+        let write_quorum_set = Arc::new(membership.write_quorum_set());
 
         let progress = VecProgress::new(write_quorum_set.clone(), non_write_voter_ids.iter().cloned(), |id| {
             let stream_id = StreamId::new(id_gen.next_id());

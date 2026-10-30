@@ -7,8 +7,8 @@
 //! - [`Membership`] - Cluster membership configuration (voters and learners)
 //! - [`StoredMembership`] - Membership state stored in state machine
 //! - [`IntoNodes`] - Trait for converting node sets with metadata
-//! - [`QuorumSet`], [`QuorumIntersection`] and [`QuorumBridge`] - Traits from the quorum-set crate
-//!   that the quorum set of a [`RaftMembership`] implements
+//! - [`QuorumSet`] and [`QuorumIntersection`] - Traits from the quorum-set crate that the quorum
+//!   set of a [`RaftMembership`] implements
 //!
 //! ## Overview
 //!

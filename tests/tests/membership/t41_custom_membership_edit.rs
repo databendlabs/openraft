@@ -16,8 +16,6 @@ use openraft::errors::ErrorSource;
 use openraft::errors::MembershipError;
 use openraft::errors::RaftError;
 use openraft::impls::BoxedErrorSource;
-use openraft::membership::NodeRole;
-use openraft::membership::QuorumBridge;
 use openraft::membership::RaftMembership;
 use openraft::membership::RaftMembershipEdit;
 use openraft::testing::log_id;
@@ -58,9 +56,10 @@ impl RaftMembershipEdit<MembershipOf<TypeConfig>> for CustomEdit {
     fn apply(
         self,
         membership: &MembershipOf<TypeConfig>,
+        retain: bool,
     ) -> Result<MembershipOf<TypeConfig>, MembershipError<u64, Self::Error>> {
         match self {
-            Self::Standard(change) => change.apply(membership),
+            Self::Standard(change) => change.apply(membership, retain),
             Self::PromoteAllLearners => {
                 let nodes = membership.node_ids().map(|id| (id, ()));
                 let nodes: BTreeMap<_, _> = nodes.collect();
@@ -177,18 +176,70 @@ async fn custom_edit_uses_current_membership_and_completes_joint_consensus() -> 
         "--- verify that the applied history contains joint and uniform membership entries"
     );
     {
-        let target_read = target.read_quorum_set().clone();
-        let read = with_learner.read_quorum_set().joint_with(target_read);
-        let target_write = target.write_quorum_set().clone();
-        let write = with_learner.write_quorum_set().joint_with(target_write);
-        let role = NodeRole::Campaigner | NodeRole::ReceiveLogs;
-        let nodes = (1..=4).map(|id| (id, (), role));
-        let joint = RaftMembership::new(read, write, nodes);
+        let joint = with_learner.joint_with(&target);
         let expected = vec![initial, with_learner, joint, target];
         let applied = cluster.applied(1);
         let memberships = applied.iter().filter_map(|entry| entry.get_membership());
         let memberships: Vec<_> = memberships.collect();
         assert_eq!(expected, memberships);
+    }
+
+    for retain in [true, false] {
+        let nodes = btreeset! {1, 2, 3, 4, 5};
+        let initial = MembershipOf::<TypeConfig>::new(btreeset! {1, 2, 3}, 2, nodes.clone())?;
+        tracing::info!(
+            retain,
+            "--- elect the leader before demoting a voter through a custom edit"
+        );
+        let cluster = {
+            let cluster =
+                TestCluster::<TypeConfig>::start(cluster_config(SnapshotPolicy::Never), nodes.clone(), initial.clone())
+                    .await?;
+            let raft = cluster.raft(1);
+            raft.trigger().elect(false).await?;
+            raft.wait(timeout()).applied_index(Some(1), "commit leader blank").await?;
+            cluster
+        };
+
+        let target_index = 3;
+        tracing::info!(
+            retain,
+            target_index,
+            "--- forward retention and keep the existing learner"
+        );
+        {
+            let target_nodes = if retain {
+                nodes
+            } else {
+                btreeset! {1, 2, 4, 5}
+            };
+            let target = MembershipOf::<TypeConfig>::new(btreeset! {1, 2, 4}, 2, target_nodes.clone())?;
+            let change = ThresholdChange::voters(btreeset! {1, 2, 4}).with_write_size(2);
+            let raft = cluster.raft(1);
+            let response = raft.change_membership(CustomEdit::Standard(change), retain).await?;
+            let expected_log_id = log_id::<TypeConfig>(1, 1, target_index);
+            assert_eq!(expected_log_id, response.log_id);
+            let expected_membership = Some(target.clone());
+            assert_eq!(expected_membership, response.membership);
+
+            for node_id in target_nodes {
+                let raft = cluster.raft(node_id);
+                let metrics = raft.wait(timeout()).applied_index(Some(target_index), "apply the target").await?;
+                let membership = metrics.membership_config.membership();
+                assert_eq!(&target, membership, "node {node_id}");
+            }
+
+            let joint = initial.joint_with(&target);
+            let expected = vec![(0, initial), (2, joint), (target_index, target)];
+            let applied = cluster.applied(1);
+            let memberships = applied.iter().filter_map(|entry| {
+                let membership = entry.get_membership()?;
+                let index = entry.index();
+                Some((index, membership))
+            });
+            let memberships: Vec<_> = memberships.collect();
+            assert_eq!(expected, memberships);
+        }
     }
     Ok(())
 }
