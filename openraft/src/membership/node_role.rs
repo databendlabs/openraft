@@ -1,3 +1,4 @@
+use std::fmt;
 use std::ops::BitOr;
 use std::ops::BitOrAssign;
 
@@ -7,7 +8,7 @@ use macros::since;
 ///
 /// Read and write voter status is determined by the membership's quorum sets.
 #[since(version = "0.10.0")]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct NodeRole(u8);
 
@@ -55,6 +56,39 @@ impl BitOrAssign for NodeRole {
     }
 }
 
+/// Written by hand to print the name of each capability that the role holds, such as
+/// `NodeRole(Campaigner | ReceiveLogs)`, or `NodeRole(Empty)` when it holds none. Bits without a
+/// name, which only a deserialized role can hold, follow in hex, such as
+/// `NodeRole(ReceiveLogs | 0x80)`.
+impl fmt::Debug for NodeRole {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        const NAMED: [(NodeRole, &str); 2] = [
+            (NodeRole::Campaigner, "Campaigner"),
+            (NodeRole::ReceiveLogs, "ReceiveLogs"),
+        ];
+
+        if *self == Self::Empty {
+            return write!(f, "NodeRole(Empty)");
+        }
+
+        write!(f, "NodeRole(")?;
+        let mut separator = "";
+        let mut unnamed = self.0;
+        for (role, name) in NAMED {
+            if !self.contains(role) {
+                continue;
+            }
+            write!(f, "{separator}{name}")?;
+            separator = " | ";
+            unnamed &= !role.0;
+        }
+        if unnamed != 0 {
+            write!(f, "{separator}{unnamed:#x}")?;
+        }
+        write!(f, ")")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::NodeRole;
@@ -97,5 +131,25 @@ mod tests {
         let receives_logs = role.contains(NodeRole::ReceiveLogs);
         assert!(campaigner);
         assert!(receives_logs);
+    }
+
+    #[test]
+    fn debug_prints_flag_names() {
+        let cases = [
+            (NodeRole::Empty, "NodeRole(Empty)"),
+            (NodeRole::Campaigner, "NodeRole(Campaigner)"),
+            (NodeRole::ReceiveLogs, "NodeRole(ReceiveLogs)"),
+            // Names follow declaration order, not the order of `|`.
+            (
+                NodeRole::ReceiveLogs | NodeRole::Campaigner,
+                "NodeRole(Campaigner | ReceiveLogs)",
+            ),
+            (NodeRole::ReceiveLogs | NodeRole(0x80), "NodeRole(ReceiveLogs | 0x80)"),
+            (NodeRole(0xc0), "NodeRole(0xc0)"),
+        ];
+        for (role, want) in cases {
+            let got = format!("{role:?}");
+            assert_eq!(want, got);
+        }
     }
 }
