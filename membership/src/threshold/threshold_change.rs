@@ -14,6 +14,7 @@ use openraft_macros::since;
 
 use crate::ThresholdMembership;
 use crate::errors::InvalidThresholds;
+use crate::quorum::QuorumSet;
 
 /// A change to a [`ThresholdMembership`]. [`apply()`](RaftMembershipEdit::apply) adds
 /// `add_nodes`, sets the voters and the write size, then removes `remove_nodes`. It derives the
@@ -37,13 +38,13 @@ use crate::errors::InvalidThresholds;
 ///
 /// // Require 4 copies to commit; the read size becomes 2.
 /// let change = ThresholdChange::write_size(4);
-/// let switched = change.apply(&membership).unwrap();
+/// let switched = change.apply(&membership, true).unwrap();
 /// let want = "{voters:[{1:(),2:(),3:(),4:(),5:()} read=2 write=4], learners:[]}";
 /// assert_eq!(want, switched.to_string());
 ///
 /// // Remove voter 5 and require 3 copies. The read size stays 2; node 5 stays as a learner.
 /// let change = ThresholdChange::voters(BTreeSet::from([1, 2, 3, 4])).with_write_size(3);
-/// let shrunk = change.apply(&switched).unwrap();
+/// let shrunk = change.apply(&switched, true).unwrap();
 /// let want = "{voters:[{1:(),2:(),3:(),4:()} read=2 write=3], learners:[5:()]}";
 /// assert_eq!(want, shrunk.to_string());
 /// ```
@@ -146,6 +147,7 @@ where
     fn apply(
         self,
         membership: &ThresholdMembership<NID, N>,
+        retain: bool,
     ) -> Result<ThresholdMembership<NID, N>, MembershipError<NID, Self::Error>> {
         tracing::debug!("ThresholdChange::apply: change: {}", self);
 
@@ -171,8 +173,17 @@ where
             nodes.remove(node_id);
         }
 
-        let target = ThresholdMembership::from_configs([(voters, write_size)], nodes);
+        let mut target = ThresholdMembership::from_configs([(voters, write_size)], nodes);
         target.ensure_voters_have_nodes()?;
+
+        if !retain {
+            for node_id in membership.read.ids() {
+                let is_voter = target.is_voter(&node_id);
+                if !is_voter {
+                    target.nodes.remove(&node_id);
+                }
+            }
+        }
 
         tracing::debug!("target membership: {}", target);
         Ok(target)

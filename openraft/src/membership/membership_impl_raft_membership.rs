@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 use crate::Membership;
@@ -7,6 +6,7 @@ use crate::NodeId;
 use crate::membership::NodeRef;
 use crate::membership::NodeRole;
 use crate::membership::RaftMembership;
+use crate::quorum::QuorumBridge;
 use crate::quorum::QuorumIntersection;
 
 impl<NID, N> RaftMembership for Membership<NID, N>
@@ -18,12 +18,12 @@ where
     type Node = N;
     type QuorumSet = Vec<BTreeSet<NID>>;
 
-    fn read_quorum_set(&self) -> &Self::QuorumSet {
-        &self.configs
+    fn read_quorum_set(&self) -> Self::QuorumSet {
+        self.configs.clone()
     }
 
-    fn write_quorum_set(&self) -> &Self::QuorumSet {
-        &self.configs
+    fn write_quorum_set(&self) -> Self::QuorumSet {
+        self.configs.clone()
     }
 
     /// `Membership` uses one quorum set for reads and writes, so one
@@ -52,32 +52,17 @@ where
         ids.into_iter()
     }
 
-    /// # Panics
-    ///
-    /// `Membership` keeps one joint config for both quorum sets and derives every node's role
-    /// from it. This panics if `read_quorum_set` differs from `write_quorum_set`, or if a
-    /// supplied role differs from the derived role.
-    fn new<I>(read_quorum_set: Self::QuorumSet, write_quorum_set: Self::QuorumSet, nodes: I) -> Self
-    where I: IntoIterator<Item = (Self::NodeId, Self::Node, NodeRole)> {
-        let same_rules = read_quorum_set == write_quorum_set;
-        assert!(
-            same_rules,
-            "Membership uses one joint config for both read and write quorum sets"
-        );
+    fn joint_with(&self, goal: &Self) -> Self {
+        let configs = self.configs.joint_with(goal.configs.clone());
 
-        let mut membership = Membership {
-            configs: read_quorum_set,
-            nodes: BTreeMap::new(),
-        };
-        for (node_id, node, role) in nodes {
-            let derived_role = membership.node_role(&node_id);
-            assert_eq!(
-                role, derived_role,
-                "Membership derives the role of node {node_id} from its configs"
-            );
-            membership.nodes.insert(node_id, node);
+        let mut nodes = goal.nodes.clone();
+        for voter_id in self.voter_ids() {
+            // Safe unwrap(): a voter of `self` is a node that `get_node()` knows.
+            let node = self.get_node(&voter_id).unwrap();
+            nodes.entry(voter_id).or_insert_with(|| node.clone());
         }
-        membership
+
+        Membership::new_unchecked(configs, nodes)
     }
 }
 
@@ -104,9 +89,11 @@ mod tests {
     use maplit::btreeset;
 
     use crate::Membership;
+    use crate::impls::ChangeMembers;
     use crate::membership::NodeRef;
     use crate::membership::NodeRole;
     use crate::membership::RaftMembership;
+    use crate::membership::RaftMembershipEdit;
 
     #[test]
     fn get_node_derives_role_and_voter_flags() {
@@ -144,45 +131,30 @@ mod tests {
     }
 
     #[test]
-    fn new_uses_one_joint_config_for_both_quorum_sets() {
-        let configs = vec![btreeset! {1, 2}, btreeset! {2, 3}];
-        let voter = NodeRole::Campaigner | NodeRole::ReceiveLogs;
-        let nodes = [
-            (1, (), voter),
-            (2, (), voter),
-            (3, (), voter),
-            (4, (), NodeRole::ReceiveLogs),
-        ];
+    fn apply_without_retaining_drops_old_voters_outside_goal_configs() {
+        let old = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1, 2, 3}], [4]);
+        // Voters 1 and 2 leave the configs, and learner 4 stays a learner.
+        let change = ChangeMembers::ReplaceAllVoters(btreeset! {3});
+        let res = change.apply(&old, false).unwrap();
 
-        let m = <Membership<u64, ()> as RaftMembership>::new(configs.clone(), configs.clone(), nodes);
-
-        let node_map = btreemap! {1 => (), 2 => (), 3 => (), 4 => ()};
-        let want = Membership::<u64, ()>::new_unchecked(configs.clone(), node_map);
-        assert_eq!(want, m);
-
-        let read_quorum_set = RaftMembership::read_quorum_set(&m);
-        assert_eq!(&configs, read_quorum_set);
-
-        let write_quorum_set = RaftMembership::write_quorum_set(&m);
-        assert_eq!(&configs, write_quorum_set);
+        let want = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {3}], [4]);
+        assert_eq!(want, res);
     }
 
     #[test]
-    #[should_panic(expected = "one joint config")]
-    fn new_panics_on_different_read_and_write_sets() {
-        let read = vec![btreeset! {1, 2, 3}];
-        let write = vec![btreeset! {1, 2, 3}, btreeset! {4, 5, 6}];
-        let nodes: [(u64, (), NodeRole); 0] = [];
+    fn joint_with_keeps_goal_nodes_and_old_voters() {
+        let old_nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40, 5 => 50};
+        let old = Membership::<u64, u64>::new(vec![btreeset! {1, 2, 3}], old_nodes).unwrap();
+        // Learner 4 replaces voter 1, learner 5 leaves, and voter 2 gets a new node.
+        let goal_nodes = btreemap! {2 => 21, 3 => 30, 4 => 40};
+        let goal = Membership::<u64, u64>::new(vec![btreeset! {2, 3, 4}], goal_nodes).unwrap();
 
-        <Membership<u64, ()> as RaftMembership>::new(read, write, nodes);
-    }
+        let joint = old.joint_with(&goal);
 
-    #[test]
-    #[should_panic(expected = "derives the role of node 1")]
-    fn new_panics_on_role_that_configs_do_not_give() {
-        let configs = vec![btreeset! {1}];
-        let nodes = [(1, (), NodeRole::ReceiveLogs)];
-
-        <Membership<u64, ()> as RaftMembership>::new(configs.clone(), configs, nodes);
+        // Old voter 1 keeps its node, and voter 2 takes its node in `goal`.
+        let configs = vec![btreeset! {1, 2, 3}, btreeset! {2, 3, 4}];
+        let nodes = btreemap! {1 => 10, 2 => 21, 3 => 30, 4 => 40};
+        let want = Membership::<u64, u64>::new(configs, nodes).unwrap();
+        assert_eq!(want, joint);
     }
 }

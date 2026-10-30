@@ -7,7 +7,6 @@ use openraft::errors::MembershipError;
 use openraft::impls::ChangeMembers;
 use openraft::membership::NodeRef;
 use openraft::membership::NodeRole;
-use openraft::membership::QuorumBridge;
 use openraft::membership::QuorumIntersection;
 use openraft::membership::QuorumSet;
 use openraft::membership::RaftMembership;
@@ -53,12 +52,6 @@ impl QuorumIntersection<MinimalQuorums> for MinimalQuorums {
     }
 }
 
-impl QuorumBridge<MinimalQuorums> for MinimalQuorums {
-    fn joint_with(&self, _other: MinimalQuorums) -> Self {
-        unimplemented!("the test never changes the membership")
-    }
-}
-
 /// A membership whose read and write quorum rules differ, with configurable node roles.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MinimalQuorumsMembership {
@@ -84,12 +77,12 @@ impl RaftMembership for MinimalQuorumsMembership {
 
     type QuorumSet = MinimalQuorums;
 
-    fn read_quorum_set(&self) -> &MinimalQuorums {
-        &self.read
+    fn read_quorum_set(&self) -> MinimalQuorums {
+        self.read.clone()
     }
 
-    fn write_quorum_set(&self) -> &MinimalQuorums {
-        &self.write
+    fn write_quorum_set(&self) -> MinimalQuorums {
+        self.write.clone()
     }
 
     fn supports_direct_transition_to(&self, other: &Self) -> bool {
@@ -131,8 +124,7 @@ impl RaftMembership for MinimalQuorumsMembership {
         ids.into_iter()
     }
 
-    fn new<I>(_read_quorum_set: MinimalQuorums, _write_quorum_set: MinimalQuorums, _nodes: I) -> Self
-    where I: IntoIterator<Item = (u64, (), NodeRole)> {
+    fn joint_with(&self, _goal: &Self) -> Self {
         unimplemented!("the test never changes the membership")
     }
 }
@@ -143,6 +135,7 @@ impl RaftMembershipEdit<MinimalQuorumsMembership> for ChangeMembers<u64, ()> {
     fn apply(
         self,
         _membership: &MinimalQuorumsMembership,
+        _retain: bool,
     ) -> Result<MinimalQuorumsMembership, MembershipError<u64, Self::Error>> {
         unimplemented!("the test never changes the membership")
     }

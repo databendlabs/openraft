@@ -78,11 +78,11 @@ where C: RaftTypeConfig
         membership: C::Membership,
         progress_id_gen: SharedIdGenerator,
     ) -> Self {
-        let read_quorum_set = membership.read_quorum_set().clone();
+        let read_quorum_set = membership.read_quorum_set();
         let election_quorum_set = if C::LeaderId::TOTALLY_ORDERED {
             ReadOrBoth::Read(Arc::new(read_quorum_set))
         } else {
-            let write_quorum_set = membership.write_quorum_set().clone();
+            let write_quorum_set = membership.write_quorum_set();
             let both = BothQuorums::new(Arc::new(read_quorum_set), Arc::new(write_quorum_set));
             ReadOrBoth::Both(both)
         };

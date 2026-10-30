@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use std::num::NonZeroU64;
 use std::sync::Arc;
 
 use maplit::btreemap;
@@ -39,10 +38,9 @@ fn joint_membership(
 ) -> ThresholdMembership<u64, ()> {
     let read = left.read.joint_with(right.read.clone());
     let write = left.write.joint_with(right.write.clone());
-    let configs = ThresholdMembership::<u64, ()>::configs_from_rules(&read, &write).unwrap();
     let mut nodes = left.nodes.clone();
     nodes.extend(right.nodes.clone());
-    ThresholdMembership::from_configs(configs, nodes)
+    ThresholdMembership { read, write, nodes }
 }
 
 /// Returns the error that `ThresholdMembership` returns for sizes that do not fit its voters.
@@ -123,14 +121,14 @@ fn test_every_write_size_derives_minimum_intersecting_read_quorums() {
             let minimum_read = (voter_count - write_size + 1) as usize;
             let read_subsets = subsets.iter().filter(|ids| ids.len() >= minimum_read);
             let expected_reads: Vec<_> = read_subsets.cloned().collect();
-            let actual_reads = accepted(membership.read_quorum_set(), &subsets);
+            let actual_reads = accepted(&membership.read_quorum_set(), &subsets);
             assert_eq!(
                 expected_reads, actual_reads,
                 "voters={voter_count}, write_size={write_size}"
             );
             let write_subsets = subsets.iter().filter(|ids| ids.len() >= write_size as usize);
             let expected_writes: Vec<_> = write_subsets.cloned().collect();
-            let actual_writes = accepted(membership.write_quorum_set(), &subsets);
+            let actual_writes = accepted(&membership.write_quorum_set(), &subsets);
             assert_eq!(
                 expected_writes, actual_writes,
                 "voters={voter_count}, write_size={write_size}"
@@ -146,13 +144,13 @@ fn test_quorum_sets_accept_read_size_and_write_size_voters() {
     let membership = threshold(voters, 2);
 
     // 5 subsets hold 4 voters, and 1 holds all 5.
-    let read_accepted = accepted(membership.read_quorum_set(), &subsets);
+    let read_accepted = accepted(&membership.read_quorum_set(), &subsets);
     let want = subsets.iter().filter(|subset| subset.len() >= 4).cloned().collect::<Vec<_>>();
     assert_eq!(6, want.len());
     assert_eq!(want, read_accepted);
 
     // Only the empty set and the 5 single voters are not write quorums.
-    let write_accepted = accepted(membership.write_quorum_set(), &subsets);
+    let write_accepted = accepted(&membership.write_quorum_set(), &subsets);
     let want = subsets.iter().filter(|subset| subset.len() >= 2).cloned().collect::<Vec<_>>();
     assert_eq!(26, want.len());
     assert_eq!(want, write_accepted);
@@ -182,12 +180,12 @@ fn test_transition_between_sizes() {
     for target in [&m33, &m24] {
         let read = m42.read_quorum_set();
         let write = target.write_quorum_set();
-        let intersects = read.intersects_with(write);
+        let intersects = read.intersects_with(&write);
         assert_eq!(Some(true), intersects);
 
         let write = m42.write_quorum_set();
         let read = target.read_quorum_set();
-        let intersects = write.intersects_with(read);
+        let intersects = write.intersects_with(&read);
         assert_eq!(Some(false), intersects);
     }
 
@@ -195,9 +193,9 @@ fn test_transition_between_sizes() {
     // writes.
     let joint = joint_membership(&m42, &m24);
     let want = subsets.iter().filter(|subset| subset.len() >= 4).cloned().collect::<Vec<_>>();
-    let read_accepted = accepted(joint.read_quorum_set(), &subsets);
+    let read_accepted = accepted(&joint.read_quorum_set(), &subsets);
     assert_eq!(want, read_accepted);
-    let write_accepted = accepted(joint.write_quorum_set(), &subsets);
+    let write_accepted = accepted(&joint.write_quorum_set(), &subsets);
     assert_eq!(want, write_accepted);
 }
 
@@ -208,19 +206,19 @@ fn test_apply() {
 
     // A change of the sizes keeps the voters.
     let change = ThresholdChange::write_size(4);
-    let res = change.apply(&m42);
+    let res = change.apply(&m42, true);
     let want = Ok(threshold(voters.clone(), 4));
     assert_eq!(want, res);
 
     // A change of the voters keeps the write size and derives the new read size.
     let change = ThresholdChange::voters(btreeset! {1, 2, 3, 4});
-    let res = change.apply(&m42);
+    let res = change.apply(&m42, true);
     let want = ThresholdMembership::new(btreeset! {1, 2, 3, 4}, 2, voters.clone());
     let want = want.map_err(MembershipError::from);
     assert_eq!(want, res);
 
     let change = <ThresholdChange<u64, ()> as RaftMembershipEdit<ThresholdMembership<u64, ()>>>::add_learner(6, ());
-    let res = change.apply(&m42);
+    let res = change.apply(&m42, true);
     let want = ThresholdMembership::new(voters.clone(), 2, btreeset! {1, 2, 3, 4, 5, 6});
     let want = want.map_err(MembershipError::from);
     assert_eq!(want, res);
@@ -231,7 +229,7 @@ fn test_apply() {
         remove_nodes: btreeset! {6},
         ..ThresholdChange::default()
     };
-    let res = change.apply(&m42_with_six);
+    let res = change.apply(&m42_with_six, true);
     let want = Ok(m42.clone());
     assert_eq!(want, res);
 
@@ -239,7 +237,7 @@ fn test_apply() {
         remove_nodes: btreeset! {5},
         ..ThresholdChange::default()
     };
-    let res = change.apply(&m42);
+    let res = change.apply(&m42, true);
     let want = Err(MembershipError::from(NodeNotFound::new(5, Operation::None)));
     assert_eq!(want, res);
 
@@ -248,12 +246,12 @@ fn test_apply() {
     let add_four_five = ThresholdChange::voters(voters.clone());
 
     let change = add_four_five.clone();
-    let res = change.apply(&m22);
+    let res = change.apply(&m22, true);
     let want = Ok(threshold(voters.clone(), 2));
     assert_eq!(want, res);
 
     let change = add_four_five.with_write_size(3);
-    let res = change.apply(&m22);
+    let res = change.apply(&m22, true);
     let want = Ok(threshold(voters.clone(), 3));
     assert_eq!(want, res);
 
@@ -261,11 +259,11 @@ fn test_apply() {
     let m24 = threshold(voters.clone(), 4);
     let remove = ThresholdChange::voters(btreeset! {1, 2, 3});
     let change = remove.clone();
-    let res = change.apply(&m24);
+    let res = change.apply(&m24, true);
     let want = Err(MembershipError::from(invalid_thresholds(3, 4)));
     assert_eq!(want, res);
     let change = remove.with_write_size(3);
-    let res = change.apply(&m24);
+    let res = change.apply(&m24, true);
     let want = ThresholdMembership::new(btreeset! {1, 2, 3}, 3, voters.clone());
     let want = want.map_err(MembershipError::from);
     assert_eq!(want, res);
@@ -273,63 +271,39 @@ fn test_apply() {
     // Leaving a joint membership keeps its target and the write size of the target.
     let joint = joint_membership(&m42, &threshold(voters.clone(), 4));
     let change = <ThresholdChange<u64, ()> as RaftMembershipEdit<ThresholdMembership<u64, ()>>>::make_uniform();
-    let res = change.apply(&joint);
+    let res = change.apply(&joint, true);
     let want = Ok(threshold(voters, 4));
     assert_eq!(want, res);
 
     // A membership with no config has no target to change.
     let empty = ThresholdMembership::<u64, ()>::default();
     let change = ThresholdChange::write_size(1);
-    let res = change.apply(&empty);
+    let res = change.apply(&empty, true);
     let want = Err(MembershipError::EmptyMembership(EmptyMembership {}));
     assert_eq!(want, res);
 }
 
 #[test]
-fn test_raft_membership_new_rebuilds_joint_membership() {
-    let nodes = btreeset! {1, 2, 3, 4};
-    let old = ThresholdMembership::<u64, ()>::new(btreeset! {1, 2, 3}, 2, nodes.clone()).unwrap();
-    let new = ThresholdMembership::<u64, ()>::new(btreeset! {2, 3, 4}, 1, nodes).unwrap();
-    let joint = joint_membership(&old, &new);
+fn test_joint_with_keeps_new_nodes_and_old_voters() {
+    // Learner 4 replaces voter 1, and the new config no longer holds learner 5.
+    let old = ThresholdMembership::<u64, ()>::new(btreeset! {1, 2, 3}, 2, btreeset! {1, 2, 3, 4, 5}).unwrap();
+    let new = ThresholdMembership::<u64, ()>::new(btreeset! {2, 3, 4}, 1, btreeset! {2, 3, 4}).unwrap();
 
-    let mut nodes = vec![];
-    for node_id in joint.node_ids() {
-        let node = joint.get_node(&node_id).unwrap();
-        nodes.push((node_id, *node.node, node.role));
-    }
-    let read = joint.read_quorum_set().clone();
-    let write = joint.write_quorum_set().clone();
-
-    let rebuilt = <ThresholdMembership<u64, ()> as RaftMembership>::new(read, write, nodes);
-    assert_eq!(joint, rebuilt);
-
-    let shared = shares_voter_sets(&rebuilt);
+    let joint = old.joint_with(&new);
+    let want = ThresholdMembership {
+        read: old.read.joint_with(new.read.clone()),
+        write: old.write.joint_with(new.write.clone()),
+        nodes: btreemap! {1 => (), 2 => (), 3 => (), 4 => ()},
+    };
+    assert_eq!(want, joint);
+    let shared = shares_voter_sets(&joint);
     assert!(shared);
-}
 
-#[test]
-#[should_panic(expected = "a read rule holds the voters {1, 2, 3}, but its write rule holds {1, 2, 4}")]
-fn test_raft_membership_new_panics_on_different_voters() {
-    let two = NonZeroU64::new(2).unwrap();
-    let read_rule = ThresholdQuorumSet::new(two, btreeset! {1, 2, 3});
-    let write_rule = ThresholdQuorumSet::new(two, btreeset! {1, 2, 4});
-    let read = Joint::new([read_rule]);
-    let write = Joint::new([write_rule]);
-    let nodes: [(u64, (), NodeRole); 0] = [];
-
-    <ThresholdMembership<u64, ()> as RaftMembership>::new(read, write, nodes);
-}
-
-#[test]
-#[should_panic(expected = "read_size=3 must equal voter_count + 1 - write_size=2")]
-fn test_raft_membership_new_rejects_non_minimal_read_size() {
-    let three = NonZeroU64::new(3).unwrap();
-    let rule = ThresholdQuorumSet::new(three, btreeset! {1, 2, 3, 4});
-    let read = Joint::new([rule.clone()]);
-    let write = Joint::new([rule]);
-    let nodes: [(u64, (), NodeRole); 0] = [];
-
-    <ThresholdMembership<u64, ()> as RaftMembership>::new(read, write, nodes);
+    // The edit drops voter 1 when it does not retain removed voters, and keeps existing learner 5.
+    let change = ThresholdChange::voters(btreeset! {2, 3, 4}).with_write_size(1);
+    let dropped = change.apply(&old, false).unwrap();
+    let want = ThresholdMembership::<u64, ()>::new(btreeset! {2, 3, 4}, 1, btreeset! {2, 3, 4, 5}).unwrap();
+    assert_eq!(want, dropped);
 }
 
 #[test]
@@ -517,7 +491,7 @@ fn edit_returns_native_error() {
     type Membership = MembershipOf<CustomErrorConfig>;
     let membership = Membership::from(btreemap! {1 => (), 2 => (), 3 => ()});
     let change = ThresholdChange::write_size(4);
-    let result = change.apply(&membership);
+    let result = change.apply(&membership, true);
     let invalid = InvalidThresholds {
         voter_count: 3,
         write_size: 4,
@@ -550,7 +524,7 @@ fn configured_error_source_preserves_error_serialization() {
 fn edit_preserves_structural_errors() {
     let membership = ThresholdMembership::<u64, ()>::default();
     let change = ThresholdChange::write_size(1);
-    let result = change.apply(&membership);
+    let result = change.apply(&membership, true);
     let expected = Err(MembershipError::EmptyMembership(EmptyMembership {}));
     assert_eq!(expected, result);
 

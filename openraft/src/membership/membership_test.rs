@@ -124,7 +124,7 @@ fn test_membership_with_learners() -> anyhow::Result<()> {
     {
         let m1_2 = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1}], btreeset! {2});
         let change = ChangeMembers::AddNodes(btreemap! {3=>()});
-        let m1_23 = change.apply(&m1_2)?;
+        let m1_23 = change.apply(&m1_2, true)?;
 
         // test learner and membership
         assert_eq!(vec![1], m1_2.voter_ids().collect::<Vec<_>>());
@@ -136,14 +136,14 @@ fn test_membership_with_learners() -> anyhow::Result<()> {
         // Adding a member as learner has no effect:
 
         let change = ChangeMembers::AddNodes(btreemap! {1=>()});
-        let m = change.apply(&m1_23)?;
+        let m = change.apply(&m1_23, true)?;
         // let m = m1_23.add_learner(1, ());
         assert_eq!(vec![1], m.voter_ids().collect::<Vec<_>>());
 
         // Adding a existent learner has no effect:
 
         let change = ChangeMembers::AddNodes(btreemap! {3=>()});
-        let m = change.apply(&m1_23)?;
+        let m = change.apply(&m1_23, true)?;
         assert_eq!(vec![1], m.voter_ids().collect::<Vec<_>>());
         assert_eq!(btreeset! {2,3}, m.non_write_voter_ids().collect());
     }
@@ -174,7 +174,7 @@ fn test_membership_add_learner() -> anyhow::Result<()> {
     // Add learner that presents in old cluster has no effect.
 
     let change = ChangeMembers::AddNodes(btreemap! {1=>node("3")});
-    let res = change.apply(&m_1_2)?;
+    let res = change.apply(&m_1_2, true)?;
     assert_eq!(
         Membership::<u64, TestNode>::new_unchecked(vec![btreeset! {2}], btreemap! {1=>node("1"), 2=>node("2")},),
         res
@@ -183,7 +183,7 @@ fn test_membership_add_learner() -> anyhow::Result<()> {
     // Success to add a learner
 
     let change = ChangeMembers::AddNodes(btreemap! {3=>node("3")});
-    let m_1_2_3 = change.apply(&m_1_2)?;
+    let m_1_2_3 = change.apply(&m_1_2, true)?;
     assert_eq!(
         Membership::<u64, TestNode>::new_unchecked(
             vec![btreeset! {2}],
@@ -208,7 +208,7 @@ fn test_membership_update_nodes() -> anyhow::Result<()> {
     );
 
     let change = ChangeMembers::SetNodes(btreemap! {2=>node("20"), 3=>node("30")});
-    let m_1_2_3 = change.apply(&m_1_2)?;
+    let m_1_2_3 = change.apply(&m_1_2, true)?;
     assert_eq!(
         Membership::<u64, TestNode>::new_unchecked(
             vec![btreeset! {2}],
@@ -349,7 +349,7 @@ fn test_membership_change_with_nodes() -> anyhow::Result<()> {
     // uniform [{1,2}]
 
     let change = ChangeMembers::ReplaceAllVoters(btreeset! {1,2});
-    let res = change.apply(&initial)?;
+    let res = change.apply(&initial, true)?;
     assert_eq!(
         btreemap! {1=>node("1"), 2=>node("2")},
         res.nodes().map(|(nid, n)| (*nid, n.clone())).collect::<BTreeMap<_, _>>()
@@ -359,7 +359,7 @@ fn test_membership_change_with_nodes() -> anyhow::Result<()> {
     // Removed to learner
 
     let change = ChangeMembers::ReplaceAllVoters(btreeset! {1});
-    let res = change.apply(&initial)?;
+    let res = change.apply(&initial, true)?;
     assert_eq!(
         btreemap! {1=>node("1"), 2=>node("2")},
         res.nodes().map(|(nid, n)| (*nid, n.clone())).collect::<BTreeMap<_, _>>()
@@ -370,7 +370,7 @@ fn test_membership_change_with_nodes() -> anyhow::Result<()> {
 }
 
 #[test]
-fn test_membership_drop_voters_demoted_to_learners_keeps_existing_learners() -> anyhow::Result<()> {
+fn test_membership_apply_without_retaining_keeps_existing_learners() -> anyhow::Result<()> {
     let node = |s: u64| TestNode {
         addr: s.to_string(),
         data: Default::default(),
@@ -383,8 +383,7 @@ fn test_membership_drop_voters_demoted_to_learners_keeps_existing_learners() -> 
         Membership::<u64, TestNode>::new_unchecked(vec![c1(), c2()], btreemap! {1=>node(1), 2=>node(2), 3=>node(3)});
 
     let change = ChangeMembers::ReplaceAllVoters(btreeset! {2});
-    let goal = change.apply(&initial)?;
-    let res = initial.drop_voters_demoted_to_learners(goal);
+    let res = change.apply(&initial, false)?;
     assert_eq!(&vec![btreeset! {2}], res.get_joint_config());
     assert_eq!(
         btreemap! {2=>node(2), 3=>node(3)},
