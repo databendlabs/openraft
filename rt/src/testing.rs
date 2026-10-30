@@ -35,6 +35,8 @@ use crate::watch::WatchSender;
 
 const MPSC_PEEK_CAPACITY: usize = 2;
 
+mod buffered_receiver;
+
 async fn ready_if<T>(enabled: bool, value: T) -> T {
     if !enabled {
         pending::<()>().await;
@@ -100,6 +102,13 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
             Self::test_mpsc_send().await;
             Self::test_mpsc_send_to_closed_channel().await;
             Self::test_mpsc_backpressure().await;
+            Self::test_buffered_receiver_backlog().await;
+            Self::test_buffered_receiver_empty_close().await;
+            Self::test_buffered_receiver_drop_idle().await;
+            Self::test_buffered_receiver_drop_backlog().await;
+            Self::test_buffered_receiver_cancel_receive().await;
+            #[cfg(feature = "single-threaded")]
+            Self::test_buffered_receiver_non_send().await;
             Self::test_mpsc_peek_preserves_order().await;
             Self::test_mpsc_peek_empty().await;
             Self::test_mpsc_peek_closed().await;

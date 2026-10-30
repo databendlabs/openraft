@@ -1,16 +1,19 @@
 //! Bounded MPSC channel traits.
 
+mod buffered_receiver;
 mod peekable_receiver;
 mod send_error;
 mod try_recv_error;
 
 use std::future::Future;
 
+pub use buffered_receiver::BufferedReceiver;
 use openraft_macros::since;
 pub use peekable_receiver::PeekableReceiver;
 pub use send_error::SendError;
 pub use try_recv_error::TryRecvError;
 
+use crate::AsyncRuntime;
 use crate::OptionalSend;
 use crate::OptionalSync;
 
@@ -52,6 +55,7 @@ where
 }
 
 /// Receive values from the associated [`MpscSender`].
+#[since(version = "0.10.0", change = "add an unbounded receiver buffer adapter")]
 #[since(version = "0.10.0", change = "add peekable receiver conversion")]
 #[since(version = "0.10.0", change = "remove the `OptionalSync` requirement")]
 pub trait MpscReceiver<T>: OptionalSend {
@@ -71,6 +75,20 @@ pub trait MpscReceiver<T>: OptionalSend {
     /// currently empty, and there are no outstanding senders.
     #[track_caller]
     fn try_recv(&mut self) -> Result<T, TryRecvError>;
+
+    /// Drain this receiver in a background task, buffering messages without a backlog limit.
+    ///
+    /// The producer can keep sending while the consumer is busy. Memory use grows with the
+    /// backlog. Dropping the returned receiver cancels the task and releases the source receiver.
+    #[since(version = "0.10.0")]
+    fn with_unbounded_buffer<Rt>(self) -> BufferedReceiver<Rt, T>
+    where
+        Rt: AsyncRuntime,
+        Self: Sized + 'static,
+        T: OptionalSend + 'static,
+    {
+        BufferedReceiver::new(self)
+    }
 
     /// Wraps this receiver to inspect the next item without consuming it or waiting.
     #[since(version = "0.10.0")]
