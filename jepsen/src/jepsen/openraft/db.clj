@@ -14,8 +14,6 @@
 (def data-dir "/var/lib/openraft")
 (def log-dir "/var/log/openraft")
 (def log-file (str log-dir "/openraft.log"))
-(def default-snapshot-threshold 50)
-(def default-snapshot-logs-to-keep 20)
 
 (def ^:private process-confirm-timeout-ms 30000)
 (def ^:private process-confirm-interval-ms 100)
