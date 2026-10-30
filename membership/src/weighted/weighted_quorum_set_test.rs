@@ -9,6 +9,7 @@ use crate::errors::InvalidWeights;
 use crate::quorum::QuorumIntersection;
 use crate::quorum::QuorumSet;
 use crate::quorum::WeightedQuorumSet;
+use crate::quorum::testing::accepted;
 use crate::quorum::testing::all_subsets;
 use crate::quorum::testing::assert_quorum_set_contract;
 
@@ -16,18 +17,6 @@ use crate::quorum::testing::assert_quorum_set_contract;
 /// least 1.
 fn weighted(threshold: u64, weights: BTreeMap<u64, u64>) -> WeightedQuorumSet<u64> {
     WeightedQuorumSet::new(threshold, weights).expect("the threshold and every weight are at least 1")
-}
-
-/// Returns the sets in `subsets` that `rule` accepts, in their order.
-fn accepted(rule: &WeightedQuorumSet<u64>, subsets: &[BTreeSet<u64>]) -> Vec<BTreeSet<u64>> {
-    let mut accepted = vec![];
-    for subset in subsets {
-        let is_quorum = rule.is_quorum(subset.iter());
-        if is_quorum {
-            accepted.push(subset.clone());
-        }
-    }
-    accepted
 }
 
 /// Returns the sum of the weights of the IDs in `subset`; an ID without a weight adds nothing.
