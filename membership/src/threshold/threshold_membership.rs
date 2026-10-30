@@ -244,48 +244,8 @@ where
         Ok(())
     }
 
-    /// Returns the configs that `read` and `write` describe.
-    ///
-    /// Returns an error message unless both hold the same number of rules, rule i of each holds
-    /// the same voters, and each read size is the minimum that intersects its write quorums.
-    pub(crate) fn configs_from_rules(
-        read: &Joint<ThresholdQuorumSet<NID>>,
-        write: &Joint<ThresholdQuorumSet<NID>>,
-    ) -> Result<Vec<ThresholdConfig<NID>>, String> {
-        let read_rules = read.rules();
-        let write_rules = write.rules();
-        if read_rules.len() != write_rules.len() {
-            let message = format!("{} read rules but {} write rules", read_rules.len(), write_rules.len());
-            return Err(message);
-        }
-
-        let configs = Self::configs_from_write_rules(write)?;
-        for (read_rule, write_rule) in read_rules.iter().zip(write_rules) {
-            let voters = read_rule.id_set();
-            if voters != write_rule.id_set() {
-                let message = format!(
-                    "a read rule holds the voters {:?}, but its write rule holds {:?}",
-                    voters,
-                    write_rule.id_set()
-                );
-                return Err(message);
-            }
-
-            let voter_count = voters.len() as u64;
-            let expected_read_size = voter_count - write_rule.quorum_size() + 1;
-            if read_rule.quorum_size() != expected_read_size {
-                let message = format!(
-                    "read_size={} must equal voter_count + 1 - write_size={expected_read_size}",
-                    read_rule.quorum_size()
-                );
-                return Err(message);
-            }
-        }
-
-        Ok(configs)
-    }
-
     /// Checks the write sizes and returns one config per write rule.
+    #[cfg(feature = "serde")]
     pub(crate) fn configs_from_write_rules(
         write: &Joint<ThresholdQuorumSet<NID>>,
     ) -> Result<Vec<ThresholdConfig<NID>>, String> {

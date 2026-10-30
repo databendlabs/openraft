@@ -13,8 +13,6 @@ use openraft::errors::MembershipError;
 use openraft::impls::ChangeMembers;
 use openraft::impls::Membership;
 use openraft::membership::NodeRef;
-use openraft::membership::NodeRole;
-use openraft::membership::QuorumBridge;
 use openraft::membership::QuorumIntersection;
 use openraft::membership::QuorumSet;
 use openraft::membership::RaftMembership;
@@ -61,13 +59,6 @@ impl QuorumIntersection<UnprovenQuorums> for UnprovenQuorums {
     }
 }
 
-impl QuorumBridge<UnprovenQuorums> for UnprovenQuorums {
-    fn joint_with(&self, other: UnprovenQuorums) -> Self {
-        let joint = self.0.joint_with(other.0);
-        Self(joint)
-    }
-}
-
 /// The default `Membership` with [`UnprovenQuorums`] as its read and write quorum sets.
 ///
 /// It answers the quorum questions itself, because `intersects_with()` proves nothing for it.
@@ -97,12 +88,12 @@ impl RaftMembership for UnprovenMembership {
 
     type QuorumSet = UnprovenQuorums;
 
-    fn read_quorum_set(&self) -> &UnprovenQuorums {
-        &self.quorums
+    fn read_quorum_set(&self) -> UnprovenQuorums {
+        self.quorums.clone()
     }
 
-    fn write_quorum_set(&self) -> &UnprovenQuorums {
-        &self.quorums
+    fn write_quorum_set(&self) -> UnprovenQuorums {
+        self.quorums.clone()
     }
 
     /// Read and write quorums are both majorities of every config, so they always intersect.
@@ -128,9 +119,8 @@ impl RaftMembership for UnprovenMembership {
         RaftMembership::node_ids(&self.membership)
     }
 
-    fn new<I>(read_quorum_set: UnprovenQuorums, write_quorum_set: UnprovenQuorums, nodes: I) -> Self
-    where I: IntoIterator<Item = (u64, (), NodeRole)> {
-        let membership = <Membership<u64, ()> as RaftMembership>::new(read_quorum_set.0, write_quorum_set.0, nodes);
+    fn joint_with(&self, goal: &Self) -> Self {
+        let membership = RaftMembership::joint_with(&self.membership, &goal.membership);
         Self::from(membership)
     }
 }
@@ -139,8 +129,12 @@ impl RaftMembership for UnprovenMembership {
 impl RaftMembershipEdit<UnprovenMembership> for ChangeMembers<u64, ()> {
     type Error = Infallible;
 
-    fn apply(self, membership: &UnprovenMembership) -> Result<UnprovenMembership, MembershipError<u64, Infallible>> {
-        let target = <Self as RaftMembershipEdit<Membership<u64, ()>>>::apply(self, &membership.membership)?;
+    fn apply(
+        self,
+        membership: &UnprovenMembership,
+        retain: bool,
+    ) -> Result<UnprovenMembership, MembershipError<u64, Infallible>> {
+        let target = <Self as RaftMembershipEdit<Membership<u64, ()>>>::apply(self, &membership.membership, retain)?;
         Ok(UnprovenMembership::from(target))
     }
 

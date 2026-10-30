@@ -16,8 +16,6 @@ use openraft::errors::ErrorSource;
 use openraft::errors::MembershipError;
 use openraft::errors::RaftError;
 use openraft::impls::BoxedErrorSource;
-use openraft::membership::NodeRole;
-use openraft::membership::QuorumBridge;
 use openraft::membership::RaftMembership;
 use openraft::membership::RaftMembershipEdit;
 use openraft::testing::log_id;
@@ -58,9 +56,10 @@ impl RaftMembershipEdit<MembershipOf<TypeConfig>> for CustomEdit {
     fn apply(
         self,
         membership: &MembershipOf<TypeConfig>,
+        retain: bool,
     ) -> Result<MembershipOf<TypeConfig>, MembershipError<u64, Self::Error>> {
         match self {
-            Self::Standard(change) => change.apply(membership),
+            Self::Standard(change) => change.apply(membership, retain),
             Self::PromoteAllLearners => {
                 let nodes = membership.node_ids().map(|id| (id, ()));
                 let nodes: BTreeMap<_, _> = nodes.collect();
@@ -177,13 +176,7 @@ async fn custom_edit_uses_current_membership_and_completes_joint_consensus() -> 
         "--- verify that the applied history contains joint and uniform membership entries"
     );
     {
-        let target_read = target.read_quorum_set().clone();
-        let read = with_learner.read_quorum_set().joint_with(target_read);
-        let target_write = target.write_quorum_set().clone();
-        let write = with_learner.write_quorum_set().joint_with(target_write);
-        let role = NodeRole::Campaigner | NodeRole::ReceiveLogs;
-        let nodes = (1..=4).map(|id| (id, (), role));
-        let joint = RaftMembership::new(read, write, nodes);
+        let joint = with_learner.joint_with(&target);
         let expected = vec![initial, with_learner, joint, target];
         let applied = cluster.applied(1);
         let memberships = applied.iter().filter_map(|entry| entry.get_membership());

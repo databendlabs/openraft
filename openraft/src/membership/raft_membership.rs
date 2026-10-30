@@ -2,7 +2,6 @@ use std::fmt::Debug;
 use std::fmt::Display;
 
 use openraft_macros::since;
-use quorum_set::QuorumBridge;
 use quorum_set::QuorumIntersection;
 use quorum_set::QuorumSet;
 
@@ -13,7 +12,6 @@ use crate::base::OptionalSend;
 use crate::base::OptionalSerde;
 use crate::base::OptionalSync;
 use crate::membership::NodeRef;
-use crate::membership::NodeRole;
 
 /// An immutable membership configuration with read and write quorum rules.
 ///
@@ -31,6 +29,12 @@ use crate::membership::NodeRole;
 ///
 /// Quorum rules, node information, and capabilities must remain unchanged for the configuration's
 /// lifetime. A membership change creates a new configuration.
+///
+/// [`NodeRole::ReceiveLogs`]: crate::membership::NodeRole::ReceiveLogs
+#[since(
+    version = "0.10.0",
+    change = "returns owned quorum rules and replaces new with joint_with"
+)]
 #[since(version = "0.10.0")]
 pub trait RaftMembership
 where Self: OptionalFeatures + Clone + Default + Eq + Debug + Display + Sized + 'static
@@ -52,15 +56,14 @@ where Self: OptionalFeatures + Clone + Default + Eq + Debug + Display + Sized + 
     /// only when [`supports_direct_transition_to()`](Self::supports_direct_transition_to) returns
     /// `true`.
     ///
-    /// When it cannot append the target of a change directly, OpenRaft first appends a joint
-    /// configuration. Its read quorum set is the [`joint_with()`](QuorumBridge::joint_with) of the
-    /// old and the new read quorum sets, and its write quorum set comes from the write quorum sets
-    /// the same way. Every read quorum of it is a read quorum of both the old and the new
-    /// configuration, and the same holds for write quorums. So on the step into it and on the step
-    /// out of it, every read quorum of one side intersects every write quorum of the other side.
+    /// When it cannot append the target of a change directly, OpenRaft first appends the
+    /// [`joint_with()`](Self::joint_with) of the old and the new configuration. Every read quorum
+    /// of it is a read quorum of both the old and the new configuration, and the same holds for
+    /// write quorums. So on the step into it and on the step out of it, every read quorum of one
+    /// side intersects every write quorum of the other side.
+    #[since(version = "0.10.0", change = "no longer requires QuorumBridge")]
     type QuorumSet: QuorumSet<Id = Self::NodeId>
         + QuorumIntersection<Self::QuorumSet>
-        + QuorumBridge<Self::QuorumSet>
         + Clone
         + Debug
         + OptionalSend
@@ -68,15 +71,17 @@ where Self: OptionalFeatures + Clone + Default + Eq + Debug + Display + Sized + 
         + OptionalSerde
         + 'static;
 
-    /// Returns the read quorum rule for this configuration.
+    /// Returns an owned read quorum rule for this configuration.
     ///
     /// For a joint configuration, a read quorum must satisfy every component's read quorum rule.
-    fn read_quorum_set(&self) -> &Self::QuorumSet;
+    #[since(version = "0.10.0", change = "returns an owned quorum set")]
+    fn read_quorum_set(&self) -> Self::QuorumSet;
 
-    /// Returns the write quorum rule for this configuration.
+    /// Returns an owned write quorum rule for this configuration.
     ///
     /// For a joint configuration, a write quorum must satisfy every component's write quorum rule.
-    fn write_quorum_set(&self) -> &Self::QuorumSet;
+    #[since(version = "0.10.0", change = "returns an owned quorum set")]
+    fn write_quorum_set(&self) -> Self::QuorumSet;
 
     /// Returns whether every read quorum of this configuration intersects every write quorum.
     ///
@@ -99,7 +104,7 @@ where Self: OptionalFeatures + Clone + Default + Eq + Debug + Display + Sized + 
     fn read_write_quorums_intersect(&self) -> Option<bool> {
         let read = self.read_quorum_set();
         let write = self.write_quorum_set();
-        read.intersects_with(write)
+        read.intersects_with(&write)
     }
 
     /// Returns whether OpenRaft may append `other` right after `self`, as one log entry without a
@@ -138,15 +143,15 @@ where Self: OptionalFeatures + Clone + Default + Eq + Debug + Display + Sized + 
     /// Returns each known node ID exactly once, including nodes outside both quorum sets.
     fn node_ids(&self) -> Self::Iter;
 
-    /// Creates a configuration from validated quorum rules and node metadata with capabilities.
+    /// Returns the joint configuration of `self` and `goal`.
     ///
-    /// Voter status is derived from the quorum sets.
+    /// Every read quorum of it must be a read quorum of both `self` and `goal`, and every write
+    /// quorum of it must be a write quorum of both. It knows every node of `goal` and every voter
+    /// of `self`. A node takes its metadata from `goal` when `goal` knows it. A voter of `self`
+    /// keeps the roles that it has in each config of `self` where it is a voter.
     ///
-    /// # Preconditions
-    ///
-    /// The caller must ensure every read quorum intersects every write quorum, every quorum node ID
-    /// is present in `nodes`, and every write voter has [`NodeRole::ReceiveLogs`].
+    /// OpenRaft appends the joint without checking it, so a joint with a quorum that misses a
+    /// quorum of `self` or `goal` can lose committed entries.
     #[since(version = "0.10.0")]
-    fn new<I>(read_quorum_set: Self::QuorumSet, write_quorum_set: Self::QuorumSet, nodes: I) -> Self
-    where I: IntoIterator<Item = (Self::NodeId, Self::Node, NodeRole)>;
+    fn joint_with(&self, goal: &Self) -> Self;
 }

@@ -121,7 +121,7 @@ where
         let em = self.state.membership_state.effective();
 
         let non_write_voter_ids = em.non_write_voter_ids().collect::<Vec<_>>();
-        let write_quorum_set = Arc::new(em.membership().write_quorum_set().clone());
+        let write_quorum_set = Arc::new(em.membership().write_quorum_set());
 
         {
             let end = self.state.last_log_id().next_index();

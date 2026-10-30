@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use openraft::Node;
 use openraft::NodeId;
 use openraft::membership::NodeRef;
@@ -9,6 +7,7 @@ use openraft::membership::RaftMembership;
 
 use crate::ThresholdMembership;
 use crate::quorum::Joint;
+use crate::quorum::QuorumBridge;
 use crate::quorum::ThresholdQuorumSet;
 
 impl<NID, N> RaftMembership for ThresholdMembership<NID, N>
@@ -20,12 +19,12 @@ where
     type Node = N;
     type QuorumSet = Joint<ThresholdQuorumSet<NID>>;
 
-    fn read_quorum_set(&self) -> &Self::QuorumSet {
-        &self.read
+    fn read_quorum_set(&self) -> Self::QuorumSet {
+        self.read.clone()
     }
 
-    fn write_quorum_set(&self) -> &Self::QuorumSet {
-        &self.write
+    fn write_quorum_set(&self) -> Self::QuorumSet {
+        self.write.clone()
     }
 
     fn supports_direct_transition_to(&self, other: &Self) -> bool {
@@ -58,28 +57,18 @@ where
         ids.into_iter()
     }
 
-    /// # Panics
-    ///
-    /// The read rule and the write rule of a config share one voter set, and every role comes
-    /// from the configs. This panics if rule i of `read_quorum_set` and rule i of
-    /// `write_quorum_set` hold different voters, if their sizes fail the checks of
-    /// [`ThresholdMembership::new()`], or if a supplied role differs from the role that the
-    /// configs give.
-    fn new<I>(read_quorum_set: Self::QuorumSet, write_quorum_set: Self::QuorumSet, nodes: I) -> Self
-    where I: IntoIterator<Item = (Self::NodeId, Self::Node, NodeRole)> {
-        let configs = Self::configs_from_rules(&read_quorum_set, &write_quorum_set);
-        let configs = configs.unwrap_or_else(|e| panic!("invalid ThresholdMembership quorum sets: {e}"));
+    fn joint_with(&self, goal: &Self) -> Self {
+        let read = self.read.joint_with(goal.read.clone());
+        let write = self.write.joint_with(goal.write.clone());
 
-        let mut membership = Self::from_configs(configs, BTreeMap::new());
-        for (node_id, node, role) in nodes {
-            let derived_role = membership.node_role(&node_id);
-            assert_eq!(
-                role, derived_role,
-                "ThresholdMembership derives the role of node {node_id} from its configs"
-            );
-            membership.nodes.insert(node_id, node);
+        let mut nodes = goal.nodes.clone();
+        for (node_id, node) in &self.nodes {
+            if self.is_voter(node_id) {
+                nodes.entry(node_id.clone()).or_insert_with(|| node.clone());
+            }
         }
-        membership
+
+        Self { read, write, nodes }
     }
 }
 
