@@ -2691,10 +2691,11 @@ where
 
     /// Send a command while draining notifications to prevent a cyclic channel wait.
     ///
-    /// RaftCore sends through a bounded command channel. The worker can block on the bounded
-    /// notification channel before receiving its next command. If both channels fill, awaiting
-    /// only the command send deadlocks: RaftCore waits for the worker to receive a command,
-    /// while the worker waits for RaftCore to receive a notification.
+    /// With unbounded state-machine buffering disabled, RaftCore sends through a bounded
+    /// command channel. The worker can block on the bounded notification channel before
+    /// receiving its next command. If both channels fill, awaiting only the command send
+    /// deadlocks: RaftCore waits for the worker to receive a command, while the worker
+    /// waits for RaftCore to receive a notification.
     ///
     /// Keep polling the same send future while receiving and handling notifications.
     /// This frees notification capacity so the worker can finish reporting and receive

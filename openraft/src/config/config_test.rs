@@ -18,11 +18,35 @@ fn test_config_defaults() {
     assert_eq!(SnapshotPolicy::LogsSinceLast(5000), cfg.snapshot_policy);
     assert_eq!(Some(65536), cfg.api_channel_size);
     assert_eq!(Some(65536), cfg.notification_channel_size);
+    assert_eq!(None, cfg.enable_unbounded_state_machine_buffer);
+    let buffered = cfg.enable_unbounded_state_machine_buffer();
+    assert!(!buffered);
     assert_eq!(None, cfg.broadcast_submitted_on_append);
     let broadcast_submitted = cfg.broadcast_submitted_on_append();
     assert!(!broadcast_submitted);
     assert_eq!(StepDownPolicy::After(150), cfg.removed_leader_step_down);
     assert_eq!(None, cfg.quorum_loss_probe_interval);
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn test_state_machine_buffer_serde_default() -> anyhow::Result<()> {
+    let config = Config {
+        enable_unbounded_state_machine_buffer: Some(true),
+        ..Default::default()
+    };
+    let mut value = serde_json::to_value(config)?;
+    let enabled: Config = serde_json::from_value(value.clone())?;
+    assert_eq!(Some(true), enabled.enable_unbounded_state_machine_buffer);
+    let buffered = enabled.enable_unbounded_state_machine_buffer();
+    assert!(buffered);
+    let fields = value.as_object_mut().unwrap();
+    fields.remove("enable_unbounded_state_machine_buffer");
+    let default: Config = serde_json::from_value(value)?;
+    assert_eq!(None, default.enable_unbounded_state_machine_buffer);
+    let buffered = default.enable_unbounded_state_machine_buffer();
+    assert!(!buffered);
+    Ok(())
 }
 
 #[test]
