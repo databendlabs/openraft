@@ -57,21 +57,21 @@ fn changes() -> Result<ChangeScenario<AdvConfig>> {
 
     // Only a role changes, so every quorum stays.
     let roles = btreemap! {3 => NodeRole::ReceiveLogs};
+    let direct_membership = old.clone().with_roles(roles.clone())?;
     let direct = ExplicitChange::default().with_roles(roles);
 
     // The new read quorum {1} misses the old write quorum {2, 3}.
     let read = vec![btreeset! {1}, btreeset! {2}, btreeset! {4}];
-    let joint = ExplicitChange::quorums(read, vec![btreeset! {1, 2, 4}]);
+    let write = vec![btreeset! {1, 2, 4}];
+    let joint = ExplicitChange::quorums(read.clone(), write.clone());
+    let target_with_learner = ExplicitMembership::new(read.clone(), write.clone(), btreeset! {1, 2, 3, 4})?;
+    let target_without_learner = ExplicitMembership::new(read, write, btreeset! {1, 2, 4})?;
 
     Ok(ChangeScenario {
         node_ids: btreeset! {1, 2, 3, 4},
         old,
         direct,
-        direct_membership: "{configs: [Config { read: ExplicitQuorumSet { quorums: [{1, 2}, {1, 3}, {2, 3}] }, \
-                            write: ExplicitQuorumSet { quorums: [{1, 2}, {1, 3}, {2, 3}] }, \
-                            nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), \
-                            2: ((), NodeRole(Campaigner | ReceiveLogs)), 3: ((), NodeRole(ReceiveLogs)), \
-                            4: ((), NodeRole(ReceiveLogs))} }]}",
+        direct_membership,
         joint,
         joint_with_learner: "{configs: [Config { read: ExplicitQuorumSet { quorums: [{1, 2}, {1, 3}, {2, 3}] }, \
                              write: ExplicitQuorumSet { quorums: [{1, 2}, {1, 3}, {2, 3}] }, \
@@ -93,16 +93,8 @@ fn changes() -> Result<ChangeScenario<AdvConfig>> {
                                 nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), \
                                 2: ((), NodeRole(Campaigner | ReceiveLogs)), \
                                 4: ((), NodeRole(Campaigner | ReceiveLogs))} }]}",
-        target_with_learner: "{configs: [Config { read: ExplicitQuorumSet { quorums: [{1}, {2}, {4}] }, \
-                              write: ExplicitQuorumSet { quorums: [{1, 2, 4}] }, \
-                              nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), \
-                              2: ((), NodeRole(Campaigner | ReceiveLogs)), 3: ((), NodeRole(ReceiveLogs)), \
-                              4: ((), NodeRole(Campaigner | ReceiveLogs))} }]}",
-        target_without_learner: "{configs: [Config { read: ExplicitQuorumSet { quorums: [{1}, {2}, {4}] }, \
-                                 write: ExplicitQuorumSet { quorums: [{1, 2, 4}] }, \
-                                 nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), \
-                                 2: ((), NodeRole(Campaigner | ReceiveLogs)), \
-                                 4: ((), NodeRole(Campaigner | ReceiveLogs))} }]}",
+        target_with_learner,
+        target_without_learner,
         removed: 3,
     })
 }

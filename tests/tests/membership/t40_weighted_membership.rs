@@ -56,21 +56,20 @@ fn changes() -> Result<ChangeScenario<AdvConfig>> {
 
     // Only a role changes, so every quorum stays.
     let roles = btreemap! {3 => NodeRole::ReceiveLogs};
+    let direct_membership = old.clone().with_roles(roles.clone())?;
     let direct = WeightedChange::default().with_roles(roles);
 
     // The old read quorum {2, 3} misses the new write quorum {1, 4}.
     let weights = btreemap! {1 => 2, 2 => 1, 4 => 1};
-    let joint = WeightedChange::weights(weights).with_write_weight(3);
+    let joint = WeightedChange::weights(weights.clone()).with_write_weight(3);
+    let target_with_learner = WeightedMembership::new(weights.clone(), 3, btreeset! {1, 2, 3, 4})?;
+    let target_without_learner = WeightedMembership::new(weights, 3, btreeset! {1, 2, 4})?;
 
     Ok(ChangeScenario {
         node_ids: btreeset! {1, 2, 3, 4},
         old,
         direct,
-        direct_membership: "{configs: [Config { read: WeightedQuorumSet { weights: {1: 1, 2: 1, 3: 1}, \
-                            threshold: 2 }, write: WeightedQuorumSet { weights: {1: 1, 2: 1, 3: 1}, threshold: 2 }, \
-                            nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), \
-                            2: ((), NodeRole(Campaigner | ReceiveLogs)), 3: ((), NodeRole(ReceiveLogs)), \
-                            4: ((), NodeRole(ReceiveLogs))} }]}",
+        direct_membership,
         joint,
         joint_with_learner: "{configs: [Config { read: WeightedQuorumSet { weights: {1: 1, 2: 1, 3: 1}, \
                              threshold: 2 }, write: WeightedQuorumSet { weights: {1: 1, 2: 1, 3: 1}, threshold: 2 }, \
@@ -92,16 +91,8 @@ fn changes() -> Result<ChangeScenario<AdvConfig>> {
                                 nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), \
                                 2: ((), NodeRole(Campaigner | ReceiveLogs)), \
                                 4: ((), NodeRole(Campaigner | ReceiveLogs))} }]}",
-        target_with_learner: "{configs: [Config { read: WeightedQuorumSet { weights: {1: 2, 2: 1, 4: 1}, \
-                              threshold: 2 }, write: WeightedQuorumSet { weights: {1: 2, 2: 1, 4: 1}, threshold: 3 }, \
-                              nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), \
-                              2: ((), NodeRole(Campaigner | ReceiveLogs)), 3: ((), NodeRole(ReceiveLogs)), \
-                              4: ((), NodeRole(Campaigner | ReceiveLogs))} }]}",
-        target_without_learner: "{configs: [Config { read: WeightedQuorumSet { weights: {1: 2, 2: 1, 4: 1}, \
-                                 threshold: 2 }, write: WeightedQuorumSet { weights: {1: 2, 2: 1, 4: 1}, \
-                                 threshold: 3 }, nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), \
-                                 2: ((), NodeRole(Campaigner | ReceiveLogs)), \
-                                 4: ((), NodeRole(Campaigner | ReceiveLogs))} }]}",
+        target_with_learner,
+        target_without_learner,
         removed: 3,
     })
 }

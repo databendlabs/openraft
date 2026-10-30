@@ -696,6 +696,14 @@ fn test_joint_keeps_old_roles_and_target_restores_new_roles() {
 
 #[test]
 fn test_with_roles() {
+    assert_with_roles(one_group, Membership::with_roles);
+}
+
+#[test]
+fn test_display_with_roles() {
+    let membership: Membership = one_group(btreeset! {1, 2, 3}, btreeset! {1, 2, 3, 4, 5});
+    let roles = btreemap! {3 => NodeRole::ReceiveLogs, 4 => voter_role(), 5 => NodeRole::Empty};
+    let configured = membership.with_roles(roles).unwrap();
     let want = "{configs: [Config { read: HierarchicalQuorumSet { root: Group { quorum_size: 1, voters: {}, \
                 groups: {\"a\": Group { quorum_size: 2, voters: {1, 2, 3}, groups: {} }} } }, \
                 write: HierarchicalQuorumSet { root: Group { quorum_size: 1, voters: {}, groups: {\"a\": Group { \
@@ -703,21 +711,31 @@ fn test_with_roles() {
                 nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), 2: ((), NodeRole(Campaigner | ReceiveLogs)), \
                 3: ((), NodeRole(ReceiveLogs)), 4: ((), NodeRole(Campaigner | ReceiveLogs)), \
                 5: ((), NodeRole(Empty))} }]}";
-    assert_with_roles(one_group, Membership::with_roles, want);
+    let got = configured.to_string();
+    assert_eq!(want, got);
 }
 
 #[test]
 fn test_role_and_quorum_change_through_joint() {
+    assert_role_and_quorum_change_through_joint(one_group, Membership::with_roles, |voters, roles| {
+        let groups = Group::of_groups(1, [("a", Group::of_voters(2, voters))]);
+        Change::groups(groups).with_roles(roles)
+    });
+}
+
+#[test]
+fn test_display_with_retained_learner() {
+    let membership: Membership = one_group(btreeset! {2, 3, 4}, btreeset! {1, 2, 3, 4, 5});
+    let roles = btreemap! {1 => NodeRole::ReceiveLogs, 3 => NodeRole::ReceiveLogs, 5 => NodeRole::Empty};
+    let configured = membership.with_roles(roles).unwrap();
     let want = "{configs: [Config { read: HierarchicalQuorumSet { root: Group { quorum_size: 1, voters: {}, \
                 groups: {\"a\": Group { quorum_size: 2, voters: {2, 3, 4}, groups: {} }} } }, \
                 write: HierarchicalQuorumSet { root: Group { quorum_size: 1, voters: {}, groups: {\"a\": Group { \
                 quorum_size: 2, voters: {2, 3, 4}, groups: {} }} } }, nodes: {1: ((), NodeRole(ReceiveLogs)), \
                 2: ((), NodeRole(Campaigner | ReceiveLogs)), 3: ((), NodeRole(ReceiveLogs)), \
                 4: ((), NodeRole(Campaigner | ReceiveLogs)), 5: ((), NodeRole(Empty))} }]}";
-    assert_role_and_quorum_change_through_joint(one_group, Membership::with_roles, want, |voters, roles| {
-        let groups = Group::of_groups(1, [("a", Group::of_voters(2, voters))]);
-        Change::groups(groups).with_roles(roles)
-    });
+    let got = configured.to_string();
+    assert_eq!(want, got);
 }
 
 #[test]

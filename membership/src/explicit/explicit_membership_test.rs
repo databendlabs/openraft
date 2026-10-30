@@ -415,12 +415,21 @@ fn test_joint_keeps_old_roles_and_target_restores_new_roles() {
 
 #[test]
 fn test_with_roles() {
+    assert_with_roles(majority, Membership::with_roles);
+}
+
+#[test]
+fn test_display_with_roles() {
+    let membership: Membership = majority(btreeset! {1, 2, 3}, btreeset! {1, 2, 3, 4, 5});
+    let roles = btreemap! {3 => NodeRole::ReceiveLogs, 4 => voter_role(), 5 => NodeRole::Empty};
+    let configured = membership.with_roles(roles).unwrap();
     let want = "{configs: [Config { read: ExplicitQuorumSet { quorums: [{1, 2}, {1, 3}, {2, 3}] }, \
                 write: ExplicitQuorumSet { quorums: [{1, 2}, {1, 3}, {2, 3}] }, \
                 nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), 2: ((), NodeRole(Campaigner | ReceiveLogs)), \
                 3: ((), NodeRole(ReceiveLogs)), 4: ((), NodeRole(Campaigner | ReceiveLogs)), \
                 5: ((), NodeRole(Empty))} }]}";
-    assert_with_roles(majority, Membership::with_roles, want);
+    let got = configured.to_string();
+    assert_eq!(want, got);
 }
 
 #[test]
@@ -469,15 +478,24 @@ fn test_only_write_voters_need_receive_logs() {
 
 #[test]
 fn test_role_and_quorum_change_through_joint() {
+    assert_role_and_quorum_change_through_joint(majority, Membership::with_roles, |voters, roles| {
+        let quorums = majorities(&voters);
+        ExplicitChange::quorums(quorums.clone(), quorums).with_roles(roles)
+    });
+}
+
+#[test]
+fn test_display_with_retained_learner() {
+    let membership: Membership = majority(btreeset! {2, 3, 4}, btreeset! {1, 2, 3, 4, 5});
+    let roles = btreemap! {1 => NodeRole::ReceiveLogs, 3 => NodeRole::ReceiveLogs, 5 => NodeRole::Empty};
+    let configured = membership.with_roles(roles).unwrap();
     let want = "{configs: [Config { read: ExplicitQuorumSet { quorums: [{2, 3}, {2, 4}, {3, 4}] }, \
                 write: ExplicitQuorumSet { quorums: [{2, 3}, {2, 4}, {3, 4}] }, \
                 nodes: {1: ((), NodeRole(ReceiveLogs)), 2: ((), NodeRole(Campaigner | ReceiveLogs)), \
                 3: ((), NodeRole(ReceiveLogs)), 4: ((), NodeRole(Campaigner | ReceiveLogs)), \
                 5: ((), NodeRole(Empty))} }]}";
-    assert_role_and_quorum_change_through_joint(majority, Membership::with_roles, want, |voters, roles| {
-        let quorums = majorities(&voters);
-        ExplicitChange::quorums(quorums.clone(), quorums).with_roles(roles)
-    });
+    let got = configured.to_string();
+    assert_eq!(want, got);
 }
 
 #[test]

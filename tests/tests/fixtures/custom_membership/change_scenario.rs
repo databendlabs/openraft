@@ -16,8 +16,7 @@ use crate::fixtures::custom_membership::TestCluster;
 use crate::fixtures::custom_membership::TestConfig;
 use crate::fixtures::custom_membership::cluster_config;
 
-/// Two membership changes that node 1 makes, starting from `old`. Each membership on the way is
-/// given by its `Display`.
+/// Two membership changes that node 1 makes, starting from `old`.
 ///
 /// `direct` changes `old` into a membership that OpenRaft appends as one entry: every read quorum
 /// of each meets every write quorum of the other. `joint` changes that membership into a target
@@ -31,16 +30,16 @@ where C: TestConfig
     pub old: C::Membership,
     pub direct: C::MembershipEdit,
     /// The membership that `direct` makes from `old`.
-    pub direct_membership: &'static str,
+    pub direct_membership: C::Membership,
     pub joint: C::MembershipEdit,
     /// The joint config on the way to the target of `joint` with `removed` as a learner.
     pub joint_with_learner: &'static str,
     /// The joint config on the way to the target of `joint` without `removed`.
     pub joint_without_learner: &'static str,
     /// The target of `joint` with `removed` as a learner.
-    pub target_with_learner: &'static str,
+    pub target_with_learner: C::Membership,
     /// The target of `joint` without `removed`.
-    pub target_without_learner: &'static str,
+    pub target_without_learner: C::Membership,
     pub removed: u64,
 }
 
@@ -51,7 +50,7 @@ where
 {
     /// Makes both changes through `Raft::change_membership()` with `retain`.
     pub async fn run(self, retain: bool) -> Result<()> {
-        let old_membership = self.old.to_string();
+        let old_membership = self.old.clone();
         let cluster =
             TestCluster::<C>::start(cluster_config(SnapshotPolicy::Never), self.node_ids.clone(), self.old).await?;
 
@@ -87,14 +86,15 @@ where
 
         tracing::info!("--- node 1 applies the old membership, the direct result, the joint config and the target");
         {
-            let want = vec![
-                (0, old_membership),
-                (2, self.direct_membership.to_string()),
-                (3, joint_membership.to_string()),
-                (4, target.to_string()),
-            ];
             let applied = applied_memberships(&cluster, 1);
-            assert_eq!(want, applied);
+            let indices = applied.iter().map(|(index, _)| *index);
+            let indices: Vec<u64> = indices.collect();
+            assert_eq!(vec![0, 2, 3, 4], indices);
+            assert_eq!(old_membership, applied[0].1);
+            assert_eq!(self.direct_membership, applied[1].1);
+            let joint = applied[2].1.to_string();
+            assert_eq!(joint_membership, joint);
+            assert_eq!(target, applied[3].1);
         }
 
         tracing::info!(
@@ -111,8 +111,8 @@ where
             for node_id in &target_ids {
                 let raft = cluster.raft(*node_id);
                 let metrics = raft.wait(timeout()).applied_index(Some(4), "apply the target").await?;
-                let membership = metrics.membership_config.membership().to_string();
-                assert_eq!(target, membership, "node {node_id}");
+                let membership = metrics.membership_config.membership();
+                assert_eq!(&target, membership, "node {node_id}");
             }
 
             let replicates_to_target = |metrics: &RaftMetrics<C>| {
@@ -132,7 +132,7 @@ where
     /// Restarts every node while the joint config on the way to the target of `joint` is in
     /// effect, then leaves the joint config for the target with `removed` as a learner.
     pub async fn restart_in_joint(self) -> Result<()> {
-        let old_membership = self.old.to_string();
+        let old_membership = self.old.clone();
         let mut config = cluster_config(SnapshotPolicy::Never);
         config.enable_leader_restore = Some(false);
         let cluster = TestCluster::<C>::start(config, self.node_ids.clone(), self.old).await?;
@@ -202,22 +202,23 @@ where
             let response = cluster.raft(1).change_membership(make_uniform, true).await?;
             assert_eq!(log_id::<C>(2, 1, 5), response.log_id);
 
-            let want = vec![
-                (0, old_membership),
-                (2, self.direct_membership.to_string()),
-                (3, self.joint_with_learner.to_string()),
-                (5, self.target_with_learner.to_string()),
-            ];
             let applied = applied_memberships(&cluster, 1);
-            assert_eq!(want, applied);
+            let indices = applied.iter().map(|(index, _)| *index);
+            let indices: Vec<u64> = indices.collect();
+            assert_eq!(vec![0, 2, 3, 5], indices);
+            assert_eq!(old_membership, applied[0].1);
+            assert_eq!(self.direct_membership, applied[1].1);
+            let joint = applied[2].1.to_string();
+            assert_eq!(self.joint_with_learner, joint);
+            assert_eq!(self.target_with_learner, applied[3].1);
         }
 
         Ok(())
     }
 }
 
-/// Returns the index and the `Display` of each membership that node `node_id` applied.
-fn applied_memberships<C>(cluster: &TestCluster<C>, node_id: u64) -> Vec<(u64, String)>
+/// Returns the index and value of each membership that node `node_id` applied.
+fn applied_memberships<C>(cluster: &TestCluster<C>, node_id: u64) -> Vec<(u64, C::Membership)>
 where
     C: TestConfig,
     EntryOf<C>: Clone,
@@ -228,8 +229,7 @@ where
             continue;
         };
         let index = entry.index();
-        let display = membership.to_string();
-        memberships.push((index, display));
+        memberships.push((index, membership));
     }
     memberships
 }

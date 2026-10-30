@@ -446,23 +446,41 @@ fn test_joint_keeps_old_roles_and_target_restores_new_roles() {
 
 #[test]
 fn test_with_roles() {
+    assert_with_roles(one_row, Membership::with_roles);
+}
+
+#[test]
+fn test_display_with_roles() {
+    let membership: Membership = one_row(btreeset! {1, 2, 3}, btreeset! {1, 2, 3, 4, 5});
+    let roles = btreemap! {3 => NodeRole::ReceiveLogs, 4 => voter_role(), 5 => NodeRole::Empty};
+    let configured = membership.with_roles(roles).unwrap();
     let want = "{configs: [Config { read: GridQuorumSet { grid: [[1, 2, 3]], rule: FullRow }, write: GridQuorumSet { \
                 grid: [[1, 2, 3]], rule: OnePerRow }, nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), \
                 2: ((), NodeRole(Campaigner | ReceiveLogs)), 3: ((), NodeRole(ReceiveLogs)), \
                 4: ((), NodeRole(Campaigner | ReceiveLogs)), 5: ((), NodeRole(Empty))} }]}";
-    assert_with_roles(one_row, Membership::with_roles, want);
+    let got = configured.to_string();
+    assert_eq!(want, got);
 }
 
 #[test]
 fn test_role_and_quorum_change_through_joint() {
+    assert_role_and_quorum_change_through_joint(one_row, Membership::with_roles, |voters, roles| {
+        let row = voters.into_iter().collect();
+        GridChange::grid(vec![row]).with_roles(roles)
+    });
+}
+
+#[test]
+fn test_display_with_retained_learner() {
+    let membership: Membership = one_row(btreeset! {2, 3, 4}, btreeset! {1, 2, 3, 4, 5});
+    let roles = btreemap! {1 => NodeRole::ReceiveLogs, 3 => NodeRole::ReceiveLogs, 5 => NodeRole::Empty};
+    let configured = membership.with_roles(roles).unwrap();
     let want = "{configs: [Config { read: GridQuorumSet { grid: [[2, 3, 4]], rule: FullRow }, write: GridQuorumSet { \
                 grid: [[2, 3, 4]], rule: OnePerRow }, nodes: {1: ((), NodeRole(ReceiveLogs)), \
                 2: ((), NodeRole(Campaigner | ReceiveLogs)), 3: ((), NodeRole(ReceiveLogs)), \
                 4: ((), NodeRole(Campaigner | ReceiveLogs)), 5: ((), NodeRole(Empty))} }]}";
-    assert_role_and_quorum_change_through_joint(one_row, Membership::with_roles, want, |voters, roles| {
-        let row = voters.into_iter().collect();
-        GridChange::grid(vec![row]).with_roles(roles)
-    });
+    let got = configured.to_string();
+    assert_eq!(want, got);
 }
 
 #[test]

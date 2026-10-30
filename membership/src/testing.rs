@@ -91,10 +91,8 @@ where
 ///
 /// `build(voters, nodes)` returns a membership whose only config has the voters `voters` and a
 /// `()` node for each of `nodes`. `with_roles` is the `with_roles()` method of that membership
-/// type. The test builds voters 1, 2 and 3 and learners 4 and 5. `want_display` is the `Display`
-/// of that membership after voter 3 stops campaigning, learner 4 gets `Campaigner` too, and
-/// learner 5 stops receiving logs.
-pub(crate) fn assert_with_roles<M, E, B, W>(build: B, with_roles: W, want_display: &str)
+/// type. The test builds voters 1, 2 and 3 and learners 4 and 5.
+pub(crate) fn assert_with_roles<M, E, B, W>(build: B, with_roles: W)
 where
     M: RaftMembership<NodeId = u64, Node = ()>,
     E: Error + PartialEq + 'static,
@@ -128,9 +126,6 @@ where
         });
         assert_eq!(want, got, "node {node_id}");
     }
-    let got = configured.to_string();
-    assert_eq!(want_display, got);
-
     // A later call keeps the roles of the nodes that it does not name, and can set a role back to
     // the default.
     let res = with_roles(configured, btreemap! {3 => voter_role(), 5 => NodeRole::ReceiveLogs});
@@ -153,13 +148,8 @@ where
 ///
 /// `build` and `with_roles` are as in [`assert_with_roles()`]. `change_voters(voters, roles)`
 /// returns a change to the rules that `build` gives `voters`, which also sets `roles`.
-/// `want_display` is the `Display` of the target of that change.
-pub(crate) fn assert_role_and_quorum_change_through_joint<M, C, B, W, F>(
-    build: B,
-    with_roles: W,
-    want_display: &str,
-    change_voters: F,
-) where
+pub(crate) fn assert_role_and_quorum_change_through_joint<M, C, B, W, F>(build: B, with_roles: W, change_voters: F)
+where
     M: RaftMembership<NodeId = u64, Node = ()>,
     C: RaftMembershipEdit<M>,
     B: Fn(BTreeSet<u64>, BTreeSet<u64>) -> M,
@@ -222,8 +212,6 @@ pub(crate) fn assert_role_and_quorum_change_through_joint<M, C, B, W, F>(
     }
     let ids: Vec<u64> = target.node_ids().collect();
     assert_eq!(vec![1, 2, 3, 4, 5], ids);
-    let got = target.to_string();
-    assert_eq!(want_display, got);
 }
 
 /// Asserts that `apply()` sets a role only for a node of its result, and keeps every write voter

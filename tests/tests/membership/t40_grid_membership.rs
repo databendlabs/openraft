@@ -54,20 +54,20 @@ fn changes() -> Result<ChangeScenario<AdvConfig>> {
 
     // Only a role changes, so every quorum stays.
     let roles = btreemap! {4 => NodeRole::ReceiveLogs};
+    let direct_membership = old.clone().with_roles(roles.clone())?;
     let direct = GridChange::default().with_roles(roles);
 
     // The old row {3, 4} misses the new write quorum {1, 5}.
-    let joint = GridChange::grid(vec![vec![2, 1], vec![3, 5]]);
+    let grid = vec![vec![2, 1], vec![3, 5]];
+    let joint = GridChange::grid(grid.clone());
+    let target_with_learner = GridMembership::new(grid.clone(), btreeset! {1, 2, 3, 4, 5})?;
+    let target_without_learner = GridMembership::new(grid, btreeset! {1, 2, 3, 5})?;
 
     Ok(ChangeScenario {
         node_ids: btreeset! {1, 2, 3, 4, 5},
         old,
         direct,
-        direct_membership: "{configs: [Config { read: GridQuorumSet { grid: [[1, 2], [3, 4]], rule: FullRow }, \
-                            write: GridQuorumSet { grid: [[1, 2], [3, 4]], rule: OnePerRow }, \
-                            nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), \
-                            2: ((), NodeRole(Campaigner | ReceiveLogs)), 3: ((), NodeRole(Campaigner | ReceiveLogs)), \
-                            4: ((), NodeRole(ReceiveLogs)), 5: ((), NodeRole(ReceiveLogs))} }]}",
+        direct_membership,
         joint,
         joint_with_learner: "{configs: [Config { read: GridQuorumSet { grid: [[1, 2], [3, 4]], rule: FullRow }, \
                              write: GridQuorumSet { grid: [[1, 2], [3, 4]], rule: OnePerRow }, \
@@ -93,18 +93,8 @@ fn changes() -> Result<ChangeScenario<AdvConfig>> {
                                 2: ((), NodeRole(Campaigner | ReceiveLogs)), \
                                 3: ((), NodeRole(Campaigner | ReceiveLogs)), \
                                 5: ((), NodeRole(Campaigner | ReceiveLogs))} }]}",
-        target_with_learner: "{configs: [Config { read: GridQuorumSet { grid: [[2, 1], [3, 5]], rule: FullRow }, \
-                              write: GridQuorumSet { grid: [[2, 1], [3, 5]], rule: OnePerRow }, \
-                              nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), \
-                              2: ((), NodeRole(Campaigner | ReceiveLogs)), \
-                              3: ((), NodeRole(Campaigner | ReceiveLogs)), 4: ((), NodeRole(ReceiveLogs)), \
-                              5: ((), NodeRole(Campaigner | ReceiveLogs))} }]}",
-        target_without_learner: "{configs: [Config { read: GridQuorumSet { grid: [[2, 1], [3, 5]], rule: FullRow }, \
-                                 write: GridQuorumSet { grid: [[2, 1], [3, 5]], rule: OnePerRow }, \
-                                 nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), \
-                                 2: ((), NodeRole(Campaigner | ReceiveLogs)), \
-                                 3: ((), NodeRole(Campaigner | ReceiveLogs)), \
-                                 5: ((), NodeRole(Campaigner | ReceiveLogs))} }]}",
+        target_with_learner,
+        target_without_learner,
         removed: 4,
     })
 }

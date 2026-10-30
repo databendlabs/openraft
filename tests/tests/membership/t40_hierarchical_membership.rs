@@ -72,26 +72,23 @@ fn changes() -> Result<ChangeScenario<AdvConfig>> {
 
     // Only a role changes, so every quorum stays.
     let roles = btreemap! {2 => NodeRole::ReceiveLogs};
-    let direct = HierarchicalChange::default().with_roles(roles);
+    let direct_membership = old.clone().with_roles(roles.clone())?;
+    let direct = HierarchicalChange::default().with_roles(roles.clone());
 
     // Voter 3 leaves group b, which then writes with voter 4 alone. The old read quorum {1, 3}
     // misses the new write quorum {4}.
     let groups = Group::of_groups(1, [("a", Group::of_voters(2, [1, 2])), ("b", Group::of_voters(1, [4]))]);
-    let joint = HierarchicalChange::groups(groups);
+    let joint = HierarchicalChange::groups(groups.clone());
+    let target_with_learner = HierarchicalMembership::new(groups.clone(), btreeset! {1, 2, 3, 4})?;
+    let target_with_learner = target_with_learner.with_roles(roles.clone())?;
+    let target_without_learner = HierarchicalMembership::new(groups, btreeset! {1, 2, 4})?;
+    let target_without_learner = target_without_learner.with_roles(roles)?;
 
     Ok(ChangeScenario {
         node_ids: btreeset! {1, 2, 3, 4},
         old,
         direct,
-        direct_membership: "{configs: [Config { read: HierarchicalQuorumSet { root: Group { quorum_size: 2, \
-                            voters: {}, groups: {\"a\": Group { quorum_size: 1, voters: {1, 2}, groups: {} }, \
-                            \"b\": Group { quorum_size: 1, voters: {3, 4}, groups: {} }} } }, \
-                            write: HierarchicalQuorumSet { root: Group { quorum_size: 1, voters: {}, \
-                            groups: {\"a\": Group { quorum_size: 2, voters: {1, 2}, groups: {} }, \"b\": Group { \
-                            quorum_size: 2, voters: {3, 4}, groups: {} }} } }, \
-                            nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), 2: ((), NodeRole(ReceiveLogs)), \
-                            3: ((), NodeRole(Campaigner | ReceiveLogs)), \
-                            4: ((), NodeRole(Campaigner | ReceiveLogs))} }]}",
+        direct_membership,
         joint,
         joint_with_learner: "{configs: [Config { read: HierarchicalQuorumSet { root: Group { quorum_size: 2, \
                              voters: {}, groups: {\"a\": Group { quorum_size: 1, voters: {1, 2}, groups: {} }, \
@@ -125,22 +122,8 @@ fn changes() -> Result<ChangeScenario<AdvConfig>> {
                                 \"b\": Group { quorum_size: 1, voters: {4}, groups: {} }} } }, \
                                 nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), 2: ((), NodeRole(ReceiveLogs)), \
                                 4: ((), NodeRole(Campaigner | ReceiveLogs))} }]}",
-        target_with_learner: "{configs: [Config { read: HierarchicalQuorumSet { root: Group { quorum_size: 2, \
-                              voters: {}, groups: {\"a\": Group { quorum_size: 1, voters: {1, 2}, groups: {} }, \
-                              \"b\": Group { quorum_size: 1, voters: {4}, groups: {} }} } }, \
-                              write: HierarchicalQuorumSet { root: Group { quorum_size: 1, voters: {}, \
-                              groups: {\"a\": Group { quorum_size: 2, voters: {1, 2}, groups: {} }, \"b\": Group { \
-                              quorum_size: 1, voters: {4}, groups: {} }} } }, \
-                              nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), 2: ((), NodeRole(ReceiveLogs)), \
-                              3: ((), NodeRole(ReceiveLogs)), 4: ((), NodeRole(Campaigner | ReceiveLogs))} }]}",
-        target_without_learner: "{configs: [Config { read: HierarchicalQuorumSet { root: Group { quorum_size: 2, \
-                                 voters: {}, groups: {\"a\": Group { quorum_size: 1, voters: {1, 2}, groups: {} }, \
-                                 \"b\": Group { quorum_size: 1, voters: {4}, groups: {} }} } }, \
-                                 write: HierarchicalQuorumSet { root: Group { quorum_size: 1, voters: {}, \
-                                 groups: {\"a\": Group { quorum_size: 2, voters: {1, 2}, groups: {} }, \"b\": Group { \
-                                 quorum_size: 1, voters: {4}, groups: {} }} } }, \
-                                 nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), 2: ((), NodeRole(ReceiveLogs)), \
-                                 4: ((), NodeRole(Campaigner | ReceiveLogs))} }]}",
+        target_with_learner,
+        target_without_learner,
         removed: 3,
     })
 }
