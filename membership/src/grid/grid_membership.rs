@@ -149,11 +149,8 @@ where
         let rows = voters.chunks(column_count);
         let grid: Vec<Vec<NID>> = rows.map(|row| row.to_vec()).collect();
 
-        // Safe unwrap(): the grid has `row_count` rows of `column_count` distinct voters.
-        let (read, write) = Self::rules_from_grid(grid).unwrap();
-        // Safe unwrap(): every voter is a node, and the config sets no role.
-        let config = Config::new(read, write, BTreeMap::new(), nodes).unwrap();
-        Self { configs: vec![config] }
+        let membership = Self::new(grid, nodes);
+        membership.expect("a rectangular grid and complete node metadata form a valid config")
     }
 }
 

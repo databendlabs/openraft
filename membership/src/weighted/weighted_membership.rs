@@ -148,11 +148,8 @@ where
         let voter_count = nodes.len() as u64;
         let majority = voter_count / 2 + 1;
 
-        // Safe unwrap(): `n` unit weights sum to `n`, and `1 <= n / 2 + 1 <= n` for `n >= 1`.
-        let (read, write) = Self::rules_from_weights(weights, majority).unwrap();
-        // Safe unwrap(): every voter is a node, and the config sets no role.
-        let config = Config::new(read, write, BTreeMap::new(), nodes).unwrap();
-        Self { configs: vec![config] }
+        let membership = Self::new(weights, majority, nodes);
+        membership.expect("unit weights and complete node metadata form a valid config")
     }
 }
 

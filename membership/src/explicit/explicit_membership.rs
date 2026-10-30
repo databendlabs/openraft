@@ -141,12 +141,8 @@ where
             return Self::default();
         }
 
-        // Safe unwrap(): the only quorum, `voters`, is not empty.
-        let read = ExplicitQuorumSet::new([voters.clone()]).unwrap();
-        let write = ExplicitQuorumSet::new([voters]).unwrap();
-        // Safe unwrap(): every voter is a node, and the config sets no role.
-        let config = Config::new(read, write, BTreeMap::new(), nodes).unwrap();
-        Self { configs: vec![config] }
+        let membership = Self::new([voters.clone()], [voters], nodes);
+        membership.expect("identical nonempty quorums and complete node metadata form a valid config")
     }
 }
 
