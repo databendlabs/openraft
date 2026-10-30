@@ -89,7 +89,7 @@ use crate::quorum::Joint;
 /// assert!(!write_accepts);
 /// ```
 #[since(version = "0.10.0")]
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct GridMembership<NID, N>
 where
@@ -97,18 +97,6 @@ where
     N: Node,
 {
     pub(crate) configs: Vec<Config<NID, N, GridQuorumSet<NID>>>,
-}
-
-impl<NID, N> fmt::Debug for GridMembership<NID, N>
-where
-    NID: NodeId,
-    N: Node,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut debug = f.debug_struct("GridMembership");
-        debug.field("configs", &self.configs);
-        debug.finish()
-    }
 }
 
 /// Written by hand: `derive(Default)` would require `NID: Default` and `N: Default`.

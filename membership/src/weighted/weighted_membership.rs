@@ -95,7 +95,7 @@ use crate::quorum::WeightedQuorumSet;
 /// assert!(!read_accepts_others);
 /// ```
 #[since(version = "0.10.0")]
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct WeightedMembership<NID, N>
 where
@@ -103,18 +103,6 @@ where
     N: Node,
 {
     pub(crate) configs: Vec<Config<NID, N, WeightedQuorumSet<NID>>>,
-}
-
-impl<NID, N> fmt::Debug for WeightedMembership<NID, N>
-where
-    NID: NodeId,
-    N: Node,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut debug = f.debug_struct("WeightedMembership");
-        debug.field("configs", &self.configs);
-        debug.finish()
-    }
 }
 
 /// Written by hand: `derive(Default)` would require `NID: Default` and `N: Default`.
