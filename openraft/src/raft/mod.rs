@@ -636,6 +636,7 @@ where
                     ),
                     tx_install_snapshot: tx_install_snapshot.clone(),
                     rx_install_snapshot,
+                    rx_shutdown,
 
                     notifications: NotificationChannel::new(tx_notify, rx_notify),
 
@@ -672,7 +673,7 @@ where
                 );
 
                 let core = Box::new(core);
-                let core_fut = core.main(rx_shutdown).instrument(trace_span!("spawn").or_current());
+                let core_fut = core.main().instrument(trace_span!("spawn").or_current());
                 let join_handle = C::spawn(core_fut);
 
                 let tick_period = Duration::from_millis(config.tick_interval());
