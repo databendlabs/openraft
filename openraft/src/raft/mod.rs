@@ -600,6 +600,8 @@ where
 
             Box::new(move |inner: &RaftInner<C>| {
                 let tick_tx = tx_notify.clone();
+                let buffered = config.enable_unbounded_state_machine_buffer();
+                let sm_cmd_rx = sm::command_receiver::CommandReceiver::new(sm_cmd_rx, buffered);
                 let sm_handle = worker::Worker::spawn(
                     id.clone(),
                     state_machine,

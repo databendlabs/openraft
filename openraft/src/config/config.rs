@@ -178,6 +178,7 @@ impl SnapshotPolicy {
 ///
 /// [`Raft::new`]: crate::Raft::new
 #[since]
+#[since(version = "0.10.0", change = "add opt-in unbounded state-machine buffering")]
 #[since(version = "0.10.0", change = "added broadcast_submitted_on_append option")]
 #[since(version = "0.10.0", change = "added reset_backoff_on_transfer_leader option")]
 #[since(version = "0.10.0", change = "added opt-in quorum-loss inactivity setting")]
@@ -325,10 +326,40 @@ pub struct Config {
     ///
     /// This channel carries commands like Apply, BuildSnapshot, and InstallSnapshot.
     /// By default, a full channel applies backpressure to RaftCore while it keeps receiving
-    /// notifications.
+    /// notifications. With
+    /// [`enable_unbounded_state_machine_buffer`](Self::enable_unbounded_state_machine_buffer),
+    /// this setting bounds only the input channel, not the number of pending commands.
     #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long, default_value = "1024"))]
     pub state_machine_channel_size: Option<u64>,
+
+    /// Buffer state-machine commands without a backlog limit in a background receiver task.
+    ///
+    /// Defaults to `None`, which evaluates to `false`: the bounded worker channel applies
+    /// backpressure to RaftCore.
+    /// Enabling this lets RaftCore process other requests while the state machine is busy,
+    /// at the cost of an extra task handoff and memory growth when commands outpace the worker.
+    ///
+    /// In a local `benchmarks/minimal` release benchmark on an Apple M3 Max, enabling this
+    /// setting changed performance as shown below. The changes compare medians of five
+    /// interleaved runs on the same build, using `false` as the baseline. The benchmark used
+    /// in-memory storage, no I/O delays, batch size 1, one client thread, and four server threads.
+    ///
+    /// | Nodes | Clients | Throughput change | Median write latency change |
+    /// | --- | --- | --- | --- |
+    /// | 1 | 1 | -13.4% | +1.92 µs |
+    /// | 3 | 1 | -8.2% | +1.58 µs |
+    /// | 1 | 1,024 | +10.2% | -6.75 µs |
+    /// | 3 | 1,024 | -3.5% | -1.75 µs |
+    ///
+    /// These results depend on workload and scheduling; concurrent runs showed wide variation.
+    #[since(version = "0.10.0")]
+    #[cfg_attr(feature = "clap", clap(long,
+           action = clap::ArgAction::Set,
+           num_args = 0..=1,
+           default_missing_value = "true"
+    ))]
+    pub enable_unbounded_state_machine_buffer: Option<bool>,
 
     /// The capacity of the ring buffer used to track lifecycle latency per stage.
     ///
@@ -634,6 +665,7 @@ impl Default for Config {
             api_batch_linger_ms: DEFAULTS.api_batch_linger_ms,
             notification_channel_size: Some(DEFAULTS.notification_channel_size),
             state_machine_channel_size: Some(DEFAULTS.state_machine_channel_size),
+            enable_unbounded_state_machine_buffer: None,
             log_stage_capacity: None,
             broadcast_submitted_on_append: None,
             enable_tick: DEFAULTS.enable_tick,
@@ -724,6 +756,11 @@ impl Config {
     /// Defaults to 1024 if not specified.
     pub(crate) fn state_machine_channel_size(&self) -> usize {
         self.state_machine_channel_size.unwrap_or(1024) as usize
+    }
+
+    /// Whether to buffer state-machine commands without a backlog limit; defaults to `false`.
+    pub(crate) fn enable_unbounded_state_machine_buffer(&self) -> bool {
+        self.enable_unbounded_state_machine_buffer.unwrap_or(false)
     }
 
     /// Get the lifecycle latency ring buffer capacity per stage.
