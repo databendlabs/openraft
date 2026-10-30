@@ -6,7 +6,6 @@ use crate::Membership;
 use crate::errors::EmptyMembership;
 use crate::errors::MembershipError;
 use crate::membership::RaftMembershipEdit;
-use crate::membership::RaftMembershipExt;
 
 #[test]
 fn nested_batch_applies_edits_in_order_before_finishing_target() {
@@ -17,7 +16,7 @@ fn nested_batch_applies_edits_in_order_before_finishing_target() {
     let remove = ChangeMembers::RemoveVoters(btreeset! {1});
     let edit = ChangeMembers::Batch(vec![add, nested, remove]);
     let membership = Membership::<u64, u64>::default();
-    let actual = edit.apply(&membership);
+    let actual = edit.apply(&membership, true);
     let expected = Membership::new(vec![btreeset! {2}], btreemap! {1 => 10, 2 => 21});
     let expected = expected.unwrap();
     let expected = Ok(expected);
@@ -28,9 +27,26 @@ fn nested_batch_applies_edits_in_order_before_finishing_target() {
 fn node_edit_without_config_returns_empty_membership() {
     let edit = ChangeMembers::AddNodes(btreemap! {1 => 10});
     let membership = Membership::<u64, u64>::default();
-    let actual = edit.apply(&membership);
+    let actual = edit.apply(&membership, true);
     let expected = Err(MembershipError::EmptyMembership(EmptyMembership {}));
     assert_eq!(expected, actual);
+}
+
+#[test]
+fn batch_retention_uses_the_original_and_final_voters() -> anyhow::Result<()> {
+    let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40};
+    let membership = Membership::new(vec![btreeset! {1, 2}], nodes)?;
+    let remove = ChangeMembers::RemoveVoters(btreeset! {1, 2});
+    let promote = ChangeMembers::AddVoterIds(btreeset! {2, 3});
+    let demote = ChangeMembers::RemoveVoters(btreeset! {3});
+    let nested = ChangeMembers::Batch(vec![promote, demote]);
+    let change = ChangeMembers::Batch(vec![remove, nested]);
+
+    let result = change.apply(&membership, false)?;
+
+    let expected = Membership::new(vec![btreeset! {2}], btreemap! {2 => 20, 3 => 30, 4 => 40})?;
+    assert_eq!(expected, result);
+    Ok(())
 }
 
 #[test]
@@ -44,7 +60,7 @@ fn test_membership_change() -> anyhow::Result<()> {
     {
         let membership = m();
         let change = ChangeMembers::AddVoterIds(btreeset! {4});
-        let res = change.apply(&membership);
+        let res = change.apply(&membership, true);
         assert_eq!(
             Ok(Membership::<u64, ()> {
                 configs: vec![btreeset! {1,2,4}],
@@ -58,7 +74,7 @@ fn test_membership_change() -> anyhow::Result<()> {
     {
         let membership = m();
         let change = ChangeMembers::AddVoterIds(btreeset! {3});
-        let res = change.apply(&membership);
+        let res = change.apply(&membership, true);
         assert_eq!(
             Ok(Membership::<u64, ()> {
                 configs: vec![btreeset! {1,2,3}],
@@ -72,7 +88,7 @@ fn test_membership_change() -> anyhow::Result<()> {
     {
         let membership = m();
         let change = ChangeMembers::AddVoters(btreemap! {5=>()});
-        let res = change.apply(&membership);
+        let res = change.apply(&membership, true);
         assert_eq!(
             Ok(Membership::<u64, ()> {
                 configs: vec![btreeset! {1,2,5}],
@@ -86,7 +102,7 @@ fn test_membership_change() -> anyhow::Result<()> {
     {
         let membership = m();
         let change = ChangeMembers::RemoveVoters(btreeset! {5});
-        let res = change.apply(&membership);
+        let res = change.apply(&membership, true);
         assert_eq!(
             Ok(Membership::<u64, ()> {
                 configs: vec![btreeset! {1,2}],
@@ -100,7 +116,7 @@ fn test_membership_change() -> anyhow::Result<()> {
     {
         let membership = m();
         let change = ChangeMembers::RemoveVoters(btreeset! {1,2});
-        let res = change.apply(&membership);
+        let res = change.apply(&membership, true);
         assert_eq!(
             Ok(Membership::<u64, ()> {
                 configs: vec![btreeset! {}],
@@ -114,7 +130,7 @@ fn test_membership_change() -> anyhow::Result<()> {
     {
         let membership = m();
         let change = ChangeMembers::RemoveVoters(btreeset! {1});
-        let res = change.apply(&membership);
+        let res = change.apply(&membership, true);
         assert_eq!(
             Ok(Membership::<u64, ()> {
                 configs: vec![btreeset! {2}],
@@ -128,8 +144,7 @@ fn test_membership_change() -> anyhow::Result<()> {
     {
         let membership = m();
         let change = ChangeMembers::RemoveVoters(btreeset! {1});
-        let goal = change.apply(&membership)?;
-        let res = m().drop_voters_demoted_to_learners(goal);
+        let res = change.apply(&membership, false)?;
         assert_eq!(
             Membership::<u64, ()> {
                 configs: vec![btreeset! {2}],
@@ -146,8 +161,7 @@ fn test_membership_change() -> anyhow::Result<()> {
             nodes: btreemap! {1=>(),2=>(),3=>()},
         };
         let change = ChangeMembers::RemoveVoters(btreeset! {1});
-        let goal = change.apply(&mem)?;
-        let res = mem.drop_voters_demoted_to_learners(goal);
+        let res = change.apply(&mem, false)?;
         assert_eq!(
             Membership::<u64, ()> {
                 configs: vec![btreeset! {2}],
@@ -161,8 +175,7 @@ fn test_membership_change() -> anyhow::Result<()> {
     {
         let membership = m();
         let change = ChangeMembers::ReplaceAllVoters(btreeset! {2});
-        let goal = change.apply(&membership)?;
-        let res = m().drop_voters_demoted_to_learners(goal);
+        let res = change.apply(&membership, false)?;
         assert_eq!(
             Membership::<u64, ()> {
                 configs: vec![btreeset! {2}],
@@ -176,7 +189,7 @@ fn test_membership_change() -> anyhow::Result<()> {
     {
         let membership = m();
         let change = ChangeMembers::AddNodes(btreemap! {2=>()});
-        let res = change.apply(&membership);
+        let res = change.apply(&membership, true);
         assert_eq!(
             Ok(Membership::<u64, ()> {
                 configs: vec![btreeset! {1,2}],
@@ -190,7 +203,7 @@ fn test_membership_change() -> anyhow::Result<()> {
     {
         let membership = m();
         let change = ChangeMembers::AddNodes(btreemap! {3=>()});
-        let res = change.apply(&membership);
+        let res = change.apply(&membership, true);
         assert_eq!(
             Ok(Membership::<u64, ()> {
                 configs: vec![btreeset! {1,2}],
@@ -204,7 +217,7 @@ fn test_membership_change() -> anyhow::Result<()> {
     {
         let membership = m();
         let change = ChangeMembers::AddNodes(btreemap! {4=>()});
-        let res = change.apply(&membership);
+        let res = change.apply(&membership, true);
         assert_eq!(
             Ok(Membership::<u64, ()> {
                 configs: vec![btreeset! {1,2}],
@@ -223,7 +236,7 @@ fn test_membership_change() -> anyhow::Result<()> {
 
         let membership = m();
         let change = ChangeMembers::SetNodes(btreemap! {3=>30, 4=>40});
-        let res = change.apply(&membership);
+        let res = change.apply(&membership, true);
         assert_eq!(
             Ok(Membership::<u64, u64> {
                 configs: vec![btreeset! {1,2}],
@@ -237,7 +250,7 @@ fn test_membership_change() -> anyhow::Result<()> {
     {
         let membership = m();
         let change = ChangeMembers::RemoveNodes(btreeset! {2});
-        let res = change.apply(&membership);
+        let res = change.apply(&membership, true);
         assert_eq!(
             Ok(Membership::<u64, ()> {
                 configs: vec![btreeset! {1,2}],
@@ -251,7 +264,7 @@ fn test_membership_change() -> anyhow::Result<()> {
     {
         let membership = m();
         let change = ChangeMembers::RemoveNodes(btreeset! {3});
-        let res = change.apply(&membership);
+        let res = change.apply(&membership, true);
         assert_eq!(
             Ok(Membership::<u64, ()> {
                 configs: vec![btreeset! {1,2}],
@@ -265,7 +278,7 @@ fn test_membership_change() -> anyhow::Result<()> {
     {
         let membership = m();
         let change = ChangeMembers::ReplaceAllNodes(btreemap! {1=>(),2=>(),4=>()});
-        let res = change.apply(&membership);
+        let res = change.apply(&membership, true);
         assert_eq!(
             Ok(Membership::<u64, ()> {
                 configs: vec![btreeset! {1,2}],
@@ -275,6 +288,24 @@ fn test_membership_change() -> anyhow::Result<()> {
         );
     }
 
+    Ok(())
+}
+
+#[test]
+fn make_uniform_respects_retention_and_preserves_learner_metadata() -> anyhow::Result<()> {
+    let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40, 5 => 50, 6 => 60};
+    let joint = Membership::<u64, u64>::new(vec![btreeset! {1, 2, 3}, btreeset! {3, 4, 5}], nodes.clone())?;
+    for retain in [true, false] {
+        let change = ChangeMembers::<u64, u64>::make_uniform();
+        let result = change.apply(&joint, retain)?;
+        let target_nodes = if retain {
+            nodes.clone()
+        } else {
+            btreemap! {3 => 30, 4 => 40, 5 => 50, 6 => 60}
+        };
+        let expected = Membership::new(vec![btreeset! {3, 4, 5}], target_nodes)?;
+        assert_eq!(expected, result);
+    }
     Ok(())
 }
 
@@ -297,7 +328,7 @@ fn test_membership_change_batch() -> anyhow::Result<()> {
 
     let membership = m();
     let change = rm_2_add_5();
-    let goal = change.apply(&membership)?;
+    let goal = change.apply(&membership, true)?;
 
     assert_eq!(goal, Membership::<u64, ()> {
         configs: vec![btreeset! {1,3,5}],

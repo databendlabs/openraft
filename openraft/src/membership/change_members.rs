@@ -146,7 +146,11 @@ where
 {
     type Error = Infallible;
 
-    fn apply(self, membership: &Membership<NID, N>) -> Result<Membership<NID, N>, MembershipError<NID, Self::Error>> {
+    fn apply(
+        self,
+        membership: &Membership<NID, N>,
+        retain: bool,
+    ) -> Result<Membership<NID, N>, MembershipError<NID, Self::Error>> {
         tracing::debug!("{}: change: {:?}", func_name!(), self);
 
         let mut target = membership.clone();
@@ -214,6 +218,14 @@ where
             return Err(EmptyMembership {}.into());
         };
         target.configs = vec![target_voter_ids];
+        if !retain {
+            for node_id in membership.voter_ids() {
+                let demoted = target.is_learner(&node_id);
+                if demoted {
+                    target.nodes.remove(&node_id);
+                }
+            }
+        }
         tracing::debug!("target membership: {}", target);
         Ok(target)
     }

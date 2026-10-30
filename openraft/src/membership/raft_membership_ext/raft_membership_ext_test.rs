@@ -35,12 +35,12 @@ impl RaftMembership for RoleMembership {
 
     type QuorumSet = Vec<BTreeSet<u64>>;
 
-    fn read_quorum_set(&self) -> &Self::QuorumSet {
-        &self.read
+    fn read_quorum_set(&self) -> Self::QuorumSet {
+        self.read.clone()
     }
 
-    fn write_quorum_set(&self) -> &Self::QuorumSet {
-        &self.write
+    fn write_quorum_set(&self) -> Self::QuorumSet {
+        self.write.clone()
     }
 
     fn supports_direct_transition_to(&self, other: &Self) -> bool {
@@ -74,18 +74,8 @@ impl RaftMembership for RoleMembership {
         ids.into_iter()
     }
 
-    fn new<I>(read_quorum_set: Self::QuorumSet, write_quorum_set: Self::QuorumSet, nodes: I) -> Self
-    where I: IntoIterator<Item = (u64, (), NodeRole)> {
-        let mut roles = BTreeMap::new();
-        for (node_id, _node, role) in nodes {
-            roles.insert(node_id, role);
-        }
-
-        RoleMembership {
-            read: read_quorum_set,
-            write: write_quorum_set,
-            roles,
-        }
+    fn joint_with(&self, _goal: &Self) -> Self {
+        unimplemented!("no test changes the membership")
     }
 }
 
@@ -106,11 +96,11 @@ impl RaftMembership for TrustedMembership {
 
     type QuorumSet = Vec<BTreeSet<u64>>;
 
-    fn read_quorum_set(&self) -> &Self::QuorumSet {
+    fn read_quorum_set(&self) -> Self::QuorumSet {
         self.0.read_quorum_set()
     }
 
-    fn write_quorum_set(&self) -> &Self::QuorumSet {
+    fn write_quorum_set(&self) -> Self::QuorumSet {
         self.0.write_quorum_set()
     }
 
@@ -132,37 +122,9 @@ impl RaftMembership for TrustedMembership {
         self.0.node_ids()
     }
 
-    fn new<I>(read_quorum_set: Self::QuorumSet, write_quorum_set: Self::QuorumSet, nodes: I) -> Self
-    where I: IntoIterator<Item = (u64, (), NodeRole)> {
-        let membership = RoleMembership::new(read_quorum_set, write_quorum_set, nodes);
-        Self(membership)
+    fn joint_with(&self, _goal: &Self) -> Self {
+        unimplemented!("no test changes the membership")
     }
-}
-
-#[test]
-fn drop_voters_demoted_to_learners_keeps_campaigners() {
-    let voter = NodeRole::Campaigner | NodeRole::ReceiveLogs;
-    let learner = NodeRole::ReceiveLogs;
-    let current = RoleMembership {
-        read: vec![btreeset! {1, 2, 3}],
-        write: vec![btreeset! {1, 2, 3}],
-        roles: btreemap! {1 => voter, 2 => voter, 3 => voter, 4 => learner},
-    };
-    // Voters 2 and 3 leave the quorum sets: 2 keeps campaigning, and 3 becomes a learner.
-    let goal = RoleMembership {
-        read: vec![btreeset! {1}],
-        write: vec![btreeset! {1}],
-        roles: btreemap! {1 => voter, 2 => voter, 3 => learner, 4 => learner},
-    };
-
-    let res = current.drop_voters_demoted_to_learners(goal);
-
-    let want = RoleMembership {
-        read: vec![btreeset! {1}],
-        write: vec![btreeset! {1}],
-        roles: btreemap! {1 => voter, 2 => voter, 4 => learner},
-    };
-    assert_eq!(want, res);
 }
 
 #[test]
@@ -233,58 +195,4 @@ fn ensure_write_voters_receive_logs_checks_only_write_voters() {
 
     let res = invalid.ensure_write_voters_receive_logs();
     assert_eq!(want, res);
-}
-
-#[test]
-fn joint_with_joins_read_and_write_quorum_sets_separately() {
-    let voter = NodeRole::Campaigner | NodeRole::ReceiveLogs;
-    let learner = NodeRole::ReceiveLogs;
-    let current = RoleMembership {
-        read: vec![btreeset! {1, 2}],
-        write: vec![btreeset! {1, 2, 3}],
-        roles: btreemap! {1 => voter, 2 => voter, 3 => voter, 4 => learner, 5 => learner},
-    };
-    let goal = RoleMembership {
-        read: vec![btreeset! {4, 5}],
-        write: vec![btreeset! {3, 4, 5}],
-        roles: btreemap! {1 => learner, 2 => learner, 3 => voter, 4 => voter, 5 => voter},
-    };
-
-    let joint = current.joint_with(&goal);
-
-    // The read quorum set of the joint holds the read configs of both sides, and its write
-    // quorum set holds their write configs. Voters 1 and 2 keep their roles in `current`.
-    let want = RoleMembership {
-        read: vec![btreeset! {1, 2}, btreeset! {4, 5}],
-        write: vec![btreeset! {1, 2, 3}, btreeset! {3, 4, 5}],
-        roles: btreemap! {1 => voter, 2 => voter, 3 => voter, 4 => voter, 5 => voter},
-    };
-    assert_eq!(want, joint);
-}
-
-#[test]
-fn joint_with_joins_old_and_goal_quorum_sets() {
-    let voter = NodeRole::Campaigner | NodeRole::ReceiveLogs;
-    let learner = NodeRole::ReceiveLogs;
-    let current = RoleMembership {
-        read: vec![btreeset! {1, 2}],
-        write: vec![btreeset! {1, 2, 3}],
-        roles: btreemap! {1 => voter, 2 => voter, 3 => voter, 4 => learner},
-    };
-    let goal = RoleMembership {
-        read: vec![btreeset! {1, 2, 4}],
-        write: vec![btreeset! {1, 2, 4}],
-        roles: btreemap! {1 => voter, 2 => voter, 3 => learner, 4 => voter},
-    };
-
-    let joint = current.joint_with(&goal);
-
-    // Every read quorum of the joint is a quorum of `{1,2}`, so it holds 1 and 2 and meets every
-    // write quorum of `current`. Voter 3 keeps its roles in `current`.
-    let want = RoleMembership {
-        read: vec![btreeset! {1, 2}, btreeset! {1, 2, 4}],
-        write: vec![btreeset! {1, 2, 3}, btreeset! {1, 2, 4}],
-        roles: btreemap! {1 => voter, 2 => voter, 3 => voter, 4 => voter},
-    };
-    assert_eq!(want, joint);
 }

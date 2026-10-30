@@ -168,16 +168,12 @@ where
 
         let effective = self.effective().membership();
         let wrap = |error| E::from_error(&error);
-        let goal = change.apply(effective);
-        let mut goal = goal.map_err(|error| error.map_user_defined(wrap))?;
+        let goal = change.apply(effective, retain);
+        let goal = goal.map_err(|error| error.map_user_defined(wrap))?;
         goal.ensure_non_empty_config()?;
         goal.ensure_voters_have_nodes().map_err(MembershipError::<_, E>::from)?;
         goal.ensure_write_voters_receive_logs()?;
         goal.ensure_read_write_quorums_intersect()?;
-        if !retain {
-            goal = effective.drop_voters_demoted_to_learners(goal);
-        }
-
         if effective.allows_direct_transition_to(&goal) {
             return Ok((goal, false));
         }
