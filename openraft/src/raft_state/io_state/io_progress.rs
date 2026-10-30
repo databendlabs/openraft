@@ -166,7 +166,6 @@ where
     }
 
     /// Conditionally update the `submit` cursor if the new value is greater.
-    #[allow(dead_code)]
     pub(crate) fn try_submit(&mut self, new_submitted: T) {
         if self.submitted.as_ref() < Some(&new_submitted) {
             self.submit(new_submitted);

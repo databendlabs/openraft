@@ -2672,8 +2672,11 @@ where
     async fn run_state_machine(&mut self, command: sm::Command<C, SM>) -> Result<(), Fatal<C>> {
         let io_id = command.get_log_progress();
 
+        // A full snapshot may end inside the local log, behind log I/O already submitted from the
+        // same leader. The snapshot does not shorten the log, so log progress must not move back.
+        // `accept_log_io()` and the completion `try_flush()` keep the other cursors monotonic too.
         if let Some(io_id) = io_id {
-            self.engine.state.log_progress_mut().submit(io_id);
+            self.engine.state.log_progress_mut().try_submit(io_id);
         }
 
         // If this command update the last-applied log id, mark it as submitted(to state machine).
