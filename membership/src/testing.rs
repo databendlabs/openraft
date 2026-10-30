@@ -212,6 +212,20 @@ where
     }
     let ids: Vec<u64> = target.node_ids().collect();
     assert_eq!(vec![1, 2, 3, 4, 5], ids);
+
+    // A removed voter with a non-learner role stays even when learners are not retained.
+    for role in [NodeRole::Campaigner, NodeRole::Empty] {
+        let change = change_voters(btreeset! {2, 3, 4}, btreemap! {1 => role});
+        let target = change.apply(&old, false).unwrap();
+        let got = target.get_node(&1);
+        let want = Some(NodeRef {
+            node: &(),
+            role,
+            is_read_voter: false,
+            is_write_voter: false,
+        });
+        assert_eq!(want, got);
+    }
 }
 
 /// Asserts that `apply()` sets a role only for a node of its result, and keeps every write voter
