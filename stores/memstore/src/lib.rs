@@ -268,6 +268,8 @@ pub struct MemStateMachine {
     /// When set, [`apply`](RaftStateMachine::apply) panics, simulating the state-machine worker
     /// task dying mid-apply while RaftCore keeps running.
     panic_on_apply: AtomicBool,
+
+    apply_error: Mutex<Option<io::Error>>,
 }
 
 impl MemStateMachine {
@@ -282,6 +284,7 @@ impl MemStateMachine {
             block,
             try_create_snapshot_builder_count: Arc::new(AtomicU64::new(0)),
             panic_on_apply: AtomicBool::new(false),
+            apply_error: Mutex::new(None),
         }
     }
 
@@ -293,6 +296,13 @@ impl MemStateMachine {
     /// worker task while RaftCore keeps running.
     pub fn panic_on_apply(&self, panic: bool) {
         self.panic_on_apply.store(panic, Ordering::Relaxed);
+    }
+
+    /// Make the next `apply` return `error` before changing the state machine.
+    #[openraft::macros::since(version = "0.10.0")]
+    pub fn fail_next_apply(&self, error: io::Error) {
+        let mut apply_error = self.apply_error.lock().unwrap();
+        *apply_error = Some(error);
     }
 
     /// Get and reset the counter for `try_create_snapshot_builder` calls.
@@ -559,6 +569,14 @@ impl RaftStateMachine<TypeConfig> for Arc<MemStateMachine> {
     async fn apply<Strm>(&mut self, mut entries: Strm) -> Result<(), io::Error>
     where Strm: Stream<Item = Result<EntryResponder<TypeConfig>, io::Error>> + Unpin + OptionalSend {
         use futures::TryStreamExt;
+
+        let apply_error = {
+            let mut apply_error = self.apply_error.lock().unwrap();
+            apply_error.take()
+        };
+        if let Some(error) = apply_error {
+            return Err(error);
+        }
 
         let mut sm = self.sm.write().await;
 
