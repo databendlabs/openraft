@@ -71,7 +71,11 @@ where
         let voters = voters_of(&read, &write);
         let mut config_nodes = BTreeMap::new();
         for (node_id, node) in nodes {
-            let role = config_role(&roles, &voters, &node_id);
+            let configured_role = roles.get(&node_id);
+            let role = match configured_role {
+                Some(role) => *role,
+                None => default_role(&voters, &node_id),
+            };
             config_nodes.insert(node_id, (node, role));
         }
 
@@ -366,16 +370,6 @@ where
 {
     let mut ids = rule.ids();
     ids.any(|id| id == *node_id)
-}
-
-/// Returns the role that a config with voters `voters` and roles `roles` gives `node_id`.
-fn config_role<NID>(roles: &BTreeMap<NID, NodeRole>, voters: &BTreeSet<NID>, node_id: &NID) -> NodeRole
-where NID: NodeId {
-    let role = roles.get(node_id);
-    match role {
-        Some(role) => *role,
-        None => default_role(voters, node_id),
-    }
 }
 
 /// Returns the role of `node_id` in a config with voters `voters` that sets no role for it.
