@@ -17,4 +17,5 @@ mod t51_after_snapshot_add_learner_and_request_a_log;
 mod t60_snapshot_chunk_size;
 mod t61_snapshot_cancel_at_hook;
 mod t90_issue_1892_inconsistent_snapshot;
+mod t90_issue_2170_snapshot_inside_follower_log;
 mod t90_issue_808_snapshot_to_unreachable_node_should_not_block;
