@@ -6,13 +6,13 @@ use crate::RaftLogReader;
 use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::async_runtime::MpscReceiver;
 use crate::async_runtime::OneshotSender;
 use crate::core::ApplyResult;
 use crate::core::notification::Notification;
 use crate::core::sm::Command;
 use crate::core::sm::CommandResult;
 use crate::core::sm::Response;
+use crate::core::sm::command_receiver::CommandReceiver;
 use crate::core::sm::handle::Handle;
 use crate::entry::RaftEntry;
 use crate::errors::StorageIOResult;
@@ -24,7 +24,6 @@ use crate::storage::v2::entry_responder::EntryResponderBuilder;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::LogIdOf;
-use crate::type_config::alias::MpscReceiverOf;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::SnapshotOf;
@@ -46,7 +45,7 @@ where
     log_reader: LR,
 
     /// Read command from RaftCore to execute.
-    cmd_rx: MpscReceiverOf<C, Command<C, SM>>,
+    cmd_rx: CommandReceiver<C, SM>,
 
     /// Send back the result of the command to RaftCore.
     resp_tx: MpscSenderOf<C, Notification<C>>,
@@ -64,7 +63,7 @@ where
         state_machine: SM,
         log_reader: LR,
         resp_tx: MpscSenderOf<C, Notification<C>>,
-        cmd_channel: (MpscSenderOf<C, Command<C, SM>>, MpscReceiverOf<C, Command<C, SM>>),
+        cmd_channel: (MpscSenderOf<C, Command<C, SM>>, CommandReceiver<C, SM>),
         span: tracing::Span,
     ) -> Handle<C, SM> {
         let (cmd_tx, cmd_rx) = cmd_channel;
