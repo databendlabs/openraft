@@ -47,25 +47,12 @@ use crate::quorum::Joint;
 ///
 /// # Node roles
 ///
-/// A [`NodeRole`] says whether a node may start an election and whether it receives logs. A config
-/// gives each of its voters [`NodeRole::Campaigner`] `|` [`NodeRole::ReceiveLogs`] and every other
-/// node [`NodeRole::ReceiveLogs`], unless it sets another role. [`with_roles()`](Self::with_roles)
-/// sets roles in a membership, and the `roles` of an [`ExplicitChange`](crate::ExplicitChange) set
-/// them in its result. A voter with only [`NodeRole::ReceiveLogs`] stores logs and votes, but
-/// starts no election on its own; a leadership transfer from the leader can still make it leader.
+/// [`with_roles()`](Self::with_roles) and [`ExplicitChange`](crate::ExplicitChange) set node roles.
+/// The [shared role guide](crate::docs) explains defaults, leadership transfers and joint changes.
 ///
 /// The lists alone decide whether a node is a read voter or a write voter. A voter of only the
 /// read lists may lack [`NodeRole::ReceiveLogs`], because it never needs to store an entry. A
 /// voter of the write lists needs it, or a write quorum that holds the voter never commits.
-///
-/// Each config holds every one of its nodes with its role there. A change keeps a role of the last
-/// config only while it differs from the default for the node's status there. A voter with only
-/// [`NodeRole::ReceiveLogs`] that a change turns into a learner therefore keeps that role, the
-/// default for a learner, and it campaigns again once a later change makes it a voter. A joint
-/// config gives each node its role in the new config, joined with its role in the old config if it
-/// is a voter of the old config.
-/// [`make_uniform()`](openraft::membership::RaftMembershipEdit::make_uniform) reduces the joint to
-/// the new config and so restores the roles that the new config sets.
 ///
 /// # Examples
 ///

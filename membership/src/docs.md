@@ -63,6 +63,11 @@ A change keeps a role only while it differs from the default. So a voter with
 only `ReceiveLogs` that becomes a learner has the default role of a learner,
 and it campaigns again once a later change makes it a voter.
 
+Each config stores its nodes with their roles. During a joint change, a
+node's role combines its roles in the new config and every earlier config
+where it is a voter. [`make_uniform()`] keeps only the new config, restoring
+that config's roles.
+
 [`ThresholdMembership`]: crate::ThresholdMembership
 [`WeightedMembership`]: crate::WeightedMembership
 [`HierarchicalMembership`]: crate::HierarchicalMembership
@@ -79,3 +84,4 @@ and it campaigns again once a later change makes it a voter.
 [`NodeRole::ReceiveLogs`]: openraft::membership::NodeRole::ReceiveLogs
 [`Trigger::transfer_leader()`]: openraft::raft::trigger::Trigger::transfer_leader
 [`WriteVoterWithoutReceiveLogs`]: openraft::membership::errors::WriteVoterWithoutReceiveLogs
+[`make_uniform()`]: openraft::membership::RaftMembershipEdit::make_uniform
