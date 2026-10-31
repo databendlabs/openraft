@@ -23,3 +23,4 @@ mod t20_raft_api;
 mod t50_lagging_network_write;
 mod t51_write_when_leader_quit;
 mod t90_issue_1761_purge_stranded_responder;
+mod t90_issue_2247_snapshot_pending_responders;

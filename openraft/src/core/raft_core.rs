@@ -2517,24 +2517,26 @@ where
         self.engine.state.purge_progress_mut().submit(upto.clone());
         self.log_store.purge(upto.clone()).await.sto_write_logs()?;
 
-        // A responder may still be pending for a log covered by this purge, e.g. a former
-        // leader's log superseded by a snapshot install. Its outcome is unknown because another
-        // node may have committed it. Complete the responder instead of leaving it stranded below
-        // the purge boundary (which would later panic in `apply_to_state_machine`).
+        self.discard_client_responders_upto(upto.index());
+
+        self.notifications.enqueue(Notification::LogPurged { upto });
+
+        Ok(())
+    }
+
+    /// Fail responders through `upto` when their log outcomes are unknown.
+    fn discard_client_responders_upto(&mut self, upto: u64) {
+        // Another node may have committed these logs before the snapshot superseded them.
         let leader_id = self.current_leader();
         let leader_node = self.get_leader_node(leader_id.clone());
-        for (log_index, tx) in self.client_responders.drain_upto(upto.index()) {
+        for (log_index, tx) in self.client_responders.drain_upto(upto) {
             tx.on_complete(Err(ClientWriteError::LogEntryDiscarded(ForwardToLeader {
                 leader_id: leader_id.clone(),
                 leader_node: leader_node.clone(),
                 reason: ForwardReason::NotLeader,
             })));
-            tracing::debug!("sent LogEntryDiscarded for purged log_index: {}", log_index);
+            tracing::debug!("sent LogEntryDiscarded for discarded log_index: {}", log_index);
         }
-
-        self.notifications.enqueue(Notification::LogPurged { upto });
-
-        Ok(())
     }
 
     /// Run [`Command::TruncateLog`].
@@ -2686,6 +2688,13 @@ where
     /// Run [`Command::StateMachine`], forwarding the inner command to the state machine worker.
     async fn run_state_machine(&mut self, command: sm::Command<C, SM>) -> Result<(), Fatal<C>> {
         let io_id = command.get_log_progress();
+        let snapshot_log_id = command.get_snapshot_progress();
+
+        // A submitted snapshot permits later applies before its PurgeLog runs.
+        // Remove covered responders before advancing apply progress.
+        if let Some(log_id) = &snapshot_log_id {
+            self.discard_client_responders_upto(log_id.index());
+        }
 
         // A full snapshot may end inside the local log, behind log I/O already submitted from the
         // same leader. The snapshot does not shorten the log, so log progress must not move back.
@@ -2699,7 +2708,7 @@ where
             self.engine.state.apply_progress_mut().submit(log_id);
         }
 
-        if let Some(log_id) = command.get_snapshot_progress() {
+        if let Some(log_id) = snapshot_log_id {
             self.engine.state.snapshot_progress_mut().submit(log_id);
         }
 
