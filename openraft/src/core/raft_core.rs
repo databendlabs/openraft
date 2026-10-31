@@ -2081,6 +2081,9 @@ where
             }
 
             Notification::LocalIO { io_id } => self.handle_local_io(io_id),
+            Notification::LogPurged { upto } => {
+                self.engine.state.purge_progress_mut().flush(upto);
+            }
             Notification::ReplicationProgress {
                 stream_id,
                 progress,
@@ -2511,6 +2514,7 @@ where
 
     /// Run [`Command::PurgeLog`].
     async fn run_purge_log(&mut self, upto: LogIdOf<C>) -> Result<(), StorageError<C>> {
+        self.engine.state.purge_progress_mut().submit(upto.clone());
         self.log_store.purge(upto.clone()).await.sto_write_logs()?;
 
         // A responder may still be pending for a log covered by this purge, e.g. a former
@@ -2528,7 +2532,7 @@ where
             tracing::debug!("sent LogEntryDiscarded for purged log_index: {}", log_index);
         }
 
-        self.engine.state.io_state_mut().update_purged(Some(upto));
+        self.notifications.enqueue(Notification::LogPurged { upto });
 
         Ok(())
     }
