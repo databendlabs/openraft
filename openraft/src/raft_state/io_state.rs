@@ -133,16 +133,18 @@ where C: RaftTypeConfig
     ///    [`calculate_local_committed()`](Self::calculate_local_committed).
     pub(crate) cluster_committed: MonotonicIncrease<LogIOId<C>>,
 
-    /// Last log id purged from storage.
+    /// Tracks progress of purging log entries from storage.
     ///
-    /// Unlike `RaftState::last_purged_log_id()` (which is the queued purge target),
-    /// this reflects the actually purged log id.
-    pub(crate) purged: Option<LogIdOf<C>>,
+    /// - `accepted`: Purge accepted for execution
+    /// - `submitted`: Purge submitted to storage
+    /// - `flushed`: Log entries purged from storage
+    pub(crate) purged: Valid<IOProgress<LogIdOf<C>>>,
 }
 
 const LOG_PROGRESS_NAME: &str = "LogIO";
 const APPLY_PROGRESS_NAME: &str = "Apply";
 const SNAPSHOT_PROGRESS_NAME: &str = "Snapshot";
+const PURGE_PROGRESS_NAME: &str = "Purge";
 
 impl<C> Default for IOState<C>
 where C: RaftTypeConfig
@@ -154,7 +156,7 @@ where C: RaftTypeConfig
             apply_progress: new_progress(None, "xx", APPLY_PROGRESS_NAME),
             snapshot: new_progress(None, "xx", SNAPSHOT_PROGRESS_NAME),
             cluster_committed: MonotonicIncrease::default(),
-            purged: None,
+            purged: new_progress(None, "xx", PURGE_PROGRESS_NAME),
         }
     }
 }
@@ -178,7 +180,8 @@ where C: RaftTypeConfig
         // Snapshot must be included in applied.
         less_equal!(self.snapshot.submitted(), self.apply_progress.submitted());
 
-        less_equal!(&self.purged, &self.snapshot.flushed().cloned());
+        self.purged.validate()?;
+        less_equal!(self.purged.flushed(), self.snapshot.flushed());
         Ok(())
     }
 }
@@ -200,7 +203,7 @@ where C: RaftTypeConfig
             apply_progress: new_progress(applied, id, APPLY_PROGRESS_NAME),
             snapshot: new_progress(snapshot, id, SNAPSHOT_PROGRESS_NAME),
             cluster_committed: MonotonicIncrease::default(),
-            purged,
+            purged: new_progress(purged, id, PURGE_PROGRESS_NAME),
         }
     }
 
@@ -218,14 +221,6 @@ where C: RaftTypeConfig
 
     pub(crate) fn building_snapshot(&self) -> bool {
         self.building_snapshot
-    }
-
-    pub(crate) fn update_purged(&mut self, log_id: Option<LogIdOf<C>>) {
-        self.purged = log_id;
-    }
-
-    pub(crate) fn purged(&self) -> Option<&LogIdOf<C>> {
-        self.purged.as_ref()
     }
 
     /// Calculates the local committed log id that is safe to apply to the state machine.
@@ -287,4 +282,30 @@ where C: RaftTypeConfig
 fn new_progress<T>(initial_value: Option<T>, id: impl ToString, name: &'static str) -> Valid<IOProgress<T>>
 where T: PartialOrd + fmt::Debug + fmt::Display + Clone {
     Valid::new(IOProgress::new_synchronized(initial_value, id, name))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::IOState;
+    use crate::engine::testing::UTConfig;
+    use crate::engine::testing::log_id;
+
+    #[test]
+    fn test_purged_tracks_pending_io() {
+        let mut state = IOState::<UTConfig>::default();
+        let completed = log_id(1, 0, 2);
+        let submitted = log_id(1, 0, 3);
+        let accepted = log_id(1, 0, 4);
+        state.purged.try_update_all(completed);
+        state.purged.accept(accepted);
+        state.purged.submit(submitted);
+        let purged = state.purged.flushed();
+        assert_eq!(Some(&completed), purged);
+
+        state.purged.flush(submitted);
+        let purged = state.purged.flushed();
+        assert_eq!(Some(&submitted), purged);
+        let actual_accepted = state.purged.accepted();
+        assert_eq!(Some(&accepted), actual_accepted);
+    }
 }

@@ -126,7 +126,7 @@ where C: RaftTypeConfig
     }
 
     fn io_purged(&self) -> Option<&LogIdOf<C>> {
-        self.io_state.purged()
+        self.purge_progress().flushed()
     }
 
     fn snapshot_last_log_id(&self) -> Option<&LogIdOf<C>> {
@@ -352,6 +352,14 @@ where C: RaftTypeConfig
         &mut self.io_state_mut().apply_progress
     }
 
+    pub(crate) fn purge_progress(&self) -> &IOProgress<LogIdOf<C>> {
+        &self.io_state().purged
+    }
+
+    pub(crate) fn purge_progress_mut(&mut self) -> &mut IOProgress<LogIdOf<C>> {
+        &mut self.io_state_mut().purged
+    }
+
     pub(crate) fn snapshot_progress_mut(&mut self) -> &mut IOProgress<LogIdOf<C>> {
         &mut self.io_state_mut().snapshot
     }
@@ -394,8 +402,9 @@ where C: RaftTypeConfig
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn purge_log(&mut self, upto: &LogIdOf<C>) {
+    pub(crate) fn accept_purge(&mut self, upto: &LogIdOf<C>) {
         self.log_ids.purge(upto);
+        self.purge_progress_mut().accept(upto.clone());
     }
 
     /// Determine the current server state by state.

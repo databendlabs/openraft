@@ -55,7 +55,7 @@ fn test_trigger_purge_log_already_scheduled() -> anyhow::Result<()> {
         last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 0, 1)), m12()),
     };
     eng.state.purge_upto = Some(log_id(1, 0, 2));
-    eng.state.io_state.purged = Some(log_id(1, 0, 2));
+    eng.state.purge_progress_mut().try_update_all(log_id(1, 0, 2));
 
     eng.trigger_purge_log(2);
 
@@ -74,7 +74,10 @@ fn test_trigger_purge_log_delete_only_in_snapshot_logs() -> anyhow::Result<()> {
         last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 0, 1)), m12()),
     };
     eng.state.purge_upto = Some(log_id(1, 0, 2));
-    eng.state.io_state.purged = Some(log_id(1, 0, 2));
+    let snapshot_log_id = log_id(1, 0, 3);
+    eng.state.io_state.apply_progress.try_update_all(snapshot_log_id);
+    eng.state.io_state.snapshot.try_update_all(snapshot_log_id);
+    eng.state.purge_progress_mut().try_update_all(log_id(1, 0, 2));
     eng.state.log_ids = LogIdList::new(Some(log_id(1, 0, 2)), [log_id(1, 0, 10)]);
 
     eng.trigger_purge_log(5);
@@ -101,7 +104,7 @@ fn test_trigger_purge_log_in_used_wont_be_delete() -> anyhow::Result<()> {
         last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 0, 1)), m12()),
     };
     eng.state.purge_upto = Some(log_id(1, 0, 2));
-    eng.state.io_state.purged = Some(log_id(1, 0, 2));
+    eng.state.purge_progress_mut().try_update_all(log_id(1, 0, 2));
     eng.state.log_ids = LogIdList::new(Some(log_id(1, 0, 2)), [log_id(1, 0, 10)]);
     eng.state.vote = Leased::new(
         UTConfig::<()>::now(),

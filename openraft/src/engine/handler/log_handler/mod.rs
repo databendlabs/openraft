@@ -58,7 +58,7 @@ where
 
         let upto = purge_upto.unwrap().clone();
 
-        st.purge_log(&upto);
+        st.accept_purge(&upto);
         self.output.push_command(Command::PurgeLog { upto });
     }
 

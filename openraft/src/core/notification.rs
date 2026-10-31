@@ -14,6 +14,7 @@ use crate::raft_state::IOId;
 use crate::replication;
 use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::InstantOf;
+use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::UncommittedVoteOf;
 use crate::type_config::alias::VoteOf;
 
@@ -61,6 +62,9 @@ where C: RaftTypeConfig
 
     /// Completion of an IO operation to local store.
     LocalIO { io_id: IOId<C> },
+
+    /// Completion of purging log entries from storage.
+    LogPurged { upto: LogIdOf<C> },
 
     /// Result of executing a command sent from network worker.
     ReplicationProgress {
@@ -115,6 +119,7 @@ where C: RaftTypeConfig
             Self::HigherVote { .. } => NotificationName::HigherVote,
             Self::StorageError { .. } => NotificationName::StorageError,
             Self::LocalIO { .. } => NotificationName::LocalIO,
+            Self::LogPurged { .. } => NotificationName::LogPurged,
             Self::ReplicationProgress { .. } => NotificationName::ReplicationProgress,
             Self::HeartbeatProgress { .. } => NotificationName::HeartbeatProgress,
             Self::StateMachine { .. } => NotificationName::StateMachine,
@@ -164,6 +169,7 @@ where C: RaftTypeConfig
             }
             Self::StorageError { error } => write!(f, "StorageError: {}", error),
             Self::LocalIO { io_id } => write!(f, "IOFlushed: {}", io_id),
+            Self::LogPurged { upto } => write!(f, "LogPurged: {}", upto),
             Self::ReplicationProgress {
                 stream_id,
                 progress,

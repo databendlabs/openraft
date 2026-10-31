@@ -443,6 +443,7 @@ where
         want.log_progress_mut().set_id(node_id.to_string());
         want.apply_progress_mut().set_id(node_id.to_string());
         want.snapshot_progress_mut().set_id(node_id.to_string());
+        want.purge_progress_mut().set_id(node_id.to_string());
 
         want.progress_id_gen = initial.progress_id_gen.clone();
 

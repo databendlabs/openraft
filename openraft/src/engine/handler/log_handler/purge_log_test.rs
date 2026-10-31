@@ -11,6 +11,10 @@ fn eng() -> Engine<UTConfig> {
 
     // Setup: purged at 2 (leader 2), leader 2's logs at 3-4, leader 4's logs at 5-6
     eng.state.log_ids = LogIdList::new(Some(log_id(2, 1, 2)), vec![log_id(2, 1, 4), log_id(4, 1, 6)]);
+    let purged = log_id(2, 1, 2);
+    eng.state.io_state.apply_progress.try_update_all(purged);
+    eng.state.io_state.snapshot.try_update_all(purged);
+    eng.state.purge_progress_mut().try_update_all(purged);
     eng
 }
 
@@ -61,6 +65,15 @@ fn test_purge_log_same_leader_as_prev_last_purged() -> anyhow::Result<()> {
     let mut lh = eng.log_handler();
     lh.state.purge_upto = Some(log_id(2, 1, 3));
     lh.purge_log();
+
+    let expected_accepted = log_id(2, 1, 3);
+    let accepted = lh.state.purge_progress().accepted();
+    assert_eq!(Some(&expected_accepted), accepted);
+    let previously_purged = log_id(2, 1, 2);
+    let submitted = lh.state.purge_progress().submitted();
+    assert_eq!(Some(&previously_purged), submitted);
+    let flushed = lh.state.purge_progress().flushed();
+    assert_eq!(Some(&previously_purged), flushed);
 
     assert_eq!(Some(&log_id(2, 1, 3)), lh.state.last_purged_log_id());
     assert_eq!(Some(&log_id(2, 1, 3)), lh.state.log_ids.purged());
