@@ -374,6 +374,24 @@ fn test_config_state_machine_buffer() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_config_local_lease_read() -> anyhow::Result<()> {
+    let cases = [
+        (vec!["foo"], None),
+        (vec!["foo", "--enable-local-lease-read"], Some(true)),
+        (vec!["foo", "--enable-local-lease-read=true"], Some(true)),
+        (vec!["foo", "--enable-local-lease-read=false"], Some(false)),
+    ];
+    for (args, expected) in cases {
+        let config = Config::build(&args)?;
+        assert_eq!(expected, config.enable_local_lease_read);
+        let enabled = config.get_enable_local_lease_read();
+        let expected_enabled = expected.unwrap_or(false);
+        assert_eq!(expected_enabled, enabled);
+    }
+    Ok(())
+}
+
+#[test]
 fn test_config_lifecycle_latency_capacity() -> anyhow::Result<()> {
     // Default: None (no clap default_value)
     let config = Config::build(&["foo"])?;

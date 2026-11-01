@@ -177,7 +177,7 @@ impl SnapshotPolicy {
 /// - [`SnapshotPolicy`] for snapshot triggering strategies
 ///
 /// [`Raft::new`]: crate::Raft::new
-#[since]
+#[since(version = "0.10.0", change = "add opt-in local lease reads")]
 #[since(version = "0.10.0", change = "add opt-in unbounded state-machine buffering")]
 #[since(version = "0.10.0", change = "added broadcast_submitted_on_append option")]
 #[since(version = "0.10.0", change = "added reset_backoff_on_transfer_leader option")]
@@ -447,6 +447,27 @@ pub struct Config {
     ))]
     pub enable_elect: bool,
 
+    /// Whether [`Raft::get_local_read_linearizer`] may use the published leader snapshot.
+    ///
+    /// `None` (the default) and `Some(false)` make that method use the core path.
+    /// `Some(true)` permits caller-side lease checks; cache misses still use the core path.
+    /// [`Raft::get_read_linearizer`] and [`Raft::ensure_linearizable`] always use the core path.
+    ///
+    /// The cache costs work on the leader: with `Some(true)`, RaftCore rebuilds and compares the
+    /// snapshot after every notification and command batch, and allocates a new one whenever the
+    /// quorum acknowledgement time or the commit index changes.
+    ///
+    /// [`Raft::get_local_read_linearizer`]: crate::Raft::get_local_read_linearizer
+    /// [`Raft::get_read_linearizer`]: crate::Raft::get_read_linearizer
+    /// [`Raft::ensure_linearizable`]: crate::Raft::ensure_linearizable
+    #[since(version = "0.10.0")]
+    #[cfg_attr(feature = "clap", clap(long,
+           action = clap::ArgAction::Set,
+           num_args = 0..=1,
+           default_missing_value = "true"
+    ))]
+    pub enable_local_lease_read: Option<bool>,
+
     /// The policy for stepping down a Leader that is removed from a committed membership config.
     ///
     /// - [`After(ms)`](StepDownPolicy::After): when the membership config that removes this Leader
@@ -673,6 +694,7 @@ impl Default for Config {
             enable_tick: DEFAULTS.enable_tick,
             enable_heartbeat: DEFAULTS.enable_heartbeat,
             enable_elect: DEFAULTS.enable_elect,
+            enable_local_lease_read: None,
             removed_leader_step_down: DEFAULTS.removed_leader_step_down.clone(),
             quorum_loss_probe_interval: DEFAULTS.quorum_loss_probe_interval,
             enable_pre_vote: DEFAULTS.enable_pre_vote,
@@ -737,6 +759,11 @@ impl Config {
     /// disabled (`false`), the current default.
     pub(crate) fn get_enable_pre_vote(&self) -> bool {
         self.enable_pre_vote.unwrap_or(false)
+    }
+
+    /// Whether to enable caller-side lease reads from the published leader state.
+    pub(crate) fn get_enable_local_lease_read(&self) -> bool {
+        self.enable_local_lease_read.unwrap_or(false)
     }
 
     /// Get the API channel size for bounded MPSC channel.

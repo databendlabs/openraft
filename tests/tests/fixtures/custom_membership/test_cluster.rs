@@ -11,8 +11,10 @@ use openraft::Config;
 use openraft::Raft;
 use openraft::RaftTypeConfig;
 use openraft::SnapshotPolicy;
+use openraft::StorageError;
 use openraft::alias::EntryOf;
 use openraft::entry::RaftEntry;
+use openraft::errors::Fatal;
 use openraft::errors::RPCError;
 use openraft::network::RPCOption;
 use openraft::network::RaftNetworkFactory;
@@ -69,7 +71,11 @@ where
         config: Config,
         node_ids: impl IntoIterator<Item = u64>,
         membership: C::Membership,
-    ) -> Result<Self> {
+    ) -> Result<Self>
+    where
+        StorageError<C>: Send + Sync,
+        Fatal<C>: Send + Sync,
+    {
         let config = config.validate()?;
         let config = Arc::new(config);
         let delay_ms = configured_network_send_delay(0);
