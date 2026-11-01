@@ -90,6 +90,7 @@ use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::ClientResponderQueue;
 use crate::core::IoBroadcast;
+use crate::core::LeaseReadStatePublisher;
 use crate::core::MetricsChannels;
 use crate::core::PendingReadDeadlineNotifier;
 use crate::core::PendingReadQueue;
@@ -544,6 +545,8 @@ where
         let (tx_metrics, rx_metrics) = C::watch_channel(RaftMetrics::new_initial(id.clone()));
         let (tx_data_metrics, rx_data_metrics) = C::watch_channel(RaftDataMetrics::default());
         let (tx_server_metrics, rx_server_metrics) = C::watch_channel(RaftServerMetrics::new_initial(id.clone()));
+        let (tx_lease_read_state, rx_lease_read_state) = C::watch_channel(None);
+        let lease_read_state_publisher = LeaseReadStatePublisher::new(tx_lease_read_state);
 
         // Watch channel for IO completion notifications from storage callbacks.
         // Initial value is a dummy IOId with this node's ID.
@@ -622,6 +625,7 @@ where
                     sm_handle,
 
                     engine,
+                    lease_read_state_publisher,
 
                     // initially, allocate for 8 kilo outstanding requests.
                     client_responders: ClientResponderQueue::with_capacity(1024 * 8),
@@ -697,6 +701,7 @@ where
             runtime_config,
             tick_handle: Mutex::new(None),
             tx_api,
+            rx_lease_read_state,
             rx_metrics,
             rx_data_metrics,
             rx_server_metrics,
@@ -1182,10 +1187,10 @@ where
     ///
     /// # Examples
     /// ```ignore
-    /// // Use a strict policy for this specific critical read
+    /// // Confirm leadership with a fresh quorum acknowledgement
     /// my_raft.ensure_linearizable(ReadPolicy::ReadIndex).await?;
     ///
-    /// // Or use a more performant policy when consistency requirements are less strict
+    /// // Or reuse a valid leader lease to avoid a quorum round trip
     /// my_raft.ensure_linearizable(ReadPolicy::LeaseRead).await?;
     ///
     /// // Then proceed with the state machine read
@@ -1247,6 +1252,10 @@ where
     /// to the specified [`LinearizerOption`]. [`ReadPolicy`] is also accepted and converted into
     /// an option.
     ///
+    /// The request always enters RaftCore's API queue alongside write requests. To allow a
+    /// caller-side lease check that bypasses this queue, use [`Self::get_local_read_linearizer`].
+    /// Queue order governs request handling; an earlier write may still be uncommitted.
+    ///
     /// Returns:
     /// - `Ok(Linearizer<C>)` on successful confirmation that the node is the leader. The
     ///   [`Linearizer`] contains the `read_log_id` up to which the state machine should apply to
@@ -1297,6 +1306,34 @@ where
     ) -> Result<Linearizer<C>, RaftError<C, LinearizableReadError<C>>> {
         let linearizer_option = linearizer_option.into();
         self.app_api().get_read_linearizer(linearizer_option).await.into_raft_result()
+    }
+
+    /// Returns a [`Linearizer`] using a caller-side lease check when enabled and valid.
+    ///
+    /// With [`Config::enable_local_lease_read`] set to `Some(true)`, a valid cached leader
+    /// snapshot authorizes the read without entering RaftCore's API queue. The read can therefore
+    /// overtake queued write requests and uses the published committed boundary. Both this method
+    /// and [`Self::get_read_linearizer`] support linearizable reads; overlapping unfinished writes
+    /// may follow the read. Await a write's completion before starting a read that must observe it.
+    ///
+    /// Disabled caching, a missing or expired snapshot, and zero effective acknowledgement age
+    /// fall back to [`Self::get_read_linearizer`] with the same options. In particular,
+    /// [`ReadPolicy::ReadIndex`] always uses RaftCore for fresh quorum confirmation.
+    ///
+    /// A cache hit can return immediately, but the caller must still await
+    /// [`Linearizer::await_ready`] or [`Linearizer::try_await_ready`] before reading application
+    /// state. This method checks leader state; follower reads still obtain a linearizer from
+    /// the leader and wait for their own state machine to catch up.
+    #[since(version = "0.10.0")]
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub async fn get_local_read_linearizer(
+        &self,
+        linearizer_option: impl Into<LinearizerOption>,
+    ) -> Result<Linearizer<C>, RaftError<C, LinearizableReadError<C>>> {
+        let linearizer_option = linearizer_option.into();
+        let app_api = self.app_api();
+        let result = app_api.get_local_read_linearizer(linearizer_option).await;
+        result.into_raft_result()
     }
 
     /// Submit a mutating client request to Raft to update the state of the system (§5.1).

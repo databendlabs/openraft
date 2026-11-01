@@ -24,6 +24,7 @@ use crate::metrics::RaftDataMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::metrics::Wait;
 use crate::raft::core_state::CoreState;
+use crate::raft::linearizable_read::lease_read_state::LeaseReadState;
 use crate::type_config::AsyncRuntime;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::AsyncRuntimeOf;
@@ -50,6 +51,7 @@ where C: RaftTypeConfig
     pub(in crate::raft) runtime_config: Arc<RuntimeConfig<C>>,
     pub(in crate::raft) tick_handle: Mutex<Option<TickHandle<C>>>,
     pub(in crate::raft) tx_api: MpscSenderOf<C, RaftMsg<C>>,
+    pub(in crate::raft) rx_lease_read_state: WatchReceiverOf<C, Option<Arc<LeaseReadState<C>>>>,
     pub(in crate::raft) rx_metrics: WatchReceiverOf<C, RaftMetrics<C>>,
     pub(in crate::raft) rx_data_metrics: WatchReceiverOf<C, RaftDataMetrics<C>>,
     pub(in crate::raft) rx_server_metrics: WatchReceiverOf<C, RaftServerMetrics<C>>,

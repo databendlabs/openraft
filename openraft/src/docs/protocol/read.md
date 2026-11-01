@@ -12,22 +12,22 @@ Openraft also use `read_log_id` instead of `read_index`.
 
 ## Ensuring linearizability
 
-To ensure linearizability, read operations must perform a [`get_read_linearizer(read_policy)`][`get_read_linearizer()`] operation on the leader before proceeding.
+To ensure linearizability, obtain a [`Linearizer`] on the leader with
+[`get_read_linearizer()`] or [`get_local_read_linearizer()`] before proceeding.
 
-This method confirms that this node is the leader at the time of invocation by either:
+Both methods authorize a read using either:
 - sending heartbeats to a quorum of followers,
 - or using leadership lease,
 
 depending on the `read_policy` [`ReadPolicy`].  The `read_policy` can be one of:
 
-- [`ReadPolicy::ReadIndex`]: Provides strongest consistency guarantees by confirming
-  leadership with a quorum before serving reads, but incurs higher latency due to network
-  communication.
-- [`ReadPolicy::LeaseRead`]: Uses leadership lease to avoid network round-trips, providing
-  better performance but slightly weaker consistency guarantees (assumes minimal clock drift
-  between nodes).
+- [`ReadPolicy::ReadIndex`]: Confirms leadership with a fresh quorum acknowledgement before
+  serving reads, incurring network latency.
+- [`ReadPolicy::LeaseRead`]: Reuses a fresh quorum acknowledgement to avoid network round-trips.
+  It preserves linearizability under the leader lease's clock-drift assumptions.
 
-[`get_read_linearizer()`] returns a [`Linearizer`], containing `(read_log_id, last_applied_log_id)`:
+Both [`get_read_linearizer()`] and [`get_local_read_linearizer()`] return a [`Linearizer`],
+containing `(read_log_id, last_applied_log_id)`:
 
 - `read_log_id` represents the log id up to which the state machine should apply to ensure a
   linearizable read,
@@ -38,6 +38,45 @@ by calling [`Linearizer::try_await_ready()`], or [`Linearizer::await_ready()`] f
 and at last, proceed with the state machine read.
 
 The above steps are encapsulated in the [`ensure_linearizable(read_policy)`][`ensure_linearizable()`] method.
+
+## Caller-side lease reads
+
+Choose the API explicitly:
+
+| API | Request handling |
+| --- | --- |
+| [`get_read_linearizer()`], [`get_read_log_id()`], [`ensure_linearizable()`] | Always enqueue the read request in RaftCore's API queue alongside writes. |
+| [`get_local_read_linearizer()`] | Try the published leader snapshot in the caller's task when enabled; otherwise enqueue through `get_read_linearizer()`. |
+
+Set [`Config::enable_local_lease_read`] to `Some(true)` to enable the caller-side check in
+`get_local_read_linearizer()`. With `None` (the default) or `Some(false)`, that method uses
+`get_read_linearizer()` with the same options. The existing read APIs always use RaftCore.
+
+On a cache hit, the local method uses the published committed boundary without entering the
+core's queue. It can therefore complete before an earlier queued write request is handled,
+even while the core is busy. A core read uses the committed boundary when RaftCore handles it.
+Queue order serializes request handling, not write completion: an earlier write can still be
+uncommitted when the core handles a read. Both APIs support linearizable reads, and an unfinished
+write that overlaps a read may follow that read. Await the write response before starting a read
+that must observe it.
+
+The caller-side lease check uses acknowledged RPC sending time and caps the accepted age at the
+configured leader lease. A missing or expired snapshot falls back to the core, preserving the
+options' forwarding, heartbeat, and timeout behavior. `ReadIndex` and zero effective acknowledgement
+age always use RaftCore for fresh quorum confirmation.
+
+RaftCore publishes committed progress before dispatching apply work and invalidates the publication before leadership transfer.
+Each read loads the current publication for that invocation.
+A read that captured a valid snapshot before invalidation overlaps the transfer and may finish afterward.
+
+An immediate cache hit authorizes the read; application state may still need to catch up.
+The returned `Linearizer` retains its apply barrier:
+
+```ignore
+let linearizer = my_raft.get_local_read_linearizer(ReadPolicy::LeaseRead).await?;
+linearizer.await_ready(&my_raft).await?;
+proceed_with_state_machine_read();
+```
 
 ## Examples
 
@@ -51,7 +90,7 @@ The above snippet does the same as the following:
 ```ignore
 let linearizer = my_raft.get_read_linearizer(ReadPolicy::ReadIndex).await?;
 
-linearizer.await_ready(&my_raft, None).await?;
+linearizer.await_ready(&my_raft).await?;
 
 // Following read from state machine is linearized across the cluster
 let val = my_raft.with_state_machine(|sm| { sm.read("foo") }).await?;
@@ -115,6 +154,8 @@ at least as large as any committed log, once `last_applied_log_id.index() >= rea
 
 [`ensure_linearizable()`]: crate::Raft::ensure_linearizable
 [`get_read_linearizer()`]: crate::Raft::get_read_linearizer
+[`get_local_read_linearizer()`]: crate::Raft::get_local_read_linearizer
+[`get_read_log_id()`]: crate::Raft::get_read_log_id
 [`Raft::metrics`]: crate::Raft::metrics
 [`Linearizer`]: crate::raft::linearizable_read::Linearizer
 [`Linearizer::await_ready()`]: crate::raft::linearizable_read::Linearizer::await_ready
@@ -122,3 +163,5 @@ at least as large as any committed log, once `last_applied_log_id.index() >= rea
 [`ReadPolicy`]: crate::raft::ReadPolicy
 [`ReadPolicy::ReadIndex`]: crate::raft::ReadPolicy::ReadIndex
 [`ReadPolicy::LeaseRead`]: crate::raft::ReadPolicy::LeaseRead
+
+[`Config::enable_local_lease_read`]: crate::Config::enable_local_lease_read
