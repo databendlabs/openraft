@@ -8,6 +8,7 @@ use openraft::OptionalSend;
 use openraft::RaftTypeConfig;
 use openraft::Vote;
 use openraft::alias::SnapshotOf;
+use openraft::async_runtime::Mutex as AsyncMutex;
 use openraft::base::BoxFuture;
 use openraft::base::BoxStream;
 use openraft::entry::RaftEntry;
@@ -28,6 +29,8 @@ use openraft::raft::TransferLeaderRequest;
 use openraft::raft::TransferLeaderResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
+use openraft::type_config::TypeConfigExt;
+use openraft::type_config::alias::MutexOf;
 use openraft::vote::RaftLeaderIdExt;
 use openraft_legacy::network_v1::InstallSnapshotRequest;
 use openraft_legacy::network_v1::RaftNetwork as LegacyRaftNetwork;
@@ -49,6 +52,7 @@ impl RaftNetworkFactory<MemConfig> for RaftRouter {
         RaftRouterNetwork {
             target,
             owner: self.clone(),
+            append_entries_lock: Arc::new(MemConfig::mutex(())),
         }
     }
 }
@@ -57,6 +61,7 @@ impl RaftNetworkFactory<MemConfig> for RaftRouter {
 pub struct RaftRouterNetwork {
     target: MemNodeId,
     owner: RaftRouter,
+    append_entries_lock: Arc<MutexOf<MemConfig, ()>>,
 }
 
 impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
@@ -94,6 +99,7 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
         mut rpc: AppendEntriesRequest<MemConfig>,
         _option: RPCOption,
     ) -> Result<AppendEntriesResponse<MemConfig>, RPCError<MemConfig>> {
+        let delivery = self.append_entries_lock.lock().await;
         let from_id = rpc.vote.to_leader_node_id();
 
         tracing::debug!("append_entries to id={} {}", self.target, rpc);
@@ -152,6 +158,8 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
         } else {
             resp
         };
+        // Response hooks may block while later requests are delivered in order.
+        drop(delivery);
         self.owner.call_rpc_post_hook(rpc, resp.clone(), from_id, self.target).await?;
         Ok(resp)
     }
