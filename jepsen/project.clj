@@ -9,6 +9,9 @@
                  [cheshire "5.6.3"]]
   :mirrors {"central" {:name "central"
                        :url "https://repo.maven.apache.org/maven2/"}}
+  ;; A second host lets resolution recover when Central fails from a CI runner.
+  :repositories [["central-google" {:url "https://maven-central.storage-download.googleapis.com/maven2/"
+                                    :snapshots false}]]
   :jvm-opts ["-Djava.awt.headless=true"
              "-server"]
   :repl-options {:init-ns jepsen.openraft.cli}
