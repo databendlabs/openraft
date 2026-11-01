@@ -24,10 +24,17 @@ use crate::raft::ReadPolicy;
 /// control whether the read waits: a stale read may also be satisfied by a periodic heartbeat or
 /// replication acknowledgement.
 ///
+/// Replication acknowledgements at an unchanged log boundary retain that boundary's older
+/// sending time. This also applies to entry-less commit updates on the default sequential
+/// transport. A fresh quorum acknowledgement may therefore require a heartbeat or new log
+/// progress. If both immediate and periodic heartbeats are disabled, a read can time out with
+/// [`LinearizableReadError::QuorumNotEnough`] while waiting for that progress.
+///
 /// `wait_timeout` bounds how long such a read waits for a qualifying acknowledgement. The leader
 /// lease bounds `max_quorum_ack_age` only; it is the default wait, not a limit on it.
 ///
 /// [`RaftCore`]: crate::core::RaftCore
+/// [`LinearizableReadError::QuorumNotEnough`]: crate::errors::LinearizableReadError::QuorumNotEnough
 #[since(version = "0.10.0", change = "renamed from `LinearizableReadRequest`")]
 #[since(version = "0.10.0")]
 #[derive(Debug, Clone)]

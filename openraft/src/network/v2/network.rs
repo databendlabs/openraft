@@ -130,9 +130,9 @@ where C: RaftTypeConfig
     /// manner: it sends one request, waits for the response, then sends the next.
     /// This is simple but not optimal for performance.
     ///
-    /// Since network delivery order is not guaranteed, the default implementation does not
-    /// attempt pipelining. A custom pipelined implementation must yield responses in the same
-    /// order as the input requests, using sequence numbers or an ordered transport as needed.
+    /// Custom transports may merge, split, or pipeline requests under the ordering and response
+    /// bounds documented by [`NetStreamAppend::stream_append`]. Responses need not map one-to-one
+    /// to input requests.
     ///
     /// The output stream terminates when the input is exhausted or an error occurs.
     ///
@@ -143,6 +143,7 @@ where C: RaftTypeConfig
     /// captures the lifetime `'s` in an `impl Trait` position.
     ///
     /// [`Raft::stream_append()`]: crate::raft::Raft::stream_append
+    /// [`NetStreamAppend::stream_append`]: crate::network::NetStreamAppend::stream_append
     #[since(version = "0.10.0")]
     fn stream_append<'s, S>(
         &'s mut self,

@@ -18,3 +18,4 @@ mod t99_issue_1795_storage_error_stops_replication;
 mod t99_issue_2004_redundant_commit_only_append;
 mod t99_issue_2085_conflict_updates_clock_progress;
 mod t99_issue_2085_partial_success_updates_clock_progress;
+mod t99_issue_2246_pipelined_ack_time;
