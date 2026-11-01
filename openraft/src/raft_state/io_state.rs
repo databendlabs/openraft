@@ -254,7 +254,16 @@ where C: RaftTypeConfig
         let accepted = self.log_progress.accepted()?.clone();
 
         let cluster_committed_vote = cluster_committed.to_committed_vote();
+        let cluster_committed_vote = cluster_committed_vote.committed_leader_id();
+        let committed_log_id = cluster_committed.last_log_id()?;
+        let committed_log_vote = committed_log_id.committed_leader_id().clone();
+
+        // Normally, the committed log ID's vote never exceeds the vote carried by LogIOId.
+        // Take their maximum to guard against mistakes such as a stale stream pairing an old vote
+        // with a newer commit, which could otherwise apply an overwritten entry.
+        let cluster_committed_vote = std::cmp::max(cluster_committed_vote, committed_log_vote);
         let accepted_vote = accepted.to_committed_vote()?;
+        let accepted_vote = accepted_vote.committed_leader_id();
 
         // If accepted_vote is smaller than the cluster_committed_vote,
         // There may be inflight RPC that might truncate a committed log entry(and then re-append it).
@@ -289,6 +298,31 @@ mod tests {
     use super::IOState;
     use crate::engine::testing::UTConfig;
     use crate::engine::testing::log_id;
+    use crate::raft_state::IOId;
+    use crate::raft_state::io_state::log_io_id::LogIOId;
+    use crate::type_config::alias::VoteOf;
+    use crate::vote::raft_vote::RaftVoteExt;
+
+    #[test]
+    fn test_local_committed_requires_both_votes() {
+        for (commit_term, log_term, accepted_term, expected) in [
+            (1, 3, 1, None),
+            (3, 1, 1, None),
+            (1, 3, 3, Some(log_id(3, 0, 13))),
+            (3, 1, 3, Some(log_id(1, 0, 13))),
+        ] {
+            let mut state = IOState::<UTConfig>::default();
+            let accepted_vote = VoteOf::<UTConfig>::new_committed(accepted_term, 0).to_committed();
+            let accepted = IOId::new_log_io(accepted_vote, Some(log_id(accepted_term, 0, 14)));
+            state.log_progress.accept(accepted);
+            let commit_vote = VoteOf::<UTConfig>::new_committed(commit_term, 0).to_committed();
+            let committed = LogIOId::new(commit_vote, Some(log_id(log_term, 0, 13)));
+            state.cluster_committed.try_update(committed).unwrap();
+
+            let actual = state.calculate_local_committed();
+            assert_eq!(expected, actual);
+        }
+    }
 
     #[test]
     fn test_purged_tracks_pending_io() {
