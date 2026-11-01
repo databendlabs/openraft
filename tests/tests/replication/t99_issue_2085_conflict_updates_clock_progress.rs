@@ -1,9 +1,13 @@
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use anyhow::Result;
 use openraft::Config;
+use openraft::errors::NetworkError;
+use openraft::errors::RPCError;
 use openraft::type_config::OneshotSender;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
@@ -14,8 +18,10 @@ use crate::fixtures::rpc_response::RpcResponse;
 use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
-/// A Conflict response to regular replication proves that the follower accepted the Leader's
-/// vote, so it must refresh that follower's clock progress.
+/// A Conflict response in a fresh replication stream proves that the follower accepted the
+/// leader's vote after that stream started, so it refreshes the follower's clock progress.
+/// A Conflict at the last acknowledged boundary of the same stream retains its older time.
+/// Losing the first response starts a fresh stream; a queue unit test covers the retained time.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn conflict_updates_clock_progress() -> Result<()> {
@@ -42,23 +48,30 @@ async fn conflict_updates_clock_progress() -> Result<()> {
 
     let (conflict_tx, conflict_rx) = TypeConfig::oneshot();
     let conflict_tx = Arc::new(Mutex::new(Some(conflict_tx)));
+    let discard_first_conflict = AtomicBool::new(true);
 
     tracing::info!(
         log_index,
-        "--- make voter 1 unreachable immediately after its first Conflict"
+        "--- lose the first Conflict to restart the stream, then isolate voter 1 after its next Conflict"
     );
     {
         router
             .set_rpc_post_hook(RpcKind::AppendEntries, move |call| {
+                let mut result = Ok(());
                 if call.to == 1 && matches!(call.response, RpcResponse::AppendEntries(resp) if resp.is_conflict()) {
-                    call.router.set_unreachable(call.to, true);
-
-                    if let Some(tx) = conflict_tx.lock().unwrap().take() {
-                        tx.send(()).ok();
+                    let discard = discard_first_conflict.swap(false, Ordering::SeqCst);
+                    if discard {
+                        let error = NetworkError::<TypeConfig>::from_string("lose the response to restart the stream");
+                        result = Err(RPCError::Network(error));
+                    } else {
+                        call.router.set_unreachable(call.to, true);
+                        if let Some(tx) = conflict_tx.lock().unwrap().take() {
+                            tx.send(()).ok();
+                        }
                     }
                 }
 
-                async { Ok(()) }
+                futures::future::ready(result)
             })
             .await;
     }

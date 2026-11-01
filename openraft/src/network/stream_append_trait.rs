@@ -43,8 +43,18 @@ where C: RaftTypeConfig
     /// The remote follower should call [`Raft::stream_append()`] to process the stream
     /// and send back a stream of responses.
     ///
-    /// The output stream must return responses in the same order as the input requests. A
-    /// pipelined implementation must reorder concurrent results before yielding them.
+    /// A transport may merge or split input requests, including sending entry-less requests at
+    /// segment boundaries. It must preserve log order, the leader vote, and commit semantics.
+    /// The number of responses need not equal the number of input requests. Responses must follow
+    /// the order of the requests actually sent; a pipelined transport must reorder concurrent
+    /// results before yielding them.
+    ///
+    /// Each response must come from the follower processing a request derived from this input
+    /// stream. Full success reports that request's `last_log_id`; partial success reports a
+    /// matching log id within its inclusive `[prev_log_id, last_log_id]` range. A conflict reports
+    /// the `prev_log_id` of the request the follower rejected. These bounds also apply to merged,
+    /// split, and entry-less requests; a response must not claim log progress beyond the consumed
+    /// input.
     ///
     /// The output stream terminates when the input is exhausted or an error occurs.
     /// The network implementation is responsible for enforcing `option.soft_ttl()`.

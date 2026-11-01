@@ -11,7 +11,7 @@ use crate::type_config::alias::LogIdOf;
 /// Tracks metadata for a single in-flight AppendEntries request.
 ///
 /// Used by [`InflightAppendQueue`](`super::inflight_append_queue::InflightAppendQueue`)
-/// to correlate responses with requests and measure round-trip time.
+/// to correlate log progress with sending times and measure round-trip time.
 #[derive(Debug, Clone)]
 pub(crate) struct InflightAppend<C>
 where C: RaftTypeConfig

@@ -161,15 +161,25 @@ pub struct RaftRouter {
 
     /// Recorded wire chunks when the legacy snapshot transport is selected.
     snapshot_chunks: Option<Arc<Mutex<Vec<InstallSnapshotRequest<MemConfig>>>>>,
+
+    /// Whether AppendEntries requests may run concurrently within a stream.
+    pipelined_append: bool,
 }
 
 pub struct Builder {
     config: Arc<Config>,
     send_delay: u64,
     chunked_snapshots: bool,
+    pipelined_append: bool,
 }
 
 impl Builder {
+    /// Send concurrent AppendEntries requests and yield their responses in order.
+    pub fn pipelined_append(mut self) -> Self {
+        self.pipelined_append = true;
+        self
+    }
+
     /// Exercise the legacy chunking adapter when replicating snapshots.
     pub fn chunked_snapshots(mut self) -> Self {
         self.chunked_snapshots = true;
@@ -204,6 +214,7 @@ impl Builder {
             rpc_pre_hook: Arc::new(TypeConfig::mutex(HashMap::new())),
             rpc_post_hook: Arc::new(TypeConfig::mutex(HashMap::new())),
             snapshot_chunks,
+            pipelined_append: self.pipelined_append,
         }
     }
 }
@@ -216,6 +227,7 @@ impl RaftRouter {
             config: Arc::new(config),
             send_delay: 0,
             chunked_snapshots: false,
+            pipelined_append: false,
         })
     }
 

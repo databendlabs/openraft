@@ -19,6 +19,7 @@ pub(crate) mod stream_state;
 
 use std::fmt;
 use std::sync::Arc;
+use std::sync::Mutex as StdMutex;
 use std::time::Duration;
 
 use display_more::DisplayOptionExt;
@@ -198,7 +199,10 @@ where
         };
 
         let range = req.log_id_range();
-        stream_context.inflight_append_queue.push(range.prev, range.last);
+        {
+            let mut inflight_queue = stream_context.inflight_append_queue.lock().unwrap();
+            inflight_queue.push(range.prev, range.last);
+        }
 
         Some((req, stream_context))
     }
@@ -311,6 +315,8 @@ where
         }
 
         let inflight_queue = InflightAppendQueue::new();
+        let inflight_queue = StdMutex::new(inflight_queue);
+        let inflight_queue = Arc::new(inflight_queue);
         let fatal_error = Arc::new(C::mutex(None));
 
         let stream_context = StreamContext {
@@ -362,7 +368,10 @@ where
         // The target accepted none of the entries this session sent. Without a backoff, the next
         // session would resend them at once.
         let no_progress = remaining.as_ref() == Some(payload);
-        let has_unacked = !inflight_queue.is_empty();
+        let has_unacked = {
+            let inflight_queue = inflight_queue.lock().unwrap();
+            !inflight_queue.is_empty()
+        };
         if no_progress && has_unacked {
             self.backoff_state.on_error(NO_PROGRESS_BACKOFF_RANK);
         }
@@ -381,7 +390,7 @@ where
     async fn handle_response_stream<'s>(
         &mut self,
         resp_strm: BoxStream<'s, Result<StreamAppendResult<C>, RPCError<C>>>,
-        inflight_queue: InflightAppendQueue<C>,
+        inflight_queue: Arc<StdMutex<InflightAppendQueue<C>>>,
     ) -> (Option<Option<LogIdOf<C>>>, Result<(), &'static str>) {
         let mut resp_strm = std::pin::pin!(resp_strm);
         let mut cancel_rx = self.replication_context.cancel_rx.clone();
@@ -419,7 +428,10 @@ where
 
             match append_res {
                 Ok(matching) => {
-                    let last_acked_sending_time = inflight_queue.drain_acked(&matching);
+                    let last_acked_sending_time = {
+                        let mut inflight_queue = inflight_queue.lock().unwrap();
+                        inflight_queue.drain_acked(&matching)
+                    };
 
                     if let Some(last) = last_acked_sending_time {
                         self.notify_heartbeat_progress(last).await;
@@ -437,7 +449,11 @@ where
                 Err(append_err) => {
                     match append_err {
                         StreamAppendError::Conflict(conflict_log_id) => {
-                            if let Some(sending_time) = inflight_queue.drain_conflicted(&conflict_log_id) {
+                            let sending_time = {
+                                let mut inflight_queue = inflight_queue.lock().unwrap();
+                                inflight_queue.drain_conflicted(&conflict_log_id)
+                            };
+                            if let Some(sending_time) = sending_time {
                                 self.notify_heartbeat_progress(sending_time).await;
                             }
 

@@ -2,10 +2,14 @@ use std::future::Future;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use futures::Stream;
+use futures::StreamExt;
 use openraft::OptionalSend;
 use openraft::RaftTypeConfig;
 use openraft::Vote;
 use openraft::alias::SnapshotOf;
+use openraft::base::BoxFuture;
+use openraft::base::BoxStream;
 use openraft::entry::RaftEntry;
 use openraft::errors::Infallible;
 use openraft::errors::RPCError;
@@ -14,10 +18,12 @@ use openraft::errors::StreamingError;
 use openraft::errors::Unreachable;
 use openraft::network::RPCOption;
 use openraft::network::RaftNetworkFactory;
+use openraft::network::stream_append_sequential;
 use openraft::network::v2::RaftNetworkV2;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse;
 use openraft::raft::SnapshotResponse;
+use openraft::raft::StreamAppendResult;
 use openraft::raft::TransferLeaderRequest;
 use openraft::raft::TransferLeaderResponse;
 use openraft::raft::VoteRequest;
@@ -47,6 +53,7 @@ impl RaftNetworkFactory<MemConfig> for RaftRouter {
     }
 }
 
+#[derive(Clone)]
 pub struct RaftRouterNetwork {
     target: MemNodeId,
     owner: RaftRouter,
@@ -54,6 +61,32 @@ pub struct RaftRouterNetwork {
 
 impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
     type SnapshotData = MemSnapshotData;
+
+    fn stream_append<'s, S>(
+        &'s mut self,
+        input: S,
+        option: RPCOption,
+    ) -> BoxFuture<
+        's,
+        Result<BoxStream<'s, Result<StreamAppendResult<MemConfig>, RPCError<MemConfig>>>, RPCError<MemConfig>>,
+    >
+    where
+        S: Stream<Item = AppendEntriesRequest<MemConfig>> + OptionalSend + Unpin + 'static,
+    {
+        if !self.owner.pipelined_append {
+            return stream_append_sequential(self, input, option);
+        }
+        const PIPELINE_CAPACITY: usize = 64;
+        let network = self.clone();
+        let requests = input.map(move |request| {
+            let network = network.clone();
+            let option = option.clone();
+            network.append_stream_request(request, option)
+        });
+        let responses = requests.buffered(PIPELINE_CAPACITY);
+        let responses: BoxStream<'s, _> = Box::pin(responses);
+        Box::pin(futures::future::ready(Ok(responses)))
+    }
 
     /// Send an AppendEntries RPC to the target Raft node (§5).
     async fn append_entries(
@@ -219,6 +252,23 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
 }
 
 impl RaftRouterNetwork {
+    async fn append_stream_request(
+        mut self,
+        request: AppendEntriesRequest<MemConfig>,
+        option: RPCOption,
+    ) -> Result<StreamAppendResult<MemConfig>, RPCError<MemConfig>> {
+        let prev = request.prev_log_id;
+        let last = if let Some(entry) = request.entries.last() {
+            let log_id = entry.log_id();
+            Some(log_id)
+        } else {
+            prev
+        };
+        let response = self.append_entries(request, option).await?;
+        let result = response.into_stream_result(prev, last);
+        Ok(result)
+    }
+
     async fn transmit_full_snapshot(
         &self,
         vote: Vote<<MemConfig as RaftTypeConfig>::LeaderId>,
