@@ -31,6 +31,7 @@ use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::ClientResponderQueue;
 use crate::core::IoBroadcast;
+use crate::core::LeaseReadStatePublisher;
 use crate::core::MetricsChannels;
 use crate::core::PendingRead;
 use crate::core::PendingReadDeadlineNotifier;
@@ -109,6 +110,7 @@ use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft::linearizable_read::Linearizer;
 use crate::raft::linearizable_read::LinearizerOption;
+use crate::raft::linearizable_read::lease_read_state::LeaseReadState;
 use crate::raft::message::TransferLeaderRequest;
 use crate::raft::responder::Responder;
 use crate::raft::responder::core_responder::CoreResponder;
@@ -225,6 +227,9 @@ where
 
     pub(crate) engine: Engine<C, SM>,
 
+    /// Owns the published lease-read state and invalidates it when the core is dropped.
+    pub(crate) lease_read_state_publisher: LeaseReadStatePublisher<C>,
+
     /// Responders to send result back to client when logs are applied.
     pub(crate) client_responders: ClientResponderQueue<CoreResponder<C>>,
 
@@ -324,6 +329,8 @@ where
     pub(crate) async fn main(mut self: Box<Self>) -> Result<Infallible, Fatal<C>> {
         let span = tracing::span!(parent: &self.span, Level::DEBUG, "main");
         let res = self.do_main().instrument(span).await;
+
+        self.lease_read_state_publisher.clear();
 
         // Flush buffered metrics
         self.flush_metrics();
@@ -627,6 +634,47 @@ where
         }
 
         Ok(lh)
+    }
+
+    /// Refreshes the coherent snapshot before read-relevant effects leave the core.
+    ///
+    /// Command batches publish engine changes before exposing their effects. Notification handlers
+    /// also publish because notifications can change engine state while a command is awaiting I/O.
+    fn publish_lease_read_state(&mut self) {
+        let enabled = self.config.get_enable_local_lease_read();
+        if !enabled {
+            return;
+        }
+        let state = self.build_lease_read_state();
+        self.lease_read_state_publisher.publish(state);
+    }
+
+    fn build_lease_read_state(&mut self) -> Option<LeaseReadState<C>> {
+        self.engine.leader.as_ref()?;
+        let lh = self.ensure_leader_handler().ok()?;
+        // Unlike `handle_get_linearizer()`, also require the vote lease. Besides
+        // `LeaderHandler::transfer_leader()`, which sets `transfer_to` as well, only a
+        // `HandleTransferLeader` for this leader's own vote disables it. This check keeps the cache
+        // closed after that until the vote changes, while core reads continue.
+        let (_, _, lease_enabled) = lh.state.vote.lease_info();
+        if !lease_enabled {
+            return None;
+        }
+        let self_quorum = lh.leader.is_self_quorum();
+        let quorum_acked_at = if self_quorum {
+            None
+        } else {
+            lh.leader.last_quorum_acked_time()
+        };
+        let state = LeaseReadState {
+            leader_vote: lh.leader.committed_vote_ref().clone(),
+            noop_log_id: lh.leader.noop_log_id().clone(),
+            committed: lh.state.local_committed().cloned(),
+            quorum_acked_at,
+            leader_lease: lh.config.timer_config.leader_lease,
+            self_quorum,
+        };
+        Some(state)
     }
 
     /// Ensure this node has a valid leader lease and may accept new writes.
@@ -1244,6 +1292,7 @@ where
             tracing::debug!("queued commands: end...");
         }
 
+        self.publish_lease_read_state();
         self.send_satisfied_responds();
 
         loop {
@@ -1638,6 +1687,8 @@ where
     /// Tell every other voter and the known transfer target to accept a new leader.
     #[tracing::instrument(level = "trace", skip_all)]
     async fn broadcast_transfer_leader(&mut self, req: TransferLeaderRequest<C>) {
+        self.lease_read_state_publisher.clear();
+
         let ttl = Duration::from_millis(self.config.election_timeout_min);
         let membership = self.engine.state.membership_state.effective();
         let voter_ids = membership.voter_ids();
@@ -1880,6 +1931,7 @@ where
                 if self.engine.state.vote_ref() == &current_leader_vote {
                     tracing::info!("Transfer Leader from: {}, to {}", current_leader_vote, to);
 
+                    self.lease_read_state_publisher.clear();
                     self.engine.state.vote.disable_lease();
                     if self.id == to {
                         if last_log_id.as_ref() > self.engine.state.last_log_id() {
@@ -1946,6 +1998,7 @@ where
                 self.engine.trigger_purge_log(upto);
             }
             ExternalCommand::TriggerTransferLeader { to } => {
+                self.lease_read_state_publisher.clear();
                 if self.config.get_reset_backoff_on_transfer_leader() {
                     let targets = BatchOf::<C, _>::of([to.clone()]);
                     self.trigger_reset_backoff(targets);
@@ -2006,6 +2059,16 @@ where
     #[tracing::instrument(level = "debug", skip_all, fields(state = debug(self.engine.state.server_state), id=display(&self.id)
     ))]
     pub(crate) fn handle_notification(&mut self, notify: Notification<C>) -> Result<(), Fatal<C>> {
+        let result = self.handle_notification_inner(notify);
+        if result.is_err() {
+            self.lease_read_state_publisher.clear();
+        } else {
+            self.publish_lease_read_state();
+        }
+        result
+    }
+
+    fn handle_notification_inner(&mut self, notify: Notification<C>) -> Result<(), Fatal<C>> {
         tracing::debug!("RAFT_event id={:<2} notify: {}", self.id, notify);
 
         self.runtime_stats.record_notification(notify.name());
