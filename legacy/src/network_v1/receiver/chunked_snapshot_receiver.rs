@@ -15,7 +15,6 @@ use openraft::errors::RaftError;
 use openraft::type_config::alias::SnapshotDataOf;
 use openraft::type_config::alias::SnapshotOf;
 use openraft_macros::since;
-use tokio::io::AsyncWriteExt;
 
 use crate::network_v1::InstallSnapshotError;
 use crate::network_v1::InstallSnapshotRequest;
@@ -151,14 +150,7 @@ where
         // If done, finalize the snapshot
         if done {
             let streaming = streaming.take().unwrap();
-            let mut data = streaming.into_snapshot_data();
-
-            data.shutdown().await.map_err(|e| {
-                RaftError::Fatal(Fatal::from(StorageError::write_snapshot(
-                    Some(snapshot_meta.signature()),
-                    C::ErrorSource::from_error(&e),
-                )))
-            })?;
+            let data = streaming.finish(snapshot_meta.signature()).await?;
 
             tracing::info!(snapshot_meta = debug(&snapshot_meta), "Finished streaming snapshot");
 

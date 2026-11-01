@@ -9,6 +9,7 @@ use openraft::OptionalSend;
 use openraft::RaftTypeConfig;
 use openraft::SnapshotId;
 use openraft::StorageError;
+use openraft::type_config::alias::SnapshotSignatureOf;
 use openraft_macros::since;
 use tokio::io::AsyncSeekExt;
 use tokio::io::AsyncWriteExt;
@@ -69,6 +70,16 @@ where
     C: RaftTypeConfig,
     SD: tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin + OptionalSend + 'static,
 {
+    /// Complete writes and return a handle positioned at the start of the snapshot.
+    pub(crate) async fn finish(mut self, signature: SnapshotSignatureOf<C>) -> Result<SD, StorageError<C>> {
+        let snapshot_error =
+            |verb, error| StorageError::from_io_error(ErrorSubject::Snapshot(Some(signature.clone())), verb, error);
+        self.snapshot_data.shutdown().await.map_err(|error| snapshot_error(ErrorVerb::Write, error))?;
+        self.snapshot_data.rewind().await.map_err(|error| snapshot_error(ErrorVerb::Seek, error))?;
+        let data = self.into_snapshot_data();
+        Ok(data)
+    }
+
     /// Receive a single chunk of snapshot data.
     ///
     /// Writes the chunk data to the snapshot at the specified offset.
@@ -97,5 +108,40 @@ where
         self.offset += req.data.len() as u64;
 
         Ok(req.done)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use openraft::type_config::TypeConfigExt;
+    use openraft::type_config::alias::SnapshotMetaOf;
+    use openraft::type_config::alias::VoteOf;
+    use tokio::io::AsyncReadExt;
+
+    use super::*;
+    use crate::network_v1::SnapshotMeta;
+
+    openraft::declare_raft_types!(TestConfig);
+
+    #[test]
+    fn received_file_reads_from_the_beginning() {
+        TestConfig::run(async {
+            let file = tempfile::tempfile().unwrap();
+            let file = tokio::fs::File::from_std(file);
+            let meta = SnapshotMeta::new(SnapshotMetaOf::<TestConfig>::default(), "transfer".to_string());
+            let request = InstallSnapshotRequest::<TestConfig> {
+                vote: VoteOf::<TestConfig>::new(1, 1),
+                meta,
+                offset: 0,
+                data: b"complete snapshot".to_vec(),
+                done: true,
+            };
+            let mut streaming = Streaming::<TestConfig, _>::new("transfer".to_string(), file);
+            streaming.receive_chunk(&request).await.unwrap();
+            let mut installed = streaming.finish(request.meta.signature()).await.unwrap();
+            let mut actual = Vec::new();
+            installed.read_to_end(&mut actual).await.unwrap();
+            assert_eq!(actual, request.data);
+        });
     }
 }

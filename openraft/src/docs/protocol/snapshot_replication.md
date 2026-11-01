@@ -103,9 +103,27 @@ quorum must exist that contains `snapshot_meta.last_log_id`. Therefore, it is
 
 ## 2. Install Snapshot
 
-Installing snapshot includes two steps:
-- Save snapshot to disk.
-- Replace state machine with the content of snapshot.
+The transport must finish receiving and validating a snapshot before it calls
+[`Raft::install_full_snapshot()`]. A file-based transport completes buffered
+writes and supplies a readable handle positioned at the start. Openraft treats
+`SnapshotData` as opaque, so a custom transport owns that preparation.
+
+Validate completeness against sender-declared lengths and integrity checks, with
+an explicit completion record. Comparing a file's length with the receiver's own
+byte count cannot detect a sender that stopped early. The
+[directory transfer writer](https://github.com/databendlabs/openraft/blob/main/examples/dir-transfer/src/writer.rs)
+checks the manifest, per-file lengths, checksums, and final completion frame.
+
+Installation publishes the validated snapshot and replaces the state machine.
+Allocate receive paths locally: a peer's transfer ID is an opaque session key,
+not a path or an ordering key for cleanup. A clock or process counter cannot
+establish generation ownership across restarts.
+
+The [RocksDB example](https://github.com/databendlabs/openraft/blob/main/examples/sm-rocks/README.md)
+prepares separate database generations and publishes the active one through
+`CURRENT`. Shared snapshot handles retain directories while builders or readers
+use them; cleanup removes only generations with no remaining owner. An abandoned
+receive handle removes its incomplete generation when its last owner drops.
 
 ## 3. Purge Logs
 
@@ -128,3 +146,5 @@ the log will be purged the next start-up, in [`get_initial_state()`].
 
 [`get_initial_state()`]: `crate::storage::StorageHelper::get_initial_state`
 [`snapshot_meta.last_log_id`]: `crate::storage::SnapshotMeta::last_log_id`
+
+[`Raft::install_full_snapshot()`]: `crate::Raft::install_full_snapshot`
