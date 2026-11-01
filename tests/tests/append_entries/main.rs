@@ -17,3 +17,4 @@ mod t60_enable_heartbeat;
 mod t61_heartbeat_reject_vote;
 mod t61_large_heartbeat;
 mod t90_issue_216_stale_last_log_id;
+mod t90_issue_2245_stale_vote_with_newer_commit;
