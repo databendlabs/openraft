@@ -2,6 +2,9 @@
 //!
 //! Run with: cargo run --release --bin bench -- --help
 
+#[path = "bench/read_workload.rs"]
+mod read_workload;
+
 use std::collections::BTreeSet;
 use std::fmt::Display;
 use std::fmt::Formatter;
@@ -18,9 +21,11 @@ use bench_minimal::store::ClientRequest;
 use clap::Parser;
 use futures::TryStreamExt;
 use openraft::Config;
+use read_workload::ReadWorkload;
 use tokio::runtime::Builder;
 use tokio::runtime::Runtime;
 use tokio::sync::Barrier;
+use tokio::task::JoinHandle;
 #[cfg(feature = "flamegraph")]
 use tracing_flame::FlushGuard;
 
@@ -39,11 +44,11 @@ struct Args {
     #[arg(long, default_value_t = 16)]
     server_workers: usize,
 
-    /// Number of client tasks to spawn
+    /// Number of write client tasks to spawn
     #[arg(short = 'c', long, default_value_t = 4096, value_parser = parse_underscore_u64)]
     clients: u64,
 
-    /// Total number of operations across all clients
+    /// Total number of write operations across all write clients
     #[arg(short = 'n', long, default_value_t = 20_000_000, value_parser = parse_underscore_u64)]
     operations: u64,
 
@@ -67,6 +72,30 @@ struct Args {
     #[arg(long, default_value_t = 0, value_parser = parse_underscore_u64)]
     write_rate: u64,
 
+    /// Number of concurrent lease-read clients (0 keeps the write-only benchmark).
+    #[arg(long, default_value_t = 0, value_parser = parse_underscore_u64)]
+    read_clients: u64,
+
+    /// Total lease-read attempts across all read clients.
+    #[arg(long, default_value_t = 0, value_parser = parse_underscore_u64)]
+    read_operations: u64,
+
+    /// Target read attempts per second (0 = unpaced).
+    #[arg(long, default_value_t = 0, value_parser = parse_underscore_u64)]
+    read_rate: u64,
+
+    /// Include the apply wait through ensure_linearizable instead of get_read_linearizer.
+    #[arg(long)]
+    read_await_ready: bool,
+
+    /// Report read failures separately instead of stopping at the first one.
+    #[arg(long)]
+    allow_read_errors: bool,
+
+    /// Idle time after warmup, before clients start; useful for expired-lease controls.
+    #[arg(long, default_value_t = 0)]
+    read_delay_ms: u64,
+
     /// Delay before each log append returns, in microseconds.
     #[arg(long, default_value_t = 0)]
     append_delay_us: u64,
@@ -84,6 +113,7 @@ struct Args {
     warmup_writes: usize,
 }
 
+#[derive(Clone, serde::Serialize)]
 struct BenchConfig {
     pub client_workers: usize,
     pub server_workers: usize,
@@ -94,10 +124,27 @@ struct BenchConfig {
     pub latency: bool,
     pub raft_config: serde_json::Value,
     pub write_rate: u64,
+    pub read_clients: u64,
+    pub read_operations: u64,
+    pub read_rate: u64,
+    pub read_await_ready: bool,
+    pub allow_read_errors: bool,
+    pub read_delay_ms: u64,
     pub append_delay_us: u64,
     pub flush_delay_us: u64,
     pub network_delay_us: u64,
     pub warmup_writes: usize,
+}
+
+impl BenchConfig {
+    fn operations_per_client(&self) -> u64 {
+        if self.n_client == 0 {
+            return 0;
+        }
+        let per_client = self.n_operations / self.n_client;
+        let batches = per_client / self.batch_size;
+        batches * self.batch_size
+    }
 }
 
 impl Display for BenchConfig {
@@ -191,6 +238,12 @@ fn main() -> anyhow::Result<()> {
         latency: args.latency,
         raft_config,
         write_rate: args.write_rate,
+        read_clients: args.read_clients,
+        read_operations: args.read_operations,
+        read_rate: args.read_rate,
+        read_await_ready: args.read_await_ready,
+        allow_read_errors: args.allow_read_errors,
+        read_delay_ms: args.read_delay_ms,
         append_delay_us: args.append_delay_us,
         flush_delay_us: args.flush_delay_us,
         network_delay_us: args.network_delay_us,
@@ -203,7 +256,13 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn validate(args: &Args) -> anyhow::Result<()> {
-    ensure!(args.clients > 0, "clients must be positive");
+    let has_clients = args.clients > 0 || args.read_clients > 0;
+    ensure!(has_clients, "at least one write or read client is required");
+    if args.clients == 0 {
+        ensure!(args.operations == 0, "operations must be zero without write clients");
+        ensure!(args.write_rate == 0, "write-rate must be zero without write clients");
+    }
+    validate_reads(args)?;
     ensure!(args.batch > 0, "batch must be positive");
     ensure!(args.client_workers > 0, "client-workers must be positive");
     ensure!(args.server_workers > 0, "server-workers must be positive");
@@ -212,15 +271,49 @@ fn validate(args: &Args) -> anyhow::Result<()> {
     let group = args.clients.checked_mul(args.batch);
     let group = group.context("clients * batch overflows")?;
     ensure!(args.operations >= group, "operations must cover every client");
-    if args.write_rate > 0 {
-        let seconds = args.operations as f64 / args.write_rate as f64;
-        let within_timeout = seconds < WAIT_TIMEOUT.as_secs_f64();
-        ensure!(within_timeout, "arrival schedule exceeds the benchmark timeout");
-    }
+    validate_schedule(args)?;
     let delays = [args.append_delay_us, args.flush_delay_us, args.network_delay_us];
     let max_delay = delays.into_iter().max().unwrap();
     let within_timeout = u128::from(max_delay) < WAIT_TIMEOUT.as_micros();
     ensure!(within_timeout, "simulated delay exceeds the benchmark timeout");
+    Ok(())
+}
+
+fn validate_reads(args: &Args) -> anyhow::Result<()> {
+    if args.read_clients == 0 {
+        ensure!(args.read_operations == 0, "read-operations requires read-clients");
+        ensure!(args.read_rate == 0, "read-rate requires read-clients");
+        ensure!(args.read_delay_ms == 0, "read-delay-ms requires read-clients");
+        ensure!(!args.read_await_ready, "read-await-ready requires read-clients");
+        ensure!(!args.allow_read_errors, "allow-read-errors requires read-clients");
+        return Ok(());
+    }
+    ensure!(
+        args.read_operations >= args.read_clients,
+        "read-operations must cover every read client"
+    );
+    Ok(())
+}
+
+fn validate_schedule(args: &Args) -> anyhow::Result<()> {
+    let write_seconds = if args.write_rate > 0 {
+        args.operations as f64 / args.write_rate as f64
+    } else {
+        0.0
+    };
+    let read_seconds = if args.read_rate > 0 {
+        args.read_operations as f64 / args.read_rate as f64
+    } else {
+        0.0
+    };
+    let workload_seconds = write_seconds.max(read_seconds);
+    let idle = Duration::from_millis(args.read_delay_ms);
+    let seconds = idle.as_secs_f64() + workload_seconds;
+    let within_timeout = seconds < WAIT_TIMEOUT.as_secs_f64();
+    ensure!(
+        within_timeout,
+        "arrival schedule plus read delay exceeds the benchmark timeout"
+    );
     Ok(())
 }
 
@@ -307,11 +400,15 @@ fn create_cluster(server_rt: &Runtime, bench_config: &BenchConfig) -> anyhow::Re
 async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft) -> anyhow::Result<()> {
     let n_client = bench_config.n_client;
     let batch_size = bench_config.batch_size;
-    let ops_per_client = bench_config.n_operations / n_client / batch_size * batch_size;
+    let ops_per_client = bench_config.operations_per_client();
     let total = ops_per_client * n_client;
-    let measure_latency = bench_config.latency;
+    let measure_latency = bench_config.latency || bench_config.read_clients > 0;
     let client_count = usize::try_from(n_client)?;
-    let start = Arc::new(Barrier::new(client_count + 1));
+    let read_clients = usize::try_from(bench_config.read_clients)?;
+    let participants = client_count.checked_add(read_clients);
+    let participants = participants.context("total clients overflows")?;
+    let participants = participants.checked_add(1).context("barrier participants overflows")?;
+    let start = Arc::new(Barrier::new(participants));
     let epoch = Arc::new(OnceLock::new());
     let write_rate = bench_config.write_rate;
 
@@ -319,6 +416,24 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft) -> anyhow::Resu
         leader.client_write(ClientRequest {}).await?;
     }
 
+    if bench_config.read_delay_ms > 0 {
+        let delay = Duration::from_millis(bench_config.read_delay_ms);
+        tokio::time::sleep(delay).await;
+    }
+    let read_workload = if read_clients > 0 {
+        Some(ReadWorkload {
+            config: Arc::new(bench_config.clone()),
+            leader: leader.clone(),
+            start: start.clone(),
+            epoch: epoch.clone(),
+        })
+    } else {
+        None
+    };
+    let read_handles = match &read_workload {
+        Some(workload) => workload.spawn_clients(),
+        None => Vec::new(),
+    };
     let mut handles = Vec::new();
 
     // Spawn stats printing task
@@ -405,12 +520,11 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft) -> anyhow::Resu
     let now = Instant::now();
     epoch.set(now).unwrap();
     start.wait().await;
-    let mut client_latencies = Vec::with_capacity(client_count);
-    for h in handles {
-        let result = h.await?;
-        let samples = result?;
-        client_latencies.push(samples);
-    }
+    let writes = collect_clients(handles);
+    let reads = collect_clients(read_handles);
+    let (client_latencies, read_groups) = tokio::try_join!(writes, reads)?;
+    let read_samples = read_groups.into_iter().flatten();
+    let read_samples = read_samples.collect();
     let elapsed = now.elapsed();
 
     // Stop stats printing task
@@ -426,6 +540,11 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft) -> anyhow::Resu
             elapsed.as_secs_f64(),
             stats.display().human_readable()
         );
+    }
+
+    if let Some(workload) = read_workload {
+        workload.report(elapsed, client_latencies, read_samples)?;
+        return Ok(());
     }
 
     if measure_latency {
@@ -489,6 +608,15 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft) -> anyhow::Resu
     Ok(())
 }
 
+async fn collect_clients<T>(handles: Vec<JoinHandle<anyhow::Result<Vec<T>>>>) -> anyhow::Result<Vec<Vec<T>>> {
+    let mut samples = Vec::with_capacity(handles.len());
+    for handle in handles {
+        let result = handle.await?;
+        samples.push(result?);
+    }
+    Ok(samples)
+}
+
 async fn pace(epoch: Instant, operation: u64, write_rate: u64) -> Instant {
     let seconds = operation as f64 / write_rate as f64;
     let offset = Duration::from_secs_f64(seconds);
@@ -513,8 +641,12 @@ mod tests {
     use std::time::Duration;
     use std::time::Instant;
 
+    use clap::Parser;
+
+    use super::Args;
     use super::pace;
     use super::percentile;
+    use super::validate;
 
     #[tokio::test]
     async fn latency_includes_arrival_backlog() {
@@ -535,5 +667,96 @@ mod tests {
         assert_eq!(99, p99);
         let p99 = percentile(&[100, 200, 300], 99);
         assert_eq!(300, p99);
+    }
+
+    #[test]
+    fn pure_reads_need_no_write_clients() -> anyhow::Result<()> {
+        let args = Args::try_parse_from([
+            "bench",
+            "--clients",
+            "0",
+            "--operations",
+            "0",
+            "--read-clients",
+            "4",
+            "--read-operations",
+            "100",
+        ])?;
+        validate(&args)?;
+        assert_eq!(0, args.clients);
+        assert_eq!(4, args.read_clients);
+        assert_eq!(100, args.read_operations);
+        Ok(())
+    }
+
+    #[test]
+    fn read_counts_require_read_clients() -> anyhow::Result<()> {
+        let args = Args::try_parse_from(["bench", "--read-operations", "100"])?;
+        let result = validate(&args);
+        let error = result.expect_err("read operations cannot run without read clients");
+        let message = error.to_string();
+        assert_eq!("read-operations requires read-clients", message);
+        Ok(())
+    }
+
+    #[test]
+    fn pure_reads_reject_unserved_writes() -> anyhow::Result<()> {
+        let args = Args::try_parse_from([
+            "bench",
+            "--clients",
+            "0",
+            "--read-clients",
+            "4",
+            "--read-operations",
+            "100",
+        ])?;
+        let result = validate(&args);
+        let error = result.expect_err("the write operations must be disabled explicitly");
+        let message = error.to_string();
+        assert_eq!("operations must be zero without write clients", message);
+        Ok(())
+    }
+
+    #[test]
+    fn idle_delay_and_arrival_schedule_share_the_deadline() -> anyhow::Result<()> {
+        let args = Args::try_parse_from([
+            "bench",
+            "--clients",
+            "0",
+            "--operations",
+            "0",
+            "--read-clients",
+            "1",
+            "--read-operations",
+            "399",
+            "--read-rate",
+            "1",
+            "--read-delay-ms",
+            "1000",
+        ])?;
+        let result = validate(&args);
+        let error = result.expect_err("the combined idle and arrival schedule reaches the timeout");
+        let message = error.to_string();
+        assert_eq!(
+            "arrival schedule plus read delay exceeds the benchmark timeout",
+            message
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn read_mode_flags_require_read_clients() -> anyhow::Result<()> {
+        let cases = [
+            ("--read-await-ready", "read-await-ready requires read-clients"),
+            ("--allow-read-errors", "allow-read-errors requires read-clients"),
+        ];
+        for (flag, expected) in cases {
+            let args = Args::try_parse_from(["bench", flag])?;
+            let result = validate(&args);
+            let error = result.expect_err("read flags require an active read workload");
+            let actual = error.to_string();
+            assert_eq!(expected, actual);
+        }
+        Ok(())
     }
 }

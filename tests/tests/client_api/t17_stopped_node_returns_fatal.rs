@@ -12,17 +12,21 @@ use crate::fixtures::ut_harness;
 #[test_harness::test(harness = ut_harness)]
 async fn stopped_node_returns_fatal() -> Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         enable_heartbeat: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;
 
     tracing::info!("--- bring up a single-node cluster");
-    router.new_cluster([0], []).await?;
+    let log_index = router.new_cluster([0], []).await?;
 
     tracing::info!("--- shut down node 0 and keep it in the router");
     {
         let node = router.get_raft_handle(&0)?;
+        let cached = node.ensure_linearizable(ReadPolicy::LeaseRead).await?;
+        let cached_index = cached.index();
+        assert_eq!(log_index, cached_index);
         node.shutdown().await?;
         router.get_raft_handle(&0)?;
     }
@@ -35,8 +39,8 @@ async fn stopped_node_returns_fatal() -> Result<()> {
     }
 
     tracing::info!("--- get_read_log_id on the stopped node returns Fatal::Stopped");
-    {
-        let read_log_id = router.get_read_log_id(0, ReadPolicy::ReadIndex).await;
+    for policy in [ReadPolicy::ReadIndex, ReadPolicy::LeaseRead] {
+        let read_log_id = router.get_read_log_id(0, policy).await;
         // `LinearizableReadError` has no `PartialEq`, so keep only the fatal arm comparable.
         let read_status = match read_log_id {
             Ok(_) => Ok(()),

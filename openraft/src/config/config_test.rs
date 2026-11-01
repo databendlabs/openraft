@@ -26,6 +26,41 @@ fn test_config_defaults() {
     assert!(!broadcast_submitted);
     assert_eq!(StepDownPolicy::After(150), cfg.removed_leader_step_down);
     assert_eq!(None, cfg.quorum_loss_probe_interval);
+    assert_eq!(None, cfg.enable_local_lease_read);
+    let local_lease_read = cfg.get_enable_local_lease_read();
+    assert!(!local_lease_read);
+}
+
+#[test]
+fn test_local_lease_read_configuration() {
+    let cases = [(None, false), (Some(false), false), (Some(true), true)];
+    for (enable_local_lease_read, expected) in cases {
+        let config = Config {
+            enable_local_lease_read,
+            ..Default::default()
+        };
+        let enabled = config.get_enable_local_lease_read();
+        assert_eq!(expected, enabled);
+    }
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn test_local_lease_read_serde_default() -> anyhow::Result<()> {
+    let config = Config {
+        enable_local_lease_read: Some(true),
+        ..Default::default()
+    };
+    let mut value = serde_json::to_value(config)?;
+    let enabled: Config = serde_json::from_value(value.clone())?;
+    assert_eq!(Some(true), enabled.enable_local_lease_read);
+    let fields = value.as_object_mut().unwrap();
+    fields.remove("enable_local_lease_read");
+    let default: Config = serde_json::from_value(value)?;
+    assert_eq!(None, default.enable_local_lease_read);
+    let enabled = default.get_enable_local_lease_read();
+    assert!(!enabled);
+    Ok(())
 }
 
 #[cfg(feature = "serde")]

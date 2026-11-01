@@ -90,6 +90,7 @@ use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::ClientResponderQueue;
 use crate::core::IoBroadcast;
+use crate::core::LeaseReadStatePublisher;
 use crate::core::MetricsChannels;
 use crate::core::PendingReadDeadlineNotifier;
 use crate::core::PendingReadQueue;
@@ -544,6 +545,8 @@ where
         let (tx_metrics, rx_metrics) = C::watch_channel(RaftMetrics::new_initial(id.clone()));
         let (tx_data_metrics, rx_data_metrics) = C::watch_channel(RaftDataMetrics::default());
         let (tx_server_metrics, rx_server_metrics) = C::watch_channel(RaftServerMetrics::new_initial(id.clone()));
+        let (tx_lease_read_state, rx_lease_read_state) = C::watch_channel(None);
+        let lease_read_state_publisher = LeaseReadStatePublisher::new(tx_lease_read_state);
 
         // Watch channel for IO completion notifications from storage callbacks.
         // Initial value is a dummy IOId with this node's ID.
@@ -622,6 +625,7 @@ where
                     sm_handle,
 
                     engine,
+                    lease_read_state_publisher,
 
                     // initially, allocate for 8 kilo outstanding requests.
                     client_responders: ClientResponderQueue::with_capacity(1024 * 8),
@@ -697,6 +701,7 @@ where
             runtime_config,
             tick_handle: Mutex::new(None),
             tx_api,
+            rx_lease_read_state,
             rx_metrics,
             rx_data_metrics,
             rx_server_metrics,

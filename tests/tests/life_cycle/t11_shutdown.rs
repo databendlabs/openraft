@@ -3,6 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use openraft::Config;
 use openraft::ConfigError;
+use openraft::ReadPolicy;
 use openraft::ServerState;
 use openraft::async_runtime::WatchReceiver;
 use openraft::errors::Fatal;
@@ -18,6 +19,7 @@ use crate::fixtures::ut_harness;
 #[test_harness::test(harness = ut_harness)]
 async fn shutdown() -> Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         enable_heartbeat: false,
         ..Default::default()
     };
@@ -109,6 +111,7 @@ async fn shutdown() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn return_error_after_panic() -> Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         enable_heartbeat: false,
         ..Default::default()
     };
@@ -117,7 +120,10 @@ async fn return_error_after_panic() -> Result<()> {
 
     tracing::info!("--- initializing cluster");
     let log_index = router.new_cluster([0], []).await?;
-    let _ = log_index; // unused;
+    let node = router.get_raft_handle(&0)?;
+    let boundary = node.ensure_linearizable(ReadPolicy::LeaseRead).await?;
+    let cached_index = boundary.index();
+    assert_eq!(log_index, cached_index);
 
     tracing::info!(log_index, "--- panic the RaftCore");
     {
@@ -136,6 +142,10 @@ async fn return_error_after_panic() -> Result<()> {
         let res = router.client_request(0, "foo", 2).await;
         let err = res.unwrap_err();
         assert_eq!(Fatal::Panicked, err.into_fatal().unwrap());
+        let result = node.get_read_linearizer(ReadPolicy::LeaseRead).await;
+        let error = result.expect_err("a stopped core invalidates its cached self quorum");
+        let fatal = error.into_fatal().expect("the core panic is fatal");
+        assert_eq!(Fatal::Panicked, fatal);
     }
 
     Ok(())
@@ -150,6 +160,7 @@ async fn return_error_after_panic() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn get_snapshot_returns_stopped_when_sm_worker_dies() -> Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         enable_heartbeat: false,
         ..Default::default()
     };
@@ -193,6 +204,7 @@ async fn get_snapshot_returns_stopped_when_sm_worker_dies() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn with_state_machine_returns_stopped_when_func_panics() -> Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         enable_heartbeat: false,
         ..Default::default()
     };
@@ -219,6 +231,7 @@ async fn with_state_machine_returns_stopped_when_func_panics() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn return_error_after_shutdown() -> Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         enable_heartbeat: false,
         ..Default::default()
     };

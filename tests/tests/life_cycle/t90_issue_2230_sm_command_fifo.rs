@@ -49,6 +49,7 @@ const BACKPRESSURE_TIMEOUT: Duration = Duration::from_millis(50);
 #[test_harness::test(harness = ut_harness)]
 async fn snapshot_reads_follow_buffered_commands() -> Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         enable_unbounded_state_machine_buffer: Some(true),
         state_machine_channel_size: Some(1),
         enable_tick: false,
@@ -114,6 +115,7 @@ async fn snapshot_reads_follow_buffered_commands() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn external_functions_with_queued_applies() -> Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         enable_unbounded_state_machine_buffer: Some(true),
         state_machine_channel_size: Some(2),
         enable_tick: false,
@@ -230,6 +232,7 @@ async fn external_functions_with_queued_applies() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn shutdown_drains_buffered_commands() -> Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         enable_unbounded_state_machine_buffer: Some(true),
         state_machine_channel_size: Some(1),
         enable_tick: false,
@@ -285,6 +288,7 @@ async fn shutdown_drains_buffered_commands() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn both_queues_full_with_capacity_one() -> Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         enable_unbounded_state_machine_buffer: Some(true),
         state_machine_channel_size: Some(1),
         notification_channel_size: Some(1),
@@ -390,6 +394,7 @@ async fn both_queues_full_with_capacity_one() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn buffered_commands_do_not_block_api_input() -> Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         enable_unbounded_state_machine_buffer: Some(true),
         state_machine_channel_size: Some(1),
         notification_channel_size: Some(1),
@@ -451,6 +456,7 @@ async fn buffered_commands_do_not_block_api_input() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn higher_vote_with_queued_applies() -> Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         enable_unbounded_state_machine_buffer: Some(true),
         state_machine_channel_size: Some(2),
         notification_channel_size: Some(1),
@@ -534,6 +540,7 @@ async fn higher_vote_with_queued_applies() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn snapshot_install_waits_behind_queued_applies() -> Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         enable_unbounded_state_machine_buffer: Some(true),
         state_machine_channel_size: Some(2),
         enable_tick: false,
@@ -647,6 +654,7 @@ async fn snapshot_install_waits_behind_queued_applies() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn worker_exit_releases_buffered_responders() -> Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         enable_unbounded_state_machine_buffer: Some(true),
         state_machine_channel_size: Some(1),
         enable_tick: false,
@@ -719,6 +727,7 @@ async fn worker_exit_releases_buffered_responders() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn worker_storage_error_releases_buffered_writes() -> Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         enable_unbounded_state_machine_buffer: Some(true),
         state_machine_channel_size: Some(2),
         notification_channel_size: Some(1),
@@ -807,6 +816,7 @@ async fn worker_storage_error_releases_buffered_writes() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn worker_storage_error_survives_buffer_cleanup() -> Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         enable_unbounded_state_machine_buffer: Some(true),
         state_machine_channel_size: Some(2),
         notification_channel_size: Some(1),
@@ -913,6 +923,7 @@ async fn worker_storage_error_survives_buffer_cleanup() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn bounded_send_resumes_without_notification() -> Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         state_machine_channel_size: Some(1),
         notification_channel_size: Some(1),
         enable_tick: false,
@@ -982,6 +993,7 @@ async fn bounded_send_resumes_without_notification() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn bounded_send_handles_full_notification_channel() -> Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         state_machine_channel_size: Some(2),
         notification_channel_size: Some(1),
         enable_tick: false,
@@ -1082,6 +1094,7 @@ async fn bounded_send_handles_full_notification_channel() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn bounded_worker_error_stops_core() -> Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         state_machine_channel_size: Some(1),
         notification_channel_size: Some(1),
         enable_tick: false,
@@ -1153,6 +1166,7 @@ async fn bounded_worker_error_stops_core() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn bounded_send_does_not_block_shutdown() -> Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         state_machine_channel_size: Some(1),
         notification_channel_size: Some(1),
         enable_tick: false,

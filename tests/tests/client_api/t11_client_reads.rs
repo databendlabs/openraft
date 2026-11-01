@@ -39,6 +39,7 @@ use crate::fixtures::ut_harness;
 #[test_harness::test(harness = ut_harness)]
 async fn client_reads() -> Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         enable_heartbeat: false,
         ..Default::default()
     };
@@ -108,6 +109,7 @@ async fn client_reads() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn get_read_log_id() -> Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         enable_heartbeat: false,
         enable_elect: false,
         heartbeat_interval: 100,
@@ -224,6 +226,7 @@ async fn get_read_log_id() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn ensure_linearizable_with_read_index() -> Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         enable_heartbeat: false,
         enable_elect: false,
         heartbeat_interval: 100,
@@ -294,6 +297,7 @@ async fn ensure_linearizable_with_wait_timeout() -> Result<()> {
     // The leader lease equals `election_timeout_max`, so both wait timeouts below are far shorter
     // than the wait a read would inherit from the lease.
     let config = Config {
+        enable_local_lease_read: Some(true),
         enable_heartbeat: false,
         enable_elect: false,
         heartbeat_interval: 100,
@@ -375,6 +379,7 @@ fn expect_quorum_not_enough(err: RaftError<TypeConfig, LinearizableReadError<Typ
 #[test_harness::test(harness = ut_harness)]
 async fn ensure_linearizable_with_lease_read() -> Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         enable_heartbeat: false,
         enable_elect: false,
         heartbeat_interval: 1000,
@@ -463,6 +468,7 @@ async fn ensure_linearizable_with_lease_read() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn linearizer_waits_for_periodic_heartbeat_when_immediate_heartbeat_disabled() -> Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         enable_heartbeat: false,
         enable_elect: false,
         heartbeat_interval: 100,
@@ -531,6 +537,7 @@ async fn linearizer_waits_for_periodic_heartbeat_when_immediate_heartbeat_disabl
 #[test_harness::test(harness = ut_harness)]
 async fn ensure_linearizable_not_process_from_followers() -> Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         enable_heartbeat: false,
         enable_elect: false,
         heartbeat_interval: 100,
@@ -572,6 +579,7 @@ async fn ensure_linearizable_not_process_from_followers() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn ensure_linearizable_process_from_followers() -> Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         enable_heartbeat: false,
         enable_elect: false,
         heartbeat_interval: 100,
