@@ -3,6 +3,7 @@ use std::sync::Arc;
 use openraft_macros::since;
 
 use crate::RaftTypeConfig;
+use crate::async_runtime::watch::WatchReceiver;
 use crate::base::BoxStream;
 use crate::batch::Batch;
 use crate::core::raft_msg::RaftMsg;
@@ -18,7 +19,6 @@ use crate::raft::message::WriteResult;
 use crate::raft::message::into_write_result;
 use crate::raft::raft_inner::RaftInner;
 use crate::raft::responder::core_responder::CoreResponder;
-#[cfg(feature = "runtime-stats")]
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::BatchOf;
 #[cfg(feature = "runtime-stats")]
@@ -50,6 +50,21 @@ where C: RaftTypeConfig
         &self,
         linearizer_option: LinearizerOption,
     ) -> Result<Result<Linearizer<C>, LinearizableReadError<C>>, Fatal<C>> {
+        let enabled = self.inner.config.get_enable_local_lease_read();
+        if enabled {
+            let state = {
+                let watched = self.inner.rx_lease_read_state.borrow_watched();
+                watched.clone()
+            };
+            if let Some(state) = state {
+                let now = C::now();
+                let node_id = self.inner.id.clone();
+                let linearizer = state.try_linearizer(node_id, &linearizer_option, now);
+                if let Some(linearizer) = linearizer {
+                    return Ok(Ok(linearizer));
+                }
+            }
+        }
         self.inner.call_core_oneshot(|tx| RaftMsg::GetLinearizer { linearizer_option, tx }).await
     }
 

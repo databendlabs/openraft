@@ -27,6 +27,7 @@ use crate::fixtures::ut_harness;
 #[test_harness::test(harness = ut_harness)]
 async fn transfer_leader() -> anyhow::Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         election_timeout_min: 150,
         election_timeout_max: 300,
         ..Default::default()
@@ -96,6 +97,7 @@ async fn transfer_leader() -> anyhow::Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn trigger_transfer_leader() -> anyhow::Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         election_timeout_min: 150,
         election_timeout_max: 300,
         ..Default::default()
@@ -151,6 +153,7 @@ async fn transfer_leader_with_dead_target_does_not_block_election() -> anyhow::R
     let election_timeout_max = 300;
 
     let config = Config {
+        enable_local_lease_read: Some(true),
         // The only AE traffic should come from ReadIndex; otherwise heartbeat AE
         // would also bump follower last_update and the bug is no longer attributable
         // to ReadIndex specifically.
@@ -235,6 +238,7 @@ async fn transfer_leader_with_dead_target_does_not_block_election() -> anyhow::R
 #[test_harness::test(harness = ut_harness)]
 async fn transfer_leader_blocks_lease_read() -> anyhow::Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         // Large lease so `last_quorum_acked + leader_lease` stays in the future for the
         // whole test. If the lease lapses, pre-fix `LeaseRead` returns
         // `ForwardToLeader::empty` for the wrong reason and masks the bug.
@@ -315,6 +319,7 @@ async fn transfer_leader_blocks_lease_read() -> anyhow::Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn transfer_leader_overrides_lease() -> anyhow::Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         // A lease far longer than the test: the voters' leases stay fresh throughout,
         // so a granted vote can only result from the leadership-transfer override.
         election_timeout_min: 10_000,
@@ -355,6 +360,7 @@ async fn transfer_leader_overrides_lease() -> anyhow::Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn transfer_leader_to_promoted_learner_without_promotion_log_does_not_panic() -> anyhow::Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         enable_heartbeat: false,
         enable_tick: false,
         election_timeout_min: 100,
@@ -443,6 +449,7 @@ async fn transfer_leader_to_promoted_learner_without_promotion_log_does_not_pani
 #[test_harness::test(harness = ut_harness)]
 async fn only_voter_steps_down_after_transfer_to_unreachable_learner() -> anyhow::Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         election_timeout_min: 150,
         election_timeout_max: 300,
         ..Default::default()
@@ -513,6 +520,7 @@ async fn only_voter_steps_down_after_transfer_to_unreachable_learner() -> anyhow
 #[test_harness::test(harness = ut_harness)]
 async fn leader_steps_down_after_transfer_when_no_other_voter_campaigns() -> anyhow::Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         election_timeout_min: 150,
         election_timeout_max: 300,
         ..Default::default()

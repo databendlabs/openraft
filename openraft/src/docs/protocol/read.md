@@ -39,6 +39,22 @@ and at last, proceed with the state machine read.
 
 The above steps are encapsulated in the [`ensure_linearizable(read_policy)`][`ensure_linearizable()`] method.
 
+## Caller-side lease reads
+
+Set [`Config::enable_local_lease_read`] to `Some(true)` to evaluate a valid lease in the caller's task.
+The default, `None`, currently keeps reads on the RaftCore path.
+A cache hit reuses the core's published read boundary and avoids a `GetLinearizer` message.
+The lease check uses acknowledged RPC sending time and the configured leader lease.
+
+RaftCore publishes committed progress before dispatching apply work and invalidates the publication before leadership transfer.
+Each read loads the current publication for that invocation.
+A read that captured a valid snapshot before invalidation overlaps the transfer and may finish afterward.
+
+A missing or expired snapshot follows the existing core path, including its forwarding, heartbeat, and timeout behavior.
+`ReadIndex` continues to request fresh quorum confirmation through RaftCore.
+The returned `Linearizer` retains its apply barrier: call `try_await_ready()` before reading application state,
+or use `ensure_linearizable()` to include that wait.
+
 ## Examples
 
 ```ignore
@@ -122,3 +138,5 @@ at least as large as any committed log, once `last_applied_log_id.index() >= rea
 [`ReadPolicy`]: crate::raft::ReadPolicy
 [`ReadPolicy::ReadIndex`]: crate::raft::ReadPolicy::ReadIndex
 [`ReadPolicy::LeaseRead`]: crate::raft::ReadPolicy::LeaseRead
+
+[`Config::enable_local_lease_read`]: crate::Config::enable_local_lease_read

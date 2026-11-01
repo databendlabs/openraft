@@ -1,5 +1,6 @@
 //! Defines the linearizable read protocol.
 
+pub(crate) mod lease_read_state;
 mod linearize_state;
 mod linearizer;
 mod linearizer_option;

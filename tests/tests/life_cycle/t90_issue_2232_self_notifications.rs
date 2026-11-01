@@ -23,6 +23,7 @@ use crate::fixtures::ut_harness;
 #[test_harness::test(harness = ut_harness)]
 async fn self_notifications_with_capacity_one() -> Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         notification_channel_size: Some(1),
         enable_tick: false,
         enable_heartbeat: false,
@@ -89,6 +90,7 @@ async fn self_notifications_with_capacity_one() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn elect_after_restart_with_capacity_one() -> Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         notification_channel_size: Some(1),
         enable_tick: false,
         enable_heartbeat: false,
@@ -162,6 +164,7 @@ async fn elect_after_restart_with_capacity_one() -> Result<()> {
 #[test_harness::test(harness = ut_harness)]
 async fn three_nodes_with_capacity_one() -> Result<()> {
     let config = Config {
+        enable_local_lease_read: Some(true),
         notification_channel_size: Some(1),
         enable_tick: false,
         enable_heartbeat: false,
