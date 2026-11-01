@@ -52,6 +52,10 @@ where
     /// Handle that samples backoff delays and clears the current backoff on reset.
     /// `ReplicationCore` enables new backoff after RPC errors.
     pub(crate) backoff_consumer: BackoffConsumer<C>,
+
+    /// Synchronously pause after checking leadership to model descheduling within one poll.
+    #[cfg(test)]
+    pub(crate) after_leader_check: Option<Box<dyn FnOnce() + Send>>,
 }
 
 impl<C, LS> StreamState<C, LS>
@@ -82,9 +86,21 @@ where
             }
         };
 
+        // Read the commit first: the core publishes a new leader's accepted IO before its commit,
+        // so a later leader's commit makes the following check stop this stale stream.
+        //
+        // Marking the commit as seen keeps the pending `committed_rx.changed()` from forcing a
+        // second, entry-less request that carries this same commit. A commit that advances
+        // after this read stays unseen and gets a request of its own.
+        let leader_commit = self.event_watcher.committed_rx.borrow_and_update().clone();
         let accepted_io: IOId<C> = self.event_watcher.io_accepted_rx.borrow_watched().clone();
         if self.replication_context.leader_changed(&accepted_io) {
             return Ok(None);
+        }
+
+        #[cfg(test)]
+        if let Some(hook) = self.after_leader_check.take() {
+            hook();
         }
 
         self.update_sent(&sending_range);
@@ -92,10 +108,7 @@ where
         let payload: AppendEntriesRequest<C> = AppendEntriesRequest {
             vote: self.replication_context.leader_vote.clone().into_vote(),
             prev_log_id: sending_range.prev.clone(),
-            // Marking the commit as seen keeps the pending `committed_rx.changed()` from forcing a
-            // second, entry-less request that carries this same commit. A commit that advances
-            // after this read stays unseen and gets a request of its own.
-            leader_commit: self.event_watcher.committed_rx.borrow_and_update().clone(),
+            leader_commit,
             entries,
         };
 
