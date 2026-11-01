@@ -159,6 +159,8 @@ where
                 payload: None,
                 inflight_id: None,
                 backoff_consumer,
+                #[cfg(test)]
+                after_leader_check: None,
             })),
             inflight_id: None,
             event_watcher,
