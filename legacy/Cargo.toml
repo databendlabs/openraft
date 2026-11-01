@@ -29,6 +29,8 @@ tracing = { workspace = true }
 [dev-dependencies]
 openraft = { path = "../openraft", version = "0.10.0-alpha.37", default-features = false, features = ["tokio-rt"] }
 serde_json = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["fs"] }
 
 [features]
 default = []

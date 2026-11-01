@@ -53,6 +53,10 @@ where C: RaftTypeConfig
     type SnapshotReceiver: OptionalSend + 'static;
 
     /// Create a new blank snapshot receiver.
+    ///
+    /// File receivers must be opened for both reading and writing. Create their parent
+    /// directory even on a fresh node, and allocate the local name independently of the
+    /// peer's transfer ID. The chunk receiver completes writes and rewinds before installation.
     #[since(version = "0.10.0", change = "moved from RaftStateMachine")]
     async fn begin_receiving_snapshot(&mut self) -> Result<Self::SnapshotReceiver, io::Error>;
 }
