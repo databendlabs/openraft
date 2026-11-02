@@ -295,6 +295,7 @@ where C: RaftTypeConfig
                 CoreState::Done(_, outcome) => return (*outcome, *outcome != TaskJoinOutcome::NotStarted),
                 CoreState::Joining(join) => join.clone(),
                 CoreState::Running(_) => {
+                    // The placeholder stays under the lock until the shared join replaces it.
                     let prev = std::mem::replace(
                         &mut *state,
                         CoreState::Done(Err(Fatal::Stopped), TaskJoinOutcome::NotStarted),
@@ -319,7 +320,7 @@ where C: RaftTypeConfig
                 }
             }
         };
-        let already_joined = join.peek().is_some_and(|(_, outcome)| *outcome != TaskJoinOutcome::NotStarted);
+        let already_joined = join.peek().is_some();
         let (result, outcome) = join.await;
         *self.core_state.lock().unwrap() = CoreState::Done(result, outcome);
         (outcome, already_joined)
@@ -334,4 +335,4 @@ where C: RaftTypeConfig
 }
 
 #[cfg(test)]
-mod shutdown_test;
+mod raft_inner_test;

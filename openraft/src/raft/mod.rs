@@ -2058,7 +2058,8 @@ where
 
     /// Shutdown this Raft node.
     ///
-    /// It sends a shutdown signal and waits until `RaftCore` returns.
+    /// It sends a shutdown signal and waits until `RaftCore` returns. If this future is cancelled
+    /// while joining the core, a later call resumes that join and waits for the core to exit.
     /// Use [`Self::shutdown_with_report`] to inspect the core and tick task join outcomes.
     ///
     /// # Examples
@@ -2069,6 +2070,9 @@ where
     /// ```
     pub async fn shutdown(&self) -> Result<(), JoinErrorOf<C>> {
         self.shutdown_with_report().await;
+
+        // TODO(xp): API change: replace `JoinError` with `Fatal`,
+        //           to let the caller know the return value of RaftCore task.
         Ok(())
     }
 
@@ -2079,7 +2083,7 @@ where
     /// completed before this call and tasks that were never started by [`Self::run`].
     /// Concurrent calls wait for the same joins. Dropping this future leaves the joins available
     /// for a subsequent call to finish.
-    #[since(version = "0.10.0", change = "added shutdown task join reporting")]
+    #[since(version = "0.10.0")]
     pub async fn shutdown_with_report(&self) -> ShutdownReport {
         self.inner.shutdown_with_report().await
     }

@@ -8,14 +8,17 @@ use crate::type_config::alias::JoinErrorOf;
 /// The recorded outcome of joining a background task.
 ///
 /// This describes the runtime join, independently of the value returned by the task.
-#[since(version = "0.10.0", change = "added background task join outcomes")]
+#[since(version = "0.10.0")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum TaskJoinOutcome {
     /// The task returned and its join succeeded.
     Joined,
-    /// The runtime reported that the task panicked.
+    /// The runtime join failed and [`AsyncRuntime::is_panic`] classified the failure as a panic.
     Panicked,
-    /// The runtime reported a non-panic join failure, including cancellation or abort.
+    /// The runtime join failed and [`AsyncRuntime::is_panic`] classified the failure as non-panic.
+    ///
+    /// Cancellation and abort classification depends on the runtime.
     Failed,
     /// The task was never spawned.
     NotStarted,

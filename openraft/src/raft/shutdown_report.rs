@@ -9,8 +9,9 @@ use crate::raft::TaskJoinOutcome;
 /// certify that other background tasks or application resources have been shut down.
 ///
 /// [`Raft::shutdown`]: crate::Raft::shutdown
-#[since(version = "0.10.0", change = "added core and tick task shutdown report")]
+#[since(version = "0.10.0")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct ShutdownReport {
     /// The core task's join outcome.
     pub core: TaskJoinOutcome,
