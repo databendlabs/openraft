@@ -650,12 +650,15 @@ where
 
         let stream_result: StreamAppendResult<C> = self.append_entries(vote, segment).map_err(Into::into);
 
-        let condition = if stream_result.is_ok() {
-            Some(Condition::IOFlushed {
-                io_id: self.state.accepted_log_io().unwrap().clone(),
-            })
-        } else {
-            None
+        // The reply claims only that the vote and the log up to `last_log_id` are persisted:
+        // the last entry of this request, or `prev_log_id` for a heartbeat without entries.
+        // Waiting for the latest accepted IO instead would hold a heartbeat reply until entries
+        // of earlier requests are flushed, so a slow disk would delay it past the leader's lease.
+        let condition = match &stream_result {
+            Ok(last_log_id) => Some(Condition::IOFlushed {
+                io_id: IOId::new_log_io(self.state.vote_ref().to_committed(), last_log_id.clone()),
+            }),
+            Err(_) => None,
         };
 
         self.output.push_command(Command::Respond {
