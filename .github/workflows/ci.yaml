@@ -630,7 +630,15 @@ jobs:
         run: cargo audit --db ./target/advisory-db
 
   examples:
-    runs-on: ubuntu-latest
+    # Pinned to Ubuntu 24.04 instead of ubuntu-latest because the distro
+    # librocksdb is the RocksDB version this job compiles against: 24.04 ships
+    # librocksdb 8.9, whose C API still has the deprecated
+    # `rocksdb_options_set_access_hint_on_compaction_start` that the `rocksdb
+    # 0.22` crate calls. A newer Ubuntu ships RocksDB 9+, the symbol is gone,
+    # and bindgen drops it from the bindings, so build and test fail with
+    # "cannot find function `rocksdb_options_set_access_hint_on_compaction_start`".
+    # Move both the `rocksdb` crate version and this pin together.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     # RocksDB-backed examples (log-rocks, raft-kv-rocksdb, sm-rocks) were the slowest CI
     # jobs because librocksdb-sys compiles bundled RocksDB (8.10) C++ from
@@ -728,10 +736,13 @@ jobs:
   # Check the crate here so a pull request cannot silently break it.
   jepsen-app:
     name: jepsen app
-    runs-on: ubuntu-latest
+    # Same system-RocksDB shortcut as the examples job, and therefore the same
+    # Ubuntu 24.04 pin: the distro librocksdb has to keep the RocksDB 8.x C API
+    # that the `rocksdb` crate calls.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
-    # Same system-RocksDB shortcut as the examples job: link the system
-    # librocksdb instead of compiling the bundled RocksDB C++ from source.
+    # Link the system librocksdb instead of compiling the bundled RocksDB C++
+    # from source.
     env:
       ROCKSDB_LIB_DIR: /usr/lib/x86_64-linux-gnu
       ROCKSDB_INCLUDE_DIR: /usr/include
