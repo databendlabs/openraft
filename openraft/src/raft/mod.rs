@@ -125,6 +125,7 @@ use crate::errors::ForwardToLeader;
 use crate::errors::InitializeError;
 use crate::errors::LinearizableReadError;
 use crate::errors::RaftError;
+use crate::errors::ShutdownError;
 use crate::errors::into_raft_result::IntoRaftResult;
 use crate::membership::RaftMembership;
 use crate::membership::RaftMembershipExt;
@@ -732,7 +733,7 @@ where
 
         let start = start.take().expect("unstarted Raft must have a start function");
         let join_handle = start(self.inner.as_ref());
-        *state = CoreState::Running(join_handle);
+        *state = CoreState::started(join_handle);
     }
 }
 
@@ -2096,7 +2097,9 @@ where
 
     /// Shutdown this Raft node.
     ///
-    /// It sends a shutdown signal and waits until `RaftCore` returns.
+    /// It sends a shutdown signal and waits until `RaftCore` returns. If this future is cancelled
+    /// while joining the core, a later call resumes that join and waits for the core to exit.
+    /// Use [`Self::try_shutdown`] to check for core or tick task join failures.
     ///
     /// # Examples
     ///
@@ -2105,25 +2108,40 @@ where
     /// raft.shutdown().await?;
     /// ```
     pub async fn shutdown(&self) -> Result<(), JoinErrorOf<C>> {
-        if let Some(tx) = self.inner.tx_shutdown.lock().unwrap().take() {
-            // A failure to send means the RaftCore is already shutdown. Continue to check the task
-            // return value.
-            let send_res = tx.send(());
-            tracing::info!("sending shutdown signal to RaftCore, sending res: {:?}", send_res);
-        }
-        self.inner.join_core_task().await;
-        let tick_handle = self.inner.tick_handle.lock().unwrap().take();
-        let join_handle = match tick_handle {
-            Some(tick_handle) => tick_handle.shutdown(),
-            None => None,
-        };
-        if let Some(join_handle) = join_handle {
-            join_handle.await.ok();
-        }
+        let _ = self.try_shutdown().await;
 
         // TODO(xp): API change: replace `JoinError` with `Fatal`,
         //           to let the caller know the return value of RaftCore task.
         Ok(())
+    }
+
+    /// Shut down this node and return an error if either core or tick task failed to join.
+    ///
+    /// Both joins finish before this returns, and results are retained across calls to this method
+    /// and [`Self::shutdown`]. Concurrent callers and retries after cancellation share the joins.
+    ///
+    /// Success describes the runtime joins of started core and tick tasks, independently of their
+    /// return values and other background task lifetimes. A node stopped before [`Self::run`]
+    /// succeeds.
+    #[since(version = "0.10.0")]
+    pub async fn try_shutdown(&self) -> Result<(), ShutdownError> {
+        if let Some(tx) = self.inner.tx_shutdown.lock().unwrap().take() {
+            let send_res = tx.send(());
+            tracing::info!("sending shutdown signal to RaftCore, sending res: {:?}", send_res);
+        }
+
+        let (_, core_failed) = self.inner.join_core_task().await;
+        let core_result = if core_failed { Err(ShutdownError) } else { Ok(()) };
+        let tick_join = {
+            let tick_handle = self.inner.tick_handle.lock().unwrap();
+            let Some(handle) = tick_handle.as_ref() else {
+                return core_result;
+            };
+            handle.shutdown()
+        };
+        let tick_result = tick_join.await;
+        tick_result?;
+        core_result
     }
 
     /// Provides mutable access to [`RaftStateMachine`] through a user-provided function.
