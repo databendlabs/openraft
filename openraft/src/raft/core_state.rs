@@ -1,10 +1,13 @@
+use futures_util::future::Shared;
+
 use crate::RaftTypeConfig;
+use crate::base::BoxFuture;
 use crate::base::BoxOnce;
 use crate::errors::Fatal;
 use crate::errors::Infallible;
+use crate::raft::TaskJoinOutcome;
 use crate::raft::raft_inner::RaftInner;
 use crate::type_config::alias::JoinHandleOf;
-use crate::type_config::alias::WatchReceiverOf;
 
 /// The running state of RaftCore
 pub(in crate::raft) enum CoreState<C>
@@ -16,11 +19,11 @@ where C: RaftTypeConfig
     /// The RaftCore task is still running.
     Running(JoinHandleOf<C, Result<Infallible, Fatal<C>>>),
 
-    /// The RaftCore task is waiting for a signal to finish joining.
-    Joining(WatchReceiverOf<C, bool>),
+    /// Callers share the in-progress runtime join of the RaftCore task.
+    Joining(Shared<BoxFuture<'static, (Result<Infallible, Fatal<C>>, TaskJoinOutcome)>>),
 
-    /// The RaftCore task has finished. The return value of the task is stored.
-    Done(Result<Infallible, Fatal<C>>),
+    /// The RaftCore task has finished. Its return value and join outcome are stored.
+    Done(Result<Infallible, Fatal<C>>, TaskJoinOutcome),
 }
 
 impl<C> CoreState<C>

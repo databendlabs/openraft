@@ -17,7 +17,9 @@ pub(crate) mod message;
 mod raft_inner;
 pub mod responder;
 mod runtime_config_handle;
+mod shutdown_report;
 pub(crate) mod stream_append;
+mod task_join_outcome;
 pub mod trigger;
 mod watch_handle;
 
@@ -69,6 +71,8 @@ use tracing::Level;
 use tracing::trace_span;
 
 pub use self::leader::Leader;
+pub use self::shutdown_report::ShutdownReport;
+pub use self::task_join_outcome::TaskJoinOutcome;
 pub use self::watch_handle::WatchChangeHandle;
 use crate::Extensions;
 use crate::OptionalSend;
@@ -696,6 +700,7 @@ where
             config,
             runtime_config,
             tick_handle: Mutex::new(None),
+            tick_shutdown: Mutex::new(None),
             tx_api,
             rx_metrics,
             rx_data_metrics,
@@ -2054,6 +2059,7 @@ where
     /// Shutdown this Raft node.
     ///
     /// It sends a shutdown signal and waits until `RaftCore` returns.
+    /// Use [`Self::shutdown_with_report`] to inspect the core and tick task join outcomes.
     ///
     /// # Examples
     ///
@@ -2062,25 +2068,20 @@ where
     /// raft.shutdown().await?;
     /// ```
     pub async fn shutdown(&self) -> Result<(), JoinErrorOf<C>> {
-        if let Some(tx) = self.inner.tx_shutdown.lock().unwrap().take() {
-            // A failure to send means the RaftCore is already shutdown. Continue to check the task
-            // return value.
-            let send_res = tx.send(());
-            tracing::info!("sending shutdown signal to RaftCore, sending res: {:?}", send_res);
-        }
-        self.inner.join_core_task().await;
-        let tick_handle = self.inner.tick_handle.lock().unwrap().take();
-        let join_handle = match tick_handle {
-            Some(tick_handle) => tick_handle.shutdown(),
-            None => None,
-        };
-        if let Some(join_handle) = join_handle {
-            join_handle.await.ok();
-        }
-
-        // TODO(xp): API change: replace `JoinError` with `Fatal`,
-        //           to let the caller know the return value of RaftCore task.
+        self.shutdown_with_report().await;
         Ok(())
+    }
+
+    /// Shut down this node and report the join outcomes of its core and tick tasks.
+    ///
+    /// Unlike [`Self::shutdown`], this exposes runtime join failures. Outcomes are retained so a
+    /// later call can still observe a panic or cancellation. The report also identifies joins
+    /// completed before this call and tasks that were never started by [`Self::run`].
+    /// Concurrent calls wait for the same joins. Dropping this future leaves the joins available
+    /// for a subsequent call to finish.
+    #[since(version = "0.10.0", change = "added shutdown task join reporting")]
+    pub async fn shutdown_with_report(&self) -> ShutdownReport {
+        self.inner.shutdown_with_report().await
     }
 
     /// Provides mutable access to [`RaftStateMachine`] through a user-provided function.

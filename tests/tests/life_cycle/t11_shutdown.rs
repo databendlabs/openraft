@@ -3,11 +3,13 @@ use std::sync::Arc;
 use anyhow::Result;
 use openraft::Config;
 use openraft::ConfigError;
+use openraft::Raft;
 use openraft::ServerState;
 use openraft::async_runtime::WatchReceiver;
 use openraft::errors::Fatal;
 use openraft::errors::Infallible;
 use openraft::errors::RPCError;
+use openraft::raft::TaskJoinOutcome;
 
 use crate::fixtures::Node;
 use crate::fixtures::RaftRouter;
@@ -245,5 +247,133 @@ async fn return_error_after_shutdown() -> Result<()> {
         assert_eq!(Fatal::Stopped, err.into_fatal().unwrap());
     }
 
+    Ok(())
+}
+
+/// Shutdown reports retain both joins, including across the compatibility API.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn shutdown_with_report() -> Result<()> {
+    let config = Config {
+        enable_tick: false,
+        enable_heartbeat: false,
+        enable_elect: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
+
+    tracing::info!(
+        node = 0,
+        "join the running core and tick tasks without starting an election"
+    );
+    let node = {
+        router.new_raft_node(0).await?;
+        let node = router.get_raft_handle(&0)?;
+        let report = node.shutdown_with_report().await;
+        assert_eq!(TaskJoinOutcome::Joined, report.core);
+        assert_eq!(TaskJoinOutcome::Joined, report.tick);
+        assert!(!report.core_already_joined);
+        assert!(!report.tick_already_joined);
+        node
+    };
+
+    tracing::info!(
+        node = 0,
+        "a repeated shutdown reports cached outcomes and keeps the old API safe"
+    );
+    {
+        node.shutdown().await?;
+        let repeated = node.shutdown_with_report().await;
+        assert_eq!(TaskJoinOutcome::Joined, repeated.core);
+        assert_eq!(TaskJoinOutcome::Joined, repeated.tick);
+        assert!(repeated.core_already_joined);
+        assert!(repeated.tick_already_joined);
+    }
+
+    tracing::info!(
+        node = 1,
+        "the compatibility API also retains outcomes for later inspection"
+    );
+    {
+        router.new_raft_node(1).await?;
+        let node = router.get_raft_handle(&1)?;
+        node.shutdown().await?;
+        let report = node.shutdown_with_report().await;
+        assert_eq!(TaskJoinOutcome::Joined, report.core);
+        assert_eq!(TaskJoinOutcome::Joined, report.tick);
+        assert!(report.core_already_joined);
+        assert!(report.tick_already_joined);
+    }
+    Ok(())
+}
+
+/// A built node reports unstarted tasks, including after repeated shutdown and run calls.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn shutdown_with_report_before_run() -> Result<()> {
+    let config = Config {
+        enable_tick: false,
+        enable_heartbeat: false,
+        enable_elect: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config.clone())?;
+
+    tracing::info!(node = 0, "build a node with fresh stores without spawning its tasks");
+    let node = {
+        let (log_store, sm) = router.new_store();
+        Raft::build(0, Arc::new(config.validate()?), router, log_store, sm).await?
+    };
+
+    tracing::info!(node = 0, "shutdown before run must never claim a successful task join");
+    {
+        for _ in 0..2 {
+            let report = node.shutdown_with_report().await;
+            assert_eq!(TaskJoinOutcome::NotStarted, report.core);
+            assert_eq!(TaskJoinOutcome::NotStarted, report.tick);
+            assert!(!report.core_already_joined);
+            assert!(!report.tick_already_joined);
+            node.run();
+        }
+        node.shutdown().await?;
+    }
+    Ok(())
+}
+
+/// An actual RaftCore panic remains observable after an API call has joined it.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn shutdown_with_report_after_core_panic() -> Result<()> {
+    let config = Config {
+        enable_tick: false,
+        enable_heartbeat: false,
+        enable_elect: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
+    router.new_raft_node(0).await?;
+    let node = router.get_raft_handle(&0)?;
+
+    tracing::info!(
+        node = 0,
+        "panic the core, then use a request to observe its fatal error"
+    );
+    {
+        node.external_request(|_state| panic!("injected core panic")).await?;
+        assert_eq!(Fatal::Panicked, node.with_raft_state(|_state| ()).await.unwrap_err());
+    }
+
+    tracing::info!(
+        node = 0,
+        "shutdown must retain the panic from the earlier internal join"
+    );
+    {
+        let report = node.shutdown_with_report().await;
+        assert_eq!(TaskJoinOutcome::Panicked, report.core);
+        assert_eq!(TaskJoinOutcome::Joined, report.tick);
+        assert!(report.core_already_joined);
+        node.shutdown().await?;
+        assert_eq!(TaskJoinOutcome::Panicked, node.shutdown_with_report().await.core);
+    }
     Ok(())
 }

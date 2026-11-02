@@ -4,6 +4,8 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use display_more::DisplayOptionExt;
+use futures_util::FutureExt;
+use futures_util::future::Shared;
 use tracing::Level;
 
 use crate::Config;
@@ -12,8 +14,9 @@ use crate::OptionalSend;
 use crate::RaftMetrics;
 use crate::RaftTypeConfig;
 use crate::async_runtime::MpscSender;
+use crate::async_runtime::OneshotSender;
 use crate::async_runtime::watch::WatchReceiver;
-use crate::async_runtime::watch::WatchSender;
+use crate::base::BoxFuture;
 use crate::config::RuntimeConfig;
 use crate::core::TickHandle;
 use crate::core::io_flush_tracking::IoProgressWatcher;
@@ -23,6 +26,8 @@ use crate::errors::Fatal;
 use crate::metrics::RaftDataMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::metrics::Wait;
+use crate::raft::ShutdownReport;
+use crate::raft::TaskJoinOutcome;
 use crate::raft::core_state::CoreState;
 use crate::type_config::AsyncRuntime;
 use crate::type_config::TypeConfigExt;
@@ -49,6 +54,7 @@ where C: RaftTypeConfig
     pub(in crate::raft) config: Arc<Config>,
     pub(in crate::raft) runtime_config: Arc<RuntimeConfig<C>>,
     pub(in crate::raft) tick_handle: Mutex<Option<TickHandle<C>>>,
+    pub(in crate::raft) tick_shutdown: Mutex<Option<Shared<BoxFuture<'static, TaskJoinOutcome>>>>,
     pub(in crate::raft) tx_api: MpscSenderOf<C, RaftMsg<C>>,
     pub(in crate::raft) rx_metrics: WatchReceiverOf<C, RaftMetrics<C>>,
     pub(in crate::raft) rx_data_metrics: WatchReceiverOf<C, RaftDataMetrics<C>>,
@@ -208,7 +214,7 @@ where C: RaftTypeConfig
         // Retrieve the result.
         let core_res = {
             let state = self.core_state.lock().unwrap();
-            if let CoreState::Done(core_task_res) = &*state {
+            if let CoreState::Done(core_task_res, _) = &*state {
                 core_task_res.clone()
             } else {
                 unreachable!("RaftCore should have already quit")
@@ -233,75 +239,90 @@ where C: RaftTypeConfig
         }
     }
 
-    /// Wait for `RaftCore` task to finish and record the returned value from the task.
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub(in crate::raft) async fn join_core_task(&self) {
-        // Get the Running state of RaftCore,
-        // or an error if RaftCore has been in Joining state.
-        let running_res = {
-            let mut state = self.core_state.lock().unwrap();
+    /// Signal shutdown and retain both joins so cancelled or repeated callers can finish them.
+    pub(in crate::raft) async fn shutdown_with_report(&self) -> ShutdownReport {
+        if let Some(tx) = self.tx_shutdown.lock().unwrap().take() {
+            let send_res = tx.send(());
+            tracing::info!("sending shutdown signal to RaftCore, sending res: {:?}", send_res);
+        }
 
-            match &*state {
-                CoreState::Unstarted(_) => {
-                    // Dropping the unstarted future drops RaftCore and closes all of its channels.
-                    *state = CoreState::Done(Err(Fatal::Stopped));
-                    return;
-                }
-                CoreState::Running(_) => {
-                    let (tx, rx) = C::watch_channel::<bool>(false);
-
-                    let prev = std::mem::replace(&mut *state, CoreState::Joining(rx));
-
-                    let CoreState::Running(join_handle) = prev else {
-                        unreachable!()
-                    };
-
-                    Ok((join_handle, tx))
-                }
-                CoreState::Joining(watch_rx) => Err(watch_rx.clone()),
-                CoreState::Done(_) => {
-                    // RaftCore has already finished exiting, nothing to do
-                    return;
-                }
+        let (core, core_already_joined) = self.join_core_task().await;
+        let (tick_join, tick_already_joined) = {
+            let mut shutdown = self.tick_shutdown.lock().unwrap();
+            if let Some(join) = shutdown.as_ref() {
+                (
+                    join.clone(),
+                    join.peek().is_some_and(|outcome| *outcome != TaskJoinOutcome::NotStarted),
+                )
+            } else {
+                let tick_handle = self.tick_handle.lock().unwrap().take();
+                let join_handle = tick_handle.and_then(|handle| handle.shutdown());
+                let future: BoxFuture<'static, TaskJoinOutcome> = Box::pin(async move {
+                    match join_handle {
+                        Some(handle) => {
+                            let result = handle.await;
+                            tracing::info!("Raft tick exited: {:?}", result);
+                            TaskJoinOutcome::from_result::<C, _>(&result)
+                        }
+                        None => TaskJoinOutcome::NotStarted,
+                    }
+                });
+                let join = future.shared();
+                *shutdown = Some(join.clone());
+                (join, false)
             }
         };
 
-        match running_res {
-            Ok((join_handle, tx)) => {
-                let join_res = join_handle.await;
-
-                tracing::info!("RaftCore exited: {:?}", join_res);
-
-                let core_task_res = match join_res {
-                    Err(err) => {
-                        if AsyncRuntimeOf::<C>::is_panic(&err) {
-                            Err(Fatal::Panicked)
-                        } else {
-                            Err(Fatal::Stopped)
-                        }
-                    }
-                    Ok(returned_res) => returned_res,
-                };
-
-                {
-                    let mut state = self.core_state.lock().unwrap();
-                    *state = CoreState::Done(core_task_res);
-                }
-                tx.send(true).ok();
-            }
-            Err(mut rx) => {
-                // Another thread is waiting for the core to finish.
-                loop {
-                    let res = rx.changed().await;
-                    if res.is_err() {
-                        break;
-                    }
-                    if *rx.borrow_watched() {
-                        break;
-                    }
-                }
-            }
+        ShutdownReport {
+            core,
+            tick: tick_join.await,
+            core_already_joined,
+            tick_already_joined,
         }
+    }
+
+    /// Wait for `RaftCore` and retain its return value and runtime join outcome.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(in crate::raft) async fn join_core_task(&self) -> (TaskJoinOutcome, bool) {
+        let join = {
+            let mut state = self.core_state.lock().unwrap();
+            match &*state {
+                CoreState::Unstarted(_) => {
+                    // Dropping the unstarted future closes all of RaftCore's channels.
+                    *state = CoreState::Done(Err(Fatal::Stopped), TaskJoinOutcome::NotStarted);
+                    return (TaskJoinOutcome::NotStarted, false);
+                }
+                CoreState::Done(_, outcome) => return (*outcome, *outcome != TaskJoinOutcome::NotStarted),
+                CoreState::Joining(join) => join.clone(),
+                CoreState::Running(_) => {
+                    let prev = std::mem::replace(
+                        &mut *state,
+                        CoreState::Done(Err(Fatal::Stopped), TaskJoinOutcome::NotStarted),
+                    );
+                    let CoreState::Running(handle) = prev else {
+                        unreachable!()
+                    };
+                    let future: BoxFuture<'static, _> = Box::pin(async move {
+                        let result = handle.await;
+                        tracing::info!("RaftCore exited: {:?}", result);
+                        let outcome = TaskJoinOutcome::from_result::<C, _>(&result);
+                        let core_result = match result {
+                            Ok(returned) => returned,
+                            Err(err) if AsyncRuntimeOf::<C>::is_panic(&err) => Err(Fatal::Panicked),
+                            Err(_) => Err(Fatal::Stopped),
+                        };
+                        (core_result, outcome)
+                    });
+                    let join = future.shared();
+                    *state = CoreState::Joining(join.clone());
+                    join
+                }
+            }
+        };
+        let already_joined = join.peek().is_some_and(|(_, outcome)| *outcome != TaskJoinOutcome::NotStarted);
+        let (result, outcome) = join.await;
+        *self.core_state.lock().unwrap() = CoreState::Done(result, outcome);
+        (outcome, already_joined)
     }
 
     pub(crate) fn wait(&self, timeout: Option<Duration>) -> Wait<C> {
@@ -311,3 +332,6 @@ where C: RaftTypeConfig
         }
     }
 }
+
+#[cfg(test)]
+mod shutdown_test;

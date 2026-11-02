@@ -9,6 +9,10 @@ exists and receives these RPCs, but the internal Raft core has stopped, so forwa
 **Solution**: This is expected behavior. These errors are harmless - they indicate the node has
 shut down as requested. You can ignore them or filter these specific error logs after shutdown.
 
+Use [`Raft::shutdown_with_report`][] to inspect the core and tick task joins. `TaskJoinOutcome::Joined` means a task returned and the runtime join succeeded. `Panicked` and `Failed` expose panic and non-panic join failures, including cancellation or abort. A node stopped before `run()` reports `NotStarted`. Repeated calls retain the outcomes and indicate which tasks had already been joined. This report covers the core and tick tasks only; it does not certify that application resources or other background tasks have stopped. The existing `shutdown()` API keeps its return behavior and discards this report.
+
 See: <https://github.com/databendlabs/openraft/issues/1357>
 
 [`Raft::shutdown`]: `crate::Raft::shutdown`
+
+[`Raft::shutdown_with_report`]: `crate::Raft::shutdown_with_report`

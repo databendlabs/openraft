@@ -72,17 +72,13 @@ where C: RaftTypeConfig
 
         let (shutdown, shutdown_rx) = C::oneshot();
 
-        let shutdown = Mutex::new(Some(shutdown));
         let join_handle = C::spawn(this.tick_loop(shutdown_rx).instrument(tracing::span!(
             parent: &Span::current(),
             Level::DEBUG,
             "tick"
         )));
 
-        TickHandle {
-            shutdown,
-            join_handle: Mutex::new(Some(join_handle)),
-        }
+        TickHandle::new(shutdown, join_handle)
     }
 
     /// Add a random phase offset from `[0, period)` to the first wait.
@@ -174,6 +170,13 @@ where C: RaftTypeConfig
 impl<C> TickHandle<C>
 where C: RaftTypeConfig
 {
+    pub(crate) fn new(shutdown: OneshotSenderOf<C, ()>, join_handle: JoinHandleOf<C, ()>) -> Self {
+        Self {
+            shutdown: Mutex::new(Some(shutdown)),
+            join_handle: Mutex::new(Some(join_handle)),
+        }
+    }
+
     /// Signal the tick loop to stop. And return a JoinHandle to wait for the loop to stop.
     ///
     /// If it is called twice, the second call will return None.
