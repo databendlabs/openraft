@@ -1261,7 +1261,7 @@ where
     NID: NodeId,
     F: Future<Output = Result<(), StorageError<NID>>>,
 {
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
     rt.block_on(f)?;
     Ok(())
 }

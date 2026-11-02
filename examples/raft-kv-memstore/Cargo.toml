@@ -34,6 +34,8 @@ tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }
 
 [dev-dependencies]
 anyhow = "1.0.63"
+# The cluster test runs on the multi-thread runtime.
+tokio = { version = "1.0", default-features = false, features = ["macros", "rt-multi-thread"] }
 maplit = "1.0.2"
 
 [features]

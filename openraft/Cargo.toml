@@ -35,6 +35,8 @@ validit         = { workspace = true }
 
 [dev-dependencies]
 anyhow             = { workspace = true }
+# The tests run on the multi-thread runtime, which the library does not need.
+tokio              = { workspace = true, features = ["rt-multi-thread"] }
 async-entry        = { workspace = true }
 pretty_assertions  = { workspace = true }
 serde_json         = { workspace = true }
