@@ -648,12 +648,24 @@ where
             self.state.last_log_id().display()
         );
 
+        // A request without entries (a heartbeat) adds nothing to the log: its reply claims only
+        // that the vote and the log up to `prev_log_id` are persisted. Waiting for the latest
+        // accepted IO instead would hold the reply until entries of earlier requests are flushed,
+        // so a slow disk would delay heartbeat replies past the leader's lease.
+        let heartbeat_upto = segment.entries.is_empty().then(|| segment.prev_log_id.clone());
+
         let stream_result: StreamAppendResult<C> = self.append_entries(vote, segment).map_err(Into::into);
 
         let condition = if stream_result.is_ok() {
-            Some(Condition::IOFlushed {
-                io_id: self.state.accepted_log_io().unwrap().clone(),
-            })
+            let accepted = self.state.accepted_log_io().unwrap().clone();
+            let io_id = match heartbeat_upto {
+                Some(prev_log_id) => match accepted.to_committed_vote() {
+                    Some(committed) => IOId::new_log_io(committed, prev_log_id),
+                    None => accepted,
+                },
+                None => accepted,
+            };
+            Some(Condition::IOFlushed { io_id })
         } else {
             None
         };

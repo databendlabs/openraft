@@ -347,3 +347,67 @@ fn test_append_entries_conflict() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+/// A heartbeat (no entries) is answered once the vote and the log up to its `prev_log_id` are
+/// flushed, not once every accepted entry is: a disk still syncing earlier entries must not delay
+/// the reply that keeps the leader's lease.
+#[test]
+fn test_handle_append_entries_heartbeat_waits_only_for_its_prev_log_id() -> anyhow::Result<()> {
+    let mut eng = eng();
+    eng.state.vote = Leased::new(
+        UTConfig::<()>::now(),
+        Duration::from_millis(500),
+        Vote::new_committed(2, 1),
+    );
+    // The log IO up to (2,1,3) is accepted but not yet flushed.
+    eng.state.accept_log_io(IOId::new_log_io(Vote::new(2, 1).to_committed(), Some(log_id(2, 1, 3))));
+    eng.output.take_commands();
+    let (tx, _rx) = UTConfig::<()>::oneshot();
+
+    eng.handle_append_entries(
+        &Vote::new_committed(2, 1),
+        LogSegment::new(Some(log_id(1, 1, 2)), vec![]),
+        tx,
+    );
+
+    let reply = eng.output.take_commands().into_iter().find(|cmd| matches!(cmd, Command::Respond { .. }));
+    assert_eq!(
+        Some(Condition::IOFlushed {
+            io_id: IOId::new_log_io(Vote::new(2, 1).to_committed(), Some(log_id(1, 1, 2)))
+        }),
+        reply.and_then(|cmd| cmd.condition())
+    );
+
+    Ok(())
+}
+
+/// A request that carries entries is answered only once they are flushed.
+#[test]
+fn test_handle_append_entries_with_entries_waits_for_them() -> anyhow::Result<()> {
+    let mut eng = eng();
+    eng.state.vote = Leased::new(
+        UTConfig::<()>::now(),
+        Duration::from_millis(500),
+        Vote::new_committed(2, 1),
+    );
+    // The log IO up to (2,1,3) is accepted but not yet flushed.
+    eng.state.accept_log_io(IOId::new_log_io(Vote::new(2, 1).to_committed(), Some(log_id(2, 1, 3))));
+    eng.output.take_commands();
+    let (tx, _rx) = UTConfig::<()>::oneshot();
+
+    eng.handle_append_entries(
+        &Vote::new_committed(2, 1),
+        LogSegment::new(Some(log_id(2, 1, 3)), vec![blank_ent::<UTConfig>(2, 1, 4)]),
+        tx,
+    );
+
+    let reply = eng.output.take_commands().into_iter().find(|cmd| matches!(cmd, Command::Respond { .. }));
+    assert_eq!(
+        Some(Condition::IOFlushed {
+            io_id: IOId::new_log_io(Vote::new(2, 1).to_committed(), Some(log_id(2, 1, 4)))
+        }),
+        reply.and_then(|cmd| cmd.condition())
+    );
+
+    Ok(())
+}
