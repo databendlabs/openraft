@@ -88,6 +88,8 @@ async fn shutdown() -> Result<()> {
             assert!(unreachable);
             let m = node.raft.metrics();
             assert_eq!(ServerState::Shutdown, m.borrow_watched().state, "shutdown node-{}", i);
+            let result = node.raft.try_shutdown().await;
+            assert_eq!(Ok(()), result);
         }
     }
 
@@ -136,6 +138,21 @@ async fn return_error_after_panic() -> Result<()> {
         let res = router.client_request(0, "foo", 2).await;
         let err = res.unwrap_err();
         assert_eq!(Fatal::Panicked, err.into_fatal().unwrap());
+    }
+
+    tracing::info!(
+        log_index,
+        "--- shutdown must retain the core panic observed by the request"
+    );
+    {
+        let node = router.get_raft_handle(&0)?;
+        let result = node.try_shutdown().await;
+        let error = result.unwrap_err();
+        let message = error.to_string();
+        assert_eq!("Raft core or tick task failed to join", message);
+        node.shutdown().await?;
+        let repeated = node.try_shutdown().await;
+        assert_eq!(result, repeated);
     }
 
     Ok(())
@@ -232,7 +249,11 @@ async fn return_error_after_shutdown() -> Result<()> {
     tracing::info!(log_index, "--- shutdown the raft");
     {
         let n = router.get_raft_handle(&0)?;
+        let result = n.try_shutdown().await;
+        assert_eq!(Ok(()), result);
         n.shutdown().await?;
+        let repeated = n.try_shutdown().await;
+        assert_eq!(result, repeated);
     }
 
     tracing::info!(
