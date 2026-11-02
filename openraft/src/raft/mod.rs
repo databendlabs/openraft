@@ -275,7 +275,9 @@ pub enum ReadPolicy {
     /// It returns an error immediately when the lease is stale.
     ///
     /// Note: This offers slightly weaker consistency guarantees than `ReadIndex` in exchange
-    /// for lower latency.
+    /// for lower latency. Besides bounded clock drift, it assumes that no follower restarts
+    /// during the leader's lease: a restarted node starts with an expired lease, so it may vote
+    /// for a new leader while the old leader still serves lease reads.
     LeaseRead,
 
     /// Implements the ReadIndex protocol to ensure linearizable reads.
@@ -1190,7 +1192,8 @@ where
     /// // Confirm leadership with a fresh quorum acknowledgement
     /// my_raft.ensure_linearizable(ReadPolicy::ReadIndex).await?;
     ///
-    /// // Or reuse a valid leader lease to avoid a quorum round trip
+    /// // Or reuse a valid leader lease to avoid a quorum round trip, when the lease's
+    /// // assumptions hold; see `ReadPolicy::LeaseRead`
     /// my_raft.ensure_linearizable(ReadPolicy::LeaseRead).await?;
     ///
     /// // Then proceed with the state machine read

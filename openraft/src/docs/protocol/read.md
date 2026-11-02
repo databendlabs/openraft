@@ -24,7 +24,10 @@ depending on the `read_policy` [`ReadPolicy`].  The `read_policy` can be one of:
 - [`ReadPolicy::ReadIndex`]: Confirms leadership with a fresh quorum acknowledgement before
   serving reads, incurring network latency.
 - [`ReadPolicy::LeaseRead`]: Reuses a fresh quorum acknowledgement to avoid network round-trips.
-  It preserves linearizability under the leader lease's clock-drift assumptions.
+  Its consistency guarantee is slightly weaker than `ReadIndex`, because it rests on two
+  assumptions: clock drift between nodes is bounded, and no follower restarts during the leader's
+  lease. A restarted node starts with an expired lease, so it may vote for a new leader while the
+  old leader still serves lease reads.
 
 Both [`get_read_linearizer()`] and [`get_local_read_linearizer()`] return a [`Linearizer`],
 containing `(read_log_id, last_applied_log_id)`:
