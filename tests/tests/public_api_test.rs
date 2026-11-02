@@ -149,6 +149,7 @@ use openraft::errors::RPCError;
 use openraft::errors::RaftError;
 use openraft::errors::RemoteError;
 use openraft::errors::ReplicationClosed;
+use openraft::errors::ShutdownError;
 #[allow(deprecated)]
 use openraft::errors::SnapshotMismatch as DeprecatedSnapshotMismatch;
 use openraft::errors::StreamingError;

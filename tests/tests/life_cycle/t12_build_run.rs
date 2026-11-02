@@ -41,6 +41,18 @@ async fn build_then_run() -> Result<()> {
         (log_store, sm)
     };
 
+    tracing::info!("--- a node shut down before run stays stopped");
+    {
+        let (log_store, sm) = router.new_store();
+        let unstarted = Raft::build(1, Arc::new(config.clone()), router.clone(), log_store, sm).await?;
+        for _ in 0..2 {
+            let result = unstarted.try_shutdown().await;
+            assert_eq!(Ok(()), result);
+            unstarted.run();
+        }
+        unstarted.shutdown().await?;
+    }
+
     tracing::info!("--- build the node and queue a state machine request before run");
     let node = Raft::build(0, Arc::new(config), router, log_store, sm).await?;
     let invoked = Arc::new(AtomicBool::new(false));

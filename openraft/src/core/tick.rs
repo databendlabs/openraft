@@ -3,6 +3,8 @@
 use std::sync::Mutex;
 use std::time::Duration;
 
+use futures_util::FutureExt;
+use futures_util::future::Shared;
 use rand::RngExt;
 use tracing::Instrument;
 use tracing::Level;
@@ -12,7 +14,9 @@ use crate::AsyncRuntime;
 use crate::RaftTypeConfig;
 use crate::async_runtime::Select2;
 use crate::async_runtime::watch::WatchReceiver;
+use crate::base::BoxFuture;
 use crate::core::notification::Notification;
+use crate::errors::ShutdownError;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::JoinHandleOf;
@@ -40,7 +44,7 @@ pub(crate) struct TickHandle<C>
 where C: RaftTypeConfig
 {
     shutdown: Mutex<Option<OneshotSenderOf<C, ()>>>,
-    join_handle: Mutex<Option<JoinHandleOf<C, ()>>>,
+    join_handle: Shared<BoxFuture<'static, Result<(), ShutdownError>>>,
 }
 
 impl<C> Drop for TickHandle<C>
@@ -51,7 +55,8 @@ where C: RaftTypeConfig
         if self.shutdown.lock().unwrap().is_none() {
             return;
         }
-        let _ = self.shutdown();
+        let join = self.shutdown();
+        drop(join);
     }
 }
 
@@ -72,17 +77,13 @@ where C: RaftTypeConfig
 
         let (shutdown, shutdown_rx) = C::oneshot();
 
-        let shutdown = Mutex::new(Some(shutdown));
         let join_handle = C::spawn(this.tick_loop(shutdown_rx).instrument(tracing::span!(
             parent: &Span::current(),
             Level::DEBUG,
             "tick"
         )));
 
-        TickHandle {
-            shutdown,
-            join_handle: Mutex::new(Some(join_handle)),
-        }
+        TickHandle::new(shutdown, join_handle)
     }
 
     /// Add a random phase offset from `[0, period)` to the first wait.
@@ -174,10 +175,26 @@ where C: RaftTypeConfig
 impl<C> TickHandle<C>
 where C: RaftTypeConfig
 {
-    /// Signal the tick loop to stop. And return a JoinHandle to wait for the loop to stop.
+    pub(crate) fn new(shutdown: OneshotSenderOf<C, ()>, join_handle: JoinHandleOf<C, ()>) -> Self {
+        let future: BoxFuture<'static, _> = Box::pin(async move {
+            let result = join_handle.await;
+            tracing::info!("Raft tick exited: {:?}", result);
+            match result {
+                Ok(()) => Ok(()),
+                Err(_) => Err(ShutdownError),
+            }
+        });
+        let join_handle = future.shared();
+        Self {
+            shutdown: Mutex::new(Some(shutdown)),
+            join_handle,
+        }
+    }
+
+    /// Signal the tick loop to stop and return its shared join.
     ///
-    /// If it is called twice, the second call will return None.
-    pub(crate) fn shutdown(&self) -> Option<JoinHandleOf<C, ()>> {
+    /// Repeated calls retain the result of the runtime join.
+    pub(crate) fn shutdown(&self) -> Shared<BoxFuture<'static, Result<(), ShutdownError>>> {
         {
             let shutdown = {
                 let mut x = self.shutdown.lock().unwrap();
@@ -187,15 +204,10 @@ where C: RaftTypeConfig
             if let Some(shutdown) = shutdown {
                 let send_res = shutdown.send(());
                 tracing::info!("Timer shutdown signal sent: {send_res:?}");
-            } else {
-                tracing::warn!("Double call to Raft::shutdown()");
             }
         }
 
-        {
-            let mut x = self.join_handle.lock().unwrap();
-            x.take()
-        }
+        self.join_handle.clone()
     }
 }
 
@@ -361,7 +373,7 @@ mod tests {
             let th = Tick::<TickUTConfig>::spawn(Duration::from_secs(10), tx, enabled);
 
             TickUTConfig::sleep(Duration::from_millis(50)).await;
-            let join_handle = th.shutdown().unwrap();
+            let join_handle = th.shutdown();
 
             TickUTConfig::timeout(Duration::from_millis(500), join_handle)
                 .await
@@ -403,7 +415,7 @@ mod tests {
             assert_eq!(1, first);
             assert_eq!(2, second);
 
-            th.shutdown().unwrap().await.unwrap();
+            th.shutdown().await.unwrap();
             assert!(rx.recv().await.is_none(), "the channel must close after shutdown");
         });
     }
@@ -439,7 +451,7 @@ mod tests {
                 .expect("the delayed send must not postpone the third tick");
             assert_eq!(3, third);
 
-            th.shutdown().unwrap().await.unwrap();
+            th.shutdown().await.unwrap();
         });
     }
 
@@ -463,7 +475,7 @@ mod tests {
 
             // Dropping the receiver releases the loop if it is waiting on the full channel.
             drop(rx);
-            th.shutdown().unwrap().await.unwrap();
+            th.shutdown().await.unwrap();
         });
     }
 
@@ -512,7 +524,7 @@ mod tests {
                 .expect("the tick after the stall must land on the original grid");
             assert_eq!(4, fourth);
 
-            th.shutdown().unwrap().await.unwrap();
+            th.shutdown().await.unwrap();
         });
         local.block_on(&rt, scenario);
     }
@@ -694,7 +706,7 @@ mod tests {
             }
 
             drop(rx);
-            th.shutdown().unwrap().await.unwrap();
+            th.shutdown().await.unwrap();
         });
     }
 }

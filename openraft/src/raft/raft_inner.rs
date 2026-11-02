@@ -13,20 +13,18 @@ use crate::RaftMetrics;
 use crate::RaftTypeConfig;
 use crate::async_runtime::MpscSender;
 use crate::async_runtime::watch::WatchReceiver;
-use crate::async_runtime::watch::WatchSender;
 use crate::config::RuntimeConfig;
 use crate::core::TickHandle;
 use crate::core::io_flush_tracking::IoProgressWatcher;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::errors::Fatal;
+use crate::errors::Infallible;
 use crate::metrics::RaftDataMetrics;
 use crate::metrics::RaftServerMetrics;
 use crate::metrics::Wait;
 use crate::raft::core_state::CoreState;
-use crate::type_config::AsyncRuntime;
 use crate::type_config::TypeConfigExt;
-use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
@@ -194,26 +192,9 @@ where C: RaftTypeConfig
         Ok(())
     }
 
-    #[allow(dead_code)]
-    pub(in crate::raft) fn is_core_running(&self) -> bool {
-        let state = self.core_state.lock().unwrap();
-        state.is_running()
-    }
-
     /// Get the error that caused RaftCore to stop.
     pub(crate) async fn get_core_stop_error(&self) -> Fatal<C> {
-        // Wait for the core task to finish.
-        self.join_core_task().await;
-
-        // Retrieve the result.
-        let core_res = {
-            let state = self.core_state.lock().unwrap();
-            if let CoreState::Done(core_task_res) = &*state {
-                core_task_res.clone()
-            } else {
-                unreachable!("RaftCore should have already quit")
-            }
-        };
+        let (core_res, _) = self.join_core_task().await;
 
         // Safe unwrap: core_res is always an error
         core_res.unwrap_err()
@@ -233,75 +214,21 @@ where C: RaftTypeConfig
         }
     }
 
-    /// Wait for `RaftCore` task to finish and record the returned value from the task.
+    /// Wait for `RaftCore` and return its result and whether its runtime join failed.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(in crate::raft) async fn join_core_task(&self) {
-        // Get the Running state of RaftCore,
-        // or an error if RaftCore has been in Joining state.
-        let running_res = {
+    pub(in crate::raft) async fn join_core_task(&self) -> (Result<Infallible, Fatal<C>>, bool) {
+        let join = {
             let mut state = self.core_state.lock().unwrap();
-
             match &*state {
-                CoreState::Unstarted(_) => {
-                    // Dropping the unstarted future drops RaftCore and closes all of its channels.
-                    *state = CoreState::Done(Err(Fatal::Stopped));
-                    return;
+                CoreState::Unstarted(_) | CoreState::StoppedBeforeRun => {
+                    // Dropping the unstarted future closes all of RaftCore's channels.
+                    *state = CoreState::StoppedBeforeRun;
+                    return (Err(Fatal::Stopped), false);
                 }
-                CoreState::Running(_) => {
-                    let (tx, rx) = C::watch_channel::<bool>(false);
-
-                    let prev = std::mem::replace(&mut *state, CoreState::Joining(rx));
-
-                    let CoreState::Running(join_handle) = prev else {
-                        unreachable!()
-                    };
-
-                    Ok((join_handle, tx))
-                }
-                CoreState::Joining(watch_rx) => Err(watch_rx.clone()),
-                CoreState::Done(_) => {
-                    // RaftCore has already finished exiting, nothing to do
-                    return;
-                }
+                CoreState::Started(join) => join.clone(),
             }
         };
-
-        match running_res {
-            Ok((join_handle, tx)) => {
-                let join_res = join_handle.await;
-
-                tracing::info!("RaftCore exited: {:?}", join_res);
-
-                let core_task_res = match join_res {
-                    Err(err) => {
-                        if AsyncRuntimeOf::<C>::is_panic(&err) {
-                            Err(Fatal::Panicked)
-                        } else {
-                            Err(Fatal::Stopped)
-                        }
-                    }
-                    Ok(returned_res) => returned_res,
-                };
-
-                {
-                    let mut state = self.core_state.lock().unwrap();
-                    *state = CoreState::Done(core_task_res);
-                }
-                tx.send(true).ok();
-            }
-            Err(mut rx) => {
-                // Another thread is waiting for the core to finish.
-                loop {
-                    let res = rx.changed().await;
-                    if res.is_err() {
-                        break;
-                    }
-                    if *rx.borrow_watched() {
-                        break;
-                    }
-                }
-            }
-        }
+        join.await
     }
 
     pub(crate) fn wait(&self, timeout: Option<Duration>) -> Wait<C> {
@@ -311,3 +238,6 @@ where C: RaftTypeConfig
         }
     }
 }
+
+#[cfg(test)]
+mod raft_inner_test;
