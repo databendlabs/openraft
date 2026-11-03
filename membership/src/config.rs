@@ -27,6 +27,13 @@ use crate::quorum::QuorumSet;
 /// last config removed it. An active node has its role in the last config, joined with its role
 /// in each earlier config where it is a voter. A joint therefore keeps every capability of the old
 /// voters, and selecting its last config restores the roles of the target.
+///
+/// Only voters carry over because the quorums of every config still apply during a joint, and
+/// they count the old voters. A learner is in no quorum, so the last config decides it at once, as
+/// it does for a change that touches only learners. This is the joint that
+/// [`RaftMembership::joint_with()`] specifies.
+///
+/// [`RaftMembership::joint_with()`]: openraft::membership::RaftMembership::joint_with
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(
     feature = "serde",
@@ -136,18 +143,23 @@ where
     /// is a voter. Its role joins its roles in these configs. Its metadata comes from the newest
     /// config that holds it, and its voter flags come from the rules of every config.
     pub(crate) fn get_node<'a>(configs: &'a [Self], node_id: &Q::Id) -> Option<NodeRef<'a, N>> {
-        let (last, earlier) = configs.split_last()?;
-
-        // The newest config that holds the node gives its metadata.
-        let newest = configs.iter().rev().find_map(|config| config.nodes.get(node_id));
-        let (node, _) = newest?;
-
-        // The last config and each earlier config where the node is a voter count for it.
+        let mut node = None;
         let mut role = NodeRole::Empty;
         let mut is_active = false;
-        let voter_configs = earlier.iter().filter(|config| config.is_voter(node_id));
-        for config in voter_configs.chain([last]) {
-            if let Some((_, config_role)) = config.nodes.get(node_id) {
+
+        // Newest config first, so the first config that holds the node gives its metadata.
+        for (i, config) in configs.iter().rev().enumerate() {
+            let Some((config_node, config_role)) = config.nodes.get(node_id) else {
+                continue;
+            };
+            if node.is_none() {
+                node = Some(config_node);
+            }
+
+            // The last config decides every node it holds. An earlier config still applies its
+            // quorums, so it keeps the roles of its voters, but not of its learners.
+            let is_last = i == 0;
+            if is_last || config.is_voter(node_id) {
                 role |= *config_role;
                 is_active = true;
             }
@@ -155,6 +167,8 @@ where
         if !is_active {
             return None;
         }
+        // Safe unwrap(): a config that counts for the node holds it.
+        let node = node.unwrap();
 
         let is_read_voter = configs.iter().any(|config| has_id(&config.read, node_id));
         let is_write_voter = configs.iter().any(|config| has_id(&config.write, node_id));
