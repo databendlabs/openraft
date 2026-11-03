@@ -26,6 +26,11 @@
 ;; membership change is in flight; they say nothing about the case under test.
 (def ^:private transient-refusals #{:InProgress :UncommittedLeaderLog})
 (def ^:private change-timeout-ms 10000)
+(def ^:private transfer-timeout-ms 30000)
+;; A refused transfer ends within about one election timeout, 300 ms in the
+;; test app: X stops waiting for its log, and the leader steps down and
+;; campaigns. A second between requests lets each attempt finish first.
+(def ^:private transfer-retry-ms 1000)
 (def ^:private sentinel-key "leader-outside-joint-sentinel")
 (def ^:private fresh-key "leader-outside-joint-fresh")
 
@@ -62,13 +67,53 @@
       {:status :prepared
        :committed-voter-configs (:committed-voter-configs status)})))
 
-(defn- transfer! [test]
-  (let [{:keys [a x]} (roles test)]
-    (http/transfer-leader! (http/api-endpoint test a) (http/node-host x))
-    (let [status (await-status! test :old-half-leader #(= x (:leader %)))]
-      {:status :transferred
-       :leader (:leader status)
-       :effective-voter-configs (:effective-voter-configs status)})))
+(defn- caught-up?
+  "True when the leader's replication metrics show that node has acknowledged
+  the leader's last log entry."
+  [status node]
+  (let [metrics (get-in status [:metrics (:leader status)])
+        last-index (:last_log_index metrics)
+        matched-index (get-in metrics [:replication
+                                       (keyword (http/node-host node))
+                                       :index])]
+    (and (integer? last-index)
+         (integer? matched-index)
+         (<= last-index matched-index))))
+
+(defn- transfer!
+  "Makes X the leader. A transfer is best effort: the joint config commits
+  without X, and X campaigns only if it flushes the leader's last log within an
+  election timeout. So the leader is asked only after X has caught up, and
+  whichever node leads is asked again while X does not lead."
+  [test]
+  (let [{:keys [x]} (roles test)
+        requests (atom [])
+        requested-at (atom nil)
+        request-due? #(or (nil? @requested-at)
+                          (<= transfer-retry-ms
+                              (quot (- (System/nanoTime) @requested-at) 1000000)))
+        status
+        (await/until!
+         :old-half-leader
+         #(let [status (cluster/membership-status test)
+                leader (:leader status)]
+            (if (= x leader)
+              status
+              (let [x-caught-up? (caught-up? status x)]
+                (when (and x-caught-up? (request-due?))
+                  (http/transfer-leader! (http/api-endpoint test leader)
+                                         (http/node-host x))
+                  (swap! requests conj leader)
+                  (reset! requested-at (System/nanoTime)))
+                (await/retry! :old-half-leader
+                              {:membership (dissoc status :metrics)
+                               :x-caught-up? x-caught-up?
+                               :transfer-requests @requests}))))
+         {:timeout transfer-timeout-ms :retry-interval 100})]
+    {:status :transferred
+     :leader (:leader status)
+     :effective-voter-configs (:effective-voter-configs status)
+     :transfer-requests @requests}))
 
 (defn- change-once! [test]
   (let [{:keys [x z]} (roles test)]
