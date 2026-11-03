@@ -6,10 +6,8 @@ use openraft::NodeId;
 use openraft::errors::NodeNotFound;
 use openraft::errors::Operation;
 use openraft::membership::NodeRole;
-use openraft::membership::errors::WriteVoterWithoutReceiveLogs;
 use openraft_macros::since;
 
-use crate::errors::ConfigsError;
 use crate::quorum::QuorumSet;
 
 mod joint_config;
@@ -59,17 +57,16 @@ where
     /// A node of `roles` takes its role there. Every other node takes the default role for its
     /// status in this config: [`NodeRole::Campaigner`] `|` [`NodeRole::ReceiveLogs`] for a voter,
     /// an ID of either rule, and [`NodeRole::ReceiveLogs`] for a learner. A role of a node outside
-    /// `nodes` is dropped.
+    /// `nodes` is dropped. A role is kept as given, even one without [`NodeRole::ReceiveLogs`] for
+    /// a write voter: OpenRaft rejects such a membership when it is initialized or proposed.
     ///
-    /// Returns [`ConfigsError::NodeNotFound`] for the first voter without a node. Otherwise it
-    /// returns [`ConfigsError::WriteVoterWithoutReceiveLogs`] for the first write voter whose role
-    /// lacks [`NodeRole::ReceiveLogs`].
+    /// Returns [`NodeNotFound`] for the first voter without a node.
     pub(crate) fn new(
         read: Q,
         write: Q,
         roles: BTreeMap<Q::Id, NodeRole>,
         nodes: BTreeMap<Q::Id, N>,
-    ) -> Result<Self, ConfigsError<Q::Id>> {
+    ) -> Result<Self, NodeNotFound<Q::Id>> {
         let mut config = Self {
             read,
             write,
@@ -86,7 +83,6 @@ where
         }
 
         config.ensure_voters_have_nodes()?;
-        config.ensure_write_voters_receive_logs()?;
         Ok(config)
     }
 
@@ -143,20 +139,6 @@ where
         for node_id in self.voters() {
             if !self.nodes.contains_key(&node_id) {
                 return Err(NodeNotFound::new(node_id, Operation::None));
-            }
-        }
-        Ok(())
-    }
-
-    /// Returns [`WriteVoterWithoutReceiveLogs`] for the first write voter whose role in this
-    /// config lacks [`NodeRole::ReceiveLogs`].
-    fn ensure_write_voters_receive_logs(&self) -> Result<(), WriteVoterWithoutReceiveLogs<Q::Id>> {
-        for node_id in self.write.ids() {
-            let Some((_, role)) = self.nodes.get(&node_id) else {
-                continue;
-            };
-            if !role.contains(NodeRole::ReceiveLogs) {
-                return Err(WriteVoterWithoutReceiveLogs { node_id });
             }
         }
         Ok(())

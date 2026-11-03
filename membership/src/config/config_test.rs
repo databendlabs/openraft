@@ -8,10 +8,8 @@ use openraft::errors::Operation;
 use openraft::membership::NodeRef;
 use openraft::membership::NodeRole;
 use openraft::membership::RaftMembership;
-use openraft::membership::errors::WriteVoterWithoutReceiveLogs;
 
 use crate::config::Config;
-use crate::errors::ConfigsError;
 use crate::quorum::Joint;
 use crate::quorum::ThresholdQuorumSet;
 use crate::quorum::testing::threshold;
@@ -99,24 +97,21 @@ fn test_new_sets_roles_of_its_nodes() {
 }
 
 #[test]
-fn test_new_checks_voters() {
+fn test_new_checks_that_voters_have_nodes() {
     let rule = threshold(2, btreeset! {1, 2, 3});
 
     let without_three = btreemap! {1 => 10, 2 => 20};
     let res = TestConfig::new(rule.clone(), rule.clone(), BTreeMap::new(), without_three);
     let not_found = NodeNotFound::new(3, Operation::None);
-    assert_eq!(Err(ConfigsError::NodeNotFound(not_found)), res);
+    assert_eq!(Err(not_found), res);
 
+    // A role is kept as given, even one without `ReceiveLogs` for write voter 2: OpenRaft rejects
+    // such a membership when it is proposed.
     let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40};
-    let campaigns_only = btreemap! {2 => NodeRole::Campaigner};
-    let res = TestConfig::new(rule.clone(), rule.clone(), campaigns_only, nodes.clone());
-    let no_logs = WriteVoterWithoutReceiveLogs { node_id: 2 };
-    assert_eq!(Err(ConfigsError::WriteVoterWithoutReceiveLogs(no_logs)), res);
-
-    // Node 4 is no voter, so it needs no log.
-    let learner_without_logs = btreemap! {4 => NodeRole::Empty};
-    let res = TestConfig::new(rule.clone(), rule, learner_without_logs, nodes);
-    assert!(res.is_ok());
+    let roles = btreemap! {2 => NodeRole::Campaigner, 4 => NodeRole::Empty};
+    let config = TestConfig::new(rule.clone(), rule, roles, nodes).unwrap();
+    assert_eq!(Some(&(20, NodeRole::Campaigner)), config.nodes.get(&2));
+    assert_eq!(Some(&(40, NodeRole::Empty)), config.nodes.get(&4));
 }
 
 #[test]
@@ -296,11 +291,12 @@ fn test_set_roles_sets_roles_of_last_config() {
 
     let res = joint.clone().set_roles(btreemap! {5 => NodeRole::Empty});
     let not_found = NodeNotFound::new(5, Operation::None);
-    assert_eq!(Err(ConfigsError::NodeNotFound(not_found)), res);
+    assert_eq!(Err(not_found), res);
 
-    let res = joint.set_roles(btreemap! {4 => NodeRole::Campaigner});
-    let no_logs = WriteVoterWithoutReceiveLogs { node_id: 4 };
-    assert_eq!(Err(ConfigsError::WriteVoterWithoutReceiveLogs(no_logs)), res);
+    // A role is kept as given, even one without `ReceiveLogs` for write voter 4.
+    let got = joint.set_roles(btreemap! {4 => NodeRole::Campaigner}).unwrap();
+    let node = got.get_node(&4).unwrap();
+    assert_eq!(NodeRole::Campaigner, node.role);
 }
 
 #[test]

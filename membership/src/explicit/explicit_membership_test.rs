@@ -13,7 +13,6 @@ use openraft::membership::NodeRef;
 use openraft::membership::NodeRole;
 use openraft::membership::RaftMembership;
 use openraft::membership::RaftMembershipEdit;
-use openraft::membership::errors::WriteVoterWithoutReceiveLogs;
 use quorum_set::verify_intersection;
 
 use crate::ExplicitChange;
@@ -455,16 +454,20 @@ fn test_only_write_voters_need_receive_logs() {
         assert_eq!(want, got, "node {node_id}");
     }
 
-    let res = configured.clone().with_roles(btreemap! {3 => NodeRole::Campaigner});
-    let no_logs = WriteVoterWithoutReceiveLogs { node_id: 3 };
-    assert_eq!(Err(MembershipError::WriteVoterWithoutReceiveLogs(no_logs)), res);
+    // A role is kept as given, even one without `ReceiveLogs` for write voter 3: OpenRaft rejects
+    // such a membership when it is proposed.
+    let campaigner = configured.clone().with_roles(btreemap! {3 => NodeRole::Campaigner}).unwrap();
+    let node = campaigner.get_node(&3).unwrap();
+    assert_eq!(NodeRole::Campaigner, node.role);
 
-    // A change that makes node 1 a write voter must also give it `ReceiveLogs`.
+    // A change that makes node 1 a write voter keeps its role `Empty`, which OpenRaft rejects when
+    // the result is proposed, unless the change also gives node 1 `ReceiveLogs`.
     let write = vec![btreeset! {1, 2}, btreeset! {2, 3}];
     let change = ExplicitChange::write_quorums(write.clone());
-    let res = change.apply(&configured, true);
-    let no_logs = WriteVoterWithoutReceiveLogs { node_id: 1 };
-    assert_eq!(Err(MembershipError::WriteVoterWithoutReceiveLogs(no_logs)), res);
+    let res = change.apply(&configured, true).unwrap();
+    let node = res.get_node(&1).unwrap();
+    assert_eq!(NodeRole::Empty, node.role);
+    assert!(node.is_write_voter);
 
     let roles = btreemap! {1 => NodeRole::ReceiveLogs};
     let change = ExplicitChange::write_quorums(write.clone()).with_roles(roles);

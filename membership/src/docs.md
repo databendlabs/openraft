@@ -53,11 +53,13 @@ raft.trigger().transfer_leader(3).await?;
 ```
 
 Every write voter needs `ReceiveLogs`, because a write quorum that holds a
-voter without logs never commits. `with_roles()` and the change types reject
-such a role with [`WriteVoterWithoutReceiveLogs`]. In the weighted,
-hierarchical and grid memberships every voter is a write voter. An explicit
-membership may list a voter only in its read quorums, and that voter may drop
-`ReceiveLogs`, because no commit waits for it.
+voter without logs never commits. `with_roles()` and the change types keep a
+role as given; OpenRaft rejects a membership whose write voter lacks
+`ReceiveLogs` with [`WriteVoterWithoutReceiveLogs`] when the membership is
+initialized or proposed. In the weighted, hierarchical and grid memberships
+every voter is a write voter. An explicit membership may list a voter only in
+its read quorums, and that voter may drop `ReceiveLogs`, because no commit
+waits for it.
 
 A change keeps a role only while it differs from the default. So a voter with
 only `ReceiveLogs` that becomes a learner has the default role of a learner,

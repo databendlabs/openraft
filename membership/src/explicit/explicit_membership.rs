@@ -135,9 +135,10 @@ where
     /// Returns this membership with each node of `roles` set to its role there in the last config,
     /// the only config of a membership from [`new()`](Self::new). The other nodes keep their roles.
     ///
-    /// Returns [`MembershipError::NodeNotFound`] for a node that this membership does not
-    /// know, and [`MembershipError::WriteVoterWithoutReceiveLogs`] for a write voter
-    /// without [`NodeRole::ReceiveLogs`].
+    /// Returns [`MembershipError::NodeNotFound`] for a node that this membership does not know.
+    /// A role is kept as given, even one without [`NodeRole::ReceiveLogs`] for a write voter:
+    /// OpenRaft rejects such a membership with
+    /// [`MembershipError::WriteVoterWithoutReceiveLogs`] when it is initialized or proposed.
     ///
     /// # Examples
     ///

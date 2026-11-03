@@ -14,7 +14,6 @@ use openraft::membership::RaftMembership;
 
 use crate::config::Config;
 use crate::config::has_id;
-use crate::errors::ConfigsError;
 use crate::quorum::Joint;
 use crate::quorum::QuorumIntersection;
 use crate::quorum::QuorumSet;
@@ -27,22 +26,18 @@ where
     Q::Id: NodeId,
 {
     /// Returns this membership with each node of `roles` set to its role there in the last config.
-    /// The other nodes keep their roles.
+    /// The other nodes keep their roles. A role is kept as given, even one without
+    /// [`NodeRole::ReceiveLogs`] for a write voter: OpenRaft rejects such a membership when it is
+    /// initialized or proposed.
     ///
-    /// Returns [`ConfigsError::NodeNotFound`] for the first node of `roles` that the last config
-    /// does not hold. Otherwise it returns [`ConfigsError::WriteVoterWithoutReceiveLogs`] for the
-    /// first write voter of the last config whose role lacks [`NodeRole::ReceiveLogs`].
-    pub(crate) fn set_roles(mut self, roles: BTreeMap<Q::Id, NodeRole>) -> Result<Self, ConfigsError<Q::Id>> {
+    /// Returns [`NodeNotFound`] for the first node of `roles` that the last config does not hold.
+    pub(crate) fn set_roles(mut self, roles: BTreeMap<Q::Id, NodeRole>) -> Result<Self, NodeNotFound<Q::Id>> {
         for (node_id, role) in roles {
             let entry = self.parts.last_mut().and_then(|last| last.nodes.get_mut(&node_id));
             let Some((_, node_role)) = entry else {
-                return Err(NodeNotFound::new(node_id, Operation::None).into());
+                return Err(NodeNotFound::new(node_id, Operation::None));
             };
             *node_role = role;
-        }
-
-        if let Some(last) = self.parts.last() {
-            last.ensure_write_voters_receive_logs()?;
         }
         Ok(self)
     }

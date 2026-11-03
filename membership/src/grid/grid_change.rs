@@ -25,8 +25,9 @@ use crate::errors::InvalidGrid;
 ///
 /// The result gives each voter [`NodeRole::Campaigner`] `|` [`NodeRole::ReceiveLogs`] and every
 /// other node [`NodeRole::ReceiveLogs`], unless it sets another role. A node of `roles` that the
-/// result lacks makes `apply()` return [`MembershipError::NodeNotFound`], and a write voter without
-/// [`NodeRole::ReceiveLogs`] makes it return [`MembershipError::WriteVoterWithoutReceiveLogs`]. The
+/// result lacks makes `apply()` return [`MembershipError::NodeNotFound`]. The result keeps a role
+/// as given, even one without [`NodeRole::ReceiveLogs`] for a write voter: OpenRaft rejects such
+/// a result with [`MembershipError::WriteVoterWithoutReceiveLogs`] when it is proposed. The
 /// result keeps a role of the last config only while it differs from the default for the node's
 /// status there: a voter with only [`NodeRole::ReceiveLogs`] that becomes a learner keeps that
 /// role, the default for a learner, and it campaigns again once a later change makes it a voter.

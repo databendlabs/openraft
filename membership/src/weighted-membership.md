@@ -284,16 +284,14 @@ let direct = joint.supports_direct_transition_to(&uniform);
 assert!(direct);
 ```
 
-To write a membership of your own, copy the source of four parts of this
+To write a membership of your own, copy the source of three parts of this
 crate:
 
 - `src/weighted/`, which holds these three types and their error type
   [`InvalidWeights`];
 - `src/quorum/joint.rs`, which holds `Joint`;
 - `src/config.rs`, which holds `Config`, and `src/config/joint_config.rs`,
-  which implements [`RaftMembership`] for `Joint<Config>`;
-- `src/errors/configs_error.rs`, which holds the crate-private `ConfigsError`
-  that `Config` returns.
+  which implements [`RaftMembership`] for `Joint<Config>`.
 
 `Config` stores one config: its two rules, and its nodes with their metadata
 and roles. The [`RaftMembership`] impl of `Joint<Config>` provides every

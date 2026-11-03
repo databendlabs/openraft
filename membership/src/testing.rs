@@ -13,7 +13,6 @@ use openraft::membership::NodeRef;
 use openraft::membership::NodeRole;
 use openraft::membership::RaftMembership;
 use openraft::membership::RaftMembershipEdit;
-use openraft::membership::errors::WriteVoterWithoutReceiveLogs;
 use quorum_set::verify_intersection;
 
 use crate::quorum::testing::assert_quorum_set_contract;
@@ -87,7 +86,8 @@ where
 }
 
 /// Asserts that `with_roles` sets the role of each node that it names, keeps every other role,
-/// and rejects an unknown node and a write voter without [`NodeRole::ReceiveLogs`].
+/// rejects an unknown node, and keeps a write voter's role without [`NodeRole::ReceiveLogs`] as
+/// given.
 ///
 /// `build(voters, nodes)` returns a membership whose only config has the voters `voters` and a
 /// `()` node for each of `nodes`. `with_roles` is the `with_roles()` method of that membership
@@ -132,14 +132,16 @@ where
     let want = with_roles(membership.clone(), btreemap! {4 => voter_role()});
     assert_eq!(want, res);
 
-    // Node 9 is unknown, and write voter 2 would store no entry.
+    // Node 9 is unknown.
     let res = with_roles(membership.clone(), btreemap! {9 => NodeRole::ReceiveLogs});
     let not_found = NodeNotFound::new(9, Operation::None);
     assert_eq!(Err(MembershipError::NodeNotFound(not_found)), res);
 
-    let res = with_roles(membership, btreemap! {2 => NodeRole::Campaigner});
-    let no_logs = WriteVoterWithoutReceiveLogs { node_id: 2 };
-    assert_eq!(Err(MembershipError::WriteVoterWithoutReceiveLogs(no_logs)), res);
+    // Write voter 2 keeps a role without `ReceiveLogs` as given: OpenRaft rejects such a
+    // membership when it is proposed.
+    let configured = with_roles(membership, btreemap! {2 => NodeRole::Campaigner}).unwrap();
+    let node = configured.get_node(&2).unwrap();
+    assert_eq!(NodeRole::Campaigner, node.role);
 }
 
 /// Asserts that a change of both the voters and the roles goes through a joint. The joint gives
@@ -228,8 +230,8 @@ where
     }
 }
 
-/// Asserts that `apply()` sets a role only for a node of its result, and keeps every write voter
-/// receiving logs.
+/// Asserts that `apply()` sets a role only for a node of its result, and keeps each role it sets
+/// as given, even one without [`NodeRole::ReceiveLogs`] for a write voter.
 ///
 /// `build` and `with_roles` are as in [`assert_with_roles()`]. `change_nodes(add_nodes,
 /// remove_nodes, roles)` returns a change that keeps the rules, adds `add_nodes`, removes
@@ -265,11 +267,12 @@ where
     let want = with_roles(want, btreemap! {5 => NodeRole::Empty});
     assert_eq!(want, res);
 
-    // Write voter 2 must keep receiving logs.
+    // Write voter 2 keeps a role without `ReceiveLogs` as given: OpenRaft rejects the result when
+    // it is proposed.
     let change = change_nodes(btreemap! {}, btreeset! {}, btreemap! {2 => NodeRole::Campaigner});
     let res = change.apply(&membership, true);
-    let no_logs = WriteVoterWithoutReceiveLogs { node_id: 2 };
-    assert_eq!(Err(MembershipError::WriteVoterWithoutReceiveLogs(no_logs)), res);
+    let want = with_roles(membership, btreemap! {2 => NodeRole::Campaigner});
+    assert_eq!(want, res);
 }
 
 /// Asserts that `get_node()` returns the metadata of every node, before, during and after a change
