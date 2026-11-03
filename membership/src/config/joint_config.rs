@@ -108,63 +108,6 @@ where
     }
 }
 
-/// Written by hand to store a membership as `{"configs": [..]}`. The derived serde of [`Joint`]
-/// covers quorum rules only, and stores them as `{"rules": [..]}`.
-#[cfg(feature = "serde")]
-impl<N, Q> serde::Serialize for Joint<Config<N, Q>>
-where
-    N: Node,
-    Q: QuorumSet + serde::Serialize,
-    Q::Id: NodeId,
-{
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where S: serde::Serializer {
-        let fields = SerializedConfigs { configs: &self.parts };
-        serde::Serialize::serialize(&fields, serializer)
-    }
-}
-
-#[cfg(feature = "serde")]
-impl<'de, N, Q> serde::Deserialize<'de> for Joint<Config<N, Q>>
-where
-    N: Node,
-    Q: QuorumSet + serde::Deserialize<'de>,
-    Q::Id: NodeId,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where D: serde::Deserializer<'de> {
-        let fields: DeserializedConfigs<N, Q> = serde::Deserialize::deserialize(deserializer)?;
-        let parts = fields.configs;
-        Ok(Self { parts })
-    }
-}
-
-/// The stored form of a membership, written by the `Serialize` impl of `Joint<Config>`.
-#[cfg(feature = "serde")]
-#[derive(serde::Serialize)]
-#[serde(rename = "Membership", bound(serialize = "Q: serde::Serialize"))]
-struct SerializedConfigs<'a, N, Q>
-where
-    N: Node,
-    Q: QuorumSet,
-    Q::Id: NodeId,
-{
-    configs: &'a [Config<N, Q>],
-}
-
-/// The stored form of a membership, read by the `Deserialize` impl of `Joint<Config>`.
-#[cfg(feature = "serde")]
-#[derive(serde::Deserialize)]
-#[serde(rename = "Membership", bound(deserialize = "Q: serde::Deserialize<'de>"))]
-struct DeserializedConfigs<N, Q>
-where
-    N: Node,
-    Q: QuorumSet,
-    Q::Id: NodeId,
-{
-    configs: Vec<Config<N, Q>>,
-}
-
 /// A joint of configs is a membership: one config, or the old configs and the new one during a
 /// joint change. Rule i of each quorum set belongs to config i.
 ///

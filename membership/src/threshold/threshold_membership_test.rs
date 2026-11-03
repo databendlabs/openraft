@@ -398,7 +398,7 @@ fn test_serde() {
     let membership = threshold(btreeset! {1, 2, 3, 4, 5}, 2);
 
     let json = serde_json::to_string(&membership).unwrap();
-    let want = r#"{"write":{"rules":[{"ids":[1,2,3,4,5],"quorum_size":2}]},"nodes":{"1":null,"2":null,"3":null,"4":null,"5":null}}"#;
+    let want = r#"{"write":{"parts":[{"ids":[1,2,3,4,5],"quorum_size":2}]},"nodes":{"1":null,"2":null,"3":null,"4":null,"5":null}}"#;
     assert_eq!(want, json);
 
     // Decoding gives the two rules of a config one voter set again.
@@ -407,7 +407,7 @@ fn test_serde() {
     let shared = shares_voter_sets(&decoded);
     assert!(shared);
 
-    let empty = r#"{"write":{"rules":[]},"nodes":{}}"#;
+    let empty = r#"{"write":{"parts":[]},"nodes":{}}"#;
     let decoded = serde_json::from_str::<ThresholdMembership<u64, ()>>(empty).unwrap();
     let want = ThresholdMembership::default();
     assert_eq!(want, decoded);
@@ -436,7 +436,7 @@ fn test_serde_rejects_invalid_configs() {
     };
 
     // The write size exceeds the number of voters.
-    let large_size = r#"{"write":{"rules":[{"ids":[1,2,3],"quorum_size":4}]},"nodes":{"1":null,"2":null,"3":null}}"#;
+    let large_size = r#"{"write":{"parts":[{"ids":[1,2,3],"quorum_size":4}]},"nodes":{"1":null,"2":null,"3":null}}"#;
     let message = decode_error(large_size);
     let invalid = InvalidThresholds {
         voter_count: 3,
@@ -446,13 +446,13 @@ fn test_serde_rejects_invalid_configs() {
     assert!(reports_sizes, "{message}");
 
     // A separately supplied read size must not be silently ignored.
-    let explicit_read = r#"{"read":{"rules":[]},"write":{"rules":[]},"nodes":{}}"#;
+    let explicit_read = r#"{"read":{"parts":[]},"write":{"parts":[]},"nodes":{}}"#;
     let message = decode_error(explicit_read);
     let reports_read = message.starts_with("unknown field `read`");
     assert!(reports_read, "{message}");
 
     // Voter 3 has no node.
-    let missing_node = r#"{"write":{"rules":[{"ids":[1,2,3],"quorum_size":2}]},"nodes":{"1":null,"2":null}}"#;
+    let missing_node = r#"{"write":{"parts":[{"ids":[1,2,3],"quorum_size":2}]},"nodes":{"1":null,"2":null}}"#;
     let message = decode_error(missing_node);
     let node_not_found = NodeNotFound::new(3, Operation::None);
     let reports_node = message.starts_with(&node_not_found.to_string());

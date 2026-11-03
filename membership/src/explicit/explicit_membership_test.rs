@@ -525,12 +525,12 @@ fn test_serde() {
     let membership = Membership::new([btreeset! {1, 2}], [btreeset! {2, 3}], btreeset! {1, 2, 3, 4}).unwrap();
 
     let json = serde_json::to_string(&membership).unwrap();
-    let want = r#"{"configs":[{"read":{"quorums":[[1,2]]},"write":{"quorums":[[2,3]]},"nodes":{"1":[null,3],"2":[null,3],"3":[null,3],"4":[null,2]}}]}"#;
+    let want = r#"{"parts":[{"read":{"quorums":[[1,2]]},"write":{"quorums":[[2,3]]},"nodes":{"1":[null,3],"2":[null,3],"3":[null,3],"4":[null,2]}}]}"#;
     assert_eq!(want, json);
     let decoded = serde_json::from_str::<Membership>(&json).unwrap();
     assert_eq!(membership, decoded);
 
-    let empty = r#"{"configs":[]}"#;
+    let empty = r#"{"parts":[]}"#;
     let decoded = serde_json::from_str::<Membership>(empty).unwrap();
     assert_eq!(Membership::default(), decoded);
 }

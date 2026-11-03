@@ -601,12 +601,12 @@ fn test_serde() {
     let membership = Membership::new(btreemap! {1 => 2, 2 => 1, 3 => 1}, 2, btreeset! {1, 2, 3, 4}).unwrap();
 
     let json = serde_json::to_string(&membership).unwrap();
-    let want = r#"{"configs":[{"read":{"weights":{"1":2,"2":1,"3":1},"threshold":3},"write":{"weights":{"1":2,"2":1,"3":1},"threshold":2},"nodes":{"1":[null,3],"2":[null,3],"3":[null,3],"4":[null,2]}}]}"#;
+    let want = r#"{"parts":[{"read":{"weights":{"1":2,"2":1,"3":1},"threshold":3},"write":{"weights":{"1":2,"2":1,"3":1},"threshold":2},"nodes":{"1":[null,3],"2":[null,3],"3":[null,3],"4":[null,2]}}]}"#;
     assert_eq!(want, json);
     let decoded = serde_json::from_str::<Membership>(&json).unwrap();
     assert_eq!(membership, decoded);
 
-    let empty = r#"{"configs":[]}"#;
+    let empty = r#"{"parts":[]}"#;
     let decoded = serde_json::from_str::<Membership>(empty).unwrap();
     assert_eq!(Membership::default(), decoded);
 }
@@ -625,7 +625,7 @@ fn test_binary_roundtrip_keeps_joint_configs_and_roles() {
     assert_eq!(joint, decoded);
 
     let json = serde_json::to_string(&joint).unwrap();
-    let want = r#"{"configs":[{"read":{"weights":{"1":2,"2":1,"3":1},"threshold":3},"write":{"weights":{"1":2,"2":1,"3":1},"threshold":2},"nodes":{"1":[null,3],"2":[null,3],"3":[null,3]}},{"read":{"weights":{"1":3,"2":1,"3":1},"threshold":2},"write":{"weights":{"1":3,"2":1,"3":1},"threshold":4},"nodes":{"1":[null,3],"2":[null,3],"3":[null,2]}}]}"#;
+    let want = r#"{"parts":[{"read":{"weights":{"1":2,"2":1,"3":1},"threshold":3},"write":{"weights":{"1":2,"2":1,"3":1},"threshold":2},"nodes":{"1":[null,3],"2":[null,3],"3":[null,3]}},{"read":{"weights":{"1":3,"2":1,"3":1},"threshold":2},"write":{"weights":{"1":3,"2":1,"3":1},"threshold":4},"nodes":{"1":[null,3],"2":[null,3],"3":[null,2]}}]}"#;
     assert_eq!(want, json);
     let decoded = serde_json::from_str::<Membership>(&json).unwrap();
     assert_eq!(joint, decoded);

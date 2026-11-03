@@ -165,12 +165,12 @@ fn test_serde() {
     let joint = Joint::from_rules([old, new]);
 
     let json = serde_json::to_string(&joint).unwrap();
-    let want = r#"{"rules":[{"ids":[1,2,3],"quorum_size":2},{"ids":[3,4],"quorum_size":1}]}"#;
+    let want = r#"{"parts":[{"ids":[1,2,3],"quorum_size":2},{"ids":[3,4],"quorum_size":1}]}"#;
     assert_eq!(want, json);
     let decoded = serde_json::from_str::<Joint<ThresholdQuorumSet<u64>>>(&json).unwrap();
     assert_eq!(joint, decoded);
 
-    let empty = serde_json::from_str::<Joint<ThresholdQuorumSet<u64>>>(r#"{"rules":[]}"#).unwrap();
+    let empty = serde_json::from_str::<Joint<ThresholdQuorumSet<u64>>>(r#"{"parts":[]}"#).unwrap();
     let want = Joint::default();
     assert_eq!(want, empty);
 }

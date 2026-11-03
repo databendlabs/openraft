@@ -46,21 +46,13 @@ use crate::quorum::QuorumSet;
 /// [`WeightedMembership`]: crate::WeightedMembership
 #[since(
     version = "0.10.0",
-    change = "also joins configs into a membership; `new()` became `from_rules()`, and `joint_with()` takes `&Joint`"
+    change = "also joins configs into a membership; `new()` became `from_rules()`, `joint_with()` takes `&Joint`, and serde stores the parts as `parts`"
 )]
 #[since(version = "0.10.0")]
 #[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(
-    feature = "serde",
-    derive(serde::Deserialize, serde::Serialize),
-    serde(bound(
-        serialize = "T: serde::Serialize + QuorumSet",
-        deserialize = "T: serde::Deserialize<'de> + QuorumSet"
-    ))
-)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct Joint<T> {
     /// The joined parts: quorum rules, or the configs of a membership.
-    #[cfg_attr(feature = "serde", serde(rename = "rules"))]
     pub(crate) parts: Vec<T>,
 }
 
