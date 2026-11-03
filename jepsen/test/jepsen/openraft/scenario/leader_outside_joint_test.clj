@@ -135,6 +135,73 @@
       (is (false? (:valid? result)))
       (is (false? (:recovered? result))))))
 
+(def ^:private joint-voter-configs [#{"n1" "n2" "n3"} #{"n1" "n3"}])
+
+(defn- led-by
+  "A membership status whose leader has last log index 4 and has seen X (n2)
+  acknowledge x-matched."
+  [leader x-matched]
+  {:leader leader
+   :effective-voter-configs joint-voter-configs
+   :metrics {leader {:last_log_index 4
+                     :replication {:n2 (when x-matched {:index x-matched})}}}})
+
+(defn- run-transfer!
+  "Runs transfer! against one status per poll, the last one repeated, and
+  returns its result or exception with the transfer requests it sent."
+  [statuses redefs]
+  (let [statuses (atom statuses)
+        sent (atom [])
+        until! await/until!]
+    (with-redefs-fn
+      (merge {#'cluster/membership-status (fn [_test]
+                                            (let [status (first @statuses)]
+                                              (when (next @statuses)
+                                                (swap! statuses rest))
+                                              status))
+              #'http/transfer-leader! (fn [endpoint node-id]
+                                        (swap! sent conj [endpoint node-id]))
+              #'await/until! (fn [condition f opts]
+                               (until! condition f (assoc opts :retry-interval 0)))}
+             redefs)
+      #(let [outcome (try
+                       {:result (#'scenario/transfer! test-config)}
+                       (catch Exception e
+                         {:error e}))]
+         (assoc outcome :sent @sent)))))
+
+(deftest transfer-waits-for-x-to-catch-up
+  (let [{:keys [result sent]}
+        (run-transfer! [nil (led-by "n1" 3) (led-by "n1" 4) (led-by "n2" nil)]
+                       {#'scenario/transfer-retry-ms 0})]
+    (is (= [["n1:21001" "n2"]] sent))
+    (is (= {:status :transferred
+            :leader "n2"
+            :effective-voter-configs joint-voter-configs
+            :transfer-requests ["n1"]}
+           result))))
+
+(deftest transfer-asks-whichever-node-leads-again
+  (testing "the node that leads after a refused transfer is asked"
+    (let [{:keys [result sent]}
+          (run-transfer! [(led-by "n1" 4) (led-by "n3" 4) (led-by "n2" nil)]
+                         {#'scenario/transfer-retry-ms 0})]
+      (is (= [["n1:21001" "n2"] ["n3:21001" "n2"]] sent))
+      (is (= ["n1" "n3"] (:transfer-requests result)))))
+
+  (testing "a request is not repeated within the retry interval"
+    (let [{:keys [result sent]}
+          (run-transfer! [(led-by "n1" 4) (led-by "n1" 4) (led-by "n2" nil)]
+                         {#'scenario/transfer-retry-ms 60000})]
+      (is (= [["n1:21001" "n2"]] sent))
+      (is (= ["n1"] (:transfer-requests result))))))
+
+(deftest transfer-stops-at-the-setup-deadline
+  (let [{:keys [error sent]}
+        (run-transfer! [(led-by "n1" 3)] {#'scenario/transfer-timeout-ms 0})]
+    (is (await/condition-timeout? error :old-half-leader))
+    (is (= [] sent))))
+
 (deftest classifies-the-change-response
   (testing "a completed change"
     (with-redefs [http/change-membership! (fn [& _] change-response)]

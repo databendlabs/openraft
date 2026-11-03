@@ -579,11 +579,17 @@ the joint-configuration setup from [#2169](https://github.com/databendlabs/openr
 and [PR #2174](https://github.com/databendlabs/openraft/pull/2174).
 
 After a sentinel write, A appends the joint config [V, V\\{X}] with
-`/append-membership` and the scenario waits for it to commit. A then hands
-leadership to X through `/transfer-leader`, so the leader belongs to the old
-half only. X is asked to change the membership to {Z}. Every quorum of
+`/append-membership` and the scenario waits for it to commit. The leader then
+hands leadership to X through `/transfer-leader`, so the leader belongs to the
+old half only. X is asked to change the membership to {Z}. Every quorum of
 V\\{X} = {A, Z} contains Z, so X proposes uniform {Z} directly while its
 effective membership is still the joint config.
+
+The transfer is best effort. The joint config commits with A and Z alone, and
+X campaigns only if it flushes the leader's last log within an election
+timeout. The scenario therefore requests the transfer only after the leader's
+replication metrics show that X has caught up. While X does not lead, it asks
+whichever node leads again, at most once per second, for up to 30 seconds.
 
 X must complete the change. `InProgress` and `UncommittedLeaderLog` only mean X
 is not ready yet, so the scenario retries them for up to 10 seconds. Any other
