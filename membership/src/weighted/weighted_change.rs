@@ -187,7 +187,7 @@ where
     ) -> Result<WeightedMembership<NID, N>, MembershipError<NID, Self::Error>> {
         tracing::debug!("WeightedChange::apply: change: {}", self);
 
-        let Some(last) = membership.configs.last() else {
+        let Some(last) = membership.parts.last() else {
             return Err(EmptyMembership {}.into());
         };
 
@@ -199,13 +199,13 @@ where
         let write_weight = self.write_weight.unwrap_or(last_rule.threshold());
         let (read, write) = WeightedMembership::<NID, N>::rules_from_weights(weights, write_weight)?;
 
-        let nodes = Config::edit_nodes(&membership.configs, self.add_nodes, &self.remove_nodes);
+        let nodes = membership.edit_nodes(self.add_nodes, &self.remove_nodes);
         let roles = last.edit_roles(self.roles, &nodes)?;
         let config = Config::new(read, write, roles, nodes)?;
 
-        let mut target = WeightedMembership { configs: vec![config] };
+        let mut target = WeightedMembership { parts: vec![config] };
         if !retain {
-            target.configs = Config::drop_voters_demoted_to_learners(&membership.configs, target.configs);
+            target = membership.drop_voters_demoted_to_learners(target);
         }
         tracing::debug!("target membership: {}", target);
         Ok(target)

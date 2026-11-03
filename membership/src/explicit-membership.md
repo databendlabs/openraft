@@ -185,11 +185,12 @@ adding a learner, and leaving a joint config also go directly.
 ## The explicit types connect like the weighted types, with two lists checked pair by pair
 
 [`ExplicitMembership`] implements [`RaftMembership`], and [`ExplicitChange`]
-implements [`RaftMembershipEdit`], in the same way as the weighted types and
-with the same crate-private `Config`. [`weighted`] walks through how OpenRaft
-calls them during a change. It also lists what to copy to write a membership
-of your own, where `src/explicit/` takes the place of `src/weighted/`. The
-explicit membership differs in its rule and in how a change builds it:
+implements [`RaftMembershipEdit`], in the same way as the weighted types: it is
+the same `Joint<Config>`, with an [`ExplicitQuorumSet`] as the rule of each
+config. [`weighted`] walks through how OpenRaft calls them during a change. It
+also lists what to copy to write a membership of your own, where
+`src/explicit/` takes the place of `src/weighted/`. The explicit membership
+differs in its rule and in how a change builds it:
 
 - [`ExplicitQuorumSet`] holds a list of minimal quorums. Its [`QuorumSet`]
   impl accepts a set that holds every voter of a listed quorum. Each config

@@ -292,6 +292,7 @@ use openraft_legacy::network_v1::InstallSnapshotResponse;
 use openraft_legacy::network_v1::SnapshotMismatch;
 use openraft_legacy::network_v1::SnapshotReceiverFactory;
 use openraft_legacy::network_v1::SnapshotSegmentId;
+use openraft_membership::Config as ProvidedConfig;
 use openraft_membership::ExplicitChange as ProvidedExplicitChange;
 use openraft_membership::ExplicitMembership as ProvidedExplicitMembership;
 use openraft_membership::GridChange as ProvidedGridChange;

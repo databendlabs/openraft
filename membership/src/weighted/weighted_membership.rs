@@ -1,13 +1,10 @@
 use std::collections::BTreeMap;
-use std::fmt;
 
 use openraft::Node;
 use openraft::NodeId;
 use openraft::errors::MembershipError;
 use openraft::membership::IntoNodes;
-use openraft::membership::NodeRef;
 use openraft::membership::NodeRole;
-use openraft::membership::RaftMembership;
 use openraft_macros::since;
 
 use crate::config::Config;
@@ -83,27 +80,12 @@ use crate::quorum::WeightedQuorumSet;
 /// let read_accepts_others = membership.read_quorum_set().is_quorum([2, 3, 4].iter());
 /// assert!(!read_accepts_others);
 /// ```
+#[since(
+    version = "0.10.0",
+    change = "became an alias of `Joint<Config<N, WeightedQuorumSet<NID>>>`"
+)]
 #[since(version = "0.10.0")]
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct WeightedMembership<NID, N>
-where
-    NID: NodeId,
-    N: Node,
-{
-    pub(crate) configs: Vec<Config<N, WeightedQuorumSet<NID>>>,
-}
-
-/// Written by hand: `derive(Default)` would require `NID: Default` and `N: Default`.
-impl<NID, N> Default for WeightedMembership<NID, N>
-where
-    NID: NodeId,
-    N: Node,
-{
-    fn default() -> Self {
-        Self { configs: Vec::new() }
-    }
-}
+pub type WeightedMembership<NID, N> = Joint<Config<N, WeightedQuorumSet<NID>>>;
 
 /// Makes every node a voter with weight 1, with `write_weight = n / 2 + 1` and
 /// `read_weight = n - write_weight + 1`. The quorums are those of the
@@ -127,16 +109,6 @@ where
 
         let membership = Self::new(weights, majority, nodes);
         membership.expect("unit weights and complete node metadata form a valid config")
-    }
-}
-
-impl<NID, N> fmt::Display for WeightedMembership<NID, N>
-where
-    NID: NodeId,
-    N: Node,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{{configs: {:?}}}", self.configs)
     }
 }
 
@@ -168,7 +140,7 @@ where
 
         let nodes = nodes.into_nodes();
         let config = Config::new(read, write, BTreeMap::new(), nodes)?;
-        Ok(Self { configs: vec![config] })
+        Ok(Self { parts: vec![config] })
     }
 
     /// Returns this membership with each node of `roles` set to its role there in the last config,
@@ -206,8 +178,8 @@ where
     /// assert_eq!(Some(want), got);
     /// ```
     pub fn with_roles(self, roles: BTreeMap<NID, NodeRole>) -> Result<Self, MembershipError<NID, InvalidWeights<NID>>> {
-        let configs = Config::with_roles(self.configs, roles)?;
-        Ok(Self { configs })
+        let membership = self.set_roles(roles)?;
+        Ok(membership)
     }
 
     /// Returns the read rule and the write rule of a config with `weights` and `write_weight`.
@@ -246,42 +218,5 @@ where
         let read = WeightedQuorumSet::new(read_weight, weights.clone())?;
         let write = WeightedQuorumSet::new(write_weight, weights)?;
         Ok((read, write))
-    }
-}
-
-impl<NID, N> RaftMembership for WeightedMembership<NID, N>
-where
-    NID: NodeId,
-    N: Node,
-{
-    type NodeId = NID;
-    type Node = N;
-    type QuorumSet = Joint<WeightedQuorumSet<NID>>;
-
-    fn read_quorum_set(&self) -> Self::QuorumSet {
-        Config::read_quorum_set(&self.configs)
-    }
-
-    fn write_quorum_set(&self) -> Self::QuorumSet {
-        Config::write_quorum_set(&self.configs)
-    }
-
-    fn supports_direct_transition_to(&self, other: &Self) -> bool {
-        Config::supports_direct_transition(&self.configs, &other.configs)
-    }
-
-    fn get_node(&self, node_id: &Self::NodeId) -> Option<NodeRef<'_, Self::Node>> {
-        Config::get_node(&self.configs, node_id)
-    }
-
-    type Iter = std::vec::IntoIter<NID>;
-
-    fn node_ids(&self) -> Self::Iter {
-        Config::node_ids(&self.configs)
-    }
-
-    fn joint_with(&self, goal: &Self) -> Self {
-        let configs = Config::joint(&self.configs, &goal.configs);
-        Self { configs }
     }
 }

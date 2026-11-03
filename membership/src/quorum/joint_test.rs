@@ -17,9 +17,9 @@ fn all_joints() -> Vec<Joint<ThresholdQuorumSet<u64>>> {
 
     let mut joints = vec![Joint::default()];
     for a in &thresholds {
-        joints.push(Joint::new([a.clone()]));
+        joints.push(Joint::from_rules([a.clone()]));
         for b in &thresholds {
-            joints.push(Joint::new([a.clone(), b.clone()]));
+            joints.push(Joint::from_rules([a.clone(), b.clone()]));
         }
     }
     joints
@@ -29,7 +29,7 @@ fn all_joints() -> Vec<Joint<ThresholdQuorumSet<u64>>> {
 fn test_joint_of_thresholds() {
     let old = threshold(2, btreeset! {1, 2, 3});
     let new = threshold(2, btreeset! {2, 3, 4});
-    let joint = Joint::new([old, new]);
+    let joint = Joint::from_rules([old, new]);
 
     let mut accepted = vec![];
     for ids in all_subsets(&btreeset! {1, 2, 3, 4}) {
@@ -74,10 +74,10 @@ fn test_intersects_with() {
     let r345 = || threshold(2, btreeset! {3, 4, 5});
     let r789 = || threshold(2, btreeset! {7, 8, 9});
 
-    let j123 = Joint::new([r123()]);
-    let j345 = Joint::new([r345()]);
-    let j123_345 = Joint::new([r123(), r345()]);
-    let j345_789 = Joint::new([r345(), r789()]);
+    let j123 = Joint::from_rules([r123()]);
+    let j345 = Joint::from_rules([r345()]);
+    let j123_345 = Joint::from_rules([r123(), r345()]);
+    let j345_789 = Joint::from_rules([r345(), r789()]);
 
     // Two joints of one rule each get the answer of the rule check: {1,2} and {4,5} are disjoint
     // quorums.
@@ -123,18 +123,18 @@ fn test_joint_with() {
     let r2 = || threshold(1, btreeset! {3, 4});
     let r3 = || threshold(3, btreeset! {4, 5, 6});
 
-    let j12 = Joint::new([r1(), r2()]);
-    let j3 = Joint::new([r3()]);
+    let j12 = Joint::from_rules([r1(), r2()]);
+    let j3 = Joint::from_rules([r3()]);
 
-    let joint = j12.joint_with(j3.clone());
-    let want = Joint::new([r1(), r2(), r3()]);
+    let joint = j12.joint_with(&j3);
+    let want = Joint::from_rules([r1(), r2(), r3()]);
     assert_eq!(want, joint);
 
     // An empty joint has no quorum, so a joint with it has no quorum either.
     let empty = Joint::default();
-    let with_empty = j12.joint_with(empty.clone());
+    let with_empty = j12.joint_with(&empty);
     assert_eq!(empty, with_empty);
-    let from_empty = empty.joint_with(j3);
+    let from_empty = empty.joint_with(&j3);
     assert_eq!(empty, from_empty);
 }
 
@@ -145,7 +145,7 @@ fn test_joint_with_accepts_quorums_of_both_sides() {
 
     for current in &joints {
         for goal in &joints {
-            let joint = current.joint_with(goal.clone());
+            let joint = current.joint_with(goal);
             for ids in &id_sets {
                 let in_current = current.is_quorum(ids.iter());
                 let in_goal = goal.is_quorum(ids.iter());
@@ -162,7 +162,7 @@ fn test_joint_with_accepts_quorums_of_both_sides() {
 fn test_serde() {
     let old = threshold(2, btreeset! {1, 2, 3});
     let new = threshold(1, btreeset! {3, 4});
-    let joint = Joint::new([old, new]);
+    let joint = Joint::from_rules([old, new]);
 
     let json = serde_json::to_string(&joint).unwrap();
     let want = r#"{"rules":[{"ids":[1,2,3],"quorum_size":2},{"ids":[3,4],"quorum_size":1}]}"#;

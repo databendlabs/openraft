@@ -35,8 +35,8 @@ fn joint_membership(
     left: &ThresholdMembership<u64, ()>,
     right: &ThresholdMembership<u64, ()>,
 ) -> ThresholdMembership<u64, ()> {
-    let read = left.read.joint_with(right.read.clone());
-    let write = left.write.joint_with(right.write.clone());
+    let read = left.read.joint_with(&right.read);
+    let write = left.write.joint_with(&right.write);
     let mut nodes = left.nodes.clone();
     nodes.extend(right.nodes.clone());
     ThresholdMembership { read, write, nodes }
@@ -290,8 +290,8 @@ fn test_joint_with_keeps_new_nodes_and_old_voters() {
 
     let joint = old.joint_with(&new);
     let want = ThresholdMembership {
-        read: old.read.joint_with(new.read.clone()),
-        write: old.write.joint_with(new.write.clone()),
+        read: old.read.joint_with(&new.read),
+        write: old.write.joint_with(&new.write),
         nodes: btreemap! {1 => (), 2 => (), 3 => (), 4 => ()},
     };
     assert_eq!(want, joint);

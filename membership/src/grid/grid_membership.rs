@@ -1,13 +1,10 @@
 use std::collections::BTreeMap;
-use std::fmt;
 
 use openraft::Node;
 use openraft::NodeId;
 use openraft::errors::MembershipError;
 use openraft::membership::IntoNodes;
-use openraft::membership::NodeRef;
 use openraft::membership::NodeRole;
-use openraft::membership::RaftMembership;
 use openraft_macros::since;
 
 use crate::config::Config;
@@ -74,27 +71,12 @@ use crate::quorum::Joint;
 /// let write_accepts = membership.write_quorum_set().is_quorum([1, 2, 3].iter());
 /// assert!(!write_accepts);
 /// ```
+#[since(
+    version = "0.10.0",
+    change = "became an alias of `Joint<Config<N, GridQuorumSet<NID>>>`"
+)]
 #[since(version = "0.10.0")]
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct GridMembership<NID, N>
-where
-    NID: NodeId,
-    N: Node,
-{
-    pub(crate) configs: Vec<Config<N, GridQuorumSet<NID>>>,
-}
-
-/// Written by hand: `derive(Default)` would require `NID: Default` and `N: Default`.
-impl<NID, N> Default for GridMembership<NID, N>
-where
-    NID: NodeId,
-    N: Node,
-{
-    fn default() -> Self {
-        Self { configs: Vec::new() }
-    }
-}
+pub type GridMembership<NID, N> = Joint<Config<N, GridQuorumSet<NID>>>;
 
 /// Makes every node a voter and fills the most square grid row by row, in ascending ID order.
 ///
@@ -128,16 +110,6 @@ where
     }
 }
 
-impl<NID, N> fmt::Display for GridMembership<NID, N>
-where
-    NID: NodeId,
-    N: Node,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{{configs: {:?}}}", self.configs)
-    }
-}
-
 impl<NID, N> GridMembership<NID, N>
 where
     NID: NodeId,
@@ -159,7 +131,7 @@ where
 
         let nodes = nodes.into_nodes();
         let config = Config::new(read, write, BTreeMap::new(), nodes)?;
-        Ok(Self { configs: vec![config] })
+        Ok(Self { parts: vec![config] })
     }
 
     /// Returns this membership with each node of `roles` set to its role there in the last config,
@@ -197,8 +169,8 @@ where
     /// assert_eq!(Some(want), got);
     /// ```
     pub fn with_roles(self, roles: BTreeMap<NID, NodeRole>) -> Result<Self, MembershipError<NID, InvalidGrid<NID>>> {
-        let configs = Config::with_roles(self.configs, roles)?;
-        Ok(Self { configs })
+        let membership = self.set_roles(roles)?;
+        Ok(membership)
     }
 
     /// Returns the `FullRow` read rule and the `OnePerRow` write rule of `grid`, checked like
@@ -209,42 +181,5 @@ where
         let read = GridQuorumSet::new(grid.clone(), GridRule::FullRow)?;
         let write = GridQuorumSet::new(grid, GridRule::OnePerRow)?;
         Ok((read, write))
-    }
-}
-
-impl<NID, N> RaftMembership for GridMembership<NID, N>
-where
-    NID: NodeId,
-    N: Node,
-{
-    type NodeId = NID;
-    type Node = N;
-    type QuorumSet = Joint<GridQuorumSet<NID>>;
-
-    fn read_quorum_set(&self) -> Self::QuorumSet {
-        Config::read_quorum_set(&self.configs)
-    }
-
-    fn write_quorum_set(&self) -> Self::QuorumSet {
-        Config::write_quorum_set(&self.configs)
-    }
-
-    fn supports_direct_transition_to(&self, other: &Self) -> bool {
-        Config::supports_direct_transition(&self.configs, &other.configs)
-    }
-
-    fn get_node(&self, node_id: &Self::NodeId) -> Option<NodeRef<'_, Self::Node>> {
-        Config::get_node(&self.configs, node_id)
-    }
-
-    type Iter = std::vec::IntoIter<NID>;
-
-    fn node_ids(&self) -> Self::Iter {
-        Config::node_ids(&self.configs)
-    }
-
-    fn joint_with(&self, goal: &Self) -> Self {
-        let configs = Config::joint(&self.configs, &goal.configs);
-        Self { configs }
     }
 }

@@ -170,7 +170,7 @@ where
     ) -> Result<ExplicitMembership<NID, N>, MembershipError<NID, Self::Error>> {
         tracing::debug!("ExplicitChange::apply: change: {}", self);
 
-        let Some(last) = membership.configs.last() else {
+        let Some(last) = membership.parts.last() else {
             return Err(EmptyMembership {}.into());
         };
 
@@ -184,13 +184,13 @@ where
         };
         ExplicitMembership::<NID, N>::check_rules(&read, &write)?;
 
-        let nodes = Config::edit_nodes(&membership.configs, self.add_nodes, &self.remove_nodes);
+        let nodes = membership.edit_nodes(self.add_nodes, &self.remove_nodes);
         let roles = last.edit_roles(self.roles, &nodes)?;
         let config = Config::new(read, write, roles, nodes)?;
 
-        let mut target = ExplicitMembership { configs: vec![config] };
+        let mut target = ExplicitMembership { parts: vec![config] };
         if !retain {
-            target.configs = Config::drop_voters_demoted_to_learners(&membership.configs, target.configs);
+            target = membership.drop_voters_demoted_to_learners(target);
         }
         tracing::debug!("target membership: {}", target);
         Ok(target)

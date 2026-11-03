@@ -1,14 +1,11 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use std::fmt;
 
 use openraft::Node;
 use openraft::NodeId;
 use openraft::errors::MembershipError;
 use openraft::membership::IntoNodes;
-use openraft::membership::NodeRef;
 use openraft::membership::NodeRole;
-use openraft::membership::RaftMembership;
 use openraft_macros::since;
 
 use crate::config::Config;
@@ -78,27 +75,12 @@ use crate::quorum::Joint;
 /// let read_accepts = membership.read_quorum_set().is_quorum([3, 4].iter());
 /// assert!(!read_accepts);
 /// ```
+#[since(
+    version = "0.10.0",
+    change = "became an alias of `Joint<Config<N, ExplicitQuorumSet<NID>>>`"
+)]
 #[since(version = "0.10.0")]
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct ExplicitMembership<NID, N>
-where
-    NID: NodeId,
-    N: Node,
-{
-    pub(crate) configs: Vec<Config<N, ExplicitQuorumSet<NID>>>,
-}
-
-/// Written by hand: `derive(Default)` would require `NID: Default` and `N: Default`.
-impl<NID, N> Default for ExplicitMembership<NID, N>
-where
-    NID: NodeId,
-    N: Node,
-{
-    fn default() -> Self {
-        Self { configs: Vec::new() }
-    }
-}
+pub type ExplicitMembership<NID, N> = Joint<Config<N, ExplicitQuorumSet<NID>>>;
 
 /// Makes every node a voter, and lists the set of all voters as the only read quorum and the only
 /// write quorum, so every election and every commit needs every voter.
@@ -118,16 +100,6 @@ where
 
         let membership = Self::new([voters.clone()], [voters], nodes);
         membership.expect("identical nonempty quorums and complete node metadata form a valid config")
-    }
-}
-
-impl<NID, N> fmt::Display for ExplicitMembership<NID, N>
-where
-    NID: NodeId,
-    N: Node,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{{configs: {:?}}}", self.configs)
     }
 }
 
@@ -157,7 +129,7 @@ where
 
         let nodes = nodes.into_nodes();
         let config = Config::new(read, write, BTreeMap::new(), nodes)?;
-        Ok(Self { configs: vec![config] })
+        Ok(Self { parts: vec![config] })
     }
 
     /// Returns this membership with each node of `roles` set to its role there in the last config,
@@ -198,8 +170,8 @@ where
         self,
         roles: BTreeMap<NID, NodeRole>,
     ) -> Result<Self, MembershipError<NID, InvalidQuorumLists<NID>>> {
-        let configs = Config::with_roles(self.configs, roles)?;
-        Ok(Self { configs })
+        let membership = self.set_roles(roles)?;
+        Ok(membership)
     }
 
     /// Returns the read rule and the write rule that list `read` and `write`, checked like
@@ -239,42 +211,5 @@ where
             write: write.clone(),
         };
         Err(disjoint)
-    }
-}
-
-impl<NID, N> RaftMembership for ExplicitMembership<NID, N>
-where
-    NID: NodeId,
-    N: Node,
-{
-    type NodeId = NID;
-    type Node = N;
-    type QuorumSet = Joint<ExplicitQuorumSet<NID>>;
-
-    fn read_quorum_set(&self) -> Self::QuorumSet {
-        Config::read_quorum_set(&self.configs)
-    }
-
-    fn write_quorum_set(&self) -> Self::QuorumSet {
-        Config::write_quorum_set(&self.configs)
-    }
-
-    fn supports_direct_transition_to(&self, other: &Self) -> bool {
-        Config::supports_direct_transition(&self.configs, &other.configs)
-    }
-
-    fn get_node(&self, node_id: &Self::NodeId) -> Option<NodeRef<'_, Self::Node>> {
-        Config::get_node(&self.configs, node_id)
-    }
-
-    type Iter = std::vec::IntoIter<NID>;
-
-    fn node_ids(&self) -> Self::Iter {
-        Config::node_ids(&self.configs)
-    }
-
-    fn joint_with(&self, goal: &Self) -> Self {
-        let configs = Config::joint(&self.configs, &goal.configs);
-        Self { configs }
     }
 }

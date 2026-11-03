@@ -229,8 +229,8 @@ where
         }
 
         Self {
-            read: Joint::new(read_rules),
-            write: Joint::new(write_rules),
+            read: Joint::from_rules(read_rules),
+            write: Joint::from_rules(write_rules),
             nodes,
         }
     }

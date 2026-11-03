@@ -7,6 +7,7 @@ use openraft::errors::NodeNotFound;
 use openraft::errors::Operation;
 use openraft::membership::NodeRef;
 use openraft::membership::NodeRole;
+use openraft::membership::RaftMembership;
 use openraft::membership::errors::WriteVoterWithoutReceiveLogs;
 
 use crate::config::Config;
@@ -19,6 +20,9 @@ use crate::testing::voter_role;
 /// A config whose node metadata is a number, so that a test can tell which config a node's
 /// metadata comes from.
 type TestConfig = Config<u64, ThresholdQuorumSet<u64>>;
+
+/// A membership of test configs.
+type TestMembership = Joint<TestConfig>;
 
 /// Returns a config whose read and write rules accept any `quorum_size` of `voters`.
 fn config(
@@ -40,11 +44,11 @@ fn node(node: &'static u64, role: NodeRole, is_voter: bool) -> NodeRef<'static, 
     }
 }
 
-/// Returns every active node of `configs`, as `get_node()` returns it.
-fn active_nodes(configs: &[TestConfig]) -> BTreeMap<u64, NodeRef<'_, u64>> {
+/// Returns every active node of `membership`, as `get_node()` returns it.
+fn active_nodes(membership: &TestMembership) -> BTreeMap<u64, NodeRef<'_, u64>> {
     let mut nodes = BTreeMap::new();
-    for node_id in Config::node_ids(configs) {
-        let node = Config::get_node(configs, &node_id).unwrap();
+    for node_id in membership.node_ids() {
+        let node = membership.get_node(&node_id).unwrap();
         nodes.insert(node_id, node);
     }
     nodes
@@ -53,9 +57,11 @@ fn active_nodes(configs: &[TestConfig]) -> BTreeMap<u64, NodeRef<'_, u64>> {
 #[test]
 fn test_new_gives_default_roles() {
     let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40};
-    let configs = [config(2, btreeset! {1, 2, 3}, BTreeMap::new(), nodes)];
+    let membership = Joint {
+        parts: vec![config(2, btreeset! {1, 2, 3}, BTreeMap::new(), nodes)],
+    };
 
-    let got = active_nodes(&configs);
+    let got = active_nodes(&membership);
     let want = btreemap! {
         1 => node(&10, voter_role(), true),
         2 => node(&20, voter_role(), true),
@@ -64,7 +70,7 @@ fn test_new_gives_default_roles() {
     };
     assert_eq!(want, got);
 
-    let unknown = Config::get_node(&configs, &5);
+    let unknown = membership.get_node(&5);
     assert_eq!(None, unknown);
 }
 
@@ -121,36 +127,42 @@ fn test_quorum_sets_hold_the_rules_of_every_config() {
     let new_read = threshold(1, btreeset! {2, 3, 4});
     let new_write = threshold(3, btreeset! {2, 3, 4});
     let new = TestConfig::new(new_read.clone(), new_write.clone(), BTreeMap::new(), nodes).unwrap();
-    let configs = [old, new];
+    let membership = Joint { parts: vec![old, new] };
 
-    let read = Config::read_quorum_set(&configs);
-    assert_eq!(Joint::new([old_rule.clone(), new_read]), read);
-    let write = Config::write_quorum_set(&configs);
-    assert_eq!(Joint::new([old_rule, new_write]), write);
+    let read = membership.read_quorum_set();
+    assert_eq!(Joint::from_rules([old_rule.clone(), new_read]), read);
+    let write = membership.write_quorum_set();
+    assert_eq!(Joint::from_rules([old_rule, new_write]), write);
 }
 
 #[test]
 fn test_supports_direct_transition_checks_cross_intersections() {
     let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40};
-    let old = [config(2, btreeset! {1, 2, 3}, BTreeMap::new(), nodes.clone())];
+    let old = Joint {
+        parts: vec![config(2, btreeset! {1, 2, 3}, BTreeMap::new(), nodes.clone())],
+    };
 
     // A role change and a new learner keep both rules.
     let roles = btreemap! {3 => NodeRole::ReceiveLogs};
     let with_five = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40, 5 => 50};
-    let same_rules = [config(2, btreeset! {1, 2, 3}, roles, with_five)];
-    let direct = Config::supports_direct_transition(&old, &same_rules);
+    let same_rules = Joint {
+        parts: vec![config(2, btreeset! {1, 2, 3}, roles, with_five)],
+    };
+    let direct = old.supports_direct_transition_to(&same_rules);
     assert!(direct);
 
     // Different rules can go directly: every quorum of size 2 meets every quorum of size 3.
-    let all_three = [config(3, btreeset! {1, 2, 3}, BTreeMap::new(), nodes)];
-    let direct = Config::supports_direct_transition(&old, &all_three);
+    let all_three = Joint {
+        parts: vec![config(3, btreeset! {1, 2, 3}, BTreeMap::new(), nodes)],
+    };
+    let direct = old.supports_direct_transition_to(&all_three);
     assert!(direct);
 
     // The joint holds the old config and the new one, so both steps through it go directly.
-    let joint = Config::joint(&old, &all_three);
-    let into_joint = Config::supports_direct_transition(&old, &joint);
+    let joint = old.joint_with(&all_three);
+    let into_joint = old.supports_direct_transition_to(&joint);
     assert!(into_joint);
-    let out_of_joint = Config::supports_direct_transition(&joint, &all_three);
+    let out_of_joint = joint.supports_direct_transition_to(&all_three);
     assert!(out_of_joint);
 }
 
@@ -158,20 +170,23 @@ fn test_supports_direct_transition_checks_cross_intersections() {
 fn test_supports_direct_transition_uses_joint_proofs() {
     let voters = btreeset! {1, 2, 3};
     let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30};
-    let mut joint = Vec::new();
+    let mut configs = Vec::new();
     for (read_size, write_size) in [(1, 3), (3, 1)] {
         let read = threshold(read_size, voters.clone());
         let write = threshold(write_size, voters.clone());
         let roles = BTreeMap::new();
         let config_nodes = nodes.clone();
         let config = TestConfig::new(read, write, roles, config_nodes).unwrap();
-        joint.push(config);
+        configs.push(config);
     }
+    let joint = Joint { parts: configs };
     let roles = BTreeMap::new();
-    let majority = [config(2, voters, roles, nodes)];
-    let to_majority = Config::supports_direct_transition(&joint, &majority);
+    let majority = Joint {
+        parts: vec![config(2, voters, roles, nodes)],
+    };
+    let to_majority = joint.supports_direct_transition_to(&majority);
     assert!(to_majority);
-    let from_majority = Config::supports_direct_transition(&majority, &joint);
+    let from_majority = majority.supports_direct_transition_to(&joint);
     assert!(from_majority);
 }
 
@@ -189,9 +204,11 @@ fn test_get_node_joins_roles_of_configs_where_node_is_voter() {
         5 => NodeRole::Empty,
     };
     let c2 = config(2, btreeset! {2, 3}, c2_roles, c2_nodes);
-    let configs = [c0, c1, c2];
+    let membership = Joint {
+        parts: vec![c0, c1, c2],
+    };
 
-    let got = active_nodes(&configs);
+    let got = active_nodes(&membership);
     let want = btreemap! {
         // Voter 1 of c0 is a learner of c1, the newest config that holds it.
         1 => node(&11, voter_role(), true),
@@ -206,62 +223,82 @@ fn test_get_node_joins_roles_of_configs_where_node_is_voter() {
     assert_eq!(want, got);
 
     // Learner 6 of c0 is not active: the change to c1 removed it.
-    let removed_learner = Config::get_node(&configs, &6);
+    let removed_learner = membership.get_node(&6);
     assert_eq!(None, removed_learner);
 }
 
 #[test]
-fn test_joint_appends_the_configs_of_goal() {
+fn test_joint_with_appends_the_configs_of_goal() {
     let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40};
-    let old = [config(2, btreeset! {1, 2, 3}, BTreeMap::new(), nodes.clone())];
-    let new = [config(2, btreeset! {2, 3, 4}, BTreeMap::new(), nodes)];
+    let old_config = config(2, btreeset! {1, 2, 3}, BTreeMap::new(), nodes.clone());
+    let new_config = config(2, btreeset! {2, 3, 4}, BTreeMap::new(), nodes);
+    let old = Joint {
+        parts: vec![old_config.clone()],
+    };
+    let new = Joint {
+        parts: vec![new_config.clone()],
+    };
 
-    let joint = Config::joint(&old, &new);
-    let want = vec![old[0].clone(), new[0].clone()];
+    let joint = RaftMembership::joint_with(&old, &new);
+    let want = Joint {
+        parts: vec![old_config, new_config],
+    };
     assert_eq!(want, joint);
 
     // A side without a config has no quorum, so the joint has none either.
-    let without_old = Config::joint(&[], &new);
-    assert_eq!(Vec::<TestConfig>::new(), without_old);
-    let without_new = Config::joint(&old, &[]);
-    assert_eq!(Vec::<TestConfig>::new(), without_new);
+    let empty = TestMembership::default();
+    let without_old = RaftMembership::joint_with(&empty, &new);
+    assert_eq!(empty, without_old);
+    let without_new = RaftMembership::joint_with(&old, &empty);
+    assert_eq!(empty, without_new);
 }
 
 #[test]
 fn test_drop_voters_demoted_to_learners_removes_them_from_goal() {
     let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40};
-    let old = [config(2, btreeset! {1, 2, 3}, BTreeMap::new(), nodes.clone())];
+    let old = Joint {
+        parts: vec![config(2, btreeset! {1, 2, 3}, BTreeMap::new(), nodes.clone())],
+    };
 
     // Voters 1 and 2 leave the voters, but 2 keeps campaigning, so it is no learner of the goal.
     // Learner 4 was never a voter.
     let campaigner = btreemap! {2 => voter_role()};
-    let goal = vec![config(1, btreeset! {3}, campaigner.clone(), nodes)];
+    let goal = Joint {
+        parts: vec![config(1, btreeset! {3}, campaigner.clone(), nodes)],
+    };
 
-    let got = Config::drop_voters_demoted_to_learners(&old, goal);
+    let got = old.drop_voters_demoted_to_learners(goal);
     let without_one = btreemap! {2 => 20, 3 => 30, 4 => 40};
-    let want = vec![config(1, btreeset! {3}, campaigner, without_one)];
+    let want = Joint {
+        parts: vec![config(1, btreeset! {3}, campaigner, without_one)],
+    };
     assert_eq!(want, got);
 }
 
 #[test]
-fn test_with_roles_sets_roles_of_last_config() {
+fn test_set_roles_sets_roles_of_last_config() {
     // Voter 3 stops campaigning in the old config, and voter 4 replaces voter 1 in the new one.
     let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40};
     let old_roles = btreemap! {3 => NodeRole::ReceiveLogs};
     let old = config(2, btreeset! {1, 2, 3}, old_roles, nodes.clone());
     let new = config(2, btreeset! {2, 3, 4}, BTreeMap::new(), nodes.clone());
-    let joint = vec![old.clone(), new];
+    let joint = Joint {
+        parts: vec![old.clone(), new],
+    };
 
     let roles = btreemap! {1 => NodeRole::Empty, 4 => NodeRole::ReceiveLogs};
-    let got = Config::with_roles(joint.clone(), roles.clone()).unwrap();
+    let got = joint.clone().set_roles(roles.clone()).unwrap();
     let new_with_roles = config(2, btreeset! {2, 3, 4}, roles, nodes);
-    assert_eq!(vec![old, new_with_roles], got);
+    let want = Joint {
+        parts: vec![old, new_with_roles],
+    };
+    assert_eq!(want, got);
 
-    let res = Config::with_roles(joint.clone(), btreemap! {5 => NodeRole::Empty});
+    let res = joint.clone().set_roles(btreemap! {5 => NodeRole::Empty});
     let not_found = NodeNotFound::new(5, Operation::None);
     assert_eq!(Err(ConfigsError::NodeNotFound(not_found)), res);
 
-    let res = Config::with_roles(joint, btreemap! {4 => NodeRole::Campaigner});
+    let res = joint.set_roles(btreemap! {4 => NodeRole::Campaigner});
     let no_logs = WriteVoterWithoutReceiveLogs { node_id: 4 };
     assert_eq!(Err(ConfigsError::WriteVoterWithoutReceiveLogs(no_logs)), res);
 }
@@ -272,12 +309,12 @@ fn test_edit_nodes_keeps_metadata_of_active_nodes() {
     let old_nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40};
     let old = config(2, btreeset! {1, 2, 3}, BTreeMap::new(), old_nodes);
     let new = config(2, btreeset! {2, 3}, BTreeMap::new(), btreemap! {2 => 20, 3 => 30});
-    let joint = [old, new];
+    let joint = Joint { parts: vec![old, new] };
 
     // Voter 1 of the old config is active and keeps its metadata. Learner 4 is not active, so it
     // takes the added metadata, as the unknown node 5 does.
     let add_nodes = btreemap! {1 => 11, 4 => 41, 5 => 51};
-    let got = Config::edit_nodes(&joint, add_nodes, &btreeset! {3});
+    let got = joint.edit_nodes(add_nodes, &btreeset! {3});
     let want = btreemap! {1 => 10, 2 => 20, 4 => 41, 5 => 51};
     assert_eq!(want, got);
 }

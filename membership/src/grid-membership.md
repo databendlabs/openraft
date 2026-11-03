@@ -184,11 +184,12 @@ config also go directly.
 ## The grid types connect like the weighted types, with a `FullRow` rule and a `OnePerRow` rule
 
 [`GridMembership`] implements [`RaftMembership`], and [`GridChange`]
-implements [`RaftMembershipEdit`], in the same way as the weighted types and
-with the same crate-private `Config`. [`weighted`] walks through how OpenRaft
-calls them during a change. It also lists what to copy to write a membership
-of your own, where `src/grid/` takes the place of `src/weighted/`. The grid
-differs in its rule and in how a change builds it:
+implements [`RaftMembershipEdit`], in the same way as the weighted types: it is
+the same `Joint<Config>`, with a [`GridQuorumSet`] as the rule of each config.
+[`weighted`] walks through how OpenRaft calls them during a change. It also
+lists what to copy to write a membership of your own, where `src/grid/` takes
+the place of `src/weighted/`. The grid differs in its rule and in how a change
+builds it:
 
 - [`GridQuorumSet`] holds the grid and a [`GridRule`]. Its [`QuorumSet`] impl
   accepts a set that holds every voter of some row, under `GridRule::FullRow`,

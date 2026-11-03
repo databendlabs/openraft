@@ -253,11 +253,12 @@ leaving a joint config go directly.
 
 [`HierarchicalMembership`] implements [`RaftMembership`], and
 [`HierarchicalChange`] implements [`RaftMembershipEdit`], in the same way as
-the weighted types and with the same crate-private `Config`. [`weighted`]
-walks through how OpenRaft calls them during a change. It also lists what to
-copy to write a membership of your own, where `src/hierarchical/` takes the
-place of `src/weighted/`. The hierarchical membership differs in its rule and
-in how a change builds it:
+the weighted types: it is the same `Joint<Config>`, with a
+[`HierarchicalQuorumSet`] as the rule of each config. [`weighted`] walks
+through how OpenRaft calls them during a change. It also lists what to copy to
+write a membership of your own, where `src/hierarchical/` takes the place of
+`src/weighted/`. The hierarchical membership differs in its rule and in how a
+change builds it:
 
 - [`HierarchicalQuorumSet`] holds the root [`Group`]. Each group holds voters,
   child groups, and a quorum size: the number of its members that a quorum

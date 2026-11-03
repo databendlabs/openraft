@@ -34,6 +34,7 @@ mod testing;
 mod threshold;
 mod weighted;
 
+pub use config::Config;
 pub use explicit::ExplicitChange;
 pub use explicit::ExplicitMembership;
 pub use grid::GridChange;

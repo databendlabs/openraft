@@ -207,14 +207,14 @@ OpenRaft uses a weighted membership through three types:
   [`intersects_with()`] returns `Some(true)` when both rules hold the same
   weights and their thresholds sum to more than the total weight. It returns
   `None` for every other pair.
-- [`WeightedMembership`] implements [`RaftMembership`]. It holds a list of
-  configs: one config, or the old configs and the new one during a joint
-  change. Each config holds a read rule with threshold `read_weight` and a
-  write rule with threshold `write_weight` over the same weights, and every
-  node with its metadata and its role. [`read_quorum_set()`] returns a
-  [`Joint`] of the read rules of all configs, so a read quorum must be a read
-  quorum of every config. [`write_quorum_set()`] does the same with the write
-  rules.
+- [`WeightedMembership`] implements [`RaftMembership`]. It is an alias of
+  [`Joint`]`<`[`Config`]`<N, WeightedQuorumSet<NID>>>`: a list of configs, one
+  config, or the old configs and the new one during a joint change. Each config
+  holds a read rule with threshold `read_weight` and a write rule with
+  threshold `write_weight` over the same weights, and every node with its
+  metadata and its role. [`read_quorum_set()`] returns a [`Joint`] of the read
+  rules of all configs, so a read quorum must be a read quorum of every config.
+  [`write_quorum_set()`] does the same with the write rules.
 - [`WeightedChange`] implements [`RaftMembershipEdit`]. Its [`apply()`] builds
   a membership with one config from the last config of the current membership
   and the fields of the change. Its `retain` argument decides whether removed
@@ -290,16 +290,17 @@ crate:
 - `src/weighted/`, which holds these three types and their error type
   [`InvalidWeights`];
 - `src/quorum/joint.rs`, which holds `Joint`;
-- `src/config.rs`, which holds the crate-private `Config`;
+- `src/config.rs`, which holds `Config`, and `src/config/joint_config.rs`,
+  which implements [`RaftMembership`] for `Joint<Config>`;
 - `src/errors/configs_error.rs`, which holds the crate-private `ConfigsError`
   that `Config` returns.
 
 `Config` stores one config: its two rules, and its nodes with their metadata
-and roles. `WeightedMembership` implements each required method of
-`RaftMembership` with one call to a function of `Config`, such as
-[`get_node()`], [`node_ids()`] and [`joint_with()`]. The grid, hierarchical
-and explicit memberships use the same functions. Then replace the weight
-arithmetic with the rule of your policy.
+and roles. The [`RaftMembership`] impl of `Joint<Config>` provides every
+required method, such as [`get_node()`], [`node_ids()`] and [`joint_with()`],
+for any rule type, so `WeightedMembership` adds only its constructors. The
+grid, hierarchical and explicit memberships are the same `Joint<Config>` with
+another rule. Then replace the weight arithmetic with the rule of your policy.
 
 [`WeightedMembership`]: crate::WeightedMembership
 [`WeightedMembership::new()`]: crate::WeightedMembership::new
@@ -317,6 +318,7 @@ arithmetic with the rule of your policy.
 [`election_quorum`]: openraft::docs::protocol::election_quorum
 [`WeightedQuorumSet`]: crate::quorum::WeightedQuorumSet
 [`Joint`]: crate::quorum::Joint
+[`Config`]: crate::Config
 [`QuorumSet`]: openraft::membership::QuorumSet
 [`is_quorum()`]: openraft::membership::QuorumSet::is_quorum
 [`QuorumIntersection`]: openraft::membership::QuorumIntersection
