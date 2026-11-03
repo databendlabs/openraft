@@ -240,16 +240,14 @@ OpenRaft appends a changed config directly only when every read quorum of each
 config intersects every write quorum of the other. Otherwise it first appends
 a joint config, as [`weighted`][weighted-joint] explains.
 
-The hierarchical membership proves this only when both memberships hold a
-config with the same tree and the same write sizes. A read quorum of one
-membership and a write quorum of the other then meet the read sizes and the
-write sizes of that config, so they share a voter. Within one tree this rule
-loses no safe change: each read rule is derived from its write rule, so both
-directions intersect only when the write sizes stay the same. So a direct
-change keeps the groups and the write sizes: changing only roles, adding a
-learner, and leaving a joint config go directly. Moving a voter to another
-group, adding or removing a voter or a group at any level, and changing a
-write size all go through a joint config.
+The membership checks both cross-intersections with `QuorumIntersection`.
+For two single-config memberships, the hierarchical rule proves them only
+when the trees have the same voters and child group IDs at every level, and
+the two quorum sizes at each group sum to more than its member count. Because
+read sizes are dual to write sizes, both directions require the same write
+sizes in every group. A changed tree leaves the intersection unproven, so
+those changes use a joint config. Changing only roles, adding a learner, and
+leaving a joint config go directly.
 
 ## The hierarchical types connect like the weighted types, with a read rule derived from the write rule
 

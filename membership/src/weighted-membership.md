@@ -185,13 +185,11 @@ config intersects every write quorum of the other. Otherwise it first appends
 a joint config, whose quorums are quorums of both configs, and then the new
 config.
 
-The weighted membership proves this only when both memberships hold a config
-with the same weights and the same write weight. A read quorum of one
-membership and a write quorum of the other then reach the read weight and the
-write weight of that config, so they share a voter. So every change of the
-weights or of the write weight goes through a joint config, even one that
-would be safe directly. Changing only roles, adding a learner, and leaving a
-joint config go directly.
+The membership checks both cross-intersections with `QuorumIntersection`.
+For two single-config memberships, the weighted rule proves a direct change
+only when their weights and write weights agree. Different weights leave the
+intersection unproven, so even a safe weight change uses a joint config.
+Changing only roles, adding a learner, and leaving a joint config go directly.
 
 With the same weights, raising the write weight lowers the read weight, so an
 old write quorum may miss a new read quorum. Lowering it causes the reverse

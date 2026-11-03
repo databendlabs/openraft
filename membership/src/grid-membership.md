@@ -161,14 +161,14 @@ let direct = membership.supports_direct_transition_to(&replaced);
 assert!(!direct);
 
 // Swapping voters 4 and 6 keeps every row, so both rules accept the same sets
-// as before. The grid changes, so OpenRaft still first appends a joint config.
+// as before. OpenRaft appends the target directly.
 let change = GridChange::grid(vec![vec![1, 2, 3], vec![6, 5, 4], vec![7, 8, 9]]);
 let swapped = change.apply(&membership, true).unwrap();
 let direct = membership.supports_direct_transition_to(&swapped);
-assert!(!direct);
+assert!(direct);
 ```
 
-## Every new grid requires a joint configuration
+## Reordering rows or voters within a row needs no joint configuration
 
 OpenRaft appends a changed config directly only when every read quorum of each
 config intersects every write quorum of the other. Otherwise it first appends
@@ -176,12 +176,10 @@ a joint config, as [`weighted`][weighted-joint] explains. A read quorum of the
 joint config holds a complete row of each grid, and a write quorum holds a
 voter of every row of both grids.
 
-The grid membership proves this only when both memberships hold a config with
-the same grid. A read quorum of one membership then holds a row of that grid,
-and a write quorum of the other holds a voter of each of its rows, so they
-share a voter. Every new grid therefore goes through a joint config, even one
-that only moves voters within their rows and would be safe directly. Changing
-only roles, adding a learner, and leaving a joint config go directly.
+For single-config memberships, the grid rules check both cross-intersections
+exactly. Reordering rows or voters within a row keeps the accepted quorums and
+goes directly. Changing only roles, adding a learner, and leaving a joint
+config also go directly.
 
 ## The grid types connect like the weighted types, with a `FullRow` rule and a `OnePerRow` rule
 

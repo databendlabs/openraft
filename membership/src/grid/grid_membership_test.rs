@@ -31,6 +31,7 @@ use crate::testing::assert_joint_keeps_old_roles_and_target_restores_new_roles;
 use crate::testing::assert_quorum_sets_are_valid;
 use crate::testing::assert_role_and_quorum_change_through_joint;
 use crate::testing::assert_with_roles;
+use crate::testing::direct_transition_is_safe;
 use crate::testing::voter_role;
 
 type Membership = GridMembership<u64, ()>;
@@ -176,17 +177,16 @@ fn test_from_node_map_fills_the_most_square_grid() {
 }
 
 #[test]
-fn test_direct_transitions_need_the_same_grid() {
+fn test_direct_transitions_preserve_quorum_intersection() {
     let square = grid(vec![vec![1, 2], vec![3, 4]]);
 
     let same = square.supports_direct_transition_to(&square);
     assert!(same);
 
-    // Swapping the voters of a row keeps the rows, so both rules accept the same sets as before.
-    // The grid changes, so the change still goes through a joint.
+    // Swapping the voters of a row keeps the accepted quorums, so it goes directly.
     let swapped = grid(vec![vec![2, 1], vec![3, 4]]);
     let direct = square.supports_direct_transition_to(&swapped);
-    assert!(!direct);
+    assert!(direct);
 
     // Transposing turns the rows into columns: old row {1,2} misses new write quorum {3,4}, which
     // holds a voter of new row {1,3} and of new row {2,4}.
@@ -217,7 +217,7 @@ fn test_direct_transitions_need_the_same_grid() {
 }
 
 #[test]
-fn test_small_memberships_go_directly_only_with_the_same_grid() {
+fn test_small_memberships_go_directly_exactly_when_cross_intersections_hold() {
     let grids = small_grids();
     let mut memberships = vec![];
     for cells in &grids {
@@ -237,10 +237,9 @@ fn test_small_memberships_go_directly_only_with_the_same_grid() {
         for new in &memberships {
             assert_claims_hold(old, new);
 
-            // Both rules of a config hold its grid, so only the same grid shares both rules.
-            let same_grid = old.read_quorum_set() == new.read_quorum_set();
+            let want = direct_transition_is_safe(old, new);
             let direct = old.supports_direct_transition_to(new);
-            assert_eq!(same_grid, direct, "{old} to {new}");
+            assert_eq!(want, direct, "{old} to {new}");
         }
     }
 }

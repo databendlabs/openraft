@@ -11,6 +11,7 @@ use openraft::membership::errors::WriteVoterWithoutReceiveLogs;
 
 use crate::errors::ConfigsError;
 use crate::quorum::Joint;
+use crate::quorum::QuorumIntersection;
 use crate::quorum::QuorumSet;
 
 /// One config of a membership: its read rule, its write rule, and the nodes it holds, each with
@@ -113,33 +114,24 @@ where
         Joint::new(rules)
     }
 
-    /// Returns whether some config of `configs` and some config of `other` have the same read
-    /// rule and the same write rule. The nodes and roles of the configs do not count, because they
-    /// change no quorum.
+    /// Returns whether every read quorum of each membership is proven to intersect every write
+    /// quorum of the other membership.
     ///
-    /// Such a shared config proves that every read quorum of each of `configs` and `other`
-    /// intersects every write quorum of the other. A read quorum of `configs` satisfies the read
-    /// rule of every config of `configs`, the shared one included. In the same way, a write quorum
-    /// of `other` satisfies the write rule of the shared config. Every constructor and every change
-    /// of a membership builds a config whose read rule intersects its write rule, so the two
-    /// quorums share a voter. The reverse direction follows the same proof.
-    ///
-    /// A change of only roles or learners keeps both rules. A step into a joint keeps every config
-    /// of the old membership, and a step out of a joint keeps every config of its goal. Every
-    /// other change of a rule goes through a joint, even when every old quorum would meet every
-    /// new one.
+    /// Both cross-intersections must return `Some(true)`. A disproven or unproven intersection
+    /// requires a joint config. Nodes and roles do not affect this check.
     pub(crate) fn supports_direct_transition(configs: &[Self], other: &[Self]) -> bool
-    where Q: PartialEq {
-        for config in configs {
-            for other_config in other {
-                let same_read = config.read == other_config.read;
-                let same_write = config.write == other_config.write;
-                if same_read && same_write {
-                    return true;
-                }
-            }
+    where Q: QuorumIntersection<Q> {
+        let read = Self::read_quorum_set(configs);
+        let other_write = Self::write_quorum_set(other);
+        let read_meets_write = read.intersects_with(&other_write);
+        if read_meets_write != Some(true) {
+            return false;
         }
-        false
+
+        let write = Self::write_quorum_set(configs);
+        let other_read = Self::read_quorum_set(other);
+        let write_meets_read = write.intersects_with(&other_read);
+        write_meets_read == Some(true)
     }
 
     /// Returns the metadata, the role and the voter flags of an active node of `configs`.

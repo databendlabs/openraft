@@ -130,7 +130,7 @@ fn test_quorum_sets_hold_the_rules_of_every_config() {
 }
 
 #[test]
-fn test_supports_direct_transition_needs_a_config_with_the_same_rules() {
+fn test_supports_direct_transition_checks_cross_intersections() {
     let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40};
     let old = [config(2, btreeset! {1, 2, 3}, BTreeMap::new(), nodes.clone())];
 
@@ -141,11 +141,10 @@ fn test_supports_direct_transition_needs_a_config_with_the_same_rules() {
     let direct = Config::supports_direct_transition(&old, &same_rules);
     assert!(direct);
 
-    // Quorum size 3 would be safe directly, because 2 + 3 exceeds the 3 voters. It changes both
-    // rules, so it still goes through a joint.
+    // Different rules can go directly: every quorum of size 2 meets every quorum of size 3.
     let all_three = [config(3, btreeset! {1, 2, 3}, BTreeMap::new(), nodes)];
     let direct = Config::supports_direct_transition(&old, &all_three);
-    assert!(!direct);
+    assert!(direct);
 
     // The joint holds the old config and the new one, so both steps through it go directly.
     let joint = Config::joint(&old, &all_three);
@@ -153,6 +152,27 @@ fn test_supports_direct_transition_needs_a_config_with_the_same_rules() {
     assert!(into_joint);
     let out_of_joint = Config::supports_direct_transition(&joint, &all_three);
     assert!(out_of_joint);
+}
+
+#[test]
+fn test_supports_direct_transition_uses_joint_proofs() {
+    let voters = btreeset! {1, 2, 3};
+    let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30};
+    let mut joint = Vec::new();
+    for (read_size, write_size) in [(1, 3), (3, 1)] {
+        let read = threshold(read_size, voters.clone());
+        let write = threshold(write_size, voters.clone());
+        let roles = BTreeMap::new();
+        let config_nodes = nodes.clone();
+        let config = TestConfig::new(read, write, roles, config_nodes).unwrap();
+        joint.push(config);
+    }
+    let roles = BTreeMap::new();
+    let majority = [config(2, voters, roles, nodes)];
+    let to_majority = Config::supports_direct_transition(&joint, &majority);
+    assert!(to_majority);
+    let from_majority = Config::supports_direct_transition(&majority, &joint);
+    assert!(from_majority);
 }
 
 #[test]

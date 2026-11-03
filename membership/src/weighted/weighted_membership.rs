@@ -33,11 +33,13 @@ use crate::quorum::WeightedQuorumSet;
 /// those of a [`ThresholdMembership`](crate::ThresholdMembership) with that write size.
 ///
 /// OpenRaft changes a config directly, without a joint config, only when every read quorum of each
-/// config is proven to intersect every write quorum of the other. The check proves it only when
-/// both memberships hold a config with the same weights and the same `write_weight`. With the same
+/// config is proven to intersect every write quorum of the other. It checks both directions with
+/// [`QuorumIntersection`](openraft::membership::QuorumIntersection).
+///
+/// For two single-config memberships, the check proves a direct transition only when their weights
+/// and `write_weight` agree. Different weights leave the intersection unproven. With the same
 /// weights, raising `write_weight` lowers `read_weight`, so an old write quorum may miss a new read
-/// quorum, and lowering it causes the reverse problem. Every change of the weights or of
-/// `write_weight` therefore goes through a joint config.
+/// quorum; lowering it causes the reverse problem. Such changes go through a joint config.
 ///
 /// A membership holds two or more configs only during a joint change. Then a quorum must be a
 /// quorum of every config. Rule i of

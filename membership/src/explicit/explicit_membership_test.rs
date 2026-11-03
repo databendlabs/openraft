@@ -31,6 +31,7 @@ use crate::testing::assert_joint_keeps_old_roles_and_target_restores_new_roles;
 use crate::testing::assert_quorum_sets_are_valid;
 use crate::testing::assert_role_and_quorum_change_through_joint;
 use crate::testing::assert_with_roles;
+use crate::testing::direct_transition_is_safe;
 use crate::testing::voter_role;
 
 type Membership = ExplicitMembership<u64, ()>;
@@ -202,17 +203,16 @@ fn test_from_node_map_requires_every_voter() {
 }
 
 #[test]
-fn test_direct_transitions_need_the_same_lists() {
+fn test_direct_transitions_need_cross_intersection() {
     let one_two = explicit(vec![btreeset! {1, 2}], vec![btreeset! {1, 2}]);
     let two_three = explicit(vec![btreeset! {2, 3}], vec![btreeset! {2, 3}]);
     let three_four = explicit(vec![btreeset! {3, 4}], vec![btreeset! {3, 4}]);
 
     let same = one_two.supports_direct_transition_to(&one_two);
     assert!(same);
-    // Every old quorum meets every new quorum in voter 2, but the lists change, so the change
-    // still goes through a joint.
+    // Every old quorum meets every new quorum in voter 2, even though both lists change.
     let shares_two = one_two.supports_direct_transition_to(&two_three);
-    assert!(!shares_two);
+    assert!(shares_two);
     let disjoint = one_two.supports_direct_transition_to(&three_four);
     assert!(!disjoint);
 
@@ -235,7 +235,7 @@ fn test_direct_transitions_need_the_same_lists() {
 }
 
 #[test]
-fn test_small_memberships_go_directly_only_with_the_same_lists() {
+fn test_small_memberships_go_directly_exactly_when_cross_intersections_hold() {
     // Each single quorum of voters {1,2,3}, a chain of two quorums, and the majorities.
     let mut lists = vec![];
     for quorum in all_subsets(&btreeset! {1, 2, 3}) {
@@ -265,9 +265,7 @@ fn test_small_memberships_go_directly_only_with_the_same_lists() {
         for new in &memberships {
             assert_claims_hold(old, new);
 
-            let same_read = old.read_quorum_set() == new.read_quorum_set();
-            let same_write = old.write_quorum_set() == new.write_quorum_set();
-            let want = same_read && same_write;
+            let want = direct_transition_is_safe(old, new);
             let direct = old.supports_direct_transition_to(new);
             assert_eq!(want, direct, "{old} to {new}");
         }

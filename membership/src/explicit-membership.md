@@ -147,12 +147,12 @@ let nodes = BTreeSet::from([1, 2, 3, 4, 9]);
 let membership = ExplicitMembership::<u64, ()>::new(pairs.clone(), with_backup, nodes).unwrap();
 
 // Stop waiting for the backup copy. Every new write quorum is a pair of primary
-// voters, which meets every read quorum, old and new. The write list changes,
-// so OpenRaft still first appends a joint config.
+// voters, which meets every read quorum, old and new. Both cross-intersections
+// hold, so OpenRaft appends the target directly.
 let change = ExplicitChange::write_quorums(pairs);
 let without_backup = change.apply(&membership, true).unwrap();
 let direct = membership.supports_direct_transition_to(&without_backup);
-assert!(!direct);
+assert!(direct);
 
 // Learner 4 replaces voter 3. The old read quorum {1,3} misses the new write
 // quorum {2,4}, so OpenRaft first appends a joint config.
@@ -170,19 +170,17 @@ let direct = without_backup.supports_direct_transition_to(&replaced);
 assert!(!direct);
 ```
 
-## Every change of a list requires a joint configuration
+## A list change goes directly when both cross-intersections hold
 
 OpenRaft appends a changed config directly only when every read quorum of each
 config intersects every write quorum of the other. Otherwise it first appends
 a joint config, as [`weighted`][weighted-joint] explains.
 
-The explicit membership proves this only when both memberships hold a config
-with the same two lists. A read quorum of one membership then holds a listed
-read quorum of that config, and a write quorum of the other holds a listed
-write quorum of it. Construction checked that these two share a voter. Every
-change of a list therefore goes through a joint config, even one that only
-adds voters to listed quorums and would be safe directly. Changing only roles,
-adding a learner, and leaving a joint config go directly.
+For single-config memberships, the rule compares every old listed read
+quorum with every new listed write quorum, and every new listed read quorum
+with every old listed write quorum. These checks are exact, so the lists may
+change directly whenever both cross-intersections hold. Changing only roles,
+adding a learner, and leaving a joint config also go directly.
 
 ## The explicit types connect like the weighted types, with two lists checked pair by pair
 

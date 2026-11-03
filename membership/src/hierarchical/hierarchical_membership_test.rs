@@ -332,7 +332,7 @@ fn test_moving_a_voter_between_groups_goes_through_a_joint() {
     let write_accepted = accepted(&new.write_quorum_set(), &subsets);
     assert_eq!(new_writes, write_accepted);
 
-    // The groups changed, so the configs share no rules and OpenRaft appends a joint first.
+    // The group layouts differ, so their rules cannot prove a direct transition.
     let direct = old.supports_direct_transition_to(&new);
     assert!(!direct);
 
@@ -551,8 +551,8 @@ fn test_direct_transitions_are_exact_within_one_layout() {
             assert_claims_hold(old, new);
 
             // Each read rule is the dual of its write rule, so within one layout a direct
-            // transition is safe only between the same rules, which the check requires. Across
-            // layouts the rules always differ.
+            // transition is safe only between the same rules. Different layouts leave the
+            // intersection unproven.
             let same_layout = old_layout == new_layout;
             let safe = direct_transition_is_safe(old, new);
             let want = same_layout && safe;

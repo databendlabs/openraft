@@ -36,10 +36,9 @@ use crate::quorum::Joint;
 /// [`read_quorum_set()`](openraft::membership::RaftMembership::read_quorum_set) is the
 /// [`GridRule::FullRow`] rule of config i, and rule i of
 /// [`write_quorum_set()`](openraft::membership::RaftMembership::write_quorum_set) is its
-/// [`GridRule::OnePerRow`] rule. Both share the grid of config i. A change of the voter placement
-/// or of the dimensions therefore keeps both grids until the joint reduces to its target. OpenRaft
-/// changes a config without a joint only when both memberships hold a config with the same grid, so
-/// every new grid goes through a joint.
+/// [`GridRule::OnePerRow`] rule. Both share the grid of config i. OpenRaft changes a config
+/// directly when both cross-intersections between the old and new rules are proven. Reordering rows
+/// or voters within a row keeps the accepted quorums and needs no joint config.
 ///
 /// [`grid_membership`](crate::docs::grid) explains how to choose the grid and how to change it.
 ///

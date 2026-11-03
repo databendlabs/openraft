@@ -19,6 +19,7 @@ use crate::ThresholdMembership;
 use crate::WeightedChange;
 use crate::WeightedMembership;
 use crate::errors::InvalidWeights;
+use crate::quorum::QuorumIntersection;
 use crate::quorum::QuorumSet;
 use crate::quorum::testing::accepted;
 use crate::quorum::testing::all_subsets;
@@ -275,13 +276,18 @@ fn test_direct_transitions_need_same_weights_and_write_weight() {
     let lower = write_three.supports_direct_transition_to(&write_two);
     assert!(!lower);
 
-    // New weights change both rules, so this change needs a joint even though every pair of old
-    // and new quorums intersects.
+    // The weighted rule cannot prove intersection across different weights, even when it holds.
     let heavier = weighted(btreemap! {1 => 3, 2 => 1, 3 => 1}, 2);
-    let reads_meet_writes = verify_intersection(&write_two.read_quorum_set(), &heavier.write_quorum_set());
+    let old_read = write_two.read_quorum_set();
+    let old_write = write_two.write_quorum_set();
+    let new_read = heavier.read_quorum_set();
+    let new_write = heavier.write_quorum_set();
+    let reads_meet_writes = verify_intersection(&old_read, &new_write);
     assert!(reads_meet_writes);
-    let writes_meet_reads = verify_intersection(&write_two.write_quorum_set(), &heavier.read_quorum_set());
+    let writes_meet_reads = verify_intersection(&old_write, &new_read);
     assert!(writes_meet_reads);
+    let proof = old_read.intersects_with(&new_write);
+    assert_eq!(None, proof);
     let reweighted = write_two.supports_direct_transition_to(&heavier);
     assert!(!reweighted);
 
@@ -322,8 +328,8 @@ fn test_small_memberships_go_directly_only_with_same_weights_and_write_weight() 
         for new in &memberships {
             assert_claims_hold(old, new);
 
-            // Both rules of a config derive from its weights and its write weight, so two configs
-            // share both rules only with the same weights and the same write weight.
+            // Equal weights need equal write weights to prove both cross-intersections.
+            // Different weights leave intersection unproven.
             let old_rules = old.write_quorum_set();
             let old_write = &old_rules.rules()[0];
             let new_rules = new.write_quorum_set();
