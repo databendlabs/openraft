@@ -32,25 +32,25 @@ use crate::quorum::QuorumSet;
     derive(serde::Deserialize, serde::Serialize),
     serde(bound(serialize = "Q: serde::Serialize", deserialize = "Q: serde::Deserialize<'de>"))
 )]
-pub(crate) struct Config<NID, N, Q>
+pub(crate) struct Config<N, Q>
 where
-    NID: NodeId,
     N: Node,
-    Q: QuorumSet<Id = NID>,
+    Q: QuorumSet,
+    Q::Id: NodeId,
 {
     read: Q,
     write: Q,
 
     /// Every node that this config holds, with its role here. A node outside both rules is a
     /// learner of this config.
-    nodes: BTreeMap<NID, (N, NodeRole)>,
+    nodes: BTreeMap<Q::Id, (N, NodeRole)>,
 }
 
-impl<NID, N, Q> Config<NID, N, Q>
+impl<N, Q> Config<N, Q>
 where
-    NID: NodeId,
     N: Node,
-    Q: QuorumSet<Id = NID> + Clone,
+    Q: QuorumSet + Clone,
+    Q::Id: NodeId,
 {
     /// Builds a config with the rules `read` and `write` that holds the nodes `nodes`.
     ///
@@ -65,9 +65,9 @@ where
     pub(crate) fn new(
         read: Q,
         write: Q,
-        roles: BTreeMap<NID, NodeRole>,
-        nodes: BTreeMap<NID, N>,
-    ) -> Result<Self, ConfigsError<NID>> {
+        roles: BTreeMap<Q::Id, NodeRole>,
+        nodes: BTreeMap<Q::Id, N>,
+    ) -> Result<Self, ConfigsError<Q::Id>> {
         let voters = voters_of(&read, &write);
         let mut config_nodes = BTreeMap::new();
         for (node_id, node) in nodes {
@@ -147,7 +147,7 @@ where
     /// The configs that count for the node are the last config and each earlier config where it
     /// is a voter. Its role joins its roles in these configs. Its metadata comes from the newest
     /// config that holds it, and its voter flags come from the rules of every config.
-    pub(crate) fn get_node<'a>(configs: &'a [Self], node_id: &NID) -> Option<NodeRef<'a, N>> {
+    pub(crate) fn get_node<'a>(configs: &'a [Self], node_id: &Q::Id) -> Option<NodeRef<'a, N>> {
         let (last, earlier) = configs.split_last()?;
 
         let mut node = None;
@@ -186,19 +186,19 @@ where
 
     /// Returns every active node ID of `configs` once, in ascending order: the nodes of the last
     /// config and the voters that the earlier configs hold.
-    pub(crate) fn node_ids(configs: &[Self]) -> std::vec::IntoIter<NID> {
+    pub(crate) fn node_ids(configs: &[Self]) -> std::vec::IntoIter<Q::Id> {
         let Some((last, earlier)) = configs.split_last() else {
             return Vec::new().into_iter();
         };
 
         let keys = last.nodes.keys();
-        let mut ids: BTreeSet<NID> = keys.cloned().collect();
+        let mut ids: BTreeSet<Q::Id> = keys.cloned().collect();
         for config in earlier {
             let voters = voters_of(&config.read, &config.write);
             let held = voters.into_iter().filter(|node_id| config.nodes.contains_key(node_id));
             ids.extend(held);
         }
-        let ids: Vec<NID> = ids.into_iter().collect();
+        let ids: Vec<Q::Id> = ids.into_iter().collect();
         ids.into_iter()
     }
 
@@ -245,8 +245,8 @@ where
     /// first write voter of the last config whose role lacks [`NodeRole::ReceiveLogs`].
     pub(crate) fn with_roles(
         mut configs: Vec<Self>,
-        roles: BTreeMap<NID, NodeRole>,
-    ) -> Result<Vec<Self>, ConfigsError<NID>> {
+        roles: BTreeMap<Q::Id, NodeRole>,
+    ) -> Result<Vec<Self>, ConfigsError<Q::Id>> {
         for (node_id, role) in roles {
             let node = match configs.last_mut() {
                 Some(last) => last.nodes.get_mut(&node_id),
@@ -268,9 +268,9 @@ where
     /// `remove_nodes`. An active node of `configs` keeps its metadata.
     pub(crate) fn edit_nodes(
         configs: &[Self],
-        add_nodes: BTreeMap<NID, N>,
-        remove_nodes: &BTreeSet<NID>,
-    ) -> BTreeMap<NID, N> {
+        add_nodes: BTreeMap<Q::Id, N>,
+        remove_nodes: &BTreeSet<Q::Id>,
+    ) -> BTreeMap<Q::Id, N> {
         let mut nodes = BTreeMap::new();
         if let Some(last) = configs.last() {
             for (node_id, (node, _)) in &last.nodes {
@@ -297,9 +297,9 @@ where
     /// Returns [`NodeNotFound`] for the first node of `roles` that `nodes` lacks.
     pub(crate) fn edit_roles(
         &self,
-        roles: BTreeMap<NID, NodeRole>,
-        nodes: &BTreeMap<NID, N>,
-    ) -> Result<BTreeMap<NID, NodeRole>, NodeNotFound<NID>> {
+        roles: BTreeMap<Q::Id, NodeRole>,
+        nodes: &BTreeMap<Q::Id, N>,
+    ) -> Result<BTreeMap<Q::Id, NodeRole>, NodeNotFound<Q::Id>> {
         let voters = voters_of(&self.read, &self.write);
         let mut edited = BTreeMap::new();
         for (node_id, (_, role)) in &self.nodes {
@@ -319,14 +319,14 @@ where
     }
 
     /// Returns whether `node_id` is an ID of the read rule or of the write rule.
-    fn is_voter(&self, node_id: &NID) -> bool {
+    fn is_voter(&self, node_id: &Q::Id) -> bool {
         let is_read_voter = has_id(&self.read, node_id);
         let is_write_voter = has_id(&self.write, node_id);
         is_read_voter || is_write_voter
     }
 
     /// Returns [`NodeNotFound`] for the first voter that this config does not hold.
-    fn ensure_voters_have_nodes(&self) -> Result<(), NodeNotFound<NID>> {
+    fn ensure_voters_have_nodes(&self) -> Result<(), NodeNotFound<Q::Id>> {
         let voters = voters_of(&self.read, &self.write);
         for node_id in voters {
             if !self.nodes.contains_key(&node_id) {
@@ -338,7 +338,7 @@ where
 
     /// Returns [`WriteVoterWithoutReceiveLogs`] for the first write voter whose role in this
     /// config lacks [`NodeRole::ReceiveLogs`].
-    fn ensure_write_voters_receive_logs(&self) -> Result<(), WriteVoterWithoutReceiveLogs<NID>> {
+    fn ensure_write_voters_receive_logs(&self) -> Result<(), WriteVoterWithoutReceiveLogs<Q::Id>> {
         for node_id in self.write.ids() {
             let Some((_, role)) = self.nodes.get(&node_id) else {
                 continue;
@@ -352,21 +352,21 @@ where
 }
 
 /// Returns the IDs of a read rule and a write rule.
-fn voters_of<NID, Q>(read: &Q, write: &Q) -> BTreeSet<NID>
+fn voters_of<Q>(read: &Q, write: &Q) -> BTreeSet<Q::Id>
 where
-    NID: NodeId,
-    Q: QuorumSet<Id = NID>,
+    Q: QuorumSet,
+    Q::Id: NodeId,
 {
-    let mut voters: BTreeSet<NID> = read.ids().collect();
+    let mut voters: BTreeSet<Q::Id> = read.ids().collect();
     voters.extend(write.ids());
     voters
 }
 
 /// Returns whether `node_id` is an ID of `rule`.
-fn has_id<NID, Q>(rule: &Q, node_id: &NID) -> bool
+fn has_id<Q>(rule: &Q, node_id: &Q::Id) -> bool
 where
-    NID: NodeId,
-    Q: QuorumSet<Id = NID>,
+    Q: QuorumSet,
+    Q::Id: NodeId,
 {
     let mut ids = rule.ids();
     ids.any(|id| id == *node_id)

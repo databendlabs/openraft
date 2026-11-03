@@ -18,7 +18,7 @@ use crate::testing::voter_role;
 
 /// A config whose node metadata is a number, so that a test can tell which config a node's
 /// metadata comes from.
-type TestConfig = Config<u64, u64, ThresholdQuorumSet<u64>>;
+type TestConfig = Config<u64, ThresholdQuorumSet<u64>>;
 
 /// Returns a config whose read and write rules accept any `quorum_size` of `voters`.
 fn config(

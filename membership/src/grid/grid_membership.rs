@@ -83,7 +83,7 @@ where
     NID: NodeId,
     N: Node,
 {
-    pub(crate) configs: Vec<Config<NID, N, GridQuorumSet<NID>>>,
+    pub(crate) configs: Vec<Config<N, GridQuorumSet<NID>>>,
 }
 
 /// Written by hand: `derive(Default)` would require `NID: Default` and `N: Default`.
