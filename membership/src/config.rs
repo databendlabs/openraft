@@ -72,8 +72,7 @@ where
         let voters = voters_of(&read, &write);
         let mut config_nodes = BTreeMap::new();
         for (node_id, node) in nodes {
-            let configured_role = roles.get(&node_id);
-            let role = match configured_role {
+            let role = match roles.get(&node_id) {
                 Some(role) => *role,
                 None => default_role(&voters, &node_id),
             };
@@ -122,16 +121,13 @@ where
     pub(crate) fn supports_direct_transition(configs: &[Self], other: &[Self]) -> bool
     where Q: QuorumIntersection<Q> {
         let read = Self::read_quorum_set(configs);
-        let other_write = Self::write_quorum_set(other);
-        let read_meets_write = read.intersects_with(&other_write);
-        if read_meets_write != Some(true) {
-            return false;
-        }
-
         let write = Self::write_quorum_set(configs);
         let other_read = Self::read_quorum_set(other);
+        let other_write = Self::write_quorum_set(other);
+
+        let read_meets_write = read.intersects_with(&other_write);
         let write_meets_read = write.intersects_with(&other_read);
-        write_meets_read == Some(true)
+        read_meets_write == Some(true) && write_meets_read == Some(true)
     }
 
     /// Returns the metadata, the role and the voter flags of an active node of `configs`.
@@ -142,29 +138,24 @@ where
     pub(crate) fn get_node<'a>(configs: &'a [Self], node_id: &Q::Id) -> Option<NodeRef<'a, N>> {
         let (last, earlier) = configs.split_last()?;
 
-        let mut node = None;
+        // The newest config that holds the node gives its metadata.
+        let newest = configs.iter().rev().find_map(|config| config.nodes.get(node_id));
+        let (node, _) = newest?;
+
+        // The last config and each earlier config where the node is a voter count for it.
         let mut role = NodeRole::Empty;
         let mut is_active = false;
-        for config in earlier {
-            let Some((config_node, config_role)) = config.nodes.get(node_id) else {
-                continue;
-            };
-            node = Some(config_node);
-            if config.is_voter(node_id) {
+        let voter_configs = earlier.iter().filter(|config| config.is_voter(node_id));
+        for config in voter_configs.chain([last]) {
+            if let Some((_, config_role)) = config.nodes.get(node_id) {
                 role |= *config_role;
                 is_active = true;
             }
         }
-        if let Some((last_node, last_role)) = last.nodes.get(node_id) {
-            node = Some(last_node);
-            role |= *last_role;
-            is_active = true;
-        }
-
-        let node = node?;
         if !is_active {
             return None;
         }
+
         let is_read_voter = configs.iter().any(|config| has_id(&config.read, node_id));
         let is_write_voter = configs.iter().any(|config| has_id(&config.write, node_id));
         let node_ref = NodeRef {
@@ -183,8 +174,7 @@ where
             return Vec::new().into_iter();
         };
 
-        let keys = last.nodes.keys();
-        let mut ids: BTreeSet<Q::Id> = keys.cloned().collect();
+        let mut ids: BTreeSet<Q::Id> = last.nodes.keys().cloned().collect();
         for config in earlier {
             let voters = voters_of(&config.read, &config.write);
             let held = voters.into_iter().filter(|node_id| config.nodes.contains_key(node_id));
@@ -211,20 +201,21 @@ where
     /// Returns `goal` without the voters of `configs` that are learners of `goal`, as
     /// [`NodeRef::is_learner()`] defines them. Such a node leaves every config of `goal`.
     pub(crate) fn drop_voters_demoted_to_learners(configs: &[Self], mut goal: Vec<Self>) -> Vec<Self> {
-        let mut demoted = Vec::new();
+        let mut demoted = BTreeSet::new();
         for node_id in Self::node_ids(&goal) {
+            let was_voter = configs.iter().any(|config| config.is_voter(&node_id));
+            if !was_voter {
+                continue;
+            }
             // Safe unwrap(): `node_ids()` lists only the IDs that `get_node()` knows.
             let node = Self::get_node(&goal, &node_id).unwrap();
-            let was_voter = configs.iter().any(|config| config.is_voter(&node_id));
-            if was_voter && node.is_learner() {
-                demoted.push(node_id);
+            if node.is_learner() {
+                demoted.insert(node_id);
             }
         }
 
         for config in &mut goal {
-            for node_id in &demoted {
-                config.nodes.remove(node_id);
-            }
+            config.nodes.retain(|node_id, _| !demoted.contains(node_id));
         }
         goal
     }
@@ -240,10 +231,7 @@ where
         roles: BTreeMap<Q::Id, NodeRole>,
     ) -> Result<Vec<Self>, ConfigsError<Q::Id>> {
         for (node_id, role) in roles {
-            let node = match configs.last_mut() {
-                Some(last) => last.nodes.get_mut(&node_id),
-                None => None,
-            };
+            let node = configs.last_mut().and_then(|last| last.nodes.get_mut(&node_id));
             let Some((_, node_role)) = node else {
                 return Err(NodeNotFound::new(node_id, Operation::None).into());
             };
@@ -270,8 +258,7 @@ where
             }
         }
         for (node_id, node) in add_nodes {
-            let known = Self::get_node(configs, &node_id);
-            let node = match known {
+            let node = match Self::get_node(configs, &node_id) {
                 Some(known) => known.node.clone(),
                 None => node,
             };
@@ -295,8 +282,7 @@ where
         let voters = voters_of(&self.read, &self.write);
         let mut edited = BTreeMap::new();
         for (node_id, (_, role)) in &self.nodes {
-            let is_default = *role == default_role(&voters, node_id);
-            if !is_default {
+            if *role != default_role(&voters, node_id) {
                 edited.insert(node_id.clone(), *role);
             }
         }
@@ -312,9 +298,7 @@ where
 
     /// Returns whether `node_id` is an ID of the read rule or of the write rule.
     fn is_voter(&self, node_id: &Q::Id) -> bool {
-        let is_read_voter = has_id(&self.read, node_id);
-        let is_write_voter = has_id(&self.write, node_id);
-        is_read_voter || is_write_voter
+        has_id(&self.read, node_id) || has_id(&self.write, node_id)
     }
 
     /// Returns [`NodeNotFound`] for the first voter that this config does not hold.
@@ -360,8 +344,7 @@ where
     Q: QuorumSet,
     Q::Id: NodeId,
 {
-    let mut ids = rule.ids();
-    ids.any(|id| id == *node_id)
+    rule.ids().any(|id| id == *node_id)
 }
 
 /// Returns the role of `node_id` in a config with voters `voters` that sets no role for it.
