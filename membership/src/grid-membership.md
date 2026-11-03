@@ -145,13 +145,10 @@ let membership = GridMembership::<u64, ()>::new(grid, nodes).unwrap();
 // Voter 10 takes the cell of voter 5, which `apply()` keeps as a learner.
 let change = GridChange::grid(vec![vec![1, 2, 3], vec![4, 10, 6], vec![7, 8, 9]]);
 let replaced = change.apply(&membership, true).unwrap();
-let want = "{configs: [Config { read: GridQuorumSet { grid: [[1, 2, 3], [4, 10, 6], [7, 8, 9]], rule: FullRow }, \
-            write: GridQuorumSet { grid: [[1, 2, 3], [4, 10, 6], [7, 8, 9]], rule: OnePerRow }, \
-            nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), 2: ((), NodeRole(Campaigner | ReceiveLogs)), \
-            3: ((), NodeRole(Campaigner | ReceiveLogs)), 4: ((), NodeRole(Campaigner | ReceiveLogs)), \
-            5: ((), NodeRole(ReceiveLogs)), 6: ((), NodeRole(Campaigner | ReceiveLogs)), \
-            7: ((), NodeRole(Campaigner | ReceiveLogs)), 8: ((), NodeRole(Campaigner | ReceiveLogs)), \
-            9: ((), NodeRole(Campaigner | ReceiveLogs)), 10: ((), NodeRole(Campaigner | ReceiveLogs))} }]}";
+let want = "{configs: [Config { read: GridQuorumSet { grid: [[1, 2, 3], [4, 10, 6], [7, 8, 9]], \
+            rule: FullRow }, write: GridQuorumSet { grid: [[1, 2, 3], [4, 10, 6], [7, 8, 9]], \
+            rule: OnePerRow }, nodes: {1: (), 2: (), 3: (), 4: (), 5: (), 6: (), 7: (), 8: (), 9: \
+            (), 10: ()}, roles: {} }]}";
 let got = replaced.to_string();
 assert_eq!(want, got);
 

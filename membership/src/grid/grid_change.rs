@@ -23,16 +23,17 @@ use crate::errors::InvalidGrid;
 /// both. An invalid grid makes `apply()` return [`MembershipError::UserDefined`]. A voter without a
 /// node makes `apply()` return [`MembershipError::NodeNotFound`].
 ///
-/// The result gives each voter [`NodeRole::Campaigner`] `|` [`NodeRole::ReceiveLogs`] and every
-/// other node [`NodeRole::ReceiveLogs`], unless it sets another role. A node of `roles` that the
+/// A node of the result takes the role that `roles` or the last config sets for it, and otherwise
+/// the default for its status in the result: [`NodeRole::Campaigner`] `|`
+/// [`NodeRole::ReceiveLogs`] for a voter, and [`NodeRole::ReceiveLogs`] for every other node. A
+/// set role stays until a change sets another one: a voter with only [`NodeRole::ReceiveLogs`]
+/// that becomes a learner, and later a voter again, still does not campaign. A role of `roles`
+/// equal to the default for the node's status clears the set role. A node of `roles` that the
 /// result lacks makes `apply()` return [`MembershipError::NodeNotFound`]. The result keeps a role
 /// as given, even one without [`NodeRole::ReceiveLogs`] for a write voter: OpenRaft rejects such
-/// a result with [`MembershipError::WriteVoterWithoutReceiveLogs`] when it is proposed. The
-/// result keeps a role of the last config only while it differs from the default for the node's
-/// status there: a voter with only [`NodeRole::ReceiveLogs`] that becomes a learner keeps that
-/// role, the default for a learner, and it campaigns again once a later change makes it a voter.
-/// When OpenRaft moves to the result through a joint config, the joint gives each node its role in
-/// the result, joined with its old role if it is an old voter, and
+/// a result with [`MembershipError::WriteVoterWithoutReceiveLogs`] when it is proposed. When
+/// OpenRaft moves to the result through a joint config, the joint gives each node its role in the
+/// result, joined with its old role if it is an old voter, and
 /// [`make_uniform()`](RaftMembershipEdit::make_uniform) restores the roles of the result.
 ///
 /// # Examples
@@ -50,11 +51,9 @@ use crate::errors::InvalidGrid;
 /// // Learners 5 and 6 become a third column.
 /// let change = GridChange::grid(vec![vec![1, 2, 5], vec![3, 4, 6]]);
 /// let wider = change.apply(&membership, true).unwrap();
-/// let want = "{configs: [Config { read: GridQuorumSet { grid: [[1, 2, 5], [3, 4, 6]], rule: FullRow }, \
-///             write: GridQuorumSet { grid: [[1, 2, 5], [3, 4, 6]], rule: OnePerRow }, \
-///             nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), 2: ((), NodeRole(Campaigner | ReceiveLogs)), \
-///             3: ((), NodeRole(Campaigner | ReceiveLogs)), 4: ((), NodeRole(Campaigner | ReceiveLogs)), \
-///             5: ((), NodeRole(Campaigner | ReceiveLogs)), 6: ((), NodeRole(Campaigner | ReceiveLogs))} }]}";
+/// let want = "{configs: [Config { read: GridQuorumSet { grid: [[1, 2, 5], [3, 4, 6]], rule: \
+///             FullRow }, write: GridQuorumSet { grid: [[1, 2, 5], [3, 4, 6]], rule: OnePerRow }, \
+///             nodes: {1: (), 2: (), 3: (), 4: (), 5: (), 6: ()}, roles: {} }]}";
 /// let got = wider.to_string();
 /// assert_eq!(want, got);
 /// ```
@@ -161,8 +160,9 @@ where
         };
 
         let nodes = membership.edit_nodes(self.add_nodes, &self.remove_nodes);
-        let roles = last.edit_roles(self.roles, &nodes)?;
-        let config = Config::new(read, write, roles, nodes)?;
+        let mut config = Config::new(read, write, nodes)?;
+        config.keep_roles(last);
+        config.set_roles(self.roles)?;
 
         let mut target = GridMembership { parts: vec![config] };
         if !retain {

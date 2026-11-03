@@ -25,20 +25,19 @@ where
     Q: QuorumSet + QuorumIntersection<Q> + Clone + Debug + Eq + OptionalFeatures + 'static,
     Q::Id: NodeId,
 {
-    /// Returns this membership with each node of `roles` set to its role there in the last config.
-    /// The other nodes keep their roles. A role is kept as given, even one without
-    /// [`NodeRole::ReceiveLogs`] for a write voter: OpenRaft rejects such a membership when it is
-    /// initialized or proposed.
+    /// Returns this membership with each node of `roles` set to its role there in the last config,
+    /// as [`Config::set_roles()`] does. The other nodes keep their roles.
     ///
     /// Returns [`NodeNotFound`] for the first node of `roles` that the last config does not hold.
     pub(crate) fn set_roles(mut self, roles: BTreeMap<Q::Id, NodeRole>) -> Result<Self, NodeNotFound<Q::Id>> {
-        for (node_id, role) in roles {
-            let entry = self.parts.last_mut().and_then(|last| last.nodes.get_mut(&node_id));
-            let Some((_, node_role)) = entry else {
+        let Some(last) = self.parts.last_mut() else {
+            // A membership without a config holds no node.
+            if let Some(node_id) = roles.into_keys().next() {
                 return Err(NodeNotFound::new(node_id, Operation::None));
-            };
-            *node_role = role;
-        }
+            }
+            return Ok(self);
+        };
+        last.set_roles(roles)?;
         Ok(self)
     }
 
@@ -51,7 +50,7 @@ where
     ) -> BTreeMap<Q::Id, N> {
         let mut nodes = BTreeMap::new();
         if let Some(last) = self.parts.last() {
-            for (node_id, (node, _)) in &last.nodes {
+            for (node_id, node) in &last.nodes {
                 nodes.insert(node_id.clone(), node.clone());
             }
         }
@@ -86,6 +85,7 @@ where
 
         for config in &mut goal.parts {
             config.nodes.retain(|node_id, _| !demoted.contains(node_id));
+            config.roles.retain(|node_id, _| !demoted.contains(node_id));
         }
         goal
     }
@@ -159,7 +159,7 @@ where
 
         // Newest config first, so the first config that holds the node gives its metadata.
         for (i, config) in self.parts.iter().rev().enumerate() {
-            let Some((config_node, config_role)) = config.nodes.get(node_id) else {
+            let Some(config_node) = config.nodes.get(node_id) else {
                 continue;
             };
             if node.is_none() {
@@ -170,7 +170,7 @@ where
             // quorums, so it keeps the roles of its voters, but not of its learners.
             let is_last = i == 0;
             if is_last || config.is_voter(node_id) {
-                role |= *config_role;
+                role |= config.role(node_id);
                 is_active = true;
             }
         }

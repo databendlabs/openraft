@@ -110,7 +110,7 @@ where
         let write = HierarchicalQuorumSet::new(groups).unwrap();
         let read = write.dual();
         // Safe unwrap(): every voter is a node, and the config sets no role.
-        let config = Config::new(read, write, BTreeMap::new(), nodes).unwrap();
+        let config = Config::new(read, write, nodes).unwrap();
         Self { parts: vec![config] }
     }
 }
@@ -137,7 +137,7 @@ where
         let read = write.dual();
 
         let nodes = nodes.into_nodes();
-        let config = Config::new(read, write, BTreeMap::new(), nodes)?;
+        let config = Config::new(read, write, nodes)?;
         Ok(Self { parts: vec![config] })
     }
 

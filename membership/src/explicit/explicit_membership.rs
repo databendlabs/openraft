@@ -128,7 +128,7 @@ where
         let (read, write) = Self::rules_from_lists(read, write)?;
 
         let nodes = nodes.into_nodes();
-        let config = Config::new(read, write, BTreeMap::new(), nodes)?;
+        let config = Config::new(read, write, nodes)?;
         Ok(Self { parts: vec![config] })
     }
 

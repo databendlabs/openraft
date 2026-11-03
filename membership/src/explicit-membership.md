@@ -160,10 +160,8 @@ let pairs = vec![BTreeSet::from([1, 2]), BTreeSet::from([1, 4]), BTreeSet::from(
 let change = ExplicitChange::quorums(pairs.clone(), pairs);
 let replaced = change.apply(&without_backup, true).unwrap();
 let want = "{configs: [Config { read: ExplicitQuorumSet { quorums: [{1, 2}, {1, 4}, {2, 4}] }, \
-            write: ExplicitQuorumSet { quorums: [{1, 2}, {1, 4}, {2, 4}] }, \
-            nodes: {1: ((), NodeRole(Campaigner | ReceiveLogs)), 2: ((), NodeRole(Campaigner | ReceiveLogs)), \
-            3: ((), NodeRole(ReceiveLogs)), 4: ((), NodeRole(Campaigner | ReceiveLogs)), \
-            9: ((), NodeRole(ReceiveLogs))} }]}";
+            write: ExplicitQuorumSet { quorums: [{1, 2}, {1, 4}, {2, 4}] }, nodes: {1: (), 2: (), \
+            3: (), 4: (), 9: ()}, roles: {} }]}";
 let got = replaced.to_string();
 assert_eq!(want, got);
 let direct = without_backup.supports_direct_transition_to(&replaced);

@@ -61,14 +61,17 @@ every voter is a write voter. An explicit membership may list a voter only in
 its read quorums, and that voter may drop `ReceiveLogs`, because no commit
 waits for it.
 
-A change keeps a role only while it differs from the default. So a voter with
-only `ReceiveLogs` that becomes a learner has the default role of a learner,
-and it campaigns again once a later change makes it a voter.
+A role that `with_roles()` or a change sets stays until a later change sets
+another one or removes the node. So a voter with only `ReceiveLogs` that
+becomes a learner, and later a voter again, still does not campaign. Setting a
+node to the default role for its status clears its set role, and the node
+follows the default again.
 
-Each config stores its nodes with their roles. During a joint change, a
-node's role combines its roles in the new config and every earlier config
-where it is a voter. [`make_uniform()`] keeps only the new config, restoring
-that config's roles.
+Each config stores its nodes and the roles set for them, and computes the
+default role of every other node from its status in that config. During a
+joint change, a node's role combines its roles in the new config and every
+earlier config where it is a voter. [`make_uniform()`] keeps only the new
+config, restoring that config's roles.
 
 [`ThresholdMembership`]: crate::ThresholdMembership
 [`WeightedMembership`]: crate::WeightedMembership

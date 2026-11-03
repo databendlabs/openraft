@@ -22,7 +22,8 @@ type TestConfig = Config<u64, ThresholdQuorumSet<u64>>;
 /// A membership of test configs.
 type TestMembership = Joint<TestConfig>;
 
-/// Returns a config whose read and write rules accept any `quorum_size` of `voters`.
+/// Returns a config whose read and write rules accept any `quorum_size` of `voters`, with `roles`
+/// set.
 fn config(
     quorum_size: u64,
     voters: BTreeSet<u64>,
@@ -30,7 +31,9 @@ fn config(
     nodes: BTreeMap<u64, u64>,
 ) -> TestConfig {
     let rule = threshold(quorum_size, voters);
-    Config::new(rule.clone(), rule, roles, nodes).unwrap()
+    let mut config = Config::new(rule.clone(), rule, nodes).unwrap();
+    config.set_roles(roles).unwrap();
+    config
 }
 
 fn node(node: &'static u64, role: NodeRole, is_voter: bool) -> NodeRef<'static, u64> {
@@ -73,55 +76,61 @@ fn test_new_gives_default_roles() {
 }
 
 #[test]
-fn test_new_sets_roles_of_its_nodes() {
-    // Read-only voter 1 needs no logs, write-only voter 3 stops campaigning, and learner 4 stops
-    // receiving logs. Node 5 is no node of the config, so its role is dropped.
-    let roles = btreemap! {
-        1 => NodeRole::Empty,
-        3 => NodeRole::ReceiveLogs,
-        4 => NodeRole::Empty,
-        5 => NodeRole::Empty,
-    };
-    let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40};
-    let read = threshold(2, btreeset! {1, 2});
-    let write = threshold(2, btreeset! {2, 3});
-    let config = TestConfig::new(read, write, roles, nodes).unwrap();
-
-    let want = btreemap! {
-        1 => (10, NodeRole::Empty),
-        2 => (20, voter_role()),
-        3 => (30, NodeRole::ReceiveLogs),
-        4 => (40, NodeRole::Empty),
-    };
-    assert_eq!(want, config.nodes);
-}
-
-#[test]
 fn test_new_checks_that_voters_have_nodes() {
     let rule = threshold(2, btreeset! {1, 2, 3});
 
     let without_three = btreemap! {1 => 10, 2 => 20};
-    let res = TestConfig::new(rule.clone(), rule.clone(), BTreeMap::new(), without_three);
+    let res = TestConfig::new(rule.clone(), rule.clone(), without_three);
     let not_found = NodeNotFound::new(3, Operation::None);
     assert_eq!(Err(not_found), res);
 
-    // A role is kept as given, even one without `ReceiveLogs` for write voter 2: OpenRaft rejects
-    // such a membership when it is proposed.
     let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40};
-    let roles = btreemap! {2 => NodeRole::Campaigner, 4 => NodeRole::Empty};
-    let config = TestConfig::new(rule.clone(), rule, roles, nodes).unwrap();
-    assert_eq!(Some(&(20, NodeRole::Campaigner)), config.nodes.get(&2));
-    assert_eq!(Some(&(40, NodeRole::Empty)), config.nodes.get(&4));
+    let config = TestConfig::new(rule.clone(), rule, nodes.clone()).unwrap();
+    assert_eq!(nodes, config.nodes);
+    assert_eq!(BTreeMap::new(), config.roles);
+}
+
+#[test]
+fn test_set_roles_stores_only_roles_that_differ_from_default() {
+    let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40};
+    let read = threshold(2, btreeset! {1, 2});
+    let write = threshold(2, btreeset! {2, 3});
+    let mut config = TestConfig::new(read, write, nodes).unwrap();
+
+    // Read-only voter 1 needs no logs, write-only voter 3 stops campaigning, and learner 4 stops
+    // receiving logs. Voter 2 is set to its default, so no role is stored for it.
+    let roles = btreemap! {
+        1 => NodeRole::Empty,
+        2 => voter_role(),
+        3 => NodeRole::ReceiveLogs,
+        4 => NodeRole::Empty,
+    };
+    config.set_roles(roles).unwrap();
+    let want = btreemap! {1 => NodeRole::Empty, 3 => NodeRole::ReceiveLogs, 4 => NodeRole::Empty};
+    assert_eq!(want, config.roles);
+    assert_eq!(voter_role(), config.role(&2));
+
+    // A role is kept as given, even one without `ReceiveLogs` for write voter 2: OpenRaft rejects
+    // such a membership when it is proposed. Learner 4 set to its default follows it again.
+    config.set_roles(btreemap! {2 => NodeRole::Campaigner, 4 => NodeRole::ReceiveLogs}).unwrap();
+    let want = btreemap! {1 => NodeRole::Empty, 2 => NodeRole::Campaigner, 3 => NodeRole::ReceiveLogs};
+    assert_eq!(want, config.roles);
+
+    // Node 5 is no node of the config, so the call sets no role.
+    let res = config.set_roles(btreemap! {3 => voter_role(), 5 => NodeRole::Empty});
+    let not_found = NodeNotFound::new(5, Operation::None);
+    assert_eq!(Err(not_found), res);
+    assert_eq!(want, config.roles);
 }
 
 #[test]
 fn test_quorum_sets_hold_the_rules_of_every_config() {
     let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40};
     let old_rule = threshold(2, btreeset! {1, 2, 3});
-    let old = TestConfig::new(old_rule.clone(), old_rule.clone(), BTreeMap::new(), nodes.clone()).unwrap();
+    let old = TestConfig::new(old_rule.clone(), old_rule.clone(), nodes.clone()).unwrap();
     let new_read = threshold(1, btreeset! {2, 3, 4});
     let new_write = threshold(3, btreeset! {2, 3, 4});
-    let new = TestConfig::new(new_read.clone(), new_write.clone(), BTreeMap::new(), nodes).unwrap();
+    let new = TestConfig::new(new_read.clone(), new_write.clone(), nodes).unwrap();
     let membership = Joint { parts: vec![old, new] };
 
     let read = membership.read_quorum_set();
@@ -169,9 +178,7 @@ fn test_supports_direct_transition_uses_joint_proofs() {
     for (read_size, write_size) in [(1, 3), (3, 1)] {
         let read = threshold(read_size, voters.clone());
         let write = threshold(write_size, voters.clone());
-        let roles = BTreeMap::new();
-        let config_nodes = nodes.clone();
-        let config = TestConfig::new(read, write, roles, config_nodes).unwrap();
+        let config = TestConfig::new(read, write, nodes.clone()).unwrap();
         configs.push(config);
     }
     let joint = Joint { parts: configs };
@@ -316,21 +323,23 @@ fn test_edit_nodes_keeps_metadata_of_active_nodes() {
 }
 
 #[test]
-fn test_edit_roles_keeps_roles_that_differ_from_default() {
-    let roles = btreemap! {
-        1 => voter_role(),
-        2 => NodeRole::ReceiveLogs,
-        4 => NodeRole::ReceiveLogs,
-    };
+fn test_keep_roles_keeps_set_roles_through_status_changes() {
+    // Voter 3 stops campaigning, and learner 4 stops receiving logs.
     let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40};
-    let config = config(2, btreeset! {1, 2, 3}, roles, nodes.clone());
+    let roles = btreemap! {3 => NodeRole::ReceiveLogs, 4 => NodeRole::Empty};
+    let first = config(2, btreeset! {1, 2, 3}, roles, nodes);
 
-    // Only voter 2 has a role that differs from the default for its status.
-    let got = config.edit_roles(btreemap! {4 => NodeRole::Empty}, &nodes).unwrap();
-    let want = btreemap! {2 => NodeRole::ReceiveLogs, 4 => NodeRole::Empty};
-    assert_eq!(want, got);
+    // The second config removes node 4 and makes voter 3 a learner. Node 3 keeps its set role,
+    // though it equals the default for a learner.
+    let without_four = btreemap! {1 => 10, 2 => 20, 3 => 30};
+    let rule = threshold(1, btreeset! {1, 2});
+    let mut second = TestConfig::new(rule.clone(), rule, without_four.clone()).unwrap();
+    second.keep_roles(&first);
+    assert_eq!(btreemap! {3 => NodeRole::ReceiveLogs}, second.roles);
 
-    let res = config.edit_roles(btreemap! {5 => NodeRole::Empty}, &nodes);
-    let not_found = NodeNotFound::new(5, Operation::None);
-    assert_eq!(Err(not_found), res);
+    // The third config makes node 3 a voter again, and it still does not campaign.
+    let rule = threshold(2, btreeset! {1, 2, 3});
+    let mut third = TestConfig::new(rule.clone(), rule, without_four).unwrap();
+    third.keep_roles(&second);
+    assert_eq!(NodeRole::ReceiveLogs, third.role(&3));
 }

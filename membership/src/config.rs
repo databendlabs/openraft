@@ -12,8 +12,13 @@ use crate::quorum::QuorumSet;
 
 mod joint_config;
 
-/// One config of a membership: its read rule, its write rule, and the nodes it holds, each with
-/// its metadata and its role in this config.
+/// One config of a membership: its read rule, its write rule, the nodes it holds with their
+/// metadata, and the roles set for some of these nodes.
+///
+/// A node without a set role takes the default role for its status in this config:
+/// [`NodeRole::Campaigner`] `|` [`NodeRole::ReceiveLogs`] for a voter, an ID of either rule, and
+/// [`NodeRole::ReceiveLogs`] for a learner. The default is computed each time the role is read,
+/// so it follows the status of the node.
 ///
 /// A membership is a [`Joint`] of configs, oldest first. It holds more than one config only during
 /// a joint change, and then its last config is the target of the change. [`ExplicitMembership`],
@@ -25,6 +30,10 @@ mod joint_config;
 /// [`GridMembership`]: crate::GridMembership
 /// [`HierarchicalMembership`]: crate::HierarchicalMembership
 /// [`WeightedMembership`]: crate::WeightedMembership
+#[since(
+    version = "0.10.0",
+    change = "stores only the roles that are set, apart from the nodes"
+)]
 #[since(version = "0.10.0")]
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(
@@ -41,9 +50,12 @@ where
     read: Q,
     write: Q,
 
-    /// Every node that this config holds, with its role here. A node outside both rules is a
+    /// Every node that this config holds, with its metadata. A node outside both rules is a
     /// learner of this config.
-    nodes: BTreeMap<Q::Id, (N, NodeRole)>,
+    nodes: BTreeMap<Q::Id, N>,
+
+    /// The roles set for nodes of this config. A node without one takes its default role.
+    roles: BTreeMap<Q::Id, NodeRole>,
 }
 
 impl<N, Q> Config<N, Q>
@@ -52,36 +64,17 @@ where
     Q: QuorumSet + Clone,
     Q::Id: NodeId,
 {
-    /// Builds a config with the rules `read` and `write` that holds the nodes `nodes`.
-    ///
-    /// A node of `roles` takes its role there. Every other node takes the default role for its
-    /// status in this config: [`NodeRole::Campaigner`] `|` [`NodeRole::ReceiveLogs`] for a voter,
-    /// an ID of either rule, and [`NodeRole::ReceiveLogs`] for a learner. A role of a node outside
-    /// `nodes` is dropped. A role is kept as given, even one without [`NodeRole::ReceiveLogs`] for
-    /// a write voter: OpenRaft rejects such a membership when it is initialized or proposed.
+    /// Builds a config with the rules `read` and `write` that holds the nodes `nodes`, and sets no
+    /// role.
     ///
     /// Returns [`NodeNotFound`] for the first voter without a node.
-    pub(crate) fn new(
-        read: Q,
-        write: Q,
-        roles: BTreeMap<Q::Id, NodeRole>,
-        nodes: BTreeMap<Q::Id, N>,
-    ) -> Result<Self, NodeNotFound<Q::Id>> {
-        let mut config = Self {
+    pub(crate) fn new(read: Q, write: Q, nodes: BTreeMap<Q::Id, N>) -> Result<Self, NodeNotFound<Q::Id>> {
+        let config = Self {
             read,
             write,
-            nodes: BTreeMap::new(),
+            nodes,
+            roles: BTreeMap::new(),
         };
-
-        let voters = config.voters();
-        for (node_id, node) in nodes {
-            let role = match roles.get(&node_id) {
-                Some(role) => *role,
-                None => default_role(&voters, &node_id),
-            };
-            config.nodes.insert(node_id, (node, role));
-        }
-
         config.ensure_voters_have_nodes()?;
         Ok(config)
     }
@@ -96,30 +89,49 @@ where
         &self.write
     }
 
-    /// Returns the roles of this config that differ from the default, with each node of `roles`
-    /// set to its role there.
+    /// Sets each node of `roles` to its role there. A role equal to the default for the node's
+    /// status in this config is not stored, so the node follows its default again.
     ///
-    /// Returns [`NodeNotFound`] for the first node of `roles` that `nodes` lacks.
-    pub(crate) fn edit_roles(
-        &self,
-        roles: BTreeMap<Q::Id, NodeRole>,
-        nodes: &BTreeMap<Q::Id, N>,
-    ) -> Result<BTreeMap<Q::Id, NodeRole>, NodeNotFound<Q::Id>> {
-        let voters = self.voters();
-        let mut edited = BTreeMap::new();
-        for (node_id, (_, role)) in &self.nodes {
-            if *role != default_role(&voters, node_id) {
-                edited.insert(node_id.clone(), *role);
+    /// A role is kept as given, even one without [`NodeRole::ReceiveLogs`] for a write voter:
+    /// OpenRaft rejects such a membership when it is initialized or proposed.
+    ///
+    /// Returns [`NodeNotFound`] for the first node of `roles` that this config does not hold, and
+    /// then sets no role.
+    pub(crate) fn set_roles(&mut self, roles: BTreeMap<Q::Id, NodeRole>) -> Result<(), NodeNotFound<Q::Id>> {
+        for node_id in roles.keys() {
+            if !self.nodes.contains_key(node_id) {
+                return Err(NodeNotFound::new(node_id.clone(), Operation::None));
             }
         }
 
         for (node_id, role) in roles {
-            if !nodes.contains_key(&node_id) {
-                return Err(NodeNotFound::new(node_id, Operation::None));
+            let default = default_role(self.is_voter(&node_id));
+            if role == default {
+                self.roles.remove(&node_id);
+            } else {
+                self.roles.insert(node_id, role);
             }
-            edited.insert(node_id, role);
         }
-        Ok(edited)
+        Ok(())
+    }
+
+    /// Copies the roles that `other` sets for the nodes that this config holds, as they are: a
+    /// set role stays until a change sets another one.
+    pub(crate) fn keep_roles(&mut self, other: &Self) {
+        for (node_id, role) in &other.roles {
+            if self.nodes.contains_key(node_id) {
+                self.roles.insert(node_id.clone(), *role);
+            }
+        }
+    }
+
+    /// Returns the role of `node_id`, a node that this config holds: its set role, or the default
+    /// for its status in this config.
+    fn role(&self, node_id: &Q::Id) -> NodeRole {
+        match self.roles.get(node_id) {
+            Some(role) => *role,
+            None => default_role(self.is_voter(node_id)),
+        }
     }
 
     /// Returns the voters of this config: the IDs of its read rule and of its write rule.
@@ -154,10 +166,10 @@ where
     rule.ids().any(|id| id == *node_id)
 }
 
-/// Returns the role of `node_id` in a config with voters `voters` that sets no role for it.
-fn default_role<NID>(voters: &BTreeSet<NID>, node_id: &NID) -> NodeRole
-where NID: NodeId {
-    if voters.contains(node_id) {
+/// Returns the role of a node that its config sets no role for: [`NodeRole::Campaigner`] `|`
+/// [`NodeRole::ReceiveLogs`] for a voter, and [`NodeRole::ReceiveLogs`] for a learner.
+fn default_role(is_voter: bool) -> NodeRole {
+    if is_voter {
         NodeRole::Campaigner | NodeRole::ReceiveLogs
     } else {
         NodeRole::ReceiveLogs

@@ -146,7 +146,7 @@ where
 
 /// Asserts that a change of both the voters and the roles goes through a joint. The joint gives
 /// each node its new role, joined with its old role where it is an old voter, and
-/// `make_uniform()` restores the new roles.
+/// `make_uniform()` restores the new roles. A set role stays through later changes of the voters.
 ///
 /// `build` and `with_roles` are as in [`assert_with_roles()`]. `change_voters(voters, roles)`
 /// returns a change to the rules that `build` gives `voters`, which also sets `roles`.
@@ -214,6 +214,14 @@ where
     }
     let ids: Vec<u64> = target.node_ids().collect();
     assert_eq!(vec![1, 2, 3, 4, 5], ids);
+
+    // A set role stays until a change sets another one: node 1 stopped campaigning as a voter of
+    // `old`, and still does not campaign once a later change makes it a voter again.
+    let change = change_voters(btreeset! {1, 2, 3}, btreemap! {});
+    let promoted = change.apply(&target, true).unwrap();
+    let got = promoted.get_node(&1).unwrap();
+    assert_eq!(NodeRole::ReceiveLogs, got.role);
+    assert!(got.is_write_voter);
 
     // A removed voter with a non-learner role stays even when learners are not retained.
     for role in [NodeRole::Campaigner, NodeRole::Empty] {
