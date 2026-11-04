@@ -20,6 +20,7 @@ use openraft::network::NetStreamAppend;
 use openraft::network::NetTransferLeader;
 use openraft::network::NetVote;
 use openraft::network::RPCOption;
+use openraft::raft::AppendEntriesResponseWithHint;
 use openraft::raft::StreamAppendError;
 use openraft::raft::StreamAppendResult;
 use openraft::raft::TransferLeaderRequest;
@@ -55,12 +56,16 @@ impl RaftNetworkFactory<TypeConfig> for Network {
 /// Handles serialization and deserialization of Raft messages over gRPC.
 pub struct NetworkConnection {
     target_node: pb::Node,
+    supports_hints: bool,
 }
 
 impl NetworkConnection {
     /// Creates a new NetworkConnection with the provided gRPC client.
     pub fn new(target_node: Node) -> Self {
-        NetworkConnection { target_node }
+        NetworkConnection {
+            target_node,
+            supports_hints: true,
+        }
     }
 
     /// Creates a gRPC client to the target node.
@@ -94,6 +99,23 @@ impl NetworkConnection {
         Ok(Ok(resp.last_log_id.map(Into::into)))
     }
 
+    fn handle_probe_response(
+        &mut self,
+        result: Result<tonic::Response<pb::AppendEntriesResponseWithHint>, tonic::Status>,
+    ) -> Result<Option<AppendEntriesResponseWithHint<TypeConfig>>, RPCError> {
+        let response = match result {
+            Ok(response) => response.into_inner(),
+            Err(error) if error.code() == tonic::Code::Unimplemented => {
+                self.supports_hints = false;
+                return Ok(None);
+            }
+            Err(error) => return Err(RPCError::Network(NetworkError::new(&error))),
+        };
+        let response = AppendEntriesResponseWithHint::try_from(response);
+        let response = response.map_err(|error| RPCError::Network(NetworkError::new(&error)))?;
+        Ok(Some(response))
+    }
+
     /// Sends snapshot data in chunks through the provided channel.
     async fn send_snapshot_chunks(
         tx: &mut mpsc::Sender<pb::SnapshotRequest>,
@@ -121,6 +143,24 @@ impl NetworkConnection {
 // - gRPC's native bidirectional streaming maps naturally to NetStreamAppend
 
 impl NetStreamAppend<TypeConfig> for NetworkConnection {
+    fn append_entries_with_hint<'a>(
+        &'a mut self,
+        rpc: &'a AppendEntriesRequest,
+        option: RPCOption,
+    ) -> BoxFuture<'a, Result<Option<AppendEntriesResponseWithHint<TypeConfig>>, RPCError>> {
+        Box::pin(async move {
+            if !self.supports_hints {
+                return Ok(None);
+            }
+            let mut client = self.make_client().await?;
+            let payload = pb::AppendEntriesRequest::from(rpc.clone());
+            let mut request = tonic::Request::new(payload);
+            request.set_timeout(option.soft_ttl());
+            let result = client.append_entries_with_hint(request).await;
+            self.handle_probe_response(result)
+        })
+    }
+
     fn stream_append<'s, S>(
         &'s mut self,
         input: S,
@@ -235,5 +275,38 @@ impl NetTransferLeader<TypeConfig> for NetworkConnection {
         Err(RPCError::Unreachable(Unreachable::new(&AnyError::error(
             "transfer_leader not implemented",
         ))))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unimplemented_probe_disables_hints_for_legacy_peers() {
+        let node = pb::Node {
+            node_id: 1,
+            rpc_addr: String::new(),
+        };
+        let mut network = NetworkConnection::new(node);
+        let reply = Err(tonic::Status::unimplemented("legacy peer"));
+        let actual = network.handle_probe_response(reply).unwrap();
+        assert_eq!(None, actual);
+        assert!(!network.supports_hints);
+    }
+
+    #[test]
+    fn transport_failure_keeps_hint_support_and_surfaces_the_error() {
+        let node = pb::Node {
+            node_id: 1,
+            rpc_addr: String::new(),
+        };
+        let mut network = NetworkConnection::new(node);
+        let reply = Err(tonic::Status::unavailable("peer unavailable"));
+        let actual = network.handle_probe_response(reply);
+        let Err(RPCError::Network(_)) = actual else {
+            panic!("expected the transport error, got {actual:?}");
+        };
+        assert!(network.supports_hints);
     }
 }

@@ -111,6 +111,17 @@ impl RaftService for RaftServiceImpl {
         Ok(Response::new(append_resp.into()))
     }
 
+    /// Return conflict guidance through the optional discovery endpoint.
+    async fn append_entries_with_hint(
+        &self,
+        request: Request<pb::AppendEntriesRequest>,
+    ) -> Result<Response<pb::AppendEntriesResponseWithHint>, Status> {
+        let request = request.into_inner().into();
+        let response = self.raft_node.append_entries_with_hint(request).await;
+        let response = response.map_err(|error| Status::internal(error.to_string()))?;
+        Ok(Response::new(response.into()))
+    }
+
     /// Handles snapshot installation requests for state transfer using streaming.
     ///
     /// # Arguments
