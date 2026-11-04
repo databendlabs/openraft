@@ -139,7 +139,12 @@ fn test_empty_ack_clears_inflight_without_updating_matching() -> anyhow::Result<
     let data = rh.leader.progress.update_data_with(&target, |data| data.inflight = inflight);
     let stream_id = data.unwrap().stream_id;
 
-    rh.update_progress(target, stream_id, Ok(ReplicationResult(Ok(None))), Some(inflight_id));
+    let progress = crate::replication::response::Progress {
+        target,
+        result: Ok(ReplicationResult(Ok(None))),
+        hint: None,
+    };
+    rh.update_progress(stream_id, progress, Some(inflight_id));
 
     let entry = rh.leader.progress.try_get(&target).unwrap();
     assert_eq!(None, entry.matching());
