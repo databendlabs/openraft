@@ -4,6 +4,7 @@ use display_more::DisplayOptionExt;
 use display_more::DisplayResultExt;
 
 use crate::RaftTypeConfig;
+use crate::raft::ConflictHint;
 use crate::type_config::alias::LogIdOf;
 
 /// The response of replication command.
@@ -26,6 +27,9 @@ where C: RaftTypeConfig
     ///
     /// The result also tracks the time when this request is sent.
     pub(crate) result: Result<ReplicationResult<C>, String>,
+
+    /// Optional search guidance accompanying a conflict, never a durable acknowledgement.
+    pub(crate) hint: Option<ConflictHint<C>>,
 }
 
 impl<C> fmt::Display for Progress<C>

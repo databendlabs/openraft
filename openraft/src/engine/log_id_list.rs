@@ -313,6 +313,25 @@ where CLID: RaftCommittedLeaderId
         self.ref_at(index).map(|r| r.into_log_id())
     }
 
+    /// Find the retained common prefix implied by an entry from the same leader.
+    pub(crate) fn matching_prefix(&self, remote: &LogId<CLID>) -> Option<LogId<CLID>> {
+        let leader_id = remote.committed_leader_id();
+        let found = self.key_log_ids.binary_search_by(|id| id.committed_leader_id().cmp(leader_id));
+        let last = match found {
+            Ok(index) => &self.key_log_ids[index],
+            Err(_) => self.purged.as_ref()?,
+        };
+        if last.committed_leader_id() != leader_id {
+            return None;
+        }
+        let index = std::cmp::min(last.index(), remote.index());
+        let local = self.get(index)?;
+        if local.committed_leader_id() != leader_id {
+            return None;
+        }
+        Some(local)
+    }
+
     /// Get the log id at the specified index in a [`RefLogId`].
     ///
     /// With last-per-leader storage, each entry represents a range:

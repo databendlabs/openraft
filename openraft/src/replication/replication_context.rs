@@ -15,6 +15,7 @@ use crate::errors::ReplicationClosed;
 use crate::progress::inflight_id::InflightId;
 use crate::progress::stream_id::StreamId;
 use crate::proposer::SendStamp;
+use crate::raft::ConflictHint;
 use crate::raft_state::IOId;
 use crate::replication::response::Progress;
 use crate::replication::response::ReplicationResult;
@@ -178,12 +179,22 @@ where C: RaftTypeConfig
         result: Result<ReplicationResult<C>, String>,
         inflight_id: Option<InflightId>,
     ) {
+        self.notify_progress_with_hint(result, inflight_id, None).await;
+    }
+
+    pub(crate) async fn notify_progress_with_hint(
+        &self,
+        result: Result<ReplicationResult<C>, String>,
+        inflight_id: Option<InflightId>,
+        hint: Option<ConflictHint<C>>,
+    ) {
         self.tx_notify
             .send(Notification::ReplicationProgress {
                 stream_id: self.stream_id,
                 progress: Progress {
                     target: self.target.clone(),
                     result,
+                    hint,
                 },
                 inflight_id,
             })
