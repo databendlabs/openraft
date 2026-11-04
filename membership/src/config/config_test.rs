@@ -287,6 +287,32 @@ fn test_drop_voters_demoted_to_learners_removes_them_from_goal() {
 }
 
 #[test]
+fn test_drop_demoted_voters_across_joint_configs() {
+    let old_nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40, 5 => 50};
+    let first = config(1, btreeset! {1, 2}, BTreeMap::new(), old_nodes.clone());
+    let last = config(1, btreeset! {2, 3, 5}, BTreeMap::new(), old_nodes);
+    let old = Joint {
+        parts: vec![first, last],
+    };
+
+    let goal_nodes = btreemap! {1 => 11, 2 => 21, 3 => 31, 4 => 41};
+    let first = config(1, btreeset! {3}, BTreeMap::new(), goal_nodes.clone());
+    let last = config(1, btreeset! {2}, BTreeMap::new(), goal_nodes);
+    let goal = Joint {
+        parts: vec![first, last],
+    };
+    let got = old.drop_voters_demoted_to_learners(goal);
+
+    let retained = btreemap! {2 => 21, 3 => 31, 4 => 41};
+    let first = config(1, btreeset! {3}, BTreeMap::new(), retained.clone());
+    let last = config(1, btreeset! {2}, BTreeMap::new(), retained);
+    let want = Joint {
+        parts: vec![first, last],
+    };
+    assert_eq!(want, got);
+}
+
+#[test]
 fn test_set_roles_sets_roles_of_last_config() {
     // Voter 3 stops campaigning in the old config, and voter 4 replaces voter 1 in the new one.
     let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40};

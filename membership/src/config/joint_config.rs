@@ -92,17 +92,15 @@ where
     /// [`NodeRef::is_learner()`] defines them. Such a node leaves every config of `goal`.
     pub(crate) fn drop_voters_demoted_to_learners(&self, mut goal: Self) -> Self {
         let mut demoted = BTreeSet::new();
-        for node_id in goal.node_ids() {
-            let was_voter = self.parts.iter().any(|config| config.is_voter(&node_id));
-            if !was_voter {
-                continue;
-            }
-            // Safe unwrap(): `node_ids()` lists only the IDs that `get_node()` knows.
-            let node = goal.get_node(&node_id).unwrap();
-            if node.is_learner() {
-                demoted.insert(node_id);
-            }
+        for config in &self.parts {
+            demoted.extend(config.voters());
         }
+        demoted.retain(|node_id| {
+            let Some(node) = goal.get_node(node_id) else {
+                return false;
+            };
+            node.is_learner()
+        });
 
         for config in &mut goal.parts {
             config.nodes.retain(|node_id, _| !demoted.contains(node_id));
