@@ -14,6 +14,7 @@ use crate::engine::CommandName;
 use crate::engine::replication_progress::TargetProgress;
 use crate::errors::InitializeError;
 use crate::progress::inflight_id::InflightId;
+use crate::raft::AppendEntriesResponseWithHint;
 use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
@@ -497,6 +498,7 @@ where C: RaftTypeConfig
 {
     Vote(ValueSender<C, VoteResponse<C>>),
     AppendEntries(ValueSender<C, StreamAppendResult<C>>),
+    AppendEntriesWithHint(ValueSender<C, AppendEntriesResponseWithHint<C>>),
     InstallFullSnapshot(ValueSender<C, SnapshotResponse<C>>),
     Initialize(ValueSender<C, Result<(), InitializeError<C>>>),
 }
@@ -511,6 +513,7 @@ where C: RaftTypeConfig
                 Ok(log_id) => write!(f, "AppendEntries Ok({})", log_id.display()),
                 Err(e) => write!(f, "AppendEntries Err({})", e),
             },
+            Respond::AppendEntriesWithHint(vs) => write!(f, "AppendEntriesWithHint {:?}", vs.value()),
             Respond::InstallFullSnapshot(vs) => write!(f, "InstallFullSnapshot {}", vs.value()),
             Respond::Initialize(vs) => write!(f, "Initialize {}", vs.value().as_ref().map(|_x| "()").display()),
         }
@@ -532,6 +535,7 @@ where C: RaftTypeConfig
         match self {
             Respond::Vote(x) => x.send(),
             Respond::AppendEntries(x) => x.send(),
+            Respond::AppendEntriesWithHint(x) => x.send(),
             Respond::InstallFullSnapshot(x) => x.send(),
             Respond::Initialize(x) => x.send(),
         }

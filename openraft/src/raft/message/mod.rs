@@ -5,8 +5,10 @@
 
 mod append_entries_request;
 mod append_entries_response;
+mod append_entries_response_with_hint;
 mod change_membership;
 mod change_membership_request;
+mod conflict_hint;
 mod install_snapshot;
 mod log_segment;
 mod precondition;
@@ -20,10 +22,12 @@ mod write_request;
 
 pub use append_entries_request::AppendEntriesRequest;
 pub use append_entries_response::AppendEntriesResponse;
+pub use append_entries_response_with_hint::AppendEntriesResponseWithHint;
 pub use change_membership::ChangeMembershipOutcome;
 pub use change_membership_request::ChangeMembershipRequest;
 pub use client_write::ClientWriteResponse;
 pub use client_write::ClientWriteResult;
+pub use conflict_hint::ConflictHint;
 #[allow(deprecated)]
 pub use install_snapshot::InstallSnapshotRequest;
 #[allow(deprecated)]

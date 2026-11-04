@@ -1803,12 +1803,17 @@ where
         let segment = LogSegment::new(req.prev_log_id, req.entries);
         self.engine.handle_append_entries(&req.vote, segment, tx);
 
+        self.record_append_and_update_committed(&req.vote, req.leader_commit);
+    }
+
+    /// Record an AppendEntries request that the engine handled, and adopt its leader commit.
+    fn record_append_and_update_committed(&mut self, vote: &VoteOf<C>, leader_commit: Option<LogIdOf<C>>) {
         // Record append entries to external metrics recorder
         if let Some(r) = &self.metrics_recorder {
             r.increment_append();
         }
 
-        let committed = LogIOId::new(req.vote.to_committed(), req.leader_commit);
+        let committed = LogIOId::new(vote.to_committed(), leader_commit);
         self.engine.state.update_committed(committed);
     }
 
@@ -1833,6 +1838,12 @@ where
         match msg {
             RaftMsg::AppendEntries { rpc, tx } => {
                 self.handle_append_entries_request(rpc, tx);
+            }
+            RaftMsg::AppendEntriesWithHint { rpc, tx } => {
+                let segment = LogSegment::new(rpc.prev_log_id, rpc.entries);
+                self.engine.handle_append_entries_with_hint(&rpc.vote, segment, tx);
+
+                self.record_append_and_update_committed(&rpc.vote, rpc.leader_commit);
             }
             RaftMsg::RequestVote { rpc, tx } => {
                 let now = C::now();

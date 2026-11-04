@@ -19,6 +19,7 @@ use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::errors::ConflictingLogId;
 use crate::errors::RejectAppendEntries;
 use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
+use crate::raft::ConflictHint;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::io_state::log_io_id::LogIOId;
@@ -39,6 +40,9 @@ mod install_snapshot_test;
 mod truncate_logs_test;
 #[cfg(test)]
 mod update_committed_membership_test;
+
+/// Include the committed anchor and at most seven recent leader boundaries.
+const MAX_CONFLICT_HINT_LOG_IDS: usize = 8;
 
 /// Receive replication request and deal with them.
 ///
@@ -137,6 +141,29 @@ where
         // else `prev_log_id.is_none()` means replicating logs from the very beginning.
 
         Ok(())
+    }
+
+    /// Sample the local log into a [`ConflictHint`] for a leader whose AppendEntries conflicted.
+    ///
+    /// The hint holds the committed log ID when known, followed by the last log ID of each leader
+    /// run that ends after it. Runs are dropped oldest first to keep at most
+    /// `MAX_CONFLICT_HINT_LOG_IDS` samples. The last sample is the tail. Call it after truncating
+    /// the conflicting suffix. The sampled entries may not be flushed yet.
+    pub(crate) fn conflict_hint(&self) -> ConflictHint<C> {
+        let committed_log_id = self.state.local_committed().cloned();
+        let committed_next = committed_log_id.next_index();
+
+        // Sample leader boundaries after the committed position, at most the most recent ones.
+        let boundaries = self.state.log_ids.key_log_ids();
+        let committed_end = boundaries.partition_point(|id| id.index() < committed_next);
+        let recent_start = boundaries.len().saturating_sub(MAX_CONFLICT_HINT_LOG_IDS - 1);
+        let start = std::cmp::max(committed_end, recent_start);
+
+        let mut log_ids = Vec::with_capacity(MAX_CONFLICT_HINT_LOG_IDS);
+        log_ids.extend(committed_log_id);
+        log_ids.extend_from_slice(&boundaries[start..]);
+
+        ConflictHint::new(log_ids)
     }
 
     /// Follower/Learner appends `entries[since..]`.

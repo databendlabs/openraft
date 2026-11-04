@@ -20,6 +20,7 @@ use crate::network::RPCOption;
 use crate::network::stream_append_sequential;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
+use crate::raft::AppendEntriesResponseWithHint;
 use crate::raft::SnapshotResponse;
 use crate::raft::StreamAppendResult;
 use crate::raft::VoteRequest;
@@ -101,6 +102,7 @@ use crate::type_config::alias::VoteOf;
 /// [`NetBackoff`]: crate::network::NetBackoff
 /// [`RaftNetworkFactory::Network`]: crate::network::RaftNetworkFactory::Network
 /// [correct-node]: `crate::docs::cluster_control::dynamic_membership#ensure-connection-to-the-correct-node`
+#[since(version = "0.10.0", change = "added optional append_entries_with_hint")]
 #[since(version = "0.10.0")]
 #[add_async_trait]
 pub trait RaftNetworkV2<C>: OptionalSend + OptionalSync + 'static
@@ -119,6 +121,19 @@ where C: RaftTypeConfig
         rpc: AppendEntriesRequest<C>,
         option: RPCOption,
     ) -> Result<AppendEntriesResponse<C>, RPCError<C>>;
+
+    /// Optionally send a probe with conflict hints; see
+    /// [`NetStreamAppend::append_entries_with_hint`].
+    ///
+    /// The default leaves the request unsent so OpenRaft uses the existing streaming path.
+    #[since(version = "0.10.0")]
+    async fn append_entries_with_hint(
+        &mut self,
+        _rpc: &AppendEntriesRequest<C>,
+        _option: RPCOption,
+    ) -> Result<Option<AppendEntriesResponseWithHint<C>>, RPCError<C>> {
+        Ok(None)
+    }
 
     /// Send a stream of AppendEntries RPCs to the target and return a stream of responses.
     ///
@@ -337,6 +352,14 @@ where
     C: RaftTypeConfig,
     T: RaftNetworkV2<C> + ?Sized,
 {
+    fn append_entries_with_hint<'a>(
+        &'a mut self,
+        rpc: &'a AppendEntriesRequest<C>,
+        option: RPCOption,
+    ) -> BoxFuture<'a, Result<Option<AppendEntriesResponseWithHint<C>>, RPCError<C>>> {
+        Box::pin(RaftNetworkV2::append_entries_with_hint(self, rpc, option))
+    }
+
     fn stream_append<'s, S>(
         &'s mut self,
         input: S,
