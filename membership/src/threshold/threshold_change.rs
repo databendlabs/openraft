@@ -162,8 +162,9 @@ where
             remove_nodes: self.remove_nodes,
             ..NodeChange::default()
         };
+        // `nodes` holds every node that the membership knows, as `edit_nodes()` requires.
         let mut nodes = membership.nodes.clone();
-        node_change.edit_nodes(&mut nodes, membership);
+        node_change.edit_nodes(&mut nodes);
 
         let voters = match self.voters {
             None => last_write.id_set().clone(),

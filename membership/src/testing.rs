@@ -308,7 +308,8 @@ where
 
 /// Asserts that `get_node()` returns the metadata of every node, before, during and after a change
 /// through a joint, and after a serde round trip of the joint. The target keeps the voter that the
-/// change removes only when the change retains it.
+/// change removes only when the change retains it. An old voter that the last config of a joint
+/// lacks stays known to the edits of the joint.
 ///
 /// `build(voters, nodes)` returns a membership whose only config has the voters `voters` and the
 /// nodes `nodes`. `change_voters(voters, remove_nodes)` returns a change to the rules that `build`
@@ -363,6 +364,28 @@ where
         let got = node_metadata(&target);
         assert_eq!(want_target, got);
     }
+
+    // A joint can also reach a goal that lacks old voter 1, such as a goal built without voter 1.
+    // The quorums of `old` still count voter 1, so it stays active.
+    let goal = build(btreeset! {2, 3, 4}, btreemap! {2 => 20, 3 => 30, 4 => 40});
+    let joint = old.joint_with(&goal);
+    let all_active = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40};
+    let got = node_metadata(&joint);
+    assert_eq!(all_active, got);
+
+    // Leaving the joint keeps voter 1 as a learner only when retaining demoted voters.
+    let retained = C::make_uniform().apply(&joint, true).unwrap();
+    let got = node_metadata(&retained);
+    assert_eq!(all_active, got);
+    let dropped = C::make_uniform().apply(&joint, false).unwrap();
+    let got = node_metadata(&dropped);
+    assert_eq!(btreemap! {2 => 20, 3 => 30, 4 => 40}, got);
+
+    // A change of the joint may select voter 1 again, and voter 1 keeps its metadata.
+    let change = change_voters(btreeset! {1, 3, 4}, btreeset! {});
+    let reselected = change.apply(&joint, true).unwrap();
+    let got = node_metadata(&reselected);
+    assert_eq!(all_active, got);
 }
 
 /// Asserts that every read quorum of `membership` meets every write quorum, as it claims.

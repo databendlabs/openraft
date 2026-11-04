@@ -4,7 +4,6 @@ use std::collections::BTreeSet;
 use openraft::Node;
 use openraft::NodeId;
 use openraft::membership::NodeRole;
-use openraft::membership::RaftMembership;
 use openraft_macros::since;
 
 /// Node additions, removals and role assignments shared by membership edits.
@@ -57,20 +56,14 @@ where
     /// Adds each node of `add_nodes` that `nodes` lacks, then removes each node of
     /// `remove_nodes`, so a node in both is removed.
     ///
-    /// A node that `nodes` already holds keeps its metadata. An added node that `membership`
-    /// knows, such as an old voter of a joint, takes its metadata from `membership`, and any other
-    /// added node takes the metadata given in `add_nodes`.
-    pub(crate) fn edit_nodes<M>(&self, nodes: &mut BTreeMap<NID, N>, membership: &M)
-    where M: RaftMembership<NodeId = NID, Node = N> {
+    /// A node that `nodes` already holds keeps its metadata, so `nodes` must hold every node that
+    /// the membership knows: adding a known node must not replace its metadata, such as its
+    /// address.
+    pub(crate) fn edit_nodes(&self, nodes: &mut BTreeMap<NID, N>) {
         for (node_id, node) in &self.add_nodes {
-            if nodes.contains_key(node_id) {
-                continue;
+            if !nodes.contains_key(node_id) {
+                nodes.insert(node_id.clone(), node.clone());
             }
-            let node = match membership.get_node(node_id) {
-                Some(known) => known.node.clone(),
-                None => node.clone(),
-            };
-            nodes.insert(node_id.clone(), node);
         }
 
         for node_id in &self.remove_nodes {

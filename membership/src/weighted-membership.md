@@ -218,9 +218,10 @@ OpenRaft uses a weighted membership through three types:
   quorum of every config. [`write_quorum_set()`] does the same with the write
   rules.
 - [`WeightedChange`] implements [`RaftMembershipEdit`]. Its [`apply()`] builds
-  a membership with one config from the last config of the current membership
-  and the fields of the change. Its `retain` argument decides whether removed
-  voters remain as learners.
+  a membership with one config from the fields of the change, the rules of the
+  last config of the current membership, and every node that the current
+  membership knows. Its `retain` argument decides whether removed voters
+  remain as learners.
 
 [`Raft::change_membership()`] calls them in four steps:
 
@@ -236,7 +237,10 @@ OpenRaft uses a weighted membership through three types:
    current membership followed by the config of the target.
 4. Once the joint commits, OpenRaft applies the change from [`make_uniform()`]
    to the joint and appends the result. That change sets nothing, so its
-   `apply()` returns the last config of the joint, which is the target.
+   `apply()` keeps the rules of the last config of the joint and every node
+   that the joint knows. With `retain = false` it drops the old voters that
+   left the voters, which leaves the target. With `retain = true` they stay as
+   learners, even an old voter whose node the change removed.
 
 [`Raft::add_learner()`] applies the change from [`add_learner()`]. That change
 adds one node and keeps both rules, so OpenRaft appends its result directly.

@@ -151,7 +151,8 @@ where
 }
 
 /// `add_learner()` adds one node and keeps the quorum lists.
-/// `make_uniform()` returns the empty change, which reduces a joint membership to its last config.
+/// `make_uniform()` returns the empty change, which reduces a joint membership to the rules of its
+/// last config. `retain` decides whether the old voters that leave the voters stay as learners.
 impl<NID, N> RaftMembershipEdit<ExplicitMembership<NID, N>> for ExplicitChange<NID, N>
 where
     NID: NodeId,

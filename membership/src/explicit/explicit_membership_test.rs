@@ -386,18 +386,22 @@ fn test_apply() {
 fn test_make_uniform_selects_target() {
     let old = Membership::new([btreeset! {1, 2}], [btreeset! {1, 2}], btreeset! {1, 2, 3}).unwrap();
 
-    // Voter 1 of the old config stays as a learner of the target only when the target holds it:
-    // OpenRaft removes it from the target unless the change retains removed voters.
+    // Voter 1 of the old config leaves the voters. Leaving the joint keeps it as a learner only
+    // when retaining demoted voters, whether or not the target already holds it.
     let with_learner = Membership::new([btreeset! {2, 3}], [btreeset! {3}], btreeset! {1, 2, 3}).unwrap();
     let without_learner = Membership::new([btreeset! {2, 3}], [btreeset! {3}], btreeset! {2, 3}).unwrap();
-    for new in [with_learner, without_learner] {
-        let joint = old.joint_with(&new);
+    for new in [&with_learner, &without_learner] {
+        let joint = old.joint_with(new);
 
         let change = <ExplicitChange<u64, ()> as RaftMembershipEdit<Membership>>::make_uniform();
-        let target = change.apply(&joint, true).unwrap();
-        assert_eq!(new, target);
-        let direct = joint.supports_direct_transition_to(&target);
+        let retained = change.apply(&joint, true).unwrap();
+        assert_eq!(with_learner, retained);
+        let direct = joint.supports_direct_transition_to(&retained);
         assert!(direct);
+
+        let change = <ExplicitChange<u64, ()> as RaftMembershipEdit<Membership>>::make_uniform();
+        let dropped = change.apply(&joint, false).unwrap();
+        assert_eq!(without_learner, dropped);
     }
 }
 

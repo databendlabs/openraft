@@ -343,25 +343,55 @@ fn test_with_roles_sets_roles_of_last_config() {
 }
 
 #[test]
-fn test_node_change_keeps_metadata_of_active_nodes() {
-    // The change to the new config removed voter 1 and learner 4.
+fn test_replace_config_starts_from_every_active_node() {
+    // The change to the new config removed voter 1 and learner 4. Voter 1 stays active, because the
+    // quorums of the old config still count it, but learner 4 does not.
     let old_nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40};
     let old = config(2, btreeset! {1, 2, 3}, BTreeMap::new(), old_nodes);
     let new = config(2, btreeset! {2, 3}, BTreeMap::new(), btreemap! {2 => 20, 3 => 30});
     let joint = Joint { parts: vec![old, new] };
 
-    // Voter 1 of the old config is active and keeps its metadata. Learner 4 is not active, so it
-    // takes the added metadata, as the unknown node 5 does. Node 6 is added and removed by the
-    // same change, so it is removed.
+    // New rules may select voter 1 again without adding it. Learner 4 takes the added metadata, as
+    // the unknown node 5 does. Node 6 is added and removed by the same change, so it is removed.
+    let rule = threshold(2, btreeset! {1, 2, 3});
+    let rules = (rule.clone(), rule);
     let change = NodeChange {
-        add_nodes: btreemap! {1 => 11, 4 => 41, 5 => 51, 6 => 61},
-        remove_nodes: btreeset! {3, 6},
+        add_nodes: btreemap! {4 => 41, 5 => 51, 6 => 61},
+        remove_nodes: btreeset! {6},
         ..NodeChange::default()
     };
-    let mut nodes = btreemap! {2 => 20, 3 => 30};
-    change.edit_nodes(&mut nodes, &joint);
-    let want = btreemap! {1 => 10, 2 => 20, 4 => 41, 5 => 51};
-    assert_eq!(want, nodes);
+    let got = joint.replace_config(rules.clone(), change, true).unwrap();
+    let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 41, 5 => 51};
+    let want = Joint {
+        parts: vec![config(2, btreeset! {1, 2, 3}, BTreeMap::new(), nodes)],
+    };
+    assert_eq!(want, got);
+
+    // Adding voter 1 again keeps its metadata.
+    let change = NodeChange::add_node(1, 11);
+    let got = joint.replace_config(rules, change, true).unwrap();
+    let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30};
+    let want = Joint {
+        parts: vec![config(2, btreeset! {1, 2, 3}, BTreeMap::new(), nodes)],
+    };
+    assert_eq!(want, got);
+
+    // Keeping the rules of the last config keeps voter 1 as a learner only when retaining it.
+    let rule = threshold(2, btreeset! {2, 3});
+    let rules = (rule.clone(), rule);
+    let retained = joint.replace_config(rules.clone(), NodeChange::default(), true).unwrap();
+    let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30};
+    let want = Joint {
+        parts: vec![config(2, btreeset! {2, 3}, BTreeMap::new(), nodes)],
+    };
+    assert_eq!(want, retained);
+
+    let dropped = joint.replace_config(rules, NodeChange::default(), false).unwrap();
+    let nodes = btreemap! {2 => 20, 3 => 30};
+    let want = Joint {
+        parts: vec![config(2, btreeset! {2, 3}, BTreeMap::new(), nodes)],
+    };
+    assert_eq!(want, dropped);
 }
 
 #[test]

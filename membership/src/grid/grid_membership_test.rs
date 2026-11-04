@@ -295,18 +295,22 @@ fn test_placement_change_goes_through_joint_that_keeps_both_grids() {
 fn test_make_uniform_selects_target() {
     let old = grid(vec![vec![1, 2], vec![3, 4]]);
 
-    // Voters 3 and 4 of the old grid stay as learners of the target only when the target holds
-    // them: OpenRaft removes them from the target unless the change retains removed voters.
+    // Voters 3 and 4 of the old grid leave the voters. Leaving the joint keeps them as learners
+    // only when retaining demoted voters, whether or not the target already holds them.
     let with_learners = Membership::new(vec![vec![1, 2]], btreeset! {1, 2, 3, 4}).unwrap();
     let without_learners = grid(vec![vec![1, 2]]);
-    for new in [with_learners, without_learners] {
-        let joint = old.joint_with(&new);
+    for new in [&with_learners, &without_learners] {
+        let joint = old.joint_with(new);
 
         let change = <GridChange<u64, ()> as RaftMembershipEdit<Membership>>::make_uniform();
-        let target = change.apply(&joint, true).unwrap();
-        assert_eq!(new, target);
-        let direct = joint.supports_direct_transition_to(&target);
+        let retained = change.apply(&joint, true).unwrap();
+        assert_eq!(with_learners, retained);
+        let direct = joint.supports_direct_transition_to(&retained);
         assert!(direct);
+
+        let change = <GridChange<u64, ()> as RaftMembershipEdit<Membership>>::make_uniform();
+        let dropped = change.apply(&joint, false).unwrap();
+        assert_eq!(without_learners, dropped);
     }
 }
 

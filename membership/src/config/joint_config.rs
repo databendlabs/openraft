@@ -80,7 +80,13 @@ where
     }
 
     /// Returns a membership with `rules` as its only config, applying the node edits in `change`.
-    /// Keeps the last config's set roles, then applies new roles and the retention policy.
+    ///
+    /// The edits start from every active node, with the metadata that `get_node()` gives it: the
+    /// nodes of the last config and the voters of the earlier configs. An earlier voter that the
+    /// last config lacks still counts in the quorums of this membership, so new rules may select
+    /// it, and `retain` decides whether it stays as a learner. Such a voter has no set role in the
+    /// result: the change that built the last config removed it. The result keeps the set roles of
+    /// the last config, then applies new roles and the retention policy.
     pub(crate) fn replace_config(
         &self,
         rules: (Q, Q),
@@ -88,12 +94,12 @@ where
         retain: bool,
     ) -> Result<Self, NodeNotFound<Q::Id>> {
         let mut nodes = BTreeMap::new();
-        if let Some(last) = self.parts.last() {
-            for (node_id, (node, _)) in &last.nodes {
-                nodes.insert(node_id.clone(), node.clone());
-            }
+        for node_id in self.node_ids() {
+            // Safe unwrap(): `node_ids()` returns only active nodes, and `get_node()` finds each.
+            let node = self.get_node(&node_id).unwrap();
+            nodes.insert(node_id, node.node.clone());
         }
-        change.edit_nodes(&mut nodes, self);
+        change.edit_nodes(&mut nodes);
 
         let (read, write) = rules;
         let mut config = Config::new(read, write, nodes)?;

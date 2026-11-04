@@ -152,7 +152,8 @@ where
 }
 
 /// `add_learner()` adds one node and keeps the groups and the write sizes.
-/// `make_uniform()` returns the empty change, which reduces a joint membership to its last config.
+/// `make_uniform()` returns the empty change, which reduces a joint membership to the rules of its
+/// last config. `retain` decides whether the old voters that leave the voters stay as learners.
 impl<NID, N> RaftMembershipEdit<HierarchicalMembership<NID, N>> for HierarchicalChange<NID, N>
 where
     NID: NodeId,

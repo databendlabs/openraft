@@ -166,7 +166,8 @@ where
 }
 
 /// `add_learner()` adds one node and keeps the weights and the write weight.
-/// `make_uniform()` returns the empty change, which reduces a joint membership to its last config.
+/// `make_uniform()` returns the empty change, which reduces a joint membership to the rules of its
+/// last config. `retain` decides whether the old voters that leave the voters stay as learners.
 impl<NID, N> RaftMembershipEdit<WeightedMembership<NID, N>> for WeightedChange<NID, N>
 where
     NID: NodeId,
