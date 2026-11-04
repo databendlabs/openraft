@@ -161,14 +161,8 @@ where
         };
 
         let nodes = membership.edit_nodes(self.add_nodes, &self.remove_nodes);
-        let mut config = Config::new(read, write, nodes)?;
-        config.keep_roles(last);
-        config.set_roles(self.roles)?;
-
-        let mut target = GridMembership { parts: vec![config] };
-        if !retain {
-            target = membership.drop_voters_demoted_to_learners(target);
-        }
+        let config = Config::new(read, write, nodes)?;
+        let target = membership.replace_config(config, self.roles, retain)?;
         tracing::debug!("target membership: {}", target);
         Ok(target)
     }

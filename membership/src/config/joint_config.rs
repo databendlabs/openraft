@@ -68,6 +68,26 @@ where
         nodes
     }
 
+    /// Returns a membership with `config` as its only config, keeping the roles set by the last
+    /// config before applying `roles`. Drops demoted learners when `retain` is false.
+    pub(crate) fn replace_config(
+        &self,
+        mut config: Config<N, Q>,
+        roles: BTreeMap<Q::Id, NodeRole>,
+        retain: bool,
+    ) -> Result<Self, NodeNotFound<Q::Id>> {
+        if let Some(last) = self.parts.last() {
+            config.keep_roles(last);
+        }
+        config.set_roles(roles)?;
+
+        let mut target = Self { parts: vec![config] };
+        if !retain {
+            target = self.drop_voters_demoted_to_learners(target);
+        }
+        Ok(target)
+    }
+
     /// Returns `goal` without the voters of this membership that are learners of `goal`, as
     /// [`NodeRef::is_learner()`] defines them. Such a node leaves every config of `goal`.
     pub(crate) fn drop_voters_demoted_to_learners(&self, mut goal: Self) -> Self {
