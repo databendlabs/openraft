@@ -17,6 +17,7 @@
 
 mod config;
 pub mod errors;
+mod explicit;
 mod node_change;
 pub mod quorum;
 #[cfg(test)]
@@ -25,6 +26,8 @@ mod threshold;
 mod weighted;
 
 pub use config::Config;
+pub use explicit::ExplicitChange;
+pub use explicit::ExplicitMembership;
 pub use node_change::NodeChange;
 pub use threshold::ThresholdChange;
 pub use threshold::ThresholdMembership;
@@ -34,6 +37,11 @@ pub use weighted::WeightedMembership;
 /// Configure and change threshold memberships.
 pub mod docs {
     #![doc = include_str!("threshold-membership.md")]
+
+    /// Configure and change explicit memberships.
+    pub mod explicit {
+        #![doc = include_str!("explicit-membership.md")]
+    }
 
     /// Configure and change weighted memberships.
     pub mod weighted {
