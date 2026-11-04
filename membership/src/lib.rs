@@ -22,13 +22,21 @@ pub mod quorum;
 #[cfg(test)]
 mod testing;
 mod threshold;
+mod weighted;
 
 pub use config::Config;
 pub use node_change::NodeChange;
 pub use threshold::ThresholdChange;
 pub use threshold::ThresholdMembership;
+pub use weighted::WeightedChange;
+pub use weighted::WeightedMembership;
 
 /// Configure and change threshold memberships.
 pub mod docs {
     #![doc = include_str!("threshold-membership.md")]
+
+    /// Configure and change weighted memberships.
+    pub mod weighted {
+        #![doc = include_str!("weighted-membership.md")]
+    }
 }
