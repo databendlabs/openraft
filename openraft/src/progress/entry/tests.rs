@@ -451,6 +451,168 @@ fn test_next_send_not_pipeline_without_matching() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_next_send_tries_initial_leader_entry_before_binary_search() -> anyhow::Result<()> {
+    let config = EngineConfig::new_default(1);
+    let mut state = new_raft_state(6, 10, 20);
+    let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 21).with_probe_start(17);
+    let expected = inflight_probe(16, 20).with_id(1);
+    let actual = pe.next_send(&mut state, 100);
+    assert_eq!(Ok(&expected), actual);
+    assert_eq!(None, pe.data.probe_start);
+
+    let mut updater = pe.new_updater(&config);
+    updater.update_conflicting(16, Some(InflightId::new(1)));
+    let expected = inflight_probe(7, 20).with_id(2);
+    let actual = pe.next_send(&mut state, 100);
+    assert_eq!(Ok(&expected), actual);
+    Ok(())
+}
+
+#[test]
+fn test_next_send_probe_start_clamped_to_purge_boundary() -> anyhow::Result<()> {
+    //   probe            end
+    //   3                21
+    //   v                v
+    // -----+------+-----+--->
+    //      purged snap  last
+    //      6      10    20
+    //
+    // Entries up to 6 are purged, so the probe starts at the purge boundary: prev = log id 6.
+    let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 21).with_probe_start(3);
+
+    let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
+    assert_eq!(Ok(&inflight_probe(6, 20).with_id(1)), res);
+
+    Ok(())
+}
+
+#[test]
+fn test_next_send_probe_start_limited_by_max_entries() -> anyhow::Result<()> {
+    //                 probe,end
+    //                 17,21
+    //                 v
+    // -----+------+-----+--->
+    //      purged snap  last
+    //      6      10    20
+    //
+    // The probe carries at most `max_entries` entries: (16, 18].
+    let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 21).with_probe_start(17);
+
+    let res = pe.next_send(&mut new_raft_state(6, 10, 20), 2);
+    assert_eq!(Ok(&inflight_probe(16, 18).with_id(1)), res);
+
+    Ok(())
+}
+
+#[test]
+fn test_next_send_probe_start_at_searching_end() -> anyhow::Result<()> {
+    //                  probe,end
+    //                  18
+    //                  v
+    // -----+------+-----+--->
+    //      purged snap  last
+    //      6      10    20
+    //
+    // A probe may start at `searching_end`: its `prev`, log id 17, is still a candidate
+    // matching position.
+    let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 18).with_probe_start(18);
+
+    let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
+    assert_eq!(Ok(&inflight_probe(17, 20).with_id(1)), res);
+
+    Ok(())
+}
+
+#[test]
+fn test_next_send_probe_start_without_entries_falls_back_to_binary_search() -> anyhow::Result<()> {
+    //                    probe,end
+    //                    21
+    //                    v
+    // -----+------+-----+--->
+    //      purged snap  last
+    //      6      10    20
+    //
+    // No entry follows the probe position, so the probe is dropped and binary search runs:
+    // calc_mid(0, 21) = 8, so prev = log id 7.
+    let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 21).with_probe_start(21);
+
+    let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
+    assert_eq!(Ok(&inflight_probe(7, 20).with_id(1)), res);
+    assert_eq!(None, pe.data.probe_start);
+
+    Ok(())
+}
+
+#[test]
+fn test_next_send_snapshot_consumes_probe_start() -> anyhow::Result<()> {
+    //   probe,end
+    //   3,5
+    //   v
+    // -----+------+-----+--->
+    //      purged snap  last
+    //      6      10    20
+    //
+    // Every candidate matching position is purged, which is snapshot condition 1.
+    let engine_config = EngineConfig::new_default(1);
+    let mut state = new_raft_state(6, 10, 20);
+    let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 5).with_probe_start(3);
+
+    tracing::info!("the snapshot replaces the probe and drops it");
+    {
+        let res = pe.next_send(&mut state, 100);
+        assert_eq!(Ok(&Inflight::snapshot(InflightId::new(1))), res);
+        assert_eq!(None, pe.data.probe_start);
+    }
+
+    tracing::info!(
+        snapshot_last = 10,
+        "after the snapshot ack, stream logs instead of probing again"
+    );
+    {
+        pe.new_updater(&engine_config).update_matching(Some(log_id(10)), Some(InflightId::new(1)));
+
+        let res = pe.next_send(&mut state, 100);
+        assert_eq!(Ok(&Inflight::logs_since(Some(log_id(10)), InflightId::new(2))), res);
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_next_send_skips_probe_start_beyond_searching_end() -> anyhow::Result<()> {
+    //             end probe
+    //             10  17
+    //             v   v
+    // -----+------+-----+--->
+    //      purged snap  last
+    //      6      10    20
+    //
+    // matching = None. The probe was chosen while `searching_end` was 21.
+    let engine_config = EngineConfig::new_default(1);
+    let mut state = new_raft_state(6, 10, 20);
+    let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 21).with_probe_start(17);
+
+    tracing::info!(
+        conflict = 10,
+        "a heartbeat conflict lowers searching_end below the pending probe"
+    );
+    {
+        pe.new_updater(&engine_config).update_conflicting(10, None);
+        assert_eq!(10, pe.data.searching_end);
+    }
+
+    tracing::info!("skip the probe that is known to conflict and run binary search");
+    {
+        // calc_mid(0, 10) = 0, raised to the purge boundary: prev = log id 6.
+        let res = pe.next_send(&mut state, 100);
+        assert_eq!(Ok(&inflight_probe(6, 20).with_id(1)), res);
+        assert_eq!(None, pe.data.probe_start);
+    }
+
+    Ok(())
+}
+
+#[test]
 fn test_next_send_probe_from_mid_of_search_range() -> anyhow::Result<()> {
     //    matching,end
     //    4               21

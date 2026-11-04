@@ -73,7 +73,7 @@ fn test_become_leader() -> anyhow::Result<()> {
             targets: vec![TargetProgress {
                 target: 0,
                 target_node: (),
-                progress: ProgressEntry::empty(0, StreamId::new(1), 0),
+                progress: ProgressEntry::empty(0, StreamId::new(1), 0).with_probe_start(0),
             }],
             close_old_streams: true,
         },
@@ -81,12 +81,14 @@ fn test_become_leader() -> anyhow::Result<()> {
             committed_vote: Vote::new(2, 1).to_committed(),
             entries: Batch::of([EntryOf::<UTConfig>::new_blank(log_id(2, 1, 0))])
         },
-        // Pipeline mode: ProgressEntry::empty(0) has matching.next_index()=0 == searching_end=0
+        // Optimistically probe the new leader's first entry.
         Command::Replicate {
             target: 0,
             req: Replicate {
                 inflight_id: InflightId::new(1),
-                payload: Payload::LogsSince { prev: None },
+                payload: Payload::Probe {
+                    log_id_range: crate::log_id_range::LogIdRange::new(None, Some(log_id(2, 1, 0))),
+                },
             }
         }
     ]);
