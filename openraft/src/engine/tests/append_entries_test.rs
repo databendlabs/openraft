@@ -411,3 +411,23 @@ fn test_handle_append_entries_with_entries_waits_for_them() -> anyhow::Result<()
 
     Ok(())
 }
+
+#[test]
+fn hinted_success_retains_the_log_flush_condition() {
+    let mut eng = eng();
+    let vote = Vote::new_committed(2, 1);
+    let segment = LogSegment::new(Some(log_id(2, 1, 3)), vec![blank_ent::<UTConfig>(2, 1, 4)]);
+    let (tx, _rx) = UTConfig::<()>::oneshot();
+    eng.handle_append_entries_with_hint(&vote, segment, tx);
+    let mut commands = eng.output.take_commands();
+    let actual = commands.pop().unwrap();
+    let response = crate::raft::AppendEntriesResponseWithHint::new(crate::raft::AppendEntriesResponse::Success, None);
+    let (tx, _rx) = UTConfig::<()>::oneshot();
+    let log_id = Some(log_id(2, 1, 4));
+    let io_id = IOId::new_log_io(vote.to_committed(), log_id);
+    let expected = Command::Respond {
+        when: Some(Condition::IOFlushed { io_id }),
+        resp: crate::engine::Respond::new(response, tx),
+    };
+    assert_eq!(expected, actual);
+}
