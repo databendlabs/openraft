@@ -10,4 +10,6 @@ use openraft_macros::since;
 pub use threshold_membership_error::ThresholdMembershipError;
 
 #[since(version = "0.10.0")]
+pub use crate::explicit::InvalidQuorumLists;
+#[since(version = "0.10.0")]
 pub use crate::weighted::InvalidWeights;
