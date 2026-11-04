@@ -2,6 +2,7 @@
 
 mod impl_append_entries_request;
 mod impl_append_entries_response;
+mod impl_append_entries_response_with_hint;
 mod impl_client_write_response;
 mod impl_entry;
 mod impl_leader_id;
