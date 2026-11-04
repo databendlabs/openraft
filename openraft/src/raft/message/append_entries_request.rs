@@ -2,6 +2,7 @@ use std::fmt;
 
 use display_more::DisplayOptionExt;
 use display_more::DisplaySliceExt;
+use openraft_macros::since;
 
 use crate::RaftTypeConfig;
 use crate::entry::RaftEntry;
@@ -69,8 +70,10 @@ where C: RaftTypeConfig
 {
     /// Returns the last log id in this request.
     ///
-    /// This is the log id of the last entry, or `prev_log_id` if entries is empty.
-    pub(crate) fn last_log_id(&self) -> Option<LogIdOf<C>> {
+    /// This is the log id of the last entry, or `prev_log_id` if entries is empty. A follower that
+    /// accepts the whole request acknowledges this log id.
+    #[since(version = "0.10.0")]
+    pub fn last_log_id(&self) -> Option<LogIdOf<C>> {
         self.entries.last().map(|e| e.log_id()).or(self.prev_log_id.clone())
     }
 

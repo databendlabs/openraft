@@ -7,7 +7,6 @@ use openraft::impls::Entry;
 use openraft::impls::EntryPayload;
 use openraft::impls::Vote;
 use openraft::raft::AppendEntriesRequest;
-use openraft::raft::AppendEntriesResponse;
 use openraft::testing::blank_ent;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::IntoMemClientRequest;
@@ -48,7 +47,7 @@ async fn stale_vote_with_newer_commit_does_not_apply_overwritten_entry() -> Resu
             leader_commit: Some(prefix_end),
         };
         let response = follower.append_entries(request).await?;
-        assert_eq!(AppendEntriesResponse::Success, response);
+        assert_eq!(Ok(Some(prefix_end)), response);
         router.wait(&FOLLOWER).applied_index(Some(prefix_end.index), "prefix applied").await?;
     }
 
@@ -66,7 +65,7 @@ async fn stale_vote_with_newer_commit_does_not_apply_overwritten_entry() -> Resu
             leader_commit: Some(later_commit),
         };
         let response = follower.append_entries(request).await?;
-        assert_eq!(AppendEntriesResponse::Success, response);
+        assert_eq!(Ok(Some(stale_log_id)), response);
         router.wait(&FOLLOWER).log_index(Some(stale_log_id.index), "stale entry stored").await?;
 
         let applied = router
@@ -98,7 +97,7 @@ async fn stale_vote_with_newer_commit_does_not_apply_overwritten_entry() -> Resu
             leader_commit: Some(later_commit),
         };
         let response = follower.append_entries(request).await?;
-        assert_eq!(AppendEntriesResponse::Success, response);
+        assert_eq!(Ok(Some(later_commit)), response);
         router.wait(&FOLLOWER).applied_index(Some(later_commit.index), "canonical log applied").await?;
         let state = sm.get_state_machine().await;
         assert_eq!(Some(later_commit), state.last_applied_log);

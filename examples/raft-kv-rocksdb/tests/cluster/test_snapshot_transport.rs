@@ -312,7 +312,8 @@ fn test_stale_and_duplicate_snapshots_are_discarded() -> anyhow::Result<()> {
                 entries: vec![],
                 leader_commit: None,
             };
-            learner.raft().append_entries(request).await?;
+            let result = learner.raft().append_entries(request).await?;
+            assert_eq!(Ok(None), result);
             let raft = learner.raft();
             let actual_vote = raft.with_raft_state(|state| *state.vote_ref()).await?;
             assert_eq!(higher_vote, actual_vote);

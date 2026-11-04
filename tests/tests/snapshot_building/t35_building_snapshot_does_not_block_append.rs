@@ -65,7 +65,7 @@ async fn building_snapshot_does_not_block_append() -> Result<()> {
         let fu = node.append_entries(rpc);
         let fu = TypeConfig::timeout(Duration::from_millis(500), fu);
         let resp = fu.await??;
-        assert!(resp.is_success());
+        assert_eq!(Ok(Some(log_id(1, 0, log_index + 1))), resp);
     }
 
     tracing::info!(

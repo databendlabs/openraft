@@ -15,6 +15,7 @@ use crate::errors::InitializeError;
 use crate::errors::LinearizableReadError;
 use crate::impls::ProgressResponder;
 use crate::raft::AppendEntriesRequest;
+use crate::raft::AppendResult;
 use crate::raft::ClientWriteResult;
 use crate::raft::Precondition;
 use crate::raft::VoteRequest;
@@ -22,7 +23,6 @@ use crate::raft::VoteResponse;
 use crate::raft::linearizable_read::Linearizer;
 use crate::raft::linearizable_read::LinearizerOption;
 use crate::raft::responder::core_responder::CoreResponder;
-use crate::raft::stream_append::StreamAppendResult;
 use crate::type_config::alias::BatchOf;
 use crate::type_config::alias::CommittedLeaderIdOf;
 #[cfg(feature = "runtime-stats")]
@@ -48,7 +48,7 @@ pub(crate) type ResultSender<C, T, E = Infallible> = OneshotSenderOf<C, Result<T
 pub(crate) type VoteTx<C> = OneshotSenderOf<C, VoteResponse<C>>;
 
 /// TX for Append Entries Response
-pub(crate) type AppendEntriesTx<C> = OneshotSenderOf<C, StreamAppendResult<C>>;
+pub(crate) type AppendEntriesTx<C> = OneshotSenderOf<C, AppendResult<C>>;
 
 /// TX for Linearizable Read Response
 pub(crate) type ClientReadTx<C> = ResultSender<C, Linearizer<C>, LinearizableReadError<C>>;

@@ -1,8 +1,8 @@
-use openraft::raft::StreamAppendError;
+use openraft::raft::AppendError;
 
 use crate::pb;
 use crate::typ::AppendEntriesResponse;
-use crate::typ::StreamAppendResult;
+use crate::typ::AppendResult;
 
 impl From<pb::AppendEntriesResponse> for AppendEntriesResponse {
     fn from(r: pb::AppendEntriesResponse) -> Self {
@@ -29,49 +29,73 @@ impl From<AppendEntriesResponse> for pb::AppendEntriesResponse {
                 rejected_by: None,
                 conflict: false,
                 last_log_id: None,
+                hint: None,
             },
             AppendEntriesResponse::PartialSuccess(p) => pb::AppendEntriesResponse {
                 rejected_by: None,
                 conflict: false,
                 last_log_id: p.map(|log_id| log_id.into()),
+                hint: None,
             },
             AppendEntriesResponse::Conflict => pb::AppendEntriesResponse {
                 rejected_by: None,
                 conflict: true,
                 last_log_id: None,
+                hint: None,
             },
             AppendEntriesResponse::HigherVote(v) => pb::AppendEntriesResponse {
                 rejected_by: Some(v),
                 conflict: false,
                 last_log_id: None,
+                hint: None,
             },
         }
     }
 }
 
-impl From<StreamAppendResult> for pb::AppendEntriesResponse {
-    fn from(result: StreamAppendResult) -> Self {
+impl From<AppendResult> for pb::AppendEntriesResponse {
+    fn from(result: AppendResult) -> Self {
         match result {
             Ok(Some(log_id)) => pb::AppendEntriesResponse {
                 rejected_by: None,
                 conflict: false,
                 last_log_id: Some(log_id.into()),
+                hint: None,
             },
             Ok(None) => pb::AppendEntriesResponse {
                 rejected_by: None,
                 conflict: false,
                 last_log_id: None,
+                hint: None,
             },
-            Err(StreamAppendError::Conflict(log_id)) => pb::AppendEntriesResponse {
+            Err(AppendError::Conflict { log_id, hint }) => pb::AppendEntriesResponse {
                 rejected_by: None,
                 conflict: true,
                 last_log_id: Some(log_id.into()),
+                hint: hint.map(Into::into),
             },
-            Err(StreamAppendError::HigherVote(vote)) => pb::AppendEntriesResponse {
+            Err(AppendError::HigherVote(vote)) => pb::AppendEntriesResponse {
                 rejected_by: Some(vote),
                 conflict: false,
                 last_log_id: None,
+                hint: None,
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use prost::Message;
+
+    use crate::pb;
+    use crate::typ::AppendEntriesResponse;
+
+    /// The hint field leaves the unary encoding unchanged.
+    #[test]
+    fn unary_conflict_wire_format_is_unchanged() {
+        let response = pb::AppendEntriesResponse::from(AppendEntriesResponse::Conflict);
+        let bytes = response.encode_to_vec();
+        assert_eq!(vec![0x10, 0x01], bytes);
     }
 }

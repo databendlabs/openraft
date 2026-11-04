@@ -7,11 +7,11 @@ use futures::StreamExt;
 use openraft::OptionalSend;
 use openraft::RaftTypeConfig;
 use openraft::Vote;
+use openraft::alias::EntryOf;
 use openraft::alias::SnapshotOf;
 use openraft::async_runtime::Mutex as AsyncMutex;
 use openraft::base::BoxFuture;
 use openraft::base::BoxStream;
-use openraft::entry::RaftEntry;
 use openraft::errors::Infallible;
 use openraft::errors::RPCError;
 use openraft::errors::ReplicationClosed;
@@ -23,8 +23,8 @@ use openraft::network::stream_append_sequential;
 use openraft::network::v2::RaftNetworkV2;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse;
+use openraft::raft::AppendResult;
 use openraft::raft::SnapshotResponse;
-use openraft::raft::StreamAppendResult;
 use openraft::raft::TransferLeaderRequest;
 use openraft::raft::TransferLeaderResponse;
 use openraft::raft::VoteRequest;
@@ -71,10 +71,7 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
         &'s mut self,
         input: S,
         option: RPCOption,
-    ) -> BoxFuture<
-        's,
-        Result<BoxStream<'s, Result<StreamAppendResult<MemConfig>, RPCError<MemConfig>>>, RPCError<MemConfig>>,
-    >
+    ) -> BoxFuture<'s, Result<BoxStream<'s, Result<AppendResult<MemConfig>, RPCError<MemConfig>>>, RPCError<MemConfig>>>
     where
         S: Stream<Item = AppendEntriesRequest<MemConfig>> + OptionalSend + Unpin + 'static,
     {
@@ -98,7 +95,7 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
         &mut self,
         mut rpc: AppendEntriesRequest<MemConfig>,
         _option: RPCOption,
-    ) -> Result<AppendEntriesResponse<MemConfig>, RPCError<MemConfig>> {
+    ) -> Result<AppendResult<MemConfig>, RPCError<MemConfig>> {
         let delivery = self.append_entries_lock.lock().await;
         let from_id = rpc.vote.to_leader_node_id();
 
@@ -106,30 +103,7 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
         self.owner.before_rpc::<Infallible>(rpc.clone(), from_id, self.target).await?;
 
         // decrease quota if quota is set
-        let truncated = {
-            let n = rpc.entries.len() as u64;
-
-            let mut x = self.owner.append_entries_quota.lock().unwrap();
-            let q = *x;
-            tracing::debug!("current quota: {:?}", q);
-
-            if let Some(quota) = q {
-                if quota < n {
-                    rpc.entries.truncate(quota as usize);
-                    *x = Some(0);
-                    if let Some(last) = rpc.entries.last() {
-                        Some(Some(last.log_id()))
-                    } else {
-                        Some(rpc.prev_log_id)
-                    }
-                } else {
-                    *x = Some(quota - n);
-                    None
-                }
-            } else {
-                None
-            }
-        };
+        let truncated = self.truncate_entries_by_quota(&mut rpc.entries);
 
         {
             let x = self.owner.append_entries_quota.lock().unwrap();
@@ -142,26 +116,26 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
         let resp = node.append_entries(rpc.clone()).await;
 
         tracing::debug!("append_entries: recv resp from id={} {:?}", self.target, resp);
-        let resp = resp.map_err(|e| {
+        let result = resp.map_err(|e| {
             RPCError::Unreachable(Unreachable::<MemConfig>::from_string(format!(
                 "error: {} target={}",
                 e, self.target
             )))
         })?;
 
-        // If entries are truncated by quota, return an partial success response.
-        let resp = if let Some(truncated) = truncated {
-            match resp {
-                AppendEntriesResponse::Success => AppendEntriesResponse::PartialSuccess(truncated),
-                response => response,
-            }
+        // Without hints, the reply takes the `AppendEntriesResponse` format, which carries no log
+        // id. Rebuild it from the request that was sent, after the quota truncated it.
+        let result = if self.owner.conflict_hints {
+            result
         } else {
-            resp
+            let response = AppendEntriesResponse::from(result);
+            response.into_append_result(rpc.prev_log_id, rpc.last_log_id())
         };
+
         // Response hooks may block while later requests are delivered in order.
         drop(delivery);
-        self.owner.call_rpc_post_hook(rpc, resp.clone(), from_id, self.target).await?;
-        Ok(resp)
+        self.owner.call_rpc_post_hook(rpc, result.clone(), from_id, self.target).await?;
+        Ok(result)
     }
 
     async fn full_snapshot(
@@ -260,21 +234,30 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
 }
 
 impl RaftRouterNetwork {
+    /// Consume the quota and return whether entries were removed.
+    fn truncate_entries_by_quota(&self, entries: &mut Vec<EntryOf<MemConfig>>) -> bool {
+        let mut quota = self.owner.append_entries_quota.lock().unwrap();
+        let Some(remaining) = *quota else {
+            return false;
+        };
+
+        let len = entries.len() as u64;
+        if remaining >= len {
+            *quota = Some(remaining - len);
+            return false;
+        }
+
+        entries.truncate(remaining as usize);
+        *quota = Some(0);
+        true
+    }
+
     async fn append_stream_request(
         mut self,
         request: AppendEntriesRequest<MemConfig>,
         option: RPCOption,
-    ) -> Result<StreamAppendResult<MemConfig>, RPCError<MemConfig>> {
-        let prev = request.prev_log_id;
-        let last = if let Some(entry) = request.entries.last() {
-            let log_id = entry.log_id();
-            Some(log_id)
-        } else {
-            prev
-        };
-        let response = self.append_entries(request, option).await?;
-        let result = response.into_stream_result(prev, last);
-        Ok(result)
+    ) -> Result<AppendResult<MemConfig>, RPCError<MemConfig>> {
+        self.append_entries(request, option).await
     }
 
     async fn transmit_full_snapshot(

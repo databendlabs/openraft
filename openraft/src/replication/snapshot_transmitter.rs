@@ -271,7 +271,11 @@ where
 
         self.replication_context.notify_heartbeat_progress(start_time).await;
         self.replication_context
-            .notify_progress(Ok(ReplicationResult(Ok(meta.last_log_id))), Some(self.inflight_id))
+            .notify_progress(
+                Ok(ReplicationResult(Ok(meta.last_log_id))),
+                Some(self.inflight_id),
+                None,
+            )
             .await;
         Ok(true)
     }

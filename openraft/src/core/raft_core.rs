@@ -2159,7 +2159,7 @@ where
                 tracing::debug!("recv Notification::ReplicationProgress: progress: {}", progress);
 
                 if let Some(mut rh) = self.engine.try_replication_handler() {
-                    rh.update_progress(progress.target, stream_id, progress.result, inflight_id);
+                    rh.update_progress(stream_id, progress, inflight_id);
                 }
             }
 

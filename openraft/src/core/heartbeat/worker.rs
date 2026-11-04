@@ -16,8 +16,8 @@ use crate::network::NetStreamAppend;
 use crate::network::RPCOption;
 use crate::progress::stream_id::StreamId;
 use crate::raft::AppendEntriesRequest;
-use crate::raft::StreamAppendError;
-use crate::raft::StreamAppendResult;
+use crate::raft::AppendError;
+use crate::raft::AppendResult;
 use crate::replication::Progress;
 use crate::replication::response::ReplicationResult;
 use crate::type_config::TypeConfigExt;
@@ -151,14 +151,14 @@ where
     /// Handle the stream append result, send appropriate notifications.
     async fn handle_stream_result(
         &self,
-        result: StreamAppendResult<C>,
+        result: AppendResult<C>,
         heartbeat: &HeartbeatEvent<C>,
     ) -> Result<(), RaftCoreClosed> {
         match result {
             Ok(_) => {
                 self.send_heartbeat_progress(heartbeat).await?;
             }
-            Err(StreamAppendError::HigherVote(vote)) => {
+            Err(AppendError::HigherVote(vote)) => {
                 tracing::debug!(
                     "seen a higher vote({vote}) from {}; when:(sending heartbeat)",
                     self.target
@@ -173,18 +173,21 @@ where
                 self.send_notification(noti, "Seeing higher Vote").await?;
                 // Higher vote means leadership is not granted, don't send HeartbeatProgress
             }
-            Err(StreamAppendError::Conflict(_conflict_log_id)) => {
+            Err(AppendError::Conflict { .. }) => {
                 // The follower does not have `matching` log id.
                 // Use `matching` (which may be None) as the conflict point.
                 //
                 // Safe unwrap(): a None never conflict
                 let conflict_log_id = heartbeat.matching.clone().unwrap();
 
+                // Drop the conflict hint: a heartbeat has no inflight id, so RaftCore cannot tell
+                // whether the hint answers its current request, and ignores it.
                 let noti = Notification::ReplicationProgress {
                     stream_id: self.stream_id,
                     progress: Progress {
                         target: self.target.clone(),
                         result: Ok(ReplicationResult(Err(conflict_log_id))),
+                        hint: None,
                     },
                     inflight_id: None,
                 };
@@ -249,7 +252,7 @@ mod tests {
     use crate::progress::stream_id::StreamId;
     use crate::proposer::SendStamp;
     use crate::raft::AppendEntriesRequest;
-    use crate::raft::StreamAppendResult;
+    use crate::raft::AppendResult;
     use crate::type_config::TypeConfigExt;
     use crate::vote::raft_vote::RaftVoteExt;
 
@@ -268,7 +271,7 @@ mod tests {
             &'s mut self,
             mut input: S,
             _option: RPCOption,
-        ) -> BoxFuture<'s, Result<BoxStream<'s, Result<StreamAppendResult<C>, RPCError<C>>>, RPCError<C>>>
+        ) -> BoxFuture<'s, Result<BoxStream<'s, Result<AppendResult<C>, RPCError<C>>>, RPCError<C>>>
         where
             S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + Unpin + 'static,
         {

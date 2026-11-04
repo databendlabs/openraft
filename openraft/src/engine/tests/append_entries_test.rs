@@ -12,12 +12,16 @@ use crate::core::ServerState;
 use crate::engine::Command;
 use crate::engine::Condition;
 use crate::engine::Engine;
+use crate::engine::Respond;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::entry::RaftEntry;
 use crate::errors::ConflictingLogId;
 use crate::errors::RejectAppendEntries;
 use crate::errors::RejectVote;
+use crate::raft::AppendError;
+use crate::raft::AppendResult;
+use crate::raft::ConflictHint;
 use crate::raft::LogSegment;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
@@ -410,4 +414,55 @@ fn test_handle_append_entries_with_entries_waits_for_them() -> anyhow::Result<()
     );
 
     Ok(())
+}
+
+/// A conflict reply describes the log after truncation and claims no flushed log.
+#[test]
+fn conflict_reply_describes_the_truncated_log() {
+    let mut eng = eng();
+    let vote = Vote::new_committed(2, 1);
+    let segment = LogSegment::new(Some(log_id(2, 1, 2)), vec![]);
+    let (tx, _rx) = UTConfig::<()>::oneshot();
+
+    eng.handle_append_entries(&vote, segment, tx);
+
+    let mut commands = eng.output.take_commands();
+    let actual = commands.pop().unwrap();
+
+    let truncated = Command::TruncateLog {
+        after: Some(log_id(1, 1, 1)),
+    };
+    assert_eq!(Some(&truncated), commands.last());
+
+    let hint = ConflictHint::new(vec![log_id(0, 1, 0), log_id(1, 1, 1)]);
+    let result: AppendResult<UTConfig> = Err(AppendError::Conflict {
+        log_id: log_id(2, 1, 2),
+        hint: Some(hint),
+    });
+    let (tx, _rx) = UTConfig::<()>::oneshot();
+    let expected = Command::Respond {
+        when: None,
+        resp: Respond::new(result, tx),
+    };
+    assert_eq!(expected, actual);
+}
+
+/// A rejected vote is answered at once.
+#[test]
+fn vote_rejection_is_answered_at_once() {
+    let mut eng = eng();
+    let segment = LogSegment::new(Some(log_id(2, 1, 3)), vec![]);
+    let (tx, _rx) = UTConfig::<()>::oneshot();
+
+    eng.handle_append_entries(&Vote::new(1, 1), segment, tx);
+
+    let commands = eng.output.take_commands();
+
+    let result: AppendResult<UTConfig> = Err(AppendError::HigherVote(Vote::new(2, 1)));
+    let (tx, _rx) = UTConfig::<()>::oneshot();
+    let expected = vec![Command::Respond {
+        when: None,
+        resp: Respond::new(result, tx),
+    }];
+    assert_eq!(expected, commands);
 }

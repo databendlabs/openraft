@@ -26,7 +26,7 @@ use crate::fixtures::ut_harness;
 /// The `prev_log_id` of the first two entry-carrying AppendEntries sent to each follower.
 type FirstTwoProbes = BTreeMap<u64, Vec<Option<LogIdOf<TypeConfig>>>>;
 
-/// A probe at the empty log position answered with `PartialSuccess(None)` is re-issued: the
+/// A probe at the empty log position acknowledged with `Ok(None)` is re-issued: the
 /// acknowledgement reaches the engine and clears the inflight probe instead of leaving it stuck.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
@@ -44,7 +44,7 @@ async fn probe_acked_at_empty_prev_is_reissued() -> Result<()> {
     Ok(())
 }
 
-/// A probe answered with `PartialSuccess(prev)` completes, and the next probe starts at a later
+/// A probe acknowledged with `Ok(prev)` completes, and the next probe starts at a later
 /// midpoint instead of re-sending the same range.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
@@ -65,7 +65,7 @@ async fn probe_acked_at_prev_advances_to_next_midpoint() -> Result<()> {
 
 /// Drop each follower's optimistic first probe so subsequent probes exercise binary search.
 /// Write `n_writes` logs, then elect node 1 while every delivered entry-carrying AppendEntries is
-/// answered with `PartialSuccess(prev_log_id)`, so node 1 searches for the matching point with
+/// acknowledged only up to its `prev_log_id`, so node 1 searches for the matching point with
 /// probes that carry entries but never get one accepted.
 ///
 /// Returns the `prev_log_id` of the first two such probes node 1 sends to each follower, after

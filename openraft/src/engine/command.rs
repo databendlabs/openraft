@@ -14,11 +14,11 @@ use crate::engine::CommandName;
 use crate::engine::replication_progress::TargetProgress;
 use crate::errors::InitializeError;
 use crate::progress::inflight_id::InflightId;
+use crate::raft::AppendResult;
 use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft::message::TransferLeaderRequest;
-use crate::raft::stream_append::StreamAppendResult;
 use crate::raft_state::IOId;
 use crate::raft_state::IOState;
 use crate::replication::ReplicationSessionId;
@@ -496,7 +496,7 @@ pub(crate) enum Respond<C>
 where C: RaftTypeConfig
 {
     Vote(ValueSender<C, VoteResponse<C>>),
-    AppendEntries(ValueSender<C, StreamAppendResult<C>>),
+    AppendEntries(ValueSender<C, AppendResult<C>>),
     InstallFullSnapshot(ValueSender<C, SnapshotResponse<C>>),
     Initialize(ValueSender<C, Result<(), InitializeError<C>>>),
 }

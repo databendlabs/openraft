@@ -10,6 +10,7 @@ use openraft::network::RPCOption;
 use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse;
+use openraft::raft::AppendResult;
 use openraft::raft::SnapshotResponse;
 use openraft::raft::TransferLeaderRequest;
 use openraft::raft::TransferLeaderResponse;
@@ -34,8 +35,14 @@ impl GroupRouter<TypeConfig, GroupId> for Router {
         group_id: GroupId,
         rpc: AppendEntriesRequest<TypeConfig>,
         _option: RPCOption,
-    ) -> Result<AppendEntriesResponse<TypeConfig>, RPCError<TypeConfig>> {
-        self.send(target, &group_id, "/raft/append", rpc).await.map_err(RPCError::Unreachable)
+    ) -> Result<AppendResult<TypeConfig>, RPCError<TypeConfig>> {
+        // The reply is an `AppendEntriesResponse`, which carries no log id: take them from the
+        // request.
+        let last_log_id = rpc.last_log_id();
+        let prev_log_id = rpc.prev_log_id;
+        let response: AppendEntriesResponse<TypeConfig> =
+            self.send(target, &group_id, "/raft/append", rpc).await.map_err(RPCError::Unreachable)?;
+        Ok(response.into_append_result(prev_log_id, last_log_id))
     }
 
     async fn vote(

@@ -58,7 +58,7 @@ pub async fn pre_vote(app: &mut GroupApp, req: String) -> String {
 /// Handle append entries request
 pub async fn append(app: &mut GroupApp, req: String) -> String {
     let res = app.raft.append_entries(decode(&req)).await;
-    encode(res)
+    encode(res.map(AppendEntriesResponse::from))
 }
 
 /// Receive a snapshot and install it

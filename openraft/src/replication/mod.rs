@@ -53,8 +53,9 @@ use crate::network::NetStreamAppend;
 use crate::network::RPCOption;
 use crate::progress::inflight_id::InflightId;
 use crate::raft::AppendEntriesRequest;
-use crate::raft::StreamAppendError;
-use crate::raft::StreamAppendResult;
+use crate::raft::AppendError;
+use crate::raft::AppendResult;
+use crate::raft::ConflictHint;
 use crate::raft_state::IOId;
 use crate::replication::backoff_state::BackoffState;
 use crate::replication::event_watcher::EventWatcher;
@@ -391,7 +392,7 @@ where
     /// Consume the response stream, returning its greatest acknowledgement and stop reason.
     async fn handle_response_stream<'s>(
         &mut self,
-        resp_strm: BoxStream<'s, Result<StreamAppendResult<C>, RPCError<C>>>,
+        resp_strm: BoxStream<'s, Result<AppendResult<C>, RPCError<C>>>,
         inflight_queue: Arc<StdMutex<InflightAppendQueue<C>>>,
     ) -> (Option<Option<LogIdOf<C>>>, Result<(), &'static str>) {
         let mut resp_strm = std::pin::pin!(resp_strm);
@@ -446,22 +447,23 @@ where
                         None => unreachable!("acked was just updated"),
                     };
                     let result = ReplicationResult(Ok(greatest_acked));
-                    self.notify_progress(result).await;
+                    self.notify_progress(result, None).await;
                 }
                 Err(append_err) => {
                     match append_err {
-                        StreamAppendError::Conflict(conflict_log_id) => {
+                        AppendError::Conflict { log_id, hint } => {
                             let sending_time = {
                                 let mut inflight_queue = inflight_queue.lock().unwrap();
-                                inflight_queue.drain_conflicted(&conflict_log_id)
+                                inflight_queue.drain_conflicted(&log_id)
                             };
                             if let Some(sending_time) = sending_time {
                                 self.notify_heartbeat_progress(sending_time).await;
                             }
 
-                            self.notify_progress(ReplicationResult(Err(conflict_log_id))).await;
+                            let result = ReplicationResult(Err(log_id));
+                            self.notify_progress(result, hint).await;
                         }
-                        StreamAppendError::HigherVote(higher) => {
+                        AppendError::HigherVote(higher) => {
                             self.replication_context
                                 .tx_notify
                                 .send(Notification::HigherVote {
@@ -494,7 +496,7 @@ where
         if self.inflight_id.is_none() {
             return;
         }
-        self.replication_context.notify_progress(Err(err.to_string()), self.inflight_id).await;
+        self.replication_context.notify_progress(Err(err.to_string()), self.inflight_id, None).await;
     }
 
     /// A successful replication implies a successful heartbeat.
@@ -507,7 +509,9 @@ where
     }
 
     /// Notify RaftCore with the success replication result (log matching or conflict).
-    async fn notify_progress(&mut self, replication_result: ReplicationResult<C>) {
+    ///
+    /// `hint` is the conflict hint the target returned with a conflict.
+    async fn notify_progress(&mut self, replication_result: ReplicationResult<C>, hint: Option<ConflictHint<C>>) {
         tracing::debug!(
             "{}: target={}, curr_matching={}, result={}, inflight_id={}",
             func_name!(),
@@ -533,7 +537,7 @@ where
 
         // always send Conflict error back, even when the inflight id is None
         // for heartbeat to detect log reversion
-        self.replication_context.notify_progress(Ok(replication_result), self.inflight_id).await;
+        self.replication_context.notify_progress(Ok(replication_result), self.inflight_id, hint).await;
     }
 
     /// Receive and process events from RaftCore and set `next_action` and `inflight_id`.

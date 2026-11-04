@@ -43,7 +43,7 @@ use openraft::impls::ChangeMembers;
 use openraft::network::RPCOption;
 use openraft::network::v2::RaftNetworkV2;
 use openraft::raft::AppendEntriesRequest;
-use openraft::raft::AppendEntriesResponse;
+use openraft::raft::AppendResult;
 use openraft::raft::ChangeMembershipRequest;
 use openraft::raft::SnapshotResponse;
 use openraft::raft::VoteRequest;
@@ -372,7 +372,7 @@ impl RaftNetworkV2<TestConfig> for Connection {
         &mut self,
         request: AppendEntriesRequest<TestConfig>,
         _option: RPCOption,
-    ) -> Result<AppendEntriesResponse<TestConfig>, RPCError<TestConfig>> {
+    ) -> Result<AppendResult<TestConfig>, RPCError<TestConfig>> {
         let target = self.target()?;
         let response = target.append_entries(request).await;
         response.map_err(|error| RPCError::Unreachable(Unreachable::new(&error)))

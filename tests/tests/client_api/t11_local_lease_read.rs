@@ -939,7 +939,8 @@ async fn higher_vote_invalidates_cache_during_a_blocked_state_machine_send() -> 
             entries: vec![],
             leader_commit: Some(log_id(1, 0, log_index)),
         };
-        n1.append_entries(request).await?;
+        let result = n1.append_entries(request).await?;
+        assert_eq!(Ok(Some(log_id(1, 0, log_index))), result);
         router.wait(&1).vote(higher, "replica learned the higher vote").await?;
         gate.release();
     }

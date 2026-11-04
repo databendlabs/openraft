@@ -8,6 +8,7 @@ use anyhow::Result;
 use openraft::Config;
 use openraft::errors::NetworkError;
 use openraft::errors::RPCError;
+use openraft::raft::AppendError;
 use openraft::type_config::OneshotSender;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
@@ -58,7 +59,12 @@ async fn conflict_updates_clock_progress() -> Result<()> {
         router
             .set_rpc_post_hook(RpcKind::AppendEntries, move |call| {
                 let mut result = Ok(());
-                if call.to == 1 && matches!(call.response, RpcResponse::AppendEntries(resp) if resp.is_conflict()) {
+                if call.to == 1
+                    && matches!(
+                        call.response,
+                        RpcResponse::AppendEntries(Err(AppendError::Conflict { .. }))
+                    )
+                {
                     let discard = discard_first_conflict.swap(false, Ordering::SeqCst);
                     if discard {
                         let error = NetworkError::<TypeConfig>::from_string("lose the response to restart the stream");

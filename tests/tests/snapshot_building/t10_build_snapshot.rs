@@ -130,8 +130,7 @@ async fn build_snapshot() -> Result<()> {
 
         tracing::debug!("--- append-entries res: {:?}", res);
 
-        assert!(res.is_success());
-        assert!(!res.is_conflict());
+        assert_eq!(Ok(Some(log_id(1, 0, 2))), res);
     }
 
     Ok(())

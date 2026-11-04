@@ -144,7 +144,7 @@ async fn higher_term_snapshot(router: &mut RaftRouter) -> anyhow::Result<Snapsho
 
     let snapshot_log_id = log_id(SNAPSHOT_TERM, NODE, 0);
     let membership = Membership::new_with_defaults(vec![btreeset! {NODE}], []);
-    helper
+    let result = helper
         .append_entries(AppendEntriesRequest {
             vote: Vote::new_committed(SNAPSHOT_TERM, NODE),
             prev_log_id: None,
@@ -152,6 +152,7 @@ async fn higher_term_snapshot(router: &mut RaftRouter) -> anyhow::Result<Snapsho
             leader_commit: Some(snapshot_log_id),
         })
         .await?;
+    assert_eq!(Ok(Some(snapshot_log_id)), result);
     router.wait_with_timeout(&HELPER, TIMEOUT).applied_index(Some(0), "helper applied").await?;
 
     helper.trigger().snapshot().await?;

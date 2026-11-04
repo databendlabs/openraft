@@ -60,8 +60,7 @@ async fn append_updates_membership() -> Result<()> {
         };
 
         let resp = r0.append_entries(req).await?;
-        assert!(resp.is_success());
-        assert!(!resp.is_conflict());
+        assert_eq!(Ok(Some(log_id(1, 0, 5))), resp);
 
         r0.wait(timeout()).voter_ids([1, 2, 3, 4], "append-entries update membership").await?;
     }
@@ -76,8 +75,7 @@ async fn append_updates_membership() -> Result<()> {
         };
 
         let resp = r0.append_entries(req).await?;
-        assert!(resp.is_success());
-        assert!(!resp.is_conflict());
+        assert_eq!(Ok(Some(log_id(2, 0, 3))), resp);
 
         r0.wait(timeout()).voter_ids([1, 2], "deleting inconsistent logs updates membership").await?;
     }

@@ -111,6 +111,16 @@ message AppendEntriesResponse {
   //
   // If `conflict = true` in StreamAppend, this is the conflict log id.
   LogId last_log_id = 3;
+
+  // Set only with `conflict = true` in StreamAppend: the follower's log after it truncated the
+  // conflicting entries, which guides the leader's next probe. A peer built before this field
+  // neither sends nor reads it; without a hint, the leader uses binary search.
+  ConflictHint hint = 4;
+}
+
+// Follower log IDs that guide the leader's next AppendEntries probe after a conflict.
+message ConflictHint {
+  repeated LogId log_ids = 1;
 }
 
 // The first chunk of snapshot transmission, which contains the snapshot meta.

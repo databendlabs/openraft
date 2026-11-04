@@ -19,9 +19,8 @@ use crate::network::NetAppend;
 use crate::network::RPCOption;
 use crate::network::stream_append_sequential;
 use crate::raft::AppendEntriesRequest;
-use crate::raft::AppendEntriesResponse;
+use crate::raft::AppendResult;
 use crate::raft::SnapshotResponse;
-use crate::raft::StreamAppendResult;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft::message::TransferLeaderRequest;
@@ -114,11 +113,37 @@ where C: RaftTypeConfig
     type SnapshotData: OptionalSend + 'static;
 
     /// Send an AppendEntries RPC to the target.
+    ///
+    /// The remote follower should pass the request to [`Raft::append_entries()`] and send back
+    /// its result:
+    ///
+    /// - `Ok(log_id)` acknowledges the entries up to `log_id`: the request's last log id, which is
+    ///   `prev_log_id` for a request without entries. A transport that sent only a prefix of the
+    ///   entries acknowledges the last log id it sent, which must lie in `[prev_log_id,
+    ///   last_log_id]`.
+    /// - [`AppendError::Conflict`] reports the `prev_log_id` of the rejected request, and may carry
+    ///   the follower's conflict hint.
+    /// - [`AppendError::HigherVote`] reports the follower's higher vote.
+    ///
+    /// Return an [`RPCError`] if no reply is received.
+    ///
+    /// [`AppendResult`] does not implement serde, so the transport sends it in its own wire
+    /// format. To keep sending [`AppendEntriesResponse`], which carries neither log ids nor a
+    /// hint, the follower converts with `AppendEntriesResponse::from(result)` and the leader
+    /// converts back with [`AppendEntriesResponse::into_append_result()`], passing the log ids of
+    /// the request it sent.
+    ///
+    /// [`Raft::append_entries()`]: crate::raft::Raft::append_entries
+    /// [`AppendError::Conflict`]: crate::raft::AppendError::Conflict
+    /// [`AppendError::HigherVote`]: crate::raft::AppendError::HigherVote
+    /// [`AppendEntriesResponse`]: crate::raft::AppendEntriesResponse
+    /// [`AppendEntriesResponse::into_append_result()`]: crate::raft::AppendEntriesResponse::into_append_result
+    #[since(version = "0.10.0", change = "returns AppendResult with an optional conflict hint")]
     async fn append_entries(
         &mut self,
         rpc: AppendEntriesRequest<C>,
         option: RPCOption,
-    ) -> Result<AppendEntriesResponse<C>, RPCError<C>>;
+    ) -> Result<AppendResult<C>, RPCError<C>>;
 
     /// Send a stream of AppendEntries RPCs to the target and return a stream of responses.
     ///
@@ -128,7 +153,9 @@ where C: RaftTypeConfig
     ///
     /// The default implementation processes requests sequentially in a request-response
     /// manner: it sends one request, waits for the response, then sends the next.
-    /// This is simple but not optimal for performance.
+    /// This is simple but not optimal for performance. Each request goes through
+    /// [`append_entries()`], so a conflict in this stream carries a hint only when that method
+    /// returns one.
     ///
     /// Custom transports may merge, split, or pipeline requests under the ordering and response
     /// bounds documented by [`NetStreamAppend::stream_append`]. Responses need not map one-to-one
@@ -144,12 +171,17 @@ where C: RaftTypeConfig
     ///
     /// [`Raft::stream_append()`]: crate::raft::Raft::stream_append
     /// [`NetStreamAppend::stream_append`]: crate::network::NetStreamAppend::stream_append
+    /// [`append_entries()`]: Self::append_entries
+    #[since(
+        version = "0.10.0",
+        change = "response stream yields AppendError with an optional conflict hint"
+    )]
     #[since(version = "0.10.0")]
     fn stream_append<'s, S>(
         &'s mut self,
         input: S,
         option: RPCOption,
-    ) -> BoxFuture<'s, Result<BoxStream<'s, Result<StreamAppendResult<C>, RPCError<C>>>, RPCError<C>>>
+    ) -> BoxFuture<'s, Result<BoxStream<'s, Result<AppendResult<C>, RPCError<C>>>, RPCError<C>>>
     where
         S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + Unpin + 'static,
     {
@@ -271,7 +303,7 @@ where
         &mut self,
         rpc: AppendEntriesRequest<C>,
         option: RPCOption,
-    ) -> Result<AppendEntriesResponse<C>, RPCError<C>> {
+    ) -> Result<AppendResult<C>, RPCError<C>> {
         RaftNetworkV2::append_entries(self, rpc, option).await
     }
 }
@@ -341,7 +373,7 @@ where
         &'s mut self,
         input: S,
         option: RPCOption,
-    ) -> BoxFuture<'s, Result<BoxStream<'s, Result<StreamAppendResult<C>, RPCError<C>>>, RPCError<C>>>
+    ) -> BoxFuture<'s, Result<BoxStream<'s, Result<AppendResult<C>, RPCError<C>>>, RPCError<C>>>
     where
         S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + Unpin + 'static,
     {
