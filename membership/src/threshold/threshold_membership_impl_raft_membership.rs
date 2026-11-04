@@ -7,7 +7,6 @@ use openraft::membership::RaftMembership;
 
 use crate::ThresholdMembership;
 use crate::quorum::Joint;
-use crate::quorum::QuorumBridge;
 use crate::quorum::ThresholdQuorumSet;
 
 impl<NID, N> RaftMembership for ThresholdMembership<NID, N>
@@ -58,8 +57,8 @@ where
     }
 
     fn joint_with(&self, goal: &Self) -> Self {
-        let read = self.read.joint_with(goal.read.clone());
-        let write = self.write.joint_with(goal.write.clone());
+        let read = self.read.joint_with(&goal.read);
+        let write = self.write.joint_with(&goal.write);
 
         let mut nodes = goal.nodes.clone();
         for (node_id, node) in &self.nodes {
