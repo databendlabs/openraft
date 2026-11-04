@@ -49,6 +49,36 @@ fn eng() -> Engine<UTConfig> {
 }
 
 #[test]
+fn conflict_hint_survives_vote_only_flush() {
+    let mut eng = eng();
+    let expected = eng.following_handler().conflict_hint();
+    let vote_io = IOId::new_log_io(Vote::new(3, 1).to_committed(), None);
+    eng.state.log_progress_mut().try_update_all(vote_io);
+
+    let actual = eng.following_handler().conflict_hint();
+    assert_eq!(expected, actual);
+    assert_eq!(Some(log_id(2, 1, 3)), actual.last_log_id);
+}
+
+#[test]
+fn conflict_hint_excludes_truncated_entries() {
+    let mut eng = eng();
+    let prev = log_id(3, 1, 3);
+    let result = eng.following_handler().ensure_log_consecutive(Some(&prev));
+    let expected_error = crate::errors::ConflictingLogId {
+        expect: prev,
+        local: Some(log_id(2, 1, 3)),
+    };
+    assert_eq!(
+        Err(crate::errors::RejectAppendEntries::ConflictingLogId(expected_error)),
+        result
+    );
+    let hint = eng.following_handler().conflict_hint();
+    let expected = crate::raft::ConflictHint::new(Some(log_id(2, 1, 2)), vec![log_id(1, 1, 1), log_id(2, 1, 2)]);
+    assert_eq!(expected, hint);
+}
+
+#[test]
 fn test_follower_append_entries_update_accepted() -> anyhow::Result<()> {
     let mut eng = eng();
 
