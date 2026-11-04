@@ -125,13 +125,14 @@ where
 
         {
             let end = self.state.last_log_id().next_index();
+            let probe_index = self.leader.noop_log_id().index();
 
             let old_progress = self.leader.progress.clone();
 
             let id_gen = self.state.progress_id_gen.clone();
             let default_entry = |id| {
                 let progress_id = StreamId::new(id_gen.next_id());
-                ProgressEntry::empty(id, progress_id, end)
+                ProgressEntry::empty(id, progress_id, end).with_probe(probe_index)
             };
 
             self.leader.progress = Valid::new(old_progress.into_inner().upgrade_quorum_set(

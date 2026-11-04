@@ -451,6 +451,24 @@ fn test_next_send_not_pipeline_without_matching() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_next_send_tries_initial_leader_entry_before_binary_search() -> anyhow::Result<()> {
+    let config = EngineConfig::new_default(1);
+    let mut state = new_raft_state(6, 10, 20);
+    let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 21).with_probe(17);
+    let expected = inflight_probe(16, 20).with_id(1);
+    let actual = pe.next_send(&mut state, 100);
+    assert_eq!(Ok(&expected), actual);
+    assert_eq!(None, pe.data.probe_index);
+
+    let mut updater = pe.new_updater(&config);
+    updater.update_conflicting(16, Some(InflightId::new(1)));
+    let expected = inflight_probe(7, 20).with_id(2);
+    let actual = pe.next_send(&mut state, 100);
+    assert_eq!(Ok(&expected), actual);
+    Ok(())
+}
+
+#[test]
 fn test_next_send_probe_from_mid_of_search_range() -> anyhow::Result<()> {
     //    matching,end
     //    4               21
