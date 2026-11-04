@@ -439,7 +439,7 @@ fn test_apply() {
     assert_eq!(want, res);
 
     let change = WeightedChange {
-        nodes: NodeChange {
+        node_change: NodeChange {
             add_nodes: btreemap! {1 => "z".to_string(), 4 => "d".to_string()},
             ..NodeChange::default()
         },
@@ -455,7 +455,7 @@ fn test_apply() {
     // node.
     let with_four = WeightedMembership::new(weights.clone(), 2, want_nodes).unwrap();
     let change = WeightedChange {
-        nodes: NodeChange {
+        node_change: NodeChange {
             remove_nodes: btreeset! {4},
             ..NodeChange::default()
         },
@@ -465,7 +465,7 @@ fn test_apply() {
     assert_eq!(Ok(membership.clone()), res);
 
     let change = WeightedChange {
-        nodes: NodeChange {
+        node_change: NodeChange {
             remove_nodes: btreeset! {3},
             ..NodeChange::default()
         },
@@ -578,7 +578,7 @@ fn test_change_through_joint_keeps_node_metadata() {
         let pairs = voters.into_iter().map(|voter| (voter, 1));
         let weights = pairs.collect();
         WeightedChange {
-            nodes: NodeChange {
+            node_change: NodeChange {
                 remove_nodes,
                 ..NodeChange::default()
             },
@@ -593,7 +593,7 @@ fn test_apply_checks_roles() {
         unit_weights,
         Membership::with_roles,
         |add_nodes, remove_nodes, roles| WeightedChange {
-            nodes: NodeChange {
+            node_change: NodeChange {
                 add_nodes,
                 remove_nodes,
                 roles,

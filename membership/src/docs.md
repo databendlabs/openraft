@@ -38,11 +38,11 @@ remote site. It can still become leader when the leader transfers leadership to
 it with [`Trigger::transfer_leader()`]: a transfer starts an election on the
 target even without `Campaigner`.
 
-These four change types share a [`NodeChange`] in their `nodes` field.
+These four change types share a [`NodeChange`] in their `node_change` field.
 Each of the four memberships sets roles with its `with_roles()` method, such
 as [`WeightedMembership::with_roles()`]. Each change type sets them with its
-`nodes.roles` field or its `with_roles()` builder. A change that sets only roles
-keeps every quorum, so OpenRaft appends it without a joint config:
+`node_change.roles` field or its `with_roles()` builder. A change that sets
+only roles keeps every quorum, so OpenRaft appends it without a joint config:
 
 ```rust,ignore
 // Voter 3 keeps voting and storing logs, but starts no election on its own.

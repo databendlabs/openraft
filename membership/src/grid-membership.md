@@ -129,7 +129,7 @@ With `MembershipEdit = GridChange<..>`, [`Raft::change_membership()`] takes a
 [`GridChange`]. [`GridChange::grid()`] sets the new grid, given as its rows. A
 new grid can move voters to other cells, change the dimensions, or both. A new
 voter must already be a node: add it as a learner first, or with the
-`nodes.add_nodes` field of the change.
+`node_change.add_nodes` field of the change.
 
 ```rust
 use std::collections::BTreeSet;

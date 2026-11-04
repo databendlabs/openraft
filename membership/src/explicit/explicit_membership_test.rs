@@ -319,7 +319,7 @@ fn test_apply() {
 
     // Adding nodes keeps the metadata of a known node; removing a learner drops it.
     let change = ExplicitChange {
-        nodes: NodeChange {
+        node_change: NodeChange {
             add_nodes: btreemap! {1 => "z".to_string(), 4 => "d".to_string()},
             ..NodeChange::default()
         },
@@ -332,7 +332,7 @@ fn test_apply() {
     assert_eq!(want, with_four);
 
     let change = ExplicitChange {
-        nodes: NodeChange {
+        node_change: NodeChange {
             remove_nodes: btreeset! {4},
             ..NodeChange::default()
         },
@@ -343,7 +343,7 @@ fn test_apply() {
 
     // Removing a voter fails, because every voter needs a node.
     let change = ExplicitChange {
-        nodes: NodeChange {
+        node_change: NodeChange {
             remove_nodes: btreeset! {3},
             ..NodeChange::default()
         },
@@ -510,7 +510,7 @@ fn test_change_through_joint_keeps_node_metadata() {
     assert_change_through_joint_keeps_node_metadata(majority, |voters, remove_nodes| {
         let quorums = majorities(&voters);
         ExplicitChange {
-            nodes: NodeChange {
+            node_change: NodeChange {
                 remove_nodes,
                 ..NodeChange::default()
             },
@@ -523,7 +523,7 @@ fn test_change_through_joint_keeps_node_metadata() {
 fn test_apply_checks_roles() {
     assert_apply_checks_roles(majority, Membership::with_roles, |add_nodes, remove_nodes, roles| {
         ExplicitChange {
-            nodes: NodeChange {
+            node_change: NodeChange {
                 add_nodes,
                 remove_nodes,
                 roles,

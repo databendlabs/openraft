@@ -147,7 +147,8 @@ their weights, and [`WeightedChange::write_weight()`] sets the write weight. A
 change keeps what it does not set, and derives the read weight from the new
 total weight. When the new weights sum to less than the write weight, the same
 change must also set a smaller write weight. A new voter must already be a
-node: add it as a learner first, or with the `nodes.add_nodes` field of the change.
+node: add it as a learner first, or with the `node_change.add_nodes` field of
+the change.
 
 ```rust
 use std::collections::BTreeMap;

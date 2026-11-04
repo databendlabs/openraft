@@ -14,26 +14,28 @@ use crate::GridMembership;
 use crate::NodeChange;
 use crate::errors::InvalidGrid;
 
-/// A change to a [`GridMembership`]. [`apply()`](RaftMembershipEdit::apply) adds `nodes.add_nodes`,
-/// sets the grid, removes `nodes.remove_nodes`, then sets `nodes.roles`.
+/// A change to a [`GridMembership`]. [`apply()`](RaftMembershipEdit::apply) adds
+/// `node_change.add_nodes`, sets the grid, removes `node_change.remove_nodes`, then sets
+/// `node_change.roles`.
 ///
 /// A change keeps the grid unless it sets one, and keeps the roles that the last config sets for
 /// the nodes that remain. A new grid can move voters to other cells, change the dimensions, or
 /// both. An invalid grid makes `apply()` return [`MembershipError::UserDefined`]. A voter without a
 /// node makes `apply()` return [`MembershipError::NodeNotFound`].
 ///
-/// A node of the result takes the role that `nodes.roles` or the last config sets for it, and
+/// A node of the result takes the role that `node_change.roles` or the last config sets for it, and
 /// otherwise the default for its status in the result: [`NodeRole::Campaigner`] `|`
-/// [`NodeRole::ReceiveLogs`] for a voter, and [`NodeRole::ReceiveLogs`] for every other node. A
-/// set role stays until a change sets another one: a voter with only [`NodeRole::ReceiveLogs`]
-/// that becomes a learner, and later a voter again, still does not campaign. A role of
-/// `nodes.roles` equal to the default for the node's status clears the set role. A node of
-/// `nodes.roles` that the result lacks makes `apply()` return [`MembershipError::NodeNotFound`].
-/// The result keeps a role as given, even one without [`NodeRole::ReceiveLogs`] for a write voter:
-/// OpenRaft rejects such a result with [`MembershipError::WriteVoterWithoutReceiveLogs`] when it is
-/// proposed. When OpenRaft moves to the result through a joint config, the joint gives each node
-/// its role in the result, joined with its old role if it is an old voter, and
-/// [`make_uniform()`](RaftMembershipEdit::make_uniform) restores the roles of the result.
+/// [`NodeRole::ReceiveLogs`] for a voter, and [`NodeRole::ReceiveLogs`] for every other node. A set
+/// role stays until a change sets another one: a voter with only [`NodeRole::ReceiveLogs`] that
+/// becomes a learner, and later a voter again, still does not campaign. A role of
+/// `node_change.roles` equal to the default for the node's status clears the set role. A node of
+/// `node_change.roles` that the result lacks makes `apply()` return
+/// [`MembershipError::NodeNotFound`]. The result keeps a role as given, even one without
+/// [`NodeRole::ReceiveLogs`] for a write voter: OpenRaft rejects such a result with
+/// [`MembershipError::WriteVoterWithoutReceiveLogs`] when it is proposed. When OpenRaft moves to
+/// the result through a joint config, the joint gives each node its role in the result, joined with
+/// its old role if it is an old voter, and [`make_uniform()`](RaftMembershipEdit::make_uniform)
+/// restores the roles of the result.
 ///
 /// # Examples
 ///
@@ -63,7 +65,7 @@ use crate::errors::InvalidGrid;
 /// [`MembershipError::WriteVoterWithoutReceiveLogs`]: openraft::errors::MembershipError::WriteVoterWithoutReceiveLogs
 #[since(
     version = "0.10.0",
-    change = "moved add_nodes, remove_nodes and roles into nodes: NodeChange"
+    change = "moved add_nodes, remove_nodes and roles into node_change: NodeChange"
 )]
 #[since(version = "0.10.0")]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -73,7 +75,7 @@ where
     N: Node,
 {
     /// The node additions, removals and role assignments to apply.
-    pub nodes: NodeChange<NID, N>,
+    pub node_change: NodeChange<NID, N>,
 
     /// The new grid, as its rows of voters; `None` keeps the grid.
     pub grid: Option<Vec<Vec<NID>>>,
@@ -94,7 +96,7 @@ where
 
     /// Returns this change with `roles` as the roles that it sets.
     pub fn with_roles(mut self, roles: BTreeMap<NID, NodeRole>) -> Self {
-        self.nodes = self.nodes.with_roles(roles);
+        self.node_change = self.node_change.with_roles(roles);
         self
     }
 }
@@ -107,7 +109,7 @@ where
     /// Returns the empty change, which keeps the grid and the nodes.
     fn default() -> Self {
         Self {
-            nodes: NodeChange::default(),
+            node_change: NodeChange::default(),
             grid: None,
         }
     }
@@ -122,10 +124,10 @@ where
         write!(
             f,
             "{{add_nodes: {:?}, grid: {}, remove_nodes: {:?}, roles: {:?}}}",
-            self.nodes.add_nodes,
+            self.node_change.add_nodes,
             self.grid.display_debug(),
-            self.nodes.remove_nodes,
-            self.nodes.roles
+            self.node_change.remove_nodes,
+            self.node_change.roles
         )
     }
 }
@@ -155,15 +157,15 @@ where
             Some(grid) => GridMembership::<NID, N>::rules_from_grid(grid)?,
         };
 
-        let target = membership.replace_config((read, write), self.nodes, retain)?;
+        let target = membership.replace_config((read, write), self.node_change, retain)?;
         tracing::debug!("target membership: {}", target);
         Ok(target)
     }
 
     fn add_learner(node_id: NID, node: N) -> Self {
-        let nodes = NodeChange::add_node(node_id, node);
+        let node_change = NodeChange::add_node(node_id, node);
         Self {
-            nodes,
+            node_change,
             ..Self::default()
         }
     }

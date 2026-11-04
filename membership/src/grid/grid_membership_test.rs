@@ -331,7 +331,7 @@ fn test_apply() {
     // New voters 5 and 6 join with their nodes as a third column.
     let wider = vec![vec![1, 2, 5], vec![3, 4, 6]];
     let change = GridChange {
-        nodes: NodeChange {
+        node_change: NodeChange {
             add_nodes: btreemap! {5 => "e".to_string(), 6 => "f".to_string()},
             ..NodeChange::default()
         },
@@ -347,7 +347,7 @@ fn test_apply() {
     // Voters 3 and 4 leave the grid and are removed in one change.
     let change = GridChange {
         grid: Some(vec![vec![1, 2]]),
-        nodes: NodeChange {
+        node_change: NodeChange {
             remove_nodes: btreeset! {3, 4},
             ..NodeChange::default()
         },
@@ -359,7 +359,7 @@ fn test_apply() {
 
     // Adding nodes keeps the metadata of a known node; removing a learner drops it.
     let change = GridChange {
-        nodes: NodeChange {
+        node_change: NodeChange {
             add_nodes: btreemap! {1 => "z".to_string(), 5 => "e".to_string()},
             ..NodeChange::default()
         },
@@ -372,7 +372,7 @@ fn test_apply() {
     assert_eq!(want, with_five);
 
     let change = GridChange {
-        nodes: NodeChange {
+        node_change: NodeChange {
             remove_nodes: btreeset! {5},
             ..NodeChange::default()
         },
@@ -385,7 +385,7 @@ fn test_apply() {
     // Removing a voter fails, and so does placing a voter without a node, because every voter
     // needs a node.
     let change = GridChange {
-        nodes: NodeChange {
+        node_change: NodeChange {
             remove_nodes: btreeset! {3},
             ..NodeChange::default()
         },
@@ -496,7 +496,7 @@ fn test_change_through_joint_keeps_node_metadata() {
     assert_change_through_joint_keeps_node_metadata(one_row, |voters, remove_nodes| {
         let row = voters.into_iter().collect();
         GridChange {
-            nodes: NodeChange {
+            node_change: NodeChange {
                 remove_nodes,
                 ..NodeChange::default()
             },
@@ -509,7 +509,7 @@ fn test_change_through_joint_keeps_node_metadata() {
 fn test_apply_checks_roles() {
     assert_apply_checks_roles(one_row, Membership::with_roles, |add_nodes, remove_nodes, roles| {
         GridChange {
-            nodes: NodeChange {
+            node_change: NodeChange {
                 add_nodes,
                 remove_nodes,
                 roles,

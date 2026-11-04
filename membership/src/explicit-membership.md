@@ -128,7 +128,7 @@ With `MembershipEdit = ExplicitChange<..>`, [`Raft::change_membership()`] takes
 an [`ExplicitChange`]. [`ExplicitChange::quorums()`] sets both lists, and
 [`ExplicitChange::read_quorums()`] and [`ExplicitChange::write_quorums()`] each
 set one list and keep the other. A new voter must already be a node: add it as
-a learner first, or with the `nodes.add_nodes` field of the change.
+a learner first, or with the `node_change.add_nodes` field of the change.
 
 ```rust
 use std::collections::BTreeSet;

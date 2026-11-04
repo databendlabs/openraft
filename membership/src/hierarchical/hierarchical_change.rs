@@ -17,8 +17,9 @@ use crate::quorum::Group;
 use crate::quorum::HierarchicalQuorumSet;
 
 /// A change to a [`HierarchicalMembership`]. [`apply()`](RaftMembershipEdit::apply) adds
-/// `nodes.add_nodes`, sets the groups with their write sizes, removes `nodes.remove_nodes`, then
-/// sets `nodes.roles`. It derives the read sizes from the result.
+/// `node_change.add_nodes`, sets the groups with their write sizes, removes
+/// `node_change.remove_nodes`, then sets `node_change.roles`. It derives the read sizes from the
+/// result.
 ///
 /// A change keeps the groups and their write sizes unless it sets a new root group, and keeps the
 /// roles that the last config sets for the nodes that remain. A new root group can move voters to
@@ -32,18 +33,19 @@ use crate::quorum::HierarchicalQuorumSet;
 /// keeps the trees of both configs. [`make_uniform()`](RaftMembershipEdit::make_uniform) then
 /// selects the tree of the result.
 ///
-/// A node of the result takes the role that `nodes.roles` or the last config sets for it, and
+/// A node of the result takes the role that `node_change.roles` or the last config sets for it, and
 /// otherwise the default for its status in the result: [`NodeRole::Campaigner`] `|`
-/// [`NodeRole::ReceiveLogs`] for a voter, and [`NodeRole::ReceiveLogs`] for every other node. A
-/// set role stays until a change sets another one: a voter with only [`NodeRole::ReceiveLogs`]
-/// that becomes a learner, and later a voter again, still does not campaign. A role of
-/// `nodes.roles` equal to the default for the node's status clears the set role. A node of
-/// `nodes.roles` that the result lacks makes `apply()` return [`MembershipError::NodeNotFound`].
-/// The result keeps a role as given, even one without [`NodeRole::ReceiveLogs`] for a write voter:
-/// OpenRaft rejects such a result with [`MembershipError::WriteVoterWithoutReceiveLogs`] when it is
-/// proposed. When OpenRaft moves to the result through a joint config, the joint gives each node
-/// its role in the result, joined with its old role if it is an old voter, and
-/// [`make_uniform()`](RaftMembershipEdit::make_uniform) restores the roles of the result.
+/// [`NodeRole::ReceiveLogs`] for a voter, and [`NodeRole::ReceiveLogs`] for every other node. A set
+/// role stays until a change sets another one: a voter with only [`NodeRole::ReceiveLogs`] that
+/// becomes a learner, and later a voter again, still does not campaign. A role of
+/// `node_change.roles` equal to the default for the node's status clears the set role. A node of
+/// `node_change.roles` that the result lacks makes `apply()` return
+/// [`MembershipError::NodeNotFound`]. The result keeps a role as given, even one without
+/// [`NodeRole::ReceiveLogs`] for a write voter: OpenRaft rejects such a result with
+/// [`MembershipError::WriteVoterWithoutReceiveLogs`] when it is proposed. When OpenRaft moves to
+/// the result through a joint config, the joint gives each node its role in the result, joined with
+/// its old role if it is an old voter, and [`make_uniform()`](RaftMembershipEdit::make_uniform)
+/// restores the roles of the result.
 ///
 /// # Examples
 ///
@@ -84,7 +86,7 @@ use crate::quorum::HierarchicalQuorumSet;
 /// [`MembershipError::WriteVoterWithoutReceiveLogs`]: openraft::errors::MembershipError::WriteVoterWithoutReceiveLogs
 #[since(
     version = "0.10.0",
-    change = "moved add_nodes, remove_nodes and roles into nodes: NodeChange"
+    change = "moved add_nodes, remove_nodes and roles into node_change: NodeChange"
 )]
 #[since(version = "0.10.0")]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -94,7 +96,7 @@ where
     N: Node,
 {
     /// The node additions, removals and role assignments to apply.
-    pub nodes: NodeChange<NID, N>,
+    pub node_change: NodeChange<NID, N>,
 
     /// The new root group, whose tree holds every voter, with the write size of each group as its
     /// `quorum_size`; `None` keeps the groups and their write sizes.
@@ -117,7 +119,7 @@ where
 
     /// Returns this change with `roles` as the roles that it sets.
     pub fn with_roles(mut self, roles: BTreeMap<NID, NodeRole>) -> Self {
-        self.nodes = self.nodes.with_roles(roles);
+        self.node_change = self.node_change.with_roles(roles);
         self
     }
 }
@@ -130,7 +132,7 @@ where
     /// Returns the empty change, which keeps the groups, the write sizes and the nodes.
     fn default() -> Self {
         Self {
-            nodes: NodeChange::default(),
+            node_change: NodeChange::default(),
             groups: None,
         }
     }
@@ -145,10 +147,10 @@ where
         write!(
             f,
             "{{add_nodes: {:?}, groups: {}, remove_nodes: {:?}, roles: {:?}}}",
-            self.nodes.add_nodes,
+            self.node_change.add_nodes,
             self.groups.display_debug(),
-            self.nodes.remove_nodes,
-            self.nodes.roles
+            self.node_change.remove_nodes,
+            self.node_change.roles
         )
     }
 }
@@ -179,15 +181,15 @@ where
         };
         let read = write.dual();
 
-        let target = membership.replace_config((read, write), self.nodes, retain)?;
+        let target = membership.replace_config((read, write), self.node_change, retain)?;
         tracing::debug!("target membership: {}", target);
         Ok(target)
     }
 
     fn add_learner(node_id: NID, node: N) -> Self {
-        let nodes = NodeChange::add_node(node_id, node);
+        let node_change = NodeChange::add_node(node_id, node);
         Self {
-            nodes,
+            node_change,
             ..Self::default()
         }
     }

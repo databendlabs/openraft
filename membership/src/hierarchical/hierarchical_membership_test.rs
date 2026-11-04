@@ -616,7 +616,7 @@ fn test_apply_edits_nodes() {
 
     // Adding nodes keeps the metadata of a known node; removing a learner drops it.
     let change = HierarchicalChange {
-        nodes: NodeChange {
+        node_change: NodeChange {
             add_nodes: btreemap! {1 => "z".to_string(), 4 => "n4".to_string()},
             ..NodeChange::default()
         },
@@ -629,7 +629,7 @@ fn test_apply_edits_nodes() {
     assert_eq!(want, with_four);
 
     let change = HierarchicalChange {
-        nodes: NodeChange {
+        node_change: NodeChange {
             remove_nodes: btreeset! {4},
             ..NodeChange::default()
         },
@@ -641,7 +641,7 @@ fn test_apply_edits_nodes() {
 
     // Removing a voter fails, because every voter needs a node.
     let change = HierarchicalChange {
-        nodes: NodeChange {
+        node_change: NodeChange {
             remove_nodes: btreeset! {3},
             ..NodeChange::default()
         },
@@ -746,7 +746,7 @@ fn test_change_through_joint_keeps_node_metadata() {
     assert_change_through_joint_keeps_node_metadata(one_group, |voters, remove_nodes| {
         let groups = Group::of_groups(1, [("a", Group::of_voters(2, voters))]);
         HierarchicalChange {
-            nodes: NodeChange {
+            node_change: NodeChange {
                 remove_nodes,
                 ..NodeChange::default()
             },
@@ -759,7 +759,7 @@ fn test_change_through_joint_keeps_node_metadata() {
 fn test_apply_checks_roles() {
     assert_apply_checks_roles(one_group, Membership::with_roles, |add_nodes, remove_nodes, roles| {
         Change {
-            nodes: NodeChange {
+            node_change: NodeChange {
                 add_nodes,
                 remove_nodes,
                 roles,
