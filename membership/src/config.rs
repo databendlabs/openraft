@@ -157,7 +157,7 @@ where
 
 /// Returns the role of a node that its config sets no role for: [`NodeRole::Campaigner`] `|`
 /// [`NodeRole::ReceiveLogs`] for a voter, and [`NodeRole::ReceiveLogs`] for a learner.
-fn default_role(is_voter: bool) -> NodeRole {
+pub(crate) fn default_role(is_voter: bool) -> NodeRole {
     if is_voter {
         NodeRole::Campaigner | NodeRole::ReceiveLogs
     } else {
