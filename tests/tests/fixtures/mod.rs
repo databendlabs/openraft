@@ -142,7 +142,7 @@ pub struct RaftRouter {
     /// 0 means no delay.
     send_delay: Arc<AtomicU64>,
 
-    /// To simulate PartialSuccess for AppendEntries RPCs.
+    /// To simulate a partial acknowledgement of AppendEntries RPCs.
     ///
     /// If the quota is set to `Some(n)`, then the AppendEntries RPC consumes the quota,
     /// and send out at most `n` entries.
@@ -164,6 +164,12 @@ pub struct RaftRouter {
 
     /// Whether AppendEntries requests may run concurrently within a stream.
     pipelined_append: bool,
+
+    /// Whether AppendEntries replies carry conflict hints.
+    ///
+    /// Without them, replies take the `AppendEntriesResponse` format, as a transport that keeps
+    /// the old wire format does.
+    conflict_hints: bool,
 }
 
 pub struct Builder {
@@ -171,9 +177,16 @@ pub struct Builder {
     send_delay: u64,
     chunked_snapshots: bool,
     pipelined_append: bool,
+    conflict_hints: bool,
 }
 
 impl Builder {
+    /// Carry conflict hints on AppendEntries replies.
+    pub fn conflict_hints(mut self) -> Self {
+        self.conflict_hints = true;
+        self
+    }
+
     /// Send concurrent AppendEntries requests and yield their responses in order.
     pub fn pipelined_append(mut self) -> Self {
         self.pipelined_append = true;
@@ -215,6 +228,7 @@ impl Builder {
             rpc_post_hook: Arc::new(TypeConfig::mutex(HashMap::new())),
             snapshot_chunks,
             pipelined_append: self.pipelined_append,
+            conflict_hints: self.conflict_hints,
         }
     }
 }
@@ -228,6 +242,7 @@ impl RaftRouter {
             send_delay: 0,
             chunked_snapshots: false,
             pipelined_append: false,
+            conflict_hints: false,
         })
     }
 

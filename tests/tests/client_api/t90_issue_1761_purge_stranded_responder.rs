@@ -105,13 +105,15 @@ async fn write_then_superseded_by_snapshot_install() -> Result<()> {
     tracing::info!("--- drive one more apply on node 0; before the fix this panics on the stranded responder");
     {
         let n0 = router.get_raft_handle(&0)?;
-        n0.append_entries(AppendEntriesRequest {
-            vote: Vote::new_committed(2, 1),
-            prev_log_id: Some(log_id(2, 1, snap_index)),
-            entries: vec![blank_ent::<TypeConfig>(2, 1, snap_index + 1)],
-            leader_commit: Some(log_id(2, 1, snap_index + 1)),
-        })
-        .await?;
+        let result = n0
+            .append_entries(AppendEntriesRequest {
+                vote: Vote::new_committed(2, 1),
+                prev_log_id: Some(log_id(2, 1, snap_index)),
+                entries: vec![blank_ent::<TypeConfig>(2, 1, snap_index + 1)],
+                leader_commit: Some(log_id(2, 1, snap_index + 1)),
+            })
+            .await?;
+        assert_eq!(Ok(Some(log_id(2, 1, snap_index + 1))), result);
     }
 
     tracing::info!("--- the pending write must resolve with LogEntryDiscarded, not panic the core");

@@ -106,11 +106,55 @@ fn test_update_conflicting() -> anyhow::Result<()> {
     pe.data.inflight = inflight_probe(5, 10);
 
     let engine_config = EngineConfig::new_default(1);
-    pe.new_updater(&engine_config).update_conflicting(5, Some(InflightId::new(0)));
+    let applied = pe.new_updater(&engine_config).update_conflicting(5, Some(InflightId::new(0)));
 
+    assert!(applied);
     assert_eq!(Inflight::None, pe.data.inflight);
     assert_eq!(Some(&log_id(3)), pe.matching());
     assert_eq!(5, pe.data.searching_end);
+
+    Ok(())
+}
+
+#[test]
+fn test_update_conflicting_reports_whether_it_applied() -> anyhow::Result<()> {
+    let engine_config = EngineConfig::new_default(1);
+    let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 20);
+    pe.data.inflight = inflight_probe(10, 15);
+
+    tracing::info!("a conflict for another request leaves the entry unchanged");
+    {
+        let expected = pe.clone();
+
+        let applied = pe.new_updater(&engine_config).update_conflicting(10, Some(InflightId::new(1)));
+
+        assert!(!applied);
+        assert_eq!(expected, pe);
+    }
+
+    tracing::info!(
+        conflict = 8,
+        "a heartbeat conflict narrows the range and keeps the request"
+    );
+    {
+        let applied = pe.new_updater(&engine_config).update_conflicting(8, None);
+
+        assert!(applied);
+        assert_eq!(inflight_probe(10, 15), pe.data.inflight);
+        assert_eq!(8, pe.data.searching_end);
+    }
+
+    tracing::info!(
+        conflict = 10,
+        "a conflict beyond searching_end only completes the request"
+    );
+    {
+        let applied = pe.new_updater(&engine_config).update_conflicting(10, Some(InflightId::new(0)));
+
+        assert!(applied);
+        assert_eq!(Inflight::None, pe.data.inflight);
+        assert_eq!(8, pe.data.searching_end);
+    }
 
     Ok(())
 }

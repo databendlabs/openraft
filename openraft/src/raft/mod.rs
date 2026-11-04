@@ -42,10 +42,13 @@ use linearizable_read::LinearizerOption;
 use linearizable_read::ReadLogId;
 pub use message::AppendEntriesRequest;
 pub use message::AppendEntriesResponse;
+pub use message::AppendError;
+pub use message::AppendResult;
 pub use message::ChangeMembershipOutcome;
 pub use message::ChangeMembershipRequest;
 pub use message::ClientWriteResponse;
 pub use message::ClientWriteResult;
+pub use message::ConflictHint;
 #[allow(deprecated)]
 pub use message::InstallSnapshotRequest;
 #[allow(deprecated)]
@@ -1013,9 +1016,19 @@ where
     ///
     /// These RPCs are sent by the cluster leader to replicate log entries (§5.3), and are also
     /// used as heartbeats (§5.2).
+    ///
+    /// The outer `Err` means this node has stopped. The inner [`AppendResult`] is the reply for
+    /// the leader: the last log id this node accepted, or the [`AppendError`] that explains why it
+    /// rejected the request. A conflict carries a hint that describes this node's log after it
+    /// truncated the conflicting entries.
+    ///
+    /// [`AppendResult`] does not implement serde, so convert it to the transport's own response
+    /// type. `AppendEntriesResponse::from(result)` keeps the existing format, but drops the log id
+    /// and the hint.
+    #[since(version = "0.10.0", change = "returns AppendResult with an optional conflict hint")]
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn append_entries(&self, rpc: AppendEntriesRequest<C>) -> Result<AppendEntriesResponse<C>, RaftError<C>> {
-        self.protocol_api().append_entries(rpc).await.into_raft_result()
+    pub async fn append_entries(&self, rpc: AppendEntriesRequest<C>) -> Result<AppendResult<C>, RaftError<C>> {
+        self.protocol_api().append_entries(rpc).await.map_err(RaftError::Fatal)
     }
 
     /// Submit a stream of AppendEntries RPCs to this Raft node.
@@ -1035,6 +1048,11 @@ where
     /// The output stream emits:
     /// - `Ok(log_id)` when logs are successfully flushed
     /// - `Err(e)` when an error occurs, which terminates the stream
+    ///
+    /// A conflict, [`AppendError::Conflict`], carries a hint that describes this node's log after
+    /// it truncated the conflicting entries. [`AppendError`] does not implement serde, so convert
+    /// it to the transport's own response type. Converting it to [`StreamAppendError`] keeps
+    /// the existing format but drops the hint, and the leader then falls back to binary search.
     ///
     /// ## Pinning
     ///
@@ -1077,12 +1095,16 @@ where
     ///     }
     /// }
     /// ```
+    #[since(
+        version = "0.10.0",
+        change = "stream item carries AppendError with an optional conflict hint"
+    )]
     #[since(version = "0.10.0", change = "stream item contains Fatal")]
     #[since(version = "0.10.0")]
     pub fn stream_append<S>(
         &self,
         stream: S,
-    ) -> impl futures_util::Stream<Item = Result<StreamAppendResult<C>, Fatal<C>>> + OptionalSend + 'static
+    ) -> impl futures_util::Stream<Item = Result<AppendResult<C>, Fatal<C>>> + OptionalSend + 'static
     where
         S: futures_util::Stream<Item = AppendEntriesRequest<C>> + OptionalSend + 'static,
     {

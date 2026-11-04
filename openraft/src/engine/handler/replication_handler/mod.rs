@@ -26,10 +26,11 @@ use crate::progress::stream_id::StreamId;
 use crate::proposer::Leader;
 use crate::proposer::SendStamp;
 use crate::proposer::WriteQuorumSet;
+use crate::raft::ConflictHint;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::replication::replicate::Replicate;
-use crate::replication::response::ReplicationResult;
+use crate::replication::response::Progress;
 use crate::storage::RaftStateMachine;
 use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::InstantOf;
@@ -259,6 +260,9 @@ where
     /// unchanged. If `None`, the response is from an RPC without payload (e.g., heartbeat), and
     /// inflight state is not modified.
     ///
+    /// Returns `false` if the response is stale or `target` has no progress entry, so nothing was
+    /// applied.
+    ///
     /// This method intentionally bypasses `VecProgress::update_entry_with()`: when log
     /// reversion is explicitly allowed, [`Updater::update_conflicting()`] may reset
     /// `matching` to `None`. `VecProgress::reset_entry_with()` moves the entry down to
@@ -270,10 +274,43 @@ where
         target: C::NodeId,
         conflict: LogIdOf<C>,
         inflight_id: Option<InflightId>,
-    ) {
+    ) -> bool {
+        let mut applied = false;
+
         self.leader.progress.reset_entry_with(&target, |entry| {
             let mut updater = Updater::new(&*self.config, entry);
-            updater.update_conflicting(conflict.index(), inflight_id);
+            applied = updater.update_conflicting(conflict.index(), inflight_id);
+        });
+
+        applied
+    }
+
+    /// Narrow the search range of `target` with its conflict hint, and choose the next probe.
+    fn update_search_from_hint(&mut self, target: &C::NodeId, hint: ConflictHint<C>) {
+        let Some(progress) = self.leader.progress.try_get(target) else {
+            return;
+        };
+
+        let matching_next = progress.matching().next_index();
+
+        let (common, divergence) = hint.compare(&self.state.log_ids);
+
+        // A hint can only narrow the search range, and never below `matching`.
+        let end = std::cmp::min(divergence, progress.data.searching_end);
+        let end = std::cmp::max(end, matching_next);
+
+        // Probe right after the greatest shared log ID. An empty hint means an empty follower log.
+        let probe = match common {
+            Some(log_id) => Some(log_id.index() + 1),
+            None if hint.log_ids.is_empty() => Some(0),
+            None => None,
+        };
+        let probe = probe.filter(|index| matching_next <= *index && *index <= end);
+
+        self.leader.progress.update_data_with(target, |data| {
+            // Only the probe's durable response advances matching.
+            data.searching_end = end;
+            data.probe_start = probe;
         });
     }
 
@@ -309,11 +346,16 @@ where
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_progress(
         &mut self,
-        target: C::NodeId,
         stream_id: StreamId,
-        repl_res: Result<ReplicationResult<C>, String>,
+        progress: Progress<C>,
         inflight_id: Option<InflightId>,
     ) {
+        let Progress {
+            target,
+            result: repl_res,
+            hint,
+        } = progress;
+
         tracing::debug!(
             "{}: target: {}, stream_id: {}, result: {}, inflight_id: {}, current progresses: {}",
             func_name!(),
@@ -334,7 +376,16 @@ where
                     self.update_matching(target, matching, inflight_id);
                 }
                 Err(conflict) => {
-                    self.update_conflicting(target, conflict, inflight_id);
+                    let applied = self.update_conflicting(target.clone(), conflict, inflight_id);
+
+                    // Apply the hint only if the conflict answered the current request. A conflict
+                    // without an inflight id, such as a heartbeat's, cannot be tied to it.
+                    if applied
+                        && inflight_id.is_some()
+                        && let Some(hint) = hint
+                    {
+                        self.update_search_from_hint(&target, hint);
+                    }
                 }
             },
             Err(err_str) => {

@@ -101,13 +101,15 @@ impl RaftService for RaftServiceImpl {
     ) -> Result<Response<pb::AppendEntriesResponse>, Status> {
         debug!("Processing append entries request");
 
-        let append_resp = self
+        let result = self
             .raft_node
             .append_entries(request.into_inner().into())
             .await
             .map_err(|e| Status::internal(format!("Append entries operation failed: {}", e)))?;
 
         debug!("Append entries request processed successfully");
+        // The unary reply keeps the `AppendEntriesResponse` format, which carries no conflict hint.
+        let append_resp = AppendEntriesResponse::from(result);
         Ok(Response::new(append_resp.into()))
     }
 
@@ -196,7 +198,7 @@ impl RaftService for RaftServiceImpl {
         // Call Raft::stream_append
         let output = self.raft_node.stream_append(input_stream);
 
-        // Convert Result<StreamAppendResult, Fatal> to pb::AppendEntriesResponse
+        // Convert Result<AppendResult, Fatal> to pb::AppendEntriesResponse, keeping the hint
         #[allow(clippy::result_large_err)]
         let output_stream = output.map(|result| match result {
             Ok(stream_result) => Ok(stream_result.into()),

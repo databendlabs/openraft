@@ -49,13 +49,15 @@ async fn snapshot_inside_follower_log_does_not_move_log_progress_back() -> Resul
         router.new_raft_node(2).await?;
         let n2 = router.get_raft_handle(&2)?;
 
-        n2.append_entries(AppendEntriesRequest {
-            vote: leader_vote,
-            prev_log_id: None,
-            entries: entries[..=30].to_vec(),
-            leader_commit: Some(log_id(1, 0, 30)),
-        })
-        .await?;
+        let result = n2
+            .append_entries(AppendEntriesRequest {
+                vote: leader_vote,
+                prev_log_id: None,
+                entries: entries[..=30].to_vec(),
+                leader_commit: Some(log_id(1, 0, 30)),
+            })
+            .await?;
+        assert_eq!(Ok(Some(log_id(1, 0, 30))), result);
         router.wait(&2).applied_index(Some(30), "node 2 applied 30").await?;
 
         n2.trigger().snapshot().await?;
@@ -68,13 +70,15 @@ async fn snapshot_inside_follower_log_does_not_move_log_progress_back() -> Resul
         router.new_raft_node(1).await?;
         let n1 = router.get_raft_handle(&1)?;
 
-        n1.append_entries(AppendEntriesRequest {
-            vote: leader_vote,
-            prev_log_id: None,
-            entries: entries.clone(),
-            leader_commit: Some(log_id(1, 0, 10)),
-        })
-        .await?;
+        let result = n1
+            .append_entries(AppendEntriesRequest {
+                vote: leader_vote,
+                prev_log_id: None,
+                entries: entries.clone(),
+                leader_commit: Some(log_id(1, 0, 10)),
+            })
+            .await?;
+        assert_eq!(Ok(Some(log_id(1, 0, 40))), result);
         router.wait(&1).applied_index(Some(10), "node 1 applied 10").await?;
         n1
     };
@@ -87,13 +91,15 @@ async fn snapshot_inside_follower_log_does_not_move_log_progress_back() -> Resul
 
     tracing::info!("--- commit through 40 on node 1; log 31..=40 must still be applied");
     {
-        n1.append_entries(AppendEntriesRequest {
-            vote: leader_vote,
-            prev_log_id: Some(log_id(1, 0, 40)),
-            entries: vec![],
-            leader_commit: Some(log_id(1, 0, 40)),
-        })
-        .await?;
+        let result = n1
+            .append_entries(AppendEntriesRequest {
+                vote: leader_vote,
+                prev_log_id: Some(log_id(1, 0, 40)),
+                entries: vec![],
+                leader_commit: Some(log_id(1, 0, 40)),
+            })
+            .await?;
+        assert_eq!(Ok(Some(log_id(1, 0, 40))), result);
         router.wait(&1).applied_index(Some(40), "node 1 applied 40").await?;
     }
 

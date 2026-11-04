@@ -34,11 +34,12 @@ use crate::proposer::Leader;
 use crate::proposer::LeaderState;
 use crate::proposer::WriteQuorumSet;
 use crate::proposer::leader_state::CandidateState;
+use crate::raft::AppendError;
+use crate::raft::AppendResult;
 use crate::raft::LogSegment;
 use crate::raft::SnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
-use crate::raft::stream_append::StreamAppendResult;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
@@ -648,13 +649,21 @@ where
             self.state.last_log_id().display()
         );
 
-        let stream_result: StreamAppendResult<C> = self.append_entries(vote, segment).map_err(Into::into);
+        let result: AppendResult<C> = match self.append_entries(vote, segment) {
+            Ok(last_log_id) => Ok(last_log_id),
+            Err(RejectAppendEntries::RejectVote(reject)) => Err(AppendError::HigherVote(reject.higher)),
+            // The hint describes the log after the conflicting entries are truncated.
+            Err(RejectAppendEntries::ConflictingLogId(conflict)) => Err(AppendError::Conflict {
+                log_id: conflict.expect,
+                hint: Some(self.following_handler().conflict_hint()),
+            }),
+        };
 
         // The reply claims only that the vote and the log up to `last_log_id` are persisted:
         // the last entry of this request, or `prev_log_id` for a heartbeat without entries.
         // Waiting for the latest accepted IO instead would hold a heartbeat reply until entries
         // of earlier requests are flushed, so a slow disk would delay it past the leader's lease.
-        let condition = match &stream_result {
+        let condition = match &result {
             Ok(last_log_id) => Some(Condition::IOFlushed {
                 io_id: IOId::new_log_io(self.state.vote_ref().to_committed(), last_log_id.clone()),
             }),
@@ -663,7 +672,7 @@ where
 
         self.output.push_command(Command::Respond {
             when: condition,
-            resp: Respond::new(stream_result, tx),
+            resp: Respond::new(result, tx),
         });
     }
 

@@ -167,6 +167,20 @@ pub(crate) struct ProgressEntry<C> {
 - The first request probes the inherited tail while sending the new leader's
   first entry. A caught-up follower can acknowledge the no-op in one round trip.
 
+- On a conflict, `Raft::append_entries` and `Raft::stream_append` return
+  `AppendError::Conflict` with a hint: one ordered vector of the follower's log
+  IDs after truncation. It starts
+  with the local committed position when known, includes selected later leader
+  boundaries, and always ends at the retained in-memory tail. The leader compares
+  every sample, including the first, with its own log to choose another probe.
+  Hints tighten the search;
+  they never advance `matching` or count toward a quorum. Shared committed leader
+  IDs identify common prefixes even when the run end indices differ. Purged
+  positions provide no negative evidence. The leader ignores the hint of a
+  conflict that answers no inflight request, such as a heartbeat's.
+  `AppendError` does not implement serde, so each transport decides whether its
+  wire format carries the hint. Without the hint, the leader uses binary search.
+
 - The Leader sends the log entry at the midpoint of `[ProgressEntry.matching.next_index(), ProgressEntry.searching_end]` to the Follower.
 
 - If the log entry is accepted, update `ProgressEntry.matching` to the current log ID.

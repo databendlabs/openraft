@@ -211,8 +211,11 @@ use openraft::network::v2::RaftNetworkV2;
 // =============================================================================
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse;
+use openraft::raft::AppendError;
+use openraft::raft::AppendResult;
 use openraft::raft::ClientWriteResponse;
 use openraft::raft::ClientWriteResult;
+use openraft::raft::ConflictHint;
 use openraft::raft::FlushPoint;
 #[allow(deprecated)]
 use openraft::raft::InstallSnapshotRequest as DeprecatedInstallSnapshotRequest;

@@ -70,7 +70,7 @@ async fn building_snapshot_does_not_block_apply() -> Result<()> {
         let fu = node.append_entries(rpc);
         let fu = TypeConfig::timeout(Duration::from_millis(500), fu);
         let resp = fu.await??;
-        assert!(resp.is_success());
+        assert_eq!(Ok(Some(log_id(1, 0, next))), resp);
 
         router
             .wait(&1)

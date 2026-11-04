@@ -20,6 +20,7 @@ use openraft::NodeInfo;
 use openraft::RaftTypeConfig;
 use openraft::Snapshot;
 use openraft::errors::RaftError;
+use openraft::raft::AppendEntriesResponse;
 use openraft::raft::SnapshotResponse;
 use openraft::raft::TransferLeaderResponse;
 use openraft::storage::RaftStateMachine;
@@ -102,7 +103,8 @@ where
         "/append" => {
             let req = serde_json::from_slice(&body).map_err(bad_request)?;
 
-            Ok(json_response(&raft.append_entries(req).await))
+            let result = raft.append_entries(req).await;
+            Ok(json_response(&result.map(AppendEntriesResponse::from)))
         }
         "/snapshot" => {
             let (vote, meta, data) = serde_json::from_slice(&body).map_err(bad_request)?;

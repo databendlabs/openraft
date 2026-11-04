@@ -67,11 +67,7 @@ pub struct Network {
 impl RaftNetworkV2<TypeConfig> for Network {
     type SnapshotData = SnapshotData;
 
-    async fn append_entries(
-        &mut self,
-        req: AppendEntriesRequest,
-        option: RPCOption,
-    ) -> Result<AppendEntriesResponse, RPCError> {
+    async fn append_entries(&mut self, req: AppendEntriesRequest, option: RPCOption) -> Result<AppendResult, RPCError> {
         self.inner.append_entries(req, option).await
     }
 

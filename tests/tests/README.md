@@ -202,8 +202,9 @@ router.remove_rpc_rule(blocked);
 Rules apply in insertion order, before custom pre-hooks. Removing one rule
 leaves the other rules active. `RpcRule::matching()` restricts a rule by its
 request contents. `get_rpc_kind_count()` distinguishes Vote from PreVote and
-snapshot chunks from full snapshot transfers. Post-hooks observe the final
-transport response, including quota-induced `PartialSuccess`.
+snapshot chunks from full snapshot transfers. Post-hooks observe the reply the
+leader receives; after a quota truncation, it acknowledges only the entries
+that were sent.
 
 CI runs the whole suite a second time with `OPENRAFT_NETWORK_SEND_DELAY=30`,
 which delays every RPC by 30 ms. A case must therefore never assume an RPC

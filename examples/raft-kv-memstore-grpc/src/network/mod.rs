@@ -20,8 +20,7 @@ use openraft::network::NetStreamAppend;
 use openraft::network::NetTransferLeader;
 use openraft::network::NetVote;
 use openraft::network::RPCOption;
-use openraft::raft::StreamAppendError;
-use openraft::raft::StreamAppendResult;
+use openraft::raft::AppendError;
 use openraft::raft::TransferLeaderRequest;
 use openraft::raft::TransferLeaderResponse;
 use tonic::transport::Channel;
@@ -73,13 +72,13 @@ impl NetworkConnection {
         Ok(RaftServiceClient::new(channel))
     }
 
-    /// Convert pb::AppendEntriesResponse to StreamAppendResult.
+    /// Convert pb::AppendEntriesResponse to AppendResult.
     ///
     /// For `StreamAppend`, conflict is encoded as `conflict = true` plus a required `last_log_id`
-    /// carrying the conflict log id.
-    fn pb_to_stream_result(resp: pb::AppendEntriesResponse) -> Result<StreamAppendResult<TypeConfig>, RPCError> {
+    /// carrying the conflict log id, and an optional `hint`.
+    fn pb_to_stream_result(resp: pb::AppendEntriesResponse) -> Result<AppendResult, RPCError> {
         if let Some(higher_vote) = resp.rejected_by {
-            return Ok(Err(StreamAppendError::HigherVote(higher_vote)));
+            return Ok(Err(AppendError::HigherVote(higher_vote)));
         }
 
         if resp.conflict {
@@ -88,7 +87,11 @@ impl NetworkConnection {
                     "Missing `last_log_id` in conflict stream-append response",
                 )))
             })?;
-            return Ok(Err(StreamAppendError::Conflict(conflict_log_id.into())));
+            let conflict = AppendError::Conflict {
+                log_id: conflict_log_id.into(),
+                hint: resp.hint.map(Into::into),
+            };
+            return Ok(Err(conflict));
         }
 
         Ok(Ok(resp.last_log_id.map(Into::into)))
@@ -125,7 +128,7 @@ impl NetStreamAppend<TypeConfig> for NetworkConnection {
         &'s mut self,
         input: S,
         _option: RPCOption,
-    ) -> BoxFuture<'s, Result<BoxStream<'s, Result<StreamAppendResult<TypeConfig>, RPCError>>, RPCError>>
+    ) -> BoxFuture<'s, Result<BoxStream<'s, Result<AppendResult, RPCError>>, RPCError>>
     where
         S: Stream<Item = AppendEntriesRequest> + OptionalSend + Unpin + 'static,
     {
@@ -235,5 +238,58 @@ impl NetTransferLeader<TypeConfig> for NetworkConnection {
         Err(RPCError::Unreachable(Unreachable::new(&AnyError::error(
             "transfer_leader not implemented",
         ))))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use openraft::raft::AppendError;
+    use openraft::raft::ConflictHint;
+    use prost::Message;
+
+    use super::NetworkConnection;
+    use crate::protobuf as pb;
+    use crate::typ::AppendResult;
+    use crate::typ::LogId;
+
+    /// A stream conflict keeps its hint across the wire.
+    #[test]
+    fn stream_conflict_hint_round_trip() -> Result<(), prost::DecodeError> {
+        let committed = LogId::new(1, 2);
+        let tail = LogId::new(2, 5);
+        for log_ids in [vec![], vec![tail], vec![committed, tail]] {
+            let conflict = AppendError::Conflict {
+                log_id: LogId::new(2, 7),
+                hint: Some(ConflictHint::new(log_ids)),
+            };
+            let expected: AppendResult = Err(conflict);
+
+            let bytes = pb::AppendEntriesResponse::from(expected.clone()).encode_to_vec();
+            let decoded = pb::AppendEntriesResponse::decode(bytes.as_slice())?;
+            let actual = NetworkConnection::pb_to_stream_result(decoded).unwrap();
+
+            assert_eq!(expected, actual);
+        }
+        Ok(())
+    }
+
+    /// A conflict from a peer that sends no hint decodes without one.
+    #[test]
+    fn stream_conflict_without_hint_decodes() {
+        let response = pb::AppendEntriesResponse {
+            rejected_by: None,
+            conflict: true,
+            last_log_id: Some(LogId::new(2, 7).into()),
+            hint: None,
+        };
+
+        let actual = NetworkConnection::pb_to_stream_result(response).unwrap();
+
+        let conflict = AppendError::Conflict {
+            log_id: LogId::new(2, 7),
+            hint: None,
+        };
+        let expected: AppendResult = Err(conflict);
+        assert_eq!(expected, actual);
     }
 }

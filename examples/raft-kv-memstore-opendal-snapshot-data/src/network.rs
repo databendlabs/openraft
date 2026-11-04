@@ -35,9 +35,13 @@ impl RaftNetworkV2<TypeConfig> for Connection {
         &mut self,
         req: AppendEntriesRequest,
         _option: RPCOption,
-    ) -> Result<AppendEntriesResponse, RPCError> {
-        let resp = self.router.send(self.target, "/raft/append", req).await?;
-        Ok(resp)
+    ) -> Result<AppendResult, RPCError> {
+        // The reply is an `AppendEntriesResponse`, which carries no log id: take them from the
+        // request.
+        let last_log_id = req.last_log_id();
+        let prev_log_id = req.prev_log_id;
+        let resp: AppendEntriesResponse = self.router.send(self.target, "/raft/append", req).await?;
+        Ok(resp.into_append_result(prev_log_id, last_log_id))
     }
 
     /// A real application should replace this method with customized implementation.

@@ -4,6 +4,7 @@ use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::Vote;
 use openraft::raft::AppendEntriesRequest;
+use openraft::raft::AppendError;
 use openraft::testing::blank_ent;
 use openraft_memstore::ClientRequest;
 
@@ -52,8 +53,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
 
     let node = router.get_raft_handle(&0)?;
     let resp = node.append_entries(rpc).await?;
-    assert!(!resp.is_success());
-    assert!(resp.is_conflict());
+    assert!(matches!(resp, Err(AppendError::Conflict { .. })));
 
     // Feed logs
 
@@ -77,8 +77,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
 
     let node = router.get_raft_handle(&0)?;
     let resp = node.append_entries(rpc).await?;
-    assert!(resp.is_success());
-    assert!(!resp.is_conflict());
+    assert_eq!(Ok(Some(log_id(1, 0, 2))), resp);
 
     // Expect a conflict with prev_log_index == 3
 
@@ -91,8 +90,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
 
     let node = router.get_raft_handle(&0)?;
     let resp = node.append_entries(rpc).await?;
-    assert!(!resp.is_success());
-    assert!(resp.is_conflict());
+    assert!(matches!(resp, Err(AppendError::Conflict { .. })));
 
     Ok(())
 }

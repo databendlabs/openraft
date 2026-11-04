@@ -5,7 +5,8 @@ use futures::StreamExt;
 use openraft::Config;
 use openraft::Vote;
 use openraft::raft::AppendEntriesRequest;
-use openraft::raft::StreamAppendError;
+use openraft::raft::AppendError;
+use openraft::raft::ConflictHint;
 use openraft::raft::VoteRequest;
 use openraft::testing::blank_ent;
 
@@ -112,9 +113,14 @@ async fn stream_append_conflict() -> Result<()> {
     let output_stream = pin!(raft.stream_append(input_stream));
 
     let results: Vec<_> = output_stream.collect().await;
+    // The hint describes the follower's whole log: it has no entry at the conflicting index.
+    let hint = ConflictHint::new(vec![log_id(0, 0, 0), log_id(1, 1, 1)]);
     assert_eq!(results, vec![
         Ok(Ok(Some(log_id(1, 1, 1)))),
-        Ok(Err(StreamAppendError::Conflict(log_id(1, 1, 5)))),
+        Ok(Err(AppendError::Conflict {
+            log_id: log_id(1, 1, 5),
+            hint: Some(hint),
+        })),
     ]);
 
     Ok(())
@@ -165,7 +171,7 @@ async fn stream_append_higher_vote() -> Result<()> {
     let output_stream = pin!(raft.stream_append(input_stream));
 
     let results: Vec<_> = output_stream.collect().await;
-    assert_eq!(results, vec![Ok(Err(StreamAppendError::HigherVote(Vote::new(10, 2)))),]);
+    assert_eq!(results, vec![Ok(Err(AppendError::HigherVote(Vote::new(10, 2)))),]);
 
     Ok(())
 }

@@ -17,7 +17,7 @@ use openraft::errors::Unreachable;
 use openraft::network::RPCOption;
 use openraft::network::v2::RaftNetworkV2;
 use openraft::raft::AppendEntriesRequest;
-use openraft::raft::AppendEntriesResponse;
+use openraft::raft::AppendResult;
 use openraft::raft::SnapshotResponse;
 use openraft::raft::TransferLeaderRequest;
 use openraft::raft::TransferLeaderResponse;
@@ -106,7 +106,7 @@ where C: TestConfig
         &mut self,
         request: AppendEntriesRequest<C>,
         _option: RPCOption,
-    ) -> Result<AppendEntriesResponse<C>, RPCError<C>> {
+    ) -> Result<AppendResult<C>, RPCError<C>> {
         self.delay_send().await;
         let target = self.target()?;
         let response = target.append_entries(request).await;

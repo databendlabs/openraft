@@ -16,6 +16,7 @@ use openraft::network::RaftNetworkFactory;
 use openraft::network::v2::RaftNetworkV2;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse;
+use openraft::raft::AppendResult;
 use openraft::raft::SnapshotResponse;
 use openraft::raft::TransferLeaderRequest;
 use openraft::raft::TransferLeaderResponse;
@@ -106,8 +107,13 @@ where C: RaftTypeConfig<Node = NodeInfo>
         &mut self,
         req: AppendEntriesRequest<C>,
         option: RPCOption,
-    ) -> Result<AppendEntriesResponse<C>, RPCError<C>> {
-        self.request("append", req, &option).await
+    ) -> Result<AppendResult<C>, RPCError<C>> {
+        // The reply is an `AppendEntriesResponse`, which carries no log id: take them from the
+        // request.
+        let prev_log_id = req.prev_log_id.clone();
+        let last_log_id = req.last_log_id();
+        let response: AppendEntriesResponse<C> = self.request("append", req, &option).await?;
+        Ok(response.into_append_result(prev_log_id, last_log_id))
     }
 
     async fn full_snapshot(
