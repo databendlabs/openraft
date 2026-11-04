@@ -15,6 +15,7 @@ use openraft::membership::RaftMembership;
 use openraft::membership::RaftMembershipEdit;
 use quorum_set::verify_intersection;
 
+use crate::NodeChange;
 use crate::ThresholdMembership;
 use crate::WeightedChange;
 use crate::WeightedMembership;
@@ -438,7 +439,10 @@ fn test_apply() {
     assert_eq!(want, res);
 
     let change = WeightedChange {
-        add_nodes: btreemap! {1 => "z".to_string(), 4 => "d".to_string()},
+        nodes: NodeChange {
+            add_nodes: btreemap! {1 => "z".to_string(), 4 => "d".to_string()},
+            ..NodeChange::default()
+        },
         ..WeightedChange::weights(four_voters.clone())
     };
     let res = change.apply(&membership, true);
@@ -451,14 +455,20 @@ fn test_apply() {
     // node.
     let with_four = WeightedMembership::new(weights.clone(), 2, want_nodes).unwrap();
     let change = WeightedChange {
-        remove_nodes: btreeset! {4},
+        nodes: NodeChange {
+            remove_nodes: btreeset! {4},
+            ..NodeChange::default()
+        },
         ..WeightedChange::default()
     };
     let res = change.apply(&with_four, true);
     assert_eq!(Ok(membership.clone()), res);
 
     let change = WeightedChange {
-        remove_nodes: btreeset! {3},
+        nodes: NodeChange {
+            remove_nodes: btreeset! {3},
+            ..NodeChange::default()
+        },
         ..WeightedChange::default()
     };
     let res = change.apply(&membership, true);
@@ -568,7 +578,10 @@ fn test_change_through_joint_keeps_node_metadata() {
         let pairs = voters.into_iter().map(|voter| (voter, 1));
         let weights = pairs.collect();
         WeightedChange {
-            remove_nodes,
+            nodes: NodeChange {
+                remove_nodes,
+                ..NodeChange::default()
+            },
             ..WeightedChange::weights(weights)
         }
     });
@@ -580,9 +593,11 @@ fn test_apply_checks_roles() {
         unit_weights,
         Membership::with_roles,
         |add_nodes, remove_nodes, roles| WeightedChange {
-            add_nodes,
-            remove_nodes,
-            roles,
+            nodes: NodeChange {
+                add_nodes,
+                remove_nodes,
+                roles,
+            },
             ..WeightedChange::default()
         },
     );

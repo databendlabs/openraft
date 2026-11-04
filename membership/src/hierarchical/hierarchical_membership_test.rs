@@ -16,6 +16,7 @@ use openraft::membership::RaftMembershipEdit;
 
 use crate::HierarchicalChange;
 use crate::HierarchicalMembership;
+use crate::NodeChange;
 use crate::errors::InvalidGroups;
 use crate::quorum::Group;
 use crate::quorum::HierarchicalQuorumSet;
@@ -615,7 +616,10 @@ fn test_apply_edits_nodes() {
 
     // Adding nodes keeps the metadata of a known node; removing a learner drops it.
     let change = HierarchicalChange {
-        add_nodes: btreemap! {1 => "z".to_string(), 4 => "n4".to_string()},
+        nodes: NodeChange {
+            add_nodes: btreemap! {1 => "z".to_string(), 4 => "n4".to_string()},
+            ..NodeChange::default()
+        },
         ..HierarchicalChange::default()
     };
     let with_four = change.apply(&membership, true).unwrap();
@@ -625,7 +629,10 @@ fn test_apply_edits_nodes() {
     assert_eq!(want, with_four);
 
     let change = HierarchicalChange {
-        remove_nodes: btreeset! {4},
+        nodes: NodeChange {
+            remove_nodes: btreeset! {4},
+            ..NodeChange::default()
+        },
         ..HierarchicalChange::default()
     };
     let res = change.apply(&with_four, true);
@@ -634,7 +641,10 @@ fn test_apply_edits_nodes() {
 
     // Removing a voter fails, because every voter needs a node.
     let change = HierarchicalChange {
-        remove_nodes: btreeset! {3},
+        nodes: NodeChange {
+            remove_nodes: btreeset! {3},
+            ..NodeChange::default()
+        },
         ..HierarchicalChange::default()
     };
     let res = change.apply(&membership, true);
@@ -736,7 +746,10 @@ fn test_change_through_joint_keeps_node_metadata() {
     assert_change_through_joint_keeps_node_metadata(one_group, |voters, remove_nodes| {
         let groups = Group::of_groups(1, [("a", Group::of_voters(2, voters))]);
         HierarchicalChange {
-            remove_nodes,
+            nodes: NodeChange {
+                remove_nodes,
+                ..NodeChange::default()
+            },
             ..HierarchicalChange::groups(groups)
         }
     });
@@ -746,9 +759,11 @@ fn test_change_through_joint_keeps_node_metadata() {
 fn test_apply_checks_roles() {
     assert_apply_checks_roles(one_group, Membership::with_roles, |add_nodes, remove_nodes, roles| {
         Change {
-            add_nodes,
-            remove_nodes,
-            roles,
+            nodes: NodeChange {
+                add_nodes,
+                remove_nodes,
+                roles,
+            },
             ..Change::default()
         }
     });

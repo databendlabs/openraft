@@ -14,6 +14,8 @@ use openraft_macros::since;
 
 use crate::ThresholdMembership;
 use crate::errors::InvalidThresholds;
+use crate::node_change::add_nodes_to;
+use crate::node_change::remove_nodes_from;
 use crate::quorum::QuorumSet;
 
 /// A change to a [`ThresholdMembership`]. [`apply()`](RaftMembershipEdit::apply) adds
@@ -156,9 +158,7 @@ where
         };
 
         let mut nodes = membership.nodes.clone();
-        for (node_id, node) in self.add_nodes {
-            nodes.entry(node_id).or_insert(node);
-        }
+        add_nodes_to(&mut nodes, self.add_nodes, membership);
 
         let voters = match self.voters {
             None => last_write.id_set().clone(),
@@ -169,9 +169,7 @@ where
         let voter_count = voters.len() as u64;
         let write_size = ThresholdMembership::<NID, N>::check_write_size(voter_count, write_size)?;
 
-        for node_id in &self.remove_nodes {
-            nodes.remove(node_id);
-        }
+        remove_nodes_from(&mut nodes, &self.remove_nodes);
 
         let mut target = ThresholdMembership::from_configs([(voters, write_size)], nodes);
         target.ensure_voters_have_nodes()?;

@@ -17,6 +17,7 @@ use quorum_set::verify_intersection;
 
 use crate::ExplicitChange;
 use crate::ExplicitMembership;
+use crate::NodeChange;
 use crate::errors::InvalidQuorumLists;
 use crate::quorum::ExplicitQuorumSet;
 use crate::quorum::QuorumSet;
@@ -318,7 +319,10 @@ fn test_apply() {
 
     // Adding nodes keeps the metadata of a known node; removing a learner drops it.
     let change = ExplicitChange {
-        add_nodes: btreemap! {1 => "z".to_string(), 4 => "d".to_string()},
+        nodes: NodeChange {
+            add_nodes: btreemap! {1 => "z".to_string(), 4 => "d".to_string()},
+            ..NodeChange::default()
+        },
         ..ExplicitChange::default()
     };
     let with_four = change.apply(&membership, true).unwrap();
@@ -328,7 +332,10 @@ fn test_apply() {
     assert_eq!(want, with_four);
 
     let change = ExplicitChange {
-        remove_nodes: btreeset! {4},
+        nodes: NodeChange {
+            remove_nodes: btreeset! {4},
+            ..NodeChange::default()
+        },
         ..ExplicitChange::default()
     };
     let res = change.apply(&with_four, true);
@@ -336,7 +343,10 @@ fn test_apply() {
 
     // Removing a voter fails, because every voter needs a node.
     let change = ExplicitChange {
-        remove_nodes: btreeset! {3},
+        nodes: NodeChange {
+            remove_nodes: btreeset! {3},
+            ..NodeChange::default()
+        },
         ..ExplicitChange::default()
     };
     let res = change.apply(&membership, true);
@@ -500,7 +510,10 @@ fn test_change_through_joint_keeps_node_metadata() {
     assert_change_through_joint_keeps_node_metadata(majority, |voters, remove_nodes| {
         let quorums = majorities(&voters);
         ExplicitChange {
-            remove_nodes,
+            nodes: NodeChange {
+                remove_nodes,
+                ..NodeChange::default()
+            },
             ..ExplicitChange::quorums(quorums.clone(), quorums)
         }
     });
@@ -510,9 +523,11 @@ fn test_change_through_joint_keeps_node_metadata() {
 fn test_apply_checks_roles() {
     assert_apply_checks_roles(majority, Membership::with_roles, |add_nodes, remove_nodes, roles| {
         ExplicitChange {
-            add_nodes,
-            remove_nodes,
-            roles,
+            nodes: NodeChange {
+                add_nodes,
+                remove_nodes,
+                roles,
+            },
             ..ExplicitChange::default()
         }
     });

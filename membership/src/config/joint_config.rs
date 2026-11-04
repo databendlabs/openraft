@@ -16,6 +16,9 @@ use openraft_macros::since;
 use crate::config::Config;
 use crate::config::default_role;
 use crate::config::has_id;
+use crate::node_change::NodeChange;
+use crate::node_change::add_nodes_to;
+use crate::node_change::remove_nodes_from;
 use crate::quorum::Joint;
 use crate::quorum::QuorumIntersection;
 use crate::quorum::QuorumSet;
@@ -94,31 +97,26 @@ where
                 nodes.insert(node_id.clone(), node.clone());
             }
         }
-        for (node_id, node) in add_nodes {
-            let node = match self.get_node(&node_id) {
-                Some(known) => known.node.clone(),
-                None => node,
-            };
-            nodes.insert(node_id, node);
-        }
-        for node_id in remove_nodes {
-            nodes.remove(node_id);
-        }
+        add_nodes_to(&mut nodes, add_nodes, self);
+        remove_nodes_from(&mut nodes, remove_nodes);
         nodes
     }
 
-    /// Returns a membership with `config` as its only config, keeping the roles set by the last
-    /// config before applying `roles`. Drops demoted learners when `retain` is false.
+    /// Returns a membership with `rules` as its only config, applying the node edits in `change`.
+    /// Keeps the last config's set roles, then applies new roles and the retention policy.
     pub(crate) fn replace_config(
         &self,
-        mut config: Config<N, Q>,
-        roles: BTreeMap<Q::Id, NodeRole>,
+        rules: (Q, Q),
+        change: NodeChange<Q::Id, N>,
         retain: bool,
     ) -> Result<Self, NodeNotFound<Q::Id>> {
+        let (read, write) = rules;
+        let nodes = self.edit_nodes(change.add_nodes, &change.remove_nodes);
+        let mut config = Config::new(read, write, nodes)?;
         if let Some(last) = self.parts.last() {
             config.keep_roles(last);
         }
-        config.set_roles(roles)?;
+        config.set_roles(change.roles)?;
 
         let mut target = Self { parts: vec![config] };
         if !retain {

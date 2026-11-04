@@ -274,6 +274,29 @@ where
     let want = want.map_err(MembershipError::from);
     assert_eq!(want, res);
 
+    tracing::info!("Removing an added node takes precedence over the addition");
+    {
+        let change = change_nodes(btreemap! {5 => ()}, btreeset! {5}, btreemap! {});
+        let res = change.apply(&membership, true);
+        let want = Ok(membership.clone());
+        assert_eq!(want, res);
+
+        let change = change_nodes(btreemap! {5 => ()}, btreeset! {5}, btreemap! {5 => NodeRole::Empty});
+        let res = change.apply(&membership, true);
+        let not_found = NodeNotFound::new(5, Operation::None);
+        let want = Err(MembershipError::from(not_found));
+        assert_eq!(want, res);
+    }
+
+    tracing::info!("Missing voter metadata is checked before role assignments");
+    {
+        let change = change_nodes(btreemap! {}, btreeset! {3}, btreemap! {9 => NodeRole::Empty});
+        let res = change.apply(&membership, true);
+        let not_found = NodeNotFound::new(3, Operation::None);
+        let want = Err(MembershipError::from(not_found));
+        assert_eq!(want, res);
+    }
+
     // Write voter 2 keeps a role without `ReceiveLogs` as given: OpenRaft rejects the result when
     // it is proposed.
     let change = change_nodes(btreemap! {}, btreeset! {}, btreemap! {2 => NodeRole::Campaigner});

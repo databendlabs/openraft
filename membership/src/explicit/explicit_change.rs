@@ -12,29 +12,29 @@ use openraft::membership::RaftMembershipEdit;
 use openraft_macros::since;
 
 use crate::ExplicitMembership;
-use crate::config::Config;
+use crate::NodeChange;
 use crate::errors::InvalidQuorumLists;
 use crate::quorum::ExplicitQuorumSet;
 
 /// A change to an [`ExplicitMembership`]. [`apply()`](RaftMembershipEdit::apply) adds
-/// `add_nodes`, sets the quorum lists, removes `remove_nodes`, then sets `roles`.
+/// `nodes.add_nodes`, sets the quorum lists, removes `nodes.remove_nodes`, then sets `nodes.roles`.
 ///
 /// A change keeps each quorum list that it does not set, and the roles that the last config sets
 /// for the nodes that remain. A list that holds no quorum or an empty quorum, or a read quorum
 /// that misses a write quorum, makes `apply()` return [`MembershipError::UserDefined`]. A voter
 /// without a node makes `apply()` return [`MembershipError::NodeNotFound`].
 ///
-/// A node of the result takes the role that `roles` or the last config sets for it, and otherwise
-/// the default for its status in the result: [`NodeRole::Campaigner`] `|`
+/// A node of the result takes the role that `nodes.roles` or the last config sets for it, and
+/// otherwise the default for its status in the result: [`NodeRole::Campaigner`] `|`
 /// [`NodeRole::ReceiveLogs`] for a voter, and [`NodeRole::ReceiveLogs`] for every other node. A
 /// set role stays until a change sets another one: a voter with only [`NodeRole::ReceiveLogs`]
-/// that becomes a learner, and later a voter again, still does not campaign. A role of `roles`
-/// equal to the default for the node's status clears the set role. A node of `roles` that the
-/// result lacks makes `apply()` return [`MembershipError::NodeNotFound`]. The result keeps a role
-/// as given, even one without [`NodeRole::ReceiveLogs`] for a write voter: OpenRaft rejects such
-/// a result with [`MembershipError::WriteVoterWithoutReceiveLogs`] when it is proposed. When
-/// OpenRaft moves to the result through a joint config, the joint gives each node its role in the
-/// result, joined with its old role if it is an old voter, and
+/// that becomes a learner, and later a voter again, still does not campaign. A role of
+/// `nodes.roles` equal to the default for the node's status clears the set role. A node of
+/// `nodes.roles` that the result lacks makes `apply()` return [`MembershipError::NodeNotFound`].
+/// The result keeps a role as given, even one without [`NodeRole::ReceiveLogs`] for a write voter:
+/// OpenRaft rejects such a result with [`MembershipError::WriteVoterWithoutReceiveLogs`] when it is
+/// proposed. When OpenRaft moves to the result through a joint config, the joint gives each node
+/// its role in the result, joined with its old role if it is an old voter, and
 /// [`make_uniform()`](RaftMembershipEdit::make_uniform) restores the roles of the result.
 ///
 /// # Examples
@@ -61,6 +61,10 @@ use crate::quorum::ExplicitQuorumSet;
 /// [`MembershipError::UserDefined`]: openraft::errors::MembershipError::UserDefined
 /// [`MembershipError::NodeNotFound`]: openraft::errors::MembershipError::NodeNotFound
 /// [`MembershipError::WriteVoterWithoutReceiveLogs`]: openraft::errors::MembershipError::WriteVoterWithoutReceiveLogs
+#[since(
+    version = "0.10.0",
+    change = "moved add_nodes, remove_nodes and roles into nodes: NodeChange"
+)]
 #[since(version = "0.10.0")]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExplicitChange<NID, N>
@@ -68,21 +72,14 @@ where
     NID: NodeId,
     N: Node,
 {
-    /// Nodes to add as learners. A node that already exists keeps its metadata.
-    pub add_nodes: BTreeMap<NID, N>,
+    /// The node additions, removals and role assignments to apply.
+    pub nodes: NodeChange<NID, N>,
 
     /// The new minimal read quorums; `None` keeps the read list.
     pub read: Option<Vec<BTreeSet<NID>>>,
 
     /// The new minimal write quorums; `None` keeps the write list.
     pub write: Option<Vec<BTreeSet<NID>>>,
-
-    /// Nodes to remove. Removing a voter of the result fails.
-    pub remove_nodes: BTreeSet<NID>,
-
-    /// The roles to set in the result, by node ID; each node must be a node of the result. A node
-    /// that it does not name keeps the role that the last config sets.
-    pub roles: BTreeMap<NID, NodeRole>,
 }
 
 impl<NID, N> ExplicitChange<NID, N>
@@ -116,8 +113,9 @@ where
     }
 
     /// Returns this change with `roles` as the roles that it sets.
-    pub fn with_roles(self, roles: BTreeMap<NID, NodeRole>) -> Self {
-        Self { roles, ..self }
+    pub fn with_roles(mut self, roles: BTreeMap<NID, NodeRole>) -> Self {
+        self.nodes = self.nodes.with_roles(roles);
+        self
     }
 }
 
@@ -129,11 +127,9 @@ where
     /// Returns the empty change, which keeps the quorum lists and the nodes.
     fn default() -> Self {
         Self {
-            add_nodes: BTreeMap::new(),
+            nodes: NodeChange::default(),
             read: None,
             write: None,
-            remove_nodes: BTreeSet::new(),
-            roles: BTreeMap::new(),
         }
     }
 }
@@ -147,11 +143,11 @@ where
         write!(
             f,
             "{{add_nodes: {:?}, read: {}, write: {}, remove_nodes: {:?}, roles: {:?}}}",
-            self.add_nodes,
+            self.nodes.add_nodes,
             self.read.display_debug(),
             self.write.display_debug(),
-            self.remove_nodes,
-            self.roles
+            self.nodes.remove_nodes,
+            self.nodes.roles
         )
     }
 }
@@ -186,17 +182,15 @@ where
         };
         ExplicitMembership::<NID, N>::check_rules(&read, &write)?;
 
-        let nodes = membership.edit_nodes(self.add_nodes, &self.remove_nodes);
-        let config = Config::new(read, write, nodes)?;
-        let target = membership.replace_config(config, self.roles, retain)?;
+        let target = membership.replace_config((read, write), self.nodes, retain)?;
         tracing::debug!("target membership: {}", target);
         Ok(target)
     }
 
     fn add_learner(node_id: NID, node: N) -> Self {
-        let add_nodes = BTreeMap::from([(node_id, node)]);
+        let nodes = NodeChange::add_node(node_id, node);
         Self {
-            add_nodes,
+            nodes,
             ..Self::default()
         }
     }

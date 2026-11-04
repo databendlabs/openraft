@@ -38,9 +38,10 @@ remote site. It can still become leader when the leader transfers leadership to
 it with [`Trigger::transfer_leader()`]: a transfer starts an election on the
 target even without `Campaigner`.
 
+These four change types share a [`NodeChange`] in their `nodes` field.
 Each of the four memberships sets roles with its `with_roles()` method, such
 as [`WeightedMembership::with_roles()`]. Each change type sets them with its
-`roles` field or its `with_roles()` builder. A change that sets only roles
+`nodes.roles` field or its `with_roles()` builder. A change that sets only roles
 keeps every quorum, so OpenRaft appends it without a joint config:
 
 ```rust,ignore
@@ -78,6 +79,7 @@ only the new config, restoring that config's roles.
 [`HierarchicalMembership`]: crate::HierarchicalMembership
 [`GridMembership`]: crate::GridMembership
 [`ExplicitMembership`]: crate::ExplicitMembership
+[`NodeChange`]: crate::NodeChange
 [`WeightedMembership::with_roles()`]: crate::WeightedMembership::with_roles
 [`threshold`]: crate::docs::threshold
 [`weighted`]: crate::docs::weighted

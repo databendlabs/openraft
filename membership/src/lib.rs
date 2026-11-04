@@ -28,6 +28,7 @@ pub mod errors;
 mod explicit;
 mod grid;
 mod hierarchical;
+mod node_change;
 pub mod quorum;
 #[cfg(test)]
 mod testing;
@@ -41,6 +42,7 @@ pub use grid::GridChange;
 pub use grid::GridMembership;
 pub use hierarchical::HierarchicalChange;
 pub use hierarchical::HierarchicalMembership;
+pub use node_change::NodeChange;
 pub use threshold::ThresholdChange;
 pub use threshold::ThresholdMembership;
 pub use weighted::WeightedChange;

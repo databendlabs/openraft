@@ -195,7 +195,7 @@ takes a [`HierarchicalChange`]. [`HierarchicalChange::groups()`] sets a new
 root group, with the write size of every group in its tree. A change keeps the
 groups and their write sizes unless it sets a new root group, and it derives
 the read sizes from its result. A new voter must already be a node: add it as
-a learner first, or with the `add_nodes` field of the change.
+a learner first, or with the `nodes.add_nodes` field of the change.
 
 ```rust
 use std::collections::BTreeSet;
