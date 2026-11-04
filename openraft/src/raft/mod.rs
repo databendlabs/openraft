@@ -42,10 +42,12 @@ use linearizable_read::LinearizerOption;
 use linearizable_read::ReadLogId;
 pub use message::AppendEntriesRequest;
 pub use message::AppendEntriesResponse;
+pub use message::AppendEntriesResponseWithHint;
 pub use message::ChangeMembershipOutcome;
 pub use message::ChangeMembershipRequest;
 pub use message::ClientWriteResponse;
 pub use message::ClientWriteResult;
+pub use message::ConflictHint;
 #[allow(deprecated)]
 pub use message::InstallSnapshotRequest;
 #[allow(deprecated)]
@@ -1016,6 +1018,19 @@ where
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn append_entries(&self, rpc: AppendEntriesRequest<C>) -> Result<AppendEntriesResponse<C>, RaftError<C>> {
         self.protocol_api().append_entries(rpc).await.into_raft_result()
+    }
+
+    /// Submit an AppendEntries probe and return optional guidance after a log conflict.
+    ///
+    /// Use a separate transport endpoint for this response. Existing AppendEntries and streaming
+    /// endpoints retain their response formats. Successful probes wait for the acknowledged logs
+    /// to flush; conflict hints describe the current in-memory log and acknowledge no replication.
+    #[since(version = "0.10.0")]
+    pub async fn append_entries_with_hint(
+        &self,
+        rpc: AppendEntriesRequest<C>,
+    ) -> Result<AppendEntriesResponseWithHint<C>, RaftError<C>> {
+        self.protocol_api().append_entries_with_hint(rpc).await.into_raft_result()
     }
 
     /// Submit a stream of AppendEntries RPCs to this Raft node.

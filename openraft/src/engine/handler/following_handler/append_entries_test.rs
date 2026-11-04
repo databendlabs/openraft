@@ -11,10 +11,12 @@ use crate::batch::Batch;
 use crate::engine::Command;
 use crate::engine::Condition;
 use crate::engine::Engine;
+use crate::engine::LogIdList;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
+use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::testing::blank_ent;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::StoredMembershipOf;
@@ -46,6 +48,91 @@ fn eng() -> Engine<UTConfig> {
     );
     eng.state.server_state = eng.calc_server_state();
     eng
+}
+
+#[test]
+fn conflict_hint_survives_vote_only_flush() {
+    let mut eng = eng();
+    let expected = crate::raft::ConflictHint::new(vec![log_id(1, 1, 1), log_id(2, 1, 3)]);
+    let vote_io = IOId::new_log_io(Vote::new(3, 1).to_committed(), None);
+    eng.state.log_progress_mut().try_update_all(vote_io);
+
+    let actual = eng.following_handler().conflict_hint();
+    assert_eq!(expected, actual);
+}
+
+#[test]
+fn conflict_hint_excludes_truncated_entries() {
+    let mut eng = eng();
+    let prev = log_id(3, 1, 3);
+    let result = eng.following_handler().ensure_log_consecutive(Some(&prev));
+    let expected_error = crate::errors::ConflictingLogId {
+        expect: prev,
+        local: Some(log_id(2, 1, 3)),
+    };
+    assert_eq!(
+        Err(crate::errors::RejectAppendEntries::ConflictingLogId(expected_error)),
+        result
+    );
+    let hint = eng.following_handler().conflict_hint();
+    let expected = crate::raft::ConflictHint::new(vec![log_id(1, 1, 1), log_id(2, 1, 2)]);
+    assert_eq!(expected, hint);
+}
+
+#[test]
+fn conflict_hint_uses_local_commit_and_only_later_samples() {
+    let mut eng = eng();
+    let committed_log_id = log_id(2, 1, 2);
+    let committed = Some(committed_log_id);
+    eng.state.update_local_committed(&committed);
+    let vote = eng.state.vote_ref().to_committed();
+    let cluster_committed = LogIOId::new(vote, Some(log_id(2, 1, 9)));
+    let io_state = eng.state.io_state_mut();
+    let updated = io_state.cluster_committed.try_update(cluster_committed);
+    updated.unwrap();
+
+    let hint = eng.following_handler().conflict_hint();
+    let tail = log_id(2, 1, 3);
+    let expected = crate::raft::ConflictHint::new(vec![committed_log_id, tail]);
+    assert_eq!(expected, hint);
+}
+
+#[test]
+fn conflict_hint_deduplicates_the_committed_tail() {
+    let mut eng = eng();
+    let tail = log_id(2, 1, 3);
+    let committed = Some(tail);
+    eng.state.update_local_committed(&committed);
+    let hint = eng.following_handler().conflict_hint();
+    let expected = crate::raft::ConflictHint::new(vec![tail]);
+    assert_eq!(expected, hint);
+}
+
+#[test]
+fn conflict_hint_includes_a_fully_purged_tail() {
+    let mut eng = eng();
+    let tail = log_id(2, 1, 3);
+    let committed = Some(tail);
+    eng.state.update_local_committed(&committed);
+    eng.state.log_ids.purge(&tail);
+    let hint = eng.following_handler().conflict_hint();
+    let expected = crate::raft::ConflictHint::new(vec![tail]);
+    assert_eq!(expected, hint);
+}
+
+#[test]
+fn conflict_hint_keeps_commit_and_tail_when_samples_are_limited() {
+    let mut eng = eng();
+    let log_ids = (1..=12).map(|index| log_id(index, 1, index));
+    eng.state.log_ids = LogIdList::new(None, log_ids);
+    let committed_log_id = log_id(2, 1, 2);
+    let committed = Some(committed_log_id);
+    eng.state.update_local_committed(&committed);
+    let hint = eng.following_handler().conflict_hint();
+    let indices = [2, 6, 7, 8, 9, 10, 11, 12];
+    let log_ids = indices.map(|index| log_id(index, 1, index));
+    let expected = crate::raft::ConflictHint::new(log_ids.to_vec());
+    assert_eq!(expected, hint);
 }
 
 #[test]

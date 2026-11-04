@@ -34,8 +34,11 @@ use crate::proposer::Leader;
 use crate::proposer::LeaderState;
 use crate::proposer::WriteQuorumSet;
 use crate::proposer::leader_state::CandidateState;
+use crate::raft::AppendEntriesResponse;
+use crate::raft::AppendEntriesResponseWithHint;
 use crate::raft::LogSegment;
 use crate::raft::SnapshotResponse;
+use crate::raft::StreamAppendError;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft::stream_append::StreamAppendResult;
@@ -648,23 +651,50 @@ where
             self.state.last_log_id().display()
         );
 
-        let stream_result: StreamAppendResult<C> = self.append_entries(vote, segment).map_err(Into::into);
+        let (stream_result, condition) = self.append_entries_with_flush_condition(vote, segment);
+        self.output.push_command(Command::Respond {
+            when: condition,
+            resp: Respond::new(stream_result, tx),
+        });
+    }
 
+    pub(crate) fn handle_append_entries_with_hint(
+        &mut self,
+        vote: &VoteOf<C>,
+        segment: LogSegment<C>,
+        tx: OneshotSenderOf<C, AppendEntriesResponseWithHint<C>>,
+    ) {
+        let (result, condition) = self.append_entries_with_flush_condition(vote, segment);
+        let hint = match &result {
+            Err(StreamAppendError::Conflict(_)) => Some(self.following_handler().conflict_hint()),
+            _ => None,
+        };
+        let response = AppendEntriesResponse::from(result);
+        let response = AppendEntriesResponseWithHint::new(response, hint);
+        self.output.push_command(Command::Respond {
+            when: condition,
+            resp: Respond::new(response, tx),
+        });
+    }
+
+    /// Append the segment and return the result with its response flush condition.
+    fn append_entries_with_flush_condition(
+        &mut self,
+        vote: &VoteOf<C>,
+        segment: LogSegment<C>,
+    ) -> (StreamAppendResult<C>, Option<Condition<C>>) {
+        let result: StreamAppendResult<C> = self.append_entries(vote, segment).map_err(Into::into);
         // The reply claims only that the vote and the log up to `last_log_id` are persisted:
         // the last entry of this request, or `prev_log_id` for a heartbeat without entries.
         // Waiting for the latest accepted IO instead would hold a heartbeat reply until entries
         // of earlier requests are flushed, so a slow disk would delay it past the leader's lease.
-        let condition = match &stream_result {
+        let condition = match &result {
             Ok(last_log_id) => Some(Condition::IOFlushed {
                 io_id: IOId::new_log_io(self.state.vote_ref().to_committed(), last_log_id.clone()),
             }),
             Err(_) => None,
         };
-
-        self.output.push_command(Command::Respond {
-            when: condition,
-            resp: Respond::new(stream_result, tx),
-        });
+        (result, condition)
     }
 
     pub(crate) fn append_entries(
