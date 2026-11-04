@@ -2,6 +2,7 @@
 
 use futures_util::Stream;
 use futures_util::StreamExt;
+use openraft_macros::since;
 
 use crate::OptionalSend;
 use crate::OptionalSync;
@@ -12,6 +13,7 @@ use crate::errors::RPCError;
 use crate::network::NetAppend;
 use crate::network::RPCOption;
 use crate::raft::AppendEntriesRequest;
+use crate::raft::AppendEntriesResponseWithHint;
 use crate::raft::StreamAppendResult;
 
 /// Sends a stream of AppendEntries RPCs to a target node.
@@ -34,9 +36,27 @@ use crate::raft::StreamAppendResult;
 /// [`NetAppend`], use [`stream_append_sequential`] helper.
 ///
 /// [`RaftNetworkV2`]: crate::network::RaftNetworkV2
+#[since(version = "0.10.0", change = "added optional append_entries_with_hint")]
 pub trait NetStreamAppend<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
 {
+    /// Optionally send one AppendEntries probe through an endpoint that returns conflict hints.
+    ///
+    /// Return `None` only when this endpoint is unsupported and the request was not processed.
+    /// OpenRaft then sends the request through [`Self::stream_append`]. The default returns
+    /// `None` without sending anything, preserving existing transports and wire formats.
+    /// Implementations should call
+    /// [`Raft::append_entries_with_hint`](crate::Raft::append_entries_with_hint) remotely and
+    /// apply `option.soft_ttl()` to the RPC.
+    #[since(version = "0.10.0")]
+    fn append_entries_with_hint<'a>(
+        &'a mut self,
+        _rpc: &'a AppendEntriesRequest<C>,
+        _option: RPCOption,
+    ) -> BoxFuture<'a, Result<Option<AppendEntriesResponseWithHint<C>>, RPCError<C>>> {
+        Box::pin(async { Ok(None) })
+    }
+
     /// Send a stream of AppendEntries RPCs to the target and return a stream of responses.
     ///
     /// This method forwards a stream of AppendEntries requests to the remote follower.
@@ -135,4 +155,60 @@ where
     };
 
     Box::pin(fu)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use futures_util::Stream;
+
+    use crate::OptionalSend;
+    use crate::Vote;
+    use crate::base::BoxFuture;
+    use crate::base::BoxStream;
+    use crate::engine::testing::UTConfig;
+    use crate::errors::RPCError;
+    use crate::network::NetStreamAppend;
+    use crate::network::RPCOption;
+    use crate::raft::AppendEntriesRequest;
+    use crate::raft::StreamAppendResult;
+    use crate::type_config::TypeConfigExt;
+
+    /// A transport that implements only the required streaming method.
+    struct StreamOnly;
+
+    impl NetStreamAppend<UTConfig> for StreamOnly {
+        fn stream_append<'s, S>(
+            &'s mut self,
+            _input: S,
+            _option: RPCOption,
+        ) -> BoxFuture<
+            's,
+            Result<BoxStream<'s, Result<StreamAppendResult<UTConfig>, RPCError<UTConfig>>>, RPCError<UTConfig>>,
+        >
+        where
+            S: Stream<Item = AppendEntriesRequest<UTConfig>> + OptionalSend + Unpin + 'static,
+        {
+            unreachable!("the default hint method must leave the request to the caller")
+        }
+    }
+
+    #[test]
+    fn default_append_entries_with_hint_leaves_the_request_unsent() {
+        UTConfig::<()>::run(async {
+            let mut network = StreamOnly;
+            let request = AppendEntriesRequest {
+                vote: Vote::new_committed(1, 1),
+                prev_log_id: None,
+                entries: vec![],
+                leader_commit: None,
+            };
+            let option = RPCOption::new(Duration::from_secs(1));
+
+            let response = network.append_entries_with_hint(&request, option).await;
+
+            assert!(matches!(response, Ok(None)));
+        });
+    }
 }
