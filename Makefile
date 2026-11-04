@@ -338,3 +338,12 @@ clean:
 	rm -rf tests/_log
 
 .PHONY: test test-runtime test-turmoil test-turmoil-default test-turmoil-threshold verify verify-full basic_check fmt fmt_check fix clippy-basic clippy lint clean doc docs-check guide detsim detsim-threshold typos
+
+# Focused validation for the optional core-loop occupancy timer.
+.PHONY: test-core-busy-time
+test-core-busy-time:
+	cargo build -p openraft --features runtime-stats
+	cargo clippy --no-deps -p openraft --all-targets --features runtime-stats -- -D warnings
+	cargo test -p openraft --features runtime-stats --lib core::runtime_stats
+	cargo test -p tests --features runtime-stats --test metrics t60_runtime_stats
+	cargo check -p openraft --no-default-features

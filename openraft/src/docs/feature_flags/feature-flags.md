@@ -88,7 +88,7 @@ for accessing runtime statistics.
 When enabled, the `stats` module provides:
 - `Histogram`: Tracks distribution of values in logarithmic buckets
 - `RuntimeStats`: Contains histograms for apply and append batch sizes, plus
-  lifecycle latency histograms
+  lifecycle latency histograms and core loop statistics
 
 Example usage:
 ```rust,ignore

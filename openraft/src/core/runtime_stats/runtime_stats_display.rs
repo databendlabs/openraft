@@ -1,4 +1,5 @@
 use std::fmt;
+use std::time::Duration;
 
 use base2histogram::PercentileStats;
 #[cfg(feature = "runtime-stats")]
@@ -27,6 +28,7 @@ pub struct RuntimeStatsDisplay<C>
 where C: RaftTypeConfig
 {
     pub(crate) mode: DisplayMode,
+    pub(crate) core_busy_duration: Duration,
     pub(crate) apply_batch: PercentileStats,
     pub(crate) append_batch: PercentileStats,
     pub(crate) replicate_batch: PercentileStats,
@@ -87,7 +89,8 @@ where C: RaftTypeConfig
     fn fmt_compact(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "RuntimeStats {{ apply_batch: {}, append_batch: {}, replicate_batch: {}, raft_msg_per_run: {}, write_batch: {}, raft_msg_budget: {}, notification_budget: {}, raft_msg_usage_permille: {}, notification_usage_permille: {}, commands: {{",
+            "RuntimeStats {{ core_busy_duration: {:?}, apply_batch: {}, append_batch: {}, replicate_batch: {}, raft_msg_per_run: {}, write_batch: {}, raft_msg_budget: {}, notification_budget: {}, raft_msg_usage_permille: {}, notification_usage_permille: {}, commands: {{",
+            self.core_busy_duration,
             self.apply_batch,
             self.append_batch,
             self.replicate_batch,
@@ -157,6 +160,7 @@ where C: RaftTypeConfig
 
     fn fmt_multiline(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "RuntimeStats:")?;
+        writeln!(f, "  core_busy_duration: {:?}", self.core_busy_duration)?;
         writeln!(f, "  apply_batch: {}", self.apply_batch)?;
         writeln!(f, "  append_batch: {}", self.append_batch)?;
         writeln!(f, "  replicate_batch: {}", self.replicate_batch)?;
@@ -215,6 +219,9 @@ where C: RaftTypeConfig
 
     #[cfg(feature = "runtime-stats")]
     fn fmt_human_readable(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Core busy duration: {:?}", self.core_busy_duration)?;
+        writeln!(f)?;
+
         // Batch sizes table
         writeln!(f, "Batch Sizes:")?;
         let mut builder = Builder::default();
@@ -453,6 +460,7 @@ mod tests {
     ) -> RuntimeStatsDisplay<C> {
         RuntimeStatsDisplay {
             mode: DisplayMode::default(),
+            core_busy_duration: Duration::ZERO,
             apply_batch,
             append_batch: EMPTY_STATS,
             replicate_batch: EMPTY_STATS,
