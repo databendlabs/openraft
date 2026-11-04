@@ -2,6 +2,7 @@
 
 use futures_util::Stream;
 use futures_util::StreamExt;
+use openraft_macros::since;
 
 use crate::OptionalSend;
 use crate::OptionalSync;
@@ -12,6 +13,7 @@ use crate::errors::RPCError;
 use crate::network::NetAppend;
 use crate::network::RPCOption;
 use crate::raft::AppendEntriesRequest;
+use crate::raft::AppendEntriesResponseWithHint;
 use crate::raft::StreamAppendResult;
 
 /// Sends a stream of AppendEntries RPCs to a target node.
@@ -34,9 +36,27 @@ use crate::raft::StreamAppendResult;
 /// [`NetAppend`], use [`stream_append_sequential`] helper.
 ///
 /// [`RaftNetworkV2`]: crate::network::RaftNetworkV2
+#[since(version = "0.10.0", change = "added optional append_entries_with_hint")]
 pub trait NetStreamAppend<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
 {
+    /// Optionally send one AppendEntries probe through an endpoint that returns conflict hints.
+    ///
+    /// Return `None` only when this endpoint is unsupported and the request was not processed.
+    /// OpenRaft then sends the request through [`Self::stream_append`]. The default returns
+    /// `None` without sending anything, preserving existing transports and wire formats.
+    /// Implementations should call
+    /// [`Raft::append_entries_with_hint`](crate::Raft::append_entries_with_hint) remotely and
+    /// apply `option.soft_ttl()` to the RPC.
+    #[since(version = "0.10.0")]
+    fn append_entries_with_hint(
+        &mut self,
+        _rpc: AppendEntriesRequest<C>,
+        _option: RPCOption,
+    ) -> BoxFuture<'_, Result<Option<AppendEntriesResponseWithHint<C>>, RPCError<C>>> {
+        Box::pin(async { Ok(None) })
+    }
+
     /// Send a stream of AppendEntries RPCs to the target and return a stream of responses.
     ///
     /// This method forwards a stream of AppendEntries requests to the remote follower.

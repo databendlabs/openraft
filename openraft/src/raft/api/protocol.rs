@@ -18,6 +18,7 @@ use crate::errors::Fatal;
 use crate::errors::into_raft_result::IntoRaftResult;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
+use crate::raft::AppendEntriesResponseWithHint;
 use crate::raft::SnapshotResponse;
 use crate::raft::TransferLeaderError;
 use crate::raft::TransferLeaderRequest;
@@ -144,6 +145,13 @@ where
         let stream_result: StreamAppendResult<C> =
             self.inner.call_core_oneshot(|tx| RaftMsg::AppendEntries { rpc, tx }).await?;
         Ok(AppendEntriesResponse::from(stream_result))
+    }
+
+    pub(crate) async fn append_entries_with_hint(
+        &self,
+        rpc: AppendEntriesRequest<C>,
+    ) -> Result<AppendEntriesResponseWithHint<C>, Fatal<C>> {
+        self.inner.call_core_oneshot(|tx| RaftMsg::AppendEntriesWithHint { rpc, tx }).await
     }
 
     #[since(version = "0.10.0")]
