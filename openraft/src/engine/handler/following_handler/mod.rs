@@ -158,11 +158,6 @@ where
         log_ids.extend(committed_log_id);
         log_ids.extend_from_slice(&boundaries[start..]);
 
-        let last_log_id = self.state.last_log_id();
-        if log_ids.last() != last_log_id {
-            log_ids.extend(last_log_id.cloned());
-        }
-
         ConflictHint::new(log_ids)
     }
 
