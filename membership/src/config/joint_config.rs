@@ -154,8 +154,9 @@ where
 /// The active nodes of a membership are the nodes of its last config and the voters of its
 /// earlier configs. A learner that only an earlier config holds is not active: the change to the
 /// last config removed it. An active node has its role in the last config, joined with its role
-/// in each earlier config where it is a voter. A joint therefore keeps every capability of the old
-/// voters, and selecting its last config restores the roles of the target.
+/// in each earlier config where it is a voter, and the metadata of the newest of these configs. A
+/// joint therefore keeps every capability of the old voters, and selecting its last config
+/// restores the roles of the target.
 ///
 /// Only voters carry over because the quorums of every config still apply during a joint, and
 /// they count the old voters. A learner is in no quorum, so the last config decides it at once, as
@@ -195,36 +196,35 @@ where
     }
 
     /// The configs that count for the node are the last config and each earlier config where it
-    /// is a voter. Its role joins its roles in these configs. Its metadata comes from the newest
-    /// config that holds it, and its voter flags come from the rules of every config.
+    /// is a voter. Its role joins its roles in these configs, and its metadata comes from the
+    /// newest of them. An earlier config that holds the node only as a learner gives it nothing:
+    /// the change to a later config removed that learner. Its voter flags come from the rules of
+    /// every config.
     fn get_node(&self, node_id: &Self::NodeId) -> Option<NodeRef<'_, Self::Node>> {
         let mut node = None;
         let mut role = NodeRole::Empty;
-        let mut is_active = false;
 
-        // Newest config first, so the first config that holds the node gives its metadata.
+        // Newest config first, so the first config that counts for the node gives its metadata.
         for (i, config) in self.parts.iter().rev().enumerate() {
             let Some((config_node, set_role)) = config.nodes.get(node_id) else {
                 continue;
             };
-            if node.is_none() {
-                node = Some(config_node);
-            }
 
             // The last config decides every node it holds. An earlier config still applies its
             // quorums, so it keeps the roles of its voters, but not of its learners.
             let is_voter = config.is_voter(node_id);
             let is_last = i == 0;
-            if is_last || is_voter {
-                role |= set_role.unwrap_or(default_role(is_voter));
-                is_active = true;
+            if !is_last && !is_voter {
+                continue;
             }
+
+            if node.is_none() {
+                node = Some(config_node);
+            }
+            role |= set_role.unwrap_or(default_role(is_voter));
         }
-        if !is_active {
-            return None;
-        }
-        // Safe unwrap(): a config that counts for the node holds it.
-        let node = node.unwrap();
+        // No config counts for the node, so it is not active.
+        let node = node?;
 
         let is_read_voter = self.parts.iter().any(|config| has_id(&config.read, node_id));
         let is_write_voter = self.parts.iter().any(|config| has_id(&config.write, node_id));
@@ -258,8 +258,35 @@ where
     }
 
     /// Returns the configs of `self` followed by the configs of `goal`, as [`Joint::joint_with()`]
-    /// does.
+    /// does, with one metadata for each active node in every config that holds it: the metadata
+    /// that `goal` gives the node when `goal` knows it, and otherwise the metadata that `self`
+    /// gives it.
+    ///
+    /// Without this step, the configs could disagree. A config of `goal` may hold an old voter as a
+    /// learner that a later config of `goal` removed, and a config of `self` may hold metadata that
+    /// `self` replaced in its last config. `get_node()` reads only the configs that count for a
+    /// node, which would then pick discarded metadata.
     fn joint_with(&self, goal: &Self) -> Self {
-        Joint::joint_with(self, goal)
+        let mut joint = Joint::joint_with(self, goal);
+
+        let mut metadata = BTreeMap::new();
+        for node_id in joint.node_ids() {
+            let known = match goal.get_node(&node_id) {
+                Some(known) => known,
+                // Safe unwrap(): a node of the joint that `goal` does not know is a voter of
+                // `self`, and a voter is active.
+                None => self.get_node(&node_id).unwrap(),
+            };
+            metadata.insert(node_id, known.node.clone());
+        }
+
+        for config in &mut joint.parts {
+            for (node_id, (node, _)) in &mut config.nodes {
+                if let Some(resolved) = metadata.get(node_id) {
+                    *node = resolved.clone();
+                }
+            }
+        }
+        joint
     }
 }

@@ -157,8 +157,9 @@ where T: Clone
     /// `self` or `other` is empty: an empty joint has no quorum, so a joint with it has no quorum
     /// either.
     ///
-    /// For a membership this is also
-    /// [`RaftMembership::joint_with()`](openraft::membership::RaftMembership::joint_with).
+    /// For a joint of configs,
+    /// [`RaftMembership::joint_with()`](openraft::membership::RaftMembership::joint_with) builds on
+    /// it and also gives each active node one metadata in every config.
     pub fn joint_with(&self, other: &Joint<T>) -> Self {
         if self.parts.is_empty() || other.parts.is_empty() {
             return Self::default();

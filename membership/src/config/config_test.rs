@@ -222,8 +222,9 @@ fn test_get_node_joins_roles_of_configs_where_node_is_voter() {
 
     let got = active_nodes(&membership);
     let want = btreemap! {
-        // Voter 1 of c0 is a learner of c1, the newest config that holds it.
-        1 => node(&11, voter_role(), true),
+        // Voter 1 of c0 takes its metadata from c0: c1 holds it only as a learner, and a learner
+        // of an earlier config does not count.
+        1 => node(&10, voter_role(), true),
         2 => node(&22, voter_role(), true),
         // Voter 3 stops campaigning in c1 and c2, and keeps campaigning as a voter of c0.
         3 => node(&32, voter_role(), true),
@@ -263,6 +264,44 @@ fn test_joint_with_appends_the_configs_of_goal() {
     assert_eq!(empty, without_old);
     let without_new = RaftMembership::joint_with(&old, &empty);
     assert_eq!(empty, without_new);
+}
+
+#[test]
+fn test_joint_with_takes_metadata_of_active_nodes() {
+    // The change into the goal moved voter 1 out of the voters with new metadata, then removed it,
+    // so the goal does not know it. Voter 2 has new metadata in the goal.
+    let old_config = config(1, btreeset! {1, 2}, BTreeMap::new(), btreemap! {1 => 10, 2 => 20});
+    let old = Joint {
+        parts: vec![old_config],
+    };
+    let first = config(1, btreeset! {2}, BTreeMap::new(), btreemap! {1 => 11, 2 => 21});
+    let last = config(1, btreeset! {2}, BTreeMap::new(), btreemap! {2 => 21});
+    let goal = Joint {
+        parts: vec![first, last],
+    };
+    assert_eq!(None, goal.get_node(&1));
+
+    // Voter 1 keeps the metadata that `old` gives it, not the discarded metadata of the goal.
+    // Voter 2 takes the metadata of the goal, which knows it.
+    let joint = RaftMembership::joint_with(&old, &goal);
+    let got = joint.get_node(&1).unwrap();
+    assert_eq!(&10, got.node);
+    let got = joint.get_node(&2).unwrap();
+    assert_eq!(&21, got.node);
+
+    // `old` may be a joint too: its last config holds voter 1 of its first config as a learner,
+    // with newer metadata. The joint keeps the metadata that `old` gives voter 1.
+    let first = config(1, btreeset! {1, 2}, BTreeMap::new(), btreemap! {1 => 10, 2 => 20});
+    let last = config(1, btreeset! {2}, BTreeMap::new(), btreemap! {1 => 11, 2 => 20});
+    let old = Joint {
+        parts: vec![first, last],
+    };
+    let goal = Joint {
+        parts: vec![config(1, btreeset! {2}, BTreeMap::new(), btreemap! {2 => 20})],
+    };
+    let joint = RaftMembership::joint_with(&old, &goal);
+    let got = joint.get_node(&1).unwrap();
+    assert_eq!(&11, got.node);
 }
 
 #[test]
