@@ -8,11 +8,16 @@ use crate::Membership;
 use crate::MembershipState;
 use crate::Vote;
 use crate::engine::Engine;
+use crate::engine::LogIdList;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::progress::Inflight;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::inflight_id::InflightId;
+use crate::progress::stream_id::StreamId;
+use crate::raft::ConflictHint;
+use crate::replication::response::Progress;
+use crate::replication::response::ReplicationResult;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::StoredMembershipOf;
@@ -233,4 +238,104 @@ fn test_update_conflicting_reversion() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn hint_probe_engine() -> Engine<UTConfig> {
+    let mut eng = eng();
+    eng.state.log_ids = LogIdList::new(None, [log_id(1, 1, 2), log_id(2, 1, 10)]);
+    update_entry(&mut eng, 1, |entry| {
+        entry.matching = Some(log_id(2, 1, 10));
+        entry.data.searching_end = 11;
+    });
+    update_entry(&mut eng, 2, |entry| {
+        *entry = ProgressEntry::empty(2, StreamId::new(2), 11);
+        entry.data.inflight = Inflight::probe(Some(log_id(2, 1, 9)), Some(log_id(2, 1, 10)), InflightId::new(7));
+    });
+    eng
+}
+
+fn hinted_conflict() -> Progress<UTConfig> {
+    let hint = ConflictHint::new(vec![log_id(2, 1, 5)]);
+    Progress {
+        target: 2,
+        result: Ok(ReplicationResult(Err(log_id(2, 1, 9)))),
+        hint: Some(hint),
+    }
+}
+
+#[test]
+fn hinted_prefix_waits_for_durable_acknowledgement() {
+    let mut eng = hint_probe_engine();
+    let response = hinted_conflict();
+    let stream_id = StreamId::new(2);
+    eng.replication_handler().update_progress(stream_id, response, Some(InflightId::new(7)));
+    let expected = ProgressEntry::empty(2, stream_id, 6).with_probe(6);
+    let progress = entry(&eng, 2);
+    assert_eq!(expected, progress);
+    let quorum = quorum_accepted(&eng);
+    assert_eq!(None, quorum);
+
+    eng.replication_handler().initiate_replication();
+    eng.replication_handler().update_matching(2, Some(log_id(2, 1, 10)), Some(InflightId::new(1)));
+    let quorum = quorum_accepted(&eng);
+    let expected = Some(log_id(2, 1, 10));
+    assert_eq!(expected, quorum);
+}
+
+#[test]
+fn hinted_first_sample_waits_for_durable_acknowledgement() {
+    let mut eng = hint_probe_engine();
+    let mut response = hinted_conflict();
+    response.hint = Some(ConflictHint::new(vec![log_id(1, 1, 2), log_id(1, 2, 5)]));
+    let stream_id = StreamId::new(2);
+    eng.replication_handler().update_progress(stream_id, response, Some(InflightId::new(7)));
+    let expected = ProgressEntry::empty(2, stream_id, 5).with_probe(3);
+    let progress = entry(&eng, 2);
+    assert_eq!(expected, progress);
+    let quorum = quorum_accepted(&eng);
+    assert_eq!(None, quorum);
+}
+
+#[test]
+fn stale_hinted_responses_leave_all_progress_unchanged() {
+    let stream_id = StreamId::new(2);
+    let other_stream = StreamId::new(99);
+    for (stream, request) in [(stream_id, 8), (other_stream, 7)] {
+        let mut eng = hint_probe_engine();
+        let expected = entries(&eng);
+        let response = hinted_conflict();
+        eng.replication_handler().update_progress(stream, response, Some(InflightId::new(request)));
+        let actual = entries(&eng);
+        assert_eq!(expected, actual);
+    }
+}
+
+#[test]
+fn loss_of_unflushed_hinted_prefix_restarts_search() {
+    let mut eng = hint_probe_engine();
+    let stream_id = StreamId::new(2);
+    eng.replication_handler().update_progress(stream_id, hinted_conflict(), Some(InflightId::new(7)));
+    eng.replication_handler().initiate_replication();
+    eng.replication_handler().update_conflicting(2, log_id(2, 1, 5), Some(InflightId::new(1)));
+    let expected = ProgressEntry::empty(2, stream_id, 5);
+    let progress = entry(&eng, 2);
+    assert_eq!(expected, progress);
+    let quorum = quorum_accepted(&eng);
+    assert_eq!(None, quorum);
+}
+
+#[test]
+fn empty_hint_cannot_lower_a_durable_matching_prefix() {
+    let mut eng = hint_probe_engine();
+    update_entry(&mut eng, 2, |entry| entry.matching = Some(log_id(2, 1, 3)));
+    let mut response = hinted_conflict();
+    response.hint = Some(ConflictHint::new(vec![]));
+    let stream_id = StreamId::new(2);
+    eng.replication_handler().update_progress(stream_id, response, Some(InflightId::new(7)));
+    let progress = entry(&eng, 2);
+    let matching = progress.matching().cloned();
+    let expected = Some(log_id(2, 1, 3));
+    assert_eq!(expected, matching);
+    assert_eq!(4, progress.data.searching_end);
+    assert_eq!(None, progress.data.probe_index);
 }
