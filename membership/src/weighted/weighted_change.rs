@@ -62,7 +62,8 @@ use crate::errors::InvalidWeights;
 /// let heavy = change.apply(&membership, true).unwrap();
 /// let want = "{configs: [Config { read: WeightedQuorumSet { weights: {1: 3, 2: 1, 3: 1, 4: 1}, \
 ///             threshold: 4 }, write: WeightedQuorumSet { weights: {1: 3, 2: 1, 3: 1, 4: 1}, \
-///             threshold: 3 }, nodes: {1: (), 2: (), 3: (), 4: ()}, roles: {} }]}";
+///             threshold: 3 }, nodes: {1: ((), None), 2: ((), None), 3: ((), None), 4: ((), \
+///             None)} }]}";
 /// assert_eq!(want, heavy.to_string());
 ///
 /// // Removing voter 1 leaves weight 3. Write weight 2 keeps a majority; node 1 stays as a learner.
@@ -70,7 +71,7 @@ use crate::errors::InvalidWeights;
 /// let shrunk = change.apply(&heavy, true).unwrap();
 /// let want = "{configs: [Config { read: WeightedQuorumSet { weights: {2: 1, 3: 1, 4: 1}, \
 ///             threshold: 2 }, write: WeightedQuorumSet { weights: {2: 1, 3: 1, 4: 1}, threshold: \
-///             2 }, nodes: {1: (), 2: (), 3: (), 4: ()}, roles: {} }]}";
+///             2 }, nodes: {1: ((), None), 2: ((), None), 3: ((), None), 4: ((), None)} }]}";
 /// assert_eq!(want, shrunk.to_string());
 /// ```
 ///

@@ -13,6 +13,7 @@ use openraft::membership::NodeRole;
 use openraft::membership::RaftMembership;
 
 use crate::config::Config;
+use crate::config::default_role;
 use crate::config::has_id;
 use crate::quorum::Joint;
 use crate::quorum::QuorumIntersection;
@@ -50,7 +51,7 @@ where
     ) -> BTreeMap<Q::Id, N> {
         let mut nodes = BTreeMap::new();
         if let Some(last) = self.parts.last() {
-            for (node_id, node) in &last.nodes {
+            for (node_id, (node, _)) in &last.nodes {
                 nodes.insert(node_id.clone(), node.clone());
             }
         }
@@ -85,7 +86,6 @@ where
 
         for config in &mut goal.parts {
             config.nodes.retain(|node_id, _| !demoted.contains(node_id));
-            config.roles.retain(|node_id, _| !demoted.contains(node_id));
         }
         goal
     }
@@ -159,7 +159,7 @@ where
 
         // Newest config first, so the first config that holds the node gives its metadata.
         for (i, config) in self.parts.iter().rev().enumerate() {
-            let Some(config_node) = config.nodes.get(node_id) else {
+            let Some((config_node, set_role)) = config.nodes.get(node_id) else {
                 continue;
             };
             if node.is_none() {
@@ -168,9 +168,10 @@ where
 
             // The last config decides every node it holds. An earlier config still applies its
             // quorums, so it keeps the roles of its voters, but not of its learners.
+            let is_voter = config.is_voter(node_id);
             let is_last = i == 0;
-            if is_last || config.is_voter(node_id) {
-                role |= config.role(node_id);
+            if is_last || is_voter {
+                role |= set_role.unwrap_or(default_role(is_voter));
                 is_active = true;
             }
         }

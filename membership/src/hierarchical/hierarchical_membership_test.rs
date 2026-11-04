@@ -145,8 +145,8 @@ fn test_new() {
                 groups: {\"a\": Group { quorum_size: 2, voters: {1, 2}, groups: {} }, \"b\": Group { \
                 quorum_size: 1, voters: {3, 4}, groups: {} }} } }, write: HierarchicalQuorumSet { root: Group { \
                 quorum_size: 2, voters: {}, groups: {\"a\": Group { quorum_size: 1, voters: {1, 2}, \
-                groups: {} }, \"b\": Group { quorum_size: 2, voters: {3, 4}, groups: {} }} } }, nodes: {1: (), \
-                2: (), 3: (), 4: (), 5: ()}, roles: {} }]}";
+                groups: {} }, \"b\": Group { quorum_size: 2, voters: {3, 4}, groups: {} }} } }, \
+                nodes: {1: ((), None), 2: ((), None), 3: ((), None), 4: ((), None), 5: ((), None)} }]}";
     let display = membership.to_string();
     assert_eq!(want, display);
 
@@ -214,8 +214,9 @@ fn test_nine_voters_need_two_voters_in_each_of_two_groups() {
                 voters: {7, 8, 9}, groups: {} }} } }, write: HierarchicalQuorumSet { root: Group { \
                 quorum_size: 2, voters: {}, groups: {\"a\": Group { quorum_size: 2, voters: {1, 2, 3}, \
                 groups: {} }, \"b\": Group { quorum_size: 2, voters: {4, 5, 6}, groups: {} }, \"c\": Group { \
-                quorum_size: 2, voters: {7, 8, 9}, groups: {} }} } }, nodes: {1: (), 2: (), 3: (), 4: (), \
-                5: (), 6: (), 7: (), 8: (), 9: ()}, roles: {} }]}";
+                quorum_size: 2, voters: {7, 8, 9}, groups: {} }} } }, nodes: {1: ((), None), 2: ((), None), \
+                3: ((), None), 4: ((), None), 5: ((), None), 6: ((), None), 7: ((), None), 8: ((), None), \
+                9: ((), None)} }]}";
     let display = membership.to_string();
     assert_eq!(want, display);
 }
@@ -459,8 +460,8 @@ fn test_from_node_map_puts_every_node_in_the_root_group() {
     assert_eq!(want, membership);
     let want = "{configs: [Config { read: HierarchicalQuorumSet { root: Group { quorum_size: 2, \
                 voters: {1, 2, 3, 4}, groups: {} } }, write: HierarchicalQuorumSet { root: Group { \
-                quorum_size: 3, voters: {1, 2, 3, 4}, groups: {} } }, nodes: {1: (), 2: (), 3: (), 4: ()}, \
-                roles: {} }]}";
+                quorum_size: 3, voters: {1, 2, 3, 4}, groups: {} } }, nodes: {1: ((), None), 2: ((), None), \
+                3: ((), None), 4: ((), None)} }]}";
     let display = membership.to_string();
     assert_eq!(want, display);
 
@@ -700,9 +701,9 @@ fn test_display_with_roles() {
     let want = "{configs: [Config { read: HierarchicalQuorumSet { root: Group { quorum_size: 1, voters: {}, \
                 groups: {\"a\": Group { quorum_size: 2, voters: {1, 2, 3}, groups: {} }} } }, \
                 write: HierarchicalQuorumSet { root: Group { quorum_size: 1, voters: {}, \
-                groups: {\"a\": Group { quorum_size: 2, voters: {1, 2, 3}, groups: {} }} } }, nodes: {1: (), \
-                2: (), 3: (), 4: (), 5: ()}, roles: {3: NodeRole(ReceiveLogs), \
-                4: NodeRole(Campaigner | ReceiveLogs), 5: NodeRole(Empty)} }]}";
+                groups: {\"a\": Group { quorum_size: 2, voters: {1, 2, 3}, groups: {} }} } }, \
+                nodes: {1: ((), None), 2: ((), None), 3: ((), Some(NodeRole(ReceiveLogs))), \
+                4: ((), Some(NodeRole(Campaigner | ReceiveLogs))), 5: ((), Some(NodeRole(Empty)))} }]}";
     let got = configured.to_string();
     assert_eq!(want, got);
 }
@@ -723,8 +724,9 @@ fn test_display_with_retained_learner() {
     let want = "{configs: [Config { read: HierarchicalQuorumSet { root: Group { quorum_size: 1, voters: {}, \
                 groups: {\"a\": Group { quorum_size: 2, voters: {2, 3, 4}, groups: {} }} } }, \
                 write: HierarchicalQuorumSet { root: Group { quorum_size: 1, voters: {}, \
-                groups: {\"a\": Group { quorum_size: 2, voters: {2, 3, 4}, groups: {} }} } }, nodes: {1: (), \
-                2: (), 3: (), 4: (), 5: ()}, roles: {3: NodeRole(ReceiveLogs), 5: NodeRole(Empty)} }]}";
+                groups: {\"a\": Group { quorum_size: 2, voters: {2, 3, 4}, groups: {} }} } }, \
+                nodes: {1: ((), None), 2: ((), None), 3: ((), Some(NodeRole(ReceiveLogs))), 4: ((), None), \
+                5: ((), Some(NodeRole(Empty)))} }]}";
     let got = configured.to_string();
     assert_eq!(want, got);
 }
@@ -764,7 +766,7 @@ fn test_serde() {
     let membership = Membership::new(groups, btreeset! {1, 2, 3, 4}).unwrap();
 
     let json = serde_json::to_string(&membership).unwrap();
-    let want = r#"{"parts":[{"read":{"root":{"quorum_size":2,"voters":[3],"groups":{"a":{"quorum_size":1,"voters":[1,2],"groups":{}}}}},"write":{"root":{"quorum_size":1,"voters":[3],"groups":{"a":{"quorum_size":2,"voters":[1,2],"groups":{}}}}},"nodes":{"1":null,"2":null,"3":null,"4":null},"roles":{}}]}"#;
+    let want = r#"{"parts":[{"read":{"root":{"quorum_size":2,"voters":[3],"groups":{"a":{"quorum_size":1,"voters":[1,2],"groups":{}}}}},"write":{"root":{"quorum_size":1,"voters":[3],"groups":{"a":{"quorum_size":2,"voters":[1,2],"groups":{}}}}},"nodes":{"1":[null,null],"2":[null,null],"3":[null,null],"4":[null,null]}}]}"#;
     assert_eq!(want, json);
     let decoded = serde_json::from_str::<Membership>(&json).unwrap();
     assert_eq!(membership, decoded);

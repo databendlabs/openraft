@@ -53,8 +53,8 @@ use crate::quorum::ExplicitQuorumSet;
 /// let change = ExplicitChange::read_quorums(read);
 /// let changed = change.apply(&membership, true).unwrap();
 /// let want = "{configs: [Config { read: ExplicitQuorumSet { quorums: [{1}, {2}, {3}] }, write: \
-///             ExplicitQuorumSet { quorums: [{1, 2, 3}] }, nodes: {1: (), 2: (), 3: ()}, roles: \
-///             {} }]}";
+///             ExplicitQuorumSet { quorums: [{1, 2, 3}] }, nodes: {1: ((), None), 2: ((), None), \
+///             3: ((), None)} }]}";
 /// assert_eq!(want, changed.to_string());
 /// ```
 ///

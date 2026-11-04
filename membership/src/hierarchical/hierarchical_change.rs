@@ -74,8 +74,8 @@ use crate::quorum::HierarchicalQuorumSet;
 ///             \"b\": Group { quorum_size: 2, voters: {3, 4, 5}, groups: {} }} } }, write: \
 ///             HierarchicalQuorumSet { root: Group { quorum_size: 1, voters: {}, groups: {\"a\": \
 ///             Group { quorum_size: 2, voters: {1, 2}, groups: {} }, \"b\": Group { quorum_size: \
-///             2, voters: {3, 4, 5}, groups: {} }} } }, nodes: {1: (), 2: (), 3: (), 4: (), 5: \
-///             ()}, roles: {} }]}";
+///             2, voters: {3, 4, 5}, groups: {} }} } }, nodes: {1: ((), None), 2: ((), None), 3: \
+///             ((), None), 4: ((), None), 5: ((), None)} }]}";
 /// let display = moved.to_string();
 /// assert_eq!(want, display);
 /// ```

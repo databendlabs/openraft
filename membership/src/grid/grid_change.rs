@@ -53,7 +53,8 @@ use crate::errors::InvalidGrid;
 /// let wider = change.apply(&membership, true).unwrap();
 /// let want = "{configs: [Config { read: GridQuorumSet { grid: [[1, 2, 5], [3, 4, 6]], rule: \
 ///             FullRow }, write: GridQuorumSet { grid: [[1, 2, 5], [3, 4, 6]], rule: OnePerRow }, \
-///             nodes: {1: (), 2: (), 3: (), 4: (), 5: (), 6: ()}, roles: {} }]}";
+///             nodes: {1: ((), None), 2: ((), None), 3: ((), None), 4: ((), None), 5: ((), None), \
+///             6: ((), None)} }]}";
 /// let got = wider.to_string();
 /// assert_eq!(want, got);
 /// ```

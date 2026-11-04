@@ -58,8 +58,8 @@ fn test_new() {
     let weights = btreemap! {1 => 2, 2 => 1, 3 => 1};
     let membership = Membership::new(weights.clone(), 2, btreeset! {1, 2, 3, 4}).unwrap();
     let want = "{configs: [Config { read: WeightedQuorumSet { weights: {1: 2, 2: 1, 3: 1}, threshold: 3 }, \
-                write: WeightedQuorumSet { weights: {1: 2, 2: 1, 3: 1}, threshold: 2 }, nodes: {1: (), 2: (), \
-                3: (), 4: ()}, roles: {} }]}";
+                write: WeightedQuorumSet { weights: {1: 2, 2: 1, 3: 1}, threshold: 2 }, nodes: {1: ((), None), \
+                2: ((), None), 3: ((), None), 4: ((), None)} }]}";
     assert_eq!(want, membership.to_string());
 
     // Voter 3 has no node.
@@ -155,8 +155,8 @@ fn test_boundary_write_weights() {
     let membership = weighted(btreemap! {1 => u64::MAX - 1, 2 => 1}, u64::MAX);
     let want = format!(
         "{{configs: [Config {{ read: WeightedQuorumSet {{ weights: {{1: {0}, 2: 1}}, threshold: 1 }}, \
-         write: WeightedQuorumSet {{ weights: {{1: {0}, 2: 1}}, threshold: {1} }}, nodes: {{1: (), 2: ()}}, \
-         roles: {{}} }}]}}",
+         write: WeightedQuorumSet {{ weights: {{1: {0}, 2: 1}}, threshold: {1} }}, \
+         nodes: {{1: ((), None), 2: ((), None)}} }}]}}",
         u64::MAX - 1,
         u64::MAX
     );
@@ -358,8 +358,8 @@ fn test_remove_heavy_voter_through_joint() {
 
     let new = remove_one.with_write_weight(2).apply(&old, true).unwrap();
     let want = "{configs: [Config { read: WeightedQuorumSet { weights: {2: 1, 3: 1, 4: 1}, threshold: 2 }, \
-                write: WeightedQuorumSet { weights: {2: 1, 3: 1, 4: 1}, threshold: 2 }, nodes: {1: (), 2: (), \
-                3: (), 4: ()}, roles: {} }]}";
+                write: WeightedQuorumSet { weights: {2: 1, 3: 1, 4: 1}, threshold: 2 }, nodes: {1: ((), None), \
+                2: ((), None), 3: ((), None), 4: ((), None)} }]}";
     assert_eq!(want, new.to_string());
 
     // The old write quorum {1,2} misses the new read quorum {3,4}.
@@ -390,9 +390,10 @@ fn test_remove_heavy_voter_through_joint() {
 
     let want = "{configs: [Config { read: WeightedQuorumSet { weights: {1: 3, 2: 1, 3: 1, 4: 1}, \
                 threshold: 3 }, write: WeightedQuorumSet { weights: {1: 3, 2: 1, 3: 1, 4: 1}, threshold: 4 }, \
-                nodes: {1: (), 2: (), 3: (), 4: ()}, roles: {} }, Config { read: WeightedQuorumSet { \
-                weights: {2: 1, 3: 1, 4: 1}, threshold: 2 }, write: WeightedQuorumSet { weights: {2: 1, 3: 1, \
-                4: 1}, threshold: 2 }, nodes: {1: (), 2: (), 3: (), 4: ()}, roles: {} }]}";
+                nodes: {1: ((), None), 2: ((), None), 3: ((), None), 4: ((), None)} }, Config { \
+                read: WeightedQuorumSet { weights: {2: 1, 3: 1, 4: 1}, threshold: 2 }, \
+                write: WeightedQuorumSet { weights: {2: 1, 3: 1, 4: 1}, threshold: 2 }, nodes: {1: ((), None), \
+                2: ((), None), 3: ((), None), 4: ((), None)} }]}";
     assert_eq!(want, joint.to_string());
 
     // Leaving the joint selects the target, where node 1 stays as a learner.
@@ -516,8 +517,8 @@ fn test_joint_keeps_old_roles_and_target_restores_new_roles() {
     let change = WeightedChange::write_weight(3);
     let changed = change.apply(&target, true).unwrap();
     let want = "{configs: [Config { read: WeightedQuorumSet { weights: {1: 2, 2: 1}, threshold: 1 }, \
-                write: WeightedQuorumSet { weights: {1: 2, 2: 1}, threshold: 3 }, nodes: {1: (), 2: (), 3: ()}, \
-                roles: {2: NodeRole(ReceiveLogs)} }]}";
+                write: WeightedQuorumSet { weights: {1: 2, 2: 1}, threshold: 3 }, nodes: {1: ((), None), \
+                2: ((), Some(NodeRole(ReceiveLogs))), 3: ((), None)} }]}";
     assert_eq!(want, changed.to_string());
 }
 
@@ -532,9 +533,9 @@ fn test_display_with_roles() {
     let roles = btreemap! {3 => NodeRole::ReceiveLogs, 4 => voter_role(), 5 => NodeRole::Empty};
     let configured = membership.with_roles(roles).unwrap();
     let want = "{configs: [Config { read: WeightedQuorumSet { weights: {1: 1, 2: 1, 3: 1}, threshold: 2 }, \
-                write: WeightedQuorumSet { weights: {1: 1, 2: 1, 3: 1}, threshold: 2 }, nodes: {1: (), 2: (), \
-                3: (), 4: (), 5: ()}, roles: {3: NodeRole(ReceiveLogs), 4: NodeRole(Campaigner | ReceiveLogs), \
-                5: NodeRole(Empty)} }]}";
+                write: WeightedQuorumSet { weights: {1: 1, 2: 1, 3: 1}, threshold: 2 }, nodes: {1: ((), None), \
+                2: ((), None), 3: ((), Some(NodeRole(ReceiveLogs))), \
+                4: ((), Some(NodeRole(Campaigner | ReceiveLogs))), 5: ((), Some(NodeRole(Empty)))} }]}";
     let got = configured.to_string();
     assert_eq!(want, got);
 }
@@ -554,8 +555,9 @@ fn test_display_with_retained_learner() {
     let roles = btreemap! {1 => NodeRole::ReceiveLogs, 3 => NodeRole::ReceiveLogs, 5 => NodeRole::Empty};
     let configured = membership.with_roles(roles).unwrap();
     let want = "{configs: [Config { read: WeightedQuorumSet { weights: {2: 1, 3: 1, 4: 1}, threshold: 2 }, \
-                write: WeightedQuorumSet { weights: {2: 1, 3: 1, 4: 1}, threshold: 2 }, nodes: {1: (), 2: (), \
-                3: (), 4: (), 5: ()}, roles: {3: NodeRole(ReceiveLogs), 5: NodeRole(Empty)} }]}";
+                write: WeightedQuorumSet { weights: {2: 1, 3: 1, 4: 1}, threshold: 2 }, nodes: {1: ((), None), \
+                2: ((), None), 3: ((), Some(NodeRole(ReceiveLogs))), 4: ((), None), \
+                5: ((), Some(NodeRole(Empty)))} }]}";
     let got = configured.to_string();
     assert_eq!(want, got);
 }
@@ -592,7 +594,7 @@ fn test_serde() {
     let membership = Membership::new(btreemap! {1 => 2, 2 => 1, 3 => 1}, 2, btreeset! {1, 2, 3, 4}).unwrap();
 
     let json = serde_json::to_string(&membership).unwrap();
-    let want = r#"{"parts":[{"read":{"weights":{"1":2,"2":1,"3":1},"threshold":3},"write":{"weights":{"1":2,"2":1,"3":1},"threshold":2},"nodes":{"1":null,"2":null,"3":null,"4":null},"roles":{}}]}"#;
+    let want = r#"{"parts":[{"read":{"weights":{"1":2,"2":1,"3":1},"threshold":3},"write":{"weights":{"1":2,"2":1,"3":1},"threshold":2},"nodes":{"1":[null,null],"2":[null,null],"3":[null,null],"4":[null,null]}}]}"#;
     assert_eq!(want, json);
     let decoded = serde_json::from_str::<Membership>(&json).unwrap();
     assert_eq!(membership, decoded);
@@ -616,7 +618,7 @@ fn test_binary_roundtrip_keeps_joint_configs_and_roles() {
     assert_eq!(joint, decoded);
 
     let json = serde_json::to_string(&joint).unwrap();
-    let want = r#"{"parts":[{"read":{"weights":{"1":2,"2":1,"3":1},"threshold":3},"write":{"weights":{"1":2,"2":1,"3":1},"threshold":2},"nodes":{"1":null,"2":null,"3":null},"roles":{}},{"read":{"weights":{"1":3,"2":1,"3":1},"threshold":2},"write":{"weights":{"1":3,"2":1,"3":1},"threshold":4},"nodes":{"1":null,"2":null,"3":null},"roles":{"3":2}}]}"#;
+    let want = r#"{"parts":[{"read":{"weights":{"1":2,"2":1,"3":1},"threshold":3},"write":{"weights":{"1":2,"2":1,"3":1},"threshold":2},"nodes":{"1":[null,null],"2":[null,null],"3":[null,null]}},{"read":{"weights":{"1":3,"2":1,"3":1},"threshold":2},"write":{"weights":{"1":3,"2":1,"3":1},"threshold":4},"nodes":{"1":[null,null],"2":[null,null],"3":[null,2]}}]}"#;
     assert_eq!(want, json);
     let decoded = serde_json::from_str::<Membership>(&json).unwrap();
     assert_eq!(joint, decoded);

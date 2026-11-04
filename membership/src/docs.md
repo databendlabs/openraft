@@ -67,11 +67,11 @@ becomes a learner, and later a voter again, still does not campaign. Setting a
 node to the default role for its status clears its set role, and the node
 follows the default again.
 
-Each config stores its nodes and the roles set for them, and computes the
-default role of every other node from its status in that config. During a
-joint change, a node's role combines its roles in the new config and every
-earlier config where it is a voter. [`make_uniform()`] keeps only the new
-config, restoring that config's roles.
+Each config stores its nodes, each with the role set for it, if any, and
+computes the default role of a node without one from its status in that
+config. During a joint change, a node's role combines its roles in the new
+config and every earlier config where it is a voter. [`make_uniform()`] keeps
+only the new config, restoring that config's roles.
 
 [`ThresholdMembership`]: crate::ThresholdMembership
 [`WeightedMembership`]: crate::WeightedMembership

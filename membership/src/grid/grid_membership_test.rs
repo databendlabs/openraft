@@ -58,8 +58,8 @@ where
 fn test_new() {
     let membership = Membership::new(vec![vec![1, 2], vec![3, 4]], btreeset! {1, 2, 3, 4, 5}).unwrap();
     let want = "{configs: [Config { read: GridQuorumSet { grid: [[1, 2], [3, 4]], rule: FullRow }, \
-                write: GridQuorumSet { grid: [[1, 2], [3, 4]], rule: OnePerRow }, nodes: {1: (), 2: (), 3: (), \
-                4: (), 5: ()}, roles: {} }]}";
+                write: GridQuorumSet { grid: [[1, 2], [3, 4]], rule: OnePerRow }, nodes: {1: ((), None), \
+                2: ((), None), 3: ((), None), 4: ((), None), 5: ((), None)} }]}";
     let got = membership.to_string();
     assert_eq!(want, got);
 
@@ -276,10 +276,10 @@ fn test_placement_change_goes_through_joint_that_keeps_both_grids() {
     assert_eq!(want, write_accepted);
 
     let want = "{configs: [Config { read: GridQuorumSet { grid: [[1, 2], [3, 4]], rule: FullRow }, \
-                write: GridQuorumSet { grid: [[1, 2], [3, 4]], rule: OnePerRow }, nodes: {1: (), 2: (), 3: (), \
-                4: ()}, roles: {} }, Config { read: GridQuorumSet { grid: [[1, 3], [2, 4]], rule: FullRow }, \
-                write: GridQuorumSet { grid: [[1, 3], [2, 4]], rule: OnePerRow }, nodes: {1: (), 2: (), 3: (), \
-                4: ()}, roles: {} }]}";
+                write: GridQuorumSet { grid: [[1, 2], [3, 4]], rule: OnePerRow }, nodes: {1: ((), None), \
+                2: ((), None), 3: ((), None), 4: ((), None)} }, Config { read: GridQuorumSet { \
+                grid: [[1, 3], [2, 4]], rule: FullRow }, write: GridQuorumSet { grid: [[1, 3], [2, 4]], \
+                rule: OnePerRow }, nodes: {1: ((), None), 2: ((), None), 3: ((), None), 4: ((), None)} }]}";
     let got = joint.to_string();
     assert_eq!(want, got);
 
@@ -426,8 +426,8 @@ fn test_joint_keeps_old_roles_and_target_restores_new_roles() {
     let target = assert_joint_keeps_old_roles_and_target_restores_new_roles::<_, GridChange<u64, ()>>(&old, &new, 2);
 
     let want = "{configs: [Config { read: GridQuorumSet { grid: [[1, 2]], rule: FullRow }, \
-                write: GridQuorumSet { grid: [[1, 2]], rule: OnePerRow }, nodes: {1: (), 2: (), 3: ()}, \
-                roles: {2: NodeRole(ReceiveLogs)} }]}";
+                write: GridQuorumSet { grid: [[1, 2]], rule: OnePerRow }, nodes: {1: ((), None), \
+                2: ((), Some(NodeRole(ReceiveLogs))), 3: ((), None)} }]}";
     let got = target.to_string();
     assert_eq!(want, got);
 
@@ -449,9 +449,9 @@ fn test_display_with_roles() {
     let roles = btreemap! {3 => NodeRole::ReceiveLogs, 4 => voter_role(), 5 => NodeRole::Empty};
     let configured = membership.with_roles(roles).unwrap();
     let want = "{configs: [Config { read: GridQuorumSet { grid: [[1, 2, 3]], rule: FullRow }, \
-                write: GridQuorumSet { grid: [[1, 2, 3]], rule: OnePerRow }, nodes: {1: (), 2: (), 3: (), \
-                4: (), 5: ()}, roles: {3: NodeRole(ReceiveLogs), 4: NodeRole(Campaigner | ReceiveLogs), \
-                5: NodeRole(Empty)} }]}";
+                write: GridQuorumSet { grid: [[1, 2, 3]], rule: OnePerRow }, nodes: {1: ((), None), \
+                2: ((), None), 3: ((), Some(NodeRole(ReceiveLogs))), \
+                4: ((), Some(NodeRole(Campaigner | ReceiveLogs))), 5: ((), Some(NodeRole(Empty)))} }]}";
     let got = configured.to_string();
     assert_eq!(want, got);
 }
@@ -470,8 +470,9 @@ fn test_display_with_retained_learner() {
     let roles = btreemap! {1 => NodeRole::ReceiveLogs, 3 => NodeRole::ReceiveLogs, 5 => NodeRole::Empty};
     let configured = membership.with_roles(roles).unwrap();
     let want = "{configs: [Config { read: GridQuorumSet { grid: [[2, 3, 4]], rule: FullRow }, \
-                write: GridQuorumSet { grid: [[2, 3, 4]], rule: OnePerRow }, nodes: {1: (), 2: (), 3: (), \
-                4: (), 5: ()}, roles: {3: NodeRole(ReceiveLogs), 5: NodeRole(Empty)} }]}";
+                write: GridQuorumSet { grid: [[2, 3, 4]], rule: OnePerRow }, nodes: {1: ((), None), \
+                2: ((), None), 3: ((), Some(NodeRole(ReceiveLogs))), 4: ((), None), \
+                5: ((), Some(NodeRole(Empty)))} }]}";
     let got = configured.to_string();
     assert_eq!(want, got);
 }
@@ -505,7 +506,7 @@ fn test_serde() {
     let membership = Membership::new(vec![vec![1, 2], vec![3, 4]], btreeset! {1, 2, 3, 4, 5}).unwrap();
 
     let json = serde_json::to_string(&membership).unwrap();
-    let want = r#"{"parts":[{"read":{"grid":[[1,2],[3,4]],"rule":"FullRow"},"write":{"grid":[[1,2],[3,4]],"rule":"OnePerRow"},"nodes":{"1":null,"2":null,"3":null,"4":null,"5":null},"roles":{}}]}"#;
+    let want = r#"{"parts":[{"read":{"grid":[[1,2],[3,4]],"rule":"FullRow"},"write":{"grid":[[1,2],[3,4]],"rule":"OnePerRow"},"nodes":{"1":[null,null],"2":[null,null],"3":[null,null],"4":[null,null],"5":[null,null]}}]}"#;
     assert_eq!(want, json);
     let decoded = serde_json::from_str::<Membership>(&json).unwrap();
     assert_eq!(membership, decoded);
@@ -528,7 +529,7 @@ fn test_roundtrip_keeps_joint_configs_and_roles() {
     let joint = old.joint_with(&new);
 
     let json = serde_json::to_string(&joint).unwrap();
-    let want = r#"{"parts":[{"read":{"grid":[[1,2],[3,4]],"rule":"FullRow"},"write":{"grid":[[1,2],[3,4]],"rule":"OnePerRow"},"nodes":{"1":null,"2":null,"3":null,"4":null},"roles":{}},{"read":{"grid":[[1,3],[2,4]],"rule":"FullRow"},"write":{"grid":[[1,3],[2,4]],"rule":"OnePerRow"},"nodes":{"1":null,"2":null,"3":null,"4":null},"roles":{"3":2}}]}"#;
+    let want = r#"{"parts":[{"read":{"grid":[[1,2],[3,4]],"rule":"FullRow"},"write":{"grid":[[1,2],[3,4]],"rule":"OnePerRow"},"nodes":{"1":[null,null],"2":[null,null],"3":[null,null],"4":[null,null]}},{"read":{"grid":[[1,3],[2,4]],"rule":"FullRow"},"write":{"grid":[[1,3],[2,4]],"rule":"OnePerRow"},"nodes":{"1":[null,null],"2":[null,null],"3":[null,2],"4":[null,null]}}]}"#;
     assert_eq!(want, json);
     let decoded = serde_json::from_str::<Membership>(&json).unwrap();
     assert_eq!(joint, decoded);

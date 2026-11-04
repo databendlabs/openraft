@@ -147,8 +147,9 @@ let change = GridChange::grid(vec![vec![1, 2, 3], vec![4, 10, 6], vec![7, 8, 9]]
 let replaced = change.apply(&membership, true).unwrap();
 let want = "{configs: [Config { read: GridQuorumSet { grid: [[1, 2, 3], [4, 10, 6], [7, 8, 9]], \
             rule: FullRow }, write: GridQuorumSet { grid: [[1, 2, 3], [4, 10, 6], [7, 8, 9]], \
-            rule: OnePerRow }, nodes: {1: (), 2: (), 3: (), 4: (), 5: (), 6: (), 7: (), 8: (), 9: \
-            (), 10: ()}, roles: {} }]}";
+            rule: OnePerRow }, nodes: {1: ((), None), 2: ((), None), 3: ((), None), 4: ((), None), \
+            5: ((), None), 6: ((), None), 7: ((), None), 8: ((), None), 9: ((), None), 10: ((), \
+            None)} }]}";
 let got = replaced.to_string();
 assert_eq!(want, got);
 

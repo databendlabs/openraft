@@ -69,7 +69,8 @@ fn test_new() {
     let write = vec![btreeset! {2}];
     let membership = ExplicitMembership::<u64, ()>::new(read, write, btreeset! {1, 2, 3, 4}).unwrap();
     let want = "{configs: [Config { read: ExplicitQuorumSet { quorums: [{1, 2}, {2, 3}] }, \
-                write: ExplicitQuorumSet { quorums: [{2}] }, nodes: {1: (), 2: (), 3: (), 4: ()}, roles: {} }]}";
+                write: ExplicitQuorumSet { quorums: [{2}] }, nodes: {1: ((), None), 2: ((), None), \
+                3: ((), None), 4: ((), None)} }]}";
     assert_eq!(want, membership.to_string());
 
     let cases = [
@@ -285,9 +286,9 @@ fn test_joint_quorums_satisfy_both_configs() {
     assert_eq!(want, write_accepted);
 
     let want = "{configs: [Config { read: ExplicitQuorumSet { quorums: [{1, 2}] }, write: ExplicitQuorumSet { \
-                quorums: [{1, 2}] }, nodes: {1: (), 2: ()}, roles: {} }, Config { read: ExplicitQuorumSet { \
-                quorums: [{3}] }, write: ExplicitQuorumSet { quorums: [{2, 3}, {3, 4}] }, nodes: {2: (), 3: (), \
-                4: ()}, roles: {} }]}";
+                quorums: [{1, 2}] }, nodes: {1: ((), None), 2: ((), None)} }, Config { \
+                read: ExplicitQuorumSet { quorums: [{3}] }, write: ExplicitQuorumSet { \
+                quorums: [{2, 3}, {3, 4}] }, nodes: {2: ((), None), 3: ((), None), 4: ((), None)} }]}";
     assert_eq!(want, joint.to_string());
 }
 
@@ -401,7 +402,8 @@ fn test_joint_keeps_old_roles_and_target_restores_new_roles() {
         assert_joint_keeps_old_roles_and_target_restores_new_roles::<_, ExplicitChange<u64, ()>>(&old, &new, 2);
 
     let want = "{configs: [Config { read: ExplicitQuorumSet { quorums: [{1, 2}] }, write: ExplicitQuorumSet { \
-                quorums: [{1, 2}] }, nodes: {1: (), 2: (), 3: ()}, roles: {2: NodeRole(ReceiveLogs)} }]}";
+                quorums: [{1, 2}] }, nodes: {1: ((), None), 2: ((), Some(NodeRole(ReceiveLogs))), \
+                3: ((), None)} }]}";
     assert_eq!(want, target.to_string());
 }
 
@@ -416,9 +418,9 @@ fn test_display_with_roles() {
     let roles = btreemap! {3 => NodeRole::ReceiveLogs, 4 => voter_role(), 5 => NodeRole::Empty};
     let configured = membership.with_roles(roles).unwrap();
     let want = "{configs: [Config { read: ExplicitQuorumSet { quorums: [{1, 2}, {1, 3}, {2, 3}] }, \
-                write: ExplicitQuorumSet { quorums: [{1, 2}, {1, 3}, {2, 3}] }, nodes: {1: (), 2: (), 3: (), \
-                4: (), 5: ()}, roles: {3: NodeRole(ReceiveLogs), 4: NodeRole(Campaigner | ReceiveLogs), \
-                5: NodeRole(Empty)} }]}";
+                write: ExplicitQuorumSet { quorums: [{1, 2}, {1, 3}, {2, 3}] }, nodes: {1: ((), None), \
+                2: ((), None), 3: ((), Some(NodeRole(ReceiveLogs))), \
+                4: ((), Some(NodeRole(Campaigner | ReceiveLogs))), 5: ((), Some(NodeRole(Empty)))} }]}";
     let got = configured.to_string();
     assert_eq!(want, got);
 }
@@ -485,8 +487,9 @@ fn test_display_with_retained_learner() {
     let roles = btreemap! {1 => NodeRole::ReceiveLogs, 3 => NodeRole::ReceiveLogs, 5 => NodeRole::Empty};
     let configured = membership.with_roles(roles).unwrap();
     let want = "{configs: [Config { read: ExplicitQuorumSet { quorums: [{2, 3}, {2, 4}, {3, 4}] }, \
-                write: ExplicitQuorumSet { quorums: [{2, 3}, {2, 4}, {3, 4}] }, nodes: {1: (), 2: (), 3: (), \
-                4: (), 5: ()}, roles: {3: NodeRole(ReceiveLogs), 5: NodeRole(Empty)} }]}";
+                write: ExplicitQuorumSet { quorums: [{2, 3}, {2, 4}, {3, 4}] }, nodes: {1: ((), None), \
+                2: ((), None), 3: ((), Some(NodeRole(ReceiveLogs))), 4: ((), None), \
+                5: ((), Some(NodeRole(Empty)))} }]}";
     let got = configured.to_string();
     assert_eq!(want, got);
 }
@@ -520,7 +523,7 @@ fn test_serde() {
     let membership = Membership::new([btreeset! {1, 2}], [btreeset! {2, 3}], btreeset! {1, 2, 3, 4}).unwrap();
 
     let json = serde_json::to_string(&membership).unwrap();
-    let want = r#"{"parts":[{"read":{"quorums":[[1,2]]},"write":{"quorums":[[2,3]]},"nodes":{"1":null,"2":null,"3":null,"4":null},"roles":{}}]}"#;
+    let want = r#"{"parts":[{"read":{"quorums":[[1,2]]},"write":{"quorums":[[2,3]]},"nodes":{"1":[null,null],"2":[null,null],"3":[null,null],"4":[null,null]}}]}"#;
     assert_eq!(want, json);
     let decoded = serde_json::from_str::<Membership>(&json).unwrap();
     assert_eq!(membership, decoded);

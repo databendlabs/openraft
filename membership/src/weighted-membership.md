@@ -167,7 +167,8 @@ let change = WeightedChange::weights(weights);
 let moved = change.apply(&membership, true).unwrap();
 let want = "{configs: [Config { read: WeightedQuorumSet { weights: {1: 1, 2: 1, 3: 2, 4: 1}, \
             threshold: 3 }, write: WeightedQuorumSet { weights: {1: 1, 2: 1, 3: 2, 4: 1}, \
-            threshold: 3 }, nodes: {1: (), 2: (), 3: (), 4: ()}, roles: {} }]}";
+            threshold: 3 }, nodes: {1: ((), None), 2: ((), None), 3: ((), None), 4: ((), None)} \
+            }]}";
 let got = moved.to_string();
 assert_eq!(want, got);
 
@@ -210,8 +211,8 @@ OpenRaft uses a weighted membership through three types:
   [`Joint`]`<`[`Config`]`<N, WeightedQuorumSet<NID>>>`: a list of configs, one
   config, or the old configs and the new one during a joint change. Each config
   holds a read rule with threshold `read_weight` and a write rule with
-  threshold `write_weight` over the same weights, every node with its
-  metadata, and the roles set for some nodes. [`read_quorum_set()`] returns a
+  threshold `write_weight` over the same weights, and every node with its
+  metadata and the role set for it, if any. [`read_quorum_set()`] returns a
   [`Joint`] of the read rules of all configs, so a read quorum must be a read
   quorum of every config. [`write_quorum_set()`] does the same with the write
   rules.
@@ -293,13 +294,14 @@ crate:
 - `src/config.rs`, which holds `Config`, and `src/config/joint_config.rs`,
   which implements [`RaftMembership`] for `Joint<Config>`.
 
-`Config` stores one config: its two rules, its nodes with their metadata, and
-the roles set for them; `get_node()` computes the default role of every other
-node. The [`RaftMembership`] impl of `Joint<Config>` provides every
-required method, such as [`get_node()`], [`node_ids()`] and [`joint_with()`],
-for any rule type, so `WeightedMembership` adds only its constructors. The
-grid, hierarchical and explicit memberships are the same `Joint<Config>` with
-another rule. Then replace the weight arithmetic with the rule of your policy.
+`Config` stores one config: its two rules, and its nodes, each with its
+metadata and the role set for it, if any; `get_node()` computes the default
+role of a node without one. The [`RaftMembership`] impl of `Joint<Config>`
+provides every required method, such as [`get_node()`], [`node_ids()`] and
+[`joint_with()`], for any rule type, so `WeightedMembership` adds only its
+constructors. The grid, hierarchical and explicit memberships are the same
+`Joint<Config>` with another rule. Then replace the weight arithmetic with the
+rule of your policy.
 
 [`WeightedMembership`]: crate::WeightedMembership
 [`WeightedMembership::new()`]: crate::WeightedMembership::new

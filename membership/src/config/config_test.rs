@@ -85,9 +85,9 @@ fn test_new_checks_that_voters_have_nodes() {
     assert_eq!(Err(not_found), res);
 
     let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40};
-    let config = TestConfig::new(rule.clone(), rule, nodes.clone()).unwrap();
-    assert_eq!(nodes, config.nodes);
-    assert_eq!(BTreeMap::new(), config.roles);
+    let config = TestConfig::new(rule.clone(), rule, nodes).unwrap();
+    let want = btreemap! {1 => (10, None), 2 => (20, None), 3 => (30, None), 4 => (40, None)};
+    assert_eq!(want, config.nodes);
 }
 
 #[test]
@@ -106,21 +106,30 @@ fn test_set_roles_stores_only_roles_that_differ_from_default() {
         4 => NodeRole::Empty,
     };
     config.set_roles(roles).unwrap();
-    let want = btreemap! {1 => NodeRole::Empty, 3 => NodeRole::ReceiveLogs, 4 => NodeRole::Empty};
-    assert_eq!(want, config.roles);
-    assert_eq!(voter_role(), config.role(&2));
+    let want = btreemap! {
+        1 => (10, Some(NodeRole::Empty)),
+        2 => (20, None),
+        3 => (30, Some(NodeRole::ReceiveLogs)),
+        4 => (40, Some(NodeRole::Empty)),
+    };
+    assert_eq!(want, config.nodes);
 
     // A role is kept as given, even one without `ReceiveLogs` for write voter 2: OpenRaft rejects
     // such a membership when it is proposed. Learner 4 set to its default follows it again.
     config.set_roles(btreemap! {2 => NodeRole::Campaigner, 4 => NodeRole::ReceiveLogs}).unwrap();
-    let want = btreemap! {1 => NodeRole::Empty, 2 => NodeRole::Campaigner, 3 => NodeRole::ReceiveLogs};
-    assert_eq!(want, config.roles);
+    let want = btreemap! {
+        1 => (10, Some(NodeRole::Empty)),
+        2 => (20, Some(NodeRole::Campaigner)),
+        3 => (30, Some(NodeRole::ReceiveLogs)),
+        4 => (40, None),
+    };
+    assert_eq!(want, config.nodes);
 
     // Node 5 is no node of the config, so the call sets no role.
     let res = config.set_roles(btreemap! {3 => voter_role(), 5 => NodeRole::Empty});
     let not_found = NodeNotFound::new(5, Operation::None);
     assert_eq!(Err(not_found), res);
-    assert_eq!(want, config.roles);
+    assert_eq!(want, config.nodes);
 }
 
 #[test]
@@ -335,11 +344,19 @@ fn test_keep_roles_keeps_set_roles_through_status_changes() {
     let rule = threshold(1, btreeset! {1, 2});
     let mut second = TestConfig::new(rule.clone(), rule, without_four.clone()).unwrap();
     second.keep_roles(&first);
-    assert_eq!(btreemap! {3 => NodeRole::ReceiveLogs}, second.roles);
+    let want = btreemap! {1 => (10, None), 2 => (20, None), 3 => (30, Some(NodeRole::ReceiveLogs))};
+    assert_eq!(want, second.nodes);
 
     // The third config makes node 3 a voter again, and it still does not campaign.
     let rule = threshold(2, btreeset! {1, 2, 3});
     let mut third = TestConfig::new(rule.clone(), rule, without_four).unwrap();
     third.keep_roles(&second);
-    assert_eq!(NodeRole::ReceiveLogs, third.role(&3));
+    let membership = Joint { parts: vec![third] };
+    let got = active_nodes(&membership);
+    let want = btreemap! {
+        1 => node(&10, voter_role(), true),
+        2 => node(&20, voter_role(), true),
+        3 => node(&30, NodeRole::ReceiveLogs, true),
+    };
+    assert_eq!(want, got);
 }
