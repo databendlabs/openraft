@@ -58,7 +58,8 @@ fn conflict_hint_survives_vote_only_flush() {
 
     let actual = eng.following_handler().conflict_hint();
     assert_eq!(expected, actual);
-    assert_eq!(Some(log_id(2, 1, 3)), actual.last_log_id);
+    let expected_tail = Some(log_id(2, 1, 3));
+    assert_eq!(expected_tail, actual.last_log_id);
 }
 
 #[test]

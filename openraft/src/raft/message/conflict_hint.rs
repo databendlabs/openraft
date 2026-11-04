@@ -164,4 +164,24 @@ mod tests {
         assert_eq!(Some(21), probe);
         assert_eq!(80, end);
     }
+
+    #[test]
+    fn shared_snapshot_boundary_allows_log_replication() {
+        let local = LogIdList::new(Some(log_id(1, 1, 40)), [log_id(3, 1, 100)]);
+        let hint = ConflictHint::<UTConfig>::new(None, Some(log_id(1, 1, 50)), vec![]);
+        let probe = hint.probe_index(&local);
+        let end = hint.searching_end(&local, 100);
+        assert_eq!(Some(41), probe);
+        assert_eq!(41, end);
+    }
+
+    #[test]
+    fn an_old_sample_does_not_exclude_an_omitted_shared_leader() {
+        let local = LogIdList::new(None, [log_id(1, 1, 40), log_id(3, 1, 80), log_id(5, 1, 100)]);
+        let hint = ConflictHint::<UTConfig>::new(None, Some(log_id(4, 1, 90)), vec![log_id(1, 1, 30)]);
+        let probe = hint.probe_index(&local);
+        let end = hint.searching_end(&local, 100);
+        assert_eq!(Some(31), probe);
+        assert_eq!(90, end);
+    }
 }
