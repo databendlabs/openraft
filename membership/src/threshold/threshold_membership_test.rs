@@ -283,6 +283,22 @@ fn test_apply() {
 }
 
 #[test]
+fn test_apply_keeps_metadata_and_removes_added_nodes() {
+    let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40};
+    let membership = ThresholdMembership::<u64, u64>::new(btreeset! {1, 2, 3}, 2, nodes).unwrap();
+    let change = ThresholdChange {
+        add_nodes: btreemap! {1 => 11, 4 => 41, 5 => 51, 6 => 61},
+        remove_nodes: btreeset! {4, 5},
+        ..ThresholdChange::default()
+    };
+    let got = change.apply(&membership, true);
+    let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 6 => 61};
+    let want = ThresholdMembership::new(btreeset! {1, 2, 3}, 2, nodes);
+    let want = want.map_err(MembershipError::from);
+    assert_eq!(want, got);
+}
+
+#[test]
 fn test_joint_with_keeps_new_nodes_and_old_voters() {
     // Learner 4 replaces voter 1, and the new config no longer holds learner 5.
     let old = ThresholdMembership::<u64, ()>::new(btreeset! {1, 2, 3}, 2, btreeset! {1, 2, 3, 4, 5}).unwrap();
