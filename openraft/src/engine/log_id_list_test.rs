@@ -571,6 +571,67 @@ fn test_log_id_list_get_with_purged() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_log_id_list_get_at_or_before() -> anyhow::Result<()> {
+    let leader = |term, node_id| *log_id(term, node_id, 0).committed_leader_id();
+
+    tracing::info!("purged at 2; leader 1 at 3-5, leader 3 at 6-8, leader 5 at 9");
+    {
+        let ids = LogIdList::<UtClid>::new(Some(log_id(1, 1, 2)), vec![
+            log_id(1, 1, 5),
+            log_id(3, 1, 8),
+            log_id(5, 1, 9),
+        ]);
+
+        // An index inside the leader's run is returned as is.
+        assert_eq!(Some(log_id(1, 1, 4)), ids.get_at_or_before(&leader(1, 1), 4));
+
+        // A later index is clipped to the last log of the run.
+        assert_eq!(Some(log_id(1, 1, 5)), ids.get_at_or_before(&leader(1, 1), 7));
+        assert_eq!(Some(log_id(3, 1, 8)), ids.get_at_or_before(&leader(3, 1), 100));
+
+        // The purge boundary is still known; earlier purged positions are not.
+        assert_eq!(Some(log_id(1, 1, 2)), ids.get_at_or_before(&leader(1, 1), 2));
+        assert_eq!(None, ids.get_at_or_before(&leader(1, 1), 1));
+
+        // An index before the leader's run belongs to an earlier leader.
+        assert_eq!(None, ids.get_at_or_before(&leader(3, 1), 5));
+
+        // A leader without logs, including one that differs only by node id, has no position.
+        assert_eq!(None, ids.get_at_or_before(&leader(2, 1), 7));
+        assert_eq!(None, ids.get_at_or_before(&leader(3, 2), 7));
+        assert_eq!(None, ids.get_at_or_before(&leader(6, 1), 100));
+    }
+
+    tracing::info!("purged at 5 by leader 2, whose other logs are all purged; leader 4 at 6-9");
+    {
+        let ids = LogIdList::<UtClid>::new(Some(log_id(2, 1, 5)), vec![log_id(4, 1, 9)]);
+
+        assert_eq!(Some(log_id(2, 1, 5)), ids.get_at_or_before(&leader(2, 1), 7));
+        assert_eq!(Some(log_id(2, 1, 5)), ids.get_at_or_before(&leader(2, 1), 5));
+        assert_eq!(None, ids.get_at_or_before(&leader(2, 1), 4));
+        assert_eq!(Some(log_id(4, 1, 6)), ids.get_at_or_before(&leader(4, 1), 6));
+    }
+
+    tracing::info!("all logs purged at 5");
+    {
+        let ids = LogIdList::<UtClid>::new(Some(log_id(2, 1, 5)), vec![]);
+
+        assert_eq!(Some(log_id(2, 1, 5)), ids.get_at_or_before(&leader(2, 1), 9));
+        assert_eq!(None, ids.get_at_or_before(&leader(2, 1), 4));
+        assert_eq!(None, ids.get_at_or_before(&leader(1, 1), 9));
+    }
+
+    tracing::info!("empty list");
+    {
+        let ids = LogIdList::<UtClid>::default();
+
+        assert_eq!(None, ids.get_at_or_before(&leader(1, 1), 0));
+    }
+
+    Ok(())
+}
+
+#[test]
 fn test_log_id_list_truncate_with_purged() -> anyhow::Result<()> {
     // Test truncate() when purged is set
     // Setup: purged at 2 (leader 1), key_log_ids = [log_id(1,1,5), log_id(2,1,8)]

@@ -4,6 +4,7 @@ use tests::fixtures;
 
 mod t10_append_entries_partial_success;
 mod t11_probe_partial_success_without_entry;
+mod t12_conflict_hints;
 mod t20_empty_log_entries;
 mod t40_receive_logs;
 mod t50_append_entries_backoff;
