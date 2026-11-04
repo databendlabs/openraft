@@ -106,12 +106,8 @@ where
         let write_size = voter_count / 2 + 1;
         let groups = Group::of_voters(write_size, voters);
 
-        // Safe unwrap(): the root group holds a voter, and 1 <= write_size <= voter_count.
-        let write = HierarchicalQuorumSet::new(groups).unwrap();
-        let read = write.dual();
-        // Safe unwrap(): every voter is a node, and the config sets no role.
-        let config = Config::new(read, write, nodes).unwrap();
-        Self { parts: vec![config] }
+        let membership = Self::new(groups, nodes);
+        membership.expect("a nonempty majority group and complete node metadata form a valid config")
     }
 }
 
