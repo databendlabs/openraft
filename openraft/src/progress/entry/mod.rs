@@ -50,6 +50,11 @@ where C: RaftTypeConfig
     /// One plus the max log index on the following node that might match the leader log.
     pub(crate) searching_end: u64,
 
+    /// A position to try before falling back to binary search.
+    ///
+    /// The next send consumes it. It is skipped if it no longer lies in the search range.
+    pub(crate) probe_index: Option<u64>,
+
     /// If true, reset the progress by setting matching to `None` when the follower's
     /// log is found reverted to an early state.
     ///
@@ -83,6 +88,12 @@ where C: RaftTypeConfig
         }
     }
 
+    /// Try `index` before falling back to binary search.
+    pub(crate) fn with_probe(mut self, index: u64) -> Self {
+        self.data.probe_index = Some(index);
+        self
+    }
+
     pub(crate) fn matching(&self) -> Option<&LogIdOf<C>> {
         self.matching.as_ref()
     }
@@ -109,6 +120,7 @@ where C: RaftTypeConfig
             stream_id,
             inflight: Inflight::None,
             searching_end,
+            probe_index: None,
             allow_log_reversion: false,
         }
     }
@@ -190,6 +202,10 @@ where C: RaftTypeConfig
     /// - **Pipeline** (`matching.next_index() == searching_end`): the matching point is exactly
     ///   `matching`. Stream all logs after it, with no fixed upper bound ([`Inflight::LogsSince`]).
     ///
+    /// A pending [`ProgressData::probe_index`] is tried before either regime applies. It is raised
+    /// to the purge boundary and used only if it then lies in
+    /// `[matching.next_index(), searching_end]`. Every send consumes it.
+    ///
     /// Purging constrains what AppendEntries can be built: log entries at index
     /// `<= purge_upto` are deleted, and only the log id at `purge_upto` itself is still
     /// known, as the snapshot's last log id. Thus the lowest usable `prev` is `purge_upto`.
@@ -231,6 +247,9 @@ where C: RaftTypeConfig
         let purge_upto_next = log_state.purge_upto().next_index();
         let inflight_id = log_state.new_inflight_id();
 
+        // A pending probe applies to this send only, including when a snapshot is sent instead.
+        let probe_index = self.data.probe_index.take();
+
         // Snapshot condition 1: all candidate matching positions are purged.
         if self.data.searching_end < purge_upto_next {
             self.data.inflight = Inflight::snapshot(inflight_id);
@@ -238,6 +257,23 @@ where C: RaftTypeConfig
         }
 
         let matching_next = self.matching().next_index();
+
+        if let Some(probe_index) = probe_index {
+            // Like a binary-search probe, start no lower than the purge boundary.
+            let start = std::cmp::max(probe_index, purge_upto_next);
+            let end = std::cmp::min(start + max_entries, last_next);
+
+            // Responses received since the probe was chosen may have narrowed the search range.
+            let in_search_range = matching_next <= start && start <= self.data.searching_end;
+
+            if in_search_range && start < end {
+                let prev = log_state.prev_log_id(start);
+                let last = log_state.prev_log_id(end);
+                self.data.inflight = Inflight::probe(prev, last, inflight_id);
+                return Ok(&self.data.inflight);
+            }
+        }
+
         let is_probing = matching_next < self.data.searching_end;
 
         if is_probing {
