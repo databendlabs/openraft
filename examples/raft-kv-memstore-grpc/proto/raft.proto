@@ -92,6 +92,17 @@ message AppendEntriesRequest {
   LogId leader_commit = 4;
 }
 
+message ConflictHint {
+  LogId last_log_id = 1;
+  repeated LogId log_ids = 2;
+  LogId committed_log_id = 3;
+}
+
+message AppendEntriesResponseWithHint {
+  AppendEntriesResponse response = 1;
+  ConflictHint hint = 2;
+}
+
 message AppendEntriesResponse {
   // If not None, the follower rejected the AppendEntries request due to having a higher vote.
   // All other fields are valid only when this field is None
@@ -168,6 +179,9 @@ service RaftService {
 
   // AppendEntries handles call related to append entries RPC
   rpc AppendEntries(AppendEntriesRequest) returns (AppendEntriesResponse) {}
+
+  // Optional discovery endpoint; existing append response messages stay unchanged.
+  rpc AppendEntriesWithHint(AppendEntriesRequest) returns (AppendEntriesResponseWithHint) {}
 
   // StreamAppend handles streaming append entries for pipeline replication
   rpc StreamAppend(stream AppendEntriesRequest) returns (stream AppendEntriesResponse) {}

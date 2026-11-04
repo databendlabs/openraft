@@ -164,6 +164,20 @@ pub(crate) struct ProgressEntry<C> {
   Because the Leader is assumed to have all committed logs. Any logs after
   `leader_last_log_index` are uncommitted and can be safely deleted.
 
+- The first request probes the inherited tail while sending the new leader's
+  first entry. A caught-up follower can acknowledge the no-op in one round trip.
+
+- Transports may implement `NetStreamAppend::append_entries_with_hint` through
+  a separate endpoint calling `Raft::append_entries_with_hint`. On a conflict,
+  the follower returns its local committed log ID, retained in-memory tail, and
+  selected leader boundaries strictly after the committed position. The committed
+  anchor skips searching the shared prefix; later samples can advance the probe.
+  The hint describes the log after truncation. Hints tighten the search;
+  they never advance `matching` or count toward a quorum. Shared committed leader
+  IDs identify common prefixes even when the run end indices differ. Purged
+  positions provide no negative evidence. Unsupported transports retain the
+  existing AppendEntries and streaming response formats and use binary search.
+
 - The Leader sends the log entry at the midpoint of `[ProgressEntry.matching.next_index(), ProgressEntry.searching_end]` to the Follower.
 
 - If the log entry is accepted, update `ProgressEntry.matching` to the current log ID.
