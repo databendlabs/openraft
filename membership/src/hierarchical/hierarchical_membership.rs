@@ -5,7 +5,6 @@ use openraft::Node;
 use openraft::NodeId;
 use openraft::errors::MembershipError;
 use openraft::membership::IntoNodes;
-use openraft::membership::NodeRole;
 use openraft_macros::since;
 
 use crate::config::Config;
@@ -82,6 +81,8 @@ use crate::quorum::Joint;
 /// let read_accepts = read.is_quorum([3, 4, 5, 6].iter());
 /// assert!(!read_accepts);
 /// ```
+///
+/// [`NodeRole::ReceiveLogs`]: openraft::membership::NodeRole::ReceiveLogs
 #[since(
     version = "0.10.0",
     change = "became an alias of `Joint<Config<N, HierarchicalQuorumSet<NID>>>`"
@@ -135,46 +136,5 @@ where
         let nodes = nodes.into_nodes();
         let config = Config::new(read, write, nodes)?;
         Ok(Self { parts: vec![config] })
-    }
-
-    /// Returns this membership with each node of `roles` set to its role there in the last config,
-    /// the only config of a membership from [`new()`](Self::new). The other nodes keep their roles.
-    ///
-    /// Returns [`MembershipError::NodeNotFound`] for a node that this membership does not know.
-    /// A role is kept as given, even one without [`NodeRole::ReceiveLogs`] for a write voter:
-    /// OpenRaft rejects such a membership with
-    /// [`MembershipError::WriteVoterWithoutReceiveLogs`] when it is initialized or proposed.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::collections::BTreeMap;
-    /// use std::collections::BTreeSet;
-    ///
-    /// use openraft::membership::{NodeRef, NodeRole, RaftMembership};
-    /// use openraft_membership::HierarchicalMembership;
-    /// use openraft_membership::quorum::Group;
-    ///
-    /// // One group of three voters; any two of them form a quorum.
-    /// let groups = Group::of_voters(2, [1, 2, 3]);
-    /// let nodes = BTreeSet::from([1, 2, 3]);
-    /// let membership = HierarchicalMembership::<u64, ()>::new(groups, nodes).unwrap();
-    ///
-    /// // Voter 3 stores logs and votes, but never starts an election on its own.
-    /// let roles = BTreeMap::from([(3, NodeRole::ReceiveLogs)]);
-    /// let membership = membership.with_roles(roles).unwrap();
-    ///
-    /// let got = membership.get_node(&3);
-    /// let want = NodeRef {
-    ///     node: &(),
-    ///     role: NodeRole::ReceiveLogs,
-    ///     is_read_voter: true,
-    ///     is_write_voter: true,
-    /// };
-    /// assert_eq!(Some(want), got);
-    /// ```
-    pub fn with_roles(self, roles: BTreeMap<NID, NodeRole>) -> Result<Self, MembershipError<NID, InvalidGroups<NID>>> {
-        let membership = self.set_roles(roles)?;
-        Ok(membership)
     }
 }

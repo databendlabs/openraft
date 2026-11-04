@@ -470,6 +470,7 @@ fn test_only_write_voters_need_receive_logs() {
     let res = change.apply(&configured, true);
     let want = Membership::new(read, write, btreeset! {1, 2, 3}).unwrap();
     let want = want.with_roles(btreemap! {1 => NodeRole::ReceiveLogs, 3 => NodeRole::ReceiveLogs});
+    let want = want.map_err(MembershipError::from);
     assert_eq!(want, res);
 }
 

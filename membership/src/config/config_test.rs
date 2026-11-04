@@ -313,7 +313,7 @@ fn test_drop_demoted_voters_across_joint_configs() {
 }
 
 #[test]
-fn test_set_roles_sets_roles_of_last_config() {
+fn test_with_roles_sets_roles_of_last_config() {
     // Voter 3 stops campaigning in the old config, and voter 4 replaces voter 1 in the new one.
     let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40};
     let old_roles = btreemap! {3 => NodeRole::ReceiveLogs};
@@ -324,19 +324,19 @@ fn test_set_roles_sets_roles_of_last_config() {
     };
 
     let roles = btreemap! {1 => NodeRole::Empty, 4 => NodeRole::ReceiveLogs};
-    let got = joint.clone().set_roles(roles.clone()).unwrap();
+    let got = joint.clone().with_roles(roles.clone()).unwrap();
     let new_with_roles = config(2, btreeset! {2, 3, 4}, roles, nodes);
     let want = Joint {
         parts: vec![old, new_with_roles],
     };
     assert_eq!(want, got);
 
-    let res = joint.clone().set_roles(btreemap! {5 => NodeRole::Empty});
+    let res = joint.clone().with_roles(btreemap! {5 => NodeRole::Empty});
     let not_found = NodeNotFound::new(5, Operation::None);
     assert_eq!(Err(not_found), res);
 
     // A role is kept as given, even one without `ReceiveLogs` for write voter 4.
-    let got = joint.set_roles(btreemap! {4 => NodeRole::Campaigner}).unwrap();
+    let got = joint.with_roles(btreemap! {4 => NodeRole::Campaigner}).unwrap();
     let node = got.get_node(&4).unwrap();
     assert_eq!(NodeRole::Campaigner, node.role);
 }

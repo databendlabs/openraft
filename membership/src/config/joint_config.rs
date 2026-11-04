@@ -11,6 +11,7 @@ use openraft::errors::Operation;
 use openraft::membership::NodeRef;
 use openraft::membership::NodeRole;
 use openraft::membership::RaftMembership;
+use openraft_macros::since;
 
 use crate::config::Config;
 use crate::config::default_role;
@@ -26,11 +27,49 @@ where
     Q: QuorumSet + QuorumIntersection<Q> + Clone + Debug + Eq + OptionalFeatures + 'static,
     Q::Id: NodeId,
 {
-    /// Returns this membership with each node of `roles` set to its role there in the last config,
-    /// as [`Config::set_roles()`] does. The other nodes keep their roles.
+    /// Returns this membership with each node of `roles` set to its role there in the last config.
+    /// The other nodes keep their roles. Setting a node to its default role clears its stored role,
+    /// so it follows its default again.
     ///
     /// Returns [`NodeNotFound`] for the first node of `roles` that the last config does not hold.
-    pub(crate) fn set_roles(mut self, roles: BTreeMap<Q::Id, NodeRole>) -> Result<Self, NodeNotFound<Q::Id>> {
+    /// A role is kept as given, even one without [`NodeRole::ReceiveLogs`] for a write voter:
+    /// OpenRaft rejects such a membership with [`WriteVoterWithoutReceiveLogs`] when it is
+    /// initialized or proposed.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::collections::BTreeMap;
+    /// use std::collections::BTreeSet;
+    ///
+    /// use openraft::membership::{NodeRef, NodeRole, RaftMembership};
+    /// use openraft_membership::ExplicitMembership;
+    ///
+    /// // Any two of voters 1, 2 and 3 form a quorum.
+    /// let majorities = [BTreeSet::from([1, 2]), BTreeSet::from([1, 3]), BTreeSet::from([2, 3])];
+    /// let nodes = BTreeSet::from([1, 2, 3]);
+    /// let membership = ExplicitMembership::<u64, ()>::new(majorities.clone(), majorities, nodes).unwrap();
+    ///
+    /// // Voter 3 stores logs and votes, but never starts an election on its own.
+    /// let roles = BTreeMap::from([(3, NodeRole::ReceiveLogs)]);
+    /// let membership = membership.with_roles(roles).unwrap();
+    ///
+    /// let got = membership.get_node(&3);
+    /// let want = NodeRef {
+    ///     node: &(),
+    ///     role: NodeRole::ReceiveLogs,
+    ///     is_read_voter: true,
+    ///     is_write_voter: true,
+    /// };
+    /// assert_eq!(Some(want), got);
+    /// ```
+    ///
+    /// [`WriteVoterWithoutReceiveLogs`]: openraft::errors::MembershipError::WriteVoterWithoutReceiveLogs
+    #[since(
+        version = "0.10.0",
+        change = "shared by all config joints; returns NodeNotFound directly"
+    )]
+    pub fn with_roles(mut self, roles: BTreeMap<Q::Id, NodeRole>) -> Result<Self, NodeNotFound<Q::Id>> {
         let Some(last) = self.parts.last_mut() else {
             // A membership without a config holds no node.
             if let Some(node_id) = roles.into_keys().next() {

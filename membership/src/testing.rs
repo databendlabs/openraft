@@ -2,7 +2,6 @@
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use std::error::Error;
 
 use maplit::btreemap;
 use maplit::btreeset;
@@ -92,12 +91,11 @@ where
 /// `build(voters, nodes)` returns a membership whose only config has the voters `voters` and a
 /// `()` node for each of `nodes`. `with_roles` is the `with_roles()` method of that membership
 /// type. The test builds voters 1, 2 and 3 and learners 4 and 5.
-pub(crate) fn assert_with_roles<M, E, B, W>(build: B, with_roles: W)
+pub(crate) fn assert_with_roles<M, B, W>(build: B, with_roles: W)
 where
     M: RaftMembership<NodeId = u64, Node = ()>,
-    E: Error + PartialEq + 'static,
     B: Fn(BTreeSet<u64>, BTreeSet<u64>) -> M,
-    W: Fn(M, BTreeMap<u64, NodeRole>) -> Result<M, MembershipError<u64, E>>,
+    W: Fn(M, BTreeMap<u64, NodeRole>) -> Result<M, NodeNotFound<u64>>,
 {
     let membership = build(btreeset! {1, 2, 3}, btreeset! {1, 2, 3, 4, 5});
 
@@ -135,7 +133,7 @@ where
     // Node 9 is unknown.
     let res = with_roles(membership.clone(), btreemap! {9 => NodeRole::ReceiveLogs});
     let not_found = NodeNotFound::new(9, Operation::None);
-    assert_eq!(Err(MembershipError::NodeNotFound(not_found)), res);
+    assert_eq!(Err(not_found), res);
 
     // Write voter 2 keeps a role without `ReceiveLogs` as given: OpenRaft rejects such a
     // membership when it is proposed.
@@ -155,7 +153,7 @@ where
     M: RaftMembership<NodeId = u64, Node = ()>,
     C: RaftMembershipEdit<M>,
     B: Fn(BTreeSet<u64>, BTreeSet<u64>) -> M,
-    W: Fn(M, BTreeMap<u64, NodeRole>) -> Result<M, MembershipError<u64, C::Error>>,
+    W: Fn(M, BTreeMap<u64, NodeRole>) -> Result<M, NodeNotFound<u64>>,
     F: Fn(BTreeSet<u64>, BTreeMap<u64, NodeRole>) -> C,
 {
     let membership = build(btreeset! {1, 2, 3}, btreeset! {1, 2, 3, 4, 5});
@@ -250,7 +248,7 @@ where
     C: RaftMembershipEdit<M>,
     C::Error: PartialEq,
     B: Fn(BTreeSet<u64>, BTreeSet<u64>) -> M,
-    W: Fn(M, BTreeMap<u64, NodeRole>) -> Result<M, MembershipError<u64, C::Error>>,
+    W: Fn(M, BTreeMap<u64, NodeRole>) -> Result<M, NodeNotFound<u64>>,
     F: Fn(BTreeMap<u64, ()>, BTreeSet<u64>, BTreeMap<u64, NodeRole>) -> C,
 {
     let membership = build(btreeset! {1, 2, 3}, btreeset! {1, 2, 3, 4});
@@ -273,6 +271,7 @@ where
     let res = change.apply(&membership, true);
     let want = build(btreeset! {1, 2, 3}, btreeset! {1, 2, 3, 4, 5});
     let want = with_roles(want, btreemap! {5 => NodeRole::Empty});
+    let want = want.map_err(MembershipError::from);
     assert_eq!(want, res);
 
     // Write voter 2 keeps a role without `ReceiveLogs` as given: OpenRaft rejects the result when
@@ -280,6 +279,7 @@ where
     let change = change_nodes(btreemap! {}, btreeset! {}, btreemap! {2 => NodeRole::Campaigner});
     let res = change.apply(&membership, true);
     let want = with_roles(membership, btreemap! {2 => NodeRole::Campaigner});
+    let want = want.map_err(MembershipError::from);
     assert_eq!(want, res);
 }
 
