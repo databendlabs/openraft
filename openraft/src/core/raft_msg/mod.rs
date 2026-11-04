@@ -15,6 +15,7 @@ use crate::errors::InitializeError;
 use crate::errors::LinearizableReadError;
 use crate::impls::ProgressResponder;
 use crate::raft::AppendEntriesRequest;
+use crate::raft::AppendEntriesResponseWithHint;
 use crate::raft::ClientWriteResult;
 use crate::raft::Precondition;
 use crate::raft::VoteRequest;
@@ -62,6 +63,11 @@ where C: RaftTypeConfig
     AppendEntries {
         rpc: AppendEntriesRequest<C>,
         tx: AppendEntriesTx<C>,
+    },
+
+    AppendEntriesWithHint {
+        rpc: AppendEntriesRequest<C>,
+        tx: OneshotSenderOf<C, AppendEntriesResponseWithHint<C>>,
     },
 
     RequestVote {
@@ -169,7 +175,7 @@ where C: RaftTypeConfig
     /// Returns the name of this message variant.
     pub fn name(&self) -> RaftMsgName {
         match self {
-            RaftMsg::AppendEntries { .. } => RaftMsgName::AppendEntries,
+            RaftMsg::AppendEntries { .. } | RaftMsg::AppendEntriesWithHint { .. } => RaftMsgName::AppendEntries,
             RaftMsg::RequestVote { .. } => RaftMsgName::RequestVote,
             RaftMsg::RequestPreVote { .. } => RaftMsgName::RequestPreVote,
             RaftMsg::ClientWrite { .. } => RaftMsgName::ClientWrite,
@@ -191,7 +197,7 @@ where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            RaftMsg::AppendEntries { rpc, .. } => {
+            RaftMsg::AppendEntries { rpc, .. } | RaftMsg::AppendEntriesWithHint { rpc, .. } => {
                 write!(f, "AppendEntries: {}", rpc)
             }
             RaftMsg::RequestVote { rpc, .. } => {

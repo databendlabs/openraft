@@ -19,6 +19,7 @@ use crate::entry::raft_entry_ext::RaftEntryExt;
 use crate::errors::ConflictingLogId;
 use crate::errors::RejectAppendEntries;
 use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
+use crate::raft::ConflictHint;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::io_state::log_io_id::LogIOId;
@@ -39,6 +40,9 @@ mod install_snapshot_test;
 mod truncate_logs_test;
 #[cfg(test)]
 mod update_committed_membership_test;
+
+/// Include the committed anchor and at most seven recent leader boundaries.
+const MAX_CONFLICT_HINT_LOG_IDS: usize = 8;
 
 /// Receive replication request and deal with them.
 ///
@@ -137,6 +141,19 @@ where
         // else `prev_log_id.is_none()` means replicating logs from the very beginning.
 
         Ok(())
+    }
+
+    /// Describe the retained log after a conflicting suffix has been truncated.
+    pub(crate) fn conflict_hint(&self) -> ConflictHint<C> {
+        let committed_log_id = self.state.local_committed().cloned();
+        let committed_next = committed_log_id.next_index();
+        let boundaries = self.state.log_ids.key_log_ids();
+        let committed_end = boundaries.partition_point(|id| id.index() < committed_next);
+        let recent_start = boundaries.len().saturating_sub(MAX_CONFLICT_HINT_LOG_IDS - 1);
+        let start = std::cmp::max(committed_end, recent_start);
+        let log_ids = boundaries[start..].to_vec();
+        let last_log_id = self.state.last_log_id().cloned();
+        ConflictHint::new(committed_log_id, last_log_id, log_ids)
     }
 
     /// Follower/Learner appends `entries[since..]`.
