@@ -7,7 +7,6 @@ use futures::StreamExt;
 use openraft::OptionalSend;
 use openraft::RaftTypeConfig;
 use openraft::Vote;
-use openraft::alias::EntryOf;
 use openraft::alias::SnapshotOf;
 use openraft::async_runtime::Mutex as AsyncMutex;
 use openraft::base::BoxFuture;
@@ -112,23 +111,17 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
         let from = rpc.vote.to_leader_node_id();
         self.owner.before_rpc::<Infallible>(rpc.clone(), from, self.target).await?;
 
-        let truncated = self.truncate_entries_by_quota(&mut rpc.entries);
-        let last_log_id = if truncated {
-            match rpc.entries.last() {
-                Some(entry) => Some(entry.log_id()),
-                None => rpc.prev_log_id,
-            }
-        } else {
-            None
-        };
+        let partial_success = self.truncate_entries_by_quota(&mut rpc);
 
         let node = self.owner.get_raft_handle(&self.target)?;
         let result = node.append_entries_with_hint(rpc.clone()).await;
         let mut response = result.map_err(|error| RPCError::Unreachable(Unreachable::new(&error)))?;
 
         // If entries are truncated by quota, return a partial success response.
-        if truncated && response.response.is_success() {
-            response.response = AppendEntriesResponse::PartialSuccess(last_log_id);
+        if let Some(partial_success) = partial_success
+            && response.response.is_success()
+        {
+            response.response = partial_success;
         }
 
         // Response hooks may block while later requests are delivered in order.
@@ -151,43 +144,32 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
         self.owner.before_rpc::<Infallible>(rpc.clone(), from_id, self.target).await?;
 
         // decrease quota if quota is set
-        let truncated = self.truncate_entries_by_quota(&mut rpc.entries);
-        let last_log_id = if truncated {
-            match rpc.entries.last() {
-                Some(entry) => Some(entry.log_id()),
-                None => rpc.prev_log_id,
-            }
-        } else {
-            None
-        };
+        let partial_success = self.truncate_entries_by_quota(&mut rpc);
 
         {
             let x = self.owner.append_entries_quota.lock().unwrap();
             tracing::debug!("quota after consumption: {:?}", *x);
         }
-        tracing::debug!("append_entries truncated: {:?}", truncated);
+        tracing::debug!("append_entries truncated: {:?}", partial_success.is_some());
 
         let node = self.owner.get_raft_handle(&self.target)?;
 
         let resp = node.append_entries(rpc.clone()).await;
 
         tracing::debug!("append_entries: recv resp from id={} {:?}", self.target, resp);
-        let resp = resp.map_err(|e| {
+        let mut resp = resp.map_err(|e| {
             RPCError::Unreachable(Unreachable::<MemConfig>::from_string(format!(
                 "error: {} target={}",
                 e, self.target
             )))
         })?;
 
-        // If entries are truncated by quota, return an partial success response.
-        let resp = if truncated {
-            match resp {
-                AppendEntriesResponse::Success => AppendEntriesResponse::PartialSuccess(last_log_id),
-                response => response,
-            }
-        } else {
-            resp
-        };
+        // If entries are truncated by quota, return a partial success response.
+        if let Some(partial_success) = partial_success
+            && resp.is_success()
+        {
+            resp = partial_success;
+        }
         // Response hooks may block while later requests are delivered in order.
         drop(delivery);
         self.owner.call_rpc_post_hook(rpc, resp.clone(), from_id, self.target).await?;
@@ -290,22 +272,31 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
 }
 
 impl RaftRouterNetwork {
-    /// Consume the quota and return whether entries were removed.
-    fn truncate_entries_by_quota(&self, entries: &mut Vec<EntryOf<MemConfig>>) -> bool {
+    /// Consume the quota and drop the entries of `rpc` that it does not cover.
+    ///
+    /// Returns the partial success response for the retained entries, or `None` if no entry was
+    /// dropped.
+    fn truncate_entries_by_quota(
+        &self,
+        rpc: &mut AppendEntriesRequest<MemConfig>,
+    ) -> Option<AppendEntriesResponse<MemConfig>> {
         let mut quota = self.owner.append_entries_quota.lock().unwrap();
-        let Some(remaining) = *quota else {
-            return false;
-        };
+        let remaining = (*quota)?;
 
-        let len = entries.len() as u64;
+        let len = rpc.entries.len() as u64;
         if remaining >= len {
             *quota = Some(remaining - len);
-            return false;
+            return None;
         }
 
-        entries.truncate(remaining as usize);
+        rpc.entries.truncate(remaining as usize);
         *quota = Some(0);
-        true
+
+        let retained_log_id = match rpc.entries.last() {
+            Some(entry) => Some(entry.log_id()),
+            None => rpc.prev_log_id,
+        };
+        Some(AppendEntriesResponse::PartialSuccess(retained_log_id))
     }
 
     async fn append_stream_request(
