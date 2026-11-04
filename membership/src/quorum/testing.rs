@@ -6,7 +6,7 @@ use std::num::NonZeroU64;
 use crate::quorum::ThresholdQuorumSet;
 
 /// Returns a rule that accepts a set holding at least `quorum_size` of `ids`.
-pub(super) fn threshold(quorum_size: u64, ids: BTreeSet<u64>) -> ThresholdQuorumSet<u64> {
+pub(crate) fn threshold(quorum_size: u64, ids: BTreeSet<u64>) -> ThresholdQuorumSet<u64> {
     let quorum_size = NonZeroU64::new(quorum_size).expect("quorum_size is at least 1");
     ThresholdQuorumSet::new(quorum_size, ids)
 }
