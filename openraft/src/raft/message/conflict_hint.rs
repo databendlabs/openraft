@@ -37,45 +37,31 @@ where C: RaftTypeConfig
         Self { log_ids }
     }
 
-    /// Return the greatest log ID that the sampled log is known to share with `list`.
+    /// Compare the sampled log with `list`, returning the greatest log ID they are known to share
+    /// and the first index at which they are known to diverge.
+    ///
+    /// The sampled log is the log described by `log_ids`.
     ///
     /// For each sample, the greatest log ID of the same leader at or before the sample in `list`
     /// is shared, because the sampled log holds that leader's run up to the sample. A sample whose
-    /// leader has no such log ID in `list`, for example because it is purged, contributes nothing.
+    /// leader has no such log ID in `list`, for example because it is purged, contributes no shared
+    /// log ID. A run that the samples omit can share a later log ID. The shared log ID is `None` if
+    /// no sample contributes one.
     ///
-    /// A run that the samples omit can share a later log ID. Returns `None` if no sample
-    /// contributes.
-    pub(crate) fn last_known_common_log_id(&self, list: &LogIdList<CommittedLeaderIdOf<C>>) -> Option<LogIdOf<C>> {
-        let mut last = None;
-
-        for sample in &self.log_ids {
-            let leader_id = sample.committed_leader_id();
-            let index = sample.index();
-
-            let Some(log_id) = list.get_at_or_before(leader_id, index) else {
-                continue;
-            };
-
-            last = std::cmp::max(last, Some(log_id));
-        }
-
-        last
-    }
-
-    /// Return the first index at which the sampled log is known to diverge from `list`.
-    ///
-    /// The sampled log is the log described by `log_ids`. It can share log IDs with `list` only
-    /// below the returned index. The samples prove a divergence at:
+    /// The sampled log can share log IDs with `list` only below the divergence index. The samples
+    /// prove a divergence at:
     ///
     /// - the index after the last sample, where the sampled log has no entry;
     /// - the index after the end of a sampled leader's run in `list`, when that run ends before the
     ///   sample, because the sampled log continues the run;
     /// - a sampled index at which `list` holds a different log ID.
     ///
-    /// A purged index or an index past the end of `list` is skipped, so the result can exceed the
-    /// end of `list`. A run that the samples omit can hide an earlier divergence. An empty hint
-    /// returns 0.
-    pub(crate) fn first_known_divergence(&self, list: &LogIdList<CommittedLeaderIdOf<C>>) -> u64 {
+    /// A purged index or an index past the end of `list` is skipped, so the divergence index can
+    /// exceed the end of `list`. A run that the samples omit can hide an earlier divergence. An
+    /// empty hint returns `(None, 0)`.
+    pub(crate) fn compare(&self, list: &LogIdList<CommittedLeaderIdOf<C>>) -> (Option<LogIdOf<C>>, u64) {
+        let mut common = None;
+
         // The sampled log has no entry after its last sample.
         let last_log_id = self.log_ids.last();
         let mut divergence = last_log_id.next_index();
@@ -84,12 +70,13 @@ where C: RaftTypeConfig
             let leader_id = sample.committed_leader_id();
             let index = sample.index();
 
-            // `list` ends this leader's run earlier, while the sampled log continues it.
-            let shared = list.get_at_or_before(leader_id, index);
-            if let Some(shared) = shared
-                && shared.index() < index
-            {
-                divergence = std::cmp::min(divergence, shared.index() + 1);
+            if let Some(shared) = list.get_at_or_before(leader_id, index) {
+                // `list` ends this leader's run earlier, while the sampled log continues it.
+                if shared.index() < index {
+                    divergence = std::cmp::min(divergence, shared.index() + 1);
+                }
+
+                common = std::cmp::max(common, Some(shared));
             }
 
             // `list` holds a different log ID at the sampled index.
@@ -101,7 +88,7 @@ where C: RaftTypeConfig
             }
         }
 
-        divergence
+        (common, divergence)
     }
 }
 

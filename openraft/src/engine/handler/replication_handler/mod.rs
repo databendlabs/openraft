@@ -293,13 +293,13 @@ where
 
         let matching_next = progress.matching().next_index();
 
+        let (common, divergence) = hint.compare(&self.state.log_ids);
+
         // A hint can only narrow the search range, and never below `matching`.
-        let divergence = hint.first_known_divergence(&self.state.log_ids);
         let end = std::cmp::min(divergence, progress.data.searching_end);
         let end = std::cmp::max(end, matching_next);
 
         // Probe right after the greatest shared log ID. An empty hint means an empty follower log.
-        let common = hint.last_known_common_log_id(&self.state.log_ids);
         let probe = match common {
             Some(log_id) => Some(log_id.index() + 1),
             None if hint.log_ids.is_empty() => Some(0),
