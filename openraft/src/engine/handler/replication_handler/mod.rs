@@ -26,10 +26,11 @@ use crate::progress::stream_id::StreamId;
 use crate::proposer::Leader;
 use crate::proposer::SendStamp;
 use crate::proposer::WriteQuorumSet;
+use crate::raft::ConflictHint;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::io_state::log_io_id::LogIOId;
 use crate::replication::replicate::Replicate;
-use crate::replication::response::ReplicationResult;
+use crate::replication::response::Progress;
 use crate::storage::RaftStateMachine;
 use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::InstantOf;
@@ -270,10 +271,34 @@ where
         target: C::NodeId,
         conflict: LogIdOf<C>,
         inflight_id: Option<InflightId>,
-    ) {
+    ) -> bool {
+        let mut accepted = false;
         self.leader.progress.reset_entry_with(&target, |entry| {
             let mut updater = Updater::new(&*self.config, entry);
-            updater.update_conflicting(conflict.index(), inflight_id);
+            accepted = updater.update_conflicting(conflict.index(), inflight_id);
+        });
+        accepted
+    }
+
+    fn apply_conflict_hint(&mut self, target: &C::NodeId, hint: ConflictHint<C>) {
+        let Some(progress) = self.leader.progress.try_get(target) else {
+            return;
+        };
+        let matching_next = progress.matching().next_index();
+        let hint_end = hint.common_prefix_upper_bound(&self.state.log_ids);
+        let end = std::cmp::min(hint_end, progress.data.searching_end);
+        let end = std::cmp::max(end, matching_next);
+        let common = hint.last_common_log_id(&self.state.log_ids);
+        let probe = match common {
+            Some(log_id) => Some(log_id.index() + 1),
+            None if hint.log_ids.is_empty() => Some(0),
+            None => None,
+        };
+        let probe = probe.filter(|index| matching_next <= *index && *index <= end);
+        self.leader.progress.update_data_with(target, |data| {
+            // Only the probe's durable response advances matching.
+            data.searching_end = end;
+            data.probe_index = probe;
         });
     }
 
@@ -309,11 +334,15 @@ where
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_progress(
         &mut self,
-        target: C::NodeId,
         stream_id: StreamId,
-        repl_res: Result<ReplicationResult<C>, String>,
+        progress: Progress<C>,
         inflight_id: Option<InflightId>,
     ) {
+        let Progress {
+            target,
+            result: repl_res,
+            hint,
+        } = progress;
         tracing::debug!(
             "{}: target: {}, stream_id: {}, result: {}, inflight_id: {}, current progresses: {}",
             func_name!(),
@@ -334,7 +363,10 @@ where
                     self.update_matching(target, matching, inflight_id);
                 }
                 Err(conflict) => {
-                    self.update_conflicting(target, conflict, inflight_id);
+                    let accepted = self.update_conflicting(target.clone(), conflict, inflight_id);
+                    if accepted && let Some(hint) = hint {
+                        self.apply_conflict_hint(&target, hint);
+                    }
                 }
             },
             Err(err_str) => {

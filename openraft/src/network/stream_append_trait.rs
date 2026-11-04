@@ -49,11 +49,11 @@ where C: RaftTypeConfig
     /// [`Raft::append_entries_with_hint`](crate::Raft::append_entries_with_hint) remotely and
     /// apply `option.soft_ttl()` to the RPC.
     #[since(version = "0.10.0")]
-    fn append_entries_with_hint(
-        &mut self,
-        _rpc: AppendEntriesRequest<C>,
+    fn append_entries_with_hint<'a>(
+        &'a mut self,
+        _rpc: &'a AppendEntriesRequest<C>,
         _option: RPCOption,
-    ) -> BoxFuture<'_, Result<Option<AppendEntriesResponseWithHint<C>>, RPCError<C>>> {
+    ) -> BoxFuture<'a, Result<Option<AppendEntriesResponseWithHint<C>>, RPCError<C>>> {
         Box::pin(async { Ok(None) })
     }
 

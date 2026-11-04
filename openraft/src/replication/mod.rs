@@ -53,6 +53,7 @@ use crate::network::NetStreamAppend;
 use crate::network::RPCOption;
 use crate::progress::inflight_id::InflightId;
 use crate::raft::AppendEntriesRequest;
+use crate::raft::ConflictHint;
 use crate::raft::StreamAppendError;
 use crate::raft::StreamAppendResult;
 use crate::raft_state::IOId;
@@ -327,12 +328,45 @@ where
             fatal_error: fatal_error.clone(),
         };
 
-        let req_strm = Self::new_request_stream(stream_context);
+        let mut req_strm = Self::new_request_stream(stream_context);
 
         let rpc_timeout = Duration::from_millis(self.replication_context.config.heartbeat_interval);
         let option = RPCOption::new(rpc_timeout);
 
-        let resp_strm_res = network.stream_append(req_strm, option).await;
+        let mut hint = None;
+        let resp_strm_res: Result<BoxStream<'_, _>, RPCError<C>> = if let Payload::Probe { .. } = payload {
+            if let Some(request) = req_strm.next().await {
+                let range = request.log_id_range();
+                let mut cancel_rx = self.replication_context.cancel_rx.clone();
+                let call = async {
+                    if request.entries.is_empty() {
+                        return Ok(None);
+                    }
+                    network.append_entries_with_hint(&request, option.clone()).await
+                };
+                let selected = C::select2(cancel_rx.changed(), call).await;
+                let response = match selected {
+                    Select2::First(_) => return Err(ReplicationClosed::new("canceled")),
+                    Select2::Second(response) => response,
+                };
+                match response {
+                    Ok(Some(response)) => {
+                        hint = response.hint;
+                        let result = response.response.into_stream_result(range.prev, range.last);
+                        Ok(Box::pin(futures_util::stream::iter([Ok(result)])))
+                    }
+                    Ok(None) => {
+                        let requests = futures_util::stream::iter([request]);
+                        network.stream_append(requests, option).await
+                    }
+                    Err(error) => Err(error),
+                }
+            } else {
+                Ok(Box::pin(futures_util::stream::empty()))
+            }
+        } else {
+            network.stream_append(req_strm, option).await
+        };
         // A custom streaming transport may poll the request stream while establishing
         // `stream_append()` and then still return an RPC error. Check the fatal marker here too,
         // because in that case there is no response stream for `handle_response_stream()` to
@@ -351,7 +385,7 @@ where
             }
         };
 
-        let (acked, continue_res) = self.handle_response_stream(resp_strm, inflight_queue.clone()).await;
+        let (acked, continue_res) = self.handle_response_stream(resp_strm, inflight_queue.clone(), hint).await;
         if let Some(err) = Self::take_stream_fatal_error(&fatal_error).await {
             return Err(err);
         }
@@ -393,6 +427,7 @@ where
         &mut self,
         resp_strm: BoxStream<'s, Result<StreamAppendResult<C>, RPCError<C>>>,
         inflight_queue: Arc<StdMutex<InflightAppendQueue<C>>>,
+        mut hint: Option<ConflictHint<C>>,
     ) -> (Option<Option<LogIdOf<C>>>, Result<(), &'static str>) {
         let mut resp_strm = std::pin::pin!(resp_strm);
         let mut cancel_rx = self.replication_context.cancel_rx.clone();
@@ -459,7 +494,8 @@ where
                                 self.notify_heartbeat_progress(sending_time).await;
                             }
 
-                            self.notify_progress(ReplicationResult(Err(conflict_log_id))).await;
+                            let result = Ok(ReplicationResult(Err(conflict_log_id)));
+                            self.replication_context.notify_progress(result, self.inflight_id, hint.take()).await;
                         }
                         StreamAppendError::HigherVote(higher) => {
                             self.replication_context
@@ -494,7 +530,7 @@ where
         if self.inflight_id.is_none() {
             return;
         }
-        self.replication_context.notify_progress(Err(err.to_string()), self.inflight_id).await;
+        self.replication_context.notify_progress(Err(err.to_string()), self.inflight_id, None).await;
     }
 
     /// A successful replication implies a successful heartbeat.
@@ -533,7 +569,7 @@ where
 
         // always send Conflict error back, even when the inflight id is None
         // for heartbeat to detect log reversion
-        self.replication_context.notify_progress(Ok(replication_result), self.inflight_id).await;
+        self.replication_context.notify_progress(Ok(replication_result), self.inflight_id, None).await;
     }
 
     /// Receive and process events from RaftCore and set `next_action` and `inflight_id`.

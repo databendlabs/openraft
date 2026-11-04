@@ -185,6 +185,7 @@ where
                     progress: Progress {
                         target: self.target.clone(),
                         result: Ok(ReplicationResult(Err(conflict_log_id))),
+                        hint: None,
                     },
                     inflight_id: None,
                 };
