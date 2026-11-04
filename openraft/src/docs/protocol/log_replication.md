@@ -164,6 +164,9 @@ pub(crate) struct ProgressEntry<C> {
   Because the Leader is assumed to have all committed logs. Any logs after
   `leader_last_log_index` are uncommitted and can be safely deleted.
 
+- The first request probes the inherited tail while sending the new leader's
+  first entry. A caught-up follower can acknowledge the no-op in one round trip.
+
 - The Leader sends the log entry at the midpoint of `[ProgressEntry.matching.next_index(), ProgressEntry.searching_end]` to the Follower.
 
 - If the log entry is accepted, update `ProgressEntry.matching` to the current log ID.

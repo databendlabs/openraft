@@ -164,7 +164,7 @@ where C: RaftTypeConfig
 
         let progress = VecProgress::new(write_quorum_set.clone(), non_write_voter_ids.iter().cloned(), |id| {
             let stream_id = StreamId::new(id_gen.next_id());
-            ProgressEntry::empty(id, stream_id, last_log_id.next_index())
+            ProgressEntry::empty(id, stream_id, last_log_id.next_index()).with_probe_start(noop_log_id.index())
         });
 
         let now = C::now();
