@@ -12,6 +12,7 @@ use openraft::errors::MembershipError;
 use openraft::membership::RaftMembershipEdit;
 use openraft_macros::since;
 
+use crate::NodeChange;
 use crate::ThresholdMembership;
 use crate::errors::InvalidThresholds;
 use crate::quorum::QuorumSet;
@@ -155,10 +156,14 @@ where
             return Err(EmptyMembership {}.into());
         };
 
+        // A threshold membership sets no role: a node's role follows from its voter status.
+        let node_change = NodeChange {
+            add_nodes: self.add_nodes,
+            remove_nodes: self.remove_nodes,
+            ..NodeChange::default()
+        };
         let mut nodes = membership.nodes.clone();
-        for (node_id, node) in self.add_nodes {
-            nodes.entry(node_id).or_insert(node);
-        }
+        node_change.edit_nodes(&mut nodes, membership);
 
         let voters = match self.voters {
             None => last_write.id_set().clone(),
@@ -168,10 +173,6 @@ where
         let write_size = self.write_size.unwrap_or(last_write.quorum_size());
         let voter_count = voters.len() as u64;
         let write_size = ThresholdMembership::<NID, N>::check_write_size(voter_count, write_size)?;
-
-        for node_id in &self.remove_nodes {
-            nodes.remove(node_id);
-        }
 
         let mut target = ThresholdMembership::from_configs([(voters, write_size)], nodes);
         target.ensure_voters_have_nodes()?;

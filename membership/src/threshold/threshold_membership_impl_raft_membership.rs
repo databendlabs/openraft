@@ -1,11 +1,11 @@
 use openraft::Node;
 use openraft::NodeId;
 use openraft::membership::NodeRef;
-use openraft::membership::NodeRole;
 use openraft::membership::QuorumIntersection;
 use openraft::membership::RaftMembership;
 
 use crate::ThresholdMembership;
+use crate::config::default_role;
 use crate::quorum::Joint;
 use crate::quorum::ThresholdQuorumSet;
 
@@ -39,9 +39,10 @@ where
     fn get_node(&self, node_id: &Self::NodeId) -> Option<NodeRef<'_, Self::Node>> {
         let node = self.nodes.get(node_id)?;
         let is_voter = self.is_voter(node_id);
+        let role = default_role(is_voter);
         let node_ref = NodeRef {
             node,
-            role: self.node_role(node_id),
+            role,
             is_read_voter: is_voter,
             is_write_voter: is_voter,
         };
@@ -68,21 +69,5 @@ where
         }
 
         Self { read, write, nodes }
-    }
-}
-
-impl<NID, N> ThresholdMembership<NID, N>
-where
-    NID: NodeId,
-    N: Node,
-{
-    /// Returns the capabilities of a known node: every known node receives logs, and every voter
-    /// may campaign.
-    fn node_role(&self, node_id: &NID) -> NodeRole {
-        let mut role = NodeRole::ReceiveLogs;
-        if self.is_voter(node_id) {
-            role |= NodeRole::Campaigner;
-        }
-        role
     }
 }
