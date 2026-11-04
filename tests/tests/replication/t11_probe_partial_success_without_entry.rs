@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -10,6 +11,8 @@ use openraft::Config;
 use openraft::ServerState;
 use openraft::async_runtime::MpscReceiver;
 use openraft::async_runtime::MpscSender;
+use openraft::errors::NetworkError;
+use openraft::errors::RPCError;
 use openraft::type_config::TypeConfigExt;
 use openraft::type_config::alias::LogIdOf;
 use openraft_memstore::TypeConfig;
@@ -60,9 +63,10 @@ async fn probe_acked_at_prev_advances_to_next_midpoint() -> Result<()> {
     Ok(())
 }
 
-/// Write `n_writes` logs, then elect node 1 while every entry-carrying AppendEntries is answered
-/// with `PartialSuccess(prev_log_id)`, so node 1 searches for the matching point with probes that
-/// carry entries but never get one accepted.
+/// Drop each follower's optimistic first probe so subsequent probes exercise binary search.
+/// Write `n_writes` logs, then elect node 1 while every delivered entry-carrying AppendEntries is
+/// answered with `PartialSuccess(prev_log_id)`, so node 1 searches for the matching point with
+/// probes that carry entries but never get one accepted.
 ///
 /// Returns the `prev_log_id` of the first two such probes node 1 sends to each follower, after
 /// checking that lifting the quota lets the probes catch the followers up.
@@ -101,24 +105,33 @@ async fn first_two_probes_with_quota_zero(n_writes: usize) -> Result<FirstTwoPro
     );
     {
         let recorder = probes.clone();
+        let first_probes = Mutex::new(BTreeSet::new());
 
         router
             .set_rpc_pre_hook(RpcKind::AppendEntries, move |call| {
                 let mut second = false;
+                let mut skip_optimistic = false;
                 if call.from == 1
                     && let RpcRequest::AppendEntries(append) = &call.request
                     && !append.entries.is_empty()
                 {
-                    let mut recorded = recorder.lock().unwrap();
-                    let prevs = recorded.entry(call.to).or_default();
-                    if prevs.len() < 2 {
-                        prevs.push(append.prev_log_id);
-                        second = prevs.len() == 2;
+                    skip_optimistic = first_probes.lock().unwrap().insert(call.to);
+                    if !skip_optimistic {
+                        let mut recorded = recorder.lock().unwrap();
+                        let prevs = recorded.entry(call.to).or_default();
+                        if prevs.len() < 2 {
+                            prevs.push(append.prev_log_id);
+                            second = prevs.len() == 2;
+                        }
                     }
                 }
                 let second_tx = second_tx.clone();
                 let to = call.to;
                 async move {
+                    if skip_optimistic {
+                        let error = NetworkError::<TypeConfig>::from_string("lose the optimistic probe");
+                        return Err(RPCError::Network(error));
+                    }
                     if second {
                         second_tx.send(to).await.unwrap();
                     }
