@@ -155,4 +155,25 @@ mod tests {
         assert_eq!(80, end);
     }
 
+    #[test]
+    fn shared_snapshot_boundary_allows_log_replication() {
+        let local = LogIdList::new(Some(log_id(1, 1, 40)), [log_id(3, 1, 100)]);
+        let hint = ConflictHint::<UTConfig>::new(vec![log_id(1, 1, 50)]);
+        let common = hint.last_common_log_id(&local);
+        let end = hint.common_prefix_upper_bound(&local);
+        let expected = Some(log_id(1, 1, 40));
+        assert_eq!(expected, common);
+        assert_eq!(41, end);
+    }
+
+    #[test]
+    fn an_old_sample_does_not_exclude_an_omitted_shared_leader() {
+        let local = LogIdList::new(None, [log_id(1, 1, 40), log_id(3, 1, 80), log_id(5, 1, 100)]);
+        let hint = ConflictHint::<UTConfig>::new(vec![log_id(1, 1, 30), log_id(4, 1, 90)]);
+        let common = hint.last_common_log_id(&local);
+        let end = hint.common_prefix_upper_bound(&local);
+        let expected = Some(log_id(1, 1, 30));
+        assert_eq!(expected, common);
+        assert_eq!(90, end);
+    }
 }
