@@ -1,12 +1,20 @@
 //! Provided membership implementations for OpenRaft.
 //!
-//! [`ThresholdMembership`] configures the write quorum size and derives an intersecting read
-//! quorum. See [`docs`] for configuration and membership changes.
+//! Each membership sets the read quorums that elect a leader and the write quorums that commit an
+//! entry, and makes every read quorum share a voter with every write quorum:
+//!
+//! - [`ThresholdMembership`] configures the write quorum size and derives the read quorum size.
+//! - [`WeightedMembership`] gives each voter a weight and configures the write weight.
+//! - [`HierarchicalMembership`] nests voter groups and needs enough members at every level.
+//! - [`GridMembership`] places voters in a grid: a row elects, and a voter of each row commits.
+//! - [`ExplicitMembership`] lists the minimal read quorums and write quorums of each config.
+//!
+//! [`docs`] tells which membership fits which cluster, and holds a guide for each.
 //! The default `serde` feature also enables `openraft/serde`.
 //!
 //! Keep the `serde` feature on whenever any crate in the build enables `openraft/serde`. With
-//! `openraft/serde` on, [`RaftMembership`] requires serde, and this crate derives serde for
-//! [`ThresholdMembership`] only under its own `serde` feature. Cargo merges the features of
+//! `openraft/serde` on, [`RaftMembership`] requires serde, and this crate derives serde for its
+//! memberships only under its own `serde` feature. Cargo merges the features of
 //! `openraft` across the whole build, so another crate can turn `openraft/serde` on even when
 //! this crate is used with `default-features = false`. That build fails to compile.
 //!
@@ -40,9 +48,14 @@ pub use threshold::ThresholdMembership;
 pub use weighted::WeightedChange;
 pub use weighted::WeightedMembership;
 
-/// Configure and change threshold memberships.
+/// Pick a provided membership, then configure and change it.
 pub mod docs {
-    #![doc = include_str!("threshold-membership.md")]
+    #![doc = include_str!("docs.md")]
+
+    /// Configure and change threshold memberships.
+    pub mod threshold {
+        #![doc = include_str!("threshold-membership.md")]
+    }
 
     /// Configure and change explicit memberships.
     pub mod explicit {
