@@ -313,6 +313,33 @@ where CLID: RaftCommittedLeaderId
         self.ref_at(index).map(|r| r.into_log_id())
     }
 
+    /// Get the greatest represented log ID with `leader_id` at or before `index`.
+    ///
+    /// The saved purge boundary is included; earlier purged positions are unavailable.
+    pub(crate) fn get_at_or_before(&self, leader_id: &CLID, index: u64) -> Option<LogId<CLID>> {
+        let found = self.key_log_ids.binary_search_by(|id| id.committed_leader_id().cmp(leader_id));
+
+        // A leader without a key log ID can still own the purge boundary.
+        let last = match found {
+            Ok(i) => &self.key_log_ids[i],
+            Err(_) => self.purged.as_ref()?,
+        };
+
+        if last.committed_leader_id() != leader_id {
+            return None;
+        }
+
+        let index = std::cmp::min(last.index(), index);
+        let log_id = self.get(index)?;
+
+        // An index before the leader's run belongs to an earlier leader.
+        if log_id.committed_leader_id() != leader_id {
+            return None;
+        }
+
+        Some(log_id)
+    }
+
     /// Get the log id at the specified index in a [`RefLogId`].
     ///
     /// With last-per-leader storage, each entry represents a range:

@@ -49,11 +49,11 @@ where C: RaftTypeConfig
     /// [`Raft::append_entries_with_hint`](crate::Raft::append_entries_with_hint) remotely and
     /// apply `option.soft_ttl()` to the RPC.
     #[since(version = "0.10.0")]
-    fn append_entries_with_hint(
-        &mut self,
-        _rpc: AppendEntriesRequest<C>,
+    fn append_entries_with_hint<'a>(
+        &'a mut self,
+        _rpc: &'a AppendEntriesRequest<C>,
         _option: RPCOption,
-    ) -> BoxFuture<'_, Result<Option<AppendEntriesResponseWithHint<C>>, RPCError<C>>> {
+    ) -> BoxFuture<'a, Result<Option<AppendEntriesResponseWithHint<C>>, RPCError<C>>> {
         Box::pin(async { Ok(None) })
     }
 
@@ -155,4 +155,60 @@ where
     };
 
     Box::pin(fu)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use futures_util::Stream;
+
+    use crate::OptionalSend;
+    use crate::Vote;
+    use crate::base::BoxFuture;
+    use crate::base::BoxStream;
+    use crate::engine::testing::UTConfig;
+    use crate::errors::RPCError;
+    use crate::network::NetStreamAppend;
+    use crate::network::RPCOption;
+    use crate::raft::AppendEntriesRequest;
+    use crate::raft::StreamAppendResult;
+    use crate::type_config::TypeConfigExt;
+
+    /// A transport that implements only the required streaming method.
+    struct StreamOnly;
+
+    impl NetStreamAppend<UTConfig> for StreamOnly {
+        fn stream_append<'s, S>(
+            &'s mut self,
+            _input: S,
+            _option: RPCOption,
+        ) -> BoxFuture<
+            's,
+            Result<BoxStream<'s, Result<StreamAppendResult<UTConfig>, RPCError<UTConfig>>>, RPCError<UTConfig>>,
+        >
+        where
+            S: Stream<Item = AppendEntriesRequest<UTConfig>> + OptionalSend + Unpin + 'static,
+        {
+            unreachable!("the default hint method must leave the request to the caller")
+        }
+    }
+
+    #[test]
+    fn default_append_entries_with_hint_leaves_the_request_unsent() {
+        UTConfig::<()>::run(async {
+            let mut network = StreamOnly;
+            let request = AppendEntriesRequest {
+                vote: Vote::new_committed(1, 1),
+                prev_log_id: None,
+                entries: vec![],
+                leader_commit: None,
+            };
+            let option = RPCOption::new(Duration::from_secs(1));
+
+            let response = network.append_entries_with_hint(&request, option).await;
+
+            assert!(matches!(response, Ok(None)));
+        });
+    }
 }

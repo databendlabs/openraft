@@ -15,6 +15,7 @@ use crate::errors::ReplicationClosed;
 use crate::progress::inflight_id::InflightId;
 use crate::progress::stream_id::StreamId;
 use crate::proposer::SendStamp;
+use crate::raft::ConflictHint;
 use crate::raft_state::IOId;
 use crate::replication::response::Progress;
 use crate::replication::response::ReplicationResult;
@@ -167,7 +168,7 @@ where C: RaftTypeConfig
             .ok();
     }
 
-    /// Report the outcome of the payload identified by `inflight_id`.
+    /// Report the outcome of the payload identified by `inflight_id`, with optional conflict hints.
     ///
     /// `inflight_id` is `None` when nothing was sent that [`RaftCore`] is waiting on, such as a
     /// bare committed-index update.
@@ -177,6 +178,7 @@ where C: RaftTypeConfig
         &self,
         result: Result<ReplicationResult<C>, String>,
         inflight_id: Option<InflightId>,
+        hint: Option<ConflictHint<C>>,
     ) {
         self.tx_notify
             .send(Notification::ReplicationProgress {
@@ -184,6 +186,7 @@ where C: RaftTypeConfig
                 progress: Progress {
                     target: self.target.clone(),
                     result,
+                    hint,
                 },
                 inflight_id,
             })
