@@ -14,6 +14,10 @@ use crate::quorum::QuorumSet;
 /// `Vec<BTreeSet<ID>>`. [`ids()`](QuorumSet::ids) returns the union of the IDs of every rule, each
 /// ID once.
 ///
+/// A joint of [`Config`]s is a membership: [`ExplicitMembership`], [`GridMembership`],
+/// [`HierarchicalMembership`] and [`WeightedMembership`] are aliases of `Joint<Config<..>>`. It
+/// holds one config, or the old configs and the new one during a joint change.
+///
 /// # Examples
 ///
 /// ```
@@ -34,6 +38,12 @@ use crate::quorum::QuorumSet;
 /// let accepts_one_two_four = joint.is_quorum([1, 2, 4].iter());
 /// assert!(accepts_one_two_four);
 /// ```
+///
+/// [`Config`]: crate::Config
+/// [`ExplicitMembership`]: crate::ExplicitMembership
+/// [`GridMembership`]: crate::GridMembership
+/// [`HierarchicalMembership`]: crate::HierarchicalMembership
+/// [`WeightedMembership`]: crate::WeightedMembership
 #[since(
     version = "0.10.0",
     change = "also joins configs into a membership; `new()` became `from_rules()`, `joint_with()` takes `&Joint`, and serde stores the parts as `parts`"
