@@ -129,7 +129,7 @@ where C: RaftTypeConfig
     #[since(version = "0.10.0")]
     async fn append_entries_with_hint(
         &mut self,
-        _rpc: AppendEntriesRequest<C>,
+        _rpc: &AppendEntriesRequest<C>,
         _option: RPCOption,
     ) -> Result<Option<AppendEntriesResponseWithHint<C>>, RPCError<C>> {
         Ok(None)
@@ -352,11 +352,11 @@ where
     C: RaftTypeConfig,
     T: RaftNetworkV2<C> + ?Sized,
 {
-    fn append_entries_with_hint(
-        &mut self,
-        rpc: AppendEntriesRequest<C>,
+    fn append_entries_with_hint<'a>(
+        &'a mut self,
+        rpc: &'a AppendEntriesRequest<C>,
         option: RPCOption,
-    ) -> BoxFuture<'_, Result<Option<AppendEntriesResponseWithHint<C>>, RPCError<C>>> {
+    ) -> BoxFuture<'a, Result<Option<AppendEntriesResponseWithHint<C>>, RPCError<C>>> {
         Box::pin(RaftNetworkV2::append_entries_with_hint(self, rpc, option))
     }
 
