@@ -55,7 +55,7 @@ pub(crate) type ThresholdConfig<NID> = (Arc<BTreeSet<NID>>, NonZeroU64);
 /// assert!(write_accepts_two);
 /// ```
 #[since(version = "0.10.0")]
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(
     feature = "serde",
     derive(serde::Deserialize, serde::Serialize),
@@ -77,20 +77,6 @@ where
 
     /// Every known node. A node in no config is a learner.
     pub(crate) nodes: BTreeMap<NID, N>,
-}
-
-impl<NID, N> fmt::Debug for ThresholdMembership<NID, N>
-where
-    NID: NodeId,
-    N: Node,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut debug = f.debug_struct("ThresholdMembership");
-        debug.field("read", &self.read);
-        debug.field("write", &self.write);
-        debug.field("nodes", &self.nodes);
-        debug.finish()
-    }
 }
 
 /// Written by hand: `derive(Default)` would require `NID: Default` and `N: Default`.
