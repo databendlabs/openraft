@@ -17,8 +17,6 @@ use crate::config::Config;
 use crate::config::default_role;
 use crate::config::has_id;
 use crate::node_change::NodeChange;
-use crate::node_change::add_nodes_to;
-use crate::node_change::remove_nodes_from;
 use crate::quorum::Joint;
 use crate::quorum::QuorumIntersection;
 use crate::quorum::QuorumSet;
@@ -84,24 +82,6 @@ where
         Ok(self)
     }
 
-    /// Returns the nodes of the last config after adding `add_nodes` and then removing
-    /// `remove_nodes`. An active node of this membership keeps its metadata.
-    pub(crate) fn edit_nodes(
-        &self,
-        add_nodes: BTreeMap<Q::Id, N>,
-        remove_nodes: &BTreeSet<Q::Id>,
-    ) -> BTreeMap<Q::Id, N> {
-        let mut nodes = BTreeMap::new();
-        if let Some(last) = self.parts.last() {
-            for (node_id, (node, _)) in &last.nodes {
-                nodes.insert(node_id.clone(), node.clone());
-            }
-        }
-        add_nodes_to(&mut nodes, add_nodes, self);
-        remove_nodes_from(&mut nodes, remove_nodes);
-        nodes
-    }
-
     /// Returns a membership with `rules` as its only config, applying the node edits in `change`.
     /// Keeps the last config's set roles, then applies new roles and the retention policy.
     pub(crate) fn replace_config(
@@ -110,8 +90,15 @@ where
         change: NodeChange<Q::Id, N>,
         retain: bool,
     ) -> Result<Self, NodeNotFound<Q::Id>> {
+        let mut nodes = BTreeMap::new();
+        if let Some(last) = self.parts.last() {
+            for (node_id, (node, _)) in &last.nodes {
+                nodes.insert(node_id.clone(), node.clone());
+            }
+        }
+        change.edit_nodes(&mut nodes, self);
+
         let (read, write) = rules;
-        let nodes = self.edit_nodes(change.add_nodes, &change.remove_nodes);
         let mut config = Config::new(read, write, nodes)?;
         if let Some(last) = self.parts.last() {
             config.keep_roles(last);

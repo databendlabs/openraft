@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use std::collections::btree_map::Entry;
 
 use openraft::Node;
 use openraft::NodeId;
@@ -54,6 +53,30 @@ where
     pub fn with_roles(self, roles: BTreeMap<NID, NodeRole>) -> Self {
         Self { roles, ..self }
     }
+
+    /// Adds each node of `add_nodes` that `nodes` lacks, then removes each node of
+    /// `remove_nodes`, so a node in both is removed.
+    ///
+    /// A node that `nodes` already holds keeps its metadata. An added node that `membership`
+    /// knows, such as an old voter of a joint, takes its metadata from `membership`, and any other
+    /// added node takes the metadata given in `add_nodes`.
+    pub(crate) fn edit_nodes<M>(&self, nodes: &mut BTreeMap<NID, N>, membership: &M)
+    where M: RaftMembership<NodeId = NID, Node = N> {
+        for (node_id, node) in &self.add_nodes {
+            if nodes.contains_key(node_id) {
+                continue;
+            }
+            let node = match membership.get_node(node_id) {
+                Some(known) => known.node.clone(),
+                None => node.clone(),
+            };
+            nodes.insert(node_id.clone(), node);
+        }
+
+        for node_id in &self.remove_nodes {
+            nodes.remove(node_id);
+        }
+    }
 }
 
 impl<NID, N> Default for NodeChange<NID, N>
@@ -67,37 +90,5 @@ where
             remove_nodes: BTreeSet::new(),
             roles: BTreeMap::new(),
         }
-    }
-}
-
-/// Adds missing nodes, using the membership's metadata for an active node.
-pub(crate) fn add_nodes_to<M>(
-    nodes: &mut BTreeMap<M::NodeId, M::Node>,
-    add_nodes: BTreeMap<M::NodeId, M::Node>,
-    membership: &M,
-) where
-    M: RaftMembership,
-{
-    for (node_id, node) in add_nodes {
-        let Entry::Vacant(entry) = nodes.entry(node_id) else {
-            continue;
-        };
-        let node_id = entry.key();
-        let node = match membership.get_node(node_id) {
-            Some(known) => known.node.clone(),
-            None => node,
-        };
-        entry.insert(node);
-    }
-}
-
-/// Removes every node named in `remove_nodes`.
-pub(crate) fn remove_nodes_from<NID, N>(nodes: &mut BTreeMap<NID, N>, remove_nodes: &BTreeSet<NID>)
-where
-    NID: NodeId,
-    N: Node,
-{
-    for node_id in remove_nodes {
-        nodes.remove(node_id);
     }
 }

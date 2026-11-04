@@ -9,6 +9,7 @@ use openraft::membership::NodeRef;
 use openraft::membership::NodeRole;
 use openraft::membership::RaftMembership;
 
+use crate::NodeChange;
 use crate::config::Config;
 use crate::quorum::Joint;
 use crate::quorum::ThresholdQuorumSet;
@@ -342,7 +343,7 @@ fn test_with_roles_sets_roles_of_last_config() {
 }
 
 #[test]
-fn test_edit_nodes_keeps_metadata_of_active_nodes() {
+fn test_node_change_keeps_metadata_of_active_nodes() {
     // The change to the new config removed voter 1 and learner 4.
     let old_nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40};
     let old = config(2, btreeset! {1, 2, 3}, BTreeMap::new(), old_nodes);
@@ -350,11 +351,17 @@ fn test_edit_nodes_keeps_metadata_of_active_nodes() {
     let joint = Joint { parts: vec![old, new] };
 
     // Voter 1 of the old config is active and keeps its metadata. Learner 4 is not active, so it
-    // takes the added metadata, as the unknown node 5 does.
-    let add_nodes = btreemap! {1 => 11, 4 => 41, 5 => 51};
-    let got = joint.edit_nodes(add_nodes, &btreeset! {3});
+    // takes the added metadata, as the unknown node 5 does. Node 6 is added and removed by the
+    // same change, so it is removed.
+    let change = NodeChange {
+        add_nodes: btreemap! {1 => 11, 4 => 41, 5 => 51, 6 => 61},
+        remove_nodes: btreeset! {3, 6},
+        ..NodeChange::default()
+    };
+    let mut nodes = btreemap! {2 => 20, 3 => 30};
+    change.edit_nodes(&mut nodes, &joint);
     let want = btreemap! {1 => 10, 2 => 20, 4 => 41, 5 => 51};
-    assert_eq!(want, got);
+    assert_eq!(want, nodes);
 }
 
 #[test]
