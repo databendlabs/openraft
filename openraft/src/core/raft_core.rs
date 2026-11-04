@@ -1388,6 +1388,8 @@ where
     /// It always returns a [`Fatal`] error upon returning.
     #[tracing::instrument(level = "debug", skip_all, fields(id=display(&self.id)))]
     async fn runtime_loop(&mut self) -> Result<Infallible, Fatal<C>> {
+        let mut busy_since = self.runtime_stats.begin_core_busy();
+
         // Ratio control the ratio of number of RaftMsg to process to number of Notification to process.
         let mut balancer = Balancer::new(10_000);
 
@@ -1406,6 +1408,7 @@ where
             // Then if there is any message, process as many as possible to maximize throughput.
 
             // Check shutdown first so that a message flood in `tx_api` won't block shutting down.
+            self.runtime_stats.end_core_busy(busy_since);
             let selected = C::select4(
                 &mut self.rx_shutdown,
                 self.notifications.recv(),
@@ -1413,6 +1416,7 @@ where
                 self.rx_api.ensure_buffered(),
             )
             .await;
+            busy_since = self.runtime_stats.begin_core_busy();
             match selected {
                 Select4::First(_) => {
                     tracing::info!("recv from rx_shutdown");

@@ -1,8 +1,12 @@
 use std::marker::PhantomData;
+use std::time::Duration;
 
 use base2histogram::Histogram;
+use openraft_macros::since;
 
 use crate::Config;
+#[cfg(feature = "runtime-stats")]
+use crate::Instant;
 use crate::RaftTypeConfig;
 use crate::core::NotificationName;
 use crate::core::raft_msg::RaftMsgName;
@@ -20,10 +24,21 @@ use crate::type_config::alias::InstantOf;
 ///
 /// This is a volatile structure that is not persisted. It accumulates
 /// statistics from the time the Raft node starts.
+#[since(version = "0.10.0", change = "Add core_busy_duration snapshot")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeStats<C>
 where C: RaftTypeConfig
 {
+    /// Cumulative wall-clock time spent processing work in the core event loop.
+    ///
+    /// Includes awaits and scheduler delays during processing, but excludes the
+    /// top-level wait for incoming events. This measures loop occupancy, not CPU time.
+    /// Updated before the core waits for incoming events. A snapshot includes
+    /// completed processing intervals; the current interval is included after
+    /// the core next reaches that wait. Fetching a snapshot requires core progress.
+    #[since(version = "0.10.0")]
+    pub core_busy_duration: Duration,
+
     /// Histogram tracking the distribution of log entry counts in Apply commands.
     ///
     /// This tracks how many log entries are included in each apply command sent
@@ -130,6 +145,7 @@ where C: RaftTypeConfig
     pub(crate) fn new(config: &Config) -> Self {
         let _ = config;
         Self {
+            core_busy_duration: Duration::ZERO,
             apply_batch: Histogram::<()>::new(),
             append_batch: Histogram::<()>::new(),
             replicate_batch: Histogram::<()>::new(),
@@ -145,6 +161,38 @@ where C: RaftTypeConfig
             log_stage: LogStages::new(config.log_stage_capacity(), 0),
             log_stage_histograms: LogStageHistograms::new(),
             _phantom: PhantomData,
+        }
+    }
+
+    /// Start one core-loop busy interval.
+    ///
+    /// Returns `None` when the `runtime-stats` feature is off.
+    #[cfg(feature = "runtime-stats")]
+    pub(crate) fn begin_core_busy(&self) -> Option<InstantOf<C>> {
+        Some(C::now())
+    }
+
+    /// Start one core-loop busy interval.
+    #[cfg(not(feature = "runtime-stats"))]
+    pub(crate) fn begin_core_busy(&self) -> Option<InstantOf<C>> {
+        None
+    }
+
+    /// Add the elapsed time since `since` to [`Self::core_busy_duration`].
+    pub(crate) fn end_core_busy(&mut self, since: Option<InstantOf<C>>) {
+        #[cfg(feature = "runtime-stats")]
+        {
+            let Some(since) = since else {
+                return;
+            };
+            let now = C::now();
+            let elapsed = now.saturating_duration_since(since);
+            self.core_busy_duration += elapsed;
+        }
+
+        #[cfg(not(feature = "runtime-stats"))]
+        {
+            let _ = since;
         }
     }
 
@@ -199,6 +247,7 @@ where C: RaftTypeConfig
     pub fn display(&self) -> RuntimeStatsDisplay<C> {
         RuntimeStatsDisplay {
             mode: DisplayMode::default(),
+            core_busy_duration: self.core_busy_duration,
             apply_batch: self.apply_batch.percentile_stats(),
             append_batch: self.append_batch.percentile_stats(),
             replicate_batch: self.replicate_batch.percentile_stats(),
