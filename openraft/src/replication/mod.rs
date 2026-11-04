@@ -491,7 +491,7 @@ where
                         None => unreachable!("acked was just updated"),
                     };
                     let result = ReplicationResult(Ok(greatest_acked));
-                    self.notify_progress(result).await;
+                    self.notify_progress(result, None).await;
                 }
                 Err(append_err) => {
                     match append_err {
@@ -504,8 +504,8 @@ where
                                 self.notify_heartbeat_progress(sending_time).await;
                             }
 
-                            let result = Ok(ReplicationResult(Err(conflict_log_id)));
-                            self.replication_context.notify_progress(result, self.inflight_id, hint.take()).await;
+                            let result = ReplicationResult(Err(conflict_log_id));
+                            self.notify_progress(result, hint.take()).await;
                         }
                         StreamAppendError::HigherVote(higher) => {
                             self.replication_context
@@ -553,7 +553,9 @@ where
     }
 
     /// Notify RaftCore with the success replication result (log matching or conflict).
-    async fn notify_progress(&mut self, replication_result: ReplicationResult<C>) {
+    ///
+    /// `hint` accompanies a conflict returned by a hinted probe.
+    async fn notify_progress(&mut self, replication_result: ReplicationResult<C>, hint: Option<ConflictHint<C>>) {
         tracing::debug!(
             "{}: target={}, curr_matching={}, result={}, inflight_id={}",
             func_name!(),
@@ -579,7 +581,7 @@ where
 
         // always send Conflict error back, even when the inflight id is None
         // for heartbeat to detect log reversion
-        self.replication_context.notify_progress(Ok(replication_result), self.inflight_id, None).await;
+        self.replication_context.notify_progress(Ok(replication_result), self.inflight_id, hint).await;
     }
 
     /// Receive and process events from RaftCore and set `next_action` and `inflight_id`.
