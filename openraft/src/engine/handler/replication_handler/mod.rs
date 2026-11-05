@@ -378,8 +378,12 @@ where
                 Err(conflict) => {
                     let applied = self.update_conflicting(target.clone(), conflict, inflight_id);
 
-                    // Apply the hint only if the conflict answered the current request.
-                    if applied && let Some(hint) = hint {
+                    // Apply the hint only if the conflict answered the current request. A conflict
+                    // without an inflight id, such as a heartbeat's, cannot be tied to it.
+                    if applied
+                        && inflight_id.is_some()
+                        && let Some(hint) = hint
+                    {
                         self.update_search_from_hint(&target, hint);
                     }
                 }

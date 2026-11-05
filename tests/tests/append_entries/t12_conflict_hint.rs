@@ -1,6 +1,8 @@
+use std::pin::pin;
 use std::time::Duration;
 
 use anyhow::Result;
+use futures::StreamExt;
 use openraft::Config;
 use openraft::RaftLogReader;
 use openraft::Vote;
@@ -9,7 +11,7 @@ use openraft::network::RaftNetworkFactory;
 use openraft::network::v2::RaftNetworkV2;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse;
-use openraft::raft::AppendEntriesResponseWithHint;
+use openraft::raft::AppendError;
 use openraft::raft::ConflictHint;
 use openraft::testing::blank_ent;
 use openraft_memstore::TypeConfig;
@@ -18,10 +20,11 @@ use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
 
-/// Optional replies distinguish empty logs, describe truncation, and preserve legacy replies.
+/// Stream conflicts carry a hint that distinguishes an empty log and describes truncation, while
+/// the unary API keeps the legacy reply.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
-async fn append_entries_with_hint() -> Result<()> {
+async fn stream_append_reports_conflict_hints() -> Result<()> {
     let config = Config {
         enable_tick: false,
         ..Default::default()
@@ -38,13 +41,16 @@ async fn append_entries_with_hint() -> Result<()> {
             entries: vec![],
             leader_commit: None,
         };
-        let actual = raft.append_entries_with_hint(request).await?;
-        let hint = ConflictHint::new(vec![]);
-        let expected = AppendEntriesResponseWithHint::new(AppendEntriesResponse::Conflict, Some(hint));
-        assert_eq!(expected, actual);
+        let requests = futures::stream::iter([request]);
+        let actual: Vec<_> = pin!(raft.stream_append(requests)).collect().await;
+        let conflict = AppendError::Conflict {
+            log_id: log_id(1, 1, 5),
+            hint: Some(ConflictHint::new(vec![])),
+        };
+        assert_eq!(vec![Ok(Err(conflict))], actual);
     }
 
-    tracing::info!("a successful probe acknowledges persisted entries without a conflict hint");
+    tracing::info!("a successful append acknowledges persisted entries");
     {
         let request = AppendEntriesRequest {
             vote: Vote::new_committed(1, 1),
@@ -56,12 +62,12 @@ async fn append_entries_with_hint() -> Result<()> {
             ],
             leader_commit: Some(log_id(0, 0, 0)),
         };
-        let actual = raft.append_entries_with_hint(request).await?;
-        let expected = AppendEntriesResponseWithHint::new(AppendEntriesResponse::Success, None);
-        assert_eq!(expected, actual);
+        let requests = futures::stream::iter([request]);
+        let actual: Vec<_> = pin!(raft.stream_append(requests)).collect().await;
+        assert_eq!(vec![Ok(Ok(Some(log_id(1, 1, 2))))], actual);
     }
 
-    tracing::info!("a newer vote retains the legacy conflict response");
+    tracing::info!("a newer vote receives the legacy conflict reply from the unary API");
     {
         let request = AppendEntriesRequest {
             vote: Vote::new_committed(2, 1),
@@ -73,7 +79,7 @@ async fn append_entries_with_hint() -> Result<()> {
         assert_eq!(AppendEntriesResponse::Conflict, actual);
     }
 
-    tracing::info!("after a vote-only flush, hints still describe the nonempty log after truncation");
+    tracing::info!("after a vote-only flush, the hint still describes the nonempty log after truncation");
     {
         let request = AppendEntriesRequest {
             vote: Vote::new_committed(2, 1),
@@ -81,12 +87,15 @@ async fn append_entries_with_hint() -> Result<()> {
             entries: vec![],
             leader_commit: None,
         };
-        let actual = raft.append_entries_with_hint(request).await?;
+        let requests = futures::stream::iter([request]);
+        let actual: Vec<_> = pin!(raft.stream_append(requests)).collect().await;
         let committed = log_id(0, 0, 0);
         let tail = log_id(1, 1, 1);
-        let hint = ConflictHint::new(vec![committed, tail]);
-        let expected = AppendEntriesResponseWithHint::new(AppendEntriesResponse::Conflict, Some(hint));
-        assert_eq!(expected, actual);
+        let conflict = AppendError::Conflict {
+            log_id: log_id(2, 1, 2),
+            hint: Some(ConflictHint::new(vec![committed, tail])),
+        };
+        assert_eq!(vec![Ok(Err(conflict))], actual);
     }
     Ok(())
 }
@@ -94,8 +103,8 @@ async fn append_entries_with_hint() -> Result<()> {
 /// Quota truncation preserves the acknowledged prefix on both AppendEntries paths.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
-async fn quota_preserves_hinted_and_legacy_reply_boundaries() -> Result<()> {
-    for hints in [false, true] {
+async fn quota_preserves_stream_and_unary_reply_boundaries() -> Result<()> {
+    for stream in [false, true] {
         let config = Config {
             enable_tick: false,
             enable_heartbeat: false,
@@ -116,7 +125,7 @@ async fn quota_preserves_hinted_and_legacy_reply_boundaries() -> Result<()> {
             (None, 5..7, 7),
         ] {
             tracing::info!(
-                hints,
+                stream,
                 ?quota,
                 ?indices,
                 retained_end,
@@ -138,25 +147,25 @@ async fn quota_preserves_hinted_and_legacy_reply_boundaries() -> Result<()> {
                     leader_commit: None,
                 };
                 let option = RPCOption::new(Duration::from_secs(1));
-                let actual = if hints {
-                    let response = client.append_entries_with_hint(&request, option).await?;
-                    response.expect("router supports conflict hints")
-                } else {
-                    let response = client.append_entries(request, option).await?;
-                    AppendEntriesResponseWithHint::new(response, None)
-                };
                 let last_log_id = if retained_end == 0 {
                     None
                 } else {
                     Some(log_id(1, 1, retained_end - 1))
                 };
-                let response = if retained_end < end {
-                    AppendEntriesResponse::PartialSuccess(last_log_id)
+                if stream {
+                    let requests = futures::stream::iter([request]);
+                    let responses = client.stream_append(requests, option).await?;
+                    let actual: Vec<_> = responses.collect().await;
+                    assert_eq!(vec![Ok(Ok(last_log_id))], actual);
                 } else {
-                    AppendEntriesResponse::Success
-                };
-                let expected = AppendEntriesResponseWithHint::new(response, None);
-                assert_eq!(expected, actual);
+                    let actual = client.append_entries(request, option).await?;
+                    let expected = if retained_end < end {
+                        AppendEntriesResponse::PartialSuccess(last_log_id)
+                    } else {
+                        AppendEntriesResponse::Success
+                    };
+                    assert_eq!(expected, actual);
+                }
 
                 let (mut store, _) = router.get_storage_handle(&0)?;
                 let actual_entries = store.try_get_log_entries(..).await?;

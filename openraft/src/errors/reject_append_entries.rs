@@ -3,7 +3,6 @@ use peel_off::Peel;
 use crate::RaftTypeConfig;
 use crate::errors::ConflictingLogId;
 use crate::errors::RejectVote;
-use crate::raft::StreamAppendError;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum RejectAppendEntries<C: RaftTypeConfig> {
@@ -17,15 +16,6 @@ pub(crate) enum RejectAppendEntries<C: RaftTypeConfig> {
 impl<C: RaftTypeConfig> From<RejectVote<C>> for RejectAppendEntries<C> {
     fn from(r: RejectVote<C>) -> Self {
         RejectAppendEntries::RejectVote(r)
-    }
-}
-
-impl<C: RaftTypeConfig> From<RejectAppendEntries<C>> for StreamAppendError<C> {
-    fn from(e: RejectAppendEntries<C>) -> Self {
-        match e {
-            RejectAppendEntries::RejectVote(r) => StreamAppendError::HigherVote(r.higher),
-            RejectAppendEntries::ConflictingLogId(c) => StreamAppendError::Conflict(c.expect),
-        }
     }
 }
 

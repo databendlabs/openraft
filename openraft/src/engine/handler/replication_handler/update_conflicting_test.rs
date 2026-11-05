@@ -340,6 +340,26 @@ fn stale_hinted_responses_leave_all_progress_unchanged() {
     }
 }
 
+/// A conflict without an inflight id, such as a heartbeat's, cannot be tied to the current
+/// request, so its hint is ignored.
+#[test]
+fn hint_of_a_conflict_without_inflight_id_is_ignored() {
+    let mut eng = hint_probe_engine();
+    let response = Progress {
+        target: 2,
+        result: Ok(ReplicationResult(Err(log_id(2, 1, 10)))),
+        hint: Some(ConflictHint::new(vec![log_id(2, 1, 9)])),
+    };
+    let stream_id = StreamId::new(2);
+
+    eng.replication_handler().update_progress(stream_id, response, None);
+
+    let inflight = Inflight::probe(Some(log_id(2, 1, 9)), Some(log_id(2, 1, 10)), InflightId::new(7));
+    let expected = ProgressEntry::empty(2, stream_id, 10).with_inflight(inflight);
+    let progress = entry(&eng, 2);
+    assert_eq!(expected, progress);
+}
+
 #[test]
 fn loss_of_unflushed_hinted_prefix_restarts_search() {
     let mut eng = hint_probe_engine();

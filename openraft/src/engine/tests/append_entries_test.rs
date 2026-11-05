@@ -19,8 +19,8 @@ use crate::entry::RaftEntry;
 use crate::errors::ConflictingLogId;
 use crate::errors::RejectAppendEntries;
 use crate::errors::RejectVote;
-use crate::raft::AppendEntriesResponse;
-use crate::raft::AppendEntriesResponseWithHint;
+use crate::raft::AppendError;
+use crate::raft::AppendResult;
 use crate::raft::ConflictHint;
 use crate::raft::LogSegment;
 use crate::raft_state::IOId;
@@ -416,38 +416,15 @@ fn test_handle_append_entries_with_entries_waits_for_them() -> anyhow::Result<()
     Ok(())
 }
 
-#[test]
-fn hinted_success_retains_the_log_flush_condition() {
-    let mut eng = eng();
-    let vote = Vote::new_committed(2, 1);
-    let segment = LogSegment::new(Some(log_id(2, 1, 3)), vec![blank_ent::<UTConfig>(2, 1, 4)]);
-    let (tx, _rx) = UTConfig::<()>::oneshot();
-
-    eng.handle_append_entries_with_hint(&vote, segment, tx);
-
-    let mut commands = eng.output.take_commands();
-    let actual = commands.pop().unwrap();
-
-    let response = AppendEntriesResponseWithHint::new(AppendEntriesResponse::Success, None);
-    let (tx, _rx) = UTConfig::<()>::oneshot();
-    let log_id = Some(log_id(2, 1, 4));
-    let io_id = IOId::new_log_io(vote.to_committed(), log_id);
-    let expected = Command::Respond {
-        when: Some(Condition::IOFlushed { io_id }),
-        resp: Respond::new(response, tx),
-    };
-    assert_eq!(expected, actual);
-}
-
 /// A conflict reply describes the log after truncation and claims no flushed log.
 #[test]
-fn hinted_conflict_describes_the_truncated_log() {
+fn conflict_reply_describes_the_truncated_log() {
     let mut eng = eng();
     let vote = Vote::new_committed(2, 1);
     let segment = LogSegment::new(Some(log_id(2, 1, 2)), vec![]);
     let (tx, _rx) = UTConfig::<()>::oneshot();
 
-    eng.handle_append_entries_with_hint(&vote, segment, tx);
+    eng.handle_append_entries(&vote, segment, tx);
 
     let mut commands = eng.output.take_commands();
     let actual = commands.pop().unwrap();
@@ -458,31 +435,34 @@ fn hinted_conflict_describes_the_truncated_log() {
     assert_eq!(Some(&truncated), commands.last());
 
     let hint = ConflictHint::new(vec![log_id(0, 1, 0), log_id(1, 1, 1)]);
-    let response = AppendEntriesResponseWithHint::new(AppendEntriesResponse::Conflict, Some(hint));
+    let result: AppendResult<UTConfig> = Err(AppendError::Conflict {
+        log_id: log_id(2, 1, 2),
+        hint: Some(hint),
+    });
     let (tx, _rx) = UTConfig::<()>::oneshot();
     let expected = Command::Respond {
         when: None,
-        resp: Respond::new(response, tx),
+        resp: Respond::new(result, tx),
     };
     assert_eq!(expected, actual);
 }
 
-/// A rejected vote is answered at once, without a hint.
+/// A rejected vote is answered at once.
 #[test]
-fn hinted_vote_rejection_carries_no_hint() {
+fn vote_rejection_is_answered_at_once() {
     let mut eng = eng();
     let segment = LogSegment::new(Some(log_id(2, 1, 3)), vec![]);
     let (tx, _rx) = UTConfig::<()>::oneshot();
 
-    eng.handle_append_entries_with_hint(&Vote::new(1, 1), segment, tx);
+    eng.handle_append_entries(&Vote::new(1, 1), segment, tx);
 
     let commands = eng.output.take_commands();
 
-    let response = AppendEntriesResponseWithHint::new(AppendEntriesResponse::HigherVote(Vote::new(2, 1)), None);
+    let result: AppendResult<UTConfig> = Err(AppendError::HigherVote(Vote::new(2, 1)));
     let (tx, _rx) = UTConfig::<()>::oneshot();
     let expected = vec![Command::Respond {
         when: None,
-        resp: Respond::new(response, tx),
+        resp: Respond::new(result, tx),
     }];
     assert_eq!(expected, commands);
 }

@@ -23,9 +23,9 @@ use openraft::network::stream_append_sequential;
 use openraft::network::v2::RaftNetworkV2;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse;
-use openraft::raft::AppendEntriesResponseWithHint;
+use openraft::raft::AppendError;
+use openraft::raft::AppendResult;
 use openraft::raft::SnapshotResponse;
-use openraft::raft::StreamAppendResult;
 use openraft::raft::TransferLeaderRequest;
 use openraft::raft::TransferLeaderResponse;
 use openraft::raft::VoteRequest;
@@ -72,63 +72,29 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
         &'s mut self,
         input: S,
         option: RPCOption,
-    ) -> BoxFuture<
-        's,
-        Result<BoxStream<'s, Result<StreamAppendResult<MemConfig>, RPCError<MemConfig>>>, RPCError<MemConfig>>,
-    >
+    ) -> BoxFuture<'s, Result<BoxStream<'s, Result<AppendResult<MemConfig>, RPCError<MemConfig>>>, RPCError<MemConfig>>>
     where
         S: Stream<Item = AppendEntriesRequest<MemConfig>> + OptionalSend + Unpin + 'static,
     {
-        if !self.owner.pipelined_append {
+        if !self.owner.pipelined_append && !self.owner.conflict_hints {
             return stream_append_sequential(self, input, option);
         }
+        // Without pipelining, a hinted stream still delivers one request at a time.
         const PIPELINE_CAPACITY: usize = 64;
+        let capacity = if self.owner.pipelined_append {
+            PIPELINE_CAPACITY
+        } else {
+            1
+        };
         let network = self.clone();
         let requests = input.map(move |request| {
             let network = network.clone();
             let option = option.clone();
             network.append_stream_request(request, option)
         });
-        let responses = requests.buffered(PIPELINE_CAPACITY);
+        let responses = requests.buffered(capacity);
         let responses: BoxStream<'s, _> = Box::pin(responses);
         Box::pin(futures::future::ready(Ok(responses)))
-    }
-
-    async fn append_entries_with_hint(
-        &mut self,
-        rpc: &AppendEntriesRequest<MemConfig>,
-        _option: RPCOption,
-    ) -> Result<Option<AppendEntriesResponseWithHint<MemConfig>>, RPCError<MemConfig>> {
-        if !self.owner.conflict_hints {
-            return Ok(None);
-        }
-
-        let has_entries = !rpc.entries.is_empty();
-        assert!(has_entries, "commit-only requests use the streaming path");
-
-        let mut rpc = rpc.clone();
-        let delivery = self.append_entries_lock.lock().await;
-        let from = rpc.vote.to_leader_node_id();
-        self.owner.before_rpc::<Infallible>(rpc.clone(), from, self.target).await?;
-
-        let partial_success = self.truncate_entries_by_quota(&mut rpc);
-
-        let node = self.owner.get_raft_handle(&self.target)?;
-        let result = node.append_entries_with_hint(rpc.clone()).await;
-        let mut response = result.map_err(|error| RPCError::Unreachable(Unreachable::new(&error)))?;
-
-        // If entries are truncated by quota, return a partial success response.
-        if let Some(partial_success) = partial_success
-            && response.response.is_success()
-        {
-            response.response = partial_success;
-        }
-
-        // Response hooks may block while later requests are delivered in order.
-        drop(delivery);
-        self.owner.call_rpc_post_hook(rpc, response.response.clone(), from, self.target).await?;
-
-        Ok(Some(response))
     }
 
     /// Send an AppendEntries RPC to the target Raft node (§5).
@@ -303,7 +269,11 @@ impl RaftRouterNetwork {
         mut self,
         request: AppendEntriesRequest<MemConfig>,
         option: RPCOption,
-    ) -> Result<StreamAppendResult<MemConfig>, RPCError<MemConfig>> {
+    ) -> Result<AppendResult<MemConfig>, RPCError<MemConfig>> {
+        if self.owner.conflict_hints {
+            return self.append_with_hint(request).await;
+        }
+
         let prev = request.prev_log_id;
         let last = if let Some(entry) = request.entries.last() {
             let log_id = entry.log_id();
@@ -313,6 +283,41 @@ impl RaftRouterNetwork {
         };
         let response = self.append_entries(request, option).await?;
         let result = response.into_stream_result(prev, last);
+        Ok(result.map_err(AppendError::from))
+    }
+
+    /// Deliver one AppendEntries request through the target's `Raft::stream_append()`, which
+    /// reports conflict hints.
+    async fn append_with_hint(
+        &self,
+        mut rpc: AppendEntriesRequest<MemConfig>,
+    ) -> Result<AppendResult<MemConfig>, RPCError<MemConfig>> {
+        let delivery = self.append_entries_lock.lock().await;
+        let from = rpc.vote.to_leader_node_id();
+        self.owner.before_rpc::<Infallible>(rpc.clone(), from, self.target).await?;
+
+        let partial_success = self.truncate_entries_by_quota(&mut rpc);
+
+        let node = self.owner.get_raft_handle(&self.target)?;
+        let requests = futures::stream::iter([rpc.clone()]);
+        let mut results = std::pin::pin!(node.stream_append(requests));
+        let Some(result) = results.next().await else {
+            let message = format!("target={} stopped before replying", self.target);
+            return Err(RPCError::Unreachable(Unreachable::from_string(message)));
+        };
+        let result = result.map_err(|error| RPCError::Unreachable(Unreachable::new(&error)))?;
+
+        // The follower already reports the last entry it kept, but post-hooks observe the reply
+        // the unary path would send, including quota-induced `PartialSuccess`.
+        let response = match partial_success {
+            Some(partial_success) if result.is_ok() => partial_success,
+            _ => AppendEntriesResponse::from(result.clone()),
+        };
+
+        // Response hooks may block while later requests are delivered in order.
+        drop(delivery);
+        self.owner.call_rpc_post_hook(rpc, response, from, self.target).await?;
+
         Ok(result)
     }
 

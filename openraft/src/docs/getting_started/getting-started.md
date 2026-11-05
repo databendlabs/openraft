@@ -254,7 +254,7 @@ pub trait RaftNetworkV2<C: RaftTypeConfig>: Send + Sync + 'static {
     async fn full_snapshot(&mut self, vote: Vote<C::NodeId>, snapshot: SnapshotOf<C, Self::SnapshotData>, cancel: impl Future<..>, option: RPCOption) -> Result<..>;
 
     // Optional: override for pipelined replication
-    fn stream_append(&mut self, input: impl Stream<Item = AppendEntriesRequest<C>>, option: RPCOption) -> BoxFuture<Result<BoxStream<StreamAppendResult<C>>>>;
+    fn stream_append(&mut self, input: impl Stream<Item = AppendEntriesRequest<C>>, option: RPCOption) -> BoxFuture<Result<BoxStream<AppendResult<C>>>>;
 }
 ```
 
@@ -289,6 +289,11 @@ for efficient pipelined log replication. The default implementation uses
 To enable pipelined replication, override [`stream_append()`] to forward the
 request stream to the remote node's [`Raft::stream_append()`] and return the
 response stream.
+
+A conflict in that response stream carries a hint that helps the leader find
+the matching log with fewer probes. [`AppendError`] does not implement serde, so
+the transport converts it to and from its own wire type. A transport that
+leaves the hint out still works; the leader then uses binary search.
 
 | [`RaftNetworkV2`] method | forward request            | to target                                     |
 |--------------------------|----------------------------|-----------------------------------------------|
@@ -587,6 +592,7 @@ and links the trait, protocol page, or test suite that defines it.
 [`Raft::install_full_snapshot()`]:      `crate::Raft::install_full_snapshot`
 
 [`AppendEntriesRequest`]:               `crate::raft::AppendEntriesRequest`
+[`AppendError`]:                        `crate::raft::AppendError`
 [`VoteRequest`]:                        `crate::raft::VoteRequest`
 
 [`RaftTypeConfig`]:                     `crate::RaftTypeConfig`

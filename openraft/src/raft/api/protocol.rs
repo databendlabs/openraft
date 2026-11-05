@@ -18,7 +18,7 @@ use crate::errors::Fatal;
 use crate::errors::into_raft_result::IntoRaftResult;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
-use crate::raft::AppendEntriesResponseWithHint;
+use crate::raft::AppendResult;
 use crate::raft::SnapshotResponse;
 use crate::raft::TransferLeaderError;
 use crate::raft::TransferLeaderRequest;
@@ -27,7 +27,6 @@ use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft::raft_inner::RaftInner;
 use crate::raft::stream_append;
-use crate::raft::stream_append::StreamAppendResult;
 use crate::storage::RaftStateMachine;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::MpscSenderOf;
@@ -142,23 +141,15 @@ where
     ) -> Result<AppendEntriesResponse<C>, Fatal<C>> {
         tracing::debug!("Raft::append_entries: rpc: {}", rpc);
 
-        let stream_result: StreamAppendResult<C> =
-            self.inner.call_core_oneshot(|tx| RaftMsg::AppendEntries { rpc, tx }).await?;
-        Ok(AppendEntriesResponse::from(stream_result))
-    }
-
-    pub(crate) async fn append_entries_with_hint(
-        &self,
-        rpc: AppendEntriesRequest<C>,
-    ) -> Result<AppendEntriesResponseWithHint<C>, Fatal<C>> {
-        self.inner.call_core_oneshot(|tx| RaftMsg::AppendEntriesWithHint { rpc, tx }).await
+        let result: AppendResult<C> = self.inner.call_core_oneshot(|tx| RaftMsg::AppendEntries { rpc, tx }).await?;
+        Ok(AppendEntriesResponse::from(result))
     }
 
     #[since(version = "0.10.0")]
     pub(crate) fn stream_append<S>(
         self,
         stream: S,
-    ) -> impl Stream<Item = Result<StreamAppendResult<C>, Fatal<C>>> + OptionalSend + 'static
+    ) -> impl Stream<Item = Result<AppendResult<C>, Fatal<C>>> + OptionalSend + 'static
     where
         S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + 'static,
     {

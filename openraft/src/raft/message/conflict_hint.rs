@@ -10,9 +10,13 @@ use crate::type_config::alias::LogIdOf;
 ///
 /// These entries may not be flushed. A hint never acknowledges durable replication; the leader
 /// must verify the chosen position with AppendEntries before counting it toward a quorum.
+///
+/// Like [`AppendError`], which carries it, this type does not implement serde: a transport
+/// encodes [`Self::log_ids`] in its own wire format.
+///
+/// [`AppendError`]: crate::raft::AppendError
 #[since(version = "0.10.0")]
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[non_exhaustive]
 pub struct ConflictHint<C>
 where C: RaftTypeConfig

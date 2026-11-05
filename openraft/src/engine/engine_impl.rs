@@ -34,14 +34,12 @@ use crate::proposer::Leader;
 use crate::proposer::LeaderState;
 use crate::proposer::WriteQuorumSet;
 use crate::proposer::leader_state::CandidateState;
-use crate::raft::AppendEntriesResponse;
-use crate::raft::AppendEntriesResponseWithHint;
+use crate::raft::AppendError;
+use crate::raft::AppendResult;
 use crate::raft::LogSegment;
 use crate::raft::SnapshotResponse;
-use crate::raft::StreamAppendError;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
-use crate::raft::stream_append::StreamAppendResult;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
@@ -651,47 +649,15 @@ where
             self.state.last_log_id().display()
         );
 
-        let (stream_result, condition) = self.append_entries_with_flush_condition(vote, segment);
-
-        self.output.push_command(Command::Respond {
-            when: condition,
-            resp: Respond::new(stream_result, tx),
-        });
-    }
-
-    /// Append entries like [`Self::handle_append_entries`], and describe the local log on a
-    /// conflict.
-    ///
-    /// The hint is taken after the conflicting entries are truncated.
-    pub(crate) fn handle_append_entries_with_hint(
-        &mut self,
-        vote: &VoteOf<C>,
-        segment: LogSegment<C>,
-        tx: OneshotSenderOf<C, AppendEntriesResponseWithHint<C>>,
-    ) {
-        let (result, condition) = self.append_entries_with_flush_condition(vote, segment);
-
-        let hint = match &result {
-            Err(StreamAppendError::Conflict(_)) => Some(self.following_handler().conflict_hint()),
-            _ => None,
+        let result: AppendResult<C> = match self.append_entries(vote, segment) {
+            Ok(last_log_id) => Ok(last_log_id),
+            Err(RejectAppendEntries::RejectVote(reject)) => Err(AppendError::HigherVote(reject.higher)),
+            // The hint describes the log after the conflicting entries are truncated.
+            Err(RejectAppendEntries::ConflictingLogId(conflict)) => Err(AppendError::Conflict {
+                log_id: conflict.expect,
+                hint: Some(self.following_handler().conflict_hint()),
+            }),
         };
-
-        let response = AppendEntriesResponse::from(result);
-        let response = AppendEntriesResponseWithHint::new(response, hint);
-
-        self.output.push_command(Command::Respond {
-            when: condition,
-            resp: Respond::new(response, tx),
-        });
-    }
-
-    /// Append the segment and return the result with its response flush condition.
-    fn append_entries_with_flush_condition(
-        &mut self,
-        vote: &VoteOf<C>,
-        segment: LogSegment<C>,
-    ) -> (StreamAppendResult<C>, Option<Condition<C>>) {
-        let result: StreamAppendResult<C> = self.append_entries(vote, segment).map_err(Into::into);
 
         // The reply claims only that the vote and the log up to `last_log_id` are persisted:
         // the last entry of this request, or `prev_log_id` for a heartbeat without entries.
@@ -704,7 +670,10 @@ where
             Err(_) => None,
         };
 
-        (result, condition)
+        self.output.push_command(Command::Respond {
+            when: condition,
+            resp: Respond::new(result, tx),
+        });
     }
 
     pub(crate) fn append_entries(

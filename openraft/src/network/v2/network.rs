@@ -20,9 +20,8 @@ use crate::network::RPCOption;
 use crate::network::stream_append_sequential;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
-use crate::raft::AppendEntriesResponseWithHint;
+use crate::raft::AppendResult;
 use crate::raft::SnapshotResponse;
-use crate::raft::StreamAppendResult;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft::message::TransferLeaderRequest;
@@ -102,7 +101,6 @@ use crate::type_config::alias::VoteOf;
 /// [`NetBackoff`]: crate::network::NetBackoff
 /// [`RaftNetworkFactory::Network`]: crate::network::RaftNetworkFactory::Network
 /// [correct-node]: `crate::docs::cluster_control::dynamic_membership#ensure-connection-to-the-correct-node`
-#[since(version = "0.10.0", change = "added optional append_entries_with_hint")]
 #[since(version = "0.10.0")]
 #[add_async_trait]
 pub trait RaftNetworkV2<C>: OptionalSend + OptionalSync + 'static
@@ -122,19 +120,6 @@ where C: RaftTypeConfig
         option: RPCOption,
     ) -> Result<AppendEntriesResponse<C>, RPCError<C>>;
 
-    /// Optionally send a probe with conflict hints; see
-    /// [`NetStreamAppend::append_entries_with_hint`].
-    ///
-    /// The default leaves the request unsent so OpenRaft uses the existing streaming path.
-    #[since(version = "0.10.0")]
-    async fn append_entries_with_hint(
-        &mut self,
-        _rpc: &AppendEntriesRequest<C>,
-        _option: RPCOption,
-    ) -> Result<Option<AppendEntriesResponseWithHint<C>>, RPCError<C>> {
-        Ok(None)
-    }
-
     /// Send a stream of AppendEntries RPCs to the target and return a stream of responses.
     ///
     /// This method forwards a stream of AppendEntries requests to the remote follower.
@@ -143,7 +128,8 @@ where C: RaftTypeConfig
     ///
     /// The default implementation processes requests sequentially in a request-response
     /// manner: it sends one request, waits for the response, then sends the next.
-    /// This is simple but not optimal for performance.
+    /// This is simple but not optimal for performance. The unary response carries no conflict
+    /// hint, so neither do the conflicts in this stream.
     ///
     /// Custom transports may merge, split, or pipeline requests under the ordering and response
     /// bounds documented by [`NetStreamAppend::stream_append`]. Responses need not map one-to-one
@@ -159,12 +145,16 @@ where C: RaftTypeConfig
     ///
     /// [`Raft::stream_append()`]: crate::raft::Raft::stream_append
     /// [`NetStreamAppend::stream_append`]: crate::network::NetStreamAppend::stream_append
+    #[since(
+        version = "0.10.0",
+        change = "response stream yields AppendError with an optional conflict hint"
+    )]
     #[since(version = "0.10.0")]
     fn stream_append<'s, S>(
         &'s mut self,
         input: S,
         option: RPCOption,
-    ) -> BoxFuture<'s, Result<BoxStream<'s, Result<StreamAppendResult<C>, RPCError<C>>>, RPCError<C>>>
+    ) -> BoxFuture<'s, Result<BoxStream<'s, Result<AppendResult<C>, RPCError<C>>>, RPCError<C>>>
     where
         S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + Unpin + 'static,
     {
@@ -352,19 +342,11 @@ where
     C: RaftTypeConfig,
     T: RaftNetworkV2<C> + ?Sized,
 {
-    fn append_entries_with_hint<'a>(
-        &'a mut self,
-        rpc: &'a AppendEntriesRequest<C>,
-        option: RPCOption,
-    ) -> BoxFuture<'a, Result<Option<AppendEntriesResponseWithHint<C>>, RPCError<C>>> {
-        Box::pin(RaftNetworkV2::append_entries_with_hint(self, rpc, option))
-    }
-
     fn stream_append<'s, S>(
         &'s mut self,
         input: S,
         option: RPCOption,
-    ) -> BoxFuture<'s, Result<BoxStream<'s, Result<StreamAppendResult<C>, RPCError<C>>>, RPCError<C>>>
+    ) -> BoxFuture<'s, Result<BoxStream<'s, Result<AppendResult<C>, RPCError<C>>>, RPCError<C>>>
     where
         S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + Unpin + 'static,
     {
