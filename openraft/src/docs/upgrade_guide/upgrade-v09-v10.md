@@ -87,6 +87,49 @@ the replacement:
   to [`leader_id_std::LeaderId`][], either in the `declare_raft_types!`
   statement or in the [`RaftTypeConfig`][] implementation.
 
+## The membership type is configurable
+
+[`RaftTypeConfig`][] adds `Membership`, the read and write quorum rules, and
+`MembershipEdit`, the change that [`Raft::change_membership()`][] takes.
+[`declare_raft_types!`][] defaults them to the majority-based
+[`Membership`][] and [`ChangeMembers`][], so a type config declared with the
+macro compiles unchanged. A manual `RaftTypeConfig` impl adds both types and
+passes the membership to the payload type:
+
+```ignore
+type Membership = openraft::impls::Membership<Self::NodeId, Self::Node>;
+type MembershipEdit = openraft::impls::ChangeMembers<Self::NodeId, Self::Node>;
+type Payload = openraft::impls::EntryPayload<Self::D, Self::Membership>;
+```
+
+Code that names the membership types changes as follows:
+
+- `EntryPayload`, `StoredMembership`, `MembershipState`, `SnapshotMeta` and
+  `Snapshot` take the membership type in place of the node ID and node types,
+  as in `EntryPayload<D, Membership<NID, N>>`. A `RaftPayload` impl replaces
+  `type NodeId` and `type Node` with `type Membership`.
+- Generic code uses `C::Membership` where it used
+  `Membership<C::NodeId, C::Node>`, and reads a node with
+  `StoredMembership::get_node()`.
+- [`Raft::change_membership()`][] takes `impl Into<MembershipEditOf<C>>`, and
+  [`Raft::initialize()`][] takes `impl Into<C::Membership>`. Calls that pass a
+  `ChangeMembers`, or a map or set of nodes, compile unchanged with the default
+  membership. Generic code adds the bounds
+  `MembershipEditOf<C>: From<ChangeMembers<C::NodeId, C::Node>>` and
+  `C::Membership: From<BTreeMap<C::NodeId, C::Node>>`.
+- `ChangeMembershipError` gains an error parameter `E`, which defaults to
+  `AnyError`, and the variants `UnsupportedMembershipTransition`,
+  `UncommittedLeaderLog`, `NodeMetadataChanged`,
+  `UnprovenReadWriteIntersection`, `WriteVoterWithoutReceiveLogs` and
+  `UserDefined`. `InitializeError` gains `InvalidMembership`, which holds the
+  new `MembershipError`. Exhaustive matches add arms for them.
+
+The [`openraft-membership`][] crate provides other quorum rules:
+`ThresholdMembership`, `WeightedMembership`, `HierarchicalMembership`,
+`GridMembership` and `ExplicitMembership`, each with its change type. See the
+[FAQ](crate::docs::faq#how-do-i-use-a-quorum-rule-other-than-a-majority) for
+how to select one.
+
 ## Optional quorum-loss inactivity configuration
 
 [`Config`][] adds `quorum_loss_probe_interval: Option<u64>` in milliseconds.
@@ -118,3 +161,9 @@ the duration in `Some`, and code that read the field handles `None`.
 [`single-threaded`]:             `crate::docs::feature_flags#feature-flag-single-threaded`
 [`leader_id_std::LeaderId`]:     `crate::impls::leader_id_std::LeaderId`
 [`RaftTypeConfig`]:              `crate::RaftTypeConfig`
+[`Membership`]:                  `crate::impls::Membership`
+[`ChangeMembers`]:               `crate::impls::ChangeMembers`
+[`declare_raft_types!`]:         `crate::declare_raft_types`
+[`Raft::change_membership()`]:   `crate::Raft::change_membership`
+[`Raft::initialize()`]:          `crate::Raft::initialize`
+[`openraft-membership`]:         https://crates.io/crates/openraft-membership
