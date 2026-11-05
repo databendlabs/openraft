@@ -67,11 +67,21 @@ async fn runtime_stats_log_stage_counts_batched_entries_per_entry() -> Result<()
     router.wait(&0).applied_index(Some(log_index), "batched writes applied").await?;
 
     let runtime_stats = n0.runtime_stats().await?;
-    tracing::info!(log_index, "--- verify cumulative busy time after processing writes");
+    tracing::info!(
+        log_index,
+        "--- verify busy time and its histogram after processing writes"
+    );
     {
         assert!(runtime_stats.core_busy_duration >= before_runtime_stats.core_busy_duration);
+        let before_samples = before_runtime_stats.core_busy_histogram.total();
+        let after_samples = runtime_stats.core_busy_histogram.total();
+        assert!(after_samples > before_samples);
         #[cfg(not(feature = "rt-sim"))]
-        assert!(runtime_stats.core_busy_duration > std::time::Duration::ZERO);
+        {
+            assert!(runtime_stats.core_busy_duration > std::time::Duration::ZERO);
+            let longest = runtime_stats.core_busy_histogram.percentile(1.0);
+            assert!(longest > 0);
+        }
     }
 
     println!("{}", runtime_stats.log_stage);

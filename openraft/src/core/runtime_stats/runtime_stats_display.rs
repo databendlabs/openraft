@@ -29,6 +29,7 @@ where C: RaftTypeConfig
 {
     pub(crate) mode: DisplayMode,
     pub(crate) core_busy_duration: Duration,
+    pub(crate) core_busy_histogram: PercentileStats,
     pub(crate) apply_batch: PercentileStats,
     pub(crate) append_batch: PercentileStats,
     pub(crate) replicate_batch: PercentileStats,
@@ -89,8 +90,9 @@ where C: RaftTypeConfig
     fn fmt_compact(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "RuntimeStats {{ core_busy_duration: {:?}, apply_batch: {}, append_batch: {}, replicate_batch: {}, raft_msg_per_run: {}, write_batch: {}, raft_msg_budget: {}, notification_budget: {}, raft_msg_usage_permille: {}, notification_usage_permille: {}, commands: {{",
+            "RuntimeStats {{ core_busy_duration: {:?}, core_busy_histogram(us): {}, apply_batch: {}, append_batch: {}, replicate_batch: {}, raft_msg_per_run: {}, write_batch: {}, raft_msg_budget: {}, notification_budget: {}, raft_msg_usage_permille: {}, notification_usage_permille: {}, commands: {{",
             self.core_busy_duration,
+            self.core_busy_histogram,
             self.apply_batch,
             self.append_batch,
             self.replicate_batch,
@@ -161,6 +163,7 @@ where C: RaftTypeConfig
     fn fmt_multiline(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "RuntimeStats:")?;
         writeln!(f, "  core_busy_duration: {:?}", self.core_busy_duration)?;
+        writeln!(f, "  core_busy_histogram(us): {}", self.core_busy_histogram)?;
         writeln!(f, "  apply_batch: {}", self.apply_batch)?;
         writeln!(f, "  append_batch: {}", self.append_batch)?;
         writeln!(f, "  replicate_batch: {}", self.replicate_batch)?;
@@ -221,6 +224,22 @@ where C: RaftTypeConfig
     fn fmt_human_readable(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "Core busy duration: {:?}", self.core_busy_duration)?;
         writeln!(f)?;
+        writeln!(f, "Core loop busy (us):")?;
+        let mut builder = Builder::default();
+        builder.push_record([
+            "", "#Samples", "P0.1", "P1", "P5", "P10", "P50", "P90", "P99", "P99.9", "",
+        ]);
+        builder.push_record(Self::percentile_row(
+            "Busy",
+            &self.core_busy_histogram,
+            "Wall time of one core-loop turn",
+        ));
+        let mut table = builder.build();
+        table.with(Style::rounded());
+        table.with(Alignment::right());
+        table.modify(Columns::first(), Alignment::left());
+        table.modify(Columns::last(), Alignment::left());
+        writeln!(f, "{}", table)?;
 
         // Batch sizes table
         writeln!(f, "Batch Sizes:")?;
@@ -420,6 +439,7 @@ where C: RaftTypeConfig
 
 #[cfg(test)]
 mod tests {
+    use base2histogram::Histogram;
     use base2histogram::PercentileStats;
 
     use super::*;
@@ -461,6 +481,7 @@ mod tests {
         RuntimeStatsDisplay {
             mode: DisplayMode::default(),
             core_busy_duration: Duration::ZERO,
+            core_busy_histogram: EMPTY_STATS,
             apply_batch,
             append_batch: EMPTY_STATS,
             replicate_batch: EMPTY_STATS,
@@ -515,6 +536,70 @@ mod tests {
 
         assert!(s.contains("apply_batch: [samples: 5"));
         assert!(s.contains("1:proposed→received: [samples: 10"));
+    }
+
+    #[test]
+    fn test_core_busy_histogram_distribution_display() {
+        let mut histogram = Histogram::<()>::new();
+        for micros in 1..=7 {
+            histogram.record(micros);
+        }
+        let stats = histogram.percentile_stats();
+        let expected = PercentileStats {
+            samples: 7,
+            p0_1: 1,
+            p1: 1,
+            p5: 1,
+            p10: 1,
+            p50: 4,
+            p90: 7,
+            p99: 7,
+            p99_9: 7,
+        };
+        assert_eq!(expected, stats);
+
+        let rendered = format!("{stats}");
+        assert_eq!(
+            "[samples: 7, P0.1: 1, P1: 1, P5: 1, P10: 1, P50: 4, P90: 7, P99: 7, P99.9: 7]",
+            rendered,
+        );
+
+        let duration = Duration::from_micros(28);
+        let duration_text = format!("{duration:?}");
+        let duration_field = format!("core_busy_duration: {duration_text}");
+        let histogram_field = format!("core_busy_histogram(us): {rendered}");
+
+        let mut display = make_display(EMPTY_STATS, vec![0; CommandName::COUNT], empty_log_stages());
+        display.core_busy_duration = duration;
+        display.core_busy_histogram = stats;
+        let compact = format!("{}", display.compact());
+        let compact_head = format!("RuntimeStats {{ {duration_field}, {histogram_field}");
+        assert!(compact.starts_with(&compact_head));
+
+        let mut display = make_display(EMPTY_STATS, vec![0; CommandName::COUNT], empty_log_stages());
+        display.core_busy_duration = duration;
+        display.core_busy_histogram = stats;
+        let multiline = format!("{}", display.multiline());
+        let multiline_head = format!("RuntimeStats:\n  {duration_field}\n  {histogram_field}\n");
+        assert!(multiline.starts_with(&multiline_head));
+
+        #[cfg(feature = "runtime-stats")]
+        {
+            let mut display = make_display(EMPTY_STATS, vec![0; CommandName::COUNT], empty_log_stages());
+            display.core_busy_duration = duration;
+            display.core_busy_histogram = stats;
+            let human = format!("{}", display.human_readable());
+            let table = [
+                "╭──────┬──────────┬──────┬────┬────┬─────┬─────┬─────┬─────┬───────┬─────────────────────────────────╮",
+                "│      │ #Samples │ P0.1 │ P1 │ P5 │ P10 │ P50 │ P90 │ P99 │ P99.9 │                                 │",
+                "├──────┼──────────┼──────┼────┼────┼─────┼─────┼─────┼─────┼───────┼─────────────────────────────────┤",
+                "│ Busy │        7 │    1 │  1 │  1 │   1 │   4 │   7 │   7 │     7 │ Wall time of one core-loop turn │",
+                "╰──────┴──────────┴──────┴────┴────┴─────┴─────┴─────┴─────┴───────┴─────────────────────────────────╯",
+            ]
+            .join("\n");
+            let busy = format!("Core busy duration: {duration_text}\n\nCore loop busy (us):\n{table}\n");
+            assert!(human.starts_with(&busy));
+        }
     }
 
     #[test]
