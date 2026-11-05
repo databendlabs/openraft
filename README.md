@@ -30,7 +30,6 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
 - 🚀 **Get started**: [Guide](https://docs.rs/openraft/0.10.0-alpha.37/openraft/docs/getting_started/index.html) · [Docs](https://docs.rs/openraft/0.10.0-alpha.37/openraft/docs/index.html) · [FAQ](https://docs.rs/openraft/0.10.0-alpha.37/openraft/docs/faq/index.html) · [DeepWiki](https://deepwiki.com/databendlabs/openraft).
 - 💡 **Examples**: [0.10.0-alpha.37](https://github.com/databendlabs/openraft/tree/release-0.10/examples) · [0.9](https://github.com/databendlabs/openraft/tree/release-0.9/examples).
 - 🙌 **Questions**? Ask on [Discord](https://discord.gg/ZKw3WG7FQ9), in a [GitHub discussion](https://github.com/databendlabs/openraft/discussions/new), in our [Feishu group](https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=d20l9084-6d36-4470-bac5-4bad7378d003), or on WeChat: `drmingdrmer`.
-- OpenRaft is derived from [async-raft](https://docs.rs/crate/async-raft/latest) with several bugs fixed: [Fixed bugs](https://github.com/databendlabs/openraft/blob/main/derived-from-async-raft.md).
 
 
 # Status
@@ -46,13 +45,13 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
 
 ## API status
 
-- **OpenRaft API is not stable yet**. Before `1.0.0`, an upgrade may contain incompatible changes.
-  Check our [change-log](https://github.com/databendlabs/openraft/blob/main/change-log.md). A commit message starts with a keyword to indicate the modification type of the commit:
+**OpenRaft's API continues to evolve.** Upgrades before `1.0.0` may include incompatible changes.
+See the [changelog](https://github.com/databendlabs/openraft/blob/main/change-log.md). Commit messages start with a keyword indicating the type of change:
 
-  - `data-change:` on-disk data types changes, which may require manual upgrade.
-  - `change:` if it introduces incompatible changes.
-  - `feat:` if it introduces compatible non-breaking new features.
-  - `fix:` if it just fixes a bug.
+- `data-change:` changes on-disk data types and may require a manual upgrade.
+- `change:` introduces incompatible changes.
+- `feat:` adds compatible, non-breaking features.
+- `fix:` contains only bug fixes.
 
 ## Versions
 
@@ -85,78 +84,24 @@ This benchmark measures the OpenRaft framework with minimal storage and networki
 
 # Features
 
-#### Membership
+- ✅ **Generalized membership changes**: [change any set of nodes](./features.md#membership) in one operation, using one log entry when safe or joint consensus otherwise.
+- ✅ **Flexible quorums**: choose [threshold, weighted, hierarchical, grid, explicit, or custom rules](./features.md#membership), with separate election and commit quorums.
+- ✅ **High throughput**: [streaming replication](./features.md#replication) and [batch writes](./features.md#reads-and-writes), backed by an async, event-driven core.
+- ✅ **Linearizable reads**: [reads confirmed by a quorum, lease reads, and follower reads](./features.md#reads-and-writes).
+- ✅ **Fully pluggable**: customize [storage, networking, snapshot transport, and core Raft types](./features.md#runtime).
+- ✅ **Runtime choice**: [Tokio, compio, or monoio](./features.md#runtime), with support for `single-threaded` applications.
+- ✅ **Tested with Turmoil and Jepsen**: [deterministic simulation and fault testing](./features.md#testing-and-monitoring) check Raft invariants, linearizability, and recovery.
 
-- ✅ **Generalized membership change**: [change any set of nodes](https://docs.rs/openraft/0.10.0-alpha.37/openraft/docs/data/extended_membership/index.html) in one operation, using [one log entry when proven safe or joint consensus otherwise](https://docs.rs/openraft/0.10.0-alpha.37/openraft/docs/cluster_control/dynamic_membership/index.html).
-- ✅ **Single-step config change**: [`append_membership()`][] writes a caller-built membership without a joint config, for a restricted set of transitions.
-- ✅ **Conditional membership changes**: [`change_membership_if()`][] checks the expected leader or membership before proposing a change.
-- ✅ **Flexible quorums**: choose [threshold, weighted, hierarchical, grid, explicit](./membership/src/docs.md), or custom rules in `RaftTypeConfig`. Configure separate read (election) and write (commit) quorums and which voters can start elections.
-- ✅ **Learners (non-voters)**: [`add_learner()`][].
-
-#### Leadership
-
-- ✅ **Fewer election conflicts**: a split vote does not force a new term with OpenRaft's [Vote](https://docs.rs/openraft/0.10.0-alpha.37/openraft/docs/data/vote/index.html). The [standard Raft leader-ID mode](https://docs.rs/openraft/0.10.0-alpha.37/openraft/docs/data/leader_id/index.html) is also supported.
-- ✅ **[Pre-vote][Pre-Vote protocol]**: a dedicated RPC avoids unnecessary term increments; enable it with [`Config::enable_pre_vote`][].
-- ✅ **[CheckQuorum](./openraft/src/docs/protocol/check_quorum.md)**: reject new proposals when the quorum lease expires; resume after renewed quorum acknowledgements.
-- ✅ **Leadership callbacks**: start and stop application services on leadership changes with [`on_leader_change()`][].
-
-#### Replication
-
-- ✅ **Snapshot replication**: catch up lagging nodes using snapshots.
-- ✅ **Streaming replication**: pipeline log replication with custom transports via [`RaftNetworkV2::stream_append()`][].
-
-#### Reads and writes
-
-- ✅ **Batch writes**: [`client_write_many()`][] batches requests and returns results in submission order.
-- ✅ **Conditional writes**: check the expected leader before appending a write with [`write().with_leader()`][].
-- ✅ **Write notifications**: [`ProgressResponder`][] reports commit and state-machine application separately.
-- ✅ **Linearizable reads**: confirm leadership with a quorum and wait for local apply before reading, using [`ensure_linearizable()`][] with `ReadPolicy::ReadIndex`.
-- ✅ **Lease reads**: avoid per-read quorum round trips under the [lease assumptions](./openraft/src/docs/protocol/read.md#ensuring-linearizability); optional [local checks](./openraft/src/docs/protocol/read.md#caller-side-lease-reads) bypass RaftCore's queue.
-- ✅ **[Follower reads](./openraft/src/docs/protocol/read.md#follower-read)**: fetch a read boundary from the leader via application RPC, then wait for local apply to read linearizably.
-
-#### Runtime
-
-- ✅ **Async and event-driven**: event-driven state transitions and batched messages reach millions of writes/sec in the [framework benchmark](#performance).
-- ✅ **Fully pluggable**: custom storage, networking, and snapshot transport; configurable node IDs, nodes, terms, votes, and log entries via `RaftTypeConfig`.
-- ✅ **Runtime-agnostic**: Tokio by default, [compio](./rt-compio) or [monoio](./rt-monoio) via `AsyncRuntime`; `single-threaded` mode removes `Send` bounds.
-
-#### Cluster control
-
-- ✅ **Leader election**: by policy or manually ([`Trigger::elect()`][]).
-- ✅ **Leader transfer**: [`Trigger::transfer_leader()`][].
-- ✅ **Log compaction**: snapshot the state machine by policy or manually ([`Trigger::snapshot()`][]).
-- ✅ **Immediate heartbeats**: [`Trigger::heartbeat()`][].
-- ✅ **Reset replication backoff**: end the active retry delay for selected or all replication targets via [`Trigger::reset_backoff()`][].
-- ✅ **Toggle heartbeat / election**: [`RuntimeConfigHandle::heartbeat()`][] / [`RuntimeConfigHandle::elect()`][].
-- ✅ **Log purging**: by policy or manually ([`Trigger::purge_log()`][]).
-
-#### Testing and monitoring
-
-- ✅ **Deterministically tested**: a [Turmoil simulation fuzzer](./tests-turmoil) checks invariants from the Raft paper and TLA+ spec after each tick.
-- ✅ **Jepsen tested**: [black-box tests](./jepsen) check linearizability and recovery under network faults, process failures, clock skew, and membership changes.
-- ✅ **Storage test suite**: [`testing::log::Suite`][] tests custom storage implementations.
-- ✅ **Observable**: streaming metrics via watch channels ([`Raft::metrics()`][], [`Raft::data_metrics()`][], and [`Raft::server_metrics()`][]), and [tracing](https://docs.rs/tracing/) with [compile-time verbosity filtering](https://docs.rs/tracing/latest/tracing/level_filters/index.html).
+See the [full feature list](./features.md).
 
 
 # Who uses it
 
-<!-- Star counts as of 2026-07; ordered by stars, Databend first. Comments are invisible on rendered GitHub. -->
-- [Databend](https://github.com/databendlabs/databend) - The Next-Gen Cloud [Data+AI] Analytics <!-- ★9378 -->
-- [Walrus](https://github.com/nubskr/walrus) - Distributed message streaming engine with Raft-based metadata coordination. <!-- ★1900 -->
-- [CnosDB](https://github.com/cnosdb/cnosdb) - A cloud-native open source distributed time series database. <!-- ★1752 -->
-- [RobustMQ](https://github.com/robustmq/robustmq) - Next generation cloud-native converged message queue. <!-- ★1636 -->
-- [RocketMQ-rust](https://github.com/mxsm/rocketmq-rust) - Apache RocketMQ reimplemented in Rust. <!-- ★1495 -->
-- [Hiqlite](https://github.com/sebadob/hiqlite) - Highly-available, embeddable, Raft-based SQLite with caching. <!-- ★460 -->
-- [Octopii](https://github.com/octopii-rs/octopii) - A distributed systems kernel for building replicated, fault-tolerant services. <!-- ★446 -->
-- [Renegade](https://github.com/renegade-fi/renegade) - On-chain dark pool for anonymous trading. <!-- ★252 -->
-- [Helyim](https://github.com/helyim/helyim) - [SeaweedFS](https://github.com/seaweedfs/seaweedfs) implemented in pure Rust. <!-- ★209 -->
-- [Ahnlich](https://github.com/deven96/ahnlich) - In-memory vector database with an AI proxy. <!-- ★204 -->
-- [raymondshe/matchengine-raft](https://github.com/raymondshe/matchengine-raft) - A example to demonstrate how openraft persists snapshots/logs to disk. <!-- ★56 -->
-- [tsoracle](https://github.com/prisma-risk/tsoracle) - Distributed timestamp and sequence oracle serving strictly monotonic, gapless IDs. <!-- ★55 -->
-- [yuyang0/rrqlite](https://github.com/yuyang0/rrqlite) - A rust implementation of [rqlite](https://github.com/rqlite/rqlite). <!-- ★21 -->
-- [KalamDB](https://github.com/kalamdb/KalamDB) - A SQL-first realtime backend for agent-native apps. <!-- ★47 -->
+- [Databend](https://github.com/databendlabs/databend) - Cloud analytics.
+- [Walrus](https://github.com/nubskr/walrus) - Distributed message streaming.
+- [Hiqlite](https://github.com/sebadob/hiqlite) - Embedded SQLite with caching.
 
-📣 Using openraft in your project? We'd love to feature it here — [open an issue](https://github.com/databendlabs/openraft/issues/new) to let us know, or skip the wait and [submit a pull request directly](https://github.com/databendlabs/openraft/edit/main/README.md).
+[See all users](./users.md).
 
 # Contributing
 
@@ -281,29 +226,4 @@ Thanks to everyone who contributes to OpenRaft:
 OpenRaft is licensed under the terms of the [MIT License](https://en.wikipedia.org/wiki/MIT_License#License_terms)
 or the [Apache License 2.0](http://www.apache.org/licenses/LICENSE-2.0), at your choosing.
 
-
-[`append_membership()`]: https://docs.rs/openraft/0.10.0-alpha.37/openraft/raft/struct.Raft.html#method.append_membership
-[`add_learner()`]: https://docs.rs/openraft/0.10.0-alpha.37/openraft/raft/struct.Raft.html#method.add_learner
-[`Trigger::purge_log()`]: https://docs.rs/openraft/0.10.0-alpha.37/openraft/raft/trigger/struct.Trigger.html#method.purge_log
-
-[`RuntimeConfigHandle::heartbeat()`]: https://docs.rs/openraft/0.10.0-alpha.37/openraft/raft/struct.RuntimeConfigHandle.html#method.heartbeat
-[`RuntimeConfigHandle::elect()`]: https://docs.rs/openraft/0.10.0-alpha.37/openraft/raft/struct.RuntimeConfigHandle.html#method.elect
-
-[`Trigger::elect()`]: https://docs.rs/openraft/0.10.0-alpha.37/openraft/raft/trigger/struct.Trigger.html#method.elect
-[`Trigger::snapshot()`]: https://docs.rs/openraft/0.10.0-alpha.37/openraft/raft/trigger/struct.Trigger.html#method.snapshot
-[`Trigger::transfer_leader()`]: https://docs.rs/openraft/0.10.0-alpha.37/openraft/raft/trigger/struct.Trigger.html#method.transfer_leader
-[`Config::enable_pre_vote`]: https://docs.rs/openraft/0.10.0-alpha.37/openraft/struct.Config.html#structfield.enable_pre_vote
-[Pre-Vote protocol]: https://docs.rs/openraft/0.10.0-alpha.37/openraft/docs/protocol/pre_vote/index.html
-[`Raft::metrics()`]: https://docs.rs/openraft/0.10.0-alpha.37/openraft/raft/struct.Raft.html#method.metrics
-[`Raft::data_metrics()`]: https://docs.rs/openraft/0.10.0-alpha.37/openraft/raft/struct.Raft.html#method.data_metrics
-[`Raft::server_metrics()`]: https://docs.rs/openraft/0.10.0-alpha.37/openraft/raft/struct.Raft.html#method.server_metrics
-[`ensure_linearizable()`]: https://docs.rs/openraft/0.10.0-alpha.37/openraft/raft/struct.Raft.html#method.ensure_linearizable
-[`change_membership_if()`]: https://docs.rs/openraft/0.10.0-alpha.37/openraft/raft/struct.Raft.html#method.change_membership_if
-[`client_write_many()`]: https://docs.rs/openraft/0.10.0-alpha.37/openraft/raft/struct.Raft.html#method.client_write_many
-[`RaftNetworkV2::stream_append()`]: https://docs.rs/openraft/0.10.0-alpha.37/openraft/network/v2/trait.RaftNetworkV2.html#method.stream_append
-[`Trigger::heartbeat()`]: https://docs.rs/openraft/0.10.0-alpha.37/openraft/raft/trigger/struct.Trigger.html#method.heartbeat
-[`Trigger::reset_backoff()`]: https://docs.rs/openraft/0.10.0-alpha.37/openraft/raft/trigger/struct.Trigger.html#method.reset_backoff
-[`testing::log::Suite`]: https://docs.rs/openraft/0.10.0-alpha.37/openraft/testing/log/struct.Suite.html
-[`on_leader_change()`]: https://docs.rs/openraft/0.10.0-alpha.37/openraft/raft/struct.Raft.html#method.on_leader_change
-[`write().with_leader()`]: https://docs.rs/openraft/0.10.0-alpha.37/openraft/raft/struct.WriteRequest.html#method.with_leader
-[`ProgressResponder`]: https://docs.rs/openraft/0.10.0-alpha.37/openraft/impls/struct.ProgressResponder.html
+OpenRaft originated from [async-raft](https://docs.rs/crate/async-raft/latest).
