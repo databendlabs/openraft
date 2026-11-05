@@ -2,6 +2,7 @@
 name = "openraft-membership"
 description = "Provided membership implementations for OpenRaft"
 documentation = "https://docs.rs/openraft-membership"
+readme = "README.md"
 
 version = { workspace = true }
 edition = { workspace = true }
