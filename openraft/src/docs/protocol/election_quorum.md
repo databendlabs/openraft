@@ -40,6 +40,11 @@ read {3,4}       3             4
 Every row shares a voter with every column, so the membership is valid. The
 two rows `{1,2}` and `{3,4}` share no voter.
 
+The [`openraft-membership`] crate provides memberships of this kind. Its
+[`GridMembership`] keeps the rows as read quorums, and accepts as a write
+quorum any set that holds a voter of each row, such as `{1,4}`. That is more
+write quorums than the columns, and each still shares a voter with every row.
+
 ## With standard leader IDs, a read quorum alone can elect two leaders in one term
 
 Suppose an election needed only a read quorum. With the grid membership and
@@ -196,3 +201,5 @@ joint membership. So elections behave as in standard Raft.
 [`RaftLeaderId::TOTALLY_ORDERED`]: crate::vote::RaftLeaderId::TOTALLY_ORDERED
 [`BothQuorums`]: https://docs.rs/quorum-set/latest/quorum_set/struct.BothQuorums.html
 [`Membership`]: crate::Membership
+[`openraft-membership`]: https://docs.rs/openraft-membership/latest/openraft_membership/docs/index.html
+[`GridMembership`]: https://docs.rs/openraft-membership/latest/openraft_membership/docs/grid/index.html

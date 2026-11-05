@@ -8,6 +8,7 @@ detailed guide.
 | --- | --- | --- |
 | Core integration | Processes Raft events without periodic ticks and batches messages for throughput. Applications implement `RaftLogStorage`, `RaftStateMachine`, and `RaftNetworkV2`; [`Raft`][] is the primary application API. | [`Raft`][] |
 | Cluster formation and membership | Initializes a cluster, adds non-voting learners, and changes membership in one log entry when every old quorum intersects every new quorum, or otherwise through joint configuration. Joint consensus supports arbitrary membership changes in one operation; `Raft::append_membership()` writes a caller-built membership as a single log entry for the transitions whose quorum intersection Openraft can prove. | [`Raft::initialize()`][], [`Raft::add_learner()`][], [`Raft::change_membership()`][], [`Raft::append_membership()`][], [cluster formation][], [dynamic membership][] |
+| Quorum rules | Lets a membership set separate read quorums for elections and write quorums for commits, and stop a voter from starting elections. The default [`Membership`][] uses majorities; the [`openraft-membership`][] crate provides threshold, weighted, hierarchical, grid and explicit rules. | [`RaftTypeConfig::Membership`][], [`RaftTypeConfig::MembershipEdit`][], [election quorums][] |
 | Leadership and elections | Elects leaders by policy or manually, transfers leadership, and offers Pre-Vote to avoid unnecessary term increments. | [`Trigger::elect()`][], [`Trigger::transfer_leader()`][], [`Config::enable_pre_vote`][], [Pre-Vote protocol][] |
 | Logs and snapshots | Compacts logs by snapshotting the state machine, replicates snapshots, and purges logs by policy or on demand. | [`Trigger::snapshot()`][], [`Trigger::purge_log()`][], [snapshot replication][] |
 | Reads | Performs linearizable reads with `ReadPolicy::ReadIndex` or `ReadPolicy::LeaseRead`. | [`Raft::ensure_linearizable()`][], [read protocol][] |
@@ -30,6 +31,11 @@ detailed guide.
 [`Config::enable_pre_vote`]: crate::Config::enable_pre_vote
 [`RuntimeConfigHandle::heartbeat()`]: crate::raft::RuntimeConfigHandle::heartbeat
 [`RuntimeConfigHandle::elect()`]: crate::raft::RuntimeConfigHandle::elect
+[`Membership`]: crate::Membership
+[`RaftTypeConfig::Membership`]: crate::RaftTypeConfig::Membership
+[`RaftTypeConfig::MembershipEdit`]: crate::RaftTypeConfig::MembershipEdit
+[`openraft-membership`]: https://docs.rs/openraft-membership/latest/openraft_membership/docs/index.html
+[election quorums]: crate::docs::protocol::election_quorum
 [cluster formation]: crate::docs::cluster_control::cluster_formation
 [dynamic membership]: crate::docs::cluster_control::dynamic_membership
 [Pre-Vote protocol]: crate::docs::protocol::pre_vote

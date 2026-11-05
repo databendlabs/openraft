@@ -45,9 +45,15 @@ Add or remove nodes safely, in one log entry when every old quorum intersects ev
 
 ### Separate Read and Write Quorums
 
-See: [`threshold_membership`]
+See: [`provided_memberships`], [`election_quorum`]
 
-Choose how many copies a commit needs with `openraft_membership::ThresholdMembership`; OpenRaft derives the minimum intersecting election quorum.
+A membership sets the read quorums that elect a leader and the write quorums that commit an entry, and every read quorum shares a voter with every write quorum. The default `Membership` uses a majority for both. The `openraft-membership` crate provides other rules, selected with `RaftTypeConfig::Membership` and `RaftTypeConfig::MembershipEdit`:
+
+- `ThresholdMembership` chooses how many copies a commit needs and derives the minimum intersecting election quorum; see [`threshold_membership`].
+- `WeightedMembership` gives voters, or the sites that hold them, different weights.
+- `HierarchicalMembership` needs enough members in enough groups, such as zones, so that the cluster can keep running after it loses a whole group.
+- `GridMembership` lets a full row elect and a voter of each row commit, so in a square grid both wait for fewer voters than a majority.
+- `ExplicitMembership` lists the quorums, for a policy that no rule above states.
 
 ### Node Management
 
@@ -75,5 +81,7 @@ Monitor cluster health using metrics and perform automated maintenance operation
 [`dynamic_membership`]: `crate::docs::cluster_control::dynamic_membership`
 [`joint_consensus`]: `crate::docs::cluster_control::joint_consensus`
 [`threshold_membership`]: https://docs.rs/openraft-membership/latest/openraft_membership/docs/threshold/index.html
+[`provided_memberships`]: https://docs.rs/openraft-membership/latest/openraft_membership/docs/index.html
+[`election_quorum`]: `crate::docs::protocol::election_quorum`
 [`node_lifecycle`]: `crate::docs::cluster_control::node_lifecycle`
 [`monitoring_maintenance`]: `crate::docs::cluster_control::monitoring_maintenance`
