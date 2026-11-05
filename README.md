@@ -88,9 +88,14 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
   a node asks its peers whether they would grant it a vote, before it increments its term;
   enable it with [`Config::enable_pre_vote`][];
   See: [design discussion](https://github.com/databendlabs/openraft/discussions/15).
-- [ ] Support flexible quorum, e.g.: [Hierarchical Quorums](https://zookeeper.apache.org/doc/r3.5.9/zookeeperHierarchicalQuorums.html)
-- [ ] Consider introducing read-quorum and write-quorum,
-  improve efficiency with a cluster with an even number of nodes.
+- [x] **2026-10-27** [Separate read and write quorums](./openraft/src/docs/protocol/election_quorum.md):
+  a membership sets the read quorums that elect a leader and the write quorums that commit an entry;
+  [`ThresholdMembership`](./membership/src/threshold-membership.md) chooses how many copies a commit needs
+  and derives the smallest intersecting election quorum, which helps a cluster with an even number of nodes.
+- [x] **2026-11-05** [Flexible quorums](./membership/src/docs.md):
+  the `openraft-membership` crate provides weighted, hierarchical, grid and explicit quorum memberships;
+  [`HierarchicalMembership`](./membership/src/hierarchical-membership.md) implements
+  [Hierarchical Quorums](https://zookeeper.apache.org/doc/r3.5.9/zookeeperHierarchicalQuorums.html).
 
 
 <!--
@@ -127,6 +132,7 @@ For benchmark detail, go to the [./benchmarks/minimal](./benchmarks/minimal) fol
 What sets OpenRaft apart from a standard Raft implementation:
 
 - **Generalized membership change**: [extended joint membership](https://docs.rs/openraft/0.10.0-alpha.37/openraft/docs/data/extended_membership/index.html) changes an arbitrary set of nodes in a single operation; standard Raft's one-node-at-a-time change is a restricted special case.
+- **Flexible quorums**: a membership sets separate read quorums for elections and write quorums for commits; the [`openraft-membership`](./membership/src/docs.md) crate provides threshold, weighted, hierarchical, grid and explicit quorum rules, and an application can implement its own.
 - **Fewer election conflicts**: the redesigned [Vote](https://docs.rs/openraft/0.10.0-alpha.37/openraft/docs/data/vote/index.html) minimizes election conflict rate — a split vote does not force a new term; the [standard Raft leader-ID mode](https://docs.rs/openraft/0.10.0-alpha.37/openraft/docs/data/leader_id/index.html) is also supported.
 - **Async and event-driven**: state transitions are driven by Raft events without periodic ticks; messages are batched, reaching millions of writes/sec in the [framework benchmark](#performance).
 - **Fully pluggable**: storage (`RaftLogStorage`, `RaftStateMachine`), networking (`RaftNetworkV2`, including application-defined snapshot transport), and every core type — node ID, node, term, vote, log entry — via `RaftTypeConfig`.
@@ -143,6 +149,7 @@ What sets OpenRaft apart from a standard Raft implementation:
 - ✅ **Log Compaction**(snapshot of state machine): by policy or manually ([`Trigger::snapshot()`][]).
 - ✅ **Snapshot replication**.
 - ✅ **Dynamic Membership**: one log entry when every old quorum intersects every new quorum, otherwise a joint membership config change. Refer to [dynamic membership](https://docs.rs/openraft/0.10.0-alpha.37/openraft/docs/cluster_control/dynamic_membership/index.html)
+- ✅ **Configurable quorums**: select a membership in `RaftTypeConfig`, such as the threshold, weighted, hierarchical, grid or explicit quorum rules of [`openraft-membership`](./membership/src/docs.md); a membership can also stop a voter from starting elections.
 - ✅ **Linearizable read**: [`ensure_linearizable()`][].
 - ✅ **Metrics**: [`Raft::metrics()`][], [`Raft::data_metrics()`][], and [`Raft::server_metrics()`][].
 - ✅ **Single-step config change**: [`append_membership()`][] writes a caller-built membership, without joint config. It accepts only a restricted set of transitions.
