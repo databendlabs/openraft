@@ -10,6 +10,7 @@ use crate::RaftTypeConfig;
 use crate::core::raft_msg::RaftMsg;
 use crate::errors::Fatal;
 use crate::raft::AppendEntriesRequest;
+use crate::raft::AppendResult;
 use crate::raft::StreamAppendError;
 use crate::raft::raft_inner::RaftInner;
 use crate::type_config::alias::LogIdOf;
@@ -18,13 +19,16 @@ use crate::type_config::async_runtime::MpscReceiver;
 use crate::type_config::async_runtime::MpscSender;
 use crate::type_config::util::TypeConfigExt;
 
-/// Result type for stream append operations.
+/// [`AppendResult`] in a serializable format, without the conflict hint.
+///
+/// A transport that keeps sending this format converts with `result.map_err(Into::into)` in both
+/// directions.
 pub type StreamAppendResult<C> = Result<Option<LogIdOf<C>>, StreamAppendError<C>>;
 
 const PIPELINE_BUFFER_SIZE: usize = 64;
 
 struct Pending<C: RaftTypeConfig> {
-    response_rx: OneshotReceiverOf<C, StreamAppendResult<C>>,
+    response_rx: OneshotReceiverOf<C, AppendResult<C>>,
 }
 
 /// Create a pipelined stream that processes AppendEntries requests.
@@ -38,7 +42,7 @@ struct Pending<C: RaftTypeConfig> {
 pub(in crate::raft) fn stream_append<C, S>(
     inner: Arc<RaftInner<C>>,
     input: S,
-) -> impl Stream<Item = Result<StreamAppendResult<C>, Fatal<C>>> + OptionalSend + 'static
+) -> impl Stream<Item = Result<AppendResult<C>, Fatal<C>>> + OptionalSend + 'static
 where
     C: RaftTypeConfig,
     S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + 'static,
@@ -69,7 +73,7 @@ where
         let (mut rx, inner) = state?;
         let p: Pending<C> = MpscReceiver::recv(&mut rx).await?;
 
-        let result: Result<StreamAppendResult<C>, Fatal<C>> = match p.response_rx.await {
+        let result: Result<AppendResult<C>, Fatal<C>> = match p.response_rx.await {
             Ok(r) => Ok(r),
             Err(_) => {
                 let fatal = inner.get_core_stop_error().await;

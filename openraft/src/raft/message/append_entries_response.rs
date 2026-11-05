@@ -3,6 +3,8 @@ use std::fmt;
 use display_more::DisplayOptionExt;
 
 use crate::RaftTypeConfig;
+use crate::raft::AppendError;
+use crate::raft::AppendResult;
 use crate::raft::StreamAppendError;
 use crate::raft::stream_append::StreamAppendResult;
 use crate::type_config::alias::LogIdOf;
@@ -101,6 +103,19 @@ impl<C: RaftTypeConfig> From<StreamAppendResult<C>> for AppendEntriesResponse<C>
             Ok(_) => AppendEntriesResponse::Success,
             Err(StreamAppendError::Conflict(_)) => AppendEntriesResponse::Conflict,
             Err(StreamAppendError::HigherVote(v)) => AppendEntriesResponse::HigherVote(v),
+        }
+    }
+}
+
+impl<C> From<AppendResult<C>> for AppendEntriesResponse<C>
+where C: RaftTypeConfig
+{
+    /// Convert to the unary response, which drops the acknowledged log ID and the conflict hint.
+    fn from(result: AppendResult<C>) -> Self {
+        match result {
+            Ok(_) => AppendEntriesResponse::Success,
+            Err(AppendError::Conflict { .. }) => AppendEntriesResponse::Conflict,
+            Err(AppendError::HigherVote(vote)) => AppendEntriesResponse::HigherVote(vote),
         }
     }
 }

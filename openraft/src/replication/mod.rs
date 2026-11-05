@@ -53,9 +53,9 @@ use crate::network::NetStreamAppend;
 use crate::network::RPCOption;
 use crate::progress::inflight_id::InflightId;
 use crate::raft::AppendEntriesRequest;
+use crate::raft::AppendError;
+use crate::raft::AppendResult;
 use crate::raft::ConflictHint;
-use crate::raft::StreamAppendError;
-use crate::raft::StreamAppendResult;
 use crate::raft_state::IOId;
 use crate::replication::backoff_state::BackoffState;
 use crate::replication::event_watcher::EventWatcher;
@@ -328,53 +328,12 @@ where
             fatal_error: fatal_error.clone(),
         };
 
-        let mut req_strm = Self::new_request_stream(stream_context);
+        let req_strm = Self::new_request_stream(stream_context);
 
         let rpc_timeout = Duration::from_millis(self.replication_context.config.heartbeat_interval);
         let option = RPCOption::new(rpc_timeout);
 
-        let mut hint = None;
-
-        // A probe has a single request: send it through the hint endpoint if the transport has one.
-        let resp_strm_res: Result<BoxStream<'_, _>, RPCError<C>> = if let Payload::Probe { .. } = payload {
-            if let Some(request) = req_strm.next().await {
-                let range = request.log_id_range();
-                let mut cancel_rx = self.replication_context.cancel_rx.clone();
-
-                // A commit-only request stays on the streaming path.
-                let call = async {
-                    if request.entries.is_empty() {
-                        return Ok(None);
-                    }
-                    network.append_entries_with_hint(&request, option.clone()).await
-                };
-
-                let selected = C::select2(cancel_rx.changed(), call).await;
-                let response = match selected {
-                    Select2::First(_) => return Err(ReplicationClosed::new("canceled")),
-                    Select2::Second(response) => response,
-                };
-
-                match response {
-                    Ok(Some(response)) => {
-                        hint = response.hint;
-                        let result = response.response.into_stream_result(range.prev, range.last);
-                        Ok(Box::pin(futures_util::stream::iter([Ok(result)])))
-                    }
-                    // The request was not sent: stream it instead.
-                    Ok(None) => {
-                        let requests = futures_util::stream::iter([request]);
-                        network.stream_append(requests, option).await
-                    }
-                    Err(error) => Err(error),
-                }
-            } else {
-                Ok(Box::pin(futures_util::stream::empty()))
-            }
-        } else {
-            network.stream_append(req_strm, option).await
-        };
-
+        let resp_strm_res = network.stream_append(req_strm, option).await;
         // A custom streaming transport may poll the request stream while establishing
         // `stream_append()` and then still return an RPC error. Check the fatal marker here too,
         // because in that case there is no response stream for `handle_response_stream()` to
@@ -393,7 +352,7 @@ where
             }
         };
 
-        let (acked, continue_res) = self.handle_response_stream(resp_strm, inflight_queue.clone(), hint).await;
+        let (acked, continue_res) = self.handle_response_stream(resp_strm, inflight_queue.clone()).await;
         if let Some(err) = Self::take_stream_fatal_error(&fatal_error).await {
             return Err(err);
         }
@@ -431,13 +390,10 @@ where
     }
 
     /// Consume the response stream, returning its greatest acknowledgement and stop reason.
-    ///
-    /// `hint` comes from a hinted probe and is reported with the conflict that stops the stream.
     async fn handle_response_stream<'s>(
         &mut self,
-        resp_strm: BoxStream<'s, Result<StreamAppendResult<C>, RPCError<C>>>,
+        resp_strm: BoxStream<'s, Result<AppendResult<C>, RPCError<C>>>,
         inflight_queue: Arc<StdMutex<InflightAppendQueue<C>>>,
-        mut hint: Option<ConflictHint<C>>,
     ) -> (Option<Option<LogIdOf<C>>>, Result<(), &'static str>) {
         let mut resp_strm = std::pin::pin!(resp_strm);
         let mut cancel_rx = self.replication_context.cancel_rx.clone();
@@ -495,19 +451,19 @@ where
                 }
                 Err(append_err) => {
                     match append_err {
-                        StreamAppendError::Conflict(conflict_log_id) => {
+                        AppendError::Conflict { log_id, hint } => {
                             let sending_time = {
                                 let mut inflight_queue = inflight_queue.lock().unwrap();
-                                inflight_queue.drain_conflicted(&conflict_log_id)
+                                inflight_queue.drain_conflicted(&log_id)
                             };
                             if let Some(sending_time) = sending_time {
                                 self.notify_heartbeat_progress(sending_time).await;
                             }
 
-                            let result = ReplicationResult(Err(conflict_log_id));
-                            self.notify_progress(result, hint.take()).await;
+                            let result = ReplicationResult(Err(log_id));
+                            self.notify_progress(result, hint).await;
                         }
-                        StreamAppendError::HigherVote(higher) => {
+                        AppendError::HigherVote(higher) => {
                             self.replication_context
                                 .tx_notify
                                 .send(Notification::HigherVote {
@@ -554,7 +510,7 @@ where
 
     /// Notify RaftCore with the success replication result (log matching or conflict).
     ///
-    /// `hint` accompanies a conflict returned by a hinted probe.
+    /// `hint` is the conflict hint the target returned with a conflict.
     async fn notify_progress(&mut self, replication_result: ReplicationResult<C>, hint: Option<ConflictHint<C>>) {
         tracing::debug!(
             "{}: target={}, curr_matching={}, result={}, inflight_id={}",

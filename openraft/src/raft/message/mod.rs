@@ -5,7 +5,7 @@
 
 mod append_entries_request;
 mod append_entries_response;
-mod append_entries_response_with_hint;
+mod append_error;
 mod change_membership;
 mod change_membership_request;
 mod conflict_hint;
@@ -22,7 +22,8 @@ mod write_request;
 
 pub use append_entries_request::AppendEntriesRequest;
 pub use append_entries_response::AppendEntriesResponse;
-pub use append_entries_response_with_hint::AppendEntriesResponseWithHint;
+pub use append_error::AppendError;
+pub use append_error::AppendResult;
 pub use change_membership::ChangeMembershipOutcome;
 pub use change_membership_request::ChangeMembershipRequest;
 pub use client_write::ClientWriteResponse;

@@ -165,7 +165,8 @@ pub struct RaftRouter {
     /// Whether AppendEntries requests may run concurrently within a stream.
     pipelined_append: bool,
 
-    /// Whether probes use the hinted AppendEntries endpoint instead of the stream.
+    /// Whether the AppendEntries stream reports conflict hints, as a transport that carries them
+    /// does.
     conflict_hints: bool,
 }
 
@@ -178,7 +179,7 @@ pub struct Builder {
 }
 
 impl Builder {
-    /// Return optional log hints while probing followers.
+    /// Report conflict hints on the AppendEntries stream.
     pub fn conflict_hints(mut self) -> Self {
         self.conflict_hints = true;
         self

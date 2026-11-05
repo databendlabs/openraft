@@ -8,9 +8,12 @@ use crate::errors::RejectVote;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
 
-/// Error type for stream append entries.
+/// [`AppendError`] in a serializable format, without the conflict hint.
 ///
-/// When this error is returned, the stream is terminated.
+/// The stream APIs return [`AppendError`]. A transport that keeps sending this format converts to
+/// and from it with `From`, and the leader then receives no conflict hints.
+///
+/// [`AppendError`]: crate::raft::AppendError
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum StreamAppendError<C: RaftTypeConfig> {
