@@ -132,15 +132,20 @@ pub trait RaftTypeConfig:
 
     /// Cluster membership configuration type.
     ///
-    /// It defines the read and write quorum rules and the roles of each node.
+    /// It defines the read and write quorum rules and the roles of each node. The macro defaults to
+    /// [`Membership`](crate::impls::Membership), which uses a majority for both. The
+    /// `openraft-membership` crate provides `ThresholdMembership`, `WeightedMembership`,
+    /// `HierarchicalMembership`, `GridMembership` and `ExplicitMembership`; a custom type
+    /// implements [`RaftMembership`].
     #[since(version = "0.10.0")]
     type Membership: RaftMembership<NodeId = Self::NodeId, Node = Self::Node>;
 
     /// Membership operations, selected independently of the membership representation.
     ///
-    /// The macro defaults to [`ChangeMembers`](crate::impls::ChangeMembers). Select
-    /// `openraft_membership::ThresholdChange` for threshold membership, or a custom
-    /// edit that implements [`RaftMembershipEdit`] for the selected membership.
+    /// The macro defaults to [`ChangeMembers`](crate::impls::ChangeMembers). Each membership of the
+    /// `openraft-membership` crate has its own change type, such as `ThresholdChange` for
+    /// `ThresholdMembership` or `WeightedChange` for `WeightedMembership`. A custom edit implements
+    /// [`RaftMembershipEdit`] for the selected membership.
     #[since(version = "0.10.0")]
     type MembershipEdit: RaftMembershipEdit<Self::Membership>;
 
