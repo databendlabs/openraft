@@ -24,6 +24,7 @@ use crate::type_config::alias::InstantOf;
 ///
 /// This is a volatile structure that is not persisted. It accumulates
 /// statistics from the time the Raft node starts.
+#[since(version = "0.10.0", change = "Add core_busy_histogram")]
 #[since(version = "0.10.0", change = "Add core_busy_duration snapshot")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeStats<C>
@@ -38,6 +39,13 @@ where C: RaftTypeConfig
     /// the core next reaches that wait. Fetching a snapshot requires core progress.
     #[since(version = "0.10.0")]
     pub core_busy_duration: Duration,
+
+    /// Distribution of wall-clock time, in microseconds, of one core-loop turn.
+    ///
+    /// Each sample is one completed interval added to [`Self::core_busy_duration`].
+    /// The turn in progress is recorded when the loop next reaches the wait.
+    #[since(version = "0.10.0")]
+    pub core_busy_histogram: Histogram,
 
     /// Histogram tracking the distribution of log entry counts in Apply commands.
     ///
@@ -146,6 +154,7 @@ where C: RaftTypeConfig
         let _ = config;
         Self {
             core_busy_duration: Duration::ZERO,
+            core_busy_histogram: Histogram::<()>::new(),
             apply_batch: Histogram::<()>::new(),
             append_batch: Histogram::<()>::new(),
             replicate_batch: Histogram::<()>::new(),
@@ -178,7 +187,11 @@ where C: RaftTypeConfig
         None
     }
 
-    /// Add the elapsed time since `since` to [`Self::core_busy_duration`].
+    /// Add one core-loop busy interval to [`Self::core_busy_duration`] and
+    /// [`Self::core_busy_histogram`].
+    ///
+    /// The histogram sample is the elapsed time since `since`, in microseconds.
+    /// `None` records nothing.
     pub(crate) fn end_core_busy(&mut self, since: Option<InstantOf<C>>) {
         #[cfg(feature = "runtime-stats")]
         {
@@ -188,6 +201,8 @@ where C: RaftTypeConfig
             let now = C::now();
             let elapsed = now.saturating_duration_since(since);
             self.core_busy_duration += elapsed;
+            let micros = elapsed.as_micros() as u64;
+            self.core_busy_histogram.record(micros);
         }
 
         #[cfg(not(feature = "runtime-stats"))]
@@ -248,6 +263,7 @@ where C: RaftTypeConfig
         RuntimeStatsDisplay {
             mode: DisplayMode::default(),
             core_busy_duration: self.core_busy_duration,
+            core_busy_histogram: self.core_busy_histogram.percentile_stats(),
             apply_batch: self.apply_batch.percentile_stats(),
             append_batch: self.append_batch.percentile_stats(),
             replicate_batch: self.replicate_batch.percentile_stats(),
