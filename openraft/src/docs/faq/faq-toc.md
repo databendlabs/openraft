@@ -16,6 +16,7 @@
   * [Frequent leader elections and timeouts](#frequent-leader-elections-and-timeouts)
   * [Slow replication performance with RocksDB or disk storage](#slow-replication-performance-with-rocksdb-or-disk-storage)
   * [Can I use a custom serialization format like bitcode instead of serde?](#can-i-use-a-custom-serialization-format-like-bitcode-instead-of-serde)
+  * [How do I use a quorum rule other than a majority?](#how-do-i-use-a-quorum-rule-other-than-a-majority)
 - [Storage](#storage)
   * [Does the state machine need to be persisted to disk?](#does-the-state-machine-need-to-be-persisted-to-disk)
   * [How does Openraft handle snapshot building and transfer?](#how-does-openraft-handle-snapshot-building-and-transfer)
