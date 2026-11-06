@@ -46,6 +46,12 @@ pub const OPERATION_TIMEOUT: Duration = Duration::from_secs(10);
 /// Bounds one wait on the metrics of one node, such as for it to apply a log entry.
 pub const OBSERVATION_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// How long a scenario watches a write that a fault holds back, to see that it stays pending.
+///
+/// A timeout only shows that no response arrived within this interval: the write is still
+/// pending, and commits once the fault heals.
+pub const BLOCKED_WRITE_INTERVAL: Duration = Duration::from_millis(500);
+
 /// The leader lease, in milliseconds. OpenRaft sets it to `Config::election_timeout_max`.
 ///
 /// A leader accepts a write only while a write quorum acknowledged it within the lease. With
@@ -158,6 +164,15 @@ where C: KvTypeConfig
         for id in ids {
             let what = format!("applies {}", log_id);
             self.wait(*id, &what, |m| m.last_applied.as_ref() >= Some(log_id)).await?;
+        }
+        Ok(())
+    }
+
+    /// Waits until the log of each node of `ids` holds the entry at `index`.
+    pub async fn wait_log(&self, ids: &[u64], index: u64) -> anyhow::Result<()> {
+        for id in ids {
+            let what = format!("appends log index {}", index);
+            self.wait(*id, &what, |m| m.last_log_index >= Some(index)).await?;
         }
         Ok(())
     }
@@ -292,6 +307,23 @@ where C: KvTypeConfig
                 id,
                 written.key,
                 got,
+                self.report()
+            );
+        }
+        Ok(())
+    }
+
+    /// Checks that no node of `ids` has committed the entry at `index`.
+    pub fn check_uncommitted(&self, ids: &[u64], index: u64) -> anyhow::Result<()> {
+        for id in ids {
+            let metrics = self.raft(*id).metrics();
+            let committed = metrics.borrow_watched().local_committed.index();
+            anyhow::ensure!(
+                committed < Some(index),
+                "node {} committed log index {:?}, want below {}\n{}",
+                id,
+                committed,
+                index,
                 self.report()
             );
         }

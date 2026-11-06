@@ -13,7 +13,12 @@
 //! 7. Heal the isolation, and check that every member applies every write.
 //! 8. Shut down every node.
 
+pub mod explicit;
+pub mod grid;
+pub mod hierarchical;
 pub mod majority;
+pub mod threshold;
+pub mod weighted;
 
 use std::fmt;
 
@@ -63,9 +68,11 @@ pub async fn run(policy: Policy) -> anyhow::Result<()> {
     let scenario = async {
         match policy {
             Policy::Majority => majority::run().await,
-            Policy::Threshold | Policy::Weighted | Policy::Hierarchical | Policy::Grid | Policy::Explicit => {
-                anyhow::bail!("the {} scenario is not implemented yet", policy)
-            }
+            Policy::Threshold => threshold::run().await,
+            Policy::Weighted => weighted::run().await,
+            Policy::Hierarchical => hierarchical::run().await,
+            Policy::Grid => grid::run().await,
+            Policy::Explicit => explicit::run().await,
         }
     };
 

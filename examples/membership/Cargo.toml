@@ -21,6 +21,9 @@ openraft       = { path = "../../openraft", features = ["serde", "type-alias"] }
 sm-mem         = { path = "../sm-mem" }
 types-kv       = { path = "../types-kv" }
 
+# The default `serde` feature is required: `openraft/serde` is on in this build.
+openraft-membership = { path = "../../membership" }
+
 anyhow             = { version = "1.0.63" }
 clap               = { version = "4.1.11", features = ["derive"] }
 tokio              = { version = "1.35.1", features = ["full"] }

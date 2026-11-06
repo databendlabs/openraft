@@ -60,6 +60,20 @@ every phase.
 
 ## Scenarios
 
-| `--policy` | Initial configuration                   | Edit                                     | Available during isolation | Result                                         |
-|------------|-----------------------------------------|------------------------------------------|----------------------------|------------------------------------------------|
-| `majority` | voters `{1,2,3}`; node 4 joins later    | add learner 4, then `AddVoterIds({4})`   | `{1,2,3}`                  | 3 of 4 voters are a majority; writes continue  |
+Each scenario checks the available nodes against the quorums of the membership
+after the edit. Node 1 leads in every phase and stays available.
+
+| `--policy`     | Initial configuration                                                      | Edit                                       | Available during isolation | Result                                                                                          |
+|----------------|----------------------------------------------------------------------------|--------------------------------------------|----------------------------|-------------------------------------------------------------------------------------------------|
+| `majority`     | voters `{1,2,3}`; node 4 starts outside                                    | add learner 4, then `AddVoterIds({4})`     | `{1,2,3}`                  | 3 of the 4 voters are a majority: writes continue                                               |
+| `threshold`    | voters `{1,2,3,4,5}`, write size 3                                         | `write_size(2)`: the read size becomes 4   | `{1,2}`                    | writes continue with 2 copies; no read quorum is left for an election                           |
+| `weighted`     | weights `{1:2, 2:1, 3:1, 4:1}`, write weight 3                             | `weights({1:1, 2:2, 3:1, 4:1})`            | `{1,2}`                    | weight 3 reaches the read weight and the write weight: writes continue                          |
+| `hierarchical` | zones `{1,2,3}`, `{4,5,6}`, `{7,8,9}`; a write needs 2 voters in each zone | `groups(..)`: a write needs 2 of the zones | `{1,2,3,4,5,6}`            | 2 voters in each of 2 zones are a read quorum and a write quorum: writes continue               |
+| `grid`         | rows `[[1,2,3],[4,5,6],[7,8,9]]`                                           | `grid([[1,4,7],[2,5,8],[3,6,9]])`          | `{1,5,9}`                  | a voter of each new row commits; no complete row is left for an election                        |
+| `explicit`     | reads: any 2 of `{1,2,3}`; writes: each such pair plus backup voter 9      | `read_quorums([{1,2}])`                    | `{1,2,3}`                  | the read quorum `{1,2}` is available, but a write waits for voter 9 and completes after healing |
+
+The threshold, weighted, hierarchical and grid edits would let an old read
+quorum miss a new write quorum, or an old write quorum miss a new read quorum.
+So `change_membership()` first appends a joint config, whose quorums are quorums
+of both configs, and then the uniform config. The majority and explicit edits
+keep both pairs intersecting, so OpenRaft appends the uniform config alone.
