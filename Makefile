@@ -79,6 +79,26 @@ test-runtime:
 	cargo test --manifest-path rt-compio/Cargo.toml
 	cargo test --manifest-path rt-monoio/Cargo.toml
 
+# Build the library crates for wasm32-wasip1 one crate at a time and without
+# test targets, as a downstream crate gets them. Building crates together lets
+# one crate's features hide a feature another crate forgot to request, and test
+# targets pull in dev-dependencies such as the workspace tokio, whose
+# `rt-multi-thread` does not compile for wasm.
+# Needs `rustup target add wasm32-wasip1`.
+.PHONY: wasm-check
+wasm-check:
+	cargo check --target wasm32-wasip1 --manifest-path openraft/Cargo.toml --lib
+	cargo check --target wasm32-wasip1 --manifest-path openraft/Cargo.toml --lib --no-default-features
+	cargo check --target wasm32-wasip1 --manifest-path openraft/Cargo.toml --lib --features serde,single-threaded
+	cargo check --target wasm32-wasip1 --manifest-path legacy/Cargo.toml --lib
+	cargo check --target wasm32-wasip1 --manifest-path membership/Cargo.toml --lib
+
+# Run openraft-rt-tokio's tests on wasm32-wasip1. Needs the target and `wasmtime`.
+.PHONY: test-wasm
+test-wasm:
+	CARGO_TARGET_WASM32_WASIP1_RUNNER=wasmtime cargo test --target wasm32-wasip1 --manifest-path rt-tokio/Cargo.toml
+	CARGO_TARGET_WASM32_WASIP1_RUNNER=wasmtime cargo test --target wasm32-wasip1 --manifest-path rt-tokio/Cargo.toml --features single-threaded
+
 # Exercise serialization, serialization-free builds, and single-threaded builds.
 test-membership:
 	cargo test --manifest-path membership/Cargo.toml
