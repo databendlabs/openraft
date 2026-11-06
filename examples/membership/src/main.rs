@@ -21,10 +21,13 @@ struct Args {
 async fn main() -> anyhow::Result<()> {
     // Print the phases of this example by default; `RUST_LOG` replaces the filter.
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("membership=info"));
-    tracing_subscriber::fmt().with_env_filter(filter).init();
+    tracing_subscriber::fmt().with_env_filter(filter).with_target(false).without_time().init();
 
     let args = Args::parse();
-    membership::run(args.policy).await
+    membership::run(args.policy).await?;
+
+    tracing::info!("--- {}: every check passed", args.policy);
+    Ok(())
 }
 
 #[cfg(test)]

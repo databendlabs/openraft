@@ -46,3 +46,30 @@ machine's own `SnapshotData`.
 An RPC fails with `Unreachable` when the target is not registered, or when the
 target returns `Fatal` because it has stopped. A call inside one process cannot
 time out, so the connection ignores `RPCOption`.
+
+## Fault Injection
+
+`Registry::isolate()` cuts nodes off from every other node, in both directions:
+an RPC that starts while its source or its target is isolated fails with
+`Unreachable`. An RPC that started before completes. `Registry::heal()`
+reconnects every isolated node and returns them.
+
+An isolated node keeps running with its own log and state machine, so healing
+reconnects the same node in the state it reached. A leader backs off before it
+retries a node that was unreachable. Call `Trigger::reset_backoff()` on the
+leader with the reconnected nodes to retry them at once:
+
+```rust
+registry.isolate([3]);
+// ... writes that node 3 does not receive ...
+
+let healed = registry.heal();
+leader.trigger().reset_backoff(healed).await?;
+leader.trigger().heartbeat().await?;
+```
+
+## Complete Examples
+
+The following examples reuse this crate:
+
+- [`membership`](../membership/)

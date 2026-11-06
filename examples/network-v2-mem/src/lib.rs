@@ -15,6 +15,10 @@
 //! Requests and responses pass by value, so nothing is serialized. A snapshot is passed as the
 //! state machine's own [`SnapshotData`](openraft::storage::RaftStateMachine::SnapshotData).
 //!
+//! [`Registry::isolate()`] cuts nodes off from every other node in both directions, and
+//! [`Registry::heal()`] reconnects them. The nodes keep running with their stores, so a test or an
+//! example can partition a live cluster and then let it recover.
+//!
 //! [`RaftNetworkV2`]: openraft::network::v2::RaftNetworkV2
 //! [`Raft`]: openraft::Raft
 //! [`Raft::append_entries()`]: openraft::Raft::append_entries

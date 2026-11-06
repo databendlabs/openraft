@@ -1,6 +1,23 @@
 //! One scenario per membership, each with its own type config.
+//!
+//! Every scenario runs the same phases on a [`Cluster`](crate::cluster::Cluster):
+//!
+//! 1. Log the chosen types, the initial layout and the read and write quorum rules.
+//! 2. Initialize node 1, and wait until it leads and has applied its blank entry.
+//! 3. Write a value, and check the response and the value on every member.
+//! 4. Change the membership with the native edit type, and wait until every member applies the
+//!    resulting uniform membership.
+//! 5. Write again, and wait until every member applies it.
+//! 6. Isolate some nodes, check the available nodes against the read and write quorum rules, and
+//!    check whether a write commits.
+//! 7. Heal the isolation, and check that every member applies every write.
+//! 8. Shut down every node.
+
+pub mod majority;
 
 use std::fmt;
+
+use crate::cluster::SCENARIO_TIMEOUT;
 
 /// A membership and its edit type, as named on the command line.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
@@ -39,7 +56,21 @@ impl fmt::Display for Policy {
     }
 }
 
-/// Runs the scenario of `policy` and returns an error at the first check that fails.
+/// Runs the scenario of `policy`, and returns an error at the first check that fails.
+///
+/// The scenario must finish within [`SCENARIO_TIMEOUT`].
 pub async fn run(policy: Policy) -> anyhow::Result<()> {
-    anyhow::bail!("the {} scenario is not implemented yet", policy)
+    let scenario = async {
+        match policy {
+            Policy::Majority => majority::run().await,
+            Policy::Threshold | Policy::Weighted | Policy::Hierarchical | Policy::Grid | Policy::Explicit => {
+                anyhow::bail!("the {} scenario is not implemented yet", policy)
+            }
+        }
+    };
+
+    match tokio::time::timeout(SCENARIO_TIMEOUT, scenario).await {
+        Ok(res) => res,
+        Err(_elapsed) => anyhow::bail!("the {} scenario did not finish within {:?}", policy, SCENARIO_TIMEOUT),
+    }
 }

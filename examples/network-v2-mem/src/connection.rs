@@ -28,8 +28,9 @@ use crate::Registry;
 
 /// Sends the RPCs of node `source` to node `target` by calling the target's [`Raft`] handle.
 ///
-/// An RPC fails with [`Unreachable`] when the registry is dropped, when the target is not
-/// registered, or when the target returns `Fatal` because it has stopped.
+/// An RPC fails with [`Unreachable`] when the registry is dropped, when the source or the target
+/// is isolated, when the target is not registered, or when the target returns `Fatal` because it
+/// has stopped.
 ///
 /// A call between two tasks of one process cannot time out, so the connection ignores the
 /// [`RPCOption`] of every RPC.
@@ -61,6 +62,12 @@ where
         let Some(registry) = self.registry.upgrade() else {
             return Err(self.unreachable("the registry is dropped"));
         };
+
+        for end in [&self.source, &self.target] {
+            if registry.is_isolated(end) {
+                return Err(self.unreachable(format_args!("node {} is isolated", end)));
+            }
+        }
 
         let Some(raft) = registry.get(&self.target) else {
             return Err(self.unreachable("the target is not registered"));
