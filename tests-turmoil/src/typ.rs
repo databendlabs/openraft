@@ -86,7 +86,6 @@ pub type Snapshot = openraft::type_config::alias::SnapshotOf<TypeConfig, Snapsho
 pub type StoredMembership = openraft::type_config::alias::StoredMembershipOf<TypeConfig>;
 
 pub type AppendEntriesRequest = openraft::raft::AppendEntriesRequest<TypeConfig>;
-pub type AppendEntriesResponse = openraft::raft::AppendEntriesResponse<TypeConfig>;
 pub type AppendResult = openraft::raft::AppendResult<TypeConfig>;
 pub type VoteRequest = openraft::raft::VoteRequest<TypeConfig>;
 pub type VoteResponse = openraft::raft::VoteResponse<TypeConfig>;

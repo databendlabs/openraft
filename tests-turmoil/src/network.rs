@@ -1,5 +1,7 @@
 //! Turmoil-based network implementation for OpenRaft.
 
+mod append_reply;
+
 use std::future::Future;
 use std::io;
 use std::io::Cursor;
@@ -20,6 +22,7 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use turmoil::net::TcpStream;
 
+use self::append_reply::AppendReply;
 use crate::typ::*;
 
 /// RPC message types for the wire protocol.
@@ -148,11 +151,8 @@ impl RaftNetworkV2<TypeConfig> for TurmoilConnection {
         rpc: AppendEntriesRequest,
         option: RPCOption,
     ) -> Result<AppendResult, RPCError<TypeConfig>> {
-        let response: AppendEntriesResponse = self.send_rpc(RpcType::AppendEntries, &rpc, option.soft_ttl()).await?;
-        // The wire format is `AppendEntriesResponse`, which carries no log id: take them from the
-        // request.
-        let last_log_id = rpc.last_log_id();
-        Ok(response.into_append_result(rpc.prev_log_id, last_log_id))
+        let reply: AppendReply = self.send_rpc(RpcType::AppendEntries, &rpc, option.soft_ttl()).await?;
+        Ok(reply.into())
     }
 
     async fn vote(&mut self, rpc: VoteRequest, option: RPCOption) -> Result<VoteResponse, RPCError<TypeConfig>> {
@@ -216,7 +216,7 @@ pub async fn handle_rpc(raft: Arc<Raft>, mut stream: TcpStream) -> io::Result<()
             x if x == RpcType::AppendEntries as u8 => {
                 let req: AppendEntriesRequest = deser(&payload)?;
                 let result = raft.append_entries(req).await.map_err(io::Error::other)?;
-                ser(&AppendEntriesResponse::from(result))?
+                ser(&AppendReply::from(result))?
             }
             x if x == RpcType::Vote as u8 => {
                 let req: VoteRequest = deser(&payload)?;
