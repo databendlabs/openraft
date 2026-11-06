@@ -60,13 +60,34 @@ as [`WeightedMembership::with_roles()`]. Each change type sets them with its
 `node_change.roles` field or its `with_roles()` builder. A change that sets
 only roles keeps every quorum, so OpenRaft appends it without a joint config:
 
-```rust,ignore
+```rust,no_run
+# use std::collections::BTreeMap;
+#
+# use openraft::BasicNode;
+# use openraft::Raft;
+# use openraft::membership::NodeRole;
+# use openraft::storage::RaftStateMachine;
+# use openraft_membership::WeightedChange;
+#
+# openraft::declare_raft_types!(
+#     pub TypeConfig:
+#         D = String,
+#         R = String,
+#         Membership = openraft_membership::WeightedMembership<u64, BasicNode>,
+#         MembershipEdit = openraft_membership::WeightedChange<Self::NodeId, Self::Node>,
+#         AsyncRuntime = openraft_rt_tokio::TokioRuntime,
+# );
+#
+# async fn set_roles<SM>(raft: Raft<TypeConfig, SM>) -> Result<(), Box<dyn std::error::Error>>
+# where SM: RaftStateMachine<TypeConfig> {
 // Voter 3 keeps voting and storing logs, but starts no election on its own.
 let roles = BTreeMap::from([(3, NodeRole::ReceiveLogs)]);
 raft.change_membership(WeightedChange::default().with_roles(roles), false).await?;
 
 // The leader can still hand leadership to voter 3.
 raft.trigger().transfer_leader(3).await?;
+# Ok(())
+# }
 ```
 
 Every write voter needs `ReceiveLogs`, because a write quorum that holds a
