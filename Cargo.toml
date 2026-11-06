@@ -109,6 +109,7 @@ exclude = [
     "examples/raft-kv-memstore-single-threaded",
     "examples/raft-kv-memstore-network-v1",
     "examples/raft-kv-memstore-opendal-snapshot-data",
+    "examples/raft-kv-memstore-weighted-membership",
     "examples/raft-kv-rocksdb",
     "examples/multi-raft-kv",
 
