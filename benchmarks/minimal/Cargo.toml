@@ -18,7 +18,6 @@ repository = "https://github.com/databendlabs/openraft"
 
 [dependencies]
 openraft            = { path = "../../openraft", version = "0.10.0-alpha.37", features = ["serde", "type-alias"] }
-openraft-legacy = { path = "../../legacy", version = "0.10.0-alpha.37" }
 
 anyhow     = { version = "1.0.63" }
 clap       = { version = "4.2", features = ["derive"] }

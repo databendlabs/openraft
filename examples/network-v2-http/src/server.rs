@@ -20,12 +20,13 @@ use openraft::NodeInfo;
 use openraft::RaftTypeConfig;
 use openraft::Snapshot;
 use openraft::errors::RaftError;
-use openraft::raft::AppendEntriesResponse;
 use openraft::raft::SnapshotResponse;
 use openraft::raft::TransferLeaderResponse;
 use openraft::storage::RaftStateMachine;
 use serde::Serialize;
 use tokio::net::TcpListener;
+
+use crate::AppendReply;
 
 pub struct Server<C, SM>
 where
@@ -104,7 +105,7 @@ where
             let req = serde_json::from_slice(&body).map_err(bad_request)?;
 
             let result = raft.append_entries(req).await;
-            Ok(json_response(&result.map(AppendEntriesResponse::from)))
+            Ok(json_response(&result.map(AppendReply::from)))
         }
         "/snapshot" => {
             let (vote, meta, data) = serde_json::from_slice(&body).map_err(bad_request)?;
