@@ -1,5 +1,5 @@
 (ns jepsen.openraft.scenario.bridge-partition
-  "Old leader stays connected through a bridge; a new write must complete within 1.5 seconds."
+  "Old leader stays connected through a bridge; a new write must complete within 4 seconds."
   (:require [jepsen [checker :as checker]
              [control :as c]
              [generator :as gen]
@@ -12,7 +12,7 @@
             [jepsen.openraft.history :as history]))
 
 (def observation-seconds 10)
-(def deadline-nanos 1500000000)
+(def deadline-nanos 4000000000)
 
 ;; Installed topology: five voters, quorum = 3. All links are bidirectional.
 ;;

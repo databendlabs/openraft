@@ -84,7 +84,7 @@
                   passing-history)))) node)))
   (testing "success after the deadline is reported but fails the bound"
     (let [result (verdict (concat base-history
-                                  (writes 1600000000 1700000000)))]
+                                  (writes 4100000000 4200000000)))]
       (is (= 1 (get-in result [:original-topology :successful-writes])))
       (is (false? (get-in result [:original-topology :within-deadline?])))
       (is (false? (:valid? result)))))

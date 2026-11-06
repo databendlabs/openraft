@@ -479,16 +479,25 @@ The liveness deadline still starts at installation. This prevents an early
 uncommitted write from independently making the bridge's log newer.
 
 The test observes the original topology for ten seconds and requires a new
-write to complete within 1.5 seconds of installation. This budget includes the
-old leader's lease expiry, a first election that the bridge may reject while
-its follower lease remains valid, a retry, the wait for the next write attempt,
-and the client write. The workload issues read, write, and CAS operations in
-rotation, 100 ms apart, so write attempts are at most 300 ms apart while a
-client worker is free. In nine local runs with an earlier random operation mix,
-the first successful write completed 618--942 ms after installation,
-leaving 558--882 ms of margin. This is an engineering bound, not a Raft timing
-theorem. Leader and Vote metrics are retained for diagnosis, not used as a
-stability requirement.
+write to complete within 4 seconds of installation. In a normal run, this
+budget covers the old leader's lease expiry, a first election that the bridge
+may reject while its follower lease remains valid, a retry, the wait for the
+next write attempt, and the client write. The workload issues read, write, and
+CAS operations in rotation, 100 ms apart, so write attempts are at most 300 ms
+apart while a client worker is free. In nine local runs with an earlier random
+operation mix, the first successful write completed 618--942 ms after
+installation; nine CI runs completed it in 782--893 ms.
+
+The rest of the budget covers a storage stall on the new leader. Until a quorum
+acknowledges it, a leader times its quorum-loss quiet periods from its Vote
+change. When writing the new Vote takes longer than the 300 ms lease, the leader
+sends nothing until its first 700 ms quiet period ends. Meanwhile its voters
+campaign again, and the old leader raises its term every 300 ms through the
+bridge, so the new leader needs several more election rounds to win. In one CI
+run, a 300 ms stall delayed the first write to 2.5 seconds. The bound leaves
+room for a few more rounds than that run needed. This is an engineering bound,
+not a Raft timing theorem. Leader and Vote metrics are retained for diagnosis,
+not used as a stability requirement.
 One successful write proves progress, not sustained availability. The topology remains
 unchanged throughout the observation period. Final cleanup heals the network
 and waits for recovery before the final read/write checks. Success during or
