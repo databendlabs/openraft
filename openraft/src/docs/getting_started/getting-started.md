@@ -284,11 +284,13 @@ Here is the list of methods that need to be implemented for the [`RaftNetworkV2`
 accepted, or the [`AppendError`] that explains why it rejected the request. A
 conflict carries a hint that helps the leader find the matching log with fewer
 probes. [`AppendResult`] does not implement serde, so the transport converts it
-to and from its own wire type. To keep the [`AppendEntriesResponse`] wire
-format, the follower sends `AppendEntriesResponse::from(result)` and the leader
-rebuilds the result with [`AppendEntriesResponse::into_append_result()`],
-passing the log ids of the request it sent. That format carries no hint, and
-the leader then uses binary search.
+to and from its own wire type, such as `network-v2-http`'s
+[`AppendReply`](https://github.com/databendlabs/openraft/blob/main/examples/network-v2-http/src/append_reply.rs).
+To keep the [`AppendEntriesResponse`] wire format instead, the follower sends
+`AppendEntriesResponse::from(result)` and the leader rebuilds the result with
+[`AppendEntriesResponse::into_append_result()`], passing the log ids of the
+request it sent. That format carries no hint, and the leader then uses binary
+search.
 
 ### Optional: `stream_append()` for pipelined replication
 
@@ -389,10 +391,10 @@ compiled version is
 async fn handle_append_entries(
     raft: Arc<Raft<TypeConfig, StateMachineStore>>,
     req: AppendEntriesRequest<TypeConfig>,
-) -> Result<AppendEntriesResponse<TypeConfig>, ServerError> {
+) -> Result<AppendReply<TypeConfig>, ServerError> {
     let result = raft.append_entries(req).await?;
-    // `AppendResult` does not implement serde: reply in the `AppendEntriesResponse` format.
-    Ok(AppendEntriesResponse::from(result))
+    // `AppendResult` does not implement serde: reply in the transport's wire type.
+    Ok(AppendReply::from(result))
 }
 ```
 

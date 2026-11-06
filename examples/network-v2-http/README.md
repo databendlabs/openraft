@@ -72,6 +72,12 @@ The client and server use these endpoints:
 Requests and responses are JSON. The response body is a serialized
 `Result<T, RaftError<C>>`; Raft-level errors are returned in that body.
 
+`/append` replies with `AppendReply`, this crate's wire type for OpenRaft's
+`AppendResult`, which does not implement serde. `AppendReply` keeps the
+follower's conflict hint, so the leader can skip part of its binary search
+after a conflict. Changing `AppendReply` changes the bytes on the wire: a
+deployment that upgrades its nodes one at a time must version the format.
+
 For simplicity, snapshots are encoded as one JSON request containing the vote,
 snapshot metadata, and snapshot bytes. A production network may choose a
 streaming format instead.
