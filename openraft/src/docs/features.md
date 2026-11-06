@@ -10,7 +10,7 @@ detailed guide.
 - **Generalized membership change**: [change any set of nodes](crate::docs::data::extended_membership) in one operation with [`change_membership()`][], using [one log entry when proven safe or joint consensus otherwise][dynamic membership].
 - **Single-step config change**: [`append_membership()`][] writes a caller-built membership in one log entry without a joint config, for transitions whose quorum intersection OpenRaft can prove.
 - **Conditional membership changes**: [`change_membership_if()`][] checks the expected leader or membership before proposing a change.
-- **Flexible quorums**: choose [threshold, weighted, hierarchical, grid, explicit](https://github.com/databendlabs/openraft/blob/main/membership/src/docs.md) from [`openraft-membership`][], or custom rules in `RaftTypeConfig`. Configure separate [read (election) and write (commit) quorums][election quorums] and which voters can start elections.
+- **Flexible quorums**: choose [threshold, weighted, hierarchical, grid, explicit](https://github.com/databendlabs/openraft/blob/main/membership/src/docs.md) from [`openraft-membership`][], or custom rules in `RaftTypeConfig`. Configure separate [read (election) and write (commit) quorums][election quorums] and which voters can start elections. The [membership example](https://github.com/databendlabs/openraft/tree/main/examples/membership) runs each provided membership in an in-process cluster.
 - **Membership configuration**: the default [`Membership`][] uses majorities. Select membership and editing implementations through [`RaftTypeConfig::Membership`][] and [`RaftTypeConfig::MembershipEdit`][].
 - **Learners (non-voters)**: [`add_learner()`][].
 

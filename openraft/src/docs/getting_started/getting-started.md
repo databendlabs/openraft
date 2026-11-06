@@ -113,6 +113,13 @@ The macro call above leaves each of them at its default value, and
 >   [Node IDs must not be reused][`docs::node-id-reuse`].
 > - `Node` is the node type that contains the node's address, etc., which
 >   implements [`Node`] trait.
+> - `Membership` decides the read quorums that elect a leader and the write
+>   quorums that commit an entry, and `MembershipEdit` is the change that
+>   [`Raft::change_membership()`] takes. Both default to a majority:
+>   [`Membership`] and [`ChangeMembers`]. The
+>   [membership guide][`openraft-membership docs`] compares them with the
+>   memberships of `openraft-membership`, and links a runnable scenario for
+>   each.
 > - `Entry` is the log entry type that will be stored in the raft log,
 >   which includes the payload and log id, which implements [`RaftEntry`] trait.
 > - `Responder<T>` is the type that will be used to send responses to the client,
@@ -604,6 +611,8 @@ and links the trait, protocol page, or test suite that defines it.
 
 [`LogId`]:                              `crate::LogId`
 [`Membership`]:                         `crate::Membership`
+[`ChangeMembers`]:                      `crate::impls::ChangeMembers`
+[`openraft-membership docs`]:           https://docs.rs/openraft-membership/latest/openraft_membership/docs/index.html
 [`EmptyNode`]:                          `crate::EmptyNode`
 [`BasicNode`]:                          `crate::BasicNode`
 [`NodeInfo`]:                           `crate::NodeInfo`

@@ -51,6 +51,17 @@ let change = WeightedChange::weights(BTreeMap::from([(1, 1), (2, 1), (3, 1), (4,
 raft.change_membership(change, false).await?;
 ```
 
+## Example
+
+The [`membership` example](https://github.com/databendlabs/openraft/tree/main/examples/membership)
+runs each membership of this crate, and the default majority, in an in-process
+cluster. Each scenario declares the two types, initializes the cluster, changes
+the membership, isolates some nodes, and checks what still elects and commits:
+
+```shell
+cargo run --manifest-path examples/membership/Cargo.toml -- --policy weighted
+```
+
 ## Features
 
 - `serde` (default): derives serde for the memberships and enables

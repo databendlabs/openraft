@@ -31,6 +31,13 @@ or runtime.
 | [raft-kv-memstore-single-threaded] | in-memory | in-memory | in-process channel | RaftNetworkV2 | channel | in-memory | Single-threaded runtime |
 | [raft-kv-memstore-opendal-snapshot-data] | [log-mem] | in-memory+OpenDAL | in-process channel | RaftNetworkV2 | channel | in-memory | OpenDAL snapshot storage |
 
+### Membership
+
+[membership] runs the default majority membership and the five memberships of
+[`openraft-membership`](../membership/) in an in-process cluster, one scenario
+for each. It builds every node from [log-mem] and [sm-mem], connects them with
+[network-v2-mem], changes the membership with each native edit type, and
+isolates nodes to show whether the others still elect and commit.
 
 ## Component Implementations
 
@@ -57,6 +64,8 @@ The following symbolic links are provided for backward compatibility:
 ### Network Implementations
 - **[network-v2]** - HTTP-based RaftNetworkV2 interface using `reqwest` crate
 - **[network-v1]** - HTTP-based RaftNetwork interface V1 using `reqwest` crate
+- **[network-v2-mem]** - In-process RaftNetworkV2 interface that calls the target's `Raft` handle,
+  with node isolation for fault injection; [membership] runs on it
 
 ### Snapshot Transfer
 - **[dir-transfer]** - Streams a directory of immutable files as frames over any ordered
@@ -78,6 +87,7 @@ The following symbolic links are provided for backward compatibility:
 [raft-kv-memstore-single-threaded]: raft-kv-memstore-single-threaded/
 [raft-kv-memstore-opendal-snapshot-data]: raft-kv-memstore-opendal-snapshot-data/
 [multi-raft-kv]: multi-raft-kv/
+[membership]: membership/
 [log-mem]: log-mem/
 [log-rocks]: log-rocks/
 [log-wal]: log-wal/
@@ -86,6 +96,7 @@ The following symbolic links are provided for backward compatibility:
 [dir-transfer]: dir-transfer/
 [network-v2]: network-v2-http/
 [network-v1]: network-v1-http/
+[network-v2-mem]: network-v2-mem/
 [app-http]: app-http/
 [types-kv]: types-kv/
 [utils]: utils/

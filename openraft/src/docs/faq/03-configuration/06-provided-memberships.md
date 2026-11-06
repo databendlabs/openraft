@@ -54,8 +54,9 @@ compares them and explains when to pick each one.
    ```
 
 4. Change it with a value of the change type. OpenRaft writes the change in
-   one log entry when every old quorum provably intersects every new quorum,
-   and otherwise goes through a joint configuration:
+   one log entry when it proves that every old read quorum intersects every
+   new write quorum, and every old write quorum intersects every new read
+   quorum. Otherwise it first writes a joint configuration:
 
    ```rust,ignore
    let change = WeightedChange::weights(BTreeMap::from([(1, 1), (2, 1), (3, 1), (4, 1)]));
@@ -63,6 +64,16 @@ compares them and explains when to pick each one.
    ```
 
 [`Raft::add_learner()`][] works unchanged with every provided membership.
+
+The [`examples/membership`][] application runs these steps for the default
+majority and for each provided membership, in an in-process cluster: it
+initializes the cluster, writes, changes the membership, isolates some nodes,
+and checks whether the rest still elect and commit. The
+[guide][`membership docs`] lists each scenario and its result. To run one:
+
+```shell
+cargo run --manifest-path examples/membership/Cargo.toml -- --policy weighted
+```
 
 The weighted, hierarchical, grid and explicit memberships can also give a node
 a role other than its default, for example a voter that votes and stores logs
@@ -74,6 +85,7 @@ To write a rule of your own, implement [`RaftMembership`][] and
 through how its types implement them.
 
 [`openraft-membership`]: https://docs.rs/openraft-membership/latest/openraft_membership/
+[`examples/membership`]: https://github.com/databendlabs/openraft/tree/main/examples/membership
 [`membership docs`]: https://docs.rs/openraft-membership/latest/openraft_membership/docs/index.html
 [`weighted membership`]: https://docs.rs/openraft-membership/latest/openraft_membership/docs/weighted/index.html
 [`ThresholdMembership`]: https://docs.rs/openraft-membership/latest/openraft_membership/docs/threshold/index.html
