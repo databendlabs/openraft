@@ -63,6 +63,7 @@ test-examples:
 	cargo test --manifest-path examples/log-mem/Cargo.toml
 	cargo test --manifest-path examples/log-rocks/Cargo.toml
 	cargo test --manifest-path examples/log-wal/Cargo.toml
+	cargo test --manifest-path examples/network-v2-http/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-log-wal-sm-mem/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-memstore/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-memstore-grpc/Cargo.toml
