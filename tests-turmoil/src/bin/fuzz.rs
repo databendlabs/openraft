@@ -830,25 +830,19 @@ impl TriggerSchedule {
     }
 }
 
-/// Restore every link to its seed-derived baseline: latency band back to
-/// (min, max), per-link loss back to `fail_rate` (or zero when healing).
+/// Restore baseline link quality during chaos, or clear latency and loss for liveness.
 fn restore_link_quality(sim: &mut turmoil::Sim, max_nodes: u64, derived: &DerivedConfig, heal: bool) {
     let fail_rate = if heal { 0.0 } else { derived.fail_rate };
+    // Seeded latency may exceed the RPC deadline; liveness requires timely links.
+    let min_latency_ms = if heal { 0 } else { derived.min_message_latency_ms };
+    let max_latency_ms = if heal { 0 } else { derived.max_message_latency_ms };
     for i in 1..=max_nodes {
         for j in (i + 1)..=max_nodes {
             let (a, b) = (host_name(i), host_name(j));
             // `set_link_latency` collapses the band to min=max; widening the
             // max afterwards restores the (min, max) jitter band.
-            sim.set_link_latency(
-                a.as_str(),
-                b.as_str(),
-                Duration::from_millis(derived.min_message_latency_ms),
-            );
-            sim.set_link_max_message_latency(
-                a.as_str(),
-                b.as_str(),
-                Duration::from_millis(derived.max_message_latency_ms),
-            );
+            sim.set_link_latency(a.as_str(), b.as_str(), Duration::from_millis(min_latency_ms));
+            sim.set_link_max_message_latency(a.as_str(), b.as_str(), Duration::from_millis(max_latency_ms));
             sim.set_link_fail_rate(a.as_str(), b.as_str(), fail_rate);
         }
     }
@@ -857,7 +851,7 @@ fn restore_link_quality(sim: &mut turmoil::Sim, max_nodes: u64, derived: &Derive
     }
 }
 
-/// Remove every fault: partitions, held messages, latency spikes, loss.
+/// Remove every network fault: partitions, held messages, latency, and loss.
 /// After this the network is perfect; the cluster must fully heal on its own.
 fn heal_network(sim: &mut turmoil::Sim, max_nodes: u64, derived: &DerivedConfig) {
     for i in 1..=max_nodes {
@@ -1980,4 +1974,61 @@ fn run_single_iteration(
     );
 
     st.into_result()
+}
+
+#[cfg(test)]
+mod tests {
+    use openraft::network::RPCOption;
+    use tokio::io::AsyncReadExt;
+    use tokio::io::AsyncWriteExt;
+    use turmoil::net::TcpListener;
+    use turmoil::net::TcpStream;
+
+    use super::*;
+
+    #[test]
+    fn healing_removes_latency_that_exceeds_the_rpc_deadline() -> turmoil::Result {
+        const PORT: u16 = 9000;
+        let seed = 1793981583026315633;
+        let mut derived = DerivedConfig::from_seed(seed, 10000, StorageMode::Lossy);
+        derived.min_message_latency_ms = derived.heartbeat_interval;
+        derived.max_message_latency_ms = derived.heartbeat_interval;
+        let latency = Duration::from_millis(derived.heartbeat_interval);
+        let option = RPCOption::new(latency);
+        let ttl = option.soft_ttl();
+
+        let mut builder = turmoil::Builder::new();
+        builder.min_message_latency(latency);
+        builder.max_message_latency(latency);
+        builder.rng_seed(seed);
+        let mut sim = builder.build();
+
+        sim.host(host_name(1), || async {
+            let listener = TcpListener::bind(("0.0.0.0", PORT)).await?;
+            let (mut stream, _) = listener.accept().await?;
+            let request = stream.read_u64().await?;
+            stream.write_u64(request).await?;
+            Ok(())
+        });
+        sim.client(host_name(2), async move {
+            let expected = 2263;
+            let exchange = async {
+                let mut stream = TcpStream::connect(("node-1", PORT)).await?;
+                stream.write_u64(expected).await?;
+                stream.read_u64().await
+            };
+            let completed = tokio::time::timeout(ttl, exchange).await?;
+            let actual = completed?;
+            assert_eq!(expected, actual);
+            Ok(())
+        });
+
+        tracing::info!(
+            ?latency,
+            ?ttl,
+            "heal the links before checking service within the RPC deadline"
+        );
+        heal_network(&mut sim, 2, &derived);
+        sim.run()
+    }
 }
