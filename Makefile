@@ -69,6 +69,7 @@ test-examples:
 	cargo test --manifest-path examples/raft-kv-memstore-network-v1/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-memstore-single-threaded/Cargo.toml
+	cargo test --manifest-path examples/raft-kv-memstore-weighted-membership/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-rocksdb/Cargo.toml
 	cargo test --manifest-path examples/sm-rocks/Cargo.toml
 	cargo test --manifest-path examples/multi-raft-kv/Cargo.toml
