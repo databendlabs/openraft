@@ -74,8 +74,8 @@ impl NetworkConnection {
 
     /// Convert pb::AppendEntriesResponse to AppendResult.
     ///
-    /// For `StreamAppend`, conflict is encoded as `conflict = true` plus a required `last_log_id`
-    /// carrying the conflict log id, and an optional `hint`.
+    /// A conflict is encoded as `conflict = true` plus a required `last_log_id` carrying the
+    /// conflict log id, and an optional `hint`.
     fn pb_to_stream_result(resp: pb::AppendEntriesResponse) -> Result<AppendResult, RPCError> {
         if let Some(higher_vote) = resp.rejected_by {
             return Ok(Err(AppendError::HigherVote(higher_vote)));

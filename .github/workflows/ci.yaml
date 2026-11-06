@@ -708,6 +708,7 @@ jobs:
           - 'log-rocks'
           - 'log-wal'
           - 'sm-rocks'
+          - 'network-v2-http'
           - 'raft-kv-log-wal-sm-mem'
           - 'raft-kv-memstore'
           - 'raft-kv-memstore-grpc'
