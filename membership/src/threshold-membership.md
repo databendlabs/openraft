@@ -16,18 +16,37 @@ votes to elect a replacement leader under the default leader IDs.
 An application selects the type in its type config, and passes a
 `ThresholdMembership` to [`Raft::initialize()`]:
 
-```rust,ignore
+```rust,no_run
+# use std::collections::BTreeMap;
+# use std::collections::BTreeSet;
+#
+# use openraft::BasicNode;
+# use openraft::Raft;
+# use openraft::storage::RaftStateMachine;
+# use openraft_membership::ThresholdMembership;
+#
+# type Request = String;
+# type Response = String;
+#
 openraft::declare_raft_types!(
     pub TypeConfig:
         D = Request,
         R = Response,
         Membership = openraft_membership::ThresholdMembership<u64, BasicNode>,
         MembershipEdit = openraft_membership::ThresholdChange<Self::NodeId, Self::Node>,
+        # AsyncRuntime = openraft_rt_tokio::TokioRuntime,
 );
 
+# async fn initialize<SM>(
+#     raft: Raft<TypeConfig, SM>,
+#     nodes: BTreeMap<u64, BasicNode>,
+# ) -> Result<(), Box<dyn std::error::Error>>
+# where SM: RaftStateMachine<TypeConfig> {
 // 5 voters: a commit needs 2 copies, so an election needs 4 votes.
-let membership = ThresholdMembership::new(btreeset! {1, 2, 3, 4, 5}, 2, nodes)?;
+let membership = ThresholdMembership::new(BTreeSet::from([1, 2, 3, 4, 5]), 2, nodes)?;
 raft.initialize(membership).await?;
+# Ok(())
+# }
 ```
 
 ## The derived read quorum intersects every write quorum
@@ -109,13 +128,33 @@ standard leader IDs still need 3 votes for an election.
 With `MembershipEdit = ThresholdChange<..>`, [`Raft::change_membership()`]
 takes a [`ThresholdChange`]:
 
-```rust,ignore
+```rust,no_run
+# use std::collections::BTreeSet;
+#
+# use openraft::BasicNode;
+# use openraft::Raft;
+# use openraft::storage::RaftStateMachine;
+# use openraft_membership::ThresholdChange;
+#
+# openraft::declare_raft_types!(
+#     pub TypeConfig:
+#         D = String,
+#         R = String,
+#         Membership = openraft_membership::ThresholdMembership<u64, BasicNode>,
+#         MembershipEdit = openraft_membership::ThresholdChange<Self::NodeId, Self::Node>,
+#         AsyncRuntime = openraft_rt_tokio::TokioRuntime,
+# );
+#
+# async fn change<SM>(raft: Raft<TypeConfig, SM>) -> Result<(), Box<dyn std::error::Error>>
+# where SM: RaftStateMachine<TypeConfig> {
 // Require 4 copies and derive read size 2, keeping the 5 voters.
 raft.change_membership(ThresholdChange::write_size(4), false).await?;
 
 // Remove voter 5 and require 3 copies; the derived read size stays 2.
-let voters = btreeset! {1, 2, 3, 4};
+let voters = BTreeSet::from([1, 2, 3, 4]);
 raft.change_membership(ThresholdChange::voters(voters).with_write_size(3), false).await?;
+# Ok(())
+# }
 ```
 
 [`ThresholdChange::voters()`] keeps `write_size`, while the new voter count
