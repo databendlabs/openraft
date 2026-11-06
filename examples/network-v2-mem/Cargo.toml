@@ -1,0 +1,24 @@
+[package]
+name = "network-v2-mem"
+version = "0.1.0"
+readme = "README.md"
+
+edition = "2024"
+authors = [
+  "drdr xp <drdr.xp@gmail.com>",
+]
+categories = ["algorithms", "asynchronous", "data-structures"]
+description = "An example in-process RaftNetworkV2 implementation built upon `openraft`."
+homepage = "https://github.com/databendlabs/openraft"
+keywords = ["raft", "consensus", "network"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/databendlabs/openraft"
+
+[dependencies]
+openraft = { path = "../../openraft", default-features = false }
+
+[features]
+default = []
+
+[package.metadata.docs.rs]
+all-features = true

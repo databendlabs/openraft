@@ -91,6 +91,7 @@ exclude = [
     "examples/app-http",
     "examples/network-v1-http",
     "examples/network-v2-http",
+    "examples/network-v2-mem",
 
     "examples/dir-transfer",
     "examples/log-mem",
@@ -111,6 +112,7 @@ exclude = [
     "examples/raft-kv-memstore-opendal-snapshot-data",
     "examples/raft-kv-rocksdb",
     "examples/multi-raft-kv",
+    "examples/membership",
 
     "jepsen/openraft-test-app",
 

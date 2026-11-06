@@ -206,6 +206,7 @@ fmt:
 	cargo fmt --manifest-path examples/app-http/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path examples/network-v1-http/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path examples/network-v2-http/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path examples/network-v2-mem/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path examples/dir-transfer/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path examples/log-mem/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path examples/log-rocks/Cargo.toml $(FMT_ARGS)
@@ -221,6 +222,7 @@ fmt:
 	cargo fmt --manifest-path examples/raft-kv-memstore/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path examples/raft-kv-rocksdb/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path examples/multi-raft-kv/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path examples/membership/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path tests-turmoil/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path jepsen/openraft-test-app/Cargo.toml $(FMT_ARGS)
 
@@ -244,6 +246,7 @@ clippy: clippy-basic
 	cargo clippy --no-deps --manifest-path examples/app-http/Cargo.toml                               --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/network-v1-http/Cargo.toml                         --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/network-v2-http/Cargo.toml                         --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path examples/network-v2-mem/Cargo.toml                          --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/dir-transfer/Cargo.toml                           --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/log-mem/Cargo.toml                                --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/log-rocks/Cargo.toml                              --all-targets -- -D warnings
@@ -259,6 +262,7 @@ clippy: clippy-basic
 	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore/Cargo.toml                       --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-rocksdb/Cargo.toml                        --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/multi-raft-kv/Cargo.toml                          --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path examples/membership/Cargo.toml                             --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path tests/Cargo.toml --features rt-sim                         --all-targets -- -D warnings
 	@# Run from inside tests-turmoil so cargo reads its .cargo/config.toml,
 	@# which supplies `--cfg tokio_unstable`; `--manifest-path` from the repo
@@ -285,6 +289,8 @@ unused_dep:
 	cargo machete examples/raft-kv-memstore-opendal-snapshot-data
 	cargo machete examples/raft-kv-memstore-network-v1
 	cargo machete examples/multi-raft-kv
+	cargo machete examples/membership
+	cargo machete examples/network-v2-mem
 	cargo machete examples/sm-rocks
 	cargo machete examples/log-rocks
 	cargo machete examples/log-wal
@@ -311,6 +317,7 @@ check:
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/app-http/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/network-v1-http/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/network-v2-http/Cargo.toml
+	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/network-v2-mem/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/dir-transfer/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/log-mem/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/log-rocks/Cargo.toml
@@ -326,6 +333,7 @@ check:
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/raft-kv-memstore/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/raft-kv-rocksdb/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/multi-raft-kv/Cargo.toml
+	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/membership/Cargo.toml
 
 clean:
 	cargo clean
@@ -339,6 +347,7 @@ clean:
 	cargo clean --manifest-path examples/app-http/Cargo.toml
 	cargo clean --manifest-path examples/network-v1-http/Cargo.toml
 	cargo clean --manifest-path examples/network-v2-http/Cargo.toml
+	cargo clean --manifest-path examples/network-v2-mem/Cargo.toml
 	cargo clean --manifest-path examples/dir-transfer/Cargo.toml
 	cargo clean --manifest-path examples/log-mem/Cargo.toml
 	cargo clean --manifest-path examples/log-rocks/Cargo.toml
@@ -354,6 +363,7 @@ clean:
 	cargo clean --manifest-path examples/raft-kv-memstore/Cargo.toml
 	cargo clean --manifest-path examples/raft-kv-rocksdb/Cargo.toml
 	cargo clean --manifest-path examples/multi-raft-kv/Cargo.toml
+	cargo clean --manifest-path examples/membership/Cargo.toml
 	cargo clean --manifest-path jepsen/openraft-test-app/Cargo.toml
 	rm -rf tests/_log
 
