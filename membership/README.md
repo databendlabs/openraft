@@ -51,6 +51,14 @@ let change = WeightedChange::weights(BTreeMap::from([(1, 1), (2, 1), (3, 1), (4,
 raft.change_membership(change, false).await?;
 ```
 
+## Example
+
+[`raft-kv-memstore-weighted-membership`](https://github.com/databendlabs/openraft/tree/main/examples/raft-kv-memstore-weighted-membership)
+is the HTTP key-value store example with a `WeightedMembership`. Its `/init`
+and `/change-membership` routes take the weight of each voter, and its test
+stops two voters and checks that the others, whose weights reach the write
+weight, keep committing.
+
 ## Features
 
 - `serde` (default): derives serde for the memberships and enables

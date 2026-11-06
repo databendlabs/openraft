@@ -48,16 +48,32 @@ assert!(!elects);
 An application selects the type in its type config, and passes the membership
 to [`Raft::initialize()`]:
 
-```rust,ignore
+```rust,no_run
+# use openraft::BasicNode;
+# use openraft::Raft;
+# use openraft::storage::RaftStateMachine;
+# use openraft_membership::WeightedMembership;
+#
+# type Request = String;
+# type Response = String;
+#
 openraft::declare_raft_types!(
     pub TypeConfig:
         D = Request,
         R = Response,
         Membership = openraft_membership::WeightedMembership<u64, BasicNode>,
         MembershipEdit = openraft_membership::WeightedChange<Self::NodeId, Self::Node>,
+        # AsyncRuntime = openraft_rt_tokio::TokioRuntime,
 );
 
+# async fn initialize<SM>(
+#     raft: Raft<TypeConfig, SM>,
+#     membership: WeightedMembership<u64, BasicNode>,
+# ) -> Result<(), Box<dyn std::error::Error>>
+# where SM: RaftStateMachine<TypeConfig> {
 raft.initialize(membership).await?;
+# Ok(())
+# }
 ```
 
 ## A read quorum and a write quorum together weigh more than all voters
