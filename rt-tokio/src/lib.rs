@@ -138,11 +138,24 @@ impl AsyncRuntime for TokioRuntime {
 #[cfg(test)]
 mod tests {
     use openraft_rt::testing::Suite;
+    use tokio::runtime::Handle;
+    use tokio::runtime::RuntimeFlavor;
 
     use super::*;
 
     #[test]
     fn test_tokio_rt() {
         Suite::<TokioRuntime>::test_all();
+    }
+
+    #[test]
+    fn test_new_runtime_flavor() {
+        let mut rt = TokioRuntime::new(2);
+        let flavor = rt.block_on(async { Handle::current().runtime_flavor() });
+
+        #[cfg(not(target_family = "wasm"))]
+        assert_eq!(RuntimeFlavor::MultiThread, flavor);
+        #[cfg(target_family = "wasm")]
+        assert_eq!(RuntimeFlavor::CurrentThread, flavor);
     }
 }

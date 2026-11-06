@@ -266,6 +266,54 @@ jobs:
           RUST_LOG: debug
           RUST_BACKTRACE: full
 
+  rt-tokio:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup | Toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Unit Tests
+        run: |
+          cargo test --manifest-path "rt-tokio/Cargo.toml"
+          cargo test --manifest-path "rt-tokio/Cargo.toml" --features single-threaded
+        env:
+          RUST_LOG: debug
+          RUST_BACKTRACE: full
+
+  # tokio's `rt-multi-thread` does not compile for wasm. Build the library
+  # crates for wasm32-wasip1 and run openraft-rt-tokio's tests there, so a
+  # crate or dependency that turns it back on fails here.
+  wasm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+
+      # Without `toolchain`, the action installs the nightly pinned in
+      # `rust-toolchain` and adds the target to it.
+      - name: Setup | Toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: wasm32-wasip1
+
+      - name: Install wasmtime
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasmtime
+
+      - name: Check library crates for wasm
+        run: make wasm-check
+
+      - name: Test rt-tokio on wasm
+        run: make test-wasm
+
   metrics-otel:
     runs-on: ubuntu-latest
     timeout-minutes: 15
