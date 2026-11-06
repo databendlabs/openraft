@@ -85,7 +85,7 @@ This benchmark measures the OpenRaft framework with minimal storage and networki
 # Features
 
 - ✅ **Generalized membership changes**: [change any set of nodes](./openraft/src/docs/features.md#membership) in one operation, using one log entry when safe or joint consensus otherwise.
-- ✅ **Flexible quorums**: choose [threshold, weighted, hierarchical, grid, explicit, or custom rules](./openraft/src/docs/features.md#membership), with separate election and commit quorums.
+- ✅ **Flexible quorums**: choose [threshold, weighted, hierarchical, grid, explicit, or custom rules](./membership/src/docs.md), with separate election and commit quorums.
 - ✅ **High throughput**: [streaming replication](./openraft/src/docs/features.md#replication) and [batch writes](./openraft/src/docs/features.md#reads-and-writes), backed by an async, event-driven core.
 - ✅ **Linearizable reads**: [reads confirmed by a quorum, lease reads, and follower reads](./openraft/src/docs/features.md#reads-and-writes).
 - ✅ **Fully pluggable**: customize [storage, networking, snapshot transport, and core Raft types](./openraft/src/docs/features.md#runtime).
