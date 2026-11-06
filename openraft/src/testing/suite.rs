@@ -50,6 +50,11 @@ macro_rules! btreeset {
 /// Additional traits are required to be implemented by the store builder for testing:
 /// - `C::D` and `C::R` requires `Debug` for debugging.
 /// - `C::NodeId` requires `From<u64>` to build a node id.
+///
+/// Each test case runs on a new tokio runtime. On wasm targets it is a current-thread runtime: the
+/// store under test must not call `tokio::task::block_in_place`, which panics on this runtime, and
+/// must not block the thread to wait for an async task it spawned, because that task then never
+/// runs.
 pub struct Suite<C, LS, SM, B, G>
 where
     C: RaftTypeConfig,
@@ -1261,7 +1266,13 @@ where
     NID: NodeId,
     F: Future<Output = Result<(), StorageError<NID>>>,
 {
+    #[cfg(not(target_family = "wasm"))]
     let rt = tokio::runtime::Runtime::new().unwrap();
+
+    // tokio has no multi-thread runtime on wasm.
+    #[cfg(target_family = "wasm")]
+    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+
     rt.block_on(f)?;
     Ok(())
 }
