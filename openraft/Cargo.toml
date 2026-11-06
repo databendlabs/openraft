@@ -33,6 +33,11 @@ tracing         = { workspace = true }
 tracing-futures = { workspace = true }
 validit         = { workspace = true }
 
+# tokio does not compile for wasm with `rt-multi-thread` enabled.
+# On wasm, the storage test suite runs on a current-thread runtime instead.
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+tokio           = { workspace = true, features = ["rt-multi-thread"] }
+
 [dev-dependencies]
 anyhow             = { workspace = true }
 async-entry        = { workspace = true }
