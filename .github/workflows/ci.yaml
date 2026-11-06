@@ -716,6 +716,8 @@ jobs:
           - 'raft-kv-memstore-single-threaded'
           - 'raft-kv-rocksdb'
           - 'multi-raft-kv'
+          - 'membership'
+          - 'network-v2-mem'
 
     steps:
       - uses: actions/checkout@v4

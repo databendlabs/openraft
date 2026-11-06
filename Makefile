@@ -13,8 +13,10 @@ verify: fmt_check clippy-basic
 	cargo test --lib
 
 # Complete, read-only check: adds isolated features, full lint coverage,
-# documentation, integrations, benchmarks, and runtime tests.
-verify-full: verify feature-check clippy docs-check test-membership test-bench-minimal test-runtime
+# documentation, integrations, benchmarks, runtime tests, and the membership
+# example with its in-process transport.
+verify-full: verify feature-check clippy docs-check test-membership test-bench-minimal test-runtime \
+	test-example-membership test-example-network-v2-mem
 	cargo test --test '*'
 	# cargo test --features single-threaded --lib
 	# test result in different output on CI are ignored and only run locally
@@ -72,6 +74,8 @@ test-examples:
 	cargo test --manifest-path examples/raft-kv-rocksdb/Cargo.toml
 	cargo test --manifest-path examples/sm-rocks/Cargo.toml
 	cargo test --manifest-path examples/multi-raft-kv/Cargo.toml
+	cargo test --manifest-path examples/membership/Cargo.toml
+	cargo test --manifest-path examples/network-v2-mem/Cargo.toml
 
 test-runtime:
 	cargo test --manifest-path rt-tokio/Cargo.toml
