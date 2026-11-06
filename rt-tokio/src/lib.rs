@@ -23,6 +23,9 @@ pub use watch::TokioWatchReceiver;
 pub use watch::TokioWatchSender;
 
 /// `Tokio` is the default asynchronous executor.
+///
+/// On wasm targets, [`AsyncRuntime::new`] builds a current-thread runtime and ignores `threads`,
+/// because tokio has no multi-thread runtime there.
 pub struct TokioRuntime {
     rt: tokio::runtime::Runtime,
     #[cfg(feature = "single-threaded")]
@@ -96,11 +99,21 @@ impl AsyncRuntime for TokioRuntime {
     type Mutex<T: OptionalSend + 'static> = TokioMutex<T>;
 
     fn new(threads: usize) -> Self {
+        #[cfg(not(target_family = "wasm"))]
         let rt = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(threads)
             .enable_all()
             .build()
             .expect("Failed to create Tokio runtime");
+
+        #[cfg(target_family = "wasm")]
+        let rt = {
+            let _ = threads;
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("Failed to create Tokio runtime")
+        };
 
         TokioRuntime {
             rt,

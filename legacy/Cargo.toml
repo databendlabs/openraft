@@ -23,7 +23,10 @@ display-more = { workspace = true }
 futures = { workspace = true }
 serde = { workspace = true, optional = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["io-util", "sync"] }
+# Not inherited from the workspace, whose tokio entry enables runtime
+# features, including `rt-multi-thread`, which does not compile for wasm.
+# This crate only uses the `tokio::io` traits.
+tokio = { version = "1.39", default-features = false, features = ["io-util"] }
 tracing = { workspace = true }
 
 [dev-dependencies]
