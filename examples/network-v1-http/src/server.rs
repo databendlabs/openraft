@@ -17,6 +17,7 @@ use hyper::service::service_fn;
 use hyper_util::rt::TokioIo;
 use openraft::RaftTypeConfig;
 use openraft::errors::decompose::DecomposeResult;
+use openraft::raft::AppendEntriesResponse;
 use openraft::storage::RaftStateMachine;
 use openraft::type_config::alias::SnapshotDataOf;
 use openraft_legacy::prelude::ChunkedSnapshotReceiver;
@@ -112,7 +113,8 @@ where
         "/append" => {
             let req = serde_json::from_slice(&body).map_err(bad_request)?;
 
-            Ok(json_response(&raft.append_entries(req).await.decompose().unwrap()))
+            let result = raft.append_entries(req).await.map(AppendEntriesResponse::from);
+            Ok(json_response(&result.decompose().unwrap()))
         }
         "/snapshot" => {
             let req = serde_json::from_slice(&body).map_err(bad_request)?;

@@ -118,7 +118,8 @@ async fn handle_json_rpc(raft: &Raft, path: &str, body: Bytes) -> Result<Respons
         "/append" => {
             let req = serde_json::from_slice(&body).map_err(bad_request)?;
 
-            Ok(json_response(&raft.append_entries(req).await))
+            let result = raft.append_entries(req).await;
+            Ok(json_response(&result.map(AppendEntriesResponse::from)))
         }
         "/transfer-leader" => {
             let req = serde_json::from_slice(&body).map_err(bad_request)?;

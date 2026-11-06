@@ -47,7 +47,7 @@ async fn append_entries_with_bigger_term() -> Result<()> {
 
     let node = router.get_raft_handle(&0)?;
     let resp = node.append_entries(req).await?;
-    assert!(resp.is_success());
+    assert_eq!(Ok(Some(log_id(1, 0, log_index))), resp);
 
     // after append entries, check hard state in term 2 and vote for node 1
     let (mut sto, mut sm) = router.get_storage_handle(&0)?;

@@ -4,7 +4,7 @@ use std::fmt;
 
 use openraft::RPCTypes;
 use openraft::RaftTypeConfig;
-use openraft::raft::AppendEntriesResponse;
+use openraft::raft::AppendResult;
 use openraft::raft::SnapshotResponse;
 use openraft::raft::TransferLeaderResponse;
 use openraft::raft::VoteResponse;
@@ -16,7 +16,7 @@ use openraft_legacy::network_v1::InstallSnapshotResponse;
 pub enum RpcResponse<C>
 where C: RaftTypeConfig
 {
-    AppendEntries(AppendEntriesResponse<C>),
+    AppendEntries(AppendResult<C>),
     InstallSnapshot(InstallSnapshotResponse<C>),
     InstallFullSnapshot(SnapshotResponse<C>),
     Vote(VoteResponse<C>),
@@ -46,7 +46,7 @@ where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            RpcResponse::AppendEntries(resp) => write!(f, "AppendEntries({})", resp),
+            RpcResponse::AppendEntries(resp) => write!(f, "AppendEntries({:?})", resp),
             RpcResponse::InstallSnapshot(req) => write!(f, "InstallSnapshot({})", req),
             RpcResponse::InstallFullSnapshot(resp) => write!(f, "InstallFullSnapshot({})", resp),
             RpcResponse::Vote(resp) => write!(f, "Vote({})", resp),

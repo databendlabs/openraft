@@ -101,13 +101,15 @@ impl RaftService for RaftServiceImpl {
     ) -> Result<Response<pb::AppendEntriesResponse>, Status> {
         debug!("Processing append entries request");
 
-        let append_resp = self
+        let result = self
             .raft_node
             .append_entries(request.into_inner().into())
             .await
             .map_err(|e| Status::internal(format!("Append entries operation failed: {}", e)))?;
 
         debug!("Append entries request processed successfully");
+        // The unary reply keeps the `AppendEntriesResponse` format, which carries no conflict hint.
+        let append_resp = AppendEntriesResponse::from(result);
         Ok(Response::new(append_resp.into()))
     }
 

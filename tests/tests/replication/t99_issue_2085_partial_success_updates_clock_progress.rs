@@ -7,7 +7,7 @@ use openraft::Config;
 use openraft::async_runtime::WatchReceiver;
 use openraft::errors::RPCError;
 use openraft::errors::Unreachable;
-use openraft::raft::AppendEntriesResponse;
+use openraft::raft::AppendResult;
 use openraft::type_config::OneshotSender;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::TypeConfig;
@@ -19,8 +19,8 @@ use crate::fixtures::rpc_request::RpcRequest;
 use crate::fixtures::rpc_response::RpcResponse;
 use crate::fixtures::ut_harness;
 
-/// A PartialSuccess with `prev < matching < last` refreshes the follower's clock progress
-/// even though it did not accept the complete request.
+/// A partial acknowledgement `Ok(matching)` with `prev < matching < last` refreshes the follower's
+/// clock progress even though it did not accept the complete request.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn partial_success_updates_clock_progress() -> Result<()> {
@@ -76,7 +76,7 @@ async fn partial_success_updates_clock_progress() -> Result<()> {
                         panic!("expected an AppendEntries response");
                     };
                     let matching = Some(log_id(1, 0, log_index - 1));
-                    let expected = AppendEntriesResponse::PartialSuccess(matching);
+                    let expected: AppendResult<TypeConfig> = Ok(matching);
                     assert_eq!(expected, response);
 
                     call.router.set_unreachable(call.to, true);
@@ -102,13 +102,19 @@ async fn partial_success_updates_clock_progress() -> Result<()> {
             .await;
     }
 
-    tracing::info!(log_index, "--- reconnect voter 1 and receive one PartialSuccess");
+    tracing::info!(
+        log_index,
+        "--- reconnect voter 1 and receive one partial acknowledgement"
+    );
     let clock_before_response = {
         router.set_unreachable(1, false);
         TypeConfig::timeout(Duration::from_secs(2), partial_rx).await??.map(|acked| acked.into_inner())
     };
 
-    tracing::info!(log_index, "--- PartialSuccess refreshes voter 1 clock progress");
+    tracing::info!(
+        log_index,
+        "--- the partial acknowledgement refreshes voter 1 clock progress"
+    );
     {
         let n0 = router.get_raft_handle(&0)?;
         n0.wait(Some(Duration::from_secs(1)))
@@ -122,7 +128,7 @@ async fn partial_success_updates_clock_progress() -> Result<()> {
                         .flatten()
                         .is_some_and(|acked| clock_before_response.is_none_or(|before| acked.into_inner() > before))
                 },
-                "PartialSuccess refreshes clock progress",
+                "partial acknowledgement refreshes clock progress",
             )
             .await?;
     }

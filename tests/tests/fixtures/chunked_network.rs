@@ -33,7 +33,8 @@ impl RaftNetwork<TypeConfig> for ChunkedNetwork {
         rpc: AppendEntriesRequest<TypeConfig>,
         _option: RPCOption,
     ) -> Result<AppendEntriesResponse<TypeConfig>, RPCError<TypeConfig, RaftError<TypeConfig>>> {
-        let response = self.node.append_entries(rpc).await;
+        // The v1 trait keeps the `AppendEntriesResponse` format.
+        let response = self.node.append_entries(rpc).await.map(AppendEntriesResponse::from);
         response.map_err(|error| {
             let node_id = *self.node.node_id();
             let remote = RemoteError::new(node_id, error);

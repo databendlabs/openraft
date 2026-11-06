@@ -142,7 +142,7 @@ pub struct RaftRouter {
     /// 0 means no delay.
     send_delay: Arc<AtomicU64>,
 
-    /// To simulate PartialSuccess for AppendEntries RPCs.
+    /// To simulate a partial acknowledgement of AppendEntries RPCs.
     ///
     /// If the quota is set to `Some(n)`, then the AppendEntries RPC consumes the quota,
     /// and send out at most `n` entries.
@@ -165,8 +165,10 @@ pub struct RaftRouter {
     /// Whether AppendEntries requests may run concurrently within a stream.
     pipelined_append: bool,
 
-    /// Whether the AppendEntries stream reports conflict hints, as a transport that carries them
-    /// does.
+    /// Whether AppendEntries replies carry conflict hints.
+    ///
+    /// Without them, replies take the `AppendEntriesResponse` format, as a transport that keeps
+    /// the old wire format does.
     conflict_hints: bool,
 }
 
@@ -179,7 +181,7 @@ pub struct Builder {
 }
 
 impl Builder {
-    /// Report conflict hints on the AppendEntries stream.
+    /// Carry conflict hints on AppendEntries replies.
     pub fn conflict_hints(mut self) -> Self {
         self.conflict_hints = true;
         self

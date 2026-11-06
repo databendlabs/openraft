@@ -21,7 +21,7 @@ use openraft::network::RPCOption;
 use openraft::network::v2::RaftNetworkV2;
 use openraft::openraft_macros::since;
 use openraft::raft::AppendEntriesRequest;
-use openraft::raft::AppendEntriesResponse;
+use openraft::raft::AppendResult;
 use openraft::raft::SnapshotResponse;
 use openraft::raft::TransferLeaderRequest;
 use openraft::raft::TransferLeaderResponse;
@@ -41,13 +41,16 @@ where C: RaftTypeConfig
     type SnapshotData: OptionalSend + 'static;
 
     /// Send AppendEntries to target node for a specific group.
+    ///
+    /// See [`RaftNetworkV2::append_entries()`] for the meaning of the result.
+    #[since(version = "0.10.0", change = "returns AppendResult with an optional conflict hint")]
     fn append_entries(
         &self,
         target: C::NodeId,
         group_id: G,
         rpc: AppendEntriesRequest<C>,
         option: RPCOption,
-    ) -> impl Future<Output = Result<AppendEntriesResponse<C>, RPCError<C>>> + OptionalSend;
+    ) -> impl Future<Output = Result<AppendResult<C>, RPCError<C>>> + OptionalSend;
 
     /// Send Vote to target node for a specific group.
     fn vote(
@@ -169,7 +172,7 @@ where
         &mut self,
         rpc: AppendEntriesRequest<C>,
         option: RPCOption,
-    ) -> Result<AppendEntriesResponse<C>, RPCError<C>> {
+    ) -> Result<AppendResult<C>, RPCError<C>> {
         self.router.append_entries(self.target.clone(), self.group_id.clone(), rpc, option).await
     }
 

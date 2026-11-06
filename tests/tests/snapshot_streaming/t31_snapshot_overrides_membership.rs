@@ -80,7 +80,8 @@ async fn snapshot_overrides_membership() -> Result<()> {
             };
 
             let node = router.get_raft_handle(&1)?;
-            node.append_entries(req).await?;
+            let result = node.append_entries(req).await?;
+            assert_eq!(Ok(Some(log_id(1, 0, 1))), result);
 
             tracing::info!(log_index, "--- check that learner membership is affected");
             {

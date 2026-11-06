@@ -147,8 +147,12 @@ impl RaftNetworkV2<TypeConfig> for TurmoilConnection {
         &mut self,
         rpc: AppendEntriesRequest,
         option: RPCOption,
-    ) -> Result<AppendEntriesResponse, RPCError<TypeConfig>> {
-        self.send_rpc(RpcType::AppendEntries, &rpc, option.soft_ttl()).await
+    ) -> Result<AppendResult, RPCError<TypeConfig>> {
+        let response: AppendEntriesResponse = self.send_rpc(RpcType::AppendEntries, &rpc, option.soft_ttl()).await?;
+        // The wire format is `AppendEntriesResponse`, which carries no log id: take them from the
+        // request.
+        let last_log_id = rpc.last_log_id();
+        Ok(response.into_append_result(rpc.prev_log_id, last_log_id))
     }
 
     async fn vote(&mut self, rpc: VoteRequest, option: RPCOption) -> Result<VoteResponse, RPCError<TypeConfig>> {
@@ -211,7 +215,8 @@ pub async fn handle_rpc(raft: Arc<Raft>, mut stream: TcpStream) -> io::Result<()
         let response: Vec<u8> = match rpc_type {
             x if x == RpcType::AppendEntries as u8 => {
                 let req: AppendEntriesRequest = deser(&payload)?;
-                ser(&raft.append_entries(req).await.map_err(io::Error::other)?)?
+                let result = raft.append_entries(req).await.map_err(io::Error::other)?;
+                ser(&AppendEntriesResponse::from(result))?
             }
             x if x == RpcType::Vote as u8 => {
                 let req: VoteRequest = deser(&payload)?;

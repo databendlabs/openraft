@@ -280,6 +280,16 @@ Here is the list of methods that need to be implemented for the [`RaftNetworkV2`
 | [`vote()`]               | [`VoteRequest`]            | remote node [`Raft::vote()`]                  |
 | [`full_snapshot()`]      | [`Snapshot`]               | remote node [`Raft::install_full_snapshot()`] |
 
+[`append_entries()`] returns an [`AppendResult`]: the last log id the follower
+accepted, or the [`AppendError`] that explains why it rejected the request. A
+conflict carries a hint that helps the leader find the matching log with fewer
+probes. [`AppendResult`] does not implement serde, so the transport converts it
+to and from its own wire type. To keep the [`AppendEntriesResponse`] wire
+format, the follower sends `AppendEntriesResponse::from(result)` and the leader
+rebuilds the result with [`AppendEntriesResponse::into_append_result()`],
+passing the log ids of the request it sent. That format carries no hint, and
+the leader then uses binary search.
+
 ### Optional: `stream_append()` for pipelined replication
 
 [`stream_append()`] is an optional method that enables bidirectional streaming
@@ -290,10 +300,8 @@ To enable pipelined replication, override [`stream_append()`] to forward the
 request stream to the remote node's [`Raft::stream_append()`] and return the
 response stream.
 
-A conflict in that response stream carries a hint that helps the leader find
-the matching log with fewer probes. [`AppendError`] does not implement serde, so
-the transport converts it to and from its own wire type. A transport that
-leaves the hint out still works; the leader then uses binary search.
+The response stream yields the same [`AppendResult`] as [`append_entries()`],
+one per request the follower answered.
 
 | [`RaftNetworkV2`] method | forward request            | to target                                     |
 |--------------------------|----------------------------|-----------------------------------------------|
@@ -350,7 +358,7 @@ The server then forwards these RPCs to the corresponding [`Raft`] methods and re
 |     |   v                |           |                                |
 |  ReplicationCore         |           |  Raft::append_entries          |
 | (7) ^   | (2)            |           | (4) ^ | (5)                    |
-|     |   | append_entries |           |     | | AppendEntriesResponse  |
+|     |   | append_entries |           |     | | AppendResult           |
 |     |   v                |    (3)    |     | v                        |
 |  RaftNetworkV2 -----------------------> Application Server            |
 |     ^---------------------------------- /append_entries               |
@@ -365,7 +373,7 @@ Flow:
 (3) RaftNetworkV2 sends RPC request over network (HTTP/gRPC/etc)
 (4) Application Server receives request at /append_entries endpoint
 (5) Application Server forwards to local Raft::append_entries
-(6) Raft::append_entries returns AppendEntriesResponse back through Application Server
+(6) Raft::append_entries returns an AppendResult, which the Application Server sends back
 (7) RaftNetworkV2 receives the response
 (8) ReplicationCore updates RaftCore with replication result
 ```
@@ -382,8 +390,9 @@ async fn handle_append_entries(
     raft: Arc<Raft<TypeConfig, StateMachineStore>>,
     req: AppendEntriesRequest<TypeConfig>,
 ) -> Result<AppendEntriesResponse<TypeConfig>, ServerError> {
-    let resp = raft.append_entries(req).await?;
-    Ok(resp)
+    let result = raft.append_entries(req).await?;
+    // `AppendResult` does not implement serde: reply in the `AppendEntriesResponse` format.
+    Ok(AppendEntriesResponse::from(result))
 }
 ```
 
@@ -593,6 +602,9 @@ and links the trait, protocol page, or test suite that defines it.
 
 [`AppendEntriesRequest`]:               `crate::raft::AppendEntriesRequest`
 [`AppendError`]:                        `crate::raft::AppendError`
+[`AppendResult`]:                       `crate::raft::AppendResult`
+[`AppendEntriesResponse`]:              `crate::raft::AppendEntriesResponse`
+[`AppendEntriesResponse::into_append_result()`]: `crate::raft::AppendEntriesResponse::into_append_result`
 [`VoteRequest`]:                        `crate::raft::VoteRequest`
 
 [`RaftTypeConfig`]:                     `crate::RaftTypeConfig`

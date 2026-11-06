@@ -8,7 +8,6 @@ use openraft::Vote;
 use openraft::errors::NetworkError;
 use openraft::errors::RPCError;
 use openraft::raft::AppendEntriesRequest;
-use openraft::raft::AppendEntriesResponse;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
@@ -55,7 +54,7 @@ async fn conflict_hints_skip_lagging_prefix_search() -> Result<()> {
             };
             let follower = router.get_raft_handle(&1)?;
             let actual = follower.append_entries(request).await?;
-            assert_eq!(AppendEntriesResponse::Success, actual);
+            assert_eq!(Ok(Some(log_id(1, 0, PREFIX_END))), actual);
         }
 
         let probes = Arc::new(Mutex::new(Vec::new()));

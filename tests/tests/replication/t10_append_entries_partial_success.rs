@@ -9,9 +9,9 @@ use crate::fixtures::RaftRouter;
 use crate::fixtures::expect_timeout;
 use crate::fixtures::ut_harness;
 
-/// RaftNetwork::append_entries can return a partial success.
+/// RaftNetworkV2::append_entries can acknowledge only part of a request.
 /// For example, it tries to send log entries `[1-2..2-10]`, the application is allowed to send just
-/// `[1-2..1-3]` and return `PartialSuccess(1-3)`.
+/// `[1-2..1-3]` and return `Ok(Some(1-3))`.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn append_entries_partial_success() -> Result<()> {

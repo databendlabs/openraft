@@ -17,7 +17,6 @@ use crate::errors::Fatal;
 #[cfg(doc)]
 use crate::errors::into_raft_result::IntoRaftResult;
 use crate::raft::AppendEntriesRequest;
-use crate::raft::AppendEntriesResponse;
 use crate::raft::AppendResult;
 use crate::raft::SnapshotResponse;
 use crate::raft::TransferLeaderError;
@@ -135,14 +134,10 @@ where
 
     #[since(version = "0.10.0")]
     #[tracing::instrument(level = "debug", skip(self, rpc))]
-    pub(crate) async fn append_entries(
-        &self,
-        rpc: AppendEntriesRequest<C>,
-    ) -> Result<AppendEntriesResponse<C>, Fatal<C>> {
+    pub(crate) async fn append_entries(&self, rpc: AppendEntriesRequest<C>) -> Result<AppendResult<C>, Fatal<C>> {
         tracing::debug!("Raft::append_entries: rpc: {}", rpc);
 
-        let result: AppendResult<C> = self.inner.call_core_oneshot(|tx| RaftMsg::AppendEntries { rpc, tx }).await?;
-        Ok(AppendEntriesResponse::from(result))
+        self.inner.call_core_oneshot(|tx| RaftMsg::AppendEntries { rpc, tx }).await
     }
 
     #[since(version = "0.10.0")]

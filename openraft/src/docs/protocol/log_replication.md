@@ -167,8 +167,9 @@ pub(crate) struct ProgressEntry<C> {
 - The first request probes the inherited tail while sending the new leader's
   first entry. A caught-up follower can acknowledge the no-op in one round trip.
 
-- On a conflict, `Raft::stream_append` returns `AppendError::Conflict` with a
-  hint: one ordered vector of the follower's log IDs after truncation. It starts
+- On a conflict, `Raft::append_entries` and `Raft::stream_append` return
+  `AppendError::Conflict` with a hint: one ordered vector of the follower's log
+  IDs after truncation. It starts
   with the local committed position when known, includes selected later leader
   boundaries, and always ends at the retained in-memory tail. The leader compares
   every sample, including the first, with its own log to choose another probe.

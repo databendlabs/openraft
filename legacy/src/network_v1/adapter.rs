@@ -18,7 +18,7 @@ use openraft::network::Backoff;
 use openraft::network::RPCOption;
 use openraft::network::v2::RaftNetworkV2;
 use openraft::raft::AppendEntriesRequest;
-use openraft::raft::AppendEntriesResponse;
+use openraft::raft::AppendResult;
 use openraft::raft::SnapshotResponse;
 use openraft::raft::TransferLeaderRequest;
 use openraft::raft::TransferLeaderResponse;
@@ -97,8 +97,13 @@ where
         &mut self,
         rpc: AppendEntriesRequest<C>,
         option: RPCOption,
-    ) -> Result<AppendEntriesResponse<C>, RPCError<C>> {
-        RaftNetwork::<C>::append_entries(&mut self.network, rpc, option).await.decompose_infallible()
+    ) -> Result<AppendResult<C>, RPCError<C>> {
+        // The v1 response carries no log id: take them from the request.
+        let prev_log_id = rpc.prev_log_id.clone();
+        let last_log_id = rpc.last_log_id();
+        let result = RaftNetwork::<C>::append_entries(&mut self.network, rpc, option).await;
+        let response = result.decompose_infallible()?;
+        Ok(response.into_append_result(prev_log_id, last_log_id))
     }
 
     async fn vote(&mut self, rpc: VoteRequest<C>, option: RPCOption) -> Result<VoteResponse<C>, RPCError<C>> {

@@ -1,5 +1,6 @@
 //! Defines the [`NetStreamAppend`] trait for streaming AppendEntries.
 
+use display_more::DisplayOptionExt;
 use futures_util::Stream;
 use futures_util::StreamExt;
 use openraft_macros::since;
@@ -13,7 +14,6 @@ use crate::errors::RPCError;
 use crate::network::NetAppend;
 use crate::network::RPCOption;
 use crate::raft::AppendEntriesRequest;
-use crate::raft::AppendError;
 use crate::raft::AppendResult;
 
 /// Sends a stream of AppendEntries RPCs to a target node.
@@ -91,10 +91,8 @@ where C: RaftTypeConfig
 
 /// Default sequential implementation of stream_append.
 ///
-/// This processes requests one at a time: send request, wait for response, repeat.
-///
-/// The unary [`NetAppend::append_entries()`] response carries no conflict hint, so neither does
-/// this stream.
+/// This processes requests one at a time: send request, wait for response, repeat. A partial
+/// acknowledgement or a rejection ends the stream.
 #[since(version = "0.10.0", change = "response stream yields AppendError")]
 pub fn stream_append_sequential<'s, C, N, S>(
     network: &'s mut N,
@@ -119,26 +117,20 @@ where
                 let result = network.append_entries(req, option).await;
 
                 match result {
-                    Ok(resp) => {
-                        let partial_success = resp.get_partial_success().cloned();
+                    Ok(append_result) => {
+                        if let Ok(acked) = &append_result {
+                            debug_assert!(
+                                range.prev <= *acked && *acked <= range.last,
+                                "acknowledged {} outside the sent range {}",
+                                acked.display(),
+                                range
+                            );
+                        }
 
-                        let stream_result = resp.into_stream_result(range.prev, range.last.clone());
-                        let stream_result = stream_result.map_err(AppendError::from);
-                        let is_err = stream_result.is_err();
-                        let next_state = if is_err {
-                            None
-                        } else if let Some(partial) = partial_success {
-                            if partial == range.last {
-                                Some((network, input))
-                            } else {
-                                // If the request is only partially finished, pipeline should be stopped
-                                None
-                            }
-                        } else {
-                            // full success
-                            Some((network, input))
-                        };
-                        Some((Ok(stream_result), next_state))
+                        // Only an acknowledgement of the whole request lets the stream go on.
+                        let fully_acked = append_result.as_ref().ok() == Some(&range.last);
+                        let next_state = if fully_acked { Some((network, input)) } else { None };
+                        Some((Ok(append_result), next_state))
                     }
                     Err(e) => Some((Err(e), None)),
                 }

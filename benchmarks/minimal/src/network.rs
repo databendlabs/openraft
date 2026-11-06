@@ -131,7 +131,8 @@ impl RaftNetwork<TypeConfig> for Network {
             tokio::time::sleep(self.delay).await;
         }
         let resp = resp.map_err(|e| RemoteError::new(self.target, e))?;
-        Ok(resp)
+        // The v1 trait keeps the `AppendEntriesResponse` format.
+        Ok(AppendEntriesResponse::from(resp))
     }
 
     async fn install_snapshot(

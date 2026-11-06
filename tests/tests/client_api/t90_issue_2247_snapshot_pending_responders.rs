@@ -9,7 +9,6 @@ use openraft::errors::ForwardReason;
 use openraft::errors::ForwardToLeader;
 use openraft::impls::ProgressResponder;
 use openraft::raft::AppendEntriesRequest;
-use openraft::raft::AppendEntriesResponse;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::ClientResponse;
@@ -76,7 +75,7 @@ async fn snapshot_pending_responders_before_tail_apply() -> Result<()> {
                 leader_commit: Some(snapshot_log_id),
             })
             .await?;
-        assert_eq!(AppendEntriesResponse::Success, response);
+        assert_eq!(Ok(Some(tail_log_id)), response);
         router.wait(&2).applied_index(Some(snapshot_log_id.index), "snapshot prefix applied").await?;
 
         n2.trigger().snapshot().await?;
@@ -95,7 +94,7 @@ async fn snapshot_pending_responders_before_tail_apply() -> Result<()> {
                 leader_commit: Some(base_log_id),
             })
             .await?;
-        assert_eq!(AppendEntriesResponse::Success, response);
+        assert_eq!(Ok(Some(tail_log_id)), response);
     }
 
     tracing::info!(
@@ -150,7 +149,7 @@ async fn snapshot_pending_responders_before_tail_apply() -> Result<()> {
         let installed = TypeConfig::timeout(WAIT_TIMEOUT, install).await???;
         assert_eq!(new_vote, installed.vote);
         let response = TypeConfig::timeout(WAIT_TIMEOUT, append).await???;
-        assert_eq!(AppendEntriesResponse::Success, response);
+        assert_eq!(Ok(Some(tail_log_id)), response);
         router.wait(&0).applied_index(Some(tail_log_id.index), "tail applied").await?;
 
         let result = TypeConfig::timeout(WAIT_TIMEOUT, completed).await??;
