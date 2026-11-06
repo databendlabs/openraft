@@ -6,15 +6,20 @@ becomes leader only with votes from a read quorum. Every read quorum shares a
 voter with every write quorum, so a new leader holds every committed entry.
 The memberships differ in how a config states its quorums. That decides how
 many voters a commit and an election wait for, and which failures stop the
-cluster:
+cluster. The first row is OpenRaft's default [`Membership`], which a type config
+uses unless it names another one:
 
-| Membership                 | A config sets                                                                     | Pick it when                                                                                             |
-|----------------------------|-----------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------|
-| [`ThresholdMembership`]    | the voters and a write size                                                       | every voter counts the same, and you choose how many copies a commit needs                               |
-| [`WeightedMembership`]     | a weight for each voter and a write weight                                        | some voters, or the sites that hold them, must count more                                                |
-| [`HierarchicalMembership`] | a tree of voter groups, such as zones, and how many members of each a write needs | the cluster must keep running after it loses a whole zone                                                |
-| [`GridMembership`]         | a rectangular grid of voters                                                      | a commit must wait for fewer voters than a majority, and so must an election with the default leader IDs |
-| [`ExplicitMembership`]     | the minimal read quorums and the minimal write quorums                            | no rule above states the policy, such as a backup voter in every write quorum and in no read quorum      |
+| Membership                 | Edit                   | A config sets                                                                     | Pick it when                                                                                             |
+|----------------------------|------------------------|-----------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------|
+| [`Membership`]             | [`ChangeMembers`]      | the voters; a majority of them elects and commits                                 | a majority suits both elections and commits                                                              |
+| [`ThresholdMembership`]    | [`ThresholdChange`]    | the voters and a write size                                                       | every voter counts the same, and you choose how many copies a commit needs                               |
+| [`WeightedMembership`]     | [`WeightedChange`]     | a weight for each voter and a write weight                                        | some voters, or the sites that hold them, must count more                                                |
+| [`HierarchicalMembership`] | [`HierarchicalChange`] | a tree of voter groups, such as zones, and how many members of each a write needs | the cluster must keep running after it loses a whole zone                                                |
+| [`GridMembership`]         | [`GridChange`]         | a rectangular grid of voters                                                      | a commit must wait for fewer voters than a majority, and so must an election with the default leader IDs |
+| [`ExplicitMembership`]     | [`ExplicitChange`]     | the minimal read quorums and the minimal write quorums                            | no rule above states the policy, such as a backup voter in every write quorum and in no read quorum      |
+
+Each row names the type for `RaftTypeConfig::Membership` and the edit type for
+`RaftTypeConfig::MembershipEdit`, which [`Raft::change_membership()`] takes.
 
 The guides [`threshold`], [`weighted`], [`hierarchical`], [`grid`] and
 [`explicit`] each show how to configure the membership, why its read and
@@ -23,6 +28,17 @@ failures stop it, and how to change it. [`weighted`] also walks through how
 its quorum rule, its membership and its change implement the traits that
 OpenRaft calls, and what to copy to write a membership of your own. The
 hierarchical, grid and explicit guides name what their types do differently.
+
+## Use a provided membership in an application
+
+The [`raft-kv-memstore-weighted-membership`] example is the HTTP key-value
+store of `raft-kv-memstore` with a [`WeightedMembership`]. Its type config
+names `WeightedMembership` and `WeightedChange`, and its `/init` and
+`/change-membership` routes build them from the weights in a JSON body: the
+membership routes that the other examples share take only a set of voter IDs.
+Its test runs four node processes, gives the voters the weights
+`{1:2, 2:1, 3:1, 4:1}` with write weight 3, and stops voters 3 and 4. Voters 1
+and 2 weigh 3 together, so they keep committing.
 
 ## A voter with only `ReceiveLogs` votes and stores logs, but starts no election
 
@@ -74,7 +90,16 @@ config. During a joint change, a node's role combines its roles in the new
 config and every earlier config where it is a voter. [`make_uniform()`] keeps
 only the new config, restoring that config's roles.
 
+[`Membership`]: openraft::impls::Membership
+[`ChangeMembers`]: openraft::impls::ChangeMembers
 [`ThresholdMembership`]: crate::ThresholdMembership
+[`ThresholdChange`]: crate::ThresholdChange
+[`WeightedChange`]: crate::WeightedChange
+[`HierarchicalChange`]: crate::HierarchicalChange
+[`GridChange`]: crate::GridChange
+[`ExplicitChange`]: crate::ExplicitChange
+[`Raft::change_membership()`]: openraft::Raft::change_membership
+[`raft-kv-memstore-weighted-membership`]: https://github.com/databendlabs/openraft/tree/main/examples/raft-kv-memstore-weighted-membership
 [`WeightedMembership`]: crate::WeightedMembership
 [`HierarchicalMembership`]: crate::HierarchicalMembership
 [`GridMembership`]: crate::GridMembership
