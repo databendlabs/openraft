@@ -92,6 +92,7 @@ message AppendEntriesRequest {
   LogId leader_commit = 4;
 }
 
+// The reply to AppendEntries and to each StreamAppend request; both RPCs use the same encoding.
 message AppendEntriesResponse {
   // If not None, the follower rejected the AppendEntries request due to having a higher vote.
   // All other fields are valid only when this field is None
@@ -100,21 +101,19 @@ message AppendEntriesResponse {
   // The follower accepts this AppendEntries request's vote, but the prev_log_id conflicts with
   // the follower's log. The leader should retry with a smaller prev_log_id that matches the
   // follower's log.
-  //
-  // For unary AppendEntries, `last_log_id` is not used for conflicts.
-  // For StreamAppend (pipeline replication), `last_log_id` carries the conflict log id.
   bool conflict = 2;
 
-  // If `conflict = false`, the last log id the follower accepted from this request:
-  // - None: all input entries were accepted and persisted.
-  // - Some: partial success; only entries up to and including this id were accepted.
+  // If `conflict = false`, the last log id the follower accepted from this request.
+  // If `conflict = true`, the request's prev_log_id, which conflicts with the follower's log.
   //
-  // If `conflict = true` in StreamAppend, this is the conflict log id.
+  // A peer built before AppendEntries shared this encoding leaves this field unset in a unary
+  // reply on conflict and when it accepted every entry. A client talking to such a peer takes
+  // these log ids from its request.
   LogId last_log_id = 3;
 
-  // Set only with `conflict = true` in StreamAppend: the follower's log after it truncated the
-  // conflicting entries, which guides the leader's next probe. A peer built before this field
-  // neither sends nor reads it; without a hint, the leader uses binary search.
+  // Set only with `conflict = true`: the follower's log after it truncated the conflicting
+  // entries, which guides the leader's next probe. A peer built before this field neither sends
+  // nor reads it; without a hint, the leader uses binary search.
   ConflictHint hint = 4;
 }
 

@@ -108,9 +108,8 @@ impl RaftService for RaftServiceImpl {
             .map_err(|e| Status::internal(format!("Append entries operation failed: {}", e)))?;
 
         debug!("Append entries request processed successfully");
-        // The unary reply keeps the `AppendEntriesResponse` format, which carries no conflict hint.
-        let append_resp = AppendEntriesResponse::from(result);
-        Ok(Response::new(append_resp.into()))
+        // Encoded like a StreamAppend reply, so a conflict keeps its hint.
+        Ok(Response::new(result.into()))
     }
 
     /// Handles snapshot installation requests for state transfer using streaming.
@@ -206,5 +205,55 @@ impl RaftService for RaftServiceImpl {
         });
 
         Ok(Response::new(Box::pin(output_stream)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use openraft::Config;
+    use openraft::type_config::TypeConfigExt;
+    use openraft::vote::RaftLeaderId;
+    use openraft::vote::RaftVote;
+    use tonic::Request;
+
+    use super::RaftServiceImpl;
+    use crate::Raft;
+    use crate::TypeConfig;
+    use crate::network::Network;
+    use crate::protobuf as pb;
+    use crate::protobuf::raft_service_server::RaftService;
+    use crate::store::LogStore;
+    use crate::store::StateMachineStore;
+    use crate::typ::LogId;
+
+    /// A unary conflict reply carries the conflict log id and the follower's hint, which is empty
+    /// for an empty log.
+    #[test]
+    fn unary_conflict_reply_carries_hint() {
+        TypeConfig::run(async {
+            let config = Arc::new(Config::default().validate().unwrap());
+            let state_machine = Arc::new(StateMachineStore::default());
+            let raft = Raft::new(1, config, Network {}, LogStore::default(), state_machine).await.unwrap();
+            let service = RaftServiceImpl::new(raft);
+
+            let prev_log_id = LogId::new(1, 5);
+            let request = pb::AppendEntriesRequest {
+                vote: Some(pb::Vote::from_leader_id(pb::LeaderId::new(1, 2), true)),
+                prev_log_id: Some(prev_log_id.into()),
+                entries: vec![],
+                leader_commit: None,
+            };
+            let response = service.append_entries(Request::new(request)).await.unwrap().into_inner();
+
+            let expected = pb::AppendEntriesResponse {
+                rejected_by: None,
+                conflict: true,
+                last_log_id: Some(prev_log_id.into()),
+                hint: Some(pb::ConflictHint { log_ids: vec![] }),
+            };
+            assert_eq!(expected, response);
+        });
     }
 }
