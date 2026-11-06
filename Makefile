@@ -178,10 +178,10 @@ guide:
 test-turmoil: test-turmoil-default test-turmoil-threshold
 
 test-turmoil-default:
-	cd tests-turmoil && cargo test --lib
+	cd tests-turmoil && cargo test --lib --bin fuzz
 
 test-turmoil-threshold:
-	cd tests-turmoil && cargo test --lib --features threshold-membership
+	cd tests-turmoil && cargo test --lib --bin fuzz --features threshold-membership
 
 DETSIM_ARGS ?= --iterations 5 --max-steps 10000 --storage lossy
 
