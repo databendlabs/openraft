@@ -2,22 +2,29 @@
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::fmt;
+use std::future::Future;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 
 use openraft::Config;
+use openraft::OptionalSend;
 use openraft::Raft;
+use openraft::alias::SnapshotOf;
+use openraft::alias::VoteOf;
 use openraft::error::RPCError;
-use openraft::error::RaftError;
-use openraft::error::RemoteError;
+use openraft::error::ReplicationClosed;
+use openraft::error::StreamingError;
+use openraft::error::Unreachable;
 use openraft::network::RPCOption;
 use openraft::network::RaftNetworkFactory;
+use openraft::network::v2::RaftNetworkV2;
 use openraft::raft::AppendEntriesRequest;
-use openraft::raft::AppendEntriesResponse;
+use openraft::raft::AppendResult;
+use openraft::raft::SnapshotResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
-use openraft_legacy::prelude::*;
 
 use crate::store::LogStore;
 use crate::store::NodeId;
@@ -99,7 +106,7 @@ impl Default for Router {
 }
 
 impl RaftNetworkFactory<TypeConfig> for Router {
-    type Network = Adapter<TypeConfig, Network, SnapshotData>;
+    type Network = Network;
 
     async fn new_client(&mut self, target: NodeId, _node: &()) -> Self::Network {
         Network {
@@ -107,7 +114,6 @@ impl RaftNetworkFactory<TypeConfig> for Router {
             target_raft: self.table.lock().unwrap().get(&target).unwrap().clone(),
             delay: self.network_delay,
         }
-        .into_v2()
     }
 }
 
@@ -117,31 +123,32 @@ pub struct Network {
     delay: Duration,
 }
 
-impl RaftNetwork<TypeConfig> for Network {
+impl RaftNetworkV2<TypeConfig> for Network {
+    type SnapshotData = SnapshotData;
+
     async fn append_entries(
         &mut self,
         rpc: AppendEntriesRequest<TypeConfig>,
         _option: RPCOption,
-    ) -> Result<AppendEntriesResponse<TypeConfig>, RPCError<TypeConfig, RaftError<TypeConfig>>> {
+    ) -> Result<AppendResult<TypeConfig>, RPCError<TypeConfig>> {
         if !self.delay.is_zero() {
             tokio::time::sleep(self.delay).await;
         }
-        let resp = self.target_raft.append_entries(rpc).await;
+        let result = self.target_raft.append_entries(rpc).await;
         if !self.delay.is_zero() {
             tokio::time::sleep(self.delay).await;
         }
-        let resp = resp.map_err(|e| RemoteError::new(self.target, e))?;
-        // The v1 trait keeps the `AppendEntriesResponse` format.
-        Ok(AppendEntriesResponse::from(resp))
+        result.map_err(|e| RPCError::Unreachable(self.unreachable(e)))
     }
 
-    async fn install_snapshot(
+    async fn full_snapshot(
         &mut self,
-        rpc: InstallSnapshotRequest<TypeConfig>,
+        vote: VoteOf<TypeConfig>,
+        snapshot: SnapshotOf<TypeConfig, SnapshotData>,
+        _cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         _option: RPCOption,
-    ) -> Result<InstallSnapshotResponse<TypeConfig>, RPCError<TypeConfig, RaftError<TypeConfig, InstallSnapshotError>>>
-    {
-        let resp = self.target_raft.install_snapshot(rpc).await.map_err(|e| RemoteError::new(self.target, e))?;
+    ) -> Result<SnapshotResponse<TypeConfig>, StreamingError<TypeConfig>> {
+        let resp = self.target_raft.install_full_snapshot(vote, snapshot).await.map_err(|e| self.unreachable(e))?;
         Ok(resp)
     }
 
@@ -149,9 +156,17 @@ impl RaftNetwork<TypeConfig> for Network {
         &mut self,
         rpc: VoteRequest<TypeConfig>,
         _option: RPCOption,
-    ) -> Result<VoteResponse<TypeConfig>, RPCError<TypeConfig, RaftError<TypeConfig>>> {
-        let resp = self.target_raft.vote(rpc).await.map_err(|e| RemoteError::new(self.target, e))?;
+    ) -> Result<VoteResponse<TypeConfig>, RPCError<TypeConfig>> {
+        let resp = self.target_raft.vote(rpc).await.map_err(|e| self.unreachable(e))?;
         Ok(resp)
+    }
+}
+
+impl Network {
+    /// The target returns an error only after a fatal error stopped it: report it as unreachable.
+    fn unreachable<E>(&self, error: E) -> Unreachable<TypeConfig>
+    where E: fmt::Display {
+        Unreachable::from_string(format!("target={}: {}", self.target, error))
     }
 }
 
