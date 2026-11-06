@@ -1,8 +1,5 @@
 ## Action and App used for CI
 
-- **Mergify**: automate PR workflow:
-  https://docs.mergify.com/conditions/#about-status-checks
-
 - **slash-commands**: Trigger some command when a slash-commond, e.g. `/help` presents in a issue comment:
   https://github.com/marketplace/actions/slash-commands
 
@@ -16,22 +13,6 @@
   https://github.com/marketplace/actions/actions-ecosystem-action-add-assignees
 
 ## Action hints
-
-### Inform a user when there is a conflict with merge base:
-
-```yaml
-# if there is a conflict in a approved PR, ping the author.
-- name: ping author on conflicts
-  conditions:
-    - conflict
-    - "#approved-reviews-by >= 2"
-  actions:
-    comment:
-      message: |
-        This pull request has merge conflicts that must be resolved before it can be merged. @{{author}} please update it 🙏.
-
-        Try `@mergify update` or update manually.
-```
 
 ### Trigger command when `/xxx` is commented:
 
