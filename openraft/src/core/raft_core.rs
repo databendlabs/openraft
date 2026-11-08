@@ -1485,7 +1485,6 @@ where
         let mut processed = 0u64;
         let mut total = 0u64;
         // Being 0 disabled batch msg processing.
-        // TODO: make it configurable
         let run_command_threshold = 0;
         let mut last_log_index = 0;
 

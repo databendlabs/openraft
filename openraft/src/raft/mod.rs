@@ -2131,9 +2131,6 @@ where
     /// ```
     pub async fn shutdown(&self) -> Result<(), JoinErrorOf<C>> {
         let _ = self.try_shutdown().await;
-
-        // TODO(xp): API change: replace `JoinError` with `Fatal`,
-        //           to let the caller know the return value of RaftCore task.
         Ok(())
     }
 

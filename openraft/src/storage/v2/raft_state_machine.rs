@@ -42,9 +42,6 @@ where C: RaftTypeConfig
     #[since(version = "0.10.0", change = "uses the state machine SnapshotData")]
     type SnapshotBuilder: RaftSnapshotBuilder<C, SnapshotData = Self::SnapshotData>;
 
-    // TODO: This can be made into sync, provided all state machines will use atomic read or the
-    //       like.
-    // ---
     /// Returns the last applied log id which is recorded in state machine, and the last applied
     /// membership config.
     ///
