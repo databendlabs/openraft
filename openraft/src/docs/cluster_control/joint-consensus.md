@@ -13,9 +13,10 @@ OpenRaft implements membership changes using a two-phase joint consensus approac
 
 1. **First Phase:** Apply a membership change request (e.g., `AddVoters({x})`) to the current configuration, forming a
    joint configuration that contains both the old and new configurations. This joint configuration is then committed.
+   The same application also yields the target configuration, the one the request describes.
 
-2. **Second Phase:** Apply an **empty change request** (`AddVoterIds({})`) to the last configuration in the current
-   joint config. This transitions the cluster from joint configuration to a uniform configuration and is then committed.
+2. **Second Phase:** Append the target configuration computed in the first phase. This transitions the cluster from
+   joint configuration to a uniform configuration and is then committed.
 
 When OpenRaft can prove that every quorum of the current configuration intersects every quorum of the new one, such as
 when the change adds or removes one voter, the first phase writes the new uniform configuration directly, and there is
@@ -43,15 +44,23 @@ This behavior was problematic because:
 
 ## Solution
 
-The second step now applies an **empty change request** (`AddVoterIds({})`) to the last configuration in the current
-joint config. This ensures that the system always transitions to a uniform configuration in the second step, regardless
-of concurrent membership operations.
+The second phase no longer interprets the request again. It appends the target configuration the first phase computed
+from it, and it requires the last membership log to still be the joint configuration of its own first phase. A
+concurrent membership change therefore cannot make the second phase append a configuration that neither request asked
+for: a change whose joint configuration has been replaced fails the precondition, and the cluster ends in the target of
+the change that replaced it.
+
+Earlier versions of this solution applied an empty change request (`AddVoterIds({})`) to the last configuration in
+the joint config, which also ends in a uniform configuration. But that discards the result of the request: the joint
+configuration still holds every member the request removes, so a member the request removes explicitly can reappear as
+a learner instead of leaving the cluster.
 
 ## Impact
 
 - **Single Change Request:** No behavior changes occur if only one membership change request is in progress.
-- **Concurrent Requests:** If multiple requests are processed concurrently, the application must still verify the result,
-  but the new behavior ensures the system always transitions to a uniform state.
+- **Concurrent Requests:** If multiple requests are processed concurrently, the application must still verify the
+  result: the requests that lose the precondition fail, and the cluster ends in the target of the last request to
+  append its joint configuration.
 
 ## Acknowledgments
 

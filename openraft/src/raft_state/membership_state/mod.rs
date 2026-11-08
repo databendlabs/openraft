@@ -150,8 +150,7 @@ where
     /// * `retain` specifies whether to retain the removed voters as learners, i.e., nodes that
     ///   continue to receive log replication from the leader.
     ///
-    /// A Result containing the new membership configuration and whether it is the joint one, if
-    /// the operation succeeds, or a `ChangeMembershipError` if an error occurs.
+    /// Returns the next membership and, for a joint step, the exact target to append afterward.
     ///
     /// This function ensures that the cluster will have at least one voter in the new membership
     /// configuration.
@@ -159,7 +158,7 @@ where
         &self,
         change: Edit,
         retain: bool,
-    ) -> Result<(Mem, bool), ChangeMembershipError<CLID, Mem::NodeId, E>>
+    ) -> Result<(Mem, Option<Mem>), ChangeMembershipError<CLID, Mem::NodeId, E>>
     where
         Edit: RaftMembershipEdit<Mem>,
         E: ErrorSource,
@@ -175,11 +174,11 @@ where
         goal.ensure_write_voters_receive_logs()?;
         goal.ensure_read_write_quorums_intersect()?;
         if effective.allows_direct_transition_to(&goal) {
-            return Ok((goal, false));
+            return Ok((goal, None));
         }
 
         let joint = effective.joint_with(&goal);
-        Ok((joint, true))
+        Ok((joint, Some(goal)))
     }
 
     /// Validates a membership a caller wants appended as one log entry, without an intermediate

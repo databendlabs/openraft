@@ -78,12 +78,12 @@ fn test_next_membership_retain_learner() -> anyhow::Result<()> {
     // Do not leave removed voters as learner
     let res = new().next_membership::<_, anyerror::AnyError>(ChangeMembers::RemoveVoters(btreeset! {1,2}), false);
     let expected = Membership::new_with_defaults(vec![btreeset! {3,4,5}], [3, 4, 5]);
-    assert_eq!(Ok((expected, false)), res);
+    assert_eq!(Ok((expected, None)), res);
 
     // Leave removed voters as learner
     let res = new().next_membership::<_, anyerror::AnyError>(ChangeMembers::RemoveVoters(btreeset! {1,2}), true);
     let expected = Membership::new_with_defaults(vec![btreeset! {3,4,5}], [1, 2, 3, 4, 5]);
-    assert_eq!(Ok((expected, false)), res);
+    assert_eq!(Ok((expected, None)), res);
 
     Ok(())
 }
@@ -96,11 +96,13 @@ fn test_next_membership_from_joint_keeps_old_voter_sets() -> anyhow::Result<()> 
 
     let result = state.next_membership::<_, anyerror::AnyError>(ChangeMembers::ReplaceAllVoters(btreeset! {4}), false);
     let expected = Membership::new_with_defaults(joint.clone(), []);
-    assert_eq!(Ok((expected, true)), result);
+    let target = Membership::new_with_defaults(vec![btreeset! {4}], []);
+    assert_eq!(Ok((expected, Some(target))), result);
 
     let result = state.next_membership::<_, anyerror::AnyError>(ChangeMembers::ReplaceAllVoters(btreeset! {4}), true);
     let expected = Membership::new_with_defaults(joint, []);
-    assert_eq!(Ok((expected, true)), result);
+    let target = Membership::new_with_defaults(vec![btreeset! {4}], [1, 2, 3, 4, 5]);
+    assert_eq!(Ok((expected, Some(target))), result);
 
     Ok(())
 }
@@ -127,33 +129,36 @@ fn test_next_membership_returns_target_or_joint() -> anyhow::Result<()> {
     let m12 = new_mem(vec![c1(), c2()], nodes());
 
     let res = next_step(&m1, c1(), false);
-    assert_eq!(Ok((m1.clone(), false)), res);
+    assert_eq!(Ok((m1.clone(), None)), res);
 
     let res = next_step(&m1, c2(), false);
-    assert_eq!(Ok((m12.clone(), true)), res);
+    let target = new_mem(vec![c2()], vec![3, 4, 5, 6, 7, 8, 9]);
+    assert_eq!(Ok((m12.clone(), Some(target))), res);
 
     let res = next_step(&m12, c1(), false);
     let expected = new_mem(vec![c1()], vec![1, 2, 3, 6, 7, 8, 9]);
-    assert_eq!(Ok((expected, false)), res);
+    assert_eq!(Ok((expected, None)), res);
 
     let res = next_step(&m12, c2(), false);
     let expected = new_mem(vec![c2()], vec![3, 4, 5, 6, 7, 8, 9]);
-    assert_eq!(Ok((expected, false)), res);
+    assert_eq!(Ok((expected, None)), res);
 
     let res = next_step(&m12, c3(), false);
     let expected = new_mem(vec![c1(), c2(), c3()], nodes());
-    assert_eq!(Ok((expected, true)), res);
+    let target = new_mem(vec![c3()], vec![6, 7, 8, 9]);
+    assert_eq!(Ok((expected, Some(target))), res);
 
     let res = next_step(&m12, c3(), true);
     let expected = new_mem(vec![c1(), c2(), c3()], nodes());
-    assert_eq!(Ok((expected, true)), res);
+    let target = new_mem(vec![c3()], nodes());
+    assert_eq!(Ok((expected, Some(target))), res);
 
     // Turn removed members to learners
 
     let m23_with_learners_old = new_mem(vec![c2(), c3()], vec![1, 2]);
     let res = next_step(&m23_with_learners_old, c3(), true);
     let expected = new_mem(vec![c3()], vec![1, 2, 3, 4, 5]);
-    assert_eq!(Ok((expected, false)), res);
+    assert_eq!(Ok((expected, None)), res);
 
     Ok(())
 }
@@ -173,12 +178,13 @@ fn test_next_membership_batch_takes_two_steps() -> anyhow::Result<()> {
     let state = MembershipStateOf::<UTConfig>::new(effmem(3, 4, m123.clone()), effmem(3, 4, m123));
     let result = state.next_membership::<_, anyerror::AnyError>(rm_2_add_5(), false);
     let joint = Membership::new_with_defaults(vec![btreeset! {1,2,3}, btreeset! {1,3,5}], []);
-    assert_eq!(Ok((joint.clone(), true)), result);
+    let target = Membership::new_with_defaults(vec![btreeset! {1,3,5}], []);
+    assert_eq!(Ok((joint.clone(), Some(target))), result);
 
     let state = MembershipStateOf::<UTConfig>::new(effmem(3, 5, joint.clone()), effmem(3, 5, joint));
     let result = state.next_membership::<_, anyerror::AnyError>(rm_2_add_5(), false);
     let expected = Membership::new_with_defaults(vec![btreeset! {1,3,5}], []);
-    assert_eq!(Ok((expected, false)), result);
+    assert_eq!(Ok((expected, None)), result);
 
     Ok(())
 }

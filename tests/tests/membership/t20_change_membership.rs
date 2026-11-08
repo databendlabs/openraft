@@ -19,6 +19,7 @@ use openraft::errors::PreconditionFailed;
 use openraft::errors::RPCError;
 use openraft::errors::RaftError;
 use openraft::errors::UncommittedLeaderLog;
+use openraft::impls::ChangeMembers;
 use openraft::raft::ChangeMembershipRequest;
 use openraft::type_config::TypeConfigExt;
 use openraft::type_config::alias::LeaderIdOf;
@@ -96,6 +97,52 @@ async fn update_membership_state() -> anyhow::Result<()> {
                     assert_eq!(st.membership_state.effective().log_id().index(), Some(log_index));
                 })
                 .await?;
+        }
+    }
+
+    Ok(())
+}
+
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn batch_removal_preserves_target_through_joint_consensus() -> anyhow::Result<()> {
+    for retain in [true, false] {
+        tracing::info!(retain, "--- create voters 012 and existing learner 3");
+        let (router, log_index) = {
+            let config = Config {
+                enable_tick: false,
+                ..Default::default()
+            };
+            let mut router = RaftRouter::new(config)?;
+            let log_index = router.new_cluster([0, 1, 2], [3]).await?;
+            (router, log_index)
+        };
+
+        tracing::info!(retain, log_index, "--- demote voters 12 and explicitly remove node 1");
+        {
+            let changes = ChangeMembers::Batch(vec![
+                ChangeMembers::RemoveVoters(btreeset! {1, 2}),
+                ChangeMembers::RemoveNodes(btreeset! {1}),
+            ]);
+            let request = ChangeMembershipRequest::new(changes, retain);
+            let leader = router.get_raft_handle(&0)?;
+            let outcome = leader.change_membership_with_payload(request).await?;
+
+            let joint = outcome.joint.expect("removing two voters requires joint consensus");
+            let membership = Membership::new_with_defaults(vec![btreeset! {0, 1, 2}, btreeset! {0}], [3]);
+            let expected = Some(membership);
+            assert_eq!(expected, joint.membership);
+
+            let learners = if retain {
+                btreeset! {2, 3}
+            } else {
+                btreeset! {3}
+            };
+            let membership = Membership::new_with_defaults(vec![btreeset! {0}], learners);
+            let expected = Some(membership);
+            assert_eq!(expected, outcome.uniform.membership);
+            let final_log_index = log_index + 2;
+            assert_eq!(final_log_index, outcome.uniform.log_id.index);
         }
     }
 
