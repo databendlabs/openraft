@@ -86,7 +86,6 @@ where C: RaftTypeConfig
     pub(crate) async fn client_write(
         &self,
         payload: PayloadOf<C>,
-        // TODO: ClientWriteError can only be ForwardToLeader Error
     ) -> Result<Result<ClientWriteResponse<C>, ClientWriteError<C>>, Fatal<C>> {
         let (responder, complete_rx) = ProgressResponder::complete_only();
 

@@ -189,8 +189,6 @@ where
 
         Self::transfer_snapshot(builder).await.map_err(|e| StorageError::read(C::err_from_error(&e)))?;
 
-        // TODO(xp): test: do_log_compaction
-
         Ok(())
     }
 

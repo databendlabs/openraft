@@ -569,7 +569,7 @@ where
             .leader
             .progress
             .update_data_with(&id, |data| {
-                // TODO: It should be self.state.last_log_id() but None is ok.
+                // `None` as `prev` is fine here: this records the local log's own progress.
                 data.inflight = Inflight::probe(None, upto.clone(), inflight_id);
             })
             .is_some()

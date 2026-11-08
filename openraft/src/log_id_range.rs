@@ -8,8 +8,6 @@ use validit::Validate;
 use crate::RaftTypeConfig;
 use crate::type_config::alias::LogIdOf;
 
-// TODO: I need just a range, but not a log id range.
-
 /// A log id range of continuous series of log entries.
 ///
 /// The range of log to send is left open right close: `(prev, last]`.
