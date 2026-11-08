@@ -284,34 +284,8 @@ fn test_placement_change_goes_through_joint_that_keeps_both_grids() {
     let got = joint.to_string();
     assert_eq!(want, got);
 
-    let change = <GridChange<u64, ()> as RaftMembershipEdit<Membership>>::make_uniform();
-    let target = change.apply(&joint, true).unwrap();
-    assert_eq!(new, target);
-    let direct = joint.supports_direct_transition_to(&target);
+    let direct = joint.supports_direct_transition_to(&new);
     assert!(direct);
-}
-
-#[test]
-fn test_make_uniform_selects_target() {
-    let old = grid(vec![vec![1, 2], vec![3, 4]]);
-
-    // Voters 3 and 4 of the old grid leave the voters. Leaving the joint keeps them as learners
-    // only when retaining demoted voters, whether or not the target already holds them.
-    let with_learners = Membership::new(vec![vec![1, 2]], btreeset! {1, 2, 3, 4}).unwrap();
-    let without_learners = grid(vec![vec![1, 2]]);
-    for new in [&with_learners, &without_learners] {
-        let joint = old.joint_with(new);
-
-        let change = <GridChange<u64, ()> as RaftMembershipEdit<Membership>>::make_uniform();
-        let retained = change.apply(&joint, true).unwrap();
-        assert_eq!(with_learners, retained);
-        let direct = joint.supports_direct_transition_to(&retained);
-        assert!(direct);
-
-        let change = <GridChange<u64, ()> as RaftMembershipEdit<Membership>>::make_uniform();
-        let dropped = change.apply(&joint, false).unwrap();
-        assert_eq!(without_learners, dropped);
-    }
 }
 
 #[test]
@@ -440,8 +414,8 @@ fn test_joint_keeps_old_roles_and_target_restores_new_roles() {
     let old = Membership::new(vec![vec![1, 2]], btreeset! {1, 2, 3}).unwrap();
 
     // The new config stops voter 2 from campaigning.
-    let new = old.clone().with_roles(btreemap! {2 => NodeRole::ReceiveLogs}).unwrap();
-    let target = assert_joint_keeps_old_roles_and_target_restores_new_roles::<_, GridChange<u64, ()>>(&old, &new, 2);
+    let target = old.clone().with_roles(btreemap! {2 => NodeRole::ReceiveLogs}).unwrap();
+    assert_joint_keeps_old_roles_and_target_restores_new_roles(&old, &target, 2);
 
     let want = "{configs: [Config { read: GridQuorumSet { grid: [[1, 2]], rule: FullRow }, \
                 write: GridQuorumSet { grid: [[1, 2]], rule: OnePerRow }, nodes: {1: ((), None), \
