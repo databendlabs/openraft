@@ -10,10 +10,15 @@ use base2histogram::PercentileStats;
 /// lifecycle stages across all observed segments.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LogStageHistograms {
+    /// From `client_write()` to `RaftCore` dequeuing the request: API channel queueing.
     pub proposed_to_received: Histogram,
+    /// From `RaftCore` dequeuing the request to submitting the entry to log storage.
     pub received_to_submitted: Histogram,
+    /// From submitting the entry to log storage until storage persists it: storage I/O latency.
     pub submitted_to_persisted: Histogram,
+    /// From persistence to the local commit of the entry.
     pub persisted_to_committed: Histogram,
+    /// From the local commit to apply completion.
     pub committed_to_applied: Histogram,
     /// End-to-end latency from proposal to apply completion.
     pub proposed_to_applied: Histogram,

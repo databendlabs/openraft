@@ -7,6 +7,9 @@ pub trait Upgrade<To> {
     /// Upgrades the current instance to type To.
     fn upgrade(self) -> To;
 
+    /// Tries to upgrade to type `To`, and returns `self` with a reason when it cannot.
+    ///
+    /// The default calls [`upgrade()`](Self::upgrade), which cannot fail.
     fn try_upgrade(self) -> Result<To, (Self, &'static str)>
     where Self: Sized {
         Ok(self.upgrade())

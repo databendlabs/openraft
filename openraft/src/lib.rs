@@ -10,8 +10,7 @@
 #![allow(clippy::type_complexity)]
 #![allow(clippy::uninlined_format_args)]
 #![deny(unused_qualifications)]
-// TODO: Enable this when doc is complete
-// #![warn(missing_docs)]
+#![warn(missing_docs)]
 
 macro_rules! func_name {
     () => {{

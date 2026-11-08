@@ -5,6 +5,10 @@ use crate::storage::v2::apply_responder::ApplyResponder;
 use crate::storage::v2::apply_responder_inner::ApplyResponderInner;
 use crate::type_config::alias::EntryOf;
 
+/// An entry for [`RaftStateMachine::apply()`] to apply, and the responder that sends its result
+/// to the waiting client, or `None` when no client waits for it.
+///
+/// [`RaftStateMachine::apply()`]: crate::storage::RaftStateMachine::apply
 pub type EntryResponder<C> = (EntryOf<C>, Option<ApplyResponder<C>>);
 
 /// Internal builder for constructing [`EntryResponder`] tuples.

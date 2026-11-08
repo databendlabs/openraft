@@ -22,7 +22,9 @@ where C: RaftTypeConfig
     /// [`Precondition::CommittedLeaderId`]: `crate::raft::Precondition::CommittedLeaderId`
     #[error("committed leader id mismatch: expected: {expected}, actual: {}", actual.display())]
     CommittedLeaderIdMismatch {
+        /// The committed leader id that the precondition requires.
         expected: CommittedLeaderIdOf<C>,
+        /// The committed leader id of this node's vote, or `None` if the vote is not committed.
         actual: Option<CommittedLeaderIdOf<C>>,
     },
 
@@ -31,7 +33,9 @@ where C: RaftTypeConfig
     /// [`Precondition::LastLogId`]: `crate::raft::Precondition::LastLogId`
     #[error("last log id mismatch: expected: {}, actual: {}", expected.display(), actual.display())]
     LastLogIdMismatch {
+        /// The last log id that the precondition requires; `None` means an empty log.
         expected: Option<LogIdOf<C>>,
+        /// This node's last log id; `None` means an empty log.
         actual: Option<LogIdOf<C>>,
     },
 
@@ -41,7 +45,10 @@ where C: RaftTypeConfig
     /// [`Precondition::LastMembershipLogId`]: `crate::raft::Precondition::LastMembershipLogId`
     #[error("last membership log id mismatch: expected: {}, actual: {}", expected.display(), actual.display())]
     LastMembershipLogIdMismatch {
+        /// The membership log id that the precondition requires; `None` means no membership log.
         expected: Option<LogIdOf<C>>,
+        /// The log id of the effective membership; `None` means no membership log has been
+        /// appended.
         actual: Option<LogIdOf<C>>,
     },
 }

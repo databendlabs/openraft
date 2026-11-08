@@ -178,6 +178,12 @@ pub trait RaftTypeConfig:
     type Responder<T>: Responder<Self, T>
     where T: OptionalSend + 'static;
 
+    /// Container for a batch of items that Raft handles together, such as the payloads,
+    /// responders and preconditions of consecutive client writes.
+    ///
+    /// [`declare_raft_types!`](crate::declare_raft_types) defaults it to
+    /// [`InlineBatch`](crate::impls::InlineBatch), which stores a single item without heap
+    /// allocation.
     type Batch<T>: Batch<T>
     where T: OptionalSend + 'static;
 

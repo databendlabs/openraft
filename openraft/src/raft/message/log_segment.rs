@@ -8,16 +8,16 @@ use crate::entry::RaftEntry;
 use crate::type_config::alias::LogIdOf;
 
 /// A contiguous segment of log entries, anchored by the entry immediately preceding it.
-///
-/// - `prev_log_id`: the log id of the entry just before this segment; `None` means the segment
-///   starts at the very beginning of the log.
-/// - `entries`: the entries in this segment, each consecutive to the previous.
 pub struct LogSegment<C: RaftTypeConfig> {
+    /// The log id of the entry just before this segment; `None` means the segment starts at the
+    /// very beginning of the log.
     pub prev_log_id: Option<LogIdOf<C>>,
+    /// The entries in this segment, each consecutive to the previous.
     pub entries: Vec<C::Entry>,
 }
 
 impl<C: RaftTypeConfig> LogSegment<C> {
+    /// Creates a segment of `entries` that follows the entry at `prev_log_id`.
     pub fn new(prev_log_id: Option<LogIdOf<C>>, entries: Vec<C::Entry>) -> Self {
         Self { prev_log_id, entries }
     }
