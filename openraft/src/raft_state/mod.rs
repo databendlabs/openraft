@@ -488,13 +488,22 @@ where C: RaftTypeConfig
     /// A Leader established with election using the state in `Engine.candidate`.
     pub(crate) fn new_leader(&mut self) -> Leader<C, WriteQuorumSet<C>> {
         let em = self.membership_state.effective().membership();
+        let vote = self.vote_ref().to_committed();
 
         let last_leader_log_ids = self.log_ids.by_last_leader();
+        let last_log_id = last_leader_log_ids.as_ref().map(|ids| ids.last_log_id());
+
+        // When the last leader is this one, as after a restart that kept the leadership, the
+        // Leader reuses the first log id it proposed.
+        let first_own_log_id = last_leader_log_ids
+            .map(|ids| ids.first_log_id())
+            .filter(|first| first.committed_leader_id() == &vote.committed_leader_id());
 
         Leader::new(
-            self.vote_ref().to_committed(),
+            vote,
             em.clone(),
-            last_leader_log_ids,
+            last_log_id,
+            first_own_log_id,
             self.progress_id_gen.clone(),
         )
     }

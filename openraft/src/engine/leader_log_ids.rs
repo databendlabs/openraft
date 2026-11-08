@@ -48,33 +48,18 @@ where CLID: RaftCommittedLeaderId
         }
     }
 
-    pub(crate) fn new_single(log_id: LogId<CLID>) -> Self {
-        let index = log_id.index();
-        Self {
-            committed_leader_id: log_id.committed_leader_id().clone(),
-            first: index,
-            last: index,
-        }
-    }
-
     /// Returns the first log ID in the range.
-    #[allow(dead_code)]
     pub(crate) fn first_log_id(&self) -> LogId<CLID> {
         LogId::<CLID>::new(self.committed_leader_id.clone(), self.first)
     }
 
-    /// Returns a reference to the first log ID in the range.
-    pub(crate) fn first_ref(&self) -> RefLogId<'_, CLID> {
-        RefLogId::new(&self.committed_leader_id, self.first)
-    }
-
     /// Returns the last log ID in the range.
-    #[allow(dead_code)]
     pub(crate) fn last_log_id(&self) -> LogId<CLID> {
         LogId::<CLID>::new(self.committed_leader_id.clone(), self.last)
     }
 
     /// Returns a reference to the last log ID in the range.
+    #[cfg_attr(not(feature = "runtime-stats"), allow(dead_code))]
     pub(crate) fn last_ref(&self) -> RefLogId<'_, CLID> {
         RefLogId::new(&self.committed_leader_id, self.last)
     }
@@ -226,23 +211,9 @@ mod tests {
     }
 
     #[test]
-    fn test_new_single() {
-        let range = LeaderLogIds::<UtClid>::new_single(log_id(1, 2, 5));
-        assert_eq!(range.len(), 1);
-        assert_eq!(range.first_log_id(), log_id(1, 2, 5));
-        assert_eq!(range.last_log_id(), log_id(1, 2, 5));
-    }
-
-    #[test]
     fn test_display() {
         let range = LeaderLogIds::<UtClid>::new(committed_leader_id(1, 1), 5, 7);
         assert_eq!(format!("{}", range), "T1-N1:[5, 7]");
-    }
-
-    #[test]
-    fn test_first_ref() {
-        let range = LeaderLogIds::<UtClid>::new(committed_leader_id(1, 2), 5, 10);
-        assert_eq!(range.first_ref().into_log_id(), log_id(1, 2, 5));
     }
 
     #[test]
