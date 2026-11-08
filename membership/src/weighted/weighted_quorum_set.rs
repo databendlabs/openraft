@@ -44,13 +44,11 @@ use crate::quorum::QuorumSet;
 /// let intersects = read.intersects_with(&write);
 /// assert_eq!(Some(true), intersects);
 /// ```
+#[since(version = "0.10.0", change = "derives serde without a crate feature")]
 #[since(version = "0.10.0")]
 #[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(
-    feature = "serde",
-    derive(serde::Deserialize, serde::Serialize),
-    serde(bound(deserialize = "ID: NodeId"))
-)]
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(bound(deserialize = "ID: Ord + serde::Deserialize<'de>"))]
 pub struct WeightedQuorumSet<ID> {
     weights: BTreeMap<ID, u64>,
     threshold: u64,

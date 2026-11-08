@@ -24,8 +24,8 @@ compares them and explains when to pick each one.
 **Steps**:
 
 1. Add `openraft-membership` to your dependencies, with the same version as
-   `openraft`. Keep its default `serde` feature on whenever `openraft/serde` is
-   on anywhere in the build.
+   `openraft`. Its memberships implement serde whenever `openraft/serde` is
+   on, so it needs no feature of its own.
 
 2. Select the membership and its change type:
 

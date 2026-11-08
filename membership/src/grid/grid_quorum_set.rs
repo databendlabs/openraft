@@ -9,9 +9,10 @@ use crate::quorum::QuorumIntersection;
 use crate::quorum::QuorumSet;
 
 /// How a [`GridQuorumSet`] counts the rows of its grid: a full row, or one voter of each row.
+#[since(version = "0.10.0", change = "derives serde without a crate feature")]
 #[since(version = "0.10.0")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(serde::Deserialize, serde::Serialize)]
 pub enum GridRule {
     /// An accepted set holds every voter of some row.
     FullRow,
@@ -59,13 +60,10 @@ pub enum GridRule {
 /// let intersects = full_row.intersects_with(&full_row);
 /// assert_eq!(Some(false), intersects);
 /// ```
+#[since(version = "0.10.0", change = "derives serde without a crate feature")]
 #[since(version = "0.10.0")]
 #[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(
-    feature = "serde",
-    derive(serde::Deserialize, serde::Serialize),
-    serde(bound(deserialize = "ID: NodeId"))
-)]
+#[derive(serde::Deserialize, serde::Serialize)]
 pub struct GridQuorumSet<ID> {
     /// The rows of the grid, each one the voters of its cells.
     grid: Vec<Vec<ID>>,

@@ -44,9 +44,10 @@ use crate::quorum::QuorumSet;
 /// [`GridMembership`]: crate::GridMembership
 /// [`HierarchicalMembership`]: crate::HierarchicalMembership
 /// [`WeightedMembership`]: crate::WeightedMembership
+#[since(version = "0.10.0", change = "derives serde without a crate feature")]
 #[since(version = "0.10.0")]
 #[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(serde::Deserialize, serde::Serialize)]
 pub struct Joint<T> {
     /// The joined parts: quorum rules, or the configs of a membership.
     pub(crate) parts: Vec<T>,

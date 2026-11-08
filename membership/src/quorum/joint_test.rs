@@ -157,7 +157,6 @@ fn test_joint_with_accepts_quorums_of_both_sides() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_serde() {
     let old = threshold(2, btreeset! {1, 2, 3});

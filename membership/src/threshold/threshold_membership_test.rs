@@ -408,7 +408,6 @@ fn test_display() {
     assert_eq!("{add_nodes: {}, voters: None, write_size: 4, remove_nodes: {}}", got);
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_serde() {
     let membership = threshold(btreeset! {1, 2, 3, 4, 5}, 2);
@@ -429,7 +428,6 @@ fn test_serde() {
     assert_eq!(want, decoded);
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_binary_roundtrip_rebuilds_joint_read_rules() {
     let first = threshold(btreeset! {1, 2, 3, 4}, 3);
@@ -442,7 +440,6 @@ fn test_binary_roundtrip_rebuilds_joint_read_rules() {
     assert!(shared);
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_serde_rejects_invalid_configs() {
     // serde_json appends the position of the error to the message of the decoder.
@@ -476,7 +473,7 @@ fn test_serde_rejects_invalid_configs() {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(serde::Serialize, serde::Deserialize)]
 #[error("{0}")]
 struct TestErrorSource(String);
 
@@ -544,7 +541,6 @@ fn default_constructor_returns_missing_node() {
     assert_eq!(expected, result);
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn configured_error_source_preserves_error_serialization() {
     let source = TestErrorSource("custom".into());

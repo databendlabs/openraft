@@ -15,9 +15,14 @@ use crate::quorum::QuorumSet;
 /// A set reaches a voter by holding it, and a child group by reaching enough members of that group
 /// in turn. So the groups form a tree whose leaves are voters, and every level applies the same
 /// test.
+#[since(version = "0.10.0", change = "derives serde without a crate feature")]
 #[since(version = "0.10.0")]
 #[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(bound(
+    serialize = "NID: serde::Serialize",
+    deserialize = "NID: serde::de::DeserializeOwned"
+))]
 pub struct Group<NID>
 where NID: NodeId
 {
@@ -178,9 +183,14 @@ where NID: NodeId
 /// let intersects = rule.intersects_with(&rule);
 /// assert_eq!(None, intersects);
 /// ```
+#[since(version = "0.10.0", change = "derives serde without a crate feature")]
 #[since(version = "0.10.0")]
 #[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(bound(
+    serialize = "NID: serde::Serialize",
+    deserialize = "NID: serde::de::DeserializeOwned"
+))]
 pub struct HierarchicalQuorumSet<NID>
 where NID: NodeId
 {

@@ -18,7 +18,7 @@ openraft = { path = "../openraft", version = "0.10.0-alpha.37", default-features
 openraft-macros = { path = "../macros", version = "0.10.0-alpha.37" }
 display-more = { workspace = true }
 quorum-set = { workspace = true }
-serde = { workspace = true, optional = true }
+serde = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 
@@ -26,10 +26,11 @@ tracing = { workspace = true }
 anyerror = { workspace = true }
 bincode = { workspace = true }
 maplit = { workspace = true }
+# The serde tests encode `NodeRole` and OpenRaft errors, which implement serde only with
+# `openraft/serde`.
+openraft = { path = "../openraft", version = "0.10.0-alpha.37", default-features = false, features = ["serde"] }
 openraft-rt-tokio = { path = "../rt-tokio", version = "0.10.0-alpha.37" }
 serde_json = { workspace = true }
 
 [features]
-default = ["serde"]
-serde = ["dep:serde", "openraft/serde"]
 single-threaded = ["openraft/single-threaded", "openraft-rt-tokio/single-threaded"]

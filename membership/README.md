@@ -61,10 +61,10 @@ weight, keep committing.
 
 ## Features
 
-- `serde` (default): derives serde for the memberships and enables
-  `openraft/serde`. Keep it on whenever any crate in the build enables
-  `openraft/serde`.
 - `single-threaded`: enables `openraft/single-threaded`.
+
+The memberships implement serde whenever `openraft/serde` is on, which is
+when `RaftMembership` requires it, so this crate has no `serde` feature.
 
 ## Documentation
 

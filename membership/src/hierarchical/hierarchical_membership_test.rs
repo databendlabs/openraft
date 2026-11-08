@@ -769,7 +769,6 @@ fn test_apply_checks_roles() {
     });
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_serde() {
     // Voter 3 sits at the root, beside group a.
@@ -792,7 +791,6 @@ fn test_serde() {
     assert_eq!(want, decoded);
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_binary_roundtrip_keeps_joint_configs_and_roles() {
     // The joint of two zone layouts, and of zones and datacenters with a non-campaigning voter.

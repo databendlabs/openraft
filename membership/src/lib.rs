@@ -10,13 +10,10 @@
 //! - [`ExplicitMembership`] lists the minimal read quorums and write quorums of each config.
 //!
 //! [`docs`] tells which membership fits which cluster, and holds a guide for each.
-//! The default `serde` feature also enables `openraft/serde`.
 //!
-//! Keep the `serde` feature on whenever any crate in the build enables `openraft/serde`. With
-//! `openraft/serde` on, [`RaftMembership`] requires serde, and this crate derives serde for its
-//! memberships only under its own `serde` feature. Cargo merges the features of
-//! `openraft` across the whole build, so another crate can turn `openraft/serde` on even when
-//! this crate is used with `default-features = false`. That build fails to compile.
+//! The memberships derive serde with bounds on their type parameters, not behind a feature of this
+//! crate. So they implement serde whenever `openraft/serde` is on, which is when
+//! [`RaftMembership`] requires it.
 //!
 //! [`RaftMembership`]: openraft::membership::RaftMembership
 

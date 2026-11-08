@@ -113,7 +113,6 @@ fn test_intersects_with_agrees_with_verify_intersection() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_serde() {
     let two_of_three = threshold(2, btreeset! {1, 2, 3});

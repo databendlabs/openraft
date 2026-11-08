@@ -318,7 +318,6 @@ fn test_dual_accepts_exactly_the_sets_that_meet_every_quorum() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_serde() {
     // The root holds voter 3 and group a, which holds group b={1,2}.

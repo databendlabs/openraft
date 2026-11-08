@@ -54,12 +54,16 @@ pub(crate) type ThresholdConfig<NID> = (Arc<BTreeSet<NID>>, NonZeroU64);
 /// let write_accepts_two = membership.write_quorum_set().is_quorum([1, 2].iter());
 /// assert!(write_accepts_two);
 /// ```
+#[since(version = "0.10.0", change = "derives serde without a crate feature")]
 #[since(version = "0.10.0")]
 #[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(
-    feature = "serde",
-    derive(serde::Deserialize, serde::Serialize),
-    serde(bound = "", try_from = "ThresholdMembershipFields<NID, N>")
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(
+    bound(
+        serialize = "NID: serde::Serialize, N: serde::Serialize",
+        deserialize = "NID: serde::de::DeserializeOwned, N: serde::de::DeserializeOwned"
+    ),
+    try_from = "ThresholdMembershipFields<NID, N>"
 )]
 pub struct ThresholdMembership<NID, N>
 where
@@ -68,7 +72,7 @@ where
 {
     /// Derived read rules, cached for `RaftMembership::read_quorum_set()`. Serialization stores
     /// only the write rules and reconstructs this cache when decoding.
-    #[cfg_attr(feature = "serde", serde(skip))]
+    #[serde(skip)]
     pub(crate) read: Joint<ThresholdQuorumSet<NID>>,
 
     /// One rule per config, "any `write_size` of its voters". Rule i shares its voter set with
@@ -231,7 +235,6 @@ where
     }
 
     /// Checks the write sizes and returns one config per write rule.
-    #[cfg(feature = "serde")]
     pub(crate) fn configs_from_write_rules(
         write: &Joint<ThresholdQuorumSet<NID>>,
     ) -> Result<Vec<ThresholdConfig<NID>>, String> {
@@ -275,9 +278,11 @@ where
 }
 
 /// The fields of an encoded [`ThresholdMembership`], which decoding checks before it builds one.
-#[cfg(feature = "serde")]
 #[derive(serde::Deserialize)]
-#[serde(bound = "", deny_unknown_fields)]
+#[serde(
+    bound(deserialize = "NID: serde::de::DeserializeOwned, N: serde::de::DeserializeOwned"),
+    deny_unknown_fields
+)]
 struct ThresholdMembershipFields<NID, N>
 where
     NID: NodeId,
@@ -288,7 +293,6 @@ where
 }
 
 /// Checks the decoded write configs and voter metadata, then derives their read rules.
-#[cfg(feature = "serde")]
 impl<NID, N> TryFrom<ThresholdMembershipFields<NID, N>> for ThresholdMembership<NID, N>
 where
     NID: NodeId,

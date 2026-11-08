@@ -43,13 +43,11 @@ use crate::quorum::QuorumSet;
 /// let intersects = rule.intersects_with(&rule);
 /// assert_eq!(Some(false), intersects);
 /// ```
+#[since(version = "0.10.0", change = "derives serde without a crate feature")]
 #[since(version = "0.10.0")]
 #[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(
-    feature = "serde",
-    derive(serde::Deserialize, serde::Serialize),
-    serde(bound(deserialize = "ID: Ord + Clone + serde::Deserialize<'de>"))
-)]
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(bound(deserialize = "ID: Ord + Clone + serde::Deserialize<'de>"))]
 pub struct ExplicitQuorumSet<ID> {
     /// The minimal quorums, sorted.
     quorums: Vec<BTreeSet<ID>>,

@@ -43,13 +43,11 @@ use crate::quorum::QuorumSet;
 /// let shared = Arc::ptr_eq(read.id_set(), write.id_set());
 /// assert!(shared);
 /// ```
+#[since(version = "0.10.0", change = "derives serde without a crate feature")]
 #[since(version = "0.10.0")]
 #[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(
-    feature = "serde",
-    derive(serde::Deserialize, serde::Serialize),
-    serde(bound(deserialize = "ID: Ord + serde::Deserialize<'de>"))
-)]
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(bound(deserialize = "ID: Ord + serde::Deserialize<'de>"))]
 pub struct ThresholdQuorumSet<ID> {
     ids: Arc<BTreeSet<ID>>,
     quorum_size: NonZeroU64,

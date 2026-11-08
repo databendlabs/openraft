@@ -31,13 +31,17 @@ mod joint_config;
 /// [`GridMembership`]: crate::GridMembership
 /// [`HierarchicalMembership`]: crate::HierarchicalMembership
 /// [`WeightedMembership`]: crate::WeightedMembership
+#[since(version = "0.10.0", change = "derives serde without a crate feature")]
 #[since(version = "0.10.0")]
 #[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(
-    feature = "serde",
-    derive(serde::Deserialize, serde::Serialize),
-    serde(bound(serialize = "Q: serde::Serialize", deserialize = "Q: serde::Deserialize<'de>"))
-)]
+#[derive(serde::Deserialize, serde::Serialize)]
+// `NodeRole` implements serde only with `openraft/serde`. Bounding the pair `(N, Option<NodeRole>)`
+// instead of `NodeRole` alone keeps the impl valid, and unused, when that feature is off.
+#[serde(bound(
+    serialize = "Q: serde::Serialize, Q::Id: serde::Serialize, (N, Option<NodeRole>): serde::Serialize",
+    deserialize = "Q: serde::de::DeserializeOwned, Q::Id: serde::de::DeserializeOwned, \
+                   (N, Option<NodeRole>): serde::de::DeserializeOwned"
+))]
 pub struct Config<N, Q>
 where
     N: Node,

@@ -133,7 +133,6 @@ fn test_intersection_is_exact() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_serde() {
     let rule = explicit(vec![btreeset! {2, 3}, btreeset! {1, 2}]);

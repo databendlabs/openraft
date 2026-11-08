@@ -241,7 +241,6 @@ fn test_intersection_is_exact_with_a_full_row_rule() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_serde() {
     let rule = grid(vec![vec![1, 2], vec![3, 4]], GridRule::OnePerRow);

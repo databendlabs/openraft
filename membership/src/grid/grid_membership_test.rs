@@ -523,7 +523,6 @@ fn test_apply_checks_roles() {
     });
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_serde() {
     let membership = Membership::new(vec![vec![1, 2], vec![3, 4]], btreeset! {1, 2, 3, 4, 5}).unwrap();
@@ -540,7 +539,6 @@ fn test_serde() {
     assert_eq!(want, decoded);
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_roundtrip_keeps_joint_configs_and_roles() {
     let old = grid(vec![vec![1, 2], vec![3, 4]]);

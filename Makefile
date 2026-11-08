@@ -34,9 +34,11 @@ feature-check:
 	done
 	cargo check --manifest-path openraft/Cargo.toml --no-default-features --all-targets
 	cargo check --manifest-path openraft/Cargo.toml --no-default-features --features single-threaded --all-targets
-	cargo check --manifest-path membership/Cargo.toml --lib --no-default-features
-	cargo check --manifest-path membership/Cargo.toml --all-targets --no-default-features
-	cargo check --manifest-path membership/Cargo.toml --all-targets --features serde,single-threaded
+	cargo check --manifest-path membership/Cargo.toml --lib
+	@# With openraft/serde on, `RaftMembership` requires serde of every membership.
+	cargo check --manifest-path membership/Cargo.toml --lib --features openraft/serde
+	cargo check --manifest-path membership/Cargo.toml --all-targets
+	cargo check --manifest-path membership/Cargo.toml --all-targets --features single-threaded
 
 defensive_test:
 	OPENRAFT_STORE_DEFENSIVE=on cargo test
@@ -104,7 +106,6 @@ test-wasm:
 # Exercise serialization, serialization-free builds, and single-threaded builds.
 test-membership:
 	cargo test --manifest-path membership/Cargo.toml
-	cargo test --manifest-path membership/Cargo.toml --no-default-features
 	cargo test --manifest-path membership/Cargo.toml --features single-threaded
 
 # Test one example, e.g. `make test-example-raft-kv-rocksdb`.

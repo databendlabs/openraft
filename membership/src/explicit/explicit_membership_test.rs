@@ -537,7 +537,6 @@ fn test_apply_checks_roles() {
     });
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_serde() {
     let membership = Membership::new([btreeset! {1, 2}], [btreeset! {2, 3}], btreeset! {1, 2, 3, 4}).unwrap();
@@ -553,7 +552,6 @@ fn test_serde() {
     assert_eq!(Membership::default(), decoded);
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_binary_roundtrip_keeps_joint_configs_and_roles() {
     let old = explicit(vec![btreeset! {1, 2}], vec![btreeset! {1, 2}]);

@@ -345,7 +345,6 @@ where
         let want = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40};
         assert_eq!(want, got);
 
-        #[cfg(feature = "serde")]
         {
             let json = serde_json::to_string(&joint).unwrap();
             let decoded = serde_json::from_str::<M>(&json).unwrap();

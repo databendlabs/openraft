@@ -229,7 +229,6 @@ fn test_intersects_with_proves_only_true_intersections() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_serde() {
     let rule = weighted(3, btreemap! {1 => 2, 2 => 1, 3 => 1});
