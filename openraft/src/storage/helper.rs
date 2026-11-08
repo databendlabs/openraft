@@ -116,8 +116,8 @@ where
             return Err(StorageError::read_logs(err));
         }
 
-        // TODO: It is possible `committed < last_applied` because when installing snapshot,
-        //       new committed should be saved, but not yet.
+        // `committed < last_applied` is possible: after a snapshot is installed, the new
+        // `committed` may not be saved yet.
         if committed < last_applied {
             committed = last_applied.clone();
         }

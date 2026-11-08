@@ -368,7 +368,6 @@ where C: RaftTypeConfig
         &mut self.io_state
     }
 
-    // TODO: move these doc to the [`IOState`]
     /// Returns the state of the already happened IO.
     ///
     /// [`RaftState`] stores the expected state when all queued IO are completed,

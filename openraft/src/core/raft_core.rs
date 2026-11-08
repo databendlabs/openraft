@@ -476,11 +476,6 @@ where
     /// - Adding a learner does not affect election, thus it does not need to enter joint consensus.
     ///   But it still has to wait for the previous membership to commit. Otherwise a second
     ///   proposed membership implies the previous one is committed.
-    // ---
-    // TODO: This limit can be removed if membership_state is replaced by a list of membership logs.
-    //       Because allowing this requires the engine to be able to store more than 2
-    //       membership logs. And it does not need to wait for the previous membership log to commit
-    //       to propose the new membership log.
     #[tracing::instrument(level = "debug", skip(self, payloads, tx, preconditions))]
     pub(super) fn change_membership(
         &mut self,
@@ -970,7 +965,6 @@ where
             // initialization, it may receive an UncommittedLeaderLog error:
             // `"UncommittedLeaderLog": { "committed": null, "leader_log_id": { "leader_id": { "term": 1,
             //             "node_id": 0 }, "index": 1 } }`
-            // TODO: change-membership should check leadership or wait for leader to establish?
 
             // Wait for the generated IO to be flushed before respond.
             let accepted = self.engine.state.io_state().log_progress.accepted().cloned();

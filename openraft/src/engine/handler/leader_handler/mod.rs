@@ -76,8 +76,6 @@ where
     ///
     /// If there is a membership config log entry, the caller has to guarantee the previous one is
     /// committed.
-    ///
-    /// TODO(xp): if vote indicates this node is not the leader, refuse append
     #[tracing::instrument(level = "debug", skip(self, payloads))]
     pub(crate) fn leader_append_entries<I>(&mut self, payloads: I) -> Option<LeaderLogIds<CommittedLeaderIdOf<C>>>
     where I: IntoIterator<Item = PayloadOf<C>> + AsRef<[PayloadOf<C>]> {
