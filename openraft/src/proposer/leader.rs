@@ -114,51 +114,39 @@ where C: RaftTypeConfig
 {
     /// Creates a leader using the membership's write quorum for replication and heartbeat tracking.
     ///
-    /// `last_leader_log_ids` is the first and last log id proposed by the last leader.
+    /// `last_log_id` is the last log id in the log. `first_own_log_id` is the first log id that
+    /// this leader already proposed, as when it is restored without losing leadership: the leader
+    /// then reuses it as its noop log id. Without it, the noop log id follows `last_log_id`.
     // leader_id: Copy is feature gated
     #[allow(clippy::clone_on_copy)]
     pub(crate) fn new(
         vote: CommittedVoteOf<C>,
         membership: C::Membership,
-        last_leader_log_ids: Option<LeaderLogIds<CommittedLeaderIdOf<C>>>,
+        last_log_id: Option<LogIdOf<C>>,
+        first_own_log_id: Option<LogIdOf<C>>,
         id_gen: SharedIdGenerator,
     ) -> Self {
         let cl_id = vote.committed_leader_id();
 
-        if let Some(ref log_ids) = last_leader_log_ids {
+        debug_assert!(
+            Some(&cl_id) >= last_log_id.as_ref().map(|x| x.committed_leader_id()),
+            "vote {} must GE last_log_id {:?}",
+            vote,
+            last_log_id
+        );
+        if let Some(first) = &first_own_log_id {
             debug_assert!(
-                Some(&cl_id) >= Some(log_ids.last_ref().committed_leader_id()),
-                "vote {} must GE last_leader_log_ids.last_log_id() {:?}",
+                first.committed_leader_id() == &cl_id && Some(first) <= last_log_id.as_ref(),
+                "first_own_log_id {} must be proposed by vote {} and not follow last_log_id {:?}",
+                first,
                 vote,
-                last_leader_log_ids
-            );
-            debug_assert!(
-                Some(&cl_id) >= Some(log_ids.first_ref().committed_leader_id()),
-                "vote {} must GE last_leader_log_ids.first_log_id() {:?}",
-                vote,
-                last_leader_log_ids
+                last_log_id
             );
         }
 
         let non_write_voter_ids = membership.non_write_voter_ids().collect::<Vec<_>>();
 
-        let first_ref = last_leader_log_ids.as_ref().map(|x| x.first_ref());
-        let last_ref = last_leader_log_ids.as_ref().map(|x| x.last_ref());
-
-        let noop_log_id = if first_ref.as_ref().map(|x| x.committed_leader_id()) == Some(&cl_id) {
-            // There is already log id proposed by this leader.
-            // E.g. the Leader is restarted without losing leadership.
-            //
-            // Set to the first log id proposed by this Leader.
-            //
-            // Safe unwrap: first.map() == Some() is checked above.
-            first_ref.unwrap().into_log_id()
-        } else {
-            // Set to a log id that will be proposed.
-            LogIdOf::<C>::new(cl_id, last_ref.next_index())
-        };
-
-        let last_log_id = last_ref.map(|r| r.into_log_id());
+        let noop_log_id = first_own_log_id.unwrap_or_else(|| LogIdOf::<C>::new(cl_id, last_log_id.next_index()));
 
         let write_quorum_set = Arc::new(membership.write_quorum_set());
 
@@ -414,7 +402,6 @@ mod tests {
     use crate::Membership;
     use crate::Vote;
     use crate::base::shared_id_generator::SharedIdGenerator;
-    use crate::engine::leader_log_ids::LeaderLogIds;
     use crate::engine::testing::UTConfig;
     use crate::engine::testing::log_id;
     use crate::proposer::Leader;
@@ -426,7 +413,7 @@ mod tests {
     fn test_new_tracks_write_voters_and_other_nodes() {
         let membership = Membership::new_with_defaults(vec![btreeset! {1,2}, btreeset! {2,3}], [4, 5]);
         let vote = Vote::new(2, 1).to_committed();
-        let leading = Leader::<UTConfig, _>::new(vote, membership, None, SharedIdGenerator::new());
+        let leading = Leader::<UTConfig, _>::new(vote, membership, None, None, SharedIdGenerator::new());
 
         let progress_ids = leading.progress.iter().map(|entry| entry.id);
         let progress_ids = progress_ids.collect::<BTreeSet<_>>();
@@ -444,7 +431,7 @@ mod tests {
     fn test_joint_clock_quorum_excludes_non_write_voters() {
         let membership = Membership::new_with_defaults(vec![btreeset! {1,2}, btreeset! {2,3}], [4]);
         let vote = Vote::new(2, 1).to_committed();
-        let mut leading = Leader::<UTConfig, _>::new(vote, membership, None, SharedIdGenerator::new());
+        let mut leading = Leader::<UTConfig, _>::new(vote, membership, None, None, SharedIdGenerator::new());
         let now = UTConfig::<()>::now();
         let stamp = SendStamp::new(now, 0);
 
@@ -462,25 +449,22 @@ mod tests {
         {
             let vote = Vote::new(2, 2).to_committed();
             let membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], []);
-            let leader = Leader::<UTConfig, _>::new(
-                vote,
-                membership,
-                Some(LeaderLogIds::new(*log_id(1, 2, 0).committed_leader_id(), 1, 3)),
-                SharedIdGenerator::new(),
-            );
+            let leader =
+                Leader::<UTConfig, _>::new(vote, membership, Some(log_id(1, 2, 3)), None, SharedIdGenerator::new());
 
             assert_eq!(leader.noop_log_id(), &log_id(2, 2, 4));
             assert_eq!(leader.last_log_id(), Some(&log_id(1, 2, 3)));
         }
 
-        tracing::info!("--- vote equals last log id, reuse noop_log_id");
+        tracing::info!("--- the leader already proposed log 1 to 3, reuse log 1 as noop_log_id");
         {
             let vote = Vote::new(1, 2).to_committed();
             let membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], []);
             let leader = Leader::<UTConfig, _>::new(
                 vote,
                 membership,
-                Some(LeaderLogIds::new(*log_id(1, 2, 0).committed_leader_id(), 1, 3)),
+                Some(log_id(1, 2, 3)),
+                Some(log_id(1, 2, 1)),
                 SharedIdGenerator::new(),
             );
 
@@ -488,14 +472,15 @@ mod tests {
             assert_eq!(leader.last_log_id(), Some(&log_id(1, 2, 3)));
         }
 
-        tracing::info!("--- vote equals last log id, reuse noop_log_id, last_leader_log_id.len()==1");
+        tracing::info!("--- the leader already proposed only log 3, reuse it as noop_log_id");
         {
             let vote = Vote::new(1, 2).to_committed();
             let membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], []);
             let leader = Leader::<UTConfig, _>::new(
                 vote,
                 membership,
-                Some(LeaderLogIds::new_single(log_id(1, 2, 3))),
+                Some(log_id(1, 2, 3)),
+                Some(log_id(1, 2, 3)),
                 SharedIdGenerator::new(),
             );
 
@@ -503,11 +488,11 @@ mod tests {
             assert_eq!(leader.last_log_id(), Some(&log_id(1, 2, 3)));
         }
 
-        tracing::info!("--- no last log ids, create new noop_log_id, last_leader_log_id.len()==0");
+        tracing::info!("--- no last log id, create new noop_log_id");
         {
             let vote = Vote::new(1, 2).to_committed();
             let membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], []);
-            let leader = Leader::<UTConfig, _>::new(vote, membership, None, SharedIdGenerator::new());
+            let leader = Leader::<UTConfig, _>::new(vote, membership, None, None, SharedIdGenerator::new());
 
             assert_eq!(leader.noop_log_id(), &log_id(1, 2, 0));
             assert_eq!(leader.last_log_id(), None);
@@ -518,12 +503,8 @@ mod tests {
     fn test_leader_established() {
         let vote = Vote::new(2, 2).to_committed();
         let membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], []);
-        let mut leader = Leader::<UTConfig, _>::new(
-            vote,
-            membership,
-            Some(LeaderLogIds::new_single(log_id(1, 2, 3))),
-            SharedIdGenerator::new(),
-        );
+        let mut leader =
+            Leader::<UTConfig, _>::new(vote, membership, Some(log_id(1, 2, 3)), None, SharedIdGenerator::new());
 
         let log_ids: Vec<_> = leader.assign_log_ids(1).unwrap().into_iter().collect();
 
@@ -539,7 +520,7 @@ mod tests {
     fn test_1_entry_none_last_log_id() {
         let vote = Vote::new(0, 0).to_committed();
         let membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], []);
-        let mut leading = Leader::<UTConfig, _>::new(vote, membership, None, SharedIdGenerator::new());
+        let mut leading = Leader::<UTConfig, _>::new(vote, membership, None, None, SharedIdGenerator::new());
 
         let log_ids: Vec<_> = leading.assign_log_ids(1).unwrap().into_iter().collect();
 
@@ -551,12 +532,8 @@ mod tests {
     fn test_no_entries_provided() {
         let vote = Vote::new(2, 2).to_committed();
         let membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], []);
-        let mut leading = Leader::<UTConfig, _>::new(
-            vote,
-            membership,
-            Some(LeaderLogIds::new_single(log_id(1, 1, 8))),
-            SharedIdGenerator::new(),
-        );
+        let mut leading =
+            Leader::<UTConfig, _>::new(vote, membership, Some(log_id(1, 1, 8)), None, SharedIdGenerator::new());
 
         let log_ids = leading.assign_log_ids(0);
         assert_eq!(log_ids, None);
@@ -567,12 +544,8 @@ mod tests {
     fn test_multiple_entries() {
         let vote = Vote::new(2, 2).to_committed();
         let membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], []);
-        let mut leading = Leader::<UTConfig, _>::new(
-            vote,
-            membership,
-            Some(LeaderLogIds::new_single(log_id(1, 1, 8))),
-            SharedIdGenerator::new(),
-        );
+        let mut leading =
+            Leader::<UTConfig, _>::new(vote, membership, Some(log_id(1, 1, 8)), None, SharedIdGenerator::new());
 
         let log_ids: Vec<_> = leading.assign_log_ids(3).unwrap().into_iter().collect();
         assert_eq!(log_ids, vec![log_id(2, 2, 9), log_id(2, 2, 10), log_id(2, 2, 11)]);
@@ -583,7 +556,7 @@ mod tests {
     fn test_leading_last_quorum_acked_time_leader_is_voter() {
         let membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], [4]);
         let vote = Vote::new(2, 1).to_committed();
-        let mut leading = Leader::<UTConfig, _>::new(vote, membership, None, SharedIdGenerator::new());
+        let mut leading = Leader::<UTConfig, _>::new(vote, membership, None, None, SharedIdGenerator::new());
 
         let now1 = UTConfig::<()>::now();
 
@@ -596,7 +569,7 @@ mod tests {
     fn test_leading_last_quorum_acked_time_leader_is_learner() {
         let membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], [4]);
         let vote = Vote::new(2, 4).to_committed();
-        let mut leading = Leader::<UTConfig, _>::new(vote, membership, None, SharedIdGenerator::new());
+        let mut leading = Leader::<UTConfig, _>::new(vote, membership, None, None, SharedIdGenerator::new());
 
         let t2 = UTConfig::<()>::now();
         leading.update_clock(&2, SendStamp::new(t2, 0));
@@ -613,7 +586,7 @@ mod tests {
     fn test_leading_last_quorum_acked_time_leader_is_not_member() {
         let membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], [4]);
         let vote = Vote::new(2, 5).to_committed();
-        let mut leading = Leader::<UTConfig, _>::new(vote, membership, None, SharedIdGenerator::new());
+        let mut leading = Leader::<UTConfig, _>::new(vote, membership, None, None, SharedIdGenerator::new());
 
         let t2 = UTConfig::<()>::now();
         leading.update_clock(&2, SendStamp::new(t2, 0));
@@ -632,7 +605,7 @@ mod tests {
         let membership = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1, 2, 3}], [4]);
         let cluster = "[{1, 2, 3}]";
         let vote = Vote::new(2, 1).to_committed();
-        let mut leading = Leader::<UTConfig, _>::new(vote, membership, None, SharedIdGenerator::new());
+        let mut leading = Leader::<UTConfig, _>::new(vote, membership, None, None, SharedIdGenerator::new());
 
         let now = UTConfig::<()>::now();
         let t1 = SendStamp::new(now, 0);
@@ -670,7 +643,7 @@ mod tests {
         // Voters {1,2,3} with learner {4}; node 1 is the leader.
         let membership = Membership::<u64, ()>::new_with_defaults(vec![btreeset! {1, 2, 3}], [4]);
         let vote = Vote::new(2, 1).to_committed();
-        let mut leading = Leader::<UTConfig, _>::new(vote, membership, None, SharedIdGenerator::new());
+        let mut leading = Leader::<UTConfig, _>::new(vote, membership, None, None, SharedIdGenerator::new());
         let now = UTConfig::<()>::now();
 
         tracing::info!("--- n2 acks a replication RPC sent at `now`, before the read arrives");
@@ -703,7 +676,7 @@ mod tests {
     fn test_need_heartbeat() {
         let membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], [4]);
         let vote = Vote::new(2, 1).to_committed();
-        let mut leading = Leader::<UTConfig, _>::new(vote, membership, None, SharedIdGenerator::new());
+        let mut leading = Leader::<UTConfig, _>::new(vote, membership, None, None, SharedIdGenerator::new());
 
         let min_interval = Duration::from_millis(100);
         let t0 = UTConfig::<()>::now();
