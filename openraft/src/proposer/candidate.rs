@@ -7,7 +7,6 @@ use validit::Valid;
 use crate::RaftTypeConfig;
 use crate::base::shared_id_generator::SharedIdGenerator;
 use crate::display_ext::DisplayInstantExt;
-use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::membership::RaftMembership;
 use crate::progress::IdVal;
 use crate::progress::VecProgress;
@@ -157,19 +156,10 @@ where C: RaftTypeConfig
             vote.to_committed()
         };
 
-        // TODO: tricky: the new LeaderId is different from the last log id
-        //       Thus only the last().index is used.
-        //       Thus the first() is ignored.
-        //       But we should not fake the first() there.
-        let last = self.last_log_id();
-        let last_leader_log_ids = last.cloned().map(LeaderLogIds::new_single);
+        // An elected leader has a new leader id, so it has proposed no log id yet.
+        let last_log_id = self.last_log_id().cloned();
 
-        Leader::new(
-            vote,
-            self.membership,
-            last_leader_log_ids, // already Option<LeaderLogIds>
-            self.progress_id_gen,
-        )
+        Leader::new(vote, self.membership, last_log_id, None, self.progress_id_gen)
     }
 }
 
