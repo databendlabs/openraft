@@ -190,9 +190,8 @@ where
                     self.config.id,
                     self.state.vote_ref()
                 );
-                // TODO: this is not gonna happen,
-                //       because `self.leader`(previous `internal_server_state`)
-                //       does not include Candidate any more.
+                // Reached when the server state is refreshed on an established leader, for
+                // example by `Trigger::refresh_server_state()`.
                 l.committed_vote = self.state.vote_ref().to_committed();
                 self.server_state_handler().update_server_state_if_changed();
                 return;

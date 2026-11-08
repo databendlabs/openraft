@@ -427,7 +427,6 @@ where
         Ok(res)
     }
 
-    // TODO: store purged: Option<LogId> separately.
     /// Get key-log-ids from the log store.
     ///
     /// Key-log-ids are the last log id of each Leader.

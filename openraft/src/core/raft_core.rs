@@ -2672,7 +2672,6 @@ where
         );
 
         let node = self.replications.get_mut(&target).expect("replication to target node exists");
-        // TODO: it is not cleaned when snapshot transmission is done.
         node.snapshot_transmit_handle = Some(handle);
     }
 

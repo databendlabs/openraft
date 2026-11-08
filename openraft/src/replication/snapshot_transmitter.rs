@@ -100,8 +100,6 @@ where
             snapshot_reader,
         };
 
-        // TODO: this function should just return join_handle and let the caller build
-        //       SnapshotTransmitterHandle
         let join_handle = C::spawn(snapshot_transmit.stream_snapshot());
 
         SnapshotTransmitterHandle {

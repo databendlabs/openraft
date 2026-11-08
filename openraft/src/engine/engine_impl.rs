@@ -79,7 +79,6 @@ where
     /// The state of this raft node.
     pub(crate) state: Valid<RaftState<C>>,
 
-    // TODO: add a Voting state as a container.
     /// The greatest last-log-id reported by a peer that rejected a (pre-)vote.
     ///
     /// Extra election delay applies only while this node's last log is still smaller than this

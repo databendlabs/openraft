@@ -362,7 +362,6 @@ where
             Command::RebuildReplicationStreams { .. } => CommandKind::Main,
             Command::Respond { .. }                   => CommandKind::Respond,
             // Apply is firstly handled by RaftCore, then forwarded to state machine worker.
-            // TODO: Apply also write `committed` to log-store, which should be run in CommandKind::Log
 
             Command::UpdateIOProgress { .. }          => CommandKind::Log,
             Command::AppendEntries { .. }             => CommandKind::Log,
