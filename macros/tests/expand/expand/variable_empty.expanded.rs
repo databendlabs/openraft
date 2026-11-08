@@ -1,5 +1,4 @@
 fn main() {
-    c;
-    c;
-    u8;
+    let c: Option = None;
+    let c: Option<u8> = None;
 }
