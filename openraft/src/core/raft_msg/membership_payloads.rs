@@ -13,15 +13,15 @@ where C: RaftTypeConfig
 {
     /// The change cannot compute a joint membership, so one payload covers its only entry.
     ///
-    /// Adding a learner and flattening a joint membership both leave the voter sets alone.
+    /// Adding a learner leaves the voter sets alone.
     Uniform(C::Payload),
 
     /// The change may compute a joint or a uniform membership.
     ///
     /// `RaftCore` selects the payload of the computed shape. For a joint membership it sends
-    /// `uniform` back through `unused_tx`, and the caller spends it on the entry that flattens
-    /// that joint membership. For a uniform membership it sends `None`, so the caller knows that
-    /// the change is complete.
+    /// `uniform` with the exact target back through `unused_tx`, and the caller appends it after
+    /// the joint membership commits. For a uniform membership it sends `None`, so the caller
+    /// knows that the change is complete.
     JointOrUniform {
         joint: C::Payload,
         uniform: C::Payload,
@@ -34,9 +34,8 @@ where C: RaftTypeConfig
 {
     /// Bind `membership` into the payload that matches its shape, and return that payload.
     ///
-    /// `finished` is true when `membership` is the target of the change, and false when it is a
-    /// joint membership.
-    pub(crate) fn select(self, membership: C::Membership, finished: bool) -> C::Payload {
+    /// `target` is the exact membership to append after a joint step, or `None` for a direct step.
+    pub(crate) fn select(self, membership: C::Membership, target: Option<C::Membership>) -> C::Payload {
         let payload = match self {
             Self::Uniform(uniform) => uniform,
             Self::JointOrUniform {
@@ -44,14 +43,16 @@ where C: RaftTypeConfig
                 uniform,
                 unused_tx,
             } => {
-                let (selected, unused) = if finished {
-                    (uniform, None)
-                } else {
-                    (joint, Some(uniform))
+                let (selected, unused) = match target {
+                    Some(target) => {
+                        let uniform = uniform.with_membership(target);
+                        (joint, Some(uniform))
+                    }
+                    None => (uniform, None),
                 };
 
-                // The caller needs the uniform payload back only after a joint membership, to
-                // write the entry that flattens it.
+                // Bind the target before returning it so finalization preserves the edit's
+                // node removals and roles.
                 let _ = unused_tx.send(unused);
                 selected
             }

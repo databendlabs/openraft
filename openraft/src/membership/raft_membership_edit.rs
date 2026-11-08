@@ -31,7 +31,8 @@ where
     /// Returns the target configuration of this edit.
     ///
     /// OpenRaft validates the result, then appends it directly or first appends a joint
-    /// configuration. With `retain = true`, the edit keeps demoted voters' nodes unless it
+    /// configuration. After a joint step, OpenRaft appends this exact target, preserving its node
+    /// removals and roles. With `retain = true`, the edit keeps demoted voters' nodes unless it
     /// explicitly removes them. With `retain = false`, the result drops each voter of
     /// `membership` that becomes a learner, as [`NodeRef::is_learner()`] defines it. For a batch,
     /// apply this rule after all edits, using the original membership and the final result.
@@ -66,8 +67,7 @@ where
     /// Returns an edit that reduces a joint configuration to its uniform target.
     ///
     /// Applied to a joint configuration, [`apply()`](Self::apply) selects its target and handles
-    /// demoted voters according to its `retain` argument. The second step of
-    /// [`Raft::change_membership()`](crate::Raft::change_membership) uses it.
+    /// demoted voters according to its `retain` argument.
     ///
     /// # Examples
     ///
