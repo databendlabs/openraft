@@ -75,10 +75,6 @@ where
         self
     }
 
-    // TODO: let RaftStore store node-id.
-    //       To achieve this, RaftLogStorage must store node-id
-    //       To achieve this, RaftLogStorage has to provide API to initialize with a node id and API to
-    //       read node-id
     /// Get Raft's state information from storage.
     ///
     /// When the Raft node is first started, it will call this interface to fetch the last known
