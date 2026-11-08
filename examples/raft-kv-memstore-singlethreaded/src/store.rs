@@ -48,25 +48,6 @@ impl Request {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use std::marker::PhantomData;
-
-    use crate::store::Request;
-
-    #[test]
-    fn test_serde() {
-        let a = Request::Set {
-            key: "foo".to_string(),
-            value: "bar".to_string(),
-            _p: PhantomData,
-        };
-
-        let b = serde_json::to_string(&a).unwrap();
-        println!("{}", b);
-    }
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Response {
     pub value: Option<String>,
@@ -372,5 +353,24 @@ impl RaftLogStorage<TypeConfig> for Rc<LogStore> {
 
     async fn get_log_reader(&mut self) -> Self::LogReader {
         self.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::marker::PhantomData;
+
+    use crate::store::Request;
+
+    #[test]
+    fn test_serde() {
+        let a = Request::Set {
+            key: "foo".to_string(),
+            value: "bar".to_string(),
+            _p: PhantomData,
+        };
+
+        let b = serde_json::to_string(&a).unwrap();
+        println!("{}", b);
     }
 }

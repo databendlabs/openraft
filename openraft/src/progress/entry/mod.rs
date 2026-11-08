@@ -82,7 +82,7 @@ impl<NID: NodeId> ProgressEntry<NID> {
                 let lid = Some(upto.clone());
                 lid > log_id_range.prev
             }
-            Inflight::Snapshot { last_log_id: _, .. } => false,
+            Inflight::Snapshot { .. } => false,
         }
     }
 

@@ -691,8 +691,8 @@ where
                 }
             }
             Replicate::Data(d) => {
-                // TODO: Currently there is at most 1 in flight data. But in future RaftCore may send next data
-                //       actions without waiting for the previous to finish.
+                // TODO: Currently there is at most 1 in flight data. But in future RaftCore may
+                //       send next data actions without waiting for the previous to finish.
                 debug_assert!(
                     !self.next_action.as_ref().map(|d| d.has_payload()).unwrap_or(false),
                     "there can not be two actions with payload in flight, curr: {}",

@@ -236,8 +236,8 @@ where
         .map(|(i, term)| blank_ent(*term, 0, (i + skip) as u64))
         .collect::<Vec<_>>();
 
-    let w = format!("{:?}", &want);
-    let g = format!("{:?}", &logs);
+    let w = format!("{:?}", want);
+    let g = format!("{:?}", logs);
 
     assert_eq!(w, g);
 

@@ -92,7 +92,8 @@ impl<NID: NodeId> Vote<NID> {
 
     /// Return a [`CommittedLeaderId`], which is granted by a quorum.
     pub(crate) fn committed_leader_id(&self) -> Option<CommittedLeaderId<NID>> {
-        // Special case (term==0): when initializing the first log does not need vote to be committed.
+        // Special case (term==0): when initializing the first log does not need vote to be
+        // committed.
         if self.is_committed() || self.leader_id().term == 0 {
             Some(self.leader_id().to_committed())
         } else {

@@ -363,7 +363,7 @@ where
     }
 
     fn iter(&self) -> Iter<'_, (ID, V)> {
-        self.vector.as_slice().iter()
+        self.vector.iter()
     }
 
     fn upgrade_quorum_set(self, quorum_set: QS, leaner_ids: &[ID], default_v: V) -> Self {

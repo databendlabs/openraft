@@ -116,8 +116,8 @@ async fn test_cluster() -> anyhow::Result<()> {
     println!("=== metrics after init");
     let _x = client.metrics().await?;
 
-    // --- 2. Add node 2 and 3 to the cluster as `Learner`, to let them start to receive log replication
-    // from the        leader.
+    // --- 2. Add node 2 and 3 to the cluster as `Learner`, to let them start to receive log
+    // replication from the leader.
 
     println!("=== add-learner 2");
     let _x = client.add_learner((2, get_addr(2)?)).await?;

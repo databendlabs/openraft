@@ -23,20 +23,10 @@ mod log_state_reader;
 mod membership_state;
 mod vote_state_reader;
 
+pub(crate) use accepted::Accepted;
 #[allow(unused)]
 pub(crate) use io_state::log_io_id::LogIOId;
 pub(crate) use io_state::IOState;
-
-#[cfg(test)]
-mod tests {
-    mod accepted_test;
-    mod forward_to_leader_test;
-    mod is_initialized_test;
-    mod log_state_reader_test;
-    mod validate_test;
-}
-
-pub(crate) use accepted::Accepted;
 pub(crate) use log_state_reader::LogStateReader;
 pub use membership_state::MembershipState;
 pub(crate) use vote_state_reader::VoteStateReader;
@@ -430,4 +420,13 @@ where
 
         ForwardToLeader::empty()
     }
+}
+
+#[cfg(test)]
+mod tests {
+    mod accepted_test;
+    mod forward_to_leader_test;
+    mod is_initialized_test;
+    mod log_state_reader_test;
+    mod validate_test;
 }

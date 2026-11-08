@@ -132,9 +132,10 @@ where C: RaftTypeConfig
 
         let id = request_id.request_id();
 
-        // If request id is `None`, it means there is not data in the request payload, thus no need to
-        // update the matching pointer.
-        // But conflict should always be handled, e.g., especially in scenario the follower state reverted.
+        // If request id is `None`, it means there is not data in the request payload, thus no need
+        // to update the matching pointer.
+        // But conflict should always be handled, e.g., especially in scenario the follower state
+        // reverted.
         match result.result {
             Ok(matching) => {
                 let Some(id) = id else {

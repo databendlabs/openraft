@@ -145,7 +145,8 @@ impl ExampleClient {
         .await
         .map_err(|e| {
             if e.is_connect() {
-                // `Unreachable` informs the caller to backoff for a short while to avoid error log flush.
+                // `Unreachable` informs the caller to backoff for a short while to avoid error log
+                // flush.
                 return RPCError::Unreachable(Unreachable::new(&e));
             }
             RPCError::Network(NetworkError::new(&e))

@@ -123,8 +123,8 @@ fn test_follower_do_append_entries_no_membership_entries() -> anyhow::Result<()>
 
 #[test]
 fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> {
-    // - The membership entry in the input becomes effective membership. The previous effective becomes
-    //   committed.
+    // - The membership entry in the input becomes effective membership. The previous effective
+    //   becomes committed.
     // - Follower become Learner, since it is not in the new effective membership.
     let mut eng = eng();
     eng.config.id = 2; // make it a member, the become learner

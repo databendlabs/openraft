@@ -89,8 +89,8 @@ async fn run_test(router: Router) {
     let metrics = router.send::<(), RaftMetrics, Infallible>(NodeId::new(1), "/mng/metrics", ()).await.unwrap();
     println!("metrics: {:#?}", metrics);
 
-    // --- 2. Add node 2 and 3 to the cluster as `Learner`, to let them start to receive log replication
-    // from the        leader.
+    // --- 2. Add node 2 and 3 to the cluster as `Learner`, to let them start to receive log
+    // replication from the leader.
 
     println!("=== add-learner 2");
     let resp = router
