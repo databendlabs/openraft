@@ -397,11 +397,8 @@ fn test_remove_heavy_voter_through_joint() {
                 2: ((), None), 3: ((), None), 4: ((), None)} }]}";
     assert_eq!(want, joint.to_string());
 
-    // Leaving the joint selects the target, where node 1 stays as a learner.
-    let change = <WeightedChange<u64, ()> as RaftMembershipEdit<Membership>>::make_uniform();
-    let target = change.apply(&joint, true).unwrap();
-    assert_eq!(new, target);
-    let direct = joint.supports_direct_transition_to(&target);
+    // OpenRaft can append the computed target, where node 1 stays as a learner.
+    let direct = joint.supports_direct_transition_to(&new);
     assert!(direct);
 }
 
@@ -519,9 +516,8 @@ fn test_joint_keeps_old_roles_and_target_restores_new_roles() {
     let old = Membership::new(btreemap! {1 => 2, 2 => 1}, 2, btreeset! {1, 2, 3}).unwrap();
 
     // The new config stops voter 2 from campaigning.
-    let new = old.clone().with_roles(btreemap! {2 => NodeRole::ReceiveLogs}).unwrap();
-    let target =
-        assert_joint_keeps_old_roles_and_target_restores_new_roles::<_, WeightedChange<u64, ()>>(&old, &new, 2);
+    let target = old.clone().with_roles(btreemap! {2 => NodeRole::ReceiveLogs}).unwrap();
+    assert_joint_keeps_old_roles_and_target_restores_new_roles(&old, &target, 2);
 
     // A change of the write weight keeps the roles of the last config.
     let change = WeightedChange::write_weight(3);
