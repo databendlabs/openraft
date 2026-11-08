@@ -100,10 +100,6 @@ where
             .membership_state
             .append(StoredMembershipOf::<C>::new_arc(Some(log_id.clone()), m.clone()));
 
-        // TODO(9): currently only a leader has replication setup.
-        //       It's better to setup replication for both leader and candidate.
-        //       e.g.: if self.internal_server_state.is_leading() {
-
         // Leader does not quit at once:
         // A leader should always keep replicating logs.
         // A leader that is removed will shut down replications when this membership log is
@@ -439,8 +435,7 @@ where
 
         let membership = self.state.membership_state.effective().clone();
         for item in self.leader.progress.iter_mut_without_reorder() {
-            // TODO: update matching should be done here for leader
-            //       or updating matching should be queued in commands?
+            // The leader's own matching is updated by `update_local_progress()`.
             if item.id == self.config.id {
                 continue;
             }
@@ -539,8 +534,6 @@ where
         self.log_handler().purge_log();
     }
 
-    // TODO: replication handler should provide the same API for both locally and remotely log
-    // writing.       This may simplify upper level accessing.
     /// Update the progress of local log to `upto`(inclusive).
     ///
     /// Writing to local log store does not have to wait for a replication response from remote
