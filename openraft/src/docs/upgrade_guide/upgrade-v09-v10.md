@@ -149,6 +149,24 @@ no timeout, and the wait arms no timer. Code that builds a `Wait` directly wraps
 the duration in `Some`, and code that read the field handles `None`.
 [`Raft::wait()`][] already takes an `Option<Duration>` and needs no change.
 
+## Items deprecated since 0.9.0 are removed
+
+| Removed | Replacement |
+|---|---|
+| [`Config`][]`::send_snapshot_timeout` and its `--send-snapshot-timeout` option | `install_snapshot_timeout` |
+| `Config::send_snapshot_timeout()` | `Config::install_snapshot_timeout()` |
+| [`Wait`][]`::log(index, msg)` | `log_index(index, msg)`, then `applied_index(index, msg)` |
+| `Wait::log_at_least(index, msg)` | `log_index_at_least(index, msg)`, then `applied_index_at_least(index, msg)` |
+| `Wait::members(voters, msg)` | `voter_ids(voters, msg)`, which takes any `IntoIterator` of node IDs |
+
+Nothing in 0.10 reads `send_snapshot_timeout`; `install_snapshot_timeout` is
+the timeout for sending a snapshot, so removing the field changes no timing. A
+command line that still passes `--send-snapshot-timeout` is rejected, and a
+serde-decoded config that still holds the field decodes and ignores it.
+
+`Wait::log()` and `Wait::log_at_least()` waited for both the last log index
+and the applied index, so the replacement waits for each.
+
 [`Config`]: crate::Config
 [`Wait`]: crate::metrics::Wait
 [`Raft::wait()`]: crate::Raft::wait

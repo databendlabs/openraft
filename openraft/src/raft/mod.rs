@@ -2013,8 +2013,8 @@ where
     ///
     /// let timeout = Duration::from_millis(200);
     ///
-    /// // wait for raft log-3 to be received and applied:
-    /// r.wait(Some(timeout)).log(Some(3), "log").await?;
+    /// // wait for raft log-3 to be applied:
+    /// r.wait(Some(timeout)).applied_index(Some(3), "log-3 applied").await?;
     ///
     /// // wait for ever for raft node's current leader to become 3:
     /// r.wait(None).current_leader(2, "wait for leader").await?;

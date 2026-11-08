@@ -33,7 +33,10 @@ pub enum WaitError {
 
 /// Wait is a wrapper of RaftMetrics channel that impls several utils to wait for metrics to satisfy
 /// some condition.
-#[since]
+#[since(
+    version = "0.10.0",
+    change = "removed `log()`, `log_at_least()` and `members()`, deprecated since 0.9.0"
+)]
 pub struct Wait<C: RaftTypeConfig> {
     /// The timeout duration for waiting operations.
     ///
@@ -139,25 +142,6 @@ where C: RaftTypeConfig
         .await
     }
 
-    /// Wait until applied exactly `want_log`(inclusive) logs or timeout.
-    #[deprecated(since = "0.9.0", note = "use `log_index()` and `applied_index()` instead")]
-    #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
-    pub async fn log(&self, want_log_index: Option<u64>, msg: impl ToString) -> Result<RaftMetrics<C>, WaitError> {
-        self.eq(Metric::LastLogIndex(want_log_index), msg.to_string()).await?;
-        self.eq(Metric::AppliedIndex(want_log_index), msg.to_string()).await
-    }
-
-    /// Wait until applied at least `want_log`(inclusive) logs or timeout.
-    #[deprecated(
-        since = "0.9.0",
-        note = "use `log_index_at_least()` and `applied_index_at_least()` instead"
-    )]
-    #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
-    pub async fn log_at_least(&self, want_log: Option<u64>, msg: impl ToString) -> Result<RaftMetrics<C>, WaitError> {
-        self.ge(Metric::LastLogIndex(want_log), msg.to_string()).await?;
-        self.ge(Metric::AppliedIndex(want_log), msg.to_string()).await
-    }
-
     /// Block until the last log index becomes exactly `index` (inclusive) or timeout.
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn log_index(&self, index: Option<u64>, msg: impl ToString) -> Result<RaftMetrics<C>, WaitError> {
@@ -218,24 +202,6 @@ where C: RaftTypeConfig
                     && m.last_quorum_acked.is_some_and(|acked| at_least.is_none_or(|want| acked.into_inner() >= want))
             },
             &format!("{} .leader_with_quorum_acked({:?})", msg.to_string(), at_least),
-        )
-        .await
-    }
-
-    /// Wait for `membership` to become the expected node id set or timeout.
-    #[deprecated(since = "0.9.0", note = "use `voter_ids()` instead")]
-    #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
-    pub async fn members(
-        &self,
-        want_members: BTreeSet<C::NodeId>,
-        msg: impl ToString,
-    ) -> Result<RaftMetrics<C>, WaitError> {
-        self.metrics(
-            |m| {
-                let got = m.membership_config.voter_ids().collect::<BTreeSet<_>>();
-                want_members == got
-            },
-            &format!("{} .members -> {:?}", msg.to_string(), want_members),
         )
         .await
     }

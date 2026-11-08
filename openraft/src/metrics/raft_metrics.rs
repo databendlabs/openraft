@@ -50,7 +50,7 @@ use crate::vote::raft_vote::RaftVoteExt;
 ///
 /// // Wait for specific conditions
 /// raft.wait(None).state(State::Leader, "become leader").await?;
-/// raft.wait(Some(timeout)).log(Some(10), "log-10 applied").await?;
+/// raft.wait(Some(timeout)).applied_index(Some(10), "log-10 applied").await?;
 /// ```
 ///
 /// # Leader-Specific Metrics
