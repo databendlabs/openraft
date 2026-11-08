@@ -35,7 +35,6 @@ fn test_build() -> anyhow::Result<()> {
         "--election-timeout-min=10",
         "--election-timeout-max=20",
         "--heartbeat-interval=5",
-        "--send-snapshot-timeout=199",
         "--install-snapshot-timeout=200",
         "--max-payload-entries=201",
         "--snapshot-policy=since_last:202",
@@ -52,10 +51,6 @@ fn test_build() -> anyhow::Result<()> {
     assert_eq!(20, config.election_timeout_max);
     assert_eq!(5, config.heartbeat_interval);
 
-    #[allow(deprecated)]
-    {
-        assert_eq!(199, config.send_snapshot_timeout);
-    }
     assert_eq!(200, config.install_snapshot_timeout);
     assert_eq!(201, config.max_payload_entries);
     assert_eq!(SnapshotPolicy::LogsSinceLast(202), config.snapshot_policy);
@@ -67,19 +62,7 @@ fn test_build() -> anyhow::Result<()> {
     assert_eq!(Some(209), config.notification_channel_size);
 
     // Test config methods
-    #[allow(deprecated)]
-    {
-        let mut c = config;
-        assert_eq!(Duration::from_millis(199), c.send_snapshot_timeout());
-        assert_eq!(Duration::from_millis(200), c.install_snapshot_timeout());
-
-        c.send_snapshot_timeout = 0;
-        assert_eq!(
-            Duration::from_millis(200),
-            c.send_snapshot_timeout(),
-            "by default send_snapshot_timeout is install_snapshot_timeout"
-        );
-    }
+    assert_eq!(Duration::from_millis(200), config.install_snapshot_timeout());
     Ok(())
 }
 

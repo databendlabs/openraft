@@ -35,7 +35,6 @@ pub(crate) struct Defaults {
     pub heartbeat_interval: u64,
     pub heartbeat_min_interval: u64,
     pub install_snapshot_timeout: u64,
-    pub send_snapshot_timeout: u64,
     pub max_payload_entries: u64,
     pub max_append_entries: u64,
     pub replication_lag_threshold: u64,
@@ -64,7 +63,6 @@ pub(crate) const DEFAULTS: Defaults = Defaults {
     heartbeat_interval: 50,
     heartbeat_min_interval: 0,
     install_snapshot_timeout: 200,
-    send_snapshot_timeout: 0,
     max_payload_entries: 300,
     max_append_entries: 4096,
     replication_lag_threshold: 5000,
@@ -177,6 +175,10 @@ impl SnapshotPolicy {
 /// - [`SnapshotPolicy`] for snapshot triggering strategies
 ///
 /// [`Raft::new`]: crate::Raft::new
+#[since(
+    version = "0.10.0",
+    change = "removed `send_snapshot_timeout`, deprecated since 0.9.0"
+)]
 #[since(version = "0.10.0", change = "add opt-in local lease reads")]
 #[since(version = "0.10.0", change = "add opt-in unbounded state-machine buffering")]
 #[since(version = "0.10.0", change = "added broadcast_submitted_on_append option")]
@@ -225,22 +227,9 @@ pub struct Config {
     #[cfg_attr(feature = "clap", clap(long, default_value = "0"))]
     pub heartbeat_min_interval: Option<u64>,
 
-    /// The timeout for sending then installing the last snapshot segment,
-    /// in millisecond. It is also used as the timeout for sending a non-last segment if
-    /// `send_snapshot_timeout` is 0.
+    /// The timeout for sending then installing a snapshot, in milliseconds.
     #[cfg_attr(feature = "clap", clap(long, default_value_t = DEFAULTS.install_snapshot_timeout))]
     pub install_snapshot_timeout: u64,
-
-    /// The timeout for sending a **non-last** snapshot segment, in milliseconds.
-    ///
-    /// It is disabled by default by setting it to `0`.
-    /// The timeout for sending every segment is `install_snapshot_timeout`.
-    #[deprecated(
-        since = "0.9.0",
-        note = "Sending snapshot by chunks is deprecated; Use `install_snapshot_timeout` instead"
-    )]
-    #[cfg_attr(feature = "clap", clap(long, default_value_t = DEFAULTS.send_snapshot_timeout))]
-    pub send_snapshot_timeout: u64,
 
     /// The maximum number of entries per payload allowed to be transmitted during replication
     ///
@@ -666,7 +655,6 @@ pub struct Config {
 }
 
 impl Default for Config {
-    #[allow(deprecated)]
     fn default() -> Self {
         Self {
             cluster_name: DEFAULTS.cluster_name.to_string(),
@@ -675,7 +663,6 @@ impl Default for Config {
             heartbeat_interval: DEFAULTS.heartbeat_interval,
             heartbeat_min_interval: Some(DEFAULTS.heartbeat_min_interval),
             install_snapshot_timeout: DEFAULTS.install_snapshot_timeout,
-            send_snapshot_timeout: DEFAULTS.send_snapshot_timeout,
             max_payload_entries: DEFAULTS.max_payload_entries,
             max_append_entries: Some(DEFAULTS.max_append_entries),
             replication_lag_threshold: DEFAULTS.replication_lag_threshold,
@@ -715,20 +702,6 @@ impl Config {
     /// Get the timeout for sending and installing the last snapshot segment.
     pub fn install_snapshot_timeout(&self) -> Duration {
         Duration::from_millis(self.install_snapshot_timeout)
-    }
-
-    /// Get the timeout for sending a non-last snapshot segment.
-    #[deprecated(
-        since = "0.9.0",
-        note = "Sending snapshot by chunks is deprecated; Use `install_snapshot_timeout()` instead"
-    )]
-    pub fn send_snapshot_timeout(&self) -> Duration {
-        #[allow(deprecated)]
-        if self.send_snapshot_timeout > 0 {
-            Duration::from_millis(self.send_snapshot_timeout)
-        } else {
-            self.install_snapshot_timeout()
-        }
     }
 
     /// Whether to allow the replication to reset the state to `None` when a log state reversion is
