@@ -267,11 +267,13 @@ fn test_apply() {
     let want = want.map_err(MembershipError::from);
     assert_eq!(want, res);
 
-    // Leaving a joint membership keeps its target and the write size of the target.
+    // An edit of a joint membership keeps its target's write size unless it changes it.
     let joint = joint_membership(&m42, &threshold(voters.clone(), 4));
-    let change = <ThresholdChange<u64, ()> as RaftMembershipEdit<ThresholdMembership<u64, ()>>>::make_uniform();
+    let remaining = btreeset! {1, 2, 3, 4};
+    let change = ThresholdChange::voters(remaining.clone());
     let res = change.apply(&joint, true);
-    let want = Ok(threshold(voters, 4));
+    let want = ThresholdMembership::new(remaining, 4, voters);
+    let want = want.map_err(MembershipError::from);
     assert_eq!(want, res);
 
     // A membership with no config has no target to change.
@@ -351,20 +353,20 @@ fn test_get_node() {
 }
 
 #[test]
-fn test_make_uniform_respects_retention_and_preserves_learner_metadata() {
+fn test_edit_of_joint_respects_retention_and_preserves_learner_metadata() {
     let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40, 5 => 50, 6 => 60};
     let old = ThresholdMembership::<u64, u64>::new(btreeset! {1, 2, 3}, 2, nodes.clone()).unwrap();
     let target = ThresholdMembership::new(btreeset! {3, 4, 5}, 2, nodes.clone()).unwrap();
     let joint = old.joint_with(&target);
     for retain in [true, false] {
-        let change = ThresholdChange::make_uniform();
+        let change = ThresholdChange::voters(btreeset! {4, 5});
         let got = change.apply(&joint, retain).unwrap();
         let target_nodes = if retain {
             nodes.clone()
         } else {
-            btreemap! {3 => 30, 4 => 40, 5 => 50, 6 => 60}
+            btreemap! {4 => 40, 5 => 50, 6 => 60}
         };
-        let want = ThresholdMembership::new(btreeset! {3, 4, 5}, 2, target_nodes).unwrap();
+        let want = ThresholdMembership::new(btreeset! {4, 5}, 2, target_nodes).unwrap();
         assert_eq!(want, got);
     }
 }

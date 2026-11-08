@@ -65,23 +65,18 @@ where M: RaftMembership {
 }
 
 /// Asserts that the joint of `old` and `new` keeps the role [`voter_role()`] that `old` gives
-/// voter `node_id`, and that the `make_uniform()` change of `C` reduces the joint to `new`, which
-/// gives the voter only [`NodeRole::ReceiveLogs`]. Returns the result of `make_uniform()`.
-pub(crate) fn assert_joint_keeps_old_roles_and_target_restores_new_roles<M, C>(old: &M, new: &M, node_id: u64) -> M
-where
-    M: RaftMembership<NodeId = u64>,
-    C: RaftMembershipEdit<M>,
-{
+/// voter `node_id`, and can transition directly to `new`, which gives the voter only
+/// [`NodeRole::ReceiveLogs`].
+pub(crate) fn assert_joint_keeps_old_roles_and_target_restores_new_roles<M>(old: &M, new: &M, node_id: u64)
+where M: RaftMembership<NodeId = u64> {
     let joint = old.joint_with(new);
     let in_joint = joint.get_node(&node_id).unwrap();
     assert_eq!(voter_role(), in_joint.role);
 
-    let change = C::make_uniform();
-    let target = change.apply(&joint, true).unwrap();
-    assert_eq!(new, &target);
-    let in_target = target.get_node(&node_id).unwrap();
+    let direct = joint.supports_direct_transition_to(new);
+    assert!(direct);
+    let in_target = new.get_node(&node_id).unwrap();
     assert_eq!(NodeRole::ReceiveLogs, in_target.role);
-    target
 }
 
 /// Asserts that `with_roles` sets the role of each node that it names, keeps every other role,
@@ -143,8 +138,8 @@ where
 }
 
 /// Asserts that a change of both the voters and the roles goes through a joint. The joint gives
-/// each node its new role, joined with its old role where it is an old voter, and
-/// `make_uniform()` restores the new roles. A set role stays through later changes of the voters.
+/// each node its new role, joined with its old role where it is an old voter, and can transition
+/// directly to the computed target. A set role stays through later changes of the voters.
 ///
 /// `build` and `with_roles` are as in [`assert_with_roles()`]. `change_voters(voters, roles)`
 /// returns a change to the rules that `build` gives `voters`, which also sets `roles`.
@@ -162,13 +157,13 @@ where
     // Learner 4 replaces voter 1, voter 3 stops campaigning, and learner 5 stops receiving logs.
     let roles = btreemap! {3 => NodeRole::ReceiveLogs, 5 => NodeRole::Empty};
     let change = change_voters(btreeset! {2, 3, 4}, roles);
-    let new = change.apply(&old, true).unwrap();
-    let direct = old.supports_direct_transition_to(&new);
+    let target = change.apply(&old, true).unwrap();
+    let direct = old.supports_direct_transition_to(&target);
     assert!(!direct);
 
     // The joint gives each node its new role, joined with its old role where it is an old voter,
     // and keeps learner 5.
-    let joint = old.joint_with(&new);
+    let joint = old.joint_with(&target);
     let cases = [
         (1, NodeRole::ReceiveLogs, true),
         (2, voter_role(), true),
@@ -189,10 +184,9 @@ where
     let ids: Vec<u64> = joint.node_ids().collect();
     assert_eq!(vec![1, 2, 3, 4, 5], ids);
 
-    // The target restores the new roles.
-    let change = C::make_uniform();
-    let target = change.apply(&joint, true).unwrap();
-    assert_eq!(new, target);
+    // OpenRaft can append the computed target with its new roles after the joint commits.
+    let direct = joint.supports_direct_transition_to(&target);
+    assert!(direct);
     let cases = [
         (1, NodeRole::ReceiveLogs, false),
         (2, voter_role(), true),
@@ -335,12 +329,12 @@ where
     let dropped = change.apply(&old, false).unwrap();
 
     let cases = [
-        (true, retained, btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40}),
-        (false, dropped, btreemap! {2 => 20, 3 => 30, 4 => 40}),
+        (retained, btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40}),
+        (dropped, btreemap! {2 => 20, 3 => 30, 4 => 40}),
     ];
-    for (retain, goal, want_target) in cases {
+    for (target, want_target) in cases {
         // In both modes the joint keeps old voter 1 with its metadata, but not old learner 5.
-        let joint = old.joint_with(&goal);
+        let joint = old.joint_with(&target);
         let got = node_metadata(&joint);
         let want = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40};
         assert_eq!(want, got);
@@ -356,11 +350,9 @@ where
             assert_eq!(joint, decoded);
         }
 
-        // Leaving the joint selects the target of the change, which holds voter 1 only when the
-        // change retains it.
-        let change = C::make_uniform();
-        let target = change.apply(&joint, retain).unwrap();
-        assert_eq!(goal, target);
+        // The computed target keeps the change's retention decision and node metadata.
+        let direct = joint.supports_direct_transition_to(&target);
+        assert!(direct);
         let got = node_metadata(&target);
         assert_eq!(want_target, got);
     }
@@ -373,13 +365,15 @@ where
     let got = node_metadata(&joint);
     assert_eq!(all_active, got);
 
-    // Leaving the joint keeps voter 1 as a learner only when retaining demoted voters.
-    let retained = C::make_uniform().apply(&joint, true).unwrap();
+    // A new edit removes voter 3 and keeps old voter 1 only when retaining demoted voters.
+    let change = change_voters(btreeset! {2, 4}, btreeset! {});
+    let retained = change.apply(&joint, true).unwrap();
     let got = node_metadata(&retained);
     assert_eq!(all_active, got);
-    let dropped = C::make_uniform().apply(&joint, false).unwrap();
+    let change = change_voters(btreeset! {2, 4}, btreeset! {});
+    let dropped = change.apply(&joint, false).unwrap();
     let got = node_metadata(&dropped);
-    assert_eq!(btreemap! {2 => 20, 3 => 30, 4 => 40}, got);
+    assert_eq!(btreemap! {2 => 20, 4 => 40}, got);
 
     // A change of the joint may select voter 1 again, and voter 1 keeps its metadata.
     let change = change_voters(btreeset! {1, 3, 4}, btreeset! {});

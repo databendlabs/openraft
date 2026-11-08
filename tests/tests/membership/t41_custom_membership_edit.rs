@@ -78,11 +78,6 @@ impl RaftMembershipEdit<MembershipOf<TypeConfig>> for CustomEdit {
             <ThresholdChange<u64, ()> as RaftMembershipEdit<MembershipOf<TypeConfig>>>::add_learner(node_id, node);
         Self::Standard(change)
     }
-
-    fn make_uniform() -> Self {
-        let change = <ThresholdChange<u64, ()> as RaftMembershipEdit<MembershipOf<TypeConfig>>>::make_uniform();
-        Self::Standard(change)
-    }
 }
 
 /// A user edit operates on built-in membership and keeps learner addition and joint completion.

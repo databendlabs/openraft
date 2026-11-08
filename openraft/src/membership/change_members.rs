@@ -234,10 +234,6 @@ where
         let nodes = BTreeMap::from([(node_id, node)]);
         ChangeMembers::AddNodes(nodes)
     }
-
-    fn make_uniform() -> Self {
-        ChangeMembers::AddVoterIds(BTreeSet::new())
-    }
 }
 
 #[cfg(test)]

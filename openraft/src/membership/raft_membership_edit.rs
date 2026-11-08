@@ -11,12 +11,13 @@ use crate::membership::RaftMembership;
 /// An operation that produces a target membership configuration.
 ///
 /// [`RaftTypeConfig::MembershipEdit`] selects the edit independently of the membership type.
-/// OpenRaft applies it to the current effective membership inside the Raft core, and builds the
-/// edits it needs itself with the constructors of this trait.
+/// OpenRaft applies it to the current effective membership inside the Raft core, and builds
+/// learner additions with this trait's `add_learner()` constructor.
 /// [`Self::Error`] is the edit's native error. OpenRaft wraps user-defined errors with
 /// [`RaftTypeConfig::ErrorSource`](crate::RaftTypeConfig::ErrorSource) when applying the edit.
 ///
 /// [`RaftTypeConfig::MembershipEdit`]: crate::RaftTypeConfig::MembershipEdit
+#[since(version = "0.10.0", change = "removed make_uniform")]
 #[since(version = "0.10.0", change = "apply now takes retain to handle demoted voters")]
 #[since(version = "0.10.0")]
 pub trait RaftMembershipEdit<M>
@@ -63,26 +64,4 @@ where
     /// Voter `3` keeps its role and its node, because replacing the node of a known ID, such as
     /// its address, can break consensus.
     fn add_learner(node_id: M::NodeId, node: M::Node) -> Self;
-
-    /// Returns an edit that reduces a joint configuration to its uniform target.
-    ///
-    /// Applied to a joint configuration, [`apply()`](Self::apply) selects its target and handles
-    /// demoted voters according to its `retain` argument.
-    ///
-    /// # Examples
-    ///
-    /// Suppose `membership` is the joint configuration `[{1,2,3}, {3,4,5}]` with no learner. Then
-    /// `apply()` must return:
-    ///
-    /// ```text
-    /// make_uniform().apply(&membership, true) == voters [{3,4,5}], learners {1,2}
-    /// make_uniform().apply(&membership, false) == voters [{3,4,5}], learners {}
-    /// ```
-    ///
-    /// [`ChangeMembers`] returns `AddVoterIds` with an empty set, which keeps the target `{3,4,5}`
-    /// as it is. Its `apply()` applies an edit to the target and returns the result, so this edit
-    /// returns `[{3,4,5}]`.
-    ///
-    /// [`ChangeMembers`]: crate::impls::ChangeMembers
-    fn make_uniform() -> Self;
 }

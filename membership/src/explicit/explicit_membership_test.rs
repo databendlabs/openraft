@@ -183,9 +183,8 @@ fn test_get_node_reports_asymmetric_voter_sets() {
         });
         assert_eq!(want, got, "node {node_id}");
     }
-    let uniform_change = ExplicitChange::make_uniform();
-    let uniform = uniform_change.apply(&joint, true).unwrap();
-    assert_eq!(target, uniform);
+    let direct = joint.supports_direct_transition_to(&target);
+    assert!(direct);
 }
 
 #[test]
@@ -383,37 +382,13 @@ fn test_apply() {
 }
 
 #[test]
-fn test_make_uniform_selects_target() {
-    let old = Membership::new([btreeset! {1, 2}], [btreeset! {1, 2}], btreeset! {1, 2, 3}).unwrap();
-
-    // Voter 1 of the old config leaves the voters. Leaving the joint keeps it as a learner only
-    // when retaining demoted voters, whether or not the target already holds it.
-    let with_learner = Membership::new([btreeset! {2, 3}], [btreeset! {3}], btreeset! {1, 2, 3}).unwrap();
-    let without_learner = Membership::new([btreeset! {2, 3}], [btreeset! {3}], btreeset! {2, 3}).unwrap();
-    for new in [&with_learner, &without_learner] {
-        let joint = old.joint_with(new);
-
-        let change = <ExplicitChange<u64, ()> as RaftMembershipEdit<Membership>>::make_uniform();
-        let retained = change.apply(&joint, true).unwrap();
-        assert_eq!(with_learner, retained);
-        let direct = joint.supports_direct_transition_to(&retained);
-        assert!(direct);
-
-        let change = <ExplicitChange<u64, ()> as RaftMembershipEdit<Membership>>::make_uniform();
-        let dropped = change.apply(&joint, false).unwrap();
-        assert_eq!(without_learner, dropped);
-    }
-}
-
-#[test]
 fn test_joint_keeps_old_roles_and_target_restores_new_roles() {
     let nodes = btreeset! {1, 2, 3};
     let old = Membership::new([btreeset! {1, 2}], [btreeset! {1, 2}], nodes.clone()).unwrap();
 
     // The new config stops voter 2 from campaigning.
-    let new = old.clone().with_roles(btreemap! {2 => NodeRole::ReceiveLogs}).unwrap();
-    let target =
-        assert_joint_keeps_old_roles_and_target_restores_new_roles::<_, ExplicitChange<u64, ()>>(&old, &new, 2);
+    let target = old.clone().with_roles(btreemap! {2 => NodeRole::ReceiveLogs}).unwrap();
+    assert_joint_keeps_old_roles_and_target_restores_new_roles(&old, &target, 2);
 
     let want = "{configs: [Config { read: ExplicitQuorumSet { quorums: [{1, 2}] }, write: ExplicitQuorumSet { \
                 quorums: [{1, 2}] }, nodes: {1: ((), None), 2: ((), Some(NodeRole(ReceiveLogs))), \

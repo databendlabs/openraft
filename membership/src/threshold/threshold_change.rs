@@ -137,7 +137,6 @@ where
 }
 
 /// `add_learner()` adds one node and keeps the voters and the write size.
-/// `make_uniform()` returns the empty change, which reduces a joint membership to its last config.
 impl<NID, N> RaftMembershipEdit<ThresholdMembership<NID, N>> for ThresholdChange<NID, N>
 where
     NID: NodeId,
@@ -197,9 +196,5 @@ where
             add_nodes,
             ..Self::default()
         }
-    }
-
-    fn make_uniform() -> Self {
-        Self::default()
     }
 }

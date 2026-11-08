@@ -41,8 +41,7 @@ use crate::errors::InvalidWeights;
 /// [`NodeRole::ReceiveLogs`] for a write voter: OpenRaft rejects such a result with
 /// [`MembershipError::WriteVoterWithoutReceiveLogs`] when it is proposed. When OpenRaft moves to
 /// the result through a joint config, the joint gives each node its role in the result, joined with
-/// its old role if it is an old voter, and [`make_uniform()`](RaftMembershipEdit::make_uniform)
-/// restores the roles of the result.
+/// its old role if it is an old voter. Appending the target restores the roles of the result.
 ///
 /// # Examples
 ///
@@ -166,8 +165,6 @@ where
 }
 
 /// `add_learner()` adds one node and keeps the weights and the write weight.
-/// `make_uniform()` returns the empty change, which reduces a joint membership to the rules of its
-/// last config. `retain` decides whether the old voters that leave the voters stay as learners.
 impl<NID, N> RaftMembershipEdit<WeightedMembership<NID, N>> for WeightedChange<NID, N>
 where
     NID: NodeId,
@@ -205,9 +202,5 @@ where
             node_change,
             ..Self::default()
         }
-    }
-
-    fn make_uniform() -> Self {
-        Self::default()
     }
 }
