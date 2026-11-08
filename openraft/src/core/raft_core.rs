@@ -188,9 +188,8 @@ fn apply_membership_to_payload<C>(
 where
     C: RaftTypeConfig,
 {
-    let (membership, joint) = membership_state.next_membership(changes, retain)?;
-    let finished = !joint;
-    let payload = payloads.select(membership, finished);
+    let (membership, target) = membership_state.next_membership(changes, retain)?;
+    let payload = payloads.select(membership, target);
     Ok(payload)
 }
 
@@ -3006,7 +3005,7 @@ mod tests {
     }
 
     /// Replacing the voters computes a joint membership, so the joint payload carries it and the
-    /// uniform payload goes back to the caller.
+    /// uniform payload goes back to the caller with the exact target membership.
     #[test]
     fn joint_membership_selects_joint_payload() {
         let current = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], btreeset! {4, 5});
@@ -3032,7 +3031,13 @@ mod tests {
         assert_eq!(expected, actual);
 
         let returned = unused_rx.try_recv().unwrap();
-        assert_eq!(Some(TestPayload::normal(2)), returned);
+        let target = Membership::new_with_defaults(vec![btreeset! {3, 4, 5}], []);
+        let expected = TestPayload {
+            normal: Some(2),
+            membership: Some(target),
+        };
+        let expected = Some(expected);
+        assert_eq!(expected, returned);
     }
 
     /// Adding a node moves no voter, so the computed membership is uniform and the uniform

@@ -92,8 +92,8 @@ where C: RaftTypeConfig
 
         // `RaftCore` computes the membership, so only `RaftCore` can tell whether this change
         // needs a joint membership. It spends `joint_payload` on a joint membership and returns
-        // `uniform_payload` for the second step. It spends `uniform_payload` on a uniform one and
-        // returns `None`.
+        // `uniform_payload` with the exact target for the second step. It spends `uniform_payload`
+        // on a uniform one and returns `None`.
         let (unused_tx, unused_rx) = C::oneshot();
         let payloads = MembershipPayloads::JointOrUniform {
             joint: joint_payload,
@@ -135,7 +135,7 @@ where C: RaftTypeConfig
         let (log_id, membership) = (&resp.log_id, resp.membership.clone().unwrap());
 
         // The first step returns `uniform_payload` only after it spent `joint_payload` on a joint
-        // entry. The second step then spends `uniform_payload` on the entry that flattens it.
+        // entry. The second step appends `uniform_payload` with its already bound target.
         let unused_payload = self.inner.recv_msg(unused_rx).await?;
 
         let Some(uniform_payload) = unused_payload else {
@@ -168,15 +168,12 @@ where C: RaftTypeConfig
 
         let (tx, rx) = ProgressResponder::<C, _>::complete_only();
 
-        // The second step, send an edit that leaves the joint config for its target.
-        let changes = <MembershipEditOf<C> as RaftMembershipEdit<C::Membership>>::make_uniform();
+        // Append the exact target computed for the first step.
         let client_write_result = self
             .inner
             .call_core(
-                RaftMsg::ChangeMembership {
-                    changes,
-                    payloads: MembershipPayloads::Uniform(uniform_payload),
-                    retain,
+                RaftMsg::AppendMembership {
+                    payload: uniform_payload,
                     preconditions,
                     tx,
                 },

@@ -118,9 +118,13 @@ where Self: OptionalFeatures + Clone + Default + Eq + Debug + Display + Sized + 
     /// Return `true` at least when every config of `other` is also a config of `self`, with the
     /// same voter set and the same quorum rule. Then every read quorum of `self` is a read quorum
     /// of `other`, and every write quorum of `self` is a write quorum of `other`. Every read quorum
-    /// of `other` intersects every write quorum of `other`, so the step is safe. The second step of
-    /// [`Raft::change_membership()`] and [`Raft::add_learner()`] append such an `other`. If this
-    /// method returns `false` for it, each of them appends another joint configuration instead.
+    /// of `other` intersects every write quorum of `other`, so the step is safe.
+    ///
+    /// [`Raft::add_learner()`] and the second step of [`Raft::change_membership()`] append such an
+    /// `other`. If this method returns `false` for it, [`Raft::add_learner()`] appends the joint
+    /// configuration of `self` and `other` and stops there, while the second step of
+    /// [`Raft::change_membership()`] fails with [`UnsupportedMembershipTransition`] instead of
+    /// appending `other`, after the joint configuration of its first step has committed.
     ///
     /// OpenRaft calls it only for configurations whose quorum sets reject the empty set and accept
     /// the set of all their voters. It also calls it only for an `other` for which
@@ -129,6 +133,7 @@ where Self: OptionalFeatures + Clone + Default + Eq + Debug + Display + Sized + 
     ///
     /// [`Raft::change_membership()`]: crate::Raft::change_membership
     /// [`Raft::add_learner()`]: crate::Raft::add_learner
+    /// [`UnsupportedMembershipTransition`]: crate::errors::UnsupportedMembershipTransition
     #[since(version = "0.10.0")]
     fn supports_direct_transition_to(&self, other: &Self) -> bool;
 
