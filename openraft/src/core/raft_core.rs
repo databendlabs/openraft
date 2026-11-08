@@ -260,7 +260,8 @@ where
         tracing::debug!("raft node is initializing");
 
         self.engine.startup();
-        // It may not finish running all of the commands, if there is a command waiting for a callback.
+        // It may not finish running all of the commands, if there is a command waiting for a
+        // callback.
         self.run_engine_commands().await?;
 
         // Initialize metrics.
@@ -389,8 +390,8 @@ where
                     }
                 };
 
-                // If we receive a response with a greater vote, then revert to follower and abort this
-                // request.
+                // If we receive a response with a greater vote, then revert to follower and abort
+                // this request.
                 if let AppendEntriesResponse::HigherVote(vote) = append_res {
                     debug_assert!(
                         vote > my_vote,
@@ -923,8 +924,8 @@ where
         loop {
             self.flush_metrics();
 
-            // In each loop, it does not have to check rx_shutdown and flush metrics for every RaftMsg
-            // processed.
+            // In each loop, it does not have to check rx_shutdown and flush metrics for every
+            // RaftMsg processed.
             // In each loop, the first step is blocking waiting for any message from any channel.
             // Then if there is any message, process as many as possible to maximize throughput.
 
@@ -1317,11 +1318,12 @@ where
                 // Otherwise the Sender to the caller will be dropped before sending back the
                 // response.
 
-                // TODO: temp solution: Manually wait until the second membership log being applied to state
-                //       machine. Because the response is sent back to the caller after log is
-                //       applied.
+                // TODO: temp solution: Manually wait until the second membership log being applied
+                //       to state machine. Because the response is sent back to the caller after
+                //       log is applied.
                 //       ---
-                //       A better way is to make leader step down a command that waits for the log to be applied.
+                //       A better way is to make leader step down a command that waits for the log
+                //       to be applied.
                 if self.engine.state.io_applied() >= self.engine.state.membership_state.effective().log_id().as_ref() {
                     self.engine.leader_step_down();
                 }
@@ -1537,9 +1539,10 @@ where
     /// it is a stale message and should be just ignored.
     fn does_vote_match(&self, sender_vote: &Vote<C::NodeId>, msg: impl Display) -> bool {
         // Get the current leading vote:
-        // - If input `sender_vote` is committed, it is sent by a Leader. Therefore we check against current
-        //   Leader's vote.
-        // - Otherwise, it is sent by a Candidate, we check against the current in progress voting state.
+        // - If input `sender_vote` is committed, it is sent by a Leader. Therefore we check against
+        //   current Leader's vote.
+        // - Otherwise, it is sent by a Candidate, we check against the current in progress voting
+        //   state.
         let my_vote = if sender_vote.is_committed() {
             let l = self.engine.leader.as_ref();
             l.map(|x| x.vote.clone())

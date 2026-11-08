@@ -142,7 +142,8 @@ async fn add_learner_non_blocking() -> Result<()> {
             let repl = metrics.replication.as_ref().unwrap();
 
             // The result is Some(&None) when there is no success replication is made,
-            // and is None if no replication attempt is made(no success or failure is reported to metrics).
+            // and is None if no replication attempt is made(no success or failure is reported to
+            // metrics).
             let n1_repl = repl.get(&1);
             if n1_repl.is_none() {
                 tracing::info!("--- no replication attempt is made, sleep and retry: {}-th attempt", i);

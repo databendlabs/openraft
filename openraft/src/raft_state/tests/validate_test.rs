@@ -16,8 +16,8 @@ fn log_id(term: u64, index: u64) -> LogId<u64> {
 
 #[test]
 fn test_raft_state_validate_snapshot_is_none() -> anyhow::Result<()> {
-    // Some app does not persist snapshot, when restarted, purged is not None but snapshot_last_log_id
-    // is None. This is a valid state and should not emit error.
+    // Some app does not persist snapshot, when restarted, purged is not None but
+    // snapshot_last_log_id is None. This is a valid state and should not emit error.
 
     let rs = RaftState::<u64, (), TokioInstant> {
         log_ids: LogIdList::new(vec![log_id(1, 1), log_id(3, 4)]),

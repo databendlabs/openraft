@@ -127,8 +127,8 @@ where
 
         let snapshot = self.state_machine.get_current_snapshot().await?;
 
-        // If there is not a snapshot and there are logs purged, which means the snapshot is not persisted,
-        // we just rebuild it so that replication can use it.
+        // If there is not a snapshot and there are logs purged, which means the snapshot is not
+        // persisted, we just rebuild it so that replication can use it.
         let snapshot = match snapshot {
             None => {
                 if last_purged_log_id.is_some() {

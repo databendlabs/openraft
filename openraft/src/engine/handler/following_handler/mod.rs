@@ -248,9 +248,9 @@ where C: RaftTypeConfig
 
         let m = Arc::new(membership);
 
-        // TODO: if effective membership changes, call `update_replication()`, if a follower has replication
-        //       streams. Now we don't have replication streams for follower, so it's ok to not call
-        //       `update_replication()`.
+        // TODO: if effective membership changes, call `update_replication()`, if a follower has
+        //       replication streams. Now we don't have replication streams for follower, so it's
+        //       ok to not call `update_replication()`.
         let _effective_changed = self.state.membership_state.update_committed(m, snapshot_last_log_index);
 
         self.server_state_handler().update_server_state_if_changed();

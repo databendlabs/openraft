@@ -31,8 +31,8 @@ async fn leader_restart_clears_state() -> anyhow::Result<()> {
 
     let mut log_index;
 
-    // It must initialize a 3-nodes cluster so that it won't become leader in term-1, without election,
-    // but instead, it becomes leader in term-2 after a round of election.
+    // It must initialize a 3-nodes cluster so that it won't become leader in term-1, without
+    // election, but instead, it becomes leader in term-2 after a round of election.
     // Otherwise after restart, the restarted leader has greater vote.
     tracing::info!("--- bring up cluster of 3 node");
     {

@@ -401,8 +401,10 @@ where C: RaftTypeConfig
         // 1. A node was a leader but its state reverted to a previous version
         // 2. The node restarts and begins election
         // 3. It receives a vote response containing its own previous leader vote
-        // 4. Without this protection, it would update to that committed vote and become leader again
-        // 5. However, it lacks the necessary logs, causing committed entries to be lost or inconsistent
+        // 4. Without this protection, it would update to that committed vote and become leader
+        //    again
+        // 5. However, it lacks the necessary logs, causing committed entries to be lost or
+        //    inconsistent
         //
         // By using the non-committed version, we prevent this reverted node from becoming leader
         // while still allowing proper vote updates for legitimate cases.
@@ -776,8 +778,8 @@ where C: RaftTypeConfig
         // This leader is not accepted by a quorum yet.
         // Not a valid leader.
         //
-        // Note that leading state is separated from local RaftState(which is used by the `Acceptor` part),
-        // and do not consider the vote in the local RaftState.
+        // Note that leading state is separated from local RaftState(which is used by the `Acceptor`
+        // part), and do not consider the vote in the local RaftState.
         if !leader.vote.is_committed() {
             return Err(self.state.forward_to_leader());
         }

@@ -113,8 +113,8 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== metrics after init");
     let _x = leader.metrics().await?;
 
-    // --- 2. Add node 2 and 3 to the cluster as `Learner`, to let them start to receive log replication
-    // from the        leader.
+    // --- 2. Add node 2 and 3 to the cluster as `Learner`, to let them start to receive log
+    // replication from the leader.
 
     println!("=== add-learner 2");
     let _x = leader.add_learner((2, get_addr(2), get_rpc_addr(2))).await?;
