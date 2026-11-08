@@ -141,10 +141,6 @@ impl RaftMembershipEdit<UnprovenMembership> for ChangeMembers<u64, ()> {
     fn add_learner(node_id: u64, node: ()) -> Self {
         <Self as RaftMembershipEdit<Membership<u64, ()>>>::add_learner(node_id, node)
     }
-
-    fn make_uniform() -> Self {
-        <Self as RaftMembershipEdit<Membership<u64, ()>>>::make_uniform()
-    }
 }
 
 /// `change_membership()` appends a joint membership and then its target, although

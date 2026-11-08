@@ -183,7 +183,7 @@ fn test_get_node_reports_asymmetric_voter_sets() {
         });
         assert_eq!(want, got, "node {node_id}");
     }
-    let uniform_change = ExplicitChange::make_uniform();
+    let uniform_change = ExplicitChange::default();
     let uniform = uniform_change.apply(&joint, true).unwrap();
     assert_eq!(target, uniform);
 }
@@ -383,7 +383,7 @@ fn test_apply() {
 }
 
 #[test]
-fn test_make_uniform_selects_target() {
+fn test_empty_change_selects_target() {
     let old = Membership::new([btreeset! {1, 2}], [btreeset! {1, 2}], btreeset! {1, 2, 3}).unwrap();
 
     // Voter 1 of the old config leaves the voters. Leaving the joint keeps it as a learner only
@@ -393,13 +393,13 @@ fn test_make_uniform_selects_target() {
     for new in [&with_learner, &without_learner] {
         let joint = old.joint_with(new);
 
-        let change = <ExplicitChange<u64, ()> as RaftMembershipEdit<Membership>>::make_uniform();
+        let change = ExplicitChange::default();
         let retained = change.apply(&joint, true).unwrap();
         assert_eq!(with_learner, retained);
         let direct = joint.supports_direct_transition_to(&retained);
         assert!(direct);
 
-        let change = <ExplicitChange<u64, ()> as RaftMembershipEdit<Membership>>::make_uniform();
+        let change = ExplicitChange::default();
         let dropped = change.apply(&joint, false).unwrap();
         assert_eq!(without_learner, dropped);
     }

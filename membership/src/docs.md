@@ -108,8 +108,8 @@ follows the default again.
 Each config stores its nodes, each with the role set for it, if any, and
 computes the default role of a node without one from its status in that
 config. During a joint change, a node's role combines its roles in the new
-config and every earlier config where it is a voter. [`make_uniform()`] keeps
-only the new config, restoring that config's roles.
+config and every earlier config where it is a voter. Finalization appends the
+computed target, restoring that config's roles.
 
 [`Membership`]: openraft::impls::Membership
 [`ChangeMembers`]: openraft::impls::ChangeMembers
@@ -137,4 +137,3 @@ only the new config, restoring that config's roles.
 [`NodeRole::ReceiveLogs`]: openraft::membership::NodeRole::ReceiveLogs
 [`Trigger::transfer_leader()`]: openraft::raft::trigger::Trigger::transfer_leader
 [`WriteVoterWithoutReceiveLogs`]: openraft::membership::errors::WriteVoterWithoutReceiveLogs
-[`make_uniform()`]: openraft::membership::RaftMembershipEdit::make_uniform

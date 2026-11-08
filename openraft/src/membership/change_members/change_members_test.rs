@@ -292,11 +292,11 @@ fn test_membership_change() -> anyhow::Result<()> {
 }
 
 #[test]
-fn make_uniform_respects_retention_and_preserves_learner_metadata() -> anyhow::Result<()> {
+fn empty_change_respects_retention_and_preserves_learner_metadata() -> anyhow::Result<()> {
     let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40, 5 => 50, 6 => 60};
     let joint = Membership::<u64, u64>::new(vec![btreeset! {1, 2, 3}, btreeset! {3, 4, 5}], nodes.clone())?;
     for retain in [true, false] {
-        let change = ChangeMembers::<u64, u64>::make_uniform();
+        let change = ChangeMembers::<u64, u64>::AddVoterIds(btreeset! {});
         let result = change.apply(&joint, retain)?;
         let target_nodes = if retain {
             nodes.clone()

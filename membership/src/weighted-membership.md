@@ -251,12 +251,9 @@ OpenRaft uses a weighted membership through three types:
 3. When [`supports_direct_transition_to()`] returns `true`, OpenRaft appends
    the target. Otherwise it appends [`joint_with()`]: the configs of the
    current membership followed by the config of the target.
-4. Once the joint commits, OpenRaft applies the change from [`make_uniform()`]
-   to the joint and appends the result. That change sets nothing, so its
-   `apply()` keeps the rules of the last config of the joint and every node
-   that the joint knows. With `retain = false` it drops the old voters that
-   left the voters, which leaves the target. With `retain = true` they stay as
-   learners, even an old voter whose node the change removed.
+4. Once the joint commits, OpenRaft appends the exact target returned by
+   `apply()`. The target preserves the original change's node removals,
+   roles, and retention policy.
 
 [`Raft::add_learner()`] applies the change from [`add_learner()`]. That change
 adds one node and keeps both rules, so OpenRaft appends its result directly.
@@ -297,12 +294,8 @@ let joint = membership.joint_with(&target);
 let commits = joint.write_quorum_set().is_quorum([2, 3, 4].iter());
 assert!(!commits);
 
-// 4. `make_uniform()` reduces the joint to the target, which OpenRaft appends
-// directly.
-let change = <Change as RaftMembershipEdit<Membership>>::make_uniform();
-let uniform = change.apply(&joint, true).unwrap();
-assert_eq!(target, uniform);
-let direct = joint.supports_direct_transition_to(&uniform);
+// 4. Once the joint commits, OpenRaft appends the target computed in step 1.
+let direct = joint.supports_direct_transition_to(&target);
 assert!(direct);
 ```
 
@@ -355,6 +348,5 @@ rule of your policy.
 [`node_ids()`]: openraft::membership::RaftMembership::node_ids
 [`RaftMembershipEdit`]: openraft::membership::RaftMembershipEdit
 [`apply()`]: openraft::membership::RaftMembershipEdit::apply
-[`make_uniform()`]: openraft::membership::RaftMembershipEdit::make_uniform
 [`add_learner()`]: openraft::membership::RaftMembershipEdit::add_learner
 [`Raft::add_learner()`]: openraft::Raft::add_learner

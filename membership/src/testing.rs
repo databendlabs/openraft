@@ -65,18 +65,18 @@ where M: RaftMembership {
 }
 
 /// Asserts that the joint of `old` and `new` keeps the role [`voter_role()`] that `old` gives
-/// voter `node_id`, and that the `make_uniform()` change of `C` reduces the joint to `new`, which
-/// gives the voter only [`NodeRole::ReceiveLogs`]. Returns the result of `make_uniform()`.
+/// voter `node_id`, and that an empty change of `C` reduces the joint to `new`, which gives the
+/// voter only [`NodeRole::ReceiveLogs`]. Returns the result of the empty change.
 pub(crate) fn assert_joint_keeps_old_roles_and_target_restores_new_roles<M, C>(old: &M, new: &M, node_id: u64) -> M
 where
     M: RaftMembership<NodeId = u64>,
-    C: RaftMembershipEdit<M>,
+    C: RaftMembershipEdit<M> + Default,
 {
     let joint = old.joint_with(new);
     let in_joint = joint.get_node(&node_id).unwrap();
     assert_eq!(voter_role(), in_joint.role);
 
-    let change = C::make_uniform();
+    let change = C::default();
     let target = change.apply(&joint, true).unwrap();
     assert_eq!(new, &target);
     let in_target = target.get_node(&node_id).unwrap();
@@ -144,14 +144,14 @@ where
 
 /// Asserts that a change of both the voters and the roles goes through a joint. The joint gives
 /// each node its new role, joined with its old role where it is an old voter, and
-/// `make_uniform()` restores the new roles. A set role stays through later changes of the voters.
+/// an empty change restores the new roles. A set role stays through later changes of the voters.
 ///
 /// `build` and `with_roles` are as in [`assert_with_roles()`]. `change_voters(voters, roles)`
 /// returns a change to the rules that `build` gives `voters`, which also sets `roles`.
 pub(crate) fn assert_role_and_quorum_change_through_joint<M, C, B, W, F>(build: B, with_roles: W, change_voters: F)
 where
     M: RaftMembership<NodeId = u64, Node = ()>,
-    C: RaftMembershipEdit<M>,
+    C: RaftMembershipEdit<M> + Default,
     B: Fn(BTreeSet<u64>, BTreeSet<u64>) -> M,
     W: Fn(M, BTreeMap<u64, NodeRole>) -> Result<M, NodeNotFound<u64>>,
     F: Fn(BTreeSet<u64>, BTreeMap<u64, NodeRole>) -> C,
@@ -190,7 +190,7 @@ where
     assert_eq!(vec![1, 2, 3, 4, 5], ids);
 
     // The target restores the new roles.
-    let change = C::make_uniform();
+    let change = C::default();
     let target = change.apply(&joint, true).unwrap();
     assert_eq!(new, target);
     let cases = [
@@ -317,7 +317,7 @@ where
 pub(crate) fn assert_change_through_joint_keeps_node_metadata<M, C, B, F>(build: B, change_voters: F)
 where
     M: RaftMembership<NodeId = u64, Node = u64>,
-    C: RaftMembershipEdit<M>,
+    C: RaftMembershipEdit<M> + Default,
     B: Fn(BTreeSet<u64>, BTreeMap<u64, u64>) -> M,
     F: Fn(BTreeSet<u64>, BTreeSet<u64>) -> C,
 {
@@ -358,7 +358,7 @@ where
 
         // Leaving the joint selects the target of the change, which holds voter 1 only when the
         // change retains it.
-        let change = C::make_uniform();
+        let change = C::default();
         let target = change.apply(&joint, retain).unwrap();
         assert_eq!(goal, target);
         let got = node_metadata(&target);
@@ -374,10 +374,12 @@ where
     assert_eq!(all_active, got);
 
     // Leaving the joint keeps voter 1 as a learner only when retaining demoted voters.
-    let retained = C::make_uniform().apply(&joint, true).unwrap();
+    let change = C::default();
+    let retained = change.apply(&joint, true).unwrap();
     let got = node_metadata(&retained);
     assert_eq!(all_active, got);
-    let dropped = C::make_uniform().apply(&joint, false).unwrap();
+    let change = C::default();
+    let dropped = change.apply(&joint, false).unwrap();
     let got = node_metadata(&dropped);
     assert_eq!(btreemap! {2 => 20, 3 => 30, 4 => 40}, got);
 

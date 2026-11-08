@@ -30,8 +30,7 @@ use crate::quorum::HierarchicalQuorumSet;
 /// [`MembershipError::NodeNotFound`].
 ///
 /// OpenRaft moves to a result with other groups or other write sizes through a joint config, which
-/// keeps the trees of both configs. [`make_uniform()`](RaftMembershipEdit::make_uniform) then
-/// selects the tree of the result.
+/// keeps the trees of both configs. OpenRaft then appends the computed target with its tree.
 ///
 /// A node of the result takes the role that `node_change.roles` or the last config sets for it, and
 /// otherwise the default for its status in the result: [`NodeRole::Campaigner`] `|`
@@ -44,8 +43,7 @@ use crate::quorum::HierarchicalQuorumSet;
 /// [`NodeRole::ReceiveLogs`] for a write voter: OpenRaft rejects such a result with
 /// [`MembershipError::WriteVoterWithoutReceiveLogs`] when it is proposed. When OpenRaft moves to
 /// the result through a joint config, the joint gives each node its role in the result, joined with
-/// its old role if it is an old voter, and [`make_uniform()`](RaftMembershipEdit::make_uniform)
-/// restores the roles of the result.
+/// its old role if it is an old voter. Appending the target restores the roles of the result.
 ///
 /// # Examples
 ///
@@ -152,8 +150,8 @@ where
 }
 
 /// `add_learner()` adds one node and keeps the groups and the write sizes.
-/// `make_uniform()` returns the empty change, which reduces a joint membership to the rules of its
-/// last config. `retain` decides whether the old voters that leave the voters stay as learners.
+/// An empty change reduces a joint membership to the rules of its last config. `retain` decides
+/// whether the old voters that leave the voters stay as learners.
 impl<NID, N> RaftMembershipEdit<HierarchicalMembership<NID, N>> for HierarchicalChange<NID, N>
 where
     NID: NodeId,
@@ -189,9 +187,5 @@ where
             node_change,
             ..Self::default()
         }
-    }
-
-    fn make_uniform() -> Self {
-        Self::default()
     }
 }

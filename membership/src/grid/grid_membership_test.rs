@@ -284,7 +284,7 @@ fn test_placement_change_goes_through_joint_that_keeps_both_grids() {
     let got = joint.to_string();
     assert_eq!(want, got);
 
-    let change = <GridChange<u64, ()> as RaftMembershipEdit<Membership>>::make_uniform();
+    let change = GridChange::default();
     let target = change.apply(&joint, true).unwrap();
     assert_eq!(new, target);
     let direct = joint.supports_direct_transition_to(&target);
@@ -292,7 +292,7 @@ fn test_placement_change_goes_through_joint_that_keeps_both_grids() {
 }
 
 #[test]
-fn test_make_uniform_selects_target() {
+fn test_empty_change_selects_target() {
     let old = grid(vec![vec![1, 2], vec![3, 4]]);
 
     // Voters 3 and 4 of the old grid leave the voters. Leaving the joint keeps them as learners
@@ -302,13 +302,13 @@ fn test_make_uniform_selects_target() {
     for new in [&with_learners, &without_learners] {
         let joint = old.joint_with(new);
 
-        let change = <GridChange<u64, ()> as RaftMembershipEdit<Membership>>::make_uniform();
+        let change = GridChange::default();
         let retained = change.apply(&joint, true).unwrap();
         assert_eq!(with_learners, retained);
         let direct = joint.supports_direct_transition_to(&retained);
         assert!(direct);
 
-        let change = <GridChange<u64, ()> as RaftMembershipEdit<Membership>>::make_uniform();
+        let change = GridChange::default();
         let dropped = change.apply(&joint, false).unwrap();
         assert_eq!(without_learners, dropped);
     }

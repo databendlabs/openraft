@@ -346,14 +346,14 @@ fn test_moving_a_voter_between_groups_goes_through_a_joint() {
     let joint_writes = accepted(&joint.write_quorum_set(), &subsets);
     assert_eq!(both_writes, joint_writes);
 
-    // The joint keeps the rules of both configs, and `make_uniform()` selects the new groups.
+    // The joint keeps the rules of both configs, and an empty change selects the new groups.
     let old_rules = old.write_quorum_set();
     let new_rules = new.write_quorum_set();
     let want = vec![old_rules.rules()[0].clone(), new_rules.rules()[0].clone()];
     let joint_rules = joint.write_quorum_set();
     assert_eq!(want, joint_rules.rules());
 
-    let change = <Change as RaftMembershipEdit<Membership>>::make_uniform();
+    let change = Change::default();
     let target = change.apply(&joint, true).unwrap();
     assert_eq!(new, target);
     let direct = joint.supports_direct_transition_to(&target);
@@ -403,7 +403,7 @@ fn test_nesting_groups_goes_through_a_joint() {
     assert_eq!(both_writes, joint_writes);
 
     assert_claims_hold(&old, &new);
-    let change = <Change as RaftMembershipEdit<Membership>>::make_uniform();
+    let change = Change::default();
     let target = change.apply(&joint, true).unwrap();
     assert_eq!(new, target);
 }
@@ -668,7 +668,7 @@ fn test_apply_edits_nodes() {
 }
 
 #[test]
-fn test_make_uniform_selects_target_and_keeps_old_voters_as_learners() {
+fn test_empty_change_selects_target_and_keeps_old_voters_as_learners() {
     let old = nine_voters();
 
     // Zone c leaves, and a write quorum still needs both remaining zones.
@@ -680,7 +680,7 @@ fn test_make_uniform_selects_target_and_keeps_old_voters_as_learners() {
     let new = change.apply(&old, true).unwrap();
     let joint = old.joint_with(&new);
 
-    let change = <Change as RaftMembershipEdit<Membership>>::make_uniform();
+    let change = Change::default();
     let target = change.apply(&joint, true).unwrap();
 
     // Voters 7, 8 and 9 of the old config stay as learners of the target.

@@ -269,7 +269,7 @@ fn test_apply() {
 
     // Leaving a joint membership keeps its target and the write size of the target.
     let joint = joint_membership(&m42, &threshold(voters.clone(), 4));
-    let change = <ThresholdChange<u64, ()> as RaftMembershipEdit<ThresholdMembership<u64, ()>>>::make_uniform();
+    let change = ThresholdChange::default();
     let res = change.apply(&joint, true);
     let want = Ok(threshold(voters, 4));
     assert_eq!(want, res);
@@ -351,13 +351,13 @@ fn test_get_node() {
 }
 
 #[test]
-fn test_make_uniform_respects_retention_and_preserves_learner_metadata() {
+fn test_empty_change_respects_retention_and_preserves_learner_metadata() {
     let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40, 5 => 50, 6 => 60};
     let old = ThresholdMembership::<u64, u64>::new(btreeset! {1, 2, 3}, 2, nodes.clone()).unwrap();
     let target = ThresholdMembership::new(btreeset! {3, 4, 5}, 2, nodes.clone()).unwrap();
     let joint = old.joint_with(&target);
     for retain in [true, false] {
-        let change = ThresholdChange::make_uniform();
+        let change = ThresholdChange::default();
         let got = change.apply(&joint, retain).unwrap();
         let target_nodes = if retain {
             nodes.clone()

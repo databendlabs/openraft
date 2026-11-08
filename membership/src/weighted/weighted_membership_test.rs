@@ -398,7 +398,7 @@ fn test_remove_heavy_voter_through_joint() {
     assert_eq!(want, joint.to_string());
 
     // Leaving the joint selects the target, where node 1 stays as a learner.
-    let change = <WeightedChange<u64, ()> as RaftMembershipEdit<Membership>>::make_uniform();
+    let change = WeightedChange::default();
     let target = change.apply(&joint, true).unwrap();
     assert_eq!(new, target);
     let direct = joint.supports_direct_transition_to(&target);
