@@ -1,3 +1,5 @@
+//! [`InlineBatch`], the default [`Batch`](crate::batch::Batch) implementation.
+
 use smallvec::SmallVec;
 
 /// A container that stores elements efficiently by avoiding heap allocation for single elements.

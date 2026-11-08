@@ -11,6 +11,8 @@ where
     Bound: RangeMapBound,
     V: RangeMapValue,
 {
+    /// The key range `[start, end)`.
     pub range: Range<Bound>,
+    /// One value per channel or stage.
     pub values: [V; N],
 }

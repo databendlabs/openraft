@@ -48,6 +48,7 @@ where C: RaftTypeConfig
 impl<C> FlushPoint<C>
 where C: RaftTypeConfig
 {
+    /// Creates a flush point for log I/O submitted under `vote` that flushed up to `last_log_id`.
     pub fn new(vote: Vote<C::LeaderId>, last_log_id: Option<LogIdOf<C>>) -> Self {
         Self { vote, last_log_id }
     }

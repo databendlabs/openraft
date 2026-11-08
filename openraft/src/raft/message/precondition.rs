@@ -27,6 +27,7 @@ where C: RaftTypeConfig
     /// Satisfied only when this node's vote is committed and elects exactly `committed_leader_id`.
     /// A node whose vote is not yet committed has no established leader and never satisfies it.
     CommittedLeaderId {
+        /// The leader that must still be the established one.
         committed_leader_id: CommittedLeaderIdOf<C>,
     },
 
@@ -35,7 +36,10 @@ where C: RaftTypeConfig
     /// The last log entry may be uncommitted, and an uncommitted tail is reverted when a new
     /// leader is elected without having seen it. Satisfying this condition therefore does not
     /// guarantee the matched entry survives.
-    LastLogId { last_log_id: Option<LogIdOf<C>> },
+    LastLogId {
+        /// The required last log id; `None` means an empty log.
+        last_log_id: Option<LogIdOf<C>>,
+    },
 
     /// Require the effective membership to be the one stored at `last_membership_log_id`, where
     /// `None` means no membership log has been appended.
@@ -47,7 +51,10 @@ where C: RaftTypeConfig
     /// The effective membership may itself be uncommitted, and an uncommitted membership log is
     /// reverted when a new leader is elected without having seen it. Satisfying this condition
     /// therefore does not guarantee the matched membership survives.
-    LastMembershipLogId { last_membership_log_id: Option<LogIdOf<C>> },
+    LastMembershipLogId {
+        /// The log id of the required effective membership; `None` means no membership log.
+        last_membership_log_id: Option<LogIdOf<C>>,
+    },
 }
 
 impl<C> Precondition<C>

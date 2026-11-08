@@ -6,5 +6,6 @@ use crate::type_config::alias::VoteOf;
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("reject vote: local vote {higher} is >= the received vote")]
 pub struct RejectVote<C: RaftTypeConfig> {
+    /// The vote of the rejecting node, which is greater than or equal to the received vote.
     pub higher: VoteOf<C>,
 }

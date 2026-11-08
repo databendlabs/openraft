@@ -85,6 +85,7 @@ where
     D: AppData,
     Mem: RaftMembership,
 {
+    /// Returns the name of this payload's variant: `"Blank"`, `"Normal"` or `"Membership"`.
     pub fn type_str(&self) -> &'static str {
         match self {
             EntryPayload::Blank => "Blank",

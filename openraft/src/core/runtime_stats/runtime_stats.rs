@@ -226,6 +226,9 @@ where C: RaftTypeConfig
         self.notification_counts[name.index()] += 1;
     }
 
+    /// Record that the log entry at `index` reached `stage` now.
+    ///
+    /// Without the `runtime-stats` feature, it does nothing.
     pub fn record_log_stage_now(&mut self, stage: Stage, index: u64) {
         #[cfg(feature = "runtime-stats")]
         self.record_log_stage(stage, index, C::now());
@@ -236,6 +239,9 @@ where C: RaftTypeConfig
         }
     }
 
+    /// Record that the log entry at `index` reached `stage` at `now`.
+    ///
+    /// Without the `runtime-stats` feature, it does nothing.
     pub fn record_log_stage(&mut self, stage: Stage, index: u64, now: InstantOf<C>) {
         #[cfg(feature = "runtime-stats")]
         self.log_stage.record_stage(stage, index, now);
@@ -246,6 +252,9 @@ where C: RaftTypeConfig
         }
     }
 
+    /// Compute `log_stage_histograms` from the recorded log stages.
+    ///
+    /// Without the `runtime-stats` feature, it does nothing.
     pub fn build_log_stage_histograms(&mut self) {
         #[cfg(feature = "runtime-stats")]
         {

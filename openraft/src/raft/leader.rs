@@ -66,18 +66,26 @@ where
     C: RaftTypeConfig,
     SM: RaftStateMachine<C>,
 {
+    /// Returns the [`Raft`] handle of this node.
     pub fn raft(&self) -> &Raft<C, SM> {
         &self.raft
     }
 
+    /// Returns the leader id, which holds the term and this node's id.
     pub fn leader_id(&self) -> &LeaderIdOf<C> {
         &self.leader_id
     }
 
+    /// Returns the committed form of the leader id, which the log ids of this leader's entries
+    /// carry.
     pub fn to_committed_leader_id(&self) -> CommittedLeaderIdOf<C> {
         self.leader_id.to_committed()
     }
 
+    /// Returns when a quorum last acknowledged this leader, or `None` if none had yet.
+    ///
+    /// The value is a snapshot taken by the [`Raft::as_leader()`] call that returned this
+    /// `Leader`.
     pub fn last_quorum_acked(&self) -> Option<InstantOf<C>> {
         self.last_quorum_acked
     }

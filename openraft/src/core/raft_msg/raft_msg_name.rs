@@ -7,14 +7,23 @@ use openraft_macros::since;
 #[derive(VariantName)]
 #[variant_name(prefix = "Ext::")]
 pub enum ExternalCommandName {
+    /// Start an election.
     Elect,
+    /// Send a heartbeat if this node is the leader.
     Heartbeat,
+    /// Build a snapshot.
     Snapshot,
+    /// Purge the logs that a snapshot covers, up to an index.
     PurgeLog,
+    /// Transfer leadership to a given node.
     TriggerTransferLeader,
+    /// Reset the replication backoff for given nodes.
     ResetBackoff,
+    /// Allow or forbid the next log reversion of the replication to a node.
     AllowNextRevert,
+    /// Set or unset a custom metrics recorder.
     SetMetricsRecorder,
+    /// Recompute the server state from the vote and the membership.
     RefreshServerState,
 }
 
@@ -29,19 +38,32 @@ pub enum ExternalCommandName {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[derive(VariantName)]
 pub enum RaftMsgName {
+    /// An AppendEntries request.
     AppendEntries,
+    /// A vote request.
     RequestVote,
+    /// A Pre-Vote request.
     RequestPreVote,
+    /// A full snapshot to install.
     InstallSnapshot,
+    /// A client write request.
     ClientWrite,
+    /// A request for a read linearizer.
     GetLinearizer,
+    /// A request to initialize the cluster.
     Initialize,
+    /// A membership change request.
     ChangeMembership,
+    /// A request to append a caller-built membership.
     #[since(version = "0.10.0")]
     AppendMembership,
+    /// A leadership transfer request received from the leader.
     HandleTransferLeader,
+    /// A function to run on the Raft state.
     WithRaftState,
+    /// An external command, named by the inner value.
     ExternalCommand(ExternalCommandName),
+    /// A request for runtime statistics.
     GetRuntimeStats,
 }
 

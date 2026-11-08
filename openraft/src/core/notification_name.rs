@@ -14,16 +14,27 @@ use openraft_macros::since;
     change = "renamed from `CheckPendingLinearizableReads` to `PendingReadDeadlineReached`"
 )]
 pub enum NotificationName {
+    /// A response to a vote request.
     VoteResponse,
+    /// A response to a Pre-Vote request.
     PreVoteResponse,
+    /// A leader saw a higher vote while replicating.
     HigherVote,
+    /// A local storage error that stops `RaftCore`.
     StorageError,
+    /// A local storage IO operation completed.
     LocalIO,
+    /// A replication worker reported progress.
     ReplicationProgress,
+    /// A heartbeat worker reported progress.
     HeartbeatProgress,
+    /// A state machine worker returned the result of a command.
     StateMachine,
+    /// A tick that wakes `RaftCore` to check timeouts.
     Tick,
+    /// The earliest pending linearizable read reached its deadline.
     PendingReadDeadlineReached,
+    /// A log purge completed in storage.
     LogPurged,
 }
 
