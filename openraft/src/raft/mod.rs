@@ -279,9 +279,7 @@ pub enum ReadPolicy {
     /// It returns an error immediately when the lease is stale.
     ///
     /// Note: This offers slightly weaker consistency guarantees than `ReadIndex` in exchange
-    /// for lower latency. Besides bounded clock drift, it assumes that no follower restarts
-    /// during the leader's lease: a restarted node starts with an expired lease, so it may vote
-    /// for a new leader while the old leader still serves lease reads.
+    /// for lower latency.
     LeaseRead,
 
     /// Implements the ReadIndex protocol to ensure linearizable reads.

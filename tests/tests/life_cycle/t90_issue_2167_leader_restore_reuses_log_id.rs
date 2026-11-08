@@ -56,7 +56,7 @@ async fn issue_2167_leader_restore_reuses_log_id() -> anyhow::Result<()> {
 
     tracing::info!(
         log_index,
-        "--- stop every node; a restarted node-2 has no leader lease, so it grants a vote at once"
+        "--- stop every node; restarted node-2 keeps node-0's lease, which does not block node-0's campaign"
     );
     let n0 = router.stop_node(0).await?;
     let n1 = router.stop_node(1).await?;
@@ -85,8 +85,6 @@ async fn issue_2167_leader_restore_reuses_log_id() -> anyhow::Result<()> {
     {
         router.new_raft_node_with_sto(2, n2.log_store, n2.state_machine).await?;
         router.wait(&2).state(ServerState::Follower, "node-2 startup complete").await?;
-        // Advance past the recovered zero-duration lease, including on a simulated clock.
-        TypeConfig::sleep(Duration::from_millis(1)).await;
         router.new_raft_node_with_sto(0, n0.log_store, n0.state_machine).await?;
     }
 
@@ -210,7 +208,7 @@ async fn leader_restore_rejected_by_newer_log() -> anyhow::Result<()> {
     tracing::info!(
         log_index,
         x_index,
-        "--- restart node-1 without a lease, then let node-0 campaign"
+        "--- restart node-1, then let node-0 campaign; only node-1's newer log can reject it"
     );
     {
         router.new_raft_node_with_sto(1, n1.log_store, n1.state_machine).await?;

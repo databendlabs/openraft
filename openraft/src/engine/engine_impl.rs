@@ -192,6 +192,12 @@ where
             let uncommitted: VoteOf<C> = self.state.vote.to_non_committed().into_vote();
             self.state.vote.update(C::now(), Duration::default(), uncommitted);
             debug_assert!(!self.state.is_leader(&self.config.id))
+        } else if self.state.vote_ref().is_committed() {
+            // Before it stopped, this node may have renewed the lease of the Leader it follows,
+            // and the Leader may still hold that lease. Storage does not keep the lease, so renew
+            // it for a full period, as a heartbeat would: until it ends, this node neither grants
+            // a vote to another candidate nor campaigns, and the Leader's lease reads stay correct.
+            self.state.vote.touch(C::now(), self.config.timer_config.leader_lease);
         }
 
         let server_state = self.state.calc_following_state(&self.config.id);
@@ -407,7 +413,12 @@ where
         // does not override the lease of the Leader this node follows.
         let authorized_transfer = req.leadership_transfer_from.as_ref() == Some(self.state.vote_ref());
 
-        if local_leased_vote.is_committed() && !authorized_transfer {
+        // The Leader this node follows may campaign again, for example after it restarts. A
+        // campaign means it has given up the leadership that the lease protects, so no lease
+        // reads rely on the lease any more, and the lease does not hold its own campaign back.
+        let from_leased_leader = req.vote.leader_node_id() == self.state.vote_ref().leader_node_id();
+
+        if local_leased_vote.is_committed() && !authorized_transfer && !from_leased_leader {
             // Current leader lease has not yet expired, reject voting request
             if !local_leased_vote.is_expired(now, Duration::from_millis(0)) {
                 tracing::info!(

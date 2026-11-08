@@ -106,6 +106,38 @@ fn test_handle_vote_req_leadership_transfer_overrides_leader_lease() -> anyhow::
 }
 
 #[test]
+fn test_handle_vote_req_leased_leader_campaigns_again() -> anyhow::Result<()> {
+    // The Leader this node follows campaigns again, for example after it restarts. It has given up
+    // the leadership that the lease protects, so the lease does not reject its vote request.
+    let mut eng = eng();
+    eng.state.vote.update(
+        UTConfig::<()>::now(),
+        Duration::from_millis(500),
+        Vote::new_committed(2, 0),
+    );
+
+    let resp = eng.handle_vote_req(VoteRequest::new(Vote::new(3, 0), Some(log_id(2, 0, 3))));
+
+    assert_eq!(VoteResponse::new(Vote::new(3, 0), None, true), resp);
+
+    assert_eq!(Vote::new(3, 0), *eng.state.vote_ref());
+    assert!(eng.leader.is_none());
+    assert!(eng.candidate_ref().is_none(), "candidate yields to the new candidate");
+
+    assert_eq!(ServerState::Follower, eng.state.server_state);
+    assert_eq!(
+        vec![
+            Command::FailPendingReads,
+            Command::SaveVote { vote: Vote::new(3, 0) },
+            Command::CloseReplicationStreams,
+        ],
+        eng.output.take_commands()
+    );
+
+    Ok(())
+}
+
+#[test]
 fn test_handle_vote_req_transfer_by_another_leader_rejected_by_leader_lease() -> anyhow::Result<()> {
     // A leadership transfer authorized by a Leader this node does not follow, such as a delayed one
     // from an older Leader, does not override the lease of the Leader it follows.

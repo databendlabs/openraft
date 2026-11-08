@@ -55,7 +55,9 @@ For an uncommitted vote (the vote that is saved upon receiving a `VoteRequest`):
 
 For a committed vote (the vote that is saved upon receiving `AppendEntriesRequest` or `InstallSnapshotRequest`):
 
-- The node **WILL NOT** handle a `VoteRequest` before the `leader_lease` expires;
+- The node **WILL NOT** handle a `VoteRequest` before the `leader_lease` expires, unless the
+  request comes from the Leader it follows, which campaigns only after giving up the leadership
+  that the lease protects, or is a leadership transfer that this Leader authorized;
 - The node **WILL NOT** elect itself until `leader_lease + election_timeout` has passed.
 
 ```text
@@ -69,3 +71,7 @@ For a committed vote (the vote that is saved upon receiving `AppendEntriesReques
         '- Vote.last_update_time
 
 ```
+
+Storage does not keep the lease. A node that restarts with a committed vote renews the lease at
+startup, as if a heartbeat had just arrived, so that it does not help elect another leader while
+the Leader may still hold the lease.
