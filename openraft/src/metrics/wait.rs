@@ -9,9 +9,11 @@ use crate::RaftTypeConfig;
 use crate::async_runtime::Select2;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::core::ServerState;
+use crate::core::replication_lag;
 use crate::metrics::Condition;
 use crate::metrics::Metric;
 use crate::metrics::RaftMetrics;
+use crate::metrics::ReplicationWaitError;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
@@ -124,6 +126,83 @@ where C: RaftTypeConfig
                 }
             }
         }
+    }
+
+    /// Wait for replication to `node_id` to reach a minimum index and lag by at most `max_lag`.
+    ///
+    /// Both conditions must hold in the same metrics report: the matched log index is at least
+    /// `min_index`, and its distance from the leader's current last log index is at most `max_lag`.
+    /// `None` imposes no minimum index; `max_lag = 0` requires fully caught-up replication.
+    /// For the leader itself, its last log index is used as the matched index.
+    ///
+    /// Call this on the leader. Before checking target membership or replication, wait for the
+    /// leader's reported last log index to reach `min_index`. For a newly added target, pass the
+    /// membership entry's index so stale metrics are not mistaken for target removal.
+    ///
+    /// Returns [`ReplicationWaitError::NotLeader`] immediately if the local node is not a leader,
+    /// or [`ReplicationWaitError::NodeNotFound`] if sufficiently fresh metrics do not contain the
+    /// target in the effective membership. Missing replication metrics for an existing target
+    /// keep the wait pending. Timeout and shutdown errors are wrapped in
+    /// [`ReplicationWaitError::Wait`].
+    ///
+    /// The result is an observation of replication, not a guarantee that the target has applied
+    /// the entries. Like other metrics waits, it can miss intermediate leadership/membership
+    /// changes.
+    ///
+    /// ```ignore
+    /// // Wait until node 4 has log 100 and is at most 10 entries behind the leader.
+    /// let metrics = raft.wait(Some(timeout)).replication(4, Some(100), 10).await?;
+    /// ```
+    #[since(version = "0.10.0")]
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub async fn replication(
+        &self,
+        node_id: C::NodeId,
+        min_index: Option<u64>,
+        max_lag: u64,
+    ) -> Result<RaftMetrics<C>, ReplicationWaitError> {
+        let metrics = self
+            .metrics(
+                |m| Self::check_replication(m, &node_id, min_index, max_lag) != Ok(false),
+                format!("replication to {node_id} reaches {min_index:?} with lag <= {max_lag}"),
+            )
+            .await?;
+
+        Self::check_replication(&metrics, &node_id, min_index, max_lag)?;
+        Ok(metrics)
+    }
+
+    fn check_replication(
+        metrics: &RaftMetrics<C>,
+        node_id: &C::NodeId,
+        min_index: Option<u64>,
+        max_lag: u64,
+    ) -> Result<bool, ReplicationWaitError> {
+        if metrics.state != ServerState::Leader {
+            return Err(ReplicationWaitError::NotLeader);
+        }
+
+        if metrics.last_log_index < min_index {
+            return Ok(false);
+        }
+
+        if metrics.membership_config.get_node(node_id).is_none() {
+            return Err(ReplicationWaitError::NodeNotFound);
+        }
+
+        let matched_index = if node_id == &metrics.id {
+            metrics.last_log_index
+        } else {
+            let Some(replication) = &metrics.replication else {
+                return Ok(false);
+            };
+            let Some(matched) = replication.get(node_id) else {
+                return Ok(false);
+            };
+            matched.index()
+        };
+
+        Ok(matched_index >= min_index && replication_lag(&matched_index, &metrics.last_log_index) <= max_lag)
     }
 
     /// Wait for `vote` to become `want` or timeout.
@@ -300,6 +379,9 @@ where C: RaftTypeConfig
         .await
     }
 }
+
+#[cfg(test)]
+mod replication_test;
 
 #[cfg(test)]
 mod tests {

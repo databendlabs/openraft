@@ -3,13 +3,10 @@ use std::fmt::Debug;
 use display_more::DisplayResultExt;
 use openraft_macros::since;
 
-use crate::LogIdOptionExt;
-use crate::RaftMetrics;
 use crate::RaftTypeConfig;
 use crate::batch::Batch;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::membership_payloads::MembershipPayloads;
-use crate::core::replication_lag;
 use crate::entry::RaftPayload;
 use crate::errors::ClientWriteError;
 use crate::errors::Fatal;
@@ -23,7 +20,6 @@ use crate::raft::Precondition;
 use crate::raft::raft_inner::RaftInner;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::BatchOf;
-use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MembershipEditOf;
 
 /// Provides management APIs for the Raft system.
@@ -255,21 +251,16 @@ where C: RaftTypeConfig
             return Ok(Ok(resp));
         }
 
-        // Otherwise, blocks until the replication to the new learner becomes up to date.
-
-        // The log id of the membership that contains the added learner.
-        let membership_log_id = &resp.log_id;
-
+        // Use the membership entry that adds this learner as the minimum index. Once leader
+        // metrics reach it, the membership change has been processed and replication has been
+        // set up, so checking replication status will not mistake stale metrics for learner removal.
         let wait_res = self
             .inner
             .wait(None)
-            .metrics(
-                |metrics| match self.check_replication_upto_date(metrics, &id, Some(membership_log_id)) {
-                    Ok(_matching) => true,
-                    // keep waiting
-                    Err(_) => false,
-                },
-                "wait new learner to become line-rate",
+            .replication(
+                id,
+                Some(resp.log_id.index()),
+                self.inner.config.replication_lag_threshold,
             )
             .await;
 
@@ -279,52 +270,5 @@ where C: RaftTypeConfig
         );
 
         Ok(Ok(resp))
-    }
-
-    #[since(version = "0.10.0")]
-    fn check_replication_upto_date(
-        &self,
-        metrics: &RaftMetrics<C>,
-        node_id: &C::NodeId,
-        membership_log_id: Option<&LogIdOf<C>>,
-    ) -> Result<Option<LogIdOf<C>>, ()> {
-        if metrics.membership_config.log_id().as_ref() < membership_log_id {
-            // Waiting for the latest metrics to report.
-            return Err(());
-        }
-
-        if metrics.membership_config.get_node(node_id).is_none() {
-            // This learner has been removed.
-            return Ok(None);
-        }
-
-        let repl = match &metrics.replication {
-            None => {
-                // This node is no longer a leader.
-                return Ok(None);
-            }
-            Some(x) => x,
-        };
-
-        let replication_metrics = repl;
-        let target_metrics = match replication_metrics.get(node_id) {
-            None => {
-                // Maybe replication is not reported yet. Keep waiting.
-                return Err(());
-            }
-            Some(x) => x,
-        };
-
-        let matched = target_metrics.clone();
-
-        let distance = replication_lag(&matched.index(), &metrics.last_log_index);
-
-        if distance <= self.inner.config.replication_lag_threshold {
-            // replication became up to date.
-            return Ok(matched);
-        }
-
-        // Not up to date, keep waiting.
-        Err(())
     }
 }
