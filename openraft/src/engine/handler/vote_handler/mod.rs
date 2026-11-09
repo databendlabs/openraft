@@ -167,12 +167,11 @@ where
 
     /// Enter Leader state(vote.node_id == self.id && vote.committed == true).
     ///
-    /// Note that this is called when the Leader state changes caused by
-    /// the change of vote in the **Acceptor** part `engine.state.vote`.
-    /// This is **NOT** called when a node is elected as a leader.
-    ///
-    /// An example use of this mechanism is when node-a electing for node-b,
-    /// which can be used for Leader-a to transfer leadership to Follower-b.
+    /// It keeps the Leader that an election established. Otherwise it builds a new Leader from the
+    /// vote in the **Acceptor** part, `engine.state.vote`. In a running cluster that happens only
+    /// if a request carries a committed vote that names this node, which a correct peer never
+    /// sends: startup demotes a former leader's vote, and vote responses are adopted only
+    /// uncommitted.
     pub(crate) fn become_leader(&mut self) {
         tracing::debug!(
             "become leader: node-{}, my vote: {}, last-log-id: {}",
@@ -190,8 +189,9 @@ where
                     self.config.id,
                     self.state.vote_ref()
                 );
-                // Reached when the server state is refreshed on an established leader, for
-                // example by `Trigger::refresh_server_state()`.
+                // Reached when an election win commits the vote, and when the server state is
+                // refreshed on an established leader, for example by
+                // `Trigger::refresh_server_state()`.
                 l.committed_vote = self.state.vote_ref().to_committed();
                 self.server_state_handler().update_server_state_if_changed();
                 return;
@@ -205,10 +205,7 @@ where
         let leader_vote = leader.committed_vote_ref().clone();
         *self.leader = Some(Box::new(leader));
 
-        let (last_log_id, noop_log_id) = {
-            let leader = self.leader.as_ref().unwrap();
-            (leader.last_log_id().cloned(), leader.noop_log_id().clone())
-        };
+        let last_log_id = self.leader.as_ref().unwrap().last_log_id().cloned();
 
         let prev_accepted = self.state.accept_log_io(IOId::new_log_io(leader_vote.clone(), last_log_id.clone()));
         // SaveVote currently finishes its I/O before the next command runs.
@@ -225,13 +222,8 @@ where
         let mut rh = self.replication_handler();
         rh.rebuild_replication_streams(true);
 
-        // If the leader has not yet proposed any log, propose a blank log and initiate replication;
-        // Otherwise, just initiate replication.
-        if last_log_id.as_ref() < Some(&noop_log_id) {
-            self.leader_handler().leader_append_entries([C::Payload::blank()]);
-        } else {
-            self.replication_handler().initiate_replication();
-        }
+        // A new Leader has proposed no log yet. Proposing its blank log also initiates replication.
+        self.leader_handler().leader_append_entries([C::Payload::blank()]);
     }
 
     /// Clears campaign and leadership state when this node can no longer lead.
