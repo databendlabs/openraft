@@ -82,6 +82,7 @@ where
     /// ```
     ///
     /// [`UncommittedLeaderLog`]: crate::errors::UncommittedLeaderLog
+    #[since(version = "0.10.0", change = "the second step appends the target of the edit")]
     #[since(
         version = "0.10.0",
         change = "the joint entry keeps every config of the starting membership"
@@ -134,6 +135,7 @@ where
     ///
     /// The returned [`ChangeMembershipOutcome`] always contains the uniform response, and the
     /// joint response when the change entered joint consensus.
+    #[since(version = "0.10.0", change = "the second step appends the target of the edit")]
     #[since(
         version = "0.10.0",
         change = "the joint entry keeps every config of the starting membership"
@@ -177,6 +179,7 @@ where
     /// nothing was written: the joint config is already committed and the cluster is left in joint
     /// consensus, as it is when leadership is lost mid-change. Its `expected` field then holds the
     /// joint entry's log id, a value the caller never passed.
+    #[since(version = "0.10.0", change = "the second step appends the target of the edit")]
     #[since(
         version = "0.10.0",
         change = "the joint entry keeps every config of the starting membership"
