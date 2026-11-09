@@ -25,6 +25,7 @@ mod t41_custom_membership_edit;
 mod t42_unproven_read_write_intersection;
 mod t43_network_send_delay;
 mod t43_non_campaigner_voter;
+mod t44_compatible_membership_edit;
 mod t44_optional_learner;
 mod t51_hung_follower_blocks_loop;
 mod t51_remove_unreachable_follower;
