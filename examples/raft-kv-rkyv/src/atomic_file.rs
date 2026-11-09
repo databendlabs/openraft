@@ -6,7 +6,7 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
-use fs2::FileExt;
+use fs4::FileExt;
 
 /// Unix atomic replacement with a single-writer lock and an explicit flush boundary.
 /// The caller supplies an existing, durably created directory on a local filesystem.
@@ -29,7 +29,7 @@ impl AtomicFile {
             .read(true)
             .write(true)
             .open(directory_path.join("LOCK"))?;
-        FileExt::try_lock_exclusive(&lock)?;
+        FileExt::try_lock(&lock)?;
         // A previous process may have died after rename but before directory sync. Stabilize
         // whichever generation is visible before Raft can treat recovered votes as durable.
         directory.sync_all()?;
