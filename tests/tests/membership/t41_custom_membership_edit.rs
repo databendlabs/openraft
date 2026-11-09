@@ -18,6 +18,7 @@ use openraft::errors::RaftError;
 use openraft::impls::BoxedErrorSource;
 use openraft::membership::RaftMembership;
 use openraft::membership::RaftMembershipEdit;
+use openraft::membership::RaftMembershipEditOps;
 use openraft::testing::log_id;
 use openraft_membership::ThresholdChange;
 use openraft_membership::ThresholdMembership;
@@ -72,10 +73,12 @@ impl RaftMembershipEdit<MembershipOf<TypeConfig>> for CustomEdit {
             Self::Clear => Ok(ThresholdMembership::default()),
         }
     }
+}
 
+impl RaftMembershipEditOps<MembershipOf<TypeConfig>> for CustomEdit {
     fn add_learner(node_id: u64, node: ()) -> Self {
         let change =
-            <ThresholdChange<u64, ()> as RaftMembershipEdit<MembershipOf<TypeConfig>>>::add_learner(node_id, node);
+            <ThresholdChange<u64, ()> as RaftMembershipEditOps<MembershipOf<TypeConfig>>>::add_learner(node_id, node);
         Self::Standard(change)
     }
 }

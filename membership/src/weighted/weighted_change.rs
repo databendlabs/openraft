@@ -9,6 +9,7 @@ use openraft::errors::EmptyMembership;
 use openraft::errors::MembershipError;
 use openraft::membership::NodeRole;
 use openraft::membership::RaftMembershipEdit;
+use openraft::membership::RaftMembershipEditOps;
 use openraft_macros::since;
 
 use crate::NodeChange;
@@ -195,7 +196,13 @@ where
         tracing::debug!("target membership: {}", target);
         Ok(target)
     }
+}
 
+impl<NID, N> RaftMembershipEditOps<WeightedMembership<NID, N>> for WeightedChange<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
     fn add_learner(node_id: NID, node: N) -> Self {
         let node_change = NodeChange::add_node(node_id, node);
         Self {

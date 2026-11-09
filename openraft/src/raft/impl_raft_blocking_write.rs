@@ -14,6 +14,7 @@ use crate::errors::into_raft_result::IntoRaftResult;
 use crate::impls::ChangeMembers;
 #[cfg(doc)]
 use crate::impls::OneshotResponder;
+use crate::membership::RaftMembershipEditOps;
 use crate::raft::ChangeMembershipOutcome;
 use crate::raft::ChangeMembershipRequest;
 use crate::raft::ClientWriteResponse;
@@ -334,6 +335,10 @@ where
 
     /// Add a new learner raft node, optionally, blocking until up-to-speed.
     ///
+    /// Available when `C::MembershipEdit` implements [`RaftMembershipEditOps`] for `C::Membership`.
+    /// All provided edit types support this optional capability. General membership changes
+    /// do not require it.
+    ///
     /// - Add a node as learner into the cluster.
     /// - Setup replication from leader to it.
     ///
@@ -374,13 +379,52 @@ where
     /// [`UncommittedLeaderLog`]: crate::errors::UncommittedLeaderLog
     /// [`Config::replication_lag_threshold`]: crate::Config::replication_lag_threshold
     /// [`Wait::replication`]: crate::metrics::Wait::replication
+    ///
+    /// Generic wrappers must carry the optional capability bound:
+    ///
+    /// ```no_run
+    /// use openraft::{Raft, RaftTypeConfig};
+    /// use openraft::membership::RaftMembershipEditOps;
+    /// use openraft::storage::RaftStateMachine;
+    ///
+    /// async fn add<C, SM>(raft: &Raft<C, SM>, id: C::NodeId, node: C::Node)
+    /// where
+    ///     C: RaftTypeConfig,
+    ///     C::MembershipEdit: RaftMembershipEditOps<C::Membership>,
+    ///     SM: RaftStateMachine<C>,
+    /// {
+    ///     raft.add_learner(id, node, true).await.unwrap();
+    /// }
+    /// ```
+    ///
+    /// Without that bound, learner addition is unavailable:
+    ///
+    /// ```compile_fail
+    /// use openraft::{Raft, RaftTypeConfig};
+    /// use openraft::storage::RaftStateMachine;
+    ///
+    /// async fn add<C, SM>(raft: &Raft<C, SM>, id: C::NodeId, node: C::Node)
+    /// where
+    ///     C: RaftTypeConfig,
+    ///     SM: RaftStateMachine<C>,
+    /// {
+    ///     raft.add_learner(id, node, true).await.unwrap();
+    /// }
+    /// ```
+    #[since(
+        version = "0.10.0",
+        change = "requires the optional RaftMembershipEditOps capability"
+    )]
     #[tracing::instrument(level = "debug", skip(self, id), fields(target=display(&id)))]
     pub async fn add_learner(
         &self,
         id: C::NodeId,
         node: C::Node,
         blocking: bool,
-    ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
+    ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>>
+    where
+        MembershipEditOf<C>: RaftMembershipEditOps<C::Membership>,
+    {
         self.management_api().add_learner(id, node, blocking).await.into_raft_result()
     }
 }

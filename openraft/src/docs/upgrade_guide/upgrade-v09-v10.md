@@ -130,6 +130,21 @@ The [`openraft-membership`][] crate provides other quorum rules:
 [FAQ](crate::docs::faq#how-do-i-use-a-quorum-rule-other-than-a-majority) for
 how to select one.
 
+### Standard membership operations are optional
+
+`RaftMembershipEdit` requires only `apply()` and its native `Error` type.
+`openraft::membership::RaftMembershipEditOps<M>` provides optional constructors
+for standard membership operations. To reuse `Raft::add_learner()`, implement
+this trait for the configured edit type and put the
+`add_learner(node_id, node) -> Self` constructor there. The edit must
+preserve quorum rules, existing roles, and existing node metadata.
+
+All provided edit types implement this capability, so applications keep
+using `raft.add_learner(id, node, blocking)` without custom catch-up code.
+Generic wrappers add `C::MembershipEdit: RaftMembershipEditOps<C::Membership>`.
+Custom edits without learner support need no placeholder constructor and
+can still use `change_membership()` and `append_membership()`.
+
 ## Optional quorum-loss inactivity configuration
 
 [`Config`][] adds `quorum_loss_probe_interval: Option<u64>` in milliseconds.

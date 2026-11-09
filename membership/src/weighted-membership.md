@@ -255,8 +255,12 @@ OpenRaft uses a weighted membership through three types:
    `apply()`. The target preserves the original change's node removals,
    roles, and retention policy.
 
-[`Raft::add_learner()`] applies the change from [`add_learner()`]. That change
-adds one node and keeps both rules, so OpenRaft appends its result directly.
+[`WeightedChange`] also implements [`RaftMembershipEditOps`], the optional
+constructors for standard membership operations.
+[`Raft::add_learner()`] applies the change from [`add_learner()`] and optionally
+waits for replication to catch up. That change adds one node and keeps both
+rules, so OpenRaft appends its result directly. Custom edits can implement
+this capability without supporting every operation in `ChangeMembers`.
 
 ```rust
 use std::collections::BTreeMap;
@@ -348,5 +352,6 @@ rule of your policy.
 [`node_ids()`]: openraft::membership::RaftMembership::node_ids
 [`RaftMembershipEdit`]: openraft::membership::RaftMembershipEdit
 [`apply()`]: openraft::membership::RaftMembershipEdit::apply
-[`add_learner()`]: openraft::membership::RaftMembershipEdit::add_learner
+[`RaftMembershipEditOps`]: openraft::membership::RaftMembershipEditOps
+[`add_learner()`]: openraft::membership::RaftMembershipEditOps::add_learner
 [`Raft::add_learner()`]: openraft::Raft::add_learner

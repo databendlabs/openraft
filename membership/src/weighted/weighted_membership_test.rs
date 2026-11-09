@@ -13,6 +13,7 @@ use openraft::membership::NodeRef;
 use openraft::membership::NodeRole;
 use openraft::membership::RaftMembership;
 use openraft::membership::RaftMembershipEdit;
+use openraft::membership::RaftMembershipEditOps;
 use quorum_set::verify_intersection;
 
 use crate::NodeChange;
@@ -295,7 +296,7 @@ fn test_direct_transitions_need_same_weights_and_write_weight() {
     let joint = write_two.joint_with(&heavier);
     let to_target = joint.supports_direct_transition_to(&heavier);
     assert!(to_target);
-    let add_learner = <WeightedChange<u64, ()> as RaftMembershipEdit<Membership>>::add_learner(9, ());
+    let add_learner = <WeightedChange<u64, ()> as RaftMembershipEditOps<Membership>>::add_learner(9, ());
     let with_learner = add_learner.apply(&write_two, true).unwrap();
     let to_learner = write_two.supports_direct_transition_to(&with_learner);
     assert!(to_learner);
@@ -499,7 +500,7 @@ fn test_apply() {
     // `add_learner()` never replaces the node of a known ID.
     type Change = WeightedChange<u64, String>;
     type Target = WeightedMembership<u64, String>;
-    let change = <Change as RaftMembershipEdit<Target>>::add_learner(2, "z".to_string());
+    let change = <Change as RaftMembershipEditOps<Target>>::add_learner(2, "z".to_string());
     let res = change.apply(&membership, true);
     assert_eq!(Ok(membership.clone()), res);
 

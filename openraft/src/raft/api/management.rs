@@ -12,7 +12,7 @@ use crate::errors::ClientWriteError;
 use crate::errors::Fatal;
 use crate::errors::InitializeError;
 use crate::impls::ProgressResponder;
-use crate::membership::RaftMembershipEdit;
+use crate::membership::RaftMembershipEditOps;
 use crate::raft::ChangeMembershipOutcome;
 use crate::raft::ChangeMembershipRequest;
 use crate::raft::ClientWriteResult;
@@ -225,11 +225,14 @@ where C: RaftTypeConfig
         id: C::NodeId,
         node: C::Node,
         blocking: bool,
-    ) -> Result<ClientWriteResult<C>, Fatal<C>> {
+    ) -> Result<ClientWriteResult<C>, Fatal<C>>
+    where
+        MembershipEditOf<C>: RaftMembershipEditOps<C::Membership>,
+    {
         let (tx, rx) = ProgressResponder::<C, _>::complete_only();
 
         let msg = RaftMsg::ChangeMembership {
-            changes: <MembershipEditOf<C> as RaftMembershipEdit<C::Membership>>::add_learner(id.clone(), node),
+            changes: <MembershipEditOf<C> as RaftMembershipEditOps<C::Membership>>::add_learner(id.clone(), node),
             payloads: MembershipPayloads::Uniform(C::Payload::blank()),
             retain: true,
             preconditions: Batch::of([]),
