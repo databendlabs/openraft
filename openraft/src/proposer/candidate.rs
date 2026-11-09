@@ -156,10 +156,9 @@ where C: RaftTypeConfig
             vote.to_committed()
         };
 
-        // An elected leader has a new leader id, so it has proposed no log id yet.
         let last_log_id = self.last_log_id().cloned();
 
-        Leader::new(vote, self.membership, last_log_id, None, self.progress_id_gen)
+        Leader::new(vote, self.membership, last_log_id, self.progress_id_gen)
     }
 }
 
