@@ -5,6 +5,11 @@ on:
   pull_request:
   schedule: [cron: "40 1 * * *"]
 
+env:
+  # RocksDB 8.10 (rocksdb 0.22) omits <cstdint> in some headers and fails
+  # with newer GCC versions that no longer include it transitively.
+  CXXFLAGS: "-include cstdint"
+
 jobs:
 
   test-release-build:
