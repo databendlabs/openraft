@@ -95,18 +95,23 @@ the store because it owns its archive allocation. This is **not memory mapping**
 [`AtomicFile`](src/atomic_file.rs) implements a deliberately simple publication
 protocol under an exclusive advisory lock on the node's `LOCK` file:
 
-1. Write the next complete image to `log-state.next`.
-2. `sync_all` the temporary file.
-3. Rename it over `log-state` in the same directory.
-4. `sync_all` the directory, then update the in-memory image and acknowledge.
+1. Fence the store, apply the mutation to the in-memory image, and encode it.
+2. Write the next complete image to `log-state.next`.
+3. `sync_all` the temporary file.
+4. Rename it over `log-state` in the same directory.
+5. `sync_all` the directory, then lift the fence and acknowledge.
 
-Mutation and cache replacement run in one blocking job, so cancellation of the
-async caller cannot leave the cache behind a published image. Cloned store handles
-share the lock and serialized publication. Open a store once per node directory;
-a second independent opener is rejected. Advisory locking assumes cooperative
-writers; do not remove `LOCK` or move a node directory while a store is open.
-The caller must provision an existing, durably created parent directory;
-the cluster helper creates and syncs the per-node directories before starting Raft.
+Mutation and publication run in one blocking job, so cancellation of the async
+caller cannot separate the in-memory image from the published one. The job changes
+the in-memory image in place instead of copying it. Readers wait on the store lock
+while the job runs, and a failed job leaves the store fenced, so no reader sees a
+change that is not durable. Memory-only mode mutates in place without a blocking
+job. Cloned store handles share the lock and serialized publication. Open a store
+once per node directory; a second independent opener is rejected. Advisory locking
+assumes cooperative writers; do not remove `LOCK` or move a node directory while a
+store is open. The caller must provision an existing, durably created parent
+directory; the cluster helper creates and syncs the per-node directories before
+starting Raft.
 
 On reopen, the store first syncs the locked directory to stabilize any rename left
 by a previous process. Only `log-state` is authoritative. An unpublished `.next`
@@ -119,8 +124,8 @@ migration; no migration is implemented. CRC32 detects accidental corruption, not
 malicious tampering. Images are capped at 64 MiB, including the header.
 
 Successful append callbacks, vote saves, committed-progress saves, truncation, and
-purge wait for both file and directory sync. A publication error fences the live
-store: drop **all** handles and reopen it. Before rename, recovery sees the previous
+purge wait for both file and directory sync. An encoding or publication error leaves
+the live store fenced: drop **all** handles and reopen it. Before rename, recovery sees the previous
 image; after rename but before successful directory sync, a real crash may recover
 either complete generation. The operation has not been acknowledged, so either is
 permitted, but recovery must never lose previously acknowledged durable data.
@@ -169,7 +174,8 @@ amplification while preserving the same entry/payload and recovery contracts.
 - A voter restarts with a fresh state machine, replays its persisted committed prefix,
   and catches up after missing a write. A full cluster restart also recovers values.
 - Retained archive handles survive log removal, file replacement, and store shutdown.
-- Cancelling an async mutation does not split disk publication from cache replacement.
+- Cancelling an async mutation does not split the in-memory image from the published
+  one, and a mutation that stops before publication leaves the store fenced.
 
 ## Limits and compatibility
 

@@ -221,6 +221,36 @@ async fn cancelled_update_keeps_cache_and_disk_in_one_generation() -> anyhow::Re
     Ok(())
 }
 
+#[tokio::test]
+async fn unfinished_in_place_mutation_fences_the_store() -> anyhow::Result<()> {
+    let directory = TempDir::new()?;
+    let mut store = LogStore::open(directory.path())?;
+    let vote = VoteOf::<TypeConfig>::new(5, 1);
+    store.save_vote(&vote).await?;
+
+    tracing::info!("abort a mutation after it changed the in-memory image but before publication");
+    {
+        let result = store
+            .update(|state| {
+                state.vote = None;
+                panic!("injected mutation failure");
+            })
+            .await;
+        assert!(result.is_err(), "an unpublished mutation must not be acknowledged");
+        assert!(
+            store.read_vote().await.is_err(),
+            "unpublished in-memory change must be fenced"
+        );
+        drop(store);
+    }
+
+    tracing::info!("reopen and verify the last published vote");
+    {
+        assert_eq!(Some(vote), LogStore::open(directory.path())?.read_vote().await?);
+    }
+    Ok(())
+}
+
 #[test]
 fn reopening_rejects_corruption_versions_and_invalid_archives() -> anyhow::Result<()> {
     use crate::disk_state::DiskState;

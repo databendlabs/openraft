@@ -47,20 +47,22 @@ impl LogStore {
     async fn update<F>(&self, update: F) -> io::Result<()>
     where F: FnOnce(&mut DiskState) + Send + 'static {
         let mut inner = self.inner.clone().lock_owned().await;
-        // Keep mutation, disk publication, and cache replacement in the same blocking job.
-        // Cancellation of the caller must not leave the cache behind the published image.
+        if inner.1.is_none() {
+            // Memory mode cannot fail and has no blocking I/O: mutate in place.
+            update(&mut inner.0);
+            return Ok(());
+        }
+        // Keep mutation and disk publication in the same blocking job. Cancellation of the
+        // caller must not separate the in-memory image from the published one.
         // The owned async guard also keeps readers off runtime-blocking mutex waits.
         tokio::task::spawn_blocking(move || {
-            if let Some(disk) = &inner.1 {
-                disk.check()?;
-            }
-            let mut next = inner.0.clone();
-            update(&mut next);
-            if let Some(disk) = &mut inner.1 {
-                disk.publish(&next.encode()?)?;
-            }
-            inner.0 = next;
-            Ok(())
+            let (state, disk) = &mut *inner;
+            let disk = disk.as_mut().expect("persistent store");
+            // The fence set by `publish` hides the in-place change until the image is durable.
+            disk.publish(|| {
+                update(state);
+                state.encode()
+            })
         })
         .await
         .map_err(io::Error::other)?

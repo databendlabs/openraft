@@ -11,7 +11,7 @@ use crate::LogId;
 use crate::TypeConfig;
 
 /// One complete, versioned disk generation. Application data remains archived bytes.
-#[derive(Clone, Default, Serialize, Deserialize)]
+#[derive(Default, Serialize, Deserialize)]
 pub(crate) struct DiskState {
     pub(crate) entries: BTreeMap<u64, Entry>,
     pub(crate) vote: Option<VoteOf<TypeConfig>>,

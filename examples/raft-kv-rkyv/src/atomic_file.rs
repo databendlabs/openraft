@@ -67,15 +67,18 @@ impl AtomicFile {
         Ok(Some(bytes))
     }
 
-    pub(crate) fn publish(&mut self, bytes: &[u8]) -> io::Result<()> {
+    /// Publish the image that `next` builds.
+    ///
+    /// The file is fenced from the start of the call until the image is durable. `next` may change
+    /// the caller's in-memory image before it fails, and a failure after rename leaves an uncertain
+    /// outcome. In both cases the caller must not keep using that image or acknowledge the
+    /// operation.
+    pub(crate) fn publish(&mut self, next: impl FnOnce() -> io::Result<Vec<u8>>) -> io::Result<()> {
         self.check()?;
-        let result = self.replace(bytes);
-        // A failure after rename leaves an uncertain outcome. Never continue using a stale
-        // in-memory image, and never acknowledge an operation whose directory sync failed.
-        if result.is_err() {
-            self.failed = true;
-        }
-        result
+        self.failed = true;
+        self.replace(&next()?)?;
+        self.failed = false;
+        Ok(())
     }
 
     fn replace(&self, bytes: &[u8]) -> io::Result<()> {
