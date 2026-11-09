@@ -4,7 +4,6 @@ use crate::LogId;
 use crate::RaftLogReader;
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
 use crate::log_id::raft_log_id::RaftLogId;
 use crate::log_id::raft_log_id_ext::RaftLogIdExt;
@@ -419,37 +418,5 @@ where CLID: RaftCommittedLeaderId
     #[cfg_attr(not(feature = "tokio-rt"), allow(dead_code))]
     pub(crate) fn key_log_ids(&self) -> &[LogId<CLID>] {
         &self.key_log_ids
-    }
-
-    /// Returns key log ids appended by the last leader.
-    ///
-    /// With last-per-leader storage, the first index of the last leader is:
-    /// - If there's a previous entry: previous_entry.index + 1
-    /// - Otherwise: purged.index + 1 (or 0 if nothing purged)
-    ///
-    /// If key_log_ids is empty but purged is Some, returns the purged log info.
-    ///
-    /// Note that the 0-th log does not belong to any leader (but a membership log to initialize a
-    /// cluster), but this method does not differentiate between them.
-    pub(crate) fn by_last_leader(&self) -> Option<LeaderLogIds<CLID>> {
-        let last = self.last()?;
-        let l = self.key_log_ids.len();
-
-        let first_index = if l == 0 {
-            // No entries in key_log_ids, last is from purged
-            last.index()
-        } else if l == 1 {
-            // Only one entry: first index is purged.index + 1 or 0
-            self.first_index()
-        } else {
-            // Previous entry's index + 1
-            self.key_log_ids[l - 2].index() + 1
-        };
-
-        Some(LeaderLogIds::new(
-            last.committed_leader_id().clone(),
-            first_index,
-            last.index(),
-        ))
     }
 }

@@ -27,10 +27,11 @@ fn eng() -> Engine<UTConfig> {
     let mut eng = Engine::testing_default(2);
     eng.state.enable_validation(false); // The fixture starts with no pending purge.
     eng.config.id = 2;
+    // The leader is newer than every entry in its log.
     eng.state.vote = Leased::new(
         UTConfig::<()>::now(),
         Duration::from_millis(500),
-        Vote::new_committed(2, 2),
+        Vote::new_committed(3, 2),
     );
     eng.state.membership_state = MembershipState::new(
         Arc::new(StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 2)), m23())),

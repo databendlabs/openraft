@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use crate::RaftLogReader;
 use crate::engine::LogIdList;
-use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::UtClid;
 use crate::engine::testing::log_id;
@@ -388,55 +387,6 @@ fn test_log_id_list_get_log_id() -> anyhow::Result<()> {
     assert_eq!(Some(log_id(7, 1, 9)), ids.get(9));
     assert_eq!(Some(log_id(7, 1, 10)), ids.get(10));
     assert_eq!(None, ids.get(11));
-
-    Ok(())
-}
-
-#[test]
-fn test_log_id_list_by_last_leader() -> anyhow::Result<()> {
-    // len == 0
-    let ids = LogIdList::<UtClid>::default();
-    assert_eq!(ids.by_last_leader(), None);
-
-    // len == 1, leader's range starts at 0 (no purged)
-    // Last-per-leader: [log_id(1,1,1)] means leader 1's last log is at index 1
-    // First index is purged.index+1 = 0
-    let ids = LogIdList::<UtClid>::new(None, [log_id(1, 1, 1)]);
-    assert_eq!(
-        Some(LeaderLogIds::new(*log_id(1, 1, 0).committed_leader_id(), 0, 1)),
-        ids.by_last_leader()
-    );
-
-    // len == 2, different leaders
-    // [log_id(1,1,1), log_id(3,1,3)] means:
-    // - Leader 1: indices 0-1 (last at 1)
-    // - Leader 3: indices 2-3 (last at 3)
-    // by_last_leader returns leader 3's range: first_index = 1+1 = 2, last_index = 3
-    let ids = LogIdList::<UtClid>::new(None, [log_id(1, 1, 1), log_id(3, 1, 3)]);
-    assert_eq!(
-        Some(LeaderLogIds::new(*log_id(3, 1, 0).committed_leader_id(), 2, 3)),
-        ids.by_last_leader()
-    );
-
-    // len == 1 with purged
-    // purged at index 2, leader 1's last at index 5
-    // Leader 1's range: first_index = 2+1 = 3, last_index = 5
-    let ids = LogIdList::<UtClid>::new(Some(log_id(1, 1, 2)), [log_id(1, 1, 5)]);
-    assert_eq!(
-        Some(LeaderLogIds::new(*log_id(1, 1, 0).committed_leader_id(), 3, 5)),
-        ids.by_last_leader()
-    );
-
-    // len > 1
-    // [log_id(1,1,2), log_id(7,1,10)] means:
-    // - Leader 1: indices 0-2 (last at 2)
-    // - Leader 7: indices 3-10 (last at 10)
-    // by_last_leader returns leader 7's range: first_index = 2+1 = 3, last_index = 10
-    let ids = LogIdList::<UtClid>::new(None, [log_id(1, 1, 2), log_id(7, 1, 10)]);
-    assert_eq!(
-        Some(LeaderLogIds::new(*log_id(7, 1, 0).committed_leader_id(), 3, 10)),
-        ids.by_last_leader()
-    );
 
     Ok(())
 }
@@ -851,45 +801,6 @@ fn test_log_id_list_purge_edge_cases() -> anyhow::Result<()> {
         assert_eq!(Some(&log_id(2, 1, 5)), ids.purged());
         assert_eq!(vec![log_id(2, 1, 6)], ids.key_log_ids());
     }
-
-    Ok(())
-}
-
-#[test]
-fn test_log_id_list_by_last_leader_edge_cases() -> anyhow::Result<()> {
-    // Additional edge cases for by_last_leader()
-
-    // 0 elements, with purged - should return purged info
-    // purged at 5 means the last leader's range is just index 5
-    let ids = LogIdList::<UtClid>::new(Some(log_id(1, 1, 5)), vec![]);
-    assert_eq!(
-        Some(LeaderLogIds::new(*log_id(1, 1, 0).committed_leader_id(), 5, 5)),
-        ids.by_last_leader()
-    );
-
-    // 1 element, purged same leader
-    // purged at 2, leader 1's last at 5 -> range 3-5
-    let ids = LogIdList::<UtClid>::new(Some(log_id(1, 1, 2)), vec![log_id(1, 1, 5)]);
-    assert_eq!(
-        Some(LeaderLogIds::new(*log_id(1, 1, 0).committed_leader_id(), 3, 5)),
-        ids.by_last_leader()
-    );
-
-    // 1 element, purged different leader
-    // purged at 2, leader 2's last at 5 -> range 3-5
-    let ids = LogIdList::<UtClid>::new(Some(log_id(1, 1, 2)), vec![log_id(2, 1, 5)]);
-    assert_eq!(
-        Some(LeaderLogIds::new(*log_id(2, 1, 0).committed_leader_id(), 3, 5)),
-        ids.by_last_leader()
-    );
-
-    // 2 elements, with purged
-    // purged at 2, leader 1 at 3-4, leader 2 at 5-7 -> last leader range 5-7
-    let ids = LogIdList::<UtClid>::new(Some(log_id(1, 1, 2)), vec![log_id(1, 1, 4), log_id(2, 1, 7)]);
-    assert_eq!(
-        Some(LeaderLogIds::new(*log_id(2, 1, 0).committed_leader_id(), 5, 7)),
-        ids.by_last_leader()
-    );
 
     Ok(())
 }
