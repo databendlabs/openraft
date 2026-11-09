@@ -41,6 +41,11 @@ impl Cluster {
                 enable_heartbeat: false,
                 enable_elect: false,
                 enable_leader_restore: Some(false),
+                // Without heartbeats only replication acks renew the leader lease, whose length
+                // is `election_timeout_max`. A long lease keeps a write after an idle pause from
+                // failing with `LeaseExpired`; elections never fire because ticking is off.
+                election_timeout_min: 5_000,
+                election_timeout_max: 10_000,
                 // State and snapshots are volatile. Retain the entire log for restart replay.
                 snapshot_policy: openraft::SnapshotPolicy::Never,
                 ..Config::default()
