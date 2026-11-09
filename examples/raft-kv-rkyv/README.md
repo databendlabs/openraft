@@ -20,7 +20,11 @@ reopens its disk image, and prints `restarted node 3: hello = archive-backed wor
 Running it again against the same directory recovers all three nodes, elects node
 1 explicitly, and writes another value. Ticking, automatic elections, heartbeats,
 automatic leader restoration, and automatic snapshots are disabled to make the
-example deterministic.
+example deterministic. Recovery runs one election round on node 1 and never
+retries it, so it assumes node 1 was the last leader, which holds for every
+directory this example writes. A restarted follower of another leader would reject
+that round during its startup lease (`election_timeout_max`), and recovery would
+time out.
 
 The program initializes three voters, writes a value, waits for each node to
 apply it, confirms a linearizable read, and prints:
