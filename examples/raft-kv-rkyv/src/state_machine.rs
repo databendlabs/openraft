@@ -19,7 +19,7 @@ use crate::codec::Codec;
 use crate::payload::Payload;
 use crate::state::State;
 
-/// Demonstration store: memory-only logs/state, not durable across process exits.
+/// Volatile applied state and snapshots; restart requires the complete committed log.
 #[derive(Clone, Default)]
 pub(crate) struct StateMachine {
     state: Arc<Mutex<State>>,
