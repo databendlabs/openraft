@@ -1,7 +1,10 @@
 use anyhow::Result;
 use openraft::Config;
+use openraft::type_config::TypeConfigExt;
+use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
 /// With "allow_log_reversion", the leader allows follower to revert its log to an
@@ -40,6 +43,20 @@ async fn feature_loosen_follower_log_revert() -> Result<()> {
         router.new_raft_node_with_sto(3, log, sm).await?;
         router.add_learner(0, 3).await?;
         log_index += 1; // add learner
+    }
+
+    tracing::info!(
+        log_index,
+        "--- refresh the quorum lease after learner catch-up, since heartbeats are disabled"
+    );
+    {
+        let leader = router.get_raft_handle(&0)?;
+        let refresh_started = TypeConfig::now();
+        leader.trigger().heartbeat().await?;
+        leader
+            .wait(timeout())
+            .leader_with_quorum_acked(Some(refresh_started), "quorum lease refreshed after learner catch-up")
+            .await?;
     }
 
     tracing::info!(log_index, "--- write another 10 logs, leader should not panic");
