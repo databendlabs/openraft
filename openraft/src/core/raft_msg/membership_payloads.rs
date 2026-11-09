@@ -37,7 +37,12 @@ where C: RaftTypeConfig
     /// `target` is the exact membership to append after a joint step, or `None` for a direct step.
     pub(crate) fn select(self, membership: C::Membership, target: Option<C::Membership>) -> C::Payload {
         let payload = match self {
-            Self::Uniform(uniform) => uniform,
+            Self::Uniform(uniform) => {
+                // Only `add_learner()` uses this shape, and it moves no voter, so no second step
+                // follows and there is no target to bind.
+                debug_assert!(target.is_none());
+                uniform
+            }
             Self::JointOrUniform {
                 joint,
                 uniform,
@@ -45,14 +50,14 @@ where C: RaftTypeConfig
             } => {
                 let (selected, unused) = match target {
                     Some(target) => {
+                        // Bind the target before sending it back, so the caller appends the edit's
+                        // node removals and roles rather than what the joint state implies.
                         let uniform = uniform.with_membership(target);
                         (joint, Some(uniform))
                     }
                     None => (uniform, None),
                 };
 
-                // Bind the target before returning it so finalization preserves the edit's
-                // node removals and roles.
                 let _ = unused_tx.send(unused);
                 selected
             }
