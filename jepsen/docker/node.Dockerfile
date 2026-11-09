@@ -6,18 +6,28 @@
 # `examples` job in .github/workflows/ci.yaml.
 FROM ubuntu:24.04 AS builder
 
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \
-      build-essential \
-      ca-certificates \
-      clang \
-      cmake \
-      curl \
-      libclang-dev \
-      librocksdb-dev \
-      libssl-dev \
-      pkg-config \
-      protobuf-compiler \
+# Retry the install so a temporary DNS or mirror failure does not cost a
+# 30-minute Jepsen job. `apt-get update` only warns when it cannot fetch an
+# index, and the error surfaces in `apt-get install`, so each attempt runs
+# both.
+RUN attempt=1; \
+    until apt-get update \
+       && apt-get install -y --no-install-recommends \
+            build-essential \
+            ca-certificates \
+            clang \
+            cmake \
+            curl \
+            libclang-dev \
+            librocksdb-dev \
+            libssl-dev \
+            pkg-config \
+            protobuf-compiler; do \
+      if [ "$attempt" -ge 3 ]; then exit 1; fi; \
+      echo "[builder] apt-get attempt $attempt failed; retrying in 60s"; \
+      attempt=$((attempt + 1)); \
+      sleep 60; \
+    done \
  && rm -rf /var/lib/apt/lists/*
 
 # No default toolchain: cargo runs under /openraft, so the root rust-toolchain
@@ -57,20 +67,28 @@ FROM ubuntu:24.04
 # - `start-stop-daemon --oknodo`, which the base image provides rather than
 #   the list below, converts only the nothing-to-do case to exit 0, so a real
 #   start failure still exits non-zero.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \
-      ca-certificates \
-      iproute2 \
-      iptables \
-      libfaketime \
-      libgcc-s1 \
-      librocksdb-dev \
-      libstdc++6 \
-      netcat-openbsd \
-      openssh-server \
-      procps \
-      psmisc \
-      sudo \
+#
+# Retry the install as the builder stage does.
+RUN attempt=1; \
+    until apt-get update \
+       && apt-get install -y --no-install-recommends \
+            ca-certificates \
+            iproute2 \
+            iptables \
+            libfaketime \
+            libgcc-s1 \
+            librocksdb-dev \
+            libstdc++6 \
+            netcat-openbsd \
+            openssh-server \
+            procps \
+            psmisc \
+            sudo; do \
+      if [ "$attempt" -ge 3 ]; then exit 1; fi; \
+      echo "[node] apt-get attempt $attempt failed; retrying in 60s"; \
+      attempt=$((attempt + 1)); \
+      sleep 60; \
+    done \
  && rm -rf /var/lib/apt/lists/*
 
 # OpenRaft uses a multi-threaded runtime, so preload libfaketime's synchronized
