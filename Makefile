@@ -72,6 +72,7 @@ test-examples:
 	cargo test --manifest-path examples/raft-kv-memstore-single-threaded/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-memstore-weighted-membership/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-rocksdb/Cargo.toml
+	cargo test --manifest-path examples/raft-kv-rkyv/Cargo.toml
 	cargo test --manifest-path examples/sm-rocks/Cargo.toml
 	cargo test --manifest-path examples/multi-raft-kv/Cargo.toml
 
@@ -110,6 +111,11 @@ test-membership:
 # Test one example, e.g. `make test-example-raft-kv-rocksdb`.
 test-example-%:
 	cargo test --manifest-path examples/$*/Cargo.toml
+
+# Check a standalone example without linting every other example.
+verify-example-%: test-example-%
+	cargo fmt --manifest-path examples/$*/Cargo.toml -- --check
+	cargo clippy --no-deps --manifest-path examples/$*/Cargo.toml --all-targets -- -D warnings
 
 bench:
 	cargo bench --features bench -p openraft
@@ -223,6 +229,7 @@ fmt:
 	cargo fmt --manifest-path examples/raft-kv-memstore-weighted-membership/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path examples/raft-kv-memstore/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path examples/raft-kv-rocksdb/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path examples/raft-kv-rkyv/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path examples/multi-raft-kv/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path tests-turmoil/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path jepsen/openraft-test-app/Cargo.toml $(FMT_ARGS)
@@ -262,6 +269,7 @@ clippy: clippy-basic
 	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore-weighted-membership/Cargo.toml   --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore/Cargo.toml                       --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-rocksdb/Cargo.toml                        --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path examples/raft-kv-rkyv/Cargo.toml                           --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/multi-raft-kv/Cargo.toml                          --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path tests/Cargo.toml --features rt-sim                         --all-targets -- -D warnings
 	@# Run from inside tests-turmoil so cargo reads its .cargo/config.toml,
@@ -289,6 +297,7 @@ unused_dep:
 	cargo machete examples/raft-kv-memstore-opendal-snapshot-data
 	cargo machete examples/raft-kv-memstore-network-v1
 	cargo machete examples/raft-kv-memstore-weighted-membership
+	cargo machete examples/raft-kv-rkyv
 	cargo machete examples/multi-raft-kv
 	cargo machete examples/sm-rocks
 	cargo machete examples/log-rocks

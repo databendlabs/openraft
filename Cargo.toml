@@ -111,6 +111,7 @@ exclude = [
     "examples/raft-kv-memstore-opendal-snapshot-data",
     "examples/raft-kv-memstore-weighted-membership",
     "examples/raft-kv-rocksdb",
+    "examples/raft-kv-rkyv",
     "examples/multi-raft-kv",
 
     "jepsen/openraft-test-app",
