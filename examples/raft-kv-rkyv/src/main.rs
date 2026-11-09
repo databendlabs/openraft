@@ -1,9 +1,12 @@
 mod archive_buffer;
+mod atomic_file;
 mod cluster;
 mod codec;
 mod command;
 mod connection;
+mod disk_state;
 mod entry;
+mod log_store;
 mod network;
 mod payload;
 mod state;
@@ -14,6 +17,7 @@ use openraft::ReadPolicy;
 use crate::archive_buffer::ArchiveBuffer;
 use crate::cluster::Cluster;
 use crate::entry::Entry;
+use crate::log_store::LogStore;
 use crate::payload::Payload;
 use crate::state_machine::StateMachine;
 
@@ -23,7 +27,6 @@ type Membership = openraft::impls::Membership<u64, openraft::impls::EmptyNode>;
 type StoredMembership = openraft::StoredMembership<CommittedLeaderId, Membership>;
 type SnapshotMeta = openraft::SnapshotMeta<CommittedLeaderId, Membership>;
 type Snapshot = openraft::Snapshot<CommittedLeaderId, Membership, std::io::Cursor<Vec<u8>>>;
-type LogStore = log_mem::LogStore<TypeConfig>;
 type Raft = openraft::Raft<TypeConfig, StateMachine>;
 
 openraft::declare_raft_types!(
@@ -38,7 +41,16 @@ openraft::declare_raft_types!(
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).init();
-    let cluster = Cluster::new().await?;
+    let args: Vec<_> = std::env::args_os().skip(1).collect();
+    let directory = match args.as_slice() {
+        [] => None,
+        [flag, path] if flag == "--data-dir" => Some(std::path::PathBuf::from(path)),
+        _ => anyhow::bail!("usage: raft-kv-rkyv [--data-dir EXISTING_DIRECTORY]"),
+    };
+    let mut cluster = match &directory {
+        Some(path) => Cluster::persistent(path).await?,
+        None => Cluster::new().await?,
+    };
     let leader = &cluster.nodes[&1].0;
     let response = leader.client_write(ArchiveBuffer::new("hello", "archive-backed world")?).await?;
     cluster.wait_applied(response.log_id.index()).await?;
@@ -46,6 +58,14 @@ async fn main() -> anyhow::Result<()> {
     for (id, (_, state, _)) in &cluster.nodes {
         let value = state.get("hello").await.expect("committed value");
         println!("node {id}: hello = {}", value.archived().value.as_str());
+    }
+    if let Some(directory) = directory {
+        // Drop the old store and state, then reopen disk bytes into fresh archive allocations.
+        cluster.stop_node(3).await?;
+        cluster.restart_node(3, &directory).await?;
+        cluster.wait_applied(response.log_id.index()).await?;
+        let value = cluster.nodes[&3].1.get("hello").await.expect("replayed committed value");
+        println!("restarted node 3: hello = {}", value.archived().value.as_str());
     }
     cluster.shutdown().await
 }

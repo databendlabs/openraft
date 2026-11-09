@@ -37,8 +37,9 @@ or runtime.
 - **[raft-kv-rkyv]** — Application-owned, archive-backed `Entry`/`Payload` types.
   A three-voter cluster sends rkyv payload bytes through a versioned in-process
   transport and reads archived data directly in the state machine, without rkyv
-  derives on OpenRaft types. Storage is memory-only; the example documents where
-  framing and alignment still copy bytes.
+  derives on OpenRaft types. Optional persistent logs demonstrate atomic image
+  publication, restart/replay, and recovery tests; applied state and snapshots
+  remain volatile. The example documents durability boundaries and remaining copies.
 
 ## Component Implementations
 
