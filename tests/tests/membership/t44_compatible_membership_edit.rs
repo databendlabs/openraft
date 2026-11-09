@@ -1,0 +1,118 @@
+use std::convert::Infallible;
+use std::fmt;
+use std::time::Duration;
+
+use anyhow::Result;
+use maplit::btreeset;
+use openraft::SnapshotPolicy;
+use openraft::alias::AsyncRuntimeOf;
+use openraft::async_runtime::WatchReceiver;
+use openraft::errors::MembershipError;
+use openraft::impls::ChangeMembers;
+use openraft::impls::Membership;
+use openraft::membership::RaftMembershipEdit;
+
+use crate::fixtures::custom_membership::TestCluster;
+use crate::fixtures::custom_membership::cluster_config;
+use crate::fixtures::ut_harness;
+
+openraft::declare_raft_types!(
+    TypeConfig:
+        D = String,
+        R = (),
+        Node = (),
+        MembershipEdit = CompatibleEdit,
+        AsyncRuntime = AsyncRuntimeOf<openraft_memstore::TypeConfig>,
+);
+
+#[derive(Debug)]
+struct CompatibleEdit(ChangeMembers<u64, ()>);
+
+impl fmt::Display for CompatibleEdit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl From<ChangeMembers<u64, ()>> for CompatibleEdit {
+    fn from(change: ChangeMembers<u64, ()>) -> Self {
+        Self(change)
+    }
+}
+
+impl RaftMembershipEdit<Membership<u64, ()>> for CompatibleEdit {
+    type Error = Infallible;
+
+    fn apply(
+        self,
+        current: &Membership<u64, ()>,
+        retain: bool,
+    ) -> Result<Membership<u64, ()>, MembershipError<u64, Infallible>> {
+        self.0.apply(current, retain)
+    }
+}
+
+/// A custom edit opts into both learner API modes through From<ChangeMembers> alone.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn compatible_edit_reuses_learner_api_and_waits_for_replication() -> Result<()> {
+    let mut config = cluster_config(SnapshotPolicy::Never);
+    config.replication_lag_threshold = 0;
+    let initial = Membership::new_with_defaults(vec![btreeset! {1}], []);
+    let cluster = TestCluster::<TypeConfig>::start(config, [1, 2, 3], initial).await?;
+    let raft = cluster.raft(1);
+    let timeout = Some(Duration::from_secs(5));
+
+    tracing::info!(
+        node = 1,
+        "--- elect the leader before adding learners through a compatible edit"
+    );
+    {
+        raft.trigger().elect(false).await?;
+        raft.wait(timeout).applied_index(Some(1), "commit leader blank").await?;
+    }
+
+    tracing::info!(
+        node = 2,
+        log_index = 2,
+        "--- convert the non-blocking learner addition without changing voters"
+    );
+    {
+        let response = raft.add_learner(2, (), false).await?;
+        assert_eq!(2, response.log_id.index);
+        let expected = Membership::new_with_defaults(vec![btreeset! {1}], [2]);
+        assert_eq!(Some(expected), response.membership);
+        cluster.raft(2).wait(timeout).applied_index(Some(2), "non-blocking learner catches up").await?;
+    }
+
+    tracing::info!(
+        node = 3,
+        log_index = 3,
+        "--- require the blocking API to observe replication through its membership log"
+    );
+    {
+        let response = raft.add_learner(3, (), true).await?;
+        assert_eq!(3, response.log_id.index);
+        let expected = Membership::new_with_defaults(vec![btreeset! {1}], [2, 3]);
+        assert_eq!(Some(expected), response.membership);
+        let metrics = raft.metrics().borrow_watched().clone();
+        assert!(metrics.membership_config.log_id().as_ref() >= Some(&response.log_id));
+        let replication = metrics.replication.as_ref().expect("the node remains leader");
+        let matched = replication.get(&3).expect("blocking addition observes learner replication");
+        assert!(matched.as_ref() >= Some(&response.log_id));
+    }
+
+    tracing::info!(
+        node = 1,
+        log_index = 4,
+        "--- adding a known voter preserves its role through the conversion"
+    );
+    {
+        let response = raft.add_learner(1, (), true).await?;
+        assert_eq!(4, response.log_id.index);
+        let expected = Membership::new_with_defaults(vec![btreeset! {1}], [2, 3]);
+        assert_eq!(Some(expected), response.membership);
+    }
+
+    Ok(())
+}

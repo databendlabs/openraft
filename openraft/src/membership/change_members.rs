@@ -229,11 +229,6 @@ where
         tracing::debug!("target membership: {}", target);
         Ok(target)
     }
-
-    fn add_learner(node_id: NID, node: N) -> Self {
-        let nodes = BTreeMap::from([(node_id, node)]);
-        ChangeMembers::AddNodes(nodes)
-    }
 }
 
 #[cfg(test)]

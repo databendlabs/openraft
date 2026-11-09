@@ -139,9 +139,4 @@ impl RaftMembershipEdit<MinimalQuorumsMembership> for ChangeMembers<u64, ()> {
     ) -> Result<MinimalQuorumsMembership, MembershipError<u64, Self::Error>> {
         unimplemented!("the test never changes the membership")
     }
-
-    fn add_learner(node_id: u64, node: ()) -> Self {
-        let nodes = BTreeMap::from([(node_id, node)]);
-        ChangeMembers::AddNodes(nodes)
-    }
 }

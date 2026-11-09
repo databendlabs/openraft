@@ -10,7 +10,6 @@ use crate::batch::Batch;
 use crate::errors::ClientWriteError;
 use crate::errors::RaftError;
 use crate::errors::into_raft_result::IntoRaftResult;
-#[cfg(doc)]
 use crate::impls::ChangeMembers;
 #[cfg(doc)]
 use crate::impls::OneshotResponder;
@@ -23,6 +22,8 @@ use crate::raft::Precondition;
 use crate::storage::RaftStateMachine;
 use crate::type_config::alias::BatchOf;
 use crate::type_config::alias::MembershipEditOf;
+use crate::type_config::alias::NodeIdOf;
+use crate::type_config::alias::NodeOf;
 
 /// Implement blocking mode write operations those reply on oneshot channel for communication
 /// between Raft core and client.
@@ -334,6 +335,14 @@ where
 
     /// Add a new learner raft node, optionally, blocking until up-to-speed.
     ///
+    /// Available when `C::MembershipEdit` implements `From<ChangeMembers<C::NodeId, C::Node>>`.
+    /// The default [`ChangeMembers`] edit satisfies this bound. A custom edit opts in by
+    /// implementing the conversion; it must preserve the meaning of `ChangeMembers::AddNodes`:
+    /// add missing nodes without changing quorum rules, existing roles, or node metadata.
+    /// Applications without this conversion implement their own learner API with
+    /// [`Self::change_membership()`] or [`Self::append_membership()`]; committing the edit
+    /// does not itself wait for catch-up.
+    ///
     /// - Add a node as learner into the cluster.
     /// - Setup replication from leader to it.
     ///
@@ -366,14 +375,69 @@ where
     /// raft.add_learner(5, node, true).await?;
     /// ```
     ///
+    /// A custom edit can opt into this convenience API by converting from `ChangeMembers`:
+    ///
+    /// ```no_run
+    /// use std::convert::Infallible;
+    /// use std::fmt;
+    /// use openraft::{Raft, RaftTypeConfig};
+    /// use openraft::impls::{ChangeMembers, Membership};
+    /// use openraft::errors::MembershipError;
+    /// use openraft::membership::RaftMembershipEdit;
+    /// use openraft::storage::RaftStateMachine;
+    ///
+    /// #[derive(Debug)]
+    /// struct Edit(ChangeMembers<u64, ()>);
+    /// impl fmt::Display for Edit {
+    ///     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    ///         fmt::Display::fmt(&self.0, f)
+    ///     }
+    /// }
+    /// impl From<ChangeMembers<u64, ()>> for Edit {
+    ///     fn from(edit: ChangeMembers<u64, ()>) -> Self { Self(edit) }
+    /// }
+    /// impl RaftMembershipEdit<Membership<u64, ()>> for Edit {
+    ///     type Error = Infallible;
+    ///     fn apply(self, current: &Membership<u64, ()>, retain: bool)
+    ///         -> Result<Membership<u64, ()>, MembershipError<u64, Infallible>>
+    ///     {
+    ///         self.0.apply(current, retain)
+    ///     }
+    /// }
+    /// openraft::declare_raft_types!(Config: Node = (), MembershipEdit = Edit);
+    /// async fn add<SM>(raft: &Raft<Config, SM>)
+    /// where SM: RaftStateMachine<Config> {
+    ///     raft.add_learner(4, (), false).await.unwrap();
+    /// }
+    /// ```
+    ///
+    /// Generic callers must also require the conversion:
+    ///
+    /// ```compile_fail,E0277
+    /// use openraft::{Raft, RaftTypeConfig};
+    /// use openraft::storage::RaftStateMachine;
+    ///
+    /// async fn add<C, SM>(raft: &Raft<C, SM>, id: C::NodeId, node: C::Node)
+    /// where C: RaftTypeConfig, SM: RaftStateMachine<C> {
+    ///     raft.add_learner(id, node, false).await.unwrap(); // Missing From<ChangeMembers<...>>.
+    /// }
+    /// ```
+    ///
     /// [`UncommittedLeaderLog`]: crate::errors::UncommittedLeaderLog
+    #[since(
+        version = "0.10.0",
+        change = "requires MembershipEdit: From<ChangeMembers<NodeId, Node>>"
+    )]
     #[tracing::instrument(level = "debug", skip(self, id), fields(target=display(&id)))]
     pub async fn add_learner(
         &self,
         id: C::NodeId,
         node: C::Node,
         blocking: bool,
-    ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
+    ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>>
+    where
+        MembershipEditOf<C>: From<ChangeMembers<NodeIdOf<C>, NodeOf<C>>>,
+    {
         self.management_api().add_learner(id, node, blocking).await.into_raft_result()
     }
 }

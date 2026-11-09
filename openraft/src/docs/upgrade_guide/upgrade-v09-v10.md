@@ -117,6 +117,19 @@ Code that names the membership types changes as follows:
   membership. Generic code adds the bounds
   `MembershipEditOf<C>: From<ChangeMembers<C::NodeId, C::Node>>` and
   `C::Membership: From<BTreeMap<C::NodeId, C::Node>>`.
+- `Raft::add_learner()` requires
+  `MembershipEditOf<C>: From<openraft::impls::ChangeMembers<NodeIdOf<C>, NodeOf<C>>>`.
+  The default edit satisfies this bound; custom edits can opt in by implementing
+  a conversion that preserves `AddNodes` semantics, including quorum rules,
+  existing roles, and node metadata. Generic wrappers that call the helper add
+  the same conversion bound. `RaftMembershipEdit` requires only `apply()` and
+  `type Error`; remove `add_learner()` from custom trait impls.
+  Edits without this conversion, including those from `openraft-membership`,
+  implement learner APIs with `change_membership(edit, true)`. This commits the membership
+  but does not wait for replication catch-up; blocking APIs must wait for that
+  separately. When deriving a target from observed membership for
+  `append_membership()`, pass `Precondition::LastMembershipLogId` to avoid
+  overwriting a concurrent membership change.
 - `ChangeMembershipError` gains an error parameter `E`, which defaults to
   `AnyError`, and the variants `UnsupportedMembershipTransition`,
   `UncommittedLeaderLog`, `NodeMetadataChanged`,

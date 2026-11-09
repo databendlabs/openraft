@@ -164,7 +164,6 @@ where
     }
 }
 
-/// `add_learner()` adds one node and keeps the weights and the write weight.
 impl<NID, N> RaftMembershipEdit<WeightedMembership<NID, N>> for WeightedChange<NID, N>
 where
     NID: NodeId,
@@ -194,13 +193,5 @@ where
         let target = membership.replace_config((read, write), self.node_change, retain)?;
         tracing::debug!("target membership: {}", target);
         Ok(target)
-    }
-
-    fn add_learner(node_id: NID, node: N) -> Self {
-        let node_change = NodeChange::add_node(node_id, node);
-        Self {
-            node_change,
-            ..Self::default()
-        }
     }
 }

@@ -72,12 +72,6 @@ impl RaftMembershipEdit<MembershipOf<TypeConfig>> for CustomEdit {
             Self::Clear => Ok(ThresholdMembership::default()),
         }
     }
-
-    fn add_learner(node_id: u64, node: ()) -> Self {
-        let change =
-            <ThresholdChange<u64, ()> as RaftMembershipEdit<MembershipOf<TypeConfig>>>::add_learner(node_id, node);
-        Self::Standard(change)
-    }
 }
 
 /// A user edit operates on built-in membership and keeps learner addition and joint completion.
@@ -105,10 +99,19 @@ async fn custom_edit_uses_current_membership_and_completes_joint_consensus() -> 
     tracing::info!(
         node = 4,
         log_index = 2,
-        "--- add a learner through the configured edit constructor"
+        "--- add a learner through an application-defined edit"
     );
     let with_learner = {
-        cluster.raft(1).add_learner(4, (), true).await?;
+        let change = ThresholdChange {
+            add_nodes: BTreeMap::from([(4, ())]),
+            ..Default::default()
+        };
+        let response = cluster.raft(1).change_membership(CustomEdit::Standard(change), true).await?;
+        cluster
+            .raft(4)
+            .wait(timeout())
+            .applied_index(Some(response.log_id.index), "learner caught up")
+            .await?;
         let nodes = btreeset! {1, 2, 3, 4};
         MembershipOf::<TypeConfig>::new(btreeset! {1, 2, 3}, 2, nodes)?
     };

@@ -209,7 +209,10 @@ fn test_direct_transitions_preserve_quorum_intersection() {
     let joint = square.joint_with(&transposed);
     let to_target = joint.supports_direct_transition_to(&transposed);
     assert!(to_target);
-    let add_learner = <GridChange<u64, ()> as RaftMembershipEdit<Membership>>::add_learner(9, ());
+    let add_learner = GridChange {
+        node_change: NodeChange::add_node(9, ()),
+        ..Default::default()
+    };
     let with_learner = add_learner.apply(&square, true).unwrap();
     let to_learner = square.supports_direct_transition_to(&with_learner);
     assert!(to_learner);
@@ -393,10 +396,13 @@ fn test_apply() {
     let duplicate = InvalidGrid::DuplicateVoter { voter: 2 };
     assert_eq!(Err(MembershipError::UserDefined(duplicate)), res);
 
-    // `add_learner()` never replaces the node of a known ID.
+    // Adding a node never replaces the metadata of a known ID.
     type Change = GridChange<u64, String>;
     type Target = GridMembership<u64, String>;
-    let change = <Change as RaftMembershipEdit<Target>>::add_learner(2, "z".to_string());
+    let change = Change {
+        node_change: NodeChange::add_node(2, "z".to_string()),
+        ..Default::default()
+    };
     let res = change.apply(&membership, true);
     let want = Ok(membership.clone());
     assert_eq!(want, res);

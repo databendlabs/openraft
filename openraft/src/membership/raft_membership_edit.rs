@@ -11,12 +11,13 @@ use crate::membership::RaftMembership;
 /// An operation that produces a target membership configuration.
 ///
 /// [`RaftTypeConfig::MembershipEdit`] selects the edit independently of the membership type.
-/// OpenRaft applies it to the current effective membership inside the Raft core, and builds
-/// learner additions with this trait's `add_learner()` constructor.
+/// OpenRaft applies it to the current effective membership inside the Raft core.
+/// Applications define their own operations, including learner additions.
 /// [`Self::Error`] is the edit's native error. OpenRaft wraps user-defined errors with
 /// [`RaftTypeConfig::ErrorSource`](crate::RaftTypeConfig::ErrorSource) when applying the edit.
 ///
 /// [`RaftTypeConfig::MembershipEdit`]: crate::RaftTypeConfig::MembershipEdit
+#[since(version = "0.10.0", change = "removed the add_learner constructor")]
 #[since(version = "0.10.0", change = "removed make_uniform")]
 #[since(version = "0.10.0", change = "apply now takes retain to handle demoted voters")]
 #[since(version = "0.10.0")]
@@ -46,22 +47,4 @@ where
     #[since(version = "0.10.0", change = "added the retain parameter")]
     #[since(version = "0.10.0")]
     fn apply(self, membership: &M, retain: bool) -> Result<M, MembershipError<M::NodeId, Self::Error>>;
-
-    /// Returns an edit that adds `node_id` with `node` as a learner.
-    ///
-    /// [`Raft::add_learner()`](crate::Raft::add_learner) uses it.
-    ///
-    /// # Examples
-    ///
-    /// Suppose `membership` has voters `[{1,2,3}]` and no learner. Then
-    /// [`apply()`](Self::apply) must return:
-    ///
-    /// ```text
-    /// add_learner(4, node4).apply(&membership, true) == voters [{1,2,3}], learner 4 with node4
-    /// add_learner(3, other_node).apply(&membership, true) == membership
-    /// ```
-    ///
-    /// Voter `3` keeps its role and its node, because replacing the node of a known ID, such as
-    /// its address, can break consensus.
-    fn add_learner(node_id: M::NodeId, node: M::Node) -> Self;
 }
