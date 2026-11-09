@@ -5,7 +5,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use openraft::Config;
-use openraft::async_runtime::WatchReceiver;
 use openraft::impls::EmptyNode;
 
 use crate::LogStore;
@@ -71,17 +70,9 @@ impl Cluster {
         let cluster = Self { nodes, network, config };
         let leader = &cluster.nodes[&1].0;
         if leader.is_initialized().await? {
-            let recovered_term = leader.metrics().borrow_watched().current_term;
             leader.trigger().elect(false).await?;
-            // Startup metrics may still describe the recovered leadership. Require a new
-            // election term as well as Leader state before issuing a client write.
-            leader
-                .wait(Some(Duration::from_secs(5)))
-                .metrics(
-                    |metrics| metrics.current_term > recovered_term && metrics.state == openraft::ServerState::Leader,
-                    "won a new election after recovery",
-                )
-                .await?;
+            // A reopened node starts as a follower, so Leader state proves it won this election.
+            // A client write also needs the leader lease that a quorum ack grants.
             leader
                 .wait(Some(Duration::from_secs(5)))
                 .leader_with_quorum_acked(None, "recovered leader can accept writes")
