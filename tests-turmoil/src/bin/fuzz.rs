@@ -1002,7 +1002,11 @@ async fn membership_change_once(
 ) -> Result<(), Box<dyn std::error::Error>> {
     // openraft requires a node to be a learner before promotion to voter.
     for (id, node) in learners_to_add {
-        let result = tokio::time::timeout(Duration::from_millis(1000), raft.add_learner(id, node, true)).await;
+        let result = tokio::time::timeout(
+            Duration::from_millis(1000),
+            tests_turmoil::learner::add_learner(&raft, id, node, true),
+        )
+        .await;
         if result.is_err() {
             println!("MEMBERSHIP-CLIENT: add_learner timed out for node {id}");
         }

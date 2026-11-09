@@ -102,7 +102,8 @@ where
     SM: RaftStateMachine<C>,
     App<C, SM, Data>: Send + Sync + 'static,
 {
-    pub fn add_openraft_routes(self) -> Self {
+    pub fn add_openraft_routes(self) -> Self
+    where C: RaftTypeConfig<MembershipEdit = ChangeMembers<<C as RaftTypeConfig>::NodeId, NodeInfo>> {
         self.post("/init", App::<C, SM, Data>::init)
             .post("/add-learner", App::<C, SM, Data>::add_learner)
             .post("/change-membership", App::<C, SM, Data>::change_membership)

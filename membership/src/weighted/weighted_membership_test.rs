@@ -295,7 +295,10 @@ fn test_direct_transitions_need_same_weights_and_write_weight() {
     let joint = write_two.joint_with(&heavier);
     let to_target = joint.supports_direct_transition_to(&heavier);
     assert!(to_target);
-    let add_learner = <WeightedChange<u64, ()> as RaftMembershipEdit<Membership>>::add_learner(9, ());
+    let add_learner = WeightedChange {
+        node_change: NodeChange::add_node(9, ()),
+        ..Default::default()
+    };
     let with_learner = add_learner.apply(&write_two, true).unwrap();
     let to_learner = write_two.supports_direct_transition_to(&with_learner);
     assert!(to_learner);
@@ -496,10 +499,13 @@ fn test_apply() {
         assert_eq!(Err(MembershipError::UserDefined(invalid)), res);
     }
 
-    // `add_learner()` never replaces the node of a known ID.
+    // Adding a node never replaces the metadata of a known ID.
     type Change = WeightedChange<u64, String>;
     type Target = WeightedMembership<u64, String>;
-    let change = <Change as RaftMembershipEdit<Target>>::add_learner(2, "z".to_string());
+    let change = Change {
+        node_change: NodeChange::add_node(2, "z".to_string()),
+        ..Default::default()
+    };
     let res = change.apply(&membership, true);
     assert_eq!(Ok(membership.clone()), res);
 

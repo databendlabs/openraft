@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fmt::Debug;
 
 use display_more::DisplayResultExt;
@@ -14,8 +15,8 @@ use crate::entry::RaftPayload;
 use crate::errors::ClientWriteError;
 use crate::errors::Fatal;
 use crate::errors::InitializeError;
+use crate::impls::ChangeMembers;
 use crate::impls::ProgressResponder;
-use crate::membership::RaftMembershipEdit;
 use crate::raft::ChangeMembershipOutcome;
 use crate::raft::ChangeMembershipRequest;
 use crate::raft::ClientWriteResult;
@@ -229,11 +230,14 @@ where C: RaftTypeConfig
         id: C::NodeId,
         node: C::Node,
         blocking: bool,
-    ) -> Result<ClientWriteResult<C>, Fatal<C>> {
+    ) -> Result<ClientWriteResult<C>, Fatal<C>>
+    where
+        C: RaftTypeConfig<MembershipEdit = ChangeMembers<<C as RaftTypeConfig>::NodeId, <C as RaftTypeConfig>::Node>>,
+    {
         let (tx, rx) = ProgressResponder::<C, _>::complete_only();
 
         let msg = RaftMsg::ChangeMembership {
-            changes: <MembershipEditOf<C> as RaftMembershipEdit<C::Membership>>::add_learner(id.clone(), node),
+            changes: ChangeMembers::AddNodes(BTreeMap::from([(id.clone(), node)])),
             payloads: MembershipPayloads::Uniform(C::Payload::blank()),
             retain: true,
             preconditions: Batch::of([]),

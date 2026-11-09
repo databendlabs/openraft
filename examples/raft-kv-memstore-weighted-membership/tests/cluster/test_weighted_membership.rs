@@ -5,6 +5,7 @@ use anyhow::Context;
 use app_http::AddLearnerRequest;
 use app_http::Client;
 use openraft::LogIdOptionExt;
+use openraft::LogIndexOptionExt;
 use openraft::NodeInfo;
 use openraft::errors::ClientWriteError;
 use openraft::errors::InitializeError;
@@ -62,7 +63,13 @@ async fn test_weighted_membership_inner() -> anyhow::Result<()> {
             api_addr: api_addr(id),
             raft_addr: raft_addr(id),
         };
-        leader.add_learner(&req).await??;
+        let response = leader.add_learner(&req).await??;
+        let metrics = leader.metrics().await?;
+        assert!(metrics.membership_config.log_id().as_ref() >= Some(&response.log_id));
+        let matched = metrics.replication.as_ref().and_then(|replication| replication.get(&id));
+        let matched = matched.context("the blocking learner API must observe replication progress")?;
+        let lag = metrics.last_log_index.next_index().saturating_sub(matched.index().next_index());
+        assert!(lag <= openraft::Config::default().replication_lag_threshold);
     }
 
     println!("=== give voter 1 weight 2 and voters 2, 3 and 4 weight 1, with write weight 3");

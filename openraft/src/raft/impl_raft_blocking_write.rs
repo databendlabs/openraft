@@ -10,7 +10,6 @@ use crate::batch::Batch;
 use crate::errors::ClientWriteError;
 use crate::errors::RaftError;
 use crate::errors::into_raft_result::IntoRaftResult;
-#[cfg(doc)]
 use crate::impls::ChangeMembers;
 #[cfg(doc)]
 use crate::impls::OneshotResponder;
@@ -334,6 +333,10 @@ where
 
     /// Add a new learner raft node, optionally, blocking until up-to-speed.
     ///
+    /// Available only when `C::MembershipEdit` is [`ChangeMembers`]. Applications using
+    /// another edit type implement their own learner API with [`Self::change_membership()`]
+    /// or [`Self::append_membership()`]; committing the edit does not itself wait for catch-up.
+    ///
     /// - Add a node as learner into the cluster.
     /// - Setup replication from leader to it.
     ///
@@ -366,14 +369,55 @@ where
     /// raft.add_learner(5, node, true).await?;
     /// ```
     ///
+    /// A custom edit can use the default membership representation without opting into
+    /// this convenience API, even if it converts from `ChangeMembers`:
+    ///
+    /// ```compile_fail,E0271
+    /// use std::convert::Infallible;
+    /// use std::fmt;
+    /// use openraft::{Raft, RaftTypeConfig};
+    /// use openraft::impls::{ChangeMembers, Membership};
+    /// use openraft::errors::MembershipError;
+    /// use openraft::membership::RaftMembershipEdit;
+    /// use openraft::storage::RaftStateMachine;
+    ///
+    /// #[derive(Debug)]
+    /// struct Edit(ChangeMembers<u64, ()>);
+    /// impl fmt::Display for Edit {
+    ///     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    ///         fmt::Display::fmt(&self.0, f)
+    ///     }
+    /// }
+    /// impl From<ChangeMembers<u64, ()>> for Edit {
+    ///     fn from(edit: ChangeMembers<u64, ()>) -> Self { Self(edit) }
+    /// }
+    /// impl RaftMembershipEdit<Membership<u64, ()>> for Edit {
+    ///     type Error = Infallible;
+    ///     fn apply(self, current: &Membership<u64, ()>, retain: bool)
+    ///         -> Result<Membership<u64, ()>, MembershipError<u64, Infallible>>
+    ///     {
+    ///         self.0.apply(current, retain)
+    ///     }
+    /// }
+    /// openraft::declare_raft_types!(Config: Node = (), MembershipEdit = Edit);
+    /// async fn add<SM>(raft: &Raft<Config, SM>)
+    /// where SM: RaftStateMachine<Config> {
+    ///     raft.add_learner(4, (), false).await.unwrap(); // Requires ChangeMembers, not Edit.
+    /// }
+    /// ```
+    ///
     /// [`UncommittedLeaderLog`]: crate::errors::UncommittedLeaderLog
+    #[since(version = "0.10.0", change = "available only with the default ChangeMembers edit")]
     #[tracing::instrument(level = "debug", skip(self, id), fields(target=display(&id)))]
     pub async fn add_learner(
         &self,
         id: C::NodeId,
         node: C::Node,
         blocking: bool,
-    ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
+    ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>>
+    where
+        C: RaftTypeConfig<MembershipEdit = ChangeMembers<<C as RaftTypeConfig>::NodeId, <C as RaftTypeConfig>::Node>>,
+    {
         self.management_api().add_learner(id, node, blocking).await.into_raft_result()
     }
 }

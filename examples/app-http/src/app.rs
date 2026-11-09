@@ -69,7 +69,10 @@ where
     pub async fn add_learner(
         self: Arc<Self>,
         req: AddLearnerRequest<C::NodeId>,
-    ) -> Result<ClientWriteResponse<C>, ClientWriteError<C>> {
+    ) -> Result<ClientWriteResponse<C>, ClientWriteError<C>>
+    where
+        C: RaftTypeConfig<MembershipEdit = ChangeMembers<<C as RaftTypeConfig>::NodeId, NodeInfo>>,
+    {
         let node = NodeInfo::new(req.raft_addr, req.api_addr);
         self.raft.add_learner(req.node_id, node, true).await.decompose().unwrap()
     }

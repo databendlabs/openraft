@@ -226,7 +226,10 @@ fn test_direct_transitions_need_cross_intersection() {
     let joint = one_two.joint_with(&three_four);
     let to_target = joint.supports_direct_transition_to(&three_four);
     assert!(to_target);
-    let add_learner = <ExplicitChange<u64, ()> as RaftMembershipEdit<Membership>>::add_learner(9, ());
+    let add_learner = ExplicitChange {
+        node_change: NodeChange::add_node(9, ()),
+        ..Default::default()
+    };
     let with_learner = add_learner.apply(&one_two, true).unwrap();
     let to_learner = one_two.supports_direct_transition_to(&with_learner);
     assert!(to_learner);
@@ -366,10 +369,13 @@ fn test_apply() {
     };
     assert_eq!(Err(MembershipError::UserDefined(disjoint)), res);
 
-    // `add_learner()` never replaces the node of a known ID.
+    // Adding a node never replaces the metadata of a known ID.
     type Change = ExplicitChange<u64, String>;
     type Target = ExplicitMembership<u64, String>;
-    let change = <Change as RaftMembershipEdit<Target>>::add_learner(2, "z".to_string());
+    let change = Change {
+        node_change: NodeChange::add_node(2, "z".to_string()),
+        ..Default::default()
+    };
     let res = change.apply(&membership, true);
     assert_eq!(Ok(membership.clone()), res);
 

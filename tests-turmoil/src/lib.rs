@@ -20,6 +20,7 @@ compile_error!(
 pub mod cluster;
 mod entry_history;
 pub mod invariants;
+pub mod learner;
 pub mod liveness;
 pub mod network;
 pub mod oracle;

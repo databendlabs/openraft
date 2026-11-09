@@ -255,8 +255,25 @@ OpenRaft uses a weighted membership through three types:
    `apply()`. The target preserves the original change's node removals,
    roles, and retention policy.
 
-[`Raft::add_learner()`] applies the change from [`add_learner()`]. That change
-adds one node and keeps both rules, so OpenRaft appends its result directly.
+[`Raft::add_learner()`] is available only for the default
+`openraft::impls::ChangeMembers` edit, not `WeightedChange`. An application can
+add a learner with its own API by submitting a node-only edit:
+
+```ignore
+let change = WeightedChange {
+    node_change: openraft_membership::NodeChange::add_node(id, node),
+    ..Default::default()
+};
+let response = raft.change_membership(change, true).await?;
+```
+
+This edit keeps both quorum rules and existing node metadata. The response
+means the membership committed, not that the learner caught up. A blocking
+API must additionally wait on replication metrics, anchored to the response's
+membership log ID. See the weighted example's `membership_api::add_learner`
+handler for that wait. An API that instead derives a target from observed
+membership and uses `append_membership()` must supply
+`Precondition::LastMembershipLogId` so it cannot overwrite concurrent changes.
 
 ```rust
 use std::collections::BTreeMap;
@@ -348,5 +365,4 @@ rule of your policy.
 [`node_ids()`]: openraft::membership::RaftMembership::node_ids
 [`RaftMembershipEdit`]: openraft::membership::RaftMembershipEdit
 [`apply()`]: openraft::membership::RaftMembershipEdit::apply
-[`add_learner()`]: openraft::membership::RaftMembershipEdit::add_learner
 [`Raft::add_learner()`]: openraft::Raft::add_learner
