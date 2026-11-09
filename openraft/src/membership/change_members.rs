@@ -17,6 +17,7 @@ use crate::display_ext::DisplayBTreeMapDebugValueExt;
 use crate::errors::EmptyMembership;
 use crate::errors::MembershipError;
 use crate::membership::RaftMembershipEdit;
+use crate::membership::RaftMembershipEditOps;
 use crate::node::Node;
 use crate::node::NodeId;
 
@@ -229,7 +230,13 @@ where
         tracing::debug!("target membership: {}", target);
         Ok(target)
     }
+}
 
+impl<NID, N> RaftMembershipEditOps<Membership<NID, N>> for ChangeMembers<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
     fn add_learner(node_id: NID, node: N) -> Self {
         let nodes = BTreeMap::from([(node_id, node)]);
         ChangeMembers::AddNodes(nodes)

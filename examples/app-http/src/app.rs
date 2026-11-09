@@ -17,6 +17,7 @@ use openraft::errors::InitializeError;
 use openraft::errors::LinearizableReadError;
 use openraft::errors::decompose::DecomposeResult;
 use openraft::impls::ChangeMembers;
+use openraft::membership::RaftMembershipEditOps;
 use openraft::raft::ClientWriteResponse;
 use openraft::raft::linearizable_read::Linearizer;
 use openraft::raft::linearizable_read::ReadLogId;
@@ -69,7 +70,10 @@ where
     pub async fn add_learner(
         self: Arc<Self>,
         req: AddLearnerRequest<C::NodeId>,
-    ) -> Result<ClientWriteResponse<C>, ClientWriteError<C>> {
+    ) -> Result<ClientWriteResponse<C>, ClientWriteError<C>>
+    where
+        MembershipEditOf<C>: RaftMembershipEditOps<C::Membership>,
+    {
         let node = NodeInfo::new(req.raft_addr, req.api_addr);
         self.raft.add_learner(req.node_id, node, true).await.decompose().unwrap()
     }

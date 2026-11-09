@@ -23,6 +23,7 @@ use openraft::NodeInfo;
 use openraft::RaftTypeConfig;
 use openraft::alias::MembershipEditOf;
 use openraft::impls::ChangeMembers;
+use openraft::membership::RaftMembershipEditOps;
 use openraft::storage::RaftStateMachine;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -98,7 +99,7 @@ impl<C, SM, Data> Server<App<C, SM, Data>>
 where
     C: RaftTypeConfig<Node = NodeInfo>,
     C::Membership: From<BTreeMap<C::NodeId, NodeInfo>>,
-    MembershipEditOf<C>: From<ChangeMembers<C::NodeId, C::Node>>,
+    MembershipEditOf<C>: From<ChangeMembers<C::NodeId, C::Node>> + RaftMembershipEditOps<C::Membership>,
     SM: RaftStateMachine<C>,
     App<C, SM, Data>: Send + Sync + 'static,
 {

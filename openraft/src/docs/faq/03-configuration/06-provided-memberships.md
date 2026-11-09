@@ -63,7 +63,12 @@ compares them and explains when to pick each one.
    raft.change_membership(change, false).await?;
    ```
 
-[`Raft::add_learner()`][] works unchanged with every provided membership.
+[`Raft::add_learner()`][] works unchanged with every provided membership:
+its change type implements [`RaftMembershipEditOps`][], the optional
+constructors for standard membership operations.
+Custom edits implement this trait to reuse learner submission and catch-up
+waiting, without implementing a conversion from the full `ChangeMembers`
+operation set. Edits without it still support `change_membership()`.
 
 The [`raft-kv-memstore-weighted-membership`][] example runs these steps over
 HTTP with a `WeightedMembership`. Its `/init` and `/change-membership` routes
@@ -94,6 +99,7 @@ through how its types implement them.
 [`ChangeMembers`]: `crate::impls::ChangeMembers`
 [`RaftMembership`]: `crate::membership::RaftMembership`
 [`RaftMembershipEdit`]: `crate::membership::RaftMembershipEdit`
+[`RaftMembershipEditOps`]: `crate::membership::RaftMembershipEditOps`
 [`Raft::initialize()`]: `crate::Raft::initialize`
 [`Raft::change_membership()`]: `crate::Raft::change_membership`
 [`Raft::add_learner()`]: `crate::Raft::add_learner`

@@ -49,6 +49,7 @@ pub use quorum_set::QuorumIntersection;
 pub use quorum_set::QuorumSet;
 pub use raft_membership::RaftMembership;
 pub use raft_membership_edit::RaftMembershipEdit;
+pub use raft_membership_edit_ops::RaftMembershipEditOps;
 pub(crate) use raft_membership_ext::RaftMembershipExt;
 pub use stored_membership::StoredMembership;
 
@@ -56,4 +57,5 @@ mod node_ref;
 mod node_role;
 mod raft_membership;
 mod raft_membership_edit;
+mod raft_membership_edit_ops;
 mod raft_membership_ext;
