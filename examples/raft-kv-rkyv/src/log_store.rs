@@ -134,6 +134,12 @@ impl RaftLogStorage<TypeConfig> for LogStore {
 
     async fn purge(&mut self, log_id: LogId) -> io::Result<()> {
         self.update(move |state| {
+            debug_assert!(
+                state.purged <= Some(log_id),
+                "purge must not move backwards: purged {:?}, requested {}",
+                state.purged,
+                log_id
+            );
             state.entries.retain(|index, _| *index > log_id.index);
             state.purged = Some(log_id);
         })
