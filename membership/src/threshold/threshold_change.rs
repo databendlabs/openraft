@@ -9,6 +9,7 @@ use openraft::Node;
 use openraft::NodeId;
 use openraft::errors::EmptyMembership;
 use openraft::errors::MembershipError;
+use openraft::membership::RaftAddLearner;
 use openraft::membership::RaftMembershipEdit;
 use openraft_macros::since;
 
@@ -136,7 +137,6 @@ where
     }
 }
 
-/// `add_learner()` adds one node and keeps the voters and the write size.
 impl<NID, N> RaftMembershipEdit<ThresholdMembership<NID, N>> for ThresholdChange<NID, N>
 where
     NID: NodeId,
@@ -189,7 +189,13 @@ where
         tracing::debug!("target membership: {}", target);
         Ok(target)
     }
+}
 
+impl<NID, N> RaftAddLearner<ThresholdMembership<NID, N>> for ThresholdChange<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
     fn add_learner(node_id: NID, node: N) -> Self {
         let add_nodes = BTreeMap::from([(node_id, node)]);
         Self {

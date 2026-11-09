@@ -10,6 +10,7 @@ use openraft::errors::NodeNotFound;
 use openraft::errors::Operation;
 use openraft::membership::NodeRef;
 use openraft::membership::NodeRole;
+use openraft::membership::RaftAddLearner;
 use openraft::membership::RaftMembership;
 use openraft::membership::RaftMembershipEdit;
 use openraft::type_config::alias::MembershipOf;
@@ -216,7 +217,7 @@ fn test_apply() {
     let want = want.map_err(MembershipError::from);
     assert_eq!(want, res);
 
-    let change = <ThresholdChange<u64, ()> as RaftMembershipEdit<ThresholdMembership<u64, ()>>>::add_learner(6, ());
+    let change = <ThresholdChange<u64, ()> as RaftAddLearner<ThresholdMembership<u64, ()>>>::add_learner(6, ());
     let res = change.apply(&m42, true);
     let want = ThresholdMembership::new(voters.clone(), 2, btreeset! {1, 2, 3, 4, 5, 6});
     let want = want.map_err(MembershipError::from);

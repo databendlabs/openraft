@@ -11,6 +11,7 @@ use openraft::errors::Operation;
 use openraft::membership::IntoNodes;
 use openraft::membership::NodeRef;
 use openraft::membership::NodeRole;
+use openraft::membership::RaftAddLearner;
 use openraft::membership::RaftMembership;
 use openraft::membership::RaftMembershipEdit;
 
@@ -209,7 +210,7 @@ fn test_direct_transitions_preserve_quorum_intersection() {
     let joint = square.joint_with(&transposed);
     let to_target = joint.supports_direct_transition_to(&transposed);
     assert!(to_target);
-    let add_learner = <GridChange<u64, ()> as RaftMembershipEdit<Membership>>::add_learner(9, ());
+    let add_learner = <GridChange<u64, ()> as RaftAddLearner<Membership>>::add_learner(9, ());
     let with_learner = add_learner.apply(&square, true).unwrap();
     let to_learner = square.supports_direct_transition_to(&with_learner);
     assert!(to_learner);
@@ -396,7 +397,7 @@ fn test_apply() {
     // `add_learner()` never replaces the node of a known ID.
     type Change = GridChange<u64, String>;
     type Target = GridMembership<u64, String>;
-    let change = <Change as RaftMembershipEdit<Target>>::add_learner(2, "z".to_string());
+    let change = <Change as RaftAddLearner<Target>>::add_learner(2, "z".to_string());
     let res = change.apply(&membership, true);
     let want = Ok(membership.clone());
     assert_eq!(want, res);

@@ -11,6 +11,7 @@ use openraft::errors::Operation;
 use openraft::membership::IntoNodes;
 use openraft::membership::NodeRef;
 use openraft::membership::NodeRole;
+use openraft::membership::RaftAddLearner;
 use openraft::membership::RaftMembership;
 use openraft::membership::RaftMembershipEdit;
 
@@ -495,7 +496,7 @@ fn test_direct_transitions_need_intersection_in_both_directions() {
     let to_target = joint.supports_direct_transition_to(&three_zones);
     assert!(to_target);
 
-    let add_learner = <Change as RaftMembershipEdit<Membership>>::add_learner(10, ());
+    let add_learner = <Change as RaftAddLearner<Membership>>::add_learner(10, ());
     let with_learner = add_learner.apply(&membership, true).unwrap();
     let to_learner = membership.supports_direct_transition_to(&with_learner);
     assert!(to_learner);
@@ -649,7 +650,7 @@ fn test_apply_edits_nodes() {
     // `add_learner()` never replaces the node of a known ID.
     type StringChange = HierarchicalChange<u64, String>;
     type Target = HierarchicalMembership<u64, String>;
-    let change = <StringChange as RaftMembershipEdit<Target>>::add_learner(2, "z".to_string());
+    let change = <StringChange as RaftAddLearner<Target>>::add_learner(2, "z".to_string());
     let res = change.apply(&membership, true);
     assert_eq!(Ok(membership), res);
 

@@ -15,6 +15,7 @@ use openraft::impls::Membership;
 use openraft::membership::NodeRef;
 use openraft::membership::QuorumIntersection;
 use openraft::membership::QuorumSet;
+use openraft::membership::RaftAddLearner;
 use openraft::membership::RaftMembership;
 use openraft::membership::RaftMembershipEdit;
 use openraft::testing::log_id;
@@ -137,9 +138,11 @@ impl RaftMembershipEdit<UnprovenMembership> for ChangeMembers<u64, ()> {
         let target = <Self as RaftMembershipEdit<Membership<u64, ()>>>::apply(self, &membership.membership, retain)?;
         Ok(UnprovenMembership::from(target))
     }
+}
 
+impl RaftAddLearner<UnprovenMembership> for ChangeMembers<u64, ()> {
     fn add_learner(node_id: u64, node: ()) -> Self {
-        <Self as RaftMembershipEdit<Membership<u64, ()>>>::add_learner(node_id, node)
+        <Self as RaftAddLearner<Membership<u64, ()>>>::add_learner(node_id, node)
     }
 }
 

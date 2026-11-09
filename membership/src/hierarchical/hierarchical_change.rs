@@ -7,6 +7,7 @@ use openraft::NodeId;
 use openraft::errors::EmptyMembership;
 use openraft::errors::MembershipError;
 use openraft::membership::NodeRole;
+use openraft::membership::RaftAddLearner;
 use openraft::membership::RaftMembershipEdit;
 use openraft_macros::since;
 
@@ -178,7 +179,13 @@ where
         tracing::debug!("target membership: {}", target);
         Ok(target)
     }
+}
 
+impl<NID, N> RaftAddLearner<HierarchicalMembership<NID, N>> for HierarchicalChange<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
     fn add_learner(node_id: NID, node: N) -> Self {
         let node_change = NodeChange::add_node(node_id, node);
         Self {

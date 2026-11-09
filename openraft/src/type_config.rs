@@ -145,7 +145,10 @@ pub trait RaftTypeConfig:
     /// The macro defaults to [`ChangeMembers`](crate::impls::ChangeMembers). Each membership of the
     /// `openraft-membership` crate has its own change type, such as `ThresholdChange` for
     /// `ThresholdMembership` or `WeightedChange` for `WeightedMembership`. A custom edit implements
-    /// [`RaftMembershipEdit`] for the selected membership.
+    /// [`RaftMembershipEdit`] for the selected membership. Implement
+    /// [`RaftAddLearner`](crate::membership::RaftAddLearner) as well to enable
+    /// [`Raft::add_learner()`](crate::Raft::add_learner); general edits do not need that
+    /// capability.
     #[since(version = "0.10.0")]
     type MembershipEdit: RaftMembershipEdit<Self::Membership>;
 

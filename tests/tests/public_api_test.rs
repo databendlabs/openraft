@@ -188,6 +188,7 @@ use openraft::macros;
 // membership module exports
 // =============================================================================
 use openraft::membership::Membership as MembershipModule;
+use openraft::membership::RaftAddLearner;
 use openraft::membership::StoredMembership as StoredMembershipModule;
 // =============================================================================
 // metrics module exports

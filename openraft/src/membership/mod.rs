@@ -47,6 +47,7 @@ use openraft_macros::since;
 pub use quorum_set::QuorumIntersection;
 #[since(version = "0.10.0")]
 pub use quorum_set::QuorumSet;
+pub use raft_add_learner::RaftAddLearner;
 pub use raft_membership::RaftMembership;
 pub use raft_membership_edit::RaftMembershipEdit;
 pub(crate) use raft_membership_ext::RaftMembershipExt;
@@ -54,6 +55,7 @@ pub use stored_membership::StoredMembership;
 
 mod node_ref;
 mod node_role;
+mod raft_add_learner;
 mod raft_membership;
 mod raft_membership_edit;
 mod raft_membership_ext;
