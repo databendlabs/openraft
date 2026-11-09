@@ -717,6 +717,7 @@ jobs:
           - 'raft-kv-memstore-single-threaded'
           - 'raft-kv-memstore-weighted-membership'
           - 'raft-kv-rocksdb'
+          - 'raft-kv-rkyv'
           - 'multi-raft-kv'
 
     steps:

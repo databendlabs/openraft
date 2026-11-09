@@ -32,6 +32,14 @@ or runtime.
 | [raft-kv-memstore-opendal-snapshot-data] | [log-mem] | in-memory+OpenDAL | in-process channel | RaftNetworkV2 | channel | in-memory | OpenDAL snapshot storage |
 | [raft-kv-memstore-weighted-membership] | [log-mem] | [sm-mem] | HTTP/reqwest([network-v2]) | RaftNetworkV2 | [app-http] | [app-http] | `WeightedMembership`; `/init` and `/change-membership` take weights |
 
+## Focused Examples
+
+- **[raft-kv-rkyv]** — Application-owned, archive-backed `Entry`/`Payload` types.
+  A three-voter cluster sends rkyv payload bytes through a versioned in-process
+  transport and reads archived data directly in the state machine, without rkyv
+  derives on OpenRaft types. Storage is memory-only; the example documents where
+  framing and alignment still copy bytes.
+
 ## Component Implementations
 
 ### Storage Implementations
@@ -73,6 +81,7 @@ The following symbolic links are provided for backward compatibility:
 [raft-kv-memstore]: raft-kv-memstore/
 [raft-kv-log-wal-sm-mem]: raft-kv-log-wal-sm-mem/
 [raft-kv-rocksdb]: raft-kv-rocksdb/
+[raft-kv-rkyv]: raft-kv-rkyv/
 [raft-kv-memstore-network-v1]: raft-kv-memstore-network-v1/
 [raft-kv-memstore-grpc]: raft-kv-memstore-grpc/
 [raft-kv-memstore-single-threaded]: raft-kv-memstore-single-threaded/
