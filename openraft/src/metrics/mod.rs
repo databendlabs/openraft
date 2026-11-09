@@ -29,6 +29,7 @@
 
 mod metric;
 mod raft_metrics;
+mod replication_wait_error;
 mod wait;
 
 mod metric_display;
@@ -46,6 +47,7 @@ pub use raft_metrics::RaftMetrics;
 pub use raft_metrics::RaftServerMetrics;
 pub use recorder::MetricsRecorder;
 pub use recorder::forward_metrics;
+pub use replication_wait_error::ReplicationWaitError;
 pub use serde_instant::SerdeInstant;
 pub use wait::Wait;
 pub use wait::WaitError;
