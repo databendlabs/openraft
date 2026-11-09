@@ -160,28 +160,39 @@ async fn interrupted_publication_never_acknowledges_and_requires_reopen() -> any
 #[tokio::test]
 async fn exclusive_open_and_unpublished_first_generation() -> anyhow::Result<()> {
     let directory = TempDir::new()?;
-    let mut store = LogStore::open(directory.path())?;
-    assert!(LogStore::open(directory.path()).is_err());
-    let clone = store.clone();
-    store.fail_at("after_file_sync").await;
-    assert!(store.save_vote(&VoteOf::<TypeConfig>::new(1, 1)).await.is_err());
-    drop(store);
-    assert!(
-        LogStore::open(directory.path()).is_err(),
-        "clones retain the writer lock"
-    );
-    drop(clone);
-    let mut store = LogStore::open(directory.path())?;
-    assert!(
-        store.read_vote().await?.is_none(),
-        "unpublished .next is not authoritative"
-    );
-    store.save_vote(&VoteOf::<TypeConfig>::new(2, 1)).await?;
-    drop(store);
-    assert_eq!(
-        Some(VoteOf::<TypeConfig>::new(2, 1)),
-        LogStore::open(directory.path())?.read_vote().await?
-    );
+
+    tracing::info!("reject a second opener, then fail the first publication after its file sync");
+    {
+        let mut store = LogStore::open(directory.path())?;
+        assert!(LogStore::open(directory.path()).is_err());
+        let clone = store.clone();
+        store.fail_at("after_file_sync").await;
+        assert!(store.save_vote(&VoteOf::<TypeConfig>::new(1, 1)).await.is_err());
+        drop(store);
+        assert!(
+            LogStore::open(directory.path()).is_err(),
+            "clones retain the writer lock"
+        );
+        drop(clone);
+    }
+
+    tracing::info!("reopen with only an unpublished .next and publish the first generation");
+    {
+        let mut store = LogStore::open(directory.path())?;
+        assert!(
+            store.read_vote().await?.is_none(),
+            "unpublished .next is not authoritative"
+        );
+        store.save_vote(&VoteOf::<TypeConfig>::new(2, 1)).await?;
+    }
+
+    tracing::info!("reopen and verify the first published generation");
+    {
+        assert_eq!(
+            Some(VoteOf::<TypeConfig>::new(2, 1)),
+            LogStore::open(directory.path())?.read_vote().await?
+        );
+    }
     Ok(())
 }
 
@@ -256,42 +267,59 @@ fn reopening_rejects_corruption_versions_and_invalid_archives() -> anyhow::Resul
     use crate::disk_state::DiskState;
 
     let directory = TempDir::new()?;
-    let data = ArchiveBuffer::new(&"key".repeat(64), &"value".repeat(64))?;
-    let mut state = DiskState::default();
-    state.entries.insert(
-        0,
-        Entry::new(
-            LogId::new(CommittedLeaderId::new(1, 1), 0),
-            Payload::Normal(data.clone()),
-        ),
+
+    tracing::info!("encode a valid image and derive damaged variants from it");
+    let (valid, damaged) = {
+        let data = ArchiveBuffer::new(&"key".repeat(64), &"value".repeat(64))?;
+        let mut state = DiskState::default();
+        state.entries.insert(
+            0,
+            Entry::new(
+                LogId::new(CommittedLeaderId::new(1, 1), 0),
+                Payload::Normal(data.clone()),
+            ),
+        );
+        let valid = state.encode()?;
+        let mut checksum_error = valid.clone();
+        *checksum_error.last_mut().unwrap() ^= 1;
+        let mut unknown_version = valid.clone();
+        unknown_version[7] = b'2';
+        let mut invalid_archive = valid.clone();
+        let position = invalid_archive.windows(data.bytes().len()).position(|bytes| bytes == data.bytes()).unwrap();
+        invalid_archive[position] = 0xff;
+        let checksum = crc32fast::hash(&invalid_archive[12..]).to_le_bytes();
+        invalid_archive[8..12].copy_from_slice(&checksum);
+        let mut trailing = valid.clone();
+        trailing.push(0);
+        let checksum = crc32fast::hash(&trailing[12..]).to_le_bytes();
+        trailing[8..12].copy_from_slice(&checksum);
+        let damaged = [
+            vec![],
+            valid[..valid.len() - 1].to_vec(),
+            checksum_error,
+            unknown_version,
+            invalid_archive,
+            trailing,
+        ];
+        (valid, damaged)
+    };
+
+    tracing::info!(
+        count = damaged.len(),
+        "reopen each damaged image and expect InvalidData"
     );
-    let valid = state.encode()?;
-    let mut checksum_error = valid.clone();
-    *checksum_error.last_mut().unwrap() ^= 1;
-    let mut unknown_version = valid.clone();
-    unknown_version[7] = b'2';
-    let mut invalid_archive = valid.clone();
-    let position = invalid_archive.windows(data.bytes().len()).position(|bytes| bytes == data.bytes()).unwrap();
-    invalid_archive[position] = 0xff;
-    let checksum = crc32fast::hash(&invalid_archive[12..]).to_le_bytes();
-    invalid_archive[8..12].copy_from_slice(&checksum);
-    let mut trailing = valid.clone();
-    trailing.push(0);
-    let checksum = crc32fast::hash(&trailing[12..]).to_le_bytes();
-    trailing[8..12].copy_from_slice(&checksum);
-    for bytes in [
-        vec![],
-        valid[..valid.len() - 1].to_vec(),
-        checksum_error,
-        unknown_version,
-        invalid_archive,
-        trailing,
-    ] {
-        std::fs::write(directory.path().join("log-state"), bytes)?;
-        let error = LogStore::open(directory.path()).err().expect("reject damaged published image");
-        assert_eq!(io::ErrorKind::InvalidData, error.kind());
+    {
+        for bytes in damaged {
+            std::fs::write(directory.path().join("log-state"), bytes)?;
+            let error = LogStore::open(directory.path()).err().expect("reject damaged published image");
+            assert_eq!(io::ErrorKind::InvalidData, error.kind());
+        }
     }
-    std::fs::write(directory.path().join("log-state"), valid)?;
-    assert!(LogStore::open(directory.path()).is_ok());
+
+    tracing::info!("the valid image still opens");
+    {
+        std::fs::write(directory.path().join("log-state"), valid)?;
+        assert!(LogStore::open(directory.path()).is_ok());
+    }
     Ok(())
 }

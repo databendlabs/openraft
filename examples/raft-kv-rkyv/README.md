@@ -18,9 +18,9 @@ cargo run --manifest-path examples/raft-kv-rkyv/Cargo.toml -- --data-dir /tmp/ra
 Persistent mode additionally stops node 3, drops its log store and state machine,
 reopens its disk image, and prints `restarted node 3: hello = archive-backed world`.
 Running it again against the same directory recovers all three nodes, elects node
-1 explicitly, and writes another value. Ticking, automatic elections, heartbeats,
-automatic leader restoration, and automatic snapshots are disabled to make the
-example deterministic. Recovery runs one election round on node 1 and never
+1 explicitly, and writes the same key and value again. Ticking, automatic elections,
+heartbeats, automatic leader restoration, and automatic snapshots are disabled to
+make the example deterministic. Recovery runs one election round on node 1 and never
 retries it, so it assumes node 1 was the last leader, which holds for every
 directory this example writes. A restarted follower of another leader would reject
 that round during its startup lease (`election_timeout_max`), and recovery would
@@ -119,22 +119,24 @@ starting Raft.
 
 On reopen, the store first syncs the locked directory to stabilize any rename left
 by a previous process. Only `log-state` is authoritative. An unpublished `.next`
-file is ignored and overwritten by the next publication, including after an interrupted first
-write. A published image with an unknown format, invalid checksum, truncated frame,
-invalid archive, or trailing bytes is rejected, not silently replaced with an empty
-store. The image header `ORKYV001` fixes the application schema, rkyv settings, and
-native metadata schema. Changing any of them needs a new version and explicit
-migration; no migration is implemented. CRC32 detects accidental corruption, not
-malicious tampering. Images are capped at 64 MiB, including the header.
+file is ignored and overwritten by the next publication, including after an
+interrupted first write. A published image with an unknown format, invalid checksum,
+truncated frame, invalid archive, or trailing bytes is rejected, not silently
+replaced with an empty store. The image header `ORKYV001` fixes the application
+schema, rkyv settings, and native metadata schema. Changing any of them needs a new
+version and explicit migration; no migration is implemented. CRC32 detects
+accidental corruption, not malicious tampering. Images are capped at 64 MiB,
+including the header.
 
 Successful append callbacks, vote saves, committed-progress saves, truncation, and
 purge wait for both file and directory sync. An encoding or publication error leaves
-the live store fenced: drop **all** handles and reopen it. Before rename, recovery sees the previous
-image; after rename but before successful directory sync, a real crash may recover
-either complete generation. The operation has not been acknowledged, so either is
-permitted, but recovery must never lose previously acknowledged durable data.
-Filesystem/hardware support for atomic same-directory rename and reliable sync is
-required. This reference example targets local Unix filesystems, not network shares.
+the live store fenced: drop **all** handles and reopen it. Before rename, recovery
+sees the previous image; after rename but before successful directory sync, a real
+crash may recover either complete generation. The operation has not been
+acknowledged, so either is permitted, but recovery must never lose previously
+acknowledged durable data. Filesystem/hardware support for atomic same-directory
+rename and reliable sync is required. This reference example targets local Unix
+filesystems, not network shares.
 
 ### State-machine and snapshot boundary
 

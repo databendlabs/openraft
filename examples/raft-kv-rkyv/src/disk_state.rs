@@ -23,15 +23,17 @@ impl DiskState {
     // Changing native metadata, the Command schema, rkyv settings, or encoding requires a
     // new disk version (and an explicit migration). This is independent of the wire codec.
     const MAGIC: &[u8; 8] = b"ORKYV001";
+    /// The magic followed by the CRC32 of the body.
+    const HEADER_LEN: usize = Self::MAGIC.len() + 4;
     pub(crate) const MAX_BYTES: u64 = 64 * 1024 * 1024;
 
     pub(crate) fn encode(&self) -> io::Result<Vec<u8>> {
         let body = bincode::DefaultOptions::new()
             .with_fixint_encoding()
-            .with_limit(Self::MAX_BYTES - 12)
+            .with_limit(Self::MAX_BYTES - Self::HEADER_LEN as u64)
             .serialize(self)
             .map_err(io::Error::other)?;
-        let mut bytes = Vec::with_capacity(12 + body.len());
+        let mut bytes = Vec::with_capacity(Self::HEADER_LEN + body.len());
         bytes.extend_from_slice(Self::MAGIC);
         bytes.extend_from_slice(&crc32fast::hash(&body).to_le_bytes());
         bytes.extend_from_slice(&body);
@@ -39,13 +41,14 @@ impl DiskState {
     }
 
     pub(crate) fn decode(bytes: &[u8]) -> io::Result<Self> {
-        if bytes.len() < 12 || bytes.len() as u64 > Self::MAX_BYTES || &bytes[..8] != Self::MAGIC {
+        if bytes.len() < Self::HEADER_LEN || bytes.len() as u64 > Self::MAX_BYTES || !bytes.starts_with(Self::MAGIC) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "unsupported or truncated disk image",
             ));
         }
-        if bytes[8..12] != crc32fast::hash(&bytes[12..]).to_le_bytes() {
+        let (header, body) = bytes.split_at(Self::HEADER_LEN);
+        if header[Self::MAGIC.len()..] != crc32fast::hash(body).to_le_bytes() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "disk image checksum mismatch",
@@ -53,9 +56,9 @@ impl DiskState {
         }
         let state: Self = bincode::DefaultOptions::new()
             .with_fixint_encoding()
-            .with_limit(Self::MAX_BYTES - 12)
+            .with_limit(Self::MAX_BYTES - Self::HEADER_LEN as u64)
             .reject_trailing_bytes()
-            .deserialize(&bytes[12..])
+            .deserialize(body)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         // ArchiveBuffer's serde decoder validates each archive in its final aligned allocation.
         if state.entries.iter().any(|(index, entry)| *index != entry.log_id.index) {

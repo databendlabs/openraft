@@ -148,5 +148,4 @@ impl RaftLogStorage<TypeConfig> for LogStore {
 }
 
 #[cfg(test)]
-#[path = "log_store/log_store_test.rs"]
 mod log_store_test;

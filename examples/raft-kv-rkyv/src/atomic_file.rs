@@ -84,11 +84,13 @@ impl AtomicFile {
     fn replace(&self, bytes: &[u8]) -> io::Result<()> {
         let mut next =
             OpenOptions::new().create(true).truncate(true).write(true).open(self.path.with_extension("next"))?;
-        // Split writes give the failure tests a genuinely incomplete temporary file.
-        let middle = bytes.len() / 2;
-        next.write_all(&bytes[..middle])?;
+        next.write_all(bytes)?;
+        // Failure tests cut the temporary file in half, as an interrupted write would leave it.
+        #[cfg(test)]
+        if self.fail_at == Some("partial_write") {
+            next.set_len(bytes.len() as u64 / 2)?;
+        }
         self.checkpoint("partial_write")?;
-        next.write_all(&bytes[middle..])?;
         self.checkpoint("before_file_sync")?;
         next.sync_all()?;
         self.checkpoint("after_file_sync")?;
