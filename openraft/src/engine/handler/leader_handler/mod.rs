@@ -1,10 +1,11 @@
+use std::ops::RangeInclusive;
+
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
 use crate::engine::handler::replication_handler::ReplicationHandler;
-use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::engine::quorum_loss_probe::QuorumLossProbe;
 use crate::entry::RaftEntry;
 use crate::proposer::Leader;
@@ -16,8 +17,8 @@ use crate::replication::ReplicationSessionId;
 use crate::storage::RaftStateMachine;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::BatchOf;
-use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::InstantOf;
+use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::PayloadOf;
 
 #[cfg(test)]
@@ -76,17 +77,22 @@ where
     ///
     /// If there is a membership config log entry, the caller has to guarantee the previous one is
     /// committed.
+    ///
+    /// Returns the indexes of the new entries, or `None` when there are no payloads.
     #[tracing::instrument(level = "debug", skip(self, payloads))]
-    pub(crate) fn leader_append_entries<I>(&mut self, payloads: I) -> Option<LeaderLogIds<CommittedLeaderIdOf<C>>>
+    pub(crate) fn leader_append_entries<I>(&mut self, payloads: I) -> Option<RangeInclusive<u64>>
     where I: IntoIterator<Item = PayloadOf<C>> + AsRef<[PayloadOf<C>]> {
-        let log_ids = self.leader.assign_log_ids(payloads.as_ref().len())?;
+        let indexes = self.leader.assign_log_ids(payloads.as_ref().len())?;
+
+        let committed_leader_id = self.leader.committed_vote.committed_leader_id();
+        let log_ids = indexes.clone().map(|index| LogIdOf::<C>::new(committed_leader_id.clone(), index));
 
         self.state.extend_log_ids_from_same_leader(log_ids.clone());
 
         let mut membership_entry = None;
         let entries: BatchOf<C, _> = payloads
             .into_iter()
-            .zip(log_ids.clone())
+            .zip(log_ids)
             .map(|(payload, log_id)| {
                 tracing::debug!("assign log id: {}", log_id);
                 let entry = C::Entry::new(log_id, payload);
@@ -124,7 +130,7 @@ where
 
         rh.initiate_replication();
 
-        Some(log_ids)
+        Some(indexes)
     }
 
     #[tracing::instrument(level = "debug", skip_all)]

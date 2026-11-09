@@ -64,7 +64,6 @@ use crate::engine::Engine;
 use crate::engine::Respond;
 use crate::engine::TargetProgress;
 use crate::engine::handler::leader_handler::LeaderHandler;
-use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::engine::quorum_loss_probe::QuorumLossProbe;
 use crate::entry::RaftEntry;
 use crate::entry::RaftPayload;
@@ -687,8 +686,8 @@ where
     /// I.e.: append the log entries to local store, forward them to a quorum(including the
     /// leader), waiting for them to be committed and applied.
     ///
-    /// Returns the log IDs assigned to the entries, or `None` if the entries could not be
-    /// written (e.g., this node is not the leader).
+    /// When this node cannot accept writes as the Leader, every responder gets a
+    /// `ForwardToLeader` error.
     ///
     /// The result of applying each entry to state machine is sent to its corresponding responder,
     /// if provided. The calling side may not receive a result if raft is shut down.
@@ -703,7 +702,7 @@ where
         payloads: BatchOf<C, PayloadOf<C>>,
         responders: BatchOf<C, Option<CoreResponder<C>>>,
         #[cfg(feature = "runtime-stats")] proposed_at: InstantOf<C>,
-    ) -> Option<LeaderLogIds<CommittedLeaderIdOf<C>>> {
+    ) {
         debug_assert_eq!(
             payloads.len(),
             responders.len(),
@@ -719,16 +718,18 @@ where
                 for tx in responders.into_iter().flatten() {
                     tx.on_complete(Err(err.clone()))
                 }
-                return None;
+                return;
             }
         };
 
         let entry_count = payloads.len() as u64;
-        let log_ids = lh.leader_append_entries(payloads)?;
+        let Some(indexes) = lh.leader_append_entries(payloads) else {
+            return;
+        };
 
         #[cfg(feature = "runtime-stats")]
         {
-            let right = log_ids.last_ref().index() + 1;
+            let right = indexes.end() + 1;
             self.runtime_stats.record_log_stage(Stage::Proposed, right, proposed_at);
             self.runtime_stats.record_log_stage_now(Stage::Received, right);
         }
@@ -738,15 +739,12 @@ where
             r.record_write_batch(entry_count);
         }
 
-        for (log_id, resp_tx) in log_ids.clone().into_iter().zip(responders) {
+        for (index, resp_tx) in indexes.zip(responders) {
             if let Some(tx) = resp_tx {
-                let index = log_id.index();
-                tracing::debug!("write entries: push tx to responders, log_id: {}", log_id);
+                tracing::debug!("write entries: push tx to responders, index: {}", index);
                 self.client_responders.push(index, tx);
             }
         }
-
-        Some(log_ids)
     }
 
     /// Send a heartbeat message to every follower/learners.

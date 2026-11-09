@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 use std::fmt;
+use std::ops::RangeInclusive;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -8,7 +9,6 @@ use validit::Valid;
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 use crate::base::shared_id_generator::SharedIdGenerator;
-use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::errors::QuorumNotEnough;
 use crate::membership::RaftMembership;
 use crate::membership::RaftMembershipExt;
@@ -20,7 +20,6 @@ use crate::proposer::SendStamp;
 use crate::proposer::WriteQuorumSet;
 use crate::quorum::QuorumSet;
 use crate::type_config::TypeConfigExt;
-use crate::type_config::alias::CommittedLeaderIdOf;
 use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
@@ -214,24 +213,24 @@ where
 
     /// Allocate a range of log IDs for new entries.
     ///
-    /// Returns a [`LeaderLogIds`] containing the allocated log IDs, or `None` if count is 0.
-    /// Updates `self.last_log_id` to the last allocated log ID.
+    /// Returns the indexes of the allocated log IDs, or `None` if count is 0. Every allocated log
+    /// ID has the committed leader id of this Leader. Updates `self.last_log_id` to the last
+    /// allocated log ID.
     ///
     /// The caller is responsible for assigning the log IDs to entries.
-    pub(crate) fn assign_log_ids(&mut self, count: usize) -> Option<LeaderLogIds<CommittedLeaderIdOf<C>>> {
+    pub(crate) fn assign_log_ids(&mut self, count: usize) -> Option<RangeInclusive<u64>> {
         debug_assert!(self.transfer_to.is_none(), "leader is disabled to propose new log");
 
         if count == 0 {
             return None;
         }
 
-        let committed_leader_id = self.committed_vote.committed_leader_id();
         let first = self.last_log_id().next_index();
         let last = first + count as u64 - 1;
 
-        self.last_log_id = Some(LogIdOf::<C>::new(committed_leader_id.clone(), last));
+        self.last_log_id = Some(LogIdOf::<C>::new(self.committed_vote.committed_leader_id(), last));
 
-        Some(LeaderLogIds::new(committed_leader_id, first, last))
+        Some(first..=last)
     }
 
     /// Start a new heartbeat round and return it.
@@ -475,13 +474,9 @@ mod tests {
         let membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], []);
         let mut leader = Leader::<UTConfig, _>::new(vote, membership, Some(log_id(1, 2, 3)), SharedIdGenerator::new());
 
-        let log_ids: Vec<_> = leader.assign_log_ids(1).unwrap().into_iter().collect();
+        let indexes = leader.assign_log_ids(1);
 
-        assert_eq!(
-            log_ids,
-            vec![log_id(2, 2, 4)],
-            "entry log id assigned following last-log-id"
-        );
+        assert_eq!(Some(4..=4), indexes, "entry log id assigned following last-log-id");
         assert_eq!(Some(log_id(2, 2, 4)), leader.last_log_id);
     }
 
@@ -491,9 +486,9 @@ mod tests {
         let membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], []);
         let mut leading = Leader::<UTConfig, _>::new(vote, membership, None, SharedIdGenerator::new());
 
-        let log_ids: Vec<_> = leading.assign_log_ids(1).unwrap().into_iter().collect();
+        let indexes = leading.assign_log_ids(1);
 
-        assert_eq!(log_ids, vec![log_id(0, 0, 0)]);
+        assert_eq!(Some(0..=0), indexes);
         assert_eq!(Some(log_id(0, 0, 0)), leading.last_log_id);
     }
 
@@ -503,8 +498,8 @@ mod tests {
         let membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], []);
         let mut leading = Leader::<UTConfig, _>::new(vote, membership, Some(log_id(1, 1, 8)), SharedIdGenerator::new());
 
-        let log_ids = leading.assign_log_ids(0);
-        assert_eq!(log_ids, None);
+        let indexes = leading.assign_log_ids(0);
+        assert_eq!(None, indexes);
         assert_eq!(Some(log_id(1, 1, 8)), leading.last_log_id);
     }
 
@@ -514,8 +509,8 @@ mod tests {
         let membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], []);
         let mut leading = Leader::<UTConfig, _>::new(vote, membership, Some(log_id(1, 1, 8)), SharedIdGenerator::new());
 
-        let log_ids: Vec<_> = leading.assign_log_ids(3).unwrap().into_iter().collect();
-        assert_eq!(log_ids, vec![log_id(2, 2, 9), log_id(2, 2, 10), log_id(2, 2, 11)]);
+        let indexes = leading.assign_log_ids(3);
+        assert_eq!(Some(9..=11), indexes);
         assert_eq!(Some(log_id(2, 2, 11)), leading.last_log_id);
     }
 

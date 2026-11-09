@@ -11,7 +11,6 @@ use crate::batch::Batch;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::TargetProgress;
-use crate::engine::leader_log_ids::LeaderLogIds;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::entry::RaftEntry;
@@ -29,10 +28,6 @@ use crate::type_config::alias::EntryOf;
 use crate::type_config::alias::StoredMembershipOf;
 use crate::utime::Leased;
 use crate::vote::raft_vote::RaftVoteExt;
-
-fn committed_leader_id(term: u64, node_id: u64) -> crate::type_config::alias::CommittedLeaderIdOf<UTConfig> {
-    *log_id(term, node_id, 0).committed_leader_id()
-}
 
 fn m01() -> Membership<u64, ()> {
     Membership::<u64, ()>::new_with_defaults(vec![btreeset! {0,1}], [])
@@ -119,11 +114,7 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
         EntryPayload::Blank,
     ]);
 
-    assert_eq!(
-        Some(LeaderLogIds::new(committed_leader_id(3, 1), 4, 6)),
-        got,
-        "should return log ids for 3 entries"
-    );
+    assert_eq!(Some(4..=6), got, "should return log ids for 3 entries");
     assert_eq!(
         Some(&IOId::new_log_io(Vote::new(3, 1).to_committed(), Some(log_id(3, 1, 6)))),
         eng.state.accepted_log_io()
@@ -193,11 +184,7 @@ fn test_leader_append_entries_single_node_leader() -> anyhow::Result<()> {
         EntryPayload::Blank,
     ]);
 
-    assert_eq!(
-        Some(LeaderLogIds::new(committed_leader_id(3, 1), 4, 6)),
-        got,
-        "should return log ids for 3 entries"
-    );
+    assert_eq!(Some(4..=6), got, "should return log ids for 3 entries");
     assert_eq!(
         Some(&IOId::new_log_io(Vote::new(3, 1).to_committed(), Some(log_id(3, 1, 6)))),
         eng.state.accepted_log_io()
@@ -253,11 +240,7 @@ fn test_leader_append_entries_with_membership_log() -> anyhow::Result<()> {
         EntryPayload::Blank,
     ]);
 
-    assert_eq!(
-        Some(LeaderLogIds::new(committed_leader_id(3, 1), 4, 6)),
-        got,
-        "should return log ids for 3 entries"
-    );
+    assert_eq!(Some(4..=6), got, "should return log ids for 3 entries");
     assert_eq!(
         Some(&IOId::new_log_io(Vote::new(3, 1).to_committed(), Some(log_id(3, 1, 6)))),
         eng.state.accepted_log_io()
