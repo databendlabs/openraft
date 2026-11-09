@@ -555,6 +555,11 @@ fn test_direct_transitions_are_exact_within_one_layout() {
 fn test_apply_sets_the_groups_and_their_write_sizes() {
     let membership = nine_voters();
 
+    // The empty change keeps the groups and their write sizes.
+    let change = Change::default();
+    let res = change.apply(&membership, true);
+    assert_eq!(Ok(membership.clone()), res);
+
     // A new tree replaces the groups and every write size.
     let change = Change::groups(datacenters());
     let res = change.apply(&membership, true);
