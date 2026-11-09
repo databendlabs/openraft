@@ -339,7 +339,12 @@ where
     ///
     /// If `blocking` is `true`, this function blocks until the leader believes the logs on the new
     /// node are up to date, i.e., ready to join the cluster, as a voter, by calling
-    /// `change_membership`.
+    /// `change_membership`. Catch-up requires replication through the learner's membership entry
+    /// and a lag no greater than [`Config::replication_lag_threshold`]. The wait is best-effort: if
+    /// leadership is lost, the learner is removed, or Raft shuts down after committing the
+    /// membership entry, this method still returns the membership write response. Use
+    /// [`Wait::replication`] when the application needs to distinguish these outcomes or impose
+    /// a timeout.
     ///
     /// If blocking is `false`, this function returns at once as successfully setting up the
     /// replication.
@@ -367,6 +372,8 @@ where
     /// ```
     ///
     /// [`UncommittedLeaderLog`]: crate::errors::UncommittedLeaderLog
+    /// [`Config::replication_lag_threshold`]: crate::Config::replication_lag_threshold
+    /// [`Wait::replication`]: crate::metrics::Wait::replication
     #[tracing::instrument(level = "debug", skip(self, id), fields(target=display(&id)))]
     pub async fn add_learner(
         &self,
