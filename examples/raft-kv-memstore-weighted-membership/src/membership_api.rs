@@ -4,12 +4,14 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use app_http::AddLearnerRequest;
 use openraft::NodeInfo;
 use openraft::errors::ClientWriteError;
 use openraft::errors::InitializeError;
 use openraft::errors::decompose::DecomposeResult;
 use openraft::raft::ClientWriteResponse;
 use openraft::type_config::TypeConfigExt;
+use openraft_membership::NodeChange;
 use openraft_membership::WeightedChange;
 use openraft_membership::WeightedMembership;
 use serde::Deserialize;
@@ -58,6 +60,34 @@ pub async fn init(app: Arc<App>, req: InitRequest) -> Result<(), InitializeError
     let membership = membership.map_err(|e| e.map_user_defined(|e| TypeConfig::err_from_error(&e)))?;
 
     app.raft.initialize(membership).await.decompose().unwrap()
+}
+
+/// Adds a learner without changing weights, then waits for replication to catch up.
+///
+/// As with the default learner API, removal, loss of leadership, or shutdown ends
+/// the wait. The wait error is reported to stderr without changing the committed response.
+#[openraft::macros::since(version = "0.10.0")]
+pub async fn add_learner(
+    app: Arc<App>,
+    req: AddLearnerRequest<NodeId>,
+) -> Result<ClientWriteResponse<TypeConfig>, ClientWriteError<TypeConfig>> {
+    let id = req.node_id;
+    let node = NodeInfo::new(req.raft_addr, req.api_addr);
+    let change = WeightedChange {
+        node_change: NodeChange::add_node(id, node),
+        ..Default::default()
+    };
+    let response = app.raft.change_membership(change, true).await.decompose().unwrap()?;
+    if id == app.id {
+        return Ok(response);
+    }
+
+    let threshold = app.raft.config().replication_lag_threshold;
+    let wait_result = app.raft.wait(None).replication(id, Some(response.log_id.index()), threshold).await;
+    if let Err(error) = wait_result {
+        eprintln!("learner {id} replication wait ended: {error}");
+    }
+    Ok(response)
 }
 
 /// Sets the voters and their weights with a `WeightedChange`, and the write weight if `req` gives

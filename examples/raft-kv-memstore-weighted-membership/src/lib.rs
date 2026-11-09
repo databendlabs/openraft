@@ -93,7 +93,7 @@ fn new_http_server(app: Arc<App>) -> app_http::Server<App> {
     app_http::Server::new(app)
         .post("/init", membership_api::init)
         .post("/change-membership", membership_api::change_membership)
-        .post("/add-learner", App::add_learner)
+        .post("/add-learner", membership_api::add_learner)
         .get("/metrics", App::metrics)
         .get("/get_linearizer", App::get_linearizer)
         .post("/write", App::write)

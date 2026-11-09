@@ -326,6 +326,61 @@ use openraft_membership::quorum::WeightedQuorumSet as ProvidedWeightedQuorumSet;
 // Test that declare_raft_types macro is accessible
 // openraft::declare_raft_types! is tested implicitly by usage in examples
 
+// A wrapper opts into the learner API through From<ChangeMembers>, without
+// implementing a learner constructor on RaftMembershipEdit.
+mod compatible_edit {
+    use std::convert::Infallible;
+    use std::fmt;
+
+    use openraft::Raft;
+    use openraft::RaftTypeConfig;
+    use openraft::entry::RaftPayload;
+    use openraft::errors::MembershipError;
+    use openraft::impls::ChangeMembers;
+    use openraft::impls::Membership;
+    use openraft::membership::RaftMembershipEdit;
+    use openraft::storage::RaftStateMachine;
+
+    #[derive(Debug)]
+    struct Edit(ChangeMembers<u64, ()>);
+
+    impl fmt::Display for Edit {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            fmt::Display::fmt(&self.0, f)
+        }
+    }
+
+    impl From<ChangeMembers<u64, ()>> for Edit {
+        fn from(edit: ChangeMembers<u64, ()>) -> Self {
+            Self(edit)
+        }
+    }
+
+    impl RaftMembershipEdit<Membership<u64, ()>> for Edit {
+        type Error = Infallible;
+
+        fn apply(
+            self,
+            current: &Membership<u64, ()>,
+            retain: bool,
+        ) -> Result<Membership<u64, ()>, MembershipError<u64, Infallible>> {
+            self.0.apply(current, retain)
+        }
+    }
+
+    openraft::declare_raft_types!(Config: Node = (), MembershipEdit = Edit);
+
+    async fn custom_apis<SM>(raft: &Raft<Config, SM>)
+    where SM: RaftStateMachine<Config> {
+        raft.add_learner(4, (), false).await.unwrap();
+        raft.add_learner(5, (), true).await.unwrap();
+        let change = Edit(ChangeMembers::AddNodes(Default::default()));
+        let response = raft.change_membership(change, true).await.unwrap();
+        let payload = <Config as RaftTypeConfig>::Payload::blank();
+        raft.append_membership(response.membership.unwrap(), payload, []).await.unwrap();
+    }
+}
+
 #[test]
 fn test_public_api_accessible() {
     let age = std::time::Duration::from_millis(100);

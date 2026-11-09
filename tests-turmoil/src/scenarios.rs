@@ -119,7 +119,7 @@ fn learner_added_while_partitioned_catches_up_from_fully_purged_leader() {
         // One membership entry; the leader creates node 3's progress entry
         // with `searching_end == last_next`. Non-blocking: replication to 3
         // is cut, only the {1, 2} commit matters.
-        let resp = raft.add_learner(3, learner, false).await?;
+        let resp = crate::learner::add_learner(&raft, 3, learner, false).await?;
         let last_log = resp.log_id.index;
 
         // The snapshot is built at `last_applied`; wait until the membership

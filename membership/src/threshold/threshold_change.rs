@@ -136,7 +136,6 @@ where
     }
 }
 
-/// `add_learner()` adds one node and keeps the voters and the write size.
 impl<NID, N> RaftMembershipEdit<ThresholdMembership<NID, N>> for ThresholdChange<NID, N>
 where
     NID: NodeId,
@@ -188,13 +187,5 @@ where
 
         tracing::debug!("target membership: {}", target);
         Ok(target)
-    }
-
-    fn add_learner(node_id: NID, node: N) -> Self {
-        let add_nodes = BTreeMap::from([(node_id, node)]);
-        Self {
-            add_nodes,
-            ..Self::default()
-        }
     }
 }

@@ -10,6 +10,7 @@ use openraft::RaftTypeConfig;
 use openraft::ReadPolicy;
 use openraft::alias::LogIdOf;
 use openraft::alias::MembershipEditOf;
+use openraft::alias::NodeIdOf;
 use openraft::async_runtime::WatchReceiver;
 use openraft::errors::ClientWriteError;
 use openraft::errors::Infallible;
@@ -69,7 +70,10 @@ where
     pub async fn add_learner(
         self: Arc<Self>,
         req: AddLearnerRequest<C::NodeId>,
-    ) -> Result<ClientWriteResponse<C>, ClientWriteError<C>> {
+    ) -> Result<ClientWriteResponse<C>, ClientWriteError<C>>
+    where
+        MembershipEditOf<C>: From<ChangeMembers<NodeIdOf<C>, NodeInfo>>,
+    {
         let node = NodeInfo::new(req.raft_addr, req.api_addr);
         self.raft.add_learner(req.node_id, node, true).await.decompose().unwrap()
     }

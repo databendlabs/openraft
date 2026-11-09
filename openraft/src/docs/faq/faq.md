@@ -395,12 +395,21 @@ compares them and explains when to pick each one.
    raft.change_membership(change, false).await?;
    ```
 
-[`Raft::add_learner()`][] works unchanged with every provided membership.
+[`Raft::add_learner()`][] is available when the edit implements
+`From<openraft::impls::ChangeMembers<NodeId, Node>>`. The default edit satisfies
+this bound; custom edits can opt in with a conversion that preserves the
+meaning of `AddNodes`, including quorum rules, existing roles, and node metadata.
+The provided non-default edits do not implement this conversion. For those
+edits, define an application-owned learner API that submits a node-only edit
+through `change_membership(edit, true)`. This commits the membership; a blocking
+learner API must additionally wait for replication to catch up.
 
 The [`raft-kv-memstore-weighted-membership`][] example runs these steps over
 HTTP with a `WeightedMembership`. Its `/init` and `/change-membership` routes
 build the membership and the change from the weights in a JSON body, because
-the membership routes of the other examples take only a set of voter IDs.
+the membership routes of the other examples take only a set of voter IDs. Its
+application-owned `/add-learner` route submits a `WeightedChange` and waits for
+replication catch-up.
 
 The weighted, hierarchical, grid and explicit memberships can also give a node
 a role other than its default, for example a voter that votes and stores logs
