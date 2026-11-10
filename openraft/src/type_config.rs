@@ -208,7 +208,8 @@ pub trait RaftTypeConfig:
 #[allow(missing_docs)]
 /// Type alias for types used in `RaftTypeConfig`.
 ///
-/// Aliases are enabled by the feature flag [`type-alias`].
+/// This module is always available as `openraft::type_config::alias`. The feature flag
+/// [`type-alias`] also exports it as `openraft::alias`.
 ///
 /// [`type-alias`]: crate::docs::feature_flags#feature-flag-type-alias
 pub mod alias {
