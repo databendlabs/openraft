@@ -1,3 +1,1355 @@
+## v0.10.0
+
+### Summary and major changes
+
+Openraft 0.10 makes most of its types pluggable, moves optional parts into
+separate crates, and adds configurable quorum rules, pipelined replication,
+Pre-Vote, leadership transfer and faster linearizable reads, and fixes
+several safety bugs. It uses the Rust 2024 edition and needs Rust 1.88 or
+later ([20067038], [7828ccd4]). Upgrading requires code changes:
+[Upgrade tips](#upgrade-tips) lists every breaking change, and
+[Changes list](#changes-list) lists every change. Each item below links to
+its detailed description and to the commits that made it.
+
+- **[New crates](#crates-and-the-async-runtime).** The async runtime
+  abstraction moved to `openraft-rt` ([3363a02c]), with runtimes in
+  `openraft-rt-tokio` ([29b4545c]), `openraft-rt-compio` ([e5ab7225]),
+  `openraft-rt-monoio` ([b72ea560]) and `openraft-rt-sim` ([3abbd98b]). The
+  v1 network API moved to `openraft-legacy` ([a03c71d2], [1b262d90]).
+  `openraft-membership` provides other quorum rules ([0d3cd906]),
+  `openraft-multi` shares connections across Raft groups ([9b6b5293]), and
+  `openraft-metrics-otel` exports OpenTelemetry metrics ([4646dc7e]).
+  `openraft-rocksstore` and `openraft-sledstore` are no longer released
+  ([a6396398], [f0d240ce]).
+- **[Configurable types](#configurable-types).** `RaftTypeConfig` selects the
+  term, leader id and vote ([636664de], [d1bd8a24], [a7899729]), the payload
+  ([48f39795]), the membership ([60028ef9]), the error source ([c40dd1ea]),
+  the batch container ([e3610718]) and the client-write responder
+  ([ae207c88]). Log id, vote, membership and snapshot types take only the
+  type parameters they use ([5eef0576]).
+- **[Membership](#membership).** A membership type defines separate read and
+  write quorums and per-node roles ([60028ef9], [1d9d993f]).
+  `change_membership()` writes one entry when the old and new quorums
+  intersect ([c90c6b53]), `append_membership()` writes a caller-built
+  membership ([d4a8088c]), and a change can carry preconditions and payloads
+  ([bd6a9dab], [192a4552]).
+- **[Replication](#replication-and-network).** The leader pipelines
+  AppendEntries through `RaftNetworkV2::stream_append()` ([0d381c80],
+  [77540a07]). Followers report conflict hints that shorten the log-matching
+  search ([7fae09c1]), probes carry fewer entries ([9836fad0]), and
+  consecutive appends merge into one storage write ([9977f59d]).
+- **[Elections and leadership](#elections-and-leadership).** Optional
+  Pre-Vote stops partitioned nodes from inflating the term ([0f6bb9a3]),
+  `Trigger::transfer_leader()` hands leadership to a chosen node
+  ([eeeff6f3]), a leader checks its lease before it accepts proposals and
+  lease reads ([cfcb067e]), and `Config::quorum_loss_probe_interval` lets a
+  leader that lost its quorum give way ([542b9046]).
+- **[Linearizable reads](#linearizable-reads).** Each read sets its own
+  policy with `LinearizerOption` and returns a `ReadLogId` bound to the
+  leadership that authorized it ([f0d59e0e], [b20f38b3]). One heartbeat round
+  answers every waiting read, and `get_local_read_linearizer()` serves lease
+  reads without a RaftCore round trip ([1d235d0b]).
+- **[Storage and state machine](#storage-and-state-machine).** Storage
+  methods return `io::Error` ([d1ffaa2d]), `apply()` takes a stream of
+  entries with one responder each ([cfcfc071]), the state machine defines its
+  snapshot data type ([dafeedb8]), and a transient state machine is restored
+  from its last snapshot at startup ([0c122614]).
+- **[Client API and observability](#client-api-and-observability).** New
+  write APIs ([29f900f1], [e586c8be]), `as_leader()` ([cb49779d]),
+  leader-change callbacks ([c56d043b]), progress watches for flushed log,
+  vote, commit, apply and snapshot ([cddefbd7]), local- and
+  cluster-committed metrics ([3a43c80c]) and the `runtime-stats` feature
+  ([1282a1ae]).
+- **[Safety fixes](#notable-bug-fixes).** A restarted leader wins a new
+  election before it accepts proposals, instead of reusing log ids for
+  different entries ([401ea02d], #2167). A leader commits a blank entry of its
+  own term before it changes membership, so two leaders cannot commit
+  disjoint configs ([6f5e9cc0]). A restarted follower keeps its vote lease, so
+  a lease read on the old leader cannot miss a committed write ([e56b107b]).
+  Startup rejects a store whose state machine misses purged logs
+  ([0c66f774], #2222).
+
+#### Crates and the async runtime
+
+`AsyncRuntime` and its channel, lock and timer traits live in the new
+`openraft-rt` crate, re-exported as `openraft::rt` ([3363a02c]). The Tokio
+runtime is the `openraft-rt-tokio` crate, enabled by the default `tokio-rt`
+feature, so the core crate no longer depends on tokio directly ([29b4545c],
+[a03c71d2]). `openraft-rt-compio` and `openraft-rt-monoio` run Openraft on
+compio and monoio ([e5ab7225], [b72ea560]). `openraft-rt-sim` is a simulated
+runtime for deterministic tests ([3abbd98b]), built on the `task_local!`
+macro and `DeterministicRng` of `openraft-rt` ([594f3c5e], [83737aab]).
+`AsyncRuntime` gains bounded `Mpsc` ([c279fb86]), `Watch`, `Oneshot`
+([15e5a716]) and `Mutex` ([06955673]) types, `new()`, `block_on()` and
+`run()` ([af54d69a]), `select2()` to `select4()`, which pick ready futures in
+argument order ([8eab13c8]), and a default `spawn_blocking()` ([29383fec]).
+`openraft-rt-tokio` and `openraft-legacy` build for wasm ([5565eec1]).
+`openraft::testing::runtime::Suite` tests an `AsyncRuntime` implementation
+([30ec5037], [e91decda]).
+
+The core crate provides only `RaftNetworkV2` ([a03c71d2]). The v1
+`RaftNetwork`, its `Adapter` to `RaftNetworkV2`, chunked snapshot receiving
+with `ChunkedSnapshotReceiver` ([4870e31a]) and `SnapshotReceiverFactory`
+([22d23c80]), and the chunk wire types ([3dc03314]) are in
+`openraft_legacy::network_v1` ([1b262d90]), with their 0.9 serialized form.
+The v1 `RaftNetwork` has no `full_snapshot()`: `Adapter` sends a snapshot in
+chunks through `install_snapshot()` ([4d0d1035]).
+
+`openraft-membership` provides memberships with quorum rules other than a
+majority ([0d3cd906]). `openraft-multi` provides Multi-Raft adapters that
+share network connections across Raft groups ([9b6b5293]).
+`openraft-metrics-otel` exports Raft metrics through OpenTelemetry, installed
+with `Raft::set_metrics_recorder()` ([4646dc7e]).
+
+`openraft-rocksstore` and `openraft-sledstore`, last released as 0.9.21, are
+not released for 0.10. The RocksDB store became the `log-rocks` and
+`sm-rocks` example crates ([72f5ecb0], [a6396398]), and the sled store is
+removed ([f0d240ce]).
+
+#### Configurable types
+
+`RaftTypeConfig` selects more of the types Openraft uses, and
+`declare_raft_types!` provides a default for each, so a type config declared
+with the macro mostly compiles unchanged:
+
+- `Term`, `LeaderId` and `Vote`, through the `RaftTerm`, `RaftLeaderId` and
+  `RaftVote` traits ([636664de], [d1bd8a24], [a7899729], [4d7e03cd],
+  [cd9ee654]). The ordering of `LeaderId` decides whether a term allows
+  several leaders, as `leader_id_adv::LeaderId`, the default, does, or one,
+  as `leader_id_std::LeaderId` does, which replaces the `single-term-leader`
+  feature flag ([d1b41efb]).
+- `Payload` and `Entry`: an application-defined payload, through
+  `RaftPayload` ([48f39795]), stored in an application-defined entry, through
+  `RaftEntry` ([7bebecb9]).
+- `Membership` and `MembershipEdit`, described below ([60028ef9]).
+- `ErrorSource`, the type that holds the source of an Openraft error
+  ([c40dd1ea]); `BoxedErrorSource` by default, which keeps error types small
+  ([41a38a79]).
+- `Batch<T>`, the container for items RaftCore handles together
+  ([e3610718]); `InlineBatch` by default, which needs no heap allocation for
+  one item.
+- `Responder<T>`, the client-write responder ([ae207c88]), which receives
+  `on_commit()` and `on_complete()` events; `ProgressResponder` by default
+  ([b07ffd7b]).
+
+Metrics, state, RPC and error types take a single `C: RaftTypeConfig`
+parameter ([fc73dc7a], [717ed633], [01fcb351], [9dbcd4c0]). Log id, vote,
+membership, snapshot and entry types take only the parameters they store, as
+in `LogId<CLID>`, `Vote<LID>` and `StoredMembership<CLID, Mem>`, so they can
+be named without a full type config ([f8d151ca], [5eef0576], [daa099d6],
+[d86454eb]). `RaftLogId` is public, and a `(term, index)` tuple implements it
+([31f3354f], [68d8cbe1]). `NodeId` and `Node` no longer require `Default`
+([4238f51b], [409ef4b5]), and `NodeInfo` is a provided `Node` that carries a
+Raft address and application data ([6616405c]).
+
+#### Membership
+
+`RaftTypeConfig::Membership` selects the membership type that Openraft
+stores, replicates and changes ([60028ef9]). A `RaftMembership` exposes a
+read quorum set, with which a candidate wins an election, and a write quorum
+set, on which an entry commits, and gives each known node roles:
+`Campaigner` to start an election and `ReceiveLogs` to receive logs
+([1d9d993f]). Openraft checks every membership it is given: every read quorum
+must intersect every write quorum, and every write voter must receive logs.
+The default `Membership` is the 0.9 majority membership, with the same
+serialized form.
+
+`RaftTypeConfig::MembershipEdit` selects the operations that
+`Raft::change_membership()` accepts ([60028ef9], [279af35b]); the default,
+`ChangeMembers`, gains `ChangeMembers::Batch` to combine several operations
+in one change ([30f1ae67]). `openraft-membership` provides
+`ThresholdMembership` ([0d3cd906]), `WeightedMembership` ([849f1c92]),
+`ExplicitMembership` ([275db8b1]), `GridMembership` ([47be8c44]) and
+`HierarchicalMembership` ([b38cc079]), each with its change type, on the
+shared `Joint<Config>` building block ([5058bbbb]). For example,
+`ThresholdMembership` sets how many voter copies commit an entry and derives
+how many votes an election needs.
+
+`change_membership()` appends the target membership directly when the old and
+new quorums intersect, as when one voter is added or removed, and goes
+through a joint config otherwise ([c90c6b53], [66579703]).
+`Raft::append_membership()` writes a caller-built membership as one entry
+([d4a8088c]). `change_membership_if()` proposes a change only while
+caller-given `Precondition`s still hold ([bd6a9dab]), and
+`change_membership_with_payload()` attaches application payloads to the joint
+and uniform entries ([192a4552], [a60fab17]).
+
+A leader commits a blank entry of its own term before it proposes a
+membership, so two leaders cannot commit disjoint children of the same config
+([6f5e9cc0]). A leader that a committed membership removes transfers its
+leadership to the most up-to-date voter after
+`Config::removed_leader_step_down`, 150 ms by default, and then steps down
+([8da662c5]); `Trigger::refresh_server_state()` does the same on demand
+([d0783de6]).
+
+#### Replication and network
+
+`RaftNetworkV2::full_snapshot()` sends a snapshot in one piece ([4d0d1035]),
+and each RPC group of `RaftNetworkV2` is also a sub-trait: `NetAppend`,
+`NetStreamAppend`, `NetVote`, `NetSnapshot`, `NetTransferLeader` and
+`NetBackoff` ([9c031df7]). `RaftNetworkFactory::new_heartbeat_client()` and
+`new_snapshot_client()` can create dedicated heartbeat and snapshot clients,
+so a transport that cannot multiplex one connection avoids head-of-line
+blocking between them and log replication ([e354ce41]).
+
+Once the leader finds where a follower's log matches its own, it streams
+AppendEntries requests through `RaftNetworkV2::stream_append()` instead of
+waiting for each response ([0d381c80], [7dabf9ef], [77540a07]). The default
+implementation sends the requests one by one through `append_entries()`; a
+transport that pipelines them overrides it, and the follower passes the
+received stream to `Raft::stream_append()`. A follower that rejects
+AppendEntries returns a `ConflictHint` in its `AppendResult`, which the leader
+uses to choose its next probe ([7fae09c1]). Probes start at the new leader's
+first entry ([068fb20b]), carry at most 8 entries ([9836fad0]), and send one
+request each ([8c790e54]).
+
+RaftCore merges consecutive appends into one storage write, up to
+`Config::max_append_entries` entries ([9977f59d], [2bbf7eb9]), and merges
+client writes into batches of up to `Config::api_batch_capacity`, optionally
+waiting `Config::api_batch_linger_ms` for more ([a8ff29eb]). With
+`Config::broadcast_submitted_on_append`, the leader replicates new entries as
+soon as `append()` returns, instead of after RaftCore drains its pending API
+messages; this lowers write latency under load and costs throughput when
+storage is fast ([27f5fd16]).
+
+The API, notification and state-machine channels are bounded by
+`Config::api_channel_size`, `notification_channel_size` and
+`state_machine_channel_size` ([2e9b3695], [a90237cc]). With
+`Config::enable_unbounded_state_machine_buffer`, RaftCore keeps handling
+requests while the state machine is busy, and queues its commands without a
+limit ([e18cafc0]). Retries back off by the `Config::backoff` policy, such as
+`"10ms 20ms ...2s"`; the default, `"200ms"`, doubles from 200 ms up to 1 s,
+where 0.9 retried every 500 ms ([4ad03c09]). `Config::heartbeat_min_interval`
+skips the heartbeat to a follower that acknowledged an RPC recently
+([0d15d998]).
+
+#### Elections and leadership
+
+With `Config::enable_pre_vote`, a node asks whether a quorum would grant its
+vote before it bumps its term, so a partitioned or lagging node does not
+disrupt a healthy leader when it reconnects ([0f6bb9a3]). `Trigger::elect()`
+takes a `pre_vote` flag for manual elections, and
+`Raft::runtime_config().pre_vote()` switches Pre-Vote at runtime.
+
+`Trigger::transfer_leader(to)` hands leadership to node `to` ([eeeff6f3],
+[fdbf0eb2]). The leader stops accepting proposals and linearizable reads
+([1ef3e574]), the target campaigns once it has flushed the leader's log
+([d000ee20]), and voters grant that election despite their leader lease,
+because `VoteRequest::leadership_transfer_from` names the leader they follow
+([1e00adfe], [123c9bc1]). While a transfer runs, writes and reads return
+`ForwardToLeader` with `ForwardReason::LeadershipTransfer` ([074175f2]). A
+transfer that does not complete within an election timeout makes the leader
+step down ([58074a3e]). Before a transfer, the leader resets the target's
+replication backoff, unless `Config::reset_backoff_on_transfer_leader` is
+`Some(false)` ([4f2d135d]).
+
+A leader that cannot confirm a recent quorum rejects proposals and lease
+reads with `ForwardToLeader`, but keeps its state and replication, so quorum
+contact restores it ([cfcb067e]). With `Config::quorum_loss_probe_interval`,
+such a leader also pauses heartbeats and replication in alternate periods, so
+a connected quorum can elect a new leader ([542b9046], [d39af6dc]). A leader
+rejects vote requests while its quorum-acknowledged lease is valid
+([a884c52d]).
+
+A restarted leader no longer resumes with its saved vote: by default it
+campaigns for a higher term at startup, and with
+`Config::enable_leader_restore` set to `false` it waits as a follower
+([401ea02d], [f4b5f61d]). A restarted follower renews the lease of its
+committed vote, so it does not help elect a new leader while the old one can
+still serve lease reads ([e56b107b]). The tick loop runs five times per
+`heartbeat_interval` ([8ad534e6]), on a grid with a random offset per
+instance ([a12b6871], [5e15946d]), so deadlines are sampled more finely and
+instances created together do not tick in lockstep; with tick disabled, the
+loop sleeps ([16627c77]). A node samples a new random election timeout for
+every campaign and every Pre-Vote round, where 0.9 sampled one at startup
+([dd0808b9]).
+
+#### Linearizable reads
+
+`ensure_linearizable()`, `get_read_log_id()` and `get_read_linearizer()` take
+a `LinearizerOption`: the oldest quorum acknowledgement the read accepts,
+whether to send a heartbeat at once when none qualifies, and how long to wait
+([9bc9885c], [f0d59e0e]). `ReadPolicy::ReadIndex` and `ReadPolicy::LeaseRead`
+convert into one. A read returns a `ReadLogId`, the log id to apply before
+serving the read, bound to the leadership that authorized it ([b20f38b3]). A
+follower can serve a linearizable read by waiting on a `Linearizer` that it
+obtained from the leader ([467ffaa7], [d486284c]). Reads that need a newer
+acknowledgement wait in a RaftCore queue, so one heartbeat round answers all
+of them ([f0d59e0e]).
+
+With `Config::enable_local_lease_read`, `Raft::get_local_read_linearizer()`
+serves a lease read in the caller's task, without a RaftCore round trip
+([1d235d0b]). In a single-reader benchmark it reached 9.1 million reads/s,
+against 100,805 through RaftCore.
+
+#### Storage and state machine
+
+Storage methods return `io::Error`, and Openraft adds the error context
+([d1ffaa2d]). `RaftStateMachine::apply()` receives a stream of entries, each
+paired with an optional responder, and answers each client as soon as its
+entry is applied ([da51aac3], [cfcfc071]). The state machine worker reads
+those entries through `RaftLogReader::entries_stream()`, which a store can
+override to stream entries instead of reading the whole range at once
+([cfcfc071]). `RaftLogStorage` no longer extends `RaftLogReader`: Openraft
+reads the vote and the logs through the reader that `get_log_reader()`
+returns ([fa858223], [29cefe5d]). The state machine defines its
+snapshot data type, and a network that sends snapshots defines the same type
+([dafeedb8]). Snapshot metadata no longer carries a `snapshot_id`, since a
+snapshot is identified by the position it covers; the serialized form keeps
+the 0.9 layout ([f0a6440a], [28b8c5d5]).
+
+A transient state machine, which persists only its snapshots, is restored at
+startup by installing the last snapshot and re-applying the committed logs
+([0c122614]). `Raft::wait_for_recovery()` waits until a restarted node's state
+machine has applied what it had before the restart ([0ca19458], [97d92771]),
+and `try_create_snapshot_builder()` lets a state machine defer a snapshot that
+Openraft requests ([e7e0a3f7]). At startup, Openraft rebuilds a snapshot that
+does not cover the purged logs ([0631ec4a]), and returns a `StorageError` for
+a store that is inconsistent, instead of failing later in replication
+([61586bf5], [0c66f774]). It re-applies committed logs in chunks of 64
+entries and checks that the log reader returns the requested indexes
+([5d75cf21]).
+
+#### Client API and observability
+
+`Raft::write()` builds a write that can carry a responder and a leader
+condition ([29f900f1], [f13f0eec]), `client_write_many()` writes a batch and
+streams back the results ([e586c8be]), and `write_blank()` writes a blank
+entry ([a90c8414]). `as_leader()` returns a `Leader` handle, or where to
+forward the request ([ddcec33a], [cb49779d]). `ForwardToLeader` carries a
+reason: not the leader, a leadership transfer, or an expired lease
+([074175f2]). A write whose entry was discarded before it committed returns
+`ClientWriteError::LogEntryDiscarded` ([54094270]). `Raft<C, SM>` carries the
+state machine type, so `with_state_machine()` and
+`external_state_machine_request()` are checked at compile time ([6c7527fd],
+[88604cfd]). `Raft::build()` and `Raft::run()` separate construction from
+startup ([b9fbc080]), and `Extensions` stores per-instance data for plugins
+([f7990589], [8970f1a6]). `Raft::node_id()`, `voter_ids()` and
+`learner_ids()` read the local node's state ([eba97d5a]), and
+`Raft::try_shutdown()` reports whether the RaftCore and tick tasks stopped
+without a join error ([1e12a6e3]).
+
+`on_leader_change()` and `on_cluster_leader_change()` call back when the
+leadership changes ([c56d043b], [c9e9aaeb], [2ee96834]).
+`watch_log_progress()`, `watch_vote_progress()` ([cddefbd7]),
+`watch_commit_progress()` ([403efb6e]), `watch_apply_progress()`
+([04810957]) and `watch_snapshot_progress()` ([a78f2b7e]) report when I/O is
+durable and when entries are committed or applied. Metrics distinguish the
+local-committed from the cluster-committed log id ([3a43c80c]), and add
+`last_quorum_acked` ([ab35b288]), heartbeat metrics ([d857a857]) and the
+committed membership ([141dc0eb]). `Wait::replication()` waits for a follower
+or learner to catch up ([c47b3deb]), and `Wait::leader_with_quorum_acked()`
+for this node to lead with a quorum acknowledgement ([cfcb067e]). The
+`runtime-stats` feature reports batch sizes, command counts ([1282a1ae]), the
+latency between log stages, kept for the last `Config::log_stage_capacity`
+entries ([cbae0e69]), and how long the RaftCore loop is busy ([b8508b2b],
+[99eed5ec]). Failed RPCs to an unreachable peer are logged at WARN instead of
+ERROR ([24b6527d]).
+
+#### Notable bug fixes
+
+- A restarted leader resumed with its saved vote after a crash discarded
+  entries it had already sent, and could reuse a log id for different
+  entries, leaving followers with divergent logs ([401ea02d], #2167).
+- Two leaders could each commit a child of the same committed config with
+  disjoint quorums. A leader now commits a blank entry of its own term before
+  it proposes a membership ([6f5e9cc0]).
+- With `retain = true`, a node that `RemoveNodes` removed came back as a
+  learner after the joint step, and concurrent changes could leave the
+  cluster in a joint config ([37d69439], [e3f043ec], #1395).
+- A pending client write that a snapshot install superseded on a lagging
+  follower could panic RaftCore at the next apply ([13df5b32], #1761).
+- `Raft::get_snapshot()` hung forever when the state-machine worker died
+  while RaftCore kept running ([dd29c2e9]).
+- Startup accepted a state machine that missed purged logs, which neither
+  re-applying logs nor a snapshot could repair ([0c66f774], #2222).
+- An uncommitted membership that removed the only node with the latest log
+  could prevent every election ([018c2ec9], #2091).
+- A very large `snapshot_threshold` overflowed and triggered a snapshot on
+  every entry ([b549b0f4]).
+- A snapshot target that returned a network error on every attempt made the
+  leader resend the snapshot in a busy loop ([d180cfaf]).
+
+### Upgrade tips
+
+This section lists every breaking change from 0.9, grouped by area, with the
+commits that made it. An application that uses `declare_raft_types!`, the
+default types and the Tokio runtime typically needs only the changes under
+"Toolchain and crates", "Feature flags", "Type config", "Paths and trait
+impls", "Storage and state machine implementations", "Network", "Raft API"
+and "Config".
+
+#### Toolchain and crates
+
+- Openraft 0.10 uses the Rust 2024 edition ([20067038]) and needs Rust 1.88
+  or later, which its `validit` dependency requires ([7828ccd4]).
+- `openraft-rt-tokio` needs tokio 1.39 or later ([30ef739a]).
+- `openraft-rocksstore` and `openraft-sledstore` are not released for 0.10;
+  their last version is 0.9.21. The RocksDB store is now the `log-rocks` and
+  `sm-rocks` example crates, which an application can copy ([72f5ecb0],
+  [a6396398]); the sled store is removed ([f0d240ce]).
+
+#### Feature flags
+
+- `storage-v2` and `generic-snapshot-data` are removed: the v2 storage API is
+  the only one ([d7a9810f]), and snapshot data no longer needs tokio's I/O
+  traits ([4d0d1035]). Remove both flags.
+- The following flags fail compilation with an error that names the
+  replacement:
+  - `single-term-leader` ([d1b41efb]): select the standard leader id, as in
+    `LeaderId = openraft::impls::leader_id_std::LeaderId<u64, u64>` in
+    `declare_raft_types!`.
+  - `loosen-follower-log-revert` ([c8813d84]): set
+    `Config::allow_log_reversion` to `Some(true)`.
+  - `adapt-network-v1` ([a03c71d2]): use the `openraft-legacy` crate; see
+    "Network".
+  - `singlethreaded` ([1b4de118]): renamed to `single-threaded`.
+- The new default features `tokio-rt` ([29b4545c]) and `clap` ([03c0d6ee])
+  enable the Tokio runtime and command-line parsing of `Config`. Without
+  default features, the application provides an `AsyncRuntime`.
+
+#### Type config
+
+A type config declared with `declare_raft_types!` gets a default for every
+new associated type, and needs only two changes:
+
+- Remove `SnapshotData`, and define it in the `RaftStateMachine` impl
+  ([dafeedb8]).
+- The application data type `D` implements `Debug` and `Display`
+  ([6847fd3e]).
+
+A manual `RaftTypeConfig` impl also drops `SnapshotData` and adds the new
+types: `Term`, `LeaderId` and `Vote` ([636664de], [d1bd8a24], [a7899729]),
+`Membership` and `MembershipEdit` ([60028ef9]), `Payload` ([48f39795]),
+`Responder<T>` ([ae207c88]), `Batch<T>` ([e3610718]) and `ErrorSource`
+([c40dd1ea]). These are the defaults:
+
+```rust,ignore
+impl openraft::RaftTypeConfig for TypeConfig {
+    type D = String;
+    type R = String;
+    type NodeId = u64;
+    type Node = openraft::impls::BasicNode;
+    type Term = u64;
+    type LeaderId = openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>;
+    type Vote = openraft::impls::Vote<Self::LeaderId>;
+    type Membership = openraft::impls::Membership<Self::NodeId, Self::Node>;
+    type MembershipEdit = openraft::impls::ChangeMembers<Self::NodeId, Self::Node>;
+    type Payload = openraft::impls::EntryPayload<Self::D, Self::Membership>;
+    type Entry = openraft::impls::Entry<
+        <Self::LeaderId as openraft::vote::RaftLeaderId>::Committed,
+        Self::Payload,
+    >;
+    type Responder<T> = openraft::impls::ProgressResponder<Self, T>
+    where T: openraft::OptionalSend + 'static;
+    type Batch<T> = openraft::impls::InlineBatch<T>
+    where T: openraft::OptionalSend + 'static;
+    type AsyncRuntime = openraft_rt_tokio::TokioRuntime;
+    type ErrorSource = openraft::impls::BoxedErrorSource;
+}
+```
+
+#### Type parameters
+
+Metrics, state, RPC and error types take a single `C: RaftTypeConfig`
+([fc73dc7a], [717ed633], [01fcb351], [9dbcd4c0], [c40dd1ea], [926bf6de]):
+
+```rust,ignore
+RaftMetrics<NID, N>          --> RaftMetrics<C>
+RaftDataMetrics<NID>         --> RaftDataMetrics<C>
+RaftServerMetrics<NID, N>    --> RaftServerMetrics<C>
+Metric<NID>                  --> Metric<C>
+Wait<NID, N, A>              --> Wait<C>
+RaftState<NID, N, I>         --> RaftState<C>
+VoteRequest<NID>             --> VoteRequest<C>
+VoteResponse<NID>            --> VoteResponse<C>
+AppendEntriesResponse<NID>   --> AppendEntriesResponse<C>
+SnapshotResponse<NID>        --> SnapshotResponse<C>
+InitializeError<NID, N>      --> InitializeError<C>
+NotInMembers<NID, N>         --> NotInMembers<C>
+ClientWriteError<NID, N>     --> ClientWriteError<C>
+CheckIsLeaderError<NID, N>   --> CheckIsLeaderError<C>
+RaftError<NID, E>            --> RaftError<C, E>
+RPCError<NID, N, E>          --> RPCError<C, E>
+RemoteError<NID, N, T>       --> RemoteError<C, T>
+ForwardToLeader<NID, N>      --> ForwardToLeader<C>
+NotAllowed<NID>              --> NotAllowed<C>
+QuorumNotEnough<NID>         --> QuorumNotEnough<C>
+Timeout<NID>                 --> Timeout<C>
+Fatal<NID>                   --> Fatal<C>
+StorageError<NID>            --> StorageError<C>
+ErrorSubject<NID>            --> ErrorSubject<C>
+NetworkError                 --> NetworkError<C>
+Unreachable                  --> Unreachable<C>
+StreamingError<C, E>         --> StreamingError<C>
+```
+
+Log id, vote, membership, snapshot and entry types take only the parameters
+they store ([57146747], [4d362901], [429a9fde], [0247ee71], [f8d151ca],
+[5eef0576], [daa099d6], [ad828d89], [67eb5049], [d86454eb], [60028ef9]), and
+`EffectiveMembership` is replaced by `StoredMembership` ([5ca2ab2d]). The
+`openraft::alias::*Of<C>` aliases in the comments, enabled by the
+`type-alias` feature ([08f258a8]), name them from a type config:
+
+```rust,ignore
+LogId<NID>                  --> LogId<CLID>                    // LogIdOf<C>
+Vote<NID>                   --> Vote<LID>                      // VoteOf<C>
+LeaderId<NID>               --> LeaderId<Term, NID>            // LeaderIdOf<C>
+CommittedLeaderId<NID>      --> CommittedLeaderId<Term>        // leader_id_std
+                                CommittedLeaderId<Term, NID>   // leader_id_adv
+LogIdList<NID>              --> LogIdList<CLID>                // LogIdListOf<C>
+InProgress<NID>             --> InProgress<CLID>               // InProgressOf<C>
+ChangeMembershipError<NID>  --> ChangeMembershipError<CLID, NID, E>
+StoredMembership<NID, N>    --> StoredMembership<CLID, Mem>    // StoredMembershipOf<C>
+MembershipState<NID, N>     --> MembershipState<CLID, Mem>     // MembershipStateOf<C>
+EffectiveMembership<NID, N> --> StoredMembership<CLID, Mem>
+SnapshotMeta<NID, N>        --> SnapshotMeta<CLID, Mem>        // SnapshotMetaOf<C>
+SnapshotSignature<NID>      --> SnapshotSignature<CLID>        // SnapshotSignatureOf<C>
+Snapshot<C>                 --> Snapshot<CLID, Mem, SD>        // SnapshotOf<C, SD>
+Entry<C>                    --> Entry<CLID, P>                 // DefaultEntryOf<C>
+EntryPayload<C>             --> EntryPayload<D, Mem>           // EntryPayloadOf<C>
+```
+
+`Membership<NID, N>`, `ChangeMembers<NID, N>` and `LearnerNotFound<NID>` are
+unchanged. `RaftEntry` and `RaftPayload` no longer take type parameters
+([5eef0576], [48f39795]), and `EntryOf<C>` names the configured `C::Entry`.
+
+#### Paths and trait impls
+
+- The `error` module is renamed to `errors`; `openraft::error` remains as a
+  deprecated alias ([f4491b20]).
+- `openraft::LeaderId` and `openraft::CommittedLeaderId` are no longer
+  re-exported at the crate root ([d1b41efb]). Use
+  `openraft::impls::leader_id_adv::LeaderId`,
+  `openraft::vote::leader_id_adv::CommittedLeaderId`, or the `LeaderIdOf<C>`
+  and `CommittedLeaderIdOf<C>` aliases.
+- `RaftLogId` is no longer re-exported at the crate root: import
+  `openraft::log_id::RaftLogId` ([7bebecb9]).
+- `openraft::async_runtime::TokioRuntime` is removed: use
+  `openraft_rt_tokio::TokioRuntime` ([39d62058]).
+- `RaftEntry` no longer extends `RaftLogId`, and `Entry` does not implement
+  `RaftLogId` ([7bebecb9]) or `RaftPayload` ([48f39795]). Replace
+  `entry.get_log_id()` with `entry.log_id()`, which returns the `LogId` by
+  value; the `Entry::log_id` field is unchanged.
+- `LogId`, `Vote`, `Entry` and `RaftServerMetrics` no longer implement
+  `Default` ([4fab545e], [8b2386a6], [5c765157]). Build them explicitly, as
+  in `LogId::new(leader_id, index)`, or store an `Option`.
+
+#### Storage and state machine implementations
+
+- `RaftStorage` and its `Adaptor` are removed: implement `RaftLogStorage` and
+  `RaftStateMachine` ([d7a9810f]).
+- Storage methods return `io::Error` instead of `StorageError<C>`, and
+  Openraft adds the error context ([d1ffaa2d]). Where a `StorageError` is
+  still needed, `?` converts an `io::Error` into one.
+- `read_vote()` moved from `RaftLogStorage` to `RaftLogReader` ([29cefe5d]),
+  and `RaftLogStorage` no longer extends `RaftLogReader` ([fa858223]):
+  Openraft reads the vote and the logs through the reader that
+  `get_log_reader()` returns. A store with `type LogReader = Self` keeps
+  working; generic code that read logs from a `RaftLogStorage` calls
+  `get_log_reader()` first.
+- `RaftLogStorage::truncate(log_id)`, which deleted logs from
+  `log_id.index()` on, is replaced by `truncate_after(last_log_id)`, which
+  keeps the logs up to and including `last_log_id` ([a86e6e75]):
+
+  ```rust,ignore
+  async fn truncate_after(&mut self, last_log_id: Option<LogId>) -> Result<(), io::Error> {
+      let start = last_log_id.map(|id| id.index() + 1).unwrap_or(0);
+      delete_from(start..);
+      Ok(())
+  }
+  ```
+
+- The append callback `LogFlushed` is renamed to `IOFlushed`, and
+  `log_io_completed()` to `io_completed()`; the old names remain as
+  deprecated aliases ([c55a58d4], [15f927e1]).
+- `RaftStateMachine::apply()` takes a stream, and sends each response through
+  the responder paired with its entry ([da51aac3], [cfcfc071]):
+
+  ```rust,ignore
+  async fn apply<Strm>(&mut self, mut entries: Strm) -> Result<(), io::Error>
+  where Strm: Stream<Item = Result<EntryResponder<C>, io::Error>> + Unpin + OptionalSend {
+      while let Some((entry, responder)) = entries.try_next().await? {
+          let response = /* process entry */;
+          if let Some(responder) = responder {
+              responder.send(response);
+          }
+      }
+      Ok(())
+  }
+  ```
+
+- `RaftStateMachine` defines `type SnapshotData`, which moved from
+  `RaftTypeConfig` ([dafeedb8]), and `Snapshot::snapshot` holds it without a
+  `Box` ([73fbae1e]).
+- `SnapshotMeta` has no `snapshot_id`: build it from `last_log_id` and
+  `last_membership` ([28b8c5d5]). `SnapshotSignature` has no `snapshot_id`
+  either ([f0a6440a]), and its `last_membership_log_id` is an
+  `Option<Box<LogId>>` ([ac2b7203]).
+- `RaftStateMachine::begin_receiving_snapshot()` moved to
+  `openraft_legacy::network_v1::SnapshotReceiverFactory`; only v1 chunked
+  snapshot transfer needs it ([22d23c80]).
+- A custom entry implements `RaftEntry` with `type CommittedLeaderId` and
+  `type Payload`, and `new()`, `log_id_parts()`, `set_log_id()` and
+  `get_membership()`; the `FromAppData` trait is removed ([7bebecb9],
+  [5eef0576], [48f39795]). A custom payload implements `RaftPayload` with
+  `type D` and `type Membership` ([60028ef9]), and `blank()`, `with_normal()`,
+  `with_membership()` and `get_membership()`, which returns an owned
+  membership ([3f5cbca4]); `is_blank()` is removed ([930b4a3d]).
+- `RaftLogReaderExt::get_log_entries()` is removed: use
+  `RaftLogReader::try_get_log_entries()` ([35e3bff8]).
+  `LogIndexOptionExt::add()` is removed ([149d4355]).
+- A bound `RaftLogId<C>` becomes
+  `RaftLogId<CommittedLeaderId = CommittedLeaderIdOf<C>>`, and
+  `LogIdOptionExt<C>` becomes `LogIdOptionExt` ([f8d151ca]).
+- Startup returns a `StorageError` for an inconsistent store: a log store
+  purged past its last log, a state machine applied past the log tail at a
+  smaller index ([61586bf5]), a state machine that misses purged logs
+  ([0c66f774]), or a log reader that returns other indexes than requested
+  while Openraft re-applies committed logs ([5d75cf21]). Wipe such a node and
+  add it back.
+- The storage test suite moved to `openraft::testing::log::{Suite,
+  StoreBuilder}` ([30ec5037]), and `Suite::test_all()` is async: run it in the
+  runtime, as in
+  `TypeConfig::run(async { Suite::test_all(builder).await.unwrap() })` with
+  `openraft::type_config::TypeConfigExt` in scope ([801ca4d6]).
+  `openraft::testing::log_id()` takes the type config instead of the node id
+  type as its type parameter ([4d362901]). New cases check
+  `entries_stream()` and `leader_bounded_stream()`, that a log reader sees
+  entries appended after it was created ([c0b03931]), and the startup checks
+  above.
+
+#### Network
+
+- Implement `RaftNetworkV2` for the connection that `RaftNetworkFactory`
+  creates ([4d0d1035]). To keep a v1 `RaftNetwork`, depend on
+  `openraft-legacy` ([a03c71d2], [1b262d90]) and wrap the network:
+  `my_network.into_v2()` returns an `Adapter` that implements `RaftNetworkV2`
+  ([9c031df7]).
+- On the receiving side of v1 chunked snapshots, `Raft::install_snapshot()`
+  comes from the `openraft_legacy::network_v1::ChunkedSnapshotReceiver` trait
+  ([4870e31a]). Import `InstallSnapshotRequest`, `InstallSnapshotResponse`,
+  `InstallSnapshotError`, `SnapshotMismatch` and `SnapshotSegmentId` from
+  `openraft_legacy::network_v1`; their old paths are deprecated stubs
+  ([3dc03314]).
+- `openraft::network::snapshot_transport`, with `Chunked`,
+  `SnapshotTransport` and `Streaming`, and `Raft::begin_receiving_snapshot()`
+  are removed ([a03c71d2], [22d23c80]). To send chunks, wrap a v1
+  `RaftNetwork` in `Adapter`; to receive them, use `ChunkedSnapshotReceiver`,
+  which gets its buffer from `SnapshotReceiverFactory`.
+- The v1 `RaftNetwork` has no `full_snapshot()`: `Adapter` sends a snapshot
+  in chunks through `install_snapshot()` ([4d0d1035]). A network that
+  overrode `full_snapshot()`, as 0.9 required with `generic-snapshot-data`,
+  implements `RaftNetworkV2::full_snapshot()` instead.
+- Report a remote error, such as a `Fatal` error on the target node, as
+  `Unreachable` ([ce142d01]).
+- `RPCError::PayloadTooLarge` and its automatic retry are removed. Limit the
+  payload with `Config::max_payload_entries`, and split or resend an
+  oversized request in the network implementation ([116e9f1c]).
+- `Raft::append_entries()`, `RaftNetworkV2::append_entries()` and
+  `stream_append()` return an `AppendResult`: `Ok` with the last log id the
+  follower accepted, or an `AppendError` ([7fae09c1]). A transport that keeps
+  the `AppendEntriesResponse` wire format converts at both ends:
+
+  ```rust,ignore
+  // Follower:
+  let reply = raft.append_entries(req).await.map(AppendEntriesResponse::from);
+
+  // Leader, in RaftNetworkV2::append_entries():
+  let prev_log_id = rpc.prev_log_id.clone();
+  let last_log_id = rpc.last_log_id();
+  let response: AppendEntriesResponse<C> = send(rpc).await?;
+  Ok(response.into_append_result(prev_log_id, last_log_id))
+  ```
+
+  Replace `is_success()` with `is_ok()`, and `is_conflict()` with
+  `matches!(r, Err(AppendError::Conflict { .. }))`.
+- `RaftNetworkV2::backoff()` returns an `Option<Backoff>`; `None` uses
+  `Config::backoff` ([4ad03c09]).
+- `VoteRequest` gains `leadership_transfer_from`: build it with
+  `VoteRequest::new()`, or add `leadership_transfer_from: None` to struct
+  literals. A custom wire format carries the field as an optional vote
+  ([123c9bc1]).
+- `ForwardToLeader` gains a `reason` field; add it to struct literals and
+  exhaustive patterns ([074175f2]).
+- `NetworkError` and `Unreachable` take the type config, as in
+  `NetworkError::<C>::new(&e)` or `Unreachable::<C>::from_string("msg")`
+  ([c40dd1ea]).
+- To use Pre-Vote and leadership transfer, implement
+  `RaftNetworkV2::pre_vote()` and `transfer_leader()`, and pass received
+  requests to `Raft::pre_vote()` and `Raft::handle_transfer_leader()`. By
+  default, `pre_vote()` grants the vote and `transfer_leader()` reports the
+  target unreachable ([0f6bb9a3], [eeeff6f3], [d000ee20]).
+
+#### Raft API
+
+- `Raft<C, SM>` names the state machine type ([88604cfd]). Add it where a
+  `Raft` is stored, for example
+  `type Raft = openraft::Raft<TypeConfig, StateMachine>;`.
+- Linearizable reads take a policy and return a `ReadLogId` ([9bc9885c],
+  [b20f38b3], [f0d59e0e]):
+
+  ```rust,ignore
+  // 0.9:
+  let read_log_id: Option<LogId> = raft.ensure_linearizable().await?;
+  // 0.10:
+  let read_log_id: ReadLogId<C> = raft.ensure_linearizable(ReadPolicy::ReadIndex).await?;
+  ```
+
+  `get_read_log_id()` returns `(ReadLogId, Option<LogId>)`. Use
+  `ReadLogId::log_id()` where a `LogId` is needed, and match on
+  `LinearizableReadError` instead of `CheckIsLeaderError`; it reports a stale
+  lease as `QuorumNotEnough`.
+- `Raft::is_leader()` returns a `bool` without a quorum check ([eba97d5a]).
+  Where the 0.9 `is_leader().await` was meant, call `ensure_linearizable()`.
+- `Raft::metrics()`, `data_metrics()` and `server_metrics()` return the
+  runtime's watch receiver, `WatchReceiverOf<C, _>`, instead of a
+  `tokio::sync::watch::Receiver`; with Tokio it is a wrapper around the tokio
+  receiver ([1b4ec53d]). Import `openraft::async_runtime::WatchReceiver`, and
+  replace `rx.borrow()` with `rx.borrow_watched()`; `changed()` keeps its
+  name.
+- `Raft::client_write_ff(data, responder)` takes an
+  `Option<WriteResponderOf<C>>` and returns `Result<(), Fatal<C>>` instead of
+  a receiver: build the responder, keep its receiver, and pass
+  `Some(responder)`, or `None` to ignore the result ([ae207c88], [7da9b504]).
+- A custom responder implements `Responder<C, T>`: `on_complete()` replaces
+  `send()`, `on_commit()` is optional, and `from_app_data()` and
+  `type Receiver` are removed ([d57bcc9c], [ae207c88], [b07ffd7b]). A manual
+  type config declares it as
+  `type Responder<T> = MyResponder<T> where T: OptionalSend + 'static;`.
+- `Raft::external_request()` is async and returns `Result<(), Fatal<C>>`
+  ([2e9b3695]).
+- `Trigger::elect()` takes `pre_vote: bool`; pass `false` for the 0.9
+  behavior ([0f6bb9a3]).
+- `RaftState::committed` is no longer a field: call `local_committed()`, or
+  `cluster_committed()` for the frontier a quorum has granted ([96173030],
+  [3a43c80c]).
+- `MessageSummary` is replaced by `Display`: replace `t.summary()` with
+  `t.to_string()`, and keep `summary()` only for `Option<T>` and `&[T]`
+  ([8b7ba0d6]).
+
+The APIs deprecated in 0.8 and 0.9 are removed ([01b6b2be], [5257fa7b],
+[65d692fa], [710e6457]):
+
+| Removed | Replacement |
+|---|---|
+| `Raft::enable_tick()`, `enable_heartbeat()`, `enable_elect()` | `Raft::runtime_config().tick()`, `heartbeat()`, `elect()` |
+| `Raft::trigger_elect()`, `trigger_heartbeat()`, `trigger_snapshot()`, `purge_log()` | `Raft::trigger().elect()`, `heartbeat()`, `snapshot()`, `purge_log()` |
+| `Membership::is_in_joint_consensus()` | `get_joint_config().len() > 1` |
+| `IntoNodes::has_nodes()`, `IntoNodes::node_ids()` | none |
+| `Wait::log()`, `Wait::log_at_least()` | `log_index()` or `log_index_at_least()`, then `applied_index()` or `applied_index_at_least()` |
+| `Wait::members()` | `voter_ids()` |
+| `Config::send_snapshot_timeout`, `--send-snapshot-timeout` | `install_snapshot_timeout`, `--install-snapshot-timeout` |
+
+#### Membership API
+
+- `Raft::initialize()` takes `impl Into<C::Membership>`, and
+  `Raft::change_membership()` takes `impl Into<MembershipEditOf<C>>`. With the
+  default membership, existing calls compile unchanged. Generic code adds the
+  bounds `C::Membership: From<BTreeMap<C::NodeId, C::Node>>` and
+  `MembershipEditOf<C>: From<ChangeMembers<C::NodeId, C::Node>>`
+  ([60028ef9]).
+- `Membership::new()` requires a node for every voter and returns
+  `Result<_, NodeNotFound>`; `Membership::new_with_defaults()` creates missing
+  nodes with `N::default()` ([03437e14], [0d3cd906]). A `BTreeSet<NID>`
+  converts into a membership only with `()` or `EmptyNode` nodes
+  ([a529931e]).
+- `EffectiveMembership` is removed: use `StoredMembership` ([5ca2ab2d]).
+  `Membership::learner_ids()` is deprecated: use `non_write_voter_ids()`
+  ([1d9d993f]).
+- Generic code uses `C::Membership` where it used
+  `Membership<C::NodeId, C::Node>`, for example for
+  `ClientWriteResponse::membership` ([60028ef9]).
+- A custom membership implements `RaftMembership`, and a custom edit
+  implements `RaftMembershipEdit<M>` ([60028ef9], [81e94799], [5a7171c3]); to
+  use `Raft::add_learner()`, the edit also implements
+  `RaftMembershipEditOps<M>` ([279af35b]).
+- Right after a leader change, a membership change can fail with
+  `ChangeMembershipError::UncommittedLeaderLog` until the leader's blank entry
+  commits; retry it as for `InProgress` ([6f5e9cc0]).
+
+#### Errors
+
+- `StorageError<C>` is a struct of the subject, the verb and the source,
+  instead of an enum with `Defensive` and `IO` variants. `StorageIOError` is
+  a deprecated alias of it ([55f4e5a5]), and `Violation` and
+  `DefensiveError` are removed ([35e3bff8], [7a150f46]). `LackEntry`, which
+  Openraft never returned, is removed ([fc73dc7a]).
+- The source of an error is a `C::ErrorSource`: `StorageError::source` holds
+  one, and the `source` of `ConfigError::ParseError` is a `BoxedErrorSource`.
+  A custom `ErrorSource` implements `from_error()`, `from_string()`,
+  `has_backtrace()` and `fmt_backtrace()` ([c40dd1ea], [41a38a79],
+  [6ee7f2fd]).
+- `ChangeMembershipError` gains an error parameter `E`, `AnyError` by
+  default; an error returned by `Raft` uses `C::ErrorSource` ([0d3cd906]).
+- New variants of public enums, for exhaustive matches:
+  - `ChangeMembershipError`: `UnsupportedMembershipTransition`,
+    `UncommittedLeaderLog`, `NodeMetadataChanged` ([d4a8088c]),
+    `UnprovenReadWriteIntersection`, `WriteVoterWithoutReceiveLogs`
+    ([60028ef9]) and `UserDefined` ([0d3cd906]);
+  - `InitializeError`: `InvalidMembership` ([60028ef9]);
+  - `ClientWriteError`: `LogEntryDiscarded` ([54094270]) and
+    `PreconditionFailed` ([bd6a9dab]);
+  - `ConfigError`: `InvalidBackoff` ([4ad03c09]),
+    `HeartbeatMinIntervalTooLarge` ([0d15d998]) and
+    `QuorumLossProbeIntervalTooSmall` ([542b9046]);
+  - `ChangeMembers`: `Batch` ([30f1ae67]);
+  - `RPCTypes`: `TransferLeader` ([eeeff6f3]);
+  - `Metric`: `Committed` ([c63b33a8]).
+- Handle `ClientWriteError::LogEntryDiscarded` apart from `ForwardToLeader`:
+  the entry was accepted and then discarded, so its commit status is unknown,
+  and a retry needs application-level deduplication ([54094270]).
+- `StreamingError` has no error parameter and no `RemoteError` variant
+  ([40e5b1ae], [926bf6de]).
+
+#### Metrics and `Wait`
+
+- `RaftMetrics::current_term` is a `C::Term` ([636664de]), and
+  `membership_config` is an `Arc<StoredMembershipOf<C>>` ([5ca2ab2d]).
+- `RaftMetrics::committed` and `RaftDataMetrics::committed` are deprecated:
+  read `local_committed`, or `cluster_committed` for the frontier a quorum
+  has granted ([3a43c80c]).
+- `RaftMetrics::millis_since_quorum_ack` and
+  `RaftDataMetrics::millis_since_quorum_ack` are deprecated: read
+  `last_quorum_acked`, the instant of the last quorum acknowledgement
+  ([ab35b288]).
+- `RaftMetrics::new_initial()` reports `ServerState::Learner` instead of
+  `Follower`, as `RaftServerMetrics` does ([8fd783d4]).
+- `Wait::timeout` is an `Option<Duration>`; `None` means no timeout
+  ([49488dd5]).
+
+#### Config
+
+- `Config` has new fields, for example `enable_pre_vote` ([0f6bb9a3]) and
+  `quorum_loss_probe_interval` ([542b9046]): build it with
+  `..Default::default()`.
+- `Config::validate()` checks two new constraints: a set
+  `quorum_loss_probe_interval` must be at least
+  `leader_lease + election_timeout_max` ([542b9046]), and with a non-zero
+  `heartbeat_min_interval` ([0d15d998], [8ad534e6]):
+
+      heartbeat_interval + heartbeat_min_interval + heartbeat_interval * 13 / 64 < election_timeout_min
+
+- `send_snapshot_timeout` and `--send-snapshot-timeout` are removed; see
+  "Raft API" ([710e6457]).
+
+#### Custom async runtimes
+
+- `AsyncRuntime` and its channel traits are in `openraft-rt`, re-exported as
+  `openraft::rt` ([3363a02c]). `openraft::TokioRuntime`,
+  `openraft::impls::TokioRuntime` and `openraft::TokioInstant` are deprecated
+  aliases of `openraft_rt_tokio::TokioRuntime` and
+  `openraft_rt_tokio::TokioInstant` ([29b4545c], [534bf40d]), and the
+  `openraft::instant` module is removed: use `openraft::Instant`
+  ([cec121a3]).
+- `TokioInstant` is a struct that wraps `tokio::time::Instant`, instead of an
+  alias of it ([bb3a0b37]). Code that mixed instants from metrics with
+  `tokio::time::Instant` uses the `Instant` trait methods instead.
+- A custom `AsyncRuntime` replaces `OneshotSender<T>`, `OneshotReceiver<T>`,
+  `OneshotReceiverError` and `oneshot()` with `type Oneshot` ([15e5a716]);
+  adds `type Mpsc` ([c279fb86]), `type Watch` and `type Mutex<T>`
+  ([06955673]), and the methods `new()` and `block_on()` ([af54d69a]); and
+  drops the `T: OptionalSend` bound from `block_on()` ([37bef134]). `run()`,
+  `select2()` to `select4()` ([8eab13c8]), `spawn_blocking()` ([29383fec]) and
+  `mpsc_recv_deadline()` ([a8ff29eb]) have default implementations.
+  `ThreadLocalRng` implements `rand::Rng` from rand 0.10 instead of 0.8
+  ([2d060895], [8696e7aa]). `openraft::testing::runtime::Suite` tests the
+  implementation ([30ec5037], [e91decda]).
+- `AsyncOneshotSendExt` is renamed to `OneshotSender`, and
+  `TokioOneShotSender` is removed ([6ffcd2c3]).
+- `AsyncRuntime` no longer requires `Default`, `PartialEq` or `Eq`
+  ([af54d69a]). In threaded mode, the runtime, `Mpsc` and `Watch` types need
+  not be `Send` or `Sync`, and `JoinHandle`, `Sleep`, `Oneshot::Receiver`,
+  `OneshotSender` and `MpscReceiver` need not be `Sync` ([37bef134],
+  [4fcde9d4]). Generic code that relied on these bounds states them itself.
+  Likewise, `#[add_async_trait]` no longer adds a `Send` supertrait to the
+  trait it expands; add `OptionalSend` where a trait needs it ([beb7c5ac]).
+
+#### Deprecations
+
+These items still compile, with a deprecation warning:
+
+| Deprecated | Use instead |
+|---|---|
+| `openraft::error` | `openraft::errors` ([f4491b20]) |
+| `CheckIsLeaderError` | `LinearizableReadError` ([e4e629ad]) |
+| `StorageIOError`, `StorageError::into_io()` | `StorageError` ([55f4e5a5], [35e3bff8]) |
+| `LogFlushed`, `IOFlushed::log_io_completed()` | `IOFlushed`, `io_completed()` ([c55a58d4], [15f927e1]) |
+| `LogId::leader_id()` | `committed_leader_id()` ([049036d7]) |
+| `Vote::commit()` | `to_committed()` ([d62f2fd8], [d914c950]) |
+| `Membership::learner_ids()` | `non_write_voter_ids()` ([1d9d993f]) |
+| `RaftState::committed()`, `RaftMetrics::committed`, `RaftDataMetrics::committed` | `local_committed`, or `cluster_committed` ([3a43c80c]) |
+| `RaftMetrics::millis_since_quorum_ack`, `RaftDataMetrics::millis_since_quorum_ack` | `last_quorum_acked` ([ab35b288]) |
+| `openraft::TokioRuntime`, `openraft::impls::TokioRuntime`, `openraft::TokioInstant` | `openraft_rt_tokio::TokioRuntime`, `openraft_rt_tokio::TokioInstant` ([534bf40d]) |
+| `RaftNetwork`, `InstallSnapshotRequest`, `InstallSnapshotResponse`, `InstallSnapshotError`, `SnapshotMismatch` and `SnapshotSegmentId` in `openraft` | the same names in `openraft_legacy::network_v1` ([a03c71d2], [3dc03314]) |
+
+#### Behavior changes
+
+- A leader that cannot confirm a recent quorum rejects proposals and lease
+  reads with `ForwardToLeader` and `ForwardReason::LeaseExpired`; retry on the
+  same node ([cfcb067e], [074175f2]).
+- A restarted leader campaigns for a higher term at startup instead of
+  resuming with its saved vote. Set `Config::enable_leader_restore` to
+  `Some(false)` to make it wait for a normal election instead ([401ea02d],
+  [f4b5f61d]).
+- A restarted follower keeps the lease of its committed vote and rejects
+  other candidates for up to `election_timeout_max` after startup
+  ([e56b107b]).
+- A leader rejects vote requests while its quorum-acknowledged lease is
+  valid, and `Trigger::elect(true)` does nothing while the local leader lease
+  is valid ([a884c52d]).
+- A membership change writes one entry instead of two when the old and new
+  quorums intersect ([c90c6b53], [66579703]), and a leadership transfer to an
+  up-to-date learner makes the learner the leader ([60028ef9]).
+- A leader removed by a committed membership transfers its leadership to the
+  most up-to-date voter and steps down after
+  `Config::removed_leader_step_down`, 150 ms by default. With `Never`, it
+  keeps leading until `Trigger::refresh_server_state()` is called
+  ([8da662c5], [d0783de6]).
+- The log id of the entry `Raft::initialize()` writes names the initializing
+  node instead of node 0 ([394227be]).
+- The first tick comes up to one tick interval later than in 0.9, so a test
+  that expects a leader within a tight startup budget may need more time
+  ([a12b6871], [8ad534e6]).
+- The API, notification and state-machine channels are bounded, so a burst
+  of requests waits for capacity instead of growing memory ([2e9b3695],
+  [a90237cc]).
+- Retries to an unreachable node start at 200 ms and double up to 1 s, where
+  0.9 waited a constant 500 ms, and the v1 `RaftNetwork::backoff()` default
+  is a constant 200 ms. For the 0.9 timing, set `Config::backoff` to
+  `"500ms 500ms 500ms"`, or override `backoff()` of a v1 network
+  ([4ad03c09], [7e1f6c83]).
+- A node samples a new election timeout for every campaign, where 0.9
+  sampled one at startup ([dd0808b9]).
+
+#### Data and wire compatibility
+
+Stored data needs no migration with the default types: the serialized forms
+of log entries, `Membership`, `StoredMembership`, `Vote`, `LeaderId`,
+`SnapshotMeta` and `SnapshotSignature` are unchanged ([48f39795],
+[60028ef9]). `SnapshotMeta` and `SnapshotSignature` still write an empty
+`snapshot_id` and ignore it when reading ([f0a6440a], [28b8c5d5]), and the
+standard `LeaderId` still encodes `voted_for` as an `Option`, rejecting a
+stored `None` ([6b0f1be3]).
+
+Between 0.9 and 0.10 peers, snapshot metadata and the v1
+`InstallSnapshotRequest` keep their 0.9 layout in named and positional serde
+formats alike ([28b8c5d5], [3dc03314]). With a named-field format such as
+JSON, a missing `VoteRequest::leadership_transfer_from` decodes as `None`
+([123c9bc1]), and a missing `ForwardToLeader::reason` as `NotLeader`; a
+positional format such as bincode cannot decode a `ForwardToLeader` written
+by 0.9 ([074175f2]). Error bodies do not interoperate, because `StorageError`
+was an enum in 0.9 and is a struct in 0.10 ([35e3bff8]): treat a serialized
+error from a peer of another version as diagnostic text.
+
+### Changes list
+
+#### Changed
+
+-   [d7a9810f](https://github.com/databendlabs/openraft/commit/d7a9810f26b8773664e69ad2ddc265398be99340) Establish `storage-v2` as the default and remove `RaftStorage`.
+-   [fc73dc7a](https://github.com/databendlabs/openraft/commit/fc73dc7a8d7982cfdd6e39edc90338b8ed686dc9) Public types take a single `C: RaftTypeConfig` parameter instead of `NID` and `N`.
+-   [29cefe5d](https://github.com/databendlabs/openraft/commit/29cefe5d823708a6e0e4e2d5509a4642bebbc64d) Move read_vote function from RaftLogStorage to RaftLogReader.
+-   [8b7ba0d6](https://github.com/databendlabs/openraft/commit/8b7ba0d6d049492a6379f8d5bbc0d5e138e3b046) Replace `MessageSummary` with `Display`.
+-   [4d0d1035](https://github.com/databendlabs/openraft/commit/4d0d103541a3e2eb4a4b345805551af2a90e6a6b) Add `RaftNetworkV2`, which sends a snapshot in one piece; remove feature flag `generic-snapshot-data`.
+-   [fa858223](https://github.com/databendlabs/openraft/commit/fa85822363c87c27155f25dc3352441216d43a00) `RaftLogStorage` no longer extends `RaftLogReader`.
+-   [1b4ec53d](https://github.com/databendlabs/openraft/commit/1b4ec53df2c548757607261e88287a2fd6cb5131) `Raft::metrics()`, `data_metrics()` and `server_metrics()` return the runtime's watch receiver.
+-   [35e3bff8](https://github.com/databendlabs/openraft/commit/35e3bff8d29c4e105af121686870c660fe9688f3) Remove `Violation` and `DefensiveError`; `StorageError` is a struct.
+-   [c8813d84](https://github.com/databendlabs/openraft/commit/c8813d84d54d503e7dcb7af0fc9926e6b4720ec9) Replace `loosen-follower-log-revert` feature flag with `Config::allow_log_reversion`.
+-   [03437e14](https://github.com/databendlabs/openraft/commit/03437e14214407ad4da0adde5ebcf786a6701b46) `Membership::new()` requires a node for every voter; add `Membership::new_with_defaults()`.
+-   [d1b41efb](https://github.com/databendlabs/openraft/commit/d1b41efb9050c50eefdd4154dd95c2afd95d1b9c) Remove feature flag `single-term-leader`.
+-   [6847fd3e](https://github.com/databendlabs/openraft/commit/6847fd3e341da8b8cf1a2bbacd593554081ad363) Require AppData to impl Debug and Display.
+-   [ae207c88](https://github.com/databendlabs/openraft/commit/ae207c88f49afe9e2789f3dbac42957c39843fa5) The caller builds the client-write `Responder`, which receives commit and completion events.
+-   [2e9b3695](https://github.com/databendlabs/openraft/commit/2e9b3695c804ee74da05c77b00448a5e5f27975b) Bound the API and notification channels by `Config::api_channel_size` and `Config::notification_channel_size`.
+-   [d1ffaa2d](https://github.com/databendlabs/openraft/commit/d1ffaa2df0dc835c2231448282457d1e0b48200c) Storage traits return `io::Error`.
+-   [cfcfc071](https://github.com/databendlabs/openraft/commit/cfcfc071ac060bda01b1cfaace854f73ec36088e) `RaftStateMachine::apply()` takes a stream of entries paired with responders.
+-   [116e9f1c](https://github.com/databendlabs/openraft/commit/116e9f1c5f740e95c48ccb6d58aaef8706302bd0) Remove `PayloadTooLarge` error and automatic retry logic.
+-   [c55a58d4](https://github.com/databendlabs/openraft/commit/c55a58d4c66d2cfac6103a3417ac9c0ba6ff61d3) Rename the log append callback `LogFlushed` to `IOFlushed`.
+-   [801ca4d6](https://github.com/databendlabs/openraft/commit/801ca4d68753911a90061485622b846a898ee89b) The storage test `Suite::test_all()` is async.
+-   [f0d240ce](https://github.com/databendlabs/openraft/commit/f0d240ce83933ddf9dd13f07e5ce01eb8366635f) Stop releasing `openraft-sledstore`, and remove the sled store.
+-   [beb7c5ac](https://github.com/databendlabs/openraft/commit/beb7c5ac0b69cf806b97518c61392129af039f9a) `#[add_async_trait]` no longer adds a `Send` supertrait.
+-   [20067038](https://github.com/databendlabs/openraft/commit/20067038d863553135e9f747c877a40af5ff21bf) Use the Rust 2024 edition.
+-   [8b2386a6](https://github.com/databendlabs/openraft/commit/8b2386a6bb1f2b500aed86d5ddad632f0c612429) `Vote`, `LogId`, `Entry` and `RaftServerMetrics` no longer implement `Default`.
+-   [a90237cc](https://github.com/databendlabs/openraft/commit/a90237cccbd1bf90013ae96c1d2e2731746aaf2f) Bound the state-machine command channel by `Config::state_machine_channel_size`.
+-   [bb3a0b37](https://github.com/databendlabs/openraft/commit/bb3a0b3779296966289affae9059d36b2753f0bd) `TokioInstant` wraps `tokio::time::Instant` instead of aliasing it.
+-   [3363a02c](https://github.com/databendlabs/openraft/commit/3363a02c5d8ff7ff7796f4a6802ee018a51e5257) Move the async runtime abstraction to the `openraft-rt` crate and extend `AsyncRuntime`.
+-   [1b4de118](https://github.com/databendlabs/openraft/commit/1b4de118bf17f5c7a1887172a9277c35b9f64a6b) Rename feature flag `singlethreaded` to `single-threaded`.
+-   [29b4545c](https://github.com/databendlabs/openraft/commit/29b4545cf2de61e32db5240ade99b55220088f29) Move the Tokio runtime to the `openraft-rt-tokio` crate, behind the default `tokio-rt` feature.
+-   [7e1f6c83](https://github.com/databendlabs/openraft/commit/7e1f6c835edd0faf9f4bae70e35d82a1ee298c3d) The v1 `RaftNetwork::backoff()` default is a constant 200 ms instead of 500 ms.
+-   [1b262d90](https://github.com/databendlabs/openraft/commit/1b262d90e01a1c50d16df0189a6af52fc475ccf6) Move the v1 network API and chunked snapshot transfer to the `openraft-legacy` crate.
+-   [41a38a79](https://github.com/databendlabs/openraft/commit/41a38a79aa12a29e9c86d467155c500cbfaf994e) Make the error source type configurable with `RaftTypeConfig::ErrorSource`.
+-   [7a150f46](https://github.com/databendlabs/openraft/commit/7a150f461f3c06ca5909d5fd82fce3a2e27d05d5) Remove redundant `backtrace` field from `StorageError`.
+-   [a86e6e75](https://github.com/databendlabs/openraft/commit/a86e6e75e98361ce5cc38d89c3bee9121dff1396) Replace `RaftLogStorage::truncate()` with `truncate_after()`.
+-   [f4491b20](https://github.com/databendlabs/openraft/commit/f4491b20ee6fb118078856ef662c3fbb01c61c8f) Rename the `error` module to `errors`; `openraft::error` remains as a deprecated alias.
+-   [88604cfd](https://github.com/databendlabs/openraft/commit/88604cfdc78599f2b127f46fd19fa9682fbba0a3) Add the state machine type parameter `SM` to `Raft<C, SM>`.
+-   [5eef0576](https://github.com/databendlabs/openraft/commit/5eef05762e6eac455d741150f9e3cea47d3571b9) Log id, vote, membership, snapshot and entry types take only the type parameters they use.
+-   [e3610718](https://github.com/databendlabs/openraft/commit/e3610718526cc9ebe14912da9312db76c3fbe249) Introduce customizable Batch<T> trait for log entry collections.
+-   [4ad03c09](https://github.com/databendlabs/openraft/commit/4ad03c0983759b94e7ff8b293464cdf1c5bf889d) Make default backoff configurable via `Config::backoff`.
+-   [dafeedb8](https://github.com/databendlabs/openraft/commit/dafeedb82b1101fe5fc70a3e55e289082e72a31a) Move snapshot data out of `RaftTypeConfig` into the state machine and network traits.
+-   [6b0f1be3](https://github.com/databendlabs/openraft/commit/6b0f1be3cb2debea513d57109a0578941528e694) `LeaderId::voted_for` of the standard leader id is a `NID` instead of an `Option<NID>`.
+-   [149d4355](https://github.com/databendlabs/openraft/commit/149d43556c1d1eb0b4353ffd7b8192056e2c7000) Remove the unused LogIndexOptionExt::add().
+-   [61586bf5](https://github.com/databendlabs/openraft/commit/61586bf5483aff20dd98a5bf5f3fe3ce891912f1) Fail fast on inconsistent snapshot and corrupted store.
+-   [cfcb067e](https://github.com/databendlabs/openraft/commit/cfcb067ef30123daf05d15c574c4beea44c476a9) Enforce leader lease for proposals and lease reads.
+-   [28b8c5d5](https://github.com/databendlabs/openraft/commit/28b8c5d58d4d842c75c06511987622b16486b364) Remove `snapshot_id` from `SnapshotMeta` and `SnapshotSignature`.
+-   [8ad534e6](https://github.com/databendlabs/openraft/commit/8ad534e6b4f068991991cb54689c9dc6338c98c9) Tick five times per `heartbeat_interval`, on a fixed per-instance grid.
+-   [f0d59e0e](https://github.com/databendlabs/openraft/commit/f0d59e0e44c738c3d7088d45e666c1333ec04e1f) Linearizable reads take a `LinearizerOption` and return a `ReadLogId`.
+-   [6ee7f2fd](https://github.com/databendlabs/openraft/commit/6ee7f2fd0c6cbdc67127352b2a73921de9836ec3) Store the source of `ConfigError::ParseError` as `BoxedErrorSource`.
+-   [48f39795](https://github.com/databendlabs/openraft/commit/48f39795e8f0d21498112080b717cc79e4e5fde0) Let an application define the log entry and payload types with `RaftEntry` and `RaftPayload`.
+-   [074175f2](https://github.com/databendlabs/openraft/commit/074175f2806e58582afc32075c4e6fcd6610189c) Add ForwardToLeader::reason.
+-   [54094270](https://github.com/databendlabs/openraft/commit/54094270ede0b8a2eb6ed6ae990edc6ca19d98ec) Report discarded client-write entries.
+-   [542b9046](https://github.com/databendlabs/openraft/commit/542b9046ee92cd1590c8273feefd0170222f940d) Add `Config::quorum_loss_probe_interval` to give way to a new leader after quorum loss.
+-   [49488dd5](https://github.com/databendlabs/openraft/commit/49488dd5b4d3024867dacd31cf5593b8e4c31aa6) Make Wait::timeout an Option<Duration>.
+-   [123c9bc1](https://github.com/databendlabs/openraft/commit/123c9bc1fce0d58ef85062b58d6531e4fabc8401) `VoteRequest` carries the vote of the leader that authorized a transfer election.
+-   [60028ef9](https://github.com/databendlabs/openraft/commit/60028ef9d31b83b4f354e0159e1339d4c39e408f) Make the membership type configurable with `RaftTypeConfig::Membership` and `RaftTypeConfig::MembershipEdit`.
+-   [7fae09c1](https://github.com/databendlabs/openraft/commit/7fae09c18d5f8c2385524bda4ac2957aa252e186) Guide probes with conflict hints in AppendResult.
+-   [710e6457](https://github.com/databendlabs/openraft/commit/710e645793f3ca541a66b15249a78fe5573e7459) Remove the APIs deprecated in 0.8 and 0.9.
+-   [3a43c80c](https://github.com/databendlabs/openraft/commit/3a43c80c3e13f8810bed139451252e31a9f582d4) Distinguish the local-committed from the cluster-committed log id.
+-   [a6396398](https://github.com/databendlabs/openraft/commit/a6396398c85d9a9655e11c86cc3dd114dc5d9a9c) Stop releasing `openraft-rocksstore`; the RocksDB store is now the `log-rocks` and `sm-rocks` example crates.
+
+#### Added
+
+-   [d4a8088c](https://github.com/databendlabs/openraft/commit/d4a8088cd60e15b12f1d9d2a579c8ec72d48e90f) Add `Raft::append_membership()` to write a membership change as one log entry.
+-   [08f258a8](https://github.com/databendlabs/openraft/commit/08f258a85b57693eb6044007e429fd1deadd8734) Enable feature-flag `type-alias` to use type shortcuts.
+-   [d857a857](https://github.com/databendlabs/openraft/commit/d857a857c66ce99791b0659a9443692f87361aae) Store heartbeat metric in RaftMetrics and RaftDataMetrics.
+-   [ab35b288](https://github.com/databendlabs/openraft/commit/ab35b2885c758d84bcd85618b9af94b1b08a4d23) Add absolute timestamp `RaftMetrics::last_quorum_acked`.
+-   [6c7527fd](https://github.com/databendlabs/openraft/commit/6c7527fdfea9f485282e39f9e1e4dc157bc3ffd3) Add `Raft::with_state_machine()` and `Raft::external_state_machine_request()` to run a function on the state machine.
+-   [eeeff6f3](https://github.com/databendlabs/openraft/commit/eeeff6f3ef85b17fd486fc3a235a7ff04f54ac04) Add leadership transfer.
+-   [30ec5037](https://github.com/databendlabs/openraft/commit/30ec503756629994f6bed22bcdada7f70b19a53c) Add `openraft::testing::runtime::Suite` to test an `AsyncRuntime`; the storage suite moves to `openraft::testing::log`.
+-   [b72ea560](https://github.com/databendlabs/openraft/commit/b72ea560c11c125a842d1acd3bf2614ee947b57d) Add the `openraft-rt-monoio` crate, a monoio runtime.
+-   [47e02201](https://github.com/databendlabs/openraft/commit/47e0220164f045335b3b7f7048a0d7d722b6cd75) `Raft::trigger()::allow_next_revert()` allow to reset replication for next detected follower log revert.
+-   [9178ef8f](https://github.com/databendlabs/openraft/commit/9178ef8f1d49de0c85fb835d559d53c5876b2c64) Retrieve Key Log IDs via `RaftLogReader::get_key_log_ids()`.
+-   [a7899729](https://github.com/databendlabs/openraft/commit/a7899729d9658171b48dffd4f4ba96382d28cd62) Make the term, leader id and vote types configurable.
+-   [30f1ae67](https://github.com/databendlabs/openraft/commit/30f1ae675473682dd271be3804689fa5ea2702cf) Add `ChangeMembers::Batch(Vec<ChangeMembers>)` for batched membership changes.
+-   [e5ab7225](https://github.com/databendlabs/openraft/commit/e5ab722563a00e19854a7d62eaf5a42297d7c4f0) Add the `openraft-rt-compio` crate, a compio runtime.
+-   [e7e0a3f7](https://github.com/databendlabs/openraft/commit/e7e0a3f737830e48cf1e23d082e113cd499d023b) Add `RaftStateMachine::try_create_snapshot_builder`.
+-   [cddefbd7](https://github.com/databendlabs/openraft/commit/cddefbd7a9f4fb57195781e0a82c173a69f68447) Add progress watch APIs for flushed log, vote, commit, apply and snapshot.
+-   [0c122614](https://github.com/databendlabs/openraft/commit/0c122614d0efab40b118b911349cc9cfa56ff293) Support transient state machines with automatic snapshot restoration.
+-   [eba97d5a](https://github.com/databendlabs/openraft/commit/eba97d5acabcad26569fe870090cf2b323756a94) Add `Raft::node_id()`, `voter_ids()` and `learner_ids()`, and make `is_leader()` a local check that returns a `bool`.
+-   [29f900f1](https://github.com/databendlabs/openraft/commit/29f900f12374b51280efccfc0a075594fb40e96e) Add the `Raft::write()` builder for client writes.
+-   [cb49779d](https://github.com/databendlabs/openraft/commit/cb49779d5b285e659e53201a746acdbc156287be) Add `Raft::as_leader()`, which returns a `Leader` handle or where to forward.
+-   [9b6b5293](https://github.com/databendlabs/openraft/commit/9b6b52936ca9f187e914e8fc0706ce30e0d6c737) Add the `openraft-multi` crate for running many Raft groups.
+-   [0d381c80](https://github.com/databendlabs/openraft/commit/0d381c80751116581d5bbb6ffdfa3f89ab0e002e) Add `RaftNetworkV2::stream_append()` and `Raft::stream_append()` for pipelined log replication.
+-   [c56d043b](https://github.com/databendlabs/openraft/commit/c56d043b6f10d2c0665e2fb7d7f8b1c64488e1d1) Add `on_leader_change()` and `on_cluster_leader_change()` callbacks.
+-   [1282a1ae](https://github.com/databendlabs/openraft/commit/1282a1ae80ad635c154766b89a08f1091381328e) Add the `runtime-stats` feature for runtime statistics.
+-   [681277d9](https://github.com/databendlabs/openraft/commit/681277d9e5706f5c1581f5e9bd339698fb953b84) Allow WaitError to be serialized/deserialized.
+-   [2bbf7eb9](https://github.com/databendlabs/openraft/commit/2bbf7eb949406a0330f9c15bf4827c6c2cec4444) Merge consecutive appends into one storage write, bounded by `Config::max_append_entries`.
+-   [e586c8be](https://github.com/databendlabs/openraft/commit/e586c8be46863129d6d249a50459efbfe451f6fd) Add `client_write_many()` for batch writes.
+-   [f7990589](https://github.com/databendlabs/openraft/commit/f79905891f86fcd8da4a556559fa6d89ff9606b7) Add `Extensions`, a type map for data that other crates attach to a `Raft`.
+-   [4646dc7e](https://github.com/databendlabs/openraft/commit/4646dc7e77667cab7463212f1d4f9c83480ffcd0) Integrate OpenTelemetry Metrics API.
+-   [9c031df7](https://github.com/databendlabs/openraft/commit/9c031df729c61d20ddd7527a132d513260c0dc66) Split `RaftNetworkV2` into the `NetAppend`, `NetStreamAppend`, `NetVote`, `NetSnapshot`, `NetTransferLeader` and `NetBackoff` sub-traits.
+-   [31f3354f](https://github.com/databendlabs/openraft/commit/31f3354f01e63120ffb958169ef3186413cb9e56) Make the `RaftLogId` trait public and implement it for `(term, index)` tuples.
+-   [a90c8414](https://github.com/databendlabs/openraft/commit/a90c8414ccc1fb7b2703f244a53e6ed76b83efdd) Add `Raft::write_blank()` method to write blank log entries.
+-   [0fbfdb5b](https://github.com/databendlabs/openraft/commit/0fbfdb5b5f091be066ccad58b9f8ae810c328842) Make `LogIdList::purged()`, `get()`, and `last()` public.
+-   [a2673b2c](https://github.com/databendlabs/openraft/commit/a2673b2c1217aa2781bad4371656a4b1a570a7a1) Add LogIdList to RaftMetrics and RaftDataMetrics behind metrics-logids feature flag.
+-   [03c0d6ee](https://github.com/databendlabs/openraft/commit/03c0d6eec53e113206cb9b6709b0da6057e61731) Make clap dependency optional.
+-   [6616405c](https://github.com/databendlabs/openraft/commit/6616405c72092d1f700d2123403f505e65cde81c) Add `NodeInfo`, a `Node` with a Raft address and application data.
+-   [a8ff29eb](https://github.com/databendlabs/openraft/commit/a8ff29ebf37ded06768e9bfdfe39cc68683cdacf) Make the client-write batch size and wait configurable with `Config::api_batch_capacity` and `Config::api_batch_linger_ms`.
+-   [d0783de6](https://github.com/databendlabs/openraft/commit/d0783de683d75333a98df8e175557fce38cc8e55) Expose refresh_server_state on Trigger as public API.
+-   [141dc0eb](https://github.com/databendlabs/openraft/commit/141dc0eb66299fef3e42d8886b34fd4efd420801) Add committed_membership_config to metrics.
+-   [8da662c5](https://github.com/databendlabs/openraft/commit/8da662c5825ac5c738527805b051456d4e282a46) Removed leader transfers leadership before stepping down.
+-   [0f6bb9a3](https://github.com/databendlabs/openraft/commit/0f6bb9a3bd4ca752fd2080f9e5666d65250c3709) Add Pre-Vote to avoid disruptive term inflation.
+-   [0ca19458](https://github.com/databendlabs/openraft/commit/0ca19458ec23152cbbabae83b64f8180844847b1) Add `Raft::wait_for_recovery()` to wait until a restarted state machine catches up.
+-   [e354ce41](https://github.com/databendlabs/openraft/commit/e354ce41972ffb7a868595781532b49b25a3cee3) Add `RaftNetworkFactory::new_heartbeat_client()` and `new_snapshot_client()` for dedicated heartbeat and snapshot connections.
+-   [0d15d998](https://github.com/databendlabs/openraft/commit/0d15d99844e8245ac917ce76ce2e4598665d0e40) Add heartbeat_min_interval to suppress redundant heartbeats.
+-   [192a4552](https://github.com/databendlabs/openraft/commit/192a45527cddb6f837c496d1e4c96cfad8c4dda7) Add `change_membership_if()` and `change_membership_with_payload()`.
+-   [b9fbc080](https://github.com/databendlabs/openraft/commit/b9fbc080e34507412acd82965c040f92c3f4f071) Separate Raft construction from startup.
+-   [6674f29f](https://github.com/databendlabs/openraft/commit/6674f29fa504e1a3ff325226dcf0739039f97ccb) Add Trigger::reset_backoff().
+-   [27f5fd16](https://github.com/databendlabs/openraft/commit/27f5fd169e89bce111547c65280cd807d68e0326) Add `Config::broadcast_submitted_on_append` to replicate new entries as soon as `append()` returns.
+-   [3abbd98b](https://github.com/databendlabs/openraft/commit/3abbd98bae336a2f110e22c03bb9b84f928f54df) Add the `openraft-rt-sim` crate, a simulated runtime for deterministic tests.
+-   [c90c6b53](https://github.com/databendlabs/openraft/commit/c90c6b5311654f83a9095187923bc102420b36a8) `change_membership()` writes one entry when no joint step is needed.
+-   [0d3cd906](https://github.com/databendlabs/openraft/commit/0d3cd906526c2439a67fd3533485fefcc7474b0b) Add the `openraft-membership` crate with threshold, weighted, explicit, grid and hierarchical memberships.
+-   [70cd992f](https://github.com/databendlabs/openraft/commit/70cd992f4c7fa0a94bcce0493402a6d0b9abee6a) Run the log storage Suite with any membership type.
+-   [e18cafc0](https://github.com/databendlabs/openraft/commit/e18cafc0d5e279f049cf070b30b622bb215a36e6) Add `Config::enable_unbounded_state_machine_buffer` to queue state-machine commands without a limit.
+-   [1d235d0b](https://github.com/databendlabs/openraft/commit/1d235d0bebaa79763496a8a5c393fd5bc87668a6) Add `Raft::get_local_read_linearizer()` and `Config::enable_local_lease_read` to serve lease reads without a RaftCore round trip.
+-   [1e12a6e3](https://github.com/databendlabs/openraft/commit/1e12a6e3d0dd8d5738baeead74f86f33f38181af) Add `Raft::try_shutdown()`, which reports whether the RaftCore and tick tasks joined.
+-   [5565eec1](https://github.com/databendlabs/openraft/commit/5565eec1303cd638405b4c63a92b5e4cb7ee2278) Build openraft-rt-tokio and openraft-legacy for wasm.
+-   [c47b3deb](https://github.com/databendlabs/openraft/commit/c47b3deb0460fda08c9b6caf8e6721b976765691) Add `Wait::replication()` to wait for a follower or learner to catch up.
+
+#### Improved
+
+-   [5d75cf21](https://github.com/databendlabs/openraft/commit/5d75cf21f71b083b2b8acd8ffdd8993c1bfce36f) Re-apply committed logs at startup in chunks, and check the indexes the log reader returns.
+-   [4238f51b](https://github.com/databendlabs/openraft/commit/4238f51bb552bff434d62ac06b7807f0353d5b8f) Remove the `Default` bound from the `NodeId` and `Node` traits.
+-   [dd0808b9](https://github.com/databendlabs/openraft/commit/dd0808b964a1f0cd6d90134ab0ada0649a4effc5) Sample a new election timeout for every campaign and Pre-Vote round.
+-   [24b6527d](https://github.com/databendlabs/openraft/commit/24b6527d697ed54ff8f845033b724d25feabb636) Log failed RPCs to an unreachable peer at WARN instead of ERROR.
+-   [9836fad0](https://github.com/databendlabs/openraft/commit/9836fad0575c7e96789a865936d7742b2aace575) Find a follower's matching log position with fewer and smaller probes.
+-   [2d7ca962](https://github.com/databendlabs/openraft/commit/2d7ca96241f32b600d2ed971017259f14910581b) Box RaftCore before starting its main future.
+
+#### Fixed
+
+-   [394227be](https://github.com/databendlabs/openraft/commit/394227be64bcd7583f61990a43a233118073b848) Use leader_id for log ID construction in initialize().
+-   [13df5b32](https://github.com/databendlabs/openraft/commit/13df5b32288b7937a293759264712b5a144987ac) Drain stranded client responders on PurgeLog.
+-   [dd29c2e9](https://github.com/databendlabs/openraft/commit/dd29c2e91e28488cc842477007111795a6e543f4) Bound state-machine-worker calls against worker death.
+-   [d0e245a2](https://github.com/databendlabs/openraft/commit/d0e245a2a949794b6062b7482a2ab22217f73e32) Re-arm snapshot policy after an in-flight build completes.
+-   [ac3e5a89](https://github.com/databendlabs/openraft/commit/ac3e5a8987b1d69791049307e89d9aec3ef771b4) Reject conflicting snapshots at committed index.
+-   [fbbf37b1](https://github.com/databendlabs/openraft/commit/fbbf37b137ef8b89970cf3a40aa42fd8924cbb8b) Ignore stale conflict in update_conflicting().
+-   [a884c52d](https://github.com/databendlabs/openraft/commit/a884c52d46e4639977310e51ff82a51d8efc2e7e) Gate votes by quorum-ack lease, pre-elect by local lease.
+-   [b549b0f4](https://github.com/databendlabs/openraft/commit/b549b0f40d94311a870dce7e8da3accf121d5b67) Handle overflow when trigerring snapshots.
+-   [449bddf0](https://github.com/databendlabs/openraft/commit/449bddf038656d31c9db85cbb8f9527d7e3b96a9) The `compat` feature enables `serde`.
+-   [899eed62](https://github.com/databendlabs/openraft/commit/899eed622bfe663b26fdb34ffe8879e807a84e5d) Apply smaller-log election backoff only while still behind.
+-   [018c2ec9](https://github.com/databendlabs/openraft/commit/018c2ec9b086cee72fd29bcfd436f6cda9085eb5) Allow committed voters to campaign.
+-   [8fd783d4](https://github.com/databendlabs/openraft/commit/8fd783d40a2c966a6ec37b55fc4854254dbcd4ba) Use default value for initial RaftMetrics.
+-   [d180cfaf](https://github.com/databendlabs/openraft/commit/d180cfaf4babd8aea7b0c645c04dba697b03274a) Back off snapshot retries after 10 network errors.
+-   [6f5e9cc0](https://github.com/databendlabs/openraft/commit/6f5e9cc0311bcfd8127cabf129dea24f5be29b2b) Require a committed blank log to change membership.
+-   [d3e8d70e](https://github.com/databendlabs/openraft/commit/d3e8d70ed889024320d0cd2cb5e2360092d2f993) Never move a scheduled purge back.
+-   [0631ec4a](https://github.com/databendlabs/openraft/commit/0631ec4a54b8e37290f88ca9193743931573bc60) Rebuild a snapshot that does not cover purged logs at startup.
+-   [0c66f774](https://github.com/databendlabs/openraft/commit/0c66f7749358649ffb85aa9db9dc4ec3eb4bc96b) Fail startup when the state machine misses purged logs.
+-   [401ea02d](https://github.com/databendlabs/openraft/commit/401ea02d3f10ab405bed509916a808e276743fe9) A restarted leader wins a new election before it accepts proposals.
+-   [73273a67](https://github.com/databendlabs/openraft/commit/73273a67fd5bee278fa2155a1ed11963a70ee789) Rewind a received v1 snapshot before installing it, in `openraft-legacy`.
+-   [e56b107b](https://github.com/databendlabs/openraft/commit/e56b107bc3270da01de692686e81426c1507fa0b) Keep the vote lease of a follower across a restart.
+-   [e3f043ec](https://github.com/databendlabs/openraft/commit/e3f043ec0079d9f4790f0fe3311735dda31cbafc) The second step of a membership change appends the target the edit computed.
+
+#### Dependency
+
+-   [30ef739a](https://github.com/databendlabs/openraft/commit/30ef739ac94e04985df5b096ebce972efb143193) Require tokio 1.39.
+-   [f55ee04f](https://github.com/databendlabs/openraft/commit/f55ee04f4282d5c21e734af49f868ef347ea3319) Upgrade validit to 0.2.5: support file line num.
+-   [ee2bd75a](https://github.com/databendlabs/openraft/commit/ee2bd75a8e5f6d66beb8e58c17d5fc26797fdfda) Depend on the individual `futures-*` crates instead of `futures`, and drop `tracing-futures`.
+-   [bb1e9643](https://github.com/databendlabs/openraft/commit/bb1e9643f1afcf6b1a907659b5be50e07a8ea959) Update derive_more, thiserror, tabled.
+-   [8696e7aa](https://github.com/databendlabs/openraft/commit/8696e7aae0872c4883e20e2e66cf6d8121baf2d2) Upgrade rand to 0.10.
+-   [7828ccd4](https://github.com/databendlabs/openraft/commit/7828ccd46c3567f9879ad6067c014d6363a40c92) Upgrade validit to 0.2.6, which needs Rust 1.88.
+
+[018c2ec9]: https://github.com/databendlabs/openraft/commit/018c2ec9b086cee72fd29bcfd436f6cda9085eb5
+[01b6b2be]: https://github.com/databendlabs/openraft/commit/01b6b2be0403a14df167b96a2341a348a5ad4d07
+[01fcb351]: https://github.com/databendlabs/openraft/commit/01fcb351e335f58ea44fd9786af63ec5e418ca1b
+[0247ee71]: https://github.com/databendlabs/openraft/commit/0247ee71c4a500aa41e6801c132520c3d3a40d04
+[03437e14]: https://github.com/databendlabs/openraft/commit/03437e14214407ad4da0adde5ebcf786a6701b46
+[03c0d6ee]: https://github.com/databendlabs/openraft/commit/03c0d6eec53e113206cb9b6709b0da6057e61731
+[04810957]: https://github.com/databendlabs/openraft/commit/04810957bffc0d4dc415bcb66861dca92fe574ce
+[049036d7]: https://github.com/databendlabs/openraft/commit/049036d7dbdee9f44857bf5caf9bdd10d09b75dc
+[0631ec4a]: https://github.com/databendlabs/openraft/commit/0631ec4a54b8e37290f88ca9193743931573bc60
+[068fb20b]: https://github.com/databendlabs/openraft/commit/068fb20b475abdbb1bc77ec55ee5fbc0b63dd3c4
+[06955673]: https://github.com/databendlabs/openraft/commit/06955673b06df1fa920b2263325c85c5d898e216
+[074175f2]: https://github.com/databendlabs/openraft/commit/074175f2806e58582afc32075c4e6fcd6610189c
+[08f258a8]: https://github.com/databendlabs/openraft/commit/08f258a85b57693eb6044007e429fd1deadd8734
+[0c122614]: https://github.com/databendlabs/openraft/commit/0c122614d0efab40b118b911349cc9cfa56ff293
+[0c66f774]: https://github.com/databendlabs/openraft/commit/0c66f7749358649ffb85aa9db9dc4ec3eb4bc96b
+[0ca19458]: https://github.com/databendlabs/openraft/commit/0ca19458ec23152cbbabae83b64f8180844847b1
+[0d15d998]: https://github.com/databendlabs/openraft/commit/0d15d99844e8245ac917ce76ce2e4598665d0e40
+[0d381c80]: https://github.com/databendlabs/openraft/commit/0d381c80751116581d5bbb6ffdfa3f89ab0e002e
+[0d3cd906]: https://github.com/databendlabs/openraft/commit/0d3cd906526c2439a67fd3533485fefcc7474b0b
+[0f6bb9a3]: https://github.com/databendlabs/openraft/commit/0f6bb9a3bd4ca752fd2080f9e5666d65250c3709
+[116e9f1c]: https://github.com/databendlabs/openraft/commit/116e9f1c5f740e95c48ccb6d58aaef8706302bd0
+[123c9bc1]: https://github.com/databendlabs/openraft/commit/123c9bc1fce0d58ef85062b58d6531e4fabc8401
+[1282a1ae]: https://github.com/databendlabs/openraft/commit/1282a1ae80ad635c154766b89a08f1091381328e
+[13df5b32]: https://github.com/databendlabs/openraft/commit/13df5b32288b7937a293759264712b5a144987ac
+[141dc0eb]: https://github.com/databendlabs/openraft/commit/141dc0eb66299fef3e42d8886b34fd4efd420801
+[149d4355]: https://github.com/databendlabs/openraft/commit/149d43556c1d1eb0b4353ffd7b8192056e2c7000
+[15e5a716]: https://github.com/databendlabs/openraft/commit/15e5a7162786d9709351b47761328b46d73634fc
+[15f927e1]: https://github.com/databendlabs/openraft/commit/15f927e1358d41ffc1297516f781029dbf8ca86a
+[16627c77]: https://github.com/databendlabs/openraft/commit/16627c771c399a4dd2758bab4a09ac004f3ce4d7
+[192a4552]: https://github.com/databendlabs/openraft/commit/192a45527cddb6f837c496d1e4c96cfad8c4dda7
+[1b262d90]: https://github.com/databendlabs/openraft/commit/1b262d90e01a1c50d16df0189a6af52fc475ccf6
+[1b4de118]: https://github.com/databendlabs/openraft/commit/1b4de118bf17f5c7a1887172a9277c35b9f64a6b
+[1b4ec53d]: https://github.com/databendlabs/openraft/commit/1b4ec53df2c548757607261e88287a2fd6cb5131
+[1d235d0b]: https://github.com/databendlabs/openraft/commit/1d235d0bebaa79763496a8a5c393fd5bc87668a6
+[1d9d993f]: https://github.com/databendlabs/openraft/commit/1d9d993fffaed8b216c626605b9024a201e94670
+[1e00adfe]: https://github.com/databendlabs/openraft/commit/1e00adfe094c7e79a42d16585c6037fb61b0f717
+[1e12a6e3]: https://github.com/databendlabs/openraft/commit/1e12a6e3d0dd8d5738baeead74f86f33f38181af
+[1ef3e574]: https://github.com/databendlabs/openraft/commit/1ef3e574c53ce5a807882fcb0aa6c6fac613e2e2
+[20067038]: https://github.com/databendlabs/openraft/commit/20067038d863553135e9f747c877a40af5ff21bf
+[22d23c80]: https://github.com/databendlabs/openraft/commit/22d23c80a764aa6f28bdefb409a9ec0245d5e5a1
+[24b6527d]: https://github.com/databendlabs/openraft/commit/24b6527d697ed54ff8f845033b724d25feabb636
+[275db8b1]: https://github.com/databendlabs/openraft/commit/275db8b1b753c966756cbfb924099db1e9772aa0
+[279af35b]: https://github.com/databendlabs/openraft/commit/279af35bd403c511bfd8bda7726c69d2652bcbb9
+[27f5fd16]: https://github.com/databendlabs/openraft/commit/27f5fd169e89bce111547c65280cd807d68e0326
+[28b8c5d5]: https://github.com/databendlabs/openraft/commit/28b8c5d58d4d842c75c06511987622b16486b364
+[29383fec]: https://github.com/databendlabs/openraft/commit/29383fecade765587f0ba815b7c4ca3e520cd623
+[29b4545c]: https://github.com/databendlabs/openraft/commit/29b4545cf2de61e32db5240ade99b55220088f29
+[29cefe5d]: https://github.com/databendlabs/openraft/commit/29cefe5d823708a6e0e4e2d5509a4642bebbc64d
+[29f900f1]: https://github.com/databendlabs/openraft/commit/29f900f12374b51280efccfc0a075594fb40e96e
+[2bbf7eb9]: https://github.com/databendlabs/openraft/commit/2bbf7eb949406a0330f9c15bf4827c6c2cec4444
+[2d060895]: https://github.com/databendlabs/openraft/commit/2d060895cf78815980bef5b8b761eb167e67b35c
+[2e9b3695]: https://github.com/databendlabs/openraft/commit/2e9b3695c804ee74da05c77b00448a5e5f27975b
+[2ee96834]: https://github.com/databendlabs/openraft/commit/2ee96834d8bfb6a41b08445c60d2f702d1fdcb9e
+[30ec5037]: https://github.com/databendlabs/openraft/commit/30ec503756629994f6bed22bcdada7f70b19a53c
+[30ef739a]: https://github.com/databendlabs/openraft/commit/30ef739ac94e04985df5b096ebce972efb143193
+[30f1ae67]: https://github.com/databendlabs/openraft/commit/30f1ae675473682dd271be3804689fa5ea2702cf
+[31f3354f]: https://github.com/databendlabs/openraft/commit/31f3354f01e63120ffb958169ef3186413cb9e56
+[3363a02c]: https://github.com/databendlabs/openraft/commit/3363a02c5d8ff7ff7796f4a6802ee018a51e5257
+[35e3bff8]: https://github.com/databendlabs/openraft/commit/35e3bff8d29c4e105af121686870c660fe9688f3
+[37bef134]: https://github.com/databendlabs/openraft/commit/37bef13449f7f5c0bc663a3f1e39c0213887cef1
+[37d69439]: https://github.com/databendlabs/openraft/commit/37d69439b61cf7f2e2890811869372b97816b029
+[394227be]: https://github.com/databendlabs/openraft/commit/394227be64bcd7583f61990a43a233118073b848
+[39d62058]: https://github.com/databendlabs/openraft/commit/39d62058d8c210cf2318061480a66b24ba2299b2
+[3a43c80c]: https://github.com/databendlabs/openraft/commit/3a43c80c3e13f8810bed139451252e31a9f582d4
+[3abbd98b]: https://github.com/databendlabs/openraft/commit/3abbd98bae336a2f110e22c03bb9b84f928f54df
+[3dc03314]: https://github.com/databendlabs/openraft/commit/3dc033146eedd7d82a1872fbd1d5173869a16c7e
+[3f5cbca4]: https://github.com/databendlabs/openraft/commit/3f5cbca49debb8057095b00c2fe8fccd50680ceb
+[401ea02d]: https://github.com/databendlabs/openraft/commit/401ea02d3f10ab405bed509916a808e276743fe9
+[403efb6e]: https://github.com/databendlabs/openraft/commit/403efb6ed5bb3710c8fd185e810231a5aa5303f5
+[409ef4b5]: https://github.com/databendlabs/openraft/commit/409ef4b5dfb78cdbbd63596efc43803587456a57
+[40e5b1ae]: https://github.com/databendlabs/openraft/commit/40e5b1ae238c214fc0c16282474bdce54ac9b0c6
+[41a38a79]: https://github.com/databendlabs/openraft/commit/41a38a79aa12a29e9c86d467155c500cbfaf994e
+[4238f51b]: https://github.com/databendlabs/openraft/commit/4238f51bb552bff434d62ac06b7807f0353d5b8f
+[429a9fde]: https://github.com/databendlabs/openraft/commit/429a9fdebf247a64d5aa4ac316e2b2afb39ede1b
+[4646dc7e]: https://github.com/databendlabs/openraft/commit/4646dc7e77667cab7463212f1d4f9c83480ffcd0
+[467ffaa7]: https://github.com/databendlabs/openraft/commit/467ffaa746b2f586d36ec5c7c2395bd53df34878
+[47be8c44]: https://github.com/databendlabs/openraft/commit/47be8c441e471438321f65647c01cc60624461f5
+[4870e31a]: https://github.com/databendlabs/openraft/commit/4870e31a1cb1a9877330f072498421a0c8953382
+[48f39795]: https://github.com/databendlabs/openraft/commit/48f39795e8f0d21498112080b717cc79e4e5fde0
+[49488dd5]: https://github.com/databendlabs/openraft/commit/49488dd5b4d3024867dacd31cf5593b8e4c31aa6
+[4ad03c09]: https://github.com/databendlabs/openraft/commit/4ad03c0983759b94e7ff8b293464cdf1c5bf889d
+[4d0d1035]: https://github.com/databendlabs/openraft/commit/4d0d103541a3e2eb4a4b345805551af2a90e6a6b
+[4d362901]: https://github.com/databendlabs/openraft/commit/4d362901be7c4b28374b7c5ea0faa1164363d6cd
+[4d7e03cd]: https://github.com/databendlabs/openraft/commit/4d7e03cd3fadf5ada57dd248bd90f65bdc191d99
+[4f2d135d]: https://github.com/databendlabs/openraft/commit/4f2d135d991d3ce05c78075f790e2e1acb22bd39
+[4fab545e]: https://github.com/databendlabs/openraft/commit/4fab545e4c02600cd245091aaa1b1e7c21234a4a
+[4fcde9d4]: https://github.com/databendlabs/openraft/commit/4fcde9d4aa481dec0b98f27aa10f7566d465aefd
+[5058bbbb]: https://github.com/databendlabs/openraft/commit/5058bbbbc48d9906893cfdad14f7344a777e39a0
+[5257fa7b]: https://github.com/databendlabs/openraft/commit/5257fa7bd411f94be4acb22eda3129e003cee4e4
+[534bf40d]: https://github.com/databendlabs/openraft/commit/534bf40d9acd02d2405e1786323a54520418e7cc
+[54094270]: https://github.com/databendlabs/openraft/commit/54094270ede0b8a2eb6ed6ae990edc6ca19d98ec
+[542b9046]: https://github.com/databendlabs/openraft/commit/542b9046ee92cd1590c8273feefd0170222f940d
+[5565eec1]: https://github.com/databendlabs/openraft/commit/5565eec1303cd638405b4c63a92b5e4cb7ee2278
+[55f4e5a5]: https://github.com/databendlabs/openraft/commit/55f4e5a541eda9e7cefbd5138b42cdd92c697d17
+[57146747]: https://github.com/databendlabs/openraft/commit/5714674701234608f31889399993740e429533f8
+[58074a3e]: https://github.com/databendlabs/openraft/commit/58074a3e99424a10fd5f55700f26fd7e74c667c5
+[594f3c5e]: https://github.com/databendlabs/openraft/commit/594f3c5e096ea659b302e088e2ac96607e562263
+[5a7171c3]: https://github.com/databendlabs/openraft/commit/5a7171c3746faef917c0e9e2ef113d4a1099812f
+[5c765157]: https://github.com/databendlabs/openraft/commit/5c7651576a66610aa915d436492c3206e8a2fa46
+[5ca2ab2d]: https://github.com/databendlabs/openraft/commit/5ca2ab2d4c427bb8e2e9886dfc59aec3164c310e
+[5d75cf21]: https://github.com/databendlabs/openraft/commit/5d75cf21f71b083b2b8acd8ffdd8993c1bfce36f
+[5e15946d]: https://github.com/databendlabs/openraft/commit/5e15946d20a1e168c143c7b1ba1a21cacfb78524
+[5eef0576]: https://github.com/databendlabs/openraft/commit/5eef05762e6eac455d741150f9e3cea47d3571b9
+[60028ef9]: https://github.com/databendlabs/openraft/commit/60028ef9d31b83b4f354e0159e1339d4c39e408f
+[61586bf5]: https://github.com/databendlabs/openraft/commit/61586bf5483aff20dd98a5bf5f3fe3ce891912f1
+[636664de]: https://github.com/databendlabs/openraft/commit/636664dec5fda5b396b7a366801e7a02f1e23225
+[65d692fa]: https://github.com/databendlabs/openraft/commit/65d692fae2978de7d36f2508ca5a60e5c5afe0b2
+[6616405c]: https://github.com/databendlabs/openraft/commit/6616405c72092d1f700d2123403f505e65cde81c
+[66579703]: https://github.com/databendlabs/openraft/commit/6657970381de7958112680148817473e70f4b8ee
+[67eb5049]: https://github.com/databendlabs/openraft/commit/67eb50491c437b48af905ad0ec6b3c4614f82f96
+[6847fd3e]: https://github.com/databendlabs/openraft/commit/6847fd3e341da8b8cf1a2bbacd593554081ad363
+[68d8cbe1]: https://github.com/databendlabs/openraft/commit/68d8cbe1a00203b752116f4c32a4d6cd8e3decc2
+[6b0f1be3]: https://github.com/databendlabs/openraft/commit/6b0f1be3cb2debea513d57109a0578941528e694
+[6c7527fd]: https://github.com/databendlabs/openraft/commit/6c7527fdfea9f485282e39f9e1e4dc157bc3ffd3
+[6ee7f2fd]: https://github.com/databendlabs/openraft/commit/6ee7f2fd0c6cbdc67127352b2a73921de9836ec3
+[6f5e9cc0]: https://github.com/databendlabs/openraft/commit/6f5e9cc0311bcfd8127cabf129dea24f5be29b2b
+[6ffcd2c3]: https://github.com/databendlabs/openraft/commit/6ffcd2c39afc09efd11ab8e6ba6927a640c40ef7
+[710e6457]: https://github.com/databendlabs/openraft/commit/710e645793f3ca541a66b15249a78fe5573e7459
+[717ed633]: https://github.com/databendlabs/openraft/commit/717ed633f0a2cc5e59a9b0c3ebfc34806c4f0a45
+[72f5ecb0]: https://github.com/databendlabs/openraft/commit/72f5ecb03f312b25f454dd4bd1d251bbb2cc6b45
+[73fbae1e]: https://github.com/databendlabs/openraft/commit/73fbae1ec95bf8c0ef111c17f3512f40602c3702
+[77540a07]: https://github.com/databendlabs/openraft/commit/77540a07de3670376f9d4b3eaab9b15303093c2f
+[7828ccd4]: https://github.com/databendlabs/openraft/commit/7828ccd46c3567f9879ad6067c014d6363a40c92
+[7a150f46]: https://github.com/databendlabs/openraft/commit/7a150f461f3c06ca5909d5fd82fce3a2e27d05d5
+[7bebecb9]: https://github.com/databendlabs/openraft/commit/7bebecb9ab6eab9a292e0409d4e0826ece4fb44f
+[7da9b504]: https://github.com/databendlabs/openraft/commit/7da9b504ad7cf566fb610b49686714391fa837a6
+[7dabf9ef]: https://github.com/databendlabs/openraft/commit/7dabf9ef6d73484b54a2f42e3936aa8ee71e9f7f
+[7e1f6c83]: https://github.com/databendlabs/openraft/commit/7e1f6c835edd0faf9f4bae70e35d82a1ee298c3d
+[7fae09c1]: https://github.com/databendlabs/openraft/commit/7fae09c18d5f8c2385524bda4ac2957aa252e186
+[801ca4d6]: https://github.com/databendlabs/openraft/commit/801ca4d68753911a90061485622b846a898ee89b
+[81e94799]: https://github.com/databendlabs/openraft/commit/81e9479962eef95e176bba5d7f1272cc04672d7e
+[83737aab]: https://github.com/databendlabs/openraft/commit/83737aab3fdf1d8c91b956377b67ca064db3c871
+[849f1c92]: https://github.com/databendlabs/openraft/commit/849f1c92e1d99464d5187dcac7eaa562b691b066
+[8696e7aa]: https://github.com/databendlabs/openraft/commit/8696e7aae0872c4883e20e2e66cf6d8121baf2d2
+[88604cfd]: https://github.com/databendlabs/openraft/commit/88604cfdc78599f2b127f46fd19fa9682fbba0a3
+[8970f1a6]: https://github.com/databendlabs/openraft/commit/8970f1a6d169c896d9eea97ffd4ec1bd602930e3
+[8ad534e6]: https://github.com/databendlabs/openraft/commit/8ad534e6b4f068991991cb54689c9dc6338c98c9
+[8b2386a6]: https://github.com/databendlabs/openraft/commit/8b2386a6bb1f2b500aed86d5ddad632f0c612429
+[8b7ba0d6]: https://github.com/databendlabs/openraft/commit/8b7ba0d6d049492a6379f8d5bbc0d5e138e3b046
+[8c790e54]: https://github.com/databendlabs/openraft/commit/8c790e54f0b3ca8829208b234ec690f9ec706e48
+[8da662c5]: https://github.com/databendlabs/openraft/commit/8da662c5825ac5c738527805b051456d4e282a46
+[8eab13c8]: https://github.com/databendlabs/openraft/commit/8eab13c8562eba545946f94111134af3f75f71a4
+[8fd783d4]: https://github.com/databendlabs/openraft/commit/8fd783d40a2c966a6ec37b55fc4854254dbcd4ba
+[926bf6de]: https://github.com/databendlabs/openraft/commit/926bf6de1131abcc63e7f08ec190e6e0873faefd
+[930b4a3d]: https://github.com/databendlabs/openraft/commit/930b4a3da0d289c6ce14fcbd21221be94785edc6
+[96173030]: https://github.com/databendlabs/openraft/commit/96173030acd39811d381413cfdaf8c1e13ac453b
+[97d92771]: https://github.com/databendlabs/openraft/commit/97d92771f83c29819d2928acab0ee751f1eb0c77
+[9836fad0]: https://github.com/databendlabs/openraft/commit/9836fad0575c7e96789a865936d7742b2aace575
+[9977f59d]: https://github.com/databendlabs/openraft/commit/9977f59d7ba24ba29a075f39722dd80d24bb7dc0
+[99eed5ec]: https://github.com/databendlabs/openraft/commit/99eed5ececdc1c9b77e0b1e0467fbcc1f39f0241
+[9b6b5293]: https://github.com/databendlabs/openraft/commit/9b6b52936ca9f187e914e8fc0706ce30e0d6c737
+[9bc9885c]: https://github.com/databendlabs/openraft/commit/9bc9885cfaff2f36ed2ea74c3dfff09625022d0b
+[9c031df7]: https://github.com/databendlabs/openraft/commit/9c031df729c61d20ddd7527a132d513260c0dc66
+[9dbcd4c0]: https://github.com/databendlabs/openraft/commit/9dbcd4c0b6723fd4ac5d38ed032d8e656d0abc8d
+[a03c71d2]: https://github.com/databendlabs/openraft/commit/a03c71d29beecf3255d9fce00c02a7430e5b0a2a
+[a12b6871]: https://github.com/databendlabs/openraft/commit/a12b6871bef6542d61185a2873b37c16c22f9173
+[a529931e]: https://github.com/databendlabs/openraft/commit/a529931e633e641cac09d078ed815a0d7c15a3c3
+[a60fab17]: https://github.com/databendlabs/openraft/commit/a60fab17bea97786418f88ef6f5a512ae20b2b81
+[a6396398]: https://github.com/databendlabs/openraft/commit/a6396398c85d9a9655e11c86cc3dd114dc5d9a9c
+[a7899729]: https://github.com/databendlabs/openraft/commit/a7899729d9658171b48dffd4f4ba96382d28cd62
+[a78f2b7e]: https://github.com/databendlabs/openraft/commit/a78f2b7efc8d52ca30ab1605f2ebfd7cc8d9cf3b
+[a86e6e75]: https://github.com/databendlabs/openraft/commit/a86e6e75e98361ce5cc38d89c3bee9121dff1396
+[a884c52d]: https://github.com/databendlabs/openraft/commit/a884c52d46e4639977310e51ff82a51d8efc2e7e
+[a8ff29eb]: https://github.com/databendlabs/openraft/commit/a8ff29ebf37ded06768e9bfdfe39cc68683cdacf
+[a90237cc]: https://github.com/databendlabs/openraft/commit/a90237cccbd1bf90013ae96c1d2e2731746aaf2f
+[a90c8414]: https://github.com/databendlabs/openraft/commit/a90c8414ccc1fb7b2703f244a53e6ed76b83efdd
+[ab35b288]: https://github.com/databendlabs/openraft/commit/ab35b2885c758d84bcd85618b9af94b1b08a4d23
+[ac2b7203]: https://github.com/databendlabs/openraft/commit/ac2b7203b0be0343cba4e624c52e3e3bc2eecce9
+[ad828d89]: https://github.com/databendlabs/openraft/commit/ad828d894b16816632402bb5eb442e6e35ba7314
+[ae207c88]: https://github.com/databendlabs/openraft/commit/ae207c88f49afe9e2789f3dbac42957c39843fa5
+[af54d69a]: https://github.com/databendlabs/openraft/commit/af54d69accf9d0fb9daff0239d79a98ade57053f
+[b07ffd7b]: https://github.com/databendlabs/openraft/commit/b07ffd7b6599a646328eacd534338632c750b04c
+[b20f38b3]: https://github.com/databendlabs/openraft/commit/b20f38b3db867b98e746aaf61386bc0ccbd29bca
+[b38cc079]: https://github.com/databendlabs/openraft/commit/b38cc0796d9262e6b18e63004576a2f7b12be8cd
+[b549b0f4]: https://github.com/databendlabs/openraft/commit/b549b0f40d94311a870dce7e8da3accf121d5b67
+[b72ea560]: https://github.com/databendlabs/openraft/commit/b72ea560c11c125a842d1acd3bf2614ee947b57d
+[b8508b2b]: https://github.com/databendlabs/openraft/commit/b8508b2b64c1701e6d2009615b558ad3f79b4f65
+[b9fbc080]: https://github.com/databendlabs/openraft/commit/b9fbc080e34507412acd82965c040f92c3f4f071
+[bb3a0b37]: https://github.com/databendlabs/openraft/commit/bb3a0b3779296966289affae9059d36b2753f0bd
+[bd6a9dab]: https://github.com/databendlabs/openraft/commit/bd6a9dab0ad1fc4da9db10a8878b48e657518da3
+[beb7c5ac]: https://github.com/databendlabs/openraft/commit/beb7c5ac0b69cf806b97518c61392129af039f9a
+[c0b03931]: https://github.com/databendlabs/openraft/commit/c0b03931baf04b4f4a00a914821e640460cee10a
+[c279fb86]: https://github.com/databendlabs/openraft/commit/c279fb86021f9d5f62f87941cb7abb1d004f4a52
+[c40dd1ea]: https://github.com/databendlabs/openraft/commit/c40dd1ea3201eb548c487607d3e4b433efd988c2
+[c47b3deb]: https://github.com/databendlabs/openraft/commit/c47b3deb0460fda08c9b6caf8e6721b976765691
+[c55a58d4]: https://github.com/databendlabs/openraft/commit/c55a58d4c66d2cfac6103a3417ac9c0ba6ff61d3
+[c56d043b]: https://github.com/databendlabs/openraft/commit/c56d043b6f10d2c0665e2fb7d7f8b1c64488e1d1
+[c63b33a8]: https://github.com/databendlabs/openraft/commit/c63b33a83d0285fdb2b7da1430827fdef63164b8
+[c8813d84]: https://github.com/databendlabs/openraft/commit/c8813d84d54d503e7dcb7af0fc9926e6b4720ec9
+[c90c6b53]: https://github.com/databendlabs/openraft/commit/c90c6b5311654f83a9095187923bc102420b36a8
+[c9e9aaeb]: https://github.com/databendlabs/openraft/commit/c9e9aaeb385b5b6b8bec43eeb99df2b9a439e233
+[cb49779d]: https://github.com/databendlabs/openraft/commit/cb49779d5b285e659e53201a746acdbc156287be
+[cbae0e69]: https://github.com/databendlabs/openraft/commit/cbae0e69373cc845df6420b74990c17f4ef7e6bc
+[cd9ee654]: https://github.com/databendlabs/openraft/commit/cd9ee65488afda891789490749b484090ac409f1
+[cddefbd7]: https://github.com/databendlabs/openraft/commit/cddefbd7a9f4fb57195781e0a82c173a69f68447
+[ce142d01]: https://github.com/databendlabs/openraft/commit/ce142d01f4ac00f52e1f0d8afefb9ce80b43f37e
+[cec121a3]: https://github.com/databendlabs/openraft/commit/cec121a37605b958cd34448f4f9ebbc51dfa0f9c
+[cfcb067e]: https://github.com/databendlabs/openraft/commit/cfcb067ef30123daf05d15c574c4beea44c476a9
+[cfcfc071]: https://github.com/databendlabs/openraft/commit/cfcfc071ac060bda01b1cfaace854f73ec36088e
+[d000ee20]: https://github.com/databendlabs/openraft/commit/d000ee20b1aeb4b3dd43321d5dd1b3d19267a95a
+[d0783de6]: https://github.com/databendlabs/openraft/commit/d0783de683d75333a98df8e175557fce38cc8e55
+[d180cfaf]: https://github.com/databendlabs/openraft/commit/d180cfaf4babd8aea7b0c645c04dba697b03274a
+[d1b41efb]: https://github.com/databendlabs/openraft/commit/d1b41efb9050c50eefdd4154dd95c2afd95d1b9c
+[d1bd8a24]: https://github.com/databendlabs/openraft/commit/d1bd8a24bb9c7578a247c3738a2966d99b8cb783
+[d1ffaa2d]: https://github.com/databendlabs/openraft/commit/d1ffaa2df0dc835c2231448282457d1e0b48200c
+[d39af6dc]: https://github.com/databendlabs/openraft/commit/d39af6dcc3384a5d0a97160ce0cd1d84b2c0443a
+[d486284c]: https://github.com/databendlabs/openraft/commit/d486284c02ba9fc137e20e4d8068c67d946f63f4
+[d4a8088c]: https://github.com/databendlabs/openraft/commit/d4a8088cd60e15b12f1d9d2a579c8ec72d48e90f
+[d57bcc9c]: https://github.com/databendlabs/openraft/commit/d57bcc9cf1dad1380a70ca80104861ee14fc7255
+[d62f2fd8]: https://github.com/databendlabs/openraft/commit/d62f2fd8fd6b3fab2f31685d1f42ec9f12bd3574
+[d7a9810f]: https://github.com/databendlabs/openraft/commit/d7a9810f26b8773664e69ad2ddc265398be99340
+[d857a857]: https://github.com/databendlabs/openraft/commit/d857a857c66ce99791b0659a9443692f87361aae
+[d86454eb]: https://github.com/databendlabs/openraft/commit/d86454ebc5c98382bac7816f7bdd0a353b973f2a
+[d914c950]: https://github.com/databendlabs/openraft/commit/d914c950105f1f115685960c869657796c85d787
+[da51aac3]: https://github.com/databendlabs/openraft/commit/da51aac38e161edafcfe4d2f694dbf43872dafad
+[daa099d6]: https://github.com/databendlabs/openraft/commit/daa099d6e67a9dcbf9d5ced4aaecce6972007c69
+[dafeedb8]: https://github.com/databendlabs/openraft/commit/dafeedb82b1101fe5fc70a3e55e289082e72a31a
+[dd0808b9]: https://github.com/databendlabs/openraft/commit/dd0808b964a1f0cd6d90134ab0ada0649a4effc5
+[dd29c2e9]: https://github.com/databendlabs/openraft/commit/dd29c2e91e28488cc842477007111795a6e543f4
+[ddcec33a]: https://github.com/databendlabs/openraft/commit/ddcec33af0a3d0926a705affc59163e501a8fb54
+[e18cafc0]: https://github.com/databendlabs/openraft/commit/e18cafc0d5e279f049cf070b30b622bb215a36e6
+[e354ce41]: https://github.com/databendlabs/openraft/commit/e354ce41972ffb7a868595781532b49b25a3cee3
+[e3610718]: https://github.com/databendlabs/openraft/commit/e3610718526cc9ebe14912da9312db76c3fbe249
+[e3f043ec]: https://github.com/databendlabs/openraft/commit/e3f043ec0079d9f4790f0fe3311735dda31cbafc
+[e4e629ad]: https://github.com/databendlabs/openraft/commit/e4e629adc064a27c898ef45ce01ea00d8469a317
+[e56b107b]: https://github.com/databendlabs/openraft/commit/e56b107bc3270da01de692686e81426c1507fa0b
+[e586c8be]: https://github.com/databendlabs/openraft/commit/e586c8be46863129d6d249a50459efbfe451f6fd
+[e5ab7225]: https://github.com/databendlabs/openraft/commit/e5ab722563a00e19854a7d62eaf5a42297d7c4f0
+[e7e0a3f7]: https://github.com/databendlabs/openraft/commit/e7e0a3f737830e48cf1e23d082e113cd499d023b
+[e91decda]: https://github.com/databendlabs/openraft/commit/e91decda4286cde6053cdd9bcc574f14828bdb43
+[eba97d5a]: https://github.com/databendlabs/openraft/commit/eba97d5acabcad26569fe870090cf2b323756a94
+[eeeff6f3]: https://github.com/databendlabs/openraft/commit/eeeff6f3ef85b17fd486fc3a235a7ff04f54ac04
+[f0a6440a]: https://github.com/databendlabs/openraft/commit/f0a6440adea471ddc3b36f01cf00403098330ed4
+[f0d240ce]: https://github.com/databendlabs/openraft/commit/f0d240ce83933ddf9dd13f07e5ce01eb8366635f
+[f0d59e0e]: https://github.com/databendlabs/openraft/commit/f0d59e0e44c738c3d7088d45e666c1333ec04e1f
+[f13f0eec]: https://github.com/databendlabs/openraft/commit/f13f0eec7922e84ad9a3beeb166bb8a8133805ad
+[f4491b20]: https://github.com/databendlabs/openraft/commit/f4491b20ee6fb118078856ef662c3fbb01c61c8f
+[f4b5f61d]: https://github.com/databendlabs/openraft/commit/f4b5f61dea3a70c8bb5207e3b56b1013997ebe67
+[f7990589]: https://github.com/databendlabs/openraft/commit/f79905891f86fcd8da4a556559fa6d89ff9606b7
+[f8d151ca]: https://github.com/databendlabs/openraft/commit/f8d151ca2652a2c262126ce93a7ae333a0806a0a
+[fa858223]: https://github.com/databendlabs/openraft/commit/fa85822363c87c27155f25dc3352441216d43a00
+[fc73dc7a]: https://github.com/databendlabs/openraft/commit/fc73dc7a8d7982cfdd6e39edc90338b8ed686dc9
+[fdbf0eb2]: https://github.com/databendlabs/openraft/commit/fdbf0eb22c9db7c58883dca91a2627cc26a5ca7f
+
 ## v0.9.0
 
 Summary:
