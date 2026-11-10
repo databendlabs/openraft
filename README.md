@@ -57,8 +57,8 @@ See the [changelog](https://github.com/databendlabs/openraft/blob/main/change-lo
 
 | Branch | Status | Release | Upgrade guide |
 | --- | --- | --- | --- |
-| `main` / [release-0.10](https://github.com/databendlabs/openraft/tree/release-0.10) | Alpha; active development | [0.10.0](https://crates.io/crates/openraft/0.10.0) | [0.9 → 0.10](https://docs.rs/openraft/0.10.0/openraft/docs/upgrade_guide/upgrade_09_10/index.html) |
-| [release-0.9](https://github.com/databendlabs/openraft/tree/release-0.9) | Bug fixes only | [0.9.25](https://github.com/databendlabs/openraft/tree/v0.9.25) ([changelog](https://github.com/databendlabs/openraft/blob/release-0.9/change-log.md)) | [0.8 → 0.9](https://docs.rs/openraft/0.9.0/openraft/docs/upgrade_guide/upgrade_08_09/index.html) |
+| `main` / [release-0.10](https://github.com/databendlabs/openraft/tree/release-0.10) | Stable; active development | [0.10.0](https://crates.io/crates/openraft/0.10.0) | [0.9 → 0.10](https://docs.rs/openraft/0.10.0/openraft/docs/upgrade_guide/upgrade_09_10/index.html) |
+| [release-0.9](https://github.com/databendlabs/openraft/tree/release-0.9) | Bug fixes only | [0.9.26](https://github.com/databendlabs/openraft/tree/v0.9.26) ([changelog](https://github.com/databendlabs/openraft/blob/release-0.9/change-log.md)) | [0.8 → 0.9](https://docs.rs/openraft/0.9.0/openraft/docs/upgrade_guide/upgrade_08_09/index.html) |
 
 <details>
 <summary>Unsupported releases</summary>
