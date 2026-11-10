@@ -60,7 +60,7 @@ Modifies files:
 
 ## Public API Change Annotations
 
-Any change to a public type, trait, or associated type needs a `#[since]` attribute. Add `#[since(version = "0.10.0", change = "description")]` above any existing `#[since]` attribute.
+Any change to a public type, trait, or associated type needs a `#[since]` attribute. Add `#[since(version = "X.Y.Z", change = "description")]` above any existing `#[since]` attribute, where `X.Y.Z` is the next release, the first one that will contain the change. If the workspace version in `Cargo.toml` already has a release tag, the next release is its next patch version, such as `0.10.1` after `v0.10.0`. If the workspace version is a pre-release, such as `0.11.0-alpha.1`, the next release is `0.11.0`.
 
 - Add `#[since]` for new public items, changed struct generic parameters, changed trait bounds on associated types, and new associated types.
 - Do not add `#[since]` to methods whose signatures changed only as a mechanical consequence of a parent type's generic parameter change, such as `Vote<LID>` methods that replace `C::Term` with `LID::Term`.
