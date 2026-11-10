@@ -177,6 +177,10 @@ impl SnapshotPolicy {
 /// [`Raft::new`]: crate::Raft::new
 #[since(
     version = "0.10.0",
+    change = "made `api_batch_capacity`, `api_batch_linger_ms` and `backoff` optional"
+)]
+#[since(
+    version = "0.10.0",
     change = "removed `send_snapshot_timeout`, deprecated since 0.9.0"
 )]
 #[since(version = "0.10.0", change = "add opt-in local lease reads")]
@@ -294,15 +298,19 @@ pub struct Config {
 
     /// `RaftMsg::ClientWrite` batch before it is processed.
     /// Then the batched `ClientWrite` requests will be submitted to `RaftStorage` in one shot.
+    ///
+    /// Defaults to 4096 if not specified.
     #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long, default_value = "4096"))]
-    pub api_batch_capacity: u64,
+    pub api_batch_capacity: Option<u64>,
 
     /// Maximum amount of milliseconds to wait for additional client requests before
     /// flushing a partially filled batch.
+    ///
+    /// Defaults to 0 if not specified.
     #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long, default_value = "0"))]
-    pub api_batch_linger_ms: u64,
+    pub api_batch_linger_ms: Option<u64>,
     /// The size of the bounded notification channel for internal events.
     ///
     /// This channel carries internal notifications like IO completion, replication progress,
@@ -529,6 +537,8 @@ pub struct Config {
     /// Default backoff policy used when
     /// [`RaftNetworkV2::backoff`](crate::network::RaftNetworkV2::backoff) returns `None`.
     ///
+    /// Defaults to `"200ms"` if not specified.
+    ///
     /// The string lists the first few retry delays explicitly. After those, the sequence
     /// continues automatically — smoothly extended from **at most the last three explicit
     /// delays** by either an exponential `k · aˣ + t` or linear `k · x + t` form, whichever
@@ -579,7 +589,7 @@ pub struct Config {
     /// number of custom warm-up values without changing the long-run behavior.
     #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long, default_value = DEFAULTS.backoff))]
-    pub backoff: String,
+    pub backoff: Option<String>,
 
     /// Whether transferring leadership resets the target's active replication backoff.
     ///
@@ -671,8 +681,8 @@ impl Default for Config {
             max_in_snapshot_log_to_keep: DEFAULTS.max_in_snapshot_log_to_keep,
             purge_batch_size: DEFAULTS.purge_batch_size,
             api_channel_size: Some(DEFAULTS.api_channel_size),
-            api_batch_capacity: DEFAULTS.api_batch_capacity,
-            api_batch_linger_ms: DEFAULTS.api_batch_linger_ms,
+            api_batch_capacity: Some(DEFAULTS.api_batch_capacity),
+            api_batch_linger_ms: Some(DEFAULTS.api_batch_linger_ms),
             notification_channel_size: Some(DEFAULTS.notification_channel_size),
             state_machine_channel_size: Some(DEFAULTS.state_machine_channel_size),
             enable_unbounded_state_machine_buffer: None,
@@ -685,7 +695,7 @@ impl Default for Config {
             removed_leader_step_down: DEFAULTS.removed_leader_step_down.clone(),
             quorum_loss_probe_interval: DEFAULTS.quorum_loss_probe_interval,
             enable_pre_vote: DEFAULTS.enable_pre_vote,
-            backoff: DEFAULTS.backoff.to_string(),
+            backoff: Some(DEFAULTS.backoff.to_string()),
             reset_backoff_on_transfer_leader: None,
             allow_log_reversion: None,
             enable_leader_restore: None,
@@ -744,6 +754,27 @@ impl Config {
     /// Defaults to 65536 if not specified.
     pub(crate) fn api_channel_size(&self) -> usize {
         self.api_channel_size.unwrap_or(65536) as usize
+    }
+
+    /// Get the maximum number of client writes that RaftCore merges into one batch.
+    ///
+    /// Defaults to 4096 if not specified.
+    pub(crate) fn api_batch_capacity(&self) -> u64 {
+        self.api_batch_capacity.unwrap_or(DEFAULTS.api_batch_capacity)
+    }
+
+    /// Get the milliseconds to wait for more client writes before processing a partial batch.
+    ///
+    /// Defaults to 0 if not specified.
+    pub(crate) fn api_batch_linger_ms(&self) -> u64 {
+        self.api_batch_linger_ms.unwrap_or(DEFAULTS.api_batch_linger_ms)
+    }
+
+    /// Get the default backoff policy string.
+    ///
+    /// Defaults to `"200ms"` if not specified.
+    pub(crate) fn get_backoff(&self) -> &str {
+        self.backoff.as_deref().unwrap_or(DEFAULTS.backoff)
     }
 
     /// Get the notification channel size for bounded MPSC channel.
@@ -853,7 +884,7 @@ impl Config {
         }
 
         // Validate the backoff policy string up-front so build_backoff() can assume it parses.
-        BackoffSeries::parse(&self.backoff)?;
+        BackoffSeries::parse(self.get_backoff())?;
 
         Ok(self)
     }
@@ -864,7 +895,8 @@ impl Config {
     /// or [`Config::validate`], which reject invalid policies up-front.
     #[since(version = "0.10.0")]
     pub fn build_backoff(&self) -> Backoff {
-        let series = BackoffSeries::parse(&self.backoff).expect("backoff policy must be validated by Config::validate");
+        let series =
+            BackoffSeries::parse(self.get_backoff()).expect("backoff policy must be validated by Config::validate");
         Backoff::new(series.build())
     }
 }

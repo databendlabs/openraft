@@ -36,7 +36,7 @@ async fn quiet_period_holds_back_replication_retries() -> Result<()> {
         election_timeout_min: 150,
         election_timeout_max: 300,
         quorum_loss_probe_interval: Some(1_000),
-        backoff: "50ms 50ms 50ms".to_string(),
+        backoff: Some("50ms 50ms 50ms".to_string()),
         ..Default::default()
     }
     .validate()?;
@@ -110,7 +110,7 @@ async fn snapshot_retries_allow_election(chunked: bool) -> Result<()> {
         // Node 2 campaigns in vain while it lags; Pre-Vote keeps its term from rising.
         enable_pre_vote: Some(true),
         quorum_loss_probe_interval: Some(1_000),
-        backoff: "50ms 50ms 50ms".to_string(),
+        backoff: Some("50ms 50ms 50ms".to_string()),
         max_in_snapshot_log_to_keep: 0,
         purge_batch_size: 1,
         ..Default::default()

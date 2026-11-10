@@ -18,7 +18,7 @@ async fn snapshot_to_unreachable_node_should_not_block() -> Result<()> {
         // Constant 10ms backoff: with two equal anchors the fit is `k · aˣ` with `a = 1`,
         // so the sequence is `10ms, 10ms, …`. The default grows to a 1s cap, which is too
         // slow for this test's 2s budget on loaded CI.
-        backoff: "10ms, 10ms".to_string(),
+        backoff: Some("10ms, 10ms".to_string()),
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;

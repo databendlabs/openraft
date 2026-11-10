@@ -642,8 +642,8 @@ where
                     tx_api: tx_api.clone(),
                     rx_api: BatchRaftMsgReceiver::new(
                         rx_api,
-                        config.api_batch_capacity,
-                        Duration::from_millis(config.api_batch_linger_ms),
+                        config.api_batch_capacity(),
+                        Duration::from_millis(config.api_batch_linger_ms()),
                     ),
                     tx_install_snapshot: tx_install_snapshot.clone(),
                     rx_install_snapshot,
