@@ -11,7 +11,7 @@
 [![Crates.io](https://img.shields.io/crates/v/openraft.svg)](https://crates.io/crates/openraft)
 [![docs.rs](https://docs.rs/openraft/badge.svg)](https://docs.rs/openraft)
 [![DeepWiki](https://img.shields.io/badge/DeepWiki-openraft-blue.svg?logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACwAAAAyCAYAAAAnWDnqAAAAAXNSR0IArs4c6QAAA05JREFUaEPtmUtyEzEQhtWTQyQLHNak2AB7ZnyXZMEjXMGeK/AIi+QuHrMnbChYY7MIh8g01fJoopFb0uhhEqqcbWTp06/uv1saEDv4O3n3dV60RfP947Mm9/SQc0ICFQgzfc4CYZoTPAswgSJCCUJUnAAoRHOAUOcATwbmVLWdGoH//PB8mnKqScAhsD0kYP3j/Yt5LPQe2KvcXmGvRHcDnpxfL2zOYJ1mFwrryWTz0advv1Ut4CJgf5uhDuDj5eUcAUoahrdY/56ebRWeraTjMt/00Sh3UDtjgHtQNHwcRGOC98BJEAEymycmYcWwOprTgcB6VZ5JK5TAJ+fXGLBm3FDAmn6oPPjR4rKCAoJCal2eAiQp2x0vxTPB3ALO2CRkwmDy5WohzBDwSEFKRwPbknEggCPB/imwrycgxX2NzoMCHhPkDwqYMr9tRcP5qNrMZHkVnOjRMWwLCcr8ohBVb1OMjxLwGCvjTikrsBOiA6fNyCrm8V1rP93iVPpwaE+gO0SsWmPiXB+jikdf6SizrT5qKasx5j8ABbHpFTx+vFXp9EnYQmLx02h1QTTrl6eDqxLnGjporxl3NL3agEvXdT0WmEost648sQOYAeJS9Q7bfUVoMGnjo4AZdUMQku50McDcMWcBPvr0SzbTAFDfvJqwLzgxwATnCgnp4wDl6Aa+Ax283gghmj+vj7feE2KBBRMW3FzOpLOADl0Isb5587h/U4gGvkt5v60Z1VLG8BhYjbzRwyQZemwAd6cCR5/XFWLYZRIMpX39AR0tjaGGiGzLVyhse5C9RKC6ai42ppWPKiBagOvaYk8lO7DajerabOZP46Lby5wKjw1HCRx7p9sVMOWGzb/vA1hwiWc6jm3MvQDTogQkiqIhJV0nBQBTU+3okKCFDy9WwferkHjtxib7t3xIUQtHxnIwtx4mpg26/HfwVNVDb4oI9RHmx5WGelRVlrtiw43zboCLaxv46AZeB3IlTkwouebTr1y2NjSpHz68WNFjHvupy3q8TFn3Hos2IAk4Ju5dCo8B3wP7VPr/FGaKiG+T+v+TQqIrOqMTL1VdWV1DdmcbO8KXBz6esmYWYKPwDL5b5FA1a0hwapHiom0r/cKaoqr+27/XcrS5UwSMbQAAAABJRU5ErkJggg==)](https://deepwiki.com/databendlabs/openraft)
-[![guides](https://img.shields.io/badge/guide-%E2%86%97-brightgreen)](https://docs.rs/openraft/0.10.0-alpha.38/openraft/docs/index.html)
+[![guides](https://img.shields.io/badge/guide-%E2%86%97-brightgreen)](https://docs.rs/openraft/0.10.0/openraft/docs/index.html)
 [![Discord Chat](https://img.shields.io/discord/1015845055434588200?logo=discord)](https://discord.gg/ZKw3WG7FQ9)
 <br/>
 [![CI](https://github.com/databendlabs/openraft/actions/workflows/ci.yaml/badge.svg)](https://github.com/databendlabs/openraft/actions/workflows/ci.yaml)
@@ -27,8 +27,8 @@ This project intends to improve raft as the next-generation consensus protocol f
 Currently, openraft is the consensus engine of meta-service cluster in [databend](https://github.com/databendlabs/databend).
 
 
-- 🚀 **Get started**: [Guide](https://docs.rs/openraft/0.10.0-alpha.38/openraft/docs/getting_started/index.html) · [Docs](https://docs.rs/openraft/0.10.0-alpha.38/openraft/docs/index.html) · [FAQ](https://docs.rs/openraft/0.10.0-alpha.38/openraft/docs/faq/index.html) · [DeepWiki](https://deepwiki.com/databendlabs/openraft).
-- 💡 **Examples**: [0.10.0-alpha.38](https://github.com/databendlabs/openraft/tree/release-0.10/examples) · [0.9](https://github.com/databendlabs/openraft/tree/release-0.9/examples).
+- 🚀 **Get started**: [Guide](https://docs.rs/openraft/0.10.0/openraft/docs/getting_started/index.html) · [Docs](https://docs.rs/openraft/0.10.0/openraft/docs/index.html) · [FAQ](https://docs.rs/openraft/0.10.0/openraft/docs/faq/index.html) · [DeepWiki](https://deepwiki.com/databendlabs/openraft).
+- 💡 **Examples**: [0.10.0](https://github.com/databendlabs/openraft/tree/release-0.10/examples) · [0.9](https://github.com/databendlabs/openraft/tree/release-0.9/examples).
 - 🙌 **Questions**? Ask on [Discord](https://discord.gg/ZKw3WG7FQ9), in a [GitHub discussion](https://github.com/databendlabs/openraft/discussions/new), in our [Feishu group](https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=d20l9084-6d36-4470-bac5-4bad7378d003), or on WeChat: `drmingdrmer`.
 
 
@@ -57,7 +57,7 @@ See the [changelog](https://github.com/databendlabs/openraft/blob/main/change-lo
 
 | Branch | Status | Release | Upgrade guide |
 | --- | --- | --- | --- |
-| `main` / [release-0.10](https://github.com/databendlabs/openraft/tree/release-0.10) | Alpha; active development | [0.10.0-alpha.38](https://crates.io/crates/openraft/0.10.0-alpha.38) | [0.9 → 0.10](https://docs.rs/openraft/0.10.0-alpha.38/openraft/docs/upgrade_guide/upgrade_09_10/index.html) |
+| `main` / [release-0.10](https://github.com/databendlabs/openraft/tree/release-0.10) | Alpha; active development | [0.10.0](https://crates.io/crates/openraft/0.10.0) | [0.9 → 0.10](https://docs.rs/openraft/0.10.0/openraft/docs/upgrade_guide/upgrade_09_10/index.html) |
 | [release-0.9](https://github.com/databendlabs/openraft/tree/release-0.9) | Bug fixes only | [0.9.25](https://github.com/databendlabs/openraft/tree/v0.9.25) ([changelog](https://github.com/databendlabs/openraft/blob/release-0.9/change-log.md)) | [0.8 → 0.9](https://docs.rs/openraft/0.9.0/openraft/docs/upgrade_guide/upgrade_08_09/index.html) |
 
 <details>
