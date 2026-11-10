@@ -917,8 +917,8 @@ These items still compile, with a deprecation warning:
 - Retries to an unreachable node start at 200 ms and double up to 1 s, where
   0.9 waited a constant 500 ms, and the v1 `RaftNetwork::backoff()` default
   is a constant 200 ms. For the 0.9 timing, set `Config::backoff` to
-  `"500ms 500ms 500ms"`, or override `backoff()` of a v1 network
-  ([4ad03c09], [7e1f6c83]).
+  `Some("500ms 500ms 500ms".to_string())`, or override `backoff()` of a v1
+  network ([4ad03c09], [7e1f6c83]).
 - A node samples a new election timeout for every campaign, where 0.9
   sampled one at startup ([dd0808b9]).
 
@@ -930,7 +930,9 @@ of log entries, `Membership`, `StoredMembership`, `Vote`, `LeaderId`,
 [60028ef9]). `SnapshotMeta` and `SnapshotSignature` still write an empty
 `snapshot_id` and ignore it when reading ([f0a6440a], [28b8c5d5]), and the
 standard `LeaderId` still encodes `voted_for` as an `Option`, rejecting a
-stored `None` ([6b0f1be3]).
+stored `None` ([6b0f1be3]). A `Config` that 0.9 serialized decodes in 0.10:
+every new field takes its default, and the removed `send_snapshot_timeout` is
+ignored.
 
 Between 0.9 and 0.10 peers, snapshot metadata and the v1
 `InstallSnapshotRequest` keep their 0.9 layout in named and positional serde

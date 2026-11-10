@@ -25,7 +25,7 @@ const BACKOFF: &str = "5s ...5s";
 async fn reset_backoff_ends_active_backoff() -> Result<()> {
     let config = Config {
         enable_tick: false,
-        backoff: BACKOFF.to_string(),
+        backoff: Some(BACKOFF.to_string()),
         ..Default::default()
     };
 
@@ -100,7 +100,7 @@ async fn reset_backoff_ends_active_backoff() -> Result<()> {
 async fn reset_backoff_before_backoff_is_dropped() -> Result<()> {
     let config = Config {
         enable_tick: false,
-        backoff: BACKOFF.to_string(),
+        backoff: Some(BACKOFF.to_string()),
         ..Default::default()
     };
 
@@ -158,7 +158,7 @@ async fn transfer_leader_resets_target_backoff_by_default() -> Result<()> {
     for reset_backoff_on_transfer_leader in [Some(false), None] {
         let config = Config {
             enable_tick: false,
-            backoff: BACKOFF.to_string(),
+            backoff: Some(BACKOFF.to_string()),
             reset_backoff_on_transfer_leader,
             ..Default::default()
         };
