@@ -91,6 +91,27 @@ fn default_removed_leader_step_down() -> StepDownPolicy {
     DEFAULTS.removed_leader_step_down.clone()
 }
 
+/// The serde default for [`Config::api_batch_capacity`], used when the field is absent, as in a
+/// config written by 0.9.
+#[cfg(feature = "serde")]
+fn default_api_batch_capacity() -> u64 {
+    DEFAULTS.api_batch_capacity
+}
+
+/// The serde default for [`Config::api_batch_linger_ms`], used when the field is absent, as in a
+/// config written by 0.9.
+#[cfg(feature = "serde")]
+fn default_api_batch_linger_ms() -> u64 {
+    DEFAULTS.api_batch_linger_ms
+}
+
+/// The serde default for [`Config::backoff`], used when the field is absent, as in a config
+/// written by 0.9.
+#[cfg(feature = "serde")]
+fn default_backoff() -> String {
+    DEFAULTS.backoff.to_string()
+}
+
 /// Log compaction and snapshot policy.
 ///
 /// This governs when periodic snapshots will be taken, as well as the conditions which
@@ -175,6 +196,10 @@ impl SnapshotPolicy {
 /// - [`SnapshotPolicy`] for snapshot triggering strategies
 ///
 /// [`Raft::new`]: crate::Raft::new
+#[since(
+    version = "0.10.0",
+    change = "serde fills the new fields that a 0.9 config lacks with their defaults"
+)]
 #[since(
     version = "0.10.0",
     change = "removed `send_snapshot_timeout`, deprecated since 0.9.0"
@@ -296,12 +321,14 @@ pub struct Config {
     /// Then the batched `ClientWrite` requests will be submitted to `RaftStorage` in one shot.
     #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long, default_value = "4096"))]
+    #[cfg_attr(feature = "serde", serde(default = "default_api_batch_capacity"))]
     pub api_batch_capacity: u64,
 
     /// Maximum amount of milliseconds to wait for additional client requests before
     /// flushing a partially filled batch.
     #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long, default_value = "0"))]
+    #[cfg_attr(feature = "serde", serde(default = "default_api_batch_linger_ms"))]
     pub api_batch_linger_ms: u64,
     /// The size of the bounded notification channel for internal events.
     ///
@@ -579,6 +606,7 @@ pub struct Config {
     /// number of custom warm-up values without changing the long-run behavior.
     #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long, default_value = DEFAULTS.backoff))]
+    #[cfg_attr(feature = "serde", serde(default = "default_backoff"))]
     pub backoff: String,
 
     /// Whether transferring leadership resets the target's active replication backoff.

@@ -161,6 +161,44 @@ fn test_reset_backoff_on_transfer_leader_serde_default() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// A config that Openraft 0.9 serialized deserializes and validates: every field added since then
+/// takes its default, and the removed `send_snapshot_timeout` is ignored.
+#[cfg(feature = "serde")]
+#[test]
+fn test_v09_config_deserializes() -> anyhow::Result<()> {
+    // `serde_json::to_string(&Config::default())` with openraft 0.9.26, pretty-printed.
+    let v09 = r#"{
+        "cluster_name": "foo",
+        "election_timeout_min": 150,
+        "election_timeout_max": 300,
+        "heartbeat_interval": 50,
+        "install_snapshot_timeout": 200,
+        "send_snapshot_timeout": 0,
+        "max_payload_entries": 300,
+        "replication_lag_threshold": 5000,
+        "snapshot_policy": { "LogsSinceLast": 5000 },
+        "snapshot_max_chunk_size": 3145728,
+        "max_in_snapshot_log_to_keep": 1000,
+        "purge_batch_size": 1,
+        "enable_tick": true,
+        "enable_heartbeat": true,
+        "enable_elect": true
+    }"#;
+
+    let config: Config = serde_json::from_str(v09)?;
+
+    let default = Config::default();
+    assert_eq!(default.api_batch_capacity, config.api_batch_capacity);
+    assert_eq!(default.api_batch_linger_ms, config.api_batch_linger_ms);
+    assert_eq!(default.backoff, config.backoff);
+    assert_eq!(default.removed_leader_step_down, config.removed_leader_step_down);
+    assert_eq!(SnapshotPolicy::LogsSinceLast(5000), config.snapshot_policy);
+
+    config.validate()?;
+
+    Ok(())
+}
+
 #[test]
 fn test_invalid_election_timeout_config_produces_expected_error() {
     let config = Config {
