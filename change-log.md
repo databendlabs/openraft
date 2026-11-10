@@ -933,7 +933,7 @@ of log entries, `Membership`, `StoredMembership`, `Vote`, `LeaderId`,
 standard `LeaderId` still encodes `voted_for` as an `Option`, rejecting a
 stored `None` ([6b0f1be3]). A `Config` that 0.9 serialized decodes in 0.10:
 every new field takes its default, and the removed `send_snapshot_timeout` is
-ignored.
+ignored ([91ba6250]).
 
 Between 0.9 and 0.10 peers, snapshot metadata and the v1
 `InstallSnapshotRequest` keep their 0.9 layout in named and positional serde
@@ -1252,6 +1252,7 @@ error from a peer of another version as diagnostic text.
 [8da662c5]: https://github.com/databendlabs/openraft/commit/8da662c5825ac5c738527805b051456d4e282a46
 [8eab13c8]: https://github.com/databendlabs/openraft/commit/8eab13c8562eba545946f94111134af3f75f71a4
 [8fd783d4]: https://github.com/databendlabs/openraft/commit/8fd783d40a2c966a6ec37b55fc4854254dbcd4ba
+[91ba6250]: https://github.com/databendlabs/openraft/commit/91ba6250e4c830ef06fe8e768e2129d5ed7a453a
 [926bf6de]: https://github.com/databendlabs/openraft/commit/926bf6de1131abcc63e7f08ec190e6e0873faefd
 [930b4a3d]: https://github.com/databendlabs/openraft/commit/930b4a3da0d289c6ce14fcbd21221be94785edc6
 [96173030]: https://github.com/databendlabs/openraft/commit/96173030acd39811d381413cfdaf8c1e13ac453b
