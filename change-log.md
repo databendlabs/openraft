@@ -931,7 +931,9 @@ of log entries, `Membership`, `StoredMembership`, `Vote`, `LeaderId`,
 [60028ef9]). `SnapshotMeta` and `SnapshotSignature` still write an empty
 `snapshot_id` and ignore it when reading ([f0a6440a], [28b8c5d5]), and the
 standard `LeaderId` still encodes `voted_for` as an `Option`, rejecting a
-stored `None` ([6b0f1be3]).
+stored `None` ([6b0f1be3]). A `Config` that 0.9 serialized decodes in 0.10:
+every new field takes its default, and the removed `send_snapshot_timeout` is
+ignored.
 
 Between 0.9 and 0.10 peers, snapshot metadata and the v1
 `InstallSnapshotRequest` keep their 0.9 layout in named and positional serde
