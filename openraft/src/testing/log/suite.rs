@@ -1655,22 +1655,6 @@ where
             assert_eq!(mem.membership(), &voters::<C>(btreeset! {1,2}));
         }
 
-        // TODO: figure out how to test applying normal entry. `C::D` cannot be built by Openraft
-        // tracing::info!("--- apply normal entry");
-        // {
-        //     let entry = {
-        //         let mut e = C::Entry::from_app_data(C::D::from(1));
-        //         e.set_log_id(&log_id_0::<C>(2, 2));
-        //         e
-        //     };
-        //
-        //     let replies = apply(&mut sm, [entry]).await.map_err(|e| io::Error::new(io::ErrorKind::Other,
-        // e.to_string()))?;     assert_eq!(replies.len(), 1, "expected 1 response");
-        //     let (last_applied, _) = sm.applied_state().await?;
-        //
-        //     assert_eq!(last_applied, Some(log_id_0::<C>(2, 2)),);
-        // }
-
         Ok(())
     }
 
