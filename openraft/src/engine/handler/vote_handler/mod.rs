@@ -123,8 +123,6 @@ where
 
         // Grant the vote
 
-        // TODO: Leader decide the lease.
-
         // If the vote is committed, it's an established Leader.
         // Otherwise, it's a Candidate and does not have Leader lease.
         let leader_lease = if vote.is_committed() {
