@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
+import argparse
 import os
 import re
 import subprocess
-import sys
 
 import semantic_version
 import toml
@@ -416,16 +416,35 @@ def load_cargo_version():
 if __name__ == "__main__":
     # Usage: to build change log from git log for the current version.
     # ./scripts/build_change_log.py
-    # ./scripts/build_change_log.py v0.8.3
-    # ./scripts/build_change_log.py 12345abc
+    # ./scripts/build_change_log.py --since v0.8.3
+    # ./scripts/build_change_log.py --since 12345abc
+    #
+    # Usage: to only concatenate change-log/*.md into change-log.md.
+    # ./scripts/build_change_log.py --concat-only
+    # ./scripts/build_change_log.py -c
 
-    new_ver = load_cargo_version()
+    parser = argparse.ArgumentParser(
+        description="Build the change log of the current version from git log."
+    )
+    parser.add_argument(
+        "--since",
+        metavar="REV",
+        help="tag or commit to build the change log since (default: the last tag)",
+    )
+    parser.add_argument(
+        "-c",
+        "--concat-only",
+        action="store_true",
+        help="only concatenate change-log/*.md into change-log.md",
+    )
+    args = parser.parse_args()
 
-    if len(sys.argv) == 2:
-        since = sys.argv[1]
+    if args.concat_only:
+        if args.since is not None:
+            parser.error("--since cannot be used with --concat-only")
+        build_changelog()
     else:
-        since = None
-
-    build_ver_changelog(new_ver, since=since)
-    build_ver_changelog_summary(new_ver)
-    build_changelog()
+        new_ver = load_cargo_version()
+        build_ver_changelog(new_ver, since=args.since)
+        build_ver_changelog_summary(new_ver)
+        build_changelog()

@@ -3,7 +3,9 @@
 Build change log since a previous git-tag
 
 - Usage: `./scripts/build_change_log.py`: build change log since last tag.
-- Usage: `./scripts/build_change_log.py <commit>`: build since specified commit.
+- Usage: `./scripts/build_change_log.py --since <commit>`: build since specified commit.
+- Usage: `./scripts/build_change_log.py --concat-only` (or `-c`): only
+  concatenate `./change-log/*.md` into `./change-log.md`.
 - Install: `pip install -r requirements.txt`.
 
 This script builds change log from git commit messages, outputs a versioned
@@ -11,7 +13,11 @@ change log to `./change-log/<version>.md` and concatenates all versioned change 
 into `./change-log.md`.
 
 If `./change-log/<version>.md` exists, it skips re-building it from git-log.
-Thus you can generate semi-automatic change-logs by editing `./change-log/<version>.md` and running the script again, which will just only the `./change-log.md`.
+Thus you can generate semi-automatic change-logs by editing
+`./change-log/<version>.md` and running the script again, which rebuilds the
+summary of that file and `./change-log.md`. If the edited file no longer has
+the generated `Summary:` and `Detail:` layout, the summary step fails; run the
+script with `--concat-only` to rebuild only `./change-log.md`.
 
 
 ### `check-doc-links.py`
