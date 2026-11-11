@@ -108,6 +108,14 @@ struct Args {
     #[arg(long, default_value_t = 0)]
     network_delay_us: u64,
 
+    /// Delay of the log read that loads each apply batch, in microseconds.
+    #[arg(long, default_value_t = 0)]
+    apply_read_delay_us: u64,
+
+    /// State-machine I/O delay of each apply batch, in microseconds; responses wait for it.
+    #[arg(long, default_value_t = 0)]
+    apply_io_delay_us: u64,
+
     /// Successful writes before measurement starts.
     #[arg(long, default_value_t = WARMUP_WRITES)]
     warmup_writes: usize,
@@ -133,6 +141,8 @@ struct BenchConfig {
     pub append_delay_us: u64,
     pub flush_delay_us: u64,
     pub network_delay_us: u64,
+    pub apply_read_delay_us: u64,
+    pub apply_io_delay_us: u64,
     pub warmup_writes: usize,
 }
 
@@ -247,6 +257,8 @@ fn main() -> anyhow::Result<()> {
         append_delay_us: args.append_delay_us,
         flush_delay_us: args.flush_delay_us,
         network_delay_us: args.network_delay_us,
+        apply_read_delay_us: args.apply_read_delay_us,
+        apply_io_delay_us: args.apply_io_delay_us,
         warmup_writes: args.warmup_writes,
     };
 
@@ -272,7 +284,13 @@ fn validate(args: &Args) -> anyhow::Result<()> {
     let group = group.context("clients * batch overflows")?;
     ensure!(args.operations >= group, "operations must cover every client");
     validate_schedule(args)?;
-    let delays = [args.append_delay_us, args.flush_delay_us, args.network_delay_us];
+    let delays = [
+        args.append_delay_us,
+        args.flush_delay_us,
+        args.network_delay_us,
+        args.apply_read_delay_us,
+        args.apply_io_delay_us,
+    ];
     let max_delay = delays.into_iter().max().unwrap();
     let within_timeout = u128::from(max_delay) < WAIT_TIMEOUT.as_micros();
     ensure!(within_timeout, "simulated delay exceeds the benchmark timeout");
@@ -385,7 +403,10 @@ fn create_cluster(server_rt: &Runtime, bench_config: &BenchConfig) -> anyhow::Re
         let append_delay = Duration::from_micros(bench_config.append_delay_us);
         let flush_delay = Duration::from_micros(bench_config.flush_delay_us);
         let network_delay = Duration::from_micros(bench_config.network_delay_us);
-        let mut router = Router::with_delays(append_delay, flush_delay, network_delay);
+        let router = Router::with_delays(append_delay, flush_delay, network_delay);
+        let apply_read_delay = Duration::from_micros(bench_config.apply_read_delay_us);
+        let apply_io_delay = Duration::from_micros(bench_config.apply_io_delay_us);
+        let mut router = router.with_apply_delays(apply_read_delay, apply_io_delay);
         router.new_cluster(config, bench_config.members.clone()).await?;
         let leader = router.get_raft(0);
         Ok((router, leader))
@@ -591,6 +612,8 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft) -> anyhow::Resu
             "append_delay_us": bench_config.append_delay_us,
             "flush_delay_us": bench_config.flush_delay_us,
             "network_delay_us": bench_config.network_delay_us,
+            "apply_read_delay_us": bench_config.apply_read_delay_us,
+            "apply_io_delay_us": bench_config.apply_io_delay_us,
         });
         println!("{report}");
         return Ok(());

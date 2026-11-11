@@ -73,6 +73,80 @@ What these numbers do not show:
 - Application costs. The state machine is empty; application reads, disk I/O, and network
   transport add their own costs.
 
+### Apply-path delays
+
+These runs measure how the state-machine worker handles a slow log read and slow
+state-machine I/O. `--apply-read-delay-us` delays the log read that loads each apply batch
+(`entries_stream()`); replication reads are not delayed. `--apply-io-delay-us` delays the end of
+each `apply()` call, and the client responses wait for it. Both delays occupy a blocking-pool
+thread, so they keep sub-millisecond accuracy.
+
+`make bench_apply_delays` in the repo root reproduces the whole table: it runs
+`scripts/apply_delays.py`, which builds `bench`, runs every row three times under
+`/usr/bin/time`, and prints the table below. `--runs N` changes the number of runs, and
+`--raw FILE` saves every run as a JSON line.
+
+Setup: Apple M3 Max, macOS 14.5, three voters in one process, in-memory storage, no network
+delay, one client worker thread, 16 server threads, 1,024 warmup writes, default `Config` of this
+benchmark. 256 clients did 30,000 writes per run, one client did 2,000. The table shows medians
+of three runs. Memory and context switches come from `/usr/bin/time -l` for the whole process.
+
+| clients | read µs | I/O µs | writes/s  | p50 µs | p99 µs  | apply cmds | entries/apply p50, p90 | max RSS MB | invol. ctx switches |
+| --:     | --:     | --:    | --:       | --:    | --:     | --:        | --:                    | --:        | --:                 |
+|     256 |       0 |      0 | 1,863,377 |    128 |     259 |      1,282 |                 1, 107 |       43.0 |               8,187 |
+|     256 |     500 |      0 |     6,728 | 38,397 |  66,569 |      7,835 |                   2, 9 |       43.5 |             131,098 |
+|     256 |       0 |    500 |     7,814 | 33,912 |  59,449 |      6,726 |                  3, 10 |       44.2 |             110,948 |
+|     256 |     500 |    500 |     4,148 | 67,788 | 111,905 |      6,484 |                  2, 10 |       43.9 |             183,191 |
+|     256 |   1,000 |      0 |     3,700 | 71,875 | 119,734 |      6,951 |                  2, 11 |       44.8 |             120,213 |
+|     256 |       0 |  1,000 |     3,732 | 76,521 | 116,968 |      7,302 |                   3, 9 |       44.4 |             123,746 |
+|       1 |       0 |      0 |    36,727 |     26 |      46 |      3,025 |                   1, 1 |       38.6 |              17,802 |
+|       1 |     500 |      0 |     1,446 |    690 |     776 |      3,025 |                   1, 1 |       39.5 |              52,233 |
+|       1 |       0 |    500 |     1,444 |    690 |     758 |      3,025 |                   1, 1 |       39.3 |              51,955 |
+|       1 |     500 |    500 |       727 |  1,350 |   1,762 |      3,025 |                   1, 1 |       39.8 |              83,757 |
+|       1 |   1,000 |      0 |       741 |  1,326 |   2,133 |      3,025 |                   1, 1 |       39.9 |              53,408 |
+|       1 |       0 |  1,000 |       722 |  1,332 |   2,635 |      3,025 |                   1, 1 |       39.9 |              52,975 |
+
+"apply cmds" counts the leader's `SaveCommittedAndApply` commands, warmup included.
+
+The worker runs one apply batch at a time, so the two delays add up. 500 µs of read plus
+500 µs of I/O performs about like a single 1,000 µs delay: 4,148 against 3,700 to 3,732 writes/s
+with 256 clients, and 727 against 722 to 741 with one. If the read of a batch overlapped the I/O
+of the previous one, each batch would cost about 500 µs.
+
+The reference point for overlapping reads and I/O is the pair of rows with 500 µs of read and
+500 µs of I/O: 4,148 writes/s and 68 ms p50 with 256 clients, 727 writes/s with one client. The
+rows with a single 500 µs delay are the upper bound that full overlap could reach: 6,728 to
+7,814 writes/s with 256 clients, 1.6 to 1.9 times the reference, and about 1,445 writes/s with
+one client, 2 times the reference.
+
+The medians vary between runs of the whole grid. In two runs on the same machine, the
+256-client medians with delays differed by up to 23% in writes/s and up to 34% in p50 latency.
+To measure a change, run `make bench_apply_delays` before and after it on the same idle machine,
+rather than comparing against the numbers above.
+
+Apply batches stay small under load: with 256 clients the median batch is 2 or 3 entries.
+RaftCore sends one apply command each time the commit index advances, and the queued commands
+are not merged while the worker is busy. Each command pays the full delay. With 500 µs of read
+and 500 µs of I/O, the worker finishes about 750 commands per second after warmup, and a write
+waits behind about 50 of them.
+
+What these numbers do not show:
+
+- Memory cost of the queue. Max RSS stays at 43 to 45 MB in every 256-client run; the queued
+  commands are too small to show up against the fixed cost of three nodes.
+- Task switching inside the runtime. The context-switch counts are whole-process OS counts, and
+  each simulated delay adds a wakeup of a blocking-pool thread, so runs with both delays switch
+  more than runs with one.
+- The 256-client run without delays takes about 16 ms and only serves as a control.
+
+To run one row by hand:
+
+```sh
+cargo build --release --bin bench
+/usr/bin/time -l target/release/bench --latency -c 256 -n 30k \
+  --apply-read-delay-us 500 --apply-io-delay-us 500
+```
+
 
 ## Run it
 
@@ -137,6 +211,8 @@ Build with the default `runtime-stats` feature to inspect the final core message
 --read-await-ready Include the returned linearizer's apply wait (Linearizer::await_ready)
 --allow-read-errors Report read failures separately
 --read-delay-ms   Idle time after warmup, before measurement [default: 0]
+--apply-read-delay-us Delay of the log read that loads each apply batch [default: 0]
+--apply-io-delay-us   State-machine I/O delay of each apply batch [default: 0]
 ```
 
 Numbers support underscores and unit suffixes: `1_000`, `100k`, `20m`, `1g`

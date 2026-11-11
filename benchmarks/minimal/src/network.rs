@@ -40,6 +40,8 @@ pub struct Router {
     append_delay: Duration,
     flush_delay: Duration,
     network_delay: Duration,
+    apply_read_delay: Duration,
+    apply_io_delay: Duration,
 }
 
 impl Router {
@@ -49,6 +51,8 @@ impl Router {
             append_delay: Duration::ZERO,
             flush_delay: Duration::ZERO,
             network_delay: Duration::ZERO,
+            apply_read_delay: Duration::ZERO,
+            apply_io_delay: Duration::ZERO,
         }
     }
 
@@ -61,6 +65,14 @@ impl Router {
         router
     }
 
+    /// Set the simulated delays of the state-machine apply path: the log read that loads each
+    /// apply batch, and the state-machine I/O of each `apply()` call.
+    pub fn with_apply_delays(mut self, read_delay: Duration, io_delay: Duration) -> Self {
+        self.apply_read_delay = read_delay;
+        self.apply_io_delay = io_delay;
+        self
+    }
+
     pub fn get_raft(&self, id: NodeId) -> BenchRaft {
         self.table.lock().unwrap().get(&id).unwrap().clone()
     }
@@ -71,8 +83,10 @@ impl Router {
 
         for id in voter_ids.iter() {
             let log_store = LogStore::with_delays(self.append_delay, self.flush_delay);
+            let log_store = log_store.with_apply_read_delay(self.apply_read_delay);
             let log_store = Arc::new(log_store);
-            let sm = Arc::new(StateMachineStore::new());
+            let sm = StateMachineStore::new().with_apply_io_delay(self.apply_io_delay);
+            let sm = Arc::new(sm);
 
             let raft = Raft::new(*id, config.clone(), self.clone(), log_store, sm).await?;
 

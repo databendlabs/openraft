@@ -152,6 +152,10 @@ BENCH_ARGS ?= --client-workers 1 --server-workers 16 --clients 1024 --operations
 bench_write_latency:
 	cargo run --manifest-path benchmarks/minimal/Cargo.toml --release --no-default-features --bin bench -- --latency $(BENCH_ARGS)
 
+# Reproduce the "Apply-path delays" table in benchmarks/minimal/README.md.
+bench_apply_delays:
+	python3 benchmarks/minimal/scripts/apply_delays.py
+
 test-bench-minimal:
 	cargo test --manifest-path benchmarks/minimal/Cargo.toml --all-targets
 	cargo test --manifest-path benchmarks/minimal/Cargo.toml --all-targets --no-default-features
