@@ -1121,15 +1121,20 @@ async fn bounded_worker_error_stops_core() -> Result<()> {
         drop(release);
         let wait = n0.wait(Some(WAIT_TIMEOUT));
         let metrics = wait.state(ServerState::Shutdown, "worker error stops the core").await?;
-        let source = io::Error::other(APPLY_ERROR);
-        let source = TypeConfig::err_from_error(&source);
-        let failed_log_id = log_id(1, 0, log_index + 1);
-        let error = StorageError::apply(failed_log_id, source);
-        let worker_error = Err(Fatal::StorageError(error));
+        // The error names the last log id of the failed batch. The worker merges the waiting
+        // write's command into the batch if it reached the channel before the worker took the
+        // queued one.
+        let apply_error = |index: u64| {
+            let source = io::Error::other(APPLY_ERROR);
+            let source = TypeConfig::err_from_error(&source);
+            let failed_log_id = log_id(1, 0, index);
+            let error = StorageError::apply(failed_log_id, source);
+            Err(Fatal::StorageError(error))
+        };
         let source = TypeConfig::err_from_string("cannot send to sm::Worker");
         let error = StorageError::write_state_machine(source);
         let send_error = Err(Fatal::StorageError(error));
-        let expected = [worker_error, send_error];
+        let expected = [apply_error(log_index + 1), apply_error(log_index + 2), send_error];
         let expected_error = expected.contains(&metrics.running_state);
         assert!(expected_error, "unexpected running state: {:?}", metrics.running_state);
         for completed in completions {

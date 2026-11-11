@@ -89,34 +89,42 @@ thread, so they keep sub-millisecond accuracy.
 Setup: Apple M3 Max, macOS 14.5, three voters in one process, in-memory storage, no network
 delay, one client worker thread, 16 server threads, 1,024 warmup writes, default `Config` of this
 benchmark. 256 clients did 30,000 writes per run, one client did 2,000. The table shows medians
-of three runs. Memory and context switches come from `/usr/bin/time -l` for the whole process.
+of three runs, taken while other processes kept the load average around 13. Memory and context
+switches come from `/usr/bin/time -l` for the whole process.
 
-| clients | read µs | I/O µs | writes/s  | p50 µs | p99 µs  | apply cmds | entries/apply p50, p90 | max RSS MB | invol. ctx switches |
-| --:     | --:     | --:    | --:       | --:    | --:     | --:        | --:                    | --:        | --:                 |
-|     256 |       0 |      0 | 1,863,377 |    128 |     259 |      1,282 |                 1, 107 |       43.0 |               8,187 |
-|     256 |     500 |      0 |     6,728 | 38,397 |  66,569 |      7,835 |                   2, 9 |       43.5 |             131,098 |
-|     256 |       0 |    500 |     7,814 | 33,912 |  59,449 |      6,726 |                  3, 10 |       44.2 |             110,948 |
-|     256 |     500 |    500 |     4,148 | 67,788 | 111,905 |      6,484 |                  2, 10 |       43.9 |             183,191 |
-|     256 |   1,000 |      0 |     3,700 | 71,875 | 119,734 |      6,951 |                  2, 11 |       44.8 |             120,213 |
-|     256 |       0 |  1,000 |     3,732 | 76,521 | 116,968 |      7,302 |                   3, 9 |       44.4 |             123,746 |
-|       1 |       0 |      0 |    36,727 |     26 |      46 |      3,025 |                   1, 1 |       38.6 |              17,802 |
-|       1 |     500 |      0 |     1,446 |    690 |     776 |      3,025 |                   1, 1 |       39.5 |              52,233 |
-|       1 |       0 |    500 |     1,444 |    690 |     758 |      3,025 |                   1, 1 |       39.3 |              51,955 |
-|       1 |     500 |    500 |       727 |  1,350 |   1,762 |      3,025 |                   1, 1 |       39.8 |              83,757 |
-|       1 |   1,000 |      0 |       741 |  1,326 |   2,133 |      3,025 |                   1, 1 |       39.9 |              53,408 |
-|       1 |       0 |  1,000 |       722 |  1,332 |   2,635 |      3,025 |                   1, 1 |       39.9 |              52,975 |
+| clients | read µs | I/O µs | writes/s  | p50 µs | p99 µs | apply cmds | entries/apply p50, p90 | max RSS MB | invol. ctx switches |
+| --:     | --:     | --:    | --:       | --:    | --:    | --:        | --:                    | --:        | --:                 |
+|     256 |       0 |      0 | 1,849,027 |    127 |    327 |      1,291 |                 1, 108 |       43.2 |               8,802 |
+|     256 |     500 |      0 |   160,930 |  1,593 |  1,750 |      1,389 |                 1, 102 |       44.1 |              22,349 |
+|     256 |       0 |    500 |   156,011 |  1,608 |  2,198 |      1,353 |                 1, 105 |       46.6 |              21,755 |
+|     256 |     500 |    500 |    82,416 |  3,100 |  4,050 |      1,374 |                 1, 102 |       46.1 |              35,492 |
+|     256 |   1,000 |      0 |    79,639 |  3,100 |  5,424 |      1,393 |                  1, 99 |       45.4 |              22,964 |
+|     256 |       0 |  1,000 |    83,955 |  3,085 |  3,237 |      1,349 |                 1, 101 |       44.4 |              22,031 |
+|       1 |       0 |      0 |    35,861 |     26 |     50 |      3,025 |                   1, 1 |       38.6 |              16,343 |
+|       1 |     500 |      0 |     1,145 |    829 |  1,762 |      3,025 |                   1, 1 |       39.8 |              50,546 |
+|       1 |       0 |    500 |     1,266 |    795 |    847 |      3,025 |                   1, 1 |       39.6 |              55,746 |
+|       1 |     500 |    500 |       622 |  1,586 |  1,933 |      3,025 |                   1, 1 |       39.9 |              83,433 |
+|       1 |   1,000 |      0 |       635 |  1,564 |  2,066 |      3,025 |                   1, 1 |       39.8 |              53,668 |
+|       1 |       0 |  1,000 |       640 |  1,562 |  1,973 |      3,025 |                   1, 1 |       39.9 |              54,084 |
 
-"apply cmds" counts the leader's `SaveCommittedAndApply` commands, warmup included.
+"apply cmds" counts the `SaveCommittedAndApply` commands the leader's RaftCore sends, warmup
+included, and "entries/apply" is the size of those commands. The worker merges queued commands
+before applying them, which these two columns do not show.
 
-The worker runs one apply batch at a time, so the two delays add up. 500 µs of read plus
-500 µs of I/O performs about like a single 1,000 µs delay: 4,148 against 3,700 to 3,732 writes/s
-with 256 clients, and 727 against 722 to 741 with one. If the read of a batch overlapped the I/O
-of the previous one, each batch would cost about 500 µs.
+RaftCore sends one apply command each time the commit index advances. When the worker takes a
+command, it also takes the apply commands already queued right after it and applies the whole
+range with one `entries_stream()` call and one `apply()` call. Under load, the per-call delays
+are then shared by every entry committed while the previous batch was applying.
+
+The worker still runs one batch at a time, so the two delays add up. 500 µs of read plus
+500 µs of I/O performs about like a single 1,000 µs delay: 82,416 against 79,639 to 83,955
+writes/s with 256 clients, and 622 against 635 to 640 with one. If the read of a batch overlapped
+the I/O of the previous one, each batch would cost about 500 µs.
 
 The reference point for overlapping reads and I/O is the pair of rows with 500 µs of read and
-500 µs of I/O: 4,148 writes/s and 68 ms p50 with 256 clients, 727 writes/s with one client. The
-rows with a single 500 µs delay are the upper bound that full overlap could reach: 6,728 to
-7,814 writes/s with 256 clients, 1.6 to 1.9 times the reference. With one client no
+500 µs of I/O: 82,416 writes/s and 3.1 ms p50 with 256 clients, 622 writes/s with one client. The
+rows with a single 500 µs delay are the upper bound that full overlap could reach: 156,011 to
+160,930 writes/s with 256 clients, about 1.9 times the reference. With one client no
 cross-batch mechanism can help: only one write is in flight, so there is never a next batch to
 overlap.
 
@@ -125,19 +133,15 @@ The medians vary between runs of the whole grid. In two runs on the same machine
 To measure a change, run `make bench_apply_delays` before and after it on the same idle machine,
 rather than comparing against the numbers above.
 
-Apply batches stay small under load: with 256 clients the median batch is 2 or 3 entries.
-RaftCore sends one apply command each time the commit index advances, and the queued commands
-are not merged while the worker is busy. Each command pays the full delay. With 500 µs of read
-and 500 µs of I/O, the worker finishes about 750 commands per second after warmup, and a write
-waits behind about 50 of them.
-
 What these numbers do not show:
 
-- Memory cost of the queue. Max RSS stays at 43 to 45 MB in every 256-client run; the queued
-  commands are too small to show up against the fixed cost of three nodes.
+- Memory cost of large batches. Max RSS stays at 43 to 47 MB in every 256-client run; the
+  entries of one batch are too small to show up against the fixed cost of three nodes.
 - Task switching inside the runtime. The context-switch counts are whole-process OS counts, and
   each simulated delay adds a wakeup of a blocking-pool thread, so runs with both delays switch
   more than runs with one.
+- Costs that grow with the number of entries. Both simulated delays are fixed per call, so
+  merging spreads them over every entry of a batch; a per-entry cost would not shrink.
 - The 256-client run without delays takes about 16 ms and only serves as a control.
 
 To run one row by hand:
