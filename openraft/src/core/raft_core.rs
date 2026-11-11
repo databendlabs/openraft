@@ -2049,6 +2049,7 @@ where
                     );
                 }
             }
+            ExternalCommand::Tick => self.handle_tick("external-tick"),
         }
     }
 
@@ -2133,7 +2134,7 @@ where
                 }
             }
 
-            Notification::Tick { i } => self.handle_tick(i),
+            Notification::Tick { i } => self.handle_tick(format_args!("tick-{i}")),
             Notification::StorageError { error } => {
                 tracing::error!("RaftCore received Notification::StorageError: {}", error);
                 return Err(Fatal::StorageError(error));
@@ -2171,13 +2172,15 @@ where
         Ok(())
     }
 
-    /// Handle [`Notification::Tick`]: check the election timer and, if leading, the heartbeat
-    /// timer.
-    fn handle_tick(&mut self, i: u64) {
+    /// Handle [`Notification::Tick`] and [`ExternalCommand::Tick`]: check the election timer and,
+    /// if leading, the heartbeat timer.
+    ///
+    /// `emitter` names the tick source in log messages.
+    fn handle_tick(&mut self, emitter: impl fmt::Display) {
         // check every timer
 
         let now = C::now();
-        tracing::debug!("received tick: {}, now: {}", i, now.display());
+        tracing::debug!("received {}, now: {}", emitter, now.display());
 
         self.handle_tick_election();
 
@@ -2187,7 +2190,7 @@ where
             && now >= t
         {
             if self.runtime_config.enable_heartbeat.load(Ordering::Relaxed) {
-                self.send_heartbeat("tick");
+                self.send_heartbeat(&emitter);
             }
 
             // Install next heartbeat
