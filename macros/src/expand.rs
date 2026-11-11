@@ -1,9 +1,12 @@
 use std::collections::HashSet;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::mem::Discriminant;
 
 use proc_macro2::Ident;
+use proc_macro2::TokenStream;
+use proc_macro2::TokenTree;
 use quote::ToTokens;
-use quote::quote;
-use syn::__private::TokenStream2;
 use syn::Attribute;
 use syn::Expr;
 use syn::ExprTuple;
@@ -13,83 +16,55 @@ use syn::parenthesized;
 use syn::parse::Parse;
 use syn::parse::ParseStream;
 
-/// A type or an expression which is used as an argument in the `expand` macro.
+/// One argument of a rendering tuple: the tokens that replace a template variable.
 #[derive(Debug, Clone)]
-enum TypeOrExpr {
+enum Arg {
     Attribute(Vec<Attribute>),
     Type(Type),
     Expr(Expr),
-    Tokens(TokenStream2),
+    Tokens(TokenStream),
     Empty,
 }
 
-impl std::hash::Hash for TypeOrExpr {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        match self {
-            TypeOrExpr::Attribute(attrs) => {
-                std::mem::discriminant(self).hash(state);
-                for attr in attrs {
-                    attr.to_token_stream().to_string().hash(state);
-                }
-            }
-            TypeOrExpr::Type(t) => {
-                std::mem::discriminant(self).hash(state);
-                t.to_token_stream().to_string().hash(state);
-            }
-            TypeOrExpr::Expr(e) => {
-                std::mem::discriminant(self).hash(state);
-                e.to_token_stream().to_string().hash(state);
-            }
-            TypeOrExpr::Tokens(ts) => {
-                std::mem::discriminant(self).hash(state);
-                ts.to_string().hash(state);
-            }
-            TypeOrExpr::Empty => {
-                std::mem::discriminant(self).hash(state);
-            }
-        }
+impl Arg {
+    /// The identity used to deduplicate `KEYED` tuples: the variant and the argument's tokens.
+    fn key(&self) -> (Discriminant<Self>, String) {
+        (std::mem::discriminant(self), self.to_token_stream().to_string())
     }
 }
 
-impl PartialEq for TypeOrExpr {
+impl Hash for Arg {
+    fn hash<H>(&self, state: &mut H)
+    where H: Hasher {
+        self.key().hash(state)
+    }
+}
+
+impl PartialEq for Arg {
     fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (TypeOrExpr::Attribute(a1), TypeOrExpr::Attribute(a2)) => {
-                a1.iter().map(|a| a.to_token_stream().to_string()).collect::<Vec<_>>()
-                    == a2.iter().map(|a| a.to_token_stream().to_string()).collect::<Vec<_>>()
-            }
-            (TypeOrExpr::Type(t1), TypeOrExpr::Type(t2)) => {
-                t1.to_token_stream().to_string() == t2.to_token_stream().to_string()
-            }
-            (TypeOrExpr::Expr(e1), TypeOrExpr::Expr(e2)) => {
-                e1.to_token_stream().to_string() == e2.to_token_stream().to_string()
-            }
-            (TypeOrExpr::Tokens(ts1), TypeOrExpr::Tokens(ts2)) => ts1.to_string() == ts2.to_string(),
-            (TypeOrExpr::Empty, TypeOrExpr::Empty) => true,
-            _ => false,
-        }
+        self.key() == other.key()
     }
 }
 
-impl Eq for TypeOrExpr {}
+impl Eq for Arg {}
 
-impl ToTokens for TypeOrExpr {
-    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+impl ToTokens for Arg {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
-            TypeOrExpr::Attribute(attrs) => {
+            Arg::Attribute(attrs) => {
                 for a in attrs {
                     a.to_tokens(tokens)
                 }
             }
-            TypeOrExpr::Type(t) => t.to_tokens(tokens),
-            TypeOrExpr::Expr(e) => e.to_tokens(tokens),
-            TypeOrExpr::Tokens(ts) => tokens.extend(ts.clone()),
-            TypeOrExpr::Empty => {}
+            Arg::Type(t) => t.to_tokens(tokens),
+            Arg::Expr(e) => e.to_tokens(tokens),
+            Arg::Tokens(ts) => tokens.extend(ts.clone()),
+            Arg::Empty => {}
         }
     }
 }
 
-impl Parse for TypeOrExpr {
+impl Parse for Arg {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let res = input.call(Attribute::parse_outer);
         if let Ok(r) = res
@@ -106,7 +81,7 @@ impl Parse for TypeOrExpr {
 
         // Collect all tokens until comma at angle-bracket depth 0
         // This handles generics correctly: Type<A, B> won't split at the inner comma
-        let mut tokens = TokenStream2::new();
+        let mut tokens = TokenStream::new();
         let mut angle_depth = 0i32;
 
         while !input.is_empty() {
@@ -115,10 +90,10 @@ impl Parse for TypeOrExpr {
                 break;
             }
 
-            let token = input.parse::<proc_macro2::TokenTree>()?;
+            let token = input.parse::<TokenTree>()?;
 
             // Track angle bracket depth
-            if let proc_macro2::TokenTree::Punct(ref punct) = token {
+            if let TokenTree::Punct(ref punct) = token {
                 match punct.as_char() {
                     '<' => angle_depth += 1,
                     '>' => angle_depth -= 1,
@@ -150,106 +125,89 @@ impl Parse for TypeOrExpr {
     }
 }
 
+/// The parsed input of `expand!`: a template and the argument tuples to render it with.
 pub(crate) struct Expand {
-    /// Whether to deduplicate by the first argument as key.
-    pub(crate) keyed: bool,
+    /// The template variables, in the order their arguments appear in each tuple.
+    variables: Vec<String>,
 
-    /// The template variables
-    pub(crate) idents: Vec<String>,
+    /// The template body, without its braces.
+    template: TokenStream,
 
-    /// Template in tokens
-    pub(crate) template: TokenStream2,
-
-    /// Multiple arguments lists for rendering the template
-    args_list: Vec<Vec<TypeOrExpr>>,
-
-    /// The keys that have been present in one of the `args_list`.
-    /// It is used for deduplication, if `keyed` is true.
-    present_keys: HashSet<TypeOrExpr>,
+    /// One argument tuple per rendering, after `KEYED` deduplication.
+    arg_tuples: Vec<Vec<Arg>>,
 }
 
 impl Expand {
-    pub(crate) fn render(&self) -> TokenStream2 {
-        let mut output_tokens = TokenStream2::new();
+    pub(crate) fn render(&self) -> TokenStream {
+        let mut output = TokenStream::new();
 
-        for values in self.args_list.iter() {
+        for args in self.arg_tuples.iter() {
             for t in self.template.clone().into_iter() {
-                if let proc_macro2::TokenTree::Ident(ident) = t {
+                if let TokenTree::Ident(ident) = t {
                     let ident_str = ident.to_string();
 
-                    let ident_index = self.idents.iter().position(|x| x == &ident_str);
-                    if let Some(ident_index) = ident_index {
-                        let replacement = &values[ident_index];
-                        output_tokens.extend(replacement.to_token_stream());
+                    let variable_index = self.variables.iter().position(|x| x == &ident_str);
+                    if let Some(variable_index) = variable_index {
+                        output.extend(args[variable_index].to_token_stream());
                     } else {
-                        output_tokens.extend(ident.into_token_stream());
+                        output.extend(ident.into_token_stream());
                     }
                 } else {
-                    output_tokens.extend(t.into_token_stream());
+                    output.extend(t.into_token_stream());
                 }
             }
         }
 
-        quote! {
-            #output_tokens
-        }
+        output
     }
 }
 
 impl Parse for Expand {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let mut b = Expand {
-            keyed: true,
-            idents: vec![],
-            template: Default::default(),
-            args_list: vec![],
-            present_keys: Default::default(),
-        };
-
         // KEYED, or !KEYED,
-        {
-            let not = input.parse::<Token![!]>();
-            let not_keyed = not.is_ok();
+        let keyed = {
+            let not_keyed = input.parse::<Token![!]>().is_ok();
 
             let keyed_lit = input.parse::<Ident>()?;
             if keyed_lit != "KEYED" {
                 return Err(syn::Error::new_spanned(&keyed_lit, "Expected KEYED"));
             };
-            b.keyed = !not_keyed;
-        }
+            !not_keyed
+        };
 
         input.parse::<Token![,]>()?;
 
         // Template variables:
         // (K, V...)
 
-        let idents_tuple = input.parse::<ExprTuple>()?;
+        let variables_tuple = input.parse::<ExprTuple>()?;
+        let mut variables = vec![];
 
-        for expr in idents_tuple.elems.iter() {
+        for expr in variables_tuple.elems.iter() {
             let Expr::Path(p) = expr else {
                 return Err(syn::Error::new_spanned(expr, "Expected path"));
             };
 
             let segment = p.path.segments.first().ok_or_else(|| syn::Error::new_spanned(p, "Expected ident"))?;
-            let ident = segment.ident.to_string();
-
-            b.idents.push(ident);
+            variables.push(segment.ident.to_string());
         }
 
         // Template body
         // => { ... }
-        {
-            input.parse::<Token![=>]>()?;
+        input.parse::<Token![=>]>()?;
 
-            let brace_group = input.parse::<proc_macro2::TokenTree>()?;
-            let proc_macro2::TokenTree::Group(tree) = brace_group else {
-                return Err(syn::Error::new_spanned(brace_group, "Expected { ... }"));
-            };
-            b.template = tree.stream();
-        }
+        let brace_group = input.parse::<TokenTree>()?;
+        let TokenTree::Group(tree) = brace_group else {
+            return Err(syn::Error::new_spanned(brace_group, "Expected { ... }"));
+        };
+        let template = tree.stream();
 
         // List of arguments tuples for rendering the template
         // , (K1, V1...)...
+
+        let mut arg_tuples = vec![];
+        // The first arguments of the tuples kept so far, consulted only when `keyed`.
+        let mut seen_keys = HashSet::new();
 
         loop {
             if input.is_empty() {
@@ -264,50 +222,50 @@ impl Parse for Expand {
 
             // A tuple of arguments for each rendering
             // (K1, V1, V2...)
-            {
-                let content;
-                let _parenthesis = parenthesized!(content in input);
-                let content_str = content.to_string();
-                let content_span = content.span();
+            let content;
+            let _parenthesis = parenthesized!(content in input);
+            let content_str = content.to_string();
+            let content_span = content.span();
 
-                let k = content.parse::<TypeOrExpr>()?;
-                let mut args = vec![k.clone()];
+            let key = content.parse::<Arg>()?;
+            let mut args = vec![key.clone()];
 
-                loop {
-                    if content.is_empty() {
-                        break;
-                    }
-
-                    content.parse::<Token![,]>()?;
-
-                    if content.is_empty() {
-                        break;
-                    }
-
-                    let v = content.parse::<TypeOrExpr>()?;
-                    args.push(v);
+            loop {
+                if content.is_empty() {
+                    break;
                 }
 
-                if args.len() != b.idents.len() {
-                    return Err(syn::Error::new(
-                        content_span,
-                        format!(
-                            "Expected the same number of arguments(`{}`) as template variables(`{:?}`)",
-                            content_str, b.idents
-                        ),
-                    ));
+                content.parse::<Token![,]>()?;
+
+                if content.is_empty() {
+                    break;
                 }
 
-                // Ignore duplicates if keyed
-                if b.present_keys.contains(&k) && b.keyed {
-                    continue;
-                }
-
-                b.present_keys.insert(k);
-                b.args_list.push(args);
+                args.push(content.parse::<Arg>()?);
             }
+
+            if args.len() != variables.len() {
+                return Err(syn::Error::new(
+                    content_span,
+                    format!(
+                        "Expected the same number of arguments(`{}`) as template variables(`{:?}`)",
+                        content_str, variables
+                    ),
+                ));
+            }
+
+            // Under `KEYED`, keep only the first tuple for each key.
+            if keyed && !seen_keys.insert(key) {
+                continue;
+            }
+
+            arg_tuples.push(args);
         }
 
-        Ok(b)
+        Ok(Expand {
+            variables,
+            template,
+            arg_tuples,
+        })
     }
 }

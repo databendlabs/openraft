@@ -245,8 +245,8 @@ fn do_since(args: TokenStream, item: TokenStream) -> Result<TokenStream, syn::Er
 /// ```
 #[proc_macro]
 pub fn expand(item: TokenStream) -> TokenStream {
-    let repeat = parse_macro_input!(item as expand::Expand);
-    repeat.render().into()
+    let input = parse_macro_input!(item as expand::Expand);
+    input.render().into()
 }
 
 /// Derive `COUNT`, `ALL`, `index()`, `as_str()` and `Display` for an enum that names the
