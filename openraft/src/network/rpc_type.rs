@@ -3,11 +3,12 @@ use std::fmt;
 use openraft_macros::since;
 
 /// Types of RPC requests in the Raft protocol.
-#[since]
+#[since(version = "0.10.1", change = "marked #[non_exhaustive]")]
 #[derive(Debug, Clone, Copy)]
 #[derive(PartialEq, Eq)]
 #[derive(Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[non_exhaustive]
 pub enum RPCTypes {
     /// Vote request RPC.
     Vote,

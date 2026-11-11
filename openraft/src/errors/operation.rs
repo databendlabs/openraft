@@ -1,12 +1,16 @@
 use std::fmt;
 
+use openraft_macros::since;
+
 /// API level operation that can be executed on a Raft node.
 ///
 /// These commands represent operations that affect the Raft node's behavior or state. They are
 /// primarily used in error reporting to provide context about what operation was attempted when an
 /// error occurred.
+#[since(version = "0.10.1", change = "marked #[non_exhaustive]")]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[non_exhaustive]
 pub enum Operation {
     /// An unknown operation.
     None,

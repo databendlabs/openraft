@@ -1,5 +1,7 @@
 use std::fmt;
 
+use openraft_macros::since;
+
 use crate::RaftTypeConfig;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LogIdOf;
@@ -67,10 +69,12 @@ where C: RaftTypeConfig
 }
 
 /// What it is doing when an error occurs.
+#[since(version = "0.10.1", change = "marked #[non_exhaustive]")]
 #[derive(Debug)]
 #[derive(Clone, Copy)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[non_exhaustive]
 pub enum ErrorVerb {
     /// Reading data.
     Read,

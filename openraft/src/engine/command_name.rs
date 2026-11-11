@@ -1,9 +1,12 @@
 use openraft_macros::VariantName;
+use openraft_macros::since;
 
 /// Enum representing the name of each `sm::Command` variant.
+#[since(version = "0.10.1", change = "marked #[non_exhaustive]")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[derive(VariantName)]
 #[variant_name(prefix = "SM::")]
+#[non_exhaustive]
 pub enum SMCommandName {
     /// Build a snapshot from the state machine's latest state.
     BuildSnapshot,
@@ -21,8 +24,10 @@ pub enum SMCommandName {
 ///
 /// This provides an efficient way to identify command types without
 /// string comparisons, useful for logging, metrics, and debugging.
+#[since(version = "0.10.1", change = "marked #[non_exhaustive]")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[derive(VariantName)]
+#[non_exhaustive]
 pub enum CommandName {
     /// Update the IO progress without submitting IO.
     UpdateIOProgress,

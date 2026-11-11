@@ -2,10 +2,12 @@ use openraft_macros::VariantName;
 use openraft_macros::since;
 
 /// Enum representing the name of each `ExternalCommand` variant.
+#[since(version = "0.10.1", change = "marked #[non_exhaustive]")]
 #[since(version = "0.10.0", change = "added ResetBackoff variant")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[derive(VariantName)]
 #[variant_name(prefix = "Ext::")]
+#[non_exhaustive]
 pub enum ExternalCommandName {
     /// Start an election.
     Elect,
@@ -34,9 +36,10 @@ pub enum ExternalCommandName {
 /// than as a `RaftMsg` variant, but is still recorded here for runtime stats.
 ///
 /// This provides an efficient way to identify message types without string comparisons.
-#[since]
+#[since(version = "0.10.1", change = "marked #[non_exhaustive]")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[derive(VariantName)]
+#[non_exhaustive]
 pub enum RaftMsgName {
     /// An AppendEntries request.
     AppendEntries,
