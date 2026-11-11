@@ -116,8 +116,9 @@ of the previous one, each batch would cost about 500 µs.
 The reference point for overlapping reads and I/O is the pair of rows with 500 µs of read and
 500 µs of I/O: 4,148 writes/s and 68 ms p50 with 256 clients, 727 writes/s with one client. The
 rows with a single 500 µs delay are the upper bound that full overlap could reach: 6,728 to
-7,814 writes/s with 256 clients, 1.6 to 1.9 times the reference, and about 1,445 writes/s with
-one client, 2 times the reference.
+7,814 writes/s with 256 clients, 1.6 to 1.9 times the reference. With one client no
+cross-batch mechanism can help: only one write is in flight, so there is never a next batch to
+overlap.
 
 The medians vary between runs of the whole grid. In two runs on the same machine, the
 256-client medians with delays differed by up to 23% in writes/s and up to 34% in p50 latency.
