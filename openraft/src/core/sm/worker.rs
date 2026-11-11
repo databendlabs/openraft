@@ -49,6 +49,9 @@ where
 
     /// Send back the result of the command to RaftCore.
     resp_tx: MpscSenderOf<C, Notification<C>>,
+
+    /// A command taken from `cmd_rx` while merging `Apply` commands; it runs next.
+    next_cmd: Option<Command<C, SM>>,
 }
 
 impl<C, SM, LR> Worker<C, SM, LR>
@@ -74,6 +77,7 @@ where
             log_reader,
             cmd_rx,
             resp_tx,
+            next_cmd: None,
         };
 
         let join_handle = worker.do_spawn(span);
@@ -102,7 +106,10 @@ where
     #[tracing::instrument(level = "debug", skip_all)]
     async fn worker_loop(&mut self) -> Result<(), StorageError<C>> {
         loop {
-            let cmd = self.cmd_rx.recv().await;
+            let cmd = match self.next_cmd.take() {
+                Some(cmd) => Some(cmd),
+                None => self.cmd_rx.recv().await,
+            };
             let cmd = match cmd {
                 None => {
                     tracing::info!("{}: rx closed, state machine worker quit", func_name!());
@@ -148,6 +155,7 @@ where
                     last,
                     client_resp_channels,
                 } => {
+                    let (last, client_resp_channels) = self.merge_queued_applies(last, client_resp_channels);
                     let resp = self.apply(first, last, client_resp_channels).await?;
                     let res = CommandResult::new(Ok(Response::Apply(resp)));
                     self.resp_tx.send(Notification::sm(res)).await.ok();
@@ -159,6 +167,40 @@ where
             };
         }
     }
+    /// Extend an apply range ending at `last` with the `Apply` commands queued right after it.
+    ///
+    /// RaftCore sends one `Apply` each time the committed index advances, so while the state
+    /// machine is busy, many small `Apply` commands queue up. Applying them as one batch pays the
+    /// per-call cost of `entries_stream()` and `apply()` once instead of once per command.
+    ///
+    /// Only commands that are already queued are taken. The first one that is not an `Apply`
+    /// starting at `last + 1` is kept in `next_cmd` and runs next, so commands still run in the
+    /// order RaftCore sent them.
+    fn merge_queued_applies(
+        &mut self,
+        mut last: LogIdOf<C>,
+        mut client_resp_channels: Vec<(u64, CoreResponder<C>)>,
+    ) -> (LogIdOf<C>, Vec<(u64, CoreResponder<C>)>) {
+        while let Some(cmd) = self.cmd_rx.try_recv() {
+            match cmd {
+                Command::Apply {
+                    first: next_first,
+                    last: next_last,
+                    client_resp_channels: next_channels,
+                } if next_first.index() == last.index() + 1 => {
+                    tracing::debug!("merge queued Apply: [{},{}]", next_first, next_last);
+                    last = next_last;
+                    client_resp_channels.extend(next_channels);
+                }
+                cmd => {
+                    self.next_cmd = Some(cmd);
+                    break;
+                }
+            }
+        }
+        (last, client_resp_channels)
+    }
+
     #[tracing::instrument(level = "debug", skip_all)]
     async fn apply(
         &mut self,
@@ -268,3 +310,6 @@ where
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod worker_test;
