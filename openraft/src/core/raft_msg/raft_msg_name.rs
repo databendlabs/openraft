@@ -2,6 +2,7 @@ use openraft_macros::VariantName;
 use openraft_macros::since;
 
 /// Enum representing the name of each `ExternalCommand` variant.
+#[since(version = "0.10.1", change = "added Tick variant")]
 #[since(version = "0.10.0", change = "added ResetBackoff variant")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[derive(VariantName)]
@@ -25,6 +26,9 @@ pub enum ExternalCommandName {
     SetMetricsRecorder,
     /// Recompute the server state from the vote and the membership.
     RefreshServerState,
+    /// Check the election timeout and, on a leader, the heartbeat deadline.
+    #[since(version = "0.10.1")]
+    Tick,
 }
 
 /// Enum naming each Raft message type tracked for logging, metrics, and debugging.
