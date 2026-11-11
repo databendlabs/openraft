@@ -32,4 +32,13 @@ where
             Self::Buffered(receiver) => receiver.recv().await,
         }
     }
+
+    /// Return the next queued command without waiting, or `None` if none is queued.
+    pub(crate) fn try_recv(&mut self) -> Option<Command<C, SM>> {
+        let received = match self {
+            Self::Bounded(receiver) => receiver.try_recv(),
+            Self::Buffered(receiver) => receiver.try_recv(),
+        };
+        received.ok()
+    }
 }
