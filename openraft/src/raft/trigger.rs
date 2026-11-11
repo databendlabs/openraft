@@ -76,6 +76,31 @@ where C: RaftTypeConfig
         self.raft_inner.send_external_command(ExternalCommand::Heartbeat).await
     }
 
+    /// Queue one timer check and return once it is queued.
+    ///
+    /// RaftCore runs the same check that the internal ticker triggers: a node whose election
+    /// timeout has expired starts an election, and a leader whose heartbeat is due sends one
+    /// heartbeat. The check reads the current time when RaftCore handles it. A check before a
+    /// deadline does nothing, and a check after several missed heartbeat intervals sends one
+    /// heartbeat.
+    ///
+    /// Unlike [`Self::elect`] and [`Self::heartbeat`], the check honors `enable_elect` and
+    /// `enable_heartbeat`. It runs whether `enable_tick` is on or off.
+    ///
+    /// With [`Config::enable_tick`] set to `false`, an application can drive many nodes from one
+    /// timer of its own. Timeouts are noticed only when a check runs, so the caller's interval
+    /// adds to the election and heartbeat latency. The internal ticker checks about five times per
+    /// [`Config::heartbeat_interval`]. This call waits while the API channel of this node is full.
+    ///
+    /// Returns error when RaftCore has [`Fatal`] error, e.g., shut down or having storage error.
+    ///
+    /// [`Config::enable_tick`]: crate::Config::enable_tick
+    /// [`Config::heartbeat_interval`]: crate::Config::heartbeat_interval
+    #[since(version = "0.10.1")]
+    pub async fn tick(&self) -> Result<(), Fatal<C>> {
+        self.raft_inner.send_external_command(ExternalCommand::Tick).await
+    }
+
     /// Trigger to build a snapshot at once and return at once.
     ///
     /// Returns error when RaftCore has [`Fatal`] error, e.g., shut down or having storage error.

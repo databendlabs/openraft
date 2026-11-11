@@ -27,7 +27,10 @@ where C: RaftTypeConfig
     ///
     /// Disabling tick will disable election and heartbeat. While disabled, the internal ticker
     /// parks and causes no wakeups; re-enabling it resumes ticking, with the first tick at most
-    /// one tick period later.
+    /// one tick period later. [`Trigger::tick`] still runs a timer check while the internal ticker
+    /// is disabled.
+    ///
+    /// [`Trigger::tick`]: crate::raft::trigger::Trigger::tick
     pub fn tick(&self, enabled: bool) {
         let enable_tick = self.raft_inner.runtime_config.enable_tick.lock().unwrap();
         enable_tick.send_if_different(enabled);

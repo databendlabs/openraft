@@ -91,6 +91,10 @@ where C: RaftTypeConfig
         vote: Option<VoteOf<C>>,
         membership_log_id: Option<LogIdOf<C>>,
     },
+
+    /// Run the timer check that an internal tick runs: the election timeout and, on a leader,
+    /// the heartbeat deadline.
+    Tick,
 }
 
 impl<C> ExternalCommand<C>
@@ -108,6 +112,7 @@ where C: RaftTypeConfig
             ExternalCommand::AllowNextRevert { .. } => ExternalCommandName::AllowNextRevert,
             ExternalCommand::SetMetricsRecorder { .. } => ExternalCommandName::SetMetricsRecorder,
             ExternalCommand::RefreshServerState { .. } => ExternalCommandName::RefreshServerState,
+            ExternalCommand::Tick => ExternalCommandName::Tick,
         }
     }
 }
@@ -168,6 +173,9 @@ where C: RaftTypeConfig
                     vote.display(),
                     membership_log_id.display()
                 )
+            }
+            ExternalCommand::Tick => {
+                write!(f, "Tick")
             }
         }
     }
