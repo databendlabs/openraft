@@ -3,7 +3,9 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::mem::Discriminant;
 
+use proc_macro2::Group;
 use proc_macro2::Ident;
+use proc_macro2::Spacing;
 use proc_macro2::TokenStream;
 use proc_macro2::TokenTree;
 use quote::ToTokens;
@@ -66,11 +68,11 @@ impl ToTokens for Arg {
 
 impl Parse for Arg {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let res = input.call(Attribute::parse_outer);
-        if let Ok(r) = res
-            && !r.is_empty()
-        {
-            return Ok(Self::Attribute(r));
+        // Parse outer attributes on a fork first: a failed attempt must not consume the `#` of
+        // an argument such as `#![allow(unused)]`, which the raw-token path below keeps.
+        let fork = input.fork();
+        if fork.call(Attribute::parse_outer).is_ok_and(|attrs| !attrs.is_empty()) {
+            return Ok(Self::Attribute(input.call(Attribute::parse_outer)?));
         }
 
         // Check if empty (next token is comma or end)
@@ -80,9 +82,13 @@ impl Parse for Arg {
         }
 
         // Collect all tokens until comma at angle-bracket depth 0
-        // This handles generics correctly: Type<A, B> won't split at the inner comma
+        // This handles generics correctly: Type<A, B> won't split at the inner comma.
+        // The `>` of `->` and `=>` closes no generics, and a `>` comparison at depth 0 must
+        // not hide the commas after it, so the depth never drops below zero.
         let mut tokens = TokenStream::new();
-        let mut angle_depth = 0i32;
+        let mut angle_depth = 0u32;
+        // Whether the previous token is a `-` or `=` joined to the next one, as in `->` and `=>`.
+        let mut after_joint_arrow_start = false;
 
         while !input.is_empty() {
             // Check if we hit a comma at depth 0 (not inside angle brackets)
@@ -93,13 +99,16 @@ impl Parse for Arg {
             let token = input.parse::<TokenTree>()?;
 
             // Track angle bracket depth
+            let mut arrow_start = false;
             if let TokenTree::Punct(ref punct) = token {
                 match punct.as_char() {
                     '<' => angle_depth += 1,
-                    '>' => angle_depth -= 1,
+                    '>' if !after_joint_arrow_start => angle_depth = angle_depth.saturating_sub(1),
+                    '-' | '=' => arrow_start = punct.spacing() == Spacing::Joint,
                     _ => {}
                 }
             }
+            after_joint_arrow_start = arrow_start;
 
             tokens.extend(std::iter::once(token));
         }
@@ -139,22 +148,32 @@ pub(crate) struct Expand {
 
 impl Expand {
     pub(crate) fn render(&self) -> TokenStream {
+        self.arg_tuples.iter().map(|args| self.substitute(self.template.clone(), args)).collect()
+    }
+
+    /// Replace every template variable in `tokens` with its argument from `args`, including
+    /// variables inside delimited groups.
+    fn substitute(&self, tokens: TokenStream, args: &[Arg]) -> TokenStream {
         let mut output = TokenStream::new();
 
-        for args in self.arg_tuples.iter() {
-            for t in self.template.clone().into_iter() {
-                if let TokenTree::Ident(ident) = t {
+        for t in tokens {
+            match t {
+                TokenTree::Ident(ident) => {
                     let ident_str = ident.to_string();
 
                     let variable_index = self.variables.iter().position(|x| x == &ident_str);
                     if let Some(variable_index) = variable_index {
                         output.extend(args[variable_index].to_token_stream());
                     } else {
-                        output.extend(ident.into_token_stream());
+                        output.extend([TokenTree::Ident(ident)]);
                     }
-                } else {
-                    output.extend(t.into_token_stream());
                 }
+                TokenTree::Group(group) => {
+                    let mut substituted = Group::new(group.delimiter(), self.substitute(group.stream(), args));
+                    substituted.set_span(group.span());
+                    output.extend([TokenTree::Group(substituted)]);
+                }
+                other => output.extend([other]),
             }
         }
 

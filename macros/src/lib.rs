@@ -187,12 +187,21 @@ fn do_since(args: TokenStream, item: TokenStream) -> Result<TokenStream, syn::Er
 /// Render a template with arguments multiple times.
 ///
 /// The template to expand is defined as `(K,V) => { ... }`, where `K` and `V` are template
-/// variables.
+/// variables. Each tuple of arguments after the template renders the body once, with every
+/// occurrence of a variable replaced by the corresponding argument, including occurrences inside
+/// `()`, `[]` and `{}`.
 ///
-/// - The template must contain at least 1 variable.
-/// - If the first macro argument is `KEYED`, the first variable serve as the key for deduplication.
-///   Otherwise, the first macro argument should be `!KEYED`, and no deduplication will be
+/// - The template must contain at least 1 variable. A template with one variable keeps the trailing
+///   comma of a one-element tuple: `(K,)`.
+/// - If the first macro argument is `KEYED`, the first variable serves as the key for
+///   deduplication: among tuples whose first arguments have the same tokens, only the first one is
+///   rendered. Otherwise, the first macro argument should be `!KEYED`, and no deduplication will be
 ///   performed.
+/// - Each tuple has one argument per variable. An argument may be empty, like the second argument
+///   of `(a,,1)`.
+/// - Arguments are separated by commas outside `<...>`, `()`, `[]` and `{}`, so `HashMap<K, V>` is
+///   one argument. A `<` used as an operator, as in `a < b`, also opens `<...>`; wrap such an
+///   argument in parentheses.
 ///
 /// # Example: `KEYED` for deduplication
 ///
