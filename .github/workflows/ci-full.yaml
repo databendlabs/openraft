@@ -1,0 +1,372 @@
+name: full-ci
+
+on:
+  schedule: [cron: '40 1 * * *']
+  workflow_dispatch:
+
+concurrency:
+  group: ci-full-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Full CI plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    outputs:
+      run: ${{ steps.plan.outputs.run }}
+    steps:
+      - name: Check whether full CI is needed
+        id: plan
+        uses: actions/github-script@v7
+        with:
+          script: |
+            let run = true;
+
+            // Only successful runs of this full workflow on this exact
+            // branch and SHA can satisfy the daily run.
+            // Manual runs always run, even if this commit has already passed.
+            if (context.eventName === 'schedule') {
+              for (const event of ['schedule', 'workflow_dispatch']) {
+                const { data } = await github.rest.actions.listWorkflowRuns({
+                  ...context.repo,
+                  workflow_id: 'ci-full.yaml',
+                  branch: context.ref.replace('refs/heads/', ''),
+                  head_sha: context.sha,
+                  event,
+                  status: 'success',
+                  per_page: 1,
+                });
+                if (data.workflow_runs.length > 0) {
+                  run = false;
+                  core.notice(`Skipping full CI: ${context.sha} already passed a full run.`);
+                  break;
+                }
+              }
+            }
+
+            core.setOutput('run', String(run));
+
+  fast:
+    needs: plan
+    if: needs.plan.outputs.run == 'true'
+    uses: ./.github/workflows/ci.yaml
+
+  # Compatibility, examples, and build-only checks run daily or on demand.
+  test-release-build:
+    needs: plan
+    if: needs.plan.outputs.run == 'true'
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      matrix:
+        include:
+          - toolchain: 'nightly'
+            features: 'bench,serde,bt,single-threaded'
+
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+
+      - name: Pin nightly from rust-toolchain
+        if: matrix.toolchain == 'nightly'
+        run: echo "PIN=$(cat rust-toolchain)" >> "$GITHUB_ENV"
+
+      - name: Setup | Toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ matrix.toolchain == 'nightly' && env.PIN || matrix.toolchain }}
+
+      - name: Build | Release Mode
+        run: cargo build --release --features "${{ matrix.features }}" --manifest-path openraft/Cargo.toml
+
+  openraft-test-bench:
+    needs: plan
+    if: needs.plan.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      matrix:
+        include:
+          - toolchain: 'nightly'
+
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+
+      - name: Pin nightly from rust-toolchain
+        if: matrix.toolchain == 'nightly'
+        run: echo "PIN=$(cat rust-toolchain)" >> "$GITHUB_ENV"
+
+      - name: Setup | Toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ matrix.toolchain == 'nightly' && env.PIN || matrix.toolchain }}
+
+      - name: Test build for benchmark
+        run: cargo bench --features bench nothing-to-run --manifest-path openraft/Cargo.toml
+
+  # Test external crate.
+  # benchmarks/minimal is a standalone crate for benchmarking openraft cluster.
+  bench-minimal:
+    needs: plan
+    if: needs.plan.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - crate: 'benchmarks/minimal'
+
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup | Toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Unit Tests
+        run: cargo test --tests nothing --manifest-path "${{ matrix.crate }}/Cargo.toml"
+        env:
+          RUST_LOG: debug
+          RUST_BACKTRACE: full
+
+  # Test external crate.
+  rt-monoio:
+    needs: plan
+    if: needs.plan.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup | Toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Unit Tests
+        run: cargo test --tests --manifest-path "rt-monoio/Cargo.toml"
+        env:
+          RUST_LOG: debug
+          RUST_BACKTRACE: full
+
+  rt-compio:
+    needs: plan
+    if: needs.plan.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup | Toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Unit Tests
+        run: cargo test --tests --manifest-path "rt-compio/Cargo.toml"
+        env:
+          RUST_LOG: debug
+          RUST_BACKTRACE: full
+
+  # tokio's `rt-multi-thread` does not compile for wasm. Build the library
+  # crates for wasm32-wasip1 and run openraft-rt-tokio's tests there, so a
+  # crate or dependency that turns it back on fails here.
+  wasm:
+    needs: plan
+    if: needs.plan.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+
+      # Without `toolchain`, the action installs the nightly pinned in
+      # `rust-toolchain` and adds the target to it.
+      - name: Setup | Toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: wasm32-wasip1
+
+      - name: Install wasmtime
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasmtime
+
+      - name: Check library crates for wasm
+        run: make wasm-check
+
+      - name: Test rt-tokio on wasm
+        run: make test-wasm
+
+  metrics-otel:
+    needs: plan
+    if: needs.plan.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup | Toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Unit Tests
+        run: cargo test --manifest-path "metrics-otel/Cargo.toml"
+        env:
+          RUST_LOG: debug
+          RUST_BACKTRACE: full
+
+  examples:
+    needs: plan
+    if: needs.plan.outputs.run == 'true'
+    # Pinned to Ubuntu 24.04 instead of ubuntu-latest because the distro
+    # librocksdb is the RocksDB version this job compiles against: 24.04 ships
+    # librocksdb 8.9, whose C API still has the deprecated
+    # `rocksdb_options_set_access_hint_on_compaction_start` that the `rocksdb
+    # 0.22` crate calls. A newer Ubuntu ships RocksDB 9+, the symbol is gone,
+    # and bindgen drops it from the bindings, so build and test fail with
+    # "cannot find function `rocksdb_options_set_access_hint_on_compaction_start`".
+    # Move both the `rocksdb` crate version and this pin together.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # RocksDB-backed examples (log-rocks, raft-kv-rocksdb, sm-rocks) were the slowest CI
+    # jobs because librocksdb-sys compiles bundled RocksDB (8.10) C++ from
+    # source. Link the system librocksdb instead so it is not compiled at all;
+    # ROCKSDB_INCLUDE_DIR points bindgen at the system headers so the generated
+    # bindings match the installed lib version (no ABI skew).
+    env:
+      ROCKSDB_LIB_DIR: /usr/lib/x86_64-linux-gnu
+      ROCKSDB_INCLUDE_DIR: /usr/include
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain:
+          - 'stable'
+          - 'nightly'
+        example:
+          - 'dir-transfer'
+          - 'log-fjall'
+          - 'log-mem'
+          - 'log-rocks'
+          - 'log-wal'
+          - 'sm-fjall'
+          - 'sm-rocks'
+          - 'network-v2-http'
+          - 'raft-kv-log-wal-sm-mem'
+          - 'raft-kv-memstore'
+          - 'raft-kv-memstore-grpc'
+          - 'raft-kv-memstore-network-v1'
+          - 'raft-kv-memstore-opendal-snapshot-data'
+          - 'raft-kv-memstore-single-threaded'
+          - 'raft-kv-memstore-weighted-membership'
+          - 'raft-kv-rocksdb'
+          - 'raft-kv-rkyv'
+          - 'multi-raft-kv'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pin nightly from rust-toolchain
+        if: matrix.toolchain == 'nightly'
+        run: echo "PIN=$(cat rust-toolchain)" >> "$GITHUB_ENV"
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ matrix.toolchain == 'nightly' && env.PIN || matrix.toolchain }}
+          components: rustfmt, clippy
+          # Examples are separate workspaces; the default cache only covers the
+          # repo-root target, so examples/*/target was never cached. Point the
+          # cache at this example's own workspace.
+          cache-workspaces: examples/${{ matrix.example }}
+
+      - name: Install system RocksDB
+        if: matrix.example == 'log-rocks' || matrix.example == 'raft-kv-rocksdb' || matrix.example == 'sm-rocks'
+        run: sudo apt-get update && sudo apt-get install -y librocksdb-dev
+
+      # Run the following steps in the exmple dir in order to reuse the `./target` dir.
+
+      - name: Test examples/${{ matrix.example }}
+        shell: bash
+        run: |
+          cd examples/${{ matrix.example }}
+          cargo test
+        env:
+          RUST_LOG: debug
+
+      - name: Test demo script of examples/${{ matrix.example }}
+        # The script is not meant for testing. Just to ensure it works but do not
+        # rely on it. Skip if test-cluster.sh doesn't exist.
+        if: ${{ matrix.toolchain == 'stable' }}
+
+        shell: bash
+        run: |
+          cd examples/${{ matrix.example }}
+          if [ -f test-cluster.sh ]; then
+            ./test-cluster.sh
+          else
+            echo "No test-cluster.sh found, skipping"
+          fi
+
+      - name: Format
+        # clippy/format produces different result with stable and nightly. Only with nightly.
+        if: ${{ matrix.toolchain == 'nightly' }}
+
+        shell: bash
+        run: |
+          cd examples/${{ matrix.example }}
+          cargo fmt --all -- --check
+
+      - name: Clippy
+        # clippy/format produces different result with stable and nightly. Only with nightly.
+        if: ${{ matrix.toolchain == 'nightly' }}
+
+        shell: bash
+        run: |
+          cd examples/${{ matrix.example }}
+          cargo clippy --no-deps --all-targets -- -D warnings
+
+  # Changes under jepsen/ are checked pre-merge by jepsen.yml. This daily
+  # check also catches downstream breakage caused by changes to the core.
+  jepsen-app:
+    needs: plan
+    if: needs.plan.outputs.run == 'true'
+    name: jepsen app
+    # Same system-RocksDB shortcut as the examples job, and therefore the same
+    # Ubuntu 24.04 pin: the distro librocksdb has to keep the RocksDB 8.x C API
+    # that the `rocksdb` crate calls.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # Link the system librocksdb instead of compiling the bundled RocksDB C++
+    # from source.
+    env:
+      ROCKSDB_LIB_DIR: /usr/lib/x86_64-linux-gnu
+      ROCKSDB_INCLUDE_DIR: /usr/include
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt, clippy
+          # The app is excluded from the root workspace, so the default cache
+          # misses its target dir. Cache its own workspace.
+          cache-workspaces: jepsen/openraft-test-app
+
+      - name: Install system RocksDB
+        run: sudo apt-get update && sudo apt-get install -y librocksdb-dev
+
+      - name: Format
+        run: cargo fmt --manifest-path jepsen/openraft-test-app/Cargo.toml -- --check
+
+      - name: Clippy
+        run: cargo clippy --no-deps --manifest-path jepsen/openraft-test-app/Cargo.toml --all-targets -- -D warnings
