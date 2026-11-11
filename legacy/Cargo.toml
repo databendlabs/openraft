@@ -14,8 +14,8 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-openraft = { path = "../openraft", version = "0.10.0", default-features = false }
-openraft-macros = { path = "../macros", version = "0.10.0" }
+openraft = { path = "../openraft", version = "0.10.1", default-features = false }
+openraft-macros = { path = "../macros", version = "0.10.1" }
 
 anyerror = { workspace = true }
 derive_more = { workspace = true }
@@ -30,7 +30,7 @@ tokio = { version = "1.39", default-features = false, features = ["io-util"] }
 tracing = { workspace = true }
 
 [dev-dependencies]
-openraft = { path = "../openraft", version = "0.10.0", default-features = false, features = ["tokio-rt"] }
+openraft = { path = "../openraft", version = "0.10.1", default-features = false, features = ["tokio-rt"] }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["fs"] }
