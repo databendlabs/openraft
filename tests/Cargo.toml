@@ -19,7 +19,7 @@ repository    = { workspace = true }
 [dependencies]
 # Only enables `sim-log`: with `OPENRAFT_SIM_LOG=<file>`, a test on rt-sim writes a reproducible log.
 openraft-rt-sim    = { path = "../rt-sim", features = ["sim-log"], optional = true }
-openraft           = { path = "../openraft", version = "0.10.0", features = ["type-alias"] }
+openraft           = { path = "../openraft", version = "0.10.1", features = ["type-alias"] }
 openraft-memstore  = { path = "../stores/memstore" }
 openraft-legacy    = { path = "../legacy", features = ["serde"] }
 
@@ -34,7 +34,7 @@ tracing-appender   = { workspace = true }
 tracing-subscriber = { workspace = true }
 
 [dev-dependencies]
-openraft-membership = { path = "../membership", version = "0.10.0" }
+openraft-membership = { path = "../membership", version = "0.10.1" }
 
 anyerror           = { workspace = true }
 bincode            = { workspace = true }
