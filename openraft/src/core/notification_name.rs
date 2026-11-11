@@ -8,11 +8,13 @@ use openraft_macros::since;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[derive(VariantName)]
 #[variant_name(prefix = "Notify::")]
+#[since(version = "0.10.1", change = "marked #[non_exhaustive]")]
 #[since(version = "0.10.0", change = "Added `LogPurged`")]
 #[since(
     version = "0.10.0",
     change = "renamed from `CheckPendingLinearizableReads` to `PendingReadDeadlineReached`"
 )]
+#[non_exhaustive]
 pub enum NotificationName {
     /// A response to a vote request.
     VoteResponse,
