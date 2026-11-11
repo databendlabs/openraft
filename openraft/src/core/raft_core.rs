@@ -114,6 +114,7 @@ use crate::raft::linearizable_read::lease_read_state::LeaseReadState;
 use crate::raft::message::TransferLeaderRequest;
 use crate::raft::responder::Responder;
 use crate::raft::responder::core_responder::CoreResponder;
+use crate::raft::tick_driver::DeadlinePublisher;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::io_state::io_id::IOId;
 use crate::raft_state::io_state::log_io_id::LogIOId;
@@ -297,6 +298,15 @@ where
     pub(crate) metrics_recorder: Option<Arc<dyn MetricsRecorder>>,
 
     pub(crate) span: Span,
+
+    /// Publishes this core's next timer deadline when a shared tick driver is registered.
+    ///
+    /// Declared after the notification sender so that sender drops first and closes the channel.
+    /// The publisher then tells the driver that this endpoint is gone.
+    pub(crate) tick_deadline: Option<DeadlinePublisher<C>>,
+
+    /// A shared-driver tick has been handled and its in-flight slot can be released.
+    pub(crate) shared_tick_seen: bool,
 }
 
 /// Selects whether [`RaftCore::spawn_parallel_vote_requests`] sends real Vote or Pre-Vote RPCs.
@@ -314,6 +324,26 @@ impl VoteRequestKind {
             VoteRequestKind::PreVote => "pre-vote",
         }
     }
+}
+
+fn earlier<C>(left: Option<InstantOf<C>>, right: Option<InstantOf<C>>) -> Option<InstantOf<C>>
+where C: RaftTypeConfig {
+    match (left, right) {
+        (Some(left), Some(right)) => Some(std::cmp::min(left, right)),
+        (Some(left), None) => Some(left),
+        (None, Some(right)) => Some(right),
+        (None, None) => None,
+    }
+}
+
+/// The first instant at which `now > threshold` can be true.
+fn instant_after<C>(threshold: InstantOf<C>) -> InstantOf<C>
+where C: RaftTypeConfig {
+    let shifted = threshold + Duration::from_nanos(1);
+    if shifted > threshold {
+        return shifted;
+    }
+    threshold + Duration::from_millis(1)
 }
 
 impl<C, NF, LS, SM> RaftCore<C, NF, LS, SM>
@@ -368,6 +398,8 @@ where
 
         // Initialize metrics.
         self.flush_metrics();
+
+        self.publish_tick_deadline();
 
         self.runtime_loop().await
     }
@@ -1465,6 +1497,8 @@ where
             self.trigger_routine_actions();
 
             self.run_engine_commands().await?;
+
+            self.publish_tick_deadline();
         }
     }
 
@@ -2049,6 +2083,8 @@ where
                     );
                 }
             }
+            ExternalCommand::Tick => self.handle_timer(None),
+            ExternalCommand::RefreshTickDeadline => {}
         }
     }
 
@@ -2171,28 +2207,219 @@ where
         Ok(())
     }
 
+    /// Publish the next instant at which a timer check can do work.
+    ///
+    /// An unchanged deadline does not wake the driver. A shared-driver tick is marked consumed
+    /// only after the new deadline is stored, so the driver cannot deliver another tick against
+    /// the deadline this check just handled.
+    fn publish_tick_deadline(&mut self) {
+        if self.tick_deadline.is_none() {
+            return;
+        }
+        let deadline = self.next_timer_deadline();
+        let seen = self.shared_tick_seen;
+        if let Some(publisher) = &self.tick_deadline {
+            publisher.publish(deadline);
+            if seen {
+                publisher.consumed();
+            }
+        }
+        if seen {
+            self.shared_tick_seen = false;
+        }
+    }
+
+    /// The earlier of the next heartbeat and the next election check.
+    fn next_timer_deadline(&self) -> Option<InstantOf<C>> {
+        let now = C::now();
+        let heartbeat = self.heartbeat_deadline(now);
+        let election = self.election_deadline(now);
+        earlier::<C>(heartbeat, election)
+    }
+
+    /// When the next heartbeat send can do work.
+    ///
+    /// `None` when this node is not leading, heartbeats are disabled, or leadership transfer has
+    /// stopped heartbeats. A quorum-loss quiet period moves the wake to the end of that period.
+    fn heartbeat_deadline(&self, now: InstantOf<C>) -> Option<InstantOf<C>> {
+        let enabled = self.runtime_config.enable_heartbeat.load(Ordering::Relaxed);
+        if !enabled {
+            return None;
+        }
+        let leader = self.engine.leader_ref()?;
+        if leader.get_transfer_to().is_some() {
+            return None;
+        }
+        let mut deadline = leader.next_heartbeat;
+        let quiet_end = self.heartbeat_quiet_end(now);
+        if let Some(quiet_end) = quiet_end
+            && quiet_end > deadline
+        {
+            deadline = quiet_end;
+        }
+        Some(deadline)
+    }
+
+    /// The instant a quorum-loss quiet period ends, if one is active.
+    fn heartbeat_quiet_end(&self, now: InstantOf<C>) -> Option<InstantOf<C>> {
+        let leader = self.engine.leader_ref()?;
+        if leader.is_self_quorum() {
+            return None;
+        }
+        let interval = self.engine.config.quorum_loss_probe_interval?;
+        let acked = leader.last_quorum_acked_time();
+        let quorum_acked_at = acked.or(self.engine.state.vote_last_modified())?;
+        let probe = QuorumLossProbe {
+            quorum_acked_at,
+            leader_lease: self.engine.config.timer_config.leader_lease,
+            interval,
+        };
+        let quiet_for = probe.quiet_for(now)?;
+        Some(now + quiet_for)
+    }
+
+    /// When [`Self::handle_tick_election`] can next do work.
+    fn election_deadline(&self, now: InstantOf<C>) -> Option<InstantOf<C>> {
+        if self.leader_skips_election(now) {
+            return self.pending_transfer_wake();
+        }
+        let campaigner = self.engine.state.membership_state.is_campaigner_in_effective_or_committed(&self.id);
+        if !campaigner {
+            return None;
+        }
+        let elect = self.runtime_config.enable_elect.load(Ordering::Relaxed);
+        if !elect {
+            return None;
+        }
+        if self.is_immediate_sole_voter() {
+            return self.sole_voter_wake();
+        }
+        self.follower_election_deadline(now)
+    }
+
+    /// True when the handler returns before the campaigner check because this node leads.
+    fn leader_skips_election(&self, now: InstantOf<C>) -> bool {
+        if self.engine.state.server_state != ServerState::Leader {
+            return false;
+        }
+        let Some(leader) = self.engine.leader_ref() else {
+            return true;
+        };
+        let Some((_to, deadline)) = &leader.transfer_to else {
+            return true;
+        };
+        now < *deadline
+    }
+
+    /// Wake at a leadership-transfer deadline that has not expired yet.
+    fn pending_transfer_wake(&self) -> Option<InstantOf<C>> {
+        let elect = self.runtime_config.enable_elect.load(Ordering::Relaxed);
+        if !elect {
+            return None;
+        }
+        let campaigner = self.engine.state.membership_state.is_campaigner_in_effective_or_committed(&self.id);
+        if !campaigner {
+            return None;
+        }
+        let leader = self.engine.leader_ref()?;
+        let (_to, deadline) = leader.transfer_to.as_ref()?;
+        Some(*deadline)
+    }
+
+    /// A sole effective voter that holds its own vote elects without waiting for a timeout.
+    fn is_immediate_sole_voter(&self) -> bool {
+        let effective = self.engine.state.membership_state.effective();
+        let sole_voter = effective.voter_ids().eq([self.id.clone()]);
+        if !sole_voter {
+            return false;
+        }
+        let vote = self.engine.state.vote_ref();
+        let votes_for_self = vote.leader_node_id() == &self.id;
+        let may_campaign = effective.is_campaigner(&self.id);
+        may_campaign && votes_for_self
+    }
+
+    fn sole_voter_wake(&self) -> Option<InstantOf<C>> {
+        if self.engine.candidate_ref().is_some() {
+            return None;
+        }
+        Some(C::now())
+    }
+
+    fn follower_election_deadline(&self, now: InstantOf<C>) -> Option<InstantOf<C>> {
+        let timeout = self.election_timeout_now();
+        let (last_update, lease, _lease_enabled) = self.engine.state.vote.lease_info();
+        let Some(last_update) = last_update else {
+            return self.pre_vote_deadline(now, timeout);
+        };
+        let expire_at = last_update + lease + timeout;
+        if now > expire_at {
+            return self.pre_vote_deadline(now, timeout);
+        }
+        Some(instant_after::<C>(expire_at))
+    }
+
+    fn election_timeout_now(&self) -> Duration {
+        let mut timeout = self.engine.config.timer_config.election_timeout;
+        if self.engine.is_there_greater_log() {
+            timeout += self.engine.config.timer_config.smaller_log_timeout;
+        }
+        timeout
+    }
+
+    /// The next Pre-Vote attempt, or `now` when a real election can start at once.
+    fn pre_vote_deadline(&self, now: InstantOf<C>, election_timeout: Duration) -> Option<InstantOf<C>> {
+        let pre_vote = self.runtime_config.enable_pre_vote.load(Ordering::Relaxed);
+        if !pre_vote || self.is_immediate_sole_voter() {
+            return Some(now);
+        }
+        let Some(started) = self.engine.pre_candidate_ref().map(|pre| pre.starting_time()) else {
+            return Some(now);
+        };
+        let retry_at = started + election_timeout;
+        if now < retry_at {
+            return Some(retry_at);
+        }
+        Some(now)
+    }
+
     /// Handle [`Notification::Tick`]: check the election timer and, if leading, the heartbeat
     /// timer.
     fn handle_tick(&mut self, i: u64) {
-        // check every timer
+        if self.tick_deadline.is_some() {
+            self.shared_tick_seen = true;
+        }
+        self.handle_timer(Some(i));
+    }
 
+    /// Run one election check and, when leading, one heartbeat check.
+    ///
+    /// `tick` is the diagnostic sequence from
+    /// [`Notification::Tick`](crate::core::notification::Notification::Tick). An external tick
+    /// passes `None`. Both paths read the clock when the check runs. A late check
+    /// does not replay the intervals it missed: the heartbeat deadline moves forward once.
+    fn handle_timer(&mut self, tick: Option<u64>) {
         let now = C::now();
-        tracing::debug!("received tick: {}, now: {}", i, now.display());
+        if let Some(i) = tick {
+            tracing::debug!("received tick: {}, now: {}", i, now.display());
+        } else {
+            tracing::debug!("received external tick, now: {}", now.display());
+        }
 
         self.handle_tick_election();
 
-        // Leader send heartbeat
-        let heartbeat_at = self.engine.leader_ref().map(|l| l.next_heartbeat);
+        let heartbeat_at = self.engine.leader_ref().map(|leader| leader.next_heartbeat);
         if let Some(t) = heartbeat_at
             && now >= t
         {
             if self.runtime_config.enable_heartbeat.load(Ordering::Relaxed) {
-                self.send_heartbeat("tick");
+                let reason = if tick.is_some() { "tick" } else { "external-tick" };
+                self.send_heartbeat(reason);
             }
 
-            // Install next heartbeat
-            if let Some(l) = self.engine.leader_mut() {
-                l.next_heartbeat = C::now() + Duration::from_millis(self.config.heartbeat_interval);
+            if let Some(leader) = self.engine.leader_mut() {
+                let interval = Duration::from_millis(self.config.heartbeat_interval);
+                leader.next_heartbeat = C::now() + interval;
             }
         }
     }

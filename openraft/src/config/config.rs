@@ -383,16 +383,12 @@ pub struct Config {
     ))]
     pub broadcast_submitted_on_append: Option<bool>,
 
-    /// Enable or disable tick.
+    /// Enable or disable the automatic timer source.
     ///
-    /// If ticking is disabled, timeout-based events are all disabled:
-    /// a follower won't wake up to enter candidate state,
-    /// and a leader won't send heartbeat.
-    ///
-    /// **Critical for elections**: When `false`, followers cannot detect leader failures and will
-    /// never trigger elections, even with `enable_elect = true`. The tick mechanism provides the
-    /// timing infrastructure that allows followers to detect when `election_timeout_max` has passed
-    /// without receiving heartbeats from the leader.
+    /// When `false`, the internal ticker or a shared [`TickDriver`](crate::TickDriver) does not
+    /// wake this node. A follower then does not campaign on its own, and a leader does not emit
+    /// heartbeats on its own. [`Trigger::tick`](crate::raft::trigger::Trigger::tick) still runs one
+    /// timer check.
     ///
     /// This flag is mainly used for testing or to build a consensus system that does not depend on
     /// wall clock. The value of this config is evaluated as follows:
@@ -432,8 +428,9 @@ pub struct Config {
     /// When disabled (`false`), followers will never initiate elections, even if the leader fails.
     /// This setting is primarily for testing or building custom consensus systems.
     ///
-    /// **Important**: This setting only works when `enable_tick` is also `true`. Elections require
-    /// time-based events to detect leader absence.
+    /// Automatic elections need a timer check from the internal ticker, a shared
+    /// [`TickDriver`](crate::TickDriver), or
+    /// [`Trigger::tick`](crate::raft::trigger::Trigger::tick).
     // clap 4 requires `num_args = 0..=1`, or it complains about missing arg error
     // https://github.com/clap-rs/clap/discussions/4374
     #[cfg_attr(feature = "clap", clap(long,

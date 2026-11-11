@@ -18,6 +18,7 @@ mod raft_inner;
 pub mod responder;
 mod runtime_config_handle;
 pub(crate) mod stream_append;
+pub(crate) mod tick_driver;
 pub mod trigger;
 mod watch_handle;
 
@@ -72,6 +73,8 @@ use tracing::Level;
 use tracing::trace_span;
 
 pub use self::leader::Leader;
+pub use self::tick_driver::TickDriver;
+pub use self::tick_driver::TickSourceError;
 pub use self::watch_handle::WatchChangeHandle;
 use crate::Extensions;
 use crate::OptionalSend;
@@ -141,6 +144,7 @@ use crate::metrics::WaitError;
 use crate::network::NetSnapshot;
 use crate::raft::raft_inner::RaftInner;
 pub use crate::raft::runtime_config_handle::RuntimeConfigHandle;
+use crate::raft::tick_driver::TickSource;
 use crate::raft::trigger::Trigger;
 use crate::raft_state::IOId;
 use crate::storage::RaftLogStorage;
@@ -619,7 +623,7 @@ where
                     sm_span,
                 );
 
-                let core: RaftCore<C, N, LS, SM> = RaftCore {
+                let mut core: RaftCore<C, N, LS, SM> = RaftCore {
                     id: id.clone(),
                     config: config.clone(),
                     runtime_config: runtime_config.clone(),
@@ -672,6 +676,8 @@ where
                     metrics_recorder: None,
 
                     span: core_span,
+                    tick_deadline: None,
+                    shared_tick_seen: false,
                 };
 
                 // Spawn forwarder task to bridge Watch channel to notification channel
@@ -684,18 +690,33 @@ where
                     &config,
                 );
 
-                let core = Box::new(core);
-                let core_fut = core.main().instrument(trace_span!("spawn").or_current());
-                let join_handle = C::spawn(core_fut);
-
-                let tick_period = Duration::from_millis(config.tick_interval());
                 let enabled = {
                     let enable_tick = inner.runtime_config.enable_tick.lock().unwrap();
                     enable_tick.subscribe()
                 };
-                let tick_handle = Tick::spawn(tick_period, tick_tx, enabled);
-                *inner.tick_handle.lock().unwrap() = Some(tick_handle);
-                join_handle
+                let shared = {
+                    let source = inner.tick_source.lock().unwrap();
+                    match &*source {
+                        TickSource::Shared(driver) => Some(driver.clone()),
+                        TickSource::Internal | TickSource::Registered(_) => None,
+                    }
+                };
+                if let Some(driver) = shared {
+                    let weak_tx = tick_tx.downgrade();
+                    let (publisher, handle) = driver.register(weak_tx, enabled);
+                    core.tick_deadline = Some(publisher);
+                    let mut source = inner.tick_source.lock().unwrap();
+                    *source = TickSource::Registered(handle);
+                } else {
+                    let tick_period = Duration::from_millis(config.tick_interval());
+                    let tick_handle = Tick::spawn(tick_period, tick_tx, enabled);
+                    let mut slot = inner.tick_handle.lock().unwrap();
+                    *slot = Some(tick_handle);
+                }
+
+                let core = Box::new(core);
+                let core_fut = core.main().instrument(trace_span!("spawn").or_current());
+                C::spawn(core_fut)
             })
         };
 
@@ -704,6 +725,7 @@ where
             config,
             runtime_config,
             tick_handle: Mutex::new(None),
+            tick_source: Mutex::new(TickSource::Internal),
             tx_api,
             rx_lease_read_state,
             rx_metrics,
@@ -735,6 +757,25 @@ where
         let start = start.take().expect("unstarted Raft must have a start function");
         let join_handle = start(self.inner.as_ref());
         *state = CoreState::started(join_handle);
+    }
+
+    /// Use `driver` as this node's timer instead of spawning an internal ticker.
+    ///
+    /// Call this after [`build`](Self::build) and before [`run`](Self::run). A second call before
+    /// `run` replaces the driver. [`Raft::new`](Self::new) already calls `run`, so it keeps the
+    /// internal ticker.
+    ///
+    /// [`Trigger::tick`](crate::raft::trigger::Trigger::tick) still enqueues one timer check.
+    /// `runtime_config().tick(false)` unschedules this node until ticking is enabled again.
+    #[since(version = "0.10.1")]
+    pub fn use_tick_driver(&self, driver: &TickDriver<C>) -> Result<(), TickSourceError> {
+        let state = self.inner.core_state.lock().unwrap();
+        if !matches!(*state, CoreState::Unstarted(_)) {
+            return Err(TickSourceError::AlreadyStarted);
+        }
+        let mut source = self.inner.tick_source.lock().unwrap();
+        *source = TickSource::Shared(driver.clone());
+        Ok(())
     }
 }
 
@@ -2139,7 +2180,7 @@ where
     ///
     /// Success describes the runtime joins of started core and tick tasks, independently of their
     /// return values and other background task lifetimes. A node stopped before [`Self::run`]
-    /// succeeds.
+    /// succeeds. A shared tick registration is cancelled here; its driver task is not joined.
     #[since(version = "0.10.0")]
     pub async fn try_shutdown(&self) -> Result<(), ShutdownError> {
         if let Some(tx) = self.inner.tx_shutdown.lock().unwrap().take() {
@@ -2149,6 +2190,16 @@ where
 
         let (_, core_failed) = self.inner.join_core_task().await;
         let core_result = if core_failed { Err(ShutdownError) } else { Ok(()) };
+        let registration = {
+            let source = self.inner.tick_source.lock().unwrap();
+            match &*source {
+                TickSource::Registered(handle) => Some(handle.clone()),
+                TickSource::Internal | TickSource::Shared(_) => None,
+            }
+        };
+        if let Some(handle) = registration {
+            handle.cancel();
+        }
         let tick_join = {
             let tick_handle = self.inner.tick_handle.lock().unwrap();
             let Some(handle) = tick_handle.as_ref() else {

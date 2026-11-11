@@ -25,6 +25,7 @@ use crate::metrics::RaftServerMetrics;
 use crate::metrics::Wait;
 use crate::raft::core_state::CoreState;
 use crate::raft::linearizable_read::lease_read_state::LeaseReadState;
+use crate::raft::tick_driver::TickSource;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::OneshotReceiverOf;
@@ -48,6 +49,7 @@ where C: RaftTypeConfig
     pub(in crate::raft) config: Arc<Config>,
     pub(in crate::raft) runtime_config: Arc<RuntimeConfig<C>>,
     pub(in crate::raft) tick_handle: Mutex<Option<TickHandle<C>>>,
+    pub(in crate::raft) tick_source: Mutex<TickSource<C>>,
     pub(in crate::raft) tx_api: MpscSenderOf<C, RaftMsg<C>>,
     pub(in crate::raft) rx_lease_read_state: WatchReceiverOf<C, Option<Arc<LeaseReadState<C>>>>,
     pub(in crate::raft) rx_metrics: WatchReceiverOf<C, RaftMetrics<C>>,
@@ -192,6 +194,25 @@ where C: RaftTypeConfig
             return Err(fatal);
         }
         Ok(())
+    }
+
+    /// Ask a started shared-tick core to publish its deadline again.
+    ///
+    /// The command does not run a timer check. Send failures are ignored: the core has stopped.
+    pub(in crate::raft) fn request_tick_reschedule(&self) {
+        let registered = {
+            let source = self.tick_source.lock().unwrap();
+            matches!(*source, TickSource::Registered(_))
+        };
+        if !registered {
+            return;
+        }
+        let tx_api = self.tx_api.clone();
+        let _join = C::spawn(async move {
+            let cmd = ExternalCommand::RefreshTickDeadline;
+            let msg = RaftMsg::ExternalCommand { cmd };
+            let _send_res = tx_api.send(msg).await;
+        });
     }
 
     /// Get the error that caused RaftCore to stop.

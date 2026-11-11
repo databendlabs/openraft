@@ -144,6 +144,8 @@ pub use crate::node::NodeInfo;
 pub use crate::raft::Precondition;
 pub use crate::raft::Raft;
 pub use crate::raft::ReadPolicy;
+pub use crate::raft::TickDriver;
+pub use crate::raft::TickSourceError;
 pub use crate::raft::WatchChangeHandle;
 pub use crate::raft::linearizable_read::LinearizerOption;
 pub use crate::raft_state::MembershipState;

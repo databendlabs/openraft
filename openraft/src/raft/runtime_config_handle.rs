@@ -23,14 +23,23 @@ where C: RaftTypeConfig
         Self { raft_inner }
     }
 
-    /// Enable or disable raft internal ticker.
+    /// Enable or disable the automatic timer source selected for this node.
     ///
-    /// Disabling tick will disable election and heartbeat. While disabled, the internal ticker
-    /// parks and causes no wakeups; re-enabling it resumes ticking, with the first tick at most
-    /// one tick period later.
+    /// Disabling it pauses that source. The internal ticker parks. A shared [`TickDriver`]
+    /// unschedules this member. Enabling it resumes the same source.
+    /// [`Trigger::tick`](crate::raft::trigger::Trigger::tick) still runs one timer check while
+    /// the automatic source is paused.
+    ///
+    /// [`TickDriver`]: crate::TickDriver
     pub fn tick(&self, enabled: bool) {
-        let enable_tick = self.raft_inner.runtime_config.enable_tick.lock().unwrap();
-        enable_tick.send_if_different(enabled);
+        {
+            let enable_tick = self.raft_inner.runtime_config.enable_tick.lock().unwrap();
+            enable_tick.send_if_different(enabled);
+        }
+        let source = self.raft_inner.tick_source.lock().unwrap();
+        if let crate::raft::tick_driver::TickSource::Registered(handle) = &*source {
+            handle.poke();
+        }
     }
 
     /// Enable or disable heartbeat messages when a leader has no more log to replicate.
@@ -40,11 +49,13 @@ where C: RaftTypeConfig
     /// out.
     pub fn heartbeat(&self, enabled: bool) {
         self.raft_inner.runtime_config.enable_heartbeat.store(enabled, Ordering::Relaxed);
+        self.raft_inner.request_tick_reschedule();
     }
 
     /// Enable or disable election for a follower when its leader lease timed out.
     pub fn elect(&self, enabled: bool) {
         self.raft_inner.runtime_config.enable_elect.store(enabled, Ordering::Relaxed);
+        self.raft_inner.request_tick_reschedule();
     }
 
     /// Enable or disable the Pre-Vote round that precedes a real election.
@@ -54,5 +65,6 @@ where C: RaftTypeConfig
     /// [`Config::enable_pre_vote`](crate::Config::enable_pre_vote).
     pub fn pre_vote(&self, enabled: bool) {
         self.raft_inner.runtime_config.enable_pre_vote.store(enabled, Ordering::Relaxed);
+        self.raft_inner.request_tick_reschedule();
     }
 }

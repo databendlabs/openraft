@@ -91,6 +91,15 @@ where C: RaftTypeConfig
         vote: Option<VoteOf<C>>,
         membership_log_id: Option<LogIdOf<C>>,
     },
+
+    /// Run one election-timeout and heartbeat check.
+    ///
+    /// The core reads its runtime clock when it handles the command. A caller does not supply a
+    /// timestamp or a tick counter.
+    Tick,
+
+    /// Recompute the shared tick deadline without running a timer check.
+    RefreshTickDeadline,
 }
 
 impl<C> ExternalCommand<C>
@@ -108,6 +117,8 @@ where C: RaftTypeConfig
             ExternalCommand::AllowNextRevert { .. } => ExternalCommandName::AllowNextRevert,
             ExternalCommand::SetMetricsRecorder { .. } => ExternalCommandName::SetMetricsRecorder,
             ExternalCommand::RefreshServerState { .. } => ExternalCommandName::RefreshServerState,
+            ExternalCommand::Tick => ExternalCommandName::Tick,
+            ExternalCommand::RefreshTickDeadline => ExternalCommandName::RefreshTickDeadline,
         }
     }
 }
@@ -168,6 +179,12 @@ where C: RaftTypeConfig
                     vote.display(),
                     membership_log_id.display()
                 )
+            }
+            ExternalCommand::Tick => {
+                write!(f, "Tick")
+            }
+            ExternalCommand::RefreshTickDeadline => {
+                write!(f, "RefreshTickDeadline")
             }
         }
     }

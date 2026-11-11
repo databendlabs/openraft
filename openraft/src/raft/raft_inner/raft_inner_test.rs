@@ -14,11 +14,14 @@ use crate::async_runtime::OneshotSender;
 use crate::config::RuntimeConfig;
 use crate::core::TickHandle;
 use crate::core::io_flush_tracking::IoProgressWatcher;
+use crate::core::notification::Notification;
 use crate::errors::Fatal;
 use crate::errors::Infallible;
 use crate::errors::ShutdownError;
 use crate::metrics::RaftServerMetrics;
 use crate::raft::core_state::CoreState;
+use crate::raft::tick_driver::TickDriver;
+use crate::raft::tick_driver::TickSource;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinHandleOf;
 
@@ -41,6 +44,7 @@ fn raft_with_tasks(
         runtime_config: Arc::new(RuntimeConfig::new(&config)),
         config,
         tick_handle: Mutex::new(Some(TickHandle::new(tick_shutdown, tick))),
+        tick_source: Mutex::new(TickSource::Internal),
         tx_api: UTConfig::mpsc(1).0,
         rx_lease_read_state: UTConfig::watch_channel(None).1,
         rx_metrics: UTConfig::watch_channel(RaftMetrics::new_initial(0)).1,
@@ -83,6 +87,56 @@ fn try_shutdown_core_panic_after_internal_join() {
             let repeated = raft.try_shutdown().await;
             assert_eq!(result, repeated);
         }
+    });
+}
+
+#[test]
+fn try_shutdown_registered_source_keeps_core_panic() {
+    UTConfig::run(async {
+        tracing::info!("a shared registration has no tick task; shutdown still returns the core panic");
+        let driver = TickDriver::<UTConfig>::spawn();
+        let (tx, _rx) = UTConfig::mpsc::<Notification<UTConfig>>(1);
+        let (_enable_tx, enabled) = UTConfig::watch_channel(true);
+        let (publisher, handle) = driver.register(tx.downgrade(), enabled);
+        drop(publisher);
+        let shutdown_result = driver.shutdown().await;
+        assert_eq!(Ok(()), shutdown_result);
+
+        let config = Arc::new(Config {
+            enable_tick: false,
+            enable_heartbeat: false,
+            enable_elect: false,
+            ..Default::default()
+        });
+        let (tx_shutdown, _rx_shutdown) = UTConfig::oneshot();
+        let core = UTConfig::spawn(async { panic!("injected core task panic") });
+        let inner = RaftInner {
+            id: 0,
+            runtime_config: Arc::new(RuntimeConfig::new(&config)),
+            config,
+            tick_handle: Mutex::new(None),
+            tick_source: Mutex::new(TickSource::Registered(handle)),
+            tx_api: UTConfig::mpsc(1).0,
+            rx_lease_read_state: UTConfig::watch_channel(None).1,
+            rx_metrics: UTConfig::watch_channel(RaftMetrics::new_initial(0)).1,
+            rx_data_metrics: UTConfig::watch_channel(Default::default()).1,
+            rx_server_metrics: UTConfig::watch_channel(RaftServerMetrics::new_initial(0)).1,
+            progress_watcher: IoProgressWatcher::new().1,
+            tx_shutdown: Mutex::new(Some(tx_shutdown)),
+            core_state: Mutex::new(CoreState::started(core)),
+            extensions: Extensions::default(),
+        };
+        let raft: Raft<UTConfig> = Raft {
+            inner: Arc::new(inner),
+            sm_cmd_tx: UTConfig::mpsc(1).0.downgrade(),
+            install_snapshot_tx: UTConfig::mpsc(1).0,
+        };
+
+        let result = raft.try_shutdown().await;
+        let expected = Err(ShutdownError);
+        assert_eq!(expected, result);
+        let repeated = raft.try_shutdown().await;
+        assert_eq!(result, repeated);
     });
 }
 

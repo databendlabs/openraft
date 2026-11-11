@@ -76,6 +76,23 @@ where C: RaftTypeConfig
         self.raft_inner.send_external_command(ExternalCommand::Heartbeat).await
     }
 
+    /// Enqueue one timer check and return once it is queued.
+    ///
+    /// The core reads [`C::now()`](crate::type_config::TypeConfigExt::now) when it handles the
+    /// command. The caller does not pass a timestamp or a tick count.
+    ///
+    /// The check runs when `enable_tick` is false. It still honors `enable_elect` and
+    /// `enable_heartbeat`: an early call leaves an unexpired election or heartbeat deadline
+    /// unchanged, and a late call checks the current time once and does not replay missed
+    /// intervals. The caller has to deliver ticks often enough for those deadlines to be noticed
+    /// near the time they fall due.
+    ///
+    /// Returns [`Fatal`] when the core has stopped.
+    #[since(version = "0.10.1")]
+    pub async fn tick(&self) -> Result<(), Fatal<C>> {
+        self.raft_inner.send_external_command(ExternalCommand::Tick).await
+    }
+
     /// Trigger to build a snapshot at once and return at once.
     ///
     /// Returns error when RaftCore has [`Fatal`] error, e.g., shut down or having storage error.
