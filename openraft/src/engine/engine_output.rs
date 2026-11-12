@@ -107,7 +107,14 @@ where
 
     /// Pop the first command to run from the queue.
     pub(crate) fn pop_command(&mut self) -> Option<Command<C, SM>> {
-        self.commands.pop_front()
+        let cmd = self.commands.pop_front();
+        // A drained VecDeque keeps its head where the last pop left it, so each
+        // command would write the next slot until the whole preallocated buffer is
+        // resident. `clear()` on an empty queue moves the head back to slot 0.
+        if self.commands.is_empty() {
+            self.commands.clear();
+        }
+        cmd
     }
 
     /// Iterate all queued commands.
@@ -137,5 +144,35 @@ where
     pub(crate) fn sched_commands(&mut self, config: &Config) {
         let mut scheduler = CommandScheduler::new(config, self);
         scheduler.merge_front_append_entries();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EngineOutput;
+    use crate::batch::Batch;
+    use crate::engine::Command;
+    use crate::engine::testing::UTConfig;
+    use crate::engine::testing::UTLeaderId;
+    use crate::impls::Vote;
+    use crate::testing::blank_ent;
+    use crate::vote::raft_vote::RaftVoteExt;
+
+    fn append(index: u64) -> Command<UTConfig> {
+        Command::AppendEntries {
+            committed_vote: Vote::<UTLeaderId>::new(1, 0).to_committed(),
+            entries: Batch::of([blank_ent::<UTConfig>(1, 0, index)]),
+        }
+    }
+
+    #[test]
+    fn test_pop_command_reuses_slot_zero_once_empty() {
+        let mut output: EngineOutput<UTConfig> = EngineOutput::new(8);
+        output.push_command(append(1));
+        let first_slot = output.commands.as_slices().0.as_ptr();
+
+        assert!(output.pop_command().is_some());
+        output.push_command(append(2));
+        assert_eq!(output.commands.as_slices().0.as_ptr(), first_slot);
     }
 }
