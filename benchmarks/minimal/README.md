@@ -130,8 +130,9 @@ overlap.
 
 The medians vary between runs of the whole grid. In two runs on the same machine, the
 256-client medians with delays differed by up to 23% in writes/s and up to 34% in p50 latency.
-To measure a change, run `make bench_apply_delays` before and after it on the same idle machine,
-rather than comparing against the numbers above.
+To measure a change, compare it with its base revision on the same machine, rather than against
+the numbers above: `make bench_compare_apply_delays BASE=<rev>`, described in "Compare two
+revisions" below.
 
 What these numbers do not show:
 
@@ -174,6 +175,30 @@ RUSTFLAGS="--cfg tokio_unstable" cargo run --release --bin bench --features toki
 cargo run --release --bin bench --features flamegraph
 # Then generate SVG: inferno-flamegraph flamegraph.folded > flamegraph.svg
 ```
+
+### Compare two revisions
+
+`scripts/compare.py` builds `bench` at two git revisions and runs the same arguments with both,
+so a change can be measured against its base on one machine:
+
+```sh
+# The arguments of `make bench_write_latency`:
+make bench_compare_write_latency BASE=<rev>
+
+# The grid of `make bench_apply_delays`:
+make bench_compare_apply_delays BASE=<rev>
+
+# Any bench arguments; they must include --latency:
+python3 benchmarks/minimal/scripts/compare.py --base <rev> -- --latency -c 256 -n 30k
+```
+
+The target is the current checkout, uncommitted changes included, unless `TARGET=<rev>` (or
+`--target`) names a revision. `RUNS=N` (or `--runs`) sets the runs per build, 5 by default. The
+two binaries run back to back for every row and swap order on every run, so a drift in machine
+load affects both alike. The script prints the medians of writes/s, p50 and p99 for both builds
+and their change, and marks a change with `~` when the min-max ranges of the two builds overlap.
+A revision is built in a temporary git worktree and its binary is cached under
+`target/compare/<commit>`.
 
 ### Lease reads mixed with writes
 
