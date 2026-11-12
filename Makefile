@@ -156,6 +156,18 @@ bench_write_latency:
 bench_apply_delays:
 	python3 benchmarks/minimal/scripts/apply_delays.py
 
+# Compare bench at revision BASE with revision TARGET, or with the current checkout when TARGET
+# is unset, on this machine. RUNS sets the runs per build [default: 5].
+# Example: make bench_compare_apply_delays BASE=a5c043ef
+BENCH_COMPARE = python3 benchmarks/minimal/scripts/compare.py --base '$(BASE)' \
+	$(if $(TARGET),--target '$(TARGET)') $(if $(RUNS),--runs $(RUNS))
+
+bench_compare_write_latency:
+	$(BENCH_COMPARE) --no-default-features -- --latency $(BENCH_ARGS)
+
+bench_compare_apply_delays:
+	$(BENCH_COMPARE) --apply-delays
+
 test-bench-minimal:
 	cargo test --manifest-path benchmarks/minimal/Cargo.toml --all-targets
 	cargo test --manifest-path benchmarks/minimal/Cargo.toml --all-targets --no-default-features

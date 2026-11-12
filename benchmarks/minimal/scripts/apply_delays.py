@@ -69,14 +69,18 @@ def main():
     print_table(rows)
 
 
+def grid_args(clients, operations, read_us, io_us):
+    """The `bench` arguments of one grid combination."""
+    return [
+        "--latency", "-c", str(clients), "-n", operations,
+        "--apply-read-delay-us", str(read_us), "--apply-io-delay-us", str(io_us),
+    ]  # fmt: skip
+
+
 def run_bench(clients, operations, read_us, io_us):
     """Run `bench` once and return its measurements."""
     time_flag = "-l" if platform.system() == "Darwin" else "-v"
-    command = [
-        "/usr/bin/time", time_flag, str(BENCH), "--latency",
-        "-c", str(clients), "-n", operations,
-        "--apply-read-delay-us", str(read_us), "--apply-io-delay-us", str(io_us),
-    ]  # fmt: skip
+    command = ["/usr/bin/time", time_flag, str(BENCH), *grid_args(clients, operations, read_us, io_us)]
     result = subprocess.run(command, capture_output=True, text=True, check=True)
     report = json.loads(result.stdout.strip().splitlines()[-1])
     stderr = result.stderr
