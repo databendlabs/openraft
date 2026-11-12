@@ -35,12 +35,14 @@ fn raft_with_tasks(
         ..Default::default()
     });
     let (tx_shutdown, _rx_shutdown) = UTConfig::oneshot();
-    let (tick_shutdown, _tick_shutdown_rx) = UTConfig::oneshot();
+    // `tick` is spawned by the caller, so this handle cancels nothing: the test alone decides
+    // when the tick task finishes.
+    let (tick_cancel, _tick_future) = UTConfig::cancellable(std::future::pending::<()>());
     let inner = RaftInner {
         id: 0,
         runtime_config: Arc::new(RuntimeConfig::new(&config)),
         config,
-        tick_handle: Mutex::new(Some(TickHandle::new(tick_shutdown, tick))),
+        tick_handle: Mutex::new(Some(TickHandle::new(tick_cancel, tick))),
         tx_api: UTConfig::mpsc(1).0,
         rx_lease_read_state: UTConfig::watch_channel(None).1,
         rx_metrics: UTConfig::watch_channel(RaftMetrics::new_initial(0)).1,
