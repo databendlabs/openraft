@@ -19,6 +19,7 @@
 mod async_runtime;
 #[macro_use]
 pub mod task_local;
+mod cancel_handle;
 pub mod deterministic_rng;
 pub mod instant;
 pub mod mpsc;
@@ -31,6 +32,7 @@ pub mod testing;
 pub mod watch;
 
 pub use async_runtime::AsyncRuntime;
+pub use cancel_handle::CancelHandle;
 pub use instant::Instant;
 pub use mpsc::Mpsc;
 pub use mpsc::MpscReceiver;
