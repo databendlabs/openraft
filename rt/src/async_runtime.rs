@@ -14,6 +14,7 @@ use std::time::Duration;
 
 use openraft_macros::since;
 
+use crate::CancelHandle;
 use crate::Instant;
 use crate::Mpsc;
 use crate::MpscReceiver;
@@ -36,6 +37,7 @@ use crate::Watch;
 /// ## Note
 ///
 /// The default asynchronous runtime is `tokio`.
+#[since(version = "0.10.1", change = "add cancellable futures")]
 #[since(
     version = "0.10.0",
     change = "remove the `OptionalSend` and `OptionalSync` requirements"
@@ -293,6 +295,47 @@ pub trait AsyncRuntime: Debug + 'static {
                     Ok(Some(value)) => Ok(value),
                     Err(_) => Err(TryRecvError::Empty),
                 },
+            }
+        }
+    }
+
+    /// Wrap a future with a cancellation handle.
+    ///
+    /// The returned future yields `Some(output)` when the supplied future completes, or `None`
+    /// when the handle is signalled or dropped. Cancellation is polled first when both are ready.
+    /// The caller polls or spawns the returned future; borrowed futures are supported.
+    /// Use [`Self::cancellable_by`] when a cancellation future is already available.
+    #[since(version = "0.10.1")]
+    fn cancellable<F>(
+        future: F,
+    ) -> (
+        CancelHandle<Self>,
+        impl Future<Output = Option<F::Output>> + OptionalSend,
+    )
+    where
+        Self: Sized,
+        F: Future + OptionalSend,
+    {
+        let (handle, cancelled) = CancelHandle::new();
+        let future = Self::cancellable_by(future, cancelled);
+        (handle, future)
+    }
+
+    /// Wrap work with a future that signals cancellation.
+    ///
+    /// Return `Some(output)` when the work completes, or `None` when the cancel future completes.
+    /// Cancellation wins when both are ready. See [`Self::select2`] for ownership rules.
+    #[since(version = "0.10.1")]
+    fn cancellable_by<F, Cancel>(future: F, cancel: Cancel) -> impl Future<Output = Option<F::Output>> + OptionalSend
+    where
+        F: Future + OptionalSend,
+        Cancel: Future + OptionalSend,
+    {
+        async move {
+            let selected = Self::select2(cancel, future).await;
+            match selected {
+                Select2::First(_) => None,
+                Select2::Second(output) => Some(output),
             }
         }
     }
