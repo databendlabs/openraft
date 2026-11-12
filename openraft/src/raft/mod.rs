@@ -2263,8 +2263,8 @@ where
         let (_, core_failed) = self.inner.join_core_task().await;
         let core_result = if core_failed { Err(ShutdownError) } else { Ok(()) };
         let tick_join = {
-            let tick_handle = self.inner.tick_handle.lock().unwrap();
-            let Some(handle) = tick_handle.as_ref() else {
+            let mut tick_handle = self.inner.tick_handle.lock().unwrap();
+            let Some(handle) = tick_handle.as_mut() else {
                 return core_result;
             };
             handle.shutdown()

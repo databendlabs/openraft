@@ -1,6 +1,5 @@
 //! tick emitter emits a `RaftMsg::Tick` event at a certain interval.
 
-use std::sync::Mutex;
 use std::time::Duration;
 
 use futures_util::FutureExt;
@@ -12,20 +11,17 @@ use tracing::Span;
 
 use crate::AsyncRuntime;
 use crate::RaftTypeConfig;
-use crate::async_runtime::Select2;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::base::BoxFuture;
 use crate::core::notification::Notification;
 use crate::errors::ShutdownError;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::AsyncRuntimeOf;
+use crate::type_config::alias::CancelHandleOf;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::MpscSenderOf;
-use crate::type_config::alias::OneshotReceiverOf;
-use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::async_runtime::mpsc::MpscSender;
-use crate::type_config::async_runtime::oneshot::OneshotSender;
 
 /// Emit RaftMsg::Tick events at a regular `period` after a randomized first wait.
 pub(crate) struct Tick<C>
@@ -40,24 +36,15 @@ where C: RaftTypeConfig
     enabled: WatchReceiverOf<C, bool>,
 }
 
+/// Handle to a spawned tick loop.
+///
+/// Dropping it cancels the loop without waiting for it to stop; [`Self::shutdown`] cancels it and
+/// returns the join.
 pub(crate) struct TickHandle<C>
 where C: RaftTypeConfig
 {
-    shutdown: Mutex<Option<OneshotSenderOf<C, ()>>>,
+    cancel: CancelHandleOf<C>,
     join_handle: Shared<BoxFuture<'static, Result<(), ShutdownError>>>,
-}
-
-impl<C> Drop for TickHandle<C>
-where C: RaftTypeConfig
-{
-    /// Signal the tick loop to stop, without waiting for it to stop.
-    fn drop(&mut self) {
-        if self.shutdown.lock().unwrap().is_none() {
-            return;
-        }
-        let join = self.shutdown();
-        drop(join);
-    }
 }
 
 impl<C> Tick<C>
@@ -75,15 +62,19 @@ where C: RaftTypeConfig
             tx,
         };
 
-        let (shutdown, shutdown_rx) = C::oneshot();
-
-        let join_handle = C::spawn(this.tick_loop(shutdown_rx).instrument(tracing::span!(
+        let future = this.tick_loop().instrument(tracing::span!(
             parent: &Span::current(),
             Level::DEBUG,
             "tick"
-        )));
+        ));
+        let (cancel, future) = C::cancellable(future);
+        let join_handle = C::spawn(future.map(|completed| {
+            if completed.is_none() {
+                tracing::info!("TickLoop cancelled, quit");
+            }
+        }));
 
-        TickHandle::new(shutdown, join_handle)
+        TickHandle::new(cancel, join_handle)
     }
 
     /// Add a random phase offset from `[0, period)` to the first wait.
@@ -94,10 +85,11 @@ where C: RaftTypeConfig
         AsyncRuntimeOf::<C>::thread_rng().random_range(period..period * 2)
     }
 
-    pub(crate) async fn tick_loop(mut self, cancel_rx: OneshotReceiverOf<C, ()>) {
+    /// Emit ticks until the notification receiver or the `enabled` watch sender is dropped.
+    ///
+    /// [`Self::spawn`] stops it earlier by cancelling this future.
+    pub(crate) async fn tick_loop(mut self) {
         let mut i = 0;
-
-        let mut cancel = std::pin::pin!(cancel_rx);
 
         let first_wait_at = C::now() + self.first_wait;
         let mut at = first_wait_at;
@@ -106,41 +98,19 @@ where C: RaftTypeConfig
         let step_us = self.period.as_micros().max(1);
 
         loop {
-            let sleep_fut = std::pin::pin!(C::sleep_until(at));
-            let cancel_fut = cancel.as_mut();
-
-            let selected = C::select2(cancel_fut, sleep_fut).await;
-            match selected {
-                Select2::First(_) => {
-                    tracing::info!("TickLoop received cancel signal, quit");
-                    return;
-                }
-                Select2::Second(_) => {
-                    // sleep done
-                }
-            }
+            C::sleep_until(at).await;
 
             let enabled = *self.enabled.borrow_watched();
             if !enabled {
                 // Wait for the tick to be enabled instead of waking every period to re-check it.
                 // The deadline below is computed after this wait, so ticking resumes at the next
                 // grid line, as if the loop had kept waking through the disabled span.
-                let enabled_fut = std::pin::pin!(self.enabled.wait_until(|enabled| *enabled));
-
-                let selected = C::select2(cancel.as_mut(), enabled_fut).await;
-                match selected {
-                    Select2::First(_) => {
-                        tracing::info!("TickLoop received cancel signal while disabled, quit");
-                        return;
-                    }
-                    Select2::Second(Err(_closed)) => {
-                        tracing::info!("TickLoop: RuntimeConfig dropped while disabled, quit");
-                        return;
-                    }
-                    Select2::Second(Ok(_)) => {
-                        tracing::debug!("Tick re-enabled");
-                    }
+                let enabled_result = self.enabled.wait_until(|enabled| *enabled).await;
+                if enabled_result.is_err() {
+                    tracing::info!("TickLoop: RuntimeConfig dropped while disabled, quit");
+                    return;
                 }
+                tracing::debug!("Tick re-enabled");
             }
 
             // Round the time elapsed since the origin up to the next whole multiple of the
@@ -175,7 +145,7 @@ where C: RaftTypeConfig
 impl<C> TickHandle<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(shutdown: OneshotSenderOf<C, ()>, join_handle: JoinHandleOf<C, ()>) -> Self {
+    pub(crate) fn new(cancel: CancelHandleOf<C>, join_handle: JoinHandleOf<C, ()>) -> Self {
         let future: BoxFuture<'static, _> = Box::pin(async move {
             let result = join_handle.await;
             tracing::info!("Raft tick exited: {:?}", result);
@@ -185,28 +155,14 @@ where C: RaftTypeConfig
             }
         });
         let join_handle = future.shared();
-        Self {
-            shutdown: Mutex::new(Some(shutdown)),
-            join_handle,
-        }
+        Self { cancel, join_handle }
     }
 
     /// Signal the tick loop to stop and return its shared join.
     ///
     /// Repeated calls retain the result of the runtime join.
-    pub(crate) fn shutdown(&self) -> Shared<BoxFuture<'static, Result<(), ShutdownError>>> {
-        {
-            let shutdown = {
-                let mut x = self.shutdown.lock().unwrap();
-                x.take()
-            };
-
-            if let Some(shutdown) = shutdown {
-                let send_res = shutdown.send(());
-                tracing::info!("Timer shutdown signal sent: {send_res:?}");
-            }
-        }
-
+    pub(crate) fn shutdown(&mut self) -> Shared<BoxFuture<'static, Result<(), ShutdownError>>> {
+        self.cancel.cancel();
         self.join_handle.clone()
     }
 }
@@ -235,7 +191,6 @@ mod tests {
     use crate::core::notification::Notification;
     use crate::type_config::TypeConfigExt;
     use crate::type_config::alias::MpscReceiverOf;
-    use crate::type_config::async_runtime::oneshot::OneshotSender;
 
     #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Ord, PartialOrd)]
     #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -370,7 +325,7 @@ mod tests {
             // A first wait far longer than this test's own timeout: the loop can only finish by
             // observing the shutdown signal.
             let (_enable_tx, enabled) = TickUTConfig::watch_channel(true);
-            let th = Tick::<TickUTConfig>::spawn(Duration::from_secs(10), tx, enabled);
+            let mut th = Tick::<TickUTConfig>::spawn(Duration::from_secs(10), tx, enabled);
 
             TickUTConfig::sleep(Duration::from_millis(50)).await;
             let join_handle = th.shutdown();
@@ -380,6 +335,30 @@ mod tests {
                 .expect("tick loop must stop while still inside the first wait")
                 .expect("tick loop must not panic");
             assert!(rx.recv().await.is_none(), "no tick should precede the first wait");
+        });
+    }
+
+    #[test]
+    fn test_shutdown_interrupts_a_blocked_send() {
+        TickUTConfig::run(async {
+            // Capacity one and a zero period: the first tick fills the channel at once and the
+            // second blocks in `send()`, because nothing receives until shutdown has returned.
+            let (tx, mut rx) = TickUTConfig::mpsc(1);
+            let (_enable_tx, enabled) = TickUTConfig::watch_channel(true);
+            let mut th = Tick::<TickUTConfig>::spawn(Duration::ZERO, tx, enabled);
+
+            TickUTConfig::sleep(Duration::from_millis(50)).await;
+            let join_handle = th.shutdown();
+
+            TickUTConfig::timeout(Duration::from_millis(500), join_handle)
+                .await
+                .expect("tick loop must stop while blocked in send()")
+                .expect("tick loop must not panic");
+            assert_eq!(1, recv_tick::<TickUTConfig>(&mut rx).await);
+            assert!(
+                rx.recv().await.is_none(),
+                "the interrupted send must not enqueue a tick"
+            );
         });
     }
 
@@ -398,7 +377,7 @@ mod tests {
         run_seeded(SEED, async {
             let (tx, mut rx) = SeededTickConfig::mpsc(1024);
             let (_enable_tx, enabled) = SeededTickConfig::watch_channel(true);
-            let th = Tick::<SeededTickConfig>::spawn(period, tx, enabled);
+            let mut th = Tick::<SeededTickConfig>::spawn(period, tx, enabled);
 
             let early_first =
                 SeededTickConfig::timeout(first_wait - margin, recv_tick::<SeededTickConfig>(&mut rx)).await;
@@ -437,7 +416,7 @@ mod tests {
             // until this task drains it, and the tick loop is held past its own schedule.
             let (tx, mut rx) = TickUTConfig::mpsc(1);
             let (_enable_tx, enabled) = TickUTConfig::watch_channel(true);
-            let th = Tick::<TickUTConfig>::spawn(PERIOD, tx, enabled);
+            let mut th = Tick::<TickUTConfig>::spawn(PERIOD, tx, enabled);
 
             TickUTConfig::sleep(STALL).await;
 
@@ -464,7 +443,7 @@ mod tests {
             // Capacity one throttles the busy loop to this task's receive rate.
             let (tx, mut rx) = TickUTConfig::mpsc(1);
             let (_enable_tx, enabled) = TickUTConfig::watch_channel(true);
-            let th = Tick::<TickUTConfig>::spawn(Duration::ZERO, tx, enabled);
+            let mut th = Tick::<TickUTConfig>::spawn(Duration::ZERO, tx, enabled);
 
             for expected in 1..=3 {
                 let i = TickUTConfig::timeout(Duration::from_secs(1), recv_tick::<TickUTConfig>(&mut rx))
@@ -473,8 +452,6 @@ mod tests {
                 assert_eq!(expected, i);
             }
 
-            // Dropping the receiver releases the loop if it is waiting on the full channel.
-            drop(rx);
             th.shutdown().await.unwrap();
         });
     }
@@ -505,7 +482,7 @@ mod tests {
             // loop sleeps through the deadlines at `first_wait + 3 * PERIOD` and `+ 4 * PERIOD`.
             let (tx, mut rx) = SeededTickConfig::mpsc(1);
             let (_enable_tx, enabled) = SeededTickConfig::watch_channel(true);
-            let th = Tick::<SeededTickConfig>::spawn(PERIOD, tx, enabled);
+            let mut th = Tick::<SeededTickConfig>::spawn(PERIOD, tx, enabled);
 
             SeededTickConfig::sleep(first_wait + STALL).await;
 
@@ -564,10 +541,10 @@ mod tests {
                 tx,
                 enabled,
             };
-            let (cancel_tx, cancel_rx) = TickUTConfig::oneshot();
+            let (mut cancel, future) = TickUTConfig::cancellable(tick.tick_loop());
             let polls = Arc::new(AtomicUsize::new(0));
             let join_handle = TickUTConfig::spawn(CountPolls {
-                inner: Box::pin(tick.tick_loop(cancel_rx)),
+                inner: Box::pin(future),
                 polls: polls.clone(),
             });
 
@@ -590,7 +567,7 @@ mod tests {
             // Disable again and cancel while parked: the loop must exit promptly.
             switch.send(false).unwrap();
             TickUTConfig::sleep(PERIOD * 3).await;
-            cancel_tx.send(()).unwrap();
+            cancel.cancel();
             TickUTConfig::timeout(Duration::from_millis(500), join_handle)
                 .await
                 .expect("cancel must stop a parked tick loop")
@@ -617,10 +594,8 @@ mod tests {
                 tx,
                 enabled,
             };
-            let (cancel_tx, cancel_rx) = TickUTConfig::oneshot();
-
             let before = TickUTConfig::now();
-            let loop_fut = tick.tick_loop(cancel_rx);
+            let (mut cancel, loop_fut) = TickUTConfig::cancellable(tick.tick_loop());
             let check = async move {
                 TickUTConfig::sleep(PERIOD * 2 + PERIOD / 2).await;
                 let enabled_at = TickUTConfig::now();
@@ -648,7 +623,7 @@ mod tests {
                 assert_eq!(2, i2);
                 assert!(TickUTConfig::now() - got >= PERIOD / 2, "burst of catch-up ticks");
 
-                cancel_tx.send(()).unwrap();
+                cancel.cancel();
             };
             futures_util::future::join(loop_fut, check).await;
         });
@@ -683,7 +658,7 @@ mod tests {
             // one blocked in `send()`. Receiving more than that proves the loop is running.
             let (tx, mut rx) = TickUTConfig::mpsc(1);
             let (switch, enabled) = TickUTConfig::watch_channel(true);
-            let th = Tick::<TickUTConfig>::spawn(PERIOD, tx, enabled);
+            let mut th = Tick::<TickUTConfig>::spawn(PERIOD, tx, enabled);
 
             recv_tick::<TickUTConfig>(&mut rx).await;
             let start = std::time::Instant::now();
