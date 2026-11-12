@@ -589,6 +589,7 @@ where
         let sm_span = tracing::span!(parent: &core_span, Level::DEBUG, "sm_worker");
 
         let log_reader = log_store.get_log_reader().await;
+        let prefetch_reader = log_store.get_log_reader().await;
         let (sm_cmd_tx, sm_cmd_rx) = C::mpsc(config.state_machine_channel_size());
         let weak_sm_cmd_tx = sm_cmd_tx.downgrade();
 
@@ -617,6 +618,7 @@ where
                     id.clone(),
                     state_machine,
                     log_reader,
+                    prefetch_reader,
                     tx_notify.clone(),
                     (sm_cmd_tx, sm_cmd_rx),
                     sm_span,
