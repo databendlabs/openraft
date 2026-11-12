@@ -281,6 +281,9 @@ pub mod alias {
 
     pub type MutexOf<C, T> = <Rt<C> as AsyncRuntime>::Mutex<T>;
 
+    #[since(version = "0.10.1")]
+    pub type CancelHandleOf<C> = crate::async_runtime::CancelHandle<Rt<C>>;
+
     // Usually used types
     pub type LogIdOf<C> = LogId<CommittedLeaderIdOf<C>>;
     pub type CommittedLeaderIdOf<C> = <LeaderIdOf<C> as RaftLeaderId>::Committed;
