@@ -60,7 +60,12 @@ where
     let front_item = queue.front()?;
 
     if actual >= front_item.wait_for() {
-        return queue.pop_front().map(|p| p.into_respond());
+        let respond = queue.pop_front().map(|p| p.into_respond());
+        // Reset the head so a preallocated queue does not walk its whole buffer.
+        if queue.is_empty() {
+            queue.clear();
+        }
+        return respond;
     }
     None
 }
@@ -206,6 +211,17 @@ mod tests {
         assert_eq!(queue.len(), 0);
 
         assert!(pop_if_satisfied(&mut queue, &log_id(1, 1, 10)).is_none());
+    }
+
+    #[test]
+    fn test_pop_if_satisfied_reuses_slot_zero_once_empty() {
+        let mut queue = VecDeque::with_capacity(8);
+        queue.push_back(PendingRespond::new(log_id(1, 1, 3), new_respond()));
+        let first_slot = queue.as_slices().0.as_ptr();
+
+        assert!(pop_if_satisfied(&mut queue, &log_id(1, 1, 3)).is_some());
+        queue.push_back(PendingRespond::new(log_id(1, 1, 4), new_respond()));
+        assert_eq!(queue.as_slices().0.as_ptr(), first_slot);
     }
 
     #[test]
