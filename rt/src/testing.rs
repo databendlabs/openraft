@@ -146,6 +146,10 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
             Self::test_task_local_take_value().await;
             Self::test_task_local_poll_after_take_value().await;
             Self::test_task_local_get_value().await;
+            Self::test_cancellable_completion().await;
+            Self::test_cancellable_cancel().await;
+            Self::test_cancellable_by_completion().await;
+            Self::test_cancellable_by_cancel().await;
         });
     }
 
@@ -1496,6 +1500,32 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         fut.as_mut().take_value();
 
         fut.await;
+    }
+
+    async fn test_cancellable_completion() {
+        let (mut cancel, future) = Rt::cancellable(async { 7 });
+        let actual = future.await;
+        assert_eq!(Some(7), actual);
+        cancel.cancel();
+    }
+
+    async fn test_cancellable_cancel() {
+        let (mut cancel, future) = Rt::cancellable(pending::<u64>());
+        cancel.cancel();
+        let actual = Rt::timeout(Duration::from_secs(1), future).await.unwrap();
+        assert_eq!(None, actual);
+    }
+
+    async fn test_cancellable_by_completion() {
+        let future = Rt::cancellable_by(async { 7 }, pending::<()>());
+        let actual = future.await;
+        assert_eq!(Some(7), actual);
+    }
+
+    async fn test_cancellable_by_cancel() {
+        let future = Rt::cancellable_by(async { 7 }, async { "cancel" });
+        let actual = future.await;
+        assert_eq!(None, actual);
     }
 }
 

@@ -20,6 +20,7 @@ use crate::async_runtime::watch::Watch;
 use crate::errors::ErrorSource;
 use crate::type_config::AsyncRuntime;
 use crate::type_config::alias::AsyncRuntimeOf;
+use crate::type_config::alias::CancelHandleOf;
 use crate::type_config::alias::ErrorSourceOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::JoinHandleOf;
@@ -37,6 +38,7 @@ use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::alias::WatchSenderOf;
 
 /// Collection of utility methods to `RaftTypeConfig` function.
+#[since(version = "0.10.1", change = "add cancellable futures")]
 #[since(version = "0.10.0", change = "add biased select2, select3, and select4 methods")]
 #[since(version = "0.10.0")]
 pub trait TypeConfigExt: RaftTypeConfig {
@@ -243,6 +245,32 @@ pub trait TypeConfigExt: RaftTypeConfig {
     fn err_from_error<E: std::error::Error + 'static>(e: &E) -> ErrorSourceOf<Self> {
         ErrorSourceOf::<Self>::from_error(e)
     }
+
+    /// Wrap a future with a cancellation handle.
+    ///
+    /// See [`AsyncRuntime::cancellable`] for completion and cancellation rules.
+    #[since(version = "0.10.1")]
+    fn cancellable<F>(
+        future: F,
+    ) -> (
+        CancelHandleOf<Self>,
+        impl Future<Output = Option<F::Output>> + OptionalSend,
+    )
+    where F: Future + OptionalSend {
+        AsyncRuntimeOf::<Self>::cancellable(future)
+    }
+
+    /// Wrap work with a future that signals cancellation.
+    ///
+    /// See [`AsyncRuntime::cancellable_by`] for completion and cancellation rules.
+    #[since(version = "0.10.1")]
+    fn cancellable_by<F, Cancel>(future: F, cancel: Cancel) -> impl Future<Output = Option<F::Output>> + OptionalSend
+    where
+        F: Future + OptionalSend,
+        Cancel: Future + OptionalSend,
+    {
+        AsyncRuntimeOf::<Self>::cancellable_by(future, cancel)
+    }
 }
 
 impl<T> TypeConfigExt for T where T: RaftTypeConfig {}
@@ -343,3 +371,6 @@ mod tests {
         _assert_static(stream);
     }
 }
+
+#[cfg(test)]
+mod cancellable_test;
