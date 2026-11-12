@@ -4,6 +4,7 @@
 //! It is responsible for applying log entries, building/receiving snapshot  and sending responses
 //! to the RaftCore.
 
+pub(crate) mod apply_batch;
 pub(crate) mod command;
 pub(crate) mod command_receiver;
 pub(crate) mod handle;
