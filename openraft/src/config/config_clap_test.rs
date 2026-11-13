@@ -357,6 +357,23 @@ fn test_config_state_machine_buffer() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_config_relaxed_read() -> anyhow::Result<()> {
+    let cases = [
+        (vec!["foo"], None),
+        (vec!["foo", "--enable-relaxed-read"], Some(true)),
+        (vec!["foo", "--enable-relaxed-read=true"], Some(true)),
+        (vec!["foo", "--enable-relaxed-read=false"], Some(false)),
+    ];
+    for (args, expected) in cases {
+        let config = Config::build(&args)?;
+        assert_eq!(expected, config.enable_relaxed_read);
+        let enabled = config.get_enable_relaxed_read();
+        assert_eq!(expected.unwrap_or(false), enabled);
+    }
+    Ok(())
+}
+
+#[test]
 fn test_config_local_lease_read() -> anyhow::Result<()> {
     let cases = [
         (vec!["foo"], None),

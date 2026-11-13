@@ -419,7 +419,7 @@ where
             }
         };
 
-        let read_log_id = lh.get_read_log_id();
+        let read_log_id = lh.get_read_log_id(&linearizer_option);
 
         let linearizer = Linearizer::new(id, read_log_id, applied);
 

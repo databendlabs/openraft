@@ -6,6 +6,7 @@ use std::time::Instant;
 
 use anyhow::Context;
 use bench_minimal::network::BenchRaft;
+use bench_minimal::store::StateMachineStore;
 use openraft::ReadPolicy;
 use serde_json::Value;
 use tokio::sync::Barrier;
@@ -25,6 +26,7 @@ type ReadTask = JoinHandle<anyhow::Result<Vec<ReadSample>>>;
 pub(super) struct ReadWorkload {
     pub(super) config: Arc<BenchConfig>,
     pub(super) leader: BenchRaft,
+    pub(super) state_machine: Arc<StateMachineStore>,
     pub(super) start: Arc<Barrier>,
     pub(super) epoch: Arc<OnceLock<Instant>>,
 }
@@ -80,12 +82,21 @@ impl ReadWorkload {
     }
 
     async fn read(&self) -> anyhow::Result<()> {
+        if self.config.read_relaxed {
+            let value = self.leader.read_relaxed(ReadPolicy::LeaseRead, || self.state_machine.read()).await?;
+            let _ = std::hint::black_box(value);
+            return Ok(());
+        }
         let linearizer = self.leader.get_local_read_linearizer(ReadPolicy::LeaseRead).await?;
-        if self.config.read_await_ready {
+        if self.config.read_await_ready || self.config.read_query {
             let state = linearizer.await_ready(&self.leader).await?;
             let _ = std::hint::black_box(state);
         } else {
             let _ = std::hint::black_box(linearizer);
+        }
+        if self.config.read_query {
+            let value = self.state_machine.read().await;
+            let _ = std::hint::black_box(value);
         }
         Ok(())
     }

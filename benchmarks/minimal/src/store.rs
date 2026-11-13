@@ -91,10 +91,13 @@ pub struct StoredSnapshot {
     pub data: Vec<u8>,
 }
 
+#[openraft::macros::since(version = "0.10.1", change = "track applied writes for read queries")]
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct StateMachine {
     pub last_applied_log: Option<LogIdOf<TypeConfig>>,
     pub last_membership: StoredMembershipOf<TypeConfig>,
+    #[serde(default)]
+    pub applied_writes: u64,
 }
 
 pub struct LogStore {
@@ -162,6 +165,13 @@ impl StateMachineStore {
             current_snapshot: RwLock::new(None),
             apply_io_delay: Duration::ZERO,
         }
+    }
+
+    /// Sample a write counter and its applied log ID under the same state-machine read lock.
+    #[openraft::macros::since(version = "0.10.1")]
+    pub async fn read(&self) -> (Option<LogIdOf<TypeConfig>>, u64) {
+        let sm = self.sm.read().await;
+        (sm.last_applied_log, sm.applied_writes)
     }
 
     /// Delay the end of every `apply()` call, after its entries are consumed, and send the
@@ -358,7 +368,8 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
             sm.last_applied_log = Some(entry.log_id);
 
             match entry.payload {
-                EntryPayload::Blank | EntryPayload::Normal(_) => {}
+                EntryPayload::Blank => {}
+                EntryPayload::Normal(_) => sm.applied_writes += 1,
                 EntryPayload::Membership(ref mem) => {
                     sm.last_membership = StoredMembershipOf::<TypeConfig>::new(Some(entry.log_id), mem.clone());
                 }
