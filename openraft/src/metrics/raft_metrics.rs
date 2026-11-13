@@ -112,6 +112,10 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     /// [`local_committed`](Self::local_committed) on a node that has not yet received the
     /// corresponding log entries. See [`commit`] for the full explanation of the distinction.
     ///
+    /// With [`Config::enable_relaxed_read`](crate::Config::enable_relaxed_read), a leader
+    /// reports the smaller of its committed and applied log IDs, so on a follower this value lags
+    /// the quorum-granted commit. A follower can see it move back when a new leader takes over.
+    ///
     /// [`commit`]: crate::docs::protocol::commit
     #[since(version = "0.10.0")]
     pub cluster_committed: Option<LogIdOf<C>>,
@@ -325,6 +329,10 @@ pub struct RaftDataMetrics<C: RaftTypeConfig> {
     /// This is the **cluster-committed** value. It may lead
     /// [`local_committed`](Self::local_committed) on a node that has not yet received the
     /// corresponding log entries. See [`commit`] for the full explanation of the distinction.
+    ///
+    /// With [`Config::enable_relaxed_read`](crate::Config::enable_relaxed_read), a leader
+    /// reports the smaller of its committed and applied log IDs, so on a follower this value lags
+    /// the quorum-granted commit. A follower can see it move back when a new leader takes over.
     ///
     /// [`commit`]: crate::docs::protocol::commit
     #[since(version = "0.10.0")]

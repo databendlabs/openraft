@@ -22,7 +22,11 @@ use crate::type_config::alias::LogIdOf;
 /// following reads are linearized.
 ///
 /// It retains the no-op and committed log IDs captured when the read was authorized. Their
-/// maximum is the required read log ID. It also tracks last known applied progress on a node.
+/// maximum is the required read log ID. A relaxed linearizer, requested with
+/// [`LinearizerOption::with_relaxed`], waits only for the no-op on the node that issued it; on any
+/// other node it waits for the read log ID. It also tracks last known applied progress on a node.
+///
+/// [`LinearizerOption::with_relaxed`]: crate::raft::linearizable_read::LinearizerOption::with_relaxed
 ///
 /// [`Raft::get_read_linearizer()`]: Raft::get_read_linearizer
 #[since(version = "0.10.0")]
@@ -66,6 +70,15 @@ where C: RaftTypeConfig
         }
     }
 
+    /// Mark whether this read requires only the no-op log ID of the authorizing leadership.
+    ///
+    /// The captured committed log ID is retained either way, and [`Self::try_await_ready`] on
+    /// another node still waits for it.
+    pub(crate) fn with_relaxed(self, relaxed: bool) -> Self {
+        let state = self.state.with_relaxed(relaxed);
+        Self { state }
+    }
+
     /// Replace the last applied log id this linearizer reports.
     ///
     /// A queued read observes the applied log id when it is created, which may lag by a heartbeat
@@ -101,15 +114,16 @@ where C: RaftTypeConfig
     /// Waits for the state machine to apply all required log entries for linearizable reads.
     ///
     /// This method ensures linearizability by waiting for the state machine to apply all log
-    /// entries up to the `read_log_id`.
+    /// entries up to [`read_log_id_on(this node)`](LinearizeState::read_log_id_on): the
+    /// `read_log_id`, or only the no-op log ID for a relaxed linearizer on the node that issued it.
     ///
     /// # Returns
     ///
-    /// Returns `Ok(Ok(LinearizeState))` once `applied >= read_log_id`, indicating it's safe to
-    /// perform linearizable reads.
+    /// Returns `Ok(Ok(LinearizeState))` once `applied >= read_log_id_on(this node)`, indicating
+    /// it's safe to perform linearizable reads.
     ///
     /// If `timeout` is provided and expires, returns `Ok(Err(LinearizeState))` where
-    /// `applied < read_log_id`, indicating the read cannot be performed yet.
+    /// `applied < read_log_id_on(this node)`, indicating the read cannot be performed yet.
     ///
     /// # Example
     ///
@@ -133,7 +147,7 @@ where C: RaftTypeConfig
             return Ok(Ok(self.state));
         }
 
-        let expected = Some(self.state.read_log_id().index());
+        let expected = Some(self.state.read_log_id_on(this_id).index());
 
         let res = raft.inner.wait(timeout).applied_index_at_least(expected, "Linearizer::try_await_ready").await;
 

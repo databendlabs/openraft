@@ -35,6 +35,7 @@ use crate::raft::ReadPolicy;
 ///
 /// [`RaftCore`]: crate::core::RaftCore
 /// [`LinearizableReadError::QuorumNotEnough`]: crate::errors::LinearizableReadError::QuorumNotEnough
+#[since(version = "0.10.1", change = "add relaxed reads")]
 #[since(version = "0.10.0", change = "renamed from `LinearizableReadRequest`")]
 #[since(version = "0.10.0")]
 #[derive(Debug, Clone)]
@@ -65,14 +66,21 @@ pub struct LinearizerOption {
     ///
     /// [`RaftCore`]: crate::core::RaftCore
     pub(crate) wait_timeout: Option<Duration>,
+
+    /// Requests a relaxed read; see [`Self::with_relaxed`].
+    ///
+    /// It takes effect only when
+    /// [`Config::enable_relaxed_read`](crate::Config::enable_relaxed_read) is `Some(true)` on
+    /// the leader that handles the read.
+    pub(crate) relaxed: bool,
 }
 
 impl fmt::Display for LinearizerOption {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "LinearizerOption {{ max_quorum_ack_age: {:?}, heartbeat_if_quorum_ack_stale: {}, wait_timeout: {:?} }}",
-            self.max_quorum_ack_age, self.heartbeat_if_quorum_ack_stale, self.wait_timeout
+            "LinearizerOption {{ max_quorum_ack_age: {:?}, heartbeat_if_quorum_ack_stale: {}, wait_timeout: {:?}, relaxed: {} }}",
+            self.max_quorum_ack_age, self.heartbeat_if_quorum_ack_stale, self.wait_timeout, self.relaxed
         )
     }
 }
@@ -93,6 +101,7 @@ impl LinearizerOption {
             max_quorum_ack_age,
             heartbeat_if_quorum_ack_stale,
             wait_timeout: None,
+            relaxed: false,
         }
     }
 
@@ -105,6 +114,26 @@ impl LinearizerOption {
     #[since(version = "0.10.0")]
     pub fn with_wait_timeout(mut self, wait_timeout: Duration) -> Self {
         self.wait_timeout = Some(wait_timeout);
+        self
+    }
+
+    /// Requests a relaxed read, which waits only for the no-op of the leadership that authorizes
+    /// it rather than for the committed log ID.
+    ///
+    /// The relaxed barrier applies only on the leader that issues the [`Linearizer`]. Awaited on
+    /// another node, the linearizer waits for its read log ID, `max(noop_log_id, committed)`, as
+    /// usual. The leader ignores the request unless
+    /// [`Config::enable_relaxed_read`](crate::Config::enable_relaxed_read) is `Some(true)`; see
+    /// that option for the cluster-wide requirements.
+    ///
+    /// ```ignore
+    /// let option = LinearizerOption::from(ReadPolicy::LeaseRead).with_relaxed(true);
+    /// raft.ensure_linearizable(option).await?;
+    /// let value = local_state_machine.read().await.get("key").cloned();
+    /// ```
+    #[since(version = "0.10.1")]
+    pub fn with_relaxed(mut self, relaxed: bool) -> Self {
+        self.relaxed = relaxed;
         self
     }
 

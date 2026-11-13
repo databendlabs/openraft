@@ -407,6 +407,9 @@ where
         let now = C::now();
         let leader_lease = self.engine.config.timer_config.leader_lease;
         let max_quorum_ack_age = linearizer_option.effective_max_quorum_ack_age(leader_lease);
+        // The no-op barrier is safe only while followers apply no further than this leader, which
+        // `enable_relaxed_read` guarantees. Without it, serve the standard barrier.
+        let relaxed = linearizer_option.relaxed && self.config.get_enable_relaxed_read();
 
         let mut lh = match self.ensure_leader_handler() {
             Ok(leading_handler) => leading_handler,
@@ -416,7 +419,7 @@ where
             }
         };
 
-        let linearizer = lh.get_linearizer();
+        let linearizer = lh.get_linearizer().with_relaxed(relaxed);
 
         if lh.leader.is_self_quorum() {
             tx.send(Ok(linearizer)).ok();
@@ -2259,10 +2262,28 @@ where
             sm::Response::Apply(res) => {
                 self.runtime_stats.record_log_stage_now(Stage::Applied, res.last_applied.index() + 1);
                 self.engine.state.apply_progress_mut().try_flush(res.last_applied);
+                self.broadcast_applied_bound();
             }
         }
 
         Ok(())
+    }
+
+    /// With relaxed reads, announces a leader's new applied log ID to followers.
+    ///
+    /// Followers may then apply up to it. Without this, a follower would learn the bound only
+    /// from the next commit or heartbeat, and could stall when heartbeats are disabled.
+    ///
+    /// The announcement is queued as a command rather than sent at once: commands from the same
+    /// notification batch, such as the IO of a newly established leader, must reach the
+    /// replication tasks first.
+    fn broadcast_applied_bound(&mut self) {
+        let relaxed_read = self.config.get_enable_relaxed_read();
+        if !relaxed_read || self.engine.leader.is_none() {
+            return;
+        }
+        let committed = self.engine.state.follower_apply_bound(relaxed_read);
+        self.engine.output.push_command(Command::ReplicateCommitted { committed });
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
@@ -2416,7 +2437,8 @@ where
             return;
         }
 
-        let cluster_committed = lh.state.cluster_committed().cloned();
+        // With relaxed reads, followers apply only what this leader has applied.
+        let cluster_committed = lh.state.follower_apply_bound(self.config.get_enable_relaxed_read());
         let now = C::now();
         let round = lh.leader.next_heartbeat_round();
         let min_interval = Duration::from_millis(self.config.heartbeat_min_interval());
