@@ -1371,13 +1371,20 @@ where
     /// leader has not applied, invalidating this optimization. Stop and drain such reads before
     /// enabling the configuration anywhere in the cluster. Every leader read path must use this
     /// API or equivalent sampled-leadership validation, including ordinary reads that can survive
-    /// step-down. Writes must respond only after apply.
+    /// step-down. Fresh query snapshots acquired after a successful write response must include
+    /// that write's updates and applied log ID.
     ///
     /// Leadership confirmation uses the same quorum/lease options as [`Self::get_read_linearizer`].
     /// With [`Config::enable_local_lease_read`] enabled, it may use the caller-side lease cache.
     /// The apply barrier is the authorizing leadership's no-op, not its committed tail. Completed
-    /// local writes are already applied; overlapping unfinished writes may follow this read.
-    /// Existing read-barrier APIs retain their committed boundary and follower-read support.
+    /// local writes must be visible to query snapshots; overlapping unfinished writes may follow
+    /// this read. Existing read-barrier APIs retain their committed boundary and follower-read
+    /// support.
+    ///
+    /// [`ApplyResponder::send`](crate::storage::ApplyResponder::send) can complete `client_write`
+    /// before `apply()` returns. Stores that publish a transaction at the end of `apply()` must
+    /// delay responses or the client-visible acknowledgement until publication. Snapshot validation
+    /// cannot detect a missing write from the same leadership.
     ///
     /// # Query contract
     ///

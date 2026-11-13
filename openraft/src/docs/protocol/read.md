@@ -109,13 +109,28 @@ standard committed barrier must therefore be stopped and drained before enabling
 anywhere in the cluster. Every leader read path must also use `read_relaxed` or equivalent
 sampled-leadership validation: an ordinary leader read authorized before step-down can otherwise
 expose the next leader's state while finishing as a follower. This applies even on nodes where
-relaxed reads are disabled. Writes must respond only after their state-machine updates are applied.
+relaxed reads are disabled. Fresh query snapshots acquired after a successful write response must
+include that write's updates and applied log ID.
 
 A relaxed read still confirms leadership using the requested ReadIndex or lease options and
-waits for the current leadership's no-op to be applied. Previously completed local writes are
-already applied; previous leaders' writes precede the new no-op. Unfinished overlapping writes
-can be ordered after the read. `enable_local_lease_read` independently enables the cached lease
-path; disabling it makes `read_relaxed` use RaftCore without disabling the reduced apply barrier.
+waits for the current leadership's no-op to be applied. Previously completed local writes must
+already be visible to fresh query snapshots; previous leaders' writes precede the new no-op.
+Unfinished overlapping writes can be ordered after the read. `enable_local_lease_read`
+independently enables the cached lease path; disabling it makes `read_relaxed` use RaftCore
+without disabling the reduced apply barrier.
+
+### Write response visibility
+
+[`ApplyResponder::send`](crate::storage::ApplyResponder::send) can complete `client_write` before
+`RaftStateMachine::apply` returns. A store may update entries in a transaction and publish the
+batch only at the end of `apply()`. If it sends responses before publication, a subsequent
+relaxed read can miss an acknowledged write. The older snapshot can still cover the no-op and
+match its leadership, so snapshot validation does not detect this failure.
+
+Such stores must delay responses or the client-visible acknowledgement until publication.
+Ordinary reads still wait for their committed boundary to be reported as applied, after
+`apply()` returns. Enabling relaxed reads therefore requires checking the store's snapshot
+visibility, not just whether `client_write` has returned.
 
 ### Step-down counterexample
 

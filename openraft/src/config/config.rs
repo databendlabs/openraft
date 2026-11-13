@@ -482,9 +482,9 @@ pub struct Config {
     /// only for the current leadership's no-op. This reduces latency when apply lags behind
     /// replication. It cannot bypass query locks or I/O and helps little without an apply backlog.
     ///
-    /// Completed local writes are already applied. Previous leaders' committed entries precede
-    /// the no-op. Unfinished writes may follow an overlapping read without violating
-    /// linearizability. Quorum confirmation and lease assumptions stay unchanged.
+    /// Completed local writes must already be visible to fresh query snapshots. Previous leaders'
+    /// committed entries precede the no-op. Unfinished writes may follow an overlapping read without
+    /// violating linearizability. Quorum confirmation and lease assumptions stay unchanged.
     /// [`Self::enable_local_lease_read`] independently enables lease checks outside RaftCore.
     ///
     /// # Safety requirements
@@ -503,7 +503,11 @@ pub struct Config {
     ///   `read_relaxed` requires that log ID to cover the no-op and match its leadership. It
     ///   discards invalid results. Retry with fresh authorization on
     ///   [`RelaxedReadError::InvalidSnapshot`]. Do not expose the result before validation.
-    /// - Acknowledge writes only after their state-machine updates are applied.
+    /// - Fresh query snapshots acquired after a successful write response must include that write's
+    ///   updates and applied log ID. `ApplyResponder::send` can complete `client_write` before
+    ///   `apply()` returns. If the store publishes a transaction at the end of `apply()`, delay
+    ///   responses or the client-visible acknowledgement until publication. Snapshot validation
+    ///   cannot detect a missing write from the same leadership.
     ///
     /// See [ReadIndex: Less Latency through Relaxed Ordering] for the rationale and the
     /// [Openraft read protocol] for validation and deployment details.
