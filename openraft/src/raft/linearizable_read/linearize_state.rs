@@ -12,15 +12,16 @@ use crate::type_config::alias::LogIdOf;
 /// This is returned by [`Linearizer::try_await_ready()`] after waiting for the state
 /// machine to apply all necessary log entries for a linearizable read.
 ///
-/// This struct contains the log IDs that were used to ensure linearizability:
-/// - `read_log_id`: the log ID that was required to be applied before reading
-/// - `applied`: the actual log ID that was applied to satisfy the linearizability requirement
+/// This struct retains the leader's committed log ID and no-op log ID from read authorization.
+/// The required read log ID is their maximum. Applied progress belongs to `node_id`; it is not
+/// the applied log ID sampled by a later state-machine query.
 ///
 /// If the state is ready, it is guaranteed `applied >= read_log_id`.
 /// If the state is not ready (timeout waiting for the applied log entries), it is guaranteed
 /// `applied < read_log_id`.
 ///
 /// [`Linearizer::try_await_ready()`]: crate::raft::linearizable_read::Linearizer::try_await_ready
+#[since(version = "0.10.1", change = "retain committed and no-op log IDs separately")]
 #[since(version = "0.10.0")]
 #[derive(Debug, Clone)]
 pub struct LinearizeState<C>
@@ -28,7 +29,8 @@ where C: RaftTypeConfig
 {
     /// The node from which this Linearizer collects the applied log ID.
     node_id: C::NodeId,
-    read_log_id: ReadLogId<C>,
+    committed_log_id: Option<LogIdOf<C>>,
+    noop_log_id: LogIdOf<C>,
     applied: Option<LogIdOf<C>>,
 }
 
@@ -41,7 +43,7 @@ where C: RaftTypeConfig
         write!(
             f,
             "{{ read_log_id: {}, applied: {} }}",
-            self.read_log_id,
+            self.read_log_id(),
             self.applied.display()
         )
     }
@@ -50,10 +52,16 @@ where C: RaftTypeConfig
 impl<C> LinearizeState<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(node_id: C::NodeId, read_log_id: ReadLogId<C>, applied: Option<LogIdOf<C>>) -> Self {
+    pub(crate) fn new(
+        node_id: C::NodeId,
+        committed_log_id: Option<LogIdOf<C>>,
+        noop_log_id: LogIdOf<C>,
+        applied: Option<LogIdOf<C>>,
+    ) -> Self {
         Self {
             node_id,
-            read_log_id,
+            committed_log_id,
+            noop_log_id,
             applied,
         }
     }
@@ -74,26 +82,41 @@ where C: RaftTypeConfig
     ///
     /// If the local_node_id is different, the `applied` is unknown.
     pub(crate) fn is_ready_on_node(&self, node_id: &C::NodeId) -> bool {
-        self.node_id == *node_id && self.applied.as_ref() >= Some(self.read_log_id.log_id())
+        self.node_id == *node_id
+            && self.applied.as_ref() >= Some(&self.noop_log_id)
+            && self.applied.as_ref() >= self.committed_log_id.as_ref()
     }
 
-    /// Return the node id on which the linearizer is created.
+    /// Return the node from which the applied progress was collected.
     #[since(version = "0.10.0")]
     pub fn node_id(&self) -> &C::NodeId {
         &self.node_id
     }
 
-    /// Return the `read_log_id` of this read operation.
-    ///
-    /// It is the max of the current leader noop-log-id and the last committed log id.
-    /// See: [`read` docs](crate::docs::protocol::read).
-    #[since(version = "0.10.0", change = "return ReadLogId instead of LogId")]
-    #[since(version = "0.10.0")]
-    pub fn read_log_id(&self) -> &ReadLogId<C> {
-        &self.read_log_id
+    /// The committed log ID captured when the read was authorized.
+    #[since(version = "0.10.1")]
+    pub fn committed_log_id(&self) -> Option<&LogIdOf<C>> {
+        self.committed_log_id.as_ref()
     }
 
-    /// The last applied log ID.
+    /// The no-op log ID of the leadership that authorized the read.
+    #[since(version = "0.10.1")]
+    pub fn noop_log_id(&self) -> &LogIdOf<C> {
+        &self.noop_log_id
+    }
+
+    /// Return the `read_log_id` of this read operation.
+    ///
+    /// It is the maximum of the no-op and committed log IDs captured at authorization.
+    /// See: [`read` docs](crate::docs::protocol::read).
+    #[since(version = "0.10.1", change = "calculate and return an owned ReadLogId")]
+    #[since(version = "0.10.0", change = "return ReadLogId instead of LogId")]
+    #[since(version = "0.10.0")]
+    pub fn read_log_id(&self) -> ReadLogId<C> {
+        ReadLogId::new(self.noop_log_id.clone(), self.committed_log_id.clone())
+    }
+
+    /// The last known applied log ID on [`Self::node_id`].
     #[since(version = "0.10.0")]
     pub fn applied(&self) -> Option<&LogIdOf<C>> {
         self.applied.as_ref()
@@ -107,9 +130,60 @@ mod tests {
     use crate::engine::testing::log_id;
 
     #[test]
+    fn test_read_log_id() {
+        let noop = log_id(2, 1, 10);
+        let cases = [
+            (None, noop),
+            (Some(log_id(1, 1, 8)), noop),
+            (Some(log_id(2, 1, 9)), noop),
+            (Some(noop), noop),
+            (Some(log_id(2, 1, 20)), log_id(2, 1, 20)),
+        ];
+        for (committed, expected) in cases {
+            let state: LinearizeState<UTConfig> = LinearizeState::new(1, committed, noop, None);
+            assert_eq!(committed.as_ref(), state.committed_log_id());
+            assert_eq!(&noop, state.noop_log_id());
+            assert_eq!(&expected, state.read_log_id().log_id());
+        }
+    }
+
+    #[test]
+    fn test_is_ready_on_node() {
+        let noop = log_id(2, 1, 10);
+        let committed = log_id(2, 1, 20);
+        let cases = [
+            (None, false),
+            (Some(noop), false),
+            (Some(log_id(2, 1, 19)), false),
+            (Some(committed), true),
+            (Some(log_id(2, 1, 21)), true),
+        ];
+        for (applied, ready) in cases {
+            let state: LinearizeState<UTConfig> = LinearizeState::new(1, Some(committed), noop, applied);
+            assert_eq!(ready, state.is_ready_on_node(&1));
+            assert!(!state.is_ready_on_node(&2));
+        }
+    }
+
+    #[test]
+    fn test_with_applied_preserves_read_boundaries() {
+        let noop = log_id(2, 1, 10);
+        let committed = log_id(2, 1, 20);
+        let state: LinearizeState<UTConfig> = LinearizeState::new(1, Some(committed), noop, Some(noop));
+        let state = state.with_applied(2, Some(committed));
+
+        assert_eq!(&2, state.node_id());
+        assert_eq!(Some(&committed), state.committed_log_id());
+        assert_eq!(&noop, state.noop_log_id());
+        assert_eq!(Some(&committed), state.applied());
+        assert_eq!(&committed, state.read_log_id().log_id());
+        assert!(state.is_ready_on_node(&2));
+        assert!(!state.is_ready_on_node(&1));
+    }
+
+    #[test]
     fn test_display() {
-        let read_log_id = ReadLogId::new(log_id(1, 1, 1), None);
-        let state: LinearizeState<UTConfig> = LinearizeState::new(1, read_log_id, Some(log_id(1, 1, 0)));
+        let state: LinearizeState<UTConfig> = LinearizeState::new(1, None, log_id(1, 1, 1), Some(log_id(1, 1, 0)));
         assert_eq!(
             format!("{}", state),
             "LinearizeState[id=1]{ read_log_id: T1-N1.1, applied: T1-N1.0 }"

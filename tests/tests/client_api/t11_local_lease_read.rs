@@ -95,8 +95,8 @@ async fn cached_reads_complete_while_the_core_is_parked() -> Result<()> {
                         panic!("a cached read must finish before RaftCore resumes");
                     };
                     let linearizer = result?;
-                    let boundary = linearizer.read_log_id().log_id();
-                    assert_eq!(&expected, boundary);
+                    let boundary = linearizer.read_log_id();
+                    assert_eq!(&expected, boundary.log_id());
                     let applied = linearizer.applied();
                     assert_eq!(Some(&expected), applied);
                 } else {
@@ -128,8 +128,8 @@ async fn cached_reads_complete_while_the_core_is_parked() -> Result<()> {
                     panic!("known applied progress must also bypass the core");
                 };
                 let state = result?;
-                let actual = state.read_log_id().log_id();
-                assert_eq!(&expected, actual);
+                let actual = state.read_log_id();
+                assert_eq!(&expected, actual.log_id());
             }
         }
 
@@ -197,8 +197,8 @@ async fn cached_quorum_reads_expire_and_refresh() -> Result<()> {
                 panic!("a fresh quorum lease must bypass the parked core");
             };
             let linearizer = result?;
-            let boundary = linearizer.read_log_id().log_id();
-            assert_eq!(&expected, boundary);
+            let boundary = linearizer.read_log_id();
+            assert_eq!(&expected, boundary.log_id());
         }
     }
 
@@ -239,8 +239,8 @@ async fn cached_quorum_reads_expire_and_refresh() -> Result<()> {
         let _refreshed = n0.get_local_read_linearizer(ReadPolicy::ReadIndex).await?;
         let linearizer = n0.get_local_read_linearizer(ReadPolicy::LeaseRead).await?;
         let state = linearizer.await_ready(&n0).await?;
-        let actual = state.read_log_id().log_id();
-        assert_eq!(&expected, actual);
+        let actual = state.read_log_id();
+        assert_eq!(&expected, actual.log_id());
     }
     Ok(())
 }
@@ -310,9 +310,9 @@ async fn cache_misses_preserve_read_options() -> Result<()> {
         router.set_network_error(2, false);
         let option = LinearizerOption::new(Some(max_age), true).with_wait_timeout(WAIT_TIMEOUT);
         let linearizer = n0.get_local_read_linearizer(option).await?;
-        let boundary = linearizer.read_log_id().log_id();
+        let boundary = linearizer.read_log_id();
         let expected = log_id(1, 0, log_index);
-        assert_eq!(&expected, boundary);
+        assert_eq!(&expected, boundary.log_id());
     }
     Ok(())
 }
@@ -405,8 +405,8 @@ async fn cached_boundary_precedes_write_reply_and_metrics() -> Result<()> {
         let committed = TypeConfig::timeout(WAIT_TIMEOUT, committed).await??;
         assert_eq!(expected, committed);
         let linearizer = n0.get_local_read_linearizer(ReadPolicy::LeaseRead).await?;
-        let boundary = linearizer.read_log_id().log_id();
-        assert_eq!(&expected, boundary);
+        let boundary = linearizer.read_log_id();
+        assert_eq!(&expected, boundary.log_id());
         let mut ready = Box::pin(linearizer.try_await_ready(&n0, None));
         let polled = futures::poll!(ready.as_mut());
         let pending = polled.is_pending();
@@ -441,8 +441,8 @@ async fn cached_boundary_precedes_write_reply_and_metrics() -> Result<()> {
             panic!("the committed boundary must be published before the write reply");
         };
         let linearizer = result?;
-        let boundary = linearizer.read_log_id().log_id();
-        assert_eq!(&expected, boundary);
+        let boundary = linearizer.read_log_id();
+        assert_eq!(&expected, boundary.log_id());
         let state = sm.get_state_machine().await;
         let expected_status = hashmap! {"cached".to_string() => "request-1".to_string()};
         assert_eq!(expected_status, state.client_status);
@@ -556,8 +556,8 @@ async fn transfer_keeps_cached_reads_disabled_after_a_late_ack() -> Result<()> {
         };
         assert_eq!(Some(1), forward.leader_id);
         let linearizer = n1.get_local_read_linearizer(ReadPolicy::LeaseRead).await?;
-        let boundary = linearizer.read_log_id().log_id();
-        assert_eq!(&response.log_id, boundary);
+        let boundary = linearizer.read_log_id();
+        assert_eq!(&response.log_id, boundary.log_id());
     }
     Ok(())
 }
@@ -649,8 +649,8 @@ async fn membership_rebuild_replaces_cached_quorum_requirements() -> Result<()> 
             panic!("the restored self quorum must be served from the cache");
         };
         let linearizer = result?;
-        let boundary = linearizer.read_log_id().log_id();
-        assert_eq!(&expected, boundary);
+        let boundary = linearizer.read_log_id();
+        assert_eq!(&expected, boundary.log_id());
         gate.release();
         router.wait(&0).purged(Some(expected), "purge completed").await?;
     }
@@ -682,8 +682,8 @@ async fn membership_rebuild_can_regress_the_cached_quorum_clock() -> Result<()> 
     let acknowledged_at = {
         let linearizer = n0.get_read_linearizer(ReadPolicy::ReadIndex).await?;
         let expected = log_id(1, 0, log_index);
-        let boundary = linearizer.read_log_id().log_id();
-        assert_eq!(&expected, boundary);
+        let boundary = linearizer.read_log_id();
+        assert_eq!(&expected, boundary.log_id());
         let metrics_rx = n0.metrics();
         let metrics = metrics_rx.borrow_watched().clone();
         let acknowledged = metrics.last_quorum_acked.expect("the old quorum has acknowledged this leader");
@@ -749,8 +749,8 @@ async fn membership_rebuild_can_regress_the_cached_quorum_clock() -> Result<()> 
         let expected = log_id(1, 0, log_index + 1);
         assert_eq!(expected, response.log_id);
         let linearizer = n0.get_local_read_linearizer(ReadPolicy::LeaseRead).await?;
-        let boundary = linearizer.read_log_id().log_id();
-        assert_eq!(&expected, boundary);
+        let boundary = linearizer.read_log_id();
+        assert_eq!(&expected, boundary.log_id());
     }
     Ok(())
 }
@@ -776,8 +776,8 @@ async fn restarted_node_publishes_its_new_leadership() -> Result<()> {
         let expected = log_id(1, 0, log_index + 1);
         assert_eq!(expected, response.log_id);
         let linearizer = n0.get_local_read_linearizer(ReadPolicy::LeaseRead).await?;
-        let actual = linearizer.read_log_id().log_id();
-        assert_eq!(&expected, actual);
+        let actual = linearizer.read_log_id();
+        assert_eq!(&expected, actual.log_id());
         router.stop_node(0).await?
     };
 
@@ -797,8 +797,8 @@ async fn restarted_node_publishes_its_new_leadership() -> Result<()> {
         let restarted = router.get_raft_handle(&0)?;
         let linearizer = restarted.get_local_read_linearizer(ReadPolicy::LeaseRead).await?;
         let expected = log_id(2, 0, log_index + 2);
-        let boundary = linearizer.read_log_id().log_id();
-        assert_eq!(&expected, boundary);
+        let boundary = linearizer.read_log_id();
+        assert_eq!(&expected, boundary.log_id());
         let response = router.client_request(0, "restart", 2).await?;
         let expected = log_id(2, 0, log_index + 3);
         assert_eq!(expected, response.log_id);
@@ -835,9 +835,9 @@ async fn panicked_core_invalidates_cached_self_quorum() -> Result<()> {
             panic!("a self-quorum read must use the cached snapshot");
         };
         let linearizer = result?;
-        let boundary = linearizer.read_log_id().log_id();
+        let boundary = linearizer.read_log_id();
         let expected = log_id(1, 0, log_index);
-        assert_eq!(&expected, boundary);
+        assert_eq!(&expected, boundary.log_id());
     }
 
     tracing::info!(
@@ -921,8 +921,8 @@ async fn higher_vote_invalidates_cache_during_a_blocked_state_machine_send() -> 
             panic!("the current self-quorum snapshot must authorize a cached read");
         };
         let linearizer = result?;
-        let boundary = linearizer.read_log_id().log_id();
-        assert_eq!(&expected, boundary);
+        let boundary = linearizer.read_log_id();
+        assert_eq!(&expected, boundary.log_id());
         let mut barrier = Box::pin(n0.with_raft_state(|_| ()));
         let polled = futures::poll!(barrier.as_mut());
         let pending = polled.is_pending();

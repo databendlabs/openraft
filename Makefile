@@ -168,6 +168,14 @@ bench_compare_write_latency:
 bench_compare_apply_delays:
 	$(BENCH_COMPARE) --apply-delays
 
+# Exercise ordinary and local lease reads in both leader-ID modes.
+.PHONY: test-client-reads
+test-client-reads:
+	cargo test -p tests --test client_api t11_client_reads
+	cargo test -p tests --test client_api t11_local_lease_read
+	cargo test -p tests --features single-term-leader --test client_api t11_client_reads
+	cargo test -p tests --features single-term-leader --test client_api t11_local_lease_read
+
 test-bench-minimal:
 	cargo test --manifest-path benchmarks/minimal/Cargo.toml --all-targets
 	cargo test --manifest-path benchmarks/minimal/Cargo.toml --all-targets --no-default-features

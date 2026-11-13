@@ -29,14 +29,13 @@ depending on the `read_policy` [`ReadPolicy`].  The `read_policy` can be one of:
   lease period after the restart: until then, it neither votes for another candidate nor
   campaigns.
 
-Both [`get_read_linearizer()`] and [`get_local_read_linearizer()`] return a [`Linearizer`],
-containing `(read_log_id, last_applied_log_id)`:
+Both [`get_read_linearizer()`] and [`get_local_read_linearizer()`] return a [`Linearizer`]
+that retains the committed log ID and the authorizing leadership's no-op log ID separately.
+Its `read_log_id()` calculates their maximum: the state machine must apply through that boundary
+before reading. Applied progress is tracked with the node from which it was collected; it is
+not a snapshot of the subsequent query.
 
-- `read_log_id` represents the log id up to which the state machine should apply to ensure a
-  linearizable read,
-- `last_applied_log_id` is the last applied log id.
-
-The caller then wait for `last_applied_log_id` to catch up `read_log_id`,
+The caller then waits for applied progress to catch up to `read_log_id`,
 by calling [`Linearizer::try_await_ready()`], or [`Linearizer::await_ready()`] for simplicity without a timeout,
 and at last, proceed with the state machine read.
 

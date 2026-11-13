@@ -9,7 +9,6 @@ use crate::async_runtime::watch::WatchReceiver;
 use crate::errors::Fatal;
 use crate::metrics::WaitError;
 use crate::raft::linearizable_read::LinearizeState;
-use crate::raft::linearizable_read::ReadLogId;
 use crate::storage::RaftStateMachine;
 use crate::type_config::alias::LogIdOf;
 
@@ -22,9 +21,8 @@ use crate::type_config::alias::LogIdOf;
 /// The application calls [`Linearizer::try_await_ready()`](Self::try_await_ready) to ensure its
 /// following reads are linearized.
 ///
-/// It contains:
-/// - a `read_log_id`: the log ID that must be applied before reading to ensure linearizability
-/// - a `applied`: the last known log ID that has been applied to the state machine
+/// It retains the committed and no-op log IDs captured when the read was authorized. Their
+/// maximum is the required read log ID. It also tracks last known applied progress on a node.
 ///
 /// [`Raft::get_read_linearizer()`]: Raft::get_read_linearizer
 #[since(version = "0.10.0")]
@@ -33,7 +31,7 @@ use crate::type_config::alias::LogIdOf;
 pub struct Linearizer<C>
 where C: RaftTypeConfig
 {
-    /// The state containing the read log ID and last applied log ID for linearizable reads.
+    /// Captured read boundaries and last known applied progress.
     state: LinearizeState<C>,
 }
 
@@ -50,11 +48,21 @@ where C: RaftTypeConfig
 impl<C> Linearizer<C>
 where C: RaftTypeConfig
 {
+    /// Create a linearizer from the captured committed and no-op log IDs and applied progress.
+    ///
+    /// When transferring a linearizer to a follower, preserve both log IDs from the leader.
+    /// `applied` belongs to `node_id` and is not reused as another node's progress.
+    #[since(version = "0.10.1", change = "accept separate committed and no-op log IDs")]
     #[since(version = "0.10.0", change = "accept ReadLogId instead of LogId")]
     #[since(version = "0.10.0")]
-    pub fn new(node_id: C::NodeId, read_log_id: ReadLogId<C>, applied: Option<LogIdOf<C>>) -> Self {
+    pub fn new(
+        node_id: C::NodeId,
+        committed_log_id: Option<LogIdOf<C>>,
+        noop_log_id: LogIdOf<C>,
+        applied: Option<LogIdOf<C>>,
+    ) -> Self {
         Self {
-            state: LinearizeState::new(node_id, read_log_id, applied),
+            state: LinearizeState::new(node_id, committed_log_id, noop_log_id, applied),
         }
     }
 

@@ -11,6 +11,7 @@ use crate::engine::Engine;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::raft::linearizable_read::ReadLogId;
+use crate::raft_state::LogStateReader;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::StoredMembershipOf;
 use crate::utime::Leased;
@@ -47,20 +48,26 @@ fn eng() -> Engine<UTConfig> {
 }
 
 #[test]
-fn test_get_read_log_id() -> anyhow::Result<()> {
+fn test_get_linearizer() -> anyhow::Result<()> {
     let mut eng = eng();
 
     eng.state.apply_progress_mut().accept(log_id(0, 1, 0));
     let noop = log_id(3, 1, 4);
     eng.leader.as_mut().unwrap().noop_log_id = noop;
 
-    let got = eng.try_leader_handler()?.get_read_log_id();
-    assert_eq!(ReadLogId::new(noop, None), got);
+    let linearizer = eng.try_leader_handler()?.get_linearizer();
+    assert_eq!(&1, linearizer.node_id());
+    assert_eq!(&noop, linearizer.noop_log_id());
+    assert_eq!(Some(&log_id(0, 1, 0)), linearizer.committed_log_id());
+    assert_eq!(eng.state.io_applied(), linearizer.applied());
+    assert_eq!(ReadLogId::new(noop, None), linearizer.read_log_id());
 
     let committed = log_id(3, 1, 5);
     eng.state.apply_progress_mut().accept(committed);
-    let got = eng.try_leader_handler()?.get_read_log_id();
-    assert_eq!(ReadLogId::new(noop, Some(committed)), got);
+    let linearizer = eng.try_leader_handler()?.get_linearizer();
+    assert_eq!(&noop, linearizer.noop_log_id());
+    assert_eq!(Some(&committed), linearizer.committed_log_id());
+    assert_eq!(ReadLogId::new(noop, Some(committed)), linearizer.read_log_id());
 
     Ok(())
 }

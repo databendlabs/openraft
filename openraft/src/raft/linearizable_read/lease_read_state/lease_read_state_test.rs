@@ -82,7 +82,9 @@ fn self_quorum_needs_no_acknowledgement() {
     assert_eq!(&1, node_id);
     let read_log_id = linearizer.read_log_id();
     let expected = ReadLogId::new(state.noop_log_id, state.committed);
-    assert_eq!(&expected, read_log_id);
+    assert_eq!(expected, read_log_id);
+    assert_eq!(&state.noop_log_id, linearizer.noop_log_id());
+    assert_eq!(state.committed.as_ref(), linearizer.committed_log_id());
     let applied = linearizer.applied();
     assert_eq!(None, applied);
 }
@@ -123,7 +125,9 @@ fn linearizer_preserves_the_noop_boundary() {
         let linearizer = linearizer.expect("the acknowledgement is fresh");
         let read_log_id = linearizer.read_log_id();
         let expected = ReadLogId::from_log_id(expected_log_id);
-        assert_eq!(&expected, read_log_id);
+        assert_eq!(expected, read_log_id);
+        assert_eq!(&noop, linearizer.noop_log_id());
+        assert_eq!(committed.as_ref(), linearizer.committed_log_id());
         let applied = linearizer.applied();
         assert_eq!(None, applied);
     }
