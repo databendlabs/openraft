@@ -226,6 +226,46 @@ set `--read-delay-ms` beyond `election_timeout_max`, and pass `--allow-read-erro
 Failed attempts have their own counts, latency, and error summaries.
 Build with the default `runtime-stats` feature to inspect the final core message counts, including `GetLinearizer`.
 
+### Comparing core, local, and relaxed reads
+
+Run `make bench_relaxed_reads` from the repository root, or:
+
+```sh
+python3 benchmarks/minimal/scripts/relaxed_reads.py --runs 3 --raw /tmp/relaxed-reads.jsonl
+```
+
+The script builds once in release mode without runtime statistics and rotates the order of
+three modes: standard in-core LeaseRead, cached local LeaseRead, and `Raft::read_relaxed` with
+cached local LeaseRead. All three include their apply barrier and the same state-machine query:
+a write counter and its applied log ID sampled under one read lock. The relaxed path additionally
+validates the sampled leadership. It requires `enable_relaxed_read: true` in `--raft-config` and
+`--read-relaxed --read-query`; it never substitutes metrics for a coherent snapshot.
+
+The grid includes single-reader and 64-reader read-only runs, plus paced mixed workloads with
+no delay, a 500 µs apply-log-read delay, and a 500 µs state-machine I/O delay. The mixed runs
+schedule 90,000 reads/s and 10,000 writes/s for two seconds. Reported throughput uses total
+workload elapsed time and includes any drain time. The script checks operation counts and
+rejects all read failures. `--raw` preserves commands and every JSON report.
+
+The no-op optimization is expected to help when committed entries wait to be applied. It cannot
+remove application-side lock contention: this store holds its write lock during simulated
+state-machine I/O, so even relaxed queries must wait for that lock. Read-only runs isolate API
+and validation overhead rather than the apply-backlog benefit. Results should not be compared
+directly with barrier-only measurements from `--read-await-ready` without `--read-query`.
+
+References for the optimization and its correctness requirements:
+
+- [ReadIndex: Less Latency through Relaxed Ordering](https://github.com/drmingdrmer/consensus-essence/blob/main/src/list/raft-read-index-relaxed-order/raft-read-index-relaxed-order.md)
+  explains the no-op barrier and the restrictions on follower reads.
+- [Openraft issue #1267](https://github.com/databendlabs/openraft/issues/1267) tracks the proposal
+  and the contributor's step-down counterexample.
+- [Openraft read protocol: opt-in relaxed leader reads](../../openraft/src/docs/protocol/read.md#opt-in-relaxed-leader-reads)
+  describes the cluster-wide deployment requirements and coherent snapshot validation.
+- [`Config::enable_relaxed_read` documentation (source)](../../openraft/src/config/config.rs)
+  describes opt-in configuration, defaults, and safety caveats.
+- [`Raft::read_relaxed` API documentation (source)](../../openraft/src/raft/mod.rs)
+  defines the query contract and retry behavior when snapshot validation fails.
+
 ### CLI Options
 
 ```
@@ -239,6 +279,8 @@ Build with the default `runtime-stats` feature to inspect the final core message
 --read-operations Total read attempts [default: 0]
 --read-rate       Read attempts per second, or 0 for unpaced [default: 0]
 --read-await-ready Include the returned linearizer's apply wait (Linearizer::await_ready)
+--read-query      Include the apply wait and a coherent state-machine counter query
+--read-relaxed    Use read_relaxed with sampled-snapshot validation (requires --read-query)
 --allow-read-errors Report read failures separately
 --read-delay-ms   Idle time after warmup, before measurement [default: 0]
 --apply-read-delay-us Delay of the log read that loads each apply batch [default: 0]

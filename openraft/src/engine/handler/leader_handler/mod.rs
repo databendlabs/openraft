@@ -10,6 +10,7 @@ use crate::entry::RaftEntry;
 use crate::proposer::Leader;
 use crate::proposer::WriteQuorumSet;
 use crate::raft::linearizable_read::Linearizer;
+use crate::raft::linearizable_read::LinearizerOption;
 use crate::raft::message::TransferLeaderRequest;
 use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
@@ -168,8 +169,8 @@ where
     /// Capture the log IDs for a linearizable read.
     ///
     /// See: [Read Operation](crate::docs::protocol::read)
-    pub(crate) fn get_linearizer(&self) -> Linearizer<C> {
-        Linearizer::new(
+    pub(crate) fn get_linearizer(&self, option: &LinearizerOption) -> Linearizer<C> {
+        option.linearizer(
             self.config.id.clone(),
             self.leader.noop_log_id.clone(),
             self.state.local_committed().cloned(),

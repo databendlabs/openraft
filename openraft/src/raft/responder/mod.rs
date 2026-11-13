@@ -28,10 +28,15 @@ where
     Self: OptionalSend + Sized + 'static,
     C: RaftTypeConfig,
 {
-    /// Called when the log entry is locally committed (safe to read).
+    /// Called when the log entry is locally committed.
     ///
-    /// Invoked when the log has been replicated to a quorum. At this point, the log is guaranteed
-    /// to be visible to all future leaders and can be read immediately.
+    /// Invoked when the log has been replicated to a quorum. Future leaders must preserve the
+    /// entry, but it may not yet be visible to state-machine queries. Ordinary linearizable reads
+    /// still wait for their committed read boundary to be applied.
+    ///
+    /// Do not acknowledge a successful write from this notification when using
+    /// [`Raft::read_relaxed`](crate::Raft::read_relaxed). Fresh query snapshots acquired after the
+    /// write response must include the entry's updates and applied log ID.
     ///
     /// # Parameters
     ///

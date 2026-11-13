@@ -44,7 +44,7 @@ where C: RaftTypeConfig
         if !allows_cached_read {
             return None;
         }
-        let linearizer = Linearizer::new(node_id, self.noop_log_id.clone(), self.committed.clone(), None);
+        let linearizer = option.linearizer(node_id, self.noop_log_id.clone(), self.committed.clone(), None);
         Some(linearizer)
     }
 

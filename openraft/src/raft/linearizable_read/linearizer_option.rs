@@ -3,7 +3,10 @@ use std::time::Duration;
 
 use openraft_macros::since;
 
+use crate::RaftTypeConfig;
 use crate::raft::ReadPolicy;
+use crate::raft::linearizable_read::Linearizer;
+use crate::type_config::alias::LogIdOf;
 
 /// Configures the quorum-acknowledgement requirement used to obtain a [`Linearizer`].
 ///
@@ -35,6 +38,7 @@ use crate::raft::ReadPolicy;
 ///
 /// [`RaftCore`]: crate::core::RaftCore
 /// [`LinearizableReadError::QuorumNotEnough`]: crate::errors::LinearizableReadError::QuorumNotEnough
+#[since(version = "0.10.1", change = "add internal relaxed-read boundary selection")]
 #[since(version = "0.10.0", change = "renamed from `LinearizableReadRequest`")]
 #[since(version = "0.10.0")]
 #[derive(Debug, Clone)]
@@ -65,14 +69,18 @@ pub struct LinearizerOption {
     ///
     /// [`RaftCore`]: crate::core::RaftCore
     pub(crate) wait_timeout: Option<Duration>,
+
+    /// Only `Raft::read_relaxed` may select a no-op-only barrier. Its sampled result must be
+    /// validated before it is exposed; public barrier APIs never set this flag.
+    pub(crate) relaxed: bool,
 }
 
 impl fmt::Display for LinearizerOption {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "LinearizerOption {{ max_quorum_ack_age: {:?}, heartbeat_if_quorum_ack_stale: {}, wait_timeout: {:?} }}",
-            self.max_quorum_ack_age, self.heartbeat_if_quorum_ack_stale, self.wait_timeout
+            "LinearizerOption {{ max_quorum_ack_age: {:?}, heartbeat_if_quorum_ack_stale: {}, wait_timeout: {:?}, relaxed: {} }}",
+            self.max_quorum_ack_age, self.heartbeat_if_quorum_ack_stale, self.wait_timeout, self.relaxed
         )
     }
 }
@@ -93,6 +101,7 @@ impl LinearizerOption {
             max_quorum_ack_age,
             heartbeat_if_quorum_ack_stale,
             wait_timeout: None,
+            relaxed: false,
         }
     }
 
@@ -106,6 +115,21 @@ impl LinearizerOption {
     pub fn with_wait_timeout(mut self, wait_timeout: Duration) -> Self {
         self.wait_timeout = Some(wait_timeout);
         self
+    }
+
+    /// Select the same apply barrier in the core and caller-side lease paths.
+    pub(crate) fn linearizer<C>(
+        &self,
+        node_id: C::NodeId,
+        noop_log_id: LogIdOf<C>,
+        committed: Option<LogIdOf<C>>,
+        applied: Option<LogIdOf<C>>,
+    ) -> Linearizer<C>
+    where
+        C: RaftTypeConfig,
+    {
+        let committed = if self.relaxed { None } else { committed };
+        Linearizer::new(node_id, noop_log_id, committed, applied)
     }
 
     pub(crate) fn effective_max_quorum_ack_age(&self, leader_lease: Duration) -> Duration {
