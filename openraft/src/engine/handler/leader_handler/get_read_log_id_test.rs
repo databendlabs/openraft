@@ -10,6 +10,8 @@ use crate::Vote;
 use crate::engine::Engine;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
+use crate::raft::ReadPolicy;
+use crate::raft::linearizable_read::LinearizerOption;
 use crate::raft::linearizable_read::ReadLogId;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::StoredMembershipOf;
@@ -54,13 +56,19 @@ fn test_get_read_log_id() -> anyhow::Result<()> {
     let noop = log_id(3, 1, 4);
     eng.leader.as_mut().unwrap().noop_log_id = noop;
 
-    let got = eng.try_leader_handler()?.get_read_log_id();
+    let option = LinearizerOption::from(ReadPolicy::ReadIndex);
+    let got = eng.try_leader_handler()?.get_read_log_id(&option);
     assert_eq!(ReadLogId::new(noop, None), got);
 
     let committed = log_id(3, 1, 5);
     eng.state.apply_progress_mut().accept(committed);
-    let got = eng.try_leader_handler()?.get_read_log_id();
+    let got = eng.try_leader_handler()?.get_read_log_id(&option);
     assert_eq!(ReadLogId::new(noop, Some(committed)), got);
+
+    let mut relaxed = option;
+    relaxed.relaxed = true;
+    let got = eng.try_leader_handler()?.get_read_log_id(&relaxed);
+    assert_eq!(ReadLogId::new(noop, None), got);
 
     Ok(())
 }

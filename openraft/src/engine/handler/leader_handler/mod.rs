@@ -9,6 +9,7 @@ use crate::engine::quorum_loss_probe::QuorumLossProbe;
 use crate::entry::RaftEntry;
 use crate::proposer::Leader;
 use crate::proposer::WriteQuorumSet;
+use crate::raft::linearizable_read::LinearizerOption;
 use crate::raft::linearizable_read::ReadLogId;
 use crate::raft::message::TransferLeaderRequest;
 use crate::raft_state::IOId;
@@ -167,8 +168,8 @@ where
     /// Get the log id for a linearizable read.
     ///
     /// See: [Read Operation](crate::docs::protocol::read)
-    pub(crate) fn get_read_log_id(&self) -> ReadLogId<C> {
-        ReadLogId::new(self.leader.noop_log_id.clone(), self.state.local_committed().cloned())
+    pub(crate) fn get_read_log_id(&self, option: &LinearizerOption) -> ReadLogId<C> {
+        option.read_log_id(self.leader.noop_log_id.clone(), self.state.local_committed().cloned())
     }
 
     /// Disable proposing new logs for this Leader and transfer Leader to another node

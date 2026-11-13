@@ -175,6 +175,7 @@ impl SnapshotPolicy {
 /// - [`SnapshotPolicy`] for snapshot triggering strategies
 ///
 /// [`Raft::new`]: crate::Raft::new
+#[since(version = "0.10.1", change = "add opt-in relaxed leader reads")]
 #[since(
     version = "0.10.0",
     change = "made `api_batch_capacity`, `api_batch_linger_ms` and `backoff` optional"
@@ -472,6 +473,31 @@ pub struct Config {
     ))]
     pub enable_local_lease_read: Option<bool>,
 
+    /// Whether to permit [`Raft::read_relaxed`] to use the current leadership's no-op barrier.
+    ///
+    /// `None` (the default) and `Some(false)` disable the API. `Some(true)` permits local reads
+    /// without waiting for the committed tail to be applied. Existing read-barrier APIs are
+    /// unchanged, and [`Self::enable_local_lease_read`] independently controls lease caching.
+    ///
+    /// Enable this only when the application serves linearizable reads exclusively on leaders.
+    /// Ordinary follower reads can expose committed state before the leader applies it, causing
+    /// a later relaxed leader read to go backwards. Stop and drain follower reads before enabling
+    /// this mode anywhere in the cluster. All leader read paths must also validate their sampled
+    /// leadership, using `read_relaxed` or equivalent protection: even an ordinary leader read can
+    /// survive step-down and expose newer-leader state as a follower. Write responses must follow
+    /// state-machine application.
+    /// The query must sample its result and applied log ID coherently from this node's state
+    /// machine; `read_relaxed` validates the sampled leadership before returning the result.
+    ///
+    /// [`Raft::read_relaxed`]: crate::Raft::read_relaxed
+    #[since(version = "0.10.1")]
+    #[cfg_attr(feature = "clap", clap(long,
+           action = clap::ArgAction::Set,
+           num_args = 0..=1,
+           default_missing_value = "true"
+    ))]
+    pub enable_relaxed_read: Option<bool>,
+
     /// The policy for stepping down a Leader that is removed from a committed membership config.
     ///
     /// - [`After(ms)`](StepDownPolicy::After): when the membership config that removes this Leader
@@ -699,6 +725,7 @@ impl Default for Config {
             enable_heartbeat: DEFAULTS.enable_heartbeat,
             enable_elect: DEFAULTS.enable_elect,
             enable_local_lease_read: None,
+            enable_relaxed_read: None,
             removed_leader_step_down: DEFAULTS.removed_leader_step_down.clone(),
             quorum_loss_probe_interval: DEFAULTS.quorum_loss_probe_interval,
             enable_pre_vote: DEFAULTS.enable_pre_vote,
@@ -754,6 +781,11 @@ impl Config {
     /// Whether to enable caller-side lease reads from the published leader state.
     pub(crate) fn get_enable_local_lease_read(&self) -> bool {
         self.enable_local_lease_read.unwrap_or(false)
+    }
+
+    /// Whether to permit local reads using the current leadership's no-op barrier.
+    pub(crate) fn get_enable_relaxed_read(&self) -> bool {
+        self.enable_relaxed_read.unwrap_or(false)
     }
 
     /// Get the API channel size for bounded MPSC channel.
