@@ -71,11 +71,11 @@ where C: RaftTypeConfig
     ///   after applying the entry. If this is not called,
     ///   [`Raft::client_write`](crate::Raft::client_write) will never return.
     ///
-    /// With [`Raft::read_relaxed`](crate::Raft::read_relaxed) enabled, fresh query snapshots acquired
-    /// after a successful write response must include that entry's updates and applied log ID.
-    /// Sending a response does not wait for `apply()` to return. If a transaction is published only
-    /// at the end of `apply()`, delay responses or the client-visible acknowledgement until
-    /// publication.
+    /// With [`Raft::read_relaxed`](crate::Raft::read_relaxed) enabled, fresh query snapshots
+    /// acquired after a successful write response must include that entry's updates and applied
+    /// log ID. Sending a response does not wait for `apply()` to return. If a transaction is
+    /// published only at the end of `apply()`, delay responses or the client-visible
+    /// acknowledgement until publication.
     ///
     /// Note that for a membership log, the implementation needs to do nothing about it, except
     /// storing it.

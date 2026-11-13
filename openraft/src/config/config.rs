@@ -483,9 +483,10 @@ pub struct Config {
     /// replication. It cannot bypass query locks or I/O and helps little without an apply backlog.
     ///
     /// Completed local writes must already be visible to fresh query snapshots. Previous leaders'
-    /// committed entries precede the no-op. Unfinished writes may follow an overlapping read without
-    /// violating linearizability. Quorum confirmation and lease assumptions stay unchanged.
-    /// [`Self::enable_local_lease_read`] independently enables lease checks outside RaftCore.
+    /// committed entries precede the no-op. Unfinished writes may follow an overlapping read
+    /// without violating linearizability. Quorum confirmation and lease assumptions stay
+    /// unchanged. [`Self::enable_local_lease_read`] independently enables lease checks outside
+    /// RaftCore.
     ///
     /// # Safety requirements
     ///
