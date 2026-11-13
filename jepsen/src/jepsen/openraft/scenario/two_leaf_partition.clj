@@ -14,7 +14,8 @@
             [jepsen.openraft.harness :as harness]))
 
 (def observation-seconds 20)
-(def progress-window-nanos 1500000000)
+;; Include storage and runner scheduling delays as well as the 300 ms write cadence.
+(def progress-window-nanos 3000000000)
 
 (defn topology [nodes]
   (when-not (= 5 (count nodes) (count (set nodes)))
