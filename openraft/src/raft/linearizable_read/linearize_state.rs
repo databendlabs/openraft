@@ -13,14 +13,16 @@ use crate::type_config::alias::LogIdOf;
 /// machine to apply all necessary log entries for a linearizable read.
 ///
 /// This struct retains the leader's no-op log ID and committed log ID from read authorization.
-/// The required read log ID is their maximum. Applied progress belongs to `node_id`; it is not
-/// the applied log ID sampled by a later state-machine query.
+/// The required read log ID is their maximum; a relaxed read requires only the no-op log ID.
+/// Applied progress belongs to `node_id`; it is not the applied log ID sampled by a later
+/// state-machine query.
 ///
 /// If the state is ready, it is guaranteed `applied >= read_log_id`.
 /// If the state is not ready (timeout waiting for the applied log entries), it is guaranteed
 /// `applied < read_log_id`.
 ///
 /// [`Linearizer::try_await_ready()`]: crate::raft::linearizable_read::Linearizer::try_await_ready
+#[since(version = "0.10.1", change = "track internal relaxed reads")]
 #[since(version = "0.10.1", change = "retain no-op and committed log IDs separately")]
 #[since(version = "0.10.0")]
 #[derive(Debug, Clone)]
@@ -32,6 +34,8 @@ where C: RaftTypeConfig
     noop_log_id: LogIdOf<C>,
     committed: Option<LogIdOf<C>>,
     applied: Option<LogIdOf<C>>,
+    /// Whether the read requires only `noop_log_id`, not `committed`, to be applied.
+    relaxed: bool,
 }
 
 impl<C> fmt::Display for LinearizeState<C>
@@ -63,7 +67,14 @@ where C: RaftTypeConfig
             noop_log_id,
             committed,
             applied,
+            relaxed: false,
         }
+    }
+
+    /// Sets whether the read requires only the no-op log ID to be applied.
+    pub(crate) fn with_relaxed(mut self, relaxed: bool) -> Self {
+        self.relaxed = relaxed;
+        self
     }
 
     /// Updates the applied log ID and returns the modified state.
@@ -84,7 +95,7 @@ where C: RaftTypeConfig
     pub(crate) fn is_ready_on_node(&self, node_id: &C::NodeId) -> bool {
         self.node_id == *node_id
             && self.applied.as_ref() >= Some(&self.noop_log_id)
-            && self.applied.as_ref() >= self.committed.as_ref()
+            && (self.relaxed || self.applied.as_ref() >= self.committed.as_ref())
     }
 
     /// Return the node from which the applied progress was collected.
@@ -107,12 +118,16 @@ where C: RaftTypeConfig
 
     /// Return the `read_log_id` of this read operation.
     ///
-    /// It is the maximum of the no-op and committed log IDs captured at authorization.
+    /// It is the maximum of the no-op and committed log IDs captured at authorization. A relaxed
+    /// read, used internally by `Raft::read_relaxed`, requires only the no-op log ID.
     /// See: [`read` docs](crate::docs::protocol::read).
     #[since(version = "0.10.1", change = "calculate and return an owned ReadLogId")]
     #[since(version = "0.10.0", change = "return ReadLogId instead of LogId")]
     #[since(version = "0.10.0")]
     pub fn read_log_id(&self) -> ReadLogId<C> {
+        if self.relaxed {
+            return ReadLogId::from_log_id(self.noop_log_id.clone());
+        }
         ReadLogId::new(self.noop_log_id.clone(), self.committed.clone())
     }
 
@@ -178,6 +193,24 @@ mod tests {
         assert_eq!(Some(&committed), state.applied());
         assert_eq!(&committed, state.read_log_id().log_id());
         assert!(state.is_ready_on_node(&2));
+        assert!(!state.is_ready_on_node(&1));
+    }
+
+    #[test]
+    fn test_relaxed_read_requires_only_noop() {
+        let noop = log_id(2, 1, 10);
+        let committed = log_id(2, 1, 20);
+        let state: LinearizeState<UTConfig> = LinearizeState::new(1, noop, Some(committed), Some(noop));
+        assert_eq!(&committed, state.read_log_id().log_id());
+        assert!(!state.is_ready_on_node(&1));
+
+        let state = state.with_relaxed(true);
+        assert_eq!(Some(&committed), state.committed());
+        assert_eq!(&noop, state.read_log_id().log_id());
+        assert!(state.is_ready_on_node(&1));
+
+        let state = state.with_applied(1, Some(log_id(2, 1, 9)));
+        assert_eq!(&noop, state.read_log_id().log_id());
         assert!(!state.is_ready_on_node(&1));
     }
 

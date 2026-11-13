@@ -89,6 +89,14 @@ struct Args {
     #[arg(long)]
     read_await_ready: bool,
 
+    /// Query a coherent state-machine write counter after waiting for the read barrier.
+    #[arg(long)]
+    read_query: bool,
+
+    /// Use read_relaxed with sampled-snapshot validation (requires --read-query).
+    #[arg(long)]
+    read_relaxed: bool,
+
     /// Report read failures separately instead of stopping at the first one.
     #[arg(long)]
     allow_read_errors: bool,
@@ -137,6 +145,8 @@ struct BenchConfig {
     pub read_operations: u64,
     pub read_rate: u64,
     pub read_await_ready: bool,
+    pub read_query: bool,
+    pub read_relaxed: bool,
     pub allow_read_errors: bool,
     pub read_delay_ms: u64,
     pub append_delay_us: u64,
@@ -253,6 +263,8 @@ fn main() -> anyhow::Result<()> {
         read_operations: args.read_operations,
         read_rate: args.read_rate,
         read_await_ready: args.read_await_ready,
+        read_query: args.read_query,
+        read_relaxed: args.read_relaxed,
         allow_read_errors: args.allow_read_errors,
         read_delay_ms: args.read_delay_ms,
         append_delay_us: args.append_delay_us,
@@ -299,11 +311,17 @@ fn validate(args: &Args) -> anyhow::Result<()> {
 }
 
 fn validate_reads(args: &Args) -> anyhow::Result<()> {
+    ensure!(
+        !args.read_relaxed || args.read_query,
+        "read-relaxed requires read-query"
+    );
     if args.read_clients == 0 {
         ensure!(args.read_operations == 0, "read-operations requires read-clients");
         ensure!(args.read_rate == 0, "read-rate requires read-clients");
         ensure!(args.read_delay_ms == 0, "read-delay-ms requires read-clients");
         ensure!(!args.read_await_ready, "read-await-ready requires read-clients");
+        ensure!(!args.read_query, "read-query requires read-clients");
+        ensure!(!args.read_relaxed, "read-relaxed requires read-clients");
         ensure!(!args.allow_read_errors, "allow-read-errors requires read-clients");
         return Ok(());
     }
@@ -443,9 +461,11 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft) -> anyhow::Resu
         tokio::time::sleep(delay).await;
     }
     let read_workload = if read_clients > 0 {
+        let state_machine = leader.with_state_machine(|sm| Box::pin(async move { sm.clone() })).await?;
         Some(ReadWorkload {
             config: Arc::new(bench_config.clone()),
             leader: leader.clone(),
+            state_machine,
             start: start.clone(),
             epoch: epoch.clone(),
         })
@@ -769,9 +789,36 @@ mod tests {
     }
 
     #[test]
+    fn relaxed_read_requires_a_query() -> anyhow::Result<()> {
+        let args = Args::try_parse_from([
+            "bench",
+            "--read-clients",
+            "1",
+            "--read-operations",
+            "1",
+            "--read-relaxed",
+        ])?;
+        let error = validate(&args).expect_err("relaxed reads must validate a real sampled snapshot");
+        assert_eq!("read-relaxed requires read-query", error.to_string());
+        let args = Args::try_parse_from([
+            "bench",
+            "--read-clients",
+            "1",
+            "--read-operations",
+            "1",
+            "--read-relaxed",
+            "--read-query",
+        ])?;
+        validate(&args)?;
+        Ok(())
+    }
+
+    #[test]
     fn read_mode_flags_require_read_clients() -> anyhow::Result<()> {
         let cases = [
             ("--read-await-ready", "read-await-ready requires read-clients"),
+            ("--read-query", "read-query requires read-clients"),
+            ("--read-relaxed", "read-relaxed requires read-query"),
             ("--allow-read-errors", "allow-read-errors requires read-clients"),
         ];
         for (flag, expected) in cases {

@@ -22,7 +22,8 @@ use crate::type_config::alias::LogIdOf;
 /// following reads are linearized.
 ///
 /// It retains the no-op and committed log IDs captured when the read was authorized. Their
-/// maximum is the required read log ID. It also tracks last known applied progress on a node.
+/// maximum is the required read log ID; a relaxed read requires only the no-op log ID. It also
+/// tracks last known applied progress on a node.
 ///
 /// [`Raft::get_read_linearizer()`]: Raft::get_read_linearizer
 #[since(version = "0.10.0")]
@@ -64,6 +65,15 @@ where C: RaftTypeConfig
         Self {
             state: LinearizeState::new(node_id, noop_log_id, committed, applied),
         }
+    }
+
+    /// Mark whether this read requires only the no-op log ID of the authorizing leadership.
+    ///
+    /// The captured committed log ID is retained either way. Only `Raft::read_relaxed` requests
+    /// relaxed reads, because it validates the sampled snapshot before exposing a result.
+    pub(crate) fn with_relaxed(self, relaxed: bool) -> Self {
+        let state = self.state.with_relaxed(relaxed);
+        Self { state }
     }
 
     /// Replace the last applied log id this linearizer reports.
