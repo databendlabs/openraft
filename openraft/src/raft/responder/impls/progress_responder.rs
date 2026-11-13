@@ -16,8 +16,14 @@ use crate::type_config::alias::OneshotSenderOf;
 /// - **Complete channel**: Sends the final result when the request completes
 ///
 /// Use [`ProgressResponder::new()`] when the caller wants to be notified at both stages:
-/// 1. When the entry is committed and safe to read
+/// 1. When the entry is committed, but not necessarily applied
 /// 2. When the entry is applied and the result is available
+///
+/// With relaxed reads
+/// ([`LinearizerOption::with_relaxed`](crate::raft::linearizable_read::LinearizerOption::with_relaxed)),
+/// commit notification is not enough to acknowledge a successful write. State-machine reads after
+/// the write response must include the entry's updates. The store must publish them before
+/// completion, or the application must delay its client-visible acknowledgement.
 ///
 /// Use [`ProgressResponder::complete_only()`] when the caller only needs the final result.
 ///
@@ -31,7 +37,7 @@ use crate::type_config::alias::OneshotSenderOf;
 ///
 /// // Wait for commit notification
 /// let commit_log_id = commit_rx.await.unwrap();
-/// // Now safe to read the committed data
+/// // Commit alone does not make the update visible to relaxed reads.
 ///
 /// // Wait for completion
 /// let result = complete_rx.await.unwrap();

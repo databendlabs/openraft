@@ -126,6 +126,47 @@ fn test_update_matching() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_update_matching_relaxed_read_bounds_committed_by_applied() -> anyhow::Result<()> {
+    let mut eng = eng();
+    eng.config.enable_relaxed_read = true;
+    eng.testing_new_leader();
+    eng.output.take_commands();
+
+    let mut rh = eng.replication_handler();
+    for (id, prev) in [(1, log_id(2, 1, 3)), (2, log_id(1, 1, 0)), (3, log_id(1, 1, 1))] {
+        let inflight = Inflight::probe(Some(prev), Some(log_id(2, 1, 4)), InflightId::new(1));
+        rh.leader.progress.update_data_with(&id, |data| data.inflight = inflight);
+    }
+
+    // committed: (2,1); the leader has applied nothing, so followers may apply nothing.
+    {
+        rh.update_matching(2, Some(log_id(2, 1, 1)), None);
+        rh.update_matching(3, Some(log_id(2, 1, 3)), None);
+        assert_eq!(Some(&log_id(2, 1, 1)), rh.state.cluster_committed());
+        assert_eq!(
+            vec![Command::ReplicateCommitted { committed: None }],
+            rh.output.take_commands()
+        );
+    }
+
+    // committed: (2,3); the leader has applied (2,1), which bounds what followers may apply.
+    {
+        rh.state.io_state.apply_progress.submit(log_id(2, 1, 1));
+        rh.state.io_state.apply_progress.flush(log_id(2, 1, 1));
+        rh.update_matching(1, Some(log_id(2, 1, 4)), None);
+        assert_eq!(Some(&log_id(2, 1, 3)), rh.state.cluster_committed());
+        assert_eq!(
+            vec![Command::ReplicateCommitted {
+                committed: Some(log_id(2, 1, 1))
+            }],
+            rh.output.take_commands()
+        );
+    }
+
+    Ok(())
+}
+
+#[test]
 fn test_empty_ack_clears_inflight_without_updating_matching() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.testing_new_leader();

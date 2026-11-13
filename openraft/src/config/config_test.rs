@@ -29,6 +29,39 @@ fn test_config_defaults() {
     assert_eq!(None, cfg.enable_local_lease_read);
     let local_lease_read = cfg.get_enable_local_lease_read();
     assert!(!local_lease_read);
+    assert_eq!(None, cfg.enable_relaxed_read);
+    let relaxed_read = cfg.get_enable_relaxed_read();
+    assert!(!relaxed_read);
+}
+
+#[test]
+fn test_relaxed_read_configuration() {
+    for (enable_relaxed_read, expected) in [(None, false), (Some(false), false), (Some(true), true)] {
+        let config = Config {
+            enable_relaxed_read,
+            ..Default::default()
+        };
+        let enabled = config.get_enable_relaxed_read();
+        assert_eq!(expected, enabled);
+    }
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn test_relaxed_read_serde_default() -> anyhow::Result<()> {
+    let config = Config {
+        enable_relaxed_read: Some(true),
+        ..Default::default()
+    };
+    let mut value = serde_json::to_value(config)?;
+    let enabled: Config = serde_json::from_value(value.clone())?;
+    assert_eq!(Some(true), enabled.enable_relaxed_read);
+    value.as_object_mut().unwrap().remove("enable_relaxed_read");
+    let default: Config = serde_json::from_value(value)?;
+    assert_eq!(None, default.enable_relaxed_read);
+    let enabled = default.get_enable_relaxed_read();
+    assert!(!enabled);
+    Ok(())
 }
 
 #[test]

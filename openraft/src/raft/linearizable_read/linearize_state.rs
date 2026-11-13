@@ -13,14 +13,17 @@ use crate::type_config::alias::LogIdOf;
 /// machine to apply all necessary log entries for a linearizable read.
 ///
 /// This struct retains the leader's no-op log ID and committed log ID from read authorization.
-/// The required read log ID is their maximum. Applied progress belongs to `node_id`; it is not
-/// the applied log ID sampled by a later state-machine query.
+/// [`Self::read_log_id`] is their maximum, which a read on any node may wait for.
+/// [`Self::read_log_id_on`] is what a read on a given node must wait for: the no-op log ID for a
+/// relaxed read on the node that authorized it, otherwise the read log ID. Applied progress belongs
+/// to `node_id`; it is not the applied log ID sampled by a later state-machine query.
 ///
-/// If the state is ready, it is guaranteed `applied >= read_log_id`.
+/// If the state is ready, it is guaranteed `applied >= read_log_id_on(node_id)`.
 /// If the state is not ready (timeout waiting for the applied log entries), it is guaranteed
-/// `applied < read_log_id`.
+/// `applied < read_log_id_on(node_id)`.
 ///
 /// [`Linearizer::try_await_ready()`]: crate::raft::linearizable_read::Linearizer::try_await_ready
+#[since(version = "0.10.1", change = "track internal relaxed reads")]
 #[since(version = "0.10.1", change = "retain no-op and committed log IDs separately")]
 #[since(version = "0.10.0")]
 #[derive(Debug, Clone)]
@@ -32,6 +35,11 @@ where C: RaftTypeConfig
     noop_log_id: LogIdOf<C>,
     committed: Option<LogIdOf<C>>,
     applied: Option<LogIdOf<C>>,
+    /// Whether the read requires only `noop_log_id`, not `committed`, to be applied on `node_id`.
+    ///
+    /// Moving the state to another node clears it: a node other than the leader may not have
+    /// applied a write the leader has already acknowledged.
+    relaxed: bool,
 }
 
 impl<C> fmt::Display for LinearizeState<C>
@@ -42,9 +50,10 @@ where C: RaftTypeConfig
 
         write!(
             f,
-            "{{ read_log_id: {}, applied: {} }}",
+            "{{ read_log_id: {}, applied: {}, relaxed: {} }}",
             self.read_log_id(),
-            self.applied.display()
+            self.applied.display(),
+            self.relaxed
         )
     }
 }
@@ -63,11 +72,23 @@ where C: RaftTypeConfig
             noop_log_id,
             committed,
             applied,
+            relaxed: false,
         }
     }
 
+    /// Sets whether the read requires only the no-op log ID to be applied on `node_id`.
+    pub(crate) fn with_relaxed(mut self, relaxed: bool) -> Self {
+        self.relaxed = relaxed;
+        self
+    }
+
     /// Updates the applied log ID and returns the modified state.
+    ///
+    /// Moving to another node drops the relaxed barrier.
     pub(crate) fn with_applied(mut self, node_id: C::NodeId, applied: Option<LogIdOf<C>>) -> Self {
+        if node_id != self.node_id {
+            self.relaxed = false;
+        }
         self.node_id = node_id;
         self.applied = applied;
         self
@@ -76,15 +97,13 @@ where C: RaftTypeConfig
     /// Returns whether the linearizable read is ready to be performed.
     ///
     /// This method checks if the state machine has applied enough log entries to satisfy
-    /// the linearizability requirement. It returns `true` when `applied >= read_log_id`,
-    /// meaning the state machine has caught up to the point where a linearizable read
-    /// can be safely performed.
+    /// the linearizability requirement. It returns `true` when
+    /// `applied >= read_log_id_on(node_id)`, meaning the state machine has caught up to the point
+    /// where a linearizable read can be safely performed.
     ///
     /// If the local_node_id is different, the `applied` is unknown.
     pub(crate) fn is_ready_on_node(&self, node_id: &C::NodeId) -> bool {
-        self.node_id == *node_id
-            && self.applied.as_ref() >= Some(&self.noop_log_id)
-            && self.applied.as_ref() >= self.committed.as_ref()
+        self.node_id == *node_id && self.applied.as_ref() >= Some(self.read_log_id_on(node_id).log_id())
     }
 
     /// Return the node from which the applied progress was collected.
@@ -107,13 +126,27 @@ where C: RaftTypeConfig
 
     /// Return the `read_log_id` of this read operation.
     ///
-    /// It is the maximum of the no-op and committed log IDs captured at authorization.
+    /// It is the maximum of the no-op and committed log IDs captured at authorization. A read on
+    /// any node may wait for it, so it is the value to send to another node for a follower read.
+    /// A relaxed read on the node that authorized it needs only [`Self::read_log_id_on`].
     /// See: [`read` docs](crate::docs::protocol::read).
     #[since(version = "0.10.1", change = "calculate and return an owned ReadLogId")]
     #[since(version = "0.10.0", change = "return ReadLogId instead of LogId")]
     #[since(version = "0.10.0")]
     pub fn read_log_id(&self) -> ReadLogId<C> {
         ReadLogId::new(self.noop_log_id.clone(), self.committed.clone())
+    }
+
+    /// Return the log ID that a read on `node_id` must wait for its state machine to apply.
+    ///
+    /// For a relaxed read on the node that authorized it, this is the no-op log ID. On any other
+    /// node, or for a read that is not relaxed, it is [`Self::read_log_id`].
+    #[since(version = "0.10.1")]
+    pub fn read_log_id_on(&self, node_id: &C::NodeId) -> ReadLogId<C> {
+        if self.relaxed && self.node_id == *node_id {
+            return ReadLogId::from_log_id(self.noop_log_id.clone());
+        }
+        self.read_log_id()
     }
 
     /// The last known applied log ID on [`Self::node_id`].
@@ -182,17 +215,53 @@ mod tests {
     }
 
     #[test]
+    fn test_relaxed_read_requires_only_noop_on_its_node() {
+        let noop = log_id(2, 1, 10);
+        let committed = log_id(2, 1, 20);
+        let state: LinearizeState<UTConfig> = LinearizeState::new(1, noop, Some(committed), Some(noop));
+        assert_eq!(&committed, state.read_log_id_on(&1).log_id());
+        assert!(!state.is_ready_on_node(&1));
+
+        let state = state.with_relaxed(true);
+        assert_eq!(Some(&committed), state.committed());
+        assert_eq!(&committed, state.read_log_id().log_id());
+        assert_eq!(&noop, state.read_log_id_on(&1).log_id());
+        assert_eq!(&committed, state.read_log_id_on(&2).log_id());
+        assert!(state.is_ready_on_node(&1));
+
+        let state = state.with_applied(1, Some(log_id(2, 1, 9)));
+        assert_eq!(&noop, state.read_log_id_on(&1).log_id());
+        assert!(!state.is_ready_on_node(&1));
+
+        let state = state.with_applied(2, Some(noop));
+        assert_eq!(&committed, state.read_log_id_on(&2).log_id());
+        assert!(
+            !state.is_ready_on_node(&2),
+            "another node must wait for the committed log ID"
+        );
+        let state = state.with_applied(2, Some(committed));
+        assert!(state.is_ready_on_node(&2));
+    }
+
+    #[test]
     fn test_display() {
         let state: LinearizeState<UTConfig> = LinearizeState::new(1, log_id(1, 1, 1), None, Some(log_id(1, 1, 0)));
         assert_eq!(
             format!("{}", state),
-            "LinearizeState[id=1]{ read_log_id: T1-N1.1, applied: T1-N1.0 }"
+            "LinearizeState[id=1]{ read_log_id: T1-N1.1, applied: T1-N1.0, relaxed: false }"
         );
 
+        let state = state.with_relaxed(true);
+        assert_eq!(
+            format!("{}", state),
+            "LinearizeState[id=1]{ read_log_id: T1-N1.1, applied: T1-N1.0, relaxed: true }"
+        );
+
+        // Moving the state to another node drops the relaxed barrier.
         let state = state.with_applied(2, Some(log_id(3, 3, 3)));
         assert_eq!(
             format!("{}", state),
-            "LinearizeState[id=2]{ read_log_id: T1-N1.1, applied: T3-N3.3 }"
+            "LinearizeState[id=2]{ read_log_id: T1-N1.1, applied: T3-N3.3, relaxed: false }"
         );
     }
 }

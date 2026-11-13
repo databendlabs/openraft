@@ -68,7 +68,10 @@ where
         entries: BatchOf<C, C::Entry>,
     },
 
-    /// Replicate the committed log id to other nodes
+    /// Send `committed` to other nodes as `leader_commit`, the log ID they may apply up to.
+    ///
+    /// The producer decides the value: with relaxed reads it is bounded by the leader's applied
+    /// log ID. See `RaftState::follower_apply_bound()`.
     ReplicateCommitted { committed: Option<LogIdOf<C>> },
 
     /// Broadcast heartbeat to all other nodes.
