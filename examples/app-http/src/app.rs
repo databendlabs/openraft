@@ -17,10 +17,10 @@ use openraft::errors::InitializeError;
 use openraft::errors::LinearizableReadError;
 use openraft::errors::decompose::DecomposeResult;
 use openraft::impls::ChangeMembers;
+use openraft::macros::since;
 use openraft::membership::RaftMembershipEditOps;
 use openraft::raft::ClientWriteResponse;
 use openraft::raft::linearizable_read::Linearizer;
-use openraft::raft::linearizable_read::ReadLogId;
 use openraft::storage::RaftStateMachine;
 use serde::Deserialize;
 use serde::Serialize;
@@ -48,13 +48,15 @@ pub struct AddLearnerRequest<NID = u64> {
     pub raft_addr: String,
 }
 
+#[since(version = "0.10.1", change = "carry no-op and committed log IDs separately")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct LinearizerData<C>
 where C: RaftTypeConfig
 {
     pub node_id: C::NodeId,
-    pub read_log_id: ReadLogId<C>,
+    pub noop_log_id: LogIdOf<C>,
+    pub committed: Option<LogIdOf<C>>,
     pub applied: Option<LogIdOf<C>>,
 }
 
@@ -115,7 +117,8 @@ where
 
         Ok(LinearizerData {
             node_id: linearizer.node_id().clone(),
-            read_log_id: linearizer.read_log_id().clone(),
+            noop_log_id: linearizer.noop_log_id().clone(),
+            committed: linearizer.committed().cloned(),
             applied: linearizer.applied().cloned(),
         })
     }
@@ -154,7 +157,8 @@ where
 
         let linearizer = Linearizer::new(
             linearizer_data.node_id,
-            linearizer_data.read_log_id,
+            linearizer_data.noop_log_id,
+            linearizer_data.committed,
             linearizer_data.applied,
         );
 

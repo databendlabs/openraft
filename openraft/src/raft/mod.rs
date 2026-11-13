@@ -1235,7 +1235,7 @@ where
 
         // Safe unwrap: it never times out.
         let state = linearizer.await_ready(self).await?;
-        Ok(state.read_log_id().clone())
+        Ok(state.read_log_id())
     }
 
     /// Legacy method that returns read state as a tuple. Use
@@ -1266,7 +1266,7 @@ where
         let read_log_id = linearizer.read_log_id();
         let applied = linearizer.applied();
 
-        Ok((read_log_id.clone(), applied.cloned()))
+        Ok((read_log_id, applied.cloned()))
     }
 
     /// Ensures this node is leader and returns a [`Linearizer`] to linearize reads.

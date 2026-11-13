@@ -31,7 +31,7 @@ struct PendingReadSpec {
 
 fn push_read(queue: &mut PendingReadQueue<C>, read_log_id: &ReadLogId<C>, spec: PendingReadSpec) -> ReadRx {
     let (tx, rx) = C::oneshot();
-    let linearizer = Linearizer::new(spec.node_id, *read_log_id, None);
+    let linearizer = Linearizer::new(spec.node_id, *read_log_id.log_id(), None, None);
     let pending_read = PendingRead::new(spec.deadline, linearizer, tx);
     queue.push(stamp(spec.min_quorum_acked_at), pending_read);
     rx
@@ -40,15 +40,14 @@ fn push_read(queue: &mut PendingReadQueue<C>, read_log_id: &ReadLogId<C>, spec: 
 fn assert_linearizer(rx: &mut ReadRx, node_id: u64, read_log_id: &ReadLogId<C>) {
     let linearizer = rx.try_recv().unwrap().unwrap();
     assert_eq!(&node_id, linearizer.node_id());
-    assert_eq!(read_log_id, linearizer.read_log_id());
+    assert_eq!(*read_log_id, linearizer.read_log_id());
     assert_eq!(None, linearizer.applied());
 }
 
 #[test]
 fn test_drain_all_with_error() {
     let mut queue = PendingReadQueue::<C>::default();
-    let read_log_id = ReadLogId::from_log_id(log_id(1, 1, 1));
-    let linearizer = Linearizer::new(1, read_log_id, None);
+    let linearizer = Linearizer::new(1, log_id(1, 1, 1), None, None);
     let now = C::now();
     let mut receivers = Vec::new();
 
@@ -301,7 +300,9 @@ fn test_drain_satisfied_refreshes_applied() {
 
     let linearizer = rx.try_recv().unwrap().unwrap();
     assert_eq!(&1, linearizer.node_id());
-    assert_eq!(&read_log_id, linearizer.read_log_id());
+    assert_eq!(read_log_id, linearizer.read_log_id());
+    assert_eq!(read_log_id.log_id(), linearizer.noop_log_id());
+    assert_eq!(None, linearizer.committed());
     assert_eq!(Some(&log_id(1, 1, 5)), linearizer.applied());
 }
 

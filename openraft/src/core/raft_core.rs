@@ -108,7 +108,6 @@ use crate::raft::LogSegment;
 use crate::raft::Precondition;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
-use crate::raft::linearizable_read::Linearizer;
 use crate::raft::linearizable_read::LinearizerOption;
 use crate::raft::linearizable_read::lease_read_state::LeaseReadState;
 use crate::raft::message::TransferLeaderRequest;
@@ -408,8 +407,6 @@ where
         let now = C::now();
         let leader_lease = self.engine.config.timer_config.leader_lease;
         let max_quorum_ack_age = linearizer_option.effective_max_quorum_ack_age(leader_lease);
-        let applied = self.engine.state.io_applied().cloned();
-        let id = self.id.clone();
 
         let mut lh = match self.ensure_leader_handler() {
             Ok(leading_handler) => leading_handler,
@@ -419,9 +416,7 @@ where
             }
         };
 
-        let read_log_id = lh.get_read_log_id();
-
-        let linearizer = Linearizer::new(id, read_log_id, applied);
+        let linearizer = lh.get_linearizer();
 
         if lh.leader.is_self_quorum() {
             tx.send(Ok(linearizer)).ok();
