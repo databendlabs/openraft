@@ -545,9 +545,14 @@ from bootstrap through installation, the workload, healing, and recovery. It
 compares leadership-transition log counters as well as metrics to catch
 transitions between samples. It also requires recurring successful writes during
 the fault: the maximum gap between successful writes, including the start and end
-of the 20-second phase,
-must not exceed 1.5 seconds. This provisional tolerance is an engineering
-bound for workload and environment delays, not an election timeout requirement.
+of the 20-second phase, must not exceed 3 seconds. This tolerance is an
+engineering bound for storage and runner scheduling delays, not an election
+timeout requirement. In [one CI run](https://github.com/databendlabs/openraft/actions/runs/43355508874/job/131656484893),
+a roughly 1.4-second pause around the first snapshot produced a 1.700-second
+write gap, exceeding the original 1.5-second bound. All writes succeeded,
+leadership and terms stayed fixed, and recovery completed. The 3-second bound
+leaves margin beyond that pause and the workload's 300 ms write cadence while
+still rejecting sustained stalls anywhere in the observation window.
 The common linearizability, panic, harness-error, and final workload checks
 still apply. Recovery reads each register before writing new values, so recovery
 writes cannot conceal lost acknowledged values. Healing must let node 4 catch up;
