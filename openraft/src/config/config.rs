@@ -175,6 +175,7 @@ impl SnapshotPolicy {
 /// - [`SnapshotPolicy`] for snapshot triggering strategies
 ///
 /// [`Raft::new`]: crate::Raft::new
+#[since(version = "0.10.1", change = "add opt-in relaxed leader reads")]
 #[since(
     version = "0.10.0",
     change = "made `api_batch_capacity`, `api_batch_linger_ms` and `backoff` optional"
@@ -472,6 +473,61 @@ pub struct Config {
     ))]
     pub enable_local_lease_read: Option<bool>,
 
+    /// Whether to enable the local leader-read optimization in [`Raft::read_relaxed`].
+    ///
+    /// `None` (the default) and `Some(false)` disable that API; only `Some(true)` enables it.
+    /// Existing read-barrier APIs keep their behavior and follower-read support.
+    ///
+    /// # Optimization
+    ///
+    /// A standard read waits for the state machine to apply through the greater of the current
+    /// leadership's no-op log ID and its committed log ID. A relaxed read waits only for the no-op,
+    /// avoiding the wait for a committed tail that has not yet been applied. This can reduce read
+    /// latency when state-machine application lags behind replication. It does not bypass the
+    /// query's own locks or I/O, and provides little benefit when the state machine is caught up.
+    ///
+    /// Linearizability does not require a read to observe unfinished writes that overlap it.
+    /// Completed local writes have already been applied, and previous leaders' committed entries
+    /// precede the current leadership's no-op. Quorum confirmation and lease assumptions are
+    /// unchanged; [`Self::enable_local_lease_read`] independently controls caller-side lease
+    /// caching.
+    ///
+    /// # Safety requirements
+    ///
+    /// **Do not enable this as an unconditional replacement for standard reads.** These
+    /// application-wide requirements must hold before enabling relaxed reads anywhere in the
+    /// cluster, including on nodes where this setting remains disabled:
+    ///
+    /// - Serve linearizable reads only on leaders. A follower can apply and return committed state
+    ///   before the leader applies it, so a later relaxed leader read could return older state.
+    ///   Stop and drain ordinary follower reads before enabling this mode; a standard committed
+    ///   read barrier on the follower alone does not prevent this regression.
+    /// - Every leader read path must use `read_relaxed` or equivalent sampled-leadership
+    ///   validation. Authorization before the query is insufficient: a read can survive step-down
+    ///   and sample the next leader's entries applied as a follower, while that new leader's state
+    ///   machine still lags. This restriction also applies to ordinary leader reads.
+    /// - The query must return its result and applied log ID from the same fresh snapshot of this
+    ///   node's state machine. Do not use metrics, a separately sampled log ID, or an older
+    ///   transaction snapshot. `read_relaxed` checks that the sampled log ID covers the no-op and
+    ///   belongs to the authorizing leadership. On [`RelaxedReadError::InvalidSnapshot`], discard
+    ///   the result and retry with fresh authorization; do not expose results before validation.
+    /// - A write must not be acknowledged as complete until its state-machine update is applied.
+    ///
+    /// See [ReadIndex: Less Latency through Relaxed Ordering] for the optimization's rationale
+    /// and the [Openraft read protocol] for this API's validation and deployment requirements.
+    ///
+    /// [`Raft::read_relaxed`]: crate::Raft::read_relaxed
+    /// [`RelaxedReadError::InvalidSnapshot`]: crate::errors::RelaxedReadError::InvalidSnapshot
+    /// [ReadIndex: Less Latency through Relaxed Ordering]: https://github.com/drmingdrmer/consensus-essence/blob/main/src/list/raft-read-index-relaxed-order/raft-read-index-relaxed-order.md
+    /// [Openraft read protocol]: crate::docs::protocol::read
+    #[since(version = "0.10.1")]
+    #[cfg_attr(feature = "clap", clap(long,
+           action = clap::ArgAction::Set,
+           num_args = 0..=1,
+           default_missing_value = "true"
+    ))]
+    pub enable_relaxed_read: Option<bool>,
+
     /// The policy for stepping down a Leader that is removed from a committed membership config.
     ///
     /// - [`After(ms)`](StepDownPolicy::After): when the membership config that removes this Leader
@@ -699,6 +755,7 @@ impl Default for Config {
             enable_heartbeat: DEFAULTS.enable_heartbeat,
             enable_elect: DEFAULTS.enable_elect,
             enable_local_lease_read: None,
+            enable_relaxed_read: None,
             removed_leader_step_down: DEFAULTS.removed_leader_step_down.clone(),
             quorum_loss_probe_interval: DEFAULTS.quorum_loss_probe_interval,
             enable_pre_vote: DEFAULTS.enable_pre_vote,
@@ -754,6 +811,11 @@ impl Config {
     /// Whether to enable caller-side lease reads from the published leader state.
     pub(crate) fn get_enable_local_lease_read(&self) -> bool {
         self.enable_local_lease_read.unwrap_or(false)
+    }
+
+    /// Whether to permit local reads using the current leadership's no-op barrier.
+    pub(crate) fn get_enable_relaxed_read(&self) -> bool {
+        self.enable_relaxed_read.unwrap_or(false)
     }
 
     /// Get the API channel size for bounded MPSC channel.

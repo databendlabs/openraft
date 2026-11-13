@@ -3,7 +3,6 @@ use std::time::Duration;
 use crate::RaftTypeConfig;
 use crate::raft::linearizable_read::Linearizer;
 use crate::raft::linearizable_read::LinearizerOption;
-use crate::raft::linearizable_read::ReadLogId;
 use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
@@ -45,7 +44,7 @@ where C: RaftTypeConfig
         if !allows_cached_read {
             return None;
         }
-        let read_log_id = ReadLogId::new(self.noop_log_id.clone(), self.committed.clone());
+        let read_log_id = option.read_log_id(self.noop_log_id.clone(), self.committed.clone());
         let linearizer = Linearizer::new(node_id, read_log_id, None);
         Some(linearizer)
     }

@@ -95,6 +95,61 @@ similar read p99 latency of about 2.12 ms, including pacing delay.
 The [minimal benchmark](https://github.com/databendlabs/openraft/blob/main/benchmarks/minimal/README.md#lease-reads)
 compares both paths and explains what its numbers do and do not measure.
 
+## Opt-in relaxed leader reads
+
+[`Raft::read_relaxed`] reduces apply waiting by using the authorizing leadership's no-op log ID
+rather than its committed tail. Enable it with `Config::enable_relaxed_read: Some(true)`;
+`None` (the default) and `Some(false)` return `RelaxedReadError::Disabled`. Existing read APIs
+retain their committed boundary and transferable follower-read barriers.
+
+This optimization requires **leader-only linearizable reads across the application**. A follower
+can apply a committed entry before the leader applies it. If it returns that state, a later
+relaxed read on the leader could return older state. Even ordinary follower reads using the
+standard committed barrier must therefore be stopped and drained before enabling relaxed reads
+anywhere in the cluster. Every leader read path must also use `read_relaxed` or equivalent
+sampled-leadership validation: an ordinary leader read authorized before step-down can otherwise
+expose the next leader's state while finishing as a follower. This applies even on nodes where
+relaxed reads are disabled. Writes must respond only after their state-machine updates are applied.
+
+A relaxed read still confirms leadership using the requested ReadIndex or lease options and
+waits for the current leadership's no-op to be applied. Previously completed local writes are
+already applied; previous leaders' writes precede the new no-op. Unfinished overlapping writes
+can be ordered after the read. `enable_local_lease_read` independently enables the cached lease
+path; disabling it makes `read_relaxed` use RaftCore without disabling the reduced apply barrier.
+
+The API encompasses the query because authorization alone is insufficient. A node can authorize
+a read, step down, and apply the next leader's entries before the query samples state. Returning
+that result could expose state that the next leader has not yet applied. After that read returns,
+a newly invoked relaxed read on the next leader could go backwards.
+
+The query must acquire a fresh, coherent snapshot of this node's state machine and return
+`(applied_log_id, value)` from that same snapshot. It must not use metrics for the applied log ID,
+reuse an older transaction snapshot, or expose the value before the API succeeds. The sampled
+applied log ID must cover the authorized no-op and have the same committed leadership identity.
+A mismatch discards the value and returns `RelaxedReadError::InvalidSnapshot`; retry the whole
+read with fresh authorization. Queries are invoked at most once and must be read-only.
+
+```ignore
+let value = raft.read_relaxed(ReadPolicy::LeaseRead, || async {
+    let state = local_state_machine.read().await;
+    (state.last_applied_log.clone(), state.get("key").cloned())
+}).await?;
+```
+
+The result is a validated query value, not a transferable read barrier. This API deliberately
+provides no relaxed follower-read token.
+
+Further reading:
+
+- [ReadIndex: Less Latency through Relaxed Ordering](https://github.com/drmingdrmer/consensus-essence/blob/main/src/list/raft-read-index-relaxed-order/raft-read-index-relaxed-order.md)
+  explains the optimization and the follower-read restriction.
+- [Issue #1267](https://github.com/databendlabs/openraft/issues/1267) contains the proposal and
+  discussion of the step-down race that sampled-leadership validation prevents.
+- [The minimal benchmark README](https://github.com/databendlabs/openraft/blob/main/benchmarks/minimal/README.md#comparing-core-local-and-relaxed-reads)
+  documents the three-way query-inclusive comparison and its measurement limitations.
+
+[`Raft::read_relaxed`]: crate::Raft::read_relaxed
+
 ## Examples
 
 ```ignore
