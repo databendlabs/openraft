@@ -9,6 +9,8 @@ use crate::engine::pending_responds::PendingResponds;
 use crate::engine::respond_command::PendingRespond;
 use crate::storage::RaftStateMachine;
 
+pub(crate) const INITIAL_QUEUE_CAPACITY: usize = 64;
+
 /// The entry of output from Engine to the runtime.
 #[derive(Debug)]
 pub(crate) struct EngineOutput<C, SM = ()>
@@ -42,7 +44,7 @@ where
     SM: RaftStateMachine<C>,
 {
     pub(crate) fn new(command_buffer_size: usize) -> Self {
-        let pending_capacity = 1024;
+        let pending_capacity = INITIAL_QUEUE_CAPACITY;
         Self {
             commands: VecDeque::with_capacity(command_buffer_size),
             pending_responds: PendingResponds::new(pending_capacity),
@@ -174,5 +176,24 @@ mod tests {
         assert!(output.pop_command().is_some());
         output.push_command(append(2));
         assert_eq!(output.commands.as_slices().0.as_ptr(), first_slot);
+    }
+
+    #[test]
+    fn test_commands_grow_and_retain_capacity() {
+        let mut output: EngineOutput<UTConfig> = EngineOutput::new(1);
+        output.push_command(append(1));
+        output.push_command(append(2));
+        let capacity = output.commands.capacity();
+        let grew = capacity > 1;
+        assert!(grew);
+
+        let mut commands = Vec::new();
+        while let Some(command) = output.pop_command() {
+            commands.push(command);
+        }
+        let expected = vec![append(1), append(2)];
+        assert_eq!(expected, commands);
+        let retained_capacity = output.commands.capacity();
+        assert_eq!(capacity, retained_capacity);
     }
 }
