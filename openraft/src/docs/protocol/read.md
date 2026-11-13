@@ -94,6 +94,150 @@ similar read p99 latency of about 2.12 ms, including pacing delay.
 The [minimal benchmark](https://github.com/databendlabs/openraft/blob/main/benchmarks/minimal/README.md#lease-reads)
 compares both paths and explains what its numbers do and do not measure.
 
+## Opt-in relaxed leader reads
+
+A relaxed read, requested with [`LinearizerOption::with_relaxed`], reduces apply waiting by
+using the authorizing leadership's no-op log ID rather than its committed tail. It works with
+[`get_read_linearizer()`], [`get_local_read_linearizer()`] and [`ensure_linearizable()`]. It
+takes effect only with `Config::enable_relaxed_read: Some(true)`, which must be set on
+**every** node; otherwise the leader serves the standard barrier. Reads that do not request it
+are unchanged.
+
+A relaxed read still confirms leadership using the requested ReadIndex or lease options, and
+then waits for the current leadership's no-op to be applied on the leader that issued the
+linearizer. The caller then reads that node's state machine. Previously completed writes are
+already visible there (see [Write response visibility](#write-response-visibility)); previous
+leaders' writes precede the new no-op. Unfinished overlapping writes can be ordered after the
+read. `enable_local_lease_read` independently enables the cached lease path; disabling it makes
+the relaxed read use RaftCore without disabling the reduced apply barrier.
+
+```ignore
+let option = LinearizerOption::from(ReadPolicy::LeaseRead).with_relaxed(true);
+raft.ensure_linearizable(option).await?;
+let value = local_state_machine.read().await.get("key").cloned();
+```
+
+The reduced barrier applies only on the issuing leader. A follower may not have applied a write
+that the leader has already acknowledged, so a relaxed linearizer awaited on another node waits
+for `max(noop_log_id, committed)`. `read_log_id_on(node_id)` returns the log ID a read on that
+node waits for. `read_log_id()` is always `max(noop_log_id, committed)`, the value to send to
+followers.
+
+### Followers apply only what the leader has applied
+
+A leader with `enable_relaxed_read` sends followers its applied log ID instead of its committed
+log ID as `leader_commit` in AppendEntries and heartbeats. It sends the bound again whenever its
+state machine applies more entries, so followers do not wait for the next heartbeat. As a result,
+no node applies an entry before the leader of that time has applied it.
+
+The [step-down counterexample](#step-down-counterexample) below shows why a no-op barrier needs
+this. Commitment itself is unchanged; followers only apply later, and their reported
+cluster-committed log ID lags the quorum-granted commit. Follower reads with the standard barrier
+stay correct: a follower reaches `max(noop_log_id, committed)` only after the leader has applied
+it.
+
+Every node must run with `enable_relaxed_read` before any node serves relaxed reads. A leader
+without it lets followers apply ahead of it, and the counterexample applies again.
+
+### Write response visibility
+
+[`ApplyResponder::send`](crate::storage::ApplyResponder::send) can complete `client_write` before
+`RaftStateMachine::apply` returns. A store may update entries in a transaction and publish the
+batch only at the end of `apply()`. If it sends responses before publication, a subsequent
+relaxed read can miss an acknowledged write.
+
+Such stores must delay responses or the client-visible acknowledgement until publication.
+Ordinary reads still wait for their committed boundary to be reported as applied, after
+`apply()` returns. Enabling relaxed reads therefore requires checking the store's visibility,
+not just whether `client_write` has returned.
+
+### Step-down counterexample
+
+A no-op barrier alone is unsafe. A read can outlive the leadership that authorized it.
+
+Suppose `x = 0`. A leads in leadership `T`. Its no-op is at log index `10`, and it has applied
+through index `20`. No write resets `x` during this example. The following schedule assumes
+followers apply up to the leader's **committed** log ID, as they do without `enable_relaxed_read`:
+
+1. A authorizes read `R_A` in `T`. Its no-op barrier at `10` is already applied. The read task
+   pauses before querying the state machine.
+2. A steps down. B becomes leader in `T+1`. B commits and applies its no-op at index `21`.
+3. B commits entry `22`, which sets `x = 1`. B's apply worker pauses before this entry.
+   B has `committed = 22`, `applied = 21`, and `x = 0`. The write response is still pending.
+4. B sends A entry `22` and its commit information. A applies it as a follower. A now has
+   `applied = 22` and `x = 1`. Followers need not wait for the leader's state machine to apply.
+5. `R_A` resumes on A, samples `x = 1`, and returns it to the client.
+6. Only after receiving that response, the client invokes read `R_B` on B. B confirms leadership.
+   Its relaxed barrier is no-op `21`, which is already applied.
+7. B has not applied entry `22`. `R_B` returns `x = 0`. Applying `22` later cannot repair this
+   read regression.
+
+Time runs downward. The numbers below are log indexes, not terms:
+
+```text
+Time   Client                 A                                  B
+----   --------------------   --------------------------------   ----------------------------
+t1     Invoke R_A ----------> Authorize in T; barrier=10
+                              Pause before sampling
+
+t2                            Step down; become follower         Become leader T+1
+                                                                 Apply no-op 21; x=0
+
+t3                                                               Commit 22: x=1
+                                                                 Keep applied=21; x=0
+                                                                 Write response pending
+
+t4                            Receive entry 22 and commit
+                              Apply 22 as follower; x=1
+
+t5     Receive x=1 <--------- Resume R_A; sample and return 1
+
+t6     Invoke R_B ---------------------------------------------> Confirm leadership; barrier=21
+                                                                 Barrier already applied
+
+t7     Receive x=0 <-------------------------------------------- Sample and return 0
+```
+
+The reads do not overlap: `response(R_A) < invocation(R_B)`. Linearizability requires `R_A`
+before `R_B`. Observing `x = 1` places the pending write before `R_A`, so `R_B` cannot return `0`
+without an intervening reset. The pending write response does not change that requirement.
+The leadership change overlaps `R_A`; the two reads do not overlap each other.
+
+Both requests were sent to leaders. The first query sampled state as a follower only because
+it survived step-down. Routing requests only to leaders is therefore insufficient.
+
+With `enable_relaxed_read`, B sends A its applied log ID `21` at step 4, not `22`. A cannot apply
+entry `22` before B does, so `R_A` returns `x = 0`. B tells A it may apply `22` only after B has
+applied it, so any read that observes `x = 1` on A happens after B applied entry `22`, and
+`R_B` then observes `x = 1` as well.
+
+### Why ordinary local linearizable reads do not regress here
+
+[`get_local_read_linearizer()`] retains the `max(noop_log_id, committed)` barrier. In this
+schedule, B's boundary for `R_B` is `22`, not `21`. The caller must await the linearizer before
+querying. Since B has applied only through `21`, the read waits for `22`, then observes `x = 1`.
+RaftCore publishes committed progress before exposing the corresponding effects, so the local
+path cannot authorize this later read using an outdated published boundary of `21`.
+[`get_read_linearizer()`] and [`ensure_linearizable()`] retain the same barrier.
+
+The distinction is the apply barrier, not whether the read enters RaftCore's queue. An ordinary
+read on A can still survive step-down. If followers apply up to the committed log ID, it can
+expose entry `22` before B applies it, and B's later relaxed read regresses. The replication
+change below prevents this for every read path, including ordinary reads on followers.
+
+Further reading:
+
+- [ReadIndex: Less Latency through Relaxed Ordering](https://github.com/drmingdrmer/consensus-essence/blob/main/src/list/raft-read-index-relaxed-order/raft-read-index-relaxed-order.md)
+  explains the optimization, this counterexample, and two ways to prevent it. Its
+  [TLA+ model](https://github.com/drmingdrmer/consensus-essence/tree/main/src/list/raft-read-index-relaxed-order/tla)
+  checks both within small bounds.
+- [Issue #1267](https://github.com/databendlabs/openraft/issues/1267) contains the proposal and
+  discussion of the step-down race.
+- [The minimal benchmark README](https://github.com/databendlabs/openraft/blob/main/benchmarks/minimal/README.md#comparing-core-local-and-relaxed-reads)
+  documents the three-way query-inclusive comparison and its measurement limitations.
+
+[`LinearizerOption::with_relaxed`]: crate::raft::linearizable_read::LinearizerOption::with_relaxed
+
 ## Examples
 
 ```ignore

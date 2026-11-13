@@ -175,6 +175,7 @@ impl SnapshotPolicy {
 /// - [`SnapshotPolicy`] for snapshot triggering strategies
 ///
 /// [`Raft::new`]: crate::Raft::new
+#[since(version = "0.10.1", change = "add opt-in relaxed leader reads")]
 #[since(
     version = "0.10.0",
     change = "made `api_batch_capacity`, `api_batch_linger_ms` and `backoff` optional"
@@ -472,6 +473,56 @@ pub struct Config {
     ))]
     pub enable_local_lease_read: Option<bool>,
 
+    /// Enable relaxed reads requested with [`LinearizerOption::with_relaxed`]. Only `Some(true)`
+    /// enables them; `None` is the default. Otherwise a relaxed request gets the standard barrier.
+    /// Existing read-barrier APIs are unchanged, and follower reads with the standard barrier from
+    /// [`Raft::get_read_linearizer`] remain correct.
+    ///
+    /// # Optimization
+    ///
+    /// Standard reads wait for `max(noop_log_id, committed)` to be applied. Relaxed reads wait
+    /// only for the current leadership's no-op. This reduces latency when apply lags behind
+    /// replication. It cannot bypass query locks or I/O and helps little without an apply backlog.
+    ///
+    /// Completed writes are already visible to state-machine reads. Previous leaders' committed
+    /// entries precede the no-op. Unfinished writes may follow an overlapping read without
+    /// violating linearizability. Quorum confirmation and lease assumptions stay unchanged.
+    /// [`Self::enable_local_lease_read`] independently enables lease checks outside RaftCore.
+    ///
+    /// # Replication change
+    ///
+    /// A leader with this setting sends followers its applied log ID, instead of its committed log
+    /// ID, as `leader_commit`: the bound they may apply up to. It sends the bound again whenever
+    /// its state machine applies more entries. No node then applies an entry before the leader
+    /// does. Otherwise a follower, including a leader that stepped down during a read, could
+    /// expose an entry the current leader has not applied, and a later relaxed read would return
+    /// older state. Commitment is unchanged; followers only apply later, and their reported
+    /// cluster-committed log ID lags the quorum-granted commit.
+    ///
+    /// # Safety requirements
+    ///
+    /// - Enable this on every node before any node serves relaxed reads. A leader without it lets
+    ///   followers apply ahead of it.
+    /// - A successful write response must mean that later state-machine reads include the write.
+    ///   `ApplyResponder::send` can complete `client_write` before `apply()` returns. If the store
+    ///   publishes a transaction at the end of `apply()`, delay responses or the client-visible
+    ///   acknowledgement until publication.
+    ///
+    /// See [ReadIndex: Less Latency through Relaxed Ordering] for the rationale and the
+    /// [Openraft read protocol] for details.
+    ///
+    /// [`LinearizerOption::with_relaxed`]: crate::raft::linearizable_read::LinearizerOption::with_relaxed
+    /// [`Raft::get_read_linearizer`]: crate::Raft::get_read_linearizer
+    /// [ReadIndex: Less Latency through Relaxed Ordering]: https://github.com/drmingdrmer/consensus-essence/blob/main/src/list/raft-read-index-relaxed-order/raft-read-index-relaxed-order.md
+    /// [Openraft read protocol]: crate::docs::protocol::read
+    #[since(version = "0.10.1")]
+    #[cfg_attr(feature = "clap", clap(long,
+           action = clap::ArgAction::Set,
+           num_args = 0..=1,
+           default_missing_value = "true"
+    ))]
+    pub enable_relaxed_read: Option<bool>,
+
     /// The policy for stepping down a Leader that is removed from a committed membership config.
     ///
     /// - [`After(ms)`](StepDownPolicy::After): when the membership config that removes this Leader
@@ -699,6 +750,7 @@ impl Default for Config {
             enable_heartbeat: DEFAULTS.enable_heartbeat,
             enable_elect: DEFAULTS.enable_elect,
             enable_local_lease_read: None,
+            enable_relaxed_read: None,
             removed_leader_step_down: DEFAULTS.removed_leader_step_down.clone(),
             quorum_loss_probe_interval: DEFAULTS.quorum_loss_probe_interval,
             enable_pre_vote: DEFAULTS.enable_pre_vote,
@@ -754,6 +806,11 @@ impl Config {
     /// Whether to enable caller-side lease reads from the published leader state.
     pub(crate) fn get_enable_local_lease_read(&self) -> bool {
         self.enable_local_lease_read.unwrap_or(false)
+    }
+
+    /// Whether to permit local reads using the current leadership's no-op barrier.
+    pub(crate) fn get_enable_relaxed_read(&self) -> bool {
+        self.enable_relaxed_read.unwrap_or(false)
     }
 
     /// Get the API channel size for bounded MPSC channel.
