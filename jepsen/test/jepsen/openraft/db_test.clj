@@ -115,7 +115,8 @@
         (is (= [:probe] @commands))))))
 
 (deftest starts-and-confirms-the-test-app
-  (doseq [options [{} {:two-leaf-partition true} {:liveness :leader-removal-recovery}]]
+  (doseq [options [{} {:two-leaf-partition true} {:liveness :bridge-partition}
+                   {:liveness :leader-removal-recovery} {:liveness :leader-outside-joint}]]
     (testing (str "scenario options " options)
       (let [calls (atom [])
             running? (atom false)
@@ -140,9 +141,12 @@
           (is (= (= :leader-removal-recovery (:liveness options))
                  (boolean (some #{:--disable-leader-restore} start-command))))
           (is (= (if (:two-leaf-partition options) 1 0) (count pre-vote-flags)))
+          (is (= (if (:two-leaf-partition options) 1 0)
+                 (count (filter #{:--stable-leader-timing} start-command))))
           (when (:two-leaf-partition options)
             (is (< (.indexOf start-command :--)
                    (.indexOf start-command :--enable-pre-vote)
+                   (.indexOf start-command :--stable-leader-timing)
                    (.indexOf start-command :>>)))))))))
 
 (deftest preserves-removed-leader-policy-across-node-starts

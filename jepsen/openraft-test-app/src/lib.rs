@@ -61,6 +61,10 @@ pub struct Opt {
     #[clap(long)]
     enable_pre_vote: bool,
 
+    /// Allow CI storage/scheduling stalls without electing a new leader.
+    #[clap(long)]
+    stable_leader_timing: bool,
+
     #[clap(long)]
     disable_leader_restore: bool,
 
@@ -71,6 +75,20 @@ pub struct Opt {
 #[path = "../../../examples/utils/declare_types.rs"]
 pub mod typ;
 
+/// Keep fast failover for fault-recovery tests, but leave margin beyond the two-leaf
+/// scenario's 3-second progress bound when it requires an unchanged leader and term.
+fn timing_config(stable_leader: bool) -> Config {
+    let election_timeout_max = if stable_leader { 5_000 } else { 300 };
+    Config {
+        heartbeat_interval: 50,
+        election_timeout_min: election_timeout_max - 1,
+        election_timeout_max,
+        // Leave a quiet phase longer than leader lease + max election timeout.
+        quorum_loss_probe_interval: Some(2 * election_timeout_max + 100),
+        ..Default::default()
+    }
+}
+
 pub async fn start_raft_node(options: Opt) -> std::io::Result<()> {
     let Opt {
         id: node_id,
@@ -80,6 +98,7 @@ pub async fn start_raft_node(options: Opt) -> std::io::Result<()> {
         snapshot_threshold,
         max_in_snapshot_log_to_keep,
         enable_pre_vote,
+        stable_leader_timing,
         disable_leader_restore,
         disable_removed_leader_step_down,
     } = options;
@@ -87,15 +106,11 @@ pub async fn start_raft_node(options: Opt) -> std::io::Result<()> {
 
     // Create a configuration for the raft instance.
     let mut config = Config {
-        heartbeat_interval: 50,
-        election_timeout_min: 299,
         // A snapshot transfers a whole RocksDB checkpoint in one request.
         install_snapshot_timeout: 10_000,
-        // 700 ms exceeds the 600 ms minimum: leader lease + max election timeout.
-        quorum_loss_probe_interval: Some(700),
         enable_pre_vote: Some(enable_pre_vote),
         enable_leader_restore: disable_leader_restore.then_some(false),
-        ..Default::default()
+        ..timing_config(stable_leader_timing)
     };
 
     if disable_removed_leader_step_down {
@@ -162,6 +177,33 @@ mod tests {
     use clap::Parser;
 
     use super::Opt;
+    use super::timing_config;
+
+    #[test]
+    fn stable_leader_timing_is_opt_in_and_valid() {
+        let args = [
+            "openraft-jepsen-app",
+            "--id",
+            "n1",
+            "--api-addr",
+            "n1:21001",
+            "--raft-addr",
+            "n1:22001",
+        ];
+        for stable in [false, true] {
+            let extra = stable.then_some("--stable-leader-timing");
+            let options = Opt::try_parse_from(args.into_iter().chain(extra)).unwrap();
+            assert_eq!(stable, options.stable_leader_timing);
+            let config = timing_config(options.stable_leader_timing).validate().unwrap();
+            assert_eq!(50, config.heartbeat_interval);
+            assert_eq!(if stable { 4_999 } else { 299 }, config.election_timeout_min);
+            assert_eq!(if stable { 5_000 } else { 300 }, config.election_timeout_max);
+            assert_eq!(
+                Some(if stable { 10_100 } else { 700 }),
+                config.quorum_loss_probe_interval
+            );
+        }
+    }
 
     #[test]
     fn removed_leader_step_down_is_disabled_only_when_requested() {

@@ -143,7 +143,7 @@
 
 (defn- start-command!
   [node-id api-addr raft-addr snapshot-threshold snapshot-logs-to-keep
-   enable-pre-vote? disable-leader-restore? removed-leader-step-down]
+   two-leaf-partition? disable-leader-restore? removed-leader-step-down]
   (apply control-exec!
          (concat
           [(c/env (merge clock/application-env
@@ -163,14 +163,14 @@
            :--raft-addr raft-addr
            :--snapshot-threshold snapshot-threshold
            :--max-in-snapshot-log-to-keep snapshot-logs-to-keep]
-          (when enable-pre-vote? [:--enable-pre-vote])
+          (when two-leaf-partition? [:--enable-pre-vote :--stable-leader-timing])
           (when disable-leader-restore? [:--disable-leader-restore])
           (when (= :never removed-leader-step-down) [:--disable-removed-leader-step-down])
           [:>> log-file (c/lit "2>&1")])))
 
 (defn- start-process!
   [node-id api-addr raft-addr snapshot-threshold snapshot-logs-to-keep
-   enable-pre-vote? disable-leader-restore? removed-leader-step-down]
+   two-leaf-partition? disable-leader-restore? removed-leader-step-down]
   (let [state (probe-process!)]
     (case state
       :running
@@ -181,7 +181,7 @@
         ;; --oknodo makes a start race succeed without broadly suppressing exit
         ;; status 1, which may instead mean a control or permission failure.
         (start-command! node-id api-addr raft-addr snapshot-threshold snapshot-logs-to-keep
-                        enable-pre-vote? disable-leader-restore? removed-leader-step-down)
+                        two-leaf-partition? disable-leader-restore? removed-leader-step-down)
         (await-process-state! :running)
         :start-confirmed)
 

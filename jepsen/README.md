@@ -540,6 +540,22 @@ and CAS attempts in rotation so write attempts recur regularly. The topology
 remains unchanged until healing. Node 5 continues receiving heartbeats directly
 from node 1.
 
+Only this scenario starts the test app with `--stable-leader-timing`: election
+timeouts are 4999--5000 ms and the quorum-loss probe phase is 10100 ms, exceeding
+the required leader lease plus maximum election timeout. Heartbeats still run
+every 50 ms. The other scenarios retain 299--300 ms election timeouts and a
+700 ms probe phase so their failover deadlines and fault coverage do not change.
+
+A reachable quorum alone cannot guarantee a fixed leader when storage or runner
+scheduling pauses exceed the election timeout. In
+[this CI failure](https://github.com/drmingdrmer/openraft/actions/runs/43357422279/job/131662681365),
+a roughly 360 ms pause exceeded the original 300 ms lease, after which the
+quorum-loss gate suppressed sends and node 3 won a valid election. The 5-second
+timeout leaves margin beyond the unchanged 3-second write-progress bound:
+sustained stalls still fail that bound rather than being hidden by slower
+elections. Pre-Vote remains enabled to prevent disconnected node 4 from
+inflating the term through node 2.
+
 Acceptance requires node 1 to remain leader and every node's term to remain T
 from bootstrap through installation, the workload, healing, and recovery. It
 compares leadership-transition log counters as well as metrics to catch
