@@ -68,8 +68,15 @@ where C: RaftTypeConfig
     /// - Deal with the business logic log.
     /// - Store membership config if `RaftEntry::get_membership()` returns `Some`.
     /// - Call [`ApplyResponder::send`](crate::storage::ApplyResponder::send) with the response
-    ///   immediately after applying the entry. If this is not called,
+    ///   after applying the entry. If this is not called,
     ///   [`Raft::client_write`](crate::Raft::client_write) will never return.
+    ///
+    /// With relaxed reads
+    /// ([`LinearizerOption::with_relaxed`](crate::raft::linearizable_read::LinearizerOption::with_relaxed)),
+    /// state-machine reads after a successful write response must include that entry's updates.
+    /// Sending a response does not wait for `apply()` to return. If a transaction is
+    /// published only at the end of `apply()`, delay responses or the client-visible
+    /// acknowledgement until publication.
     ///
     /// Note that for a membership log, the implementation needs to do nothing about it, except
     /// storing it.

@@ -243,7 +243,7 @@ where
         // which must not trigger a broadcast.
         if self.state.cluster_committed() > prev_cluster_committed.as_ref() {
             self.output.push_command(Command::ReplicateCommitted {
-                committed: self.state.cluster_committed().cloned(),
+                committed: self.state.follower_apply_bound(self.config.enable_relaxed_read),
             });
         }
     }

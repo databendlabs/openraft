@@ -78,7 +78,10 @@ where C: RaftTypeConfig
                         let metrics = self.inner.rx_metrics.borrow_watched();
                         metrics.last_applied.clone()
                     };
-                    let linearizer = linearizer.with_applied(applied);
+                    // As in `RaftCore::handle_get_linearizer()`: the no-op barrier needs
+                    // `enable_relaxed_read`, otherwise the standard barrier is served.
+                    let relaxed = linearizer_option.relaxed && self.inner.config.get_enable_relaxed_read();
+                    let linearizer = linearizer.with_applied(applied).with_relaxed(relaxed);
                     return Ok(Ok(linearizer));
                 }
             }
