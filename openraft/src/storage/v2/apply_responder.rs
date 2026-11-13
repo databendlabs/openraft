@@ -58,6 +58,12 @@ impl<C: RaftTypeConfig> ApplyResponder<C> {
     /// The response will be returned by [`Raft::client_write`](crate::Raft::client_write).
     /// This method must be called by [`RaftStateMachine::apply`](super::RaftStateMachine::apply),
     /// otherwise [`Raft::client_write`](crate::Raft::client_write) will never return.
+    ///
+    /// This can complete `client_write` before `apply()` returns. With
+    /// [`Raft::read_relaxed`](crate::Raft::read_relaxed) enabled, fresh query snapshots acquired
+    /// after a successful write response must include this entry's updates and applied log ID.
+    /// If a transaction is published later in `apply()`, delay this call or the client-visible
+    /// acknowledgement until publication.
     pub fn send(self, response: C::R) {
         self.inner.send(response)
     }

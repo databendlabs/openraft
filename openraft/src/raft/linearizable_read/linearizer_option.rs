@@ -35,6 +35,7 @@ use crate::raft::ReadPolicy;
 ///
 /// [`RaftCore`]: crate::core::RaftCore
 /// [`LinearizableReadError::QuorumNotEnough`]: crate::errors::LinearizableReadError::QuorumNotEnough
+#[since(version = "0.10.1", change = "add internal relaxed-read flag")]
 #[since(version = "0.10.0", change = "renamed from `LinearizableReadRequest`")]
 #[since(version = "0.10.0")]
 #[derive(Debug, Clone)]
@@ -65,14 +66,21 @@ pub struct LinearizerOption {
     ///
     /// [`RaftCore`]: crate::core::RaftCore
     pub(crate) wait_timeout: Option<Duration>,
+
+    /// Marks the obtained [`Linearizer`](crate::raft::linearizable_read::Linearizer) as relaxed,
+    /// so its read log ID is the no-op log ID.
+    ///
+    /// Only `Raft::read_relaxed` sets this flag, and it validates the sampled result before
+    /// exposing it. Public barrier APIs never set it.
+    pub(crate) relaxed: bool,
 }
 
 impl fmt::Display for LinearizerOption {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "LinearizerOption {{ max_quorum_ack_age: {:?}, heartbeat_if_quorum_ack_stale: {}, wait_timeout: {:?} }}",
-            self.max_quorum_ack_age, self.heartbeat_if_quorum_ack_stale, self.wait_timeout
+            "LinearizerOption {{ max_quorum_ack_age: {:?}, heartbeat_if_quorum_ack_stale: {}, wait_timeout: {:?}, relaxed: {} }}",
+            self.max_quorum_ack_age, self.heartbeat_if_quorum_ack_stale, self.wait_timeout, self.relaxed
         )
     }
 }
@@ -93,6 +101,7 @@ impl LinearizerOption {
             max_quorum_ack_age,
             heartbeat_if_quorum_ack_stale,
             wait_timeout: None,
+            relaxed: false,
         }
     }
 

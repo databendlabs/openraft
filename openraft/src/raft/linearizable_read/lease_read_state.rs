@@ -45,6 +45,7 @@ where C: RaftTypeConfig
             return None;
         }
         let linearizer = Linearizer::new(node_id, self.noop_log_id.clone(), self.committed.clone(), None);
+        let linearizer = linearizer.with_relaxed(option.relaxed);
         Some(linearizer)
     }
 

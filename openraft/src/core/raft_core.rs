@@ -416,7 +416,7 @@ where
             }
         };
 
-        let linearizer = lh.get_linearizer();
+        let linearizer = lh.get_linearizer().with_relaxed(linearizer_option.relaxed);
 
         if lh.leader.is_self_quorum() {
             tx.send(Ok(linearizer)).ok();
