@@ -20,11 +20,11 @@ use crate::raft::ClientWriteResult;
 use crate::raft::Precondition;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
+use crate::raft::WriteOption;
 use crate::raft::linearizable_read::Linearizer;
 use crate::raft::linearizable_read::LinearizerOption;
 use crate::raft::responder::core_responder::CoreResponder;
 use crate::type_config::alias::BatchOf;
-use crate::type_config::alias::CommittedLeaderIdOf;
 #[cfg(feature = "runtime-stats")]
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
@@ -78,7 +78,7 @@ where C: RaftTypeConfig
     ClientWrite {
         payloads: BatchOf<C, PayloadOf<C>>,
         responders: BatchOf<C, Option<CoreResponder<C>>>,
-        expected_leader: Option<CommittedLeaderIdOf<C>>,
+        write_option: WriteOption<C>,
         #[cfg(feature = "runtime-stats")]
         proposed_at: InstantOf<C>,
     },

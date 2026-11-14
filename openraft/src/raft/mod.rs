@@ -62,6 +62,7 @@ pub use message::TransferLeaderRequest;
 pub use message::TransferLeaderResponse;
 pub use message::VoteRequest;
 pub use message::VoteResponse;
+pub use message::WriteOption;
 pub use message::WriteRequest;
 pub use message::WriteResponse;
 pub use message::WriteResult;
@@ -1493,7 +1494,7 @@ where
             inner: &self.inner,
             app_data,
             responder: None,
-            expected_leader: None,
+            write_option: WriteOption::default(),
         }
     }
 

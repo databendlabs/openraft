@@ -1847,12 +1847,12 @@ where
             RaftMsg::ClientWrite {
                 payloads,
                 responders,
-                expected_leader,
+                write_option,
                 #[cfg(feature = "runtime-stats")]
                 proposed_at,
             } => {
                 // Check if expected leader matches current leader
-                if let Some(expected) = expected_leader {
+                if let Some(expected) = write_option.expected_leader {
                     let vote = self.engine.state.vote_ref();
 
                     let committed_leader_id = vote.try_to_committed_leader_id();
