@@ -2,7 +2,7 @@
 
 Two workflows separate required checks from delayed coverage:
 
-- **`ci.yaml`:** runs on pull requests and pushes to `main`. It contains
+- **`ci.yaml`:** runs on pull requests, merge groups, and pushes to `main`. It contains
   core/macros/membership tests, integration and feature tests, store tests,
   Tokio tests, simulated-runtime tests, both deterministic simulation suites,
   and lint/documentation/security checks. All jobs run unconditionally.
