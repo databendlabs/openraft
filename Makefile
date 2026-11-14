@@ -22,10 +22,10 @@ verify-full: verify feature-check clippy docs-check test-membership test-bench-m
 
 basic_check: verify
 
-# Test the GitHub Actions CI policies (Node.js standard library only).
+# Test the GitHub Actions suite-selection policy (Node.js standard library only).
 .PHONY: ci-check
 ci-check:
-	node --test scripts/tests/ci-*.test.cjs
+	node --test scripts/tests/ci-plan.test.cjs
 
 # Build each supported feature in isolation, without workspace or test dependencies
 # enabling features on the library's behalf. Removed features intentionally fail.

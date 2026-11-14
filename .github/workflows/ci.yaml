@@ -17,21 +17,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # GitHub records this local reusable workflow's immutable SHA in the run's
-  # referenced_workflows metadata, including the synthetic PR merge SHA.
-  plan:
-    permissions:
-      contents: read
-      actions: read
-    uses: ./.github/workflows/ci-reuse.yaml
-
-  # Keep the jobs (including matrix variants) alive even when reusing CI, so
-  # every existing required check reports on the merge-group SHA. The first
-  # step fails closed if the planner failed or returned an invalid decision.
   # Test crate `openraft/` and `macros/`
   test-openraft-core-crates:
-    needs: plan
-    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -46,61 +33,34 @@ jobs:
             features: ''
 
     steps:
-      - &reuse-decision
-        name: Verify CI reuse decision
-        env:
-          PLAN_RESULT: ${{ needs.plan.result }}
-          REUSE: ${{ needs.plan.outputs.reuse }}
-          SOURCE: ${{ needs.plan.outputs.source }}
-        shell: bash
-        run: |
-          test "$PLAN_RESULT" = success
-          case "$REUSE" in
-            true) echo "Reusing successful PR CI: $SOURCE" ;;
-            false) ;;
-            *) echo "Invalid CI reuse decision" >&2; exit 1 ;;
-          esac
-
-      - &checkout
-        name: Setup | Checkout
-        if: needs.plan.outputs.reuse != 'true'
+      - name: Setup | Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
 
-      - &pin-nightly
-        name: Pin nightly from rust-toolchain
-        if: needs.plan.outputs.reuse != 'true' && matrix.toolchain == 'nightly'
+      - name: Pin nightly from rust-toolchain
+        if: matrix.toolchain == 'nightly'
         run: echo "PIN=$(cat rust-toolchain)" >> "$GITHUB_ENV"
 
-      - &matrix-toolchain
-        name: Setup | Toolchain
-        if: needs.plan.outputs.reuse != 'true'
+      - name: Setup | Toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: ${{ matrix.toolchain == 'nightly' && env.PIN || matrix.toolchain }}
 
       - name: Install cargo-expand
-        if: needs.plan.outputs.reuse != 'true'
         run: cargo install cargo-expand
 
       - name: Test crate `macros/`
-        if: needs.plan.outputs.reuse != 'true'
         run: cargo test --features "${{ matrix.features }}" --manifest-path macros/Cargo.toml
         env:
           RUST_LOG: debug
           RUST_BACKTRACE: full
 
       - name: Test crate `membership/`
-        if: needs.plan.outputs.reuse != 'true'
         run: make test-membership
         env:
           RUST_LOG: debug
           RUST_BACKTRACE: full
 
       - name: Test crate `openraft/`
-        if: needs.plan.outputs.reuse != 'true'
         run: cargo test --features "${{ matrix.features }}" --manifest-path openraft/Cargo.toml
         env:
           RUST_LOG: debug
@@ -116,8 +76,6 @@ jobs:
 
   # Run integration test `tests/`.
   test-crate-tests:
-    needs: plan
-    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -140,13 +98,19 @@ jobs:
             features: 'single-term-leader'
 
     steps:
-      - *reuse-decision
-      - *checkout
-      - *pin-nightly
-      - *matrix-toolchain
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+
+      - name: Pin nightly from rust-toolchain
+        if: matrix.toolchain == 'nightly'
+        run: echo "PIN=$(cat rust-toolchain)" >> "$GITHUB_ENV"
+
+      - name: Setup | Toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ matrix.toolchain == 'nightly' && env.PIN || matrix.toolchain }}
 
       - name: Test crate `tests/`
-        if: needs.plan.outputs.reuse != 'true'
         run: cargo test --features "${{ matrix.features }}" --manifest-path tests/Cargo.toml
         env:
           # Parallel tests block each other and result in timeout.
@@ -164,8 +128,6 @@ jobs:
             tests/_log/
 
   stores:
-    needs: plan
-    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -177,17 +139,15 @@ jobs:
           - store: 'stores/memstore-custom-node-id'
 
     steps:
-      - *reuse-decision
-      - *checkout
-      - &default-toolchain
-        name: Setup | Toolchain
-        if: needs.plan.outputs.reuse != 'true'
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup | Toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
 
       # - A store with defensive checks returns error when unexpected accesses are sent to RaftStore.
       # - Raft should not depend on defensive error to work correctly.
       - name: Unit Tests, with defensive store
-        if: needs.plan.outputs.reuse != 'true'
         run: cargo test --manifest-path "${{ matrix.store }}/Cargo.toml"
         env:
           # Parallel tests block each other and result in timeout.
@@ -197,18 +157,17 @@ jobs:
           OPENRAFT_STORE_DEFENSIVE: on
 
   rt-tokio:
-    needs: plan
-    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
-      - *reuse-decision
-      - *checkout
-      - *default-toolchain
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup | Toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
 
       - name: Unit Tests
-        if: needs.plan.outputs.reuse != 'true'
         run: |
           cargo test --manifest-path "rt-tokio/Cargo.toml"
           cargo test --manifest-path "rt-tokio/Cargo.toml" --features single-threaded
@@ -223,8 +182,6 @@ jobs:
   #
   # This job only tests crate `openraft`.
   openraft-feature-test:
-    needs: plan
-    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -261,17 +218,23 @@ jobs:
             features: 'metrics-logids,serde'
 
     steps:
-      - *reuse-decision
-      - *checkout
-      - *pin-nightly
-      - *matrix-toolchain
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+
+      - name: Pin nightly from rust-toolchain
+        if: matrix.toolchain == 'nightly'
+        run: echo "PIN=$(cat rust-toolchain)" >> "$GITHUB_ENV"
+
+      - name: Setup | Toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ matrix.toolchain == 'nightly' && env.PIN || matrix.toolchain }}
 
       - name: Check isolated feature builds
-        if: needs.plan.outputs.reuse != 'true' && matrix.features == '' && matrix.extra_args == ''
+        if: matrix.features == '' && matrix.extra_args == ''
         run: make feature-check
 
       - name: Test crate `openraft/`
-        if: needs.plan.outputs.reuse != 'true'
         run: cargo test ${{ matrix.extra_args }} --features "${{ matrix.features }}" --manifest-path openraft/Cargo.toml
         env:
           # Parallel tests block each other and result in timeout.
@@ -289,8 +252,6 @@ jobs:
 
   # Integration tests with various features.
   tests-feature-test:
-    needs: plan
-    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -305,13 +266,19 @@ jobs:
             features: 'single-term-leader'
 
     steps:
-      - *reuse-decision
-      - *checkout
-      - *pin-nightly
-      - *matrix-toolchain
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+
+      - name: Pin nightly from rust-toolchain
+        if: matrix.toolchain == 'nightly'
+        run: echo "PIN=$(cat rust-toolchain)" >> "$GITHUB_ENV"
+
+      - name: Setup | Toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ matrix.toolchain == 'nightly' && env.PIN || matrix.toolchain }}
 
       - name: Test crate `tests/`
-        if: needs.plan.outputs.reuse != 'true'
         run: cargo test --features "${{ matrix.features }}" --manifest-path tests/Cargo.toml
         env:
           # Parallel tests block each other and result in timeout.
@@ -329,27 +296,22 @@ jobs:
 
   # Test the simulated runtime: an external crate, like rt-monoio and rt-compio.
   rt-sim:
-    needs: plan
-    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
-      - *reuse-decision
-      - *checkout
-      - &clippy-toolchain
-        name: Setup | Toolchain
-        if: needs.plan.outputs.reuse != 'true'
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup | Toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: clippy
 
       - name: Clippy
-        if: needs.plan.outputs.reuse != 'true'
         run: cargo clippy --no-deps --manifest-path "rt-sim/Cargo.toml" --all-targets --features sim-log -- -D warnings
 
       - name: Unit Tests
-        if: needs.plan.outputs.reuse != 'true'
         run: cargo test --tests --manifest-path "rt-sim/Cargo.toml" --features sim-log
         env:
           RUST_BACKTRACE: full
@@ -359,29 +321,26 @@ jobs:
   # OpenRaft logs. One of them must also write the same lines alone as after
   # another test in the same process.
   tests-rt-sim:
-    needs: plan
-    if: ${{ !cancelled() }}
     name: Tests on simulated runtime
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
-      - *reuse-decision
-      - *checkout
-      - *clippy-toolchain
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy
 
       - name: Clippy
-        if: needs.plan.outputs.reuse != 'true'
         run: cargo clippy --no-deps --manifest-path tests/Cargo.toml --all-targets --features rt-sim -- -D warnings
 
       - name: Test
-        if: needs.plan.outputs.reuse != 'true'
         run: cargo test --manifest-path tests/Cargo.toml --features rt-sim
         env:
           RUST_BACKTRACE: full
 
       - name: Same seed, same log
-        if: needs.plan.outputs.reuse != 'true'
         run: |
           for run in a b; do
             OPENRAFT_SIM_LOG="$RUNNER_TEMP/$run.log" cargo test --manifest-path tests/Cargo.toml --features rt-sim \
@@ -413,17 +372,13 @@ jobs:
 
   # Deterministic simulation test with turmoil.
   detsim:
-    needs: plan
-    if: ${{ !cancelled() }}
     name: Deterministic simulation test
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - *reuse-decision
-      - *checkout
+      - uses: actions/checkout@v4
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-        if: needs.plan.outputs.reuse != 'true'
         with:
           # tests-turmoil is excluded from the root workspace, so the default
           # cache misses its target dir and the fuzz binary recompiles cold
@@ -436,12 +391,11 @@ jobs:
           rustflags: ""
 
       - name: Run Turmoil unit and regression tests
-        if: needs.plan.outputs.reuse != 'true'
         shell: bash
         run: make test-turmoil-default 2>&1 | tee "$RUNNER_TEMP/turmoil-tests.log"
 
       - name: Replay log ID reuse regression (seed 812)
-        if: needs.plan.result == 'success' && needs.plan.outputs.reuse == 'false' && (success() || failure())
+        if: success() || failure()
         shell: bash
         run: |
           cd tests-turmoil
@@ -452,7 +406,7 @@ jobs:
           RUST_BACKTRACE: full
 
       - name: Run deterministic simulation
-        if: needs.plan.result == 'success' && needs.plan.outputs.reuse == 'false' && (success() || failure())
+        if: success() || failure()
         shell: bash
         run: |
           cd tests-turmoil
@@ -471,29 +425,24 @@ jobs:
 
   # The same simulation with `ThresholdMembership` and random read and write sizes.
   detsim-threshold:
-    needs: plan
-    if: ${{ !cancelled() }}
     name: Deterministic simulation test with ThresholdMembership
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - *reuse-decision
-      - *checkout
+      - uses: actions/checkout@v4
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-        if: needs.plan.outputs.reuse != 'true'
         with:
           # See the `detsim` job for both settings.
           cache-workspaces: tests-turmoil
           rustflags: ""
 
       - name: Run Turmoil unit and regression tests with ThresholdMembership
-        if: needs.plan.outputs.reuse != 'true'
         shell: bash
         run: make test-turmoil-threshold 2>&1 | tee "$RUNNER_TEMP/turmoil-tests.log"
 
       - name: Run deterministic simulation with ThresholdMembership
-        if: needs.plan.result == 'success' && needs.plan.outputs.reuse == 'false' && (success() || failure())
+        if: success() || failure()
         shell: bash
         run: |
           cd tests-turmoil
@@ -511,34 +460,26 @@ jobs:
           path: ${{ runner.temp }}/turmoil-*
 
   lint:
-    needs: plan
-    if: ${{ !cancelled() }}
     name: lint
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - *reuse-decision
-      - *checkout
+      - uses: actions/checkout@v4
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-        if: needs.plan.outputs.reuse != 'true'
         with:
           components: rustfmt, clippy
 
       - name: CI policy tests
-        if: needs.plan.outputs.reuse != 'true'
         run: make ci-check
 
       - name: Format
-        if: needs.plan.outputs.reuse != 'true'
         run: cargo fmt --all -- --check
 
       - name: Format tests-turmoil
-        if: needs.plan.outputs.reuse != 'true'
         run: cargo fmt --manifest-path tests-turmoil/Cargo.toml -- --check
 
       - name: clippy
-        if: needs.plan.outputs.reuse != 'true'
         shell: bash
         run: |
           cargo clippy --no-deps --workspace --all-targets                -- -D warnings
@@ -546,7 +487,6 @@ jobs:
           cargo clippy --no-deps --workspace --all-targets --features "metrics-logids,serde" -- -D warnings
 
       - name: clippy tests-turmoil
-        if: needs.plan.outputs.reuse != 'true'
         # Run from inside tests-turmoil so its .cargo/config.toml is read, and
         # override the job-wide RUSTFLAGS="-D warnings" (set by the toolchain
         # action), which would otherwise replace the config's rustflags and
@@ -562,7 +502,6 @@ jobs:
       # Documentation build, doctests, and the repository-link check. Run
       # through the Make target so contributors gate on the same command.
       - name: Docs
-        if: needs.plan.outputs.reuse != 'true'
         run: make docs-check
 
       # The four SVGs in assets/logo are written by the two scripts beside
@@ -570,20 +509,17 @@ jobs:
       # re-run, or a hand-edited SVG, cannot reach main. Both scripts write next
       # to __file__, so the checkout root is the right working directory.
       - name: Logo assets
-        if: needs.plan.outputs.reuse != 'true'
         run: |
           python3 assets/logo/generate_mark.py
           python3 assets/logo/generate_banner.py
           git diff --exit-code assets/logo
 
       - name: Install cargo-audit
-        if: needs.plan.outputs.reuse != 'true'
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-audit
 
       - name: Audit dependencies
-        if: needs.plan.outputs.reuse != 'true'
         shell: bash
         # if: "!contains(github.event.head_commit.message, 'skip audit')"
         run: cargo audit --db ./target/advisory-db

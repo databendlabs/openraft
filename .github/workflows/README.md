@@ -2,16 +2,11 @@
 
 Two workflows separate required checks from delayed coverage:
 
-- **`ci.yaml`:** runs on pull requests, merge queue `checks_requested` events,
-  and pushes to `main`. It contains core/macros/membership tests,
-  integration and feature tests, store tests, Tokio tests, simulated-runtime
-  tests, both deterministic simulation suites, and lint/documentation/security
-  checks. A lightweight decision job allows merge queue runs to reuse verified
-  PR results for an identical tree. PR and main-push runs always run the tests.
+- **`ci.yaml`:** runs on pull requests, merge groups, and pushes to `main`. It contains
+  core/macros/membership tests, integration and feature tests, store tests,
+  Tokio tests, simulated-runtime tests, both deterministic simulation suites,
+  and lint/documentation/security checks. All jobs run unconditionally.
   `workflow_call` also lets the full workflow reuse these definitions.
-- **`ci-reuse.yaml`:** a local reusable workflow that makes the reuse decision.
-  GitHub records its immutable commit SHA in the caller's `referenced_workflows`
-  metadata, providing the actual synthetic merge commit used by PR CI.
 - **`ci-full.yaml`:** runs daily at 01:40 UTC. It calls `ci.yaml` from the same
   commit and adds all examples on stable and nightly (including demo scripts),
   release and benchmark builds, Monoio/Compio runtimes, WASM, metrics integration,
@@ -33,53 +28,25 @@ Thus full runs cannot deadlock on their own nested checks or have those checks
 replaced by a pending main-push run. Detection is normally within one schedule
 interval plus CI runtime; GitHub schedules may be delayed.
 
-Routine CI runs 21 test/check jobs plus one lightweight reuse decision job.
-Full runs retain all 65 existing jobs plus the daily plan and reuse decision.
-Other workflows are unchanged:
+Routine CI runs 21 test/check jobs, with no planning job. Full runs retain all
+65 existing jobs plus one small planning job. Other workflows are unchanged:
 `jepsen.yml` still runs its full scenarios on pushes to `main`, and checks
 Jepsen-specific PR changes before merging.
 
 ### Required checks
-
-The merge queue tests a temporary merge-group commit, not the PR head commit.
-The `merge_group` trigger reports the same fast checks on that commit so the
-queue can receive its required statuses. Passing PR checks alone does not
-satisfy the queue's checks.
-
-On a merge queue event, the decision job considers the 30 latest successful PR
-runs of `ci.yaml`, accepting only results updated within the last 24 hours. It
-rechecks the latest attempt's success, resolves the tested merge commit from
-GitHub's immutable reusable-workflow metadata, and compares its entire Git tree
-with the queue commit. The tested merge commit must also have that run's PR
-head as its second parent. The caller, reusable workflow, and decision script
-at the PR head must match those in the queue tree, preventing a modified caller
-from presenting an unrelated workflow reference as evidence.
-
-When the evidence matches, each existing required job (including every matrix
-variant) runs a small guard, logs the source run URL, and skips checkout,
-toolchain setup, and expensive checks. The jobs themselves are not skipped:
-GitHub still receives all required check names on the queue SHA. A failed
-planner or an invalid decision fails those jobs rather than skipping them.
-Different trees, missing or ambiguous metadata, old results, and API errors
-fall back to normal testing. Runs from before this policy was introduced lack
-the provenance and cannot be reused. Main pushes and daily/manual full runs
-always retest, including dependencies and security advisories that can change
-without a source change.
 
 Keep only the fast suite's checks required for merging. The daily-only jobs
 (`test-release-build` / `Build`, `openraft-test-bench`, `bench-minimal`,
 `rt-monoio`, `rt-compio`, `wasm`, `metrics-otel`, `examples`, and `jepsen-app` /
 `jepsen app`, including matrix variants) must not be required by branch
 protection or rulesets. They do not run on PRs and are not pre-merge coverage.
-Neither `Full CI plan`, the former `CI plan`, nor the new `CI reuse decision`
-should be required: the existing fast jobs enforce the reuse decision and
-fail closed if it fails. The fast job names are unchanged for PRs; full-run
+Neither `Full CI plan` nor the former `CI plan` should be required: fast checks
+no longer depend on a plan. The fast job names are unchanged for PRs; full-run
 checks called through `fast` have a caller prefix and should not be required.
 Repository settings are managed separately; this workflow change does not
 update them.
 
-Run `make ci-check` to test triggers, tree reuse, fail-closed guards, and daily
-history gating locally.
+Run `make ci-check` to test triggers, reuse, and daily history gating locally.
 It uses Node.js's built-in test runner, with no package installation. The lint
 job runs it too. GitHub's normal workflow failure notifications apply to daily
 failures; configure Actions notifications for the maintainers responsible for
