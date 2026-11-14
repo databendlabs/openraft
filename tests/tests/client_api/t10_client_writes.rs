@@ -183,6 +183,60 @@ async fn write_builder() -> Result<()> {
     Ok(())
 }
 
+/// Building a write or converting it into a concrete future does not submit it until polled.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn write_builder_deferred() -> Result<()> {
+    use std::future::IntoFuture;
+
+    use openraft::OptionalSend;
+    use openraft::errors::Fatal;
+    use openraft::raft::WriteRequest;
+
+    /// Compiles only if awaiting a `WriteRequest` uses its future type `F` directly.
+    fn into_concrete_future<F>(request: WriteRequest<'_, TypeConfig, F>) -> F
+    where F: Future<Output = Result<(), Fatal<TypeConfig>>> + OptionalSend {
+        request.into_future()
+    }
+
+    let config = Config {
+        enable_tick: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
+
+    tracing::info!("--- initialize a cluster to check deferred write submission");
+    let log_index = router.new_cluster([0], []).await?;
+    let n0 = router.get_raft_handle(&0)?;
+
+    tracing::info!(
+        log_index,
+        "--- dropping builders and unpolled concrete futures must not submit writes"
+    );
+    {
+        drop(n0.write(ClientRequest::make_request("deferred", 1)));
+        drop(into_concrete_future(
+            n0.write(ClientRequest::make_request("deferred", 2)),
+        ));
+    }
+
+    tracing::info!(
+        log_index,
+        "--- only the polled write should reach the log and state machine"
+    );
+    {
+        let (responder, complete_rx) = ProgressResponder::complete_only();
+        let request = n0.write(ClientRequest::make_request("deferred", 3)).responder(responder);
+        into_concrete_future(request).await?;
+
+        let response = complete_rx.await??;
+        assert_eq!(&log_id(1, 0, log_index + 1), response.log_id());
+        assert_eq!(&ClientResponse(None), response.response());
+    }
+
+    Ok(())
+}
+
 /// Test Raft::write().with_leader() for conditional writes
 ///
 /// Test that writes only execute when the expected leader matches current leader.

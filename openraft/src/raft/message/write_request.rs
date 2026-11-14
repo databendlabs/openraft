@@ -1,16 +1,13 @@
+use std::future::Future;
 use std::future::IntoFuture;
 
 use openraft_macros::since;
 
+use crate::OptionalSend;
 use crate::RaftTypeConfig;
-use crate::base::BoxFuture;
-use crate::batch::Batch;
-use crate::core::raft_msg::RaftMsg;
-use crate::entry::RaftPayload;
 use crate::errors::Fatal;
-#[cfg(feature = "runtime-stats")]
-use crate::raft::api::app::propose_at_now;
 use crate::raft::message::WriteOption;
+use crate::raft::message::write_request_args::WriteRequestArgs;
 use crate::raft::raft_inner::RaftInner;
 use crate::raft::responder::core_responder::CoreResponder;
 use crate::type_config::alias::CommittedLeaderIdOf;
@@ -23,9 +20,19 @@ use crate::type_config::alias::WriteResponderOf;
 ///
 /// # Performance
 ///
-/// Currently, allocates (`Pin<Box<dyn Future>>`) when awaited due to stable Rust limitations.
-/// This will be optimized to zero-allocation when `impl_trait_in_assoc_type` stabilizes,
-/// allowing `type IntoFuture = impl Future` in trait implementations.
+/// Awaiting the builder does not allocate the future on the heap. `F` is the concrete future
+/// type returned when the builder is awaited; [`Raft::write()`] infers it. Code that names
+/// the builder type takes `F` as a generic parameter:
+///
+/// ```ignore
+/// fn submit<C, F>(request: WriteRequest<'_, C, F>)
+/// where
+///     C: RaftTypeConfig,
+///     F: Future<Output = Result<(), Fatal<C>>> + OptionalSend,
+/// {
+///     // ...
+/// }
+/// ```
 ///
 /// # Examples
 ///
@@ -41,17 +48,25 @@ use crate::type_config::alias::WriteResponderOf;
 ///
 /// [`Raft::write()`]: crate::Raft::write
 /// [`.responder()`]: WriteRequest::responder
+#[since(
+    version = "0.10.1",
+    change = "add generic future parameter F to avoid boxing when awaited"
+)]
 #[since(version = "0.10.0")]
-pub struct WriteRequest<'a, C>
+pub struct WriteRequest<'a, C, F>
 where C: RaftTypeConfig
 {
-    pub(in crate::raft) inner: &'a RaftInner<C>,
-    pub(in crate::raft) app_data: C::D,
-    pub(in crate::raft) responder: Option<CoreResponder<C>>,
-    pub(in crate::raft) write_option: WriteOption<C>,
+    /// Request arguments, still changeable by the builder methods.
+    args: WriteRequestArgs<'a, C>,
+
+    /// Turns `args` into the submission future; it is always `WriteRequestArgs::send`.
+    ///
+    /// A function pointer lets `F` be the anonymous future type of `send`, so the future does not
+    /// need to be boxed.
+    make_future: fn(WriteRequestArgs<'a, C>) -> F,
 }
 
-impl<'a, C> WriteRequest<'a, C>
+impl<C, F> WriteRequest<'_, C, F>
 where C: RaftTypeConfig
 {
     /// Attach a responder to receive the write result.
@@ -70,7 +85,7 @@ where C: RaftTypeConfig
     /// ```
     #[since(version = "0.10.0")]
     pub fn responder(mut self, responder: WriteResponderOf<C>) -> Self {
-        self.responder = Some(CoreResponder::UserDefined(responder));
+        self.args.responder = Some(CoreResponder::UserDefined(responder));
         self
     }
 
@@ -126,28 +141,41 @@ where C: RaftTypeConfig
     /// [`ClientWriteError::ForwardToLeader`]: crate::errors::ClientWriteError::ForwardToLeader
     #[since(version = "0.10.0")]
     pub fn with_leader(mut self, expected_leader: impl Into<CommittedLeaderIdOf<C>>) -> Self {
-        self.write_option = self.write_option.with_leader(expected_leader);
+        self.args.write_option = self.args.write_option.with_leader(expected_leader);
         self
     }
 }
 
-impl<'a, C> IntoFuture for WriteRequest<'a, C>
-where C: RaftTypeConfig
+impl<C, F> IntoFuture for WriteRequest<'_, C, F>
+where
+    C: RaftTypeConfig,
+    F: Future<Output = Result<(), Fatal<C>>>,
 {
     type Output = Result<(), Fatal<C>>;
-    type IntoFuture = BoxFuture<'a, Self::Output>;
+    type IntoFuture = F;
 
     fn into_future(self) -> Self::IntoFuture {
-        Box::pin(async move {
-            self.inner
-                .send_msg(RaftMsg::ClientWrite {
-                    payloads: Batch::of([C::Payload::normal(self.app_data)]),
-                    responders: Batch::of([self.responder]),
-                    write_option: self.write_option,
-                    #[cfg(feature = "runtime-stats")]
-                    proposed_at: propose_at_now::<C>(),
-                })
-                .await
-        })
+        (self.make_future)(self.args)
+    }
+}
+
+/// Create the builder returned by [`Raft::write()`](crate::Raft::write).
+///
+/// The future type `F` is inferred from `WriteRequestArgs::send`.
+pub(in crate::raft) fn write_request<C>(
+    inner: &RaftInner<C>,
+    app_data: C::D,
+) -> WriteRequest<'_, C, impl Future<Output = Result<(), Fatal<C>>> + OptionalSend>
+where
+    C: RaftTypeConfig,
+{
+    WriteRequest {
+        args: WriteRequestArgs {
+            inner,
+            app_data,
+            responder: None,
+            write_option: WriteOption::default(),
+        },
+        make_future: WriteRequestArgs::send,
     }
 }
