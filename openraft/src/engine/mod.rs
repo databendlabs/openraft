@@ -75,5 +75,6 @@ pub use command_name::SMCommandName;
 pub(crate) use engine_config::EngineConfig;
 pub(crate) use engine_impl::Engine;
 pub(crate) use engine_output::EngineOutput;
+pub(crate) use engine_output::INITIAL_QUEUE_CAPACITY;
 pub use log_id_list::LogIdList;
 pub(crate) use replication_progress::TargetProgress;
