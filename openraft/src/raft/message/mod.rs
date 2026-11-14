@@ -18,6 +18,7 @@ mod vote;
 mod write;
 
 mod client_write;
+mod write_option;
 mod write_request;
 
 pub use append_entries_request::AppendEntriesRequest;
@@ -45,4 +46,5 @@ pub use vote::VoteResponse;
 pub use write::WriteResponse;
 pub use write::WriteResult;
 pub(crate) use write::into_write_result;
+pub use write_option::WriteOption;
 pub use write_request::WriteRequest;
