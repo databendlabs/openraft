@@ -52,6 +52,9 @@ jobs:
   fast:
     needs: plan
     if: needs.plan.outputs.run == 'true'
+    permissions:
+      contents: read
+      actions: read
     uses: ./.github/workflows/ci.yaml
 
   # Compatibility, examples, and build-only checks run daily or on demand.

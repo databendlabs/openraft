@@ -2,9 +2,11 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const { spawnSync } = require('node:child_process');
 
 const fastWorkflow = fs.readFileSync(path.join(__dirname, '../../.github/workflows/ci.yaml'), 'utf8');
 const workflow = fs.readFileSync(path.join(__dirname, '../../.github/workflows/ci-full.yaml'), 'utf8');
+const reuseWorkflow = fs.readFileSync(path.join(__dirname, '../../.github/workflows/ci-reuse.yaml'), 'utf8');
 // Exercise the actual github-script body, not a separate copy of the policy.
 const script = workflow.match(/          script: \|\n((?: {12}.*\n|\n)+)/)[1];
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
@@ -104,6 +106,11 @@ test('fast checks run on PRs and main pushes and can be called by full CI', () =
   assert.doesNotMatch(header, /^  (schedule|workflow_dispatch):/m);
 });
 
+test('fast checks run when the merge queue requests checks', () => {
+  const header = fastWorkflow.split('\njobs:\n')[0];
+  assert.match(header, /^  merge_group:\n    types: \[checks_requested\]$/m);
+});
+
 test('full CI runs only daily or manually', () => {
   const header = workflow.split('\njobs:\n')[0];
   assert.match(header, /^  schedule: \[cron: '40 1 \* \* \*'\]$/m);
@@ -131,7 +138,7 @@ test('required checks and deferred coverage stay in their respective workflows',
   assert.deepEqual([...fastJobs.keys()].sort(), [
     'test-openraft-core-crates', 'test-crate-tests', 'stores', 'rt-tokio',
     'openraft-feature-test', 'tests-feature-test', 'rt-sim', 'tests-rt-sim',
-    'detsim', 'detsim-threshold', 'lint',
+    'detsim', 'detsim-threshold', 'lint', 'plan',
   ].sort());
   assert.deepEqual([...fullJobs.keys()].sort(), [
     'plan', 'fast', 'test-release-build', 'openraft-test-bench', 'bench-minimal',
@@ -139,16 +146,68 @@ test('required checks and deferred coverage stay in their respective workflows',
   ].sort());
 });
 
-test('full CI reuses the fast workflow from the same commit', () => {
+test('full CI reuses the fast workflow with permission for its nested decision job', () => {
   assert.match(fullJobs.get('fast'), /^    uses: \.\/\.github\/workflows\/ci.yaml$/m);
+  assert.match(fullJobs.get('fast'), /^      actions: read$/m);
+  assert.match(fullJobs.get('fast'), /^      contents: read$/m);
 });
 
+const anchors = new Map();
+function steps(body) {
+  return body.split(/^      - /m).slice(1).map(step => {
+    const anchor = step.match(/^&([\w-]+)\n/);
+    if (anchor) {
+      step = step.slice(anchor[0].length);
+      anchors.set(anchor[1], step);
+    }
+    const alias = step.match(/^\*([\w-]+)\s*/);
+    return alias ? anchors.get(alias[1]) : step;
+  });
+}
+
+const fastSteps = new Map([...fastJobs].map(([name, body]) => [name, steps(body)]));
+const guard = anchors.get('reuse-decision');
+const guardScript = guard.match(/        run: \|\n((?: {10}.*\n|\n)+)/)[1]
+  .replace(/^ {10}/gm, '');
+
+for (const result of ['success', 'failure', 'cancelled', 'skipped']) {
+  for (const reuse of ['true', 'false', '', 'invalid']) {
+    test(`reuse guard checks planner result=${result} and reuse=${reuse}`, () => {
+      const child = spawnSync('bash', ['-e', '-o', 'pipefail', '-c', guardScript], {
+        env: { ...process.env, PLAN_RESULT: result, REUSE: reuse, SOURCE: 'successful-run' },
+      });
+      assert.equal(child.status === 0, result === 'success' && ['true', 'false'].includes(reuse));
+    });
+  }
+}
+
 for (const [name, body] of fastJobs) {
-  test(`${name} runs unconditionally without the daily plan`, () => {
-    assert.doesNotMatch(body, /^    (needs|if):/m);
+  if (name === 'plan') continue;
+  test(`${name} preserves its required check and fails closed on planner failure`, () => {
+    assert.match(body, /^    needs: plan$/m);
+    assert.match(body, /^    if: \$\{\{ !cancelled\(\) \}\}$/m);
+    const [first, ...remaining] = fastSteps.get(name);
+    assert.equal(first, guard, 'every matrix job must execute the same guard first');
+    for (const step of remaining) {
+      assert.ok(step, 'step aliases must resolve');
+      assert.match(step, /^        if: (needs\.plan\.outputs\.reuse != 'true'|needs\.plan\.result == 'success' && needs\.plan\.outputs\.reuse == 'false'|failure\(\))/m,
+        'no checkout, toolchain install, test, or other expensive step may run on reuse');
+    }
     assert.ok(!fullJobs.has(name), 'fast job must not be duplicated in full CI');
   });
 }
+
+test('reuse decision uses an immutable local workflow with read-only permissions', () => {
+  const body = fastJobs.get('plan');
+  assert.match(body, /^    uses: \.\/\.github\/workflows\/ci-reuse.yaml$/m);
+  assert.match(body, /actions: read/);
+  assert.doesNotMatch(body, /: write/);
+  assert.match(reuseWorkflow, /ref: \$\{\{ github\.sha \}\}/);
+  assert.match(reuseWorkflow, /git rev-parse 'HEAD\^\{tree\}'/);
+  assert.match(reuseWorkflow, /core\.setOutput\('reuse', String\(reuse\)\)/);
+  assert.match(reuseWorkflow, /value: \$\{\{ jobs\.plan\.outputs\.reuse \}\}/);
+  assert.doesNotMatch(reuseWorkflow, /: write/);
+});
 
 for (const [name, body] of fullJobs) {
   if (name === 'plan') continue;
