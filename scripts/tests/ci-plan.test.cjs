@@ -96,11 +96,12 @@ test('a history API failure fails the plan rather than silently skipping coverag
   }, {}), failure);
 });
 
-test('fast checks run on PRs and main pushes and can be called by full CI', () => {
+test('fast checks run on PRs, merge groups, main pushes, and calls from full CI', () => {
   const header = fastWorkflow.split('\njobs:\n')[0];
   assert.match(header, /^  pull_request:$/m);
   assert.match(header, /^  push:\n    branches:\n      - main$/m);
   assert.match(header, /^  workflow_call:$/m);
+  assert.match(header, /^  merge_group:\n    types: \[checks_requested\]$/m);
   assert.doesNotMatch(header, /^  (schedule|workflow_dispatch):/m);
 });
 
