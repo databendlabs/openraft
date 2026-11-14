@@ -118,7 +118,7 @@ async fn write_many_with_leader() -> Result<()> {
 
         let (responder5, rx5) = ProgressResponder::complete_only();
         n0.write_many([(ClientRequest::make_request("foo", 5), Some(responder5))])
-            .with_option(WriteOption::default().with_leader(fake_leader))
+            .with_option(WriteOption::expect_leader(fake_leader))
             .await?;
 
         for rx in [rx3, rx4, rx5] {
