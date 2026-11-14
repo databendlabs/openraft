@@ -144,6 +144,25 @@ where C: RaftTypeConfig
         self.args.write_option = self.args.write_option.with_leader(expected_leader);
         self
     }
+
+    /// Replace the [`WriteOption`] of this write, including an expected leader set by
+    /// [`Self::with_leader()`].
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use openraft::raft::WriteOption;
+    ///
+    /// let term = raft.as_leader()?.term();
+    /// raft.write(my_data)
+    ///     .with_option(WriteOption::expect_leader(term))
+    ///     .await?;
+    /// ```
+    #[since(version = "0.10.1")]
+    pub fn with_option(mut self, write_option: WriteOption<C>) -> Self {
+        self.args.write_option = write_option;
+        self
+    }
 }
 
 impl<C, F> IntoFuture for WriteRequest<'_, C, F>

@@ -304,6 +304,68 @@ async fn write_with_leader() -> Result<()> {
     Ok(())
 }
 
+/// `Raft::write().with_option()` rejects a write whose expected leader does not match, and
+/// replaces the option set by an earlier `with_leader()`.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn write_with_option() -> Result<()> {
+    use openraft::errors::ClientWriteError;
+    use openraft::errors::ForwardReason;
+    use openraft::raft::WriteOption;
+    use openraft::vote::RaftLeaderId;
+
+    let config = Config {
+        enable_tick: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
+
+    tracing::info!("--- initialize a 3-node cluster");
+    let mut log_index = router.new_cluster([0, 1, 2], []).await?;
+    let n0 = router.get_raft_handle(&0)?;
+
+    let fake_leader = LeaderIdOf::<TypeConfig>::new(100, 99).to_committed();
+
+    tracing::info!(log_index, "--- a write with an option expecting another leader fails");
+    {
+        let (responder, complete_rx) = ProgressResponder::complete_only();
+        n0.write(ClientRequest::make_request("foo", 1))
+            .with_option(WriteOption::expect_leader(fake_leader))
+            .responder(responder)
+            .await?;
+
+        let err = complete_rx.await?.unwrap_err();
+        let ClientWriteError::ForwardToLeader(forward) = err else {
+            panic!("expected ForwardToLeader, got: {:?}", err)
+        };
+        assert_eq!(Some(0), forward.leader_id);
+        assert_eq!(ForwardReason::NotLeader, forward.reason);
+    }
+
+    tracing::info!(
+        log_index,
+        "--- with_option() drops the expected leader set before it, so the write is applied"
+    );
+    {
+        let (responder, complete_rx) = ProgressResponder::complete_only();
+        n0.write(ClientRequest::make_request("foo", 2))
+            .with_leader(fake_leader)
+            .with_option(WriteOption::default())
+            .responder(responder)
+            .await?;
+
+        let got = complete_rx.await??;
+        assert_eq!(&log_id(1, 0, log_index + 1), got.log_id());
+        // The rejected write was not applied, so client "foo" has no previous status.
+        assert_eq!(&ClientResponse(None), got.response());
+        log_index += 1;
+
+        router.wait_applied_at_least([0, 1, 2], log_index, "write applied").await?;
+    }
+
+    Ok(())
+}
+
 /// Test Raft::write_blank() to write blank log entries
 ///
 /// Blank entries contain no application data and are used to:

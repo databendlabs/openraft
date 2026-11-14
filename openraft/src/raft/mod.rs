@@ -1502,7 +1502,8 @@ where
     /// Submit a write request to Raft.
     ///
     /// Returns a [`WriteRequest`] builder. Fire-and-forget by default;
-    /// use [`.responder()`] for results, [`.with_leader()`] for conditional writes.
+    /// use [`.responder()`] for results, [`.with_leader()`] or [`.with_option()`] for conditional
+    /// writes.
     ///
     /// # Examples
     ///
@@ -1527,6 +1528,7 @@ where
     ///
     /// [`.responder()`]: WriteRequest::responder
     /// [`.with_leader()`]: WriteRequest::with_leader
+    /// [`.with_option()`]: WriteRequest::with_option
     #[since(version = "0.10.0")]
     pub fn write(
         &self,
