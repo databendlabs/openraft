@@ -1,9 +1,11 @@
 //! Batching receiver for RaftMsg that merges consecutive ClientWrite messages.
 //!
 //! This module provides [`BatchRaftMsgReceiver`], a wrapper around an mpsc receiver
-//! that automatically batches consecutive `RaftMsg::ClientWrite` messages with the
-//! same `expected_leader` into a single message, improving throughput by reducing
+//! that automatically batches consecutive `RaftMsg::ClientWrite` messages with
+//! mergeable [`WriteOption`]s into a single message, improving throughput by reducing
 //! per-message overhead.
+//!
+//! [`WriteOption`]: crate::raft::WriteOption
 
 use std::ops::Add;
 use std::time::Duration;
@@ -21,13 +23,14 @@ use crate::type_config::alias::MpscReceiverOf;
 /// A receiver wrapper that batches consecutive `RaftMsg::ClientWrite` messages.
 ///
 /// When receiving messages, this receiver merges consecutive `ClientWrite` messages
-/// that have the same `expected_leader` value into a single message. This batching
+/// whose `write_option`s are mergeable into a single message. This batching
 /// reduces per-message processing overhead and improves write throughput.
 ///
 /// # Batching Rules
 ///
 /// - Only `RaftMsg::ClientWrite` messages are batched
-/// - Messages are only merged if they have the same `expected_leader` value
+/// - A message is merged only if [`WriteOption::is_mergeable_with()`] accepts its `write_option`;
+///   the merged message keeps the first message's `write_option`
 /// - Non-`ClientWrite` messages stop the batching and are buffered for the next recv
 /// - Maximum batch size is 4096 messages
 ///
@@ -42,6 +45,8 @@ use crate::type_config::alias::MpscReceiverOf;
 ///     handle_msg(msg);
 /// }
 /// ```
+///
+/// [`WriteOption::is_mergeable_with()`]: crate::raft::WriteOption::is_mergeable_with
 pub(crate) struct BatchRaftMsgReceiver<C>
 where C: RaftTypeConfig
 {
@@ -49,7 +54,7 @@ where C: RaftTypeConfig
     ///
     /// This is used when:
     /// - A non-mergeable message is encountered during batching
-    /// - A `ClientWrite` with different `expected_leader` is encountered
+    /// - A `ClientWrite` with a non-mergeable `write_option` is encountered
     buffered: Option<RaftMsg<C>>,
 
     /// Maximum items allowed to be merged before return the batch.
@@ -101,7 +106,7 @@ where C: RaftTypeConfig
     /// is empty, or `Err(Fatal::Stopped)` if the sender is dropped.
     ///
     /// If the first available message is a `ClientWrite`, this method attempts to
-    /// merge additional `ClientWrite` messages with the same `expected_leader`.
+    /// merge additional `ClientWrite` messages with a mergeable `write_option`.
     pub(crate) async fn try_recv(&mut self) -> Result<Option<RaftMsg<C>>, Fatal<C>> {
         let msg = self.buffered_try_recv()?;
 
@@ -176,25 +181,26 @@ where C: RaftTypeConfig
         }
     }
 
-    /// Merges consecutive `ClientWrite` messages with the same `expected_leader`.
+    /// Merges consecutive `ClientWrite` messages with mergeable `write_option`s.
     ///
     /// Reads additional messages from the inner receiver and merges them into `msg`
-    /// if they are `ClientWrite` with matching `expected_leader`. Stops merging when:
+    /// if they are `ClientWrite` whose `write_option` is mergeable with `msg`'s. Stops merging
+    /// when:
     /// - A non-`ClientWrite` message is encountered (buffered for next recv)
-    /// - A `ClientWrite` with different `expected_leader` is found (buffered for next recv)
+    /// - A `ClientWrite` with a non-mergeable `write_option` is found (buffered for next recv)
     /// - Maximum batch size is reached
     /// - No more messages are available
     /// - Linger timeout expires before the batch is filled
     async fn merge_client_writes(&mut self, msg: &mut RaftMsg<C>) -> Result<(), Fatal<C>> {
         debug_assert!(self.buffered.is_none());
 
-        let (batch_payloads, batch_responders, batch_leader) = match msg {
+        let (batch_payloads, batch_responders, batch_option) = match msg {
             RaftMsg::ClientWrite {
                 payloads,
                 responders,
-                expected_leader,
+                write_option,
                 ..
-            } => (payloads, responders, expected_leader),
+            } => (payloads, responders, write_option),
             _ => return Ok(()),
         };
 
@@ -206,10 +212,9 @@ where C: RaftTypeConfig
                 break;
             };
 
-            // Can only merge ClientWrite with same expected_leader
             let mergeable = matches!(
                 &next,
-                RaftMsg::ClientWrite { expected_leader, .. } if expected_leader == batch_leader
+                RaftMsg::ClientWrite { write_option, .. } if batch_option.is_mergeable_with(write_option)
             );
 
             if !mergeable {
@@ -242,6 +247,7 @@ mod tests {
     use crate::engine::testing::UTConfig;
     use crate::engine::testing::log_id;
     use crate::entry::EntryPayload;
+    use crate::raft::WriteOption;
     use crate::type_config::TypeConfigExt;
     use crate::type_config::alias::BatchOf;
     use crate::type_config::alias::CommittedLeaderIdOf;
@@ -261,7 +267,9 @@ mod tests {
         RaftMsg::ClientWrite {
             payloads: Batch::of([EntryPayload::Normal(data)]),
             responders: Batch::of([None]),
-            expected_leader: leader,
+            write_option: WriteOption {
+                expected_leader: leader,
+            },
             #[cfg(feature = "runtime-stats")]
             proposed_at: C::now(),
         }

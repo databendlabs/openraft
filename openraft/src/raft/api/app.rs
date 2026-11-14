@@ -15,6 +15,7 @@ use crate::raft::ClientWriteResponse;
 use crate::raft::ClientWriteResult;
 use crate::raft::linearizable_read::Linearizer;
 use crate::raft::linearizable_read::LinearizerOption;
+use crate::raft::message::WriteOption;
 use crate::raft::message::WriteResult;
 use crate::raft::message::into_write_result;
 use crate::raft::raft_inner::RaftInner;
@@ -125,7 +126,7 @@ where C: RaftTypeConfig
             .send_msg(RaftMsg::ClientWrite {
                 payloads,
                 responders,
-                expected_leader: None,
+                write_option: WriteOption::default(),
                 #[cfg(feature = "runtime-stats")]
                 proposed_at: propose_at_now::<C>(),
             })

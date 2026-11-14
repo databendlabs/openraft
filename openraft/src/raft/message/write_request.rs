@@ -10,6 +10,7 @@ use crate::entry::RaftPayload;
 use crate::errors::Fatal;
 #[cfg(feature = "runtime-stats")]
 use crate::raft::api::app::propose_at_now;
+use crate::raft::message::WriteOption;
 use crate::raft::raft_inner::RaftInner;
 use crate::raft::responder::core_responder::CoreResponder;
 use crate::type_config::alias::CommittedLeaderIdOf;
@@ -47,7 +48,7 @@ where C: RaftTypeConfig
     pub(in crate::raft) inner: &'a RaftInner<C>,
     pub(in crate::raft) app_data: C::D,
     pub(in crate::raft) responder: Option<CoreResponder<C>>,
-    pub(in crate::raft) expected_leader: Option<CommittedLeaderIdOf<C>>,
+    pub(in crate::raft) write_option: WriteOption<C>,
 }
 
 impl<'a, C> WriteRequest<'a, C>
@@ -125,7 +126,7 @@ where C: RaftTypeConfig
     /// [`ClientWriteError::ForwardToLeader`]: crate::errors::ClientWriteError::ForwardToLeader
     #[since(version = "0.10.0")]
     pub fn with_leader(mut self, expected_leader: impl Into<CommittedLeaderIdOf<C>>) -> Self {
-        self.expected_leader = Some(expected_leader.into());
+        self.write_option = self.write_option.with_leader(expected_leader);
         self
     }
 }
@@ -142,7 +143,7 @@ where C: RaftTypeConfig
                 .send_msg(RaftMsg::ClientWrite {
                     payloads: Batch::of([C::Payload::normal(self.app_data)]),
                     responders: Batch::of([self.responder]),
-                    expected_leader: self.expected_leader,
+                    write_option: self.write_option,
                     #[cfg(feature = "runtime-stats")]
                     proposed_at: propose_at_now::<C>(),
                 })
