@@ -233,6 +233,8 @@ use openraft::raft::TransferLeaderRequest;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft::raft::WatchChangeHandle as WatchChangeHandleModule;
+use openraft::raft::WriteManyRequest;
+use openraft::raft::WriteOption;
 use openraft::raft::WriteRequest;
 use openraft::raft::WriteResponse;
 use openraft::raft::WriteResult;

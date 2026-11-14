@@ -18,6 +18,8 @@ mod vote;
 mod write;
 
 mod client_write;
+mod write_many_request;
+mod write_many_request_args;
 mod write_option;
 mod write_request;
 mod write_request_args;
@@ -47,6 +49,8 @@ pub use vote::VoteResponse;
 pub use write::WriteResponse;
 pub use write::WriteResult;
 pub(crate) use write::into_write_result;
+pub use write_many_request::WriteManyRequest;
+pub(in crate::raft) use write_many_request::write_many_request;
 pub use write_option::WriteOption;
 pub use write_request::WriteRequest;
 pub(in crate::raft) use write_request::write_request;
