@@ -1,7 +1,9 @@
+use std::future::Future;
 use std::sync::Arc;
 
 use openraft_macros::since;
 
+use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::base::BoxStream;
@@ -15,6 +17,8 @@ use crate::raft::ClientWriteResponse;
 use crate::raft::ClientWriteResult;
 use crate::raft::linearizable_read::Linearizer;
 use crate::raft::linearizable_read::LinearizerOption;
+use crate::raft::message::WriteManyRequest;
+use crate::raft::message::WriteManyRequestArgs;
 use crate::raft::message::WriteOption;
 use crate::raft::message::WriteResult;
 use crate::raft::message::into_write_result;
@@ -171,6 +175,30 @@ where C: RaftTypeConfig
         });
 
         Ok(Box::pin(stream))
+    }
+
+    /// Build the [`WriteManyRequest`] returned by [`Raft::write_many()`] with `writes` in it.
+    ///
+    /// It takes `self` by value because the returned `impl Future` type captures the lifetime of
+    /// a `&self` receiver; the builder must borrow only the Raft handle for `'a`, not this
+    /// short-lived `AppApi`.
+    ///
+    /// [`Raft::write_many()`]: crate::Raft::write_many
+    pub(crate) fn write_many(
+        self,
+        writes: impl IntoIterator<Item = (C::D, Option<WriteResponderOf<C>>)>,
+    ) -> WriteManyRequest<'a, C, impl Future<Output = Result<(), Fatal<C>>> + OptionalSend> {
+        let request = WriteManyRequest {
+            args: WriteManyRequestArgs {
+                inner: self.inner,
+                payloads: Batch::of([]),
+                responders: Batch::of([]),
+                write_option: WriteOption::default(),
+            },
+            make_future: WriteManyRequestArgs::send,
+        };
+
+        request.extend(writes)
     }
 }
 

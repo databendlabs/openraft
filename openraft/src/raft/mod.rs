@@ -62,6 +62,7 @@ pub use message::TransferLeaderRequest;
 pub use message::TransferLeaderResponse;
 pub use message::VoteRequest;
 pub use message::VoteResponse;
+pub use message::WriteManyRequest;
 pub use message::WriteOption;
 pub use message::WriteRequest;
 pub use message::WriteResponse;
@@ -1496,6 +1497,75 @@ where
         app_data: C::D,
     ) -> WriteRequest<'_, C, impl Future<Output = Result<(), Fatal<C>>> + OptionalSend> {
         message::write_request(&self.inner, app_data)
+    }
+
+    /// Submit a batch of writes to Raft in one request.
+    ///
+    /// Returns a [`WriteManyRequest`] builder. Each item of `writes` is an application data and
+    /// an optional responder that receives its result. Append more writes with [`.push()`] or
+    /// [`.extend()`], and make the batch conditional with [`.with_leader()`] or
+    /// [`.with_option()`].
+    ///
+    /// Awaiting the builder sends the batch to RaftCore without waiting for it to be appended or
+    /// committed. Each write reports its result to its responder; a write without a responder
+    /// reports nothing. `Err(Fatal)` means RaftCore has stopped and the batch was not submitted.
+    ///
+    /// # Admission
+    ///
+    /// RaftCore admits or rejects the batch as a whole:
+    ///
+    /// - If the expected leader set by [`.with_leader()`] is not the current committed leader,
+    ///   every write fails with [`ClientWriteError::ForwardToLeader`] and nothing is appended.
+    /// - If this node may not accept writes, for example because it is not the leader, its leader
+    ///   lease has expired, or it is transferring leadership, every write fails with
+    ///   [`ClientWriteError::ForwardToLeader`] and nothing is appended.
+    /// - Otherwise every write is appended to the leader's log in order, at consecutive log
+    ///   indexes.
+    ///
+    /// RaftCore may append the batch together with other queued writes, but it never splits the
+    /// batch. Since admission is all or nothing, a responder on any one write tells whether the
+    /// whole batch was admitted. An empty batch appends nothing.
+    ///
+    /// # Commit
+    ///
+    /// Commit is not all or nothing: each entry is replicated and committed at its own log index.
+    /// If leadership changes before the batch commits, the new leader may have received only the
+    /// first part of the batch. It then commits that part and discards the rest, and the
+    /// responders of the discarded writes receive [`ClientWriteError::LogEntryDiscarded`].
+    /// Retrying the whole batch then applies the committed part twice, so the state machine must
+    /// deduplicate retried writes, as described in [`Self::client_write()`].
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use openraft::impls::ProgressResponder;
+    ///
+    /// let (responder1, rx1) = ProgressResponder::complete_only();
+    /// let (responder3, rx3) = ProgressResponder::complete_only();
+    ///
+    /// // Admit the batch only in the term it was prepared in.
+    /// let term = raft.as_leader()?.term();
+    /// raft.write_many([(data1, Some(responder1)), (data2, None)])
+    ///     .push(data3, Some(responder3))
+    ///     .with_leader(term)
+    ///     .await?;
+    ///
+    /// let response1 = rx1.await??;
+    /// let response3 = rx3.await??;
+    /// ```
+    ///
+    /// [`.push()`]: WriteManyRequest::push
+    /// [`.extend()`]: WriteManyRequest::extend
+    /// [`.with_leader()`]: WriteManyRequest::with_leader
+    /// [`.with_option()`]: WriteManyRequest::with_option
+    /// [`ClientWriteError::ForwardToLeader`]: crate::errors::ClientWriteError::ForwardToLeader
+    /// [`ClientWriteError::LogEntryDiscarded`]: crate::errors::ClientWriteError::LogEntryDiscarded
+    #[since(version = "0.10.1")]
+    pub fn write_many(
+        &self,
+        writes: impl IntoIterator<Item = (C::D, Option<WriteResponderOf<C>>)>,
+    ) -> WriteManyRequest<'_, C, impl Future<Output = Result<(), Fatal<C>>> + OptionalSend> {
+        self.app_api().write_many(writes)
     }
 
     /// Handle the LeaderTransfer request from a Leader node.
