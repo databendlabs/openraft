@@ -37,7 +37,8 @@ where C: RaftTypeConfig
     /// Log reader type.
     ///
     /// Log reader is used by multiple replication tasks, which read logs and send them to remote
-    /// nodes.
+    /// nodes. The state machine worker uses two readers at the same time: while one batch of
+    /// committed entries is applying, it reads the next batch with the other reader.
     type LogReader: RaftLogReader<C>;
 
     /// Returns the last deleted log id and the last log id.

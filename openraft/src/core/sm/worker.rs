@@ -1,5 +1,9 @@
+use std::pin::pin;
+
 use display_more::DisplayOptionExt;
+use futures_util::StreamExt;
 use futures_util::TryStreamExt;
+use futures_util::future::Either;
 use tracing::Instrument;
 
 use crate::RaftLogReader;
@@ -7,23 +11,23 @@ use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::async_runtime::OneshotSender;
+use crate::async_runtime::Select2;
 use crate::core::ApplyResult;
 use crate::core::notification::Notification;
 use crate::core::sm::Command;
 use crate::core::sm::CommandResult;
 use crate::core::sm::Response;
+use crate::core::sm::apply_batch::ApplyBatch;
 use crate::core::sm::command_receiver::CommandReceiver;
 use crate::core::sm::handle::Handle;
 use crate::entry::RaftEntry;
 use crate::errors::StorageIOResult;
-use crate::raft::responder::core_responder::CoreResponder;
 #[cfg(doc)]
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::storage::v2::entry_responder::EntryResponderBuilder;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinHandleOf;
-use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::SnapshotOf;
@@ -43,6 +47,12 @@ where
 
     /// Read logs from the [`RaftLogStorage`] implementation to apply them to the state machine.
     log_reader: LR,
+
+    /// Read the next apply batch while the current one is applying.
+    ///
+    /// It is a second reader because the entry stream of the current batch may borrow
+    /// `log_reader` until `apply()` returns.
+    prefetch_reader: LR,
 
     /// Read command from RaftCore to execute.
     cmd_rx: CommandReceiver<C, SM>,
@@ -65,6 +75,7 @@ where
         id: C::NodeId,
         state_machine: SM,
         log_reader: LR,
+        prefetch_reader: LR,
         resp_tx: MpscSenderOf<C, Notification<C>>,
         cmd_channel: (MpscSenderOf<C, Command<C, SM>>, CommandReceiver<C, SM>),
         span: tracing::Span,
@@ -75,6 +86,7 @@ where
             id,
             state_machine,
             log_reader,
+            prefetch_reader,
             cmd_rx,
             resp_tx,
             next_cmd: None,
@@ -155,10 +167,9 @@ where
                     last,
                     client_resp_channels,
                 } => {
-                    let (last, client_resp_channels) = self.merge_queued_applies(last, client_resp_channels);
-                    let resp = self.apply(first, last, client_resp_channels).await?;
-                    let res = CommandResult::new(Ok(Response::Apply(resp)));
-                    self.resp_tx.send(Notification::sm(res)).await.ok();
+                    let mut batch = ApplyBatch::new(first, last, client_resp_channels);
+                    Self::merge_queued_applies(&mut self.cmd_rx, &mut self.next_cmd, &mut batch);
+                    self.run_applies(batch).await?;
                 }
                 Command::ExternalFunc { func } => {
                     tracing::debug!("{}: run user defined ExternalFunc", func_name!());
@@ -167,49 +178,144 @@ where
             };
         }
     }
-    /// Extend an apply range ending at `last` with the `Apply` commands queued right after it.
+    /// Apply `batch`, then every batch prefetched while the previous one was applying.
+    async fn run_applies(&mut self, batch: ApplyBatch<C>) -> Result<(), StorageError<C>> {
+        let mut next = Some(batch);
+        while let Some(batch) = next {
+            let (applied, prefetched) = self.apply_and_prefetch(batch).await;
+            let res = CommandResult::new(Ok(Response::Apply(applied?)));
+            self.resp_tx.send(Notification::sm(res)).await.ok();
+            next = prefetched;
+        }
+        Ok(())
+    }
+
+    /// Apply `batch`, and read the next batch while it is applying.
+    ///
+    /// While `apply()` runs, the worker keeps receiving commands. Each `Apply` that continues the
+    /// range is merged with the `Apply` commands queued after it, its entries are read with
+    /// `prefetch_reader`, and it is appended to the next batch. The next batch thus collects every
+    /// `Apply` that arrives during `apply()`, as merging alone would, but its reads overlap the
+    /// state-machine I/O. The first command of another kind is kept in `next_cmd` and runs after
+    /// the next batch, so commands still run in the order RaftCore sent them.
+    ///
+    /// A read that is in progress when `apply()` finishes is completed, so the next batch starts
+    /// at most one read later than without prefetching.
+    ///
+    /// Returns the result of applying `batch` and the prefetched batch, if any.
+    async fn apply_and_prefetch(
+        &mut self,
+        batch: ApplyBatch<C>,
+    ) -> (Result<ApplyResult<C>, StorageError<C>>, Option<ApplyBatch<C>>) {
+        let mut next_since = batch.end();
+        let apply = Self::apply(&mut self.state_machine, &mut self.log_reader, batch);
+        let mut apply = pin!(apply);
+        let mut prefetched: Option<ApplyBatch<C>> = None;
+
+        while self.next_cmd.is_none() {
+            // `recv()` is dropped when `apply()` finishes first, as RaftCore does with its own
+            // receivers; a command not yet received stays in the channel.
+            let received = C::select2(apply.as_mut(), self.cmd_rx.recv()).await;
+            let cmd = match received {
+                Select2::First(applied) => return (applied, prefetched),
+                Select2::Second(cmd) => cmd,
+            };
+
+            let mut part = match cmd {
+                Some(Command::Apply {
+                    first,
+                    last,
+                    client_resp_channels,
+                }) if first.index() == next_since => ApplyBatch::new(first, last, client_resp_channels),
+                Some(cmd) => {
+                    self.next_cmd = Some(cmd);
+                    break;
+                }
+                // The channel is closed; the worker loop sees it after this batch.
+                None => break,
+            };
+
+            Self::merge_queued_applies(&mut self.cmd_rx, &mut self.next_cmd, &mut part);
+            tracing::debug!("prefetch Apply: [{},{}]", part.first, part.last);
+            next_since = part.end();
+
+            let applied = {
+                let read = Self::prefetch(&mut self.prefetch_reader, &mut part);
+                let mut read = pin!(read);
+                match C::select2(apply.as_mut(), read.as_mut()).await {
+                    Select2::First(applied) => {
+                        read.await;
+                        Some(applied)
+                    }
+                    Select2::Second(()) => None,
+                }
+            };
+
+            match &mut prefetched {
+                Some(prefetched) => prefetched.append(part),
+                None => prefetched = Some(part),
+            }
+
+            if let Some(applied) = applied {
+                return (applied, prefetched);
+            }
+        }
+
+        (apply.await, prefetched)
+    }
+
+    /// Extend `batch` with the `Apply` commands queued right after it.
     ///
     /// RaftCore sends one `Apply` each time the committed index advances, so while the state
     /// machine is busy, many small `Apply` commands queue up. Applying them as one batch pays the
     /// per-call cost of `entries_stream()` and `apply()` once instead of once per command.
     ///
     /// Only commands that are already queued are taken. The first one that is not an `Apply`
-    /// starting at `last + 1` is kept in `next_cmd` and runs next, so commands still run in the
-    /// order RaftCore sent them.
+    /// starting right after `batch` is kept in `next_cmd` and runs next, so commands still run in
+    /// the order RaftCore sent them.
     fn merge_queued_applies(
-        &mut self,
-        mut last: LogIdOf<C>,
-        mut client_resp_channels: Vec<(u64, CoreResponder<C>)>,
-    ) -> (LogIdOf<C>, Vec<(u64, CoreResponder<C>)>) {
-        while let Some(cmd) = self.cmd_rx.try_recv() {
+        cmd_rx: &mut CommandReceiver<C, SM>,
+        next_cmd: &mut Option<Command<C, SM>>,
+        batch: &mut ApplyBatch<C>,
+    ) {
+        while let Some(cmd) = cmd_rx.try_recv() {
             match cmd {
                 Command::Apply {
-                    first: next_first,
-                    last: next_last,
-                    client_resp_channels: next_channels,
-                } if next_first.index() == last.index() + 1 => {
-                    tracing::debug!("merge queued Apply: [{},{}]", next_first, next_last);
-                    last = next_last;
-                    client_resp_channels.extend(next_channels);
+                    first,
+                    last,
+                    client_resp_channels,
+                } if first.index() == batch.end() => {
+                    tracing::debug!("merge queued Apply: [{},{}]", first, last);
+                    batch.last = last;
+                    batch.client_resp_channels.extend(client_resp_channels);
                 }
                 cmd => {
-                    self.next_cmd = Some(cmd);
+                    *next_cmd = Some(cmd);
                     break;
                 }
             }
         }
-        (last, client_resp_channels)
+    }
+
+    /// Read all entries of `batch` into `batch.prefetched`.
+    ///
+    /// The buffer holds at most the entries of one batch, which is no more than the committed but
+    /// unapplied range a single `Apply` command can already cover.
+    async fn prefetch(reader: &mut LR, batch: &mut ApplyBatch<C>) {
+        let stream = reader.entries_stream(batch.since()..batch.end()).await;
+        let entries = stream.collect::<Vec<_>>().await;
+        batch.prefetched = Some(entries);
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
     async fn apply(
-        &mut self,
-        first: LogIdOf<C>,
-        last: LogIdOf<C>,
-        client_resp_channels: Vec<(u64, CoreResponder<C>)>,
+        state_machine: &mut SM,
+        log_reader: &mut LR,
+        batch: ApplyBatch<C>,
     ) -> Result<ApplyResult<C>, StorageError<C>> {
-        let since = first.index();
-        let end = last.index() + 1;
+        let since = batch.since();
+        let end = batch.end();
+        let last = batch.last;
 
         #[cfg(debug_assertions)]
         let (got_last_index, last_apply) = {
@@ -217,10 +323,13 @@ where
             (l.clone(), l)
         };
 
-        let strm = self.log_reader.entries_stream(since..end).await;
+        let strm = match batch.prefetched {
+            Some(entries) => Either::Left(futures_util::stream::iter(entries)),
+            None => Either::Right(log_reader.entries_stream(since..end).await),
+        };
 
         // Convert Vec to an iterator for efficient matching
-        let mut responder_iter = client_resp_channels.into_iter().peekable();
+        let mut responder_iter = batch.client_resp_channels.into_iter().peekable();
 
         // Prepare entries with responders upfront.
         let strm = strm.map_ok(move |entry| {
@@ -245,7 +354,7 @@ where
             (ent, responder)
         });
 
-        self.state_machine.apply(Box::pin(strm)).await.sto_apply(last.clone())?;
+        state_machine.apply(Box::pin(strm)).await.sto_apply(last.clone())?;
 
         #[cfg(debug_assertions)]
         {
