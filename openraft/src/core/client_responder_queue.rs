@@ -203,6 +203,21 @@ mod tests {
     }
 
     #[test]
+    fn test_grow_and_retain_capacity() {
+        let mut queue = TestQueue::with_capacity(1);
+        queue.push(10, 100);
+        queue.push(20, 200);
+        let capacity = queue.responders.capacity();
+        let grew = capacity > 1;
+        assert!(grew);
+
+        assert_eq!(queue.drain_upto(20), vec![(10, 100), (20, 200)]);
+        assert!(queue.is_empty());
+        let retained_capacity = queue.responders.capacity();
+        assert_eq!(capacity, retained_capacity);
+    }
+
+    #[test]
     fn test_drain_from() {
         let mut queue = TestQueue::new();
         queue.push(10, 100);
