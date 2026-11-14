@@ -20,6 +20,7 @@ mod write;
 mod client_write;
 mod write_option;
 mod write_request;
+mod write_request_args;
 
 pub use append_entries_request::AppendEntriesRequest;
 pub use append_entries_response::AppendEntriesResponse;
@@ -48,3 +49,4 @@ pub use write::WriteResult;
 pub(crate) use write::into_write_result;
 pub use write_option::WriteOption;
 pub use write_request::WriteRequest;
+pub(in crate::raft) use write_request::write_request;

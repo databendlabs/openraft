@@ -1491,13 +1491,11 @@ where
     /// [`.responder()`]: WriteRequest::responder
     /// [`.with_leader()`]: WriteRequest::with_leader
     #[since(version = "0.10.0")]
-    pub fn write(&self, app_data: C::D) -> WriteRequest<'_, C> {
-        WriteRequest {
-            inner: &self.inner,
-            app_data,
-            responder: None,
-            write_option: WriteOption::default(),
-        }
+    pub fn write(
+        &self,
+        app_data: C::D,
+    ) -> WriteRequest<'_, C, impl Future<Output = Result<(), Fatal<C>>> + OptionalSend> {
+        message::write_request(&self.inner, app_data)
     }
 
     /// Handle the LeaderTransfer request from a Leader node.
