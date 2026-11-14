@@ -97,6 +97,7 @@ where C: RaftTypeConfig
         self.do_client_write_ff(
             Batch::of([payload]),
             Batch::of([Some(CoreResponder::Progress(responder))]),
+            WriteOption::default(),
         )
         .await?;
 
@@ -115,6 +116,7 @@ where C: RaftTypeConfig
         self.do_client_write_ff(
             Batch::of([payload]),
             Batch::of([responder.map(|r| CoreResponder::UserDefined(r))]),
+            WriteOption::default(),
         )
         .await
     }
@@ -125,12 +127,13 @@ where C: RaftTypeConfig
         &self,
         payloads: BatchOf<C, PayloadOf<C>>,
         responders: BatchOf<C, Option<CoreResponder<C>>>,
+        write_option: WriteOption<C>,
     ) -> Result<(), Fatal<C>> {
         self.inner
             .send_msg(RaftMsg::ClientWrite {
                 payloads,
                 responders,
-                write_option: WriteOption::default(),
+                write_option,
                 #[cfg(feature = "runtime-stats")]
                 proposed_at: propose_at_now::<C>(),
             })
@@ -143,7 +146,8 @@ where C: RaftTypeConfig
     ///
     /// Returns a stream that yields each result in submission order.
     /// This is more efficient than calling [`client_write()`](Self::client_write) multiple times
-    /// as it sends all payloads in a single message to the Raft core.
+    /// as it sends all payloads in a single message to the Raft core. RaftCore admits the batch
+    /// with `write_option`.
     ///
     /// If RaftCore stops, the stream yields `Err(Fatal::Stopped)` and ends.
     #[since(version = "0.10.0")]
@@ -151,6 +155,7 @@ where C: RaftTypeConfig
     pub(crate) async fn client_write_many(
         &self,
         payloads: impl IntoIterator<Item = PayloadOf<C>>,
+        write_option: WriteOption<C>,
     ) -> Result<BoxStream<'static, Result<WriteResult<C>, Fatal<C>>>, Fatal<C>> {
         let payloads: Vec<PayloadOf<C>> = payloads.into_iter().collect();
 
@@ -163,7 +168,7 @@ where C: RaftTypeConfig
             receivers.push(complete_rx);
         }
 
-        self.do_client_write_ff(Batch::of(payloads), Batch::of(responders)).await?;
+        self.do_client_write_ff(Batch::of(payloads), Batch::of(responders), write_option).await?;
 
         let stream = futures_util::stream::unfold(Some(receivers.into_iter()), |opt_iter| async move {
             let mut iter = opt_iter?;

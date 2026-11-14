@@ -1,6 +1,7 @@
 use anyhow::Result;
 use futures::TryStreamExt;
 use openraft::Config;
+use openraft::raft::WriteOption;
 use openraft::stats::RuntimeStats;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::IntoMemClientRequest;
@@ -50,7 +51,7 @@ async fn runtime_stats_log_stage_counts_batched_entries_per_entry() -> Result<()
 
     tracing::info!(log_index, "--- writing 5 entries with client_write_many()");
     let requests: Vec<ClientRequest> = (0..5).map(|i| ClientRequest::make_request("batched", i)).collect();
-    let mut stream = n0.client_write_many(requests).await?;
+    let mut stream = n0.client_write_many(requests, WriteOption::default()).await?;
 
     let mut result_count = 0;
     while let Some(result) = stream.try_next().await? {
