@@ -5,10 +5,10 @@ use crate::type_config::alias::CommittedLeaderIdOf;
 
 /// Optional behavior of a client write.
 ///
-/// The default option proposes the write without conditions. Use [`with_leader()`] to make the
-/// write conditional on the current leader.
+/// The default option proposes the write without conditions. Use [`expect_leader()`] to create an
+/// option that makes the write conditional on the current leader.
 ///
-/// [`with_leader()`]: WriteOption::with_leader
+/// [`expect_leader()`]: WriteOption::expect_leader
 #[since(version = "0.10.1")]
 #[derive(Debug, Clone, Default)]
 #[derive(PartialEq, Eq)]
@@ -23,6 +23,21 @@ where C: RaftTypeConfig
 impl<C> WriteOption<C>
 where C: RaftTypeConfig
 {
+    /// Create an option that proposes the write only if the current committed leader is
+    /// `expected_leader`.
+    ///
+    /// The same as `WriteOption::default().with_leader(expected_leader)`; see
+    /// [`with_leader()`](Self::with_leader).
+    ///
+    /// ```ignore
+    /// let term = raft.as_leader()?.term();
+    /// raft.client_write_many([data1, data2], WriteOption::expect_leader(term)).await?;
+    /// ```
+    #[since(version = "0.10.1")]
+    pub fn expect_leader(expected_leader: impl Into<CommittedLeaderIdOf<C>>) -> Self {
+        Self::default().with_leader(expected_leader)
+    }
+
     /// Propose the write only if the current committed leader is `expected_leader`.
     ///
     /// If it is not, the write fails with [`ClientWriteError::ForwardToLeader`] and nothing is
@@ -83,5 +98,19 @@ mod tests {
         assert_eq!(None, any.merge(&leader1));
         assert_eq!(None, leader1.merge(&any));
         assert_eq!(None, leader1.merge(&leader2));
+    }
+
+    #[test]
+    fn test_expect_leader() {
+        let leader_id = committed_leader_id(1, 1);
+
+        assert_eq!(
+            WriteOption::<C>::default().with_leader(leader_id),
+            WriteOption::<C>::expect_leader(leader_id)
+        );
+        assert_eq!(
+            Some(leader_id),
+            WriteOption::<C>::expect_leader(leader_id).expected_leader
+        );
     }
 }

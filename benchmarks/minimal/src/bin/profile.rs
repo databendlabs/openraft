@@ -21,6 +21,7 @@ use futures::TryStreamExt;
 use measurement::Measurement;
 use openraft::Config;
 use openraft::SnapshotPolicy;
+use openraft::raft::WriteOption;
 
 const WARMUP_WRITES: usize = 1024;
 const WAIT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -144,7 +145,7 @@ async fn write_batch(raft: &BenchRaft, batch: usize) -> anyhow::Result<()> {
         return Ok(());
     }
     let requests: Vec<_> = (0..batch).map(|_| ClientRequest {}).collect();
-    let mut responses = raft.client_write_many(requests).await?;
+    let mut responses = raft.client_write_many(requests, WriteOption::default()).await?;
     while let Some(response) = responses.try_next().await? {
         response?;
     }

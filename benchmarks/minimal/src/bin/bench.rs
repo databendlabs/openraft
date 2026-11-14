@@ -21,6 +21,7 @@ use bench_minimal::store::ClientRequest;
 use clap::Parser;
 use futures::TryStreamExt;
 use openraft::Config;
+use openraft::raft::WriteOption;
 use read_workload::ReadWorkload;
 use tokio::runtime::Builder;
 use tokio::runtime::Runtime;
@@ -520,7 +521,7 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft) -> anyhow::Resu
                     } else {
                         measure_latency.then(Instant::now)
                     };
-                    let mut stream = l.client_write_many(requests).await?;
+                    let mut stream = l.client_write_many(requests, WriteOption::default()).await?;
                     while let Some(result) = stream.try_next().await? {
                         result?;
                     }
