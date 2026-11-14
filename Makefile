@@ -168,6 +168,16 @@ bench_compare_write_latency:
 bench_compare_apply_delays:
 	$(BENCH_COMPARE) --apply-delays
 
+# Regression coverage for the opt-in local relaxed-read API in both leader-ID modes.
+.PHONY: test-relaxed-read
+test-relaxed-read:
+	cargo test -p tests --test client_api t11_relaxed_read
+	cargo test -p tests --features single-term-leader --test client_api t11_relaxed_read
+
+# Compare core, cached local, and relaxed lease reads, including a coherent SM query.
+bench_relaxed_reads:
+	python3 benchmarks/minimal/scripts/relaxed_reads.py
+
 test-bench-minimal:
 	cargo test --manifest-path benchmarks/minimal/Cargo.toml --all-targets
 	cargo test --manifest-path benchmarks/minimal/Cargo.toml --all-targets --no-default-features

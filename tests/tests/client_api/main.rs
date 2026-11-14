@@ -11,6 +11,7 @@ mod t10_client_writes;
 mod t10_write_many;
 mod t11_client_reads;
 mod t11_local_lease_read;
+mod t11_relaxed_read;
 mod t12_trigger_purge_log;
 mod t13_get_snapshot;
 mod t13_install_full_snapshot;
