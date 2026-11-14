@@ -1436,7 +1436,8 @@ where
     ///
     /// Returns a stream that yields each result in submission order.
     /// This is more efficient than calling [`client_write()`](Self::client_write) multiple times
-    /// as it sends all payloads in a single message to the Raft core.
+    /// as it sends all payloads in a single message to the Raft core. To make the batch
+    /// conditional, use [`Self::client_write_many_with_option()`].
     ///
     /// # Examples
     ///
@@ -1459,7 +1460,70 @@ where
         &self,
         app_data: impl IntoIterator<Item = C::D>,
     ) -> Result<BoxStream<'static, Result<WriteResult<C>, Fatal<C>>>, Fatal<C>> {
-        self.app_api().client_write_many(app_data.into_iter().map(C::Payload::normal)).await
+        self.app_api()
+            .client_write_many(app_data.into_iter().map(C::Payload::normal), WriteOption::default())
+            .await
+    }
+
+    /// Write multiple application data payloads in a single batch, admitted with `write_option`.
+    ///
+    /// Same as [`Self::client_write_many()`], with a [`WriteOption`] that controls how RaftCore
+    /// admits the batch, such as an expected leader set by [`WriteOption::with_leader()`].
+    ///
+    /// The returned stream yields the result of each entry in submission order, once that entry
+    /// is applied. `Err(Fatal)` from this method means the batch was not submitted. If RaftCore
+    /// stops later, the stream yields `Err(Fatal::Stopped)` and ends.
+    ///
+    /// # Admission
+    ///
+    /// The batch reaches RaftCore as one message, and RaftCore admits or rejects it as a whole:
+    ///
+    /// - If the expected leader is not the current committed leader, every entry yields
+    ///   [`ClientWriteError::ForwardToLeader`] and nothing is appended.
+    /// - If this node may not accept writes, for example because it is not the leader, its leader
+    ///   lease has expired, or it is transferring leadership, every entry yields
+    ///   [`ClientWriteError::ForwardToLeader`] and nothing is appended.
+    /// - Otherwise every entry is appended to the leader's log in order, at consecutive log
+    ///   indexes.
+    ///
+    /// # Commit
+    ///
+    /// Commit is not all or nothing: each entry is replicated and committed at its own log index.
+    /// If leadership changes before the batch commits, the new leader may have received only the
+    /// first part of the batch. It then commits that part and discards the rest, and each
+    /// discarded entry yields [`ClientWriteError::LogEntryDiscarded`]. The state machine must
+    /// deduplicate retried writes, as described in [`Self::client_write()`].
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use futures_util::TryStreamExt;
+    /// use openraft::raft::WriteOption;
+    ///
+    /// // Admit the batch only in the term it was prepared in.
+    /// let term = raft.as_leader()?.term();
+    /// let write_option = WriteOption::default().with_leader(term);
+    ///
+    /// let mut stream = raft.client_write_many_with_option([data1, data2], write_option).await?;
+    ///
+    /// while let Some(result) = stream.try_next().await? {
+    ///     match result {
+    ///         Ok(response) => println!("Applied at log index: {:?}", response.log_id),
+    ///         Err(error) => eprintln!("Write failed: {:?}", error),
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// [`ClientWriteError::ForwardToLeader`]: crate::errors::ClientWriteError::ForwardToLeader
+    /// [`ClientWriteError::LogEntryDiscarded`]: crate::errors::ClientWriteError::LogEntryDiscarded
+    #[since(version = "0.10.1")]
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub async fn client_write_many_with_option(
+        &self,
+        app_data: impl IntoIterator<Item = C::D>,
+        write_option: WriteOption<C>,
+    ) -> Result<BoxStream<'static, Result<WriteResult<C>, Fatal<C>>>, Fatal<C>> {
+        self.app_api().client_write_many(app_data.into_iter().map(C::Payload::normal), write_option).await
     }
 
     /// Submit a write request to Raft.
