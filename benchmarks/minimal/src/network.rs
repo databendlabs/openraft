@@ -23,6 +23,8 @@ use openraft::network::v2::RaftNetworkV2;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendResult;
 use openraft::raft::SnapshotResponse;
+use openraft::raft::TransferLeaderRequest;
+use openraft::raft::TransferLeaderResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 
@@ -172,6 +174,15 @@ impl RaftNetworkV2<TypeConfig> for Network {
         _option: RPCOption,
     ) -> Result<VoteResponse<TypeConfig>, RPCError<TypeConfig>> {
         let resp = self.target_raft.vote(rpc).await.map_err(|e| self.unreachable(e))?;
+        Ok(resp)
+    }
+
+    async fn transfer_leader(
+        &mut self,
+        req: TransferLeaderRequest<TypeConfig>,
+        _option: RPCOption,
+    ) -> Result<TransferLeaderResponse<TypeConfig>, RPCError<TypeConfig>> {
+        let resp = self.target_raft.handle_transfer_leader(req).await.map_err(|e| self.unreachable(e))?;
         Ok(resp)
     }
 }

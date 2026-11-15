@@ -7,31 +7,48 @@ use std::time::Instant;
 use anyhow::Context;
 use bench_minimal::network::BenchRaft;
 use bench_minimal::store::StateMachineStore;
+use bench_minimal::store::TypeConfig;
 use openraft::LinearizerOption;
 use openraft::ReadPolicy;
+use openraft::errors::LinearizableReadError;
+use openraft::errors::RaftError;
+use openraft::raft::linearizable_read::Linearizer;
 use serde_json::Value;
 use tokio::sync::Barrier;
 use tokio::task::JoinHandle;
 
 use super::BenchConfig;
+use super::leader_change::LeaderChange;
+use super::leader_change::Leaders;
 use super::pace;
 use super::percentile;
 
 const READ_YIELD_BATCH: u64 = 64;
 
-type ReadSample = (u64, Result<(), String>);
+/// One read attempt.
+pub(super) struct ReadSample {
+    /// When the read was due, in nanoseconds since the arrival epoch.
+    started_ns: u64,
+    latency_ns: u64,
+    /// The node that served a successful read.
+    node: Option<u64>,
+    status: Result<(), String>,
+}
+
 type ReadTask = JoinHandle<anyhow::Result<Vec<ReadSample>>>;
 
 /// Shares the write clients' start barrier and arrival epoch.
 ///
 /// The leader authorizes each read; `reader` awaits its barrier and owns `state_machine`, which
-/// the query reads. They are the same node unless reads run on a follower.
+/// the query reads. They are the same node unless reads run on a follower. With `leaders`, reads
+/// follow leadership instead, and run on whichever node currently leads.
 #[derive(Clone)]
 pub(super) struct ReadWorkload {
     pub(super) config: Arc<BenchConfig>,
     pub(super) leader: BenchRaft,
     pub(super) reader: BenchRaft,
     pub(super) state_machine: Arc<StateMachineStore>,
+    pub(super) leaders: Option<Leaders>,
     pub(super) start: Arc<Barrier>,
     pub(super) epoch: Arc<OnceLock<Instant>>,
 }
@@ -72,32 +89,65 @@ impl ReadWorkload {
             Instant::now()
         };
         let result = self.read().await;
-        let elapsed = started.elapsed();
-        let nanos = elapsed.as_nanos();
-        let nanos = u64::try_from(nanos)?;
-        let status = match result {
-            Ok(()) => Ok(()),
+        let latency_ns = u64::try_from(started.elapsed().as_nanos())?;
+        let started_ns = u64::try_from(started.saturating_duration_since(epoch).as_nanos())?;
+        let (node, status) = match result {
+            Ok(node) => (Some(node), Ok(())),
             Err(error) if self.config.allow_read_errors => {
                 let message = format!("{error:#}");
-                Err(message)
+                (None, Err(message))
             }
             Err(error) => return Err(error),
         };
-        Ok((nanos, status))
+        Ok(ReadSample {
+            started_ns,
+            latency_ns,
+            node,
+            status,
+        })
     }
 
-    async fn read(&self) -> anyhow::Result<()> {
+    /// Runs one read and returns the node that served it.
+    async fn read(&self) -> anyhow::Result<u64> {
         let policy = ReadPolicy::from(self.config.read_policy);
         let option = LinearizerOption::from(policy).with_relaxed(self.config.read_relaxed);
-        let linearizer = self.leader.get_local_read_linearizer(option).await?;
+        let Some(leaders) = &self.leaders else {
+            let linearizer = self.leader.get_local_read_linearizer(option).await?;
+            self.finish(linearizer, &self.reader, &self.state_machine).await?;
+            let reader = self.config.read_on_follower.unwrap_or(0);
+            return Ok(reader);
+        };
+        loop {
+            let (node, raft) = leaders.current();
+            let linearizer = match raft.get_local_read_linearizer(option.clone()).await {
+                Ok(linearizer) => linearizer,
+                Err(error) if is_leader_change(&error) => {
+                    leaders.retry_later(node).await;
+                    continue;
+                }
+                Err(error) => return Err(error.into()),
+            };
+            let machine = leaders.machine(node)?;
+            self.finish(linearizer, &raft, machine).await?;
+            return Ok(node);
+        }
+    }
+
+    /// Waits for the barrier on `reader` and queries `machine`, as configured.
+    async fn finish(
+        &self,
+        linearizer: Linearizer<TypeConfig>,
+        reader: &BenchRaft,
+        machine: &StateMachineStore,
+    ) -> anyhow::Result<()> {
         if self.config.read_await_ready || self.config.read_query {
-            let state = linearizer.await_ready(&self.reader).await?;
+            let state = linearizer.await_ready(reader).await?;
             let _ = std::hint::black_box(state);
         } else {
             let _ = std::hint::black_box(linearizer);
         }
         if self.config.read_query {
-            let value = self.state_machine.read().await;
+            let value = machine.read().await;
             let _ = std::hint::black_box(value);
         }
         Ok(())
@@ -109,7 +159,16 @@ impl ReadWorkload {
         writes: Vec<Vec<u64>>,
         reads: Vec<ReadSample>,
         follower_lag: Option<Value>,
+        leader_change: Option<LeaderChange>,
     ) -> anyhow::Result<()> {
+        let leader_change = leader_change.map(|change| {
+            let served: Vec<_> = reads
+                .iter()
+                .filter(|sample| sample.status.is_ok())
+                .filter_map(|sample| sample.node.map(|node| (sample.started_ns, sample.latency_ns, node)))
+                .collect();
+            change.report(&served)
+        });
         let writes = writes.into_iter().flatten();
         let writes = writes.collect();
         let writes = latency_report(writes, elapsed, self.config.batch_size)?;
@@ -121,6 +180,7 @@ impl ReadWorkload {
             "seconds": seconds, "write": writes, "read": reads,
             "config": config, "local_lease_read_enabled": local_lease_read_enabled,
             "runtime_stats": cfg!(feature = "runtime-stats"), "follower_lag": follower_lag,
+            "leader_change": leader_change,
         });
         println!("{report}");
         Ok(())
@@ -130,6 +190,13 @@ impl ReadWorkload {
         let config = self.leader.config();
         config.enable_local_lease_read.unwrap_or(false)
     }
+}
+
+/// A read rejected because leadership is moving: the node is no longer the leader, is handing
+/// leadership over, or has not yet confirmed its leadership with a quorum.
+fn is_leader_change(error: &RaftError<TypeConfig, LinearizableReadError<TypeConfig>>) -> bool {
+    let quorum_not_enough = matches!(error, RaftError::APIError(LinearizableReadError::QuorumNotEnough(_)));
+    error.forward_to_leader().is_some() || quorum_not_enough
 }
 
 fn client_operations(total: u64, clients: u64, id: u64) -> u64 {
@@ -143,11 +210,11 @@ fn read_report(samples: Vec<ReadSample>, elapsed: Duration) -> anyhow::Result<Va
     let mut successes = Vec::new();
     let mut failures = Vec::new();
     let mut errors = BTreeMap::<String, u64>::new();
-    for (nanos, result) in samples {
-        match result {
-            Ok(()) => successes.push(nanos),
+    for ReadSample { latency_ns, status, .. } in samples {
+        match status {
+            Ok(()) => successes.push(latency_ns),
             Err(error) => {
-                failures.push(nanos);
+                failures.push(latency_ns);
                 let count = errors.entry(error).or_default();
                 *count += 1;
             }
@@ -196,17 +263,20 @@ fn latency(samples: &[u64]) -> anyhow::Result<Value> {
 mod tests {
     use std::time::Duration;
 
+    use super::ReadSample;
     use super::client_operations;
     use super::latency_report;
     use super::read_report;
 
     #[test]
     fn read_failures_have_separate_counts_and_latency() -> anyhow::Result<()> {
-        let samples = vec![
-            (3, Ok(())),
-            (7, Err("expired".to_string())),
-            (9, Err("expired".to_string())),
-        ];
+        let sample = |latency_ns, status: Result<(), &str>| ReadSample {
+            started_ns: 0,
+            latency_ns,
+            node: status.is_ok().then_some(0),
+            status: status.map_err(|error| error.to_string()),
+        };
+        let samples = vec![sample(3, Ok(())), sample(7, Err("expired")), sample(9, Err("expired"))];
         let actual = read_report(samples, Duration::from_secs(1))?;
         let expected = serde_json::json!({
             "successful": {"operations": 1, "operations_per_second": 1.0,

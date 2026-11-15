@@ -277,6 +277,14 @@ read pays that round trip.
 state-machine I/O delays of 0, 100 µs, 500 µs and 2 ms, to show how large the apply backlog must be
 before relaxed reads pay off.
 
+`--grid leader-change` transfers leadership from node 0 to node 1 one second into a three-second
+mixed workload with an apply delay (`--transfer-leader-after-ms 1000`). Writers and readers follow
+the new leader: a request rejected because leadership is moving waits until node 1 has taken over,
+or for 1 ms, and retries. The table reports how long the election took, how long after it the first
+read on node 1 finished, and the read latency in the first second after the election, without the
+setting, with it, and with relaxed reads. Under the bound, followers apply less before a failover,
+so the new leader has more entries to apply before its no-op.
+
 The no-op optimization is expected to help when committed entries wait to be applied. It cannot
 remove application-side lock contention: this store holds its write lock during simulated
 state-machine I/O, so even relaxed queries must wait for that lock. Read-only runs isolate API
@@ -315,6 +323,7 @@ References for the optimization and its correctness requirements:
 --read-on-follower Await the barrier and query on this follower; report its apply lag (requires --read-query)
 --allow-read-errors Report read failures separately
 --read-delay-ms   Idle time after warmup, before measurement [default: 0]
+--transfer-leader-after-ms Move leadership from node 0 to node 1 after this delay; clients follow it
 --apply-read-delay-us Delay of the log read that loads each apply batch [default: 0]
 --apply-io-delay-us   State-machine I/O delay of each apply batch [default: 0]
 ```

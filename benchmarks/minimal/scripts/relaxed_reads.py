@@ -16,6 +16,9 @@ a quorum to confirm leadership.
 --grid sweep runs the paced mixed workload at apply-log-read and state-machine
 I/O delays from 0 to 2 ms, to show how large the apply backlog must be before
 relaxed reads pay off.
+--grid leader-change transfers leadership from node 0 to node 1 one second
+into a three-second mixed workload, and reports the election and the reads in
+the first second after it.
 """
 
 import argparse
@@ -65,6 +68,17 @@ SWEEP_SCENARIOS = [("mixed/no-delay", 32, 20000, 64, 180000, 0, 0)] + [
     for kind in ["log-read", "apply-io"]
     for delay in [100, 500, 2000]
 ]
+# Leadership moves one second into the workload; clients follow it.
+TRANSFER = ["--transfer-leader-after-ms", "1000"]
+LEADER_CHANGE_MODES = [
+    ("local", True, False, TRANSFER),
+    ("local+bound", True, True, TRANSFER),
+    ("relaxed", True, True, ["--read-relaxed"] + TRANSFER),
+]
+LEADER_CHANGE_SCENARIOS = [
+    ("mixed/log-read-500us/3s", 32, 30000, 64, 270000, 500, 0),
+    ("mixed/apply-io-500us/3s", 32, 30000, 64, 270000, 0, 500),
+]
 # ReadIndex reads always run in RaftCore: only lease reads use the cache.
 READ_INDEX_MODES = [
     ("read-index", False, False, ["--read-policy", "read-index"]),
@@ -84,6 +98,7 @@ GRIDS = {
     "bound": (BOUND_MODES, MIXED_SCENARIOS),
     "read-index": (READ_INDEX_MODES, SCENARIOS),
     "sweep": (MODES, SWEEP_SCENARIOS),
+    "leader-change": (LEADER_CHANGE_MODES, LEADER_CHANGE_SCENARIOS),
 }
 
 
@@ -125,6 +140,21 @@ def check(report, scenario):
         raise RuntimeError("benchmark did not complete all writes")
     if report["read"]["successful"]["operations"] != expected_reads:
         raise RuntimeError("benchmark did not complete all reads")
+
+
+def print_leader_change(reports, modes, scenarios):
+    print("| Workload | Mode | Election µs | First read µs | First-second read p50 µs | p99 µs | Read p99 µs |")
+    print("| --- | --- | ---: | ---: | ---: | ---: | ---: |")
+    for scenario in scenarios:
+        for name, *_ in modes:
+            values = reports[(scenario[0], name)]
+            changes = [r["leader_change"] for r in values]
+            election = statistics.median(c["election_ns"] for c in changes) / 1000
+            first = statistics.median(c["first_read_after_election_ns"] for c in changes) / 1000
+            p50 = statistics.median(c["first_second_reads"]["p50_ns"] for c in changes) / 1000
+            p99 = statistics.median(c["first_second_reads"]["p99_ns"] for c in changes) / 1000
+            overall = statistics.median(r["read"]["successful"]["latency"]["p99_ns"] for r in values) / 1000
+            print(f"| {scenario[0]} | {name} | {election:,.0f} | {first:,.0f} | {p50:,.0f} | {p99:,.0f} | {overall:,.0f} |")
 
 
 def print_writes(reports, modes, scenarios):
@@ -182,6 +212,9 @@ def main():
     print(f"Machine: {platform.platform()}, {platform.machine()}; medians of {args.runs} runs.")
     if args.grid == "writes":
         print_writes(reports, modes, scenarios)
+        return
+    if args.grid == "leader-change":
+        print_leader_change(reports, modes, scenarios)
         return
     print("All modes include the apply barrier and the same lock-protected state-machine counter query.")
     follower = args.grid == "follower"

@@ -4,9 +4,12 @@
 
 #[path = "bench/apply_lag.rs"]
 mod apply_lag;
+#[path = "bench/leader_change.rs"]
+mod leader_change;
 #[path = "bench/read_workload.rs"]
 mod read_workload;
 
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fmt::Display;
 use std::fmt::Formatter;
@@ -23,6 +26,7 @@ use bench_minimal::network::Router;
 use bench_minimal::store::ClientRequest;
 use clap::Parser;
 use futures::TryStreamExt;
+use leader_change::Leaders;
 use openraft::Config;
 use openraft::ReadPolicy;
 use openraft::raft::WriteOption;
@@ -118,6 +122,11 @@ struct Args {
     #[arg(long, default_value_t = 0)]
     read_delay_ms: u64,
 
+    /// Transfer leadership from node 0 to node 1 this long after clients start; clients follow
+    /// the new leader, and the report measures reads around the election.
+    #[arg(long)]
+    transfer_leader_after_ms: Option<u64>,
+
     /// Delay before each log append returns, in microseconds.
     #[arg(long, default_value_t = 0)]
     append_delay_us: u64,
@@ -184,6 +193,7 @@ struct BenchConfig {
     pub read_on_follower: Option<u64>,
     pub allow_read_errors: bool,
     pub read_delay_ms: u64,
+    pub transfer_leader_after_ms: Option<u64>,
     pub append_delay_us: u64,
     pub flush_delay_us: u64,
     pub network_delay_us: u64,
@@ -304,6 +314,7 @@ fn main() -> anyhow::Result<()> {
         read_on_follower: args.read_on_follower,
         allow_read_errors: args.allow_read_errors,
         read_delay_ms: args.read_delay_ms,
+        transfer_leader_after_ms: args.transfer_leader_after_ms,
         append_delay_us: args.append_delay_us,
         flush_delay_us: args.flush_delay_us,
         network_delay_us: args.network_delay_us,
@@ -325,6 +336,7 @@ fn validate(args: &Args) -> anyhow::Result<()> {
         ensure!(args.write_rate == 0, "write-rate must be zero without write clients");
     }
     validate_reads(args)?;
+    validate_leader_change(args)?;
     ensure!(args.batch > 0, "batch must be positive");
     ensure!(args.client_workers > 0, "client-workers must be positive");
     ensure!(args.server_workers > 0, "server-workers must be positive");
@@ -375,6 +387,23 @@ fn validate_reads(args: &Args) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn validate_leader_change(args: &Args) -> anyhow::Result<()> {
+    if args.transfer_leader_after_ms.is_none() {
+        return Ok(());
+    }
+    ensure!(args.read_clients > 0, "transfer-leader-after-ms requires read-clients");
+    ensure!(
+        args.members > 1,
+        "transfer-leader-after-ms requires more than one member"
+    );
+    ensure!(args.batch == 1, "transfer-leader-after-ms requires batch 1");
+    ensure!(
+        args.read_on_follower.is_none(),
+        "transfer-leader-after-ms cannot read on a follower"
+    );
+    Ok(())
+}
+
 fn validate_schedule(args: &Args) -> anyhow::Result<()> {
     let write_seconds = if args.write_rate > 0 {
         args.operations as f64 / args.write_rate as f64
@@ -386,7 +415,8 @@ fn validate_schedule(args: &Args) -> anyhow::Result<()> {
     } else {
         0.0
     };
-    let workload_seconds = write_seconds.max(read_seconds);
+    let transfer_seconds = args.transfer_leader_after_ms.map_or(0.0, |ms| ms as f64 / 1000.0);
+    let workload_seconds = write_seconds.max(read_seconds).max(transfer_seconds);
     let idle = Duration::from_millis(args.read_delay_ms);
     let seconds = idle.as_secs_f64() + workload_seconds;
     let within_timeout = seconds < WAIT_TIMEOUT.as_secs_f64();
@@ -503,6 +533,18 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft, router: &Router
         let delay = Duration::from_millis(bench_config.read_delay_ms);
         tokio::time::sleep(delay).await;
     }
+    let leaders = match bench_config.transfer_leader_after_ms {
+        Some(_) => {
+            let mut machines = BTreeMap::new();
+            for id in bench_config.members.iter().copied() {
+                let raft = router.get_raft(id);
+                let machine = raft.with_state_machine(|sm| Box::pin(async move { sm.clone() })).await?;
+                machines.insert(id, machine);
+            }
+            Some(Leaders::new(router.clone(), machines))
+        }
+        None => None,
+    };
     let read_workload = if read_clients > 0 {
         let reader = match bench_config.read_on_follower {
             Some(follower) => router.get_raft(follower),
@@ -514,6 +556,7 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft, router: &Router
             leader: leader.clone(),
             reader,
             state_machine,
+            leaders: leaders.clone(),
             start: start.clone(),
             epoch: epoch.clone(),
         })
@@ -552,6 +595,7 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft, router: &Router
 
     for client_id in 0..n_client {
         let l = leader.clone();
+        let leaders = leaders.clone();
         let start = start.clone();
         let epoch = epoch.clone();
         let h = if batch_size <= 1 {
@@ -568,7 +612,12 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft, router: &Router
                     } else {
                         measure_latency.then(Instant::now)
                     };
-                    l.client_write(ClientRequest {}).await?;
+                    match &leaders {
+                        Some(leaders) => leaders.client_write().await?,
+                        None => {
+                            l.client_write(ClientRequest {}).await?;
+                        }
+                    }
                     if let Some(started) = started {
                         let elapsed = started.elapsed();
                         let nanos = elapsed.as_nanos();
@@ -615,6 +664,10 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft, router: &Router
 
     let now = Instant::now();
     epoch.set(now).unwrap();
+    let transfer = match (&leaders, bench_config.transfer_leader_after_ms) {
+        (Some(leaders), Some(after)) => Some(leaders.transfer_after(now, Duration::from_millis(after))),
+        _ => None,
+    };
     start.wait().await;
     let writes = collect_clients(handles);
     let reads = collect_clients(read_handles);
@@ -624,6 +677,10 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft, router: &Router
     let elapsed = now.elapsed();
     let follower_lag = match apply_lag {
         Some(apply_lag) => Some(apply_lag.finish().await?),
+        None => None,
+    };
+    let leader_change = match transfer {
+        Some(transfer) => Some(transfer.await??),
         None => None,
     };
 
@@ -643,7 +700,7 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft, router: &Router
     }
 
     if let Some(workload) = read_workload {
-        workload.report(elapsed, client_latencies, read_samples, follower_lag)?;
+        workload.report(elapsed, client_latencies, read_samples, follower_lag, leader_change)?;
         return Ok(());
     }
 
@@ -906,6 +963,33 @@ mod tests {
         }
         let follower = ["--read-on-follower", "2", "--read-query"];
         let args = Args::try_parse_from(read.iter().copied().chain(follower))?;
+        validate(&args)?;
+        Ok(())
+    }
+
+    #[test]
+    fn leader_changes_need_readers_followers_and_single_writes() -> anyhow::Result<()> {
+        let transfer = ["bench", "--transfer-leader-after-ms", "100"];
+        let read = ["--read-clients", "1", "--read-operations", "1"];
+        let cases = [
+            (vec![], "transfer-leader-after-ms requires read-clients"),
+            (
+                vec!["-m", "1"],
+                "transfer-leader-after-ms requires more than one member",
+            ),
+            (vec!["-b", "2"], "transfer-leader-after-ms requires batch 1"),
+            (
+                vec!["--read-query", "--read-on-follower", "1"],
+                "transfer-leader-after-ms cannot read on a follower",
+            ),
+        ];
+        for (flags, expected) in cases {
+            let reads = if flags.is_empty() { &[][..] } else { &read[..] };
+            let args = Args::try_parse_from(transfer.iter().chain(reads).copied().chain(flags))?;
+            let error = validate(&args).expect_err("the leader change needs its preconditions");
+            assert_eq!(expected, error.to_string());
+        }
+        let args = Args::try_parse_from(transfer.iter().chain(&read).copied())?;
         validate(&args)?;
         Ok(())
     }
