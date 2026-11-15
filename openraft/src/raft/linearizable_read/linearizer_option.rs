@@ -70,8 +70,8 @@ pub struct LinearizerOption {
     /// Marks the obtained [`Linearizer`](crate::raft::linearizable_read::Linearizer) as relaxed,
     /// so its read log ID is the no-op log ID.
     ///
-    /// Only `Raft::read_relaxed` sets this flag, and it validates the sampled result before
-    /// exposing it. Public barrier APIs never set it.
+    /// Only `Raft::ensure_linearizable_relaxed` sets this flag, and it keeps the barrier on this
+    /// node. Public barrier APIs never set it.
     pub(crate) relaxed: bool,
 }
 

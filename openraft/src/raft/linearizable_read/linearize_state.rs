@@ -119,7 +119,8 @@ where C: RaftTypeConfig
     /// Return the `read_log_id` of this read operation.
     ///
     /// It is the maximum of the no-op and committed log IDs captured at authorization. A relaxed
-    /// read, used internally by `Raft::read_relaxed`, requires only the no-op log ID.
+    /// read, used internally by `Raft::ensure_linearizable_relaxed`, requires only the no-op log
+    /// ID.
     /// See: [`read` docs](crate::docs::protocol::read).
     #[since(version = "0.10.1", change = "calculate and return an owned ReadLogId")]
     #[since(version = "0.10.0", change = "return ReadLogId instead of LogId")]

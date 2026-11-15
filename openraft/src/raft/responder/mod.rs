@@ -35,8 +35,8 @@ where
     /// still wait for their committed read boundary to be applied.
     ///
     /// Do not acknowledge a successful write from this notification when using
-    /// [`Raft::read_relaxed`](crate::Raft::read_relaxed). Fresh query snapshots acquired after the
-    /// write response must include the entry's updates and applied log ID.
+    /// [`Raft::ensure_linearizable_relaxed`](crate::Raft::ensure_linearizable_relaxed).
+    /// State-machine reads after the write response must include the entry's updates.
     ///
     /// # Parameters
     ///

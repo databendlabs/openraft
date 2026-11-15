@@ -214,9 +214,25 @@ where C: RaftTypeConfig
     ///
     /// This is the cluster-wide commit, visible to all future leaders. It may be ahead of
     /// [`Self::local_committed`] on a node that has not yet received the corresponding entries.
+    /// With [`Config::enable_relaxed_read`](crate::Config::enable_relaxed_read), a leader reports
+    /// its applied log ID instead, so on a follower this may lag the quorum-granted commit.
     #[since(version = "0.10.0")]
     pub fn cluster_committed(&self) -> Option<&LogIdOf<C>> {
         self.io_state().cluster_committed.value().and_then(|io_id| io_id.last_log_id())
+    }
+
+    /// Returns the log ID a leader sends followers as `leader_commit`: the bound they may apply
+    /// up to.
+    ///
+    /// It is `committed`, or with relaxed reads the smaller of `committed` and this leader's
+    /// applied log ID, so that no node applies an entry before the leader does.
+    ///
+    /// See: [Read Operation](crate::docs::protocol::read)
+    pub(crate) fn follower_apply_bound(&self, committed: Option<LogIdOf<C>>, relaxed_read: bool) -> Option<LogIdOf<C>> {
+        if !relaxed_read {
+            return committed;
+        }
+        std::cmp::min(committed, self.io_applied().cloned())
     }
 
     /// Get the last committed log ID.

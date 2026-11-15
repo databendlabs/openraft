@@ -1368,58 +1368,40 @@ where
         result.into_raft_result()
     }
 
-    /// Perform a local leader read without waiting for the committed tail to be applied.
+    /// Ensure linearizability for a read on this leader, waiting only for this leadership's no-op.
     ///
-    /// Requires [`Config::enable_relaxed_read`] to be `Some(true)`. The application must serve
-    /// linearizable reads exclusively on leaders: ordinary follower reads can expose state the
-    /// leader has not applied, invalidating this optimization. Stop and drain such reads before
-    /// enabling the configuration anywhere in the cluster. Every leader read path must use this
-    /// API or equivalent sampled-leadership validation, including ordinary reads that can survive
-    /// step-down. Fresh query snapshots acquired after a successful write response must include
-    /// that write's updates and applied log ID.
+    /// Leadership is confirmed with the same quorum or lease options as
+    /// [`Self::ensure_linearizable`]. With [`Config::enable_local_lease_read`] enabled, it may use
+    /// the caller-side lease cache. The apply barrier is the no-op log ID of the leadership that
+    /// authorized the read, not its committed tail, so the read does not wait for entries that are
+    /// committed but not yet applied. When this returns `Ok(())`, read this node's state machine.
     ///
-    /// Leadership confirmation uses the same quorum/lease options as [`Self::get_read_linearizer`].
-    /// With [`Config::enable_local_lease_read`] enabled, it may use the caller-side lease cache.
-    /// The apply barrier is the authorizing leadership's no-op, not its committed tail. Completed
-    /// local writes must be visible to query snapshots; overlapping unfinished writes may follow
-    /// this read. Existing read-barrier APIs retain their committed boundary and follower-read
-    /// support.
+    /// Requires [`Config::enable_relaxed_read`] to be `Some(true)` on **every** node: a leader with
+    /// it enabled lets followers apply only up to the leader's applied log ID. No node then applies
+    /// an entry before the leader does, so a read that outlives its leadership, or a read served on
+    /// a follower, cannot expose state the current leader has not applied. Do not call this until
+    /// every node runs with the setting enabled.
     ///
+    /// A write response must also mean the write is visible to state-machine reads.
     /// [`ApplyResponder::send`](crate::storage::ApplyResponder::send) can complete `client_write`
-    /// before `apply()` returns. Stores that publish a transaction at the end of `apply()` must
-    /// delay responses or the client-visible acknowledgement until publication. Snapshot validation
-    /// cannot detect a missing write from the same leadership.
+    /// before `apply()` returns; a store that publishes a transaction at the end of `apply()` must
+    /// delay responses or the client-visible acknowledgement until publication.
     ///
-    /// # Query contract
-    ///
-    /// `query` must read **this node's** state machine and return `(applied_log_id, result)` from
-    /// one fresh snapshot acquired during the query, e.g. under the same lock or database read
-    /// transaction. Do not reuse an older transaction snapshot. The query must be read-only and
-    /// must not expose its result before this method succeeds. Do not use metrics
-    /// or a separately sampled applied log ID: they may describe different state from the result.
-    ///
-    /// The sampled applied log ID must cover the no-op and belong to the authorizing leadership.
-    /// Otherwise the result is discarded and [`RelaxedReadError::InvalidSnapshot`] is returned.
-    /// This closes the race where a read survives step-down and samples a newer leader's entries
-    /// applied as a follower. Retry the whole operation with fresh authorization on this error.
-    /// The query runs at most once; no automatic retries repeat application work.
+    /// The barrier is local to this node and is not returned: a follower that waited only for the
+    /// no-op could miss a completed write. Use [`Self::get_read_linearizer`] for follower reads.
     ///
     /// ```ignore
-    /// let value = raft.read_relaxed(ReadPolicy::LeaseRead, || async {
-    ///     let state = local_state_machine.read().await;
-    ///     (state.last_applied_log.clone(), state.get("key").cloned())
-    /// }).await?;
+    /// raft.ensure_linearizable_relaxed(ReadPolicy::LeaseRead).await?;
+    /// let value = local_state_machine.read().await.get("key").cloned();
     /// ```
+    ///
+    /// See: [Read Operation](crate::docs::protocol::read)
     #[since(version = "0.10.1")]
-    pub async fn read_relaxed<F, Fut, V>(
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub async fn ensure_linearizable_relaxed(
         &self,
         linearizer_option: impl Into<LinearizerOption>,
-        query: F,
-    ) -> Result<V, RaftError<C, RelaxedReadError<C>>>
-    where
-        F: FnOnce() -> Fut,
-        Fut: Future<Output = (Option<LogIdOf<C>>, V)>,
-    {
+    ) -> Result<(), RaftError<C, RelaxedReadError<C>>> {
         if !self.inner.config.get_enable_relaxed_read() {
             return Err(RaftError::APIError(RelaxedReadError::Disabled));
         }
@@ -1428,21 +1410,8 @@ where
         option.relaxed = true;
         let result = self.app_api().get_local_read_linearizer(option).await?;
         let linearizer = result.map_err(|e| RaftError::APIError(RelaxedReadError::LinearizableRead(e)))?;
-        let state = linearizer.await_ready(self).await?;
-        let read_log_id = state.read_log_id();
-        let expected = read_log_id.log_id();
-
-        let (applied, value) = query().await;
-        let valid = applied.as_ref().is_some_and(|applied| {
-            applied >= expected && applied.committed_leader_id() == expected.committed_leader_id()
-        });
-        if !valid {
-            return Err(RaftError::APIError(RelaxedReadError::InvalidSnapshot {
-                expected: expected.clone(),
-                applied,
-            }));
-        }
-        Ok(value)
+        linearizer.await_ready(self).await?;
+        Ok(())
     }
 
     /// Submit a mutating client request to Raft to update the state of the system (§5.1).

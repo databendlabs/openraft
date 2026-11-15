@@ -83,7 +83,8 @@ impl ReadWorkload {
 
     async fn read(&self) -> anyhow::Result<()> {
         if self.config.read_relaxed {
-            let value = self.leader.read_relaxed(ReadPolicy::LeaseRead, || self.state_machine.read()).await?;
+            self.leader.ensure_linearizable_relaxed(ReadPolicy::LeaseRead).await?;
+            let value = self.state_machine.read().await;
             let _ = std::hint::black_box(value);
             return Ok(());
         }

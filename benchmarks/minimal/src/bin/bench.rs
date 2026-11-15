@@ -93,7 +93,7 @@ struct Args {
     #[arg(long)]
     read_query: bool,
 
-    /// Use read_relaxed with sampled-snapshot validation (requires --read-query).
+    /// Use ensure_linearizable_relaxed before the query (requires --read-query).
     #[arg(long)]
     read_relaxed: bool,
 
@@ -798,7 +798,7 @@ mod tests {
             "1",
             "--read-relaxed",
         ])?;
-        let error = validate(&args).expect_err("relaxed reads must validate a real sampled snapshot");
+        let error = validate(&args).expect_err("relaxed reads must include the state-machine query");
         assert_eq!("read-relaxed requires read-query", error.to_string());
         let args = Args::try_parse_from([
             "bench",

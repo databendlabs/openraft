@@ -2259,10 +2259,27 @@ where
             sm::Response::Apply(res) => {
                 self.runtime_stats.record_log_stage_now(Stage::Applied, res.last_applied.index() + 1);
                 self.engine.state.apply_progress_mut().try_flush(res.last_applied);
+                self.broadcast_applied_bound();
             }
         }
 
         Ok(())
+    }
+
+    /// With relaxed reads, announces a leader's new applied log ID to followers.
+    ///
+    /// Followers may then apply up to it. Without this, a follower would learn the bound only
+    /// from the next commit or heartbeat, and could stall when heartbeats are disabled.
+    ///
+    /// The announcement is queued as a command rather than sent at once: commands from the same
+    /// notification batch, such as the IO of a newly established leader, must reach the
+    /// replication tasks first.
+    fn broadcast_applied_bound(&mut self) {
+        if !self.config.get_enable_relaxed_read() || self.engine.leader.is_none() {
+            return;
+        }
+        let committed = self.engine.state.cluster_committed().cloned();
+        self.engine.output.push_command(Command::ReplicateCommitted { committed });
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
@@ -2416,7 +2433,9 @@ where
             return;
         }
 
+        let relaxed_read = self.config.get_enable_relaxed_read();
         let cluster_committed = lh.state.cluster_committed().cloned();
+        let cluster_committed = lh.state.follower_apply_bound(cluster_committed, relaxed_read);
         let now = C::now();
         let round = lh.leader.next_heartbeat_round();
         let min_interval = Duration::from_millis(self.config.heartbeat_min_interval());
@@ -2851,7 +2870,10 @@ where
                 self.spawn_parallel_vote_requests(&vote_req, VoteRequestKind::PreVote).await;
             }
             Command::ReplicateCommitted { committed } => {
-                self.io_broadcast.committed.send_if_greater(committed);
+                // With relaxed reads, followers apply only what this leader has applied.
+                let relaxed_read = self.config.get_enable_relaxed_read();
+                let bound = self.engine.state.follower_apply_bound(committed, relaxed_read);
+                self.io_broadcast.committed.send_if_greater(bound);
             }
             Command::BroadcastHeartbeat {
                 session_id,

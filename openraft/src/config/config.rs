@@ -473,8 +473,9 @@ pub struct Config {
     ))]
     pub enable_local_lease_read: Option<bool>,
 
-    /// Enable [`Raft::read_relaxed`]. Only `Some(true)` enables it; `None` is the default.
-    /// Existing read-barrier APIs and follower-read support are unchanged.
+    /// Enable [`Raft::ensure_linearizable_relaxed`]. Only `Some(true)` enables it; `None` is the
+    /// default. Existing read-barrier APIs are unchanged, and follower reads with the standard
+    /// barrier from [`Raft::get_read_linearizer`] remain correct.
     ///
     /// # Optimization
     ///
@@ -482,39 +483,35 @@ pub struct Config {
     /// only for the current leadership's no-op. This reduces latency when apply lags behind
     /// replication. It cannot bypass query locks or I/O and helps little without an apply backlog.
     ///
-    /// Completed local writes must already be visible to fresh query snapshots. Previous leaders'
-    /// committed entries precede the no-op. Unfinished writes may follow an overlapping read
-    /// without violating linearizability. Quorum confirmation and lease assumptions stay
-    /// unchanged. [`Self::enable_local_lease_read`] independently enables lease checks outside
-    /// RaftCore.
+    /// Completed writes are already visible to state-machine reads. Previous leaders' committed
+    /// entries precede the no-op. Unfinished writes may follow an overlapping read without
+    /// violating linearizability. Quorum confirmation and lease assumptions stay unchanged.
+    /// [`Self::enable_local_lease_read`] independently enables lease checks outside RaftCore.
+    ///
+    /// # Replication change
+    ///
+    /// A leader with this setting sends followers its applied log ID, instead of its committed log
+    /// ID, as `leader_commit`: the bound they may apply up to. It sends the bound again whenever
+    /// its state machine applies more entries. No node then applies an entry before the leader
+    /// does. Otherwise a follower, including a leader that stepped down during a read, could
+    /// expose an entry the current leader has not applied, and a later relaxed read would return
+    /// older state. Commitment is unchanged; followers only apply later, and their reported
+    /// cluster-committed log ID lags the quorum-granted commit.
     ///
     /// # Safety requirements
     ///
-    /// **These requirements apply across the cluster, even on nodes where this setting is off:**
-    ///
-    /// - Serve linearizable reads only on leaders. Stop and drain follower reads before enabling
-    ///   this mode. Followers can expose state before the leader applies it. A later relaxed read
-    ///   could then return older state. A standard follower read barrier does not prevent this.
-    /// - All leader read paths must use `read_relaxed` or equivalent snapshot validation. A read
-    ///   can survive step-down and sample the next leader's entries as a follower. The new leader
-    ///   may not have applied those entries yet. Checking leadership before the query is not
-    ///   enough.
-    /// - Sample the result and applied log ID from one fresh snapshot of this node's state machine.
-    ///   Do not use metrics, a separate log-ID sample, or an older transaction snapshot.
-    ///   `read_relaxed` requires that log ID to cover the no-op and match its leadership. It
-    ///   discards invalid results. Retry with fresh authorization on
-    ///   [`RelaxedReadError::InvalidSnapshot`]. Do not expose the result before validation.
-    /// - Fresh query snapshots acquired after a successful write response must include that write's
-    ///   updates and applied log ID. `ApplyResponder::send` can complete `client_write` before
-    ///   `apply()` returns. If the store publishes a transaction at the end of `apply()`, delay
-    ///   responses or the client-visible acknowledgement until publication. Snapshot validation
-    ///   cannot detect a missing write from the same leadership.
+    /// - Enable this on every node before any node serves relaxed reads. A leader without it lets
+    ///   followers apply ahead of it.
+    /// - A successful write response must mean that later state-machine reads include the write.
+    ///   `ApplyResponder::send` can complete `client_write` before `apply()` returns. If the store
+    ///   publishes a transaction at the end of `apply()`, delay responses or the client-visible
+    ///   acknowledgement until publication.
     ///
     /// See [ReadIndex: Less Latency through Relaxed Ordering] for the rationale and the
-    /// [Openraft read protocol] for validation and deployment details.
+    /// [Openraft read protocol] for details.
     ///
-    /// [`Raft::read_relaxed`]: crate::Raft::read_relaxed
-    /// [`RelaxedReadError::InvalidSnapshot`]: crate::errors::RelaxedReadError::InvalidSnapshot
+    /// [`Raft::ensure_linearizable_relaxed`]: crate::Raft::ensure_linearizable_relaxed
+    /// [`Raft::get_read_linearizer`]: crate::Raft::get_read_linearizer
     /// [ReadIndex: Less Latency through Relaxed Ordering]: https://github.com/drmingdrmer/consensus-essence/blob/main/src/list/raft-read-index-relaxed-order/raft-read-index-relaxed-order.md
     /// [Openraft read protocol]: crate::docs::protocol::read
     #[since(version = "0.10.1")]

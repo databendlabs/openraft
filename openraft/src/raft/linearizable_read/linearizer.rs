@@ -69,8 +69,9 @@ where C: RaftTypeConfig
 
     /// Mark whether this read requires only the no-op log ID of the authorizing leadership.
     ///
-    /// The captured committed log ID is retained either way. Only `Raft::read_relaxed` requests
-    /// relaxed reads, because it validates the sampled snapshot before exposing a result.
+    /// The captured committed log ID is retained either way. Only
+    /// `Raft::ensure_linearizable_relaxed` requests relaxed reads, and it never hands the barrier
+    /// to another node.
     pub(crate) fn with_relaxed(self, relaxed: bool) -> Self {
         let state = self.state.with_relaxed(relaxed);
         Self { state }

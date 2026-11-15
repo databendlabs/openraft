@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use anyhow::Result;
 use openraft::Config;
 use openraft::ReadPolicy;
@@ -14,10 +16,13 @@ use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::WAIT_TIMEOUT;
-use crate::fixtures::log_id;
+use crate::fixtures::expect_timeout;
 use crate::fixtures::ut_harness;
 
-/// Disabled reads and follower requests fail before invoking application queries.
+/// How long a node is observed to show that it does not apply an entry.
+const NO_APPLY_WINDOW: Duration = Duration::from_millis(500);
+
+/// Disabled relaxed reads and relaxed reads on followers fail.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn relaxed_reads_require_opt_in_and_leadership() -> Result<()> {
@@ -28,7 +33,10 @@ async fn relaxed_reads_require_opt_in_and_leadership() -> Result<()> {
             ..Default::default()
         };
         let mut router = RaftRouter::new(config)?;
-        tracing::info!(?enabled, "--- initialize a cluster and reject unauthorized queries");
+        tracing::info!(
+            ?enabled,
+            "--- initialize a cluster and reject unauthorized relaxed reads"
+        );
         {
             router.new_cluster([0, 1], []).await?;
             for node in [0, 1] {
@@ -36,13 +44,7 @@ async fn relaxed_reads_require_opt_in_and_leadership() -> Result<()> {
                     continue;
                 }
                 let raft = router.get_raft_handle(&node)?;
-                let result = raft
-                    .read_relaxed(ReadPolicy::ReadIndex, || async {
-                        panic!("an unauthorized read must not run its query");
-                        #[allow(unreachable_code)]
-                        (None, ())
-                    })
-                    .await;
+                let result = raft.ensure_linearizable_relaxed(ReadPolicy::ReadIndex).await;
                 if enabled == Some(true) {
                     assert!(matches!(
                         result,
@@ -59,58 +61,35 @@ async fn relaxed_reads_require_opt_in_and_leadership() -> Result<()> {
     Ok(())
 }
 
-/// Snapshot validation rejects absent, old, and foreign-leadership applied IDs.
+/// A relaxed read observes a write that has responded.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
-async fn relaxed_reads_validate_the_sampled_snapshot() -> Result<()> {
+async fn relaxed_read_observes_a_completed_write() -> Result<()> {
     let config = Config {
         enable_relaxed_read: Some(true),
         enable_tick: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;
-    tracing::info!("--- initialize a leader and complete a write before reading");
-    let (n0, sm, written) = {
+    tracing::info!("--- initialize a leader and complete a write");
+    let (n0, sm) = {
         router.new_cluster([0], []).await?;
+        router.client_request(0, "completed", 1).await?;
         let n0 = router.get_raft_handle(&0)?;
         let (_, sm) = router.get_storage_handle(&0)?;
-        let response = router.client_request(0, "completed", 1).await?;
-        (n0, sm, response.log_id)
+        (n0, sm)
     };
 
-    tracing::info!(?written, "--- a relaxed read observes the completed local write");
+    tracing::info!("--- after the relaxed barrier, the state machine holds the write");
     {
-        let value = n0
-            .read_relaxed(ReadPolicy::ReadIndex, || async {
-                let state = sm.get_state_machine().await;
-                (state.last_applied_log, state.client_status.get("completed").cloned())
-            })
-            .await?;
-        assert_eq!(Some("request-1".to_string()), value);
-    }
-
-    tracing::info!(?written, "--- validate the actual query snapshot, not ready metrics");
-    {
-        let invalid = [
-            None,
-            Some(log_id(1, 0, 0)),
-            #[cfg(not(feature = "single-term-leader"))]
-            Some(log_id(1, 1, 100)),
-            Some(log_id(2, 0, 100)),
-        ];
-        for applied in invalid {
-            let result = n0.read_relaxed(ReadPolicy::ReadIndex, || async { (applied, "discard") }).await;
-            let Err(RaftError::APIError(RelaxedReadError::InvalidSnapshot { expected, applied: got })) = result else {
-                panic!("invalid snapshot must not expose the query result: {result:?}");
-            };
-            assert_eq!(log_id(1, 0, 1), expected);
-            assert_eq!(applied, got);
-        }
+        n0.ensure_linearizable_relaxed(ReadPolicy::ReadIndex).await?;
+        let state = sm.get_state_machine().await;
+        assert_eq!(Some(&"request-1".to_string()), state.client_status.get("completed"));
     }
     Ok(())
 }
 
-/// Relaxed reads skip a committed apply backlog; the existing barriers still wait for it.
+/// Relaxed reads skip a committed apply backlog, and followers apply only what the leader applied.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn relaxed_reads_skip_the_committed_tail() -> Result<()> {
@@ -152,16 +131,13 @@ async fn relaxed_reads_skip_the_committed_tail() -> Result<()> {
         tracing::info!(
             local,
             log_index,
-            "--- relaxed reads succeed but transferable barriers wait"
+            "--- relaxed reads succeed, standard barriers wait, followers do not apply ahead"
         );
-        {
+        let ready = {
             for policy in [ReadPolicy::ReadIndex, ReadPolicy::LeaseRead] {
-                let read = n0.read_relaxed(policy, || async {
-                    let state = sm.get_state_machine().await;
-                    (state.last_applied_log, state.client_status.get("pending").cloned())
-                });
-                let value = TypeConfig::timeout(WAIT_TIMEOUT, read).await??;
-                assert_eq!(None, value);
+                TypeConfig::timeout(WAIT_TIMEOUT, n0.ensure_linearizable_relaxed(policy)).await??;
+                let state = sm.get_state_machine().await;
+                assert_eq!(None, state.client_status.get("pending"));
             }
             let linearizer = n0.get_read_linearizer(ReadPolicy::ReadIndex).await?;
             assert_eq!(log_index + 1, linearizer.read_log_id().index());
@@ -170,20 +146,30 @@ async fn relaxed_reads_skip_the_committed_tail() -> Result<()> {
             assert!(polled.is_pending());
             let linearizer = n0.get_local_read_linearizer(ReadPolicy::LeaseRead).await?;
             assert_eq!(log_index + 1, linearizer.read_log_id().index());
+            for follower in [1, 2] {
+                let wait = router.wait_with_timeout(&follower, NO_APPLY_WINDOW);
+                let result = wait.applied_index(Some(log_index + 1), "follower applies ahead of the leader").await;
+                expect_timeout(result)?;
+            }
+            ready
+        };
 
+        tracing::info!(local, log_index, "--- release the leader's apply; followers then apply");
+        {
             drop(release);
             let response = TypeConfig::timeout(WAIT_TIMEOUT, completed).await???;
             assert_eq!(log_index + 1, response.log_id.index());
             TypeConfig::timeout(WAIT_TIMEOUT, ready).await??;
+            router.wait_applied_at_least([1, 2], log_index + 1, "followers apply after the leader").await?;
         }
     }
     Ok(())
 }
 
-/// A read authorized before step-down must not expose state applied for the next leader.
+/// A read that outlives its leadership sees only entries that the next leader has applied.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
-async fn relaxed_read_rejects_a_snapshot_from_the_next_leader() -> Result<()> {
+async fn relaxed_read_after_step_down_sees_only_what_the_next_leader_applied() -> Result<()> {
     let config = Config {
         enable_relaxed_read: Some(true),
         enable_local_lease_read: Some(true),
@@ -191,28 +177,15 @@ async fn relaxed_read_rejects_a_snapshot_from_the_next_leader() -> Result<()> {
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;
-    tracing::info!("--- initialize a cluster and authorize a read on node 0");
-    let (n0, n1, sm0, sm1, log_index, release_read, mut read) = {
+    tracing::info!("--- initialize a cluster and pass a relaxed barrier on node 0");
+    let (n0, n1, sm0, sm1, log_index) = {
         let log_index = router.new_cluster([0, 1, 2], []).await?;
         let n0 = router.get_raft_handle(&0)?;
         let n1 = router.get_raft_handle(&1)?;
         let (_, sm0) = router.get_storage_handle(&0)?;
         let (_, sm1) = router.get_storage_handle(&1)?;
-        let (started_tx, started_rx) = TypeConfig::oneshot();
-        let (release_tx, release_rx) = TypeConfig::oneshot::<()>();
-        let raft = n0.clone();
-        let sm = sm0.clone();
-        let read = TypeConfig::spawn(async move {
-            raft.read_relaxed(ReadPolicy::ReadIndex, || async move {
-                started_tx.send(()).unwrap();
-                let _ = release_rx.await;
-                let state = sm.get_state_machine().await;
-                (state.last_applied_log, state.client_status.get("new-leader").cloned())
-            })
-            .await
-        });
-        TypeConfig::timeout(WAIT_TIMEOUT, started_rx).await??;
-        (n0, n1, sm0, sm1, log_index, release_tx, read)
+        n0.ensure_linearizable_relaxed(ReadPolicy::ReadIndex).await?;
+        (n0, n1, sm0, sm1, log_index)
     };
 
     tracing::info!(log_index, "--- transfer to node 1 while its no-op apply is paused");
@@ -231,17 +204,14 @@ async fn relaxed_read_rejects_a_snapshot_from_the_next_leader() -> Result<()> {
         router.wait(&1).state(ServerState::Leader, "node 1 leads").await?;
         router.wait(&1).committed_index(Some(log_index + 1), "new no-op committed").await?;
         router.wait(&0).state(ServerState::Follower, "node 0 stepped down").await?;
-        let mut no_op_read = Box::pin(n1.read_relaxed(ReadPolicy::ReadIndex, || async {
-            let state = sm1.get_state_machine().await;
-            (state.last_applied_log, ())
-        }));
+        let mut no_op_read = Box::pin(n1.ensure_linearizable_relaxed(ReadPolicy::ReadIndex));
         let polled = futures::poll!(no_op_read.as_mut());
         assert!(polled.is_pending(), "a read cannot skip the new no-op barrier");
         drop(release_tx);
         TypeConfig::timeout(WAIT_TIMEOUT, no_op_read).await??;
     }
 
-    tracing::info!(log_index, "--- let the follower apply a write ahead of its new leader");
+    tracing::info!(log_index, "--- commit a write on node 1 while its apply is paused");
     let (release_worker, completed) = {
         let (started_tx, started_rx) = TypeConfig::oneshot();
         let (release_tx, release_rx) = TypeConfig::oneshot::<()>();
@@ -257,36 +227,32 @@ async fn relaxed_read_rejects_a_snapshot_from_the_next_leader() -> Result<()> {
         n1.write(ClientRequest::make_request("new-leader", 1)).responder(responder).await?;
         let committed = TypeConfig::timeout(WAIT_TIMEOUT, committed).await??;
         assert_eq!(log_index + 2, committed.index());
-        router.wait(&0).applied_index(Some(log_index + 2), "follower applied new write").await?;
-        let state = sm0.get_state_machine().await;
-        assert_eq!(Some(&"request-1".to_string()), state.client_status.get("new-leader"));
         (release_tx, completed)
     };
 
-    tracing::info!(
-        log_index,
-        "--- discard node 0's newer snapshot before answering the client"
-    );
+    tracing::info!(log_index, "--- node 0 cannot apply the write before node 1 does");
     {
-        drop(release_read);
-        let result = TypeConfig::timeout(WAIT_TIMEOUT, &mut read).await??;
-        assert!(matches!(
-            result,
-            Err(RaftError::APIError(RelaxedReadError::InvalidSnapshot { .. }))
-        ));
-
-        let value = n1
-            .read_relaxed(ReadPolicy::ReadIndex, || async {
-                let state = sm1.get_state_machine().await;
-                (state.last_applied_log, state.client_status.get("new-leader").cloned())
-            })
-            .await?;
+        let wait = router.wait_with_timeout(&0, NO_APPLY_WINDOW);
+        let result = wait.applied_index(Some(log_index + 2), "node 0 applies ahead of node 1").await;
+        expect_timeout(result)?;
+        let state = sm0.get_state_machine().await;
         assert_eq!(
-            None, value,
-            "the new leader still lags; returning node 0's result would regress"
+            None,
+            state.client_status.get("new-leader"),
+            "the read authorized on node 0 must not see a write node 1 has not applied"
         );
+        n1.ensure_linearizable_relaxed(ReadPolicy::ReadIndex).await?;
+        let state = sm1.get_state_machine().await;
+        assert_eq!(None, state.client_status.get("new-leader"));
+    }
+
+    tracing::info!(log_index, "--- node 0 applies the write only after node 1 applied it");
+    {
         drop(release_worker);
         TypeConfig::timeout(WAIT_TIMEOUT, completed).await???;
+        router.wait(&0).applied_index(Some(log_index + 2), "node 0 applies after node 1").await?;
+        let state = sm0.get_state_machine().await;
+        assert_eq!(Some(&"request-1".to_string()), state.client_status.get("new-leader"));
     }
     Ok(())
 }
