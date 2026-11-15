@@ -141,7 +141,10 @@ stay correct: a follower reaches `max(noop_log_id, committed)` only after the le
 it.
 
 Every node must run with `enable_relaxed_read` before any node serves relaxed reads. A leader
-without it lets followers apply ahead of it, and the counterexample applies again.
+without it lets followers apply ahead of it, and the counterexample applies again. The one setting
+turns on both the bound and the leader's handling of relaxed requests, so roll it out in two
+steps: restart every node with the setting, and only then let the application request relaxed
+reads with [`LinearizerOption::with_relaxed`].
 
 ### Write response visibility
 

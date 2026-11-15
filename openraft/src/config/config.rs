@@ -507,7 +507,9 @@ pub struct Config {
     /// # Safety requirements
     ///
     /// - Enable this on every node before any node serves relaxed reads. A leader without it lets
-    ///   followers apply ahead of it.
+    ///   followers apply ahead of it. This setting both bounds followers and lets a leader grant
+    ///   relaxed requests, so roll it out in two steps: restart every node with the setting, and
+    ///   only then let the application call [`LinearizerOption::with_relaxed`] with `true`.
     /// - A successful write response must mean that later state-machine reads include the write.
     ///   `ApplyResponder::send` can complete `client_write` before `apply()` returns. If the store
     ///   publishes a transaction at the end of `apply()`, delay responses or the client-visible
