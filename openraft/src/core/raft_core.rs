@@ -2278,10 +2278,11 @@ where
     /// notification batch, such as the IO of a newly established leader, must reach the
     /// replication tasks first.
     fn broadcast_applied_bound(&mut self) {
-        if !self.config.get_enable_relaxed_read() || self.engine.leader.is_none() {
+        let relaxed_read = self.engine.config.enable_relaxed_read;
+        if !relaxed_read || self.engine.leader.is_none() {
             return;
         }
-        let committed = self.engine.state.cluster_committed().cloned();
+        let committed = self.engine.state.follower_apply_bound(relaxed_read);
         self.engine.output.push_command(Command::ReplicateCommitted { committed });
     }
 
@@ -2436,9 +2437,8 @@ where
             return;
         }
 
-        let relaxed_read = self.config.get_enable_relaxed_read();
-        let cluster_committed = lh.state.cluster_committed().cloned();
-        let cluster_committed = lh.state.follower_apply_bound(cluster_committed, relaxed_read);
+        // With relaxed reads, followers apply only what this leader has applied.
+        let cluster_committed = lh.state.follower_apply_bound(self.config.get_enable_relaxed_read());
         let now = C::now();
         let round = lh.leader.next_heartbeat_round();
         let min_interval = Duration::from_millis(self.config.heartbeat_min_interval());
@@ -2873,10 +2873,7 @@ where
                 self.spawn_parallel_vote_requests(&vote_req, VoteRequestKind::PreVote).await;
             }
             Command::ReplicateCommitted { committed } => {
-                // With relaxed reads, followers apply only what this leader has applied.
-                let relaxed_read = self.config.get_enable_relaxed_read();
-                let bound = self.engine.state.follower_apply_bound(committed, relaxed_read);
-                self.io_broadcast.committed.send_if_greater(bound);
+                self.io_broadcast.committed.send_if_greater(committed);
             }
             Command::BroadcastHeartbeat {
                 session_id,

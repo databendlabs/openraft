@@ -38,6 +38,10 @@ pub(crate) struct EngineConfig<C: RaftTypeConfig> {
 
     /// Duration of each alternating suppression or send phase after the Leader lease expires.
     pub(crate) quorum_loss_probe_interval: Option<Duration>,
+
+    /// Whether relaxed reads are enabled, so that the leader lets followers apply only what it has
+    /// applied.
+    pub(crate) enable_relaxed_read: bool,
 }
 
 impl<C> EngineConfig<C>
@@ -61,6 +65,7 @@ where C: RaftTypeConfig
 
             enable_leader_restore: config.enable_leader_restore(),
             quorum_loss_probe_interval: config.quorum_loss_probe_interval.map(Duration::from_millis),
+            enable_relaxed_read: config.get_enable_relaxed_read(),
         };
         this.resample_election_timeout();
         this
@@ -79,6 +84,7 @@ where C: RaftTypeConfig
             timer_config: time_state::Config::default(),
             enable_leader_restore: true,
             quorum_loss_probe_interval: None,
+            enable_relaxed_read: false,
         }
     }
 

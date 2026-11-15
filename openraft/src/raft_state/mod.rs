@@ -224,11 +224,12 @@ where C: RaftTypeConfig
     /// Returns the log ID a leader sends followers as `leader_commit`: the bound they may apply
     /// up to.
     ///
-    /// It is `committed`, or with relaxed reads the smaller of `committed` and this leader's
-    /// applied log ID, so that no node applies an entry before the leader does.
+    /// It is the cluster-committed log ID, or with relaxed reads the smaller of that and this
+    /// leader's applied log ID, so that no node applies an entry before the leader does.
     ///
     /// See: [Read Operation](crate::docs::protocol::read)
-    pub(crate) fn follower_apply_bound(&self, committed: Option<LogIdOf<C>>, relaxed_read: bool) -> Option<LogIdOf<C>> {
+    pub(crate) fn follower_apply_bound(&self, relaxed_read: bool) -> Option<LogIdOf<C>> {
+        let committed = self.cluster_committed().cloned();
         if !relaxed_read {
             return committed;
         }
