@@ -13,6 +13,9 @@ under enable_relaxed_read, to separate the replication change from the read
 barrier.
 --grid read-index compares standard and relaxed ReadIndex reads, which wait for
 a quorum to confirm leadership.
+--grid sweep runs the paced mixed workload at apply-log-read and state-machine
+I/O delays from 0 to 2 ms, to show how large the apply backlog must be before
+relaxed reads pay off.
 """
 
 import argparse
@@ -55,6 +58,13 @@ BOUND_MODES = [
     ("local+bound", True, True, []),
     ("relaxed", True, True, ["--read-relaxed"]),
 ]
+# The paced mixed workload at each apply delay; 0 µs is shared by both delay kinds.
+SWEEP_SCENARIOS = [("mixed/no-delay", 32, 20000, 64, 180000, 0, 0)] + [
+    (f"mixed/{kind}-{delay}us", 32, 20000, 64, 180000, delay if kind == "log-read" else 0,
+     delay if kind == "apply-io" else 0)
+    for kind in ["log-read", "apply-io"]
+    for delay in [100, 500, 2000]
+]
 # ReadIndex reads always run in RaftCore: only lease reads use the cache.
 READ_INDEX_MODES = [
     ("read-index", False, False, ["--read-policy", "read-index"]),
@@ -73,6 +83,7 @@ GRIDS = {
     "writes": (WRITE_MODES, WRITE_SCENARIOS),
     "bound": (BOUND_MODES, MIXED_SCENARIOS),
     "read-index": (READ_INDEX_MODES, SCENARIOS),
+    "sweep": (MODES, SWEEP_SCENARIOS),
 }
 
 

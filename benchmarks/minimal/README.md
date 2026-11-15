@@ -273,6 +273,10 @@ the replication streams again, and this grid measures what that costs writes.
 confirm leadership, so this grid shows whether skipping the apply wait still matters when each
 read pays that round trip.
 
+`--grid sweep` runs the paced mixed workload in the three modes at apply-log-read and
+state-machine I/O delays of 0, 100 µs, 500 µs and 2 ms, to show how large the apply backlog must be
+before relaxed reads pay off.
+
 The no-op optimization is expected to help when committed entries wait to be applied. It cannot
 remove application-side lock contention: this store holds its write lock during simulated
 state-machine I/O, so even relaxed queries must wait for that lock. Read-only runs isolate API
