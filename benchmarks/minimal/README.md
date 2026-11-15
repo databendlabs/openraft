@@ -223,6 +223,10 @@ as an application's follower read does after fetching the linearizer from the le
 The report then also has `follower_lag`: at each applied index the follower publishes, how many entries
 the leader had applied beyond it (`entries_behind`) and how much later than the leader it reached that index
 (`time_behind_ns`). Negative values mean the follower was ahead.
+Both nodes' applied indexes come from their metrics watch, which coalesces changes, as seen by a task
+on the client runtime. `time_behind_ns` is therefore measured against the first leader value seen at
+or above the index, not the moment the leader reached it, and either side can be observed late: the lag
+can be off by that delay in either direction, typically a few tens of entries or about 100 µs.
 For read-only runs, use `--clients 0 --operations 0` with positive read client and operation counts.
 Write-only arguments and output remain unchanged when `--read-clients` is zero.
 Unpaced readers yield every 64 requests so cached reads still share the client runtime fairly with writers.
