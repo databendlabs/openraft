@@ -2278,7 +2278,7 @@ where
     /// notification batch, such as the IO of a newly established leader, must reach the
     /// replication tasks first.
     fn broadcast_applied_bound(&mut self) {
-        let relaxed_read = self.engine.config.enable_relaxed_read;
+        let relaxed_read = self.config.get_enable_relaxed_read();
         if !relaxed_read || self.engine.leader.is_none() {
             return;
         }
