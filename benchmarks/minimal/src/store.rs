@@ -91,7 +91,6 @@ pub struct StoredSnapshot {
     pub data: Vec<u8>,
 }
 
-#[openraft::macros::since(version = "0.10.1", change = "track applied writes for read queries")]
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct StateMachine {
     pub last_applied_log: Option<LogIdOf<TypeConfig>>,
@@ -168,7 +167,6 @@ impl StateMachineStore {
     }
 
     /// Sample a write counter and its applied log ID under the same state-machine read lock.
-    #[openraft::macros::since(version = "0.10.1")]
     pub async fn read(&self) -> (Option<LogIdOf<TypeConfig>>, u64) {
         let sm = self.sm.read().await;
         (sm.last_applied_log, sm.applied_writes)
