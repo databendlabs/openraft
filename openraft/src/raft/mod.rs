@@ -1207,9 +1207,9 @@ where
     /// [`ReadPolicy`], which is converted into one.
     ///
     /// Returns:
-    /// - `Ok(read_log_id)` on successful confirmation that the node is the leader. `read_log_id`
-    ///   is `max(noop_log_id, committed)` at authorization: the log ID a read on any node must
-    ///   wait for. A standard read returns after this node has applied it. A relaxed read, see
+    /// - `Ok(read_log_id)` on successful confirmation that the node is the leader. `read_log_id` is
+    ///   `max(noop_log_id, committed)` at authorization: the log ID a read on any node must wait
+    ///   for. A standard read returns after this node has applied it. A relaxed read, see
     ///   [`LinearizerOption::with_relaxed`], returns once this node has applied the no-op, so this
     ///   node may not have applied `read_log_id` yet.
     /// - `Err(RaftError<LinearizableReadError>)` if fails to assert leadership.
