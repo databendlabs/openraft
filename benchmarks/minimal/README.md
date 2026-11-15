@@ -258,6 +258,15 @@ without `enable_relaxed_read`, and adds the follower's p99 apply lag to the tabl
 the leader lets followers apply only up to its own applied log ID, so this grid measures what that
 bound costs follower reads.
 
+`--grid writes` runs unpaced write-only workloads with 1, 32 and 256 clients, with no delay, a
+500 µs apply-log-read delay, or a 500 µs state-machine I/O delay, with and without
+`enable_relaxed_read`. With the setting, every apply result on the leader sends the new bound to
+the replication streams again, and this grid measures what that costs writes.
+
+`--grid bound` reruns the mixed workloads with the core and local modes also under
+`enable_relaxed_read`. Comparing `core` with `core+bound` isolates the replication change, and
+`local+bound` with `relaxed` isolates the relaxed read barrier.
+
 The no-op optimization is expected to help when committed entries wait to be applied. It cannot
 remove application-side lock contention: this store holds its write lock during simulated
 state-machine I/O, so even relaxed queries must wait for that lock. Read-only runs isolate API

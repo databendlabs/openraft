@@ -6,6 +6,11 @@ throughput. --raw FILE preserves every JSON report. No read failures are allowed
 
 --grid follower instead runs standard reads on follower 1, with and without
 enable_relaxed_read, to measure what the follower apply bound costs.
+--grid writes runs write-only workloads with and without enable_relaxed_read,
+to measure the cost of re-sending the bound after each apply.
+--grid bound reruns the mixed workloads with the core and local modes also
+under enable_relaxed_read, to separate the replication change from the read
+barrier.
 """
 
 import argparse
@@ -38,9 +43,29 @@ SCENARIOS = [
     ("mixed/log-read-500us", 32, 20000, 64, 180000, 500, 0),
     ("mixed/apply-io-500us", 32, 20000, 64, 180000, 0, 500),
 ]
-# Followers trail the leader only while writes arrive.
-FOLLOWER_SCENARIOS = [scenario for scenario in SCENARIOS if scenario[1]]
-GRIDS = {"leader": (MODES, SCENARIOS), "follower": (FOLLOWER_MODES, FOLLOWER_SCENARIOS)}
+# Followers trail the leader, and the bound is re-sent, only while writes arrive.
+MIXED_SCENARIOS = [scenario for scenario in SCENARIOS if scenario[1]]
+# "+bound" modes enable the follower apply bound without requesting relaxed reads.
+BOUND_MODES = [
+    ("core", False, False, []),
+    ("core+bound", False, True, []),
+    ("local", True, False, []),
+    ("local+bound", True, True, []),
+    ("relaxed", True, True, ["--read-relaxed"]),
+]
+# Unpaced write-only runs; each client count divides its writes evenly.
+WRITE_MODES = [("bound-off", False, False, []), ("bound-on", False, True, [])]
+WRITE_SCENARIOS = [
+    (f"write-only/{clients}{delay}", clients, writes, 0, 0, read_delay, io_delay)
+    for clients, writes in [(1, 5000), (32, 20000), (256, 51200)]
+    for delay, read_delay, io_delay in [("", 0, 0), ("/log-read-500us", 500, 0), ("/apply-io-500us", 0, 500)]
+]
+GRIDS = {
+    "leader": (MODES, SCENARIOS),
+    "follower": (FOLLOWER_MODES, MIXED_SCENARIOS),
+    "writes": (WRITE_MODES, WRITE_SCENARIOS),
+    "bound": (BOUND_MODES, MIXED_SCENARIOS),
+}
 
 
 def command(scenario, mode):
@@ -57,14 +82,42 @@ def command(scenario, mode):
     args = [
         str(BENCH), "--latency", "--members", "3", "--warmup-writes", "128",
         "--clients", str(writers), "--operations", str(writes),
-        "--read-clients", str(readers), "--read-operations", str(reads),
-        "--read-query", "--apply-read-delay-us", str(read_delay),
-        "--apply-io-delay-us", str(io_delay), "--raft-config", json.dumps(config),
+        "--apply-read-delay-us", str(read_delay), "--apply-io-delay-us", str(io_delay),
+        "--raft-config", json.dumps(config),
     ]
-    if writers:
+    if readers:
+        args.extend(["--read-clients", str(readers), "--read-operations", str(reads), "--read-query"])
+    if writers and readers:
         args.extend(["--write-rate", "10000", "--read-rate", "90000"])
     args.extend(extra)
     return args
+
+
+def check(report, scenario):
+    """Rejects a run that failed a read or did not finish every operation."""
+    expected_writes, readers, expected_reads = scenario[2], scenario[3], scenario[4]
+    if not readers:
+        if report["operations"] != expected_writes:
+            raise RuntimeError("benchmark did not complete all writes")
+        return
+    if report["read"]["failed"]["operations"]:
+        raise RuntimeError(f"read failures: {report['read']['errors']}")
+    if report["write"]["operations"] != expected_writes:
+        raise RuntimeError("benchmark did not complete all writes")
+    if report["read"]["successful"]["operations"] != expected_reads:
+        raise RuntimeError("benchmark did not complete all reads")
+
+
+def print_writes(reports, modes, scenarios):
+    print("| Workload | Mode | Writes/s | Write p50 µs | Write p99 µs |")
+    print("| --- | --- | ---: | ---: | ---: |")
+    for scenario in scenarios:
+        for name, *_ in modes:
+            values = reports[(scenario[0], name)]
+            rate = statistics.median(r["operations_per_second"] for r in values)
+            p50 = statistics.median(r["request_p50_ns"] for r in values) / 1000
+            p99 = statistics.median(r["request_p99_ns"] for r in values) / 1000
+            print(f"| {scenario[0]} | {name} | {rate:,.0f} | {p50:.3f} | {p99:.3f} |")
 
 
 def main():
@@ -98,13 +151,7 @@ def main():
                         sys.stderr.write(result.stderr)
                         raise RuntimeError(f"benchmark exited {result.returncode}")
                     report = json.loads(result.stdout.strip().splitlines()[-1])
-                    if report["read"]["failed"]["operations"]:
-                        raise RuntimeError(f"read failures: {report['read']['errors']}")
-                    expected_writes, expected_reads = scenario[2], scenario[4]
-                    if report["write"]["operations"] != expected_writes:
-                        raise RuntimeError("benchmark did not complete all writes")
-                    if report["read"]["successful"]["operations"] != expected_reads:
-                        raise RuntimeError("benchmark did not complete all reads")
+                    check(report, scenario)
                     reports.setdefault((label, name), []).append(report)
                     if raw:
                         record = {"scenario": label, "mode": name, "run": run + 1, "command": cmd, "report": report}
@@ -114,6 +161,9 @@ def main():
             raw.close()
 
     print(f"Machine: {platform.platform()}, {platform.machine()}; medians of {args.runs} runs.")
+    if args.grid == "writes":
+        print_writes(reports, modes, scenarios)
+        return
     print("All modes include the apply barrier and the same lock-protected state-machine counter query.")
     follower = args.grid == "follower"
     lag_header = " Lag p99 entries | Lag p99 µs |" if follower else ""
