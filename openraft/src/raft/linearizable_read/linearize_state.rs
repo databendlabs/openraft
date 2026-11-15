@@ -50,9 +50,10 @@ where C: RaftTypeConfig
 
         write!(
             f,
-            "{{ read_log_id: {}, applied: {} }}",
+            "{{ read_log_id: {}, applied: {}, relaxed: {} }}",
             self.read_log_id(),
-            self.applied.display()
+            self.applied.display(),
+            self.relaxed
         )
     }
 }
@@ -247,13 +248,20 @@ mod tests {
         let state: LinearizeState<UTConfig> = LinearizeState::new(1, log_id(1, 1, 1), None, Some(log_id(1, 1, 0)));
         assert_eq!(
             format!("{}", state),
-            "LinearizeState[id=1]{ read_log_id: T1-N1.1, applied: T1-N1.0 }"
+            "LinearizeState[id=1]{ read_log_id: T1-N1.1, applied: T1-N1.0, relaxed: false }"
         );
 
+        let state = state.with_relaxed(true);
+        assert_eq!(
+            format!("{}", state),
+            "LinearizeState[id=1]{ read_log_id: T1-N1.1, applied: T1-N1.0, relaxed: true }"
+        );
+
+        // Moving the state to another node drops the relaxed barrier.
         let state = state.with_applied(2, Some(log_id(3, 3, 3)));
         assert_eq!(
             format!("{}", state),
-            "LinearizeState[id=2]{ read_log_id: T1-N1.1, applied: T3-N3.3 }"
+            "LinearizeState[id=2]{ read_log_id: T1-N1.1, applied: T3-N3.3, relaxed: false }"
         );
     }
 }
