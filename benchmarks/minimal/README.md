@@ -289,6 +289,9 @@ read on node 1 finished, and the read latency in the first second after the elec
 setting, with it, and with relaxed reads. Under the bound, followers apply less before a failover,
 so the new leader has more entries to apply before its no-op.
 
+Results of every grid, with the setup they ran on, are in
+[relaxed-reads-results.md](relaxed-reads-results.md).
+
 The no-op optimization is expected to help when committed entries wait to be applied. It cannot
 remove application-side lock contention: this store holds its write lock during simulated
 state-machine I/O, so even relaxed queries must wait for that lock. Read-only runs isolate API
