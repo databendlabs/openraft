@@ -170,6 +170,19 @@ pub(crate) fn calculate_local_committed(&mut self) -> Option<LogId<C>> {
 }
 ```
 
+## With relaxed reads
+
+With [`Config::enable_relaxed_read`](crate::Config::enable_relaxed_read), a leader sends followers
+the smaller of its committed and applied log IDs instead of its committed log ID, so that no
+follower applies an entry before the leader does. A follower's cluster-committed log ID then lags
+the quorum-granted commit.
+
+`cluster_committed` compares the vote first. A new leader whose bound is below the old leader's
+replaces it, so a follower's reported cluster-committed log ID can move back. This can also happen
+without the setting, while a new leader has not yet learned the latest commit. The local committed
+log ID, which decides what a follower applies, never moves back. See
+[relaxed reads](crate::docs::protocol::read#opt-in-relaxed-leader-reads).
+
 ## Summary
 
 **Standard Raft**: Bundles commit in `AppendEntries` RPC, bounded by `index_of_last_new_entry`
