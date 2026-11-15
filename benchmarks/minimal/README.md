@@ -217,6 +217,11 @@ cargo run --release --bin bench -- --latency -c 8 -n 21600 --write-rate 10800 \
 Compare the same build with `enable_local_lease_read` set to `false`.
 Reads use `get_local_read_linearizer`, which falls back to `get_read_linearizer` when caching is disabled.
 Add `--read-await-ready` to include the returned linearizer's apply wait.
+Add `--read-on-follower <id>` with `--read-query` to await each linearizer and run the query on that follower,
+as an application's follower read does after fetching the linearizer from the leader.
+The report then also has `follower_lag`: at each applied index the follower publishes, how many entries
+the leader had applied beyond it (`entries_behind`) and how much later than the leader it reached that index
+(`time_behind_ns`). Negative values mean the follower was ahead.
 For read-only runs, use `--clients 0 --operations 0` with positive read client and operation counts.
 Write-only arguments and output remain unchanged when `--read-clients` is zero.
 Unpaced readers yield every 64 requests so cached reads still share the client runtime fairly with writers.
@@ -247,6 +252,11 @@ no delay, a 500 µs apply-log-read delay, and a 500 µs state-machine I/O delay.
 schedule 90,000 reads/s and 10,000 writes/s for two seconds. Reported throughput uses total
 workload elapsed time and includes any drain time. The script checks operation counts and
 rejects all read failures. `--raw` preserves commands and every JSON report.
+
+`--grid follower` runs the mixed workloads with standard reads on follower 1 instead, with and
+without `enable_relaxed_read`, and adds the follower's p99 apply lag to the table. With the setting,
+the leader lets followers apply only up to its own applied log ID, so this grid measures what that
+bound costs follower reads.
 
 The no-op optimization is expected to help when committed entries wait to be applied. It cannot
 remove application-side lock contention: this store holds its write lock during simulated
@@ -282,6 +292,7 @@ References for the optimization and its correctness requirements:
 --read-await-ready Include the returned linearizer's apply wait (Linearizer::await_ready)
 --read-query      Include the apply wait and a coherent state-machine counter query
 --read-relaxed    Request a relaxed linearizer before the query (requires --read-query)
+--read-on-follower Await the barrier and query on this follower; report its apply lag (requires --read-query)
 --allow-read-errors Report read failures separately
 --read-delay-ms   Idle time after warmup, before measurement [default: 0]
 --apply-read-delay-us Delay of the log read that loads each apply batch [default: 0]

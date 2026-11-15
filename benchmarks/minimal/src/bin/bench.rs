@@ -2,6 +2,8 @@
 //!
 //! Run with: cargo run --release --bin bench -- --help
 
+#[path = "bench/apply_lag.rs"]
+mod apply_lag;
 #[path = "bench/read_workload.rs"]
 mod read_workload;
 
@@ -15,6 +17,7 @@ use std::time::Instant;
 
 use anyhow::Context;
 use anyhow::ensure;
+use apply_lag::ApplyLag;
 use bench_minimal::network::BenchRaft;
 use bench_minimal::network::Router;
 use bench_minimal::store::ClientRequest;
@@ -97,6 +100,11 @@ struct Args {
     #[arg(long)]
     read_relaxed: bool,
 
+    /// Await each read's barrier and run its query on this follower instead of the leader
+    /// (requires --read-query); also reports how far the follower's apply trails the leader's.
+    #[arg(long)]
+    read_on_follower: Option<u64>,
+
     /// Report read failures separately instead of stopping at the first one.
     #[arg(long)]
     allow_read_errors: bool,
@@ -147,6 +155,7 @@ struct BenchConfig {
     pub read_await_ready: bool,
     pub read_query: bool,
     pub read_relaxed: bool,
+    pub read_on_follower: Option<u64>,
     pub allow_read_errors: bool,
     pub read_delay_ms: u64,
     pub append_delay_us: u64,
@@ -265,6 +274,7 @@ fn main() -> anyhow::Result<()> {
         read_await_ready: args.read_await_ready,
         read_query: args.read_query,
         read_relaxed: args.read_relaxed,
+        read_on_follower: args.read_on_follower,
         allow_read_errors: args.allow_read_errors,
         read_delay_ms: args.read_delay_ms,
         append_delay_us: args.append_delay_us,
@@ -315,6 +325,11 @@ fn validate_reads(args: &Args) -> anyhow::Result<()> {
         !args.read_relaxed || args.read_query,
         "read-relaxed requires read-query"
     );
+    if let Some(follower) = args.read_on_follower {
+        ensure!(args.read_query, "read-on-follower requires read-query");
+        let is_follower = (1..args.members).contains(&follower);
+        ensure!(is_follower, "read-on-follower must name a follower, 1..members");
+    }
     if args.read_clients == 0 {
         ensure!(args.read_operations == 0, "read-operations requires read-clients");
         ensure!(args.read_rate == 0, "read-rate requires read-clients");
@@ -397,11 +412,11 @@ fn bench_with_config(bench_config: &BenchConfig) -> anyhow::Result<()> {
         .build()?;
 
     // Create cluster on server runtime
-    let (_router, leader) = create_cluster(&server_rt, bench_config)?;
+    let (router, leader) = create_cluster(&server_rt, bench_config)?;
 
     // Run benchmark on client runtime
     client_rt.block_on(async {
-        let benchmark = do_bench(bench_config, leader);
+        let benchmark = do_bench(bench_config, leader, &router);
         let timed = tokio::time::timeout(WAIT_TIMEOUT, benchmark);
         timed.await?
     })
@@ -437,7 +452,7 @@ fn create_cluster(server_rt: &Runtime, bench_config: &BenchConfig) -> anyhow::Re
 /// Cluster config:
 /// - Log: in-memory BTree
 /// - StateMachine: in-memory BTree
-async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft) -> anyhow::Result<()> {
+async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft, router: &Router) -> anyhow::Result<()> {
     let n_client = bench_config.n_client;
     let batch_size = bench_config.batch_size;
     let ops_per_client = bench_config.operations_per_client();
@@ -461,16 +476,27 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft) -> anyhow::Resu
         tokio::time::sleep(delay).await;
     }
     let read_workload = if read_clients > 0 {
-        let state_machine = leader.with_state_machine(|sm| Box::pin(async move { sm.clone() })).await?;
+        let reader = match bench_config.read_on_follower {
+            Some(follower) => router.get_raft(follower),
+            None => leader.clone(),
+        };
+        let state_machine = reader.with_state_machine(|sm| Box::pin(async move { sm.clone() })).await?;
         Some(ReadWorkload {
             config: Arc::new(bench_config.clone()),
             leader: leader.clone(),
+            reader,
             state_machine,
             start: start.clone(),
             epoch: epoch.clone(),
         })
     } else {
         None
+    };
+    let apply_lag = match &read_workload {
+        Some(workload) if bench_config.read_on_follower.is_some() => {
+            Some(ApplyLag::start(&workload.leader, &workload.reader))
+        }
+        _ => None,
     };
     let read_handles = match &read_workload {
         Some(workload) => workload.spawn_clients(),
@@ -568,6 +594,10 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft) -> anyhow::Resu
     let read_samples = read_groups.into_iter().flatten();
     let read_samples = read_samples.collect();
     let elapsed = now.elapsed();
+    let follower_lag = match apply_lag {
+        Some(apply_lag) => Some(apply_lag.finish().await?),
+        None => None,
+    };
 
     // Stop stats printing task
     #[cfg(feature = "runtime-stats")]
@@ -585,7 +615,7 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft) -> anyhow::Resu
     }
 
     if let Some(workload) = read_workload {
-        workload.report(elapsed, client_latencies, read_samples)?;
+        workload.report(elapsed, client_latencies, read_samples, follower_lag)?;
         return Ok(());
     }
 
@@ -809,6 +839,31 @@ mod tests {
             "--read-relaxed",
             "--read-query",
         ])?;
+        validate(&args)?;
+        Ok(())
+    }
+
+    #[test]
+    fn follower_reads_require_a_query_on_a_follower() -> anyhow::Result<()> {
+        let read = ["bench", "--read-clients", "1", "--read-operations", "1"];
+        let cases = [
+            (vec!["--read-on-follower", "1"], "read-on-follower requires read-query"),
+            (
+                vec!["--read-on-follower", "0", "--read-query"],
+                "read-on-follower must name a follower, 1..members",
+            ),
+            (
+                vec!["--read-on-follower", "3", "--read-query"],
+                "read-on-follower must name a follower, 1..members",
+            ),
+        ];
+        for (flags, expected) in cases {
+            let args = Args::try_parse_from(read.iter().copied().chain(flags))?;
+            let error = validate(&args).expect_err("the reader must be a follower that queries");
+            assert_eq!(expected, error.to_string());
+        }
+        let follower = ["--read-on-follower", "2", "--read-query"];
+        let args = Args::try_parse_from(read.iter().copied().chain(follower))?;
         validate(&args)?;
         Ok(())
     }

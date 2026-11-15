@@ -23,10 +23,14 @@ type ReadSample = (u64, Result<(), String>);
 type ReadTask = JoinHandle<anyhow::Result<Vec<ReadSample>>>;
 
 /// Shares the write clients' start barrier and arrival epoch.
+///
+/// The leader authorizes each read; `reader` awaits its barrier and owns `state_machine`, which
+/// the query reads. They are the same node unless reads run on a follower.
 #[derive(Clone)]
 pub(super) struct ReadWorkload {
     pub(super) config: Arc<BenchConfig>,
     pub(super) leader: BenchRaft,
+    pub(super) reader: BenchRaft,
     pub(super) state_machine: Arc<StateMachineStore>,
     pub(super) start: Arc<Barrier>,
     pub(super) epoch: Arc<OnceLock<Instant>>,
@@ -86,7 +90,7 @@ impl ReadWorkload {
         let option = LinearizerOption::from(ReadPolicy::LeaseRead).with_relaxed(self.config.read_relaxed);
         let linearizer = self.leader.get_local_read_linearizer(option).await?;
         if self.config.read_await_ready || self.config.read_query {
-            let state = linearizer.await_ready(&self.leader).await?;
+            let state = linearizer.await_ready(&self.reader).await?;
             let _ = std::hint::black_box(state);
         } else {
             let _ = std::hint::black_box(linearizer);
@@ -103,6 +107,7 @@ impl ReadWorkload {
         elapsed: Duration,
         writes: Vec<Vec<u64>>,
         reads: Vec<ReadSample>,
+        follower_lag: Option<Value>,
     ) -> anyhow::Result<()> {
         let writes = writes.into_iter().flatten();
         let writes = writes.collect();
@@ -114,7 +119,7 @@ impl ReadWorkload {
         let report = serde_json::json!({
             "seconds": seconds, "write": writes, "read": reads,
             "config": config, "local_lease_read_enabled": local_lease_read_enabled,
-            "runtime_stats": cfg!(feature = "runtime-stats"),
+            "runtime_stats": cfg!(feature = "runtime-stats"), "follower_lag": follower_lag,
         });
         println!("{report}");
         Ok(())
