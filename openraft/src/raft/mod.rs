@@ -1208,8 +1208,10 @@ where
     ///
     /// Returns:
     /// - `Ok(read_log_id)` on successful confirmation that the node is the leader. `read_log_id`
-    ///   represents the log id up to which the state machine has applied to ensure a linearizable
-    ///   read.
+    ///   is `max(noop_log_id, committed)` at authorization: the log ID a read on any node must
+    ///   wait for. A standard read returns after this node has applied it. A relaxed read, see
+    ///   [`LinearizerOption::with_relaxed`], returns once this node has applied the no-op, so this
+    ///   node may not have applied `read_log_id` yet.
     /// - `Err(RaftError<LinearizableReadError>)` if fails to assert leadership.
     ///
     /// # Examples
@@ -1250,7 +1252,9 @@ where
     ///
     /// The [`ReadLogId`] contains the current leadership and the inclusive log boundary the state
     /// machine must apply through before serving the read. The applied log ID is the last value
-    /// known to have been applied when the linearizer was created.
+    /// known to have been applied when the linearizer was created. A relaxed option does not
+    /// change the returned boundary, so a read that waits for it gets the standard barrier; use
+    /// [`Raft::get_read_linearizer`] for relaxed reads.
     /// **For new code, use [`Raft::get_read_linearizer`]** which provides a better API.
     ///
     /// See [`Raft::get_read_linearizer`] for full documentation.
