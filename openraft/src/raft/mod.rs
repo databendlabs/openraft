@@ -131,7 +131,6 @@ use crate::errors::ForwardToLeader;
 use crate::errors::InitializeError;
 use crate::errors::LinearizableReadError;
 use crate::errors::RaftError;
-use crate::errors::RelaxedReadError;
 use crate::errors::ShutdownError;
 use crate::errors::into_raft_result::IntoRaftResult;
 use crate::membership::RaftMembership;
@@ -1366,52 +1365,6 @@ where
         let app_api = self.app_api();
         let result = app_api.get_local_read_linearizer(linearizer_option).await;
         result.into_raft_result()
-    }
-
-    /// Ensure linearizability for a read on this leader, waiting only for this leadership's no-op.
-    ///
-    /// Leadership is confirmed with the same quorum or lease options as
-    /// [`Self::ensure_linearizable`]. With [`Config::enable_local_lease_read`] enabled, it may use
-    /// the caller-side lease cache. The apply barrier is the no-op log ID of the leadership that
-    /// authorized the read, not its committed tail, so the read does not wait for entries that are
-    /// committed but not yet applied. When this returns `Ok(())`, read this node's state machine.
-    ///
-    /// Requires [`Config::enable_relaxed_read`] to be `Some(true)` on **every** node: a leader with
-    /// it enabled lets followers apply only up to the leader's applied log ID. No node then applies
-    /// an entry before the leader does, so a read that outlives its leadership, or a read served on
-    /// a follower, cannot expose state the current leader has not applied. Do not call this until
-    /// every node runs with the setting enabled.
-    ///
-    /// A write response must also mean the write is visible to state-machine reads.
-    /// [`ApplyResponder::send`](crate::storage::ApplyResponder::send) can complete `client_write`
-    /// before `apply()` returns; a store that publishes a transaction at the end of `apply()` must
-    /// delay responses or the client-visible acknowledgement until publication.
-    ///
-    /// The barrier is local to this node and is not returned: a follower that waited only for the
-    /// no-op could miss a completed write. Use [`Self::get_read_linearizer`] for follower reads.
-    ///
-    /// ```ignore
-    /// raft.ensure_linearizable_relaxed(ReadPolicy::LeaseRead).await?;
-    /// let value = local_state_machine.read().await.get("key").cloned();
-    /// ```
-    ///
-    /// See: [Read Operation](crate::docs::protocol::read)
-    #[since(version = "0.10.1")]
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn ensure_linearizable_relaxed(
-        &self,
-        linearizer_option: impl Into<LinearizerOption>,
-    ) -> Result<(), RaftError<C, RelaxedReadError<C>>> {
-        if !self.inner.config.get_enable_relaxed_read() {
-            return Err(RaftError::APIError(RelaxedReadError::Disabled));
-        }
-
-        let mut option = linearizer_option.into();
-        option.relaxed = true;
-        let result = self.app_api().get_local_read_linearizer(option).await?;
-        let linearizer = result.map_err(|e| RaftError::APIError(RelaxedReadError::LinearizableRead(e)))?;
-        linearizer.await_ready(self).await?;
-        Ok(())
     }
 
     /// Submit a mutating client request to Raft to update the state of the system (§5.1).

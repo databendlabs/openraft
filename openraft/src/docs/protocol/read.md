@@ -96,27 +96,31 @@ compares both paths and explains what its numbers do and do not measure.
 
 ## Opt-in relaxed leader reads
 
-[`Raft::ensure_linearizable_relaxed`] reduces apply waiting by using the authorizing leadership's
-no-op log ID rather than its committed tail. Enable it with `Config::enable_relaxed_read:
-Some(true)` on **every** node; `None` (the default) and `Some(false)` return
-`RelaxedReadError::Disabled`. Existing read APIs retain their committed boundary and
-transferable follower-read barriers.
+A relaxed read, requested with [`LinearizerOption::with_relaxed`], reduces apply waiting by
+using the authorizing leadership's no-op log ID rather than its committed tail. It works with
+[`get_read_linearizer()`], [`get_local_read_linearizer()`] and [`ensure_linearizable()`]. It
+takes effect only with `Config::enable_relaxed_read: Some(true)`, which must be set on
+**every** node; otherwise the leader serves the standard barrier. Reads that do not request it
+are unchanged.
 
-A relaxed read still confirms leadership using the requested ReadIndex or lease options and
-waits for the current leadership's no-op to be applied on this node. The caller then reads its
-local state machine. Previously completed writes are already visible there (see
-[Write response visibility](#write-response-visibility)); previous leaders' writes precede the
-new no-op. Unfinished overlapping writes can be ordered after the read. `enable_local_lease_read`
-independently enables the cached lease path; disabling it makes the relaxed read use RaftCore
-without disabling the reduced apply barrier.
+A relaxed read still confirms leadership using the requested ReadIndex or lease options, and
+then waits for the current leadership's no-op to be applied on the leader that issued the
+linearizer. The caller then reads that node's state machine. Previously completed writes are
+already visible there (see [Write response visibility](#write-response-visibility)); previous
+leaders' writes precede the new no-op. Unfinished overlapping writes can be ordered after the
+read. `enable_local_lease_read` independently enables the cached lease path; disabling it makes
+the relaxed read use RaftCore without disabling the reduced apply barrier.
 
 ```ignore
-raft.ensure_linearizable_relaxed(ReadPolicy::LeaseRead).await?;
+let option = LinearizerOption::from(ReadPolicy::LeaseRead).with_relaxed(true);
+raft.ensure_linearizable(option).await?;
 let value = local_state_machine.read().await.get("key").cloned();
 ```
 
-The barrier is not returned. On a follower, a barrier at the no-op could miss a completed write,
-so this API provides no relaxed follower-read token. Follower reads use [`get_read_linearizer()`].
+The reduced barrier applies only on the issuing leader. A follower may not have applied a write
+that the leader has already acknowledged, so a relaxed linearizer awaited on another node waits
+for `max(noop_log_id, committed)`, and `read_log_id()`, the value sent to followers, is always
+that boundary.
 
 ### Followers apply only what the leader has applied
 
@@ -231,7 +235,7 @@ Further reading:
 - [The minimal benchmark README](https://github.com/databendlabs/openraft/blob/main/benchmarks/minimal/README.md#comparing-core-local-and-relaxed-reads)
   documents the three-way query-inclusive comparison and its measurement limitations.
 
-[`Raft::ensure_linearizable_relaxed`]: crate::Raft::ensure_linearizable_relaxed
+[`LinearizerOption::with_relaxed`]: crate::raft::linearizable_read::LinearizerOption::with_relaxed
 
 ## Examples
 

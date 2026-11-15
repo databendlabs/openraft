@@ -407,6 +407,9 @@ where
         let now = C::now();
         let leader_lease = self.engine.config.timer_config.leader_lease;
         let max_quorum_ack_age = linearizer_option.effective_max_quorum_ack_age(leader_lease);
+        // The no-op barrier is safe only while followers apply no further than this leader, which
+        // `enable_relaxed_read` guarantees. Without it, serve the standard barrier.
+        let relaxed = linearizer_option.relaxed && self.config.get_enable_relaxed_read();
 
         let mut lh = match self.ensure_leader_handler() {
             Ok(leading_handler) => leading_handler,
@@ -416,7 +419,7 @@ where
             }
         };
 
-        let linearizer = lh.get_linearizer().with_relaxed(linearizer_option.relaxed);
+        let linearizer = lh.get_linearizer().with_relaxed(relaxed);
 
         if lh.leader.is_self_quorum() {
             tx.send(Ok(linearizer)).ok();

@@ -93,7 +93,7 @@ struct Args {
     #[arg(long)]
     read_query: bool,
 
-    /// Use ensure_linearizable_relaxed before the query (requires --read-query).
+    /// Request a relaxed linearizer before the query (requires --read-query).
     #[arg(long)]
     read_relaxed: bool,
 

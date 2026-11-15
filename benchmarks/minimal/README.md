@@ -235,8 +235,8 @@ python3 benchmarks/minimal/scripts/relaxed_reads.py --runs 3 --raw /tmp/relaxed-
 ```
 
 The script builds once in release mode without runtime statistics and rotates the order of
-three modes: standard in-core LeaseRead, cached local LeaseRead, and
-`Raft::ensure_linearizable_relaxed` with cached local LeaseRead. All three include their apply
+three modes: standard in-core LeaseRead, cached local LeaseRead, and cached local LeaseRead
+with `LinearizerOption::with_relaxed(true)`. All three include their apply
 barrier and the same state-machine query: a write counter and its applied log ID sampled under
 one read lock. The relaxed mode requires `enable_relaxed_read: true` in `--raft-config` and
 `--read-relaxed --read-query`. With that setting the leader also lets followers apply only up to
@@ -264,8 +264,8 @@ References for the optimization and its correctness requirements:
   describes the replication change and the cluster-wide deployment requirements.
 - [`Config::enable_relaxed_read` documentation (source)](../../openraft/src/config/config.rs)
   describes opt-in configuration, defaults, and safety caveats.
-- [`Raft::ensure_linearizable_relaxed` API documentation (source)](../../openraft/src/raft/mod.rs)
-  defines the barrier and what it requires from write responses.
+- [`LinearizerOption::with_relaxed` API documentation (source)](../../openraft/src/raft/linearizable_read/linearizer_option.rs)
+  defines the relaxed barrier and where it applies.
 
 ### CLI Options
 
@@ -281,7 +281,7 @@ References for the optimization and its correctness requirements:
 --read-rate       Read attempts per second, or 0 for unpaced [default: 0]
 --read-await-ready Include the returned linearizer's apply wait (Linearizer::await_ready)
 --read-query      Include the apply wait and a coherent state-machine counter query
---read-relaxed    Use ensure_linearizable_relaxed before the query (requires --read-query)
+--read-relaxed    Request a relaxed linearizer before the query (requires --read-query)
 --allow-read-errors Report read failures separately
 --read-delay-ms   Idle time after warmup, before measurement [default: 0]
 --apply-read-delay-us Delay of the log read that loads each apply batch [default: 0]

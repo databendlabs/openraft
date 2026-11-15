@@ -71,9 +71,10 @@ where C: RaftTypeConfig
     ///   after applying the entry. If this is not called,
     ///   [`Raft::client_write`](crate::Raft::client_write) will never return.
     ///
-    /// With [`Raft::ensure_linearizable_relaxed`](crate::Raft::ensure_linearizable_relaxed) in
-    /// use, state-machine reads after a successful write response must include that entry's
-    /// updates. Sending a response does not wait for `apply()` to return. If a transaction is
+    /// With relaxed reads
+    /// ([`LinearizerOption::with_relaxed`](crate::raft::linearizable_read::LinearizerOption::with_relaxed)),
+    /// state-machine reads after a successful write response must include that entry's updates.
+    /// Sending a response does not wait for `apply()` to return. If a transaction is
     /// published only at the end of `apply()`, delay responses or the client-visible
     /// acknowledgement until publication.
     ///

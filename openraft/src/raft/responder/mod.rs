@@ -34,9 +34,9 @@ where
     /// entry, but it may not yet be visible to state-machine queries. Ordinary linearizable reads
     /// still wait for their committed read boundary to be applied.
     ///
-    /// Do not acknowledge a successful write from this notification when using
-    /// [`Raft::ensure_linearizable_relaxed`](crate::Raft::ensure_linearizable_relaxed).
-    /// State-machine reads after the write response must include the entry's updates.
+    /// Do not acknowledge a successful write from this notification when using relaxed reads
+    /// ([`LinearizerOption::with_relaxed`](crate::raft::linearizable_read::LinearizerOption::with_relaxed)). State-machine reads after the write response must include the
+    /// entry's updates.
     ///
     /// # Parameters
     ///

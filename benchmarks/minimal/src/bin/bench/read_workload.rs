@@ -7,6 +7,7 @@ use std::time::Instant;
 use anyhow::Context;
 use bench_minimal::network::BenchRaft;
 use bench_minimal::store::StateMachineStore;
+use openraft::LinearizerOption;
 use openraft::ReadPolicy;
 use serde_json::Value;
 use tokio::sync::Barrier;
@@ -82,13 +83,8 @@ impl ReadWorkload {
     }
 
     async fn read(&self) -> anyhow::Result<()> {
-        if self.config.read_relaxed {
-            self.leader.ensure_linearizable_relaxed(ReadPolicy::LeaseRead).await?;
-            let value = self.state_machine.read().await;
-            let _ = std::hint::black_box(value);
-            return Ok(());
-        }
-        let linearizer = self.leader.get_local_read_linearizer(ReadPolicy::LeaseRead).await?;
+        let option = LinearizerOption::from(ReadPolicy::LeaseRead).with_relaxed(self.config.read_relaxed);
+        let linearizer = self.leader.get_local_read_linearizer(option).await?;
         if self.config.read_await_ready || self.config.read_query {
             let state = linearizer.await_ready(&self.leader).await?;
             let _ = std::hint::black_box(state);

@@ -19,10 +19,11 @@ use crate::type_config::alias::OneshotSenderOf;
 /// 1. When the entry is committed, but not necessarily applied
 /// 2. When the entry is applied and the result is available
 ///
-/// With [`Raft::ensure_linearizable_relaxed`](crate::Raft::ensure_linearizable_relaxed), commit
-/// notification is not enough to acknowledge a successful write. State-machine reads after the
-/// write response must include the entry's updates. The store must publish them before completion,
-/// or the application must delay its client-visible acknowledgement.
+/// With relaxed reads
+/// ([`LinearizerOption::with_relaxed`](crate::raft::linearizable_read::LinearizerOption::with_relaxed)),
+/// commit notification is not enough to acknowledge a successful write. State-machine reads after
+/// the write response must include the entry's updates. The store must publish them before
+/// completion, or the application must delay its client-visible acknowledgement.
 ///
 /// Use [`ProgressResponder::complete_only()`] when the caller only needs the final result.
 ///

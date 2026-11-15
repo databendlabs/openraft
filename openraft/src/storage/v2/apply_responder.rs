@@ -59,9 +59,9 @@ impl<C: RaftTypeConfig> ApplyResponder<C> {
     /// This method must be called by [`RaftStateMachine::apply`](super::RaftStateMachine::apply),
     /// otherwise [`Raft::client_write`](crate::Raft::client_write) will never return.
     ///
-    /// This can complete `client_write` before `apply()` returns. With
-    /// [`Raft::ensure_linearizable_relaxed`](crate::Raft::ensure_linearizable_relaxed) in use,
-    /// state-machine reads after a successful write response must include this entry's updates.
+    /// This can complete `client_write` before `apply()` returns. With relaxed reads
+    /// ([`LinearizerOption::with_relaxed`](crate::raft::linearizable_read::LinearizerOption::with_relaxed)), state-machine reads after a successful write response must
+    /// include this entry's updates.
     /// If a transaction is published later in `apply()`, delay this call or the client-visible
     /// acknowledgement until publication.
     pub fn send(self, response: C::R) {

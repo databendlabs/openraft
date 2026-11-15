@@ -473,9 +473,10 @@ pub struct Config {
     ))]
     pub enable_local_lease_read: Option<bool>,
 
-    /// Enable [`Raft::ensure_linearizable_relaxed`]. Only `Some(true)` enables it; `None` is the
-    /// default. Existing read-barrier APIs are unchanged, and follower reads with the standard
-    /// barrier from [`Raft::get_read_linearizer`] remain correct.
+    /// Enable relaxed reads requested with [`LinearizerOption::with_relaxed`]. Only `Some(true)`
+    /// enables them; `None` is the default. Otherwise a relaxed request gets the standard barrier.
+    /// Existing read-barrier APIs are unchanged, and follower reads with the standard barrier from
+    /// [`Raft::get_read_linearizer`] remain correct.
     ///
     /// # Optimization
     ///
@@ -510,7 +511,7 @@ pub struct Config {
     /// See [ReadIndex: Less Latency through Relaxed Ordering] for the rationale and the
     /// [Openraft read protocol] for details.
     ///
-    /// [`Raft::ensure_linearizable_relaxed`]: crate::Raft::ensure_linearizable_relaxed
+    /// [`LinearizerOption::with_relaxed`]: crate::raft::linearizable_read::LinearizerOption::with_relaxed
     /// [`Raft::get_read_linearizer`]: crate::Raft::get_read_linearizer
     /// [ReadIndex: Less Latency through Relaxed Ordering]: https://github.com/drmingdrmer/consensus-essence/blob/main/src/list/raft-read-index-relaxed-order/raft-read-index-relaxed-order.md
     /// [Openraft read protocol]: crate::docs::protocol::read

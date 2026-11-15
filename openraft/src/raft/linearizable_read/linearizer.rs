@@ -22,8 +22,11 @@ use crate::type_config::alias::LogIdOf;
 /// following reads are linearized.
 ///
 /// It retains the no-op and committed log IDs captured when the read was authorized. Their
-/// maximum is the required read log ID; a relaxed read requires only the no-op log ID. It also
-/// tracks last known applied progress on a node.
+/// maximum is the required read log ID. A relaxed linearizer, requested with
+/// [`LinearizerOption::with_relaxed`], waits only for the no-op on the node that issued it; on any
+/// other node it waits for the read log ID. It also tracks last known applied progress on a node.
+///
+/// [`LinearizerOption::with_relaxed`]: crate::raft::linearizable_read::LinearizerOption::with_relaxed
 ///
 /// [`Raft::get_read_linearizer()`]: Raft::get_read_linearizer
 #[since(version = "0.10.0")]
@@ -69,9 +72,8 @@ where C: RaftTypeConfig
 
     /// Mark whether this read requires only the no-op log ID of the authorizing leadership.
     ///
-    /// The captured committed log ID is retained either way. Only
-    /// `Raft::ensure_linearizable_relaxed` requests relaxed reads, and it never hands the barrier
-    /// to another node.
+    /// The captured committed log ID is retained either way, and [`Self::try_await_ready`] on
+    /// another node still waits for it.
     pub(crate) fn with_relaxed(self, relaxed: bool) -> Self {
         let state = self.state.with_relaxed(relaxed);
         Self { state }
@@ -112,7 +114,8 @@ where C: RaftTypeConfig
     /// Waits for the state machine to apply all required log entries for linearizable reads.
     ///
     /// This method ensures linearizability by waiting for the state machine to apply all log
-    /// entries up to the `read_log_id`.
+    /// entries up to the `read_log_id`. A relaxed linearizer awaited on the node that issued it
+    /// waits only for the no-op log ID instead.
     ///
     /// # Returns
     ///
@@ -144,7 +147,7 @@ where C: RaftTypeConfig
             return Ok(Ok(self.state));
         }
 
-        let expected = Some(self.state.read_log_id().index());
+        let expected = Some(self.state.wait_log_id_on(this_id).index());
 
         let res = raft.inner.wait(timeout).applied_index_at_least(expected, "Linearizer::try_await_ready").await;
 
