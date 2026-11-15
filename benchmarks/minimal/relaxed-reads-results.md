@@ -1,9 +1,77 @@
 # Relaxed read benchmark results
 
-These are the results of every grid of `scripts/relaxed_reads.py`, run on 2026-11-15. They
-measure what `LinearizerOption::with_relaxed()` gains, and what the follower apply bound of
-`Config::enable_relaxed_read` costs. How to run each grid is described in the
-[README](README.md#comparing-core-local-and-relaxed-reads).
+These are the results of every grid of `scripts/relaxed_reads.py`, run on 2026-11-15. A grid is
+a set of workloads, each run in several modes. The grids measure what relaxed reads gain, and
+what the follower apply bound costs. Both terms are defined below. How to run a grid is described
+in the [README](README.md#comparing-core-local-and-relaxed-reads).
+
+## What is compared
+
+### Read barriers
+
+A linearizable read first confirms that the leader still leads: through RaftCore, or through a
+lease cached outside RaftCore. It then waits until a node's state machine has applied a log ID,
+the read barrier, and only then queries the state machine.
+
+- A **standard read** waits for `max(no-op, committed)`: the no-op log of the current leadership,
+  and the log ID that was committed when the read was authorized. If the leader commits faster
+  than it applies, the read waits for that whole apply backlog.
+- A **relaxed read**, requested with `LinearizerOption::with_relaxed(true)`, waits only for the
+  no-op of the current leadership. It skips the apply backlog. Writes that already responded are
+  still visible, because Openraft requires a write to be visible in the state machine before it
+  responds.
+
+### The follower apply bound
+
+`Config::enable_relaxed_read` does two things:
+
+1. The leader grants relaxed reads to requests that ask for them.
+2. The leader limits how far followers may apply. Normally it sends followers its committed log ID
+   as `leader_commit`, and they apply up to it, sometimes before the leader has applied the same
+   entries itself. With the setting it sends `min(committed, leader's applied log ID)` instead,
+   and sends it again after each of its own applies. No follower then applies an entry before the
+   leader does, which relaxed reads need for safety.
+
+This report calls the second part **the bound**. It is in effect as soon as the setting is on,
+whether or not any read is relaxed. Its cost is that followers apply later, so standard reads
+served on followers wait longer. A mode named `+bound` turns the setting on without requesting
+relaxed reads, so that the bound is its only difference from the mode without it.
+
+### Modes
+
+| Mode | `enable_local_lease_read` | `enable_relaxed_read` | How each read runs |
+| --- | --- | --- | --- |
+| `core` | false | false | RaftCore checks the lease; standard barrier on the leader |
+| `local` | true | false | Cached lease check outside RaftCore; standard barrier on the leader |
+| `relaxed` | true | true | Cached lease check; relaxed barrier on the leader |
+| `core+bound` | false | true | As `core`, with the bound on |
+| `local+bound` | true | true | As `local`, with the bound on |
+| `follower` | true | false | The leader authorizes a standard read with its cached lease; follower 1 waits for the barrier and runs the query |
+| `follower+bound` | true | true | As `follower`, with the bound on |
+| `read-index` | false | false | RaftCore confirms leadership with a quorum (ReadIndex); standard barrier on the leader |
+| `read-index+relaxed` | false | true | ReadIndex confirmation; relaxed barrier on the leader |
+| `bound-off`, `bound-on` | false | false, true | No reads: write-only runs, with the bound off or on |
+
+## Workloads
+
+- `read-only/N`: N readers and no writers. Reads are unpaced: each reader starts its next read
+  when the previous one finishes, and latency is measured from the start of each read. With no
+  writes there is no apply backlog.
+- `mixed/...`: 64 readers paced at 90,000 reads/s together and 32 writers paced at 10,000 writes/s
+  together, for two seconds (three in the leader-change grid). Latency is measured from each
+  operation's scheduled arrival time, so it includes the time an operation waits because its
+  client is still busy with earlier ones.
+- `write-only/N`: N writers and no readers, unpaced; latency is measured from the start of each
+  write.
+
+The suffix names an apply delay, which builds up an apply backlog on every node:
+
+- `log-read-<T>us`: each apply batch waits T µs before its log entries are read
+  (`--apply-read-delay-us`). Apply falls behind commit, but queries are not blocked.
+- `apply-io-<T>us`: each `apply()` call waits T µs after applying its entries, while it holds the
+  store's write lock (`--apply-io-delay-us`). Apply falls behind commit, the batch's write
+  responses wait for the delay, and every query on that node waits for the lock.
+- `no-delay`: neither delay.
 
 ## Setup
 
@@ -11,17 +79,15 @@ measure what `LinearizerOption::with_relaxed()` gains, and what the follower app
   and 13 during the runs.
 - Openraft at `129fce97` on branch `relaxed-leader-only-reads`. The leader-change grid ran at
   `4d216f7e`, which only fixes that grid's operation counts.
-- `bench` built in release mode without runtime statistics: three voters in one process,
-  in-memory storage, no network delay, one client worker thread and 16 server threads, 128 warmup
-  writes.
-- Raft config: ticks, heartbeats and elections disabled, no snapshots. Each mode sets
-  `enable_local_lease_read` and `enable_relaxed_read` as its name says.
-- Every read includes its apply barrier and the same query: a write counter and its applied log
-  ID, sampled under one read lock of the state machine.
-- Mixed workloads schedule 90,000 reads/s from 64 readers and 10,000 writes/s from 32 writers for
-  two seconds. Latency is measured from each operation's scheduled arrival, so it includes any
-  backlog. Throughput uses total elapsed time.
-- Each cell is the median of three runs, with the order of the modes rotated between runs.
+- `bench` built in release mode without runtime statistics: three voters in one process, an
+  in-memory log and state machine, an in-process network without delay, one client worker thread
+  for all readers and writers, 16 server threads, and 128 warmup writes before each run.
+- Raft config: ticks, heartbeats and elections disabled, no snapshots; the two read settings as in
+  the mode table.
+- Every read runs the same query after its barrier: a write counter and its applied log ID, read
+  under one read lock of the state machine.
+- Each cell is the median of three runs; the order of the modes rotates between runs. Throughput
+  divides the completed operations by the run's total elapsed time.
 
 Reproduce one grid with:
 
@@ -30,6 +96,11 @@ python3 benchmarks/minimal/scripts/relaxed_reads.py --grid <grid> --runs 3 --raw
 ```
 
 ## Leader reads (`--grid leader`)
+
+**What it runs:** every workload with reads on the leader, in the `core`, `local` and `relaxed`
+modes.
+**Question:** how much faster relaxed reads are than standard reads, with and without an apply
+backlog.
 
 | Workload | Mode | Reads/s | Read p50 µs | Read p99 µs | Writes/s |
 | --- | --- | ---: | ---: | ---: | ---: |
@@ -49,14 +120,18 @@ python3 benchmarks/minimal/scripts/relaxed_reads.py --grid <grid> --runs 3 --raw
 | mixed/apply-io-500us | local | 89,778 | 1203.694 | 4250.556 | 9,975 |
 | mixed/apply-io-500us | relaxed | 89,801 | 1106.222 | 2800.777 | 9,978 |
 
-- Without an apply backlog, relaxed reads gain nothing: read-only runs match the cached local path
-  (about 6.5 M reads/s, 0.125 µs p50), and both are far ahead of reads through RaftCore.
-- With a 500 µs apply-log-read delay, relaxed reads have the lowest latency: p50 956 µs against
-  1,212 µs (local) and 1,317 µs (core), and p99 2.15 ms against 2.87 ms and 3.53 ms.
-- With a 500 µs state-machine I/O delay the gain is smaller (p50 1,106 µs against 1,204 µs),
-  because the store holds its write lock during the I/O and every query waits for that lock.
+- Without an apply backlog relaxed reads gain nothing. In the read-only runs `relaxed` matches
+  `local`, about 6.5 M reads/s at 0.125 µs p50; both avoid RaftCore, which `core` pays for.
+- With a 500 µs log-read delay, relaxed reads have the lowest latency: p50 956 µs against
+  1,212 µs (`local`) and 1,317 µs (`core`), and p99 2.15 ms against 2.87 ms and 3.53 ms.
+- With a 500 µs I/O delay the gain is smaller (p50 1,106 µs against 1,204 µs): a relaxed read
+  skips the apply wait but still waits for the store's write lock before its query.
 
 ## Apply-delay sweep (`--grid sweep`)
+
+**What it runs:** the paced mixed workload with each delay at 0, 100 µs, 500 µs and 2 ms, in the
+`core`, `local` and `relaxed` modes.
+**Question:** how large the apply backlog must be before relaxed reads pay off.
 
 | Workload | Mode | Reads/s | Read p50 µs | Read p99 µs | Writes/s |
 | --- | --- | ---: | ---: | ---: | ---: |
@@ -82,19 +157,27 @@ python3 benchmarks/minimal/scripts/relaxed_reads.py --grid <grid> --runs 3 --raw
 | mixed/apply-io-2000us | local | 46,763 | 2550903.819 | 3419707.319 | 5,196 |
 | mixed/apply-io-2000us | relaxed | 47,194 | 2075393.153 | 2827829.750 | 5,244 |
 
-- At 100 µs the three modes are within noise of each other.
-- At a 2 ms apply-log-read delay the apply path cannot keep up with 10,000 writes/s (about 5,300
-  writes/s complete), the committed backlog grows during the run, and reads that wait for the
-  committed log ID take seconds: p50 2.34 s (core) and 2.32 s (local). Relaxed reads skip that
-  backlog and stay at 1.2 ms p50.
-- At a 2 ms state-machine I/O delay every mode takes seconds, relaxed reads too (p50 2.08 s),
-  because the query waits for the store's write lock rather than for the apply barrier.
+- At 100 µs the three modes are within noise of each other: the backlog is too small to matter.
+- At a 2 ms log-read delay, apply cannot keep up with 10,000 writes/s. Only about 5,300 writes/s
+  complete, and the committed but unapplied backlog grows during the run. Standard reads wait for
+  that backlog and take seconds: p50 2.34 s (`core`) and 2.32 s (`local`). Relaxed reads skip it
+  and stay at 1.2 ms p50.
+- At a 2 ms I/O delay every mode takes seconds, relaxed reads too (p50 2.08 s): queries wait for
+  the store's write lock, which apply holds most of the time.
 
-## Follower reads under the apply bound (`--grid follower`)
+## Follower reads (`--grid follower`)
 
-Standard reads on follower 1: the leader issues a cached LeaseRead linearizer, and the follower
-waits for it and runs the query. `follower+bound` only enables `enable_relaxed_read`. The lag
-columns are the follower's p99 apply lag behind the leader.
+**What it runs:** the three mixed workloads, with every read served on follower 1 in the
+`follower` and `follower+bound` modes. As in an application's follower read, the leader
+authorizes each read, here with its cached lease, and hands over its barrier; follower 1 then
+waits until it has applied that standard barrier and runs the query.
+**Question:** what the bound costs follower reads, and how far it holds followers behind the
+leader.
+
+Two extra columns describe follower 1's apply lag. Every time follower 1 reports a new applied
+log index, the benchmark records how many entries the leader had applied beyond it (Lag
+entries), and how long after the leader the follower reached that index (Lag µs). The columns
+show the p99 of each over the run.
 
 | Workload | Mode | Reads/s | Read p50 µs | Read p99 µs | Writes/s | Lag p99 entries | Lag p99 µs |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -105,23 +188,27 @@ columns are the follower's p99 apply lag behind the leader.
 | mixed/apply-io-500us | follower | 89,824 | 1958.056 | 4284.556 | 9,980 | 0 | 220 |
 | mixed/apply-io-500us | follower+bound | 88,519 | 335769.875 | 765968.195 | 9,835 | 10 | 857 |
 
-- The bound keeps followers behind the leader: with an apply delay, the median time lag rises from
-  under 30 µs to about 710 µs, and the p99 lag to 10 entries.
+- Without the bound, a follower applies an entry as soon as it learns that the entry is committed,
+  usually within 30 µs of the leader (median). With the bound it must wait until the leader has
+  applied the entry and sent the new bound: with an apply delay, the median lag rises to about
+  710 µs, and the p99 lag to 10 entries.
 - With an apply delay, follower reads under the bound are far slower: p50 95 ms instead of 1.8 ms
-  with the apply-log-read delay, and 336 ms instead of 2.0 ms with the I/O delay. All three runs
-  agree. Without delays there is no difference.
-- That slowdown is not explained yet. The apply lag alone is under 1.1 ms at p99, and the
-  slowdown stays with more client threads: in single runs with 4 and 8 client workers, p50 was
-  207 ms and 246 ms with the bound, against 1.7 ms and 2.0 ms without it. It needs investigating
-  before it is taken as the cost of the bound.
-- The lag is measured from when each node publishes its metrics, as seen by a task on the busy
-  client runtime. Differences of a few tens of entries or about 100 µs are within that error;
-  this is also why the bound shows occasional negative samples.
+  with the log-read delay, and 336 ms instead of 2.0 ms with the I/O delay. All three runs agree.
+  Without delays there is no difference.
+- That slowdown is not explained yet. The apply lag is under 1.1 ms even at p99, and the
+  slowdown stays with more client threads: in single runs with 4 and 8 client worker threads,
+  p50 was 207 ms and 246 ms with the bound, against 1.7 ms and 2.0 ms without it. It needs
+  investigating before it is taken as the cost of the bound.
+- The lag compares when each node publishes its metrics, as seen by a task on the busy client
+  runtime. Differences of a few tens of entries or about 100 µs are within that error, which is
+  also why some samples show a follower ahead of the leader even with the bound on.
 
-## Write cost of the apply bound (`--grid writes`)
+## Write cost of the bound (`--grid writes`)
 
-Unpaced write-only runs. With the setting, every apply result on the leader sends the bound to the
-replication streams again.
+**What it runs:** unpaced write-only workloads with 1, 32 and 256 writers and each delay, with
+the bound off and on.
+**Question:** what re-sending the bound after each of the leader's applies costs writes. Each
+re-send wakes the replication streams, which send the new bound to the followers.
 
 | Workload | Mode | Writes/s | Write p50 µs | Write p99 µs |
 | --- | --- | ---: | ---: | ---: |
@@ -144,12 +231,15 @@ replication streams again.
 | write-only/256/apply-io-500us | bound-off | 194,695 | 1322.166 | 1403.292 |
 | write-only/256/apply-io-500us | bound-on | 191,556 | 1337.541 | 1417.750 |
 
-- No cost is measurable: the two modes differ by at most about 9%, in both directions, which is
-  within the run-to-run noise.
+- No cost is measurable. The two modes differ by at most about 9%, in both directions, which is
+  within the noise between runs.
 
-## Replication change apart from the read barrier (`--grid bound`)
+## The bound apart from the relaxed barrier (`--grid bound`)
 
-`core+bound` and `local+bound` enable the setting without requesting relaxed reads.
+**What it runs:** the three mixed workloads in five modes. `core+bound` and `local+bound` turn the
+bound on without requesting relaxed reads.
+**Question:** how much of the `relaxed` mode's result comes from the relaxed barrier, and how much
+from the bound. `relaxed` has both.
 
 | Workload | Mode | Reads/s | Read p50 µs | Read p99 µs | Writes/s |
 | --- | --- | ---: | ---: | ---: | ---: |
@@ -169,12 +259,17 @@ replication streams again.
 | mixed/apply-io-500us | local+bound | 89,807 | 2240.556 | 10449.681 | 9,979 |
 | mixed/apply-io-500us | relaxed | 89,812 | 1431.652 | 6908.458 | 9,979 |
 
-- The replication change alone (`core` against `core+bound`) costs nothing without delays, about
-  4% p50 with the apply-log-read delay, and 15% p50 (p99 5.6 ms to 7.5 ms) with the I/O delay.
-- The relaxed barrier alone (`local+bound` against `relaxed`) cuts p50 from 1,324 µs to 946 µs
-  with the apply-log-read delay, and from 2,241 µs to 1,432 µs with the I/O delay.
+- The bound alone (`core` against `core+bound`) costs leader reads nothing without delays, about
+  4% p50 with the log-read delay, and 15% p50 with the I/O delay (p99 5.6 ms to 7.5 ms).
+- The relaxed barrier alone (`local+bound` against `relaxed`, both with the bound) cuts p50 from
+  1,324 µs to 946 µs with the log-read delay, and from 2,241 µs to 1,432 µs with the I/O delay.
 
-## Relaxed and standard ReadIndex (`--grid read-index`)
+## ReadIndex reads (`--grid read-index`)
+
+**What it runs:** every workload with ReadIndex reads on the leader, standard and relaxed. A
+ReadIndex read always runs in RaftCore and waits for a quorum to confirm that the leader still
+leads, before its barrier.
+**Question:** whether skipping the apply wait still matters when every read pays that round trip.
 
 | Workload | Mode | Reads/s | Read p50 µs | Read p99 µs | Writes/s |
 | --- | --- | ---: | ---: | ---: | ---: |
@@ -189,16 +284,28 @@ replication streams again.
 | mixed/apply-io-500us | read-index | 89,838 | 1947.987 | 17766.611 | 9,982 |
 | mixed/apply-io-500us | read-index+relaxed | 89,781 | 1712.569 | 6110.890 | 9,976 |
 
-- Read-only runs show no difference: the quorum round trip dominates.
+- Read-only runs show no difference: there is no backlog, and the quorum round trip dominates.
 - With an apply delay, relaxed ReadIndex reads are faster: p50 1,026 µs against 1,473 µs with the
-  apply-log-read delay, and p99 6.1 ms against 17.8 ms with the I/O delay.
+  log-read delay, and p99 6.1 ms against 17.8 ms with the I/O delay.
 
 ## Reads across a leader change (`--grid leader-change`)
 
-Leadership moves from node 0 to node 1 one second into a three-second mixed workload. "Election"
-is from the transfer request until node 1 leads, and "First read" from then until the first read
-on node 1 finished. The first-second columns cover reads due in the first second after the
-election; the last column covers the whole run.
+**What it runs:** a three-second mixed workload with a 500 µs delay. One second in, the benchmark
+asks node 0 to transfer leadership to node 1, repeating the request every 5 ms until node 1
+leads. Writers and readers follow: a request that a node rejects because leadership is moving
+waits until node 1 leads, or for 1 ms, and retries on the current leader. The modes are `local`,
+`local+bound` and `relaxed`.
+**Question:** how long reads stall around an election, and whether the bound makes the new
+leader slower to serve reads. With the bound, followers have applied less when they become
+leader, so a new leader has more entries to apply before its own no-op.
+
+The columns are:
+
+- Election µs: from the first transfer request until node 1 reports that it leads.
+- First read µs: from then until the first read served by node 1 finished.
+- First-second read p50 µs, p99 µs: successful reads scheduled in the first second after the
+  election, on any node.
+- Read p99 µs: all reads of the run.
 
 | Workload | Mode | Election µs | First read µs | First-second read p50 µs | p99 µs | Read p99 µs |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
@@ -214,17 +321,17 @@ election; the last column covers the whole run.
 - The bound adds no visible failover cost here: `local` and `local+bound` are within noise of each
   other.
 - Relaxed reads stay faster after the election: first-second p50 927 µs against about 2.1 ms with
-  the apply-log-read delay, and 1.5 ms against 2.4 ms with the I/O delay.
+  the log-read delay, and 1.5 ms against 2.4 ms with the I/O delay.
 
 ## What these numbers do not show
 
 - Effects that need more client threads. All readers and writers share one client worker thread,
-  which also limits how fast closed-loop readers can follow the 90,000 reads/s schedule.
-- Real storage and networks. The store and network are in memory; the delays are fixed per apply
-  batch, and there is no network delay.
-- Stores that do not lock queries out during apply. This store holds its write lock during the
-  simulated I/O, so I/O-delay runs measure lock waits as much as apply barriers.
+  which also limits how closely closed-loop readers can follow the 90,000 reads/s schedule.
+- Real storage and networks. The log, state machine and network are in memory; the delays are
+  fixed per apply batch, and there is no network delay.
+- Stores that do not block queries during apply. This store holds its write lock during the
+  simulated I/O, so the I/O-delay runs measure lock waits as much as read barriers.
 - Stable absolute numbers. Each run lasts two or three seconds on a busy desktop, and the same
   workload and mode differ between grids: `mixed/apply-io-500us` in the `local` mode has p50
-  1,204 µs in the leader grid, 2,053 µs in the bound grid and 2,111 µs in the sweep grid.
-  Compare modes within one grid, where the runs interleave, rather than across grids.
+  1,204 µs in the leader grid, 2,053 µs in the bound grid and 2,111 µs in the sweep grid. Compare
+  modes within one grid, where their runs interleave, rather than across grids.
