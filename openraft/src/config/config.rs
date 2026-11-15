@@ -499,6 +499,11 @@ pub struct Config {
     /// older state. Commitment is unchanged; followers only apply later, and their reported
     /// cluster-committed log ID lags the quorum-granted commit.
     ///
+    /// This delays followers by about one leader apply plus one round of propagation, and
+    /// standard follower reads wait as long. After a failover, the new leader has applied less
+    /// as a follower, so it has more entries to apply before its no-op and its first reads wait
+    /// longer.
+    ///
     /// # Safety requirements
     ///
     /// - Enable this on every node before any node serves relaxed reads. A leader without it lets

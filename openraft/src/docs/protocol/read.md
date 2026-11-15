@@ -132,7 +132,9 @@ no node applies an entry before the leader of that time has applied it.
 
 The [step-down counterexample](#step-down-counterexample) below shows why a no-op barrier needs
 this. Commitment itself is unchanged; followers only apply later, and their reported
-cluster-committed log ID lags the quorum-granted commit. Follower reads with the standard barrier
+cluster-committed log ID lags the quorum-granted commit. A follower never moves its committed log
+ID back, so a new leader whose bound is below what the follower already learned only delays it.
+Elections compare last log IDs, not committed log IDs. Follower reads with the standard barrier
 stay correct: a follower reaches `max(noop_log_id, committed)` only after the leader has applied
 it.
 
@@ -223,7 +225,7 @@ path cannot authorize this later read using an outdated published boundary of `2
 The distinction is the apply barrier, not whether the read enters RaftCore's queue. An ordinary
 read on A can still survive step-down. If followers apply up to the committed log ID, it can
 expose entry `22` before B applies it, and B's later relaxed read regresses. The replication
-change below prevents this for every read path, including ordinary reads on followers.
+change above prevents this for every read path, including ordinary reads on followers.
 
 Further reading:
 
