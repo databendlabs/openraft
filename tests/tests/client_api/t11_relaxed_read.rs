@@ -176,6 +176,8 @@ async fn relaxed_reads_skip_the_committed_tail() -> Result<()> {
                 expect_timeout(result)?;
             }
             let on_follower = n0.get_read_linearizer(relaxed(ReadPolicy::ReadIndex)).await?;
+            assert_eq!(on_follower.noop_log_id(), on_follower.read_log_id_on(&0).log_id());
+            assert_eq!(on_follower.read_log_id(), on_follower.read_log_id_on(&1));
             let result = on_follower.clone().try_await_ready(&n1, Some(NO_APPLY_WINDOW)).await?;
             assert!(
                 result.is_err(),

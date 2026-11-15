@@ -114,16 +114,16 @@ where C: RaftTypeConfig
     /// Waits for the state machine to apply all required log entries for linearizable reads.
     ///
     /// This method ensures linearizability by waiting for the state machine to apply all log
-    /// entries up to the `read_log_id`. A relaxed linearizer awaited on the node that issued it
-    /// waits only for the no-op log ID instead.
+    /// entries up to [`read_log_id_on(this node)`](LinearizeState::read_log_id_on): the
+    /// `read_log_id`, or only the no-op log ID for a relaxed linearizer on the node that issued it.
     ///
     /// # Returns
     ///
-    /// Returns `Ok(Ok(LinearizeState))` once `applied >= read_log_id`, indicating it's safe to
-    /// perform linearizable reads.
+    /// Returns `Ok(Ok(LinearizeState))` once `applied >= read_log_id_on(this node)`, indicating
+    /// it's safe to perform linearizable reads.
     ///
     /// If `timeout` is provided and expires, returns `Ok(Err(LinearizeState))` where
-    /// `applied < read_log_id`, indicating the read cannot be performed yet.
+    /// `applied < read_log_id_on(this node)`, indicating the read cannot be performed yet.
     ///
     /// # Example
     ///
@@ -147,7 +147,7 @@ where C: RaftTypeConfig
             return Ok(Ok(self.state));
         }
 
-        let expected = Some(self.state.wait_log_id_on(this_id).index());
+        let expected = Some(self.state.read_log_id_on(this_id).index());
 
         let res = raft.inner.wait(timeout).applied_index_at_least(expected, "Linearizer::try_await_ready").await;
 

@@ -13,13 +13,14 @@ use crate::type_config::alias::LogIdOf;
 /// machine to apply all necessary log entries for a linearizable read.
 ///
 /// This struct retains the leader's no-op log ID and committed log ID from read authorization.
-/// The required read log ID is their maximum. A relaxed read waits only for the no-op log ID, and
-/// only on the node that authorized it. Applied progress belongs to `node_id`; it is not the
-/// applied log ID sampled by a later state-machine query.
+/// [`Self::read_log_id`] is their maximum, which a read on any node may wait for.
+/// [`Self::read_log_id_on`] is what a read on a given node must wait for: the no-op log ID for a
+/// relaxed read on the node that authorized it, otherwise the read log ID. Applied progress belongs
+/// to `node_id`; it is not the applied log ID sampled by a later state-machine query.
 ///
-/// If the state is ready, it is guaranteed `applied >= read_log_id`.
+/// If the state is ready, it is guaranteed `applied >= read_log_id_on(node_id)`.
 /// If the state is not ready (timeout waiting for the applied log entries), it is guaranteed
-/// `applied < read_log_id`.
+/// `applied < read_log_id_on(node_id)`.
 ///
 /// [`Linearizer::try_await_ready()`]: crate::raft::linearizable_read::Linearizer::try_await_ready
 #[since(version = "0.10.1", change = "track internal relaxed reads")]
@@ -92,29 +93,16 @@ where C: RaftTypeConfig
         self
     }
 
-    /// Returns the log ID that `node_id` must apply before the read can proceed there.
-    ///
-    /// A relaxed read waits only for the no-op on the node that authorized it; any other node
-    /// waits for [`Self::read_log_id`].
-    pub(crate) fn wait_log_id_on(&self, node_id: &C::NodeId) -> ReadLogId<C> {
-        if self.relaxed && self.node_id == *node_id {
-            return ReadLogId::from_log_id(self.noop_log_id.clone());
-        }
-        self.read_log_id()
-    }
-
     /// Returns whether the linearizable read is ready to be performed.
     ///
     /// This method checks if the state machine has applied enough log entries to satisfy
-    /// the linearizability requirement. It returns `true` when `applied >= read_log_id`,
-    /// meaning the state machine has caught up to the point where a linearizable read
-    /// can be safely performed.
+    /// the linearizability requirement. It returns `true` when
+    /// `applied >= read_log_id_on(node_id)`, meaning the state machine has caught up to the point
+    /// where a linearizable read can be safely performed.
     ///
     /// If the local_node_id is different, the `applied` is unknown.
     pub(crate) fn is_ready_on_node(&self, node_id: &C::NodeId) -> bool {
-        self.node_id == *node_id
-            && self.applied.as_ref() >= Some(&self.noop_log_id)
-            && (self.relaxed || self.applied.as_ref() >= self.committed.as_ref())
+        self.node_id == *node_id && self.applied.as_ref() >= Some(self.read_log_id_on(node_id).log_id())
     }
 
     /// Return the node from which the applied progress was collected.
@@ -137,15 +125,27 @@ where C: RaftTypeConfig
 
     /// Return the `read_log_id` of this read operation.
     ///
-    /// It is the maximum of the no-op and committed log IDs captured at authorization, and is
-    /// safe to send to another node for a follower read. A relaxed read waits only for the no-op
-    /// on the node that authorized it, but still reports this boundary.
+    /// It is the maximum of the no-op and committed log IDs captured at authorization. A read on
+    /// any node may wait for it, so it is the value to send to another node for a follower read.
+    /// A relaxed read on the node that authorized it needs only [`Self::read_log_id_on`].
     /// See: [`read` docs](crate::docs::protocol::read).
     #[since(version = "0.10.1", change = "calculate and return an owned ReadLogId")]
     #[since(version = "0.10.0", change = "return ReadLogId instead of LogId")]
     #[since(version = "0.10.0")]
     pub fn read_log_id(&self) -> ReadLogId<C> {
         ReadLogId::new(self.noop_log_id.clone(), self.committed.clone())
+    }
+
+    /// Return the log ID that a read on `node_id` must wait for its state machine to apply.
+    ///
+    /// For a relaxed read on the node that authorized it, this is the no-op log ID. On any other
+    /// node, or for a read that is not relaxed, it is [`Self::read_log_id`].
+    #[since(version = "0.10.1")]
+    pub fn read_log_id_on(&self, node_id: &C::NodeId) -> ReadLogId<C> {
+        if self.relaxed && self.node_id == *node_id {
+            return ReadLogId::from_log_id(self.noop_log_id.clone());
+        }
+        self.read_log_id()
     }
 
     /// The last known applied log ID on [`Self::node_id`].
@@ -218,22 +218,22 @@ mod tests {
         let noop = log_id(2, 1, 10);
         let committed = log_id(2, 1, 20);
         let state: LinearizeState<UTConfig> = LinearizeState::new(1, noop, Some(committed), Some(noop));
-        assert_eq!(&committed, state.wait_log_id_on(&1).log_id());
+        assert_eq!(&committed, state.read_log_id_on(&1).log_id());
         assert!(!state.is_ready_on_node(&1));
 
         let state = state.with_relaxed(true);
         assert_eq!(Some(&committed), state.committed());
         assert_eq!(&committed, state.read_log_id().log_id());
-        assert_eq!(&noop, state.wait_log_id_on(&1).log_id());
-        assert_eq!(&committed, state.wait_log_id_on(&2).log_id());
+        assert_eq!(&noop, state.read_log_id_on(&1).log_id());
+        assert_eq!(&committed, state.read_log_id_on(&2).log_id());
         assert!(state.is_ready_on_node(&1));
 
         let state = state.with_applied(1, Some(log_id(2, 1, 9)));
-        assert_eq!(&noop, state.wait_log_id_on(&1).log_id());
+        assert_eq!(&noop, state.read_log_id_on(&1).log_id());
         assert!(!state.is_ready_on_node(&1));
 
         let state = state.with_applied(2, Some(noop));
-        assert_eq!(&committed, state.wait_log_id_on(&2).log_id());
+        assert_eq!(&committed, state.read_log_id_on(&2).log_id());
         assert!(
             !state.is_ready_on_node(&2),
             "another node must wait for the committed log ID"

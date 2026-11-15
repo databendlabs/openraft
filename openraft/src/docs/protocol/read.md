@@ -119,8 +119,9 @@ let value = local_state_machine.read().await.get("key").cloned();
 
 The reduced barrier applies only on the issuing leader. A follower may not have applied a write
 that the leader has already acknowledged, so a relaxed linearizer awaited on another node waits
-for `max(noop_log_id, committed)`, and `read_log_id()`, the value sent to followers, is always
-that boundary.
+for `max(noop_log_id, committed)`. `read_log_id_on(node_id)` returns the log ID a read on that
+node waits for. `read_log_id()` is always `max(noop_log_id, committed)`, the value to send to
+followers.
 
 ### Followers apply only what the leader has applied
 
