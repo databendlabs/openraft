@@ -75,9 +75,10 @@ LEADER_CHANGE_MODES = [
     ("local+bound", True, True, TRANSFER),
     ("relaxed", True, True, ["--read-relaxed"] + TRANSFER),
 ]
+# 960 writes per writer and 4,320 reads per reader: 3.07 s at the paced rates.
 LEADER_CHANGE_SCENARIOS = [
-    ("mixed/log-read-500us/3s", 32, 30000, 64, 270000, 500, 0),
-    ("mixed/apply-io-500us/3s", 32, 30000, 64, 270000, 0, 500),
+    ("mixed/log-read-500us/3s", 32, 30720, 64, 276480, 500, 0),
+    ("mixed/apply-io-500us/3s", 32, 30720, 64, 276480, 0, 500),
 ]
 # ReadIndex reads always run in RaftCore: only lease reads use the cache.
 READ_INDEX_MODES = [
