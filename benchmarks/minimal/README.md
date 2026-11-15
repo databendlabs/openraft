@@ -216,6 +216,7 @@ cargo run --release --bin bench -- --latency -c 8 -n 21600 --write-rate 10800 \
 
 Compare the same build with `enable_local_lease_read` set to `false`.
 Reads use `get_local_read_linearizer`, which falls back to `get_read_linearizer` when caching is disabled.
+They use LeaseRead unless `--read-policy read-index` is given; ReadIndex reads always run in RaftCore.
 Add `--read-await-ready` to include the returned linearizer's apply wait.
 Add `--read-on-follower <id>` with `--read-query` to await each linearizer and run the query on that follower,
 as an application's follower read does after fetching the linearizer from the leader.
@@ -267,6 +268,11 @@ the replication streams again, and this grid measures what that costs writes.
 `enable_relaxed_read`. Comparing `core` with `core+bound` isolates the replication change, and
 `local+bound` with `relaxed` isolates the relaxed read barrier.
 
+`--grid read-index` runs every workload with standard and relaxed ReadIndex reads
+(`--read-policy read-index`). A ReadIndex read always runs in RaftCore and waits for a quorum to
+confirm leadership, so this grid shows whether skipping the apply wait still matters when each
+read pays that round trip.
+
 The no-op optimization is expected to help when committed entries wait to be applied. It cannot
 remove application-side lock contention: this store holds its write lock during simulated
 state-machine I/O, so even relaxed queries must wait for that lock. Read-only runs isolate API
@@ -301,6 +307,7 @@ References for the optimization and its correctness requirements:
 --read-await-ready Include the returned linearizer's apply wait (Linearizer::await_ready)
 --read-query      Include the apply wait and a coherent state-machine counter query
 --read-relaxed    Request a relaxed linearizer before the query (requires --read-query)
+--read-policy     How the leader confirms leadership for each read: lease or read-index [default: lease]
 --read-on-follower Await the barrier and query on this follower; report its apply lag (requires --read-query)
 --allow-read-errors Report read failures separately
 --read-delay-ms   Idle time after warmup, before measurement [default: 0]

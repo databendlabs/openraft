@@ -24,6 +24,7 @@ use bench_minimal::store::ClientRequest;
 use clap::Parser;
 use futures::TryStreamExt;
 use openraft::Config;
+use openraft::ReadPolicy;
 use openraft::raft::WriteOption;
 use read_workload::ReadWorkload;
 use tokio::runtime::Builder;
@@ -100,6 +101,10 @@ struct Args {
     #[arg(long)]
     read_relaxed: bool,
 
+    /// How the leader confirms leadership for each read [default: lease].
+    #[arg(long, value_enum)]
+    read_policy: Option<ReadPolicyArg>,
+
     /// Await each read's barrier and run its query on this follower instead of the leader
     /// (requires --read-query); also reports how far the follower's apply trails the leader's.
     #[arg(long)]
@@ -138,6 +143,26 @@ struct Args {
     warmup_writes: usize,
 }
 
+/// The read policy of each benchmark read.
+#[derive(Clone, Copy, Debug, Default, clap::ValueEnum, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum ReadPolicyArg {
+    /// `ReadPolicy::LeaseRead`; cached outside RaftCore when `enable_local_lease_read` is set.
+    #[default]
+    Lease,
+    /// `ReadPolicy::ReadIndex`; every read waits for a quorum to confirm leadership.
+    ReadIndex,
+}
+
+impl From<ReadPolicyArg> for ReadPolicy {
+    fn from(policy: ReadPolicyArg) -> Self {
+        match policy {
+            ReadPolicyArg::Lease => ReadPolicy::LeaseRead,
+            ReadPolicyArg::ReadIndex => ReadPolicy::ReadIndex,
+        }
+    }
+}
+
 #[derive(Clone, serde::Serialize)]
 struct BenchConfig {
     pub client_workers: usize,
@@ -155,6 +180,7 @@ struct BenchConfig {
     pub read_await_ready: bool,
     pub read_query: bool,
     pub read_relaxed: bool,
+    pub read_policy: ReadPolicyArg,
     pub read_on_follower: Option<u64>,
     pub allow_read_errors: bool,
     pub read_delay_ms: u64,
@@ -274,6 +300,7 @@ fn main() -> anyhow::Result<()> {
         read_await_ready: args.read_await_ready,
         read_query: args.read_query,
         read_relaxed: args.read_relaxed,
+        read_policy: args.read_policy.unwrap_or_default(),
         read_on_follower: args.read_on_follower,
         allow_read_errors: args.allow_read_errors,
         read_delay_ms: args.read_delay_ms,
@@ -337,6 +364,7 @@ fn validate_reads(args: &Args) -> anyhow::Result<()> {
         ensure!(!args.read_await_ready, "read-await-ready requires read-clients");
         ensure!(!args.read_query, "read-query requires read-clients");
         ensure!(!args.read_relaxed, "read-relaxed requires read-clients");
+        ensure!(args.read_policy.is_none(), "read-policy requires read-clients");
         ensure!(!args.allow_read_errors, "allow-read-errors requires read-clients");
         return Ok(());
     }
@@ -716,6 +744,7 @@ mod tests {
     use std::time::Instant;
 
     use clap::Parser;
+    use openraft::ReadPolicy;
 
     use super::Args;
     use super::pace;
@@ -844,6 +873,19 @@ mod tests {
     }
 
     #[test]
+    fn read_policy_defaults_to_lease_reads() -> anyhow::Result<()> {
+        let read = ["bench", "--read-clients", "1", "--read-operations", "1"];
+        let args = Args::try_parse_from(read)?;
+        validate(&args)?;
+        assert!(args.read_policy.is_none());
+        let args = Args::try_parse_from(read.iter().copied().chain(["--read-policy", "read-index"]))?;
+        validate(&args)?;
+        let policy = ReadPolicy::from(args.read_policy.unwrap_or_default());
+        assert_eq!(ReadPolicy::ReadIndex, policy);
+        Ok(())
+    }
+
+    #[test]
     fn follower_reads_require_a_query_on_a_follower() -> anyhow::Result<()> {
         let read = ["bench", "--read-clients", "1", "--read-operations", "1"];
         let cases = [
@@ -875,6 +917,7 @@ mod tests {
             ("--read-query", "read-query requires read-clients"),
             ("--read-relaxed", "read-relaxed requires read-query"),
             ("--allow-read-errors", "allow-read-errors requires read-clients"),
+            ("--read-policy=read-index", "read-policy requires read-clients"),
         ];
         for (flag, expected) in cases {
             let args = Args::try_parse_from(["bench", flag])?;

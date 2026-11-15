@@ -11,6 +11,8 @@ to measure the cost of re-sending the bound after each apply.
 --grid bound reruns the mixed workloads with the core and local modes also
 under enable_relaxed_read, to separate the replication change from the read
 barrier.
+--grid read-index compares standard and relaxed ReadIndex reads, which wait for
+a quorum to confirm leadership.
 """
 
 import argparse
@@ -53,6 +55,11 @@ BOUND_MODES = [
     ("local+bound", True, True, []),
     ("relaxed", True, True, ["--read-relaxed"]),
 ]
+# ReadIndex reads always run in RaftCore: only lease reads use the cache.
+READ_INDEX_MODES = [
+    ("read-index", False, False, ["--read-policy", "read-index"]),
+    ("read-index+relaxed", False, True, ["--read-policy", "read-index", "--read-relaxed"]),
+]
 # Unpaced write-only runs; each client count divides its writes evenly.
 WRITE_MODES = [("bound-off", False, False, []), ("bound-on", False, True, [])]
 WRITE_SCENARIOS = [
@@ -65,6 +72,7 @@ GRIDS = {
     "follower": (FOLLOWER_MODES, MIXED_SCENARIOS),
     "writes": (WRITE_MODES, WRITE_SCENARIOS),
     "bound": (BOUND_MODES, MIXED_SCENARIOS),
+    "read-index": (READ_INDEX_MODES, SCENARIOS),
 }
 
 

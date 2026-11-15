@@ -87,7 +87,8 @@ impl ReadWorkload {
     }
 
     async fn read(&self) -> anyhow::Result<()> {
-        let option = LinearizerOption::from(ReadPolicy::LeaseRead).with_relaxed(self.config.read_relaxed);
+        let policy = ReadPolicy::from(self.config.read_policy);
+        let option = LinearizerOption::from(policy).with_relaxed(self.config.read_relaxed);
         let linearizer = self.leader.get_local_read_linearizer(option).await?;
         if self.config.read_await_ready || self.config.read_query {
             let state = linearizer.await_ready(&self.reader).await?;
