@@ -216,7 +216,13 @@ cargo run --release --bin bench -- --latency -c 8 -n 21600 --write-rate 10800 \
 
 Compare the same build with `enable_local_lease_read` set to `false`.
 Reads use `get_local_read_linearizer`, which falls back to `get_read_linearizer` when caching is disabled.
+They use LeaseRead unless `--read-policy read-index` is given; ReadIndex reads always run in RaftCore.
 Add `--read-await-ready` to include the returned linearizer's apply wait.
+Add `--read-on-follower <id>` with `--read-query` to await each linearizer and run the query on that follower,
+as an application's follower read does after fetching the linearizer from the leader.
+The report then also has `follower_lag`: at each applied index the follower publishes, how many entries
+the leader had applied beyond it (`entries_behind`) and how much later than the leader it reached that index
+(`time_behind_ns`). Negative values mean the follower was ahead.
 For read-only runs, use `--clients 0 --operations 0` with positive read client and operation counts.
 Write-only arguments and output remain unchanged when `--read-clients` is zero.
 Unpaced readers yield every 64 requests so cached reads still share the client runtime fairly with writers.
@@ -225,6 +231,78 @@ To measure an expired lease, run a read-only workload with heartbeats and electi
 set `--read-delay-ms` beyond `election_timeout_max`, and pass `--allow-read-errors`.
 Failed attempts have their own counts, latency, and error summaries.
 Build with the default `runtime-stats` feature to inspect the final core message counts, including `GetLinearizer`.
+
+### Comparing core, local, and relaxed reads
+
+Run `make bench_relaxed_reads` from the repository root, or:
+
+```sh
+python3 benchmarks/minimal/scripts/relaxed_reads.py --runs 3 --raw /tmp/relaxed-reads.jsonl
+```
+
+The script builds once in release mode without runtime statistics and rotates the order of
+three modes: standard in-core LeaseRead, cached local LeaseRead, and cached local LeaseRead
+with `LinearizerOption::with_relaxed(true)`. All three include their apply
+barrier and the same state-machine query: a write counter and its applied log ID sampled under
+one read lock. The relaxed mode requires `enable_relaxed_read: true` in `--raft-config` and
+`--read-relaxed --read-query`. With that setting the leader also lets followers apply only up to
+its own applied log ID, so mixed runs measure that replication change as well.
+
+The grid includes single-reader and 64-reader read-only runs, plus paced mixed workloads with
+no delay, a 500 µs apply-log-read delay, and a 500 µs state-machine I/O delay. The mixed runs
+schedule 90,000 reads/s and 10,000 writes/s for two seconds. Reported throughput uses total
+workload elapsed time and includes any drain time. The script checks operation counts and
+rejects all read failures. `--raw` preserves commands and every JSON report.
+
+`--grid follower` runs the mixed workloads with standard reads on follower 1 instead, with and
+without `enable_relaxed_read`, and adds the follower's p99 apply lag to the table. With the setting,
+the leader lets followers apply only up to its own applied log ID, so this grid measures what that
+bound costs follower reads.
+
+`--grid writes` runs unpaced write-only workloads with 1, 32 and 256 clients, with no delay, a
+500 µs apply-log-read delay, or a 500 µs state-machine I/O delay, with and without
+`enable_relaxed_read`. With the setting, every apply result on the leader sends the new bound to
+the replication streams again, and this grid measures what that costs writes.
+
+`--grid bound` reruns the mixed workloads with the core and local modes also under
+`enable_relaxed_read`. Comparing `core` with `core+bound` isolates the replication change, and
+`local+bound` with `relaxed` isolates the relaxed read barrier.
+
+`--grid read-index` runs every workload with standard and relaxed ReadIndex reads
+(`--read-policy read-index`). A ReadIndex read always runs in RaftCore and waits for a quorum to
+confirm leadership, so this grid shows whether skipping the apply wait still matters when each
+read pays that round trip.
+
+`--grid sweep` runs the paced mixed workload in the three modes at apply-log-read and
+state-machine I/O delays of 0, 100 µs, 500 µs and 2 ms, to show how large the apply backlog must be
+before relaxed reads pay off.
+
+`--grid leader-change` transfers leadership from node 0 to node 1 one second into a three-second
+mixed workload with an apply delay (`--transfer-leader-after-ms 1000`). Writers and readers follow
+the new leader: a request rejected because leadership is moving waits until node 1 has taken over,
+or for 1 ms, and retries. The table reports how long the election took, how long after it the first
+read on node 1 finished, and the read latency in the first second after the election, without the
+setting, with it, and with relaxed reads. Under the bound, followers apply less before a failover,
+so the new leader has more entries to apply before its no-op.
+
+The no-op optimization is expected to help when committed entries wait to be applied. It cannot
+remove application-side lock contention: this store holds its write lock during simulated
+state-machine I/O, so even relaxed queries must wait for that lock. Read-only runs isolate API
+overhead rather than the apply-backlog benefit. Results should not be compared
+directly with barrier-only measurements from `--read-await-ready` without `--read-query`.
+
+References for the optimization and its correctness requirements:
+
+- [ReadIndex: Less Latency through Relaxed Ordering](https://github.com/drmingdrmer/consensus-essence/blob/main/src/list/raft-read-index-relaxed-order/raft-read-index-relaxed-order.md)
+  explains the no-op barrier and how a read that outlives its leader is kept safe.
+- [Openraft issue #1267](https://github.com/databendlabs/openraft/issues/1267) tracks the proposal
+  and the contributor's step-down counterexample.
+- [Openraft read protocol: opt-in relaxed leader reads](../../openraft/src/docs/protocol/read.md#opt-in-relaxed-leader-reads)
+  describes the replication change and the cluster-wide deployment requirements.
+- [`Config::enable_relaxed_read` documentation (source)](../../openraft/src/config/config.rs)
+  describes opt-in configuration, defaults, and safety caveats.
+- [`LinearizerOption::with_relaxed` API documentation (source)](../../openraft/src/raft/linearizable_read/linearizer_option.rs)
+  defines the relaxed barrier and where it applies.
 
 ### CLI Options
 
@@ -239,8 +317,13 @@ Build with the default `runtime-stats` feature to inspect the final core message
 --read-operations Total read attempts [default: 0]
 --read-rate       Read attempts per second, or 0 for unpaced [default: 0]
 --read-await-ready Include the returned linearizer's apply wait (Linearizer::await_ready)
+--read-query      Include the apply wait and a coherent state-machine counter query
+--read-relaxed    Request a relaxed linearizer before the query (requires --read-query)
+--read-policy     How the leader confirms leadership for each read: lease or read-index [default: lease]
+--read-on-follower Await the barrier and query on this follower; report its apply lag (requires --read-query)
 --allow-read-errors Report read failures separately
 --read-delay-ms   Idle time after warmup, before measurement [default: 0]
+--transfer-leader-after-ms Move leadership from node 0 to node 1 after this delay; clients follow it
 --apply-read-delay-us Delay of the log read that loads each apply batch [default: 0]
 --apply-io-delay-us   State-machine I/O delay of each apply batch [default: 0]
 ```

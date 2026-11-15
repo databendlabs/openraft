@@ -2,9 +2,14 @@
 //!
 //! Run with: cargo run --release --bin bench -- --help
 
+#[path = "bench/apply_lag.rs"]
+mod apply_lag;
+#[path = "bench/leader_change.rs"]
+mod leader_change;
 #[path = "bench/read_workload.rs"]
 mod read_workload;
 
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fmt::Display;
 use std::fmt::Formatter;
@@ -15,12 +20,15 @@ use std::time::Instant;
 
 use anyhow::Context;
 use anyhow::ensure;
+use apply_lag::ApplyLag;
 use bench_minimal::network::BenchRaft;
 use bench_minimal::network::Router;
 use bench_minimal::store::ClientRequest;
 use clap::Parser;
 use futures::TryStreamExt;
+use leader_change::Leaders;
 use openraft::Config;
+use openraft::ReadPolicy;
 use openraft::raft::WriteOption;
 use read_workload::ReadWorkload;
 use tokio::runtime::Builder;
@@ -89,6 +97,23 @@ struct Args {
     #[arg(long)]
     read_await_ready: bool,
 
+    /// Query a coherent state-machine write counter after waiting for the read barrier.
+    #[arg(long)]
+    read_query: bool,
+
+    /// Request a relaxed linearizer before the query (requires --read-query).
+    #[arg(long)]
+    read_relaxed: bool,
+
+    /// How the leader confirms leadership for each read [default: lease].
+    #[arg(long, value_enum)]
+    read_policy: Option<ReadPolicyArg>,
+
+    /// Await each read's barrier and run its query on this follower instead of the leader
+    /// (requires --read-query); also reports how far the follower's apply trails the leader's.
+    #[arg(long)]
+    read_on_follower: Option<u64>,
+
     /// Report read failures separately instead of stopping at the first one.
     #[arg(long)]
     allow_read_errors: bool,
@@ -96,6 +121,11 @@ struct Args {
     /// Idle time after warmup, before clients start; useful for expired-lease controls.
     #[arg(long, default_value_t = 0)]
     read_delay_ms: u64,
+
+    /// Transfer leadership from node 0 to node 1 this long after clients start; clients follow
+    /// the new leader, and the report measures reads around the election.
+    #[arg(long)]
+    transfer_leader_after_ms: Option<u64>,
 
     /// Delay before each log append returns, in microseconds.
     #[arg(long, default_value_t = 0)]
@@ -122,6 +152,26 @@ struct Args {
     warmup_writes: usize,
 }
 
+/// The read policy of each benchmark read.
+#[derive(Clone, Copy, Debug, Default, clap::ValueEnum, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum ReadPolicyArg {
+    /// `ReadPolicy::LeaseRead`; cached outside RaftCore when `enable_local_lease_read` is set.
+    #[default]
+    Lease,
+    /// `ReadPolicy::ReadIndex`; every read waits for a quorum to confirm leadership.
+    ReadIndex,
+}
+
+impl From<ReadPolicyArg> for ReadPolicy {
+    fn from(policy: ReadPolicyArg) -> Self {
+        match policy {
+            ReadPolicyArg::Lease => ReadPolicy::LeaseRead,
+            ReadPolicyArg::ReadIndex => ReadPolicy::ReadIndex,
+        }
+    }
+}
+
 #[derive(Clone, serde::Serialize)]
 struct BenchConfig {
     pub client_workers: usize,
@@ -137,8 +187,13 @@ struct BenchConfig {
     pub read_operations: u64,
     pub read_rate: u64,
     pub read_await_ready: bool,
+    pub read_query: bool,
+    pub read_relaxed: bool,
+    pub read_policy: ReadPolicyArg,
+    pub read_on_follower: Option<u64>,
     pub allow_read_errors: bool,
     pub read_delay_ms: u64,
+    pub transfer_leader_after_ms: Option<u64>,
     pub append_delay_us: u64,
     pub flush_delay_us: u64,
     pub network_delay_us: u64,
@@ -253,8 +308,13 @@ fn main() -> anyhow::Result<()> {
         read_operations: args.read_operations,
         read_rate: args.read_rate,
         read_await_ready: args.read_await_ready,
+        read_query: args.read_query,
+        read_relaxed: args.read_relaxed,
+        read_policy: args.read_policy.unwrap_or_default(),
+        read_on_follower: args.read_on_follower,
         allow_read_errors: args.allow_read_errors,
         read_delay_ms: args.read_delay_ms,
+        transfer_leader_after_ms: args.transfer_leader_after_ms,
         append_delay_us: args.append_delay_us,
         flush_delay_us: args.flush_delay_us,
         network_delay_us: args.network_delay_us,
@@ -276,6 +336,7 @@ fn validate(args: &Args) -> anyhow::Result<()> {
         ensure!(args.write_rate == 0, "write-rate must be zero without write clients");
     }
     validate_reads(args)?;
+    validate_leader_change(args)?;
     ensure!(args.batch > 0, "batch must be positive");
     ensure!(args.client_workers > 0, "client-workers must be positive");
     ensure!(args.server_workers > 0, "server-workers must be positive");
@@ -299,17 +360,46 @@ fn validate(args: &Args) -> anyhow::Result<()> {
 }
 
 fn validate_reads(args: &Args) -> anyhow::Result<()> {
+    ensure!(
+        !args.read_relaxed || args.read_query,
+        "read-relaxed requires read-query"
+    );
+    if let Some(follower) = args.read_on_follower {
+        ensure!(args.read_query, "read-on-follower requires read-query");
+        let is_follower = (1..args.members).contains(&follower);
+        ensure!(is_follower, "read-on-follower must name a follower, 1..members");
+    }
     if args.read_clients == 0 {
         ensure!(args.read_operations == 0, "read-operations requires read-clients");
         ensure!(args.read_rate == 0, "read-rate requires read-clients");
         ensure!(args.read_delay_ms == 0, "read-delay-ms requires read-clients");
         ensure!(!args.read_await_ready, "read-await-ready requires read-clients");
+        ensure!(!args.read_query, "read-query requires read-clients");
+        ensure!(!args.read_relaxed, "read-relaxed requires read-clients");
+        ensure!(args.read_policy.is_none(), "read-policy requires read-clients");
         ensure!(!args.allow_read_errors, "allow-read-errors requires read-clients");
         return Ok(());
     }
     ensure!(
         args.read_operations >= args.read_clients,
         "read-operations must cover every read client"
+    );
+    Ok(())
+}
+
+fn validate_leader_change(args: &Args) -> anyhow::Result<()> {
+    if args.transfer_leader_after_ms.is_none() {
+        return Ok(());
+    }
+    ensure!(args.read_clients > 0, "transfer-leader-after-ms requires read-clients");
+    ensure!(
+        args.members > 1,
+        "transfer-leader-after-ms requires more than one member"
+    );
+    ensure!(args.batch == 1, "transfer-leader-after-ms requires batch 1");
+    ensure!(
+        args.read_on_follower.is_none(),
+        "transfer-leader-after-ms cannot read on a follower"
     );
     Ok(())
 }
@@ -325,7 +415,8 @@ fn validate_schedule(args: &Args) -> anyhow::Result<()> {
     } else {
         0.0
     };
-    let workload_seconds = write_seconds.max(read_seconds);
+    let transfer_seconds = args.transfer_leader_after_ms.map_or(0.0, |ms| ms as f64 / 1000.0);
+    let workload_seconds = write_seconds.max(read_seconds).max(transfer_seconds);
     let idle = Duration::from_millis(args.read_delay_ms);
     let seconds = idle.as_secs_f64() + workload_seconds;
     let within_timeout = seconds < WAIT_TIMEOUT.as_secs_f64();
@@ -379,11 +470,11 @@ fn bench_with_config(bench_config: &BenchConfig) -> anyhow::Result<()> {
         .build()?;
 
     // Create cluster on server runtime
-    let (_router, leader) = create_cluster(&server_rt, bench_config)?;
+    let (router, leader) = create_cluster(&server_rt, bench_config)?;
 
     // Run benchmark on client runtime
     client_rt.block_on(async {
-        let benchmark = do_bench(bench_config, leader);
+        let benchmark = do_bench(bench_config, leader, &router);
         let timed = tokio::time::timeout(WAIT_TIMEOUT, benchmark);
         timed.await?
     })
@@ -419,7 +510,7 @@ fn create_cluster(server_rt: &Runtime, bench_config: &BenchConfig) -> anyhow::Re
 /// Cluster config:
 /// - Log: in-memory BTree
 /// - StateMachine: in-memory BTree
-async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft) -> anyhow::Result<()> {
+async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft, router: &Router) -> anyhow::Result<()> {
     let n_client = bench_config.n_client;
     let batch_size = bench_config.batch_size;
     let ops_per_client = bench_config.operations_per_client();
@@ -442,15 +533,41 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft) -> anyhow::Resu
         let delay = Duration::from_millis(bench_config.read_delay_ms);
         tokio::time::sleep(delay).await;
     }
+    let leaders = match bench_config.transfer_leader_after_ms {
+        Some(_) => {
+            let mut machines = BTreeMap::new();
+            for id in bench_config.members.iter().copied() {
+                let raft = router.get_raft(id);
+                let machine = raft.with_state_machine(|sm| Box::pin(async move { sm.clone() })).await?;
+                machines.insert(id, machine);
+            }
+            Some(Leaders::new(router.clone(), machines))
+        }
+        None => None,
+    };
     let read_workload = if read_clients > 0 {
+        let reader = match bench_config.read_on_follower {
+            Some(follower) => router.get_raft(follower),
+            None => leader.clone(),
+        };
+        let state_machine = reader.with_state_machine(|sm| Box::pin(async move { sm.clone() })).await?;
         Some(ReadWorkload {
             config: Arc::new(bench_config.clone()),
             leader: leader.clone(),
+            reader,
+            state_machine,
+            leaders: leaders.clone(),
             start: start.clone(),
             epoch: epoch.clone(),
         })
     } else {
         None
+    };
+    let apply_lag = match &read_workload {
+        Some(workload) if bench_config.read_on_follower.is_some() => {
+            Some(ApplyLag::start(&workload.leader, &workload.reader))
+        }
+        _ => None,
     };
     let read_handles = match &read_workload {
         Some(workload) => workload.spawn_clients(),
@@ -478,6 +595,7 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft) -> anyhow::Resu
 
     for client_id in 0..n_client {
         let l = leader.clone();
+        let leaders = leaders.clone();
         let start = start.clone();
         let epoch = epoch.clone();
         let h = if batch_size <= 1 {
@@ -494,7 +612,12 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft) -> anyhow::Resu
                     } else {
                         measure_latency.then(Instant::now)
                     };
-                    l.client_write(ClientRequest {}).await?;
+                    match &leaders {
+                        Some(leaders) => leaders.client_write().await?,
+                        None => {
+                            l.client_write(ClientRequest {}).await?;
+                        }
+                    }
                     if let Some(started) = started {
                         let elapsed = started.elapsed();
                         let nanos = elapsed.as_nanos();
@@ -541,6 +664,10 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft) -> anyhow::Resu
 
     let now = Instant::now();
     epoch.set(now).unwrap();
+    let transfer = match (&leaders, bench_config.transfer_leader_after_ms) {
+        (Some(leaders), Some(after)) => Some(leaders.transfer_after(now, Duration::from_millis(after))),
+        _ => None,
+    };
     start.wait().await;
     let writes = collect_clients(handles);
     let reads = collect_clients(read_handles);
@@ -548,6 +675,14 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft) -> anyhow::Resu
     let read_samples = read_groups.into_iter().flatten();
     let read_samples = read_samples.collect();
     let elapsed = now.elapsed();
+    let follower_lag = match apply_lag {
+        Some(apply_lag) => Some(apply_lag.finish().await?),
+        None => None,
+    };
+    let leader_change = match transfer {
+        Some(transfer) => Some(transfer.await??),
+        None => None,
+    };
 
     // Stop stats printing task
     #[cfg(feature = "runtime-stats")]
@@ -565,7 +700,7 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft) -> anyhow::Resu
     }
 
     if let Some(workload) = read_workload {
-        workload.report(elapsed, client_latencies, read_samples)?;
+        workload.report(elapsed, client_latencies, read_samples, follower_lag, leader_change)?;
         return Ok(());
     }
 
@@ -666,6 +801,7 @@ mod tests {
     use std::time::Instant;
 
     use clap::Parser;
+    use openraft::ReadPolicy;
 
     use super::Args;
     use super::pace;
@@ -769,10 +905,103 @@ mod tests {
     }
 
     #[test]
+    fn relaxed_read_requires_a_query() -> anyhow::Result<()> {
+        let args = Args::try_parse_from([
+            "bench",
+            "--read-clients",
+            "1",
+            "--read-operations",
+            "1",
+            "--read-relaxed",
+        ])?;
+        let error = validate(&args).expect_err("relaxed reads must include the state-machine query");
+        assert_eq!("read-relaxed requires read-query", error.to_string());
+        let args = Args::try_parse_from([
+            "bench",
+            "--read-clients",
+            "1",
+            "--read-operations",
+            "1",
+            "--read-relaxed",
+            "--read-query",
+        ])?;
+        validate(&args)?;
+        Ok(())
+    }
+
+    #[test]
+    fn read_policy_defaults_to_lease_reads() -> anyhow::Result<()> {
+        let read = ["bench", "--read-clients", "1", "--read-operations", "1"];
+        let args = Args::try_parse_from(read)?;
+        validate(&args)?;
+        assert!(args.read_policy.is_none());
+        let args = Args::try_parse_from(read.iter().copied().chain(["--read-policy", "read-index"]))?;
+        validate(&args)?;
+        let policy = ReadPolicy::from(args.read_policy.unwrap_or_default());
+        assert_eq!(ReadPolicy::ReadIndex, policy);
+        Ok(())
+    }
+
+    #[test]
+    fn follower_reads_require_a_query_on_a_follower() -> anyhow::Result<()> {
+        let read = ["bench", "--read-clients", "1", "--read-operations", "1"];
+        let cases = [
+            (vec!["--read-on-follower", "1"], "read-on-follower requires read-query"),
+            (
+                vec!["--read-on-follower", "0", "--read-query"],
+                "read-on-follower must name a follower, 1..members",
+            ),
+            (
+                vec!["--read-on-follower", "3", "--read-query"],
+                "read-on-follower must name a follower, 1..members",
+            ),
+        ];
+        for (flags, expected) in cases {
+            let args = Args::try_parse_from(read.iter().copied().chain(flags))?;
+            let error = validate(&args).expect_err("the reader must be a follower that queries");
+            assert_eq!(expected, error.to_string());
+        }
+        let follower = ["--read-on-follower", "2", "--read-query"];
+        let args = Args::try_parse_from(read.iter().copied().chain(follower))?;
+        validate(&args)?;
+        Ok(())
+    }
+
+    #[test]
+    fn leader_changes_need_readers_followers_and_single_writes() -> anyhow::Result<()> {
+        let transfer = ["bench", "--transfer-leader-after-ms", "100"];
+        let read = ["--read-clients", "1", "--read-operations", "1"];
+        let cases = [
+            (vec![], "transfer-leader-after-ms requires read-clients"),
+            (
+                vec!["-m", "1"],
+                "transfer-leader-after-ms requires more than one member",
+            ),
+            (vec!["-b", "2"], "transfer-leader-after-ms requires batch 1"),
+            (
+                vec!["--read-query", "--read-on-follower", "1"],
+                "transfer-leader-after-ms cannot read on a follower",
+            ),
+        ];
+        for (flags, expected) in cases {
+            let reads = if flags.is_empty() { &[][..] } else { &read[..] };
+            let args = Args::try_parse_from(transfer.iter().chain(reads).copied().chain(flags))?;
+            let error = validate(&args).expect_err("the leader change needs its preconditions");
+            assert_eq!(expected, error.to_string());
+        }
+        let args = Args::try_parse_from(transfer.iter().chain(&read).copied())?;
+        validate(&args)?;
+        Ok(())
+    }
+
+    #[test]
     fn read_mode_flags_require_read_clients() -> anyhow::Result<()> {
         let cases = [
             ("--read-await-ready", "read-await-ready requires read-clients"),
+            ("--read-query", "read-query requires read-clients"),
+            ("--read-relaxed", "read-relaxed requires read-query"),
             ("--allow-read-errors", "allow-read-errors requires read-clients"),
+            ("--read-policy=read-index", "read-policy requires read-clients"),
         ];
         for (flag, expected) in cases {
             let args = Args::try_parse_from(["bench", flag])?;
