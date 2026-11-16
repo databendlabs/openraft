@@ -15,10 +15,10 @@ use crate::core::notification::Notification;
 use crate::engine::TargetProgress;
 use crate::progress::stream_id::StreamId;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::CancelHandleOf;
 use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::MpscSenderOf;
-use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::WatchSenderOf;
 
 /// Handle for a single heartbeat worker task.
@@ -31,10 +31,8 @@ where C: RaftTypeConfig
     #[allow(dead_code)]
     stream_id: StreamId,
 
-    /// Channel to signal shutdown to the worker.
-    ///
-    /// When this sender is dropped, the worker's receiver will detect it and shutdown.
-    _shutdown_tx: OneshotSenderOf<C, ()>,
+    /// Dropping this handle cancels the worker during any await.
+    _cancel: CancelHandleOf<C>,
 
     /// Join handle for the worker task.
     _join_handle: JoinHandleOf<C, ()>,
@@ -112,14 +110,13 @@ where C: RaftTypeConfig
 
                 let span = tracing::span!(parent: &Span::current(), Level::DEBUG, "heartbeat", id=display(&self.id), target=display(&prog.target));
 
-                let (tx_shutdown, rx_shutdown) = C::oneshot();
-
-                let worker_handle = C::spawn(worker.run(rx_shutdown).instrument(span));
+                let (cancel, future) = worker.into_cancellable();
+                let worker_handle = C::spawn(future.instrument(span));
 
                 WorkerHandle {
                     event_tx: tx,
                     stream_id: prog.progress.data.stream_id,
-                    _shutdown_tx: tx_shutdown,
+                    _cancel: cancel,
                     _join_handle: worker_handle,
                 }
             };

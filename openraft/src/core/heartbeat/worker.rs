@@ -1,12 +1,13 @@
 use std::fmt;
+use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
 use futures_util::StreamExt;
 
 use crate::Config;
+use crate::OptionalSend;
 use crate::RaftTypeConfig;
-use crate::async_runtime::Select2;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::core::heartbeat::errors::RaftCoreClosed;
 use crate::core::heartbeat::errors::Stopped;
@@ -21,9 +22,9 @@ use crate::raft::AppendResult;
 use crate::replication::Progress;
 use crate::replication::response::ReplicationResult;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::CancelHandleOf;
 use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::MpscSenderOf;
-use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::async_runtime::mpsc::MpscSender;
 
@@ -74,22 +75,25 @@ where
     C: RaftTypeConfig,
     N: NetStreamAppend<C>,
 {
-    pub(crate) async fn run(self, rx_shutdown: OneshotReceiverOf<C, ()>) {
-        let res = self.do_run(rx_shutdown).await;
-        tracing::info!("HeartbeatWorker finished with result: {:?}", res);
+    pub(crate) fn into_cancellable(self) -> (CancelHandleOf<C>, impl Future<Output = ()> + OptionalSend) {
+        let (cancel, future) = C::cancellable(self.do_run());
+        let task = async move {
+            let res = match future.await {
+                Some(res) => res,
+                None => Err(Stopped::ReceivedShutdown),
+            };
+            tracing::info!("HeartbeatWorker finished with result: {:?}", res);
+        };
+        (cancel, task)
     }
 
-    pub(crate) async fn do_run(mut self, mut rx_shutdown: OneshotReceiverOf<C, ()>) -> Result<(), Stopped> {
+    pub(crate) async fn do_run(mut self) -> Result<(), Stopped> {
         loop {
             tracing::debug!("{} is waiting for a new heartbeat event.", self);
 
-            let selected = C::select2(&mut rx_shutdown, self.rx.changed()).await;
-            match selected {
-                Select2::First(_) => {
-                    tracing::info!("{} is shutdown.", self);
-                    return Err(Stopped::ReceivedShutdown);
-                }
-                Select2::Second(_) => {}
+            let changed = self.rx.changed().await;
+            if changed.is_err() {
+                return Err(Stopped::ReceivedShutdown);
             }
 
             let heartbeat: Option<HeartbeatEvent<C>> = self.rx.borrow_watched().clone();
@@ -225,115 +229,4 @@ where
 }
 
 #[cfg(test)]
-mod tests {
-    use std::sync::Arc;
-    use std::sync::atomic::AtomicBool;
-    use std::sync::atomic::Ordering;
-    use std::task::Poll;
-
-    use futures_util::Stream;
-    use futures_util::StreamExt;
-
-    use super::HeartbeatWorker;
-    use crate::Config;
-    use crate::OptionalSend;
-    use crate::async_runtime::MpscReceiver;
-    use crate::async_runtime::watch::WatchSender;
-    use crate::base::BoxFuture;
-    use crate::base::BoxStream;
-    use crate::core::heartbeat::event::HeartbeatEvent;
-    use crate::core::notification::Notification;
-    use crate::engine::testing::UTConfig;
-    use crate::engine::testing::UTLeaderId;
-    use crate::error::RPCError;
-    use crate::impls::Vote;
-    use crate::network::NetStreamAppend;
-    use crate::network::RPCOption;
-    use crate::progress::stream_id::StreamId;
-    use crate::proposer::SendStamp;
-    use crate::raft::AppendEntriesRequest;
-    use crate::raft::AppendResult;
-    use crate::type_config::TypeConfigExt;
-    use crate::vote::raft_vote::RaftVoteExt;
-
-    type C = UTConfig;
-
-    /// A network whose response stream yields one success per request and ends when the input
-    /// ends.
-    ///
-    /// `drained` is set when the response stream observes the end of the input.
-    struct OneResponsePerRequestNetwork {
-        drained: Arc<AtomicBool>,
-    }
-
-    impl NetStreamAppend<C> for OneResponsePerRequestNetwork {
-        fn stream_append<'s, S>(
-            &'s mut self,
-            mut input: S,
-            _option: RPCOption,
-        ) -> BoxFuture<'s, Result<BoxStream<'s, Result<AppendResult<C>, RPCError<C>>>, RPCError<C>>>
-        where
-            S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + Unpin + 'static,
-        {
-            let drained = self.drained.clone();
-            let output = futures_util::stream::poll_fn(move |cx| match input.poll_next_unpin(cx) {
-                Poll::Pending => Poll::Pending,
-                Poll::Ready(Some(_request)) => Poll::Ready(Some(Ok(Ok(None)))),
-                Poll::Ready(None) => {
-                    drained.store(true, Ordering::Relaxed);
-                    Poll::Ready(None)
-                }
-            });
-
-            let output: BoxStream<'s, _> = Box::pin(output);
-            Box::pin(async move { Ok(output) })
-        }
-    }
-
-    #[test]
-    fn test_heartbeat_polls_response_stream_to_end() {
-        C::run(async {
-            let drained = Arc::new(AtomicBool::new(false));
-            let (tx_notification, mut rx_notification) = C::mpsc(16);
-            let (_tx_shutdown, rx_shutdown) = C::oneshot();
-
-            tracing::info!(target = 2, "--- spawn a heartbeat worker");
-            let tx_event = {
-                let (tx_event, rx_event) = C::watch_channel(None);
-
-                let worker = HeartbeatWorker::<C, _> {
-                    id: 1,
-                    leader_vote: Vote::<UTLeaderId>::new(1, 1).to_committed(),
-                    stream_id: StreamId::new(1),
-                    rx: rx_event,
-                    network: OneResponsePerRequestNetwork {
-                        drained: drained.clone(),
-                    },
-                    target: 2,
-                    node: (),
-                    config: Arc::new(Config::default()),
-                    tx_notification,
-                };
-                C::spawn(worker.do_run(rx_shutdown));
-
-                tx_event
-            };
-
-            tracing::info!("--- send one heartbeat and wait for the worker to report its progress");
-            {
-                let heartbeat = HeartbeatEvent {
-                    time: SendStamp::new(C::now(), 1),
-                    matching: None,
-                    cluster_committed: None,
-                };
-                tx_event.send(Some(heartbeat)).unwrap();
-
-                let notification = rx_notification.recv().await.unwrap();
-                assert!(matches!(notification, Notification::HeartbeatProgress { .. }));
-            }
-
-            tracing::info!("--- the response stream must be drained before the progress is reported");
-            assert!(drained.load(Ordering::Relaxed));
-        });
-    }
-}
+mod worker_test;
