@@ -19,6 +19,7 @@ use crate::fixtures::ut_harness;
 async fn client_write_ff_with_progress_responder() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
 

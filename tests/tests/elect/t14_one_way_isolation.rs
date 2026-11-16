@@ -161,11 +161,13 @@ async fn missing_inbound_heartbeats_start_election() -> Result<()> {
 
     tracing::info!(log_index, "--- node 1 misses heartbeats and starts a direct election");
     {
+        // Wait on the flushed `vote` rather than `current_term`: `current_term` follows the vote in
+        // memory, which moves before the self-vote is flushed.
         let campaigned = router
             .wait_with_timeout(&1, WAIT_TIMEOUT)
             .metrics(
-                |metrics| metrics.current_term > before.current_term,
-                "node 1 advances its term after its leader lease expires",
+                |metrics| metrics.vote != before.vote,
+                "node 1 persists a new vote after its leader lease expires",
             )
             .await?;
 

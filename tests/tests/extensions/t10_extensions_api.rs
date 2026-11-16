@@ -31,6 +31,7 @@ impl Counter {
 async fn test_extensions_with_counter() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;

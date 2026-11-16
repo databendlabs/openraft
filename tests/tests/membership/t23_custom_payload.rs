@@ -430,6 +430,7 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
     let config = Arc::new(
         Config {
             enable_tick: false,
+            enable_elect: false,
             enable_heartbeat: false,
             ..Default::default()
         }

@@ -111,6 +111,7 @@ async fn batch_removal_preserves_target_through_joint_consensus() -> anyhow::Res
         let (router, log_index) = {
             let config = Config {
                 enable_tick: false,
+                enable_elect: false,
                 ..Default::default()
             };
             let mut router = RaftRouter::new(config)?;
@@ -159,6 +160,7 @@ async fn change_with_new_learner_blocking() -> anyhow::Result<()> {
     let config = Config {
         replication_lag_threshold: lag_threshold,
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;

@@ -26,6 +26,7 @@ use crate::fixtures::ut_harness;
 async fn partial_success_updates_clock_progress() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
 

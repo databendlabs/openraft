@@ -1,4 +1,5 @@
 use std::fmt;
+use std::time::Duration;
 
 use display_more::DisplayOptionExt;
 
@@ -37,6 +38,16 @@ where I: Instant
         let lease_expired = self.lease_expires_at.is_none_or(|t| now > t);
         let retry_allowed = self.pre_vote_retry_at.is_none_or(|t| now >= t);
         lease_expired && retry_allowed
+    }
+
+    /// Return the earliest instant at which [`Self::is_due()`] holds, or `None` when it holds at
+    /// every instant.
+    ///
+    /// The lease wait ends one nanosecond after `lease_expires_at`, the smallest step past its
+    /// strict boundary.
+    pub(crate) fn earliest_due_at(&self) -> Option<I> {
+        let after_lease = self.lease_expires_at.map(|t| t + Duration::from_nanos(1));
+        after_lease.max(self.pre_vote_retry_at)
     }
 }
 
@@ -115,5 +126,35 @@ mod tests {
         };
         assert!(!retry_first.is_due(late), "the lease has not expired yet");
         assert!(retry_first.is_due(late + NANO));
+    }
+
+    #[test]
+    fn test_earliest_due_at_is_the_first_due_instant() {
+        let t0 = Instant::now();
+        let early = t0 + Duration::from_millis(10);
+        let late = t0 + Duration::from_millis(20);
+
+        let no_wait = ElectionDeadline::<Instant> {
+            lease_expires_at: None,
+            pre_vote_retry_at: None,
+        };
+        assert_eq!(None, no_wait.earliest_due_at());
+
+        let cases = [
+            (Some(early), None, early + NANO),
+            (None, Some(early), early),
+            (Some(early), Some(late), late),
+            (Some(late), Some(early), late + NANO),
+        ];
+
+        for (lease_expires_at, pre_vote_retry_at, want) in cases {
+            let deadline = ElectionDeadline {
+                lease_expires_at,
+                pre_vote_retry_at,
+            };
+            assert_eq!(Some(want), deadline.earliest_due_at(), "{deadline:?}");
+            assert!(deadline.is_due(want), "{deadline:?}");
+            assert!(!deadline.is_due(want - NANO), "{deadline:?}");
+        }
     }
 }

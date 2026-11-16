@@ -37,6 +37,7 @@ async fn relaxed_request_without_opt_in_waits_for_committed() -> Result<()> {
         let config = Config {
             enable_relaxed_read: enabled,
             enable_tick: false,
+            enable_elect: false,
             ..Default::default()
         };
         let mut router = RaftRouter::new(config)?;
@@ -93,6 +94,7 @@ async fn relaxed_read_observes_a_completed_write() -> Result<()> {
     let config = Config {
         enable_relaxed_read: Some(true),
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;
@@ -124,6 +126,7 @@ async fn relaxed_reads_skip_the_committed_tail() -> Result<()> {
             enable_relaxed_read: Some(true),
             enable_local_lease_read: Some(local),
             enable_tick: false,
+            enable_elect: false,
             ..Default::default()
         };
         let mut router = RaftRouter::new(config)?;
@@ -330,6 +333,7 @@ async fn relaxed_read_after_step_down_sees_only_what_the_next_leader_applied() -
         enable_relaxed_read: Some(true),
         enable_local_lease_read: Some(true),
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;
