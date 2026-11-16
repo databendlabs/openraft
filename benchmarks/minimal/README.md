@@ -6,6 +6,11 @@ Openraft itself.
 The benchmark comes with an in-memory log store, a state machine with no data,
 and an in-process network that uses function calls to simulate RPC.
 
+The network replicates like a streaming transport: it passes the leader's stream of
+AppendEntries requests to the follower's `Raft::stream_append()`, so several requests are in
+flight at once. Before, the bench used the default `stream_append_sequential()`, which sends one
+request per round trip; the tables below say which ones were measured that way.
+
 
 ## Benchmark result
 
@@ -38,15 +43,17 @@ The benchmark is conducted with the following settings:
 - A cluster of 3 nodes in a single process on a Mac M1-Max laptop.
 - Request: empty
 - Response: empty
+- Sequential replication path (`stream_append_sequential()`), which the bench used then.
 
 ### Lease reads
 
 These runs compare `enable_local_lease_read: false` (in-core) with `true` (local) on an Apple
 M3 Max: three voters in one process, in-memory storage, an in-process network, one client worker
 thread, and 16 server threads. Snapshots and runtime statistics were disabled; heartbeats and
-elections stayed enabled. Each run did 1,024 warmup writes, then 1,000,000 reads with one reader
-or 10,000,000 reads with 64, and included the apply wait (`--read-await-ready`). The table shows
-medians of five runs per mode, in alternating order.
+elections stayed enabled. Replication used the sequential path, which the bench used then.
+Each run did 1,024 warmup writes, then 1,000,000 reads with one reader or 10,000,000 reads with
+64, and included the apply wait (`--read-await-ready`). The table shows medians of five runs per
+mode, in alternating order.
 
 | readers | in-core reads/s | local reads/s | gain  |
 | --:     | --:             | --:           | --:   |
@@ -95,28 +102,29 @@ blocking-pool thread, so they keep sub-millisecond accuracy.
 
 Setup: Apple M3 Max, macOS 14.5, three voters in one process, in-memory storage, no network
 delay, one client worker thread, 16 server threads, 1,024 warmup writes, default `Config` of this
-benchmark. 256 clients did 30,000 writes per run, one client did 2,000. The table shows medians
-of five runs (`--runs 5`), taken while other processes kept the load average between 8 and 11.
-Memory and context switches come from `/usr/bin/time -l` for the whole process.
+benchmark, pipelined replication path. 256 clients did 30,000 writes per run, one client did
+2,000. The table shows medians of five runs (`--runs 5`), taken while other processes kept the
+load average between 10 and 12. Memory and context switches come from `/usr/bin/time -l` for
+the whole process.
 
 | clients | read µs | I/O µs | entry µs | writes/s  | p50 µs | p99 µs | apply cmds | entries/apply p50, p90 | max RSS MB | invol. ctx switches |
 | --:     | --:     | --:    | --:      | --:       | --:    | --:    | --:        | --:                    | --:        | --:                 |
-|     256 |       0 |      0 |        0 | 1,430,518 |    171 |    340 |      1,327 |                 1, 104 |       42.4 |               8,608 |
-|     256 |     500 |      0 |        0 |   191,587 |  1,339 |  1,451 |      1,409 |                 1, 121 |       41.9 |              23,789 |
-|     256 |       0 |    500 |        0 |   191,568 |  1,333 |  1,529 |      1,446 |                 1, 109 |       42.6 |              24,516 |
-|     256 |     500 |    500 |        0 |   128,412 |  1,988 |  2,545 |      1,470 |                 1, 110 |       42.6 |              38,520 |
-|     256 |   1,000 |      0 |        0 |    98,147 |  2,609 |  2,951 |      1,425 |                 1, 108 |       42.7 |              25,860 |
-|     256 |       0 |  1,000 |        0 |    99,169 |  2,589 |  2,681 |      1,480 |                 1, 111 |       42.7 |              25,570 |
-|     256 |       0 |      0 |       10 |    78,528 |  3,299 |  3,614 |      1,480 |                 1, 124 |       42.1 |              23,685 |
-|     256 |       0 |    500 |       10 |    57,348 |  4,542 |  6,407 |      1,492 |                 1, 110 |       42.6 |              24,710 |
-|       1 |       0 |      0 |        0 |    28,712 |     32 |     60 |      3,025 |                   1, 1 |       37.0 |              18,655 |
-|       1 |     500 |      0 |        0 |     1,448 |    691 |    776 |      3,025 |                   1, 1 |       37.7 |              54,079 |
-|       1 |       0 |    500 |        0 |     1,449 |    691 |    729 |      3,025 |                   1, 1 |       37.6 |              53,745 |
-|       1 |     500 |    500 |        0 |       740 |  1,346 |  1,681 |      3,025 |                   1, 1 |       37.8 |              88,231 |
-|       1 |   1,000 |      0 |        0 |       751 |  1,324 |  1,596 |      3,025 |                   1, 1 |       38.0 |              56,455 |
-|       1 |       0 |  1,000 |        0 |       745 |  1,325 |  1,800 |      3,025 |                   1, 1 |       38.0 |              55,766 |
-|       1 |       0 |      0 |       10 |    14,236 |     67 |    112 |      3,025 |                   1, 1 |       37.2 |              51,127 |
-|       1 |       0 |    500 |       10 |     1,408 |    705 |    823 |      3,025 |                   1, 1 |       38.0 |              53,894 |
+|     256 |       0 |      0 |        0 | 1,313,862 |    168 |  1,121 |      1,344 |                 1, 101 |       43.6 |              10,083 |
+|     256 |     500 |      0 |        0 |   191,057 |  1,327 |  1,471 |      1,383 |                 1, 110 |       42.8 |              24,237 |
+|     256 |       0 |    500 |        0 |   178,195 |  1,339 |  2,163 |      1,450 |                 1, 116 |       44.0 |              25,960 |
+|     256 |     500 |    500 |        0 |   128,576 |  1,974 |  2,666 |      1,476 |                 1, 108 |       42.8 |              40,322 |
+|     256 |   1,000 |      0 |        0 |    98,932 |  2,594 |  2,980 |      1,406 |                 1, 110 |       42.8 |              25,705 |
+|     256 |       0 |  1,000 |        0 |    98,872 |  2,586 |  3,406 |      1,458 |                 1, 111 |       43.1 |              26,279 |
+|     256 |       0 |      0 |       10 |    78,766 |  3,290 |  3,496 |      1,449 |                 1, 110 |       42.3 |              25,037 |
+|     256 |       0 |    500 |       10 |    56,564 |  4,549 |  6,806 |      1,442 |                 1, 111 |       43.3 |              25,949 |
+|       1 |       0 |      0 |        0 |    28,174 |     33 |     60 |      3,025 |                   1, 1 |       37.2 |              18,715 |
+|       1 |     500 |      0 |        0 |     1,444 |    691 |    760 |      3,025 |                   1, 1 |       37.8 |              55,564 |
+|       1 |       0 |    500 |        0 |     1,451 |    686 |    740 |      3,025 |                   1, 1 |       37.8 |              54,510 |
+|       1 |     500 |    500 |        0 |       746 |  1,339 |  1,447 |      3,025 |                   1, 1 |       37.8 |              90,217 |
+|       1 |   1,000 |      0 |        0 |       753 |  1,322 |  1,612 |      3,025 |                   1, 1 |       37.9 |              59,257 |
+|       1 |       0 |  1,000 |        0 |       748 |  1,324 |  1,555 |      3,025 |                   1, 1 |       38.0 |              60,579 |
+|       1 |       0 |      0 |       10 |    15,992 |     60 |    103 |      3,025 |                   1, 1 |       37.4 |              51,866 |
+|       1 |       0 |    500 |       10 |     1,427 |    699 |    796 |      3,025 |                   1, 1 |       37.8 |              55,541 |
 
 "apply cmds" counts the `SaveCommittedAndApply` commands the leader's RaftCore sends, warmup
 included. "entries/apply" is the number of entries the state machine receives in one `apply()`
@@ -131,20 +139,23 @@ that arrive during the call stay queued and become the batch after that. Under l
 therefore costs the larger of its read and its I/O delay, and each delay is paid once for all the
 entries committed during the previous batch.
 
-So the read no longer adds to the I/O: 500 µs of read plus 500 µs of I/O gives 128,412 writes/s
-with 256 clients, against 98,147 to 99,169 for a single 1,000 µs delay. Full overlap would reach
-the 191,568 to 191,587 writes/s of a single 500 µs delay. Part of the difference is the first
-batch after every idle period, whose read cannot overlap anything. With one client nothing can
+So the read no longer adds to the I/O: 500 µs of read plus 500 µs of I/O gives 128,576 writes/s
+with 256 clients, against 98,872 to 98,932 for a single 1,000 µs delay. Full overlap would reach
+the 191,057 writes/s of a single 500 µs read delay. Part of the difference is the first batch
+after every idle period, whose read cannot overlap anything. With one client nothing can
 overlap: only one write is in flight, so there is never a next batch to read ahead.
+
+The 500 µs I/O row has the same p50 as the 500 µs read row but a lower median, 178,195
+writes/s, because two of its five runs fell to 136,565 and 158,440 writes/s.
 
 A cost per entry does not shrink when batches merge: an `apply()` call of n entries pays 10·n µs
 in the "entry µs" rows, so the worker cannot apply more than 100,000 entries/s, whatever the
-batch size. 256 clients reach 78,528 writes/s with that delay alone, below the 191,568 writes/s
-of a 500 µs per-call I/O delay. With both, a call of 110 entries, the p90, costs 1.6 ms, and
-throughput falls to 57,348 writes/s. Conclusions drawn from the per-call rows, such as how much
+batch size. 256 clients reach 78,766 writes/s with that delay alone, below the 178,195 writes/s
+of a 500 µs per-call I/O delay. With both, a call of 111 entries, the p90, costs 1.6 ms, and
+throughput falls to 56,564 writes/s. Conclusions drawn from the per-call rows, such as how much
 merging saves, hold for a state machine only to the extent that its cost is per call. With one
-client, the 10 µs entry delay raises p50 from 32 to 67 µs, because handing a sleep to a
-blocking-pool thread costs about 25 µs more than the sleep itself.
+client, the 10 µs entry delay raises p50 from 33 to 60 µs, because handing a sleep to a
+blocking-pool thread costs about 17 µs more than the sleep itself.
 
 The medians vary between runs of the whole grid. In two runs on the same machine, the
 256-client medians with delays differed by up to 23% in writes/s and up to 34% in p50 latency.
@@ -154,7 +165,7 @@ revisions" below.
 
 What these numbers do not show:
 
-- Memory cost of large batches. Max RSS stays at 42 to 43 MB in every 256-client run; the
+- Memory cost of large batches. Max RSS stays at 42 to 44 MB in every 256-client run; the
   entries of the two batches in flight are too small to show up against the fixed cost of three
   nodes.
 - Task switching inside the runtime. The context-switch counts are whole-process OS counts, and
@@ -168,6 +179,54 @@ To run one row by hand:
 cargo build --release --bin bench
 /usr/bin/time -l target/release/bench --latency -c 256 -n 30k \
   --apply-read-delay-us 500 --apply-io-delay-us 500
+```
+
+### Replication delays
+
+These runs measure whether the leader's log read for replication is ever on the critical path,
+by delaying it together with the network. `--network-delay-us` delays every AppendEntries
+request and every response. It sleeps on the Tokio timer, which rounds a deadline up to the
+next 1 ms tick, so a 500 µs delay takes 0.5 to 1.5 ms each way. `--replication-read-delay-us`
+delays every `limited_get_log_entries()` call, which only replication issues; the apply path
+reads through `entries_stream()` and is not delayed. The read delay occupies a blocking-pool
+thread, so it keeps sub-millisecond accuracy.
+
+Setup: as in "Apply-path delays", with 256 clients doing 30,000 writes per run. The table shows
+medians of five rounds, each running every row once, at a load average of 10 to 11.
+
+| network µs | repl. read µs | writes/s  | p50 µs | p99 µs |
+| --:        | --:           | --:       | --:    | --:    |
+|          0 |             0 | 1,267,278 |    168 |  1,259 |
+|        500 |             0 |    69,303 |  3,864 |  6,253 |
+|          0 |           500 |   216,859 |  1,250 |  1,443 |
+|        500 |           500 |    57,440 |  4,005 |  7,644 |
+
+- With only the read delayed, throughput falls to 216,859 writes/s, close to the 191,057
+  writes/s of a 500 µs apply read in the "Apply-path delays" table. The read is the only cost,
+  and the reads for one follower run one at a time, so each read's batch sets the throughput.
+- With the network delayed as well, the read adds 141 µs to p50, less than the 500 µs of one
+  read, and throughput keeps 83% of the network-only 69,303 writes/s. The leader reads the log
+  for the next request while earlier requests are on the wire, so most of the read is hidden
+  behind the round trip.
+
+So the leader does not serialize replication reads behind the network, the way the
+state-machine worker serialized its log read behind `apply()` before it read ahead (#2320). A
+worker-style read-ahead is not needed on the replication path.
+
+What these numbers do not show:
+
+- Network bandwidth. The delay is the same for an entry-less request and one of 1,024 entries.
+- Network latency finer than the timer. Every delayed hop ends on a 1 ms timer tick.
+- A remote follower. Both followers share the leader's process and runtime.
+- The 256-client run without delays takes about 20 ms; its runs ranged from 0.7 to 1.46 million
+  writes/s, so it only serves as a control.
+
+To run one row by hand:
+
+```sh
+cargo build --release --bin bench
+target/release/bench --latency -c 256 -n 30k \
+  --network-delay-us 500 --replication-read-delay-us 500
 ```
 
 
@@ -350,6 +409,8 @@ References for the optimization and its correctness requirements:
 --transfer-leader-after-ms Move leadership from node 0 to node 1 after this delay; clients follow it
 --apply-read-delay-us Delay of the log read that loads each apply batch [default: 0]
 --apply-io-delay-us   State-machine I/O delay of each apply batch [default: 0]
+--network-delay-us    One-way delay of every AppendEntries request and response [default: 0]
+--replication-read-delay-us Delay of every replication log read [default: 0]
 --apply-entry-delay-us State-machine delay of each applied entry [default: 0]
 ```
 

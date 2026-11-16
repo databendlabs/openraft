@@ -1,9 +1,10 @@
 # Relaxed read benchmark results
 
-These are the results of every grid of `scripts/relaxed_reads.py`, run on 2026-11-15. A grid is
-a set of workloads, each run in several modes. The grids measure what relaxed reads gain, and
-what the follower apply bound costs. Both terms are defined below. How to run a grid is described
-in the [README](README.md#comparing-core-local-and-relaxed-reads).
+These are the results of every grid of `scripts/relaxed_reads.py`, run on 2026-11-15, through
+the sequential replication path (`stream_append_sequential()`), which the bench used then. A
+grid is a set of workloads, each run in several modes. The grids measure what relaxed reads gain,
+and what the follower apply bound costs. Both terms are defined below. How to run a grid is
+described in the [README](README.md#comparing-core-local-and-relaxed-reads).
 
 ## What is compared
 
