@@ -72,9 +72,9 @@ async fn build_then_run() -> Result<()> {
         assert_ne!(ServerState::Leader, server_state);
     }
 
-    tracing::info!("--- run with ticks disabled; the queued state machine request executes");
+    tracing::info!("--- run with elections disabled; the queued state machine request executes");
     {
-        node.runtime_config().tick(false);
+        node.runtime_config().elect(false);
         node.run();
         let worker_request = node.with_state_machine(|_sm| Box::pin(async {}));
         let worker_result = TypeConfig::timeout(Duration::from_secs(2), worker_request).await?;
@@ -86,9 +86,9 @@ async fn build_then_run() -> Result<()> {
         assert_ne!(ServerState::Leader, server_state);
     }
 
-    tracing::info!("--- enable ticks; the recovered single voter can now become leader");
+    tracing::info!("--- enable elections; the recovered single voter can now become leader");
     {
-        node.runtime_config().tick(true);
+        node.runtime_config().elect(true);
         node.wait(timeout()).state(ServerState::Leader, "started by run").await?;
     }
 

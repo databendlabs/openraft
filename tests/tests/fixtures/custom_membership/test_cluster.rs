@@ -45,6 +45,7 @@ pub type TestRaft<C> = Raft<C, StateMachine<C>>;
 pub fn cluster_config(snapshot_policy: SnapshotPolicy) -> Config {
     Config {
         enable_tick: false,
+        enable_elect: false,
         snapshot_policy,
         ..Default::default()
     }

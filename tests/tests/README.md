@@ -54,6 +54,7 @@ A test case is one async function that carries both attributes, returns
 async fn my_case() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;
@@ -73,7 +74,9 @@ async fn my_case() -> Result<()> {
 ```
 
 Turn off `enable_tick`, `enable_heartbeat`, or `enable_elect` in `Config` when
-a background timer would disturb what the case observes. Set the flag before
+a background timer would disturb what the case observes. `enable_tick` stops
+only the internal ticker: a follower still elects at its election timeout
+unless `enable_elect` is off too. Set the flag before
 creating the router, and use `Raft::runtime_config()` only when the case must
 flip it in the middle of a run.
 

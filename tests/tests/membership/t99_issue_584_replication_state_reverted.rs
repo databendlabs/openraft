@@ -16,6 +16,7 @@ async fn t99_issue_584_replication_state_reverted() -> Result<()> {
     let config = Config {
         max_in_snapshot_log_to_keep: 2000, // prevent snapshot
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;

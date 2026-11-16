@@ -357,6 +357,7 @@ async fn transfer_leader_to_promoted_learner_without_promotion_log_does_not_pani
     let config = Config {
         enable_heartbeat: false,
         enable_tick: false,
+        enable_elect: false,
         election_timeout_min: 100,
         election_timeout_max: 200,
         ..Default::default()

@@ -20,6 +20,7 @@ async fn install_snapshot_lower_vote() -> Result<()> {
     let config = Config {
         enable_heartbeat: false,
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
 

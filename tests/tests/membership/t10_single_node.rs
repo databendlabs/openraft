@@ -25,6 +25,7 @@ async fn single_node() -> Result<()> {
     // Setup test dependencies.
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;

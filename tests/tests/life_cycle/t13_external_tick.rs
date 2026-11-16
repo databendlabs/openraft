@@ -34,6 +34,7 @@ fn followers_acked_since(metrics: &RaftMetrics<TypeConfig>, since: InstantOf<Typ
 async fn external_tick_sends_due_heartbeat() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         heartbeat_interval: 500,
         election_timeout_min: 1000,
         election_timeout_max: 1001,
@@ -112,6 +113,12 @@ async fn external_tick_starts_election_after_timeout() -> Result<()> {
 
     tracing::info!(
         log_index,
+        "--- disable elections on node 2, so that node 1 is the only node to campaign"
+    );
+    router.get_raft_handle(&2)?.runtime_config().elect(false);
+
+    tracing::info!(
+        log_index,
         "--- a tick before the election timeout leaves node 1 a follower"
     );
     {
@@ -127,13 +134,13 @@ async fn external_tick_starts_election_after_timeout() -> Result<()> {
 
     tracing::info!(
         log_index,
-        "--- no heartbeat arrives, so node 1's lease expires; with election disabled a tick does not campaign"
+        "--- with elections disabled, node 1's lease expires with no heartbeat; neither its election timer nor a tick campaigns"
     );
     {
-        TypeConfig::sleep(Duration::from_millis(1100)).await;
         n1.runtime_config().elect(false);
-
         let before = election_rpcs(&router);
+
+        TypeConfig::sleep(Duration::from_millis(1100)).await;
         n1.trigger().tick().await?;
         TypeConfig::sleep(Duration::from_millis(100)).await;
 
@@ -165,6 +172,7 @@ async fn external_tick_starts_election_after_timeout() -> Result<()> {
 async fn external_tick_after_shutdown() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;

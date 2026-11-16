@@ -94,10 +94,10 @@ use crate::base::BoxStream;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::ClientResponderQueue;
+use crate::core::DeadlineNotifier;
 use crate::core::IoBroadcast;
 use crate::core::LeaseReadStatePublisher;
 use crate::core::MetricsChannels;
-use crate::core::PendingReadDeadlineNotifier;
 use crate::core::PendingReadQueue;
 use crate::core::RaftCore;
 use crate::core::SharedReplicateBatch;
@@ -628,6 +628,8 @@ where
                     (sm_cmd_tx, sm_cmd_rx),
                     sm_span,
                 );
+                let election_deadline_notifier =
+                    DeadlineNotifier::spawn(tx_notify.clone(), || Notification::ElectionDeadlineReached);
 
                 let core: RaftCore<C, N, LS, SM> = RaftCore {
                     id: id.clone(),
@@ -646,7 +648,10 @@ where
                     client_responders: ClientResponderQueue::with_capacity(INITIAL_QUEUE_CAPACITY),
 
                     pending_reads: PendingReadQueue::default(),
-                    pending_read_deadline_notifier: PendingReadDeadlineNotifier::spawn(tx_notify.clone()),
+                    pending_read_deadline_notifier: DeadlineNotifier::spawn(tx_notify.clone(), || {
+                        Notification::PendingReadDeadlineReached
+                    }),
+                    election_deadline_notifier,
                     replications: Default::default(),
 
                     heartbeat_handle: HeartbeatWorkersHandle::new(id.clone(), config.clone()),

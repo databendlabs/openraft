@@ -32,6 +32,7 @@ fn subtract(after: [u64; 6], before: [u64; 6]) -> [u64; 6] {
 async fn runtime_stats_log_stage_counts_batched_entries_per_entry() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;

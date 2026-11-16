@@ -27,6 +27,7 @@ async fn trigger_snapshot_twice_at_same_last_applied() -> anyhow::Result<()> {
     let config = Config {
         enable_heartbeat: false,
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
 

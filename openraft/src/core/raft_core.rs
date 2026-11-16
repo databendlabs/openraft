@@ -30,11 +30,11 @@ use crate::batch::Batch;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::ClientResponderQueue;
+use crate::core::DeadlineNotifier;
 use crate::core::IoBroadcast;
 use crate::core::LeaseReadStatePublisher;
 use crate::core::MetricsChannels;
 use crate::core::PendingRead;
-use crate::core::PendingReadDeadlineNotifier;
 use crate::core::PendingReadQueue;
 use crate::core::ServerState;
 use crate::core::SharedReplicateBatch;
@@ -235,7 +235,13 @@ where
     pub(crate) pending_reads: PendingReadQueue<C>,
 
     /// Wakes this core when a pending linearizable read reaches its deadline.
-    pub(crate) pending_read_deadline_notifier: PendingReadDeadlineNotifier<C>,
+    pub(crate) pending_read_deadline_notifier: DeadlineNotifier<C>,
+
+    /// Wakes this follower when its election may be due.
+    ///
+    /// Only [`Self::refresh_election_deadline`] sets its deadline, and only an eligible follower
+    /// with `enable_elect` on gets one. Every other election check stays on the ticker.
+    pub(crate) election_deadline_notifier: DeadlineNotifier<C>,
 
     /// A mapping of node IDs the replication state of the target node.
     pub(crate) replications: BTreeMap<C::NodeId, ReplicationHandle<C>>,
@@ -1379,6 +1385,11 @@ where
         loop {
             self.flush_metrics();
 
+            // Set the election deadline once per round, before the wait below, which is the only
+            // one that can last indefinitely. A command send that blocks inside a round only delays
+            // the wake-up, and an election started meanwhile runs its commands after that send.
+            self.refresh_election_deadline();
+
             tracing::debug!(
                 "RAFT_stats id={:<2} log_io: {}",
                 self.id,
@@ -2039,7 +2050,16 @@ where
                     );
                 }
             }
-            ExternalCommand::Tick => self.handle_tick("external-tick"),
+            ExternalCommand::Tick => {
+                self.handle_tick("external-tick");
+
+                // A follower's election has its own deadline notifier, so a manual tick need not
+                // check it. The check is kept for backward compatibility: `Trigger::tick()` has
+                // always started a due election in every role, within the same call.
+                // TODO: remove this call in a later release and leave a follower's election to the
+                // deadline notifier.
+                self.handle_election_deadline();
+            }
         }
     }
 
@@ -2158,21 +2178,28 @@ where
 
             Notification::StateMachine { command_result } => self.handle_state_machine_result(command_result)?,
             Notification::PendingReadDeadlineReached => self.process_pending_reads(),
+            Notification::ElectionDeadlineReached => self.handle_election_deadline(),
         };
         Ok(())
     }
 
-    /// Handle [`Notification::Tick`] and [`ExternalCommand::Tick`]: check the election timer and,
-    /// if leading, the heartbeat timer.
+    /// Handle [`Notification::Tick`] and [`ExternalCommand::Tick`]: check the election timer of a
+    /// node that is not a follower and, if leading, the heartbeat timer.
     ///
-    /// `emitter` names the tick source in log messages.
+    /// A follower's election is left to [`Self::handle_election_deadline`]. `emitter` names the
+    /// tick source in log messages.
     fn handle_tick(&mut self, emitter: impl fmt::Display) {
         // check every timer
 
         let now = C::now();
         tracing::debug!("received {}, now: {}", emitter, now.display());
 
-        self.handle_tick_election();
+        // The deadline notifier wakes only a follower. The tick still checks the election of a
+        // candidate that has to retry, a campaigner that is a learner in the effective membership,
+        // and a leader whose leadership transfer timed out.
+        if self.engine.state.server_state != ServerState::Follower {
+            self.elect_if_due();
+        }
 
         // Leader send heartbeat
         let heartbeat_at = self.engine.leader_ref().map(|l| l.next_heartbeat);
@@ -2188,6 +2215,61 @@ where
                 l.next_heartbeat = C::now() + Duration::from_millis(self.config.heartbeat_interval);
             }
         }
+    }
+
+    /// Start a follower's election if one is due.
+    ///
+    /// It handles [`Notification::ElectionDeadlineReached`], and runs after [`Self::handle_tick`]
+    /// for [`ExternalCommand::Tick`], which checks the election in every role. The notification may
+    /// have been sent for a deadline that has since moved, or before this node left follower state
+    /// or elections were disabled; [`Self::elect_if_due`] rechecks every guard.
+    fn handle_election_deadline(&mut self) {
+        tracing::debug!("check follower election, now: {}", C::now().display());
+
+        if self.engine.state.server_state != ServerState::Follower {
+            tracing::debug!("skip follower election check, not a follower");
+            return;
+        }
+
+        self.elect_if_due();
+    }
+
+    /// Set the election deadline to the instant at which this follower's election may be due.
+    ///
+    /// A heartbeat that extends the lease moves the deadline later before it is reached, so no
+    /// [`Notification::ElectionDeadlineReached`] is sent while the leader is alive.
+    fn refresh_election_deadline(&mut self) {
+        let wake_at = self.follower_election_wake_at();
+        if self.election_deadline_notifier.set_deadline(wake_at) {
+            tracing::debug!("election deadline: {}", wake_at.as_ref().map(|t| t.display()).display());
+        }
+    }
+
+    /// Return when an eligible follower's election may be due, or `None` if this node is not one.
+    ///
+    /// Only a follower that may campaign, with `enable_elect` on, is eligible. A single campaigner
+    /// whose election is already in progress is not eligible either. Turning `enable_elect` back on
+    /// does not wake the core: the deadline returns at the next refresh, which the next tick or
+    /// message triggers.
+    fn follower_election_wake_at(&self) -> Option<InstantOf<C>> {
+        if self.engine.state.server_state != ServerState::Follower {
+            return None;
+        }
+
+        if !self.runtime_config.enable_elect.load(Ordering::Relaxed) {
+            return None;
+        }
+
+        if !self.engine.state.membership_state.is_campaigner_in_effective_or_committed(&self.id) {
+            return None;
+        }
+
+        let is_single_campaigner = self.engine.is_single_campaigner();
+        let pre_vote = self.runtime_config.enable_pre_vote.load(Ordering::Relaxed) && !is_single_campaigner;
+        let deadline = self.engine.election_deadline(pre_vote)?;
+
+        let wake_at = deadline.earliest_due_at().unwrap_or_else(C::now);
+        Some(wake_at)
     }
 
     /// Handle [`Notification::LocalIO`]: a local log or vote write reached the disk.
@@ -2286,11 +2368,15 @@ where
         self.engine.output.push_command(Command::ReplicateCommitted { committed });
     }
 
+    /// Start a Pre-Vote or a real election if this node may campaign and its election is due.
+    ///
+    /// [`Self::handle_tick`] calls it for a node that is not a follower, and
+    /// [`Self::handle_election_deadline`] for a follower.
     #[tracing::instrument(level = "debug", skip_all)]
-    fn handle_tick_election(&mut self) {
+    fn elect_if_due(&mut self) {
         let now = C::now();
 
-        tracing::debug!("try to trigger election, now: {}", now.display());
+        tracing::debug!("check whether an election is due, now: {}", now.display());
 
         if self.engine.state.server_state == ServerState::Leader {
             let transfer_expired = self.engine.leader_ref().is_some_and(|leader| leader.is_transfer_expired());

@@ -33,6 +33,7 @@ async fn add_learner_basic() -> Result<()> {
         max_in_snapshot_log_to_keep: 2000, // prevent snapshot
         purge_batch_size: 1,
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;
@@ -110,6 +111,7 @@ async fn add_learner_non_blocking() -> Result<()> {
     let config = Config {
         replication_lag_threshold: 0,
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;
@@ -165,6 +167,7 @@ async fn add_learner_with_set_nodes() -> Result<()> {
     let config = Config {
         replication_lag_threshold: 0,
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;
@@ -199,6 +202,7 @@ async fn add_learner_with_set_nodes() -> Result<()> {
 async fn add_learner_when_previous_membership_not_committed() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;
