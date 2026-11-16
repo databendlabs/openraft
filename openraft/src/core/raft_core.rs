@@ -2311,56 +2311,29 @@ where
             return;
         }
 
-        let mut election_timeout = self.engine.config.timer_config.election_timeout;
-        if self.engine.is_there_greater_log() {
-            election_timeout += self.engine.config.timer_config.smaller_log_timeout;
-        }
-
-        let effective = self.engine.state.membership_state.effective();
-        // A sole voter may elect immediately only while holding its own vote. It must honor a
-        // vote granted to a campaigner outside the voter sets.
-        let is_sole_voter = effective.voter_ids().eq([self.id.clone()]);
-        let vote = self.engine.state.vote_ref();
-        let votes_for_self = vote.leader_node_id() == &self.id;
-        let may_campaign = effective.is_campaigner(&self.id);
-        let is_single_campaigner = may_campaign && is_sole_voter && votes_for_self;
-
-        if is_single_campaigner {
-            // When a node restart, it may stay in any state but the in progress election(engine.candidate) is
-            // empty.
-            if self.engine.candidate_ref().is_some() {
-                tracing::debug!("skip election, single voter already has an active election in progress");
-                return;
-            }
-            tracing::debug!("single voter, elect immediately");
-        } else {
-            tracing::debug!("check election timeout");
-
-            let local_vote = &self.engine.state.vote;
-            tracing::debug!("local vote: {}, election_timeout: {:?}", local_vote, election_timeout,);
-
-            if local_vote.is_expired(now, election_timeout) {
-                tracing::info!("election timeout expired, triggering election");
-            } else {
-                tracing::debug!("election timeout not yet expired");
-                return;
-            }
-        }
-
         // Only the sole effective voter holding its own vote can skip Pre-Vote. A removed
         // committed voter still needs a remote quorum, even if there is only one effective voter.
+        let is_single_campaigner = self.engine.is_single_campaigner();
         let pre_vote = self.runtime_config.enable_pre_vote.load(Ordering::Relaxed) && !is_single_campaigner;
 
-        if pre_vote {
-            // A Pre-Vote does not advance `vote.last_update_time`, so without this guard a node
-            // would re-issue a Pre-Vote on every tick. Skip while a fresh round is still in flight;
-            // restart once it has been pending longer than `election_timeout`.
-            if let Some(started) = self.engine.pre_candidate_ref().map(|pc| pc.starting_time())
-                && now < started + election_timeout
-            {
-                tracing::debug!("skip pre-vote, a pre-vote round is already in flight");
-                return;
-            }
+        let Some(deadline) = self.engine.election_deadline(pre_vote) else {
+            tracing::debug!("skip election, single voter already has an active election in progress");
+            return;
+        };
+
+        if !deadline.is_due(now) {
+            tracing::debug!(
+                "skip election, not yet due: {}, local vote: {}",
+                deadline,
+                self.engine.state.vote
+            );
+            return;
+        }
+
+        if is_single_campaigner {
+            tracing::debug!("single voter, elect immediately");
+        } else {
+            tracing::info!("election timeout expired, triggering election: {}", deadline);
         }
 
         // Every time elect, reset this flag.

@@ -8,6 +8,7 @@ use crate::RaftTypeConfig;
 use crate::core::raft_msg::AppendEntriesTx;
 use crate::engine::Command;
 use crate::engine::Condition;
+use crate::engine::ElectionDeadline;
 use crate::engine::EngineOutput;
 use crate::engine::Respond;
 use crate::engine::engine_config::EngineConfig;
@@ -46,6 +47,7 @@ use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
 use crate::storage::RaftStateMachine;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::OneshotSenderOf;
@@ -1045,6 +1047,68 @@ where
     /// Clear the recorded greater last-log-id.
     pub(crate) fn reset_greater_log(&mut self) {
         self.seen_greater_log = None;
+    }
+
+    /// Return the election timeout this node waits after its vote lease expires.
+    ///
+    /// It is extended by `smaller_log_timeout` while a peer is known to have a greater last log,
+    /// so that a node with a shorter log does not campaign aggressively.
+    pub(crate) fn election_timeout(&self) -> Duration {
+        let timer_config = &self.config.timer_config;
+        if self.is_there_greater_log() {
+            timer_config.election_timeout + timer_config.smaller_log_timeout
+        } else {
+            timer_config.election_timeout
+        }
+    }
+
+    /// Whether this node is the single campaigner, which may elect without waiting for its vote
+    /// lease and without Pre-Vote.
+    ///
+    /// It must be a campaigner and the sole voter in the effective membership, and hold its own
+    /// vote: a vote granted to a campaigner outside the voter sets is still honored.
+    pub(crate) fn is_single_campaigner(&self) -> bool {
+        let id = &self.config.id;
+        let effective = self.state.membership_state.effective();
+
+        let is_sole_voter = effective.voter_ids().eq([id.clone()]);
+        let votes_for_self = self.state.vote_ref().leader_node_id() == id;
+
+        effective.is_campaigner(id) && is_sole_voter && votes_for_self
+    }
+
+    /// Return when the election timing permits this node to start its next election, or `None`
+    /// while a single campaigner already has an election in progress.
+    ///
+    /// `pre_vote` tells whether the next election starts with a Pre-Vote round. This query has no
+    /// side effects; it neither resamples the election timeout nor resets the greater log.
+    pub(crate) fn election_deadline(&self, pre_vote: bool) -> Option<ElectionDeadline<InstantOf<C>>> {
+        if self.is_single_campaigner() {
+            // After a restart a node may be in any server state, but has no election in progress.
+            if self.candidate_ref().is_some() {
+                return None;
+            }
+            return Some(ElectionDeadline {
+                lease_expires_at: None,
+                pre_vote_retry_at: None,
+            });
+        }
+
+        let election_timeout = self.election_timeout();
+
+        // A Pre-Vote does not advance `vote.last_update`, so without this wait a node would issue
+        // a new Pre-Vote on every check. A round is retried once it has been pending for
+        // `election_timeout`.
+        let pre_vote_retry_at = if pre_vote {
+            self.pre_candidate_ref().map(|pc| pc.starting_time() + election_timeout)
+        } else {
+            None
+        };
+
+        Some(ElectionDeadline {
+            lease_expires_at: self.state.vote.expires_at(election_timeout),
+            pre_vote_retry_at,
+        })
     }
 
     // --- handlers ---
