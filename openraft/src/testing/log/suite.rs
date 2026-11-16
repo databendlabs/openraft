@@ -1493,7 +1493,12 @@ where
         store.truncate_after(Some(log_id_0::<C>(1, 11))).await?;
 
         let logs = store.try_get_log_entries(0..100).await?;
-        assert_eq!(logs.len(), 11);
+        let log_ids = logs.into_iter().map(|entry| entry.log_id());
+        let log_ids: Vec<_> = log_ids.collect();
+        let mut expected = vec![log_id_0::<C>(0, 0)];
+        let term_one = (1..=10).map(|index| log_id_0::<C>(1, index));
+        expected.extend(term_one);
+        assert_eq!(log_ids, expected);
 
         assert_eq!(
             LogState {
@@ -1514,7 +1519,12 @@ where
         store.truncate_after(Some(log_id_0::<C>(1, 5))).await?;
 
         let logs = store.try_get_log_entries(0..100).await?;
-        assert_eq!(logs.len(), 6); // logs 0-5 remain
+        let log_ids = logs.into_iter().map(|entry| entry.log_id());
+        let log_ids: Vec<_> = log_ids.collect();
+        let mut expected = vec![log_id_0::<C>(0, 0)];
+        let term_one = (1..=5).map(|index| log_id_0::<C>(1, index));
+        expected.extend(term_one);
+        assert_eq!(log_ids, expected);
 
         assert_eq!(
             LogState {
@@ -1534,7 +1544,10 @@ where
         store.truncate_after(Some(log_id_0::<C>(0, 0))).await?;
 
         let logs = store.try_get_log_entries(0..100).await?;
-        assert_eq!(logs.len(), 1); // log at index 0 remains
+        let log_ids = logs.into_iter().map(|entry| entry.log_id());
+        let log_ids: Vec<_> = log_ids.collect();
+        let expected = vec![log_id_0::<C>(0, 0)];
+        assert_eq!(log_ids, expected);
 
         assert_eq!(
             LogState {
@@ -1555,7 +1568,10 @@ where
         store.truncate_after(None).await?;
 
         let logs = store.try_get_log_entries(0..100).await?;
-        assert_eq!(logs.len(), 0);
+        let log_ids = logs.into_iter().map(|entry| entry.log_id());
+        let log_ids: Vec<_> = log_ids.collect();
+        let expected: Vec<LogIdOf<C>> = Vec::new();
+        assert_eq!(log_ids, expected);
 
         assert_eq!(
             LogState {
