@@ -5,6 +5,7 @@ use display_more::DisplayOptionExt;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::core::NotificationName;
+use crate::core::TickKind;
 use crate::core::sm;
 use crate::progress::inflight_id::InflightId;
 use crate::progress::stream_id::StreamId;
@@ -98,6 +99,9 @@ where C: RaftTypeConfig
     Tick {
         /// ith tick
         i: u64,
+
+        /// The ticker instance that sent it.
+        kind: TickKind,
     },
 
     /// The earliest pending linearizable read reached its deadline.
@@ -197,8 +201,8 @@ where C: RaftTypeConfig
             Self::StateMachine { command_result } => {
                 write!(f, "{}", command_result)
             }
-            Self::Tick { i } => {
-                write!(f, "Tick {}", i)
+            Self::Tick { i, kind } => {
+                write!(f, "Tick({}) {}", kind, i)
             }
             Self::PendingReadDeadlineReached => {
                 write!(f, "PendingReadDeadlineReached")

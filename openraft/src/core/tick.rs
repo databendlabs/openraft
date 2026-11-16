@@ -1,4 +1,5 @@
-//! tick emitter emits a `RaftMsg::Tick` event at a certain interval.
+//! tick emitter emits a `RaftMsg::Tick` event at a certain interval, or at instants set by
+//! `RaftCore`.
 
 use std::time::Duration;
 
@@ -11,29 +12,49 @@ use tracing::Span;
 
 use crate::AsyncRuntime;
 use crate::RaftTypeConfig;
+use crate::async_runtime::Select2;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::base::BoxFuture;
+use crate::core::TickKind;
 use crate::core::notification::Notification;
 use crate::errors::ShutdownError;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::CancelHandleOf;
+use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::async_runtime::mpsc::MpscSender;
 
-/// Emit RaftMsg::Tick events at a regular `period` after a randomized first wait.
+/// Emit RaftMsg::Tick events, each tagged with the `kind` of this ticker instance.
 pub(crate) struct Tick<C>
 where C: RaftTypeConfig
 {
-    period: Duration,
-    first_wait: Duration,
+    kind: TickKind,
 
     tx: MpscSenderOf<C, Notification<C>>,
 
-    /// Emit event or not
-    enabled: WatchReceiverOf<C, bool>,
+    schedule: TickSchedule<C>,
+}
+
+/// When a [`Tick`] instance emits, each controlled by its own watch channel.
+pub(crate) enum TickSchedule<C>
+where C: RaftTypeConfig
+{
+    /// Tick at a regular `period` after a randomized first wait.
+    Periodic {
+        period: Duration,
+        first_wait: Duration,
+
+        /// Emit event or not
+        enabled: WatchReceiverOf<C, bool>,
+    },
+
+    /// Tick once at each instant that `RaftCore` sets, and emit nothing while it is `None`.
+    At {
+        tick_at: WatchReceiverOf<C, Option<InstantOf<C>>>,
+    },
 }
 
 /// Handle to a spawned tick loop.
@@ -50,22 +71,36 @@ where C: RaftTypeConfig
 impl<C> Tick<C>
 where C: RaftTypeConfig
 {
+    /// Spawn the heartbeat ticker, which ticks every `period` while `enabled`.
     pub(crate) fn spawn(
         period: Duration,
         tx: MpscSenderOf<C, Notification<C>>,
         enabled: WatchReceiverOf<C, bool>,
     ) -> TickHandle<C> {
-        let this = Self {
+        let schedule = TickSchedule::Periodic {
             period,
             first_wait: Self::sample_first_wait(period),
             enabled,
-            tx,
         };
+        Self::spawn_with(TickKind::Heartbeat, tx, schedule)
+    }
+
+    /// Spawn the election ticker, which ticks once at each instant set on `tick_at`.
+    pub(crate) fn spawn_at(
+        tx: MpscSenderOf<C, Notification<C>>,
+        tick_at: WatchReceiverOf<C, Option<InstantOf<C>>>,
+    ) -> TickHandle<C> {
+        Self::spawn_with(TickKind::Election, tx, TickSchedule::At { tick_at })
+    }
+
+    fn spawn_with(kind: TickKind, tx: MpscSenderOf<C, Notification<C>>, schedule: TickSchedule<C>) -> TickHandle<C> {
+        let this = Self { kind, tx, schedule };
 
         let future = this.tick_loop().instrument(tracing::span!(
             parent: &Span::current(),
             Level::DEBUG,
-            "tick"
+            "tick",
+            kind = display(kind)
         ));
         let (cancel, future) = C::cancellable(future);
         let join_handle = C::spawn(future.map(|completed| {
@@ -85,27 +120,45 @@ where C: RaftTypeConfig
         AsyncRuntimeOf::<C>::thread_rng().random_range(period..period * 2)
     }
 
-    /// Emit ticks until the notification receiver or the `enabled` watch sender is dropped.
+    /// Emit ticks until the notification receiver or the watch sender of the schedule is dropped.
     ///
     /// [`Self::spawn`] stops it earlier by cancelling this future.
-    pub(crate) async fn tick_loop(mut self) {
+    pub(crate) async fn tick_loop(self) {
+        let Self { kind, tx, schedule } = self;
+        match schedule {
+            TickSchedule::Periodic {
+                period,
+                first_wait,
+                enabled,
+            } => Self::periodic_loop(kind, tx, period, first_wait, enabled).await,
+            TickSchedule::At { tick_at } => Self::tick_at_loop(kind, tx, tick_at).await,
+        }
+    }
+
+    async fn periodic_loop(
+        kind: TickKind,
+        tx: MpscSenderOf<C, Notification<C>>,
+        period: Duration,
+        first_wait: Duration,
+        mut enabled: WatchReceiverOf<C, bool>,
+    ) {
         let mut i = 0;
 
-        let first_wait_at = C::now() + self.first_wait;
+        let first_wait_at = C::now() + first_wait;
         let mut at = first_wait_at;
         // Microsecond resolution is far finer than any tick period, and the floor of one keeps
         // the modulo below defined for a zero period, which stays a busy loop as it was before.
-        let step_us = self.period.as_micros().max(1);
+        let step_us = period.as_micros().max(1);
 
         loop {
             C::sleep_until(at).await;
 
-            let enabled = *self.enabled.borrow_watched();
-            if !enabled {
+            let is_enabled = *enabled.borrow_watched();
+            if !is_enabled {
                 // Wait for the tick to be enabled instead of waking every period to re-check it.
                 // The deadline below is computed after this wait, so ticking resumes at the next
                 // grid line, as if the loop had kept waking through the disabled span.
-                let enabled_result = self.enabled.wait_until(|enabled| *enabled).await;
+                let enabled_result = enabled.wait_until(|enabled| *enabled).await;
                 if enabled_result.is_err() {
                     tracing::info!("TickLoop: RuntimeConfig dropped while disabled, quit");
                     return;
@@ -125,20 +178,72 @@ where C: RaftTypeConfig
             offset_us += step_us;
             at = first_wait_at + Duration::from_micros(offset_us as u64);
 
-            if !enabled {
+            if !is_enabled {
                 continue;
             }
 
             i += 1;
-
-            let send_res = self.tx.send(Notification::Tick { i }).await;
-            if let Err(_e) = send_res {
-                tracing::info!("Stopping tick_loop(), main loop terminated");
+            if !Self::send_tick(&tx, kind, i).await {
                 break;
-            } else {
-                tracing::debug!("Tick sent: {}", i)
             }
         }
+    }
+
+    /// Tick once at each instant set on `tick_at`.
+    ///
+    /// After a tick, the loop waits for `RaftCore` to set a different value instead of ticking
+    /// again for the same instant. A new value ends the wait, so an instant moved later by a
+    /// heartbeat sends no tick for the earlier one.
+    async fn tick_at_loop(
+        kind: TickKind,
+        tx: MpscSenderOf<C, Notification<C>>,
+        mut tick_at: WatchReceiverOf<C, Option<InstantOf<C>>>,
+    ) {
+        let mut i = 0;
+        // The instant of the last tick, until `RaftCore` sets a different value.
+        let mut fired = None;
+
+        loop {
+            let at = *tick_at.borrow_and_update();
+            let Some(at) = at.filter(|t| fired != Some(*t)) else {
+                if tick_at.changed().await.is_err() {
+                    tracing::info!("TickLoop: tick_at sender dropped, quit");
+                    return;
+                }
+                fired = None;
+                continue;
+            };
+
+            let wait = C::select2(tick_at.changed(), C::sleep_until(at)).await;
+            match wait {
+                Select2::First(Ok(())) => {
+                    fired = None;
+                    continue;
+                }
+                Select2::First(Err(_)) => {
+                    tracing::info!("TickLoop: tick_at sender dropped, quit");
+                    return;
+                }
+                Select2::Second(()) => {}
+            }
+
+            fired = Some(at);
+            i += 1;
+            if !Self::send_tick(&tx, kind, i).await {
+                break;
+            }
+        }
+    }
+
+    /// Send the `i`th tick; return `false` once the notification receiver is dropped.
+    async fn send_tick(tx: &MpscSenderOf<C, Notification<C>>, kind: TickKind, i: u64) -> bool {
+        let send_res = tx.send(Notification::Tick { i, kind }).await;
+        if send_res.is_err() {
+            tracing::info!("Stopping tick_loop(), main loop terminated");
+            return false;
+        }
+        tracing::debug!("Tick sent: {} {}", kind, i);
+        true
     }
 }
 
@@ -182,12 +287,14 @@ mod tests {
     use openraft_rt_tokio::TokioRuntime;
     use rand::RngExt;
 
+    use super::TickSchedule;
     use crate::AsyncRuntime;
     use crate::OptionalSend;
     use crate::RaftTypeConfig;
     use crate::async_runtime::MpscReceiver;
     use crate::async_runtime::watch::WatchSender;
     use crate::core::Tick;
+    use crate::core::TickKind;
     use crate::core::notification::Notification;
     use crate::type_config::TypeConfigExt;
     use crate::type_config::alias::MpscReceiverOf;
@@ -311,7 +418,7 @@ mod tests {
     async fn recv_tick<C>(rx: &mut MpscReceiverOf<C, Notification<C>>) -> u64
     where C: RaftTypeConfig {
         match rx.recv().await {
-            Some(Notification::Tick { i }) => i,
+            Some(Notification::Tick { i, .. }) => i,
             Some(other) => unreachable!("expect a Tick notification, got: {other}"),
             None => unreachable!("the tick channel closed before a tick arrived"),
         }
@@ -506,6 +613,98 @@ mod tests {
         local.block_on(&rt, scenario);
     }
 
+    /// Receive the next notification, asserting it is a tick from the election ticker.
+    async fn recv_election_tick(rx: &mut MpscReceiverOf<TickUTConfig, Notification<TickUTConfig>>) -> u64 {
+        match rx.recv().await {
+            Some(Notification::Tick {
+                i,
+                kind: TickKind::Election,
+            }) => i,
+            Some(other) => unreachable!("expect an election Tick, got: {other}"),
+            None => unreachable!("the tick channel closed before a tick arrived"),
+        }
+    }
+
+    /// The election ticker ticks once at each instant set on its watch channel, and is silent
+    /// otherwise.
+    #[test]
+    fn test_election_ticker_ticks_once_at_each_instant() {
+        const WAIT: Duration = Duration::from_millis(300);
+        const MARGIN: Duration = Duration::from_millis(10);
+
+        // A paused clock advances only when every task waits, so the windows below are exact.
+        // `LocalSet` lets `spawn()` work in the `single-threaded` build.
+        let rt = tokio::runtime::Builder::new_current_thread().enable_time().start_paused(true).build().unwrap();
+        let local = tokio::task::LocalSet::new();
+
+        let scenario = async {
+            let (tx, mut rx) = TickUTConfig::mpsc(1024);
+            let (tick_at_tx, tick_at) = TickUTConfig::watch_channel(None);
+            let mut th = Tick::<TickUTConfig>::spawn_at(tx, tick_at);
+
+            tracing::info!("no instant set: the election ticker is silent");
+            {
+                let early = TickUTConfig::timeout(WAIT, recv_election_tick(&mut rx)).await;
+                assert!(early.is_err(), "no tick without an instant");
+            }
+
+            tracing::info!("one tick at the instant, and none again while it stays in place");
+            {
+                let at = TickUTConfig::now() + WAIT;
+                tick_at_tx.send(Some(at)).unwrap();
+
+                let early = TickUTConfig::timeout(WAIT - MARGIN, recv_election_tick(&mut rx)).await;
+                assert!(early.is_err(), "no tick before the instant");
+                assert_eq!(1, recv_election_tick(&mut rx).await);
+                assert!(TickUTConfig::now() >= at);
+
+                let again = TickUTConfig::timeout(WAIT, recv_election_tick(&mut rx)).await;
+                assert!(again.is_err(), "an instant left in place is not ticked for again");
+            }
+
+            tracing::info!("an instant moved later before it is reached sends nothing for the earlier one");
+            let fired_at = {
+                let now = TickUTConfig::now();
+                tick_at_tx.send(Some(now + MARGIN * 5)).unwrap();
+                tick_at_tx.send(Some(now + WAIT)).unwrap();
+
+                let early = TickUTConfig::timeout(WAIT - MARGIN, recv_election_tick(&mut rx)).await;
+                assert!(early.is_err(), "the replaced instant must not send a tick");
+                assert_eq!(2, recv_election_tick(&mut rx).await);
+                assert!(TickUTConfig::now() >= now + WAIT);
+                now + WAIT
+            };
+
+            tracing::info!("the fired instant set again after a different value ticks again");
+            {
+                tick_at_tx.send(None).unwrap();
+                tick_at_tx.send(Some(fired_at)).unwrap();
+
+                let next = TickUTConfig::timeout(MARGIN, recv_election_tick(&mut rx))
+                    .await
+                    .expect("a past instant set again must tick at once");
+                assert_eq!(3, next);
+            }
+
+            th.shutdown().await.unwrap();
+        };
+        local.block_on(&rt, scenario);
+    }
+
+    #[test]
+    fn test_dropping_the_tick_at_sender_stops_the_election_ticker() {
+        TickUTConfig::run(async {
+            let (tx, mut rx) = TickUTConfig::mpsc(1024);
+            let (tick_at_tx, tick_at) = TickUTConfig::watch_channel(None);
+            let _th = Tick::<TickUTConfig>::spawn_at(tx, tick_at);
+
+            drop(tick_at_tx);
+
+            let next = TickUTConfig::timeout(Duration::from_millis(500), rx.recv()).await.unwrap();
+            assert!(next.is_none(), "the loop must stop and release its sender");
+        });
+    }
+
     /// Counts how often the wrapped future is polled: one poll per wakeup of the tick task.
     struct CountPolls<F> {
         inner: Pin<Box<F>>,
@@ -536,10 +735,13 @@ mod tests {
             let (tx, mut rx) = TickUTConfig::mpsc(1024);
             let (switch, enabled) = TickUTConfig::watch_channel(false);
             let tick = Tick::<TickUTConfig> {
-                period: PERIOD,
-                first_wait: PERIOD,
+                kind: TickKind::Heartbeat,
                 tx,
-                enabled,
+                schedule: TickSchedule::Periodic {
+                    period: PERIOD,
+                    first_wait: PERIOD,
+                    enabled,
+                },
             };
             let (mut cancel, future) = TickUTConfig::cancellable(tick.tick_loop());
             let polls = Arc::new(AtomicUsize::new(0));
@@ -589,10 +791,13 @@ mod tests {
             let (tx, mut rx) = TickUTConfig::mpsc(1024);
             let (switch, enabled) = TickUTConfig::watch_channel(false);
             let tick = Tick::<TickUTConfig> {
-                period: PERIOD,
-                first_wait: PERIOD,
+                kind: TickKind::Heartbeat,
                 tx,
-                enabled,
+                schedule: TickSchedule::Periodic {
+                    period: PERIOD,
+                    first_wait: PERIOD,
+                    enabled,
+                },
             };
             let before = TickUTConfig::now();
             let (mut cancel, loop_fut) = TickUTConfig::cancellable(tick.tick_loop());

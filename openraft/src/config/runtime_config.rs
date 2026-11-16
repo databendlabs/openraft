@@ -5,6 +5,7 @@ use std::sync::atomic::AtomicBool;
 
 use crate::Config;
 use crate::RaftTypeConfig;
+use crate::async_runtime::watch::WatchSender;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::WatchSenderOf;
 
@@ -31,5 +32,11 @@ where C: RaftTypeConfig
             enable_elect: AtomicBool::from(config.enable_elect),
             enable_pre_vote: AtomicBool::from(config.get_enable_pre_vote()),
         }
+    }
+
+    /// Whether the internal ticker is enabled.
+    pub(crate) fn is_tick_enabled(&self) -> bool {
+        let enable_tick = self.enable_tick.lock().unwrap();
+        *enable_tick.borrow_watched()
     }
 }

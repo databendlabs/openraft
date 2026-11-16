@@ -244,6 +244,7 @@ mod tests {
     use crate::async_runtime::watch::WatchSender;
     use crate::base::BoxFuture;
     use crate::base::BoxStream;
+    use crate::core::TickKind;
     use crate::core::heartbeat::event::HeartbeatEvent;
     use crate::core::notification::Notification;
     use crate::engine::testing::UTConfig;
@@ -392,7 +393,13 @@ mod tests {
             for block_at in [BlockAt::Idle, BlockAt::Setup, BlockAt::Response, BlockAt::Notification] {
                 tracing::info!(?block_at, "cancel a heartbeat worker while its current wait is blocked");
                 let (tx_notification, mut rx_notification) = C::mpsc(1);
-                tx_notification.send(Notification::Tick { i: 1 }).await.unwrap();
+                tx_notification
+                    .send(Notification::Tick {
+                        i: 1,
+                        kind: TickKind::Heartbeat,
+                    })
+                    .await
+                    .unwrap();
                 let fixture = Fixture::new(block_at, tx_notification);
                 if block_at != BlockAt::Idle {
                     let heartbeat = HeartbeatEvent {
@@ -417,7 +424,7 @@ mod tests {
                 assert!(dropped, "cancellation must release the worker's network");
 
                 let first = rx_notification.recv().await;
-                let sentinel = matches!(first, Some(Notification::Tick { i: 1 }));
+                let sentinel = matches!(first, Some(Notification::Tick { i: 1, .. }));
                 assert!(sentinel);
                 let next = rx_notification.recv().await;
                 let closed = next.is_none();

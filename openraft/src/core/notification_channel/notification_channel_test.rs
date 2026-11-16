@@ -8,6 +8,7 @@ use crate::async_runtime::MpscSender;
 use crate::async_runtime::Select2;
 use crate::async_runtime::SendError;
 use crate::async_runtime::TryRecvError;
+use crate::core::TickKind;
 use crate::core::notification::Notification;
 use crate::core::notification_channel::NotificationChannel;
 use crate::engine::testing::UTConfig;
@@ -16,12 +17,15 @@ use crate::type_config::TypeConfigExt;
 type C = UTConfig;
 
 fn tick(i: u64) -> Notification<C> {
-    Notification::Tick { i }
+    Notification::Tick {
+        i,
+        kind: TickKind::Heartbeat,
+    }
 }
 
 fn tick_index(notification: &Notification<C>) -> u64 {
     match notification {
-        Notification::Tick { i } => *i,
+        Notification::Tick { i, .. } => *i,
         other => panic!("expect a Tick, got: {}", other),
     }
 }

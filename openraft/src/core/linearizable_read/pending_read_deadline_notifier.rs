@@ -102,6 +102,7 @@ mod tests {
     use super::*;
     use crate::async_runtime::MpscReceiver;
     use crate::async_runtime::mpsc::TryRecvError;
+    use crate::core::TickKind;
     use crate::engine::testing::UTConfig;
 
     type C = UTConfig;
@@ -138,7 +139,12 @@ mod tests {
 
             tracing::info!("fill the notification channel before the deadline expires");
             let (tx, mut rx) = C::mpsc(1);
-            tx.send(Notification::Tick { i: 1 }).await.unwrap();
+            tx.send(Notification::Tick {
+                i: 1,
+                kind: TickKind::Heartbeat,
+            })
+            .await
+            .unwrap();
             let deadline = C::now() - TIMEOUT;
             let (deadline_tx, deadline_rx) = C::watch_channel(Some(deadline));
             let (cancel, future) = PendingReadDeadlineNotifier::<C>::run(deadline_rx, tx);
@@ -155,7 +161,7 @@ mod tests {
                 C::timeout(TIMEOUT, future).await.unwrap();
 
                 let first = rx.try_recv().unwrap();
-                let sentinel = matches!(first, Notification::Tick { i: 1 });
+                let sentinel = matches!(first, Notification::Tick { i: 1, .. });
                 assert!(sentinel, "the blocked deadline notification must be discarded");
                 let next = rx.try_recv();
                 let closed = matches!(next, Err(TryRecvError::Disconnected));
