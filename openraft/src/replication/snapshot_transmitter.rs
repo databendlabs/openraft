@@ -181,16 +181,12 @@ where
                         let sleep = C::sleep(duration);
                         let recv = self.replication_context.cancel_rx.changed();
 
-                        let selected = C::select2(recv, sleep).await;
-                        match selected {
-                            Select2::Second(_) => {
-                                tracing::debug!("backoff timeout");
-                            }
-                            Select2::First(_) => {
-                                tracing::info!("snapshot transmission canceled by RaftCore");
-                                return;
-                            }
+                        let slept = C::cancellable_by(sleep, recv).await;
+                        if slept.is_none() {
+                            tracing::info!("snapshot transmission canceled by RaftCore");
+                            return;
                         }
+                        tracing::debug!("backoff timeout");
                     }
                 }
             };
@@ -200,7 +196,14 @@ where
     async fn read_and_send_snapshot(&mut self, ith: i32) -> Result<bool, ReplicationError<C>> {
         self.replication_context.wait_for_send_period().await?;
 
-        let snapshot = self.snapshot_reader.get_snapshot().await.map_err(|reason| {
+        let snapshot = self.snapshot_reader.get_snapshot();
+        let cancel = self.replication_context.cancel_rx.changed();
+        let snapshot = C::cancellable_by(snapshot, cancel).await;
+        let Some(snapshot) = snapshot else {
+            let closed = ReplicationClosed::new("snapshot transmission canceled");
+            return Err(closed.into());
+        };
+        let snapshot = snapshot.map_err(|reason| {
             tracing::warn!("failed to get snapshot from state machine: {}", reason);
             ReplicationClosed::new(reason)
         })?;
