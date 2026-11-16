@@ -29,6 +29,11 @@ There are several threads, also known as tokio-tasks, in this Raft implementatio
     Handles all state-machine read and write operations, such as applying a committed log
     entry or constructing a snapshot.
 
+    It runs commands in the order RaftCore sends them. Consecutive queued apply commands are
+    merged into one batch and applied with one `RaftStateMachine::apply()` call. While a batch
+    applies, the task reads the next batch from the log with `RaftLogReader::entries_stream()`,
+    so at most one batch is being applied and one is being read.
+
     **Lifecycle**:
     - Spawned when the `RaftCore` is initialized, and continues running until
       `RaftCore` is terminated.
