@@ -29,6 +29,7 @@ tracing    = { version = "0.1.40" }
 
 [dev-dependencies]
 dir-transfer = { path = "../dir-transfer" }
+log-mem      = { path = "../log-mem" }
 log-rocks    = { path = "../log-rocks" }
 
 [features]

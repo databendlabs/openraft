@@ -45,7 +45,10 @@ impl ActiveDb {
     pub(crate) fn from_snapshot(base_dir: &Path, snapshot: &RocksSnapshotData) -> io::Result<Arc<Self>> {
         let checkpoint = snapshot.open_read_only()?;
         let copy = RocksSnapshotData::checkpoint(&checkpoint, base_dir)?;
-        Self::open(copy, &Options::default())
+        let candidate = Self::open(copy, &Options::default())?;
+        #[cfg(test)]
+        super::fault::check(base_dir, "candidate_prepared")?;
+        Ok(candidate)
     }
 
     pub(crate) fn db(&self) -> &DB {
@@ -61,10 +64,17 @@ impl ActiveDb {
         // Make the generation's directory entry durable before `CURRENT` names it, then make
         // the `CURRENT` replacement durable. RocksDB has already synced the generation itself.
         sync_directory(base_dir)?;
-        write_current(base_dir, self.generation.name())?;
-        sync_directory(base_dir)?;
-
+        // A rename error or the following sync can leave CURRENT naming this generation.
+        // Keep it through unwinding; startup resolves selection and reclaims the other one.
         self.generation.persist();
+        #[cfg(test)]
+        super::fault::check(base_dir, "before_current_replace")?;
+        write_current(base_dir, self.generation.name())?;
+        #[cfg(test)]
+        super::fault::check(base_dir, "before_current_sync")?;
+        sync_directory(base_dir)?;
+        #[cfg(test)]
+        super::fault::check(base_dir, "after_current_sync")?;
         Ok(())
     }
 
@@ -127,6 +137,8 @@ fn remove_inactive_generations(base_dir: &Path, active_path: &Path) -> io::Resul
             && entry.file_name().to_string_lossy().starts_with(GENERATION_DIR_PREFIX)
             && entry.path() != active_path
         {
+            #[cfg(test)]
+            super::fault::check(base_dir, "before_cleanup")?;
             fs::remove_dir_all(entry.path())?;
         }
     }

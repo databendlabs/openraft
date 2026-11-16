@@ -206,7 +206,12 @@ where C: RaftTypeConfig<
         C::spawn_blocking(move || {
             let mut write_options = WriteOptions::default();
             write_options.set_sync(true);
-            active.db().write_opt(batch, &write_options).map_err(io::Error::other)
+            #[cfg(test)]
+            fault::check(active.db_path().parent().unwrap(), "before_apply_commit")?;
+            active.db().write_opt(batch, &write_options).map_err(io::Error::other)?;
+            #[cfg(test)]
+            fault::check(active.db_path().parent().unwrap(), "after_apply_commit")?;
+            Ok::<_, io::Error>(())
         })
         .await??;
 
@@ -234,6 +239,14 @@ where C: RaftTypeConfig<
         let base_dir = self.base_dir.clone();
         let received = snapshot.clone();
         let candidate = C::spawn_blocking(move || ActiveDb::from_snapshot(&base_dir, &received)).await??;
+
+        let stored_meta = read_meta::<C>(candidate.db())?;
+        if &stored_meta != meta {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "snapshot metadata does not match its database",
+            ));
+        }
 
         candidate.make_current(&self.base_dir)?;
         self.active.mark_for_removal();
@@ -309,3 +322,8 @@ mod state_machine_test;
 
 #[cfg(test)]
 mod application_test;
+
+#[cfg(test)]
+pub(crate) mod fault;
+#[cfg(test)]
+mod recovery_test;
