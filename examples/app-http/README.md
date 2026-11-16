@@ -110,3 +110,17 @@ let value = client.read(&"foo".to_string()).await?;
 
 The client is example-specific: it knows the endpoints used by the key-value
 examples and is not part of OpenRaft's Raft network layer.
+
+Each operation has one ten-second deadline covering redirects, connection-pool
+waits, RPC execution, and response decoding. Redirecting operations also have a
+retry bound. A missing leader hint returns the typed application error. Encoding
+failures, invalid JSON, and HTTP failure statuses return a transport error.
+
+Applications that forward requests between servers must carry a decreasing hop
+budget and the remaining operation time. Every forwarded RPC and pool wait must
+respect that remaining time; starting a new timeout at each hop does not bound
+the original request.
+
+A leader rejection says that node did not accept the request. A lost response
+can follow a committed write. Retrying such a write requires application-level
+request IDs and deduplication when repeated commands have different effects.
