@@ -89,27 +89,29 @@ thread, so they keep sub-millisecond accuracy.
 Setup: Apple M3 Max, macOS 14.5, three voters in one process, in-memory storage, no network
 delay, one client worker thread, 16 server threads, 1,024 warmup writes, default `Config` of this
 benchmark. 256 clients did 30,000 writes per run, one client did 2,000. The table shows medians
-of three runs, taken while other processes kept the load average between 7 and 10. Memory and
+of three runs, taken while other processes kept the load average between 9 and 11. Memory and
 context switches come from `/usr/bin/time -l` for the whole process.
 
 | clients | read µs | I/O µs | writes/s  | p50 µs | p99 µs | apply cmds | entries/apply p50, p90 | max RSS MB | invol. ctx switches |
 | --:     | --:     | --:    | --:       | --:    | --:    | --:        | --:                    | --:        | --:                 |
-|     256 |       0 |      0 | 1,473,614 |    168 |    298 |      1,324 |                 1, 103 |       43.0 |               8,938 |
-|     256 |     500 |      0 |   190,726 |  1,336 |  1,868 |      1,398 |                  1, 98 |       42.5 |              23,937 |
-|     256 |       0 |    500 |   191,419 |  1,341 |  1,430 |      1,433 |                  1, 92 |       42.9 |              23,829 |
-|     256 |     500 |    500 |   127,623 |  1,988 |  2,731 |      1,467 |                  1, 87 |       42.3 |              38,408 |
-|     256 |   1,000 |      0 |    98,583 |  2,606 |  3,643 |      1,392 |                  1, 99 |       43.5 |              24,610 |
-|     256 |       0 |  1,000 |    92,861 |  2,609 |  5,794 |      1,455 |                  1, 86 |       43.7 |              25,627 |
-|       1 |       0 |      0 |    28,980 |     32 |     61 |      3,025 |                   1, 1 |       36.9 |              19,655 |
-|       1 |     500 |      0 |     1,425 |    692 |    982 |      3,025 |                   1, 1 |       37.6 |              54,109 |
-|       1 |       0 |    500 |     1,444 |    693 |    749 |      3,025 |                   1, 1 |       37.7 |              55,004 |
-|       1 |     500 |    500 |       729 |  1,349 |  2,000 |      3,025 |                   1, 1 |       37.7 |              90,606 |
-|       1 |   1,000 |      0 |       755 |  1,322 |  1,401 |      3,025 |                   1, 1 |       37.7 |              57,008 |
-|       1 |       0 |  1,000 |       762 |  1,321 |  1,380 |      3,025 |                   1, 1 |       37.5 |              56,229 |
+|     256 |       0 |      0 | 1,466,462 |    169 |    297 |      1,333 |                 1, 104 |       42.7 |               8,638 |
+|     256 |     500 |      0 |   191,053 |  1,337 |  1,500 |      1,413 |                 1, 109 |       42.7 |              23,643 |
+|     256 |       0 |    500 |   192,514 |  1,332 |  1,407 |      1,409 |                 1, 110 |       43.0 |              23,690 |
+|     256 |     500 |    500 |   128,283 |  1,991 |  2,678 |      1,468 |                 1, 104 |       43.3 |              37,979 |
+|     256 |   1,000 |      0 |    90,039 |  2,638 |  6,039 |      1,384 |                 1, 120 |       43.9 |              23,910 |
+|     256 |       0 |  1,000 |    94,174 |  2,605 |  5,185 |      1,432 |                 1, 120 |       45.6 |              24,437 |
+|       1 |       0 |      0 |    28,374 |     33 |     59 |      3,025 |                   1, 1 |       37.0 |              18,479 |
+|       1 |     500 |      0 |     1,283 |    708 |  2,055 |      3,025 |                   1, 1 |       37.9 |              52,812 |
+|       1 |       0 |    500 |     1,325 |    698 |  1,735 |      3,025 |                   1, 1 |       37.8 |              53,297 |
+|       1 |     500 |    500 |       671 |  1,367 |  3,592 |      3,025 |                   1, 1 |       38.0 |              86,820 |
+|       1 |   1,000 |      0 |       720 |  1,328 |  2,880 |      3,025 |                   1, 1 |       37.9 |              55,926 |
+|       1 |       0 |  1,000 |       703 |  1,332 |  2,827 |      3,025 |                   1, 1 |       38.0 |              55,315 |
 
 "apply cmds" counts the `SaveCommittedAndApply` commands the leader's RaftCore sends, warmup
-included, and "entries/apply" is the size of those commands. The worker merges queued commands
-before applying them, which these two columns do not show.
+included. "entries/apply" is the number of entries the state machine receives in one `apply()`
+call. The worker merges the apply commands queued when it starts a batch, so one call covers one
+or more commands. Both columns include the 1,024 warmup writes, which a single client sends one
+at a time, so each of them is applied alone and the p50 is 1 in every row.
 
 RaftCore sends one apply command each time the commit index advances. The worker keeps two
 batches in flight: while one batch applies with one `apply()` call, the apply commands that were
@@ -118,9 +120,9 @@ that arrive during the call stay queued and become the batch after that. Under l
 therefore costs the larger of its read and its I/O delay, and each delay is paid once for all the
 entries committed during the previous batch.
 
-So the read no longer adds to the I/O: 500 µs of read plus 500 µs of I/O gives 127,623 writes/s
-with 256 clients, against 92,861 to 98,583 for a single 1,000 µs delay. Full overlap would reach
-the 190,726 to 191,419 writes/s of a single 500 µs delay. Part of the difference is the first
+So the read no longer adds to the I/O: 500 µs of read plus 500 µs of I/O gives 128,283 writes/s
+with 256 clients, against 90,039 to 94,174 for a single 1,000 µs delay. Full overlap would reach
+the 191,053 to 192,514 writes/s of a single 500 µs delay. Part of the difference is the first
 batch after every idle period, whose read cannot overlap anything. With one client nothing can
 overlap: only one write is in flight, so there is never a next batch to read ahead.
 
@@ -132,7 +134,7 @@ revisions" below.
 
 What these numbers do not show:
 
-- Memory cost of large batches. Max RSS stays at 42 to 44 MB in every 256-client run; the
+- Memory cost of large batches. Max RSS stays at 42 to 46 MB in every 256-client run; the
   entries of the two batches in flight are too small to show up against the fixed cost of three
   nodes.
 - Task switching inside the runtime. The context-switch counts are whole-process OS counts, and
