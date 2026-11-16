@@ -108,8 +108,9 @@ context switches come from `/usr/bin/time -l` for the whole process.
 |       1 |       0 |  1,000 |       762 |  1,321 |  1,380 |      3,025 |                   1, 1 |       37.5 |              56,229 |
 
 "apply cmds" counts the `SaveCommittedAndApply` commands the leader's RaftCore sends, warmup
-included, and "entries/apply" is the size of those commands. The worker merges queued commands
-before applying them, which these two columns do not show.
+included. "entries/apply" is the number of entries the state machine receives in one `apply()`
+call. The worker merges the apply commands queued when it starts a batch, so one call covers one
+or more commands.
 
 RaftCore sends one apply command each time the commit index advances. The worker keeps two
 batches in flight: while one batch applies with one `apply()` call, the apply commands that were

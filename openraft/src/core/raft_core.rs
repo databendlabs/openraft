@@ -1161,14 +1161,6 @@ where
         // Drain responders up to last.index
         let mut responders = self.client_responders.drain_upto(last.index());
 
-        let entry_count = last.index() + 1 - first.index();
-        self.runtime_stats.apply_batch.record(entry_count);
-
-        // Record to external metrics recorder
-        if let Some(r) = &self.metrics_recorder {
-            r.record_apply_batch(entry_count);
-        }
-
         // Call on_commit on each responder
         for (index, responder) in responders.iter_mut() {
             let log_id = self.engine.state.get_log_id(*index).unwrap();
@@ -2260,6 +2252,14 @@ where
                 }
             }
             sm::Response::Apply(res) => {
+                // The worker merges queued `Apply` commands, so one result covers one `apply()`
+                // call, which may span several commands.
+                let entry_count = res.end - res.since;
+                self.runtime_stats.apply_batch.record(entry_count);
+                if let Some(r) = &self.metrics_recorder {
+                    r.record_apply_batch(entry_count);
+                }
+
                 self.runtime_stats.record_log_stage_now(Stage::Applied, res.last_applied.index() + 1);
                 self.engine.state.apply_progress_mut().try_flush(res.last_applied);
                 self.broadcast_applied_bound();

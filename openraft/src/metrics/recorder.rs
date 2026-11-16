@@ -33,6 +33,8 @@
 //! raft.set_metrics_recorder(Some(Arc::new(MyRecorder)));
 //! ```
 
+use openraft_macros::since;
+
 use crate::RaftTypeConfig;
 use crate::core::ServerState;
 use crate::metrics::RaftMetrics;
@@ -48,7 +50,14 @@ use crate::vote::RaftTerm;
 pub trait MetricsRecorder: Send + Sync + std::fmt::Debug {
     // --- Histograms (batch sizes) ---
 
-    /// Record a batch of log entries being applied to the state machine.
+    /// Record the number of log entries the state machine receives in one `apply()` call.
+    ///
+    /// Called once per [`RaftStateMachine::apply()`] call, after it succeeds. The state-machine
+    /// worker merges queued apply commands into one batch, so one call may cover several
+    /// commands.
+    ///
+    /// [`RaftStateMachine::apply()`]: crate::storage::RaftStateMachine::apply
+    #[since(version = "0.10.1", change = "called per `apply()` call, not per command")]
     fn record_apply_batch(&self, entry_count: u64);
 
     /// Record a batch of log entries being appended to storage.

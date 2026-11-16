@@ -47,10 +47,14 @@ where C: RaftTypeConfig
     #[since(version = "0.10.0")]
     pub core_busy_histogram: Histogram,
 
-    /// Histogram tracking the distribution of log entry counts in Apply commands.
+    /// Histogram of the number of log entries the state machine receives in one `apply()` call.
     ///
-    /// This tracks how many log entries are included in each apply command sent
-    /// to the state machine, helping identify batch size patterns and I/O efficiency.
+    /// One sample is recorded per [`RaftStateMachine::apply()`] call. The state-machine worker
+    /// merges queued apply commands into one batch, so a sample may cover several commands; it
+    /// shows the batch size the state machine's I/O actually sees.
+    ///
+    /// [`RaftStateMachine::apply()`]: crate::storage::RaftStateMachine::apply
+    #[since(version = "0.10.1", change = "one sample per `apply()` call, not per command")]
     pub apply_batch: Histogram,
 
     /// Histogram tracking the distribution of log entry counts when appending to storage.
