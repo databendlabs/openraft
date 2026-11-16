@@ -7,41 +7,37 @@ use crate::AsyncRuntime;
 use crate::Mpsc;
 use crate::MpscReceiver;
 use crate::MpscSender;
-use crate::Oneshot;
 use crate::OptionalSend;
 use crate::Select2;
-use crate::Select3;
 use crate::SendError;
 
-pub(super) struct BufferingTask<Rt, R, T>
+pub(super) struct BufferingTask<R, T>
 where
-    Rt: AsyncRuntime,
     R: MpscReceiver<T>,
     T: OptionalSend,
 {
     source: Option<R>,
     queued: VecDeque<T>,
-    cancelled: <Rt::Oneshot as Oneshot>::Receiver<()>,
 }
 
-impl<Rt, R, T> BufferingTask<Rt, R, T>
+impl<R, T> BufferingTask<R, T>
 where
-    Rt: AsyncRuntime,
     R: MpscReceiver<T>,
     T: OptionalSend,
 {
-    pub(super) fn new(source: R, cancelled: <Rt::Oneshot as Oneshot>::Receiver<()>) -> Self {
+    pub(super) fn new(source: R) -> Self {
         Self {
             source: Some(source),
             queued: VecDeque::new(),
-            cancelled,
         }
     }
 
-    pub(super) async fn run(mut self, sender: <Rt::Mpsc as Mpsc>::Sender<T>) {
+    pub(super) async fn run<Rt>(mut self, sender: <Rt::Mpsc as Mpsc>::Sender<T>)
+    where Rt: AsyncRuntime {
         while let Some(command) = self.next().await {
             let send = sender.send(command);
-            if !self.forward(send).await {
+            let forwarded = self.forward::<Rt, _>(send).await;
+            if !forwarded {
                 return;
             }
         }
@@ -51,26 +47,23 @@ where
         if let Some(command) = self.queued.pop_front() {
             return Some(command);
         }
-        self.source.as_ref()?;
-        let receive = Self::receive(&mut self.source);
-        let selected = Rt::select2(&mut self.cancelled, receive).await;
-        match selected {
-            Select2::First(_) => None,
-            Select2::Second(command) => command,
-        }
+        let source = self.source.as_mut()?;
+        source.recv().await
     }
 
-    async fn forward<F>(&mut self, send: F) -> bool
-    where F: Future<Output = Result<(), SendError<T>>> + OptionalSend {
+    async fn forward<Rt, F>(&mut self, send: F) -> bool
+    where
+        Rt: AsyncRuntime,
+        F: Future<Output = Result<(), SendError<T>>> + OptionalSend,
+    {
         let mut send = pin!(send);
         loop {
             let receive = Self::receive(&mut self.source);
-            let selected = Rt::select3(&mut self.cancelled, send.as_mut(), receive).await;
+            let selected = Rt::select2(send.as_mut(), receive).await;
             match selected {
-                Select3::First(_) => return false,
-                Select3::Second(sent) => return sent.is_ok(),
-                Select3::Third(Some(command)) => self.queued.push_back(command),
-                Select3::Third(None) => self.source = None,
+                Select2::First(sent) => return sent.is_ok(),
+                Select2::Second(Some(command)) => self.queued.push_back(command),
+                Select2::Second(None) => self.source = None,
             }
         }
     }
