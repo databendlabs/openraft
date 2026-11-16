@@ -1,9 +1,13 @@
+use std::future::Future;
+
+use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::async_runtime::MpscSender;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::async_runtime::watch::WatchSender;
 use crate::core::notification::Notification;
 use crate::type_config::TypeConfigExt;
+use crate::type_config::alias::CancelHandleOf;
 use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::MpscSenderOf;
@@ -23,6 +27,7 @@ where C: RaftTypeConfig
 {
     deadline_tx: WatchSenderOf<C, Option<InstantOf<C>>>,
     _join_handle: JoinHandleOf<C, ()>,
+    _cancel: CancelHandleOf<C>,
 }
 
 impl<C> PendingReadDeadlineNotifier<C>
@@ -30,11 +35,13 @@ where C: RaftTypeConfig
 {
     pub(crate) fn spawn(notification_tx: MpscSenderOf<C, Notification<C>>) -> Self {
         let (deadline_tx, deadline_rx) = C::watch_channel(None);
-        let join_handle = C::spawn(Self::run(deadline_rx, notification_tx));
+        let (cancel, future) = Self::run(deadline_rx, notification_tx);
+        let join_handle = C::spawn(future);
 
         Self {
             deadline_tx,
             _join_handle: join_handle,
+            _cancel: cancel,
         }
     }
 
@@ -42,7 +49,19 @@ where C: RaftTypeConfig
         self.deadline_tx.send_if_different(deadline);
     }
 
-    async fn run(
+    fn run(
+        deadline_rx: WatchReceiverOf<C, Option<InstantOf<C>>>,
+        notification_tx: MpscSenderOf<C, Notification<C>>,
+    ) -> (CancelHandleOf<C>, impl Future<Output = ()> + OptionalSend) {
+        let future = Self::do_run(deadline_rx, notification_tx);
+        let (cancel, future) = C::cancellable(future);
+        let future = async move {
+            let _ = future.await;
+        };
+        (cancel, future)
+    }
+
+    async fn do_run(
         mut deadline_rx: WatchReceiverOf<C, Option<InstantOf<C>>>,
         notification_tx: MpscSenderOf<C, Notification<C>>,
     ) {
@@ -78,8 +97,11 @@ where C: RaftTypeConfig
 mod tests {
     use std::time::Duration;
 
+    use futures_util::FutureExt;
+
     use super::*;
     use crate::async_runtime::MpscReceiver;
+    use crate::async_runtime::mpsc::TryRecvError;
     use crate::engine::testing::UTConfig;
 
     type C = UTConfig;
@@ -106,6 +128,39 @@ mod tests {
             let received = C::timeout(Duration::from_secs(1), rx.recv()).await;
             let notification = received.unwrap().unwrap();
             assert!(matches!(notification, Notification::PendingReadDeadlineReached));
+        });
+    }
+
+    #[test]
+    fn deadline_notifier_cancels_a_blocked_send() {
+        C::run(async {
+            const TIMEOUT: Duration = Duration::from_secs(1);
+
+            tracing::info!("fill the notification channel before the deadline expires");
+            let (tx, mut rx) = C::mpsc(1);
+            tx.send(Notification::Tick { i: 1 }).await.unwrap();
+            let deadline = C::now() - TIMEOUT;
+            let (deadline_tx, deadline_rx) = C::watch_channel(Some(deadline));
+            let (cancel, future) = PendingReadDeadlineNotifier::<C>::run(deadline_rx, tx);
+            let mut future = std::pin::pin!(future);
+            let pending = future.as_mut().now_or_never();
+            assert_eq!(None, pending);
+
+            tracing::info!("cancel the blocked send while keeping notification capacity occupied");
+            {
+                drop(deadline_tx);
+                let pending = future.as_mut().now_or_never();
+                assert_eq!(None, pending, "closing the deadline watch cannot interrupt a send");
+                drop(cancel);
+                C::timeout(TIMEOUT, future).await.unwrap();
+
+                let first = rx.try_recv().unwrap();
+                let sentinel = matches!(first, Notification::Tick { i: 1 });
+                assert!(sentinel, "the blocked deadline notification must be discarded");
+                let next = rx.try_recv();
+                let closed = matches!(next, Err(TryRecvError::Disconnected));
+                assert!(closed, "cancellation must release the notification sender");
+            }
         });
     }
 }
