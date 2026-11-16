@@ -1,10 +1,9 @@
 use openraft_macros::since;
 
 use crate::AsyncRuntime;
+use crate::CancelHandle;
 use crate::Mpsc;
 use crate::MpscReceiver;
-use crate::Oneshot;
-use crate::OneshotSender;
 use crate::OptionalSend;
 use crate::TryRecvError;
 
@@ -25,7 +24,7 @@ where
     T: OptionalSend + 'static,
 {
     receiver: <Rt::Mpsc as Mpsc>::Receiver<T>,
-    cancel: Option<<Rt::Oneshot as Oneshot>::Sender<()>>,
+    _cancel: CancelHandle<Rt>,
     _task: Rt::JoinHandle<()>,
 }
 
@@ -37,12 +36,15 @@ where
     pub(crate) fn new<R>(source: R) -> Self
     where R: MpscReceiver<T> + 'static {
         let (sender, receiver) = Rt::Mpsc::channel(1);
-        let (cancel, cancelled) = Rt::Oneshot::channel();
-        let task = BufferingTask::<Rt, R, T>::new(source, cancelled);
-        let task = Rt::spawn(task.run(sender));
+        let task = BufferingTask::<R, T>::new(source);
+        let future = task.run::<Rt>(sender);
+        let (cancel, future) = Rt::cancellable(future);
+        let task = Rt::spawn(async move {
+            let _ = future.await;
+        });
         Self {
             receiver,
-            cancel: Some(cancel),
+            _cancel: cancel,
             _task: task,
         }
     }
@@ -59,18 +61,5 @@ where
 
     fn try_recv(&mut self) -> Result<T, TryRecvError> {
         self.receiver.try_recv()
-    }
-}
-
-impl<Rt, T> Drop for BufferedReceiver<Rt, T>
-where
-    Rt: AsyncRuntime,
-    T: OptionalSend + 'static,
-{
-    fn drop(&mut self) {
-        let Some(cancel) = self.cancel.take() else {
-            return;
-        };
-        let _ = cancel.send(());
     }
 }
