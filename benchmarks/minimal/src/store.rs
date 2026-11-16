@@ -107,6 +107,8 @@ pub struct LogStore {
     flush_delay: Duration,
     /// Delay before each log read issued by the state-machine apply path.
     apply_read_delay: Duration,
+    /// Delay before each log read issued by replication.
+    replication_read_delay: Duration,
 }
 
 impl LogStore {
@@ -120,6 +122,7 @@ impl LogStore {
             append_delay: Duration::ZERO,
             flush_delay: Duration::ZERO,
             apply_read_delay: Duration::ZERO,
+            replication_read_delay: Duration::ZERO,
         }
     }
 
@@ -133,9 +136,17 @@ impl LogStore {
 
     /// Delay every `entries_stream()` call, which only the state-machine apply path issues.
     ///
-    /// Replication reads go through `leader_bounded_stream()` and are not delayed.
+    /// Replication reads go through `limited_get_log_entries()` and are not delayed.
     pub fn with_apply_read_delay(mut self, delay: Duration) -> Self {
         self.apply_read_delay = delay;
+        self
+    }
+
+    /// Delay every `limited_get_log_entries()` call, which only replication issues.
+    ///
+    /// The apply path reads through `entries_stream()` and is not delayed.
+    pub fn with_replication_read_delay(mut self, delay: Duration) -> Self {
+        self.replication_read_delay = delay;
         self
     }
 
@@ -230,6 +241,11 @@ impl RaftLogReader<TypeConfig> for Arc<LogStore> {
             Ok(entries) => Either::Left(stream::iter(entries).map(Ok)),
             Err(error) => Either::Right(stream::iter([Err(error)])),
         }
+    }
+
+    async fn limited_get_log_entries(&mut self, start: u64, end: u64) -> Result<Vec<EntryOf<TypeConfig>>, io::Error> {
+        blocking_delay(self.replication_read_delay).await?;
+        self.try_get_log_entries(start..end).await
     }
 
     async fn read_vote(&mut self) -> Result<Option<Vote<LeaderId>>, io::Error> {
@@ -522,6 +538,37 @@ mod tests {
         let delayed = started.elapsed();
         assert_eq!(expected, entries);
         assert!(delayed >= delay, "entries_stream() took {delayed:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn replication_read_delay_delays_only_limited_get_log_entries() -> anyhow::Result<()> {
+        use futures::TryStreamExt;
+
+        let delay = Duration::from_millis(20);
+        let store = LogStore::new().with_replication_read_delay(delay);
+        let mut store = Arc::new(store);
+        let leader_id = LeaderId::new_committed(1, 0);
+        let log_id = LogIdOf::<TypeConfig>::new(leader_id, 0);
+        let entry = EntryOf::<TypeConfig>::new_blank(log_id);
+        let expected = vec![entry];
+        let (tx, rx) = TypeConfig::oneshot();
+        let callback = IOFlushed::signal(tx);
+        store.append(expected.clone(), callback).await?;
+        rx.await??;
+
+        let started = tokio::time::Instant::now();
+        let stream = store.entries_stream(0..1).await;
+        let entries: Vec<_> = stream.try_collect().await?;
+        let undelayed = started.elapsed();
+        assert_eq!(expected, entries);
+        assert!(undelayed < delay, "entries_stream() took {undelayed:?}");
+
+        let started = tokio::time::Instant::now();
+        let entries = store.limited_get_log_entries(0, 1).await?;
+        let delayed = started.elapsed();
+        assert_eq!(expected, entries);
+        assert!(delayed >= delay, "limited_get_log_entries() took {delayed:?}");
         Ok(())
     }
 
