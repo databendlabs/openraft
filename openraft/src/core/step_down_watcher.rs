@@ -87,7 +87,7 @@ where C: RaftTypeConfig
         };
 
         let span = tracing::debug_span!("step_down_watcher");
-        let watch_fut = this.watch_loop().instrument(span);
+        let watch_fut = this.run().instrument(span);
         let _join_handle = C::spawn(watch_fut);
     }
 
@@ -97,7 +97,6 @@ where C: RaftTypeConfig
 
             let recv_res = self.rx_server_metrics.changed().await;
             if recv_res.is_err() {
-                tracing::info!("RaftCore terminated, quit step_down_watcher");
                 return;
             }
         }
@@ -163,6 +162,20 @@ where C: RaftTypeConfig
 
         let _ = tx_api.send(RaftMsg::ExternalCommand { cmd }).await;
     }
+
+    async fn run(self) {
+        let mut rx_server_metrics = self.rx_server_metrics.clone();
+        let closed = async move {
+            loop {
+                let changed = rx_server_metrics.changed().await;
+                if changed.is_err() {
+                    return;
+                }
+            }
+        };
+        let _ = C::cancellable_by(self.watch_loop(), closed).await;
+        tracing::info!("RaftCore terminated, quit step_down_watcher");
+    }
 }
 
 /// Decide whether this node is a Leader that is removed from a committed membership config.
@@ -201,18 +214,28 @@ where C: RaftTypeConfig {
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
+    use std::task::Poll;
+    use std::time::Duration;
 
     use maplit::btreemap;
     use maplit::btreeset;
 
+    use super::StepDownWatcher;
     use super::is_removed_leader;
     use super::transfer_target;
     use crate::Membership;
+    use crate::async_runtime::MpscReceiver;
+    use crate::async_runtime::MpscSender;
+    use crate::async_runtime::MpscWeakSender;
+    use crate::async_runtime::watch::WatchSender;
     use crate::core::ServerState;
+    use crate::core::raft_msg::RaftMsg;
+    use crate::core::raft_msg::external_command::ExternalCommand;
     use crate::engine::testing::UTConfig;
     use crate::engine::testing::log_id;
     use crate::metrics::RaftMetrics;
     use crate::metrics::RaftServerMetrics;
+    use crate::type_config::TypeConfigExt;
     use crate::type_config::alias::StoredMembershipOf;
 
     /// Voters 2,3; node 1 is removed.
@@ -295,5 +318,77 @@ mod tests {
         });
 
         assert_eq!(Some(2), transfer_target(&m));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn metrics_closure_interrupts_every_wait() {
+        #[derive(Debug, PartialEq)]
+        enum WaitAt {
+            StepDownDelay,
+            TransferWait,
+            ApiSend,
+        }
+
+        let delay = Duration::from_secs(3600);
+        for wait_at in [WaitAt::StepDownDelay, WaitAt::TransferWait, WaitAt::ApiSend] {
+            tracing::info!(?wait_at, "close server metrics while the step-down watcher is blocked");
+            let metrics = server_metrics(m23());
+            let (server_tx, server_rx) = UTConfig::watch_channel(metrics.clone());
+            let mut full_metrics = RaftMetrics::<UTConfig>::new_initial(1);
+            full_metrics.membership_config = metrics.membership_config.clone();
+            full_metrics.replication = Some(btreemap! {3 => Some(log_id(2, 1, 3))});
+            let (full_tx, full_rx) = UTConfig::watch_channel(full_metrics);
+            let (api_tx, mut api_rx) = UTConfig::mpsc(1);
+            let weak_api_tx = api_tx.downgrade();
+            if wait_at == WaitAt::ApiSend {
+                let cmd = ExternalCommand::Heartbeat;
+                api_tx.send(RaftMsg::ExternalCommand { cmd }).await.unwrap();
+            }
+            let watcher = StepDownWatcher {
+                rx_server_metrics: server_rx,
+                rx_metrics: full_rx,
+                tx_api: weak_api_tx.clone(),
+                step_down_delay: delay,
+                transfer_wait: delay,
+            };
+            let future = watcher.run();
+            let mut future = std::pin::pin!(future);
+            let polled = futures_util::poll!(future.as_mut());
+            assert_eq!(Poll::Pending, polled);
+
+            server_tx.send(metrics).unwrap();
+            if wait_at != WaitAt::StepDownDelay {
+                tokio::time::advance(delay).await;
+            }
+            let polled = futures_util::poll!(future.as_mut());
+            assert_eq!(Poll::Pending, polled, "metrics updates must keep the watcher alive");
+            drop(api_tx);
+            if wait_at == WaitAt::ApiSend {
+                let sending = weak_api_tx.upgrade().is_some();
+                assert!(sending, "the blocked send must hold an upgraded API sender");
+            }
+
+            drop(server_tx);
+            let polled = futures_util::poll!(future.as_mut());
+            assert_eq!(Poll::Ready(()), polled);
+            let released = full_tx.send(RaftMetrics::new_initial(1));
+            let closed = released.is_err();
+            assert!(closed, "termination must release the watcher's metrics receiver");
+            if wait_at != WaitAt::StepDownDelay {
+                let message = api_rx.try_recv().unwrap();
+                match message {
+                    RaftMsg::ExternalCommand {
+                        cmd: ExternalCommand::Heartbeat,
+                    } if wait_at == WaitAt::ApiSend => {}
+                    RaftMsg::ExternalCommand {
+                        cmd: ExternalCommand::TriggerTransferLeader { to },
+                    } if wait_at == WaitAt::TransferWait => assert_eq!(3, to),
+                    _ => panic!("unexpected command at {wait_at:?}"),
+                }
+            }
+            let next = api_rx.recv().await;
+            let closed = next.is_none();
+            assert!(closed, "termination must release any upgraded API sender");
+        }
     }
 }
