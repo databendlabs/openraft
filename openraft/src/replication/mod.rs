@@ -400,18 +400,12 @@ where
         let mut acked: Option<Option<LogIdOf<C>>> = None;
 
         loop {
-            let rpc_res = {
-                let next_resp = resp_strm.next();
-                let cancel = cancel_rx.changed();
-
-                let selected = C::select2(cancel, next_resp).await;
-                match selected {
-                    Select2::Second(rpc_res) => rpc_res,
-                    Select2::First(cancel_res) => {
-                        tracing::info!("ReplicationCore: canceled while waiting response: {:?}", cancel_res);
-                        return (acked, Err("canceled"));
-                    }
-                }
+            let next_resp = resp_strm.next();
+            let cancel = cancel_rx.changed();
+            let rpc_res = C::cancellable_by(next_resp, cancel).await;
+            let Some(rpc_res) = rpc_res else {
+                tracing::info!("ReplicationCore: canceled while waiting response");
+                return (acked, Err("canceled"));
             };
 
             let Some(rpc_res) = rpc_res else {
