@@ -142,11 +142,20 @@ impl<T, I: Instant> Leased<T, I> {
         self.lease_enabled = false;
     }
 
+    /// Return the last instant at which this object is still valid, with `timeout` added to the
+    /// lease.
+    ///
+    /// The object expires once `now` is strictly later than the returned instant. `None` means it
+    /// has never been updated, and is therefore always expired.
+    pub(crate) fn expires_at(&self, timeout: Duration) -> Option<I> {
+        self.last_update.map(|utime| utime + self.lease + timeout)
+    }
+
     /// Checks if the value is expired based on the provided `now` timestamp.
     /// An additional `timeout` parameter can be used to extend the lease under various situations.
     pub(crate) fn is_expired(&self, now: I, timeout: Duration) -> bool {
-        match self.last_update {
-            Some(utime) => now > utime + self.lease + timeout,
+        match self.expires_at(timeout) {
+            Some(expires_at) => now > expires_at,
             None => true,
         }
     }
@@ -164,5 +173,92 @@ impl<T, I: Instant> Leased<T, I> {
         if self.lease_enabled {
             self.lease = lease;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+    use std::time::Instant;
+
+    use super::Leased;
+
+    const LEASE: Duration = Duration::from_millis(100);
+    const NANO: Duration = Duration::from_nanos(1);
+
+    #[test]
+    fn test_expires_at_is_the_last_valid_instant() {
+        let t0 = Instant::now();
+        let leased = Leased::new(t0, LEASE, ());
+
+        let boundary = t0 + LEASE;
+        assert_eq!(Some(boundary), leased.expires_at(Duration::ZERO));
+
+        assert!(!leased.is_expired(boundary - NANO, Duration::ZERO));
+        assert!(
+            !leased.is_expired(boundary, Duration::ZERO),
+            "expiration is strictly after the boundary"
+        );
+        assert!(leased.is_expired(boundary + NANO, Duration::ZERO));
+    }
+
+    #[test]
+    fn test_expires_at_adds_the_timeout() {
+        let t0 = Instant::now();
+        let leased = Leased::new(t0, LEASE, ());
+        let timeout = Duration::from_millis(30);
+
+        let boundary = t0 + LEASE + timeout;
+        assert_eq!(Some(boundary), leased.expires_at(timeout));
+
+        assert!(!leased.is_expired(boundary, timeout));
+        assert!(leased.is_expired(boundary + NANO, timeout));
+    }
+
+    #[test]
+    fn test_never_updated_has_no_boundary_and_is_expired() {
+        let now = Instant::now();
+
+        for leased in [Leased::<(), Instant>::without_last_update(()), Leased::default()] {
+            assert_eq!(None, leased.expires_at(LEASE));
+            assert!(leased.is_expired(now, LEASE));
+        }
+    }
+
+    #[test]
+    fn test_touch_moves_the_boundary() {
+        let t0 = Instant::now();
+        let mut leased = Leased::new(t0, LEASE, ());
+
+        let t1 = t0 + Duration::from_millis(40);
+        let longer = Duration::from_millis(200);
+        leased.touch(t1, longer);
+
+        let boundary = t1 + longer;
+        assert_eq!(Some(boundary), leased.expires_at(Duration::ZERO));
+        assert!(!leased.is_expired(boundary, Duration::ZERO));
+        assert!(leased.is_expired(boundary + NANO, Duration::ZERO));
+    }
+
+    #[test]
+    fn test_disabled_lease_leaves_only_the_timeout() {
+        let t0 = Instant::now();
+        let mut leased = Leased::new(t0, LEASE, ());
+        leased.disable_lease();
+
+        let timeout = Duration::from_millis(30);
+        assert_eq!(Some(t0 + timeout), leased.expires_at(timeout));
+        assert!(leased.is_expired(t0 + NANO, Duration::ZERO));
+
+        let t1 = t0 + Duration::from_millis(10);
+        leased.touch(t1, LEASE);
+        assert_eq!(
+            Some(t1),
+            leased.expires_at(Duration::ZERO),
+            "touch() must not restore a disabled lease"
+        );
+
+        leased.update(t1, LEASE, ());
+        assert_eq!(Some(t1 + LEASE), leased.expires_at(Duration::ZERO));
     }
 }
