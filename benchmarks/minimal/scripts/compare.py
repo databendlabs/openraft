@@ -57,9 +57,12 @@ def main():
 
     if args.apply_delays:
         rows = [
-            (f"{clients} client{'s' * (clients != 1)}, read {read_us} µs, I/O {io_us} µs", grid_args(clients, ops, read_us, io_us))
+            (
+                f"{clients} client{'s' * (clients != 1)}, read {read_us} µs, I/O {io_us} µs, entry {entry_us} µs",
+                grid_args(clients, ops, read_us, io_us, entry_us),
+            )
             for clients, ops in LOADS
-            for read_us, io_us in DELAYS
+            for read_us, io_us, entry_us in DELAYS
         ]
         scenario = "the grid of `make bench_apply_delays`"
     else:

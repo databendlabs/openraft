@@ -75,11 +75,18 @@ What these numbers do not show:
 
 ### Apply-path delays
 
-These runs measure how the state-machine worker handles a slow log read and slow
-state-machine I/O. `--apply-read-delay-us` delays the log read that loads each apply batch
-(`entries_stream()`); replication reads are not delayed. `--apply-io-delay-us` delays the end of
-each `apply()` call, and the client responses wait for it. Both delays occupy a blocking-pool
-thread, so they keep sub-millisecond accuracy.
+These runs measure how the state-machine worker handles a slow log read, slow state-machine
+I/O, and state-machine work per entry. Each delay column models a different cost:
+
+- "read µs", `--apply-read-delay-us`: paid once per log read that loads an apply batch
+  (`entries_stream()`). Replication reads are not delayed.
+- "I/O µs", `--apply-io-delay-us`: paid once per `apply()` call, like an fsync or a round trip.
+- "entry µs", `--apply-entry-delay-us`: paid once per applied entry, like writing each entry to
+  its own key or running business logic per entry. An `apply()` call of n entries waits n times
+  this delay, in one sleep together with the I/O delay.
+
+The client responses of an `apply()` call wait for its I/O and entry delays. All delays occupy a
+blocking-pool thread, so they keep sub-millisecond accuracy.
 
 `make bench_apply_delays` in the repo root reproduces the whole table: it runs
 `scripts/apply_delays.py`, which builds `bench`, runs every row three times under
@@ -89,28 +96,33 @@ thread, so they keep sub-millisecond accuracy.
 Setup: Apple M3 Max, macOS 14.5, three voters in one process, in-memory storage, no network
 delay, one client worker thread, 16 server threads, 1,024 warmup writes, default `Config` of this
 benchmark. 256 clients did 30,000 writes per run, one client did 2,000. The table shows medians
-of three runs, taken while other processes kept the load average between 7 and 10. Memory and
-context switches come from `/usr/bin/time -l` for the whole process.
+of five runs (`--runs 5`), taken while other processes kept the load average between 8 and 11.
+Memory and context switches come from `/usr/bin/time -l` for the whole process.
 
-| clients | read µs | I/O µs | writes/s  | p50 µs | p99 µs | apply cmds | entries/apply p50, p90 | max RSS MB | invol. ctx switches |
-| --:     | --:     | --:    | --:       | --:    | --:    | --:        | --:                    | --:        | --:                 |
-|     256 |       0 |      0 | 1,473,614 |    168 |    298 |      1,324 |                 1, 103 |       43.0 |               8,938 |
-|     256 |     500 |      0 |   190,726 |  1,336 |  1,868 |      1,398 |                  1, 98 |       42.5 |              23,937 |
-|     256 |       0 |    500 |   191,419 |  1,341 |  1,430 |      1,433 |                  1, 92 |       42.9 |              23,829 |
-|     256 |     500 |    500 |   127,623 |  1,988 |  2,731 |      1,467 |                  1, 87 |       42.3 |              38,408 |
-|     256 |   1,000 |      0 |    98,583 |  2,606 |  3,643 |      1,392 |                  1, 99 |       43.5 |              24,610 |
-|     256 |       0 |  1,000 |    92,861 |  2,609 |  5,794 |      1,455 |                  1, 86 |       43.7 |              25,627 |
-|       1 |       0 |      0 |    28,980 |     32 |     61 |      3,025 |                   1, 1 |       36.9 |              19,655 |
-|       1 |     500 |      0 |     1,425 |    692 |    982 |      3,025 |                   1, 1 |       37.6 |              54,109 |
-|       1 |       0 |    500 |     1,444 |    693 |    749 |      3,025 |                   1, 1 |       37.7 |              55,004 |
-|       1 |     500 |    500 |       729 |  1,349 |  2,000 |      3,025 |                   1, 1 |       37.7 |              90,606 |
-|       1 |   1,000 |      0 |       755 |  1,322 |  1,401 |      3,025 |                   1, 1 |       37.7 |              57,008 |
-|       1 |       0 |  1,000 |       762 |  1,321 |  1,380 |      3,025 |                   1, 1 |       37.5 |              56,229 |
+| clients | read µs | I/O µs | entry µs | writes/s  | p50 µs | p99 µs | apply cmds | entries/apply p50, p90 | max RSS MB | invol. ctx switches |
+| --:     | --:     | --:    | --:      | --:       | --:    | --:    | --:        | --:                    | --:        | --:                 |
+|     256 |       0 |      0 |        0 | 1,430,518 |    171 |    340 |      1,327 |                 1, 104 |       42.4 |               8,608 |
+|     256 |     500 |      0 |        0 |   191,587 |  1,339 |  1,451 |      1,409 |                 1, 121 |       41.9 |              23,789 |
+|     256 |       0 |    500 |        0 |   191,568 |  1,333 |  1,529 |      1,446 |                 1, 109 |       42.6 |              24,516 |
+|     256 |     500 |    500 |        0 |   128,412 |  1,988 |  2,545 |      1,470 |                 1, 110 |       42.6 |              38,520 |
+|     256 |   1,000 |      0 |        0 |    98,147 |  2,609 |  2,951 |      1,425 |                 1, 108 |       42.7 |              25,860 |
+|     256 |       0 |  1,000 |        0 |    99,169 |  2,589 |  2,681 |      1,480 |                 1, 111 |       42.7 |              25,570 |
+|     256 |       0 |      0 |       10 |    78,528 |  3,299 |  3,614 |      1,480 |                 1, 124 |       42.1 |              23,685 |
+|     256 |       0 |    500 |       10 |    57,348 |  4,542 |  6,407 |      1,492 |                 1, 110 |       42.6 |              24,710 |
+|       1 |       0 |      0 |        0 |    28,712 |     32 |     60 |      3,025 |                   1, 1 |       37.0 |              18,655 |
+|       1 |     500 |      0 |        0 |     1,448 |    691 |    776 |      3,025 |                   1, 1 |       37.7 |              54,079 |
+|       1 |       0 |    500 |        0 |     1,449 |    691 |    729 |      3,025 |                   1, 1 |       37.6 |              53,745 |
+|       1 |     500 |    500 |        0 |       740 |  1,346 |  1,681 |      3,025 |                   1, 1 |       37.8 |              88,231 |
+|       1 |   1,000 |      0 |        0 |       751 |  1,324 |  1,596 |      3,025 |                   1, 1 |       38.0 |              56,455 |
+|       1 |       0 |  1,000 |        0 |       745 |  1,325 |  1,800 |      3,025 |                   1, 1 |       38.0 |              55,766 |
+|       1 |       0 |      0 |       10 |    14,236 |     67 |    112 |      3,025 |                   1, 1 |       37.2 |              51,127 |
+|       1 |       0 |    500 |       10 |     1,408 |    705 |    823 |      3,025 |                   1, 1 |       38.0 |              53,894 |
 
 "apply cmds" counts the `SaveCommittedAndApply` commands the leader's RaftCore sends, warmup
 included. "entries/apply" is the number of entries the state machine receives in one `apply()`
 call. The worker merges the apply commands queued when it starts a batch, so one call covers one
-or more commands.
+or more commands. Both columns include the 1,024 warmup writes, which a single client sends one
+at a time, so each of them is applied alone and the p50 is 1 in every row.
 
 RaftCore sends one apply command each time the commit index advances. The worker keeps two
 batches in flight: while one batch applies with one `apply()` call, the apply commands that were
@@ -119,11 +131,20 @@ that arrive during the call stay queued and become the batch after that. Under l
 therefore costs the larger of its read and its I/O delay, and each delay is paid once for all the
 entries committed during the previous batch.
 
-So the read no longer adds to the I/O: 500 µs of read plus 500 µs of I/O gives 127,623 writes/s
-with 256 clients, against 92,861 to 98,583 for a single 1,000 µs delay. Full overlap would reach
-the 190,726 to 191,419 writes/s of a single 500 µs delay. Part of the difference is the first
+So the read no longer adds to the I/O: 500 µs of read plus 500 µs of I/O gives 128,412 writes/s
+with 256 clients, against 98,147 to 99,169 for a single 1,000 µs delay. Full overlap would reach
+the 191,568 to 191,587 writes/s of a single 500 µs delay. Part of the difference is the first
 batch after every idle period, whose read cannot overlap anything. With one client nothing can
 overlap: only one write is in flight, so there is never a next batch to read ahead.
+
+A cost per entry does not shrink when batches merge: an `apply()` call of n entries pays 10·n µs
+in the "entry µs" rows, so the worker cannot apply more than 100,000 entries/s, whatever the
+batch size. 256 clients reach 78,528 writes/s with that delay alone, below the 191,568 writes/s
+of a 500 µs per-call I/O delay. With both, a call of 110 entries, the p90, costs 1.6 ms, and
+throughput falls to 57,348 writes/s. Conclusions drawn from the per-call rows, such as how much
+merging saves, hold for a state machine only to the extent that its cost is per call. With one
+client, the 10 µs entry delay raises p50 from 32 to 67 µs, because handing a sleep to a
+blocking-pool thread costs about 25 µs more than the sleep itself.
 
 The medians vary between runs of the whole grid. In two runs on the same machine, the
 256-client medians with delays differed by up to 23% in writes/s and up to 34% in p50 latency.
@@ -133,14 +154,12 @@ revisions" below.
 
 What these numbers do not show:
 
-- Memory cost of large batches. Max RSS stays at 42 to 44 MB in every 256-client run; the
+- Memory cost of large batches. Max RSS stays at 42 to 43 MB in every 256-client run; the
   entries of the two batches in flight are too small to show up against the fixed cost of three
   nodes.
 - Task switching inside the runtime. The context-switch counts are whole-process OS counts, and
   each simulated delay adds a wakeup of a blocking-pool thread, so runs with both delays switch
   more than runs with one.
-- Costs that grow with the number of entries. Both simulated delays are fixed per call, so
-  merging spreads them over every entry of a batch; a per-entry cost would not shrink.
 - The 256-client run without delays takes about 20 ms and only serves as a control.
 
 To run one row by hand:
@@ -331,6 +350,7 @@ References for the optimization and its correctness requirements:
 --transfer-leader-after-ms Move leadership from node 0 to node 1 after this delay; clients follow it
 --apply-read-delay-us Delay of the log read that loads each apply batch [default: 0]
 --apply-io-delay-us   State-machine I/O delay of each apply batch [default: 0]
+--apply-entry-delay-us State-machine delay of each applied entry [default: 0]
 ```
 
 Numbers support underscores and unit suffixes: `1_000`, `100k`, `20m`, `1g`

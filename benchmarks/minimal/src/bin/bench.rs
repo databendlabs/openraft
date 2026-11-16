@@ -147,6 +147,11 @@ struct Args {
     #[arg(long, default_value_t = 0)]
     apply_io_delay_us: u64,
 
+    /// State-machine delay of each applied entry, in microseconds; an `apply()` call of n
+    /// entries waits n times this, and responses wait for it.
+    #[arg(long, default_value_t = 0)]
+    apply_entry_delay_us: u64,
+
     /// Successful writes before measurement starts.
     #[arg(long, default_value_t = WARMUP_WRITES)]
     warmup_writes: usize,
@@ -199,6 +204,7 @@ struct BenchConfig {
     pub network_delay_us: u64,
     pub apply_read_delay_us: u64,
     pub apply_io_delay_us: u64,
+    pub apply_entry_delay_us: u64,
     pub warmup_writes: usize,
 }
 
@@ -320,6 +326,7 @@ fn main() -> anyhow::Result<()> {
         network_delay_us: args.network_delay_us,
         apply_read_delay_us: args.apply_read_delay_us,
         apply_io_delay_us: args.apply_io_delay_us,
+        apply_entry_delay_us: args.apply_entry_delay_us,
         warmup_writes: args.warmup_writes,
     };
 
@@ -352,6 +359,7 @@ fn validate(args: &Args) -> anyhow::Result<()> {
         args.network_delay_us,
         args.apply_read_delay_us,
         args.apply_io_delay_us,
+        args.apply_entry_delay_us,
     ];
     let max_delay = delays.into_iter().max().unwrap();
     let within_timeout = u128::from(max_delay) < WAIT_TIMEOUT.as_micros();
@@ -498,7 +506,8 @@ fn create_cluster(server_rt: &Runtime, bench_config: &BenchConfig) -> anyhow::Re
         let router = Router::with_delays(append_delay, flush_delay, network_delay);
         let apply_read_delay = Duration::from_micros(bench_config.apply_read_delay_us);
         let apply_io_delay = Duration::from_micros(bench_config.apply_io_delay_us);
-        let mut router = router.with_apply_delays(apply_read_delay, apply_io_delay);
+        let apply_entry_delay = Duration::from_micros(bench_config.apply_entry_delay_us);
+        let mut router = router.with_apply_delays(apply_read_delay, apply_io_delay, apply_entry_delay);
         router.new_cluster(config, bench_config.members.clone()).await?;
         let leader = router.get_raft(0);
         Ok((router, leader))
@@ -750,6 +759,7 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft, router: &Router
             "network_delay_us": bench_config.network_delay_us,
             "apply_read_delay_us": bench_config.apply_read_delay_us,
             "apply_io_delay_us": bench_config.apply_io_delay_us,
+            "apply_entry_delay_us": bench_config.apply_entry_delay_us,
         });
         println!("{report}");
         return Ok(());
