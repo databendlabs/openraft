@@ -102,6 +102,10 @@ where C: RaftTypeConfig
 
     /// The earliest pending linearizable read reached its deadline.
     PendingReadDeadlineReached,
+
+    /// The follower election timeout armed by `RaftCore` is due: check whether to start an
+    /// election.
+    FollowerElectionTimeout,
 }
 
 impl<C> Notification<C>
@@ -125,6 +129,7 @@ where C: RaftTypeConfig
             Self::StateMachine { .. } => NotificationName::StateMachine,
             Self::Tick { .. } => NotificationName::Tick,
             Self::PendingReadDeadlineReached => NotificationName::PendingReadDeadlineReached,
+            Self::FollowerElectionTimeout => NotificationName::FollowerElectionTimeout,
         }
     }
 }
@@ -202,6 +207,9 @@ where C: RaftTypeConfig
             }
             Self::PendingReadDeadlineReached => {
                 write!(f, "PendingReadDeadlineReached")
+            }
+            Self::FollowerElectionTimeout => {
+                write!(f, "FollowerElectionTimeout")
             }
         }
     }

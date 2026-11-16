@@ -30,6 +30,7 @@ use crate::batch::Batch;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::ClientResponderQueue;
+use crate::core::FollowerElectionTimeout;
 use crate::core::IoBroadcast;
 use crate::core::LeaseReadStatePublisher;
 use crate::core::MetricsChannels;
@@ -237,6 +238,12 @@ where
     /// Wakes this core when a pending linearizable read reaches its deadline.
     pub(crate) pending_read_deadline_notifier: PendingReadDeadlineNotifier<C>,
 
+    /// Wakes this follower when its next election may be due.
+    ///
+    /// Only [`Self::refresh_follower_election_timeout`] arms, replaces, or cancels it, and only an
+    /// eligible follower has one. Elections in every other role still run on the ticker.
+    pub(crate) follower_election_timeout: Option<FollowerElectionTimeout<C>>,
+
     /// A mapping of node IDs the replication state of the target node.
     pub(crate) replications: BTreeMap<C::NodeId, ReplicationHandle<C>>,
 
@@ -329,6 +336,10 @@ where
         let res = self.do_main().instrument(span).await;
 
         self.lease_read_state_publisher.clear();
+
+        if let Some(timeout) = self.follower_election_timeout.take() {
+            timeout.shutdown().await;
+        }
 
         // Flush buffered metrics
         self.flush_metrics();
@@ -1286,6 +1297,10 @@ where
         self.publish_lease_read_state();
         self.send_satisfied_responds();
 
+        // Arm the election timeout before a command can wait for channel capacity, so that a state
+        // change made by the input just handled is covered while the command waits.
+        self.refresh_follower_election_timeout();
+
         loop {
             // Batch commands for better I/O performance (e.g., merge consecutive AppendEntries)
             self.engine.output.sched_commands(&self.config);
@@ -2047,7 +2062,7 @@ where
                     );
                 }
             }
-            ExternalCommand::Tick => self.handle_tick("external-tick"),
+            ExternalCommand::Tick => self.handle_tick("external-tick", true),
         }
     }
 
@@ -2059,6 +2074,8 @@ where
             self.lease_read_state_publisher.clear();
         } else {
             self.publish_lease_read_state();
+            // Also covers notifications consumed while a command send is blocked.
+            self.refresh_follower_election_timeout();
         }
         result
     }
@@ -2132,7 +2149,7 @@ where
                 }
             }
 
-            Notification::Tick { i } => self.handle_tick(format_args!("tick-{i}")),
+            Notification::Tick { i } => self.handle_tick(format_args!("tick-{i}"), false),
             Notification::StorageError { error } => {
                 tracing::error!("RaftCore received Notification::StorageError: {}", error);
                 return Err(Fatal::StorageError(error));
@@ -2166,6 +2183,7 @@ where
 
             Notification::StateMachine { command_result } => self.handle_state_machine_result(command_result)?,
             Notification::PendingReadDeadlineReached => self.process_pending_reads(),
+            Notification::FollowerElectionTimeout => self.handle_follower_election_timeout(),
         };
         Ok(())
     }
@@ -2173,14 +2191,19 @@ where
     /// Handle [`Notification::Tick`] and [`ExternalCommand::Tick`]: check the election timer and,
     /// if leading, the heartbeat timer.
     ///
-    /// `emitter` names the tick source in log messages.
-    fn handle_tick(&mut self, emitter: impl fmt::Display) {
+    /// `emitter` names the tick source in log messages. `check_follower_election` is false for the
+    /// internal ticker, which leaves a follower's election to its election timeout; a manual tick
+    /// checks the election in every role.
+    fn handle_tick(&mut self, emitter: impl fmt::Display, check_follower_election: bool) {
         // check every timer
 
         let now = C::now();
         tracing::debug!("received {}, now: {}", emitter, now.display());
 
-        self.handle_tick_election();
+        let is_follower = self.engine.state.server_state == ServerState::Follower;
+        if check_follower_election || !is_follower {
+            self.handle_tick_election();
+        }
 
         // Leader send heartbeat
         let heartbeat_at = self.engine.leader_ref().map(|l| l.next_heartbeat);
@@ -2196,6 +2219,77 @@ where
                 l.next_heartbeat = C::now() + Duration::from_millis(self.config.heartbeat_interval);
             }
         }
+    }
+
+    /// Handle [`Notification::FollowerElectionTimeout`]: start an election if one is due.
+    ///
+    /// The task that sent it has finished, so the recorded timeout is cleared. A notification from
+    /// a task that was replaced clears the newer timeout instead; the refresh after every
+    /// notification arms it again from the current state.
+    fn handle_follower_election_timeout(&mut self) {
+        self.follower_election_timeout = None;
+
+        if self.engine.state.server_state != ServerState::Follower {
+            tracing::debug!("skip follower election timeout, not a follower");
+            return;
+        }
+
+        if !self.runtime_config.is_tick_enabled() {
+            tracing::debug!("skip follower election timeout, tick disabled");
+            return;
+        }
+
+        self.handle_tick_election();
+    }
+
+    /// Arm, keep, replace, or cancel the follower election timeout to match the current state.
+    ///
+    /// A timeout that wakes at or before the current deadline is kept: when a heartbeat moves the
+    /// deadline later, the armed timeout wakes early, finds the election not yet due, and the
+    /// refresh after it arms the later deadline. A deadline that moves earlier replaces the
+    /// timeout. Dropping a replaced or cancelled timeout cancels its task without waiting.
+    fn refresh_follower_election_timeout(&mut self) {
+        let Some(wake_at) = self.follower_election_wake_at() else {
+            if self.follower_election_timeout.take().is_some() {
+                tracing::debug!("cancel follower election timeout");
+            }
+            return;
+        };
+
+        if let Some(armed) = &self.follower_election_timeout
+            && armed.wake_at() <= wake_at
+        {
+            return;
+        }
+
+        tracing::debug!("arm follower election timeout at {}", wake_at.display());
+        let timeout = FollowerElectionTimeout::spawn(wake_at, self.notifications.sender());
+        self.follower_election_timeout = Some(timeout);
+    }
+
+    /// Return when the follower election timeout should wake, or `None` if this node needs none.
+    ///
+    /// Only a follower that may campaign needs one, while both the tick and automatic elections
+    /// are enabled. A single campaigner whose election is already in progress needs none either.
+    fn follower_election_wake_at(&self) -> Option<InstantOf<C>> {
+        if self.engine.state.server_state != ServerState::Follower {
+            return None;
+        }
+
+        if !self.engine.state.membership_state.is_campaigner_in_effective_or_committed(&self.id) {
+            return None;
+        }
+
+        if !self.runtime_config.enable_elect.load(Ordering::Relaxed) || !self.runtime_config.is_tick_enabled() {
+            return None;
+        }
+
+        let is_single_campaigner = self.engine.is_single_campaigner();
+        let pre_vote = self.runtime_config.enable_pre_vote.load(Ordering::Relaxed) && !is_single_campaigner;
+        let deadline = self.engine.election_deadline(pre_vote)?;
+
+        let wake_at = deadline.earliest_due_at().unwrap_or_else(C::now);
+        Some(wake_at)
     }
 
     /// Handle [`Notification::LocalIO`]: a local log or vote write reached the disk.
