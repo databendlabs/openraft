@@ -79,8 +79,8 @@ where C: RaftTypeConfig
     }
 
     /// Inspects the next notification in the channel without consuming it or waiting.
-    pub(crate) fn peek(&mut self) -> Result<&Notification<C>, TryRecvError> {
-        self.receiver.peek()
+    pub(crate) fn try_peek(&mut self) -> Result<&Notification<C>, TryRecvError> {
+        self.receiver.try_peek()
     }
 }
 

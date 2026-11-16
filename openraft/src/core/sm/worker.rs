@@ -177,7 +177,7 @@ where
         mut last: LogIdOf<C>,
         mut client_resp_channels: Vec<(u64, CoreResponder<C>)>,
     ) -> (LogIdOf<C>, Vec<(u64, CoreResponder<C>)>) {
-        while let Ok(Command::Apply { first, .. }) = self.cmd_rx.peek()
+        while let Ok(Command::Apply { first, .. }) = self.cmd_rx.try_peek()
             && first.index() == last.index() + 1
         {
             let Ok(Command::Apply {
