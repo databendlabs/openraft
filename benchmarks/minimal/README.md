@@ -6,6 +6,12 @@ Openraft itself.
 The benchmark comes with an in-memory log store, a state machine with no data,
 and an in-process network that uses function calls to simulate RPC.
 
+The network replicates like a streaming transport: it passes the leader's stream of
+AppendEntries requests to the follower's `Raft::stream_append()`, so several requests are in
+flight at once. `--sequential-append` selects `stream_append_sequential()` instead, which sends
+one request per round trip. Tables measured before the bench had the streaming path used the
+sequential one; each table below names its path.
+
 
 ## Benchmark result
 
@@ -38,15 +44,17 @@ The benchmark is conducted with the following settings:
 - A cluster of 3 nodes in a single process on a Mac M1-Max laptop.
 - Request: empty
 - Response: empty
+- Sequential replication path, the only one the bench had then.
 
 ### Lease reads
 
 These runs compare `enable_local_lease_read: false` (in-core) with `true` (local) on an Apple
 M3 Max: three voters in one process, in-memory storage, an in-process network, one client worker
 thread, and 16 server threads. Snapshots and runtime statistics were disabled; heartbeats and
-elections stayed enabled. Each run did 1,024 warmup writes, then 1,000,000 reads with one reader
-or 10,000,000 reads with 64, and included the apply wait (`--read-await-ready`). The table shows
-medians of five runs per mode, in alternating order.
+elections stayed enabled. Replication used the sequential path, the only one the bench had then.
+Each run did 1,024 warmup writes, then 1,000,000 reads with one reader or 10,000,000 reads with
+64, and included the apply wait (`--read-await-ready`). The table shows medians of five runs per
+mode, in alternating order.
 
 | readers | in-core reads/s | local reads/s | gain  |
 | --:     | --:             | --:           | --:   |
@@ -95,7 +103,8 @@ blocking-pool thread, so they keep sub-millisecond accuracy.
 
 Setup: Apple M3 Max, macOS 14.5, three voters in one process, in-memory storage, no network
 delay, one client worker thread, 16 server threads, 1,024 warmup writes, default `Config` of this
-benchmark. 256 clients did 30,000 writes per run, one client did 2,000. The table shows medians
+benchmark, sequential replication path (now `--sequential-append`), the only one the bench had
+then. 256 clients did 30,000 writes per run, one client did 2,000. The table shows medians
 of five runs (`--runs 5`), taken while other processes kept the load average between 8 and 11.
 Memory and context switches come from `/usr/bin/time -l` for the whole process.
 
@@ -169,6 +178,59 @@ cargo build --release --bin bench
 /usr/bin/time -l target/release/bench --latency -c 256 -n 30k \
   --apply-read-delay-us 500 --apply-io-delay-us 500
 ```
+
+### Replication paths
+
+These runs compare the two replication paths under a network delay and a delay of the leader's
+log read for replication. `--network-delay-us` delays every AppendEntries request and every
+response, on both paths. It sleeps on the Tokio timer, which rounds a deadline up to the next
+1 ms tick, so a 500 µs delay takes 0.5 to 1.5 ms each way. `--replication-read-delay-us` delays
+every `limited_get_log_entries()` call, which only replication issues; the apply path reads
+through `entries_stream()` and is not delayed. The read delay occupies a blocking-pool thread, so
+it keeps sub-millisecond accuracy.
+
+`make bench_append_paths` in the repo root reproduces the table: it runs
+`scripts/append_paths.py`, which builds `bench`, runs every row five times, one round of all
+rows after another, and prints the medians.
+
+Setup: as in "Apply-path delays", with 256 clients doing 30,000 writes per run. The load average
+rose from 12 to 41 during the runs; because every round runs all rows, a drift affects both
+paths alike.
+
+| path       | network µs | repl. read µs | writes/s  | p50 µs | p99 µs |
+| :--        | --:        | --:           | --:       | --:    | --:    |
+| pipelined  |          0 |             0 | 1,393,276 |    171 |    386 |
+| sequential |          0 |             0 | 1,406,101 |    172 |    340 |
+| pipelined  |        500 |             0 |    70,472 |  3,873 |  5,217 |
+| sequential |        500 |             0 |    38,551 |  6,483 |  9,888 |
+| pipelined  |          0 |           500 |   221,896 |  1,239 |  1,484 |
+| sequential |          0 |           500 |   213,767 |  1,268 |  2,265 |
+| pipelined  |        500 |           500 |    57,649 |  4,068 |  6,991 |
+| sequential |        500 |           500 |    33,604 |  7,703 | 10,036 |
+
+- Without delays, both paths reach about 1,400,000 writes/s. An in-process call returns at once,
+  so one request in flight is enough.
+- With a 500 µs network delay, the pipelined path reaches 70,472 writes/s against 38,551 on the
+  sequential path, and p50 falls from 6,483 to 3,873 µs. The sequential path waits a whole
+  round trip before it reads and sends the next request.
+- With a 500 µs replication read and no network delay, both paths reach 213,767 to 221,896
+  writes/s, close to the 191,587 writes/s of a 500 µs apply read in the "Apply-path delays"
+  table. The read is the only cost here, and the reads of one follower run one at a time on both
+  paths, so each read's batch sets the throughput.
+- With both delays, the pipelined path keeps 82% of its throughput, 57,649 writes/s, and stays
+  1.7 times as fast as the sequential path at 33,604. Its p50 grows by 195 µs, less than one
+  read, against 1,220 µs on the sequential path: the read of the next request overlaps the
+  requests on the wire.
+
+So the leader does not serialize replication reads behind the network, the way the
+state-machine worker serialized its log read behind `apply()` before it read ahead (#2320). A
+worker-style change is not needed on the replication path.
+
+What these numbers do not show:
+
+- Network bandwidth. The delay is the same for an entry-less request and one of 1,024 entries.
+- Network latency finer than the timer. Every delayed hop ends on a 1 ms timer tick.
+- A remote follower. Both followers share the leader's process and runtime.
 
 
 ## Run it
@@ -350,6 +412,9 @@ References for the optimization and its correctness requirements:
 --transfer-leader-after-ms Move leadership from node 0 to node 1 after this delay; clients follow it
 --apply-read-delay-us Delay of the log read that loads each apply batch [default: 0]
 --apply-io-delay-us   State-machine I/O delay of each apply batch [default: 0]
+--network-delay-us    One-way delay of every AppendEntries request and response [default: 0]
+--sequential-append   Replicate one AppendEntries round trip at a time
+--replication-read-delay-us Delay of every replication log read [default: 0]
 --apply-entry-delay-us State-machine delay of each applied entry [default: 0]
 ```
 

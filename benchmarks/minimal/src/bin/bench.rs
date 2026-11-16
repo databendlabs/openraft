@@ -139,6 +139,15 @@ struct Args {
     #[arg(long, default_value_t = 0)]
     network_delay_us: u64,
 
+    /// Replicate one AppendEntries round trip at a time (`stream_append_sequential()`) instead
+    /// of passing the request stream to the follower's `Raft::stream_append()`.
+    #[arg(long)]
+    sequential_append: bool,
+
+    /// Delay of every log read the leader issues for replication, in microseconds.
+    #[arg(long, default_value_t = 0)]
+    replication_read_delay_us: u64,
+
     /// Delay of the log read that loads each apply batch, in microseconds.
     #[arg(long, default_value_t = 0)]
     apply_read_delay_us: u64,
@@ -202,6 +211,8 @@ struct BenchConfig {
     pub append_delay_us: u64,
     pub flush_delay_us: u64,
     pub network_delay_us: u64,
+    pub sequential_append: bool,
+    pub replication_read_delay_us: u64,
     pub apply_read_delay_us: u64,
     pub apply_io_delay_us: u64,
     pub apply_entry_delay_us: u64,
@@ -324,6 +335,8 @@ fn main() -> anyhow::Result<()> {
         append_delay_us: args.append_delay_us,
         flush_delay_us: args.flush_delay_us,
         network_delay_us: args.network_delay_us,
+        sequential_append: args.sequential_append,
+        replication_read_delay_us: args.replication_read_delay_us,
         apply_read_delay_us: args.apply_read_delay_us,
         apply_io_delay_us: args.apply_io_delay_us,
         apply_entry_delay_us: args.apply_entry_delay_us,
@@ -357,6 +370,7 @@ fn validate(args: &Args) -> anyhow::Result<()> {
         args.append_delay_us,
         args.flush_delay_us,
         args.network_delay_us,
+        args.replication_read_delay_us,
         args.apply_read_delay_us,
         args.apply_io_delay_us,
         args.apply_entry_delay_us,
@@ -504,6 +518,9 @@ fn create_cluster(server_rt: &Runtime, bench_config: &BenchConfig) -> anyhow::Re
         let flush_delay = Duration::from_micros(bench_config.flush_delay_us);
         let network_delay = Duration::from_micros(bench_config.network_delay_us);
         let router = Router::with_delays(append_delay, flush_delay, network_delay);
+        let router = router.with_sequential_append(bench_config.sequential_append);
+        let replication_read_delay = Duration::from_micros(bench_config.replication_read_delay_us);
+        let router = router.with_replication_read_delay(replication_read_delay);
         let apply_read_delay = Duration::from_micros(bench_config.apply_read_delay_us);
         let apply_io_delay = Duration::from_micros(bench_config.apply_io_delay_us);
         let apply_entry_delay = Duration::from_micros(bench_config.apply_entry_delay_us);
@@ -757,6 +774,8 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft, router: &Router
             "append_delay_us": bench_config.append_delay_us,
             "flush_delay_us": bench_config.flush_delay_us,
             "network_delay_us": bench_config.network_delay_us,
+            "sequential_append": bench_config.sequential_append,
+            "replication_read_delay_us": bench_config.replication_read_delay_us,
             "apply_read_delay_us": bench_config.apply_read_delay_us,
             "apply_io_delay_us": bench_config.apply_io_delay_us,
             "apply_entry_delay_us": bench_config.apply_entry_delay_us,

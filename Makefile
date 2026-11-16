@@ -156,6 +156,10 @@ bench_write_latency:
 bench_apply_delays:
 	python3 benchmarks/minimal/scripts/apply_delays.py
 
+# Reproduce the "Replication paths" table in benchmarks/minimal/README.md.
+bench_append_paths:
+	python3 benchmarks/minimal/scripts/append_paths.py
+
 # Compare bench at revision BASE with revision TARGET, or with the current checkout when TARGET
 # is unset, on this machine. RUNS sets the runs per build [default: 5].
 # Example: make bench_compare_apply_delays BASE=a5c043ef
