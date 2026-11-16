@@ -15,6 +15,7 @@ use crate::fixtures::ut_harness;
 async fn allow_follower_log_revert() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         enable_heartbeat: false,
         // Make sure the replication is done in more than one steps
         max_payload_entries: 1,
@@ -68,6 +69,7 @@ async fn allow_follower_log_revert() -> Result<()> {
 async fn allow_follower_log_revert_errors() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         enable_heartbeat: false,
         ..Default::default()
     };

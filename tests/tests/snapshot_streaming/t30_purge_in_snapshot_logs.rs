@@ -23,6 +23,7 @@ async fn purge_in_snapshot_logs() -> Result<()> {
         max_in_snapshot_log_to_keep: max_keep,
         purge_batch_size: 1,
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
 

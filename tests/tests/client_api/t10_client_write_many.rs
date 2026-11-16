@@ -24,6 +24,7 @@ use crate::fixtures::ut_harness;
 async fn client_write_many() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
 
@@ -80,6 +81,7 @@ async fn client_write_many() -> Result<()> {
 async fn client_write_many_expect_leader() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;

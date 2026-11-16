@@ -597,6 +597,7 @@ where
         let (io_submitted_tx, _io_submitted_rx) = C::watch_channel(default_io_id);
         let (committed_tx, _committed_rx) = C::watch_channel(None);
         let (quorum_loss_probe_tx, _quorum_loss_probe_rx) = C::watch_channel(None);
+        let (election_tick_at_tx, election_tick_at_rx) = C::watch_channel(None);
 
         let shared_replicate_batch = SharedReplicateBatch::new();
 
@@ -621,6 +622,11 @@ where
                     (sm_cmd_tx, sm_cmd_rx),
                     sm_span,
                 );
+                let enable_elect = {
+                    let enable_elect = inner.runtime_config.enable_elect.lock().unwrap();
+                    enable_elect.subscribe()
+                };
+                let election_ticker = Tick::spawn_at(tx_notify.clone(), election_tick_at_rx, enable_elect);
 
                 let core: RaftCore<C, N, LS, SM> = RaftCore {
                     id: id.clone(),
@@ -640,6 +646,8 @@ where
 
                     pending_reads: PendingReadQueue::default(),
                     pending_read_deadline_notifier: PendingReadDeadlineNotifier::spawn(tx_notify.clone()),
+                    election_tick_at_tx,
+                    election_ticker,
                     replications: Default::default(),
 
                     heartbeat_handle: HeartbeatWorkersHandle::new(id.clone(), config.clone()),

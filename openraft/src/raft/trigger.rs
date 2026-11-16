@@ -87,14 +87,18 @@ where C: RaftTypeConfig
     /// Unlike [`Self::elect`] and [`Self::heartbeat`], the check honors `enable_elect` and
     /// `enable_heartbeat`. It runs whether `enable_tick` is on or off.
     ///
-    /// With [`Config::enable_tick`] set to `false`, an application can drive many nodes from one
-    /// timer of its own. Timeouts are noticed only when a check runs, so the caller's interval
-    /// adds to the election and heartbeat latency. The internal ticker checks about five times per
-    /// [`Config::heartbeat_interval`]. This call waits while the API channel of this node is full.
+    /// With [`Config::enable_tick`] set to `false`, an application can drive the heartbeats of
+    /// many nodes from one timer of its own. Timeouts are noticed only when a check runs, so the
+    /// caller's interval adds to the heartbeat latency, and to the election latency of candidates
+    /// and learners. A follower still elects on time without it: its election ticker, controlled
+    /// by [`Config::enable_elect`], runs whether `enable_tick` is on or off. The internal ticker
+    /// checks about five times per [`Config::heartbeat_interval`]. This call waits while the API
+    /// channel of this node is full.
     ///
     /// Returns error when RaftCore has [`Fatal`] error, e.g., shut down or having storage error.
     ///
     /// [`Config::enable_tick`]: crate::Config::enable_tick
+    /// [`Config::enable_elect`]: crate::Config::enable_elect
     /// [`Config::heartbeat_interval`]: crate::Config::heartbeat_interval
     #[since(version = "0.10.1")]
     pub async fn tick(&self) -> Result<(), Fatal<C>> {

@@ -175,6 +175,10 @@ impl SnapshotPolicy {
 /// - [`SnapshotPolicy`] for snapshot triggering strategies
 ///
 /// [`Raft::new`]: crate::Raft::new
+#[since(
+    version = "0.10.1",
+    change = "`enable_tick` no longer stops a follower's election; `enable_elect` controls it"
+)]
 #[since(version = "0.10.1", change = "add opt-in relaxed leader reads")]
 #[since(
     version = "0.10.0",
@@ -384,20 +388,17 @@ pub struct Config {
     ))]
     pub broadcast_submitted_on_append: Option<bool>,
 
-    /// Enable or disable the internal ticker.
+    /// Enable or disable the internal heartbeat ticker.
     ///
-    /// If ticking is disabled, timeout-based events are all disabled:
-    /// a follower won't wake up to enter candidate state,
-    /// and a leader won't send heartbeat.
+    /// If ticking is disabled, a leader won't send heartbeats, and a candidate, a learner, or a
+    /// leader whose leadership transfer timed out won't re-check its election timeout.
     ///
-    /// **Critical for elections**: When `false`, followers cannot detect leader failures and will
-    /// never trigger elections, even with `enable_elect = true`, unless the application calls
-    /// [`Trigger::tick`]. The tick mechanism provides the timing infrastructure that allows
-    /// followers to detect when `election_timeout_max` has passed without receiving heartbeats
-    /// from the leader.
+    /// A follower's election does not depend on this ticker: it runs on a separate election
+    /// ticker that [`enable_elect`](Self::enable_elect) controls. To stop every automatic
+    /// election, disable `enable_elect` as well.
     ///
-    /// This flag is mainly used for testing, to build a consensus system that does not depend on
-    /// wall clock, or to drive many nodes from one application timer through [`Trigger::tick`].
+    /// This flag is mainly used for testing, or to drive the heartbeats of many nodes from one
+    /// application timer through [`Trigger::tick`].
     /// The value of this config is evaluated as follows:
     /// - being absent: true
     /// - `--enable-tick`: true
@@ -437,9 +438,10 @@ pub struct Config {
     /// When disabled (`false`), followers will never initiate elections, even if the leader fails.
     /// This setting is primarily for testing or building custom consensus systems.
     ///
-    /// **Important**: This setting only works when `enable_tick` is also `true`, or when the
-    /// application calls [`Trigger::tick`]. Elections require time-based events to detect leader
-    /// absence.
+    /// A follower's election runs on its own election ticker, which this setting controls
+    /// whatever [`enable_tick`](Self::enable_tick) says. The election of a candidate, or of a
+    /// campaigner that is a learner in the effective membership, runs on the heartbeat ticker, so
+    /// it also needs `enable_tick`, or an application that calls [`Trigger::tick`].
     ///
     /// [`Trigger::tick`]: crate::raft::trigger::Trigger::tick
     // clap 4 requires `num_args = 0..=1`, or it complains about missing arg error
