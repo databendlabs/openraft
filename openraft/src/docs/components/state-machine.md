@@ -61,6 +61,38 @@ from process interruption: errors exercise unwinding and `Drop`, while stopping
 a child process leaves cleanup unfinished. Neither test alone proves durability
 against machine power loss.
 
+## Transfer completion and file ownership
+
+`SnapshotData` is an opaque application handle. The transport owns receive
+preparation and completion; the state machine owns durable publication. A file
+receiver creates missing parent directories, opens a readable and writable
+file, finishes buffered writes, and positions the reader at the agreed start
+before calling `Raft::install_full_snapshot()`. The legacy chunk receiver
+performs shutdown and rewind when it receives the final `done` chunk.
+
+Transfer validation uses evidence supplied by the sender: declared lengths,
+checksums, and an end record. The [`dir-transfer` example] checks its manifest's
+file lengths, each file's checksum, and the final `End` record before returning
+a completed directory. A receiver's observed byte count alone cannot detect
+truncation. The legacy v1 wire format retains its `done` signal and gains no
+length or checksum fields. In either case, installation must validate the
+snapshot format and its metadata before publishing state.
+
+| Stage | Owner and release rule |
+|-------|------------------------|
+| Receive or build | A private local handle owns the candidate files and any pending I/O. Abandoning the work releases those files after its last owner finishes. |
+| Transfer complete | The completed snapshot handle retains the files while installation validates them. |
+| Durable selection | A record such as `CURRENT` selects the recovery generation. Keep every possibly selected generation when publication has an uncertain outcome. |
+| Retired generation | Existing readers, builders, outgoing transfers, and database handles retain their files until the last owner releases them. |
+| Startup | Under exclusive ownership of the directory, open and validate the selected generation, then reclaim orphan candidates and retired generations. |
+
+Allocate local names independently of peer snapshot IDs. An ID identifies a
+protocol snapshot; it neither names a trusted path nor determines file lifetime.
+Directory names and timestamps do not establish which generation is current or
+which generations still have live owners.
+
+[`dir-transfer` example]: https://github.com/databendlabs/openraft/tree/main/examples/dir-transfer
+
 [`save_committed`]: `crate::storage::RaftLogStorage::save_committed`
 [`StorageHelper::get_initial_state()`]: `crate::StorageHelper::get_initial_state`
 [`RaftStateMachine`]:         `crate::storage::RaftStateMachine`

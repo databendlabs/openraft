@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -438,4 +439,110 @@ fn first_sst(db_path: &Path) -> PathBuf {
         .map(|entry| entry.path())
         .find(|path| path.extension().is_some_and(|extension| extension == "sst"))
         .unwrap()
+}
+
+fn generation_paths(base_dir: &Path) -> BTreeSet<PathBuf> {
+    let mut paths = BTreeSet::new();
+    for entry in fs::read_dir(base_dir).unwrap() {
+        let entry = entry.unwrap();
+        let file_type = entry.file_type().unwrap();
+        if file_type.is_dir() {
+            paths.insert(entry.path());
+        }
+    }
+    paths
+}
+
+fn assert_checkpoint_contents(
+    snapshot: &SnapshotOf<TypeConfig, RocksSnapshotData>,
+    expected_data: &BTreeMap<Vec<u8>, Vec<u8>>,
+    expected_meta: &SnapshotMetaOf<TypeConfig>,
+) {
+    let db = snapshot.snapshot.open_read_only().unwrap();
+    let actual_data = db_data(&db);
+    let actual_meta = read_meta::<TypeConfig>(&db).unwrap();
+    assert_eq!(*expected_data, actual_data);
+    assert_eq!(*expected_meta, actual_meta);
+    assert_eq!(*expected_meta, snapshot.meta);
+}
+
+#[test]
+fn retired_files_live_until_outgoing_snapshot_and_older_builder_release_them() {
+    TypeConfig::run(async {
+        for drop_builder_first in [true, false] {
+            let root = TempDir::new().unwrap().keep();
+            let mut target = RocksStateMachine::<TypeConfig>::open(root.join("target")).unwrap();
+            apply_set(&mut target, 1, "old-key", "old-value").await;
+            apply_set(&mut target, 2, "other-key", "other-value").await;
+            let old_data = state_data(&target);
+            let old_meta = target.get_meta().unwrap();
+            let mut older = target.try_create_snapshot_builder(true).await.unwrap();
+            let outgoing = target.get_current_snapshot().await.unwrap().unwrap();
+            let old_checkpoint = outgoing.snapshot.db_path().to_path_buf();
+            let old_active = Arc::clone(&target.active);
+            let old_active_path = old_active.db_path().to_path_buf();
+
+            tracing::info!(
+                drop_builder_first,
+                "install newer state while old owners retain their files"
+            );
+            let new_active = {
+                let mut source = RocksStateMachine::<TypeConfig>::open(root.join("source")).unwrap();
+                apply_set(&mut source, 3, "new-key", "installed-value").await;
+                let installed = build_snapshot(&mut source).await;
+                target.install_snapshot(&installed.meta, installed.snapshot.clone()).await.unwrap();
+                let actual_data = state_data(&target);
+                let expected_data = state_data(&source);
+                assert_eq!(expected_data, actual_data);
+                let actual_meta = target.get_meta().unwrap();
+                assert_eq!(installed.meta, actual_meta);
+                let current = target.get_current_snapshot().await.unwrap().unwrap();
+                assert_eq!(installed.meta, current.meta);
+                let current_path = current.snapshot.db_path();
+                let installed_path = installed.snapshot.db_path();
+                assert_eq!(installed_path, current_path);
+                active_path(&target)
+            };
+
+            let expected = BTreeSet::from([old_active_path, old_checkpoint.clone(), new_active.clone()]);
+            let actual = generation_paths(&target.base_dir);
+            assert_eq!(expected, actual);
+            let retained_data = db_data(old_active.db());
+            assert_eq!(old_data, retained_data);
+            assert_checkpoint_contents(&outgoing, &old_data, &old_meta);
+            drop(old_active);
+            let retained = BTreeSet::from([old_checkpoint.clone(), new_active.clone()]);
+            let actual = generation_paths(&target.base_dir);
+            assert_eq!(retained, actual);
+
+            tracing::info!(
+                drop_builder_first,
+                "release one checkpoint owner and read through the survivor"
+            );
+            {
+                if drop_builder_first {
+                    drop(older);
+                    let actual = generation_paths(&target.base_dir);
+                    assert_eq!(retained, actual);
+                    assert_checkpoint_contents(&outgoing, &old_data, &old_meta);
+                    drop(outgoing);
+                } else {
+                    drop(outgoing);
+                    let actual = generation_paths(&target.base_dir);
+                    assert_eq!(retained, actual);
+                    let built = older.build_snapshot().await.unwrap();
+                    let built_path = built.snapshot.db_path();
+                    assert_eq!(old_checkpoint, built_path);
+                    assert_checkpoint_contents(&built, &old_data, &old_meta);
+                    drop(older);
+                    drop(built);
+                }
+                let actual = generation_paths(&target.base_dir);
+                let expected = BTreeSet::from([new_active]);
+                assert_eq!(expected, actual);
+            }
+            drop(target);
+            fs::remove_dir_all(root).unwrap();
+        }
+    });
 }

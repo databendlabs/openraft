@@ -39,10 +39,18 @@ sm/
 └── openraft-db-c04d88/   # checkpoint received from a leader
 ```
 
-- A restart opens the generation named by `CURRENT` and removes every other one.
+- A restart opens the generation named by `CURRENT` under exclusive ownership of
+  the directory, then removes orphan generations with the `openraft-db-` prefix.
 - Building a snapshot captures a RocksDB checkpoint of the active generation.
 - Installing a snapshot opens a hard-linked copy of the received checkpoint as a new generation,
-  points `CURRENT` at it, and removes the previous active generation. No key is copied.
+  points `CURRENT` at it, and retires the previous active generation. No key is copied.
+
+`RocksSnapshotData` clones share ownership of their directory. Builders and
+outgoing transfers retain their checkpoints across installation; database work
+retains an `Arc<ActiveDb>`. Retired directories are removed only after their last
+owner drops. A read-only RocksDB handle must be closed before releasing the
+snapshot handle that owns its files. Local generation names are allocated
+independently of peer snapshot IDs; `CURRENT` determines recovery selection.
 
 **Key Code Locations**:
 - `apply`, snapshot building, and snapshot installation: `src/state_machine.rs`
