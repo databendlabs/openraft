@@ -30,6 +30,7 @@ tokio = { version = "1.39", default-features = false, features = ["io-util"] }
 tracing = { workspace = true }
 
 [dev-dependencies]
+log-mem = { path = "../examples/log-mem" }
 openraft = { path = "../openraft", version = "0.10.1", default-features = false, features = ["tokio-rt"] }
 serde_json = { workspace = true }
 tempfile = { workspace = true }

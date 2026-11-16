@@ -30,7 +30,18 @@ use crate::type_config::alias::StoredMembershipOf;
 pub trait RaftStateMachine<C>: OptionalSend + OptionalSync + 'static
 where C: RaftTypeConfig
 {
-    /// Snapshot data for exposing a snapshot for reading & writing.
+    /// An opaque handle to snapshot contents, owned by the application.
+    ///
+    /// The generic core does not prepare directories, open files, flush writers, or rewind readers.
+    /// The transport prepares a private receive target and completes and validates its transfer
+    /// before passing the handle to
+    /// [`Raft::install_full_snapshot`](crate::Raft::install_full_snapshot). A file transport
+    /// must create missing parent directories, open for reading and writing, finish buffered
+    /// writes, and position the handle where installation expects to read.
+    /// [`Self::install_snapshot`] then validates the snapshot format and metadata and owns durable
+    /// publication. Keep backing files alive for every reader, builder, transfer, and database
+    /// handle that still uses them. Peer snapshot IDs are opaque protocol values, not local paths
+    /// or evidence that a directory is safe to remove.
     ///
     /// See the [storage chapter of the guide][sto] for details on log compaction / snapshotting.
     ///
@@ -156,7 +167,8 @@ where C: RaftTypeConfig
     /// snapshot before covered logs can be purged. Retain the previous recovery state until its
     /// replacement is durable. If publication has an uncertain outcome, preserve every possibly
     /// selected generation and return the error so startup can resolve selection safely.
-    /// Retired snapshots can be reclaimed after their last reader or builder releases them.
+    /// Retired snapshots can be reclaimed after their last reader, builder, outgoing transfer,
+    /// or database handle releases them.
     ///
     /// ### snapshot
     ///
@@ -179,13 +191,11 @@ where C: RaftTypeConfig
     /// new snapshot when purged logs require one. A transient state machine must expose its
     /// persistent recovery snapshot so startup can restore the state before replaying logs.
     ///
-    /// ### implementation algorithm
-    ///
-    /// Implementing this method should be straightforward. Check the configured snapshot
-    /// directory for any snapshot files. A proper implementation will only ever have one
-    /// active snapshot, though another may exist while it is being created. As such, it is
-    /// recommended to use a file naming pattern which will allow for easily distinguishing between
-    /// the current live snapshot, and any new snapshot which is being created.
+    /// Select the current snapshot explicitly; several retired snapshots may still have live
+    /// owners. For file-backed recovery, use a durable selection record such as `CURRENT`,
+    /// rather than inferring the selected generation from directory names or timestamps.
+    /// Reclaim startup orphans only after opening and validating the selected generation under
+    /// exclusive ownership of the storage directory.
     ///
     /// A proper snapshot implementation will store last-applied-log-id and the
     /// last-applied-membership config as part of the snapshot, which should be decoded for

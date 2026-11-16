@@ -43,3 +43,17 @@ them. A conforming transport must:
 
 Retry, authentication, compression, and rate limiting are transport concerns, outside this
 protocol.
+
+## Snapshot installation
+
+Allocate a private local directory independently of the peer's snapshot ID and
+retain its owning handle throughout `recv_dir()`. The manifest's lengths,
+`FileEnd` checksums, and `End` record establish transfer completion; the number
+of bytes observed by the receiver alone does not establish completeness.
+`recv_dir()` finishes the writer before returning. Only then pass the directory
+handle and snapshot metadata to `Raft::install_full_snapshot()`.
+
+The state machine validates the snapshot format and metadata, then durably
+selects and publishes the new state. On transfer failure, release the private
+directory after pending I/O finishes. On success, retain files for installation
+and any later readers or outgoing transfers until their last owner releases them.

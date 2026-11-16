@@ -57,6 +57,9 @@ where C: RaftTypeConfig
     /// File receivers must be opened for both reading and writing. Create their parent
     /// directory even on a fresh node, and allocate the local name independently of the
     /// peer's transfer ID. The chunk receiver completes writes and rewinds before installation.
+    /// Keep the private receive files alive until the completed handle is handed to installation,
+    /// or until an abandoned receiver and its pending I/O release them. Durable publication
+    /// remains the responsibility of [`RaftStateMachine::install_snapshot`].
     #[since(version = "0.10.0", change = "moved from RaftStateMachine")]
     async fn begin_receiving_snapshot(&mut self) -> Result<Self::SnapshotReceiver, io::Error>;
 }

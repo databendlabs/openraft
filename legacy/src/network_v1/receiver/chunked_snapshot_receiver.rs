@@ -34,6 +34,12 @@ use crate::network_v1::receiver::StreamingState;
 /// as the state machine's `SnapshotData`: the chunk protocol writes chunks into the receiver and
 /// installs that same object as the snapshot.
 ///
+/// On the final `done` chunk, the receiver completes pending writes and rewinds the handle
+/// before installation. The v1 wire format has no declared total length or checksum; `done`
+/// is the sender's completion signal. Applications needing stronger transfer validation must
+/// provide it in their snapshot format or transport while preserving v1 compatibility.
+/// The state machine validates contents and metadata before durably publishing the snapshot.
+///
 /// The streaming state is stored via `Raft::extension()` as `StreamingState<C>`.
 ///
 /// # Usage
@@ -183,3 +189,6 @@ mod private {
     {
     }
 }
+
+#[cfg(test)]
+mod file_receiver_test;
