@@ -72,6 +72,41 @@ raft.change_membership(btreeset!{1,2,3}, false).await?;
 
 See [cluster example](https://github.com/databendlabs/openraft/blob/d041202a9f30b704116c324a6adc4f2ec28029fa/examples/raft-kv-memstore/tests/cluster/test_cluster.rs#L75-L103) for complete code.
 
+### Named removal policies and complete removal
+
+Use `Raft::change_membership_with_policy(members, RemovedVoterPolicy::KeepAsLearner)`
+to demote departing voters while keeping replication, or
+`RemovedVoterPolicy::Remove` to evict departing voters. Both policies leave
+existing learners alone. The original boolean API remains available.
+
+For permanent removal of either a voter or an existing learner, use
+`Raft::remove_node(node_id)`. It reads the core's effective membership and
+uses `Precondition::LastMembershipLogId` when proposing the change. A voter is
+removed with `ChangeMembers::RemoveVoters` and `retain=false`; a learner is
+removed with `ChangeMembers::RemoveNodes`. Removing an already absent node is
+safe and may write another membership entry. The final voter cannot be removed.
+
+On leadership loss, resolve the current leader before retrying. On
+`InProgress`, wait for the current change to commit. On a membership-log
+precondition failure, reread the effective membership and retry the removal
+within the caller's deadline. A failure after the joint step can leave a
+committed joint config; completing the retry must preserve that transition.
+Concurrent operators must coordinate desired membership changes: a completed
+removal does not prevent another request from adding the node again.
+
+```ignore
+use openraft::raft::RemovedVoterPolicy;
+
+// Keep voter 3 warm as a learner, then permanently remove it.
+raft.change_membership_with_policy([1, 2], RemovedVoterPolicy::KeepAsLearner).await?;
+raft.remove_node(3).await?;
+```
+
+Derive Raft peer addresses from committed membership's full node map, including
+learners. A separate application registry must apply membership changes in
+committed order and define its recovery boundary; otherwise a departed node
+can reappear when the registry is rebuilt.
+
 ### Removing a retained learner
 
 `change_membership(..., retain=true)` only demotes a voter to a learner; the

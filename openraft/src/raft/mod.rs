@@ -15,6 +15,7 @@ mod impl_raft_blocking_write;
 pub mod linearizable_read;
 pub(crate) mod message;
 mod raft_inner;
+mod removed_voter_policy;
 pub mod responder;
 mod runtime_config_handle;
 pub(crate) mod stream_append;
@@ -24,6 +25,7 @@ mod watch_handle;
 pub(crate) use api::app::AppApi;
 pub(crate) use api::management::ManagementApi;
 pub(crate) use api::protocol::ProtocolApi;
+pub use removed_voter_policy::RemovedVoterPolicy;
 
 pub(in crate::raft) mod core_state;
 mod leader;

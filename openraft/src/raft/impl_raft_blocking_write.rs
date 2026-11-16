@@ -2,6 +2,8 @@
 //! Blocking-mode write API blocks until the write operation is completed,
 //! where [`RaftTypeConfig::Responder`] is a [`OneshotResponder`].
 
+use std::collections::BTreeSet;
+
 use openraft_macros::since;
 
 use crate::Raft;
@@ -10,7 +12,6 @@ use crate::batch::Batch;
 use crate::errors::ClientWriteError;
 use crate::errors::RaftError;
 use crate::errors::into_raft_result::IntoRaftResult;
-#[cfg(doc)]
 use crate::impls::ChangeMembers;
 #[cfg(doc)]
 use crate::impls::OneshotResponder;
@@ -21,6 +22,7 @@ use crate::raft::ClientWriteResponse;
 #[cfg(doc)]
 use crate::raft::ManagementApi;
 use crate::raft::Precondition;
+use crate::raft::RemovedVoterPolicy;
 use crate::storage::RaftStateMachine;
 use crate::type_config::alias::BatchOf;
 use crate::type_config::alias::MembershipEditOf;
@@ -426,5 +428,48 @@ where
         MembershipEditOf<C>: RaftMembershipEditOps<C::Membership>,
     {
         self.management_api().add_learner(id, node, blocking).await.into_raft_result()
+    }
+
+    /// Change membership with an explicit policy for removed voters.
+    ///
+    /// Existing learners are unaffected. Use [`Self::remove_node`] to remove a node regardless
+    /// of its current role. All other behavior follows [`Self::change_membership`].
+    #[since(version = "0.10.1")]
+    pub async fn change_membership_with_policy(
+        &self,
+        members: impl Into<MembershipEditOf<C>>,
+        policy: RemovedVoterPolicy,
+    ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>> {
+        let retain = policy.retain_as_learner();
+        self.change_membership(members, retain).await
+    }
+
+    /// Remove a voter or learner from membership and stop replication to it.
+    ///
+    /// Reads the effective membership from the core and guards the change with its log ID.
+    /// On a concurrent membership change or leadership loss, reread the leader and retry within
+    /// the caller's deadline. A failed two-step change can leave a committed joint membership;
+    /// see [`Self::change_membership_if`]. Repeating removal is safe and may append a membership
+    /// entry. Removing the final voter returns the usual empty-membership error.
+    #[since(version = "0.10.1")]
+    pub async fn remove_node(
+        &self,
+        node_id: C::NodeId,
+    ) -> Result<ClientWriteResponse<C>, RaftError<C, ClientWriteError<C>>>
+    where
+        MembershipEditOf<C>: From<ChangeMembers<C::NodeId, C::Node>>,
+    {
+        let membership = self.with_raft_state(|state| state.membership_state.effective().clone()).await?;
+        let is_voter = membership.voter_ids().any(|id| id == node_id);
+        let removed = BTreeSet::from([node_id]);
+        let change = if is_voter {
+            ChangeMembers::RemoveVoters(removed)
+        } else {
+            ChangeMembers::RemoveNodes(removed)
+        };
+        let precondition = Precondition::LastMembershipLogId {
+            last_membership_log_id: membership.log_id().clone(),
+        };
+        self.change_membership_if(change, false, [precondition]).await
     }
 }
