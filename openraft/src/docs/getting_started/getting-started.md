@@ -233,12 +233,59 @@ Most of the APIs are quite straightforward, except two indirect APIs:
 
 ### Ensure the storage implementation is correct
 
-There is a [Test suite for RaftLogStorage and RaftStateMachine][`LogSuite`] available in Openraft.
-If your implementation passes the tests, Openraft should work well with it.
-To test your implementation, run `Suite::test_all()` with a [`StoreBuilder`] implementation,
-as shown in the [`sm-rocks` test](https://github.com/databendlabs/openraft/blob/main/examples/sm-rocks/src/test.rs).
+Run the [storage conformance suite][`LogSuite`] against the log store and state
+machine used in production. Implement [`StoreBuilder`] to create a fresh pair
+for each test. Return a guard that keeps their files alive until the test ends,
+as the [`sm-rocks` adapter](https://github.com/databendlabs/openraft/blob/main/examples/sm-rocks/src/test.rs) does.
 
-Once all tests pass, you can ensure that your custom storage implementation can work correctly in a distributed system.
+Use this test template with your own store types and constructor:
+
+```ignore
+use std::io;
+
+use openraft::StorageError;
+use openraft::testing::log::{StoreBuilder, Suite};
+use openraft::type_config::TypeConfigExt;
+use tempfile::TempDir;
+
+use crate::{LogStore, StateMachine, TypeConfig};
+
+struct ProductionStoreBuilder;
+
+fn storage_error(error: io::Error) -> StorageError<TypeConfig> {
+    let source = TypeConfig::err_from_error(&error);
+    StorageError::read(source)
+}
+
+impl StoreBuilder<TypeConfig, LogStore, StateMachine, TempDir> for ProductionStoreBuilder {
+    async fn build(&self) -> Result<(TempDir, LogStore, StateMachine), StorageError<TypeConfig>> {
+        // Open the production stores under a new temporary directory.
+        let directory = TempDir::new().map_err(storage_error)?;
+        let logs = LogStore::open(directory.path().join("log")).map_err(storage_error)?;
+        let state_machine = StateMachine::open(directory.path().join("sm")).map_err(storage_error)?;
+        Ok((directory, logs, state_machine))
+    }
+}
+
+#[test]
+fn production_storage_contracts() {
+    TypeConfig::run(async {
+        Suite::test_all(ProductionStoreBuilder).await.unwrap();
+    });
+}
+```
+
+The suite checks basic storage contracts, including these boundaries:
+
+- `truncate_after(Some(id))` preserves the entry at `id`; `truncate_after(None)` clears the log.
+- `purge(id)` removes entries through `id`, inclusive.
+- Applied membership retains the log ID of the membership entry.
+
+Passing the suite verifies those contracts. It does not test application commands,
+your snapshot transport, or recovery after a crash. Add tests that compare complete
+application state after transfer and restart, reject incomplete snapshots, and
+exercise failures during data and metadata publication. See the
+[production checklist](#7-production-checklist) for the remaining requirements.
 
 
 ### An implementation has to guarantee data durability.
