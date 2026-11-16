@@ -237,6 +237,12 @@ where
     /// Wakes this core when a pending linearizable read reaches its deadline.
     pub(crate) pending_read_deadline_notifier: PendingReadDeadlineNotifier<C>,
 
+    /// Publishes to the ticker the instant to tick at in place of its periodic ticks.
+    ///
+    /// Only [`Self::refresh_tick_at`] sets it: to the election wake time of an eligible follower,
+    /// and to `None`, which restores periodic ticks, in every other case.
+    pub(crate) tick_at_tx: WatchSenderOf<C, Option<InstantOf<C>>>,
+
     /// A mapping of node IDs the replication state of the target node.
     pub(crate) replications: BTreeMap<C::NodeId, ReplicationHandle<C>>,
 
@@ -1286,6 +1292,10 @@ where
         self.publish_lease_read_state();
         self.send_satisfied_responds();
 
+        // Update the tick instant before a command can wait for channel capacity, so that a state
+        // change made by the input just handled is covered while the command waits.
+        self.refresh_tick_at();
+
         loop {
             // Batch commands for better I/O performance (e.g., merge consecutive AppendEntries)
             self.engine.output.sched_commands(&self.config);
@@ -2059,6 +2069,8 @@ where
             self.lease_read_state_publisher.clear();
         } else {
             self.publish_lease_read_state();
+            // Also covers notifications consumed while a command send is blocked.
+            self.refresh_tick_at();
         }
         result
     }
@@ -2196,6 +2208,44 @@ where
                 l.next_heartbeat = C::now() + Duration::from_millis(self.config.heartbeat_interval);
             }
         }
+    }
+
+    /// Tell the ticker whether to tick only when this follower's election may be due.
+    ///
+    /// An eligible follower has no other periodic work, so the ticker skips its periodic ticks and
+    /// sends one tick at the wake time. A heartbeat that extends the lease moves the wake time
+    /// later before it is reached. In every other case `None` restores periodic ticks.
+    fn refresh_tick_at(&mut self) {
+        let wake_at = self.follower_election_wake_at();
+        if self.tick_at_tx.send_if_different(wake_at) {
+            tracing::debug!("tick at: {}", wake_at.as_ref().map(|t| t.display()).display());
+        }
+    }
+
+    /// Return when an eligible follower's election may be due, or `None` if this node is not one.
+    ///
+    /// Only a follower that may campaign is eligible, while the ticker and automatic elections are
+    /// enabled. A single campaigner whose election is already in progress is not eligible either.
+    /// With the ticker disabled, `None` keeps the parked ticker from waking at every heartbeat.
+    fn follower_election_wake_at(&self) -> Option<InstantOf<C>> {
+        if self.engine.state.server_state != ServerState::Follower {
+            return None;
+        }
+
+        if !self.engine.state.membership_state.is_campaigner_in_effective_or_committed(&self.id) {
+            return None;
+        }
+
+        if !self.runtime_config.enable_elect.load(Ordering::Relaxed) || !self.runtime_config.is_tick_enabled() {
+            return None;
+        }
+
+        let is_single_campaigner = self.engine.is_single_campaigner();
+        let pre_vote = self.runtime_config.enable_pre_vote.load(Ordering::Relaxed) && !is_single_campaigner;
+        let deadline = self.engine.election_deadline(pre_vote)?;
+
+        let wake_at = deadline.earliest_due_at().unwrap_or_else(C::now);
+        Some(wake_at)
     }
 
     /// Handle [`Notification::LocalIO`]: a local log or vote write reached the disk.

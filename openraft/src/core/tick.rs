@@ -1,4 +1,5 @@
-//! tick emitter emits a `RaftMsg::Tick` event at a certain interval.
+//! tick emitter emits a `RaftMsg::Tick` event at a certain interval, or at an instant set by
+//! `RaftCore`.
 
 use std::time::Duration;
 
@@ -11,6 +12,7 @@ use tracing::Span;
 
 use crate::AsyncRuntime;
 use crate::RaftTypeConfig;
+use crate::async_runtime::Select2;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::base::BoxFuture;
 use crate::core::notification::Notification;
@@ -18,12 +20,15 @@ use crate::errors::ShutdownError;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::AsyncRuntimeOf;
 use crate::type_config::alias::CancelHandleOf;
+use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::async_runtime::mpsc::MpscSender;
 
 /// Emit RaftMsg::Tick events at a regular `period` after a randomized first wait.
+///
+/// While `tick_at` holds an instant, the periodic ticks stop and one tick is sent at that instant.
 pub(crate) struct Tick<C>
 where C: RaftTypeConfig
 {
@@ -34,6 +39,9 @@ where C: RaftTypeConfig
 
     /// Emit event or not
     enabled: WatchReceiverOf<C, bool>,
+
+    /// The instant to tick at in place of the periodic ticks, set by `RaftCore`.
+    tick_at: WatchReceiverOf<C, Option<InstantOf<C>>>,
 }
 
 /// Handle to a spawned tick loop.
@@ -54,12 +62,14 @@ where C: RaftTypeConfig
         period: Duration,
         tx: MpscSenderOf<C, Notification<C>>,
         enabled: WatchReceiverOf<C, bool>,
+        tick_at: WatchReceiverOf<C, Option<InstantOf<C>>>,
     ) -> TickHandle<C> {
         let this = Self {
             period,
             first_wait: Self::sample_first_wait(period),
             enabled,
             tx,
+            tick_at,
         };
 
         let future = this.tick_loop().instrument(tracing::span!(
@@ -85,7 +95,8 @@ where C: RaftTypeConfig
         AsyncRuntimeOf::<C>::thread_rng().random_range(period..period * 2)
     }
 
-    /// Emit ticks until the notification receiver or the `enabled` watch sender is dropped.
+    /// Emit ticks until the notification receiver, or the `enabled` or `tick_at` watch sender,
+    /// is dropped.
     ///
     /// [`Self::spawn`] stops it earlier by cancelling this future.
     pub(crate) async fn tick_loop(mut self) {
@@ -97,8 +108,26 @@ where C: RaftTypeConfig
         // the modulo below defined for a zero period, which stays a busy loop as it was before.
         let step_us = self.period.as_micros().max(1);
 
+        // The `tick_at` instant the last tick was sent for. It is not ticked for again: until
+        // `RaftCore` sets another instant, the loop falls back to the periodic ticks, so an
+        // instant left in place cannot strand it.
+        let mut fired_tick_at = None;
+
         loop {
-            C::sleep_until(at).await;
+            let tick_at = *self.tick_at.borrow_and_update();
+            let tick_at = tick_at.filter(|t| fired_tick_at != Some(*t));
+
+            // A new instant ends the wait, so that an instant moved later by a heartbeat does not
+            // send a tick for the earlier one.
+            let wait = C::select2(self.tick_at.changed(), C::sleep_until(tick_at.unwrap_or(at))).await;
+            match wait {
+                Select2::First(Ok(())) => continue,
+                Select2::First(Err(_)) => {
+                    tracing::info!("TickLoop: RaftCore dropped the tick_at sender, quit");
+                    return;
+                }
+                Select2::Second(()) => {}
+            }
 
             let enabled = *self.enabled.borrow_watched();
             if !enabled {
@@ -127,6 +156,10 @@ where C: RaftTypeConfig
 
             if !enabled {
                 continue;
+            }
+
+            if tick_at.is_some() {
+                fired_tick_at = tick_at;
             }
 
             i += 1;
@@ -325,7 +358,8 @@ mod tests {
             // A first wait far longer than this test's own timeout: the loop can only finish by
             // observing the shutdown signal.
             let (_enable_tx, enabled) = TickUTConfig::watch_channel(true);
-            let mut th = Tick::<TickUTConfig>::spawn(Duration::from_secs(10), tx, enabled);
+            let (_tick_at_tx, tick_at) = TickUTConfig::watch_channel(None);
+            let mut th = Tick::<TickUTConfig>::spawn(Duration::from_secs(10), tx, enabled, tick_at);
 
             TickUTConfig::sleep(Duration::from_millis(50)).await;
             let join_handle = th.shutdown();
@@ -345,7 +379,8 @@ mod tests {
             // second blocks in `send()`, because nothing receives until shutdown has returned.
             let (tx, mut rx) = TickUTConfig::mpsc(1);
             let (_enable_tx, enabled) = TickUTConfig::watch_channel(true);
-            let mut th = Tick::<TickUTConfig>::spawn(Duration::ZERO, tx, enabled);
+            let (_tick_at_tx, tick_at) = TickUTConfig::watch_channel(None);
+            let mut th = Tick::<TickUTConfig>::spawn(Duration::ZERO, tx, enabled, tick_at);
 
             TickUTConfig::sleep(Duration::from_millis(50)).await;
             let join_handle = th.shutdown();
@@ -377,7 +412,8 @@ mod tests {
         run_seeded(SEED, async {
             let (tx, mut rx) = SeededTickConfig::mpsc(1024);
             let (_enable_tx, enabled) = SeededTickConfig::watch_channel(true);
-            let mut th = Tick::<SeededTickConfig>::spawn(period, tx, enabled);
+            let (_tick_at_tx, tick_at) = SeededTickConfig::watch_channel(None);
+            let mut th = Tick::<SeededTickConfig>::spawn(period, tx, enabled, tick_at);
 
             let early_first =
                 SeededTickConfig::timeout(first_wait - margin, recv_tick::<SeededTickConfig>(&mut rx)).await;
@@ -416,7 +452,8 @@ mod tests {
             // until this task drains it, and the tick loop is held past its own schedule.
             let (tx, mut rx) = TickUTConfig::mpsc(1);
             let (_enable_tx, enabled) = TickUTConfig::watch_channel(true);
-            let mut th = Tick::<TickUTConfig>::spawn(PERIOD, tx, enabled);
+            let (_tick_at_tx, tick_at) = TickUTConfig::watch_channel(None);
+            let mut th = Tick::<TickUTConfig>::spawn(PERIOD, tx, enabled, tick_at);
 
             TickUTConfig::sleep(STALL).await;
 
@@ -443,7 +480,8 @@ mod tests {
             // Capacity one throttles the busy loop to this task's receive rate.
             let (tx, mut rx) = TickUTConfig::mpsc(1);
             let (_enable_tx, enabled) = TickUTConfig::watch_channel(true);
-            let mut th = Tick::<TickUTConfig>::spawn(Duration::ZERO, tx, enabled);
+            let (_tick_at_tx, tick_at) = TickUTConfig::watch_channel(None);
+            let mut th = Tick::<TickUTConfig>::spawn(Duration::ZERO, tx, enabled, tick_at);
 
             for expected in 1..=3 {
                 let i = TickUTConfig::timeout(Duration::from_secs(1), recv_tick::<TickUTConfig>(&mut rx))
@@ -482,7 +520,8 @@ mod tests {
             // loop sleeps through the deadlines at `first_wait + 3 * PERIOD` and `+ 4 * PERIOD`.
             let (tx, mut rx) = SeededTickConfig::mpsc(1);
             let (_enable_tx, enabled) = SeededTickConfig::watch_channel(true);
-            let mut th = Tick::<SeededTickConfig>::spawn(PERIOD, tx, enabled);
+            let (_tick_at_tx, tick_at) = SeededTickConfig::watch_channel(None);
+            let mut th = Tick::<SeededTickConfig>::spawn(PERIOD, tx, enabled, tick_at);
 
             SeededTickConfig::sleep(first_wait + STALL).await;
 
@@ -504,6 +543,89 @@ mod tests {
             th.shutdown().await.unwrap();
         });
         local.block_on(&rt, scenario);
+    }
+
+    /// While `tick_at` holds an instant, the periodic ticks stop and one tick is sent at it.
+    ///
+    /// After that tick the loop falls back to the periodic ticks until `RaftCore` sets another
+    /// instant, and an instant moved later before it is reached sends nothing for the earlier one.
+    #[test]
+    fn test_tick_at_replaces_the_periodic_ticks() {
+        const PERIOD: Duration = Duration::from_millis(10);
+        const TICK_AT: Duration = Duration::from_millis(500);
+
+        // A paused clock advances only when every task waits, so the windows below are exact.
+        // `LocalSet` lets `spawn()` work in the `single-threaded` build.
+        let rt = tokio::runtime::Builder::new_current_thread().enable_time().start_paused(true).build().unwrap();
+        let local = tokio::task::LocalSet::new();
+
+        let scenario = async {
+            let (tx, mut rx) = TickUTConfig::mpsc(1024);
+            let (_enable_tx, enabled) = TickUTConfig::watch_channel(true);
+            let start = TickUTConfig::now();
+            let (tick_at_tx, tick_at) = TickUTConfig::watch_channel(Some(start + TICK_AT));
+            let mut th = Tick::<TickUTConfig>::spawn(PERIOD, tx, enabled, tick_at);
+
+            tracing::info!("no periodic tick precedes the tick_at instant");
+            {
+                let early = TickUTConfig::timeout(TICK_AT - PERIOD, recv_tick::<TickUTConfig>(&mut rx)).await;
+                assert!(early.is_err(), "periodic ticks must stop while tick_at is set");
+                assert_eq!(1, recv_tick::<TickUTConfig>(&mut rx).await);
+                assert!(TickUTConfig::now() >= start + TICK_AT);
+            }
+
+            tracing::info!("with the fired instant left in place, the periodic ticks resume");
+            {
+                let next = TickUTConfig::timeout(PERIOD * 2, recv_tick::<TickUTConfig>(&mut rx))
+                    .await
+                    .expect("a fired instant must not strand the loop");
+                assert_eq!(2, next);
+            }
+
+            tracing::info!("an instant moved later before it is reached sends nothing for the earlier one");
+            {
+                let now = TickUTConfig::now();
+                tick_at_tx.send(Some(now + PERIOD * 5)).unwrap();
+                tick_at_tx.send(Some(now + TICK_AT)).unwrap();
+
+                let early = TickUTConfig::timeout(TICK_AT - PERIOD, recv_tick::<TickUTConfig>(&mut rx)).await;
+                assert!(early.is_err(), "the replaced instant must not send a tick");
+                assert_eq!(3, recv_tick::<TickUTConfig>(&mut rx).await);
+                assert!(TickUTConfig::now() >= now + TICK_AT);
+            }
+
+            tracing::info!("clearing tick_at restores the periodic ticks");
+            {
+                let now = TickUTConfig::now();
+                tick_at_tx.send(Some(now + TICK_AT)).unwrap();
+                let early = TickUTConfig::timeout(PERIOD * 5, recv_tick::<TickUTConfig>(&mut rx)).await;
+                assert!(early.is_err(), "a pending instant suppresses the periodic ticks");
+
+                tick_at_tx.send(None).unwrap();
+                let next = TickUTConfig::timeout(PERIOD * 2, recv_tick::<TickUTConfig>(&mut rx))
+                    .await
+                    .expect("periodic ticks must resume once tick_at is cleared");
+                assert_eq!(4, next);
+            }
+
+            th.shutdown().await.unwrap();
+        };
+        local.block_on(&rt, scenario);
+    }
+
+    #[test]
+    fn test_dropping_the_tick_at_sender_stops_the_loop() {
+        TickUTConfig::run(async {
+            let (tx, mut rx) = TickUTConfig::mpsc(1024);
+            let (_enable_tx, enabled) = TickUTConfig::watch_channel(true);
+            let (tick_at_tx, tick_at) = TickUTConfig::watch_channel(None);
+            let _th = Tick::<TickUTConfig>::spawn(Duration::from_secs(10), tx, enabled, tick_at);
+
+            drop(tick_at_tx);
+
+            let next = TickUTConfig::timeout(Duration::from_millis(500), rx.recv()).await.unwrap();
+            assert!(next.is_none(), "the loop must stop and release its sender");
+        });
     }
 
     /// Counts how often the wrapped future is polled: one poll per wakeup of the tick task.
@@ -535,11 +657,13 @@ mod tests {
         TickUTConfig::run(async {
             let (tx, mut rx) = TickUTConfig::mpsc(1024);
             let (switch, enabled) = TickUTConfig::watch_channel(false);
+            let (_tick_at_tx, tick_at) = TickUTConfig::watch_channel(None);
             let tick = Tick::<TickUTConfig> {
                 period: PERIOD,
                 first_wait: PERIOD,
                 tx,
                 enabled,
+                tick_at,
             };
             let (mut cancel, future) = TickUTConfig::cancellable(tick.tick_loop());
             let polls = Arc::new(AtomicUsize::new(0));
@@ -588,11 +712,13 @@ mod tests {
         TickUTConfig::run(async {
             let (tx, mut rx) = TickUTConfig::mpsc(1024);
             let (switch, enabled) = TickUTConfig::watch_channel(false);
+            let (_tick_at_tx, tick_at) = TickUTConfig::watch_channel(None);
             let tick = Tick::<TickUTConfig> {
                 period: PERIOD,
                 first_wait: PERIOD,
                 tx,
                 enabled,
+                tick_at,
             };
             let before = TickUTConfig::now();
             let (mut cancel, loop_fut) = TickUTConfig::cancellable(tick.tick_loop());
@@ -658,7 +784,8 @@ mod tests {
             // one blocked in `send()`. Receiving more than that proves the loop is running.
             let (tx, mut rx) = TickUTConfig::mpsc(1);
             let (switch, enabled) = TickUTConfig::watch_channel(true);
-            let mut th = Tick::<TickUTConfig>::spawn(PERIOD, tx, enabled);
+            let (_tick_at_tx, tick_at) = TickUTConfig::watch_channel(None);
+            let mut th = Tick::<TickUTConfig>::spawn(PERIOD, tx, enabled, tick_at);
 
             recv_tick::<TickUTConfig>(&mut rx).await;
             let start = std::time::Instant::now();

@@ -597,6 +597,7 @@ where
         let (io_submitted_tx, _io_submitted_rx) = C::watch_channel(default_io_id);
         let (committed_tx, _committed_rx) = C::watch_channel(None);
         let (quorum_loss_probe_tx, _quorum_loss_probe_rx) = C::watch_channel(None);
+        let (tick_at_tx, tick_at_rx) = C::watch_channel(None);
 
         let shared_replicate_batch = SharedReplicateBatch::new();
 
@@ -640,6 +641,7 @@ where
 
                     pending_reads: PendingReadQueue::default(),
                     pending_read_deadline_notifier: PendingReadDeadlineNotifier::spawn(tx_notify.clone()),
+                    tick_at_tx,
                     replications: Default::default(),
 
                     heartbeat_handle: HeartbeatWorkersHandle::new(id.clone(), config.clone()),
@@ -697,7 +699,7 @@ where
                     let enable_tick = inner.runtime_config.enable_tick.lock().unwrap();
                     enable_tick.subscribe()
                 };
-                let tick_handle = Tick::spawn(tick_period, tick_tx, enabled);
+                let tick_handle = Tick::spawn(tick_period, tick_tx, enabled, tick_at_rx);
                 *inner.tick_handle.lock().unwrap() = Some(tick_handle);
                 join_handle
             })
