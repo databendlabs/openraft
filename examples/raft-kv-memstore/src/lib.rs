@@ -102,3 +102,6 @@ fn new_http_server(app: Arc<App>) -> app_http::Server<App> {
         .post("/linearizable_read", http_api::linearizable_read)
         .post("/follower_read", http_api::follower_read)
 }
+
+#[cfg(test)]
+mod read_guarantees_test;

@@ -635,6 +635,11 @@ and links the trait, protocol page, or test suite that defines it.
   drift. See [read operations][`docs::read`]; the canonical example serves all
   three modes as `/read`, `/linearizable_read` and `/follower_read` in
   [http_api.rs](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/src/http_api.rs).
+  Pair each advertised guarantee with a test of its endpoint. The example's
+  [read-guarantee tests](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/src/read_guarantees_test.rs)
+  exercise a former leader with stale data and a committed write whose apply is
+  paused. The local endpoint can return the old value; the linearizable endpoint
+  must reject old leadership or wait for the committed effects to become visible.
 
 - **Metrics, fatal errors and shutdown.** Watch [`Raft::metrics()`] for
   leadership, replication lag and membership
@@ -648,6 +653,38 @@ and links the trait, protocol page, or test suite that defines it.
   [upgrade guide][`docs::upgrade`]: a `DataChange:` entry in the change log for
   the target version means the stored format changed and a migration is
   required.
+
+Application commands and snapshots have their own persisted schemas, independently
+of Openraft's metadata. Preserve old-data fixtures for the production encoding;
+see [deterministic commands and durable schemas](crate::docs::components::state_machine).
+
+### Adopter CI
+
+Run the basic suite against the production store, then application scenarios
+through the production endpoints and snapshot transport. This example job adds
+schema fixtures, endpoint reads, storage conformance, and process-interruption
+recovery to the workspace checks:
+
+```yaml
+name: adopter-contracts
+on: [push, pull_request]
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - run: sudo apt-get update && sudo apt-get install -y clang libclang-dev
+      - run: make verify docs-check
+      - run: make verify-example-types-kv verify-example-raft-kv-memstore
+      - run: make verify-example-sm-rocks
+```
+
+For an adopter repository, replace the example targets with its own store,
+schema-fixture, endpoint, snapshot-transfer, and crash-recovery tests. Keep the
+crash tests separate from orderly restart tests: stopping a child at a named
+publication boundary exercises recovery without destructors. Passing Openraft's
+library suite does not verify application storage or network adapters.
 
 
 [`declare_raft_types!`]:                `crate::declare_raft_types`
