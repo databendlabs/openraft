@@ -50,6 +50,22 @@ sm/
 - Generation directories and the snapshot builder: `src/snapshot/`
 - Request and response types: [`types-kv`](../types-kv/)
 
+## Recovery guarantees
+
+Apply batches sync application data, progress, and membership before responding.
+Snapshot installation validates the checkpoint's metadata before publishing its
+writable copy. The new generation is retained before replacing `CURRENT`; a
+publication error keeps both possible generations for startup recovery. Cleanup
+failure leaves an orphan that startup can remove after opening the selected
+database. Open each state-machine directory exclusively during recovery.
+
+Machine-failure durability requires RocksDB's synced writes and checkpoints,
+atomic rename in the same directory, and a filesystem that honors file and
+directory sync. `sync_directory()` runs only on Unix; this example does not
+establish the same machine-failure guarantee on other platforms. Tests inject
+I/O errors and kill a child at named boundaries, then reopen the store and run
+OpenRaft startup recovery. These tests cover process interruption, not power loss.
+
 ## Comparison
 
 | Feature | sm-rocks | [sm-mem](../sm-mem/) |

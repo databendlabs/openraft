@@ -103,10 +103,19 @@ impl Drop for GenerationDir {
             return;
         }
 
-        if let Err(error) = fs::remove_dir_all(&self.path)
+        let result = self.remove();
+        if let Err(error) = result
             && error.kind() != io::ErrorKind::NotFound
         {
             tracing::warn!(path = %self.path.display(), %error, "failed to remove RocksDB generation");
         }
+    }
+}
+
+impl GenerationDir {
+    fn remove(&self) -> io::Result<()> {
+        #[cfg(test)]
+        crate::state_machine::fault::check(self.path.parent().unwrap(), "before_cleanup")?;
+        fs::remove_dir_all(&self.path)
     }
 }

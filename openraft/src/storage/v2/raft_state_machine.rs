@@ -50,7 +50,9 @@ where C: RaftTypeConfig
     /// It is all right to return a membership with greater log id than the
     /// last-applied-log-id.
     /// Because upon startup, the last membership will be loaded by scanning logs from the
-    /// `last-applied-log-id`.
+    /// `last-applied-log-id`. Retain those logs until recovery no longer needs them.
+    /// Application state must match the reported last-applied position after recovery, so replay
+    /// neither skips missing effects nor repeats effects already represented by that position.
     async fn applied_state(&mut self) -> Result<(Option<LogIdOf<C>>, StoredMembershipOf<C>), io::Error>;
 
     /// Apply the given payload of entries to the state machine.
@@ -81,21 +83,21 @@ where C: RaftTypeConfig
     /// Note that for a membership log, the implementation needs to do nothing about it, except
     /// storing it.
     ///
-    /// An implementation may choose to persist either the state machine or the snapshot:
+    /// An implementation may persist either the state machine or its snapshots:
     ///
-    /// - An implementation with a persistent state machine: persists the state on disk before
-    ///   returning from `apply()`. So that a snapshot does not need to be persistent.
+    /// - A persistent state machine must durably store each acknowledged prefix's application
+    ///   effects and apply progress before sending responses. Snapshots may be rebuilt from that
+    ///   durable state. Atomic visibility alone does not establish machine-failure durability.
+    /// - A transient state machine must publish effects to readers before sending responses and
+    ///   retain durable logs needed after its last persistent snapshot. On restart, Openraft
+    ///   installs that snapshot and replays logs through the persisted committed position.
+    ///   Implement [`RaftLogStorage::save_committed()`] for this automatic replay.
     ///
-    /// - An implementation with a persistent snapshot: `apply()` does not have to persist state on
-    ///   disk. But every snapshot has to be persistent. And when starting up the application, the
-    ///   state machine should be rebuilt from the last snapshot.
-    ///
-    /// - An implementation with a transient (in-memory) state machine: The state machine does NOT
-    ///   persist on each `apply()` call, but snapshots ARE persistent. On restart, in-memory state
-    ///   is lost and `applied_state()` returns `None` or an old value. Openraft will automatically
-    ///   restore the state machine by: (1) installing the last persistent snapshot, then (2)
-    ///   re-applying logs from the snapshot position to the committed position. To support this
-    ///   pattern, implement [`RaftLogStorage::save_committed()`] to persist the committed log id.
+    /// An `apply()` stream may commit successive prefixes. A later error may leave an earlier
+    /// prefix durable; the entire call need not roll back. `Ok(())` must account for the whole
+    /// supplied stream. Durable state, snapshots, and retained committed logs must reconstruct
+    /// every acknowledged entry. The membership-ahead allowance in [`Self::applied_state`] still
+    /// applies when the required logs remain available.
     ///
     /// [`RaftLogStorage::save_committed()`]: crate::storage::RaftLogStorage::save_committed
     #[since(version = "0.10.0", change = "Entry-Responder-Result stream")]
@@ -144,10 +146,17 @@ where C: RaftTypeConfig
     /// 2. **On restart**: Automatically called by [`StorageHelper::get_initial_state()`] to restore
     ///    transient state machines from the last persistent snapshot before creating [`Raft`]
     ///
-    /// Before this method returns:
-    /// - The state machine should be replaced with the new contents of the snapshot,
-    /// - the input snapshot should be saved, i.e., [`Self::get_current_snapshot`] should return it.
-    /// - and all other snapshots should be deleted at this point.
+    /// Validate the candidate's contents and metadata before replacing the live state. Prepare
+    /// the replacement, durably select it, then publish its live handles. Before returning success,
+    /// application state, [`Self::applied_state`], and [`Self::get_current_snapshot`] must describe
+    /// the installed snapshot consistently.
+    ///
+    /// A persistent state machine must durably publish the replacement state; its snapshot files
+    /// may be rebuilt after restart. A transient state machine must durably publish the replacement
+    /// snapshot before covered logs can be purged. Retain the previous recovery state until its
+    /// replacement is durable. If publication has an uncertain outcome, preserve every possibly
+    /// selected generation and return the error so startup can resolve selection safely.
+    /// Retired snapshots can be reclaimed after their last reader or builder releases them.
     ///
     /// ### snapshot
     ///
@@ -164,6 +173,11 @@ where C: RaftTypeConfig
     ) -> Result<(), io::Error>;
 
     /// Get a readable handle to the current snapshot.
+    ///
+    /// After restart, a persistent state machine may return `None` until it builds a snapshot.
+    /// [`StorageHelper::get_initial_state`](crate::StorageHelper::get_initial_state) requests a
+    /// new snapshot when purged logs require one. A transient state machine must expose its
+    /// persistent recovery snapshot so startup can restore the state before replaying logs.
     ///
     /// ### implementation algorithm
     ///
