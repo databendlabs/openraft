@@ -82,6 +82,20 @@ where C: RaftTypeConfig
         read_value(self.active.db(), key)
     }
 
+    /// Read the complete logical application state.
+    pub fn data(&self) -> io::Result<BTreeMap<String, types_kv::VersionedValue>> {
+        let db = self.active.db();
+        let data = column_family(db, "sm_data")?;
+        let mut result = BTreeMap::new();
+        for item in db.iterator_cf(data, rocksdb::IteratorMode::Start) {
+            let (key, value) = item.map_err(io::Error::other)?;
+            let key = String::from_utf8(key.to_vec()).map_err(io::Error::other)?;
+            let value = deserialize(&value)?;
+            result.insert(key, value);
+        }
+        Ok(result)
+    }
+
     fn get_meta(&self) -> io::Result<SnapshotMetaOf<C>> {
         read_meta::<C>(self.active.db())
     }
@@ -292,3 +306,6 @@ where T: for<'de> Deserialize<'de> {
 mod queue_transport;
 #[cfg(test)]
 mod state_machine_test;
+
+#[cfg(test)]
+mod application_test;

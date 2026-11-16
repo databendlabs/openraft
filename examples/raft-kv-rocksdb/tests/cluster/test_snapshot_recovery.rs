@@ -1,7 +1,13 @@
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+
 use anyhow::Context;
+use openraft::Membership;
+use openraft::NodeInfo;
 use openraft::async_runtime::WatchReceiver;
 use openraft::type_config::TypeConfigExt;
 use raft_kv_rocksdb::TypeConfig;
+use raft_kv_rocksdb::typ::StoredMembership;
 
 use crate::node::Node;
 
@@ -22,23 +28,38 @@ fn test_snapshot_followed_by_logs() -> anyhow::Result<()> {
         };
 
         tracing::info!(snapshot = ?snapshot.meta.last_log_id, "Write a tail that overwrites snapshot data");
-        let (overwritten, added) = {
+        let (overwritten, added, expected_data) = {
             let overwritten = leader.write("shared", "after").await?;
             let added = leader.write("tail", "new").await?;
-            (overwritten, added)
+            let expected_data = BTreeMap::from([
+                (
+                    "shared".to_string(),
+                    overwritten.data.value.clone().context("shared value exists")?,
+                ),
+                (
+                    "tail".to_string(),
+                    added.data.value.clone().context("tail value exists")?,
+                ),
+            ]);
+            (overwritten, added, expected_data)
         };
 
         tracing::info!("Join a learner that needs both the frozen checkpoint and later logs");
         {
-            leader.add_learner(&learner).await?;
+            let response = leader.add_learner(&learner).await?;
             let metrics = learner.raft().metrics();
             let installed = metrics.borrow_watched().snapshot;
             assert_eq!(snapshot.meta.last_log_id, installed);
-            let shared = learner.read("shared").await?;
-            assert_eq!(overwritten.data, shared);
-            let tail = learner.read("tail").await?;
-            assert_eq!(added.data, tail);
-            let expected_state = leader.applied_state().await?;
+
+            let actual_data = learner.data().await?;
+            assert_eq!(expected_data, actual_data);
+
+            let leader_node = NodeInfo::new(leader.raft_addr(), leader.api_addr());
+            let learner_node = NodeInfo::new(learner.raft_addr(), learner.api_addr());
+            let nodes = BTreeMap::from([(1, leader_node), (2, learner_node)]);
+            let members = Membership::new(vec![BTreeSet::from([1])], nodes)?;
+            let membership = StoredMembership::new(Some(response.log_id), members);
+            let expected_state = (Some(response.log_id), membership);
             let actual_state = learner.applied_state().await?;
             assert_eq!(expected_state, actual_state);
         }
@@ -52,8 +73,16 @@ fn test_snapshot_followed_by_logs() -> anyhow::Result<()> {
             learner.wait_applied(index).await?;
             let expected = types_kv::Response::new("cas", index);
             assert_eq!(expected, response.data);
-            let actual = learner.read("shared").await?;
-            assert_eq!(expected, actual);
+            let value = expected.value.context("compare-and-set value exists")?;
+            let expected_data = BTreeMap::from([
+                ("shared".to_string(), value),
+                (
+                    "tail".to_string(),
+                    added.data.value.clone().context("tail value still exists")?,
+                ),
+            ]);
+            let actual_data = learner.data().await?;
+            assert_eq!(expected_data, actual_data);
         }
 
         leader.cleanup().await?;

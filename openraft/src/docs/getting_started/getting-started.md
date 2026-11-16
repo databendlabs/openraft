@@ -287,6 +287,13 @@ application state after transfer and restart, reject incomplete snapshots, and
 exercise failures during data and metadata publication. See the
 [production checklist](#7-production-checklist) for the remaining requirements.
 
+Implement [`ApplicationStoreBuilder`](crate::testing::log::ApplicationStoreBuilder)
+and run [`ApplicationSuite::test_all()`](crate::testing::log::ApplicationSuite::test_all)
+to compare complete application state, apply progress, membership, and every command
+response when the same entries arrive together, individually, and in uneven groups.
+The adapter supplies independent expected results. Transport and crash tests stay with
+the application because they require its real receiver and process lifecycle.
+
 
 ### An implementation has to guarantee data durability.
 

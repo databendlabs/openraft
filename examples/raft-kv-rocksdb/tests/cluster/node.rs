@@ -75,6 +75,11 @@ impl Node {
         &self.settings.raft_addr
     }
 
+    /// Return the application HTTP address.
+    pub fn api_addr(&self) -> &str {
+        &self.settings.api_addr
+    }
+
     /// Initialize a single voter and wait for its initial logs to apply.
     pub async fn initialize(&self) -> anyhow::Result<()> {
         let node = NodeInfo::new(&self.settings.raft_addr, &self.settings.api_addr);
@@ -84,11 +89,12 @@ impl Node {
     }
 
     /// Add another fixture node and wait for it to catch up through the real HTTP transport.
-    pub async fn add_learner(&self, learner: &Self) -> anyhow::Result<()> {
+    pub async fn add_learner(&self, learner: &Self) -> anyhow::Result<ClientWriteResponse> {
         let node = NodeInfo::new(&learner.settings.raft_addr, &learner.settings.api_addr);
         let response = self.raft().add_learner(learner.settings.id, node, true).await?;
         let index = response.log_id.index();
-        learner.wait_applied(index).await
+        learner.wait_applied(index).await?;
+        Ok(response)
     }
 
     /// Wait for an exact applied index with a finite deadline.
@@ -135,6 +141,16 @@ impl Node {
         let key = key.to_string();
         let response = client.read(&key).await?;
         Ok(response)
+    }
+
+    /// Read the complete logical application state.
+    pub async fn data(&self) -> anyhow::Result<BTreeMap<String, types_kv::VersionedValue>> {
+        let state = self
+            .raft()
+            .with_state_machine(|sm: &mut StateMachineStore| Box::pin(async move { sm.data() }))
+            .await?;
+        let state = state?;
+        Ok(state)
     }
 
     /// Read the state machine's durable applied log and membership together.

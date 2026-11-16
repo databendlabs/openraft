@@ -339,3 +339,6 @@ where T: DeserializeOwned {
 
 #[cfg(test)]
 mod state_machine_test;
+
+#[cfg(test)]
+mod application_test;

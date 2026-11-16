@@ -196,30 +196,48 @@ fn test_invalid_snapshot_payloads_preserve_state() -> anyhow::Result<()> {
         leader.initialize().await?;
 
         tracing::info!("Install state that every malformed replacement must preserve");
-        let (expected, transfer) = {
+        let expected = {
             let written = leader.write("key", "preserved").await?;
             let snapshot = leader.build_snapshot().await?;
             let transfer = SnapshotTransfer::new(&leader, &snapshot, CHUNK_SIZE).await?;
             transfer.send(&learner).await?;
-            (written.data, transfer)
+            written.data
         };
         let state_before = learner.applied_state().await?;
         let current_before = learner.current()?;
         let generations_before = learner.generations()?;
 
-        tracing::info!("Corrupt a file payload while retaining its original checksum");
+        tracing::info!("Build a replacement with enough chunks for late corruption");
+        let transfer = {
+            let value = large_value();
+            leader.write("replacement", &value).await?;
+            let snapshot = leader.build_snapshot().await?;
+            let transfer = SnapshotTransfer::new(&leader, &snapshot, CHUNK_SIZE).await?;
+            let full_chunks = transfer
+                .frames
+                .iter()
+                .filter(|frame| matches!(frame, DirFrame::Chunk { data } if data.len() == CHUNK_SIZE))
+                .count();
+            assert!(full_chunks > 2);
+            transfer
+        };
+
+        tracing::info!("Corrupt a later file chunk while retaining its original checksum");
         let corrupt_body = {
             let mut corrupt = transfer.clone();
-            let mut changed = false;
+            let mut chunks = 0;
             for frame in &mut corrupt.frames {
                 let DirFrame::Chunk { data } = frame else {
                     continue;
                 };
+                chunks += 1;
+                if chunks < 3 {
+                    continue;
+                }
                 data[0] ^= 1;
-                changed = true;
                 break;
             }
-            assert!(changed);
+            assert_eq!(3, chunks);
             let messages = corrupt.messages()?;
             let mut bytes = Vec::new();
             for message in &messages[1..] {
@@ -227,14 +245,16 @@ fn test_invalid_snapshot_payloads_preserve_state() -> anyhow::Result<()> {
             }
             bytes
         };
+        let messages = transfer.messages()?;
+        let valid_without_end = messages[1..messages.len() - 1].concat();
         let cases = [
             ("truncated length prefix", vec![0, 0]),
             ("truncated payload", vec![0, 0, 0, 4, 0]),
             ("invalid MessagePack", vec![0, 0, 0, 1, 0xc1]),
             ("oversized message", u32::MAX.to_be_bytes().to_vec()),
-            ("corrupt file contents", corrupt_body),
+            ("valid frames without completion", valid_without_end),
+            ("late corrupt file contents", corrupt_body),
         ];
-        let messages = transfer.messages()?;
 
         for (case, bytes) in cases {
             tracing::info!(case, "Reject malformed HTTP input and discard its receiving directory");
