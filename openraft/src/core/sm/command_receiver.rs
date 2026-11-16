@@ -1,5 +1,6 @@
 use crate::RaftTypeConfig;
 use crate::async_runtime::MpscReceiver;
+use crate::async_runtime::TryRecvError;
 use crate::async_runtime::mpsc::BufferedReceiver;
 use crate::core::sm::Command;
 use crate::storage::RaftStateMachine;
@@ -26,19 +27,24 @@ where
         }
         Self::Bounded(receiver)
     }
-    pub(crate) async fn recv(&mut self) -> Option<Command<C, SM>> {
+}
+
+impl<C, SM> MpscReceiver<Command<C, SM>> for CommandReceiver<C, SM>
+where
+    C: RaftTypeConfig,
+    SM: RaftStateMachine<C>,
+{
+    async fn recv(&mut self) -> Option<Command<C, SM>> {
         match self {
             Self::Bounded(receiver) => receiver.recv().await,
             Self::Buffered(receiver) => receiver.recv().await,
         }
     }
 
-    /// Return the next queued command without waiting, or `None` if none is queued.
-    pub(crate) fn try_recv(&mut self) -> Option<Command<C, SM>> {
-        let received = match self {
+    fn try_recv(&mut self) -> Result<Command<C, SM>, TryRecvError> {
+        match self {
             Self::Bounded(receiver) => receiver.try_recv(),
             Self::Buffered(receiver) => receiver.try_recv(),
-        };
-        received.ok()
+        }
     }
 }
