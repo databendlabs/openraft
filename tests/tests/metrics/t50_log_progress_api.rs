@@ -26,6 +26,7 @@ use crate::fixtures::ut_harness;
 async fn log_progress_api() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;
@@ -92,6 +93,7 @@ async fn log_progress_api() -> Result<()> {
 async fn log_progress_with_leader_change() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;
@@ -174,6 +176,7 @@ async fn log_progress_with_leader_change() -> Result<()> {
 async fn vote_progress_api() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         enable_heartbeat: false,
         ..Default::default()
     };

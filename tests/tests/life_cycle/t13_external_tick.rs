@@ -34,6 +34,7 @@ fn followers_acked_since(metrics: &RaftMetrics<TypeConfig>, since: InstantOf<Typ
 async fn external_tick_sends_due_heartbeat() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         heartbeat_interval: 500,
         election_timeout_min: 1000,
         election_timeout_max: 1001,
@@ -89,11 +90,13 @@ async fn external_tick_sends_due_heartbeat() -> Result<()> {
     Ok(())
 }
 
-/// With the internal ticker disabled, `Trigger::tick()` starts an election only after the
-/// election timeout expires, and only while election is enabled.
+/// With the internal ticker disabled, a follower still elects once its election timeout expires.
+///
+/// `Trigger::tick()` campaigns neither before the timeout nor while elections are disabled, and
+/// enabling elections again starts the election at once, with no external tick.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
-async fn external_tick_starts_election_after_timeout() -> Result<()> {
+async fn external_tick_does_not_bypass_election_timing() -> Result<()> {
     let config = Config {
         enable_tick: false,
         heartbeat_interval: 100,
@@ -112,6 +115,12 @@ async fn external_tick_starts_election_after_timeout() -> Result<()> {
 
     tracing::info!(
         log_index,
+        "--- disable elections on node 2, so that node 1 is the only node to campaign"
+    );
+    router.get_raft_handle(&2)?.runtime_config().elect(false);
+
+    tracing::info!(
+        log_index,
         "--- a tick before the election timeout leaves node 1 a follower"
     );
     {
@@ -127,13 +136,13 @@ async fn external_tick_starts_election_after_timeout() -> Result<()> {
 
     tracing::info!(
         log_index,
-        "--- no heartbeat arrives, so node 1's lease expires; with election disabled a tick does not campaign"
+        "--- with elections disabled, node 1's lease expires with no heartbeat; neither its election timer nor a tick campaigns"
     );
     {
-        TypeConfig::sleep(Duration::from_millis(1100)).await;
         n1.runtime_config().elect(false);
-
         let before = election_rpcs(&router);
+
+        TypeConfig::sleep(Duration::from_millis(1100)).await;
         n1.trigger().tick().await?;
         TypeConfig::sleep(Duration::from_millis(100)).await;
 
@@ -145,12 +154,11 @@ async fn external_tick_starts_election_after_timeout() -> Result<()> {
 
     tracing::info!(
         log_index,
-        "--- with election enabled again, the next tick elects node 1"
+        "--- enabling elections again elects node 1 at once, with no external tick"
     );
     {
         n1.runtime_config().elect(true);
-        n1.trigger().tick().await?;
-        n1.wait(timeout()).state(ServerState::Leader, "node 1 elected by an external tick").await?;
+        n1.wait(timeout()).state(ServerState::Leader, "node 1 elected by its election timer").await?;
 
         let vote = n1.metrics().borrow_watched().vote;
         assert_eq!(Vote::new_committed(term_before + 1, 1), vote);
@@ -159,12 +167,12 @@ async fn external_tick_starts_election_after_timeout() -> Result<()> {
     Ok(())
 }
 
-/// `Trigger::tick()` on a stopped node returns `Fatal::Stopped`.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn external_tick_after_shutdown() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;

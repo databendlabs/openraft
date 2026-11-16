@@ -2,6 +2,8 @@
 
 use std::sync::atomic::Ordering;
 
+use openraft_macros::since;
+
 use crate::RaftTypeConfig;
 use crate::async_runtime::watch::WatchSender;
 use crate::raft::RaftInner;
@@ -25,12 +27,14 @@ where C: RaftTypeConfig
 
     /// Enable or disable raft internal ticker.
     ///
-    /// Disabling tick will disable election and heartbeat. While disabled, the internal ticker
-    /// parks and causes no wakeups; re-enabling it resumes ticking, with the first tick at most
-    /// one tick period later. [`Trigger::tick`] still runs a timer check while the internal ticker
-    /// is disabled.
+    /// Disabling tick stops a leader's heartbeats and the periodic election checks of a
+    /// candidate, a learner, and a leader whose leadership transfer timed out. It does not stop a
+    /// follower's election, which [`Self::elect`] controls. While disabled, the ticker parks and
+    /// causes no wakeups; re-enabling it resumes ticking, with the first tick at most one tick
+    /// period later. [`Trigger::tick`] still runs a timer check while the ticker is disabled.
     ///
     /// [`Trigger::tick`]: crate::raft::trigger::Trigger::tick
+    #[since(version = "0.10.1", change = "no longer stops a follower's election")]
     pub fn tick(&self, enabled: bool) {
         let enable_tick = self.raft_inner.runtime_config.enable_tick.lock().unwrap();
         enable_tick.send_if_different(enabled);
@@ -45,9 +49,15 @@ where C: RaftTypeConfig
         self.raft_inner.runtime_config.enable_heartbeat.store(enabled, Ordering::Relaxed);
     }
 
-    /// Enable or disable election for a follower when its leader lease timed out.
+    /// Enable or disable automatic elections, such as a follower's when its leader lease timed out.
+    ///
+    /// A follower's election runs on its own election timer, whatever [`Self::tick`] says.
+    /// Re-enabling elections starts a follower's election at once if its election timeout has
+    /// already expired.
+    #[since(version = "0.10.1", change = "controls a follower's election without `tick`")]
     pub fn elect(&self, enabled: bool) {
-        self.raft_inner.runtime_config.enable_elect.store(enabled, Ordering::Relaxed);
+        let enable_elect = self.raft_inner.runtime_config.enable_elect.lock().unwrap();
+        enable_elect.send_if_different(enabled);
     }
 
     /// Enable or disable the Pre-Vote round that precedes a real election.

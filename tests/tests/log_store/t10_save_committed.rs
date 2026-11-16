@@ -12,6 +12,7 @@ use crate::fixtures::ut_harness;
 async fn write_committed_log_id_to_log_store() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
 

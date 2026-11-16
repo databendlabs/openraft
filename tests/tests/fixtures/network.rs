@@ -340,6 +340,7 @@ mod tests {
     async fn router_send_delay_bounds_one_rpc() -> Result<()> {
         let config = Config {
             enable_tick: false,
+            enable_elect: false,
             ..Default::default()
         };
         let mut router = RaftRouter::new(config)?;
