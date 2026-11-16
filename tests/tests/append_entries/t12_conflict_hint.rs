@@ -24,6 +24,7 @@ use crate::fixtures::ut_harness;
 async fn append_entries_reports_conflict_hints() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;

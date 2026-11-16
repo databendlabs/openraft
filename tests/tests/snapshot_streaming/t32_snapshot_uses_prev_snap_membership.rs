@@ -35,6 +35,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
         max_in_snapshot_log_to_keep: 3,
         purge_batch_size: 1,
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;

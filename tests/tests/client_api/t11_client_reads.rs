@@ -81,6 +81,7 @@ async fn client_reads() -> Result<()> {
     for node_id in 0..4 {
         let node = router.get_raft_handle(&node_id)?;
         node.runtime_config().tick(false);
+        node.runtime_config().elect(false);
     }
     TypeConfig::sleep(Duration::from_millis(config.election_timeout_max)).await;
 

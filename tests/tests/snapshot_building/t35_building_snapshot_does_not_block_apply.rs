@@ -23,6 +23,7 @@ use crate::fixtures::ut_harness;
 async fn building_snapshot_does_not_block_apply() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
 

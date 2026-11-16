@@ -35,6 +35,7 @@ async fn build_snapshot() -> Result<()> {
         max_in_snapshot_log_to_keep: 2,
         purge_batch_size: 1,
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;

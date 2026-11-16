@@ -24,6 +24,7 @@ async fn metrics_wait() -> Result<()> {
     // Setup test dependencies.
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;
@@ -61,6 +62,7 @@ async fn metrics_wait() -> Result<()> {
 async fn replication_wait() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;

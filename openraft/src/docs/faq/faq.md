@@ -193,14 +193,15 @@ See: [`leader-id`](`crate::docs::data::leader_id`) for details.
 3. **Entering candidate state**: If a follower does not receive any `AppendEntries` messages for longer than [`Config::election_timeout_max`][], it transitions to the `Candidate` state and begins a new election by requesting votes from other nodes.
 
 4. **Required configuration**: For elections to trigger automatically, ensure:
-   - [`Config::enable_tick`][] = `true` (enables time-based events)
    - [`Config::enable_elect`][] = `true` (allows followers to become candidates)
-   - The leader's [`Config::enable_heartbeat`][] = `true` (enables heartbeat sending)
+   - The leader's [`Config::enable_tick`][] = `true` and [`Config::enable_heartbeat`][] = `true` (enable heartbeat sending)
+
+   A follower's election timer does not depend on [`Config::enable_tick`][]; only candidates and learners re-check their election timeout on the internal ticker.
 
 **Common issues**:
 
 - **Elections not triggering**: If followers never enter candidate state after the leader fails:
-  - Verify `enable_tick = true` and `enable_elect = true` in your configuration
+  - Verify `enable_elect = true` in your configuration
   - Ensure at least a quorum of nodes are online and can communicate
   - Check that network connectivity allows nodes to reach each other
   - Confirm the election timeout is properly configured (typically `election_timeout_min` should be at least 3× `heartbeat_interval`)

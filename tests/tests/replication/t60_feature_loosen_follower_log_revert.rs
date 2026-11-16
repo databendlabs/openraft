@@ -14,6 +14,7 @@ use crate::fixtures::ut_harness;
 async fn feature_loosen_follower_log_revert() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         enable_heartbeat: false,
         // Make sure the replication is done in more than one steps
         max_payload_entries: 1,

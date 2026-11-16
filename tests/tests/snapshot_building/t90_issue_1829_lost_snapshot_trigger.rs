@@ -49,6 +49,7 @@ async fn issue_1829_lost_snapshot_trigger() -> Result<()> {
         snapshot_policy: SnapshotPolicy::LogsSinceLast(10),
         enable_heartbeat: false,
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
 
