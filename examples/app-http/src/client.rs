@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::time::Duration;
 
 use openraft::NodeInfo;
 use openraft::RaftMetrics;
@@ -19,8 +20,11 @@ use openraft::raft::ClientWriteResponse;
 use reqwest::Client as HttpClient;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
+use tokio::time::Instant;
 
 use crate::LinearizerData;
+
+const OPERATION_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone, Serialize, serde::Deserialize)]
 pub struct FollowerReadError {
@@ -165,50 +169,54 @@ where C: RaftTypeConfig<Node = NodeInfo>
         Resp: Serialize + DeserializeOwned,
         Err: std::error::Error + Serialize + DeserializeOwned,
     {
-        log::debug!("app-http client: start, send to {}; request: {:?}", uri, req);
+        let deadline = Instant::now() + OPERATION_TIMEOUT;
+        self.send_until(uri, req, deadline).await
+    }
 
-        let (_leader_id, url) = {
-            let t = self.leader.lock().unwrap();
-            let target_addr = &t.1;
-            (t.0.clone(), format!("http://{}/{}", target_addr, uri))
-        };
+    async fn send_until<Req, Resp, Err>(
+        &self,
+        uri: &str,
+        req: Option<&Req>,
+        deadline: Instant,
+    ) -> Result<Result<Resp, Err>, RPCError<C>>
+    where
+        Req: Serialize + fmt::Debug + 'static,
+        Resp: Serialize + DeserializeOwned,
+        Err: std::error::Error + Serialize + DeserializeOwned,
+    {
+        let operation = async {
+            log::debug!("app-http client: start, send to {}; request: {:?}", uri, req);
 
-        let resp = if let Some(r) = req {
-            println!(
-                ">>> client send request to {}: {}",
-                url,
-                serde_json::to_string_pretty(&r).unwrap()
-            );
-            log::debug!(
-                ">>> client send request to {}: {}",
-                url,
-                serde_json::to_string_pretty(&r).unwrap()
-            );
-            self.inner.post(url.clone()).json(r)
-        } else {
-            println!(">>> client send request to {}", url,);
-            log::debug!(">>> client send request to {}", url,);
-            self.inner.get(url.clone())
-        }
-        .send()
-        .await
-        .map_err(|e| {
-            if e.is_connect() {
-                // `Unreachable` informs the caller to backoff for a short while to avoid error log flush.
-                RPCError::Unreachable(Unreachable::new(&e))
+            let (_leader_id, url) = {
+                let t = self.leader.lock().unwrap();
+                let target_addr = &t.1;
+                (t.0.clone(), format!("http://{}/{}", target_addr, uri))
+            };
+
+            let resp = if let Some(r) = req {
+                let body = serde_json::to_vec(r).map_err(|error| RPCError::Network(NetworkError::new(&error)))?;
+                self.inner.post(url.clone()).header(reqwest::header::CONTENT_TYPE, "application/json").body(body)
             } else {
-                RPCError::Network(NetworkError::new(&e))
+                self.inner.get(url.clone())
             }
-        })?;
+            .send()
+            .await
+            .map_err(|e| {
+                if e.is_connect() {
+                    // `Unreachable` informs the caller to backoff for a short while to avoid error log flush.
+                    RPCError::Unreachable(Unreachable::new(&e))
+                } else {
+                    RPCError::Network(NetworkError::new(&e))
+                }
+            })?;
 
-        let res: Result<Resp, Err> = resp.json().await.map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
-        println!(
-            "<<< client recv reply from {}: {}",
-            url,
-            serde_json::to_string_pretty(&res).unwrap()
-        );
-
-        Ok(res)
+            let resp = resp.error_for_status().map_err(|error| RPCError::Network(NetworkError::new(&error)))?;
+            let res: Result<Resp, Err> = resp.json().await.map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
+            Ok(res)
+        };
+        tokio::time::timeout_at(deadline, operation)
+            .await
+            .map_err(|error| RPCError::Network(NetworkError::new(&error)))?
     }
 
     /// Try the best to send a request to the leader.
@@ -221,7 +229,23 @@ where C: RaftTypeConfig<Node = NodeInfo>
         &self,
         uri: &str,
         req: Option<&Req>,
+        retry: usize,
+    ) -> Result<Result<Resp, Err>, RPCError<C>>
+    where
+        Req: Serialize + fmt::Debug + 'static,
+        Resp: Serialize + DeserializeOwned,
+        Err: std::error::Error + Serialize + DeserializeOwned + TryAsRef<ForwardToLeader<C>> + Clone,
+    {
+        let deadline = Instant::now() + OPERATION_TIMEOUT;
+        self.send_with_forwarding_until(uri, req, retry, deadline).await
+    }
+
+    async fn send_with_forwarding_until<Req, Resp, Err>(
+        &self,
+        uri: &str,
+        req: Option<&Req>,
         mut retry: usize,
+        deadline: Instant,
     ) -> Result<Result<Resp, Err>, RPCError<C>>
     where
         Req: Serialize + fmt::Debug + 'static,
@@ -229,7 +253,7 @@ where C: RaftTypeConfig<Node = NodeInfo>
         Err: std::error::Error + Serialize + DeserializeOwned + TryAsRef<ForwardToLeader<C>> + Clone,
     {
         loop {
-            let res: Result<Resp, Err> = self.send(uri, req).await?;
+            let res: Result<Resp, Err> = self.send_until(uri, req, deadline).await?;
 
             let rpc_err = match res {
                 Ok(x) => return Ok(Ok(x)),
@@ -259,3 +283,6 @@ where C: RaftTypeConfig<Node = NodeInfo>
         }
     }
 }
+
+#[cfg(test)]
+mod client_test;
