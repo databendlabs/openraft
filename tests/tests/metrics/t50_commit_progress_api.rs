@@ -22,6 +22,7 @@ use crate::fixtures::ut_harness;
 async fn commit_progress_api() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;

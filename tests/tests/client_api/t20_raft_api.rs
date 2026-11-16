@@ -15,6 +15,7 @@ use crate::fixtures::ut_harness;
 async fn api_is_leader() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;
@@ -47,6 +48,7 @@ async fn api_is_leader() -> Result<()> {
 async fn api_node_id() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;
@@ -69,6 +71,7 @@ async fn api_node_id() -> Result<()> {
 async fn api_voter_ids() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;
@@ -94,6 +97,7 @@ async fn api_voter_ids() -> Result<()> {
 async fn api_learner_ids() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;
@@ -175,6 +179,7 @@ async fn api_after_add_learner() -> Result<()> {
 async fn api_as_leader() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;

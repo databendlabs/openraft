@@ -205,11 +205,18 @@ where
     ///
     /// Such a Leader steps down and starts an election.
     pub(crate) fn is_transfer_expired(&self) -> bool {
-        let Some((_to, deadline)) = self.transfer_to.as_ref() else {
+        let Some(deadline) = self.transfer_deadline() else {
             return false;
         };
         let now = C::now();
-        now >= *deadline
+        now >= deadline
+    }
+
+    /// Return the instant by which the transfer target has to take over, if a transfer is in
+    /// progress.
+    pub(crate) fn transfer_deadline(&self) -> Option<InstantOf<C>> {
+        let (_to, deadline) = self.transfer_to.as_ref()?;
+        Some(*deadline)
     }
 
     /// Allocate a range of log IDs for new entries.

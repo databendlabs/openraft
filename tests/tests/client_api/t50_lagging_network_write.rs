@@ -21,6 +21,7 @@ async fn lagging_network_write() -> Result<()> {
         election_timeout_min: 300,
         election_timeout_max: 600,
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::builder(config)?.send_delay(50).build();

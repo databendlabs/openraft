@@ -30,6 +30,7 @@ async fn write_when_leader_quit_and_log_revert() -> Result<()> {
         election_timeout_min: 200,
         election_timeout_max: 300,
         enable_tick: false,
+        enable_elect: false,
         enable_heartbeat: false,
         ..Default::default()
     };
@@ -113,6 +114,7 @@ async fn write_when_leader_switched() -> Result<()> {
         election_timeout_min: 200,
         election_timeout_max: 300,
         enable_tick: false,
+        enable_elect: false,
         enable_heartbeat: false,
         ..Default::default()
     };

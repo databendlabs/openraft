@@ -10,6 +10,7 @@ use crate::fixtures::ut_harness;
 async fn raft_config() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         election_timeout_min: 123,
         election_timeout_max: 124,
         ..Default::default()
