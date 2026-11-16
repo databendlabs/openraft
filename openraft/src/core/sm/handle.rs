@@ -97,3 +97,6 @@ where
         Ok(snapshot)
     }
 }
+
+#[cfg(test)]
+mod snapshot_transmitter_test;
