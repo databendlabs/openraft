@@ -1482,7 +1482,7 @@ where
         for _i in 0..at_most {
             // Process at least one RaftMsg so notifications cannot starve API traffic.
             if total > 0 && self.config.broadcast_submitted_on_append() {
-                match self.notifications.peek() {
+                match self.notifications.try_peek() {
                     Ok(_) => break,
                     Err(TryRecvError::Empty) => {}
                     Err(TryRecvError::Disconnected) => {
