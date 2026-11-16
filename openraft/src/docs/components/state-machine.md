@@ -61,6 +61,32 @@ from process interruption: errors exercise unwinding and `Drop`, while stopping
 a child process leaves cleanup unfinished. Neither test alone proves durability
 against machine power loss.
 
+## Deterministic commands and durable schemas
+
+Every replica must produce the same state and logical response from the same
+committed commands, whether `apply()` receives entries individually, together,
+or in uneven groups. A timestamp chosen once by the leader and recorded in the
+log is shared input. Reading a replica's own clock, random generator, or external
+service during `apply()` can instead produce different results on each replica.
+Record those inputs in the command before replication.
+
+Serialized commands, stored values, and snapshot payloads are durable application
+schemas. Keep fixtures written by released versions and test decoding them with
+the new code. Positional formats such as postcard encode enum variant indices
+and struct field order; removing or reordering a field or variant can change the
+meaning of old bytes. Retain reserved fields or provide an explicit migration.
+The [`types-kv` compatibility tests] keep literal JSON and postcard fixtures for
+commands and stored values. Test the format the production store actually uses;
+a fresh encode/decode round trip alone does not test old-data compatibility.
+
+The opt-in [`ApplicationSuite`] accepts independent expected state and responses
+for grouping and snapshot replacement checks. `StoreBuilder` and `Suite::test_all`
+remain the basic metadata/storage checks. Transport and crash scenarios must also
+run through the application's real receive and recovery paths.
+
+[`types-kv` compatibility tests]: https://github.com/databendlabs/openraft/blob/main/examples/types-kv/src/lib.rs
+[`ApplicationSuite`]: `crate::testing::log::ApplicationSuite`
+
 ## Transfer completion and file ownership
 
 `SnapshotData` is an opaque application handle. The transport owns receive
