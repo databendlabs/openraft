@@ -36,6 +36,7 @@ async fn snapshot_policy_never() -> Result<()> {
     let config = Config {
         snapshot_policy: SnapshotPolicy::Never,
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;

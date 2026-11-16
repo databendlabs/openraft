@@ -26,6 +26,7 @@ async fn conflict_hints_skip_lagging_prefix_search() -> Result<()> {
     for hints in [false, true] {
         let config = Config {
             enable_tick: false,
+            enable_elect: false,
             enable_heartbeat: false,
             ..Default::default()
         };
@@ -113,6 +114,7 @@ async fn conflict_hints_skip_lagging_prefix_search() -> Result<()> {
 async fn failed_hinted_probe_is_retried() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         enable_heartbeat: false,
         ..Default::default()
     };

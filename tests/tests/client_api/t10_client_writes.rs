@@ -31,6 +31,7 @@ async fn client_writes() -> Result<()> {
         election_timeout_min: 500,
         election_timeout_max: 1000,
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
 
@@ -117,6 +118,7 @@ async fn client_writes() -> Result<()> {
 async fn client_write_ff() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
 
@@ -154,6 +156,7 @@ async fn client_write_ff() -> Result<()> {
 async fn write_builder() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
 
@@ -201,6 +204,7 @@ async fn write_builder_deferred() -> Result<()> {
 
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;
@@ -248,6 +252,7 @@ async fn write_with_leader() -> Result<()> {
 
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
 
@@ -316,6 +321,7 @@ async fn write_with_option() -> Result<()> {
 
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;
@@ -377,6 +383,7 @@ async fn write_with_option() -> Result<()> {
 async fn write_blank() -> Result<()> {
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
 

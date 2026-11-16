@@ -76,6 +76,7 @@ async fn commit_joint_config_during_012_to_234() -> Result<()> {
     // Setup test dependencies.
     let config = Config {
         enable_tick: false,
+        enable_elect: false,
         ..Default::default()
     };
     let mut router = RaftRouter::new(config)?;

@@ -30,11 +30,11 @@ use crate::batch::Batch;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::ClientResponderQueue;
+use crate::core::DeadlineNotifier;
 use crate::core::IoBroadcast;
 use crate::core::LeaseReadStatePublisher;
 use crate::core::MetricsChannels;
 use crate::core::PendingRead;
-use crate::core::PendingReadDeadlineNotifier;
 use crate::core::PendingReadQueue;
 use crate::core::ServerState;
 use crate::core::SharedReplicateBatch;
@@ -235,7 +235,13 @@ where
     pub(crate) pending_reads: PendingReadQueue<C>,
 
     /// Wakes this core when a pending linearizable read reaches its deadline.
-    pub(crate) pending_read_deadline_notifier: PendingReadDeadlineNotifier<C>,
+    pub(crate) pending_read_deadline_notifier: DeadlineNotifier<C>,
+
+    /// Wakes this follower when its election may be due.
+    ///
+    /// Only [`Self::refresh_election_deadline`] sets its deadline, and only an eligible follower
+    /// with `enable_elect` on gets one. Every other election check stays on the ticker.
+    pub(crate) election_deadline_notifier: DeadlineNotifier<C>,
 
     /// A mapping of node IDs the replication state of the target node.
     pub(crate) replications: BTreeMap<C::NodeId, ReplicationHandle<C>>,
@@ -1278,6 +1284,10 @@ where
         self.publish_lease_read_state();
         self.send_satisfied_responds();
 
+        // Update the election deadline before a command can wait for channel capacity, so that a
+        // state change made by the input just handled is covered while the command waits.
+        self.refresh_election_deadline();
+
         loop {
             // Batch commands for better I/O performance (e.g., merge consecutive AppendEntries)
             self.engine.output.sched_commands(&self.config);
@@ -2039,7 +2049,7 @@ where
                     );
                 }
             }
-            ExternalCommand::Tick => self.handle_tick("external-tick"),
+            ExternalCommand::Tick => self.handle_tick("external-tick", true),
         }
     }
 
@@ -2051,6 +2061,8 @@ where
             self.lease_read_state_publisher.clear();
         } else {
             self.publish_lease_read_state();
+            // Also covers notifications consumed while a command send is blocked.
+            self.refresh_election_deadline();
         }
         result
     }
@@ -2124,7 +2136,7 @@ where
                 }
             }
 
-            Notification::Tick { i } => self.handle_tick(format_args!("tick-{i}")),
+            Notification::Tick { i } => self.handle_tick(format_args!("tick-{i}"), false),
             Notification::StorageError { error } => {
                 tracing::error!("RaftCore received Notification::StorageError: {}", error);
                 return Err(Fatal::StorageError(error));
@@ -2158,6 +2170,7 @@ where
 
             Notification::StateMachine { command_result } => self.handle_state_machine_result(command_result)?,
             Notification::PendingReadDeadlineReached => self.process_pending_reads(),
+            Notification::ElectionDeadlineReached => self.handle_election_deadline(),
         };
         Ok(())
     }
@@ -2165,14 +2178,19 @@ where
     /// Handle [`Notification::Tick`] and [`ExternalCommand::Tick`]: check the election timer and,
     /// if leading, the heartbeat timer.
     ///
-    /// `emitter` names the tick source in log messages.
-    fn handle_tick(&mut self, emitter: impl fmt::Display) {
+    /// `emitter` names the tick source in log messages. `check_follower_election` is false for the
+    /// internal ticker, which leaves a follower's election to
+    /// [`Notification::ElectionDeadlineReached`]; a manual tick checks the election in every role.
+    fn handle_tick(&mut self, emitter: impl fmt::Display, check_follower_election: bool) {
         // check every timer
 
         let now = C::now();
         tracing::debug!("received {}, now: {}", emitter, now.display());
 
-        self.handle_tick_election();
+        let is_follower = self.engine.state.server_state == ServerState::Follower;
+        if check_follower_election || !is_follower {
+            self.handle_tick_election();
+        }
 
         // Leader send heartbeat
         let heartbeat_at = self.engine.leader_ref().map(|l| l.next_heartbeat);
@@ -2188,6 +2206,60 @@ where
                 l.next_heartbeat = C::now() + Duration::from_millis(self.config.heartbeat_interval);
             }
         }
+    }
+
+    /// Handle [`Notification::ElectionDeadlineReached`]: start a follower's election if one is due.
+    ///
+    /// It may have been sent for a deadline that has since moved, or before this node left
+    /// follower state or elections were disabled; [`Self::handle_tick_election`] rechecks every
+    /// guard.
+    fn handle_election_deadline(&mut self) {
+        tracing::debug!("election deadline reached, now: {}", C::now().display());
+
+        if self.engine.state.server_state != ServerState::Follower {
+            tracing::debug!("skip election deadline, not a follower");
+            return;
+        }
+
+        self.handle_tick_election();
+    }
+
+    /// Set the election deadline to the instant at which this follower's election may be due.
+    ///
+    /// A heartbeat that extends the lease moves the deadline later before it is reached, so no
+    /// [`Notification::ElectionDeadlineReached`] is sent while the leader is alive.
+    fn refresh_election_deadline(&mut self) {
+        let wake_at = self.follower_election_wake_at();
+        if self.election_deadline_notifier.set_deadline(wake_at) {
+            tracing::debug!("election deadline: {}", wake_at.as_ref().map(|t| t.display()).display());
+        }
+    }
+
+    /// Return when an eligible follower's election may be due, or `None` if this node is not one.
+    ///
+    /// Only a follower that may campaign, with `enable_elect` on, is eligible. A single campaigner
+    /// whose election is already in progress is not eligible either. Turning `enable_elect` back on
+    /// does not wake the core: the deadline returns at the next refresh, which the next tick or
+    /// message triggers.
+    fn follower_election_wake_at(&self) -> Option<InstantOf<C>> {
+        if self.engine.state.server_state != ServerState::Follower {
+            return None;
+        }
+
+        if !self.runtime_config.enable_elect.load(Ordering::Relaxed) {
+            return None;
+        }
+
+        if !self.engine.state.membership_state.is_campaigner_in_effective_or_committed(&self.id) {
+            return None;
+        }
+
+        let is_single_campaigner = self.engine.is_single_campaigner();
+        let pre_vote = self.runtime_config.enable_pre_vote.load(Ordering::Relaxed) && !is_single_campaigner;
+        let deadline = self.engine.election_deadline(pre_vote)?;
+
+        let wake_at = deadline.earliest_due_at().unwrap_or_else(C::now);
+        Some(wake_at)
     }
 
     /// Handle [`Notification::LocalIO`]: a local log or vote write reached the disk.
