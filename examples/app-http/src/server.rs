@@ -190,3 +190,27 @@ fn response(status: StatusCode, content_type: &'static str, body: Bytes) -> Resp
     resp.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
     resp
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct Unserializable;
+
+    impl Serialize for Unserializable {
+        fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
+        where S: serde::Serializer {
+            Err(serde::ser::Error::custom("response encoding failed"))
+        }
+    }
+
+    #[tokio::test]
+    async fn serialization_failure_is_an_explicit_http_failure() {
+        let response = json_response(&Unserializable);
+        let status = response.status();
+        assert_eq!(StatusCode::INTERNAL_SERVER_ERROR, status);
+        let body = response.into_body().collect().await.unwrap();
+        let bytes = body.to_bytes();
+        assert_eq!(b"response encoding failed".as_slice(), bytes.as_ref());
+    }
+}
