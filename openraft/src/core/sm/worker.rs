@@ -6,7 +6,9 @@ use crate::RaftLogReader;
 use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
 use crate::StorageError;
+use crate::async_runtime::MpscReceiver;
 use crate::async_runtime::OneshotSender;
+use crate::async_runtime::mpsc::PeekableReceiver;
 use crate::core::ApplyResult;
 use crate::core::notification::Notification;
 use crate::core::sm::Command;
@@ -45,13 +47,12 @@ where
     log_reader: LR,
 
     /// Read command from RaftCore to execute.
-    cmd_rx: CommandReceiver<C, SM>,
+    ///
+    /// Peekable so that merging `Apply` commands can leave a non-mergeable command queued.
+    cmd_rx: PeekableReceiver<CommandReceiver<C, SM>, Command<C, SM>>,
 
     /// Send back the result of the command to RaftCore.
     resp_tx: MpscSenderOf<C, Notification<C>>,
-
-    /// A command taken from `cmd_rx` while merging `Apply` commands; it runs next.
-    next_cmd: Option<Command<C, SM>>,
 }
 
 impl<C, SM, LR> Worker<C, SM, LR>
@@ -75,9 +76,8 @@ where
             id,
             state_machine,
             log_reader,
-            cmd_rx,
+            cmd_rx: cmd_rx.peekable(),
             resp_tx,
-            next_cmd: None,
         };
 
         let join_handle = worker.do_spawn(span);
@@ -106,11 +106,7 @@ where
     #[tracing::instrument(level = "debug", skip_all)]
     async fn worker_loop(&mut self) -> Result<(), StorageError<C>> {
         loop {
-            let cmd = match self.next_cmd.take() {
-                Some(cmd) => Some(cmd),
-                None => self.cmd_rx.recv().await,
-            };
-            let cmd = match cmd {
+            let cmd = match self.cmd_rx.recv().await {
                 None => {
                     tracing::info!("{}: rx closed, state machine worker quit", func_name!());
                     return Ok(());
@@ -174,29 +170,28 @@ where
     /// per-call cost of `entries_stream()` and `apply()` once instead of once per command.
     ///
     /// Only commands that are already queued are taken. The first one that is not an `Apply`
-    /// starting at `last + 1` is kept in `next_cmd` and runs next, so commands still run in the
+    /// starting at `last + 1` stays in `cmd_rx` and runs next, so commands still run in the
     /// order RaftCore sent them.
     fn merge_queued_applies(
         &mut self,
         mut last: LogIdOf<C>,
         mut client_resp_channels: Vec<(u64, CoreResponder<C>)>,
     ) -> (LogIdOf<C>, Vec<(u64, CoreResponder<C>)>) {
-        while let Some(cmd) = self.cmd_rx.try_recv() {
-            match cmd {
-                Command::Apply {
-                    first: next_first,
-                    last: next_last,
-                    client_resp_channels: next_channels,
-                } if next_first.index() == last.index() + 1 => {
-                    tracing::debug!("merge queued Apply: [{},{}]", next_first, next_last);
-                    last = next_last;
-                    client_resp_channels.extend(next_channels);
-                }
-                cmd => {
-                    self.next_cmd = Some(cmd);
-                    break;
-                }
-            }
+        while let Ok(Command::Apply { first, .. }) = self.cmd_rx.peek()
+            && first.index() == last.index() + 1
+        {
+            let Ok(Command::Apply {
+                first: next_first,
+                last: next_last,
+                client_resp_channels: next_channels,
+            }) = self.cmd_rx.try_recv()
+            else {
+                unreachable!("the peeked command is an Apply");
+            };
+
+            tracing::debug!("merge queued Apply: [{},{}]", next_first, next_last);
+            last = next_last;
+            client_resp_channels.extend(next_channels);
         }
         (last, client_resp_channels)
     }
