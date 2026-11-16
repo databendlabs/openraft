@@ -46,4 +46,12 @@ where C: RaftTypeConfig
     pub(crate) fn end(&self) -> u64 {
         self.last.index() + 1
     }
+
+    /// Append `next`, a batch that starts at [`Self::end`], with its entries and responders.
+    pub(crate) fn extend(&mut self, next: ApplyBatch<C>) {
+        debug_assert_eq!(self.end(), next.since(), "an extension continues the batch");
+        self.last = next.last;
+        self.client_resp_channels.extend(next.client_resp_channels);
+        self.entries.extend(next.entries);
+    }
 }

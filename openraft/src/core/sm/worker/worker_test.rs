@@ -281,8 +281,9 @@ async fn merge_queued_apply_commands_async() -> anyhow::Result<()> {
 }
 
 /// The `Apply` commands queued when a batch starts applying are read while it applies, and
-/// applied as the next batch. A command of another kind found in the queue
-/// stops the read-ahead and runs after the batch.
+/// applied as the next batch. Those queued while it applies extend that next batch. A command of
+/// another kind found in the queue stops the read-ahead and the extension, and runs after the
+/// batch.
 #[test]
 fn read_next_batch_while_applying() -> anyhow::Result<()> {
     UTConfig::<()>::run(read_next_batch_while_applying_async())
@@ -335,17 +336,15 @@ async fn read_next_batch_while_applying_async() -> anyhow::Result<()> {
         assert_eq!((1, 2, log_id(1, 0, 1)), applied);
     }
 
-    tracing::info!("--- [2,3] applies from the read-ahead; [4,4] is read ahead and `func` stops the collection");
+    tracing::info!("--- [4,4], queued while [1,1] applied, extends the read-ahead [2,3]; `func` stops it");
     {
-        wait_event(&events, "apply [2,3]").await;
-        wait_event(&events, "read [4,4]").await;
+        wait_event(&events, "apply [2,4]").await;
         drop(apply_2);
-        let applied = [recv_applied(&mut resp_rx).await?, recv_applied(&mut resp_rx).await?];
-        let want = [(2, 4, log_id(1, 0, 3)), (4, 5, log_id(1, 0, 4))];
-        assert_eq!(want, applied);
+        let applied = recv_applied(&mut resp_rx).await?;
+        assert_eq!((2, 5, log_id(1, 0, 4)), applied);
     }
 
-    tracing::info!("--- `func` runs after [4,4], then [5,5] is read with nothing applying");
+    tracing::info!("--- `func` runs after [2,4], then [5,5] is read with nothing applying");
     {
         let applied = recv_applied(&mut resp_rx).await?;
         assert_eq!((5, 6, log_id(1, 0, 5)), applied);
@@ -355,12 +354,9 @@ async fn read_next_batch_while_applying_async() -> anyhow::Result<()> {
             "apply [1,1]",
             "read [2,3]",
             "done [1,1]",
-            // `join` polls the apply first, and the in-memory entries are consumed at once.
-            "apply [2,3]",
             "read [4,4]",
-            "done [2,3]",
-            "apply [4,4]",
-            "done [4,4]",
+            "apply [2,4]",
+            "done [2,4]",
             "func",
             "read [5,5]",
             "apply [5,5]",

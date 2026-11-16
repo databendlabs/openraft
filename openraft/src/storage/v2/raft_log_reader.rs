@@ -166,12 +166,14 @@ where C: RaftTypeConfig
     ///
     /// # Use by the state-machine worker
     ///
-    /// The state-machine worker calls this method once per apply batch and collects the whole
-    /// stream into memory before it passes the batch to [`RaftStateMachine::apply()`]. It reads
-    /// the next batch while the state machine applies the current one, so a call may run
-    /// concurrently with `apply()`. Streaming entries lazily therefore saves neither memory nor
-    /// latency on this path. Optimize the fixed cost of a call instead, such as a seek or a round
-    /// trip: the worker pays it once per batch, however many entries the batch has.
+    /// The state-machine worker reads every apply batch through this method and collects the
+    /// whole stream into memory before it passes the batch to [`RaftStateMachine::apply()`]. It
+    /// reads the next batch while the state machine applies the current one, so a call may run
+    /// concurrently with `apply()`. Entries committed during that `apply()` are read with one more
+    /// call, of entries just appended, and join the next batch. Streaming entries lazily therefore
+    /// saves neither memory nor latency on this path. Optimize the fixed cost of a call instead,
+    /// such as a seek or a round trip: the worker pays it once or twice per batch, however many
+    /// entries the batch has.
     ///
     /// # Default Implementation
     ///

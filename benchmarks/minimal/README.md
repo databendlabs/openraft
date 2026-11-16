@@ -104,27 +104,27 @@ Setup: Apple M3 Max, macOS 14.5, three voters in one process, in-memory storage,
 delay, one client worker thread, 16 server threads, 1,024 warmup writes, default `Config` of this
 benchmark, pipelined replication path. 256 clients did 30,000 writes per run, one client did
 2,000. The table shows medians of five runs (`--runs 5`), taken while other processes kept the
-load average between 10 and 12. Memory and context switches come from `/usr/bin/time -l` for
+load average between 4 and 5. Memory and context switches come from `/usr/bin/time -l` for
 the whole process.
 
 | clients | read µs | I/O µs | entry µs | writes/s  | p50 µs | p99 µs | apply cmds | entries/apply p50, p90 | max RSS MB | invol. ctx switches |
 | --:     | --:     | --:    | --:      | --:       | --:    | --:    | --:        | --:                    | --:        | --:                 |
-|     256 |       0 |      0 |        0 | 1,313,862 |    168 |  1,121 |      1,344 |                 1, 101 |       43.6 |              10,083 |
-|     256 |     500 |      0 |        0 |   191,057 |  1,327 |  1,471 |      1,383 |                 1, 110 |       42.8 |              24,237 |
-|     256 |       0 |    500 |        0 |   178,195 |  1,339 |  2,163 |      1,450 |                 1, 116 |       44.0 |              25,960 |
-|     256 |     500 |    500 |        0 |   128,576 |  1,974 |  2,666 |      1,476 |                 1, 108 |       42.8 |              40,322 |
-|     256 |   1,000 |      0 |        0 |    98,932 |  2,594 |  2,980 |      1,406 |                 1, 110 |       42.8 |              25,705 |
-|     256 |       0 |  1,000 |        0 |    98,872 |  2,586 |  3,406 |      1,458 |                 1, 111 |       43.1 |              26,279 |
-|     256 |       0 |      0 |       10 |    78,766 |  3,290 |  3,496 |      1,449 |                 1, 110 |       42.3 |              25,037 |
-|     256 |       0 |    500 |       10 |    56,564 |  4,549 |  6,806 |      1,442 |                 1, 111 |       43.3 |              25,949 |
-|       1 |       0 |      0 |        0 |    28,174 |     33 |     60 |      3,025 |                   1, 1 |       37.2 |              18,715 |
-|       1 |     500 |      0 |        0 |     1,444 |    691 |    760 |      3,025 |                   1, 1 |       37.8 |              55,564 |
-|       1 |       0 |    500 |        0 |     1,451 |    686 |    740 |      3,025 |                   1, 1 |       37.8 |              54,510 |
-|       1 |     500 |    500 |        0 |       746 |  1,339 |  1,447 |      3,025 |                   1, 1 |       37.8 |              90,217 |
-|       1 |   1,000 |      0 |        0 |       753 |  1,322 |  1,612 |      3,025 |                   1, 1 |       37.9 |              59,257 |
-|       1 |       0 |  1,000 |        0 |       748 |  1,324 |  1,555 |      3,025 |                   1, 1 |       38.0 |              60,579 |
-|       1 |       0 |      0 |       10 |    15,992 |     60 |    103 |      3,025 |                   1, 1 |       37.4 |              51,866 |
-|       1 |       0 |    500 |       10 |     1,427 |    699 |    796 |      3,025 |                   1, 1 |       37.8 |              55,541 |
+|     256 |       0 |      0 |        0 | 1,793,121 |    135 |    281 |      1,290 |                 1, 115 |       40.8 |               7,749 |
+|     256 |     500 |      0 |        0 |   151,372 |  1,620 |  2,610 |      1,326 |                 1, 102 |       42.7 |              21,991 |
+|     256 |       0 |    500 |        0 |   166,812 |  1,553 |  1,613 |      1,376 |                 1, 110 |       42.5 |              22,362 |
+|     256 |     500 |    500 |        0 |   107,932 |  2,345 |  3,217 |      1,409 |                 1, 119 |       42.3 |              35,124 |
+|     256 |   1,000 |      0 |        0 |    80,631 |  3,153 |  4,833 |      1,343 |                 1, 100 |       42.4 |              22,701 |
+|     256 |       0 |  1,000 |        0 |    83,307 |  3,094 |  3,285 |      1,384 |                 1, 110 |       42.6 |              22,216 |
+|     256 |       0 |      0 |       10 |    68,293 |  3,898 |  4,060 |      1,387 |                 1, 110 |       41.5 |              21,192 |
+|     256 |       0 |    500 |       10 |    49,471 |  5,388 |  5,600 |      1,385 |                 1, 110 |       44.0 |              21,960 |
+|       1 |       0 |      0 |        0 |    37,291 |     26 |     45 |      3,025 |                   1, 1 |       36.3 |              17,053 |
+|       1 |     500 |      0 |        0 |     1,219 |    819 |    903 |      3,025 |                   1, 1 |       37.4 |              51,421 |
+|       1 |       0 |    500 |        0 |     1,222 |    820 |    916 |      3,025 |                   1, 1 |       37.6 |              50,873 |
+|       1 |     500 |    500 |        0 |       625 |  1,589 |  1,842 |      3,025 |                   1, 1 |       37.8 |              82,684 |
+|       1 |   1,000 |      0 |        0 |       643 |  1,568 |  1,683 |      3,025 |                   1, 1 |       37.8 |              52,758 |
+|       1 |       0 |  1,000 |        0 |       638 |  1,576 |  1,808 |      3,025 |                   1, 1 |       37.8 |              52,056 |
+|       1 |       0 |      0 |       10 |    17,947 |     55 |     72 |      3,025 |                   1, 1 |       36.5 |              48,188 |
+|       1 |       0 |    500 |       10 |     1,207 |    831 |    916 |      3,025 |                   1, 1 |       37.1 |              50,801 |
 
 "apply cmds" counts the `SaveCommittedAndApply` commands the leader's RaftCore sends, warmup
 included. "entries/apply" is the number of entries the state machine receives in one `apply()`
@@ -134,28 +134,27 @@ at a time, so each of them is applied alone and the p50 is 1 in every row.
 
 RaftCore sends one apply command each time the commit index advances. The worker keeps two
 batches in flight: while one batch applies with one `apply()` call, the apply commands that were
-queued when that call started are read as the next batch, with a second log reader. The commands
-that arrive during the call stay queued and become the batch after that. Under load, a batch
-therefore costs the larger of its read and its I/O delay, and each delay is paid once for all the
-entries committed during the previous batch.
+queued when that call started are read as the next batch. The commands that arrive during the
+call extend that next batch: when the call returns, the worker reads them too, and applies them
+with it. Under load, a batch therefore costs the larger of its read and its I/O delay, plus the
+read of its extension, and each delay is paid once for all the entries of the batch.
 
-So the read no longer adds to the I/O: 500 µs of read plus 500 µs of I/O gives 128,576 writes/s
-with 256 clients, against 98,872 to 98,932 for a single 1,000 µs delay. Full overlap would reach
-the 191,057 writes/s of a single 500 µs read delay. Part of the difference is the first batch
-after every idle period, whose read cannot overlap anything. With one client nothing can
-overlap: only one write is in flight, so there is never a next batch to read ahead.
-
-The 500 µs I/O row has the same p50 as the 500 µs read row but a lower median, 178,195
-writes/s, because two of its five runs fell to 136,565 and 158,440 writes/s.
+So the read no longer adds to the I/O: 500 µs of read plus 500 µs of I/O gives 107,932 writes/s
+with 256 clients, against 80,631 to 83,307 for a single 1,000 µs delay. Full overlap would reach
+the 166,812 writes/s of a single 500 µs I/O delay. Part of the difference is the extension read,
+which overlaps nothing, and the first batch after every idle period, whose read cannot overlap
+anything either. The extension read is also why a 500 µs read alone, 151,372 writes/s, is slower
+than 500 µs of I/O alone. With one client nothing can overlap: only one write is in flight, so
+there is never a next batch to read ahead.
 
 A cost per entry does not shrink when batches merge: an `apply()` call of n entries pays 10·n µs
 in the "entry µs" rows, so the worker cannot apply more than 100,000 entries/s, whatever the
-batch size. 256 clients reach 78,766 writes/s with that delay alone, below the 178,195 writes/s
-of a 500 µs per-call I/O delay. With both, a call of 111 entries, the p90, costs 1.6 ms, and
-throughput falls to 56,564 writes/s. Conclusions drawn from the per-call rows, such as how much
+batch size. 256 clients reach 68,293 writes/s with that delay alone, below the 166,812 writes/s
+of a 500 µs per-call I/O delay. With both, a call of 110 entries, the p90, costs 1.6 ms, and
+throughput falls to 49,471 writes/s. Conclusions drawn from the per-call rows, such as how much
 merging saves, hold for a state machine only to the extent that its cost is per call. With one
-client, the 10 µs entry delay raises p50 from 33 to 60 µs, because handing a sleep to a
-blocking-pool thread costs about 17 µs more than the sleep itself.
+client, the 10 µs entry delay raises p50 from 26 to 55 µs, because handing a sleep to a
+blocking-pool thread costs about 19 µs more than the sleep itself.
 
 The medians vary between runs of the whole grid. In two runs on the same machine, the
 256-client medians with delays differed by up to 23% in writes/s and up to 34% in p50 latency.
@@ -165,7 +164,7 @@ revisions" below.
 
 What these numbers do not show:
 
-- Memory cost of large batches. Max RSS stays at 42 to 44 MB in every 256-client run; the
+- Memory cost of large batches. Max RSS stays at 41 to 44 MB in every 256-client run; the
   entries of the two batches in flight are too small to show up against the fixed cost of three
   nodes.
 - Task switching inside the runtime. The context-switch counts are whole-process OS counts, and
@@ -179,6 +178,58 @@ To run one row by hand:
 cargo build --release --bin bench
 /usr/bin/time -l target/release/bench --latency -c 256 -n 30k \
   --apply-read-delay-us 500 --apply-io-delay-us 500
+```
+
+### Apply latency below saturation
+
+In the saturated runs above every write waits in a queue anyway, so they cannot show whether
+reading ahead delays a write. Reading ahead can: without it, an entry committed during
+`apply(k)` was applied right after `apply(k)` returned, but once the range of batch k+1 is fixed
+when `apply(k)` starts, that entry waits for all of `apply(k+1)` too. These runs pace 256 clients
+with `--write-rate` well below saturation and compare three builds:
+
+- "merge only": c880c148, which merges queued apply commands but does not read ahead.
+- "read-ahead": 9f5758a4, which reads the next batch while the current one applies.
+- "extension": this revision, which also extends the read-ahead batch with the commands queued
+  while the current batch applied, before applying it.
+
+Each run did twice the write rate in writes, so it lasted about two seconds. The three builds ran
+back to back for every row, five rounds, at a load average of 4 to 5; the table shows medians.
+All rows reached their write rate, and there was no read delay.
+
+| I/O µs | writes/s | p50 merge only | p50 read-ahead | p50 extension | p99 merge only | p99 read-ahead | p99 extension |
+| --:    | --:      | --:            | --:            | --:           | --:            | --:            | --:           |
+|    500 |    2,000 |          1,711 |          1,629 |         1,797 |          3,065 |          2,984 |         3,159 |
+|    500 |    5,000 |          1,745 |          1,725 |         1,727 |          3,206 |          3,200 |         3,318 |
+|    500 |   10,000 |          1,807 |          1,741 |         1,786 |          3,285 |          3,218 |         3,282 |
+|  1,000 |    2,000 |          3,126 |          3,066 |         3,038 |          5,201 |          5,081 |         5,399 |
+|  1,000 |    5,000 |          3,046 |          3,151 |         3,160 |          5,173 |          5,221 |         5,246 |
+|  1,000 |   10,000 |          3,213 |          3,188 |         3,220 |          5,256 |          5,237 |         5,335 |
+|  2,000 |    2,000 |          6,231 |          7,940 |         6,118 |          8,443 |        10,991 |         8,402 |
+|  2,000 |    5,000 |          6,067 |          6,228 |         6,155 |          8,223 |        10,044 |         8,305 |
+|  2,000 |   10,000 |          6,121 |          6,166 |         6,142 |          8,394 |        10,031 |         8,283 |
+
+- With 2,000 µs of I/O, reading ahead raised p99 by 1.6 to 2.5 ms, about one I/O, and p50 by up
+  to 1.7 ms. The extension brings both back to the merge-only numbers.
+- With 500 and 1,000 µs of I/O, the three builds stay within 11% of each other, in no
+  consistent order. Probably few writes arrive while a batch is both applying and read ahead:
+  the bench releases paced writes on 1 ms timer ticks, and an `apply()` this short often ends
+  before the next tick.
+
+The extension costs one read per batch that is not overlapped, when commands arrived during the
+previous `apply()`. The bench charges the full `--apply-read-delay-us` for that read, although it
+covers only entries just written, which a store would usually find in its cache. In
+`make bench_compare_apply_delays` against 9f5758a4, the saturated rows with a read delay and no
+I/O delay lost 8 to 9% of their throughput, and their p99 rose by about half; every row with an
+I/O delay, including 500 µs of read plus 500 µs of I/O, stayed within run-to-run noise.
+
+The merge-only build replicates one AppendEntries request per round trip, the other two through
+`stream_append()`. Without a network delay the two paths measured alike when they were compared.
+To compare a row again:
+
+```sh
+python3 benchmarks/minimal/scripts/compare.py --base c880c148 -- \
+  --latency -c 256 -n 4000 --write-rate 2000 --apply-io-delay-us 2000
 ```
 
 ### Replication delays
@@ -201,8 +252,7 @@ medians of five rounds, each running every row once, at a load average of 10 to 
 |          0 |           500 |   216,859 |  1,250 |  1,443 |
 |        500 |           500 |    57,440 |  4,005 |  7,644 |
 
-- With only the read delayed, throughput falls to 216,859 writes/s, close to the 191,057
-  writes/s of a 500 µs apply read in the "Apply-path delays" table. The read is the only cost,
+- With only the read delayed, throughput falls to 216,859 writes/s. The read is the only cost,
   and the reads for one follower run one at a time, so each read's batch sets the throughput.
 - With the network delayed as well, the read adds 141 µs to p50, less than the 500 µs of one
   read, and throughput keeps 83% of the network-only 69,303 writes/s. The leader reads the log

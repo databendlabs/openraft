@@ -107,19 +107,30 @@ where
     /// Run commands in the order RaftCore sent them, reading each apply batch while the previous
     /// one is applying.
     ///
-    /// At most two things are in flight: the batch being applied and the batch being read. The
-    /// range of a batch is fixed when its read starts. Each round applies the batch read in the
-    /// previous round and reads the `Apply` commands queued at that moment as the next batch, so
-    /// the read overlaps the state-machine I/O. Commands that arrive during the round stay queued
-    /// and become the batch after the next. Every batch is read into memory before it is applied,
-    /// so `apply()` never borrows `log_reader` and one reader serves every read.
+    /// At most two things are in flight: the batch being applied and the batch being read. Each
+    /// round applies the batch read in the previous round and reads the `Apply` commands queued at
+    /// that moment as the next batch, so the read overlaps the state-machine I/O. Commands that
+    /// arrive during the round extend the batch read ahead: the round after reads them and applies
+    /// them with it, so an entry committed during an `apply()` does not wait for a second one.
+    /// Every batch is read into memory before it is applied, so `apply()` never borrows
+    /// `log_reader` and one reader serves every read.
     #[tracing::instrument(level = "debug", skip_all)]
     async fn worker_loop(&mut self) -> Result<(), StorageError<C>> {
         let mut read_ahead: Option<ApplyBatch<C>> = None;
 
         loop {
             let batch = match read_ahead.take() {
-                Some(batch) => batch,
+                Some(mut batch) => {
+                    // The commands queued while the previous batch applied continue this batch.
+                    // Applying them now costs one read, which is not overlapped; leaving them
+                    // queued would make them wait for this whole `apply()`.
+                    if let Some(mut extension) = self.take_queued_applies(batch.end()) {
+                        tracing::debug!("extend read-ahead Apply with: [{},{}]", extension.first, extension.last);
+                        Self::read(&mut self.log_reader, &mut extension).await;
+                        batch.extend(extension);
+                    }
+                    batch
+                }
                 None => {
                     // Nothing was read ahead, so wait for a command. An `Apply` is read here,
                     // without an apply to overlap.
