@@ -190,3 +190,42 @@ fn test_restarted_leader_rebuilds_snapshot_for_learner() -> anyhow::Result<()> {
         Ok(())
     })
 }
+
+#[test]
+fn test_acknowledged_prefix_survives_state_machine_reopen() -> anyhow::Result<()> {
+    const PORT_BASE: u16 = 39000;
+    TypeConfig::run(async {
+        let mut node = Node::new(1, PORT_BASE).await?;
+        node.initialize().await?;
+        tracing::info!("Read complete published effects after each acknowledged client write");
+        let mut expected = BTreeMap::new();
+        for (key, value) in [("first", "one"), ("second", "two")] {
+            let response = tokio::time::timeout(crate::node::TIMEOUT, node.write(key, value)).await??;
+            let version = response.log_id.index();
+            let expected_response = types_kv::Response::new(value, version);
+            assert_eq!(expected_response, response.data);
+            let value = types_kv::VersionedValue {
+                value: value.to_string(),
+                version,
+            };
+            expected.insert(key.to_string(), value);
+            let actual = node.data().await?;
+            assert_eq!(expected, actual);
+            let (applied, _) = node.applied_state().await?;
+            assert_eq!(Some(response.log_id), applied);
+        }
+        tracing::info!("Purge the acknowledged prefix, reopen storage, and rebuild a usable snapshot");
+        {
+            let snapshot = node.build_snapshot().await?;
+            node.purge(&snapshot).await?;
+            node.restart().await?;
+            let actual = node.data().await?;
+            assert_eq!(expected, actual);
+            let rebuilt = node.raft().get_snapshot().await?;
+            let rebuilt = rebuilt.context("startup rebuilds the purged prefix")?;
+            assert_eq!(snapshot.meta, rebuilt.meta);
+        }
+        node.cleanup().await?;
+        Ok(())
+    })
+}
