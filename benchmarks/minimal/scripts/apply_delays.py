@@ -23,8 +23,11 @@ from pathlib import Path
 BENCH_DIR = Path(__file__).resolve().parent.parent
 BENCH = BENCH_DIR / "target" / "release" / "bench"
 
-# (read delay µs, I/O delay µs) of each apply batch.
-DELAYS = [(0, 0), (500, 0), (0, 500), (500, 500), (1000, 0), (0, 1000)]
+# (read delay µs per batch, I/O delay µs per `apply()` call, delay µs per applied entry).
+DELAYS = [
+    (0, 0, 0), (500, 0, 0), (0, 500, 0), (500, 500, 0), (1000, 0, 0), (0, 1000, 0),
+    (0, 0, 10), (0, 500, 10),
+]  # fmt: skip
 
 # (write clients, write operations) of each run.
 LOADS = [(256, "30k"), (1, "2k")]
@@ -33,6 +36,7 @@ COLUMNS = [
     ("clients", "clients"),
     ("read µs", "read_us"),
     ("I/O µs", "io_us"),
+    ("entry µs", "entry_us"),
     ("writes/s", "ops_per_s"),
     ("p50 µs", "p50_us"),
     ("p99 µs", "p99_us"),
@@ -55,12 +59,12 @@ def main():
     raw = args.raw.open("w") if args.raw else None
     rows = []
     for clients, operations in LOADS:
-        for read_us, io_us in DELAYS:
+        for read_us, io_us, entry_us in DELAYS:
             runs = []
             for i in range(args.runs):
-                label = f"clients={clients} read={read_us}us io={io_us}us run={i + 1}/{args.runs}"
+                label = f"clients={clients} read={read_us}us io={io_us}us entry={entry_us}us run={i + 1}/{args.runs}"
                 print(label, file=sys.stderr, flush=True)
-                run = run_bench(clients, operations, read_us, io_us)
+                run = run_bench(clients, operations, read_us, io_us, entry_us)
                 runs.append(run)
                 if raw:
                     print(json.dumps(run), file=raw, flush=True)
@@ -69,18 +73,25 @@ def main():
     print_table(rows)
 
 
-def grid_args(clients, operations, read_us, io_us):
-    """The `bench` arguments of one grid combination."""
-    return [
+def grid_args(clients, operations, read_us, io_us, entry_us):
+    """The `bench` arguments of one grid combination.
+
+    `--apply-entry-delay-us` is passed only when it is set, so a `bench` built
+    before the option existed still runs the other rows.
+    """
+    args = [
         "--latency", "-c", str(clients), "-n", operations,
         "--apply-read-delay-us", str(read_us), "--apply-io-delay-us", str(io_us),
     ]  # fmt: skip
+    if entry_us:
+        args += ["--apply-entry-delay-us", str(entry_us)]
+    return args
 
 
-def run_bench(clients, operations, read_us, io_us):
+def run_bench(clients, operations, read_us, io_us, entry_us):
     """Run `bench` once and return its measurements."""
     time_flag = "-l" if platform.system() == "Darwin" else "-v"
-    command = ["/usr/bin/time", time_flag, str(BENCH), *grid_args(clients, operations, read_us, io_us)]
+    command = ["/usr/bin/time", time_flag, str(BENCH), *grid_args(clients, operations, read_us, io_us, entry_us)]
     result = subprocess.run(command, capture_output=True, text=True, check=True)
     report = json.loads(result.stdout.strip().splitlines()[-1])
     stderr = result.stderr
@@ -94,6 +105,7 @@ def run_bench(clients, operations, read_us, io_us):
         "clients": clients,
         "read_us": read_us,
         "io_us": io_us,
+        "entry_us": entry_us,
         "ops_per_s": round(report["operations_per_second"]),
         "p50_us": report["request_p50_ns"] // 1000,
         "p99_us": report["request_p99_ns"] // 1000,

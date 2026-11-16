@@ -155,6 +155,8 @@ pub struct StateMachineStore {
     current_snapshot: RwLock<Option<StoredSnapshot>>,
     /// Simulated I/O time of each `apply()` call; responses are sent after it elapses.
     apply_io_delay: Duration,
+    /// Simulated processing time of each applied entry, paid inside `apply()`.
+    apply_entry_delay: Duration,
 }
 
 impl StateMachineStore {
@@ -163,6 +165,7 @@ impl StateMachineStore {
             sm: RwLock::new(StateMachine::default()),
             current_snapshot: RwLock::new(None),
             apply_io_delay: Duration::ZERO,
+            apply_entry_delay: Duration::ZERO,
         }
     }
 
@@ -176,6 +179,17 @@ impl StateMachineStore {
     /// client responses only after the delay.
     pub fn with_apply_io_delay(mut self, delay: Duration) -> Self {
         self.apply_io_delay = delay;
+        self
+    }
+
+    /// Add `delay` per entry to the end of every `apply()` call, so a call of `n` entries waits
+    /// `n * delay` more before it sends the client responses.
+    ///
+    /// The cost is paid as one sleep, together with the I/O delay, rather than one sleep per
+    /// entry: the total is the same, and one short sleep per entry would mostly measure the
+    /// wakeup cost of the blocking pool.
+    pub fn with_apply_entry_delay(mut self, delay: Duration) -> Self {
+        self.apply_entry_delay = delay;
         self
     }
 }
@@ -358,11 +372,13 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     where Strm: Stream<Item = Result<EntryResponder<TypeConfig>, io::Error>> + Unpin + OptionalSend {
         use futures::TryStreamExt;
 
-        let delayed = !self.apply_io_delay.is_zero();
+        let delayed = !self.apply_io_delay.is_zero() || !self.apply_entry_delay.is_zero();
         let mut delayed_responders = Vec::new();
+        let mut entry_count: u32 = 0;
         let mut sm = self.sm.write().await;
 
         while let Some((entry, responder)) = entries.try_next().await? {
+            entry_count += 1;
             sm.last_applied_log = Some(entry.log_id);
 
             match entry.payload {
@@ -383,7 +399,8 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
         }
 
         if delayed {
-            blocking_delay(self.apply_io_delay).await?;
+            let delay = self.apply_io_delay + self.apply_entry_delay * entry_count;
+            blocking_delay(delay).await?;
             for responder in delayed_responders {
                 responder.send(ClientResponse {});
             }
@@ -505,6 +522,27 @@ mod tests {
         let delayed = started.elapsed();
         assert_eq!(expected, entries);
         assert!(delayed >= delay, "entries_stream() took {delayed:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn apply_entry_delay_is_paid_per_entry() -> anyhow::Result<()> {
+        let delay = Duration::from_millis(10);
+        let sm = StateMachineStore::new().with_apply_entry_delay(delay);
+        let mut sm = Arc::new(sm);
+        let leader_id = LeaderId::new_committed(1, 0);
+        let entries: Vec<_> = (1..=3)
+            .map(|index| {
+                let log_id = LogIdOf::<TypeConfig>::new(leader_id, index);
+                let entry = EntryOf::<TypeConfig>::new_blank(log_id);
+                Ok((entry, None))
+            })
+            .collect();
+
+        let started = tokio::time::Instant::now();
+        sm.apply(stream::iter(entries)).await?;
+        let elapsed = started.elapsed();
+        assert!(elapsed >= delay * 3, "apply() of 3 entries took {elapsed:?}");
         Ok(())
     }
 }

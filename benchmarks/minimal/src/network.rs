@@ -44,6 +44,7 @@ pub struct Router {
     network_delay: Duration,
     apply_read_delay: Duration,
     apply_io_delay: Duration,
+    apply_entry_delay: Duration,
 }
 
 impl Router {
@@ -55,6 +56,7 @@ impl Router {
             network_delay: Duration::ZERO,
             apply_read_delay: Duration::ZERO,
             apply_io_delay: Duration::ZERO,
+            apply_entry_delay: Duration::ZERO,
         }
     }
 
@@ -68,10 +70,12 @@ impl Router {
     }
 
     /// Set the simulated delays of the state-machine apply path: the log read that loads each
-    /// apply batch, and the state-machine I/O of each `apply()` call.
-    pub fn with_apply_delays(mut self, read_delay: Duration, io_delay: Duration) -> Self {
+    /// apply batch, the state-machine I/O of each `apply()` call, and the processing of each
+    /// applied entry.
+    pub fn with_apply_delays(mut self, read_delay: Duration, io_delay: Duration, entry_delay: Duration) -> Self {
         self.apply_read_delay = read_delay;
         self.apply_io_delay = io_delay;
+        self.apply_entry_delay = entry_delay;
         self
     }
 
@@ -88,6 +92,7 @@ impl Router {
             let log_store = log_store.with_apply_read_delay(self.apply_read_delay);
             let log_store = Arc::new(log_store);
             let sm = StateMachineStore::new().with_apply_io_delay(self.apply_io_delay);
+            let sm = sm.with_apply_entry_delay(self.apply_entry_delay);
             let sm = Arc::new(sm);
 
             let raft = Raft::new(*id, config.clone(), self.clone(), log_store, sm).await?;
