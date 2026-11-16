@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::task::Poll;
 use std::time::Duration;
 
 use futures_util::FutureExt;
@@ -9,15 +10,20 @@ use crate::Config;
 use crate::Extensions;
 use crate::Raft;
 use crate::RaftMetrics;
+use crate::async_runtime::MpscReceiver;
 use crate::async_runtime::MpscSender;
 use crate::async_runtime::OneshotSender;
 use crate::config::RuntimeConfig;
 use crate::core::TickHandle;
 use crate::core::io_flush_tracking::IoProgressWatcher;
+use crate::core::raft_msg::RaftMsg;
+use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::errors::Fatal;
 use crate::errors::Infallible;
 use crate::errors::ShutdownError;
+use crate::impls::Vote;
 use crate::metrics::RaftServerMetrics;
+use crate::raft::AppendEntriesRequest;
 use crate::raft::core_state::CoreState;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinHandleOf;
@@ -207,6 +213,83 @@ fn shutdown_retry_waits_for_core_after_cancelled_shutdown() {
             let result = raft.try_shutdown().await;
             let expected = Ok(());
             assert_eq!(expected, result);
+        }
+    });
+}
+
+const STREAM_APPEND_TIMEOUT: Duration = Duration::from_secs(1);
+
+#[test]
+fn stream_append_drop_releases_producer() {
+    UTConfig::run(async {
+        for blocked_api in [false, true] {
+            tracing::info!(
+                blocked_api,
+                "drop the response stream while its producer cannot advance"
+            );
+            let core = UTConfig::spawn(async { Err(Fatal::Stopped) });
+            let tick = UTConfig::spawn(async {});
+            let mut raft = raft_with_tasks(core, tick);
+            let (tx_api, mut rx_api) = UTConfig::mpsc(1);
+            let inner = Arc::get_mut(&mut raft.inner).unwrap();
+            inner.tx_api = tx_api;
+
+            let vote = Vote::new_committed(1, 1);
+            let request = AppendEntriesRequest::<UTConfig> {
+                vote,
+                prev_log_id: None,
+                entries: vec![],
+                leader_commit: None,
+            };
+            let mut request = if blocked_api { Some(request) } else { None };
+            if blocked_api {
+                let sentinel = RaftMsg::ExternalCommand {
+                    cmd: ExternalCommand::Tick,
+                };
+                raft.inner.tx_api.send(sentinel).await.unwrap();
+            }
+
+            let (polled_tx, polled_rx) = UTConfig::oneshot();
+            let (drop_tx, drop_rx) = UTConfig::oneshot::<()>();
+            let mut polled_tx = Some(polled_tx);
+            let input = futures_util::stream::poll_fn(move |_cx| {
+                // Keep the sender in the input until the producer drops it.
+                let _keepalive = &drop_tx;
+                if let Some(tx) = polled_tx.take() {
+                    tx.send(()).unwrap();
+                }
+                match request.take() {
+                    Some(request) => Poll::Ready(Some(request)),
+                    None => Poll::Pending,
+                }
+            });
+            let output = raft.stream_append(input);
+            UTConfig::timeout(STREAM_APPEND_TIMEOUT, polled_rx).await.unwrap().unwrap();
+
+            tracing::info!(
+                blocked_api,
+                "release the response stream while preserving API backpressure"
+            );
+            {
+                drop(output);
+                drop(raft);
+                let dropped = UTConfig::timeout(STREAM_APPEND_TIMEOUT, drop_rx).await.unwrap();
+                let input_closed = dropped.is_err();
+                assert!(input_closed, "the producer must drop its input");
+                if blocked_api {
+                    let first = rx_api.recv().await;
+                    let sentinel = matches!(
+                        first,
+                        Some(RaftMsg::ExternalCommand {
+                            cmd: ExternalCommand::Tick
+                        })
+                    );
+                    assert!(sentinel, "API capacity must stay occupied until the producer stops");
+                }
+                let received = UTConfig::timeout(STREAM_APPEND_TIMEOUT, rx_api.recv()).await.unwrap();
+                let api_closed = received.is_none();
+                assert!(api_closed, "the producer must release its Raft handle");
+            }
         }
     });
 }

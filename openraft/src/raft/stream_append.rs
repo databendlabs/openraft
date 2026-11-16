@@ -38,7 +38,7 @@ struct Pending<C: RaftTypeConfig> {
 ///
 /// On API error (Conflict or HigherVote), the stream terminates with the error.
 /// On Fatal error (RaftCore stopped), the stream yields `Err(Fatal)` and terminates.
-/// The background task exits when it fails to send to the dropped channel.
+/// Dropping or terminating the returned stream cancels the background task.
 pub(in crate::raft) fn stream_append<C, S>(
     inner: Arc<RaftInner<C>>,
     input: S,
@@ -51,7 +51,7 @@ where
 
     let unfold_inner = inner.clone();
 
-    let _join_handle = C::spawn(async move {
+    let producer = async move {
         futures_util::pin_mut!(input);
 
         while let Some(req) = input.next().await {
@@ -67,10 +67,12 @@ where
                 break;
             }
         }
-    });
+    };
+    let (cancel, producer) = C::cancellable(producer);
+    let _join_handle = C::spawn(producer);
 
-    futures_util::stream::unfold(Some((rx, unfold_inner)), |state| async move {
-        let (mut rx, inner) = state?;
+    futures_util::stream::unfold(Some((rx, unfold_inner, cancel)), |state| async move {
+        let (mut rx, inner, cancel) = state?;
         let p: Pending<C> = MpscReceiver::recv(&mut rx).await?;
 
         let result: Result<AppendResult<C>, Fatal<C>> = match p.response_rx.await {
@@ -83,7 +85,7 @@ where
         };
 
         match &result {
-            Ok(Ok(_)) => Some((result, Some((rx, inner)))),
+            Ok(Ok(_)) => Some((result, Some((rx, inner, cancel)))),
             _ => Some((result, None)),
         }
     })
