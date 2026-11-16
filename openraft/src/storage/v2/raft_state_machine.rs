@@ -83,6 +83,17 @@ where C: RaftTypeConfig
     /// Note that for a membership log, the implementation needs to do nothing about it, except
     /// storing it.
     ///
+    /// Openraft calls `apply()` at most once at a time. One call may cover several commit
+    /// advances: while a call runs, the commits that arrive queue up, and the worker applies the
+    /// queued ones together in a later call. Batches therefore grow with load: an implementation
+    /// that sizes a transaction or a group commit by `apply()` call should expect one entry when
+    /// writes arrive one at a time and hundreds when many clients write at once. With the
+    /// `runtime-stats` feature, `RuntimeStats::apply_batch` reports the observed number of
+    /// entries per call, and so does [`MetricsRecorder::record_apply_batch()`].
+    ///
+    /// The worker reads the next batch from the log, through
+    /// [`RaftLogReader::entries_stream()`], while this call runs.
+    ///
     /// An implementation may persist either the state machine or its snapshots:
     ///
     /// - A persistent state machine must durably store each acknowledged prefix's application
@@ -100,6 +111,8 @@ where C: RaftTypeConfig
     /// applies when the required logs remain available.
     ///
     /// [`RaftLogStorage::save_committed()`]: crate::storage::RaftLogStorage::save_committed
+    /// [`MetricsRecorder::record_apply_batch()`]: crate::metrics::MetricsRecorder::record_apply_batch
+    /// [`RaftLogReader::entries_stream()`]: crate::storage::RaftLogReader::entries_stream
     #[since(version = "0.10.0", change = "Entry-Responder-Result stream")]
     async fn apply<Strm>(&mut self, entries: Strm) -> Result<(), io::Error>
     where Strm: Stream<Item = Result<EntryResponder<C>, io::Error>> + Unpin + OptionalSend;
