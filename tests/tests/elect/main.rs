@@ -14,5 +14,6 @@ mod t15_lease_gates;
 mod t16_disjoint_read_quorums;
 mod t17_leader_alone_is_write_quorum;
 mod t18_campaigner_outside_voters;
+mod t19_follower_election_timeout;
 mod t60_quorum_loss_probe_interval;
 mod t90_issue_2117_stale_higher_term_rejoin;

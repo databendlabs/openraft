@@ -640,6 +640,7 @@ where
 
                     pending_reads: PendingReadQueue::default(),
                     pending_read_deadline_notifier: PendingReadDeadlineNotifier::spawn(tx_notify.clone()),
+                    follower_election_timeout: None,
                     replications: Default::default(),
 
                     heartbeat_handle: HeartbeatWorkersHandle::new(id.clone(), config.clone()),

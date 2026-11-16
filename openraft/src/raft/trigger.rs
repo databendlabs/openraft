@@ -78,7 +78,7 @@ where C: RaftTypeConfig
 
     /// Queue one timer check and return once it is queued.
     ///
-    /// RaftCore runs the same check that the internal ticker triggers: a node whose election
+    /// RaftCore runs the same checks as its internal timers: a node whose election
     /// timeout has expired starts an election, and a leader whose heartbeat is due sends one
     /// heartbeat. The check reads the current time when RaftCore handles it. A check before a
     /// deadline does nothing, and a check after several missed heartbeat intervals sends one
