@@ -124,6 +124,7 @@ jobs:
       matrix:
         include:
           - crate: 'benchmarks/minimal'
+          - crate: 'benchmarks/durable'
 
     steps:
       - name: Setup | Checkout
