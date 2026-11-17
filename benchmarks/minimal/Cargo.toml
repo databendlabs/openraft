@@ -22,6 +22,7 @@ openraft            = { path = "../../openraft", version = "0.10.1", features = 
 anyhow     = { version = "1.0.63" }
 clap       = { version = "4.2", features = ["derive"] }
 futures    = { version = "0.3" }
+libc       = { version = "0.2" }
 maplit     = { version = "1.0.2" }
 serde      = { version = "1.0.114", features = ["derive", "rc"] }
 serde_json = { version = "1.0.57" }

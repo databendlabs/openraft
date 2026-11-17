@@ -10,9 +10,11 @@ use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
+use super::measurement::MeasurementConfig;
 use super::request_sample::Outcome;
 use super::request_sample::RequestSample;
 use super::request_sample::Samples;
+use super::run_monitor::Live;
 
 const YIELD_BATCH: u64 = 64;
 pub(super) const READ_STREAM: u64 = 0x72656164;
@@ -81,6 +83,9 @@ pub(super) struct Workload {
     pub(super) rate: f64,
     pub(super) measured: bool,
     pub(super) stream_seed: u64,
+    pub(super) measurement: MeasurementConfig,
+    pub(super) trace_budget: usize,
+    pub(super) live: Arc<Live>,
     pub(super) start: Arc<Barrier>,
     pub(super) epoch: Arc<OnceLock<Instant>>,
 }
@@ -108,10 +113,7 @@ impl Workload {
             let (tx, rx) = mpsc::channel(self.config.queue_capacity);
             let rx = Arc::new(Mutex::new(rx));
             let workload = self.clone();
-            tasks.push(tokio::spawn(async move {
-                let samples = workload.generate(tx).await?;
-                Ok(Samples::Requests(samples))
-            }));
+            tasks.push(tokio::spawn(async move { workload.generate(tx).await }));
             for _ in 0..self.clients {
                 tasks.push(self.spawn_worker(rx.clone(), run.clone()));
             }
@@ -125,20 +127,25 @@ impl Workload {
 
     fn spawn_worker<H>(&self, receiver: Receiver, run: H) -> Task
     where H: Handler {
-        let start = self.start.clone();
+        let workload = self.clone();
         tokio::spawn(async move {
-            let mut samples = Vec::new();
-            start.wait().await;
+            workload.begin().await?;
+            let mut samples = Samples::new(workload.measurement.bounds(), workload.trace_budget);
             loop {
                 let mut queue = receiver.lock().await;
                 let next = queue.recv().await;
                 drop(queue);
                 let Some(arrival) = next else { break };
                 if let Some(sample) = run.run(arrival).await? {
-                    samples.push(sample);
+                    samples.record(sample);
+                } else {
+                    samples.record_unmeasured();
+                }
+                if workload.measurement.measurement_seconds.is_some() {
+                    workload.live.finish();
                 }
             }
-            Ok(Samples::Requests(samples))
+            Ok(samples)
         })
     }
 
@@ -148,19 +155,34 @@ impl Workload {
         tokio::spawn(async move {
             let epoch = workload.begin().await?;
             let mut schedule = Schedule::new(&workload, id, workload.clients, epoch);
-            let mut samples = Vec::new();
+            let bounds = workload.measurement.bounds();
+            let mut samples = Samples::new(bounds, workload.trace_budget);
             while let Some(arrival) = schedule.next() {
+                if !bounds.generating(epoch, arrival.scheduled) {
+                    break;
+                }
                 if workload.rate > 0.0 {
                     wait(arrival.scheduled).await;
                 }
+                if !bounds.generating(epoch, arrival.scheduled) {
+                    break;
+                }
+                if bounds.end.is_some() {
+                    workload.live.offer(true);
+                }
                 if let Some(sample) = run.run(arrival).await? {
-                    samples.push(sample);
+                    samples.record(sample);
+                } else {
+                    samples.record_unmeasured();
+                }
+                if bounds.end.is_some() {
+                    workload.live.finish();
                 }
                 if (arrival.operation / workload.clients + 1).is_multiple_of(YIELD_BATCH) {
                     tokio::task::yield_now().await;
                 }
             }
-            Ok(Samples::Requests(samples))
+            Ok(samples)
         })
     }
 
@@ -170,28 +192,50 @@ impl Workload {
         Ok(epoch)
     }
 
-    async fn generate(&self, sender: mpsc::Sender<Arrival>) -> anyhow::Result<Vec<RequestSample>> {
+    async fn generate(&self, sender: mpsc::Sender<Arrival>) -> anyhow::Result<Samples> {
         let epoch = self.begin().await?;
+        let bounds = self.measurement.bounds();
         let mut schedule = Schedule::new(self, 0, 1, epoch);
-        let mut rejected = Vec::new();
+        let mut samples = Samples::new(bounds, self.trace_budget);
         while let Some(mut arrival) = schedule.next() {
+            let offset = arrival.scheduled.saturating_duration_since(epoch);
+            if bounds.end.is_some_and(|end| offset >= end) {
+                break;
+            }
+            if bounds.deadline.is_some_and(|end| epoch.elapsed() >= end) {
+                anyhow::bail!("arrival generator exceeded drain deadline before accounting all scheduled arrivals");
+            }
             wait(arrival.scheduled).await;
             arrival.released = Some(Instant::now());
-            match sender.try_send(arrival) {
-                Ok(()) => {}
-                Err(mpsc::error::TrySendError::Full(arrival)) => {
-                    let mut sample = RequestSample::new(epoch, arrival, false)?;
-                    sample.outcome = Outcome::Rejected;
-                    sample.finish(epoch, arrival.scheduled)?;
-                    rejected.push(sample);
+            let outcome = if bounds.end.is_some_and(|end| epoch.elapsed() >= end) {
+                Some(Outcome::Missed)
+            } else {
+                match sender.try_reserve() {
+                    Ok(permit) => {
+                        if bounds.end.is_some() {
+                            self.live.offer(true);
+                        }
+                        permit.send(arrival);
+                        None
+                    }
+                    Err(mpsc::error::TrySendError::Full(_)) => Some(Outcome::Rejected),
+                    Err(mpsc::error::TrySendError::Closed(_)) => anyhow::bail!("arrival workers stopped"),
                 }
-                Err(mpsc::error::TrySendError::Closed(_)) => anyhow::bail!("arrival workers stopped"),
+            };
+            if let Some(outcome) = outcome {
+                if bounds.end.is_some() {
+                    self.live.offer(false);
+                }
+                let mut sample = RequestSample::new(epoch, arrival, false)?;
+                sample.outcome = outcome;
+                sample.finish(epoch, arrival.scheduled)?;
+                samples.record(sample);
             }
             if (arrival.operation + 1).is_multiple_of(YIELD_BATCH) {
                 tokio::task::yield_now().await;
             }
         }
-        Ok(rejected)
+        Ok(samples)
     }
 }
 
@@ -217,7 +261,11 @@ impl Schedule {
             random: (workload.config.arrival_seed ^ workload.stream_seed).wrapping_add(id),
             operation: id,
             stride,
-            operations: workload.operations,
+            operations: if workload.measurement.measurement_seconds.is_some() {
+                u64::MAX
+            } else {
+                workload.operations
+            },
             rate: workload.rate,
             measured: workload.measured,
             offset: 0.0,
@@ -283,7 +331,6 @@ mod tests {
     use tokio::sync::mpsc;
 
     use super::super::Args;
-    use super::Outcome;
     use super::Pattern;
     use super::Schedule;
     use super::Workload;
@@ -299,6 +346,9 @@ mod tests {
             rate: 1000.0,
             measured: true,
             stream_seed: super::READ_STREAM,
+            measurement: args.measurement,
+            trace_budget: 4,
+            live: Arc::default(),
             start: Arc::new(Barrier::new(1)),
             epoch,
         }
@@ -315,8 +365,10 @@ mod tests {
             admitted.push(arrival.operation);
         }
         assert_eq!(vec![0, 1], admitted);
-        let actual: Vec<_> = rejected.into_iter().map(|sample| sample.outcome).collect();
-        assert_eq!(vec![Outcome::Rejected, Outcome::Rejected], actual);
+        let actual = rejected.timing(1);
+        let expected = serde_json::json!(2);
+        assert_eq!(expected, actual["rejected"]);
+        assert_eq!(2, rejected.request_count());
         Ok(())
     }
 
@@ -393,5 +445,27 @@ mod tests {
         }
         let expected: std::collections::BTreeSet<_> = (0..64).collect();
         assert_eq!(expected, readers);
+    }
+    #[tokio::test]
+    async fn late_arrivals_are_accounted_as_missed_instead_of_disappearing() -> anyhow::Result<()> {
+        let mut workload = workload();
+        workload.measurement.measurement_seconds = Some(0.004);
+        workload.measurement.warmup_seconds = 0.0;
+        workload.measurement.drain_seconds = 1.0;
+        let epoch = Arc::new(OnceLock::new());
+        epoch.set(Instant::now() - Duration::from_millis(10)).unwrap();
+        workload.epoch = epoch;
+        let (tx, mut rx) = mpsc::channel(2);
+        let samples = workload.generate(tx).await?;
+        let report = samples.timing(1);
+        let expected = serde_json::json!(4);
+        assert_eq!(expected, report["offered"]);
+        let expected = serde_json::json!(0);
+        assert_eq!(expected, report["admitted"]);
+        let expected = serde_json::json!(4);
+        assert_eq!(expected, report["missed"]);
+        let admitted = rx.recv().await;
+        assert!(admitted.is_none());
+        Ok(())
     }
 }
