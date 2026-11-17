@@ -40,7 +40,7 @@ fn raft_with_tasks(
         enable_elect: false,
         ..Default::default()
     });
-    let (tx_shutdown, _rx_shutdown) = UTConfig::oneshot();
+    let (tx_control, _rx_control) = UTConfig::watch_channel(());
     // `tick` is spawned by the caller, so this handle cancels nothing: the test alone decides
     // when the tick task finishes.
     let (tick_cancel, _tick_future) = UTConfig::cancellable(std::future::pending::<()>());
@@ -55,7 +55,7 @@ fn raft_with_tasks(
         rx_data_metrics: UTConfig::watch_channel(Default::default()).1,
         rx_server_metrics: UTConfig::watch_channel(RaftServerMetrics::new_initial(0)).1,
         progress_watcher: IoProgressWatcher::new().1,
-        tx_shutdown: Mutex::new(Some(tx_shutdown)),
+        tx_control: Mutex::new(Some(tx_control)),
         core_state: Mutex::new(CoreState::started(core)),
         extensions: Extensions::default(),
     };

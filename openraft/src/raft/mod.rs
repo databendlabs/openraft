@@ -572,7 +572,7 @@ where
         let weak_tx_notify = tx_notify.downgrade();
 
         let (tx_progress, progress_watcher) = IoProgressWatcher::new();
-        let (tx_shutdown, rx_shutdown) = C::oneshot();
+        let (tx_control, rx_control) = C::watch_channel(());
 
         let runtime_config = Arc::new(RuntimeConfig::new(&config));
 
@@ -663,7 +663,7 @@ where
                     ),
                     tx_install_snapshot: tx_install_snapshot.clone(),
                     rx_install_snapshot,
-                    rx_shutdown,
+                    rx_control,
 
                     notifications: NotificationChannel::new(tx_notify, rx_notify),
 
@@ -726,7 +726,7 @@ where
             rx_data_metrics,
             rx_server_metrics,
             progress_watcher,
-            tx_shutdown: Mutex::new(Some(tx_shutdown)),
+            tx_control: Mutex::new(Some(tx_control)),
             core_state: Mutex::new(CoreState::Unstarted(Some(start))),
             extensions: Extensions::default(),
         };
@@ -2267,10 +2267,12 @@ where
     /// succeeds.
     #[since(version = "0.10.0")]
     pub async fn try_shutdown(&self) -> Result<(), ShutdownError> {
-        if let Some(tx) = self.inner.tx_shutdown.lock().unwrap().take() {
-            let send_res = tx.send(());
-            tracing::info!("sending shutdown signal to RaftCore, sending res: {:?}", send_res);
+        // Dropping the sender closes the control channel, which stops RaftCore.
+        let tx_control = self.inner.tx_control.lock().unwrap().take();
+        if tx_control.is_some() {
+            tracing::info!("closing the control channel to stop RaftCore");
         }
+        drop(tx_control);
 
         let (_, core_failed) = self.inner.join_core_task().await;
         let core_result = if core_failed { Err(ShutdownError) } else { Ok(()) };

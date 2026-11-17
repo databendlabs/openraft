@@ -13,6 +13,7 @@ use crate::RaftMetrics;
 use crate::RaftTypeConfig;
 use crate::async_runtime::MpscSender;
 use crate::async_runtime::watch::WatchReceiver;
+use crate::async_runtime::watch::WatchSender;
 use crate::config::RuntimeConfig;
 use crate::core::TickHandle;
 use crate::core::io_flush_tracking::IoProgressWatcher;
@@ -30,6 +31,7 @@ use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::WatchReceiverOf;
+use crate::type_config::alias::WatchSenderOf;
 
 /// How long [`RaftInner::recv_msg`] waits for RaftCore to actually stop after a response channel
 /// closed, before concluding the channel was closed by a dropped responder instead.
@@ -55,7 +57,9 @@ where C: RaftTypeConfig
     pub(in crate::raft) rx_server_metrics: WatchReceiverOf<C, RaftServerMetrics<C>>,
     pub(in crate::raft) progress_watcher: IoProgressWatcher<C>,
 
-    pub(in crate::raft) tx_shutdown: Mutex<Option<OneshotSenderOf<C, ()>>>,
+    /// The control channel of `RaftCore`: a send wakes it up, and closing the channel, by taking
+    /// and dropping this sender, stops it.
+    pub(in crate::raft) tx_control: Mutex<Option<WatchSenderOf<C, ()>>>,
     pub(in crate::raft) core_state: Mutex<CoreState<C>>,
 
     /// Type-map for storing user-defined extension data.
@@ -192,6 +196,16 @@ where C: RaftTypeConfig
             return Err(fatal);
         }
         Ok(())
+    }
+
+    /// Wake up RaftCore without waiting, so that it reads the runtime switches again.
+    ///
+    /// Wake-ups that RaftCore has not seen yet merge into one. After shutdown it does nothing.
+    pub(in crate::raft) fn wake_core(&self) {
+        let tx_control = self.tx_control.lock().unwrap();
+        if let Some(tx) = tx_control.as_ref() {
+            tx.send_if_modified(|_| true);
+        }
     }
 
     /// Get the error that caused RaftCore to stop.

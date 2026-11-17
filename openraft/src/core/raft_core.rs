@@ -25,6 +25,7 @@ use crate::async_runtime::Select2;
 use crate::async_runtime::Select3;
 use crate::async_runtime::Select4;
 use crate::async_runtime::TryRecvError;
+use crate::async_runtime::watch::WatchReceiver;
 use crate::async_runtime::watch::WatchSender;
 use crate::batch::Batch;
 use crate::config::Config;
@@ -140,7 +141,6 @@ use crate::type_config::alias::MembershipStateOf;
 use crate::type_config::alias::MpscReceiverOf;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::MutexOf;
-use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::PayloadOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchReceiverOf;
@@ -255,7 +255,7 @@ where
     /// A self-held keepalive sender for the dedicated install-snapshot channel.
     ///
     /// Mirrors [`Self::tx_api`]: it keeps `rx_install_snapshot` open after the application drops
-    /// its last `Raft` handle, so the core shuts down only via `rx_shutdown` instead of
+    /// its last `Raft` handle, so the core shuts down only via `rx_control` instead of
     /// truncating an in-flight `stream_append`.
     #[allow(dead_code)]
     pub(crate) tx_install_snapshot: MpscSenderOf<C, InstallFullSnapshotRequest<C, SM>>,
@@ -266,7 +266,14 @@ where
     /// `rx_api`, which is independent of the state machine type.
     pub(crate) rx_install_snapshot: MpscReceiverOf<C, InstallFullSnapshotRequest<C, SM>>,
 
-    pub(crate) rx_shutdown: OneshotReceiverOf<C, ()>,
+    /// The control channel from the `Raft` handles.
+    ///
+    /// A send only wakes this core up, so that it reads the switches in [`Self::runtime_config`]
+    /// again; unseen sends merge into one, and none of them carries data that could be lost.
+    /// Closing the channel, by [`Raft::shutdown`] or by dropping every `Raft` handle, stops it.
+    ///
+    /// [`Raft::shutdown`]: crate::Raft::shutdown
+    pub(crate) rx_control: WatchReceiverOf<C, ()>,
 
     /// Shared notification channel and buffered self-notifications.
     pub(crate) notifications: NotificationChannel<C>,
@@ -1396,7 +1403,7 @@ where
                 self.engine.state.log_progress()
             );
 
-            // In each loop, it does not have to check rx_shutdown and flush metrics for every RaftMsg
+            // In each loop, it does not have to check rx_control and flush metrics for every RaftMsg
             // processed.
             // In each loop, the first step is blocking waiting for any message from any channel.
             // Then if there is any message, process as many as possible to maximize throughput.
@@ -1404,7 +1411,7 @@ where
             // Check shutdown first so that a message flood in `tx_api` won't block shutting down.
             self.runtime_stats.end_core_busy(busy_since);
             let selected = C::select4(
-                &mut self.rx_shutdown,
+                self.rx_control.changed(),
                 self.notifications.recv(),
                 self.rx_install_snapshot.recv(),
                 self.rx_api.ensure_buffered(),
@@ -1412,8 +1419,13 @@ where
             .await;
             busy_since = self.runtime_stats.begin_core_busy();
             match selected {
-                Select4::First(_) => {
-                    tracing::info!("recv from rx_shutdown");
+                Select4::First(Ok(())) => {
+                    // A wake-up: the top of the loop reads the runtime switches again.
+                    tracing::debug!("woken up through rx_control");
+                }
+
+                Select4::First(Err(_)) => {
+                    tracing::info!("rx_control is closed, shut down");
                     return Err(Fatal::Stopped);
                 }
 
@@ -2227,8 +2239,8 @@ where
     /// without a transfer in progress, and a single campaigner whose election is already in
     /// progress, have none.
     ///
-    /// Turning `enable_elect` back on does not wake the core: the deadline returns at the next
-    /// refresh, which the next tick or message triggers.
+    /// Turning `enable_elect` back on wakes the core through [`Self::rx_control`], and the
+    /// deadline returns at that round.
     fn election_wake_at(&self) -> Option<InstantOf<C>> {
         if !self.runtime_config.enable_elect.load(Ordering::Relaxed) {
             return None;
@@ -2799,9 +2811,11 @@ where
         let send = self.sm_handle.send(command);
         let mut send = std::pin::pin!(send);
         loop {
-            let selected = C::select3(&mut self.rx_shutdown, send.as_mut(), self.notifications.recv()).await;
+            let selected = C::select3(self.rx_control.changed(), send.as_mut(), self.notifications.recv()).await;
             match selected {
-                Select3::First(_) | Select3::Third(None) => return Err(Fatal::Stopped),
+                // A wake-up: the top of the main loop, reached after this round, reads the switches.
+                Select3::First(Ok(())) => {}
+                Select3::First(Err(_)) | Select3::Third(None) => return Err(Fatal::Stopped),
                 Select3::Second(Ok(())) => return Ok(()),
                 Select3::Second(Err(_)) => {
                     let source = C::err_from_string("cannot send to sm::Worker");
