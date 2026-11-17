@@ -1,7 +1,5 @@
 //! RuntimeConfigHandle is an interface to change Raft runtime config.
 
-use std::sync::atomic::Ordering;
-
 use openraft_macros::since;
 
 use crate::RaftTypeConfig;
@@ -12,6 +10,9 @@ use crate::raft::RaftInner;
 ///
 /// These configs are mainly designed for testing purposes and special use cases.
 /// Usually you don't need to change runtime config.
+///
+/// Changing a switch wakes `RaftCore`, so that the change takes effect at once, even when no tick
+/// or message arrives.
 pub struct RuntimeConfigHandle<'r, C>
 where C: RaftTypeConfig
 {
@@ -35,8 +36,11 @@ where C: RaftTypeConfig
     /// [`Trigger::tick`]: crate::raft::trigger::Trigger::tick
     #[since(version = "0.10.1", change = "no longer stops elections")]
     pub fn tick(&self, enabled: bool) {
-        let enable_tick = self.raft_inner.runtime_config.enable_tick.lock().unwrap();
-        enable_tick.send_if_different(enabled);
+        let runtime_config = &self.raft_inner.runtime_config;
+        let changed = runtime_config.enable_tick.lock().unwrap().send_if_different(enabled);
+        if changed {
+            runtime_config.notify_changed();
+        }
     }
 
     /// Enable or disable heartbeat messages when a leader has no more log to replicate.
@@ -45,20 +49,20 @@ where C: RaftTypeConfig
     /// the leader, and it will start election (if `Self::elect()` is enabled) when the lease timed
     /// out.
     pub fn heartbeat(&self, enabled: bool) {
-        self.raft_inner.runtime_config.enable_heartbeat.store(enabled, Ordering::Relaxed);
+        let runtime_config = &self.raft_inner.runtime_config;
+        runtime_config.set_switch(&runtime_config.enable_heartbeat, enabled);
     }
 
     /// Enable or disable automatic elections, such as a follower's when its leader lease timed out.
     ///
     /// Elections run on their own election timer, whatever [`Self::tick`] says. Re-enabling
-    /// elections takes effect the next time `RaftCore` wakes up: on the next internal tick, at most
-    /// one tick period later, or on the next message. A node with [`Self::tick`] disabled and no
-    /// incoming messages does not elect until something wakes it, such as [`Trigger::tick`].
-    ///
-    /// [`Trigger::tick`]: crate::raft::trigger::Trigger::tick
+    /// elections wakes `RaftCore`, so a node whose election is already due starts it at once, even
+    /// with [`Self::tick`] disabled and no incoming messages.
+    #[since(version = "0.10.1", change = "wakes `RaftCore` to apply the change")]
     #[since(version = "0.10.1", change = "controls elections without `tick`")]
     pub fn elect(&self, enabled: bool) {
-        self.raft_inner.runtime_config.enable_elect.store(enabled, Ordering::Relaxed);
+        let runtime_config = &self.raft_inner.runtime_config;
+        runtime_config.set_switch(&runtime_config.enable_elect, enabled);
     }
 
     /// Enable or disable the Pre-Vote round that precedes a real election.
@@ -67,6 +71,7 @@ where C: RaftTypeConfig
     /// its term, avoiding term inflation by a node that cannot currently win. See
     /// [`Config::enable_pre_vote`](crate::Config::enable_pre_vote).
     pub fn pre_vote(&self, enabled: bool) {
-        self.raft_inner.runtime_config.enable_pre_vote.store(enabled, Ordering::Relaxed);
+        let runtime_config = &self.raft_inner.runtime_config;
+        runtime_config.set_switch(&runtime_config.enable_pre_vote, enabled);
     }
 }

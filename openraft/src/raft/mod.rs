@@ -664,6 +664,7 @@ where
                     tx_install_snapshot: tx_install_snapshot.clone(),
                     rx_install_snapshot,
                     rx_shutdown,
+                    rx_runtime_config: runtime_config.subscribe_changes(),
 
                     notifications: NotificationChannel::new(tx_notify, rx_notify),
 

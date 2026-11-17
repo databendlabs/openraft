@@ -25,6 +25,7 @@ use crate::async_runtime::Select2;
 use crate::async_runtime::Select3;
 use crate::async_runtime::Select4;
 use crate::async_runtime::TryRecvError;
+use crate::async_runtime::watch::WatchReceiver;
 use crate::async_runtime::watch::WatchSender;
 use crate::batch::Batch;
 use crate::config::Config;
@@ -267,6 +268,10 @@ where
     pub(crate) rx_install_snapshot: MpscReceiverOf<C, InstallFullSnapshotRequest<C, SM>>,
 
     pub(crate) rx_shutdown: OneshotReceiverOf<C, ()>,
+
+    /// Becomes ready when a runtime switch in [`Self::runtime_config`] changes, so that the main
+    /// loop wakes up and applies it, for example by setting the election deadline again.
+    pub(crate) rx_runtime_config: WatchReceiverOf<C, u64>,
 
     /// Shared notification channel and buffered self-notifications.
     pub(crate) notifications: NotificationChannel<C>,
@@ -1405,7 +1410,7 @@ where
             self.runtime_stats.end_core_busy(busy_since);
             let selected = C::select4(
                 &mut self.rx_shutdown,
-                self.notifications.recv(),
+                C::select2(self.notifications.recv(), self.rx_runtime_config.changed()),
                 self.rx_install_snapshot.recv(),
                 self.rx_api.ensure_buffered(),
             )
@@ -1417,7 +1422,7 @@ where
                     return Err(Fatal::Stopped);
                 }
 
-                Select4::Second(notify_res) => {
+                Select4::Second(Select2::First(notify_res)) => {
                     match notify_res {
                         Some(notify) => self.handle_notification(notify)?,
                         None => {
@@ -1425,6 +1430,16 @@ where
                             return Err(Fatal::Stopped);
                         }
                     };
+                }
+
+                Select4::Second(Select2::Second(changed)) => {
+                    if changed.is_err() {
+                        tracing::error!("the runtime config change sender is dropped");
+                        return Err(Fatal::Stopped);
+                    }
+                    // The top of the loop applies the new switches, e.g., sets the election
+                    // deadline again.
+                    tracing::debug!("runtime config changed");
                 }
 
                 Select4::Third(install_res) => {
@@ -2227,8 +2242,8 @@ where
     /// without a transfer in progress, and a single campaigner whose election is already in
     /// progress, have none.
     ///
-    /// Turning `enable_elect` back on does not wake the core: the deadline returns at the next
-    /// refresh, which the next tick or message triggers.
+    /// Turning `enable_elect` back on wakes the core through [`Self::rx_runtime_config`], and the
+    /// deadline returns at that round.
     fn election_wake_at(&self) -> Option<InstantOf<C>> {
         if !self.runtime_config.enable_elect.load(Ordering::Relaxed) {
             return None;

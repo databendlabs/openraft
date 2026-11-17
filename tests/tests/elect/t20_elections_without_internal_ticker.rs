@@ -6,6 +6,7 @@ use openraft::ServerState;
 use openraft::async_runtime::WatchReceiver;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::expect_timeout;
 use crate::fixtures::ut_harness;
 
 /// A candidate that cannot win retries its election with the internal ticker disabled.
@@ -99,6 +100,54 @@ async fn leader_campaigns_after_failed_transfer_without_the_internal_ticker() ->
                 "node 0 leads a new term",
             )
             .await?;
+    }
+
+    Ok(())
+}
+
+/// A follower whose elections are re-enabled elects with the internal ticker disabled.
+///
+/// The leader is isolated and sends no heartbeat, so no tick and no message reaches node 1.
+/// Re-enabling its elections wakes its core, which sets the election deadline that has already
+/// passed.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn reenabled_follower_elects_without_the_internal_ticker() -> Result<()> {
+    let config = Config {
+        enable_tick: false,
+        enable_elect: false,
+        ..Default::default()
+    };
+    let election_timeout_max = Duration::from_millis(config.election_timeout_max);
+    let mut router = RaftRouter::new(config)?;
+
+    tracing::info!("--- create cluster of 0,1,2 with elections disabled; node 0 becomes leader");
+    let log_index = router.new_cluster([0, 1, 2], []).await?;
+    let term = router.get_raft_handle(&1)?.metrics().borrow_watched().current_term;
+
+    tracing::info!(
+        log_index,
+        term,
+        "--- isolate the leader; several election timeouts pass without an election on node 1"
+    );
+    {
+        router.set_network_error(0, true);
+
+        let res = router
+            .wait_with_timeout(&1, election_timeout_max * 5)
+            .metrics(|m| m.current_term > term, "node 1 starts an election")
+            .await;
+        expect_timeout(res)?;
+    }
+
+    tracing::info!(
+        log_index,
+        term,
+        "--- re-enable elections on node 1; it elects although no tick or message wakes it"
+    );
+    {
+        router.get_raft_handle(&1)?.runtime_config().elect(true);
+        router.wait(&1).state(ServerState::Leader, "node 1 elected").await?;
     }
 
     Ok(())
