@@ -26,13 +26,18 @@ import uuid
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from benchmark_build import BuildCache, BuildRequest, verified_entry
+from benchmark_common import DEFAULT_CACHE, HostMonitor, harness_state, machine
+
 ROOT = Path(__file__).resolve().parents[3]
 BACKENDS = ("wal", "rocks")
 DURABLE_NODE = ROOT / "benchmarks/durable/target/release/bench-durable-node"
 
 
 class AvailabilityError(RuntimeError):
-    pass
+    def __init__(self, message, status=None):
+        super().__init__(message)
+        self.status = status
 
 
 class OracleViolation(RuntimeError):
@@ -165,7 +170,7 @@ class Http:
             self.discard(connection, not sent)
             raise
         if response.status != 200:
-            raise AvailabilityError(f"HTTP {response.status}: {data[:300]!r}")
+            raise AvailabilityError(f"HTTP {response.status}: {data[:300]!r}", status=response.status)
         return json.loads(data)
 
     def discard(self, connection, partial):
@@ -309,10 +314,11 @@ class Cluster:
         if len(nodes) < 3 or len({node["id"] for node in nodes}) != len(nodes):
             raise ValueError("attach manifest needs at least three distinct node IDs")
         for node in nodes:
-            if not isinstance(node["id"], int) or node["id"] <= 0 or not node.get("api_addr") or not node.get("raft_addr"):
+            if type(node["id"]) is not int or node["id"] <= 0 or not node.get("api_addr") or not node.get("raft_addr"):
                 raise ValueError("each attached node requires a positive ID, api_addr and raft_addr")
             if not node.get("control_addr"):
                 raise ValueError("attached benchmark nodes require the explicit control listener")
+        validate_endpoints(nodes)
         return {node["id"]: node for node in nodes}
 
     def local_nodes(self):
@@ -348,7 +354,11 @@ class Cluster:
             log = log_path.open("ab")
             self.logs.append(log)
             self.commands[node] = command
-            self.processes[node] = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
+            env = dict(os.environ)
+            workers = getattr(self.args, "server_workers", None)
+            if workers is not None:
+                env["TOKIO_WORKER_THREADS"] = str(workers)
+            self.processes[node] = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, env=env)
 
     def stop(self, node):
         process = self.processes[node]
@@ -947,6 +957,29 @@ def workload(cluster):
     return Runner(cluster).run()
 
 
+def endpoint_key(address):
+    parsed = urlsplit(address if "://" in address else "http://" + address)
+    if parsed.scheme != "http" or parsed.path not in ("", "/"):
+        raise ValueError("benchmark endpoints require HTTP numeric addresses without a path")
+    ip = ipaddress.ip_address(parsed.hostname)
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    port = parsed.port if parsed.port is not None else 80
+    if not 1 <= port <= 65535:
+        raise ValueError("benchmark endpoint port must be in 1..65535")
+    return str(ip), port
+
+
+def validate_endpoints(nodes):
+    endpoints = set()
+    for node in nodes:
+        for role in ("api_addr", "raft_addr", "control_addr"):
+            endpoint = endpoint_key(node[role])
+            if endpoint in endpoints:
+                raise ValueError("each node API/Raft/control endpoint must be unique")
+            endpoints.add(endpoint)
+
+
 def measurement_arguments(parser):
     parser.add_argument("--seconds", type=float, default=30)
     parser.add_argument("--warmup", type=float, default=5)
@@ -979,6 +1012,16 @@ def process_arguments(parser):
     parser.add_argument("--fault-after", type=float, default=1)
     parser.add_argument("--fault-seconds", type=float, default=1)
     parser.add_argument("--snapshot-logs", type=int)
+
+
+def reproducibility_arguments(parser):
+    parser.add_argument("--server-workers", type=int, help="Tokio workers per owned node [default: 16]")
+    parser.add_argument("--binary-manifest", type=Path, help="reuse a verified immutable durable-node cache entry")
+    parser.add_argument("--build", action="store_true", help="build into the immutable cache (default without --binary)")
+    parser.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE)
+    parser.add_argument("--build-timeout", type=float, default=1800)
+    parser.add_argument("--lockfile", type=Path)
+    parser.add_argument("--toolchain")
 
 
 def validate_durations(args, parser):
@@ -1023,26 +1066,106 @@ def validate_process(args, parser):
         parser.error("snapshot recovery requires the persistent RocksDB profile")
 
 
+def validate_reproducibility(args, parser):
+    local = [args.server_workers, args.binary_manifest, args.lockfile, args.toolchain]
+    if args.attach and (args.build or any(value is not None for value in local)):
+        parser.error("attach mode cannot change server workers or build inputs")
+    if args.server_workers is not None and args.server_workers <= 0:
+        parser.error("server-workers must be positive")
+    if not math.isfinite(args.build_timeout) or args.build_timeout <= 0:
+        parser.error("build-timeout must be positive")
+    if sum(bool(value) for value in [args.build, args.binary, args.binary_manifest]) > 1:
+        parser.error("choose one of build, binary or binary-manifest")
+    if not args.attach:
+        args.server_workers = args.server_workers or 16
+        if args.binary is None and args.binary_manifest is None:
+            args.build = True
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     measurement_arguments(parser)
     workload_arguments(parser)
     process_arguments(parser)
+    reproducibility_arguments(parser)
     args = parser.parse_args()
     validate_durations(args, parser)
     validate_load(args, parser)
     validate_process(args, parser)
+    validate_reproducibility(args, parser)
     return args
 
 
 def metadata(args, cluster):
     config = {key: str(value) if isinstance(value, Path) else value for key, value in vars(args).items()}
-    return {"schema_version": 1, "config": config, "machine": platform.platform(), "nodes": cluster.nodes,
+    return {"schema_version": 2, "config": config, "machine": machine(), "harness": harness_state(), "nodes": cluster.nodes,
             "replication": "unary_sequential_http", "read_policy": "ReadIndex",
             "payload_scope": "logical_ID_string_plus_payload_bytes", "commands": cluster.commands, "success": False}
 
 
+def prepare_binary(cluster, report):
+    args = cluster.args
+    if args.attach:
+        return
+    manifest = getattr(args, "binary_manifest", None)
+    if manifest is not None:
+        captured = json.loads(manifest.read_text())
+        build = verified_entry(manifest.parent, captured["inputs"])
+    elif getattr(args, "build", False):
+        features = ("rocks",) if args.backend == "rocks" else ()
+        request = BuildRequest("durable", features=features, lockfile=args.lockfile, toolchain=args.toolchain,
+                               crate="benchmarks/durable", binary="bench-durable-node")
+        build = BuildCache(args).build(request)
+    else:
+        report["binary_provenance"] = "build inputs unknown for an explicitly supplied binary"
+        return
+    args.binary = Path(build["binary"])
+    report["build"] = build
+
+
+def topology_metadata(cluster, report):
+    metrics = cluster.read_reports("/metrics")
+    report["topology_verification"] = {"declared_to_observed_id": {node: value.get("id") for node, value in metrics.items()}}
+    for node, value in metrics.items():
+        if type(value.get("id")) is not int or value["id"] != node:
+            raise ValueError(f"API endpoint for node {node} reports ID {value.get('id')}")
+    initial = {node: cluster.http.request(options["control_addr"], "/status", None,
+                                        time.monotonic() + cluster.args.request_timeout)
+               for node, options in cluster.nodes.items()}
+    report["topology_verification"] = {"ids": list(metrics), "initial_fault_state": initial,
+                                       "preexisting_fault_policy": "reject_nonempty"}
+    if any(not isinstance(value, list) or value for value in initial.values()):
+        raise ValueError("benchmark requires empty initial fault-control state")
+
+
+def runtime_report(cluster, node):
+    try:
+        return cluster.api(node, "/benchmark/runtime")
+    except AvailabilityError as error:
+        if error.status != 404:
+            raise
+        if not cluster.args.attach:
+            raise ValueError("owned binary lacks /benchmark/runtime; rebuild the durable harness") from error
+        return {"server_worker_threads": None, "verification": "unknown", "reason": "runtime endpoint unsupported"}
+
+
+def runtime_metadata(cluster, report):
+    runtimes = {node: cluster.wait(lambda: runtime_report(cluster, node), f"node {node} runtime metadata")
+                for node in cluster.nodes}
+    expected = getattr(cluster.args, "server_workers", None)
+    if expected is not None and any(value.get("server_worker_threads") != expected for value in runtimes.values()):
+        raise ValueError("effective server worker allocation differs from the requested setting")
+    args = cluster.args
+    report["server_runtime"] = runtimes
+    report["client_threads"] = {"write_workers": args.clients, "read_workers": args.read_clients,
+        "arrival_generators": int(args.write_rate > 0) + int(args.read_rate > 0),
+        "fault_controller": int(args.scenario != "normal"), "host_sampler": 1,
+        "scope": "Python threads; server_worker_threads are per-node Tokio runtime workers"}
+
+
 def server_metadata(cluster, report):
+    topology_metadata(cluster, report)
+    runtime_metadata(cluster, report)
     report["resolved_raft_config"] = cluster.read_reports("/benchmark/config")
     storage = cluster.read_reports("/benchmark/storage")
     backends = {item["backend"] for item in storage.values()}
@@ -1054,7 +1177,7 @@ def server_metadata(cluster, report):
         report["executable_sha256"] = hashlib.sha256(executable.read_bytes()).hexdigest()
 
 
-def execute(cluster, report):
+def execute_cluster(cluster, report):
     if not cluster.args.attach:
         cluster.initialize()
     else:
@@ -1070,6 +1193,16 @@ def execute(cluster, report):
     report["verification"] = cluster.verify()
     report["cas_retry_control"] = cluster.cas_retry_check()
     report["success"] = True
+
+
+def execute(cluster, report):
+    prepare_binary(cluster, report)
+    monitor = HostMonitor(cluster.output / "host.jsonl")
+    try:
+        with monitor:
+            execute_cluster(cluster, report)
+    finally:
+        report["host"] = monitor.report()
 
 
 def write_history(cluster, report):
