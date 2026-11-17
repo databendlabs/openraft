@@ -573,3 +573,92 @@ the source observer.
 ```
 
 Numbers support underscores and unit suffixes: `1_000`, `100k`, `20m`, `1g`
+
+### Application and transport profiles
+
+`--profile` replaces empty commands with versioned KV writes and coherent key queries.
+The empty control keeps its original entry and inline-batch layouts and `{}` wire encoding.
+Use payload sizes `0`, `256`, `4096`, and `65536` in separate runs. Each logical request
+allocates its own value; direct calls share its `Arc`, while serialized links decode independent
+copies on followers. `--profile-keys` bounds the keyspace and `--hot-key-percent` directs
+that percentage of requests to key zero. Profiles with readers require `--read-query`.
+
+```sh
+target/release/bench --profile --payload-bytes 4096 --profile-keys 1024 \
+  --clients 16 --operations 0 --write-rate 1000 --read-clients 32 --read-operations 0 \
+  --read-rate 9000 --read-query --read-on-follower 1 --open-loop \
+  --warmup-seconds 2 --measurement-seconds 10 --drain-seconds 5 \
+  --cache-entries 4096 --cache-miss-us 500 --log-read-bytes-per-second 100000000 \
+  --apply-io-delay-us 100 --apply-bytes-per-second 100000000 --cpu-rounds 4 \
+  --concurrent-queries --serialized-transport --network-delay-us 100 \
+  --network-jitter-us 100 --link-bytes-per-second 100000000 --link-capacity 64
+```
+
+Recent appended log entries hit the configured tail cache. An older entry makes a read pay
+one miss cost. Apply and replication share each node's configured log-read bandwidth.
+The byte estimate includes inline entry metadata and application value bytes. Transaction
+cost combines `--apply-io-delay-us`, `--apply-entry-delay-us`, and byte transfer time.
+`--cpu-rounds` performs actual deterministic mixing over keys and values on the apply worker.
+The default profile holds the query lock during this work. `--concurrent-queries` stages only
+the incoming batch and publishes values and the applied log ID together after work finishes.
+Write responses and the apply-completion observer follow publication and lock release.
+`--follower-delay-us` adds asymmetric log-read and transaction delay on follower 1.
+
+Serialized transport covers append streams, votes, pre-votes, transfer, snapshots, and their
+responses. Each directed link shares one bandwidth reservation and a bounded admission queue.
+Ordered append streams retain the underlying pipelined protocol. Tokio timers model link delays;
+blocking-pool sleeps model store waits. The profile report retains bounded requested/actual
+store-delay observations, including blocking-pool submission and wakeup. Compare their actual
+distributions under load before interpreting a configured microsecond cost. Link reports include
+serialized bytes, peak admitted messages, and encoded-buffer allocation; their memory scope
+excludes original, decoded, and waiting payloads.
+
+`profile.history` checks each read against writes acknowledged before its actual invocation.
+Sampled histories include logical IDs, full acknowledged log IDs, retries, actual invocation,
+completion, and uncertain batch suffixes. `--history-every` and `--history-capacity` bound raw
+history storage independently of the keyspace. `--duplicate-capacity` bounds recent logical-ID
+observations per state machine; eviction makes older duplicate coverage unknown. Repeated Set
+commands are detected within that window and still apply. Final checks cover acknowledgement
+floors and, after drain, exact values across nodes. Unfinished or locked nodes report incomplete
+coverage. Arrival no-op calibration records no application history. Normal Raft ticks, heartbeats,
+elections, and snapshots remain configurable with `--raft-config`.
+
+### Durable processes and HTTP clients
+
+Build the dedicated durable node and start three owned processes with a paced HTTP workload:
+
+```sh
+cargo build --release --manifest-path benchmarks/durable/Cargo.toml
+python3 benchmarks/minimal/scripts/process_profile.py --backend wal \
+  --output /tmp/openraft-wal-profile --seconds 30 --read-on-follower 2
+```
+
+For persistent state-machine checkpoints, build the same crate with `--features rocks` and
+select `--backend rocks`. The harness reuses example stores, handlers, and RPC servers;
+benchmark probes and fault controls live under `benchmarks/durable`. Both profiles use pooled client connections, the examples' unary
+sequential replication adapter, and ReadIndex authorization. Follower reads add a real HTTP
+`/get_linearizer` exchange with the leader; per-route body counters expose that traffic.
+These measurements have a different transport and read policy from the in-process controls.
+The WAL profile syncs its log and rebuilds its volatile state machine from retained logs after
+restart. Its snapshots are disabled. RocksDB uses durable logs and persistent state-machine
+transactions; its snapshot scenario installs and restarts from a checkpoint.
+
+`--scenario transfer|crash|partition|restart|snapshot` injects one event during measurement.
+Crash kills and restarts the leader; restart targets a follower. Partition blocks all outgoing
+Raft RPCs, including in-flight snapshots, in both directions around one node. Application HTTP
+and follower authorization remain reachable; this is explicitly a Raft-only partition.
+The snapshot scenario requires RocksDB, stops a follower until the leader has purged beyond
+it, then requires checkpoint installation and another restart. It checks a unique marker and
+its applied boundary while Raft repair is blocked, before healing the cluster. Reports retain faults, errors,
+retry attempts, queue peaks, fixed-window outcomes, uncertain writes, and final value checks.
+A separate repeated-CAS control records two acknowledged proposals and exactly one successful
+mutation. Lost Set responses can conceal duplicate proposals; the driver reports that limit.
+
+For separate hosts, start each durable benchmark node with `--benchmark-control-addr` and pass `--attach`
+a JSON manifest: `{"nodes":[{"id":1,"api_addr":"host:41001","raft_addr":"host:42001",
+"control_addr":"host:43001"}, ...]}`. The driver attaches to an initialized cluster and
+uses explicit numeric IPv4/IPv6 endpoints to enforce deadlines without blocking DNS.
+Attach validates server-reported storage metadata and rejects local binary/port/snapshot overrides.
+Process crash/restart and snapshot scenarios require owned local
+processes. `--output` must be new; commands, resolved Raft configuration, executable hash,
+raw bounded histories, reports, and owned-node data/logs remain there after failure.
