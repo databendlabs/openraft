@@ -14,7 +14,7 @@ verify: fmt_check clippy-basic
 
 # Complete, read-only check: adds isolated features, full lint coverage,
 # documentation, integrations, benchmarks, and runtime tests.
-verify-full: verify feature-check clippy docs-check test-membership test-bench-minimal test-runtime
+verify-full: verify feature-check clippy docs-check test-membership test-bench-minimal verify-bench-durable test-runtime
 	cargo test --test '*'
 	# cargo test --features single-threaded --lib
 
@@ -177,6 +177,7 @@ bench_relaxed_reads:
 	python3 benchmarks/minimal/scripts/relaxed_reads.py
 
 test-bench-minimal:
+	python3 -m unittest discover -s benchmarks/minimal/scripts -p '*_test.py'
 	cargo test --manifest-path benchmarks/minimal/Cargo.toml --all-targets
 	cargo test --manifest-path benchmarks/minimal/Cargo.toml --all-targets --no-default-features
 
@@ -242,6 +243,7 @@ fmt:
 	cargo fmt --manifest-path rt-tokio/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path metrics-otel/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path benchmarks/minimal/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path benchmarks/durable/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path examples/app-http/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path examples/network-v1-http/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path examples/network-v2-http/Cargo.toml $(FMT_ARGS)
@@ -428,3 +430,12 @@ test-core-busy-time:
 clippy-bench-minimal:
 	cargo clippy --no-deps --manifest-path benchmarks/minimal/Cargo.toml --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path benchmarks/minimal/Cargo.toml --no-default-features --all-targets -- -D warnings
+
+# Separate-process durable benchmark; RocksDB is opt-in for node builds.
+verify-bench-durable:
+	cargo test --manifest-path benchmarks/durable/Cargo.toml --all-targets
+	cargo clippy --no-deps --manifest-path benchmarks/durable/Cargo.toml --all-targets -- -D warnings
+
+verify-bench-durable-rocks:
+	cargo test --manifest-path benchmarks/durable/Cargo.toml --all-targets --all-features
+	cargo clippy --no-deps --manifest-path benchmarks/durable/Cargo.toml --all-targets --all-features -- -D warnings
