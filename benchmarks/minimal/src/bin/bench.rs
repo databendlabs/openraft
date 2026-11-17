@@ -42,11 +42,21 @@ mod request_sample;
 #[path = "bench/write_workload.rs"]
 mod write_workload;
 
-use request_sample::Outcome;
-use request_sample::RequestSample;
 use request_sample::Samples;
-use request_sample::timing_report;
 use write_workload::WriteWorkload;
+
+#[path = "bench/apply_metrics.rs"]
+mod apply_metrics;
+#[path = "bench/histogram.rs"]
+mod histogram;
+#[path = "bench/measurement.rs"]
+mod measurement;
+#[path = "bench/run_monitor.rs"]
+mod run_monitor;
+#[path = "bench/summary.rs"]
+mod summary;
+#[path = "bench/write_progress.rs"]
+mod write_progress;
 
 const WARMUP_WRITES: usize = 1024;
 const WAIT_TIMEOUT: Duration = Duration::from_secs(400);
@@ -172,6 +182,9 @@ struct Args {
 
     #[command(flatten)]
     arrival: arrival::ArrivalConfig,
+
+    #[command(flatten)]
+    measurement: measurement::MeasurementConfig,
 }
 
 /// The read policy of each benchmark read.
@@ -225,16 +238,21 @@ struct BenchConfig {
     pub apply_entry_delay_us: u64,
     pub warmup_writes: usize,
     pub arrival: arrival::ArrivalConfig,
+    pub measurement: measurement::MeasurementConfig,
 }
 
 impl BenchConfig {
-    fn operations_per_client(&self) -> u64 {
+    fn operations_per_client(&self, id: u64) -> u64 {
         if self.n_client == 0 {
             return 0;
         }
-        let per_client = self.n_operations / self.n_client;
-        let batches = per_client / self.batch_size;
-        batches * self.batch_size
+        let batches = self.n_operations / self.batch_size;
+        client_operations(batches, self.n_client, id) * self.batch_size
+    }
+
+    fn trace_budget(&self) -> usize {
+        let clients = (self.n_client + self.read_clients) as usize;
+        self.measurement.trace_budget(clients)
     }
 }
 
@@ -349,6 +367,7 @@ fn main() -> anyhow::Result<()> {
         apply_entry_delay_us: args.apply_entry_delay_us,
         warmup_writes: args.warmup_writes,
         arrival: args.arrival.clone(),
+        measurement: args.measurement.clone(),
     };
 
     eprintln!("Benchmark config: {}", bench_config);
@@ -363,6 +382,7 @@ fn validate(args: &Args) -> anyhow::Result<()> {
         ensure!(args.operations == 0, "operations must be zero without write clients");
         ensure!(args.write_rate == 0, "write-rate must be zero without write clients");
     }
+    args.measurement.validate(WAIT_TIMEOUT)?;
     validate_arrivals(args)?;
     validate_reads(args)?;
     validate_leader_change(args)?;
@@ -373,7 +393,13 @@ fn validate(args: &Args) -> anyhow::Result<()> {
     ensure!(valid_members, "members must be 1, 3, or 5");
     let group = args.clients.checked_mul(args.batch);
     let group = group.context("clients * batch overflows")?;
-    ensure!(args.operations >= group, "operations must cover every client");
+    if args.measurement.measurement_seconds.is_none() {
+        ensure!(args.operations >= group, "operations must cover every client");
+        ensure!(
+            args.operations.is_multiple_of(args.batch),
+            "operations must be divisible by batch"
+        );
+    }
     validate_schedule(args)?;
     let delays = [
         args.append_delay_us,
@@ -396,12 +422,12 @@ fn validate_arrivals(args: &Args) -> anyhow::Result<()> {
     ensure!(config.burst_size > 0, "burst-size must be positive");
     let timeout = Duration::from_millis(config.request_timeout_ms);
     ensure!(timeout < WAIT_TIMEOUT, "request-timeout-ms exceeds benchmark timeout");
-    let measured = args.latency || args.read_clients > 0;
+    let measured = args.latency || args.read_clients > 0 || args.measurement.measurement_seconds.is_some();
     let needs_measurement =
         config.open_loop || config.arrival_noop || config.phase_sample_every > 0 || config.request_timeout_ms > 0;
     ensure!(
         !needs_measurement || measured,
-        "arrival controls require --latency or read clients"
+        "arrival controls require --latency, read clients, or --measurement-seconds"
     );
     if config.open_loop {
         ensure!(
@@ -437,10 +463,12 @@ fn validate_reads(args: &Args) -> anyhow::Result<()> {
         ensure!(!args.allow_read_errors, "allow-read-errors requires read-clients");
         return Ok(());
     }
-    ensure!(
-        args.read_operations >= args.read_clients,
-        "read-operations must cover every read client"
-    );
+    if args.measurement.measurement_seconds.is_none() {
+        ensure!(
+            args.read_operations >= args.read_clients,
+            "read-operations must cover every read client"
+        );
+    }
     Ok(())
 }
 
@@ -462,6 +490,22 @@ fn validate_leader_change(args: &Args) -> anyhow::Result<()> {
 }
 
 fn validate_schedule(args: &Args) -> anyhow::Result<()> {
+    if args.measurement.measurement_seconds.is_some() {
+        let bounds = args.measurement.bounds();
+        let idle = Duration::from_millis(args.read_delay_ms);
+        let total = idle + bounds.deadline.unwrap();
+        ensure!(
+            total < WAIT_TIMEOUT,
+            "idle time plus measurement window and drain exceed benchmark timeout"
+        );
+        if let Some(after) = args.transfer_leader_after_ms {
+            ensure!(
+                Duration::from_millis(after) < bounds.end.unwrap(),
+                "leadership transfer must start before measurement ends"
+            );
+        }
+        return Ok(());
+    }
     let write_seconds = if args.write_rate > 0 {
         args.operations as f64 / args.write_rate as f64
     } else {
@@ -526,15 +570,20 @@ fn bench_with_config(bench_config: &BenchConfig) -> anyhow::Result<()> {
         .thread_stack_size(3 * 1024 * 1024)
         .build()?;
 
-    // Create cluster on server runtime
-    let (router, leader) = create_cluster(&server_rt, bench_config)?;
-
-    // Run benchmark on client runtime
-    client_rt.block_on(async {
-        let benchmark = do_bench(bench_config, leader, &router);
-        let timed = tokio::time::timeout(WAIT_TIMEOUT, benchmark);
-        timed.await?
-    })
+    let result = (|| -> anyhow::Result<()> {
+        let (router, leader) = create_cluster(&server_rt, bench_config)?;
+        let server_handle = server_rt.handle().clone();
+        client_rt.block_on(async {
+            let benchmark = do_bench(bench_config, leader, &router, server_handle);
+            let timed = tokio::time::timeout(WAIT_TIMEOUT, benchmark);
+            timed.await?
+        })
+    })();
+    if bench_config.measurement.measurement_seconds.is_some() {
+        client_rt.shutdown_timeout(Duration::ZERO);
+        server_rt.shutdown_timeout(Duration::ZERO);
+    }
+    result
 }
 
 fn create_cluster(server_rt: &Runtime, bench_config: &BenchConfig) -> anyhow::Result<(Router, BenchRaft)> {
@@ -570,12 +619,16 @@ fn create_cluster(server_rt: &Runtime, bench_config: &BenchConfig) -> anyhow::Re
 /// Cluster config:
 /// - Log: in-memory BTree
 /// - StateMachine: in-memory BTree
-async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft, router: &Router) -> anyhow::Result<()> {
+async fn do_bench(
+    bench_config: &BenchConfig,
+    leader: BenchRaft,
+    router: &Router,
+    server: tokio::runtime::Handle,
+) -> anyhow::Result<()> {
     let n_client = bench_config.n_client;
     let batch_size = bench_config.batch_size;
-    let ops_per_client = bench_config.operations_per_client();
-    let total = ops_per_client * n_client;
-    let measure_latency = bench_config.latency || bench_config.read_clients > 0;
+    let bounds = bench_config.measurement.bounds();
+    let measure_latency = bench_config.latency || bench_config.read_clients > 0 || bounds.end.is_some();
     let client_count = usize::try_from(n_client)?;
     let read_clients = usize::try_from(bench_config.read_clients)?;
     let participants = client_count.checked_add(read_clients);
@@ -590,6 +643,8 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft, router: &Router
     let start = Arc::new(Barrier::new(participants));
     let epoch = Arc::new(OnceLock::new());
     let write_rate = bench_config.write_rate;
+    let write_live = Arc::new(run_monitor::Live::default());
+    let read_live = Arc::new(run_monitor::Live::default());
 
     for _ in 0..bench_config.warmup_writes {
         leader.client_write(ClientRequest {}).await?;
@@ -599,6 +654,26 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft, router: &Router
         let delay = Duration::from_millis(bench_config.read_delay_ms);
         tokio::time::sleep(delay).await;
     }
+    let mut diagnostics = BTreeMap::new();
+    let mut metric_watchers = Vec::new();
+    if bench_config.measurement.diagnostics() {
+        for id in &bench_config.members {
+            let raft = router.get_raft(*id);
+            let metrics = Arc::new(apply_metrics::ApplyMetrics::new(epoch.clone(), bounds));
+            let source = metrics.clone();
+            let machine = raft.with_state_machine(|sm| Box::pin(async move { sm.clone() })).await?;
+            machine
+                .observe_applies(Arc::new(move |index, entries, at| {
+                    source.source_applied(index, entries, at)
+                }))
+                .map_err(anyhow::Error::msg)?;
+            raft.set_metrics_recorder(Some(metrics.clone())).await?;
+            tokio::time::timeout(WAIT_TIMEOUT, metrics.wait_installed()).await?;
+            metric_watchers.push(metrics.watch(&server, raft));
+            diagnostics.insert(*id, metrics);
+        }
+    }
+
     let leaders = match bench_config.transfer_leader_after_ms {
         Some(_) => {
             let mut machines = BTreeMap::new();
@@ -625,14 +700,18 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft, router: &Router
             leaders: leaders.clone(),
             start: start.clone(),
             epoch: epoch.clone(),
+            live: read_live.clone(),
         })
     } else {
         None
     };
     let apply_lag = match &read_workload {
-        Some(workload) if bench_config.read_on_follower.is_some() => {
-            Some(ApplyLag::start(&workload.leader, &workload.reader))
-        }
+        Some(workload) if bench_config.read_on_follower.is_some() => Some(ApplyLag::start(
+            &workload.leader,
+            &workload.reader,
+            epoch.clone(),
+            bounds,
+        )),
         _ => None,
     };
     let read_handles = match &read_workload {
@@ -645,6 +724,7 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft, router: &Router
         leaders: leaders.clone(),
         start: start.clone(),
         epoch: epoch.clone(),
+        live: write_live.clone(),
     };
     let handles = write_workload.spawn_clients();
 
@@ -666,8 +746,26 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft, router: &Router
         }
     });
 
+    #[cfg(feature = "runtime-stats")]
+    let command_before = leader.runtime_stats().await?.command_counts;
+    let cpu_before = if cfg!(unix) && bounds.end.is_none() {
+        Some(run_monitor::usage()?)
+    } else {
+        None
+    };
     let now = Instant::now();
     epoch.set(now).unwrap();
+    #[cfg(feature = "runtime-stats")]
+    let command_window = if bounds.end.is_some() {
+        Some(tokio::spawn(run_monitor::command_window(leader.clone(), now, bounds)))
+    } else {
+        None
+    };
+    let monitor = if bounds.end.is_some() {
+        Some(run_monitor::RunMonitor::start(now, bounds, write_live, read_live))
+    } else {
+        None
+    };
     let transfer = match (&leaders, bench_config.transfer_leader_after_ms) {
         (Some(leaders), Some(after)) => Some(leaders.transfer_after(now, Duration::from_millis(after))),
         _ => None,
@@ -675,19 +773,90 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft, router: &Router
     start.wait().await;
     let writes = collect_clients(handles);
     let reads = collect_clients(read_handles);
-    let (client_latencies, read_groups) = tokio::try_join!(writes, reads)?;
-    let read_samples = Samples::flatten(read_groups);
+    let (write_groups, read_groups) = tokio::try_join!(writes, reads)?;
+    let write_workers = write_groups.len();
+    let read_workers = read_groups.len();
+    if let Some(end) = bounds.end {
+        tokio::time::sleep_until(tokio::time::Instant::from_std(now + end)).await;
+    }
     let elapsed = now.elapsed();
-    let read_samples = read_samples.requests();
-    let client_latencies = client_latencies.into_iter().map(Samples::requests).collect();
+    let cpu_after = if cpu_before.is_some() {
+        Some(run_monitor::usage()?)
+    } else {
+        None
+    };
+    let completed_writes: u64 = write_groups.iter().map(|samples| samples.window_completed).sum();
+    let completed_reads: u64 = read_groups.iter().map(|samples| samples.window_completed).sum();
+    let completed_window = completed_writes + completed_reads;
+    let monitoring = match monitor {
+        Some(monitor) => monitor.finish(completed_window).await?,
+        None => match cpu_before {
+            Some(before) => {
+                let after = cpu_after.unwrap();
+                serde_json::json!({"resources":{"cpu_seconds":after.0-before.0,"cpu_ns_per_completed_operation":if completed_window==0 { serde_json::Value::Null } else { serde_json::json!((after.0-before.0)*1e9/completed_window as f64) },
+                    "process_peak_rss_bytes_at_end":after.1,"scope":"whole_process_workload_before_json_reporting","rss_scope":"high_water_mark_since_process_start"}})
+            }
+            None => serde_json::Value::Null,
+        },
+    };
+    let client_latencies = merge_samples(write_groups, bounds, bench_config.measurement.trace_limit);
+    let read_samples = merge_samples(read_groups, bounds, bench_config.measurement.trace_limit);
     let follower_lag = match apply_lag {
         Some(apply_lag) => Some(apply_lag.finish().await?),
         None => None,
     };
     let leader_change = match transfer {
-        Some(transfer) => Some(transfer.await??),
+        Some(mut transfer) => match bounds.deadline {
+            Some(deadline) => {
+                match tokio::time::timeout_at(tokio::time::Instant::from_std(now + deadline), &mut transfer).await {
+                    Ok(change) => Some(leaders.as_ref().unwrap().report(&change??)),
+                    Err(_) => {
+                        transfer.abort();
+                        Some(serde_json::json!({"status":"pending_at_drain_deadline"}))
+                    }
+                }
+            }
+            None => Some(leaders.as_ref().unwrap().report(&transfer.await??)),
+        },
         None => None,
     };
+
+    for (stop, mut watcher) in metric_watchers {
+        stop.send_replace(true);
+        match bounds.deadline {
+            Some(deadline) => {
+                match tokio::time::timeout_at(tokio::time::Instant::from_std(now + deadline), &mut watcher).await {
+                    Ok(result) => result??,
+                    Err(_) => watcher.abort(),
+                }
+            }
+            None => watcher.await??,
+        }
+    }
+    let apply_metrics: BTreeMap<_, _> = diagnostics.iter().map(|(id, metrics)| (*id, metrics.report())).collect();
+    #[cfg(feature = "runtime-stats")]
+    let command_counts = match command_window {
+        Some(mut task) => match tokio::time::timeout_at(
+            tokio::time::Instant::from_std(now + bounds.deadline.unwrap()),
+            &mut task,
+        )
+        .await
+        {
+            Ok(result) => result??,
+            Err(_) => {
+                task.abort();
+                serde_json::json!({"status":"core_snapshot_pending_at_drain_deadline"})
+            }
+        },
+        None => {
+            let after = leader.runtime_stats().await?.command_counts;
+            let mut report = run_monitor::command_delta(&command_before, &after);
+            report["scope"] = serde_json::json!("after_bootstrap_until_clients_drained");
+            report
+        }
+    };
+    #[cfg(not(feature = "runtime-stats"))]
+    let command_counts = serde_json::Value::Null;
 
     // Stop stats printing task
     #[cfg(feature = "runtime-stats")]
@@ -695,7 +864,7 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft, router: &Router
 
     // Print final stats
     #[cfg(feature = "runtime-stats")]
-    {
+    if bounds.end.is_none() {
         let stats = leader.runtime_stats().await?;
         eprintln!(
             "[{:>6.2}s] Final:\n{}",
@@ -704,75 +873,47 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft, router: &Router
         );
     }
 
-    if let Some(workload) = read_workload {
-        workload.report(elapsed, client_latencies, read_samples, follower_lag, leader_change)?;
+    let total = client_latencies.completed();
+    let memory =
+        serde_json::json!({"write":client_latencies.memory(write_workers),"read":read_samples.memory(read_workers)});
+    let window = bounds.report(elapsed);
+    let resolved_config = serde_json::to_value(leader.config())?;
+    if read_workload.is_some() {
+        let writes = client_latencies.write_report(elapsed);
+        let reads = read_samples.read_report(elapsed);
+        let timing = client_latencies.timing();
+        let local = leader.config().enable_local_lease_read.unwrap_or(false);
+        let report = serde_json::json!({"schema_version":2,"operation_units":{"write":"entry","read":"request"},"seconds":elapsed.as_secs_f64(),"write":writes,"read":reads,
+            "write_timing":timing,"config":bench_config,"local_lease_read_enabled":local,"runtime_stats":cfg!(feature="runtime-stats"),
+            "window":window,"monitoring":monitoring,"memory":memory,"apply_metrics":apply_metrics,
+            "command_counts":command_counts,"resolved_raft_config":resolved_config,"follower_lag":follower_lag,"leader_change":leader_change});
+        println!("{report}");
         return Ok(());
     }
-
     if measure_latency {
-        let samples: Vec<RequestSample> = client_latencies.into_iter().flatten().collect();
-        let timing = timing_report(&samples, batch_size)?;
-        let completed = samples.iter().filter(|sample| sample.outcome == Outcome::Completed);
-        let mut latencies: Vec<_> = completed.map(|sample| sample.latency_ns).collect();
-        latencies.sort_unstable();
-        let seconds = elapsed.as_secs_f64();
-        let completed = latencies.len() as u64 * batch_size;
-        let operations_per_second = completed as f64 / seconds;
-        let p50 = if latencies.is_empty() {
-            0
+        let summary = client_latencies.write_report(elapsed);
+        let timing = client_latencies.timing();
+        let histogram = &client_latencies.successful;
+        let request_latency = histogram.latency();
+        let requested = if bounds.end.is_none() {
+            Some(bench_config.n_operations)
         } else {
-            percentile(&latencies, 50)
+            None
         };
-        let p95 = if latencies.is_empty() {
-            0
-        } else {
-            percentile(&latencies, 95)
-        };
-        let p99 = if latencies.is_empty() {
-            0
-        } else {
-            percentile(&latencies, 99)
-        };
-        let samples = latencies.len();
-        let total_latency: u128 = latencies.iter().map(|value| u128::from(*value)).sum();
-        let mean = total_latency / samples.max(1) as u128;
-        let mean = u64::try_from(mean)?;
-        let runtime_stats = cfg!(feature = "runtime-stats");
-        let latency_origin = if write_rate > 0 {
-            "scheduled_arrival"
-        } else {
-            "request_start"
-        };
-        let report = serde_json::json!({
-            "requested_operations": bench_config.n_operations,
-            "operations": completed,
-            "timing": timing,
-            "arrival": bench_config.arrival,
-            "samples": samples,
-            "seconds": seconds,
-            "operations_per_second": operations_per_second,
-            "request_p50_ns": p50,
-            "request_mean_ns": mean,
-            "request_p95_ns": p95,
-            "request_p99_ns": p99,
-            "clients": n_client,
-            "batch": batch_size,
-            "members": bench_config.members,
-            "client_workers": bench_config.client_workers,
-            "server_workers": bench_config.server_workers,
-            "runtime_stats": runtime_stats,
-            "latency_origin": latency_origin,
-            "warmup_writes": bench_config.warmup_writes,
-            "raft_config": bench_config.raft_config,
-            "write_rate": write_rate,
-            "append_delay_us": bench_config.append_delay_us,
-            "flush_delay_us": bench_config.flush_delay_us,
-            "network_delay_us": bench_config.network_delay_us,
-            "replication_read_delay_us": bench_config.replication_read_delay_us,
-            "apply_read_delay_us": bench_config.apply_read_delay_us,
-            "apply_io_delay_us": bench_config.apply_io_delay_us,
-            "apply_entry_delay_us": bench_config.apply_entry_delay_us,
-        });
+        let report = serde_json::json!({"schema_version":2,"operation_unit":"entry","latency_unit":"request_or_batch","requested_operations":requested,"operations":total,
+            "operations_per_second":summary["operations_per_second"],"operations_per_second_through_drain":summary["operations_per_second_through_drain"],
+            "completed_in_window":summary["completed_in_window"],"samples":histogram.count,"seconds":elapsed.as_secs_f64(),
+            "request_p50_ns":request_latency["p50_ns"],"request_mean_ns":request_latency["mean_ns"],
+            "request_p95_ns":request_latency["p95_ns"],"request_p99_ns":request_latency["p99_ns"],
+            "timing":timing,"window":window,"monitoring":monitoring,"memory":memory,"apply_metrics":apply_metrics,"command_counts":command_counts,
+            "clients":n_client,"batch":batch_size,"members":bench_config.members,"client_workers":bench_config.client_workers,
+            "server_workers":bench_config.server_workers,"runtime_stats":cfg!(feature="runtime-stats"),
+            "latency_origin":if write_rate>0 {"scheduled_arrival"} else {"request_start"},
+            "warmup_writes":bench_config.warmup_writes,"raft_config":bench_config.raft_config,"resolved_raft_config":resolved_config,
+            "write_rate":write_rate,"append_delay_us":bench_config.append_delay_us,"flush_delay_us":bench_config.flush_delay_us,
+            "network_delay_us":bench_config.network_delay_us,"replication_read_delay_us":bench_config.replication_read_delay_us,
+            "apply_read_delay_us":bench_config.apply_read_delay_us,"apply_io_delay_us":bench_config.apply_io_delay_us,
+            "apply_entry_delay_us":bench_config.apply_entry_delay_us,"arrival":bench_config.arrival,"measurement":bench_config.measurement});
         println!("{report}");
         return Ok(());
     }
@@ -790,12 +931,26 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft, router: &Router
 }
 
 async fn collect_clients(handles: Vec<arrival::Task>) -> anyhow::Result<Vec<Samples>> {
-    let mut samples = Vec::with_capacity(handles.len());
+    let mut groups = Vec::with_capacity(handles.len());
     for handle in handles {
-        let result = handle.await?;
-        samples.push(result?);
+        let samples = handle.await??;
+        groups.push(*samples);
     }
-    Ok(samples)
+    Ok(groups)
+}
+
+fn merge_samples(groups: Vec<Samples>, bounds: measurement::Bounds, trace_limit: usize) -> Samples {
+    let mut summary = Samples::new(bounds, trace_limit);
+    for samples in groups {
+        summary.merge(samples);
+    }
+    summary
+}
+
+fn client_operations(total: u64, clients: u64, id: u64) -> u64 {
+    assert!(clients > 0, "client count is positive");
+    assert!(id < clients, "client ID is in range");
+    total / clients + u64::from(id < total % clients)
 }
 
 async fn pace(epoch: Instant, operation: u64, write_rate: u64) -> Instant {
@@ -807,6 +962,7 @@ async fn pace(epoch: Instant, operation: u64, write_rate: u64) -> Instant {
     scheduled
 }
 
+#[cfg(test)]
 fn percentile(samples: &[u64], percentile: usize) -> u64 {
     let nonempty = !samples.is_empty();
     assert!(nonempty, "latency samples must not be empty");
@@ -1032,6 +1188,67 @@ mod tests {
             let actual = error.to_string();
             assert_eq!(expected, actual);
         }
+        Ok(())
+    }
+    #[test]
+    fn complete_batches_are_distributed_without_truncating_the_remainder() {
+        let actual: Vec<_> = (0..256).map(|id| super::client_operations(30000, 256, id)).collect();
+        let mut expected = vec![118; 48];
+        expected.extend(vec![117; 208]);
+        assert_eq!(expected, actual);
+        let actual: Vec<_> = (0..256).map(|id| super::client_operations(7500, 256, id) * 4).collect();
+        let mut expected = vec![120; 76];
+        expected.extend(vec![116; 180]);
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn a_measurement_that_rounds_to_zero_is_rejected() -> anyhow::Result<()> {
+        let args = Args::try_parse_from(["bench", "--measurement-seconds", "0.000000000001"])?;
+        let result = validate(&args);
+        let error = result.expect_err("a measurement window must contain at least one nanosecond");
+        assert_eq!("measurement-seconds rounds to zero nanoseconds", error.to_string());
+        Ok(())
+    }
+
+    #[test]
+    fn timed_idle_and_transfer_must_fit_the_window() -> anyhow::Result<()> {
+        let args = Args::try_parse_from([
+            "bench",
+            "--measurement-seconds",
+            "1",
+            "--warmup-seconds",
+            "0",
+            "--drain-seconds",
+            "0",
+            "--read-clients",
+            "1",
+            "--transfer-leader-after-ms",
+            "600000",
+        ])?;
+        let error = validate(&args).expect_err("a transfer must not outlive the measurement");
+        assert_eq!(
+            "leadership transfer must start before measurement ends",
+            error.to_string()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn timed_measurement_enables_measured_arrival_controls() -> anyhow::Result<()> {
+        let args = Args::try_parse_from([
+            "bench",
+            "--measurement-seconds",
+            "1",
+            "--open-loop",
+            "--write-rate",
+            "1000",
+            "--arrival-noop",
+            "--phase-sample-every",
+            "1",
+        ])?;
+        let actual = validate(&args).map_err(|error| error.to_string());
+        assert_eq!(Ok(()), actual);
         Ok(())
     }
 }

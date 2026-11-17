@@ -4,6 +4,7 @@
 
 // Used by bin/bench.rs
 use clap as _;
+use libc as _;
 use maplit as _;
 
 pub mod network;

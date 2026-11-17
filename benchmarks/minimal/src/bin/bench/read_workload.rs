@@ -1,7 +1,5 @@
-use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::OnceLock;
-use std::time::Duration;
 use std::time::Instant;
 
 use anyhow::Context;
@@ -13,7 +11,6 @@ use openraft::ReadPolicy;
 use openraft::errors::LinearizableReadError;
 use openraft::errors::RaftError;
 use openraft::raft::linearizable_read::Linearizer;
-use serde_json::Value;
 use tokio::sync::Barrier;
 
 use super::BenchConfig;
@@ -21,17 +18,16 @@ use super::arrival::Arrival;
 use super::arrival::Handler;
 use super::arrival::Task;
 use super::arrival::Workload;
-use super::leader_change::LeaderChange;
 use super::leader_change::Leaders;
 use super::pace;
+use super::request_sample::Completion;
 use super::request_sample::LegacyReadSample;
 use super::request_sample::Outcome;
 use super::request_sample::RequestSample;
 use super::request_sample::Samples;
-use super::request_sample::latency_report;
 use super::request_sample::nanos;
-use super::request_sample::timing_report;
 use super::request_sample::with_deadline;
+use super::run_monitor::Live;
 
 pub(super) type ReadSample = RequestSample;
 
@@ -49,20 +45,28 @@ pub(super) struct ReadWorkload {
     pub(super) leaders: Option<Leaders>,
     pub(super) start: Arc<Barrier>,
     pub(super) epoch: Arc<OnceLock<Instant>>,
+    pub(super) live: Arc<Live>,
 }
 
 impl ReadWorkload {
     pub(super) fn spawn_clients(&self) -> Vec<Task> {
-        if !self.config.arrival.enabled() && self.leaders.is_none() {
+        if !self.config.arrival.enabled()
+            && self.leaders.is_none()
+            && self.config.measurement.measurement_seconds.is_none()
+        {
             return self.spawn_sessions();
         }
         let workload = Workload {
             config: self.config.arrival.clone(),
             clients: self.config.read_clients,
             operations: self.config.read_operations,
+            entries_per_request: 1,
             rate: self.config.read_rate as f64,
             measured: true,
             stream_seed: super::arrival::READ_STREAM,
+            measurement: self.config.measurement.clone(),
+            trace_budget: self.config.trace_budget(),
+            live: self.live.clone(),
             start: self.start.clone(),
             epoch: self.epoch.clone(),
         };
@@ -75,25 +79,22 @@ impl ReadWorkload {
             let workload = self.clone();
             let handle = tokio::spawn(async move {
                 let samples = workload.run_session(id).await?;
-                Ok(Samples::Reads(samples))
+                Ok(Box::new(samples))
             });
             handles.push(handle);
         }
         handles
     }
 
-    async fn run_session(&self, id: u64) -> anyhow::Result<Vec<LegacyReadSample>> {
-        let per_client = self.config.read_operations / self.config.read_clients;
-        let remainder = self.config.read_operations % self.config.read_clients;
-        let operations = per_client + u64::from(id < remainder);
-        let capacity = usize::try_from(operations)?;
-        let mut samples = Vec::with_capacity(capacity);
+    async fn run_session(&self, id: u64) -> anyhow::Result<Samples> {
+        let operations = super::client_operations(self.config.read_operations, self.config.read_clients, id);
+        let mut samples = Samples::new(self.config.measurement.bounds(), self.config.trace_budget());
         self.start.wait().await;
         let epoch = *self.epoch.get().context("missing arrival epoch")?;
         for sequence in 0..operations {
             let operation = sequence * self.config.read_clients + id;
             let sample = self.session_sample(epoch, operation).await?;
-            samples.push(sample);
+            samples.record_read(sample);
             let yield_due = (sequence + 1).is_multiple_of(64);
             if yield_due {
                 tokio::task::yield_now().await;
@@ -110,18 +111,12 @@ impl ReadWorkload {
         };
         let result = self.session_read().await;
         let latency_ns = u64::try_from(started.elapsed().as_nanos())?;
-        let started_ns = u64::try_from(started.saturating_duration_since(epoch).as_nanos())?;
-        let (node, status) = match result {
-            Ok(node) => (Some(node), Ok(())),
-            Err(error) if self.config.allow_read_errors => (None, Err(format!("{error:#}"))),
+        let status = match result {
+            Ok(_) => Ok(()),
+            Err(error) if self.config.allow_read_errors => Err(format!("{error:#}")),
             Err(error) => return Err(error),
         };
-        Ok(LegacyReadSample {
-            started_ns,
-            latency_ns,
-            node,
-            status,
-        })
+        Ok(LegacyReadSample { latency_ns, status })
     }
 
     async fn session_read(&self) -> anyhow::Result<u64> {
@@ -146,21 +141,26 @@ impl ReadWorkload {
         let epoch = *self.epoch.get().context("missing arrival epoch")?;
         let sampled = self.config.arrival.sampled(arrival.operation, super::arrival::READ_STREAM);
         let mut sample = RequestSample::new(epoch, arrival, sampled)?;
-        if self.leaders.is_some() {
-            sample.invoked_ns = Some(nanos(epoch, Instant::now())?);
-        }
         let future = self.read(epoch, &mut sample);
         let timeout = self.config.arrival.request_timeout_ms;
-        let result = with_deadline(future, arrival.scheduled, timeout).await;
+        let deadline = self.config.measurement.bounds().deadline(epoch, arrival.scheduled, timeout);
+        let result = with_deadline(future, deadline).await;
         self.read_outcome(&mut sample, result)?;
         sample.finish(epoch, arrival.scheduled)?;
+        if sample.outcome != Outcome::Completed {
+            return Ok(sample);
+        }
+        if let Some(leaders) = &self.leaders {
+            leaders.record_read(&sample);
+        }
         Ok(sample)
     }
 
-    fn read_outcome(&self, sample: &mut ReadSample, result: anyhow::Result<Option<u64>>) -> anyhow::Result<()> {
+    fn read_outcome(&self, sample: &mut ReadSample, result: anyhow::Result<Completion<u64>>) -> anyhow::Result<()> {
         match result {
-            Ok(Some(node)) => sample.node = Some(node),
-            Ok(None) => sample.outcome = Outcome::TimedOut,
+            Ok(Completion::Completed(node)) => sample.node = Some(node),
+            Ok(Completion::TimedOut) => sample.outcome = Outcome::TimedOut,
+            Ok(Completion::Pending) => sample.outcome = Outcome::Pending,
             Err(error) if self.config.allow_read_errors || self.config.arrival.open_loop => {
                 sample.outcome = Outcome::Failed(format!("{error:#}"));
             }
@@ -171,6 +171,10 @@ impl ReadWorkload {
 
     /// Runs one read and returns the node that served it.
     async fn read(&self, epoch: Instant, sample: &mut ReadSample) -> anyhow::Result<u64> {
+        sample.invoked = true;
+        if self.leaders.is_some() {
+            sample.invoked_ns = Some(nanos(epoch, Instant::now())?);
+        }
         if self.config.arrival.arrival_noop {
             return Ok(0);
         }
@@ -229,52 +233,6 @@ impl ReadWorkload {
         }
         Ok(())
     }
-
-    pub(super) fn report(
-        &self,
-        elapsed: Duration,
-        writes: Vec<Vec<RequestSample>>,
-        reads: Vec<ReadSample>,
-        follower_lag: Option<Value>,
-        leader_change: Option<LeaderChange>,
-    ) -> anyhow::Result<()> {
-        let leader_change = leader_change.map(|change| {
-            let served: Vec<_> = reads
-                .iter()
-                .filter(|sample| sample.outcome == Outcome::Completed)
-                .filter_map(|sample| {
-                    let node = sample.node?;
-                    let invoked = sample.invoked_ns?;
-                    let completed = sample.scheduled_ns + sample.latency_ns;
-                    Some((invoked, completed.saturating_sub(invoked), node))
-                })
-                .collect();
-            change.report(&served)
-        });
-        let writes = writes.into_iter().flatten();
-        let writes: Vec<RequestSample> = writes.collect();
-        let write_timing = timing_report(&writes, self.config.batch_size)?;
-        let completed = writes.iter().filter(|sample| sample.outcome == Outcome::Completed);
-        let latencies = completed.map(|sample| sample.latency_ns).collect();
-        let writes = latency_report(latencies, elapsed, self.config.batch_size)?;
-        let reads = read_report(reads, elapsed)?;
-        let config = serde_json::to_value(self.config.as_ref())?;
-        let local_lease_read_enabled = self.local_lease_read_enabled();
-        let seconds = elapsed.as_secs_f64();
-        let report = serde_json::json!({
-            "seconds": seconds, "write": writes, "read": reads, "write_timing": write_timing,
-            "config": config, "local_lease_read_enabled": local_lease_read_enabled,
-            "runtime_stats": cfg!(feature = "runtime-stats"), "follower_lag": follower_lag,
-            "leader_change": leader_change,
-        });
-        println!("{report}");
-        Ok(())
-    }
-
-    fn local_lease_read_enabled(&self) -> bool {
-        let config = self.leader.config();
-        config.enable_local_lease_read.unwrap_or(false)
-    }
 }
 
 impl Handler for ReadWorkload {
@@ -291,81 +249,51 @@ fn is_leader_change(error: &RaftError<TypeConfig, LinearizableReadError<TypeConf
     error.forward_to_leader().is_some() || quorum_not_enough
 }
 
-fn read_report(samples: Vec<ReadSample>, elapsed: Duration) -> anyhow::Result<Value> {
-    let mut successes = Vec::new();
-    let mut failures = Vec::new();
-    let mut errors = BTreeMap::<String, u64>::new();
-    let timing = timing_report(&samples, 1)?;
-    for ReadSample {
-        latency_ns, outcome, ..
-    } in samples
-    {
-        match outcome {
-            Outcome::Completed => successes.push(latency_ns),
-            Outcome::Failed(error) => {
-                failures.push(latency_ns);
-                let count = errors.entry(error).or_default();
-                *count += 1;
-            }
-            Outcome::TimedOut | Outcome::Rejected => {}
-        }
-    }
-    let successes = latency_report(successes, elapsed, 1)?;
-    let failures = latency_report(failures, elapsed, 1)?;
-    let report = serde_json::json!({"successful": successes, "failed": failures, "errors": errors, "timing": timing});
-    Ok(report)
-}
-
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
 
+    use super::super::measurement::Bounds;
     use super::Outcome;
     use super::ReadSample;
-    use super::latency_report;
-    use super::read_report;
+    use super::Samples;
 
     #[test]
-    fn read_failures_have_separate_counts_and_latency() -> anyhow::Result<()> {
-        let sample = |latency_ns, status: Result<(), &str>| ReadSample {
-            scheduled_ns: 0,
-            invoked_ns: None,
-            latency_ns,
-            node: status.is_ok().then_some(0),
-            retries: 0,
-            phases: None,
-            outcome: match status {
-                Ok(()) => Outcome::Completed,
-                Err(error) => Outcome::Failed(error.to_string()),
+    fn read_failures_have_separate_counts_and_latency() {
+        let mut samples = Samples::new(
+            Bounds {
+                start: Duration::ZERO,
+                end: None,
+                deadline: None,
             },
-        };
-        let samples = vec![sample(3, Ok(())), sample(7, Err("expired")), sample(9, Err("expired"))];
-        let actual = read_report(samples, Duration::from_secs(1))?;
-        let expected = serde_json::json!({
-            "successful": {"operations": 1, "operations_per_second": 1.0,
-                "latency": {"samples": 1, "mean_ns": 3, "p50_ns": 3, "p95_ns": 3, "p99_ns": 3}},
-            "failed": {"operations": 2, "operations_per_second": 2.0,
-                "latency": {"samples": 2, "mean_ns": 8, "p50_ns": 7, "p95_ns": 9, "p99_ns": 9}},
-            "errors": {"expired": 2},
-            "timing": {"offered": 3, "admitted": 3, "completed": 1, "failed": 2,
-                "timed_out": 0, "rejected": 0, "retries": 0, "errors": {"expired":2}, "phases": {
-                    "samples": 0, "client_delay": null, "service": null, "queue_wait": null,
-                    "generator_delay": null, "authorization": null,
-                    "barrier_wait": null, "query_lock_wait": null, "query": null, "traces": []}},
-        });
-        assert_eq!(expected, actual);
-        Ok(())
-    }
-
-    #[test]
-    fn empty_writes_and_batch_counts_are_reported_exactly() -> anyhow::Result<()> {
-        let actual = latency_report(vec![], Duration::from_secs(1), 4)?;
-        let expected = serde_json::json!({"operations": 0, "operations_per_second": 0.0, "latency": null});
-        assert_eq!(expected, actual);
-        let actual = latency_report(vec![10, 20], Duration::from_secs(2), 4)?;
-        let expected = serde_json::json!({"operations": 8, "operations_per_second": 4.0,
-            "latency": {"samples": 2, "mean_ns": 15, "p50_ns": 10, "p95_ns": 20, "p99_ns": 20}});
-        assert_eq!(expected, actual);
-        Ok(())
+            0,
+        );
+        for (latency_ns, outcome) in [
+            (3, Outcome::Completed),
+            (7, Outcome::Failed("expired".into())),
+            (9, Outcome::Failed("expired".into())),
+        ] {
+            samples.record(ReadSample {
+                scheduled_ns: 0,
+                invoked_ns: None,
+                invoked: false,
+                latency_ns,
+                node: None,
+                retries: 0,
+                phases: None,
+                write_progress: None,
+                outcome,
+            });
+        }
+        let actual = samples.read_report(Duration::from_secs(1));
+        let expected_success = serde_json::json!({"operations":1,"operations_per_second":1.0,"completed_in_window":1,
+            "operations_per_second_through_drain":1.0,"whole_workload_operations_per_second":1.0,
+            "latency_unit":"request_or_batch","latency":{"samples":1,"mean_ns":3,"p50_ns":3,"p95_ns":3,"p99_ns":3}});
+        let expected_failure = serde_json::json!({"operations":2,"operations_per_second":2.0,"completed_in_window":2,
+            "latency":{"samples":2,"mean_ns":8,"p50_ns":7,"p95_ns":9,"p99_ns":9}});
+        assert_eq!(expected_success, actual["successful"]);
+        assert_eq!(expected_failure, actual["failed"]);
+        let expected = serde_json::json!({"expired":2});
+        assert_eq!(expected, actual["errors"]);
     }
 }
