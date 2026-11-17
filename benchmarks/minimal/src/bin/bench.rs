@@ -58,6 +58,9 @@ mod summary;
 #[path = "bench/write_progress.rs"]
 mod write_progress;
 
+#[path = "bench/profile_history.rs"]
+mod profile_history;
+
 const WARMUP_WRITES: usize = 1024;
 const WAIT_TIMEOUT: Duration = Duration::from_secs(400);
 
@@ -185,6 +188,8 @@ struct Args {
 
     #[command(flatten)]
     measurement: measurement::MeasurementConfig,
+    #[command(flatten)]
+    profile: bench_minimal::profile::Profile,
 }
 
 /// The read policy of each benchmark read.
@@ -239,6 +244,7 @@ struct BenchConfig {
     pub warmup_writes: usize,
     pub arrival: arrival::ArrivalConfig,
     pub measurement: measurement::MeasurementConfig,
+    pub profile: bench_minimal::profile::Profile,
 }
 
 impl BenchConfig {
@@ -258,15 +264,17 @@ impl BenchConfig {
 
 impl Display for BenchConfig {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let compiled = compiled_features();
         write!(
             f,
-            "client_workers: {}, server_workers: {}, clients: {}, n: {}, batch: {}, raft_members: {:?}",
+            "client_workers: {}, server_workers: {}, clients: {}, n: {}, batch: {}, raft_members: {:?}, compiled_features: {}",
             self.client_workers,
             self.server_workers,
             self.n_client,
             format_number(self.n_operations),
             self.batch_size,
-            self.members
+            self.members,
+            compiled
         )
     }
 }
@@ -367,6 +375,7 @@ fn main() -> anyhow::Result<()> {
         apply_entry_delay_us: args.apply_entry_delay_us,
         warmup_writes: args.warmup_writes,
         arrival: args.arrival.clone(),
+        profile: args.profile.clone(),
         measurement: args.measurement.clone(),
     };
 
@@ -383,6 +392,10 @@ fn validate(args: &Args) -> anyhow::Result<()> {
         ensure!(args.write_rate == 0, "write-rate must be zero without write clients");
     }
     args.measurement.validate(WAIT_TIMEOUT)?;
+    args.profile.validate()?;
+    if args.profile.profile && args.read_clients > 0 {
+        ensure!(args.read_query, "profile readers require --read-query");
+    }
     validate_arrivals(args)?;
     validate_reads(args)?;
     validate_leader_change(args)?;
@@ -607,7 +620,8 @@ fn create_cluster(server_rt: &Runtime, bench_config: &BenchConfig) -> anyhow::Re
         let apply_read_delay = Duration::from_micros(bench_config.apply_read_delay_us);
         let apply_io_delay = Duration::from_micros(bench_config.apply_io_delay_us);
         let apply_entry_delay = Duration::from_micros(bench_config.apply_entry_delay_us);
-        let mut router = router.with_apply_delays(apply_read_delay, apply_io_delay, apply_entry_delay);
+        let router = router.with_apply_delays(apply_read_delay, apply_io_delay, apply_entry_delay);
+        let mut router = router.with_profile(bench_config.profile.clone());
         router.new_cluster(config, bench_config.members.clone()).await?;
         let leader = router.get_raft(0);
         Ok((router, leader))
@@ -628,7 +642,8 @@ async fn do_bench(
     let n_client = bench_config.n_client;
     let batch_size = bench_config.batch_size;
     let bounds = bench_config.measurement.bounds();
-    let measure_latency = bench_config.latency || bench_config.read_clients > 0 || bounds.end.is_some();
+    let measure_latency =
+        bench_config.latency || bench_config.read_clients > 0 || bounds.end.is_some() || bench_config.profile.profile;
     let client_count = usize::try_from(n_client)?;
     let read_clients = usize::try_from(bench_config.read_clients)?;
     let participants = client_count.checked_add(read_clients);
@@ -645,9 +660,14 @@ async fn do_bench(
     let write_rate = bench_config.write_rate;
     let write_live = Arc::new(run_monitor::Live::default());
     let read_live = Arc::new(run_monitor::Live::default());
+    let history = if bench_config.profile.profile {
+        Some(Arc::new(profile_history::History::new(bench_config)))
+    } else {
+        None
+    };
 
     for _ in 0..bench_config.warmup_writes {
-        leader.client_write(ClientRequest {}).await?;
+        leader.client_write(ClientRequest::default()).await?;
     }
 
     if bench_config.read_delay_ms > 0 {
@@ -701,6 +721,7 @@ async fn do_bench(
             start: start.clone(),
             epoch: epoch.clone(),
             live: read_live.clone(),
+            history: history.clone(),
         })
     } else {
         None
@@ -725,6 +746,7 @@ async fn do_bench(
         start: start.clone(),
         epoch: epoch.clone(),
         live: write_live.clone(),
+        history: history.clone(),
     };
     let handles = write_workload.spawn_clients();
 
@@ -878,14 +900,28 @@ async fn do_bench(
         serde_json::json!({"write":client_latencies.memory(write_workers),"read":read_samples.memory(read_workers)});
     let window = bounds.report(elapsed);
     let resolved_config = serde_json::to_value(leader.config())?;
+    let profile_report = if bench_config.profile.profile {
+        let outcomes = client_latencies.timing();
+        let pending = outcomes["all_phase_outcomes"]["pending"].as_u64().context("missing pending write count")?;
+        let uncertain =
+            outcomes["all_phase_outcomes"]["timed_out"].as_u64().context("missing timed-out write count")?;
+        let failed = outcomes["all_phase_outcomes"]["failed"].as_u64().context("missing failed write count")?;
+        let mut report = router.verify_profile(pending == 0 && uncertain == 0 && failed == 0).await?;
+        let history = history.as_ref().expect("profile history");
+        report["acknowledgement_verification"] = history.verify_final(router, &bench_config.members)?;
+        report["history"] = history.report();
+        report
+    } else {
+        serde_json::Value::Null
+    };
     if read_workload.is_some() {
         let writes = client_latencies.write_report(elapsed);
         let reads = read_samples.read_report(elapsed);
         let timing = client_latencies.timing();
         let local = leader.config().enable_local_lease_read.unwrap_or(false);
         let report = serde_json::json!({"schema_version":2,"operation_units":{"write":"entry","read":"request"},"seconds":elapsed.as_secs_f64(),"write":writes,"read":reads,
-            "write_timing":timing,"config":bench_config,"local_lease_read_enabled":local,"runtime_stats":cfg!(feature="runtime-stats"),
-            "window":window,"monitoring":monitoring,"memory":memory,"apply_metrics":apply_metrics,
+            "write_timing":timing,"config":bench_config,"local_lease_read_enabled":local,"runtime_stats":cfg!(feature="runtime-stats"),"compiled_features":compiled_features(),
+            "profile":profile_report,"window":window,"monitoring":monitoring,"memory":memory,"apply_metrics":apply_metrics,
             "command_counts":command_counts,"resolved_raft_config":resolved_config,"follower_lag":follower_lag,"leader_change":leader_change});
         println!("{report}");
         return Ok(());
@@ -900,12 +936,12 @@ async fn do_bench(
         } else {
             None
         };
-        let report = serde_json::json!({"schema_version":2,"operation_unit":"entry","latency_unit":"request_or_batch","requested_operations":requested,"operations":total,
+        let mut report = serde_json::json!({"schema_version":2,"operation_unit":"entry","latency_unit":"request_or_batch","requested_operations":requested,"operations":total,
             "operations_per_second":summary["operations_per_second"],"operations_per_second_through_drain":summary["operations_per_second_through_drain"],
             "completed_in_window":summary["completed_in_window"],"samples":histogram.count,"seconds":elapsed.as_secs_f64(),
             "request_p50_ns":request_latency["p50_ns"],"request_mean_ns":request_latency["mean_ns"],
             "request_p95_ns":request_latency["p95_ns"],"request_p99_ns":request_latency["p99_ns"],
-            "timing":timing,"window":window,"monitoring":monitoring,"memory":memory,"apply_metrics":apply_metrics,"command_counts":command_counts,
+            "timing":timing,"profile":profile_report,"window":window,"monitoring":monitoring,"memory":memory,"apply_metrics":apply_metrics,"command_counts":command_counts,
             "clients":n_client,"batch":batch_size,"members":bench_config.members,"client_workers":bench_config.client_workers,
             "server_workers":bench_config.server_workers,"runtime_stats":cfg!(feature="runtime-stats"),
             "latency_origin":if write_rate>0 {"scheduled_arrival"} else {"request_start"},
@@ -914,6 +950,7 @@ async fn do_bench(
             "network_delay_us":bench_config.network_delay_us,"replication_read_delay_us":bench_config.replication_read_delay_us,
             "apply_read_delay_us":bench_config.apply_read_delay_us,"apply_io_delay_us":bench_config.apply_io_delay_us,
             "apply_entry_delay_us":bench_config.apply_entry_delay_us,"arrival":bench_config.arrival,"measurement":bench_config.measurement});
+        report["compiled_features"] = compiled_features();
         println!("{report}");
         return Ok(());
     }
@@ -971,6 +1008,17 @@ fn percentile(samples: &[u64], percentile: usize) -> u64 {
     let rank = samples.len() * percentile;
     let rank = rank.div_ceil(100);
     samples[rank - 1]
+}
+
+fn compiled_features() -> serde_json::Value {
+    serde_json::json!({
+        "realistic-profiles":cfg!(feature = "realistic-profiles"),
+        "runtime-stats":cfg!(feature = "runtime-stats"),
+        "single-term-leader":cfg!(feature = "single-term-leader"),
+        "bt":cfg!(feature = "bt"),
+        "tokio-console":cfg!(feature = "tokio-console"),
+        "flamegraph":cfg!(feature = "flamegraph"),
+    })
 }
 
 #[cfg(test)]
