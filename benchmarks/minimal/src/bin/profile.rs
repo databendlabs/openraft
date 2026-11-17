@@ -74,7 +74,7 @@ async fn profile(args: &Args) -> anyhow::Result<()> {
     tokio::task::yield_now().await;
     startup.report("startup", args, None, 0);
     for _ in 0..WARMUP_WRITES {
-        leader.client_write(ClientRequest {}).await?;
+        leader.client_write(ClientRequest::default()).await?;
     }
     profile_writes(args, &leader).await?;
     profile_snapshots(args, &leader).await?;
@@ -141,10 +141,10 @@ async fn write_client(raft: BenchRaft, args: Args) -> anyhow::Result<Vec<u64>> {
 
 async fn write_batch(raft: &BenchRaft, batch: usize) -> anyhow::Result<()> {
     if batch == 1 {
-        raft.client_write(ClientRequest {}).await?;
+        raft.client_write(ClientRequest::default()).await?;
         return Ok(());
     }
-    let requests: Vec<_> = (0..batch).map(|_| ClientRequest {}).collect();
+    let requests: Vec<_> = (0..batch).map(|_| ClientRequest::default()).collect();
     let mut responses = raft.client_write_many(requests, WriteOption::default()).await?;
     while let Some(response) = responses.try_next().await? {
         response?;
@@ -158,7 +158,7 @@ async fn profile_snapshots(args: &Args, leader: &BenchRaft) -> anyhow::Result<()
     }
     let snapshots = Measurement::start();
     for _ in 0..args.snapshots {
-        let response = leader.client_write(ClientRequest {}).await?;
+        let response = leader.client_write(ClientRequest::default()).await?;
         let trigger = leader.trigger();
         trigger.snapshot().await?;
         let wait = leader.wait(Some(WAIT_TIMEOUT));
