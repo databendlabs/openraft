@@ -185,6 +185,13 @@ def run_bench(binary, bench_args):
     if result.returncode != 0:
         sys.exit(f"bench failed: {shlex.join(command)}\n{result.stderr[-2000:]}")
     report = json.loads(result.stdout.strip().splitlines()[-1])
+    requested = report.get("requested_operations")
+    if requested is not None and report["operations"] != requested:
+        raise RuntimeError(f"benchmark completed {report['operations']} writes; requested {requested}")
+    timing = report.get("timing", {})
+    incomplete = sum(timing.get(name, 0) for name in ["failed", "timed_out", "rejected", "pending", "missed"])
+    if incomplete:
+        raise RuntimeError(f"benchmark has {incomplete} incomplete or failed operations")
     return {field: report[field] / divisor for _, field, divisor in METRICS}
 
 

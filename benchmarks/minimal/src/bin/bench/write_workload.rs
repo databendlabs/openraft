@@ -16,10 +16,12 @@ use super::arrival::Task;
 use super::arrival::Workload;
 use super::leader_change::Leaders;
 use super::pace;
+use super::request_sample::Completion;
 use super::request_sample::Outcome;
 use super::request_sample::RequestSample;
 use super::request_sample::Samples;
 use super::request_sample::with_deadline;
+use super::run_monitor::Live;
 
 #[derive(Clone)]
 pub(super) struct WriteWorkload {
@@ -28,6 +30,7 @@ pub(super) struct WriteWorkload {
     pub(super) leaders: Option<Leaders>,
     pub(super) start: Arc<Barrier>,
     pub(super) epoch: Arc<OnceLock<Instant>>,
+    pub(super) live: Arc<Live>,
 }
 
 impl WriteWorkload {
@@ -35,16 +38,24 @@ impl WriteWorkload {
         if self.config.n_client == 0 {
             return Vec::new();
         }
-        if !self.config.arrival.enabled() && self.leaders.is_none() {
+        if !self.config.arrival.enabled()
+            && self.leaders.is_none()
+            && self.config.measurement.measurement_seconds.is_none()
+        {
             return self.spawn_sessions();
         }
         let workload = Workload {
             config: self.config.arrival.clone(),
             clients: self.config.n_client,
-            operations: self.config.operations_per_client() * self.config.n_client / self.config.batch_size,
+            operations: self.config.n_operations / self.config.batch_size,
             rate: self.config.write_rate as f64 / self.config.batch_size as f64,
-            measured: self.config.latency || self.config.read_clients > 0,
+            measured: self.config.latency
+                || self.config.read_clients > 0
+                || self.config.measurement.measurement_seconds.is_some(),
             stream_seed: super::arrival::WRITE_STREAM,
+            measurement: self.config.measurement.clone(),
+            trace_budget: self.config.trace_budget(),
+            live: self.live.clone(),
             start: self.start.clone(),
             epoch: self.epoch.clone(),
         };
@@ -54,18 +65,19 @@ impl WriteWorkload {
     fn spawn_sessions(&self) -> Vec<Task> {
         let n_client = self.config.n_client;
         let batch_size = self.config.batch_size;
-        let ops_per_client = self.config.operations_per_client();
         let measure_latency = self.config.latency || self.config.read_clients > 0;
         let write_rate = self.config.write_rate;
         let mut handles = Vec::new();
         for client_id in 0..n_client {
+            let ops_per_client = self.config.operations_per_client(client_id);
+            let bounds = self.config.measurement.bounds();
             let l = self.leader.clone();
             let start = self.start.clone();
             let epoch = self.epoch.clone();
             let h = if batch_size <= 1 {
                 // Single write mode
                 tokio::spawn(async move {
-                    let mut latencies = Vec::new();
+                    let mut latencies = Samples::new(bounds, 0);
                     start.wait().await;
                     let epoch = *epoch.get().unwrap();
                     for i in 0..ops_per_client {
@@ -81,16 +93,18 @@ impl WriteWorkload {
                             let elapsed = started.elapsed();
                             let nanos = elapsed.as_nanos();
                             let nanos = u64::try_from(nanos)?;
-                            latencies.push(nanos);
+                            latencies.record_latency(nanos);
+                        } else {
+                            latencies.record_unmeasured();
                         }
                     }
-                    Ok::<_, anyhow::Error>(Samples::Writes(latencies))
+                    Ok::<_, anyhow::Error>(latencies)
                 })
             } else {
                 // Batch write mode
                 tokio::spawn(async move {
                     let batches = ops_per_client / batch_size;
-                    let mut latencies = Vec::new();
+                    let mut latencies = Samples::new(bounds, 0);
                     start.wait().await;
                     let epoch = *epoch.get().unwrap();
 
@@ -111,10 +125,12 @@ impl WriteWorkload {
                             let elapsed = started.elapsed();
                             let nanos = elapsed.as_nanos();
                             let nanos = u64::try_from(nanos)?;
-                            latencies.push(nanos);
+                            latencies.record_latency(nanos);
+                        } else {
+                            latencies.record_unmeasured();
                         }
                     }
-                    Ok::<_, anyhow::Error>(Samples::Writes(latencies))
+                    Ok::<_, anyhow::Error>(latencies)
                 })
             };
 
@@ -125,7 +141,9 @@ impl WriteWorkload {
     }
 
     async fn sample(&self, arrival: Arrival) -> anyhow::Result<Option<RequestSample>> {
-        let measure = self.config.latency || self.config.read_clients > 0;
+        let measure = self.config.latency
+            || self.config.read_clients > 0
+            || self.config.measurement.measurement_seconds.is_some();
         if !measure {
             self.write(&mut 0).await?;
             return Ok(None);
@@ -133,12 +151,17 @@ impl WriteWorkload {
         let epoch = *self.epoch.get().context("missing arrival epoch")?;
         let sampled = self.config.arrival.sampled(arrival.operation, super::arrival::WRITE_STREAM);
         let mut sample = RequestSample::new(epoch, arrival, sampled)?;
-        let future = self.write(&mut sample.retries);
+        let future = async {
+            sample.invoked = true;
+            self.write(&mut sample.retries).await
+        };
         let timeout = self.config.arrival.request_timeout_ms;
-        let result = with_deadline(future, arrival.scheduled, timeout).await;
+        let deadline = self.config.measurement.bounds().deadline(epoch, arrival.scheduled, timeout);
+        let result = with_deadline(future, deadline).await;
         match result {
-            Ok(Some(())) => sample.node = Some(0),
-            Ok(None) => sample.outcome = Outcome::TimedOut,
+            Ok(Completion::Completed(())) => sample.node = Some(0),
+            Ok(Completion::TimedOut) => sample.outcome = Outcome::TimedOut,
+            Ok(Completion::Pending) => sample.outcome = Outcome::Pending,
             Err(error) if self.config.arrival.open_loop => sample.outcome = Outcome::Failed(format!("{error:#}")),
             Err(error) => return Err(error),
         }

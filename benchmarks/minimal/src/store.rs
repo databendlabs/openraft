@@ -7,6 +7,7 @@ use std::io;
 use std::io::Cursor;
 use std::ops::RangeBounds;
 use std::sync::Arc;
+use std::sync::OnceLock;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -169,6 +170,7 @@ pub struct StateMachineStore {
     apply_io_delay: Duration,
     /// Simulated processing time of each applied entry, paid inside `apply()`.
     apply_entry_delay: Duration,
+    apply_observer: OnceLock<Arc<dyn Fn(u64, u64, Instant) + Send + Sync>>,
 }
 
 impl StateMachineStore {
@@ -178,6 +180,7 @@ impl StateMachineStore {
             current_snapshot: RwLock::new(None),
             apply_io_delay: Duration::ZERO,
             apply_entry_delay: Duration::ZERO,
+            apply_observer: OnceLock::new(),
         }
     }
 
@@ -212,6 +215,13 @@ impl StateMachineStore {
     pub fn with_apply_entry_delay(mut self, delay: Duration) -> Self {
         self.apply_entry_delay = delay;
         self
+    }
+
+    /// Observe a batch's applied index, entry count, and publication time after its lock is
+    /// released.
+    #[openraft::macros::since(version = "0.10.1")]
+    pub fn observe_applies(&self, observer: Arc<dyn Fn(u64, u64, Instant) + Send + Sync>) -> Result<(), &'static str> {
+        self.apply_observer.set(observer).map_err(|_| "an apply observer is already installed")
     }
 }
 
@@ -429,6 +439,13 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
             blocking_delay(delay).await?;
             for responder in delayed_responders {
                 responder.send(ClientResponse {});
+            }
+        }
+        let last_applied = sm.last_applied_log;
+        drop(sm);
+        if let Some(observer) = self.apply_observer.get() {
+            if let Some(last_applied) = last_applied {
+                observer(last_applied.index(), u64::from(entry_count), Instant::now());
             }
         }
         Ok(())

@@ -282,8 +282,7 @@ clippy: clippy-basic
 	cargo clippy --no-deps --manifest-path rt-sim/Cargo.toml                                          --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path rt-tokio/Cargo.toml                                        --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path metrics-otel/Cargo.toml                                    --all-targets -- -D warnings
-	cargo clippy --no-deps --manifest-path benchmarks/minimal/Cargo.toml                               --all-targets -- -D warnings
-	cargo clippy --no-deps --manifest-path benchmarks/minimal/Cargo.toml --no-default-features         --all-targets -- -D warnings
+	$(MAKE) clippy-bench-minimal
 	cargo clippy --no-deps --manifest-path examples/app-http/Cargo.toml                               --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/network-v1-http/Cargo.toml                         --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/network-v2-http/Cargo.toml                         --all-targets -- -D warnings
@@ -424,3 +423,8 @@ test-core-busy-time:
 	cargo test -p openraft --features runtime-stats --lib core::runtime_stats
 	cargo test -p tests --features runtime-stats --test metrics t60_runtime_stats
 	cargo check -p openraft --no-default-features
+
+.PHONY: clippy-bench-minimal
+clippy-bench-minimal:
+	cargo clippy --no-deps --manifest-path benchmarks/minimal/Cargo.toml --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path benchmarks/minimal/Cargo.toml --no-default-features --all-targets -- -D warnings

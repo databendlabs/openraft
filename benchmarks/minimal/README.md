@@ -100,6 +100,11 @@ blocking-pool thread, so they keep sub-millisecond accuracy.
 `/usr/bin/time`, and prints the table below. `--runs N` changes the number of runs, and
 `--raw FILE` saves every run as a JSON line.
 
+The current grid requests 29,952 writes for 256 clients, matching the writes actually completed
+in the historical 30,000-request runs below. This count also permits exact comparisons with
+older binaries. Current batch statistics come from structured JSON and exclude bootstrap
+warmup writes; the historical table includes them.
+
 Setup: Apple M3 Max, macOS 14.5, three voters in one process, in-memory storage, no network
 delay, one client worker thread, 16 server threads, 1,024 warmup writes, default `Config` of this
 benchmark, pipelined replication path. 256 clients did 30,000 writes per run, one client did
@@ -480,6 +485,58 @@ References for the optimization and its correctness requirements:
   describes opt-in configuration, defaults, and safety caveats.
 - [`LinearizerOption::with_relaxed` API documentation (source)](../../openraft/src/raft/linearizable_read/linearizer_option.rs)
   defines the relaxed barrier and where it applies.
+
+### Fixed measurement windows
+
+`--measurement-seconds 30` runs a timed workload after five seconds of warmup with the same
+clients, rates, and operation mix. `--warmup-seconds` changes that warmup. Count-based operation
+limits are ignored in timed mode. Bootstrap `--warmup-writes` still run before the workload epoch.
+
+```sh
+target/release/bench --latency --clients 32 --operations 0 --write-rate 10000 \
+  --read-clients 64 --read-operations 0 --read-rate 90000 --read-query \
+  --open-loop --measurement-seconds 30 --warmup-seconds 5 --drain-seconds 5 \
+  --phase-sample-every 1024 --trace-limit 4096
+```
+
+`window` reports the exact measurement boundaries. Latency and outcome counts describe requests
+scheduled inside that window, including their later drain outcomes. Throughput counts successful
+completions inside the window, including a warmup request that finishes there, divided by the
+fixed window length. Each operation class has its own completion count. The additional
+`operations_per_second_through_drain` divides completed measurement-cohort operations by the
+time from measurement start through drain. Whole-workload rates include warmup and have separate names.
+
+`--drain-seconds` bounds the wait for accepted requests after measurement. `timing.pending`
+counts requests still unanswered at the drain deadline. `unanswered_invoked` and
+`unanswered_not_invoked` distinguish a service call from an expired queued request. A write
+whose service call began can have an uncertain backend outcome. Timed runs stop their runtimes
+after that bounded drain, including when a blocking simulated I/O remains active.
+
+Open-loop arrivals that the generator releases after measurement ends become explicit `missed`
+outcomes. They remain in the offered count and are never admitted. A generator that cannot
+account its schedule before the drain deadline fails the run. `monitoring.client_backlog` is
+a bounded series of approximate live counters; final outcome counts are exact.
+
+Latency histograms retain exact counts and means. Percentiles use bucket upper bounds with
+at most 1/64 relative bucket width; values below 128 ns are exact. `memory` reports allocated
+histogram storage and retained trace payloads. It distinguishes the aggregate report from an
+upper bound on concurrent worker storage. `--trace-limit` caps raw traces across workers;
+phase histograms retain every sampled phase and report dropped raw traces separately.
+
+Timed runs collect structured `apply_metrics` per node. `--measure-apply` enables the same
+diagnostics in count-based runs. Batch histograms select apply calls by their completion time,
+so a batch that begins during warmup and finishes during measurement is included.
+`source_to_recorder_callback_ns` ends at RaftCore's recorder callback before watch publication.
+`source_to_metrics_watch_observed_ns` ends when a task on the server runtime observes the
+metrics watch; it includes observer scheduling delay. Both exclude warmup source completions.
+Follower lag retains bounded recent watch observations and reports omitted nonoverlapping samples.
+
+Resource samples cover the process at measurement boundaries before JSON reporting. CPU per
+operation uses successful window completions. RSS remains a process high-water mark since startup.
+Retained-log and unapplied-entry byte estimates count inline entry metadata; actual worker
+prefetch allocation is reported as unavailable. Runtime command counters use snapshots requested
+at the boundaries and expose their observation times; measurement-only apply counts come from
+the source observer.
 
 ### CLI Options
 

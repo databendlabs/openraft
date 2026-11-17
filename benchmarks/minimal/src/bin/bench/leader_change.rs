@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -12,6 +13,9 @@ use openraft::ServerState;
 use serde_json::Value;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
+
+use super::histogram::Histogram;
+use super::request_sample::RequestSample;
 
 /// The node that leads before the transfer.
 pub(super) const OLD_LEADER: u64 = 0;
@@ -36,6 +40,7 @@ pub(super) struct Leaders {
     machines: Arc<BTreeMap<u64, Arc<StateMachineStore>>>,
     current: watch::Receiver<u64>,
     publish: Arc<watch::Sender<u64>>,
+    reads: Arc<Mutex<ReadStats>>,
 }
 
 impl Leaders {
@@ -47,6 +52,7 @@ impl Leaders {
             machines: Arc::new(machines),
             current,
             publish: Arc::new(publish),
+            reads: Arc::new(Mutex::new(ReadStats::default())),
         }
     }
 
@@ -94,13 +100,27 @@ impl Leaders {
             let transferred_ns = nanos_since(epoch)?;
             let transfer = leaders.transfer();
             tokio::time::timeout(TRANSFER_TIMEOUT, transfer).await.context("leadership transfer timed out")??;
-            leaders.publish.send_replace(NEW_LEADER);
             let elected_ns = nanos_since(epoch)?;
+            leaders.reads.lock().unwrap().elected_ns = Some(elected_ns);
+            leaders.publish.send_replace(NEW_LEADER);
             Ok(LeaderChange {
                 transferred_ns,
                 elected_ns,
             })
         })
+    }
+
+    pub(super) fn record_read(&self, sample: &RequestSample) {
+        let (Some(invoked), Some(node)) = (sample.invoked_ns, sample.node) else {
+            return;
+        };
+        let completed = sample.scheduled_ns + sample.latency_ns;
+        self.reads.lock().unwrap().record(invoked, completed, node);
+    }
+
+    pub(super) fn report(&self, change: &LeaderChange) -> Value {
+        let reads = self.reads.lock().unwrap();
+        change.make_report(&reads)
     }
 
     /// Triggers the transfer until the new leader takes over.
@@ -127,42 +147,53 @@ pub(super) struct LeaderChange {
     elected_ns: u64,
 }
 
-impl LeaderChange {
-    /// Reports the election and the reads around it.
-    ///
-    /// `reads` holds each successful read as its start and its latency in nanoseconds since the
-    /// epoch, with the node that served it.
-    pub(super) fn report(&self, reads: &[(u64, u64, u64)]) -> Value {
-        let elected = self.elected_ns;
-        let first_read = reads
-            .iter()
-            .filter(|(_, _, node)| *node == NEW_LEADER)
-            .map(|(started, latency, _)| started + latency)
-            .filter(|finished| *finished >= elected)
-            .min()
-            .map(|finished| finished - elected);
+#[derive(Default)]
+struct ReadStats {
+    elected_ns: Option<u64>,
+    first: Option<u64>,
+    first_second: Histogram,
+}
+
+impl ReadStats {
+    fn record(&mut self, invoked: u64, completed: u64, node: u64) {
+        let Some(elected) = self.elected_ns else {
+            return;
+        };
+        if node == NEW_LEADER && completed >= elected {
+            let after = completed - elected;
+            self.first = Some(self.first.map_or(after, |first| first.min(after)));
+        }
         let window = elected..elected.saturating_add(1_000_000_000);
-        let mut first_second: Vec<u64> = reads
-            .iter()
-            .filter(|(started, _, _)| window.contains(started))
-            .map(|(_, latency, _)| *latency)
-            .collect();
-        first_second.sort_unstable();
-        let summary = summary(&first_second);
-        serde_json::json!({
-            "transferred_ns": self.transferred_ns, "elected_ns": elected,
-            "election_ns": elected - self.transferred_ns,
-            "first_read_after_election_ns": first_read, "first_second_reads": summary,
-        })
+        if window.contains(&invoked) {
+            self.first_second.record(completed.saturating_sub(invoked));
+        }
     }
 }
 
-fn summary(sorted: &[u64]) -> Value {
-    if sorted.is_empty() {
-        return Value::Null;
+impl LeaderChange {
+    fn make_report(&self, reads: &ReadStats) -> Value {
+        let samples = reads.first_second.count;
+        let first_second = if samples == 0 {
+            Value::Null
+        } else {
+            serde_json::json!({"samples":samples,"p50_ns":reads.first_second.percentile(50),"p99_ns":reads.first_second.percentile(99)})
+        };
+        serde_json::json!({"transferred_ns":self.transferred_ns,"elected_ns":self.elected_ns,
+            "election_ns":self.elected_ns-self.transferred_ns,"first_read_after_election_ns":reads.first,
+            "first_second_reads":first_second})
     }
-    let rank = |percentile: usize| sorted[(sorted.len() * percentile).div_ceil(100) - 1];
-    serde_json::json!({"samples": sorted.len(), "p50_ns": rank(50), "p99_ns": rank(99)})
+
+    #[cfg(test)]
+    fn report(&self, reads: &[(u64, u64, u64)]) -> Value {
+        let mut stats = ReadStats {
+            elected_ns: Some(self.elected_ns),
+            ..Default::default()
+        };
+        for &(invoked, latency, node) in reads {
+            stats.record(invoked, invoked + latency, node);
+        }
+        self.make_report(&stats)
+    }
 }
 
 fn nanos_since(epoch: Instant) -> anyhow::Result<u64> {

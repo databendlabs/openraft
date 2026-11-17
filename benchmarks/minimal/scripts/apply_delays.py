@@ -30,7 +30,7 @@ DELAYS = [
 ]  # fmt: skip
 
 # (write clients, write operations) of each run.
-LOADS = [(256, "30k"), (1, "2k")]
+LOADS = [(256, "29952"), (1, "2k")]
 
 COLUMNS = [
     ("clients", "clients"),
@@ -91,15 +91,16 @@ def grid_args(clients, operations, read_us, io_us, entry_us):
 def run_bench(clients, operations, read_us, io_us, entry_us):
     """Run `bench` once and return its measurements."""
     time_flag = "-l" if platform.system() == "Darwin" else "-v"
-    command = ["/usr/bin/time", time_flag, str(BENCH), *grid_args(clients, operations, read_us, io_us, entry_us)]
+    command = ["/usr/bin/time", time_flag, str(BENCH), *grid_args(clients, operations, read_us, io_us, entry_us), "--measure-apply"]
     result = subprocess.run(command, capture_output=True, text=True, check=True)
     report = json.loads(result.stdout.strip().splitlines()[-1])
     stderr = result.stderr
 
-    # The runtime-stats feature prints the final stats after "Final:".
-    final = stderr[stderr.rindex("Final:") :]
-    apply_cells = re.search(r"│ Apply\s+│(.*)│ Entries", final).group(1).split("│")
-    apply_cmds = re.search(r"SaveCommittedAndApply\s*│\s*([\d,]+)", final).group(1)
+    expected = parse_operations(operations)
+    if report["operations"] != expected:
+        raise RuntimeError(f"benchmark completed {report['operations']} writes; requested {expected}")
+    batches = report["apply_metrics"]["0"]["entries_per_apply"]
+    apply_cmds = report["command_counts"]["counts"]["SaveCommittedAndApply"]
 
     return {
         "clients": clients,
@@ -109,14 +110,21 @@ def run_bench(clients, operations, read_us, io_us, entry_us):
         "ops_per_s": round(report["operations_per_second"]),
         "p50_us": report["request_p50_ns"] // 1000,
         "p99_us": report["request_p99_ns"] // 1000,
-        "apply_cmds": int(apply_cmds.replace(",", "")),
-        # Cells: samples, P0.1, P1, P5, P10, P50, P90, ...
-        "apply_batch_p50": int(apply_cells[5]),
-        "apply_batch_p90": int(apply_cells[6]),
+        "apply_cmds": apply_cmds,
+        "apply_batch_p50": batches["p50"],
+        "apply_batch_p90": batches["p90"],
         "max_rss_mb": max_rss_mb(stderr),
         "invol_csw": involuntary_context_switches(stderr),
         "seconds": report["seconds"],
     }
+
+
+def parse_operations(value):
+    text = str(value).replace("_", "").lower()
+    suffixes = {"k": 1000, "m": 1000000, "g": 1000000000}
+    if text[-1] in suffixes:
+        return int(text[:-1]) * suffixes[text[-1]]
+    return int(text)
 
 
 def max_rss_mb(time_output):
