@@ -46,12 +46,14 @@ pub(super) struct ReadWorkload {
     pub(super) start: Arc<Barrier>,
     pub(super) epoch: Arc<OnceLock<Instant>>,
     pub(super) live: Arc<Live>,
+    pub(super) history: Option<Arc<super::profile_history::History>>,
 }
 
 impl ReadWorkload {
     pub(super) fn spawn_clients(&self) -> Vec<Task> {
         if !self.config.arrival.enabled()
             && self.leaders.is_none()
+            && !self.config.profile.profile
             && self.config.measurement.measurement_seconds.is_none()
         {
             return self.spawn_sessions();
@@ -141,7 +143,8 @@ impl ReadWorkload {
         let epoch = *self.epoch.get().context("missing arrival epoch")?;
         let sampled = self.config.arrival.sampled(arrival.operation, super::arrival::READ_STREAM);
         let mut sample = RequestSample::new(epoch, arrival, sampled)?;
-        let future = self.read(epoch, &mut sample);
+        let observation = self.history.as_ref().map(|history| history.begin_read(arrival.operation));
+        let future = self.read(epoch, &mut sample, observation, arrival.operation);
         let timeout = self.config.arrival.request_timeout_ms;
         let deadline = self.config.measurement.bounds().deadline(epoch, arrival.scheduled, timeout);
         let result = with_deadline(future, deadline).await;
@@ -161,6 +164,9 @@ impl ReadWorkload {
             Ok(Completion::Completed(node)) => sample.node = Some(node),
             Ok(Completion::TimedOut) => sample.outcome = Outcome::TimedOut,
             Ok(Completion::Pending) => sample.outcome = Outcome::Pending,
+            Err(error) if error.downcast_ref::<super::profile_history::OracleViolation>().is_some() => {
+                return Err(error);
+            }
             Err(error) if self.config.allow_read_errors || self.config.arrival.open_loop => {
                 sample.outcome = Outcome::Failed(format!("{error:#}"));
             }
@@ -170,7 +176,13 @@ impl ReadWorkload {
     }
 
     /// Runs one read and returns the node that served it.
-    async fn read(&self, epoch: Instant, sample: &mut ReadSample) -> anyhow::Result<u64> {
+    async fn read(
+        &self,
+        epoch: Instant,
+        sample: &mut ReadSample,
+        observation: Option<super::profile_history::ReadExpectation>,
+        operation: u64,
+    ) -> anyhow::Result<u64> {
         sample.invoked = true;
         if self.leaders.is_some() {
             sample.invoked_ns = Some(nanos(epoch, Instant::now())?);
@@ -183,7 +195,16 @@ impl ReadWorkload {
         let Some(leaders) = &self.leaders else {
             let linearizer = self.leader.get_local_read_linearizer(option).await?;
             sample.mark_authorized(epoch)?;
-            self.finish(linearizer, &self.reader, &self.state_machine, epoch, sample).await?;
+            self.finish(
+                linearizer,
+                &self.reader,
+                &self.state_machine,
+                epoch,
+                sample,
+                observation,
+                operation,
+            )
+            .await?;
             let reader = self.config.read_on_follower.unwrap_or(0);
             return Ok(reader);
         };
@@ -200,7 +221,7 @@ impl ReadWorkload {
             };
             let machine = leaders.machine(node)?;
             sample.mark_authorized(epoch)?;
-            self.finish(linearizer, &raft, machine, epoch, sample).await?;
+            self.finish(linearizer, &raft, machine, epoch, sample, observation, operation).await?;
             return Ok(node);
         }
     }
@@ -213,6 +234,8 @@ impl ReadWorkload {
         machine: &StateMachineStore,
         epoch: Instant,
         sample: &mut ReadSample,
+        observation: Option<super::profile_history::ReadExpectation>,
+        operation: u64,
     ) -> anyhow::Result<()> {
         if self.config.read_await_ready || self.config.read_query {
             let state = linearizer.await_ready(reader).await?;
@@ -222,7 +245,11 @@ impl ReadWorkload {
             let _ = std::hint::black_box(linearizer);
         }
         if self.config.read_query {
-            if sample.phases.is_some() {
+            if let Some(observation) = observation {
+                let (_, value, locked) = machine.query(observation.key).await;
+                sample.mark_query_lock(epoch, locked)?;
+                self.history.as_ref().expect("profile history").checked_read(operation, observation, &value)?;
+            } else if sample.phases.is_some() {
                 let (value, locked) = machine.read_timed().await;
                 sample.mark_query_lock(epoch, locked)?;
                 let _ = std::hint::black_box(value);
