@@ -60,6 +60,20 @@ enum Deep {
     Tail,
 }
 
+/// Defines its own `build_all`: the derive adds only its documented items, so any other method
+/// name stays free for the enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, VariantName)]
+enum OwnMethods {
+    First,
+    Second,
+}
+
+impl OwnMethods {
+    fn build_all() -> [Self; 2] {
+        [Self::First, Self::Second]
+    }
+}
+
 /// `index()` addresses a fixed-size array, so the indices must be exactly `0..COUNT` in `ALL`
 /// order. Nothing in the generated code ties `COUNT`, `ALL` and `index()` together; this checks it.
 macro_rules! assert_dense_index {
@@ -120,7 +134,12 @@ fn all_expands_a_nested_variant_in_place() {
 
 #[test]
 fn index_equals_position_in_all() {
-    assert_dense_index!(SmName, ExtName, Solo, Outer, NestedFirst, Deep);
+    assert_dense_index!(SmName, ExtName, Solo, Outer, NestedFirst, Deep, OwnMethods);
+}
+
+#[test]
+fn enum_keeps_its_own_method_names() {
+    assert_eq!(OwnMethods::ALL, &OwnMethods::build_all());
 }
 
 #[test]

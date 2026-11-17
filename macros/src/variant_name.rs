@@ -77,7 +77,11 @@ pub(crate) fn expand(input: DeriveInput) -> Result<TokenStream, syn::Error> {
 
             /// All variants in canonical order, with wrapped name enums expanded in place.
             #[allow(dead_code)]
-            pub const ALL: &'static [Self] = &Self::build_all();
+            pub const ALL: &'static [Self] = &{
+                let mut all = [#filler; Self::COUNT];
+                #( #all_writes )*
+                all
+            };
 
             /// Returns the index of this variant, equal to its position in [`Self::ALL`].
             #[allow(dead_code)]
@@ -93,12 +97,6 @@ pub(crate) fn expand(input: DeriveInput) -> Result<TokenStream, syn::Error> {
                 match self {
                     #( #as_str_arms )*
                 }
-            }
-
-            const fn build_all() -> [Self; Self::COUNT] {
-                let mut all = [#filler; Self::COUNT];
-                #( #all_writes )*
-                all
             }
         }
 
