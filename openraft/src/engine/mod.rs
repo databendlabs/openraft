@@ -49,6 +49,7 @@ pub(crate) mod time_state;
 #[cfg(test)]
 mod tests {
     mod append_entries_test;
+    mod elect_if_due_test;
     mod elect_test;
     mod election_deadline_test;
     mod handle_pre_vote_req_test;

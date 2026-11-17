@@ -5,7 +5,9 @@ use validit::Valid;
 
 use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
+use crate::core::ServerState;
 use crate::core::raft_msg::AppendEntriesTx;
+use crate::display_ext::DisplayInstantExt;
 use crate::engine::Command;
 use crate::engine::Condition;
 use crate::engine::ElectionDeadline;
@@ -1109,6 +1111,75 @@ where
             lease_expires_at: self.state.vote.expires_at(election_timeout),
             pre_vote_retry_at,
         })
+    }
+
+    /// Start a Pre-Vote or a real election if this node may campaign and its election is due at
+    /// `now`.
+    ///
+    /// The caller may run it for a deadline that has since moved, or after this node changed role
+    /// or membership, so every condition is checked here: a Leader campaigns only once its
+    /// leadership transfer has expired, the node must be a campaigner in the effective or
+    /// committed membership, `enable_elect` must be on, and [`Self::election_deadline`] must be
+    /// due at `now`. A node other than the single campaigner starts with a Pre-Vote round when
+    /// `enable_pre_vote` is on.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn elect_if_due(&mut self, now: InstantOf<C>, enable_elect: bool, enable_pre_vote: bool) {
+        tracing::debug!("check whether an election is due, now: {}", now.display());
+
+        if self.state.server_state == ServerState::Leader {
+            let transfer_expired = self.leader_ref().is_some_and(|leader| leader.is_transfer_expired());
+            if !transfer_expired {
+                tracing::debug!("skip election, already a leader");
+                return;
+            }
+            tracing::info!("leadership transfer has not completed in time, start an election");
+        }
+
+        if !self.state.membership_state.is_campaigner_in_effective_or_committed(&self.config.id) {
+            tracing::debug!("skip election, not a campaigner in effective or committed membership");
+            return;
+        }
+
+        if !enable_elect {
+            tracing::debug!("skip election, election disabled");
+            return;
+        }
+
+        // Only the sole effective voter holding its own vote can skip Pre-Vote. A removed
+        // committed voter still needs a remote quorum, even if there is only one effective voter.
+        let is_single_campaigner = self.is_single_campaigner();
+        let pre_vote = enable_pre_vote && !is_single_campaigner;
+
+        let Some(deadline) = self.election_deadline(pre_vote) else {
+            tracing::debug!("skip election, single voter already has an active election in progress");
+            return;
+        };
+
+        if !deadline.is_due(now) {
+            tracing::debug!(
+                "skip election, not yet due: {}, local vote: {}",
+                deadline,
+                self.state.vote
+            );
+            return;
+        }
+
+        if is_single_campaigner {
+            tracing::debug!("single voter, elect immediately");
+        } else {
+            tracing::info!("election timeout expired, triggering election: {}", deadline);
+        }
+
+        // Every time elect, reset this flag.
+        self.reset_greater_log();
+
+        if pre_vote {
+            tracing::info!("trigger pre-vote");
+            self.pre_elect();
+        } else {
+            tracing::info!("trigger election");
+            self.elect();
+        }
     }
 
     // --- handlers ---

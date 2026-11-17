@@ -2352,68 +2352,12 @@ where
     ///
     /// It handles [`Notification::ElectionDeadlineReached`], and runs for
     /// [`ExternalCommand::Tick`]. The notification may have been sent for a deadline that has
-    /// since moved, or before this node changed role or elections were disabled, so every guard is
-    /// checked here again.
-    #[tracing::instrument(level = "debug", skip_all)]
+    /// since moved, or before this node changed role or elections were disabled, so
+    /// [`Engine::elect_if_due`] checks every condition again.
     fn elect_if_due(&mut self) {
-        let now = C::now();
-
-        tracing::debug!("check whether an election is due, now: {}", now.display());
-
-        if self.engine.state.server_state == ServerState::Leader {
-            let transfer_expired = self.engine.leader_ref().is_some_and(|leader| leader.is_transfer_expired());
-            if !transfer_expired {
-                tracing::debug!("skip election, already a leader");
-                return;
-            }
-            tracing::info!("leadership transfer has not completed in time, start an election");
-        }
-
-        if !self.engine.state.membership_state.is_campaigner_in_effective_or_committed(&self.id) {
-            tracing::debug!("skip election, not a campaigner in effective or committed membership");
-            return;
-        }
-
-        if !self.runtime_config.enable_elect.load(Ordering::Relaxed) {
-            tracing::debug!("skip election, election disabled");
-            return;
-        }
-
-        // Only the sole effective voter holding its own vote can skip Pre-Vote. A removed
-        // committed voter still needs a remote quorum, even if there is only one effective voter.
-        let is_single_campaigner = self.engine.is_single_campaigner();
-        let pre_vote = self.runtime_config.enable_pre_vote.load(Ordering::Relaxed) && !is_single_campaigner;
-
-        let Some(deadline) = self.engine.election_deadline(pre_vote) else {
-            tracing::debug!("skip election, single voter already has an active election in progress");
-            return;
-        };
-
-        if !deadline.is_due(now) {
-            tracing::debug!(
-                "skip election, not yet due: {}, local vote: {}",
-                deadline,
-                self.engine.state.vote
-            );
-            return;
-        }
-
-        if is_single_campaigner {
-            tracing::debug!("single voter, elect immediately");
-        } else {
-            tracing::info!("election timeout expired, triggering election: {}", deadline);
-        }
-
-        // Every time elect, reset this flag.
-        self.engine.reset_greater_log();
-
-        if pre_vote {
-            tracing::info!("trigger pre-vote");
-            self.engine.pre_elect();
-        } else {
-            tracing::info!("trigger election");
-            self.engine.elect();
-        }
+        let enable_elect = self.runtime_config.enable_elect.load(Ordering::Relaxed);
+        let enable_pre_vote = self.runtime_config.enable_pre_vote.load(Ordering::Relaxed);
+        self.engine.elect_if_due(C::now(), enable_elect, enable_pre_vote);
     }
 
     /// If a message is sent under a vote that this node no longer holds, it is a stale message
