@@ -75,12 +75,17 @@ impl Leaders {
         let _ = tokio::time::timeout(RETRY_DELAY, changed).await;
     }
 
-    /// Writes once, retrying on the current leader until a leader accepts the write.
-    pub(super) async fn client_write(&self, retries: &mut u64) -> anyhow::Result<()> {
+    /// Preserve a logical write across leadership redirects.
+    pub(super) async fn write_request(
+        &self,
+        request: ClientRequest,
+        retries: &mut u64,
+    ) -> anyhow::Result<openraft::raft::ClientWriteResponse<bench_minimal::store::TypeConfig>> {
         loop {
             let (node, raft) = self.current();
-            let Err(error) = raft.client_write(ClientRequest {}).await else {
-                return Ok(());
+            let error = match raft.client_write(request.clone()).await {
+                Ok(response) => return Ok(response),
+                Err(error) => error,
             };
             if error.forward_to_leader().is_none() {
                 return Err(error.into());

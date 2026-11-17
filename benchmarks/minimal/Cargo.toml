@@ -42,6 +42,7 @@ bt = ["openraft/bt"]
 single-term-leader = []
 tokio-console = ["console-subscriber"]
 flamegraph = ["tracing-flame", "tracing-subscriber"]
+realistic-profiles = []
 
 [profile.release]
 debug = 2
