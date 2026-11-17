@@ -17,8 +17,6 @@ verify: fmt_check clippy-basic
 verify-full: verify feature-check clippy docs-check test-membership test-bench-minimal test-runtime
 	cargo test --test '*'
 	# cargo test --features single-threaded --lib
-	# test result in different output on CI are ignored and only run locally
-	cargo test -p openraft-macros -- --ignored
 
 basic_check: verify
 
