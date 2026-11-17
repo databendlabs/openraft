@@ -8,6 +8,7 @@ use std::io::Cursor;
 use std::ops::RangeBounds;
 use std::sync::Arc;
 use std::time::Duration;
+use std::time::Instant;
 
 use futures::Stream;
 use futures::StreamExt;
@@ -184,6 +185,15 @@ impl StateMachineStore {
     pub async fn read(&self) -> (Option<LogIdOf<TypeConfig>>, u64) {
         let sm = self.sm.read().await;
         (sm.last_applied_log, sm.applied_writes)
+    }
+
+    /// Sample the same counter and report when its read lock was acquired.
+    #[openraft::macros::since(version = "0.10.1")]
+    pub async fn read_timed(&self) -> ((Option<LogIdOf<TypeConfig>>, u64), Instant) {
+        let sm = self.sm.read().await;
+        let locked = Instant::now();
+        let value = (sm.last_applied_log, sm.applied_writes);
+        (value, locked)
     }
 
     /// Delay the end of every `apply()` call, after its entries are consumed, and send the
