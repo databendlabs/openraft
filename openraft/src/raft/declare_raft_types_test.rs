@@ -59,8 +59,8 @@ declare_raft_types!(
         Entry = crate::impls::Entry<<Self::LeaderId as crate::vote::RaftLeaderId>::Committed, Self::Payload>,
         Vote = crate::impls::Vote<Self::LeaderId>,
         AsyncRuntime = TokioRuntime,
-        // Responder<T> is not supported by  declare_raft_types
-        // Responder<T> = crate::impls::OneshotResponder<Self, T> where T: OptionalSend + 'static,
+        Responder<T> = crate::impls::OneshotResponder<Self, T>,
+        Batch<X> = Vec<X>,
 );
 
 declare_raft_types!(
@@ -109,6 +109,17 @@ fn test_payload_type() {
     assert_payload::<WithCustomPayload, CustomPayload>();
     #[cfg(feature = "tokio-rt")]
     assert_payload::<Empty, EntryPayload<String, Membership<u64, crate::impls::BasicNode>>>();
+}
+
+#[test]
+fn test_generic_types() {
+    fn assert_generic_types<C, R, B>()
+    where C: RaftTypeConfig<Responder<u64> = R, Batch<u64> = B> {
+    }
+
+    assert_generic_types::<All, crate::impls::OneshotResponder<All, u64>, Vec<u64>>();
+    #[cfg(feature = "tokio-rt")]
+    assert_generic_types::<Empty, crate::impls::ProgressResponder<Empty, u64>, crate::impls::InlineBatch<u64>>();
 }
 
 #[test]

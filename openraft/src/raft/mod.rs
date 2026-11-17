@@ -195,6 +195,10 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// );
 /// ```
 ///
+/// A generic associated type, `Responder<T>` or `Batch<T>`, is written with its type parameter, as
+/// in the example above. The macro adds the `where T: OptionalSend + 'static` bound that
+/// [`RaftTypeConfig`] declares for it, so an entry does not write its own `where` clause.
+///
 /// Types can be omitted, and the following default type will be used:
 /// - `D`:            `String`
 /// - `R`:            `String`
@@ -232,36 +236,37 @@ macro_rules! declare_raft_types {
     };
 
     // The main entry of this macro
-    ($(#[$outer:meta])* $visibility:vis $id:ident: $($(#[$inner:meta])* $type_id:ident = $type:ty),* $(,)? ) => {
+    ($(#[$outer:meta])* $visibility:vis $id:ident: $($(#[$inner:meta])* $type_id:ident $(<$type_param:ident>)? = $type:ty),* $(,)? ) => {
         $(#[$outer])*
         #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Ord, PartialOrd)]
         $visibility struct $id {}
 
         impl $crate::RaftTypeConfig for $id {
-            // `expand!(KEYED, ...)` ignores the duplicates.
+            // `expand!(KEYED, ...)` ignores the duplicates of a type name.
             // Thus by appending default types after user defined types,
             // the absent user defined types are filled with default types.
+            // A generic type gets the bound that `RaftTypeConfig` declares for it.
             $crate::macros::expand!(
                 KEYED,
-                (T, ATTR, V) => {ATTR type T = V;},
-                $(($type_id, $(#[$inner])*, $type),)*
+                (N, P, ATTR, V) => {ATTR type N P = V;},
+                $(($type_id, $(<$type_param>)?, $(#[$inner])*, $type $(where $type_param: $crate::OptionalSend + 'static)?),)*
 
                 // Default types:
-                (D            , , String                                       ),
-                (R            , , String                                       ),
-                (NodeId       , , u64                                          ),
-                (Node         , , $crate::impls::BasicNode                     ),
-                (Term         , , u64                                          ),
-                (LeaderId     , , $crate::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId> ),
-                (Vote           , , $crate::impls::Vote<Self::LeaderId>            ),
-                (Membership     , , $crate::impls::Membership<Self::NodeId, Self::Node> ),
-                (MembershipEdit , , $crate::impls::ChangeMembers<Self::NodeId, Self::Node> ),
-                (Payload        , , $crate::impls::EntryPayload<Self::D, Self::Membership> ),
-                (Entry          , , $crate::impls::Entry<<Self::LeaderId as $crate::vote::RaftLeaderId>::Committed, Self::Payload> ),
-                (Responder<T>   , , $crate::impls::ProgressResponder<Self, T> where T: $crate::OptionalSend + 'static     ),
-                (Batch<T>       , , $crate::impls::InlineBatch<T> where T: $crate::OptionalSend + 'static     ),
-                (AsyncRuntime   , , $crate::impls::TokioRuntime                  ),
-                (ErrorSource    , , $crate::impls::BoxedErrorSource               ),
+                (D              , , , String                                       ),
+                (R              , , , String                                       ),
+                (NodeId         , , , u64                                          ),
+                (Node           , , , $crate::impls::BasicNode                     ),
+                (Term           , , , u64                                          ),
+                (LeaderId       , , , $crate::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId> ),
+                (Vote           , , , $crate::impls::Vote<Self::LeaderId>            ),
+                (Membership     , , , $crate::impls::Membership<Self::NodeId, Self::Node> ),
+                (MembershipEdit , , , $crate::impls::ChangeMembers<Self::NodeId, Self::Node> ),
+                (Payload        , , , $crate::impls::EntryPayload<Self::D, Self::Membership> ),
+                (Entry          , , , $crate::impls::Entry<<Self::LeaderId as $crate::vote::RaftLeaderId>::Committed, Self::Payload> ),
+                (Responder      , <T>, , $crate::impls::ProgressResponder<Self, T> where T: $crate::OptionalSend + 'static ),
+                (Batch          , <T>, , $crate::impls::InlineBatch<T> where T: $crate::OptionalSend + 'static ),
+                (AsyncRuntime   , , , $crate::impls::TokioRuntime                  ),
+                (ErrorSource    , , , $crate::impls::BoxedErrorSource               ),
             );
 
         }
