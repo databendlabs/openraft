@@ -200,19 +200,21 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// [`RaftTypeConfig`] declares for it, so an entry does not write its own `where` clause.
 ///
 /// Types can be omitted, and the following default type will be used:
-/// - `D`:            `String`
-/// - `R`:            `String`
-/// - `NodeId`:       `u64`
-/// - `Node`:         `::openraft::impls::BasicNode`
-/// - `Term`:         `u64`
-/// - `LeaderId`:     `::openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>`
+/// - `D`:              `String`
+/// - `R`:              `String`
+/// - `NodeId`:         `u64`
+/// - `Node`:           `::openraft::impls::BasicNode`
+/// - `Term`:           `u64`
+/// - `LeaderId`:       `::openraft::impls::leader_id_adv::LeaderId<Self::Term, Self::NodeId>`
 /// - `Vote`:           `::openraft::impls::Vote<Self::LeaderId>`
 /// - `Membership`:     `::openraft::impls::Membership<Self::NodeId, Self::Node>`
+/// - `MembershipEdit`: `::openraft::impls::ChangeMembers<Self::NodeId, Self::Node>`
 /// - `Payload`:        `::openraft::impls::EntryPayload<Self::D, Self::Membership>`
-/// - `Entry`:          `::openraft::impls::Entry<CommittedLeaderId, Self::Payload>`
-/// - `Responder<T>`:   `::openraft::impls::OneshotResponder<Self, T>`
+/// - `Entry`:          `::openraft::alias::DefaultEntryOf<Self>`
+/// - `Responder<T>`:   `::openraft::impls::ProgressResponder<Self, T>`
+/// - `Batch<T>`:       `::openraft::impls::InlineBatch<T>`
 /// - `AsyncRuntime`:   `::openraft::impls::TokioRuntime`
-/// - `ErrorSource`:    `::anyerror::AnyError`
+/// - `ErrorSource`:    `::openraft::impls::BoxedErrorSource`
 ///
 /// For example, to declare with only `D` and `R` types:
 /// ```ignore
