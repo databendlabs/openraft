@@ -33,6 +33,7 @@ pub(super) struct WriteWorkload {
     pub(super) start: Arc<Barrier>,
     pub(super) epoch: Arc<OnceLock<Instant>>,
     pub(super) live: Arc<Live>,
+    pub(super) history: Option<Arc<super::profile_history::History>>,
 }
 
 impl WriteWorkload {
@@ -43,6 +44,7 @@ impl WriteWorkload {
         if !self.config.arrival.enabled()
             && self.leaders.is_none()
             && self.config.measurement.measurement_seconds.is_none()
+            && !self.config.profile.profile
         {
             return self.spawn_sessions();
         }
@@ -53,6 +55,7 @@ impl WriteWorkload {
             entries_per_request: self.config.batch_size,
             rate: self.config.write_rate as f64 / self.config.batch_size as f64,
             measured: self.config.latency
+                || self.config.profile.profile
                 || self.config.read_clients > 0
                 || self.config.measurement.measurement_seconds.is_some(),
             stream_seed: super::arrival::WRITE_STREAM,
@@ -62,6 +65,9 @@ impl WriteWorkload {
             start: self.start.clone(),
             epoch: self.epoch.clone(),
         };
+        if self.config.profile.profile {
+            return workload.spawn(ProfileWrites(self.clone()));
+        }
         workload.spawn(self.clone())
     }
 
@@ -91,7 +97,7 @@ impl WriteWorkload {
                         } else {
                             measure_latency.then(Instant::now)
                         };
-                        l.client_write(ClientRequest {}).await?;
+                        l.client_write(ClientRequest::default()).await?;
                         if let Some(started) = started {
                             let elapsed = started.elapsed();
                             let nanos = elapsed.as_nanos();
@@ -111,7 +117,7 @@ impl WriteWorkload {
                     let epoch = *epoch.get().unwrap();
 
                     for batch in 0..batches {
-                        let requests: Vec<_> = (0..batch_size).map(|_| ClientRequest {}).collect();
+                        let requests: Vec<_> = (0..batch_size).map(|_| ClientRequest::default()).collect();
                         let operation = (batch * n_client + client_id) * batch_size;
                         let started = if write_rate > 0 {
                             let scheduled = pace(epoch, operation, write_rate).await;
@@ -180,13 +186,14 @@ impl WriteWorkload {
             return Ok(());
         }
         if let Some(leaders) = &self.leaders {
-            return leaders.client_write(retries).await;
-        }
-        if self.config.batch_size == 1 {
-            self.leader.client_write(ClientRequest {}).await?;
+            leaders.write_request(ClientRequest::default(), retries).await?;
             return Ok(());
         }
-        let requests: Vec<_> = (0..self.config.batch_size).map(|_| ClientRequest {}).collect();
+        if self.config.batch_size == 1 {
+            self.leader.client_write(ClientRequest::default()).await?;
+            return Ok(());
+        }
+        let requests: Vec<_> = (0..self.config.batch_size).map(|_| ClientRequest::default()).collect();
         let mut stream = self.leader.client_write_many(requests, WriteOption::default()).await?;
         while let Some(result) = stream.try_next().await? {
             if let Some(progress) = &mut progress {
@@ -196,10 +203,118 @@ impl WriteWorkload {
         }
         Ok(())
     }
+
+    async fn profile_sample(&self, arrival: Arrival) -> anyhow::Result<Option<RequestSample>> {
+        let measure = self.config.latency
+            || self.config.profile.profile
+            || self.config.read_clients > 0
+            || self.config.measurement.measurement_seconds.is_some();
+        if !measure {
+            self.profile_write(arrival.operation, &mut 0, None).await?;
+            return Ok(None);
+        }
+        let epoch = *self.epoch.get().context("missing arrival epoch")?;
+        let sampled = self.config.arrival.sampled(arrival.operation, super::arrival::WRITE_STREAM);
+        let mut sample = RequestSample::new(epoch, arrival, sampled)?;
+        if self.config.batch_size > 1 && !self.config.arrival.arrival_noop {
+            let progress = WriteProgress::new(epoch, self.config.measurement.bounds(), self.config.batch_size);
+            sample.write_progress = Some(Box::new(progress));
+        }
+        let mut invoked = None;
+        let future = async {
+            sample.invoked = true;
+            if self.history.is_some() {
+                invoked = Some(Instant::now());
+            }
+            self.profile_write(
+                arrival.operation,
+                &mut sample.retries,
+                sample.write_progress.as_deref_mut(),
+            )
+            .await
+        };
+        let timeout = self.config.arrival.request_timeout_ms;
+        let deadline = self.config.measurement.bounds().deadline(epoch, arrival.scheduled, timeout);
+        let result = with_deadline(future, deadline).await;
+        match result {
+            Ok(Completion::Completed(())) => sample.node = Some(0),
+            Ok(Completion::TimedOut) => sample.outcome = Outcome::TimedOut,
+            Ok(Completion::Pending) => sample.outcome = Outcome::Pending,
+            Err(error) if self.config.arrival.open_loop => sample.outcome = Outcome::Failed(format!("{error:#}")),
+            Err(error) => return Err(error),
+        }
+        sample.finish(epoch, arrival.scheduled)?;
+        if let Some(history) = &self.history {
+            history.write_outcome(arrival, &sample, invoked);
+        }
+        Ok(Some(sample))
+    }
+
+    async fn profile_write(
+        &self,
+        operation: u64,
+        retries: &mut u64,
+        mut progress: Option<&mut WriteProgress>,
+    ) -> anyhow::Result<()> {
+        if self.config.arrival.arrival_noop {
+            return Ok(());
+        }
+        let first = operation * self.config.batch_size;
+        let invoked = if self.history.is_some() {
+            let now = Instant::now();
+            Some(now)
+        } else {
+            None
+        };
+        if let Some(leaders) = &self.leaders {
+            let request = self.config.profile.request(first);
+            let response = leaders.write_request(request, retries).await?;
+            if let Some(history) = &self.history {
+                let invoked = invoked.expect("profile invocation clock");
+                history.acknowledged(first, response.log_id, invoked);
+            }
+            return Ok(());
+        }
+        if self.config.batch_size == 1 {
+            let request = self.config.profile.request(first);
+            let response = self.leader.client_write(request).await?;
+            if let Some(history) = &self.history {
+                let invoked = invoked.expect("profile invocation clock");
+                history.acknowledged(first, response.log_id, invoked);
+            }
+            return Ok(());
+        }
+        let requests: Vec<_> =
+            (0..self.config.batch_size).map(|offset| self.config.profile.request(first + offset)).collect();
+        let mut offset = 0;
+        let mut stream = self.leader.client_write_many(requests, WriteOption::default()).await?;
+        while let Some(result) = stream.try_next().await? {
+            if let Some(progress) = &mut progress {
+                progress.acknowledge(result.is_ok());
+            }
+            let response = result?;
+            if let Some(history) = &self.history {
+                let invoked = invoked.expect("profile invocation clock");
+                history.acknowledged(first + offset, response.log_id, invoked);
+            }
+            offset += 1;
+        }
+        Ok(())
+    }
 }
 
 impl Handler for WriteWorkload {
     async fn run(&self, arrival: Arrival) -> anyhow::Result<Option<RequestSample>> {
         self.sample(arrival).await
+    }
+}
+
+/// Select profile bookkeeping once, so the empty handler keeps its original hot path.
+#[derive(Clone)]
+struct ProfileWrites(WriteWorkload);
+
+impl Handler for ProfileWrites {
+    async fn run(&self, arrival: Arrival) -> anyhow::Result<Option<RequestSample>> {
+        self.0.profile_sample(arrival).await
     }
 }

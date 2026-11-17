@@ -1,6 +1,8 @@
 //! A minimized store with least cost for benchmarking Openraft.
 
 use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::fmt;
 use std::fmt::Debug;
 use std::io;
@@ -37,8 +39,15 @@ use serde::Deserialize;
 use serde::Serialize;
 use tokio::sync::RwLock;
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct ClientRequest {}
+use crate::profile::Profile;
+use crate::profile_value::ProfileValue;
+
+#[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq)]
+#[openraft::macros::since(version = "0.10.1", change = "optional profiled application data")]
+pub struct ClientRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payload: Option<Arc<crate::profile_request::ProfileRequest>>,
+}
 
 impl fmt::Display for ClientRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -94,13 +103,25 @@ pub struct StoredSnapshot {
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
+#[openraft::macros::since(version = "0.10.1", change = "profile KV state and bounded duplicate observations")]
 pub struct StateMachine {
     pub last_applied_log: Option<LogIdOf<TypeConfig>>,
     pub last_membership: StoredMembershipOf<TypeConfig>,
     #[serde(default)]
     pub applied_writes: u64,
+    #[serde(default)]
+    pub values: BTreeMap<u64, ProfileValue>,
+    #[serde(default)]
+    pub seen: HashMap<u64, u64>,
+    #[serde(default)]
+    pub recent: VecDeque<u64>,
+    #[serde(default)]
+    pub duplicates: u64,
+    #[serde(default)]
+    pub evicted_ids: u64,
 }
 
+#[openraft::macros::since(version = "0.10.1", change = "optional cached and byte-costed reads")]
 pub struct LogStore {
     vote: RwLock<Option<Vote<LeaderId>>>,
     log: RwLock<BTreeMap<u64, EntryOf<TypeConfig>>>,
@@ -111,6 +132,10 @@ pub struct LogStore {
     apply_read_delay: Duration,
     /// Delay before each log read issued by replication.
     replication_read_delay: Duration,
+    profile: Option<Arc<Profile>>,
+    node: u64,
+    reads: std::sync::Mutex<store_profile::ReadStats>,
+    read_bandwidth: crate::byte_rate::ByteRate,
 }
 
 impl LogStore {
@@ -125,6 +150,10 @@ impl LogStore {
             flush_delay: Duration::ZERO,
             apply_read_delay: Duration::ZERO,
             replication_read_delay: Duration::ZERO,
+            profile: None,
+            node: 0,
+            reads: std::sync::Mutex::new(store_profile::ReadStats::default()),
+            read_bandwidth: crate::byte_rate::ByteRate::default(),
         }
     }
 
@@ -165,6 +194,7 @@ impl Default for LogStore {
 
 type ApplyObserver = dyn Fn(u64, u64, Instant) + Send + Sync;
 
+#[openraft::macros::since(version = "0.10.1", change = "optional transactional KV publication")]
 pub struct StateMachineStore {
     sm: RwLock<StateMachine>,
     current_snapshot: RwLock<Option<StoredSnapshot>>,
@@ -173,6 +203,11 @@ pub struct StateMachineStore {
     /// Simulated processing time of each applied entry, paid inside `apply()`.
     apply_entry_delay: Duration,
     apply_observer: OnceLock<Arc<ApplyObserver>>,
+    profile: Option<Arc<Profile>>,
+    node: u64,
+    transactions: std::sync::Mutex<store_profile::DelayStats>,
+    #[cfg(test)]
+    publication_gate: std::sync::Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
 }
 
 impl StateMachineStore {
@@ -183,6 +218,11 @@ impl StateMachineStore {
             apply_io_delay: Duration::ZERO,
             apply_entry_delay: Duration::ZERO,
             apply_observer: OnceLock::new(),
+            profile: None,
+            node: 0,
+            transactions: std::sync::Mutex::new(store_profile::DelayStats::default()),
+            #[cfg(test)]
+            publication_gate: std::sync::Mutex::new(None),
         }
     }
 
@@ -217,6 +257,16 @@ impl StateMachineStore {
     pub fn with_apply_entry_delay(mut self, delay: Duration) -> Self {
         self.apply_entry_delay = delay;
         self
+    }
+
+    fn notify_applied(&self, applied: Option<LogIdOf<TypeConfig>>, count: u32) {
+        let Some(observer) = self.apply_observer.get() else {
+            return;
+        };
+        let Some(applied) = applied else {
+            return;
+        };
+        observer(applied.index(), u64::from(count), Instant::now());
     }
 
     /// Observe a batch's applied index, entry count, and publication time after its lock is
@@ -256,16 +306,24 @@ impl RaftLogReader<TypeConfig> for Arc<LogStore> {
     where
         RB: RangeBounds<u64> + Clone + Debug + OptionalSend,
     {
-        if let Err(error) = blocking_delay(self.apply_read_delay).await {
-            return Either::Right(stream::iter([Err(error)]));
-        }
-        match self.try_get_log_entries(range).await {
+        let result = if self.profile.is_some() {
+            self.profiled_read(range, self.apply_read_delay).await
+        } else {
+            if let Err(error) = blocking_delay(self.apply_read_delay).await {
+                return Either::Right(stream::iter([Err(error)]));
+            }
+            self.try_get_log_entries(range).await
+        };
+        match result {
             Ok(entries) => Either::Left(stream::iter(entries).map(Ok)),
             Err(error) => Either::Right(stream::iter([Err(error)])),
         }
     }
 
     async fn limited_get_log_entries(&mut self, start: u64, end: u64) -> Result<Vec<EntryOf<TypeConfig>>, io::Error> {
+        if self.profile.is_some() {
+            return self.profiled_read(start..end, self.replication_read_delay).await;
+        }
         blocking_delay(self.replication_read_delay).await?;
         self.try_get_log_entries(start..end).await
     }
@@ -410,6 +468,9 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     where Strm: Stream<Item = Result<EntryResponder<TypeConfig>, io::Error>> + Unpin + OptionalSend {
         use futures::TryStreamExt;
 
+        if self.profile.is_some() {
+            return self.apply_profile(entries).await;
+        }
         let delayed = !self.apply_io_delay.is_zero() || !self.apply_entry_delay.is_zero();
         let mut delayed_responders = Vec::new();
         let mut entry_count: u32 = 0;
@@ -445,16 +506,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
         }
         let last_applied = sm.last_applied_log;
         drop(sm);
-        let Some(observer) = self.apply_observer.get() else {
-            return Ok(());
-        };
-        let Some(last_applied) = last_applied else {
-            return Ok(());
-        };
-        let index = last_applied.index();
-        let entries = u64::from(entry_count);
-        let at = Instant::now();
-        observer(index, entries, at);
+        self.notify_applied(last_applied, entry_count);
         Ok(())
     }
 
@@ -471,7 +523,10 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
 
         // Update the state machine.
         {
-            let new_sm: StateMachine = serde_json::from_slice(&new_snapshot.data).map_err(io::Error::other)?;
+            let mut new_sm: StateMachine = serde_json::from_slice(&new_snapshot.data).map_err(io::Error::other)?;
+            if let Some(profile) = &self.profile {
+                new_sm.trim_profile_ids(profile.duplicate_capacity);
+            }
             let mut sm = self.sm.write().await;
             *sm = new_sm;
         }
@@ -627,3 +682,6 @@ mod tests {
         Ok(())
     }
 }
+
+#[path = "store_profile.rs"]
+mod store_profile;
