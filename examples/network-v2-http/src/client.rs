@@ -1,6 +1,7 @@
 use std::fmt::Display;
 use std::future::Future;
 use std::io::Cursor;
+use std::sync::Arc;
 
 use openraft::NodeInfo;
 use openraft::OptionalSend;
@@ -28,9 +29,12 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use crate::AppendReply;
+use crate::Faults;
 
+#[openraft::macros::since(version = "0.10.1", change = "optional benchmark partition gate")]
 pub struct NetworkFactory {
     client: HttpClient,
+    faults: Option<Arc<Faults>>,
 }
 
 impl Default for NetworkFactory {
@@ -43,6 +47,7 @@ impl NetworkFactory {
     pub fn new() -> Self {
         Self {
             client: HttpClient::builder().no_proxy().build().unwrap(),
+            faults: Faults::active(),
         }
     }
 }
@@ -52,21 +57,46 @@ where C: RaftTypeConfig<Node = NodeInfo>
 {
     type Network = Client;
 
-    async fn new_client(&mut self, _target: C::NodeId, node: &NodeInfo) -> Self::Network {
+    async fn new_client(&mut self, target: C::NodeId, node: &NodeInfo) -> Self::Network {
         Client {
             addr: node.raft_addr.clone(),
             client: self.client.clone(),
+            faults: self.faults.as_ref().map(|faults| (target.to_string(), faults.clone())),
         }
     }
 }
 
+#[openraft::macros::since(version = "0.10.1", change = "optional benchmark partition gate")]
 pub struct Client {
     addr: String,
     client: HttpClient,
+    faults: Option<(String, Arc<Faults>)>,
 }
 
 impl Client {
     async fn request<C, Req, Resp>(
+        &mut self,
+        uri: impl Display,
+        req: Req,
+        option: &RPCOption,
+    ) -> Result<Resp, RPCError<C>>
+    where
+        C: RaftTypeConfig,
+        Req: Serialize,
+        Result<Resp, RaftError<C>>: DeserializeOwned,
+    {
+        let fault = self.faults.clone();
+        let request = self.request_inner(uri, req, option);
+        match fault {
+            Some((target, faults)) => faults
+                .run(&target, request)
+                .await
+                .map_err(|error| RPCError::Unreachable(Unreachable::new(&error)))?,
+            None => request.await,
+        }
+    }
+
+    async fn request_inner<C, Req, Resp>(
         &mut self,
         uri: impl Display,
         req: Req,

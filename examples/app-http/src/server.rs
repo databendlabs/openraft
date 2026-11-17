@@ -144,16 +144,24 @@ async fn handle(routes: Routes, req: Request<Incoming>) -> Result<Response<Full<
         return Ok(error_response(StatusCode::NOT_FOUND, "not found"));
     };
 
+    let received = match req.into_body().collect().await {
+        Ok(body) => body.to_bytes(),
+        Err(error) => return Ok(error_response(StatusCode::BAD_REQUEST, error)),
+    };
+    let request_bytes = received.len();
     let body = if key.0 == Method::GET {
         Bytes::from_static(b"null")
     } else {
-        match req.into_body().collect().await {
-            Ok(body) => body.to_bytes(),
-            Err(e) => return Ok(error_response(StatusCode::BAD_REQUEST, e)),
-        }
+        received
     };
-
-    Ok(handler(body).await)
+    let response = handler(body).await;
+    if crate::benchmark_metrics::enabled() {
+        let copy = response.body().clone();
+        let collected = copy.collect().await.expect("Full body is infallible");
+        let response_bytes = collected.to_bytes().len();
+        crate::benchmark_metrics::record(key.1, request_bytes, response_bytes);
+    }
+    Ok(response)
 }
 
 fn normalize_path(path: impl Into<String>) -> String {

@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::sync::Arc;
 
 use dir_transfer::DirFrameProducer;
 use openraft::NodeInfo;
@@ -22,6 +23,7 @@ use crate::typ::*;
 const DEFAULT_CHUNK_SIZE: usize = 1024 * 1024;
 
 /// Creates one [`Network`] per target node.
+#[openraft::macros::since(version = "0.10.1", change = "optional benchmark snapshot partition gate")]
 pub struct NetworkFactory {
     inner: network_v2_http::NetworkFactory,
     client: HttpClient,
@@ -50,6 +52,7 @@ impl RaftNetworkFactory<TypeConfig> for NetworkFactory {
             inner: RaftNetworkFactory::<TypeConfig>::new_client(&mut self.inner, target, node).await,
             snapshot_url: format!("http://{}/snapshot", node.raft_addr),
             client: self.client.clone(),
+            faults: network_v2_http::Faults::active().map(|faults| (target.to_string(), faults)),
         }
     }
 }
@@ -58,10 +61,12 @@ impl RaftNetworkFactory<TypeConfig> for NetworkFactory {
 ///
 /// JSON RPCs are delegated to the `network-v2-http` client. `full_snapshot` streams the
 /// checkpoint directory of a [`SnapshotData`] as `dir-transfer` frames.
+#[openraft::macros::since(version = "0.10.1", change = "optional benchmark snapshot partition gate")]
 pub struct Network {
     inner: network_v2_http::Client,
     snapshot_url: String,
     client: HttpClient,
+    faults: Option<(String, Arc<network_v2_http::Faults>)>,
 }
 
 impl RaftNetworkV2<TypeConfig> for Network {
@@ -78,36 +83,48 @@ impl RaftNetworkV2<TypeConfig> for Network {
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         option: RPCOption,
     ) -> Result<SnapshotResponse, StreamingError> {
-        let configured_chunk_size = option.snapshot_chunk_size().unwrap_or(DEFAULT_CHUNK_SIZE);
-        let chunk_size = configured_chunk_size.min(dir_transfer::MAX_CHUNK_SIZE);
-        let producer =
-            DirFrameProducer::new(snapshot.snapshot.db_path(), chunk_size).map_err(|e| NetworkError::new(&e))?;
-        let body =
-            snapshot_stream::request_body(&(vote, snapshot.meta), producer).map_err(|e| NetworkError::new(&e))?;
-        let request = self.client.post(&self.snapshot_url).body(body).timeout(option.soft_ttl()).send();
+        let faults = self.faults.clone();
+        let operation = async {
+            let configured_chunk_size = option.snapshot_chunk_size().unwrap_or(DEFAULT_CHUNK_SIZE);
+            let chunk_size = configured_chunk_size.min(dir_transfer::MAX_CHUNK_SIZE);
+            let producer =
+                DirFrameProducer::new(snapshot.snapshot.db_path(), chunk_size).map_err(|e| NetworkError::new(&e))?;
+            let body =
+                snapshot_stream::request_body(&(vote, snapshot.meta), producer).map_err(|e| NetworkError::new(&e))?;
+            let response = self.client.post(&self.snapshot_url).body(body).timeout(option.soft_ttl()).send().await;
 
-        tokio::pin!(cancel);
-        let response = tokio::select! {
-            closed = &mut cancel => return Err(StreamingError::Closed(closed)),
-            response = request => response,
-        };
+            let response = response.map_err(|e| {
+                if e.is_connect() {
+                    StreamingError::Unreachable(Unreachable::new(&e))
+                } else {
+                    StreamingError::Network(NetworkError::new(&e))
+                }
+            })?;
 
-        let response = response.map_err(|e| {
-            if e.is_connect() {
-                StreamingError::Unreachable(Unreachable::new(&e))
-            } else {
-                StreamingError::Network(NetworkError::new(&e))
+            let status = response.status();
+            if !status.is_success() {
+                let message = format!("HTTP {status} from {}", self.snapshot_url);
+                return Err(StreamingError::Network(NetworkError::from_string(message)));
             }
-        })?;
 
-        let status = response.status();
-        if !status.is_success() {
-            let message = format!("HTTP {status} from {}", self.snapshot_url);
-            return Err(StreamingError::Network(NetworkError::from_string(message)));
+            let result: Result<SnapshotResponse, RaftError> =
+                response.json().await.map_err(|e| NetworkError::new(&e))?;
+            result.map_err(|e| StreamingError::Unreachable(Unreachable::new(&e)))
+        };
+        let transfer = async {
+            match faults {
+                Some((target, faults)) => faults
+                    .run(&target, operation)
+                    .await
+                    .map_err(|error| StreamingError::Unreachable(Unreachable::new(&error)))?,
+                None => operation.await,
+            }
+        };
+        tokio::pin!(cancel);
+        tokio::select! {
+            closed = &mut cancel => Err(StreamingError::Closed(closed)),
+            result = transfer => result,
         }
-
-        let result: Result<SnapshotResponse, RaftError> = response.json().await.map_err(|e| NetworkError::new(&e))?;
-        result.map_err(|e| StreamingError::Unreachable(Unreachable::new(&e)))
     }
 
     async fn transfer_leader(

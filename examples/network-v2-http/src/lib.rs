@@ -6,3 +6,6 @@ pub use append_reply::AppendReply;
 pub use client::Client;
 pub use client::NetworkFactory;
 pub use server::Server;
+
+mod faults;
+pub use faults::Faults;

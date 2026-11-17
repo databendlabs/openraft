@@ -8,3 +8,5 @@ pub use app::LinearizerData;
 pub use client::Client;
 pub use client::FollowerReadError;
 pub use server::Server;
+
+pub mod benchmark_metrics;

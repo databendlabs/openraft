@@ -98,8 +98,24 @@ pub async fn new_raft_node(node_id: NodeId, data_dir: String, config: Config) ->
 }
 
 fn new_http_server(app: Arc<App>) -> app_http::Server<App> {
-    app_http::Server::new(app)
-        .add_openraft_routes()
+    let server = app_http::Server::new(app).add_openraft_routes();
+    let server = if network_v2_http::Faults::active().is_some() {
+        server
+            .get("/benchmark/stats", |_app: Arc<App>| async move {
+                Ok::<_, std::convert::Infallible>(app_http::benchmark_metrics::report())
+            })
+            .get("/benchmark/config", |app: Arc<App>| async move {
+                Ok::<_, std::convert::Infallible>(
+                    serde_json::to_value(app.raft.config().as_ref()).expect("Config serializes"),
+                )
+            })
+            .post("/benchmark/transfer", |app: Arc<App>, to: u64| async move {
+                app.raft.trigger().transfer_leader(to).await.map_err(|error| error.to_string())
+            })
+    } else {
+        server
+    };
+    server
         .post("/read", http_api::read)
         .post("/linearizable_read", http_api::linearizable_read)
         .post("/follower_read", http_api::follower_read)

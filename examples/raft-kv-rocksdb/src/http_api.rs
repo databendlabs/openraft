@@ -23,3 +23,11 @@ async fn get(app: &App, key: String) -> Option<types_kv::VersionedValue> {
     let value = read.await.expect("raft is running");
     value.expect("the state machine database is readable")
 }
+
+/// Authorize on the leader, wait locally, then read the persistent state machine.
+#[openraft::macros::since(version = "0.10.1")]
+pub async fn follower_read(app: Arc<App>, key: String) -> Result<types_kv::Response, app_http::FollowerReadError> {
+    app.ensure_follower_read_ready().await?;
+    let value = get(&app, key).await;
+    Ok(types_kv::Response { value })
+}

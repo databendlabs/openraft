@@ -119,10 +119,27 @@ impl RaftNode {
         let raft_addr = self.app.raft_addr.clone();
 
         let raft_server = network::Server::new(self.app.raft.clone(), self.state_machine_dir).run(raft_addr);
-        let app_server = app_http::Server::new(self.app)
-            .add_openraft_routes()
+        let app_server = app_http::Server::new(self.app).add_openraft_routes();
+        let app_server = if network_v2_http::Faults::active().is_some() {
+            app_server
+                .get("/benchmark/stats", |_app: Arc<App>| async move {
+                    Ok::<_, std::convert::Infallible>(app_http::benchmark_metrics::report())
+                })
+                .get("/benchmark/config", |app: Arc<App>| async move {
+                    Ok::<_, std::convert::Infallible>(
+                        serde_json::to_value(app.raft.config().as_ref()).expect("Config serializes"),
+                    )
+                })
+                .post("/benchmark/transfer", |app: Arc<App>, to: u64| async move {
+                    app.raft.trigger().transfer_leader(to).await.map_err(|error| error.to_string())
+                })
+        } else {
+            app_server
+        };
+        let app_server = app_server
             .post("/read", http_api::read)
             .post("/linearizable_read", http_api::linearizable_read)
+            .post("/follower_read", http_api::follower_read)
             .run(api_addr);
 
         tokio::try_join!(raft_server, app_server)?;

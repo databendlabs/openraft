@@ -177,6 +177,7 @@ bench_relaxed_reads:
 	python3 benchmarks/minimal/scripts/relaxed_reads.py
 
 test-bench-minimal:
+	python3 -m unittest discover -s benchmarks/minimal/scripts -p '*_test.py'
 	cargo test --manifest-path benchmarks/minimal/Cargo.toml --all-targets
 	cargo test --manifest-path benchmarks/minimal/Cargo.toml --all-targets --no-default-features
 
