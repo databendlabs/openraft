@@ -362,6 +362,46 @@ set `--read-delay-ms` beyond `election_timeout_max`, and pass `--allow-read-erro
 Failed attempts have their own counts, latency, and error summaries.
 Build with the default `runtime-stats` feature to inspect the final core message counts, including `GetLinearizer`.
 
+### Arrival queues and request phases
+
+Add `--phase-sample-every 1024` to record one in 1,024 requests. `timing.phases`
+(write-only output), `write_timing.phases`, and `read.timing.phases` (mixed output)
+report client delay, request service, authorization, barrier wait, query-lock wait,
+and query time separately. Each histogram includes its sample count. Phase sampling
+is disabled by default, so cached reads do not pay for extra phase clocks.
+Sampled traces contain boundaries in nanoseconds since the workload epoch.
+
+`--open-loop` generates requests independently of earlier completions. Write and read
+rates must be positive for their active operation classes. `--clients` and
+`--read-clients` limit executing requests; `--queue-capacity` bounds waiting requests
+per class. A full queue records a rejection. The `timing` object reports offered,
+admitted, completed, failed, timed-out, and rejected operations. Existing latency and
+throughput fields count successful operations. Unexpected service errors are recorded
+in this mode; fixed-client sessions still stop unless `--allow-read-errors` permits them.
+
+`--arrival-pattern uniform|poisson|burst` controls arrival spacing. `--arrival-seed`
+replays Poisson schedules with independent read/write streams. `--burst-size` sets
+the simultaneous requests per burst. Fixed-client sessions remain the default.
+`--request-timeout-ms` sets a deadline from the original scheduled arrival, including
+queue delay and retries. A timed-out write has an uncertain outcome: cancellation
+does not undo an accepted write.
+
+For example, measure independent follower-read arrivals with sampled phases:
+
+```sh
+target/release/bench --latency --clients 32 --operations 20000 --write-rate 10000 \
+  --read-clients 64 --read-operations 180000 --read-rate 90000 --read-query \
+  --read-on-follower 1 --open-loop --queue-capacity 1024 \
+  --phase-sample-every 1024 --request-timeout-ms 1000
+```
+
+Add `--arrival-noop` to run the same scheduling and admission path without measured
+Raft calls. Its sampled `generator_delay`, `queue_wait`, and `client_delay` show
+pacing and dispatch error. The scheduler uses Tokio timers, whose millisecond
+resolution can group sub-millisecond arrivals. Measure this control before attributing
+the full scheduled-arrival latency to Raft. No-op mode still creates and warms up
+the cluster before the measurement.
+
 ### Comparing core, local, and relaxed reads
 
 Run `make bench_relaxed_reads` from the repository root, or:

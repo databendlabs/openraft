@@ -1,0 +1,358 @@
+use std::future::Future;
+use std::sync::Arc;
+use std::sync::OnceLock;
+use std::time::Duration;
+use std::time::Instant;
+
+use anyhow::Context;
+use tokio::sync::Barrier;
+use tokio::sync::Mutex;
+use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
+
+use super::request_sample::Outcome;
+use super::request_sample::RequestSample;
+
+const YIELD_BATCH: u64 = 64;
+pub(super) const READ_STREAM: u64 = 0x72656164;
+pub(super) const WRITE_STREAM: u64 = 0x7772697465;
+
+#[derive(Clone, Copy, Debug, Default, clap::ValueEnum, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub(super) enum Pattern {
+    #[default]
+    Uniform,
+    Poisson,
+    Burst,
+}
+
+/// Shared controls for both read and write arrival streams.
+#[derive(Clone, Debug, clap::Args, serde::Serialize)]
+pub(super) struct ArrivalConfig {
+    /// Generate arrivals independently of request completion, with bounded admission.
+    #[arg(long)]
+    pub(super) open_loop: bool,
+    /// Arrival spacing; Poisson is reproducible with --arrival-seed.
+    #[arg(long, value_enum, default_value = "uniform")]
+    pub(super) arrival_pattern: Pattern,
+    #[arg(long, default_value_t = 1)]
+    pub(super) arrival_seed: u64,
+    /// Number of simultaneous arrivals for the burst pattern.
+    #[arg(long, default_value_t = 64)]
+    pub(super) burst_size: u64,
+    /// Maximum waiting requests per operation class, excluding executing requests.
+    #[arg(long, default_value_t = 1024)]
+    pub(super) queue_capacity: usize,
+    /// Deadline from the original scheduled arrival; zero disables deadlines.
+    #[arg(long, default_value_t = 0)]
+    pub(super) request_timeout_ms: u64,
+    /// Record phase timestamps for one in N requests; zero disables phase sampling.
+    #[arg(long, default_value_t = 0)]
+    pub(super) phase_sample_every: u64,
+    /// Complete requests without Raft calls to calibrate arrival and dispatch timing.
+    #[arg(long)]
+    pub(super) arrival_noop: bool,
+}
+
+#[derive(Clone)]
+pub(super) struct Workload {
+    pub(super) config: ArrivalConfig,
+    pub(super) clients: u64,
+    pub(super) operations: u64,
+    pub(super) rate: f64,
+    pub(super) measured: bool,
+    pub(super) stream_seed: u64,
+    pub(super) start: Arc<Barrier>,
+    pub(super) epoch: Arc<OnceLock<Instant>>,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct Arrival {
+    pub(super) operation: u64,
+    pub(super) scheduled: Instant,
+    pub(super) released: Option<Instant>,
+}
+
+pub(super) type Task = JoinHandle<anyhow::Result<Vec<RequestSample>>>;
+
+type Receiver = Arc<Mutex<mpsc::Receiver<Arrival>>>;
+
+pub(super) trait Handler: Clone + Send + Sync + 'static {
+    fn run(&self, arrival: Arrival) -> impl Future<Output = anyhow::Result<Option<RequestSample>>> + Send;
+}
+
+impl Workload {
+    pub(super) fn spawn<H>(&self, run: H) -> Vec<Task>
+    where H: Handler {
+        let mut tasks = Vec::new();
+        if self.config.open_loop {
+            let (tx, rx) = mpsc::channel(self.config.queue_capacity);
+            let rx = Arc::new(Mutex::new(rx));
+            let workload = self.clone();
+            tasks.push(tokio::spawn(async move { workload.generate(tx).await }));
+            for _ in 0..self.clients {
+                tasks.push(self.spawn_worker(rx.clone(), run.clone()));
+            }
+        } else {
+            for id in 0..self.clients {
+                tasks.push(self.spawn_session(id, run.clone()));
+            }
+        }
+        tasks
+    }
+
+    fn spawn_worker<H>(&self, receiver: Receiver, run: H) -> Task
+    where H: Handler {
+        let start = self.start.clone();
+        tokio::spawn(async move {
+            let mut samples = Vec::new();
+            start.wait().await;
+            loop {
+                let mut queue = receiver.lock().await;
+                let next = queue.recv().await;
+                drop(queue);
+                let Some(arrival) = next else { break };
+                if let Some(sample) = run.run(arrival).await? {
+                    samples.push(sample);
+                }
+            }
+            Ok(samples)
+        })
+    }
+
+    fn spawn_session<H>(&self, id: u64, run: H) -> Task
+    where H: Handler {
+        let workload = self.clone();
+        tokio::spawn(async move {
+            let epoch = workload.begin().await?;
+            let mut schedule = Schedule::new(&workload, id, workload.clients, epoch);
+            let mut samples = Vec::new();
+            while let Some(arrival) = schedule.next() {
+                if workload.rate > 0.0 {
+                    wait(arrival.scheduled).await;
+                }
+                if let Some(sample) = run.run(arrival).await? {
+                    samples.push(sample);
+                }
+                if (arrival.operation / workload.clients + 1).is_multiple_of(YIELD_BATCH) {
+                    tokio::task::yield_now().await;
+                }
+            }
+            Ok(samples)
+        })
+    }
+
+    async fn begin(&self) -> anyhow::Result<Instant> {
+        self.start.wait().await;
+        let epoch = *self.epoch.get().context("missing arrival epoch")?;
+        Ok(epoch)
+    }
+
+    async fn generate(&self, sender: mpsc::Sender<Arrival>) -> anyhow::Result<Vec<RequestSample>> {
+        let epoch = self.begin().await?;
+        let mut schedule = Schedule::new(self, 0, 1, epoch);
+        let mut rejected = Vec::new();
+        while let Some(mut arrival) = schedule.next() {
+            wait(arrival.scheduled).await;
+            arrival.released = Some(Instant::now());
+            match sender.try_send(arrival) {
+                Ok(()) => {}
+                Err(mpsc::error::TrySendError::Full(arrival)) => {
+                    let mut sample = RequestSample::new(epoch, arrival, false)?;
+                    sample.outcome = Outcome::Rejected;
+                    sample.finish(epoch, arrival.scheduled)?;
+                    rejected.push(sample);
+                }
+                Err(mpsc::error::TrySendError::Closed(_)) => anyhow::bail!("arrival workers stopped"),
+            }
+            if (arrival.operation + 1).is_multiple_of(YIELD_BATCH) {
+                tokio::task::yield_now().await;
+            }
+        }
+        Ok(rejected)
+    }
+}
+
+/// An independent schedule for a generator, or one sequential client session.
+struct Schedule {
+    pattern: Pattern,
+    burst: u64,
+    random: u64,
+    operation: u64,
+    stride: u64,
+    operations: u64,
+    rate: f64,
+    measured: bool,
+    offset: f64,
+    epoch: Instant,
+}
+
+impl Schedule {
+    fn new(workload: &Workload, id: u64, stride: u64, epoch: Instant) -> Self {
+        Self {
+            pattern: workload.config.arrival_pattern,
+            burst: workload.config.burst_size,
+            random: (workload.config.arrival_seed ^ workload.stream_seed).wrapping_add(id),
+            operation: id,
+            stride,
+            operations: workload.operations,
+            rate: workload.rate,
+            measured: workload.measured,
+            offset: 0.0,
+            epoch,
+        }
+    }
+
+    fn next(&mut self) -> Option<Arrival> {
+        if self.operation >= self.operations {
+            return None;
+        }
+        let operation = self.operation;
+        self.operation += self.stride;
+        let scheduled = if self.rate == 0.0 {
+            if self.measured { Instant::now() } else { self.epoch }
+        } else {
+            self.offset = self.next_offset(operation);
+            self.epoch + Duration::from_secs_f64(self.offset)
+        };
+        Some(Arrival {
+            operation,
+            scheduled,
+            released: None,
+        })
+    }
+
+    fn next_offset(&mut self, operation: u64) -> f64 {
+        match self.pattern {
+            Pattern::Uniform => operation as f64 / self.rate,
+            Pattern::Burst => (operation / self.burst * self.burst) as f64 / self.rate,
+            Pattern::Poisson => {
+                self.random = self.random.wrapping_add(0x9e3779b97f4a7c15);
+                let mut bits = self.random;
+                bits = (bits ^ (bits >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+                bits = (bits ^ (bits >> 27)).wrapping_mul(0x94d049bb133111eb);
+                bits ^= bits >> 31;
+                let uniform = ((bits >> 11) as f64 + 0.5) / (1u64 << 53) as f64;
+                self.offset - uniform.ln() * self.stride as f64 / self.rate
+            }
+        }
+    }
+}
+
+async fn wait(scheduled: Instant) {
+    if scheduled > Instant::now() {
+        let deadline = tokio::time::Instant::from_std(scheduled);
+        tokio::time::sleep_until(deadline).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+    use std::sync::OnceLock;
+    use std::time::Duration;
+    use std::time::Instant;
+
+    use clap::Parser;
+    use tokio::sync::Barrier;
+    use tokio::sync::mpsc;
+
+    use super::super::Args;
+    use super::Outcome;
+    use super::Pattern;
+    use super::Schedule;
+    use super::Workload;
+
+    fn workload() -> Workload {
+        let args = Args::parse_from(["bench"]);
+        let epoch = Arc::new(OnceLock::new());
+        epoch.set(Instant::now()).unwrap();
+        Workload {
+            config: args.arrival,
+            clients: 2,
+            operations: 4,
+            rate: 1000.0,
+            measured: true,
+            stream_seed: super::READ_STREAM,
+            start: Arc::new(Barrier::new(1)),
+            epoch,
+        }
+    }
+
+    #[tokio::test]
+    async fn a_stalled_receiver_retains_only_queue_capacity() -> anyhow::Result<()> {
+        let mut workload = workload();
+        workload.config.arrival_pattern = Pattern::Burst;
+        let (tx, mut rx) = mpsc::channel(2);
+        let rejected = workload.generate(tx).await?;
+        let mut admitted = Vec::new();
+        while let Some(arrival) = rx.recv().await {
+            admitted.push(arrival.operation);
+        }
+        assert_eq!(vec![0, 1], admitted);
+        let actual: Vec<_> = rejected.into_iter().map(|sample| sample.outcome).collect();
+        assert_eq!(vec![Outcome::Rejected, Outcome::Rejected], actual);
+        Ok(())
+    }
+
+    #[test]
+    fn uniform_and_burst_schedules_keep_the_requested_arrivals() {
+        let mut workload = workload();
+        let epoch = *workload.epoch.get().unwrap();
+        let mut uniform = Schedule::new(&workload, 1, 2, epoch);
+        let mut offsets = Vec::new();
+        while let Some(arrival) = uniform.next() {
+            offsets.push(arrival.scheduled.duration_since(epoch));
+        }
+        assert_eq!(vec![Duration::from_millis(1), Duration::from_millis(3)], offsets);
+        workload.config.arrival_pattern = Pattern::Burst;
+        workload.config.burst_size = 2;
+        let mut burst = Schedule::new(&workload, 0, 1, epoch);
+        let mut offsets = Vec::new();
+        while let Some(arrival) = burst.next() {
+            offsets.push(arrival.scheduled.duration_since(epoch));
+        }
+        assert_eq!(
+            vec![
+                Duration::ZERO,
+                Duration::ZERO,
+                Duration::from_millis(2),
+                Duration::from_millis(2)
+            ],
+            offsets
+        );
+    }
+
+    #[test]
+    fn poisson_arrivals_are_reproducible_and_strictly_increasing() {
+        let mut workload = workload();
+        workload.operations = 100;
+        workload.config.arrival_pattern = Pattern::Poisson;
+        let epoch = *workload.epoch.get().unwrap();
+        let mut first = Schedule::new(&workload, 0, 1, epoch);
+        let mut second = Schedule::new(&workload, 0, 1, epoch);
+        let mut previous = epoch;
+        while let Some(arrival) = first.next() {
+            let replay = second.next().unwrap();
+            assert_eq!(arrival.scheduled, replay.scheduled);
+            assert!(arrival.scheduled > previous);
+            previous = arrival.scheduled;
+        }
+        let remaining = second.next();
+        assert!(remaining.is_none());
+        workload.stream_seed = super::WRITE_STREAM;
+        let mut writes = Schedule::new(&workload, 0, 1, epoch);
+        let mut reads = Schedule::new(
+            &Workload {
+                stream_seed: super::READ_STREAM,
+                ..workload
+            },
+            0,
+            1,
+            epoch,
+        );
+        let write_arrival = writes.next().unwrap();
+        let read_arrival = reads.next().unwrap();
+        assert_ne!(write_arrival.scheduled, read_arrival.scheduled);
+    }
+}

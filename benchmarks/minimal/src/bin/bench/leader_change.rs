@@ -70,7 +70,7 @@ impl Leaders {
     }
 
     /// Writes once, retrying on the current leader until a leader accepts the write.
-    pub(super) async fn client_write(&self) -> anyhow::Result<()> {
+    pub(super) async fn client_write(&self, retries: &mut u64) -> anyhow::Result<()> {
         loop {
             let (node, raft) = self.current();
             let Err(error) = raft.client_write(ClientRequest {}).await else {
@@ -79,6 +79,7 @@ impl Leaders {
             if error.forward_to_leader().is_none() {
                 return Err(error.into());
             }
+            *retries += 1;
             self.retry_later(node).await;
         }
     }

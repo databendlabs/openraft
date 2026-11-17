@@ -25,11 +25,9 @@ use bench_minimal::network::BenchRaft;
 use bench_minimal::network::Router;
 use bench_minimal::store::ClientRequest;
 use clap::Parser;
-use futures::TryStreamExt;
 use leader_change::Leaders;
 use openraft::Config;
 use openraft::ReadPolicy;
-use openraft::raft::WriteOption;
 use read_workload::ReadWorkload;
 use tokio::runtime::Builder;
 use tokio::runtime::Runtime;
@@ -37,6 +35,18 @@ use tokio::sync::Barrier;
 use tokio::task::JoinHandle;
 #[cfg(feature = "flamegraph")]
 use tracing_flame::FlushGuard;
+
+#[path = "bench/arrival.rs"]
+mod arrival;
+#[path = "bench/request_sample.rs"]
+mod request_sample;
+#[path = "bench/write_workload.rs"]
+mod write_workload;
+
+use request_sample::Outcome;
+use request_sample::RequestSample;
+use request_sample::timing_report;
+use write_workload::WriteWorkload;
 
 const WARMUP_WRITES: usize = 1024;
 const WAIT_TIMEOUT: Duration = Duration::from_secs(400);
@@ -159,6 +169,9 @@ struct Args {
     /// Successful writes before measurement starts.
     #[arg(long, default_value_t = WARMUP_WRITES)]
     warmup_writes: usize,
+
+    #[command(flatten)]
+    arrival: arrival::ArrivalConfig,
 }
 
 /// The read policy of each benchmark read.
@@ -211,6 +224,7 @@ struct BenchConfig {
     pub apply_io_delay_us: u64,
     pub apply_entry_delay_us: u64,
     pub warmup_writes: usize,
+    pub arrival: arrival::ArrivalConfig,
 }
 
 impl BenchConfig {
@@ -334,6 +348,7 @@ fn main() -> anyhow::Result<()> {
         apply_io_delay_us: args.apply_io_delay_us,
         apply_entry_delay_us: args.apply_entry_delay_us,
         warmup_writes: args.warmup_writes,
+        arrival: args.arrival.clone(),
     };
 
     eprintln!("Benchmark config: {}", bench_config);
@@ -348,6 +363,7 @@ fn validate(args: &Args) -> anyhow::Result<()> {
         ensure!(args.operations == 0, "operations must be zero without write clients");
         ensure!(args.write_rate == 0, "write-rate must be zero without write clients");
     }
+    validate_arrivals(args)?;
     validate_reads(args)?;
     validate_leader_change(args)?;
     ensure!(args.batch > 0, "batch must be positive");
@@ -371,6 +387,32 @@ fn validate(args: &Args) -> anyhow::Result<()> {
     let max_delay = delays.into_iter().max().unwrap();
     let within_timeout = u128::from(max_delay) < WAIT_TIMEOUT.as_micros();
     ensure!(within_timeout, "simulated delay exceeds the benchmark timeout");
+    Ok(())
+}
+
+fn validate_arrivals(args: &Args) -> anyhow::Result<()> {
+    let config = &args.arrival;
+    ensure!(config.queue_capacity > 0, "queue-capacity must be positive");
+    ensure!(config.burst_size > 0, "burst-size must be positive");
+    let timeout = Duration::from_millis(config.request_timeout_ms);
+    ensure!(timeout < WAIT_TIMEOUT, "request-timeout-ms exceeds benchmark timeout");
+    let measured = args.latency || args.read_clients > 0;
+    let needs_measurement =
+        config.open_loop || config.arrival_noop || config.phase_sample_every > 0 || config.request_timeout_ms > 0;
+    ensure!(
+        !needs_measurement || measured,
+        "arrival controls require --latency or read clients"
+    );
+    if config.open_loop {
+        ensure!(
+            args.clients == 0 || args.write_rate > 0,
+            "open-loop writes require write-rate"
+        );
+        ensure!(
+            args.read_clients == 0 || args.read_rate > 0,
+            "open-loop reads require read-rate"
+        );
+    }
     Ok(())
 }
 
@@ -538,6 +580,12 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft, router: &Router
     let read_clients = usize::try_from(bench_config.read_clients)?;
     let participants = client_count.checked_add(read_clients);
     let participants = participants.context("total clients overflows")?;
+    let generators = if bench_config.arrival.open_loop {
+        usize::from(n_client > 0) + usize::from(read_clients > 0)
+    } else {
+        0
+    };
+    let participants = participants.checked_add(generators).context("generator participants overflows")?;
     let participants = participants.checked_add(1).context("barrier participants overflows")?;
     let start = Arc::new(Barrier::new(participants));
     let epoch = Arc::new(OnceLock::new());
@@ -591,7 +639,14 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft, router: &Router
         Some(workload) => workload.spawn_clients(),
         None => Vec::new(),
     };
-    let mut handles = Vec::new();
+    let write_workload = WriteWorkload {
+        config: Arc::new(bench_config.clone()),
+        leader: leader.clone(),
+        leaders: leaders.clone(),
+        start: start.clone(),
+        epoch: epoch.clone(),
+    };
+    let handles = write_workload.spawn_clients();
 
     // Spawn stats printing task
     #[cfg(feature = "runtime-stats")]
@@ -610,75 +665,6 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft, router: &Router
             }
         }
     });
-
-    for client_id in 0..n_client {
-        let l = leader.clone();
-        let leaders = leaders.clone();
-        let start = start.clone();
-        let epoch = epoch.clone();
-        let h = if batch_size <= 1 {
-            // Single write mode
-            tokio::spawn(async move {
-                let mut latencies = Vec::new();
-                start.wait().await;
-                let epoch = *epoch.get().unwrap();
-                for i in 0..ops_per_client {
-                    let operation = i * n_client + client_id;
-                    let started = if write_rate > 0 {
-                        let scheduled = pace(epoch, operation, write_rate).await;
-                        measure_latency.then_some(scheduled)
-                    } else {
-                        measure_latency.then(Instant::now)
-                    };
-                    match &leaders {
-                        Some(leaders) => leaders.client_write().await?,
-                        None => {
-                            l.client_write(ClientRequest {}).await?;
-                        }
-                    }
-                    if let Some(started) = started {
-                        let elapsed = started.elapsed();
-                        let nanos = elapsed.as_nanos();
-                        let nanos = u64::try_from(nanos)?;
-                        latencies.push(nanos);
-                    }
-                }
-                Ok::<_, anyhow::Error>(latencies)
-            })
-        } else {
-            // Batch write mode
-            tokio::spawn(async move {
-                let batches = ops_per_client / batch_size;
-                let mut latencies = Vec::new();
-                start.wait().await;
-                let epoch = *epoch.get().unwrap();
-
-                for batch in 0..batches {
-                    let requests: Vec<_> = (0..batch_size).map(|_| ClientRequest {}).collect();
-                    let operation = (batch * n_client + client_id) * batch_size;
-                    let started = if write_rate > 0 {
-                        let scheduled = pace(epoch, operation, write_rate).await;
-                        measure_latency.then_some(scheduled)
-                    } else {
-                        measure_latency.then(Instant::now)
-                    };
-                    let mut stream = l.client_write_many(requests, WriteOption::default()).await?;
-                    while let Some(result) = stream.try_next().await? {
-                        result?;
-                    }
-                    if let Some(started) = started {
-                        let elapsed = started.elapsed();
-                        let nanos = elapsed.as_nanos();
-                        let nanos = u64::try_from(nanos)?;
-                        latencies.push(nanos);
-                    }
-                }
-                Ok::<_, anyhow::Error>(latencies)
-            })
-        };
-
-        handles.push(h)
-    }
 
     let now = Instant::now();
     epoch.set(now).unwrap();
@@ -723,19 +709,32 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft, router: &Router
     }
 
     if measure_latency {
-        let mut latencies = Vec::new();
-        for samples in client_latencies {
-            latencies.extend(samples);
-        }
+        let samples: Vec<RequestSample> = client_latencies.into_iter().flatten().collect();
+        let timing = timing_report(&samples, batch_size)?;
+        let completed = samples.iter().filter(|sample| sample.outcome == Outcome::Completed);
+        let mut latencies: Vec<_> = completed.map(|sample| sample.latency_ns).collect();
         latencies.sort_unstable();
         let seconds = elapsed.as_secs_f64();
-        let operations_per_second = total as f64 / seconds;
-        let p50 = percentile(&latencies, 50);
-        let p95 = percentile(&latencies, 95);
-        let p99 = percentile(&latencies, 99);
+        let completed = latencies.len() as u64 * batch_size;
+        let operations_per_second = completed as f64 / seconds;
+        let p50 = if latencies.is_empty() {
+            0
+        } else {
+            percentile(&latencies, 50)
+        };
+        let p95 = if latencies.is_empty() {
+            0
+        } else {
+            percentile(&latencies, 95)
+        };
+        let p99 = if latencies.is_empty() {
+            0
+        } else {
+            percentile(&latencies, 99)
+        };
         let samples = latencies.len();
         let total_latency: u128 = latencies.iter().map(|value| u128::from(*value)).sum();
-        let mean = total_latency / samples as u128;
+        let mean = total_latency / samples.max(1) as u128;
         let mean = u64::try_from(mean)?;
         let runtime_stats = cfg!(feature = "runtime-stats");
         let latency_origin = if write_rate > 0 {
@@ -745,7 +744,9 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft, router: &Router
         };
         let report = serde_json::json!({
             "requested_operations": bench_config.n_operations,
-            "operations": total,
+            "operations": completed,
+            "timing": timing,
+            "arrival": bench_config.arrival,
             "samples": samples,
             "seconds": seconds,
             "operations_per_second": operations_per_second,
@@ -796,6 +797,7 @@ async fn collect_clients<T>(handles: Vec<JoinHandle<anyhow::Result<Vec<T>>>>) ->
     Ok(samples)
 }
 
+#[cfg(test)]
 async fn pace(epoch: Instant, operation: u64, write_rate: u64) -> Instant {
     let seconds = operation as f64 / write_rate as f64;
     let offset = Duration::from_secs_f64(seconds);
