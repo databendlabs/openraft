@@ -670,3 +670,62 @@ Attach validates server-reported storage metadata and rejects local binary/port/
 Process crash/restart and snapshot scenarios require owned local
 processes. `--output` must be new; commands, resolved Raft configuration, executable hash,
 raw bounded histories, reports, and owned-node data/logs remain there after failure.
+
+### Reproducible comparisons
+
+`apply_delays.py`, `relaxed_reads.py`, and `compare.py` share workload validation,
+artifact storage, and build caching. They default to five rounds and performance builds
+without `runtime-stats`. Scenario order rotates between rounds; each scenario also rotates
+its mode order. Comparison tables show per-round paired changes with a seeded bootstrap
+95% interval. Run-level p99 values remain separate observations. Overlapping ranges describe
+variation and do not establish that a change is noise. Fewer than five rounds, sampled
+compiler activity, or changing runtime inputs make a group diagnostic only.
+
+```sh
+python3 benchmarks/minimal/scripts/relaxed_reads.py --grid follower \
+  --scenario mixed/log-read-500us --seconds 30 --warmup-seconds 5 \
+  --clients 32 --read-clients 256 --write-rate 10000 --read-rate 90000 \
+  --client-workers 2 --server-workers 16 --seed 7 --output /tmp/read-pairs
+python3 benchmarks/minimal/scripts/compare.py --base HEAD~1 --apply-delays \
+  --scenario clients=256/read=500/io=500/entry=0 --runs 5
+```
+
+Omit `--seconds` for exact-count controls. The historical apply grid uses 29,952 writes
+with 256 clients so old binaries execute the requested count exactly. Counts, rates, and
+client overrides affect only operation classes active in a scenario. Structured outcomes
+must conserve all offered work; intentional overload retains rejected, timed-out, and pending
+operations. Legacy reports without outcome accounting must complete the exact requested count.
+Read grids enable ticking, heartbeats, and elections, including lease renewal for long
+read-only runs. Explicit disabled-heartbeat controls require `--lease-expiry-control`.
+Existing tables above describe their original revisions and settings.
+
+Use `--profile` with `--payload-bytes`, `--profile-keys`, `--hot-key-percent`, and storage/link
+controls to select the realistic workload. The scripts compile `realistic-profiles` when
+needed. `--diagnostics` runs matching `runtime-stats` companions in a separate group.
+For a custom `compare.py` command, put workload controls after `--`; outer controls apply
+to generated grids. For example, `-- --latency -c 256 -n 30000 --arrival-seed 7`.
+
+Every invocation saves a versioned manifest, complete run JSON, commands, stdout, stderr,
+host samples, failures, and summaries before rendering tables. `--raw` adds a full-record
+JSONL copy. `--timeout` and `--build-timeout` bound owned command groups. Active system load
+is recorded; saturation alone does not invalidate a run. Compiler observations are sampled
+and cannot prove that no short background build occurred.
+
+The default cache is `$XDG_CACHE_HOME/openraft-bench` or `~/.cache/openraft-bench`, outside
+disposable worktrees. Override it with `--cache-dir`. Each immutable binary entry retains
+its source snapshot, actual lockfile, build logs, compiler, features, flags/configuration,
+and hashes. Ignored lockfiles are captured or generated once, then builds use `--locked`.
+Supply `--lockfile`, or `compare.py`'s `--base-lockfile` and `--target-lockfile`, to reuse a
+specific dependency graph. Toolchains resolve independently in each source's crate directory;
+explicit per-reference overrides are also available. Cache reads verify the stored binary
+and source inputs. Cargo discovers configuration in the source snapshot, cache ancestors,
+and `CARGO_HOME`; it does not inherit the original checkout's parent-directory configuration.
+`--binary-manifest` reuses a verified entry; comparisons accept separate
+base/target manifests. The scripts require Python 3.11 or newer.
+
+The process driver builds its dedicated node into the same cache unless `--binary` or
+`--binary-manifest` selects one. An explicit standalone binary has an unknown build-input
+history. `--server-workers` sets Tokio workers per owned node and runtime metadata verifies
+the effective count. Reports distinguish these workers from Python client threads. Attached
+runs verify node IDs, distinct numeric endpoints, storage metadata, and empty initial fault
+controls. Older attached nodes without runtime metadata report an unknown worker allocation.

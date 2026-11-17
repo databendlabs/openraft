@@ -177,11 +177,15 @@ bench_relaxed_reads:
 	python3 benchmarks/minimal/scripts/relaxed_reads.py
 
 test-bench-minimal:
-	python3 -m unittest discover -s benchmarks/minimal/scripts -p '*_test.py'
+	$(MAKE) test-bench-scripts
 	cargo test --manifest-path benchmarks/minimal/Cargo.toml --all-targets
 	cargo test --manifest-path benchmarks/minimal/Cargo.toml --all-targets --no-default-features
 	cargo test --manifest-path benchmarks/minimal/Cargo.toml --all-targets --features realistic-profiles
 	cargo test --manifest-path benchmarks/minimal/Cargo.toml --all-targets --no-default-features --features realistic-profiles
+
+.PHONY: test-bench-scripts
+test-bench-scripts:
+	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s benchmarks/minimal/scripts -p '*_test.py'
 
 fmt_check:
 	$(MAKE) fmt FMT_ARGS='-- --check'

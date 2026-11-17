@@ -125,6 +125,9 @@ where
         .get("/benchmark/config", |app: Arc<App<C, SM, Data>>| async move {
             Ok::<_, String>(app.raft.config().as_ref().clone())
         })
+        .get("/benchmark/runtime", |_app: Arc<App<C, SM, Data>>| async move {
+            Ok::<_, String>(runtime_metadata())
+        })
         .post(
             "/benchmark/transfer",
             |app: Arc<App<C, SM, Data>>, target: C::NodeId| async move {
@@ -228,6 +231,12 @@ fn storage(backend: &str) -> serde_json::Value {
     }
 }
 
+fn runtime_metadata() -> serde_json::Value {
+    let handle = tokio::runtime::Handle::current();
+    let workers = handle.metrics().num_workers();
+    serde_json::json!({"server_worker_threads": workers, "compiled_rocks": cfg!(feature = "rocks")})
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -249,6 +258,13 @@ mod tests {
         let body = response.into_body().collect().await.unwrap();
         let bytes = body.to_bytes();
         assert_eq!(b"response encoding failed".as_slice(), bytes.as_ref());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn runtime_metadata_reports_the_effective_worker_allocation() {
+        let actual = runtime_metadata();
+        let expected = serde_json::json!({"server_worker_threads": 2, "compiled_rocks": cfg!(feature = "rocks")});
+        assert_eq!(expected, actual);
     }
 
     #[tokio::test]
