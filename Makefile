@@ -62,6 +62,7 @@ check-parallel:
 
 
 test-examples:
+	cargo test --manifest-path examples/app-http/Cargo.toml
 	cargo test --manifest-path examples/dir-transfer/Cargo.toml
 	cargo test --manifest-path examples/log-fjall/Cargo.toml
 	cargo test --manifest-path examples/log-mem/Cargo.toml
@@ -79,6 +80,7 @@ test-examples:
 	cargo test --manifest-path examples/raft-kv-rkyv/Cargo.toml
 	cargo test --manifest-path examples/sm-fjall/Cargo.toml
 	cargo test --manifest-path examples/sm-rocks/Cargo.toml
+	cargo test --manifest-path examples/types-kv/Cargo.toml
 	cargo test --manifest-path examples/multi-raft-kv/Cargo.toml
 
 test-runtime:

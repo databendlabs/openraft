@@ -257,6 +257,7 @@ jobs:
           - 'stable'
           - 'nightly'
         example:
+          - 'app-http'
           - 'dir-transfer'
           - 'log-fjall'
           - 'log-mem'
@@ -264,6 +265,7 @@ jobs:
           - 'log-wal'
           - 'sm-fjall'
           - 'sm-rocks'
+          - 'types-kv'
           - 'network-v2-http'
           - 'raft-kv-log-wal-sm-mem'
           - 'raft-kv-memstore'
