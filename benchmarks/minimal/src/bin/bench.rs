@@ -61,6 +61,10 @@ mod write_progress;
 #[path = "bench/profile_history.rs"]
 mod profile_history;
 
+#[cfg(feature = "apply-pipeline")]
+#[path = "bench/apply_pipeline.rs"]
+mod apply_pipeline;
+
 const WARMUP_WRITES: usize = 1024;
 const WAIT_TIMEOUT: Duration = Duration::from_secs(400);
 
@@ -642,8 +646,11 @@ async fn do_bench(
     let n_client = bench_config.n_client;
     let batch_size = bench_config.batch_size;
     let bounds = bench_config.measurement.bounds();
-    let measure_latency =
-        bench_config.latency || bench_config.read_clients > 0 || bounds.end.is_some() || bench_config.profile.profile;
+    let measure_latency = bench_config.latency
+        || bench_config.read_clients > 0
+        || bounds.end.is_some()
+        || bench_config.profile.profile
+        || bench_config.measurement.pipeline_enabled();
     let client_count = usize::try_from(n_client)?;
     let read_clients = usize::try_from(bench_config.read_clients)?;
     let participants = client_count.checked_add(read_clients);
@@ -666,6 +673,8 @@ async fn do_bench(
         None
     };
 
+    #[cfg(feature = "apply-pipeline")]
+    let pipeline = apply_pipeline::install(router, bench_config, epoch.clone()).await?;
     for _ in 0..bench_config.warmup_writes {
         leader.client_write(ClientRequest::default()).await?;
     }
@@ -856,6 +865,10 @@ async fn do_bench(
         }
     }
     let apply_metrics: BTreeMap<_, _> = diagnostics.iter().map(|(id, metrics)| (*id, metrics.report())).collect();
+    #[cfg(feature = "apply-pipeline")]
+    let apply_pipeline: BTreeMap<_, _> = pipeline.iter().map(|(id, probe)| (*id, probe.report())).collect();
+    #[cfg(not(feature = "apply-pipeline"))]
+    let apply_pipeline = serde_json::Value::Null;
     #[cfg(feature = "runtime-stats")]
     let command_counts = match command_window {
         Some(mut task) => match tokio::time::timeout_at(
@@ -919,10 +932,11 @@ async fn do_bench(
         let reads = read_samples.read_report(elapsed);
         let timing = client_latencies.timing();
         let local = leader.config().enable_local_lease_read.unwrap_or(false);
-        let report = serde_json::json!({"schema_version":2,"operation_units":{"write":"entry","read":"request"},"seconds":elapsed.as_secs_f64(),"write":writes,"read":reads,
+        let mut report = serde_json::json!({"schema_version":2,"operation_units":{"write":"entry","read":"request"},"seconds":elapsed.as_secs_f64(),"write":writes,"read":reads,
             "write_timing":timing,"config":bench_config,"local_lease_read_enabled":local,"runtime_stats":cfg!(feature="runtime-stats"),"compiled_features":compiled_features(),
             "profile":profile_report,"window":window,"monitoring":monitoring,"memory":memory,"apply_metrics":apply_metrics,
             "command_counts":command_counts,"resolved_raft_config":resolved_config,"follower_lag":follower_lag,"leader_change":leader_change});
+        report["apply_pipeline"] = serde_json::to_value(apply_pipeline)?;
         println!("{report}");
         return Ok(());
     }
@@ -951,6 +965,7 @@ async fn do_bench(
             "apply_read_delay_us":bench_config.apply_read_delay_us,"apply_io_delay_us":bench_config.apply_io_delay_us,
             "apply_entry_delay_us":bench_config.apply_entry_delay_us,"arrival":bench_config.arrival,"measurement":bench_config.measurement});
         report["compiled_features"] = compiled_features();
+        report["apply_pipeline"] = serde_json::to_value(apply_pipeline)?;
         println!("{report}");
         return Ok(());
     }
@@ -1018,6 +1033,7 @@ fn compiled_features() -> serde_json::Value {
         "bt":cfg!(feature = "bt"),
         "tokio-console":cfg!(feature = "tokio-console"),
         "flamegraph":cfg!(feature = "flamegraph"),
+        "apply-pipeline":cfg!(feature = "apply-pipeline"),
     })
 }
 
@@ -1298,5 +1314,22 @@ mod tests {
         let actual = validate(&args).map_err(|error| error.to_string());
         assert_eq!(Ok(()), actual);
         Ok(())
+    }
+
+    #[test]
+    fn pipeline_flag_is_available_only_with_its_feature() {
+        let parsed = Args::try_parse_from(["bench", "--measure-apply-pipeline"]);
+        #[cfg(feature = "apply-pipeline")]
+        {
+            let args = parsed.unwrap();
+            let enabled = args.measurement.pipeline_enabled();
+            assert!(enabled);
+        }
+        #[cfg(not(feature = "apply-pipeline"))]
+        {
+            let error = parsed.unwrap_err();
+            let kind = error.kind();
+            assert_eq!(clap::error::ErrorKind::UnknownArgument, kind);
+        }
     }
 }
