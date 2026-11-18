@@ -16,8 +16,8 @@ use crate::type_config::alias::WatchSenderOf;
 
 /// Wakes `RaftCore` with one notification when a deadline that `RaftCore` sets is reached.
 ///
-/// `RaftCore` uses one instance for the earliest pending linearizable read, and one for the instant
-/// at which a follower's election may be due.
+/// `RaftCore` uses one instance for the earliest pending linearizable read, one for the instant at
+/// which a follower's election may be due, and one for a leader's next heartbeat.
 ///
 /// After firing, the worker waits on `changed()` instead of re-arming on the deadline it just
 /// reported. For pending reads this cannot lose a wake-up: the `drain_expired` that the
@@ -36,11 +36,11 @@ where C: RaftTypeConfig
 impl<C> DeadlineNotifier<C>
 where C: RaftTypeConfig
 {
-    /// Spawn a worker that sends `notification()` when the deadline set by
-    /// [`Self::set_deadline`] is reached.
+    /// Spawn a worker that sends `notification(n)` when the deadline set by
+    /// [`Self::set_deadline`] is reached for the `n`-th time, counting from 1.
     pub(crate) fn spawn(
         notification_tx: MpscSenderOf<C, Notification<C>>,
-        notification: fn() -> Notification<C>,
+        notification: fn(u64) -> Notification<C>,
     ) -> Self {
         let (deadline_tx, deadline_rx) = C::watch_channel(None);
         let (cancel, future) = Self::run(deadline_rx, notification_tx, notification);
@@ -61,7 +61,7 @@ where C: RaftTypeConfig
     fn run(
         deadline_rx: WatchReceiverOf<C, Option<InstantOf<C>>>,
         notification_tx: MpscSenderOf<C, Notification<C>>,
-        notification: fn() -> Notification<C>,
+        notification: fn(u64) -> Notification<C>,
     ) -> (CancelHandleOf<C>, impl Future<Output = ()> + OptionalSend) {
         let future = Self::do_run(deadline_rx, notification_tx, notification);
         let (cancel, future) = C::cancellable(future);
@@ -74,8 +74,9 @@ where C: RaftTypeConfig
     async fn do_run(
         mut deadline_rx: WatchReceiverOf<C, Option<InstantOf<C>>>,
         notification_tx: MpscSenderOf<C, Notification<C>>,
-        notification: fn() -> Notification<C>,
+        notification: fn(u64) -> Notification<C>,
     ) {
+        let mut reached = 0;
         loop {
             let deadline = *deadline_rx.borrow_and_update();
             let Some(deadline) = deadline else {
@@ -92,7 +93,8 @@ where C: RaftTypeConfig
                 Err(_) => {}
             }
 
-            let send_result = notification_tx.send(notification()).await;
+            reached += 1;
+            let send_result = notification_tx.send(notification(reached)).await;
             if send_result.is_err() {
                 return;
             }
@@ -121,7 +123,7 @@ mod tests {
     fn deadline_notifier_uses_latest_deadline_and_rearms() {
         C::run(async {
             let (tx, mut rx) = C::mpsc(4);
-            let notifier = DeadlineNotifier::<C>::spawn(tx, || Notification::PendingReadDeadlineReached);
+            let notifier = DeadlineNotifier::<C>::spawn(tx, |i| Notification::Tick { i });
 
             let late = C::now() + Duration::from_secs(1);
             notifier.set_deadline(Some(late));
@@ -131,14 +133,20 @@ mod tests {
 
             let received = C::timeout(Duration::from_secs(1), rx.recv()).await;
             let notification = received.unwrap().unwrap();
-            assert!(matches!(notification, Notification::PendingReadDeadlineReached));
+            assert!(
+                matches!(notification, Notification::Tick { i: 1 }),
+                "got: {notification}"
+            );
 
             let next = C::now() + Duration::from_millis(10);
             notifier.set_deadline(Some(next));
 
             let received = C::timeout(Duration::from_secs(1), rx.recv()).await;
             let notification = received.unwrap().unwrap();
-            assert!(matches!(notification, Notification::PendingReadDeadlineReached));
+            assert!(
+                matches!(notification, Notification::Tick { i: 2 }),
+                "got: {notification}"
+            );
         });
     }
 
@@ -153,7 +161,7 @@ mod tests {
             let deadline = C::now() - TIMEOUT;
             let (deadline_tx, deadline_rx) = C::watch_channel(Some(deadline));
             let (cancel, future) =
-                DeadlineNotifier::<C>::run(deadline_rx, tx, || Notification::PendingReadDeadlineReached);
+                DeadlineNotifier::<C>::run(deadline_rx, tx, |_| Notification::PendingReadDeadlineReached);
             let mut future = std::pin::pin!(future);
             let pending = future.as_mut().now_or_never();
             assert_eq!(None, pending);

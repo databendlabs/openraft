@@ -47,7 +47,6 @@ mod replication_state;
 mod server_state;
 mod shared_replicate_batch;
 mod step_down_watcher;
-mod tick;
 
 pub(crate) use client_responder_queue::ClientResponderQueue;
 pub(crate) use deadline_notifier::DeadlineNotifier;
@@ -63,5 +62,3 @@ pub(crate) use replication_state::replication_lag;
 pub use server_state::ServerState;
 pub(crate) use shared_replicate_batch::SharedReplicateBatch;
 pub(crate) use step_down_watcher::StepDownWatcher;
-pub(crate) use tick::Tick;
-pub(crate) use tick::TickHandle;

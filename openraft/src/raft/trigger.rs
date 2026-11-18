@@ -78,7 +78,7 @@ where C: RaftTypeConfig
 
     /// Queue one timer check and return once it is queued.
     ///
-    /// RaftCore runs the heartbeat check that the internal ticker triggers, and an election check:
+    /// RaftCore runs the heartbeat check that the heartbeat timer triggers, and an election check:
     /// a leader whose heartbeat is due sends one heartbeat, and a node whose election is due starts
     /// it. The check reads the current time when RaftCore handles it. A check before a deadline
     /// does nothing, and a check after several missed heartbeat intervals sends one heartbeat.
@@ -91,7 +91,7 @@ where C: RaftTypeConfig
     /// the caller's interval adds to the heartbeat latency. Elections do not need this call: they
     /// run on their own election timer, controlled by [`Config::enable_elect`], whether
     /// `enable_tick` is on or off, and the election check is kept for backward compatibility. The
-    /// internal ticker checks about five times per [`Config::heartbeat_interval`]. This call waits
+    /// heartbeat timer of a leader fires once per [`Config::heartbeat_interval`]. This call waits
     /// while the API channel of this node is full.
     ///
     /// Returns error when RaftCore has [`Fatal`] error, e.g., shut down or having storage error.

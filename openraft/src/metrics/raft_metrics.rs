@@ -173,7 +173,9 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     ///
     /// Use `last_quorum_acked` instead, which is an absolute timestamp.
     /// This value relates to the time when metrics are reported, which may behind the current time
-    /// by an unknown duration (although it should be very small).
+    /// by an unknown duration. `RaftCore` reports metrics only when it wakes up, so on an idle
+    /// leader with heartbeats off, which nothing wakes, this value stops growing.
+    #[since(version = "0.10.1", change = "stops growing on an idle leader with heartbeats off")]
     #[deprecated(since = "0.10.0", note = "use `last_quorum_acked` instead.")]
     pub millis_since_quorum_ack: Option<u64>,
 
@@ -371,6 +373,10 @@ pub struct RaftDataMetrics<C: RaftTypeConfig> {
     /// synchronization with the cluster.
     /// A longer duration without acknowledgment may suggest a higher probability of the leader
     /// being partitioned from the cluster.
+    ///
+    /// `RaftCore` reports metrics only when it wakes up, so on an idle leader with heartbeats off,
+    /// which nothing wakes, this value stops growing. `last_quorum_acked` stays exact.
+    #[since(version = "0.10.1", change = "stops growing on an idle leader with heartbeats off")]
     #[deprecated(since = "0.10.0", note = "use `last_quorum_acked` instead.")]
     pub millis_since_quorum_ack: Option<u64>,
 

@@ -112,7 +112,7 @@ where
     /// The time at which this voting round started.
     ///
     /// Used to rate-limit Pre-Vote retries: a fresh round already in flight should not be restarted
-    /// on every tick.
+    /// on every election check.
     pub(crate) fn starting_time(&self) -> InstantOf<C> {
         self.starting_time
     }

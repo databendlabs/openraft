@@ -39,17 +39,20 @@ async fn leader_last_ack_3_nodes() -> Result<()> {
         assert!(millis >= Some(0));
     }
 
-    tracing::info!(log_index, "--- sleep 500 ms, the `millis` should extend");
+    tracing::info!(
+        log_index,
+        "--- sleep 500 ms; a timer check sends no heartbeat, but makes the idle leader report the extended `millis`"
+    );
     {
         TypeConfig::sleep(Duration::from_millis(500)).await;
 
-        let greater = n0.metrics().borrow_watched().millis_since_quorum_ack;
-        println!("greater: {:?}", greater);
-        assert!(greater > millis);
-        assert!(
-            greater > Some(500 - heartbeat_interval * 2),
-            "it extends, but may be smaller because the tick interval is 50 ms"
-        );
+        n0.trigger().tick().await?;
+        n0.wait(timeout())
+            .metrics(
+                |x| x.millis_since_quorum_ack > Some(500 - heartbeat_interval * 2),
+                "millis_since_quorum_ack extends",
+            )
+            .await?;
     }
 
     let n0 = router.get_raft_handle(&0)?;
@@ -90,13 +93,25 @@ async fn leader_last_ack_3_nodes() -> Result<()> {
 
     tracing::info!(
         log_index,
-        "--- sleep and heartbeat again; millis_since_quorum_ack does not refresh"
+        "--- sleep and heartbeat again; the heartbeat wakes the idle leader, which reports a grown `millis`"
     );
     {
         TypeConfig::sleep(Duration::from_millis(500)).await;
 
         n0.trigger().heartbeat().await?;
+        n0.wait(timeout())
+            .metrics(
+                |x| x.millis_since_quorum_ack > Some(500 - heartbeat_interval * 2),
+                "millis_since_quorum_ack reported again",
+            )
+            .await?;
+    }
 
+    tracing::info!(
+        log_index,
+        "--- no quorum acknowledges it; millis_since_quorum_ack does not refresh"
+    );
+    {
         let got = n0
             .wait(Some(Duration::from_millis(500)))
             .metrics(

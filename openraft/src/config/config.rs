@@ -211,9 +211,12 @@ pub struct Config {
 
     /// The heartbeat interval in milliseconds at which leaders will send heartbeats to followers
     ///
-    /// A heartbeat is only sent when a tick fires, and the tick loop fires every
-    /// `heartbeat_interval * 13 / 64` milliseconds, so a heartbeat goes out at the first tick at
-    /// or after this interval, up to one tick interval later than it.
+    /// A leader's heartbeat timer fires this interval after the previous round of heartbeats, and
+    /// the next round goes out then.
+    #[since(
+        version = "0.10.1",
+        change = "heartbeats go out at their deadline, not at the next tick"
+    )]
     #[cfg_attr(feature = "clap", clap(long, default_value_t = DEFAULTS.heartbeat_interval))]
     pub heartbeat_interval: u64,
 
@@ -226,12 +229,13 @@ pub struct Config {
     /// redundant. Under sustained writes this eliminates most heartbeat RPCs; heartbeats resume
     /// automatically once replication idles.
     ///
-    /// A suppressed heartbeat resumes at the first tick at or after its deadline, so it must hold
-    /// that `heartbeat_interval + heartbeat_min_interval` plus one tick interval is smaller than
+    /// A suppressed heartbeat resumes at the first round of heartbeats after the suppression ends,
+    /// so it must hold that `heartbeat_interval + heartbeat_min_interval` is smaller than
     /// `election_timeout_min`, so that suppression can never delay a heartbeat past a follower's
     /// election timeout.
     ///
-    /// Defaults to 0, which disables suppression: every tick sends a heartbeat to every follower.
+    /// Defaults to 0, which disables suppression: every round sends a heartbeat to every follower.
+    #[since(version = "0.10.1", change = "the bound no longer adds a tick interval")]
     #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long, default_value = "0"))]
     pub heartbeat_min_interval: Option<u64>,
@@ -388,11 +392,11 @@ pub struct Config {
     ))]
     pub broadcast_submitted_on_append: Option<bool>,
 
-    /// Enable or disable the internal ticker.
+    /// Enable or disable a leader's heartbeat timer.
     ///
-    /// If ticking is disabled, a leader won't send heartbeats.
+    /// If it is disabled, a leader won't send heartbeats on its own.
     ///
-    /// Elections do not depend on this ticker: they run on a separate election timer that
+    /// Elections do not depend on this timer: they run on a separate election timer that
     /// [`enable_elect`](Self::enable_elect) controls. To stop every automatic election, disable
     /// `enable_elect` as well.
     ///
@@ -407,6 +411,7 @@ pub struct Config {
     /// [`Trigger::tick`]: crate::raft::trigger::Trigger::tick
     // clap 4 requires `num_args = 0..=1`, or it complains about missing arg error
     // https://github.com/clap-rs/clap/discussions/4374
+    #[since(version = "0.10.1", change = "controls the heartbeat timer that replaces the ticker")]
     #[cfg_attr(feature = "clap", clap(long,
            default_value_t = true,
            action = clap::ArgAction::Set,
@@ -892,15 +897,6 @@ impl Config {
         self.heartbeat_min_interval.unwrap_or(0)
     }
 
-    /// Get the interval in milliseconds at which the tick loop fires.
-    ///
-    /// A heartbeat is only sent when a tick fires, so every heartbeat deadline is rounded up to
-    /// this interval.
-    pub(crate) fn tick_interval(&self) -> u64 {
-        let interval = self.heartbeat_interval * 13 / 64;
-        interval.max(1)
-    }
-
     /// Validate the state of this config.
     pub fn validate(self) -> Result<Config, ConfigError> {
         if self.election_timeout_min >= self.election_timeout_max {
@@ -917,15 +913,14 @@ impl Config {
             });
         }
 
-        // A heartbeat is sent at the first tick at or after its deadline, so heartbeats to a
-        // suppressed follower are up to `heartbeat_min_interval + heartbeat_interval` plus one
-        // tick interval apart.
+        // A round of heartbeats goes out every `heartbeat_interval`, so heartbeats to a suppressed
+        // follower are up to `heartbeat_min_interval + heartbeat_interval` apart.
         //
         // A `heartbeat_min_interval` of 0 disables suppression and leaves the heartbeat cadence
         // unchanged, so the constraint does not apply to it.
         let heartbeat_min_interval = self.heartbeat_min_interval();
         let suppression_enabled = heartbeat_min_interval > 0;
-        let max_heartbeat_gap = heartbeat_min_interval + self.heartbeat_interval + self.tick_interval();
+        let max_heartbeat_gap = heartbeat_min_interval + self.heartbeat_interval;
 
         if suppression_enabled && self.election_timeout_min <= max_heartbeat_gap {
             return Err(ConfigError::HeartbeatMinIntervalTooLarge {

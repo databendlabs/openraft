@@ -675,8 +675,11 @@ Public enums gain variants, which exhaustive matches handle:
   `heartbeat_min_interval`:
 
   ```text
-  heartbeat_interval + heartbeat_min_interval + heartbeat_interval * 13 / 64 < election_timeout_min
+  heartbeat_interval + heartbeat_min_interval < election_timeout_min
   ```
+
+  0.10.0 also adds its tick interval, `heartbeat_interval * 13 / 64`, to the
+  left side.
 
 ## Custom async runtimes
 
@@ -747,8 +750,6 @@ These items still compile, with a deprecation warning:
   leading until `Trigger::refresh_server_state()` is called.
 - The log id of the entry that `Raft::initialize()` writes names the
   initializing node instead of node 0.
-- The first tick comes up to one tick interval later than in 0.9, so a test
-  that expects a leader within a tight startup budget may need more time.
 - The API, notification and state-machine channels are bounded, so a burst of
   requests waits for capacity instead of growing memory.
 - Retries to an unreachable node start at 200 ms and double up to 1 s, where

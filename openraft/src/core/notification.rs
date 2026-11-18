@@ -94,9 +94,9 @@ where C: RaftTypeConfig
     /// Result of executing a command sent from a state machine worker.
     StateMachine { command_result: sm::CommandResult<C> },
 
-    /// A tick event to wake up RaftCore to check timeout etc.
+    /// A leader's heartbeat timer reached the next heartbeat, waking RaftCore to send it.
     Tick {
-        /// ith tick
+        /// How many times the heartbeat timer has fired, counting from 1.
         i: u64,
     },
 

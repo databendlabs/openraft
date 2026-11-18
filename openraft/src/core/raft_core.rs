@@ -207,7 +207,7 @@ where
     /// This node's runtime config.
     pub(crate) config: Arc<Config>,
 
-    pub(crate) runtime_config: Arc<RuntimeConfig<C>>,
+    pub(crate) runtime_config: Arc<RuntimeConfig>,
 
     /// Additional state that does not directly affect the consensus.
     pub(crate) core_state: CoreState<C>,
@@ -242,6 +242,12 @@ where
     /// Only [`Self::refresh_election_deadline`] sets its deadline, and only a campaigner with
     /// `enable_elect` on gets one.
     pub(crate) election_deadline_notifier: DeadlineNotifier<C>,
+
+    /// Wakes this core with a [`Notification::Tick`] when a leader's next heartbeat is due.
+    ///
+    /// Only [`Self::refresh_heartbeat_deadline`] sets its deadline, and only a leader with
+    /// `enable_tick` and `enable_heartbeat` on gets one.
+    pub(crate) heartbeat_deadline_notifier: DeadlineNotifier<C>,
 
     /// A mapping of node IDs the replication state of the target node.
     pub(crate) replications: BTreeMap<C::NodeId, ReplicationHandle<C>>,
@@ -1392,10 +1398,12 @@ where
         loop {
             self.flush_metrics();
 
-            // Set the election deadline once per round, before the wait below, which is the only
-            // one that can last indefinitely. A command send that blocks inside a round only delays
-            // the wake-up, and an election started meanwhile runs its commands after that send.
+            // Set the election and heartbeat deadlines once per round, before the wait below, which
+            // is the only one that can last indefinitely. A command send that blocks inside a round
+            // only delays the wake-up, and an election started meanwhile runs its commands after
+            // that send.
             self.refresh_election_deadline();
+            self.refresh_heartbeat_deadline();
 
             tracing::debug!(
                 "RAFT_stats id={:<2} log_io: {}",
@@ -2198,8 +2206,9 @@ where
     /// Handle [`Notification::Tick`] and [`ExternalCommand::Tick`]: send a heartbeat if this node
     /// is leading and one is due.
     ///
-    /// Elections do not depend on ticks: [`Self::election_deadline_notifier`] wakes the core when
-    /// one may be due. `emitter` names the tick source in log messages.
+    /// [`Self::heartbeat_deadline_notifier`] sends [`Notification::Tick`] when the next heartbeat
+    /// is due, and [`Self::election_deadline_notifier`] wakes the core when an election may be
+    /// due. `emitter` names the tick source in log messages.
     fn handle_tick(&mut self, emitter: impl fmt::Display) {
         let now = C::now();
         tracing::debug!("received {}, now: {}", emitter, now.display());
@@ -2218,6 +2227,36 @@ where
                 l.next_heartbeat = C::now() + Duration::from_millis(self.config.heartbeat_interval);
             }
         }
+    }
+
+    /// Set the heartbeat deadline to the instant at which this leader's next heartbeat is due.
+    ///
+    /// [`Self::handle_tick`] moves `next_heartbeat` later whenever it handles a due heartbeat, so
+    /// the deadline changes and the notifier re-arms for the next one.
+    fn refresh_heartbeat_deadline(&mut self) {
+        let wake_at = self.heartbeat_wake_at();
+        if self.heartbeat_deadline_notifier.set_deadline(wake_at) {
+            tracing::debug!(
+                "heartbeat deadline: {}",
+                wake_at.as_ref().map(|t| t.display()).display()
+            );
+        }
+    }
+
+    /// Return when this node's next heartbeat is due, or `None` if it sends none on its own.
+    ///
+    /// Only a leader with `enable_tick` and `enable_heartbeat` on sends automatic heartbeats. An
+    /// idle leader without them is not woken at all. Turning either switch back on wakes the core
+    /// through [`Self::rx_control`], and the deadline returns at that round.
+    fn heartbeat_wake_at(&self) -> Option<InstantOf<C>> {
+        if !self.runtime_config.enable_tick.load(Ordering::Relaxed) {
+            return None;
+        }
+        if !self.runtime_config.enable_heartbeat.load(Ordering::Relaxed) {
+            return None;
+        }
+        let leader = self.engine.leader_ref()?;
+        Some(leader.next_heartbeat)
     }
 
     /// Set the election deadline to the instant at which this node's election may be due.

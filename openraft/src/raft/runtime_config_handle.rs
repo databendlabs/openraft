@@ -5,7 +5,6 @@ use std::sync::atomic::Ordering;
 use openraft_macros::since;
 
 use crate::RaftTypeConfig;
-use crate::async_runtime::watch::WatchSender;
 use crate::raft::RaftInner;
 
 /// RuntimeConfigHandle is an interface to update runtime config.
@@ -13,8 +12,8 @@ use crate::raft::RaftInner;
 /// These configs are mainly designed for testing purposes and special use cases.
 /// Usually you don't need to change runtime config.
 ///
-/// Changing a switch wakes `RaftCore`, so that the change takes effect at once, even when no tick
-/// or message arrives.
+/// Changing a switch wakes `RaftCore`, so that the change takes effect at once, even when no
+/// message arrives.
 pub struct RuntimeConfigHandle<'r, C>
 where C: RaftTypeConfig
 {
@@ -28,17 +27,18 @@ where C: RaftTypeConfig
         Self { raft_inner }
     }
 
-    /// Enable or disable raft internal ticker.
+    /// Enable or disable a leader's heartbeat timer.
     ///
-    /// Disabling tick stops a leader's heartbeats. It does not stop elections, which
-    /// [`Self::elect`] controls. While disabled, the ticker parks and causes no wakeups;
-    /// re-enabling it resumes ticking, with the first tick at most one tick period later.
-    /// [`Trigger::tick`] still runs a timer check while the ticker is disabled.
+    /// Disabling it stops a leader's automatic heartbeats. It does not stop elections, which
+    /// [`Self::elect`] controls. While disabled, the timer causes no wakeups; re-enabling it wakes
+    /// `RaftCore`, which sends a heartbeat that is already due at once. [`Trigger::tick`] still
+    /// runs a timer check while it is disabled.
     ///
     /// [`Trigger::tick`]: crate::raft::trigger::Trigger::tick
+    #[since(version = "0.10.1", change = "pauses the heartbeat timer that replaces the ticker")]
     #[since(version = "0.10.1", change = "no longer stops elections")]
     pub fn tick(&self, enabled: bool) {
-        self.raft_inner.runtime_config.enable_tick.lock().unwrap().send_if_different(enabled);
+        self.raft_inner.runtime_config.enable_tick.store(enabled, Ordering::Relaxed);
         self.raft_inner.wake_core();
     }
 

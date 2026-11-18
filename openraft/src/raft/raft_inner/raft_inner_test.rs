@@ -14,7 +14,6 @@ use crate::async_runtime::MpscReceiver;
 use crate::async_runtime::MpscSender;
 use crate::async_runtime::OneshotSender;
 use crate::config::RuntimeConfig;
-use crate::core::TickHandle;
 use crate::core::io_flush_tracking::IoProgressWatcher;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::external_command::ExternalCommand;
@@ -30,10 +29,7 @@ use crate::type_config::alias::JoinHandleOf;
 
 crate::declare_raft_types!(UTConfig: AsyncRuntime = openraft_rt_tokio::TokioRuntime);
 
-fn raft_with_tasks(
-    core: JoinHandleOf<UTConfig, Result<Infallible, Fatal<UTConfig>>>,
-    tick: JoinHandleOf<UTConfig, ()>,
-) -> Raft<UTConfig> {
+fn raft_with_core(core: JoinHandleOf<UTConfig, Result<Infallible, Fatal<UTConfig>>>) -> Raft<UTConfig> {
     let config = Arc::new(Config {
         enable_tick: false,
         enable_heartbeat: false,
@@ -41,14 +37,10 @@ fn raft_with_tasks(
         ..Default::default()
     });
     let (tx_control, _rx_control) = UTConfig::watch_channel(());
-    // `tick` is spawned by the caller, so this handle cancels nothing: the test alone decides
-    // when the tick task finishes.
-    let (tick_cancel, _tick_future) = UTConfig::cancellable(std::future::pending::<()>());
     let inner = RaftInner {
         id: 0,
         runtime_config: Arc::new(RuntimeConfig::new(&config)),
         config,
-        tick_handle: Mutex::new(Some(TickHandle::new(tick_cancel, tick))),
         tx_api: UTConfig::mpsc(1).0,
         rx_lease_read_state: UTConfig::watch_channel(None).1,
         rx_metrics: UTConfig::watch_channel(RaftMetrics::new_initial(0)).1,
@@ -69,22 +61,13 @@ fn raft_with_tasks(
 #[test]
 fn try_shutdown_core_panic_after_internal_join() {
     UTConfig::run(async {
-        let (tick_tx, tick_rx) = UTConfig::oneshot();
         let core = UTConfig::spawn(async { panic!("injected core task panic") });
-        let tick = UTConfig::spawn(async move { tick_rx.await.unwrap() });
-        let raft = raft_with_tasks(core, tick);
+        let raft = raft_with_core(core);
 
         tracing::info!("retain the core panic even when a request joins it before shutdown");
         {
             let fatal = raft.inner.get_core_stop_error().await;
             assert_eq!(Fatal::Panicked, fatal);
-            let pending = raft.try_shutdown().now_or_never();
-            assert!(pending.is_none());
-        }
-
-        tracing::info!("finish joining tick before returning the retained core join failure");
-        {
-            tick_tx.send(()).unwrap();
             let result = UTConfig::timeout(Duration::from_secs(1), raft.try_shutdown()).await.unwrap();
             let expected = Err(ShutdownError);
             assert_eq!(expected, result);
@@ -95,33 +78,13 @@ fn try_shutdown_core_panic_after_internal_join() {
 }
 
 #[test]
-fn try_shutdown_tick_panic() {
+fn try_shutdown_aborted_core() {
     UTConfig::run(async {
-        tracing::info!("surface a tick task panic and retain it across shutdown calls");
-        {
-            let raft = raft_with_tasks(
-                UTConfig::spawn(async { Err(Fatal::Stopped) }),
-                UTConfig::spawn(async { panic!("injected tick task panic") }),
-            );
-            let result = raft.try_shutdown().await;
-            let expected = Err(ShutdownError);
-            assert_eq!(expected, result);
-            let repeated = raft.try_shutdown().await;
-            assert_eq!(result, repeated);
-        }
-    });
-}
-
-#[test]
-fn try_shutdown_aborted_tasks() {
-    UTConfig::run(async {
-        tracing::info!("abort both tasks so shutdown must retain a join failure");
+        tracing::info!("abort the core task so shutdown must retain a join failure");
         {
             let core = UTConfig::spawn(std::future::pending());
-            let tick = UTConfig::spawn(std::future::pending());
             core.abort();
-            tick.abort();
-            let raft = raft_with_tasks(core, tick);
+            let raft = raft_with_core(core);
             let result = raft.try_shutdown().await;
             let expected = Err(ShutdownError);
             assert_eq!(expected, result);
@@ -135,14 +98,10 @@ fn try_shutdown_aborted_tasks() {
 fn try_shutdown_resumes_cancelled_join() {
     UTConfig::run(async {
         let (core_tx, core_rx) = UTConfig::oneshot();
-        let (tick_tx, tick_rx) = UTConfig::oneshot();
-        let raft = raft_with_tasks(
-            UTConfig::spawn(async move {
-                core_rx.await.unwrap();
-                Err(Fatal::Stopped)
-            }),
-            UTConfig::spawn(async move { tick_rx.await.unwrap() }),
-        );
+        let raft = raft_with_core(UTConfig::spawn(async move {
+            core_rx.await.unwrap();
+            Err(Fatal::Stopped)
+        }));
 
         tracing::info!("drop a shutdown waiting on the core; its join must remain available");
         {
@@ -165,11 +124,8 @@ fn try_shutdown_resumes_cancelled_join() {
             assert_eq!(expected, second);
         }
 
-        tracing::info!("drop a shutdown waiting on the tick; subsequent callers share that join");
+        tracing::info!("later shutdown callers share the retained join");
         {
-            let pending = raft.try_shutdown().now_or_never();
-            assert!(pending.is_none());
-            tick_tx.send(()).unwrap();
             let (first, second) = UTConfig::timeout(Duration::from_secs(1), async {
                 futures_util::future::join(raft.try_shutdown(), raft.try_shutdown()).await
             })
@@ -186,13 +142,10 @@ fn try_shutdown_resumes_cancelled_join() {
 fn shutdown_retry_waits_for_core_after_cancelled_shutdown() {
     UTConfig::run(async {
         let (core_tx, core_rx) = UTConfig::oneshot();
-        let raft = raft_with_tasks(
-            UTConfig::spawn(async move {
-                core_rx.await.unwrap();
-                Err(Fatal::Stopped)
-            }),
-            UTConfig::spawn(async {}),
-        );
+        let raft = raft_with_core(UTConfig::spawn(async move {
+            core_rx.await.unwrap();
+            Err(Fatal::Stopped)
+        }));
 
         tracing::info!("cancel shutdown while the core is blocked, then retry the public API");
         let retry = {
@@ -228,8 +181,7 @@ fn stream_append_drop_releases_producer() {
                 "drop the response stream while its producer cannot advance"
             );
             let core = UTConfig::spawn(async { Err(Fatal::Stopped) });
-            let tick = UTConfig::spawn(async {});
-            let mut raft = raft_with_tasks(core, tick);
+            let mut raft = raft_with_core(core);
             let (tx_api, mut rx_api) = UTConfig::mpsc(1);
             let inner = Arc::get_mut(&mut raft.inner).unwrap();
             inner.tx_api = tx_api;

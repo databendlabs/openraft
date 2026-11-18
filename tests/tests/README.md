@@ -75,7 +75,7 @@ async fn my_case() -> Result<()> {
 
 Turn off `enable_tick`, `enable_heartbeat`, or `enable_elect` in `Config` when
 a background timer would disturb what the case observes. `enable_tick` stops
-only the internal ticker: nodes still elect at their election timeouts
+only a leader's heartbeat timer: nodes still elect at their election timeouts
 unless `enable_elect` is off too. Set the flag before
 creating the router, and use `Raft::runtime_config()` only when the case must
 flip it in the middle of a run.

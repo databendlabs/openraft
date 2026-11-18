@@ -15,7 +15,6 @@ use crate::async_runtime::MpscSender;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::async_runtime::watch::WatchSender;
 use crate::config::RuntimeConfig;
-use crate::core::TickHandle;
 use crate::core::io_flush_tracking::IoProgressWatcher;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::external_command::ExternalCommand;
@@ -48,8 +47,7 @@ where C: RaftTypeConfig
 {
     pub(in crate::raft) id: C::NodeId,
     pub(in crate::raft) config: Arc<Config>,
-    pub(in crate::raft) runtime_config: Arc<RuntimeConfig<C>>,
-    pub(in crate::raft) tick_handle: Mutex<Option<TickHandle<C>>>,
+    pub(in crate::raft) runtime_config: Arc<RuntimeConfig>,
     pub(in crate::raft) tx_api: MpscSenderOf<C, RaftMsg<C>>,
     pub(in crate::raft) rx_lease_read_state: WatchReceiverOf<C, Option<Arc<LeaseReadState<C>>>>,
     pub(in crate::raft) rx_metrics: WatchReceiverOf<C, RaftMetrics<C>>,

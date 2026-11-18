@@ -42,9 +42,10 @@ pub enum ConfigError {
     },
 
     /// Heartbeat suppression must not delay a heartbeat past a follower's election timeout.
+    #[since(version = "0.10.1", change = "the bound no longer adds a tick interval")]
     #[since(version = "0.10.0")]
     #[error(
-        "heartbeat_interval({heartbeat_interval}) + heartbeat_min_interval({heartbeat_min_interval}) + tick interval(heartbeat_interval * 13 / 64) must be < election_timeout_min({election_timeout_min})"
+        "heartbeat_interval({heartbeat_interval}) + heartbeat_min_interval({heartbeat_min_interval}) must be < election_timeout_min({election_timeout_min})"
     )]
     HeartbeatMinIntervalTooLarge {
         /// Minimum election timeout value.

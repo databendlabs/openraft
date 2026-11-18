@@ -8,6 +8,7 @@ use openraft_macros::since;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[derive(VariantName)]
 #[variant_name(prefix = "Notify::")]
+#[since(version = "0.10.1", change = "`Tick` comes from the heartbeat timer of a leader")]
 #[since(version = "0.10.1", change = "Added `ElectionDeadlineReached`")]
 #[since(version = "0.10.1", change = "marked #[non_exhaustive]")]
 #[since(version = "0.10.0", change = "Added `LogPurged`")]
@@ -33,7 +34,7 @@ pub enum NotificationName {
     HeartbeatProgress,
     /// A state machine worker returned the result of a command.
     StateMachine,
-    /// A tick that wakes `RaftCore` to check timeouts.
+    /// A leader's heartbeat timer reached the next heartbeat, waking `RaftCore` to send it.
     Tick,
     /// The earliest pending linearizable read reached its deadline.
     PendingReadDeadlineReached,

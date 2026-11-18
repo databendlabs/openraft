@@ -87,7 +87,6 @@ use crate::async_runtime::OneshotSender;
 use crate::async_runtime::Select2;
 use crate::async_runtime::mpsc::MpscSender;
 use crate::async_runtime::watch::WatchReceiver;
-use crate::async_runtime::watch::WatchSender;
 use crate::base::BoxFuture;
 use crate::base::BoxOnce;
 use crate::base::BoxStream;
@@ -102,7 +101,6 @@ use crate::core::PendingReadQueue;
 use crate::core::RaftCore;
 use crate::core::SharedReplicateBatch;
 use crate::core::StepDownWatcher;
-use crate::core::Tick;
 use crate::core::heartbeat::handle::HeartbeatWorkersHandle;
 use crate::core::io_flush_tracking::AppliedProgress;
 use crate::core::io_flush_tracking::CommitProgress;
@@ -616,8 +614,7 @@ where
             let rx_metrics = rx_metrics.clone();
             let rx_server_metrics = rx_server_metrics.clone();
 
-            Box::new(move |inner: &RaftInner<C>| {
-                let tick_tx = tx_notify.clone();
+            Box::new(move |_inner: &RaftInner<C>| {
                 let buffered = config.enable_unbounded_state_machine_buffer();
                 let sm_cmd_rx = sm::command_receiver::CommandReceiver::new(sm_cmd_rx, buffered);
                 let sm_handle = worker::Worker::spawn(
@@ -629,7 +626,9 @@ where
                     sm_span,
                 );
                 let election_deadline_notifier =
-                    DeadlineNotifier::spawn(tx_notify.clone(), || Notification::ElectionDeadlineReached);
+                    DeadlineNotifier::spawn(tx_notify.clone(), |_| Notification::ElectionDeadlineReached);
+                let heartbeat_deadline_notifier =
+                    DeadlineNotifier::spawn(tx_notify.clone(), |i| Notification::Tick { i });
 
                 let core: RaftCore<C, N, LS, SM> = RaftCore {
                     id: id.clone(),
@@ -648,10 +647,11 @@ where
                     client_responders: ClientResponderQueue::with_capacity(INITIAL_QUEUE_CAPACITY),
 
                     pending_reads: PendingReadQueue::default(),
-                    pending_read_deadline_notifier: DeadlineNotifier::spawn(tx_notify.clone(), || {
+                    pending_read_deadline_notifier: DeadlineNotifier::spawn(tx_notify.clone(), |_| {
                         Notification::PendingReadDeadlineReached
                     }),
                     election_deadline_notifier,
+                    heartbeat_deadline_notifier,
                     replications: Default::default(),
 
                     heartbeat_handle: HeartbeatWorkersHandle::new(id.clone(), config.clone()),
@@ -702,16 +702,7 @@ where
 
                 let core = Box::new(core);
                 let core_fut = core.main().instrument(trace_span!("spawn").or_current());
-                let join_handle = C::spawn(core_fut);
-
-                let tick_period = Duration::from_millis(config.tick_interval());
-                let enabled = {
-                    let enable_tick = inner.runtime_config.enable_tick.lock().unwrap();
-                    enable_tick.subscribe()
-                };
-                let tick_handle = Tick::spawn(tick_period, tick_tx, enabled);
-                *inner.tick_handle.lock().unwrap() = Some(tick_handle);
-                join_handle
+                C::spawn(core_fut)
             })
         };
 
@@ -719,7 +710,6 @@ where
             id,
             config,
             runtime_config,
-            tick_handle: Mutex::new(None),
             tx_api,
             rx_lease_read_state,
             rx_metrics,
@@ -2244,7 +2234,7 @@ where
     ///
     /// It sends a shutdown signal and waits until `RaftCore` returns. If this future is cancelled
     /// while joining the core, a later call resumes that join and waits for the core to exit.
-    /// Use [`Self::try_shutdown`] to check for core or tick task join failures.
+    /// Use [`Self::try_shutdown`] to check for a core task join failure.
     ///
     /// # Examples
     ///
@@ -2257,14 +2247,15 @@ where
         Ok(())
     }
 
-    /// Shut down this node and return an error if either core or tick task failed to join.
+    /// Shut down this node and return an error if the core task failed to join.
     ///
-    /// Both joins finish before this returns, and results are retained across calls to this method
-    /// and [`Self::shutdown`]. Concurrent callers and retries after cancellation share the joins.
+    /// The join finishes before this returns, and its result is retained across calls to this
+    /// method and [`Self::shutdown`]. Concurrent callers and retries after cancellation share the
+    /// join.
     ///
-    /// Success describes the runtime joins of started core and tick tasks, independently of their
-    /// return values and other background task lifetimes. A node stopped before [`Self::run`]
-    /// succeeds.
+    /// Success describes the runtime join of a started core task, independently of its return
+    /// value and other background task lifetimes. A node stopped before [`Self::run`] succeeds.
+    #[since(version = "0.10.1", change = "joins only the core task: the tick task is retired")]
     #[since(version = "0.10.0")]
     pub async fn try_shutdown(&self) -> Result<(), ShutdownError> {
         // Dropping the sender closes the control channel, which stops RaftCore.
@@ -2275,17 +2266,7 @@ where
         drop(tx_control);
 
         let (_, core_failed) = self.inner.join_core_task().await;
-        let core_result = if core_failed { Err(ShutdownError) } else { Ok(()) };
-        let tick_join = {
-            let mut tick_handle = self.inner.tick_handle.lock().unwrap();
-            let Some(handle) = tick_handle.as_mut() else {
-                return core_result;
-            };
-            handle.shutdown()
-        };
-        let tick_result = tick_join.await;
-        tick_result?;
-        core_result
+        if core_failed { Err(ShutdownError) } else { Ok(()) }
     }
 
     /// Provides mutable access to [`RaftStateMachine`] through a user-provided function.

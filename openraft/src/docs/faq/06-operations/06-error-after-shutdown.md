@@ -9,8 +9,9 @@ exists and receives these RPCs, but the internal Raft core has stopped, so forwa
 **Solution**: This is expected behavior. These errors are harmless - they indicate the node has
 shut down as requested. You can ignore them or filter these specific error logs after shutdown.
 
-Use [`Raft::try_shutdown`][] to receive `ShutdownError` when the core or tick task fails to join.
-It awaits both tasks and retains failures across repeated calls. Cancelled calls can be retried.
+Use [`Raft::try_shutdown`][] to receive `ShutdownError` when the core task fails to join.
+It awaits the core task and retains a failure across repeated calls. Cancelled calls can be
+retried.
 The existing `shutdown()` API discards join errors.
 
 See: <https://github.com/databendlabs/openraft/issues/1357>

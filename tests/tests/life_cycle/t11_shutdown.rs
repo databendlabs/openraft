@@ -149,7 +149,7 @@ async fn return_error_after_panic() -> Result<()> {
         let result = node.try_shutdown().await;
         let error = result.unwrap_err();
         let message = error.to_string();
-        assert_eq!("Raft core or tick task failed to join", message);
+        assert_eq!("Raft core task failed to join", message);
         node.shutdown().await?;
         let repeated = node.try_shutdown().await;
         assert_eq!(result, repeated);
