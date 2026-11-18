@@ -26,10 +26,11 @@ static CRC64: Crc<u64, Table<16>> = Crc::<u64, Table<16>>::new(&CRC_64_XZ);
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[derive(Serialize, Deserialize)]
 pub struct ManifestEntry {
-    /// Flat file name; no path separators.
+    /// Flat file name: non-empty, at most [`MAX_FILE_NAME_BYTES`] bytes, not `.` or `..`, and free
+    /// of `/`, `\` and NUL.
     pub name: String,
 
-    /// File size in bytes.
+    /// File size in bytes; the file's [`DirFrame::Chunk`] frames carry exactly this many bytes.
     pub size: u64,
 }
 
@@ -40,14 +41,15 @@ pub struct DirManifest {
     /// Protocol version; see [`PROTOCOL_VERSION`].
     pub format_version: u32,
 
-    /// Every file of the directory, in transfer order.
+    /// Every file of the directory, in transfer order; no two entries share a name.
     pub files: Vec<ManifestEntry>,
 }
 
 /// One frame of the transfer stream.
 ///
 /// A valid stream is `Manifest`, then for each manifest entry in manifest order `FileStart`,
-/// zero or more `Chunk`s, `FileEnd`, and finally `End`.
+/// zero or more non-empty `Chunk`s whose lengths add up to the entry's size, `FileEnd`, and
+/// finally `End`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[derive(Serialize, Deserialize)]
 pub enum DirFrame {
@@ -60,7 +62,7 @@ pub enum DirFrame {
         name: String,
     },
 
-    /// A run of file bytes, at most [`MAX_CHUNK_SIZE`] long.
+    /// A non-empty run of file bytes, at most [`MAX_CHUNK_SIZE`] long.
     ///
     /// The bytes serialize as a serde byte string, so binary formats such as MessagePack carry
     /// them without per-byte overhead.
@@ -90,8 +92,8 @@ pub(crate) fn checksum_digest() -> ChecksumDigest {
 
 /// Validate a manifest file name before any filesystem access.
 ///
-/// Names must be non-empty, at most [`MAX_FILE_NAME_BYTES`] bytes, free of path separators and NUL,
-/// and not `.` or `..`.
+/// Enforces the rule stated on [`ManifestEntry::name`]: non-empty, at most [`MAX_FILE_NAME_BYTES`]
+/// bytes, not `.` or `..`, and free of `/`, `\` and NUL.
 pub(crate) fn validate_file_name(name: &str) -> io::Result<()> {
     if name.is_empty() {
         return Err(invalid_data("empty file name"));
