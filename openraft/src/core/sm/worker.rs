@@ -159,20 +159,19 @@ where
             };
 
             let next = self.take_queued_applies(batch.end());
-            let applied = match next {
+            match next {
                 Some(mut next) => {
                     tracing::debug!("read ahead Apply: [{},{}]", next.first, next.last);
-                    let apply = Self::apply(&mut self.state_machine, batch);
-                    let read = Self::read(&mut self.log_reader, &mut next);
-                    let (applied, ()) = futures_util::future::join(apply, read).await;
+                    let apply = Self::apply_and_notify(&mut self.state_machine, &self.resp_tx, batch);
+                    let read = async {
+                        Self::read(&mut self.log_reader, &mut next).await;
+                        Ok(())
+                    };
+                    futures_util::future::try_join(apply, read).await?;
                     read_ahead = Some(next);
-                    applied
                 }
-                None => Self::apply(&mut self.state_machine, batch).await,
-            };
-
-            let res = CommandResult::new(Ok(Response::Apply(applied?)));
-            self.resp_tx.send(Notification::sm(res)).await.ok();
+                None => Self::apply_and_notify(&mut self.state_machine, &self.resp_tx, batch).await?,
+            }
         }
     }
 
@@ -366,6 +365,18 @@ where
             snapshot.as_ref().map(|s| &s.meta).display()
         );
         tx.send(snapshot).ok();
+        Ok(())
+    }
+
+    /// Publish a completed apply even while the next batch is still being read.
+    async fn apply_and_notify(
+        state_machine: &mut SM,
+        resp_tx: &MpscSenderOf<C, Notification<C>>,
+        batch: ApplyBatch<C>,
+    ) -> Result<(), StorageError<C>> {
+        let applied = Self::apply(state_machine, batch).await?;
+        let res = CommandResult::new(Ok(Response::Apply(applied)));
+        resp_tx.send(Notification::sm(res)).await.ok();
         Ok(())
     }
 }

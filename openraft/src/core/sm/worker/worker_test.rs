@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::io;
 use std::ops::Bound;
 use std::ops::RangeBounds;
@@ -12,11 +13,14 @@ use futures_util::TryStreamExt;
 use crate::OptionalSend;
 use crate::RaftLogReader;
 use crate::RaftTypeConfig;
+use crate::StorageError;
 use crate::async_runtime::MpscReceiver;
 use crate::async_runtime::MpscSender;
+use crate::async_runtime::OneshotSender;
 use crate::core::ApplyResult;
 use crate::core::notification::Notification;
 use crate::core::sm::Command;
+use crate::core::sm::CommandResult;
 use crate::core::sm::Response;
 use crate::core::sm::command_receiver::CommandReceiver;
 use crate::core::sm::worker::Worker;
@@ -41,12 +45,15 @@ use crate::type_config::alias::StoredMembershipOf;
 
 type Events = Arc<Mutex<Vec<String>>>;
 
+const WAIT_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// Gates that hold an `apply()` or a read until the test releases them.
 ///
 /// A gate is keyed by the stage and the first index of its range, such as `apply 2` or `read 2`.
 #[derive(Clone, Default)]
 struct Gates {
     gates: Arc<Mutex<BTreeMap<String, OneshotReceiverOf<UTConfig, ()>>>>,
+    failures: Arc<Mutex<BTreeSet<String>>>,
 }
 
 impl Gates {
@@ -58,11 +65,20 @@ impl Gates {
     }
 
     /// Wait for the gate of the stage starting at `index`, if the test set one.
-    async fn pass(&self, stage: &str, index: u64) {
+    async fn pass(&self, stage: &str, index: u64) -> io::Result<()> {
         let gate = self.gates.lock().unwrap().remove(&format!("{stage} {index}"));
         if let Some(gate) = gate {
             let _released = gate.await;
         }
+        let fail = self.failures.lock().unwrap().remove(&format!("{stage} {index}"));
+        if fail {
+            return Err(io::Error::other(format!("injected {stage} {index} failure")));
+        }
+        Ok(())
+    }
+
+    fn fail(&self, stage: &str, index: u64) {
+        self.failures.lock().unwrap().insert(format!("{stage} {index}"));
     }
 }
 
@@ -96,7 +112,7 @@ impl RaftStateMachine<UTConfig> for RecordingStateMachine {
         let range = format!("[{},{}]", indexes[0], indexes[indexes.len() - 1]);
         self.events.lock().unwrap().push(format!("apply {range}"));
 
-        self.gates.pass("apply", indexes[0]).await;
+        self.gates.pass("apply", indexes[0]).await?;
         self.events.lock().unwrap().push(format!("done {range}"));
         Ok(())
     }
@@ -136,7 +152,7 @@ impl RaftLogReader<UTConfig> for BlankLogReader {
         };
         let event = format!("read [{},{}]", start, end - 1);
         self.events.lock().unwrap().push(event);
-        self.gates.pass("read", start).await;
+        self.gates.pass("read", start).await?;
         let entries = (start..end).map(|index| EntryOf::<UTConfig>::new_blank(log_id(1, 0, index)));
         Ok(entries.collect())
     }
@@ -361,6 +377,270 @@ async fn read_next_batch_while_applying_async() -> anyhow::Result<()> {
             "read [5,5]",
             "apply [5,5]",
             "done [5,5]",
+        ];
+        assert_eq!(want, got);
+    }
+    Ok(())
+}
+
+/// A completed apply is published while the following read remains gated, and later commands
+/// retain their order after the read resumes.
+#[test]
+fn publish_apply_before_next_read_finishes() -> anyhow::Result<()> {
+    UTConfig::<()>::run(publish_apply_before_next_read_finishes_async())
+}
+
+async fn publish_apply_before_next_read_finishes_async() -> anyhow::Result<()> {
+    let sm = RecordingStateMachine::default();
+    let events = sm.events.clone();
+    let gates = sm.gates.clone();
+    let (cmd_tx, cmd_rx) = UTConfig::<()>::mpsc(16);
+    let (resp_tx, mut resp_rx) = UTConfig::<()>::mpsc(16);
+    let read_1 = gates.gate("read", 1);
+    let read_2 = gates.gate("read", 2);
+    let apply_1 = gates.gate("apply", 1);
+    let _handle = spawn_worker(sm, cmd_tx.clone(), cmd_rx, resp_tx);
+
+    tracing::info!("--- start read [1,1], then queue a separate read-ahead batch [2,2]");
+    {
+        let (cmd, _rx) = apply_cmd(1, 1);
+        let sent = cmd_tx.send(cmd).await;
+        assert!(sent.is_ok(), "the worker is running");
+        wait_event(&events, "read [1,1]").await;
+        let (cmd, _rx) = apply_cmd(2, 2);
+        let sent = cmd_tx.send(cmd).await;
+        assert!(sent.is_ok(), "the worker is running");
+        drop(read_1);
+        wait_event(&events, "read [2,2]").await;
+    }
+
+    tracing::info!("--- complete apply [1,1] while read [2,2] stays held");
+    {
+        let cmd = record_func("func");
+        let sent = cmd_tx.send(cmd).await;
+        assert!(sent.is_ok(), "the worker is running");
+        let (cmd, _rx) = apply_cmd(3, 3);
+        let sent = cmd_tx.send(cmd).await;
+        assert!(sent.is_ok(), "the worker is running");
+        drop(apply_1);
+        let applied = UTConfig::<()>::timeout(WAIT_TIMEOUT, recv_applied(&mut resp_rx)).await??;
+        assert_eq!((1, 2, log_id(1, 0, 1)), applied);
+        let got = events.lock().unwrap().clone();
+        let want = vec!["read [1,1]", "apply [1,1]", "read [2,2]", "done [1,1]"];
+        assert_eq!(want, got);
+    }
+
+    tracing::info!("--- release read [2,2]; apply [2,2], the function and apply [3,3] retain FIFO order");
+    {
+        drop(read_2);
+        let applied = UTConfig::<()>::timeout(WAIT_TIMEOUT, recv_applied(&mut resp_rx)).await??;
+        assert_eq!((2, 3, log_id(1, 0, 2)), applied);
+        let applied = UTConfig::<()>::timeout(WAIT_TIMEOUT, recv_applied(&mut resp_rx)).await??;
+        assert_eq!((3, 4, log_id(1, 0, 3)), applied);
+        let got = events.lock().unwrap().clone();
+        let want = vec![
+            "read [1,1]",
+            "apply [1,1]",
+            "read [2,2]",
+            "done [1,1]",
+            "apply [2,2]",
+            "done [2,2]",
+            "func",
+            "read [3,3]",
+            "apply [3,3]",
+            "done [3,3]",
+        ];
+        assert_eq!(want, got);
+    }
+    Ok(())
+}
+
+/// An apply failure cancels a later read instead of waiting for that read to finish.
+#[test]
+fn apply_error_cancels_next_read() -> anyhow::Result<()> {
+    UTConfig::<()>::run(apply_error_cancels_next_read_async())
+}
+
+async fn apply_error_cancels_next_read_async() -> anyhow::Result<()> {
+    let sm = RecordingStateMachine::default();
+    let events = sm.events.clone();
+    let gates = sm.gates.clone();
+    let (cmd_tx, cmd_rx) = UTConfig::<()>::mpsc(16);
+    let (resp_tx, mut resp_rx) = UTConfig::<()>::mpsc(16);
+    let read_1 = gates.gate("read", 1);
+    let read_2 = gates.gate("read", 2);
+    let apply_1 = gates.gate("apply", 1);
+    gates.fail("apply", 1);
+    let _handle = spawn_worker(sm, cmd_tx.clone(), cmd_rx, resp_tx);
+
+    tracing::info!("--- hold apply [1,1] and the later read [2,2]");
+    {
+        let (cmd, _rx) = apply_cmd(1, 1);
+        let sent = cmd_tx.send(cmd).await;
+        assert!(sent.is_ok(), "the worker is running");
+        wait_event(&events, "read [1,1]").await;
+        let (cmd, _rx) = apply_cmd(2, 2);
+        let sent = cmd_tx.send(cmd).await;
+        assert!(sent.is_ok(), "the worker is running");
+        drop(read_1);
+        wait_event(&events, "read [2,2]").await;
+    }
+
+    tracing::info!("--- fail apply [1,1] without releasing read [2,2]");
+    {
+        drop(apply_1);
+        let result = UTConfig::<()>::timeout(WAIT_TIMEOUT, recv_applied(&mut resp_rx)).await?;
+        let error = result.expect_err("the failed apply sends a storage error");
+        let error = error.downcast::<StorageError<UTConfig>>()?;
+        let source = io::Error::other("injected apply 1 failure");
+        let source = UTConfig::<()>::err_from_error(&source);
+        let expected = StorageError::apply(log_id(1, 0, 1), source);
+        assert_eq!(expected, error);
+        let released = read_2.send(());
+        assert_eq!(Err(()), released);
+        let got = events.lock().unwrap().clone();
+        let want = vec!["read [1,1]", "apply [1,1]", "read [2,2]"];
+        assert_eq!(want, got);
+    }
+    Ok(())
+}
+
+/// A read-ahead error stays behind the earlier apply's successful notification.
+#[test]
+fn next_read_error_follows_apply_success() -> anyhow::Result<()> {
+    UTConfig::<()>::run(next_read_error_follows_apply_success_async())
+}
+
+async fn next_read_error_follows_apply_success_async() -> anyhow::Result<()> {
+    let sm = RecordingStateMachine::default();
+    let events = sm.events.clone();
+    let gates = sm.gates.clone();
+    let (cmd_tx, cmd_rx) = UTConfig::<()>::mpsc(16);
+    let (resp_tx, mut resp_rx) = UTConfig::<()>::mpsc(16);
+    let read_1 = gates.gate("read", 1);
+    let apply_1 = gates.gate("apply", 1);
+    gates.fail("read", 2);
+    let _handle = spawn_worker(sm, cmd_tx.clone(), cmd_rx, resp_tx);
+
+    tracing::info!("--- finish the failing read [2,2] while apply [1,1] stays held");
+    {
+        let (cmd, _rx) = apply_cmd(1, 1);
+        let sent = cmd_tx.send(cmd).await;
+        assert!(sent.is_ok(), "the worker is running");
+        wait_event(&events, "read [1,1]").await;
+        let (cmd, _rx) = apply_cmd(2, 2);
+        let sent = cmd_tx.send(cmd).await;
+        assert!(sent.is_ok(), "the worker is running");
+        drop(read_1);
+        wait_event(&events, "read [2,2]").await;
+        let mut response = Box::pin(resp_rx.recv());
+        let polled = futures_util::poll!(response.as_mut());
+        let pending = polled.is_pending();
+        assert!(pending, "the later read error cannot overtake the held apply");
+    }
+
+    tracing::info!("--- release apply [1,1] and receive its success before the read [2,2] error");
+    {
+        drop(apply_1);
+        let applied = UTConfig::<()>::timeout(WAIT_TIMEOUT, recv_applied(&mut resp_rx)).await??;
+        assert_eq!((1, 2, log_id(1, 0, 1)), applied);
+        let result = UTConfig::<()>::timeout(WAIT_TIMEOUT, recv_applied(&mut resp_rx)).await?;
+        let error = result.expect_err("the failed read reaches the following apply");
+        let error = error.downcast::<StorageError<UTConfig>>()?;
+        let source = io::Error::other("injected read 2 failure");
+        let source = UTConfig::<()>::err_from_error(&source);
+        let expected = StorageError::apply(log_id(1, 0, 2), source);
+        assert_eq!(expected, error);
+        let got = events.lock().unwrap().clone();
+        let want = vec!["read [1,1]", "apply [1,1]", "read [2,2]", "done [1,1]"];
+        assert_eq!(want, got);
+    }
+    Ok(())
+}
+
+/// A full notification channel still lets the concurrent read start, then both bounded queues
+/// drain in command order.
+#[test]
+fn full_notification_channel_keeps_read_progress() -> anyhow::Result<()> {
+    UTConfig::<()>::run(full_notification_channel_keeps_read_progress_async())
+}
+
+async fn full_notification_channel_keeps_read_progress_async() -> anyhow::Result<()> {
+    let sm = RecordingStateMachine::default();
+    let events = sm.events.clone();
+    let gates = sm.gates.clone();
+    let (cmd_tx, cmd_rx) = UTConfig::<()>::mpsc(1);
+    let (resp_tx, mut resp_rx) = UTConfig::<()>::mpsc(1);
+    let read_1 = gates.gate("read", 1);
+    let read_2 = gates.gate("read", 2);
+    let apply_1 = gates.gate("apply", 1);
+
+    tracing::info!("--- fill the only notification slot before starting the worker");
+    {
+        let applied = ApplyResult {
+            since: 0,
+            end: 1,
+            last_applied: log_id(1, 0, 0),
+        };
+        let response = CommandResult::new(Ok(Response::Apply(applied)));
+        let notification = Notification::sm(response);
+        let sent = resp_tx.send(notification).await;
+        assert!(sent.is_ok(), "the notification slot is empty");
+    }
+    let _handle = spawn_worker(sm, cmd_tx.clone(), cmd_rx, resp_tx);
+
+    tracing::info!("--- start read [2,2] even though apply [1,1] will need notification capacity");
+    {
+        let (cmd, _rx) = apply_cmd(1, 1);
+        let sent = cmd_tx.send(cmd).await;
+        assert!(sent.is_ok(), "the worker is running");
+        wait_event(&events, "read [1,1]").await;
+        let (cmd, _rx) = apply_cmd(2, 2);
+        let sent = cmd_tx.send(cmd).await;
+        assert!(sent.is_ok(), "the worker is running");
+        drop(read_1);
+        wait_event(&events, "read [2,2]").await;
+        drop(apply_1);
+        wait_event(&events, "done [1,1]").await;
+        let cmd = record_func("func");
+        let sent = cmd_tx.send(cmd).await;
+        assert!(sent.is_ok(), "the worker is running");
+    }
+
+    tracing::info!("--- fill the command channel and drain the earlier notification while read [2,2] stays held");
+    let (cmd, _rx) = apply_cmd(3, 3);
+    let mut send = Box::pin(cmd_tx.send(cmd));
+    {
+        let polled = futures_util::poll!(send.as_mut());
+        let pending = polled.is_pending();
+        assert!(pending, "the function occupies the only command slot");
+        let applied = UTConfig::<()>::timeout(WAIT_TIMEOUT, recv_applied(&mut resp_rx)).await??;
+        assert_eq!((0, 1, log_id(1, 0, 0)), applied);
+        let applied = UTConfig::<()>::timeout(WAIT_TIMEOUT, recv_applied(&mut resp_rx)).await??;
+        assert_eq!((1, 2, log_id(1, 0, 1)), applied);
+    }
+
+    tracing::info!("--- release read [2,2] and finish every command");
+    {
+        drop(read_2);
+        let sent = UTConfig::<()>::timeout(WAIT_TIMEOUT, send).await?;
+        assert!(sent.is_ok(), "the worker frees command capacity");
+        let applied = UTConfig::<()>::timeout(WAIT_TIMEOUT, recv_applied(&mut resp_rx)).await??;
+        assert_eq!((2, 3, log_id(1, 0, 2)), applied);
+        let applied = UTConfig::<()>::timeout(WAIT_TIMEOUT, recv_applied(&mut resp_rx)).await??;
+        assert_eq!((3, 4, log_id(1, 0, 3)), applied);
+        let got = events.lock().unwrap().clone();
+        let want = vec![
+            "read [1,1]",
+            "apply [1,1]",
+            "read [2,2]",
+            "done [1,1]",
+            "apply [2,2]",
+            "done [2,2]",
+            "func",
+            "read [3,3]",
+            "apply [3,3]",
+            "done [3,3]",
         ];
         assert_eq!(want, got);
     }
