@@ -174,6 +174,8 @@ pub struct LogStore {
     node: u64,
     reads: std::sync::Mutex<store_profile::ReadStats>,
     read_bandwidth: crate::byte_rate::ByteRate,
+    #[cfg(feature = "apply-pipeline")]
+    pub(crate) pipeline_observer: OnceLock<Arc<crate::apply_pipeline::Observer>>,
 }
 
 impl LogStore {
@@ -192,6 +194,8 @@ impl LogStore {
             node: 0,
             reads: std::sync::Mutex::new(store_profile::ReadStats::default()),
             read_bandwidth: crate::byte_rate::ByteRate::default(),
+            #[cfg(feature = "apply-pipeline")]
+            pipeline_observer: OnceLock::new(),
         }
     }
 
@@ -246,6 +250,10 @@ pub struct StateMachineStore {
     transactions: std::sync::Mutex<store_profile::DelayStats>,
     #[cfg(test)]
     publication_gate: std::sync::Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+    #[cfg(feature = "apply-pipeline")]
+    pub(crate) pipeline_observer: OnceLock<Arc<crate::apply_pipeline::Observer>>,
+    #[cfg(all(test, feature = "apply-pipeline"))]
+    apply_started: std::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
 }
 
 impl StateMachineStore {
@@ -261,6 +269,10 @@ impl StateMachineStore {
             transactions: std::sync::Mutex::new(store_profile::DelayStats::default()),
             #[cfg(test)]
             publication_gate: std::sync::Mutex::new(None),
+            #[cfg(feature = "apply-pipeline")]
+            pipeline_observer: OnceLock::new(),
+            #[cfg(all(test, feature = "apply-pipeline"))]
+            apply_started: std::sync::Mutex::new(None),
         }
     }
 
@@ -298,13 +310,32 @@ impl StateMachineStore {
     }
 
     fn notify_applied(&self, applied: Option<LogIdOf<TypeConfig>>, count: u32) {
+        #[cfg(feature = "apply-pipeline")]
+        if self.pipeline_observer.get().is_none() && self.apply_observer.get().is_none() {
+            return;
+        }
+        #[cfg(feature = "apply-pipeline")]
+        let published_at = Instant::now();
+        #[cfg(feature = "apply-pipeline")]
+        if let Some(observer) = self.pipeline_observer.get()
+            && let Some(applied) = applied
+        {
+            observer(crate::apply_pipeline::PipelineEvent::Applied {
+                at: published_at,
+                index: applied.index(),
+                entries: u64::from(count),
+            });
+        }
         let Some(observer) = self.apply_observer.get() else {
             return;
         };
         let Some(applied) = applied else {
             return;
         };
+        #[cfg(not(feature = "apply-pipeline"))]
         observer(applied.index(), u64::from(count), Instant::now());
+        #[cfg(feature = "apply-pipeline")]
+        observer(applied.index(), u64::from(count), published_at);
     }
 
     /// Observe a batch's applied index, entry count, and publication time after its lock is
@@ -344,14 +375,20 @@ impl RaftLogReader<TypeConfig> for Arc<LogStore> {
     where
         RB: RangeBounds<u64> + Clone + Debug + OptionalSend,
     {
+        #[cfg(feature = "apply-pipeline")]
+        let mut pipeline = crate::apply_pipeline::Span::read(self.pipeline_observer.get(), &range);
         let result = if cfg!(feature = "realistic-profiles") && self.profile.is_some() {
             self.profiled_read(range, self.apply_read_delay).await
         } else {
             if let Err(error) = blocking_delay(self.apply_read_delay).await {
+                #[cfg(feature = "apply-pipeline")]
+                pipeline.finish_read(&Err(io::Error::other(error.to_string())));
                 return Either::Right(stream::iter([Err(error)]));
             }
             self.try_get_log_entries(range).await
         };
+        #[cfg(feature = "apply-pipeline")]
+        pipeline.finish_read(&result);
         match result {
             Ok(entries) => Either::Left(stream::iter(entries).map(Ok)),
             Err(error) => Either::Right(stream::iter([Err(error)])),
@@ -506,6 +543,12 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     where Strm: Stream<Item = Result<EntryResponder<TypeConfig>, io::Error>> + Unpin + OptionalSend {
         use futures::TryStreamExt;
 
+        #[cfg(feature = "apply-pipeline")]
+        let _pipeline = crate::apply_pipeline::Span::apply(self.pipeline_observer.get());
+        #[cfg(all(test, feature = "apply-pipeline"))]
+        if let Some(started) = self.apply_started.lock().unwrap().take() {
+            started.send(()).expect("apply-start receiver remains alive");
+        }
         if cfg!(feature = "realistic-profiles") && self.profile.is_some() {
             return self.apply_profile(entries).await;
         }
@@ -738,3 +781,117 @@ mod tests {
 
 #[path = "store_profile.rs"]
 mod store_profile;
+
+#[cfg(all(test, feature = "apply-pipeline"))]
+mod pipeline_tests {
+    use std::sync::Mutex;
+
+    use futures::FutureExt;
+    use openraft::Config;
+
+    use super::*;
+    use crate::apply_pipeline::PipelineEvent;
+    use crate::network::Router;
+
+    type Published = Arc<Mutex<Vec<(u64, u64, Instant)>>>;
+
+    fn record_published(events: &Published, event: PipelineEvent) {
+        if let PipelineEvent::Applied { at, index, entries } = event {
+            events.lock().unwrap().push((index, entries, at));
+        }
+    }
+
+    fn observed_publication() -> anyhow::Result<(StateMachineStore, Published)> {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let machine = StateMachineStore::new();
+        let observing = events.clone();
+        machine
+            .pipeline_observer
+            .set(Arc::new(move |event| record_published(&observing, event)))
+            .map_err(|_| anyhow::anyhow!("pipeline observer already installed"))?;
+        let observing = events.clone();
+        machine
+            .observe_applies(Arc::new(move |index, count, at| {
+                observing.lock().unwrap().push((index, count, at));
+            }))
+            .map_err(anyhow::Error::msg)?;
+        Ok((machine, events))
+    }
+
+    #[test]
+    fn pipeline_observation_preserves_the_existing_source_timestamp() -> anyhow::Result<()> {
+        let (machine, events) = observed_publication()?;
+        let log = openraft::testing::log_id::<TypeConfig>(2, 0, 5);
+        machine.notify_applied(Some(log), 3);
+        let actual = events.lock().unwrap().clone();
+        let at = actual[0].2;
+        let expected = vec![(5, 3, at), (5, 3, at)];
+        assert_eq!(expected, actual);
+        Ok(())
+    }
+
+    #[test]
+    fn an_absent_applied_id_creates_no_publication_observations() -> anyhow::Result<()> {
+        let (machine, events) = observed_publication()?;
+        machine.notify_applied(None, 0);
+        let actual = events.lock().unwrap().clone();
+        let expected: Vec<(u64, u64, Instant)> = Vec::new();
+        assert_eq!(expected, actual);
+        Ok(())
+    }
+
+    fn count_event(counts: &Mutex<[u64; 5]>, event: PipelineEvent) {
+        let slot = match event {
+            PipelineEvent::ReadStarted { .. } => 0,
+            PipelineEvent::ReadFinished { .. } => 1,
+            PipelineEvent::ApplyStarted(_) => 2,
+            PipelineEvent::Applied { .. } => 3,
+            PipelineEvent::ApplyFinished(_) => 4,
+        };
+        counts.lock().unwrap()[slot] += 1;
+    }
+
+    #[tokio::test]
+    async fn installation_waits_for_an_apply_that_started_without_observers() -> anyhow::Result<()> {
+        let mut router = Router::new();
+        let config = Config {
+            enable_tick: false,
+            enable_heartbeat: false,
+            enable_elect: false,
+            ..Default::default()
+        };
+        router.new_cluster(Arc::new(config), std::collections::BTreeSet::from([0])).await?;
+        let raft = router.get_raft(0);
+        let machine = raft.with_state_machine(|sm| Box::pin(async move { sm.clone() })).await?;
+        let locked = machine.sm.write().await;
+        let (started, entered) = tokio::sync::oneshot::channel();
+        *machine.apply_started.lock().unwrap() = Some(started);
+        let writer = raft.clone();
+        let writing = tokio::spawn(async move { writer.client_write(ClientRequest::default()).await });
+        tokio::time::timeout(Duration::from_secs(5), entered).await??;
+
+        let counts = Arc::new(Mutex::new([0; 5]));
+        let observed = counts.clone();
+        let observer = Arc::new(move |event| count_event(&observed, event));
+        let mut installing = Box::pin(router.observe_apply_pipeline(0, observer));
+        let polled = installing.as_mut().now_or_never();
+        let pending = polled.is_none();
+        assert!(pending);
+        let installed = machine.pipeline_observer.get().is_some();
+        assert!(!installed);
+        drop(locked);
+        writing.await??;
+        installing.await?;
+        let before = *counts.lock().unwrap();
+        assert_eq!([0; 5], before);
+
+        raft.client_write(ClientRequest::default()).await?;
+        raft.with_state_machine(|_| Box::pin(async {})).await?;
+        let after = *counts.lock().unwrap();
+        assert_eq!([1; 5], after);
+        let (_, writes) = machine.read().await;
+        assert_eq!(2, writes);
+        raft.shutdown().await?;
+        Ok(())
+    }
+}
