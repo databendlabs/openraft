@@ -1,15 +1,19 @@
+use std::future::Future;
+use std::pin::Pin;
+
 use display_more::DisplayOptionExt;
-use futures_util::FutureExt;
 use futures_util::StreamExt;
 use futures_util::TryStreamExt;
 use tracing::Instrument;
 
+use crate::OptionalSend;
 use crate::RaftLogReader;
 use crate::RaftSnapshotBuilder;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::async_runtime::MpscReceiver;
 use crate::async_runtime::OneshotSender;
+use crate::async_runtime::Select2;
 use crate::async_runtime::mpsc::PeekableReceiver;
 use crate::core::ApplyResult;
 use crate::core::notification::Notification;
@@ -109,10 +113,10 @@ where
     /// one is applying.
     ///
     /// At most two things are in flight: the batch being applied and the batch being read. Each
-    /// round applies the batch read in the previous round and reads the `Apply` commands queued at
-    /// that moment as the next batch, so the read overlaps the state-machine I/O. Commands that
-    /// arrive during the round extend the batch read ahead: the round after reads them and applies
-    /// them with it, so an entry committed during an `apply()` does not wait for a second one.
+    /// round applies the batch read in the previous round and keeps reading contiguous `Apply`
+    /// commands that arrive while it applies, up to `MAX_PREFETCH_ENTRIES`. A final queued tail
+    /// still extends the next batch before it applies, so entries committed near the end of an
+    /// `apply()` do not wait for another one.
     /// Every batch is read into memory before it is applied, so `apply()` never borrows
     /// `log_reader` and one reader serves every read.
     #[tracing::instrument(level = "debug", skip_all)]
@@ -125,7 +129,7 @@ where
                     // The commands queued while the previous batch applied continue this batch.
                     // Applying them now costs one read, which is not overlapped; leaving them
                     // queued would make them wait for this whole `apply()`.
-                    if let Some(mut extension) = self.take_queued_applies(batch.end()) {
+                    if let Some(mut extension) = Self::take_queued_applies(&mut self.cmd_rx, batch.end(), u64::MAX) {
                         tracing::debug!("extend read-ahead Apply with: [{},{}]", extension.first, extension.last);
                         Self::read(&mut self.log_reader, &mut extension).await;
                         batch.extend(extension);
@@ -153,22 +157,41 @@ where
                         self.run_command(cmd).await?;
                         continue;
                     };
-                    let mut batch = self.take_queued_applies(since).expect("the peeked command is an Apply");
+                    let mut batch = Self::take_queued_applies(&mut self.cmd_rx, since, u64::MAX)
+                        .expect("the peeked command is an Apply");
                     Self::read(&mut self.log_reader, &mut batch).await;
                     batch
                 }
             };
 
-            let next = self.take_queued_applies(batch.end());
-            match next {
-                Some(mut next) => {
-                    tracing::debug!("read ahead Apply: [{},{}]", next.first, next.last);
-                    let apply = Self::apply_and_notify(&mut self.state_machine, &self.resp_tx, batch);
-                    let read = Self::read(&mut self.log_reader, &mut next).map(Ok);
-                    futures_util::future::try_join(apply, read).await?;
-                    read_ahead = Some(next);
+            let since = batch.end();
+            let applying = Self::apply_and_notify(&mut self.state_machine, &self.resp_tx, batch);
+            futures_util::pin_mut!(applying);
+            loop {
+                let ready = Self::command_ready(&mut self.cmd_rx);
+                match C::select2(applying.as_mut(), ready).await {
+                    Select2::First(result) => {
+                        result?;
+                        break;
+                    }
+                    Select2::Second(_) => {}
                 }
-                None => Self::apply_and_notify(&mut self.state_machine, &self.resp_tx, batch).await?,
+                let next_index = read_ahead.as_ref().map_or(since, ApplyBatch::end);
+                let remaining = MAX_PREFETCH_ENTRIES - (next_index - since);
+                let next = Self::take_queued_applies(&mut self.cmd_rx, next_index, remaining);
+                let Some(mut next) = next else {
+                    applying.await?;
+                    break;
+                };
+                let apply_finished =
+                    Self::read_during_apply(applying.as_mut(), &mut self.log_reader, &mut next).await?;
+                match &mut read_ahead {
+                    Some(batch) => batch.extend(next),
+                    None => read_ahead = Some(next),
+                }
+                if apply_finished {
+                    break;
+                }
             }
         }
     }
@@ -222,20 +245,26 @@ where
     /// machine is busy, many small `Apply` commands queue up. Applying them as one batch pays the
     /// per-call cost of `entries_stream()` and `apply()` once instead of once per command.
     ///
-    /// Only commands that are already queued are taken. The first one that is not an `Apply`
-    /// continuing the range stays in `cmd_rx` and runs next, so commands still run in the order
-    /// RaftCore sent them. Returns `None` when no such `Apply` is queued.
-    fn take_queued_applies(&mut self, since: u64) -> Option<ApplyBatch<C>> {
+    /// Only whole commands fitting `max_entries` are taken. The first command that cannot join
+    /// the range stays in `cmd_rx` and runs next, so commands retain their order. Returns `None`
+    /// when the next command cannot start this batch.
+    fn take_queued_applies(
+        cmd_rx: &mut PeekableReceiver<CommandReceiver<C, SM>, Command<C, SM>>,
+        since: u64,
+        max_entries: u64,
+    ) -> Option<ApplyBatch<C>> {
         let mut batch: Option<ApplyBatch<C>> = None;
+        let end = since.saturating_add(max_entries);
 
-        while let Ok(Command::Apply { first, .. }) = self.cmd_rx.try_peek()
+        while let Ok(Command::Apply { first, last, .. }) = cmd_rx.try_peek()
             && first.index() == batch.as_ref().map_or(since, ApplyBatch::end)
+            && last.index() < end
         {
             let Ok(Command::Apply {
                 first,
                 last,
                 client_resp_channels,
-            }) = self.cmd_rx.try_recv()
+            }) = cmd_rx.try_recv()
             else {
                 unreachable!("the peeked command is an Apply");
             };
@@ -377,7 +406,38 @@ where
         resp_tx.send(Notification::sm(res)).await.ok();
         Ok(())
     }
+
+    async fn command_ready(cmd_rx: &mut PeekableReceiver<CommandReceiver<C, SM>, Command<C, SM>>) -> bool {
+        let command = cmd_rx.peek().await;
+        command.is_some()
+    }
+
+    /// Complete a successful worker's read before reusing its generic, possibly cancellation-unsafe
+    /// reader. Return whether the apply/notification future finished before the read. An apply
+    /// error can cancel the read because the worker exits.
+    async fn read_during_apply<F>(
+        applying: Pin<&mut F>,
+        reader: &mut LR,
+        batch: &mut ApplyBatch<C>,
+    ) -> Result<bool, StorageError<C>>
+    where
+        F: Future<Output = Result<(), StorageError<C>>> + OptionalSend,
+    {
+        let reading = Self::read(reader, batch);
+        futures_util::pin_mut!(reading);
+        match C::select2(applying, reading.as_mut()).await {
+            Select2::First(result) => {
+                result?;
+                reading.await;
+                Ok(true)
+            }
+            Select2::Second(()) => Ok(false),
+        }
+    }
 }
+
+/// Only whole commands that fit this speculative entry budget are read during another apply.
+const MAX_PREFETCH_ENTRIES: u64 = 1024;
 
 #[cfg(test)]
 mod worker_test;
