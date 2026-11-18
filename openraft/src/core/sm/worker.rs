@@ -114,22 +114,25 @@ where
     ///
     /// At most two things are in flight: the batch being applied and the batch being read. Each
     /// round applies the batch read in the previous round and keeps reading contiguous `Apply`
-    /// commands that arrive while it applies, up to `MAX_PREFETCH_ENTRIES`. A final queued tail
-    /// still extends the next batch before it applies, so entries committed near the end of an
-    /// `apply()` do not wait for another one.
+    /// commands that arrive while it applies, up to `MAX_PREFETCH_ENTRIES`. A prefetch completed
+    /// during apply keeps its final queued tail; one that outlasted apply starts promptly without
+    /// another serial read.
     /// Every batch is read into memory before it is applied, so `apply()` never borrows
     /// `log_reader` and one reader serves every read.
     #[tracing::instrument(level = "debug", skip_all)]
     async fn worker_loop(&mut self) -> Result<(), StorageError<C>> {
-        let mut read_ahead: Option<ApplyBatch<C>> = None;
+        // The flag permits a final tail when prefetch finished while apply/notification was pending.
+        let mut read_ahead: Option<(ApplyBatch<C>, bool)> = None;
 
         loop {
             let batch = match read_ahead.take() {
-                Some(mut batch) => {
+                Some((mut batch, extend_tail)) => {
                     // The commands queued while the previous batch applied continue this batch.
                     // Applying them now costs one read, which is not overlapped; leaving them
                     // queued would make them wait for this whole `apply()`.
-                    if let Some(mut extension) = Self::take_queued_applies(&mut self.cmd_rx, batch.end(), u64::MAX) {
+                    if extend_tail
+                        && let Some(mut extension) = Self::take_queued_applies(&mut self.cmd_rx, batch.end(), u64::MAX)
+                    {
                         tracing::debug!("extend read-ahead Apply with: [{},{}]", extension.first, extension.last);
                         Self::read(&mut self.log_reader, &mut extension).await;
                         batch.extend(extension);
@@ -176,7 +179,10 @@ where
                     }
                     Select2::Second(_) => {}
                 }
-                let next_index = read_ahead.as_ref().map_or(since, ApplyBatch::end);
+                let next_index = match &read_ahead {
+                    Some((batch, _)) => batch.end(),
+                    None => since,
+                };
                 let remaining = MAX_PREFETCH_ENTRIES - (next_index - since);
                 let next = Self::take_queued_applies(&mut self.cmd_rx, next_index, remaining);
                 let Some(mut next) = next else {
@@ -186,8 +192,11 @@ where
                 let apply_finished =
                     Self::read_during_apply(applying.as_mut(), &mut self.log_reader, &mut next).await?;
                 match &mut read_ahead {
-                    Some(batch) => batch.extend(next),
-                    None => read_ahead = Some(next),
+                    Some((batch, extend_tail)) => {
+                        batch.extend(next);
+                        *extend_tail = !apply_finished;
+                    }
+                    None => read_ahead = Some((next, !apply_finished)),
                 }
                 if apply_finished {
                     break;
