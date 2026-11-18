@@ -66,10 +66,10 @@ where I: Instant
 mod serde_impl {
     use std::fmt;
     use std::marker::PhantomData;
+    use std::time::Duration;
     use std::time::SystemTime;
+    use std::time::UNIX_EPOCH;
 
-    use chrono::DateTime;
-    use chrono::Utc;
     use serde::Deserialize;
     use serde::Deserializer;
     use serde::Serialize;
@@ -99,9 +99,13 @@ mod serde_impl {
                 }
             };
 
-            let datetime: DateTime<Utc> = system_time.into();
-
-            let nano = datetime.timestamp_nanos_opt().ok_or(serde::ser::Error::custom("time out of range"))?;
+            // Nanoseconds since the Unix epoch. Reject times before the epoch or past
+            // `i64::MAX` nanoseconds (year 2262), so the value also fits an `i64`.
+            let nano = system_time
+                .duration_since(UNIX_EPOCH)
+                .ok()
+                .and_then(|d| i64::try_from(d.as_nanos()).ok())
+                .ok_or_else(|| serde::ser::Error::custom("time out of range"))?;
 
             serializer.serialize_u64(nano as u64)
         }
@@ -118,14 +122,14 @@ mod serde_impl {
                 type Value = SerdeInstant<II>;
 
                 fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                    write!(formatter, "an u64 generated with Datetime::timestamp_nanos_opt()",)
+                    write!(formatter, "a u64 count of nanoseconds since the Unix epoch")
                 }
 
                 fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
                 where E: de::Error {
-                    let datetime = DateTime::from_timestamp_nanos(value as i64);
-
-                    let system_time: SystemTime = datetime.with_timezone(&Utc).into();
+                    let system_time = UNIX_EPOCH
+                        .checked_add(Duration::from_nanos(value))
+                        .ok_or_else(|| E::custom("time out of range"))?;
 
                     // Calculate the `Instant` from the current time
                     let sys_now = SystemTime::now();

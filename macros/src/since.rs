@@ -197,15 +197,15 @@ impl Since {
 
         let date_str = Self::parse_str(date_lit, "date", span)?;
 
-        chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d").map_err(|_e| {
-            syn::Error::new(
+        if !is_valid_date(&date_str) {
+            return Err(syn::Error::new(
                 span,
                 format!(
                     "`date`(`{}`) is not valid date string. Expected format: yyyy-mm-dd",
                     date_str
                 ),
-            )
-        })?;
+            ));
+        }
 
         self.date = Some(date_str);
 
@@ -317,4 +317,63 @@ fn rewrite_attrs_since(attrs: &mut Vec<syn::Attribute>) -> Result<bool, syn::Err
 /// Whether `attr` is a `#[since(...)]` marker, matching both `since` and `openraft_macros::since`.
 fn is_since(attr: &syn::Attribute) -> bool {
     attr.path().segments.last().is_some_and(|s| s.ident == "since")
+}
+
+/// Whether `s` is an existing calendar date written as `yyyy-mm-dd`.
+fn is_valid_date(s: &str) -> bool {
+    let b = s.as_bytes();
+    if b.len() != 10 || b[4] != b'-' || b[7] != b'-' {
+        return false;
+    }
+
+    let (Some(year), Some(month), Some(day)) =
+        (parse_digits(&b[0..4]), parse_digits(&b[5..7]), parse_digits(&b[8..10]))
+    else {
+        return false;
+    };
+
+    let is_leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+    let days_in_month = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if is_leap => 29,
+        2 => 28,
+        _ => return false,
+    };
+
+    (1..=days_in_month).contains(&day)
+}
+
+/// Parse a string of ASCII digits as a decimal number; `None` if any byte is not a digit.
+fn parse_digits(b: &[u8]) -> Option<u32> {
+    b.iter().try_fold(0u32, |acc, c| {
+        c.is_ascii_digit().then(|| acc * 10 + u32::from(c - b'0'))
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_valid_date;
+
+    #[test]
+    fn test_is_valid_date() {
+        assert!(is_valid_date("2021-01-01"));
+        assert!(is_valid_date("2021-12-31"));
+        assert!(is_valid_date("2024-02-29"));
+        assert!(is_valid_date("2000-02-29"));
+
+        assert!(!is_valid_date("2021-01--"));
+        assert!(!is_valid_date("2021-1-01"));
+        assert!(!is_valid_date("2021-01-1"));
+        assert!(!is_valid_date("2021/01/01"));
+        assert!(!is_valid_date("2021-00-01"));
+        assert!(!is_valid_date("2021-13-01"));
+        assert!(!is_valid_date("2021-01-00"));
+        assert!(!is_valid_date("2021-04-31"));
+        assert!(!is_valid_date("2023-02-29"));
+        assert!(!is_valid_date("1900-02-29"));
+        assert!(!is_valid_date("+021-01-01"));
+        assert!(!is_valid_date("2021-01-01 "));
+        assert!(!is_valid_date(""));
+    }
 }

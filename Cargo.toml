@@ -20,11 +20,10 @@ anyerror           = { version = "0.1.10" }
 anyhow             = { version = "1.0.63" }
 backoff-series     = { version = "0.1.1" }
 parse-size         = { version = "1.1.0" }
-chrono             = { version = "0.4" }
 clap               = { version = "4.1.11", features = ["derive", "env"] }
 criterion          = { version = "0.8.2", features = ["html_reports"] }
 derive_more        = { version = "2.1.1", features = ["std", "from", "try_into", "display"] }
-display-more       = { version = "0.2.6" }
+display-more       = { version = "0.2.7" }
 itertools          = { version = "0.15" }
 futures            = { version = "0.3" }
 futures-channel    = { version = "0.3" }

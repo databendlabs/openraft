@@ -25,7 +25,6 @@ anyhow          = { workspace = true, optional = true }
 backoff-series  = { workspace = true }
 base2histogram  = { workspace = true }
 parse-size      = { workspace = true, optional = true }
-chrono          = { workspace = true }
 clap            = { workspace = true, optional = true }
 derive_more     = { workspace = true }
 display-more    = { workspace = true }
