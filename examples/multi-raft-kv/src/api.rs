@@ -8,6 +8,7 @@ use openraft::async_runtime::WatchReceiver;
 use openraft::raft::TransferLeaderRequest;
 use openraft::raft::TransferLeaderResponse;
 
+use crate::GroupId;
 use crate::NodeId;
 use crate::app::GroupApp;
 use crate::decode;
@@ -59,6 +60,27 @@ pub async fn pre_vote(app: &mut GroupApp, req: String) -> String {
 pub async fn append(app: &mut GroupApp, req: String) -> String {
     let res = app.raft.append_entries(decode(&req)).await;
     encode(res.map(AppendEntriesResponse::from))
+}
+
+/// Handle a batch of AppendEntries requests for several groups of this node.
+///
+/// The requests run concurrently, and the reply holds their results in request order. The reply
+/// waits for every request, so a slow group delays the results of the others in its batch.
+pub async fn append_batch(groups: &BTreeMap<GroupId, GroupApp>, req: String) -> String {
+    let requests: Vec<(GroupId, AppendEntriesRequest)> = decode(&req);
+
+    let appends = requests.into_iter().map(|(group_id, rpc)| {
+        let raft = groups.get(&group_id).map(|group| group.raft.clone());
+        async move {
+            match raft {
+                Some(raft) => raft.append_entries(rpc).await.map(AppendEntriesResponse::from),
+                None => Err(RaftError::Fatal(Fatal::Stopped)),
+            }
+        }
+    });
+    let results: Vec<Result<AppendEntriesResponse, RaftError>> = futures::future::join_all(appends).await;
+
+    encode(Ok::<_, RaftError>(results))
 }
 
 /// Receive a snapshot and install it

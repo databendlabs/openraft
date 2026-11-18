@@ -1,14 +1,18 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use openraft::Config;
+use openraft::type_config::TypeConfigExt;
 
 use crate::app::Node;
+use crate::network::NodeNetwork;
 use crate::router::Router;
 
 pub mod router;
 
 pub mod api;
 pub mod app;
+pub mod append_batcher;
 pub mod network;
 pub mod store;
 
@@ -52,16 +56,22 @@ pub fn decode<T: serde::de::DeserializeOwned>(s: &str) -> T {
     serde_json::from_str(s).unwrap()
 }
 
+/// How often a leader sends heartbeats, in milliseconds.
+const HEARTBEAT_INTERVAL: u64 = 500;
+
 /// Create a Node with multiple Raft groups.
 ///
 /// - One Node has ONE connection (shared by all groups)
 /// - Each group has its own Raft instance
 pub async fn create_node(node_id: NodeId, group_ids: &[GroupId], router: Router) -> Node {
     let (mut node, _tx) = Node::new(node_id, router.clone());
+    let node_network = NodeNetwork::new(router.clone(), node.batcher.clone());
 
     for group_id in group_ids {
         let config = Config {
-            heartbeat_interval: 500,
+            heartbeat_interval: HEARTBEAT_INTERVAL,
+            // The node's timer in `send_heartbeats()` triggers the heartbeats of all groups.
+            enable_heartbeat: false,
             election_timeout_min: 1500,
             election_timeout_max: 3000,
             max_in_snapshot_log_to_keep: 0,
@@ -73,12 +83,39 @@ pub async fn create_node(node_id: NodeId, group_ids: &[GroupId], router: Router)
         let log_store = LogStore::default();
         let state_machine_store = StateMachineStore::default();
 
-        let network = network::NetworkFactory::new(router.clone(), group_id.clone());
+        let network = network::NetworkFactory::new(node_network.clone(), group_id.clone());
 
         let raft = openraft::Raft::new(node_id, config, network, log_store, state_machine_store.clone()).await.unwrap();
 
         node.add_group(group_id.clone(), raft, state_machine_store);
     }
 
+    let rafts = node.groups.values().map(|group| group.raft.clone()).collect();
+    TypeConfig::spawn(send_heartbeats(rafts));
+
     node
+}
+
+/// Trigger a heartbeat in each of `rafts` every [`HEARTBEAT_INTERVAL`], until all of them shut
+/// down. Only a leader sends heartbeats: a follower ignores the trigger.
+///
+/// One timer for all groups makes their heartbeats to each node reach the [`AppendBatcher`]
+/// together, so they share a batch. The timer of each group starts when it becomes leader, so
+/// the heartbeats of different groups would rarely fall within one batching delay.
+///
+/// [`AppendBatcher`]: crate::append_batcher::AppendBatcher
+async fn send_heartbeats(rafts: Vec<Raft>) {
+    loop {
+        TypeConfig::sleep(Duration::from_millis(HEARTBEAT_INTERVAL)).await;
+
+        let mut running = 0;
+        for raft in &rafts {
+            if raft.trigger().heartbeat().await.is_ok() {
+                running += 1;
+            }
+        }
+        if running == 0 {
+            return;
+        }
+    }
 }

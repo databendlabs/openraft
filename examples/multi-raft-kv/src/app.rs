@@ -7,6 +7,7 @@ use crate::GroupId;
 use crate::NodeId;
 use crate::StateMachineStore;
 use crate::api;
+use crate::append_batcher::AppendBatcher;
 use crate::encode;
 use crate::router::NodeMessage;
 use crate::router::NodeRx;
@@ -23,6 +24,9 @@ pub struct Node {
     pub groups: BTreeMap<GroupId, GroupApp>,
     pub rx: NodeRx,
     pub router: Router,
+    /// Sends the empty AppendEntries requests of this node's groups, mostly heartbeats, in
+    /// batches.
+    pub batcher: AppendBatcher,
 }
 
 impl Node {
@@ -36,6 +40,7 @@ impl Node {
             node_id,
             groups: BTreeMap::new(),
             rx,
+            batcher: AppendBatcher::spawn(router.clone()),
             router,
         };
 
@@ -70,6 +75,21 @@ impl Node {
                 payload,
                 response_tx,
             } = msg;
+
+            // A message without a group is for the node itself.
+            let Some(group_id) = group_id else {
+                let res = match path.as_str() {
+                    "/raft/append-batch" => api::append_batch(&self.groups, payload).await,
+                    _ => {
+                        tracing::warn!("unknown node path: {}", path);
+                        encode::<Result<(), typ::RaftError>>(Err(typ::RaftError::Fatal(
+                            openraft::error::Fatal::Stopped,
+                        )))
+                    }
+                };
+                let _ = response_tx.send(res);
+                continue;
+            };
 
             // Find the target group
             let group = match self.groups.get_mut(&group_id) {

@@ -31,7 +31,9 @@ impl std::error::Error for RouterError {}
 
 /// Message sent through a node connection, containing group_id for routing.
 pub struct NodeMessage {
-    pub group_id: GroupId,
+    /// The group the message is for, or `None` for a message to the node itself, such as a batch
+    /// of requests for several groups.
+    pub group_id: Option<GroupId>,
     pub path: String,
     pub payload: String,
     pub response_tx: oneshot::Sender<String>,
@@ -76,13 +78,41 @@ impl Router {
         Req: serde::Serialize,
         Result<Resp, RaftError>: serde::de::DeserializeOwned,
     {
+        self.call(to_node, Some(to_group.clone()), path, req).await
+    }
+
+    /// Send a request to a node itself, rather than to one of its groups.
+    pub async fn send_to_node<Req, Resp>(
+        &self,
+        to_node: NodeId,
+        path: &str,
+        req: Req,
+    ) -> Result<Resp, Unreachable<TypeConfig>>
+    where
+        Req: serde::Serialize,
+        Result<Resp, RaftError>: serde::de::DeserializeOwned,
+    {
+        self.call(to_node, None, path, req).await
+    }
+
+    async fn call<Req, Resp>(
+        &self,
+        to_node: NodeId,
+        group_id: Option<GroupId>,
+        path: &str,
+        req: Req,
+    ) -> Result<Resp, Unreachable<TypeConfig>>
+    where
+        Req: serde::Serialize,
+        Result<Resp, RaftError>: serde::de::DeserializeOwned,
+    {
         let (resp_tx, resp_rx) = oneshot::channel();
 
         let encoded_req = encode(&req);
         tracing::debug!(
-            "send to: node={}, group={}, path={}, req={}",
+            "send to: node={}, group={:?}, path={}, req={}",
             to_node,
-            to_group,
+            group_id,
             path,
             encoded_req
         );
@@ -97,7 +127,7 @@ impl Router {
         };
 
         let msg = NodeMessage {
-            group_id: to_group.clone(),
+            group_id: group_id.clone(),
             path: path.to_string(),
             payload: encoded_req,
             response_tx: resp_tx,
@@ -107,9 +137,9 @@ impl Router {
 
         let resp_str = resp_rx.await.map_err(|e| Unreachable::new(&RouterError(e.to_string())))?;
         tracing::debug!(
-            "resp from: node={}, group={}, path={}, resp={}",
+            "resp from: node={}, group={:?}, path={}, resp={}",
             to_node,
-            to_group,
+            group_id,
             path,
             resp_str
         );

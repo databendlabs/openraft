@@ -23,10 +23,27 @@ use openraft_multi::GroupRouter;
 use crate::GroupId;
 use crate::NodeId;
 use crate::TypeConfig;
+use crate::append_batcher::AppendBatcher;
 use crate::router::Router;
 use crate::typ;
 
-impl GroupRouter<TypeConfig, GroupId> for Router {
+/// The network that all groups of one node send through.
+///
+/// AppendEntries requests without entries, mostly heartbeats, go through the node's
+/// [`AppendBatcher`], and every other request goes through the [`Router`] on its own.
+#[derive(Clone)]
+pub struct NodeNetwork {
+    router: Router,
+    batcher: AppendBatcher,
+}
+
+impl NodeNetwork {
+    pub fn new(router: Router, batcher: AppendBatcher) -> Self {
+        Self { router, batcher }
+    }
+}
+
+impl GroupRouter<TypeConfig, GroupId> for NodeNetwork {
     type SnapshotData = typ::SnapshotData;
 
     async fn append_entries(
@@ -40,8 +57,13 @@ impl GroupRouter<TypeConfig, GroupId> for Router {
         // request.
         let last_log_id = rpc.last_log_id();
         let prev_log_id = rpc.prev_log_id;
-        let response: AppendEntriesResponse<TypeConfig> =
-            self.send(target, &group_id, "/raft/append", rpc).await.map_err(RPCError::Unreachable)?;
+
+        let response: AppendEntriesResponse<TypeConfig> = if rpc.entries.is_empty() {
+            self.batcher.append(target, group_id, rpc).await
+        } else {
+            self.router.send(target, &group_id, "/raft/append", rpc).await
+        }
+        .map_err(RPCError::Unreachable)?;
         Ok(response.into_append_result(prev_log_id, last_log_id))
     }
 
@@ -52,7 +74,7 @@ impl GroupRouter<TypeConfig, GroupId> for Router {
         rpc: VoteRequest<TypeConfig>,
         _option: RPCOption,
     ) -> Result<VoteResponse<TypeConfig>, RPCError<TypeConfig>> {
-        self.send(target, &group_id, "/raft/vote", rpc).await.map_err(RPCError::Unreachable)
+        self.router.send(target, &group_id, "/raft/vote", rpc).await.map_err(RPCError::Unreachable)
     }
 
     async fn pre_vote(
@@ -62,7 +84,7 @@ impl GroupRouter<TypeConfig, GroupId> for Router {
         rpc: VoteRequest<TypeConfig>,
         _option: RPCOption,
     ) -> Result<VoteResponse<TypeConfig>, RPCError<TypeConfig>> {
-        self.send(target, &group_id, "/raft/pre-vote", rpc).await.map_err(RPCError::Unreachable)
+        self.router.send(target, &group_id, "/raft/pre-vote", rpc).await.map_err(RPCError::Unreachable)
     }
 
     async fn full_snapshot(
@@ -76,7 +98,8 @@ impl GroupRouter<TypeConfig, GroupId> for Router {
     ) -> Result<SnapshotResponse<TypeConfig>, StreamingError<TypeConfig>> {
         // Extract inner Vec<u8> from Cursor for serialization
         let data: Vec<u8> = snapshot.snapshot.into_inner();
-        self.send(target, &group_id, "/raft/snapshot", (vote, snapshot.meta, data))
+        self.router
+            .send(target, &group_id, "/raft/snapshot", (vote, snapshot.meta, data))
             .await
             .map_err(StreamingError::Unreachable)
     }
@@ -88,7 +111,10 @@ impl GroupRouter<TypeConfig, GroupId> for Router {
         req: TransferLeaderRequest<TypeConfig>,
         _option: RPCOption,
     ) -> Result<TransferLeaderResponse<TypeConfig>, RPCError<TypeConfig>> {
-        self.send(target, &group_id, "/raft/transfer_leader", req).await.map_err(RPCError::Unreachable)
+        self.router
+            .send(target, &group_id, "/raft/transfer_leader", req)
+            .await
+            .map_err(RPCError::Unreachable)
     }
 
     fn backoff(&self) -> Option<Backoff> {
@@ -97,11 +123,11 @@ impl GroupRouter<TypeConfig, GroupId> for Router {
 }
 
 /// Network factory that creates `GroupNetworkAdapter` instances.
-pub type NetworkFactory = GroupNetworkFactory<Router, GroupId>;
+pub type NetworkFactory = GroupNetworkFactory<NodeNetwork, GroupId>;
 
 impl RaftNetworkFactory<TypeConfig> for NetworkFactory {
-    /// The network type is `GroupNetworkAdapter` binding (Router, target, group_id).
-    type Network = GroupNetworkAdapter<TypeConfig, GroupId, Router>;
+    /// The network type is `GroupNetworkAdapter` binding (NodeNetwork, target, group_id).
+    type Network = GroupNetworkAdapter<TypeConfig, GroupId, NodeNetwork>;
 
     async fn new_client(&mut self, target: NodeId, _node: &openraft::BasicNode) -> Self::Network {
         GroupNetworkAdapter::new(self.factory.clone(), target, self.group_id.clone())

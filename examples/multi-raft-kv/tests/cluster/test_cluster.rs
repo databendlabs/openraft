@@ -8,11 +8,13 @@
 use std::backtrace::Backtrace;
 use std::collections::BTreeMap;
 use std::panic::PanicHookInfo;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use multi_raft_kv::GroupId;
 use multi_raft_kv::Raft;
 use multi_raft_kv::TypeConfig;
+use multi_raft_kv::append_batcher::AppendBatcher;
 use multi_raft_kv::create_node;
 use multi_raft_kv::groups;
 use multi_raft_kv::router::Router;
@@ -69,16 +71,17 @@ fn test_multi_raft_cluster() {
         // Get Raft handles before moving nodes into tasks
         let node1_rafts: Vec<_> = group_ids.iter().map(|g| node1.get_raft(g).unwrap().clone()).collect();
         let node2_rafts: Vec<_> = group_ids.iter().map(|g| node2.get_raft(g).unwrap().clone()).collect();
+        let node1_batcher = node1.batcher.clone();
 
         // Spawn node message handlers (one per node, not per group!)
         TypeConfig::spawn(node1.run());
         TypeConfig::spawn(node2.run());
 
-        run_test(&node1_rafts, &node2_rafts, &group_ids).await;
+        run_test(&node1_rafts, &node2_rafts, &node1_batcher, &group_ids).await;
     });
 }
 
-async fn run_test(node1_rafts: &[Raft], node2_rafts: &[Raft], group_ids: &[GroupId]) {
+async fn run_test(node1_rafts: &[Raft], node2_rafts: &[Raft], node1_batcher: &AppendBatcher, group_ids: &[GroupId]) {
     // Wait for servers to start up
     TypeConfig::sleep(Duration::from_millis(200)).await;
 
@@ -152,6 +155,32 @@ async fn run_test(node1_rafts: &[Raft], node2_rafts: &[Raft], group_ids: &[Group
             group_ids[i]
         );
     }
+
+    // =========================================================================
+    // Verify heartbeats share batches
+    // =========================================================================
+    println!("\n=== Verifying the heartbeats of all groups share batches ===\n");
+
+    // Node 1 leads every group, and its timer triggers their heartbeats to node 2 at once.
+    let stats = node1_batcher.stats();
+    let batches_before = stats.batches.load(Ordering::Relaxed);
+    let requests_before = stats.requests.load(Ordering::Relaxed);
+
+    TypeConfig::sleep(Duration::from_millis(2000)).await;
+
+    let batches = stats.batches.load(Ordering::Relaxed) - batches_before;
+    let requests = stats.requests.load(Ordering::Relaxed) - requests_before;
+    println!(
+        "  Node 1 sent {} empty AppendEntries requests in {} batches",
+        requests, batches
+    );
+    assert!(
+        requests > batches,
+        "{} groups should share batches: {} requests in {} batches",
+        group_ids.len(),
+        requests,
+        batches
+    );
 }
 
 // ============================================================================
