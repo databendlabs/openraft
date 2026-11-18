@@ -127,6 +127,14 @@ fn add_send_bounds(item: TokenStream) -> TokenStream {
 ///
 /// - The `version` must be a valid semver string.
 /// - The `date` must be a valid date string in the format `yyyy-mm-dd`.
+/// - The optional `change` argument can appear more than once. The macro adds a colon after the
+///   version and optional date, then joins the change messages with `; `.
+///
+/// `#[since(version = "1.0.0", date = "2021-01-01", change = "add Foo", change = "add Bar")]`
+/// generates `Since: 1.0.0, Date(2021-01-01): add Foo; add Bar`.
+///
+/// Stacked `#[since]` attributes generate lines in the order they appear. Put the newest version
+/// first to show the newest change at the top.
 ///
 /// ### Example
 ///
