@@ -348,11 +348,10 @@ conflict carries a hint that helps the leader find the matching log with fewer
 probes. [`AppendResult`] does not implement serde, so the transport converts it
 to and from its own wire type, such as the examples'
 [`AppendReply`](https://github.com/databendlabs/openraft/blob/main/examples/utils/append_reply.rs).
-To keep the [`AppendEntriesResponse`] wire format instead, the follower sends
-`AppendEntriesResponse::from(result)` and the leader rebuilds the result with
-[`AppendEntriesResponse::into_append_result()`], passing the log ids of the
-request it sent. That format carries no hint, and the leader then uses binary
-search.
+A transport that does not carry hints can send [`StreamAppendResult`], a
+serializable format without the hint: both ends convert with
+`result.map_err(Into::into)`. The leader then receives no hint and finds the
+matching log by binary search.
 
 ### Optional: `stream_append()` for pipelined replication
 
@@ -704,8 +703,7 @@ library suite does not verify application storage or network adapters.
 [`AppendEntriesRequest`]:               `crate::raft::AppendEntriesRequest`
 [`AppendError`]:                        `crate::raft::AppendError`
 [`AppendResult`]:                       `crate::raft::AppendResult`
-[`AppendEntriesResponse`]:              `crate::raft::AppendEntriesResponse`
-[`AppendEntriesResponse::into_append_result()`]: `crate::raft::AppendEntriesResponse::into_append_result`
+[`StreamAppendResult`]:                 `crate::raft::StreamAppendResult`
 [`VoteRequest`]:                        `crate::raft::VoteRequest`
 
 [`RaftTypeConfig`]:                     `crate::RaftTypeConfig`

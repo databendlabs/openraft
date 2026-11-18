@@ -13,8 +13,12 @@ use crate::type_config::alias::VoteOf;
 
 /// The response to an `AppendEntriesRequest`, in a serializable format without the conflict hint.
 ///
-/// [`Raft::append_entries()`] and [`RaftNetworkV2::append_entries()`] use [`AppendResult`]. A
-/// transport that keeps sending this format converts with `AppendEntriesResponse::from(result)`
+/// The legacy v1 `RaftNetwork` in `openraft-legacy` returns this type, and its `Adapter` converts
+/// it with [`Self::into_append_result()`]. [`Raft::append_entries()`] and
+/// [`RaftNetworkV2::append_entries()`] use [`AppendResult`] instead, which a transport sends in its
+/// own wire format, such as [`StreamAppendResult`].
+///
+/// A transport that keeps sending this format converts with `AppendEntriesResponse::from(result)`
 /// on the follower, and with [`Self::into_append_result()`] on the leader.
 ///
 /// [`Raft::append_entries()`]: crate::raft::Raft::append_entries

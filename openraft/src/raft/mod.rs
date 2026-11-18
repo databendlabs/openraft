@@ -1027,8 +1027,8 @@ where
     /// truncated the conflicting entries.
     ///
     /// [`AppendResult`] does not implement serde, so convert it to the transport's own response
-    /// type. `AppendEntriesResponse::from(result)` keeps the existing format, but drops the log id
-    /// and the hint.
+    /// type. Converting it to [`StreamAppendResult`] with `result.map_err(Into::into)` gives a
+    /// serializable format that keeps the log id but drops the hint.
     #[since(version = "0.10.0", change = "returns AppendResult with an optional conflict hint")]
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn append_entries(&self, rpc: AppendEntriesRequest<C>) -> Result<AppendResult<C>, RaftError<C>> {

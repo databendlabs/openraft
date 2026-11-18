@@ -128,16 +128,14 @@ where C: RaftTypeConfig
     /// Return an [`RPCError`] if no reply is received.
     ///
     /// [`AppendResult`] does not implement serde, so the transport sends it in its own wire
-    /// format. To keep sending [`AppendEntriesResponse`], which carries neither log ids nor a
-    /// hint, the follower converts with `AppendEntriesResponse::from(result)` and the leader
-    /// converts back with [`AppendEntriesResponse::into_append_result()`], passing the log ids of
-    /// the request it sent.
+    /// format. A transport that does not carry hints can send [`StreamAppendResult`], a
+    /// serializable format without the hint: both ends convert with `result.map_err(Into::into)`.
+    /// The leader then receives no hint and finds the matching log by binary search.
     ///
     /// [`Raft::append_entries()`]: crate::raft::Raft::append_entries
     /// [`AppendError::Conflict`]: crate::raft::AppendError::Conflict
     /// [`AppendError::HigherVote`]: crate::raft::AppendError::HigherVote
-    /// [`AppendEntriesResponse`]: crate::raft::AppendEntriesResponse
-    /// [`AppendEntriesResponse::into_append_result()`]: crate::raft::AppendEntriesResponse::into_append_result
+    /// [`StreamAppendResult`]: crate::raft::StreamAppendResult
     #[since(version = "0.10.0", change = "returns AppendResult with an optional conflict hint")]
     async fn append_entries(
         &mut self,
