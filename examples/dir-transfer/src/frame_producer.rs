@@ -136,8 +136,12 @@ impl DirFrameProducer {
 
     /// Emit the next `Chunk` of the current file, or its `FileEnd` at end of file.
     async fn next_file_frame(&mut self, mut progress: FileReadState) -> io::Result<DirFrame> {
-        let data = read_chunk(&mut progress.file, self.chunk_size).await?;
         let size = self.manifest.files[progress.index].size;
+        let remaining = size - progress.bytes_read;
+        // Read one byte past the advertised end to detect growth, even for an empty file.
+        let read_limit = remaining.saturating_add(1);
+        let chunk_size = read_limit.min(self.chunk_size as u64) as usize;
+        let data = read_chunk(&mut progress.file, chunk_size).await?;
 
         if data.is_empty() {
             if progress.bytes_read != size {
@@ -152,15 +156,15 @@ impl DirFrameProducer {
             });
         }
 
-        progress.digest.update(&data);
-        progress.bytes_read += data.len() as u64;
-        if progress.bytes_read > size {
+        let bytes = data.len() as u64;
+        if bytes > remaining {
             return Err(invalid_data(format!(
-                "file grew during transfer: {} > {size}",
-                progress.bytes_read
+                "file grew during transfer: read {bytes} bytes with {remaining} remaining in manifest"
             )));
         }
 
+        progress.digest.update(&data);
+        progress.bytes_read += bytes;
         self.state = State::ReadFile(progress);
         Ok(DirFrame::Chunk { data })
     }
@@ -329,12 +333,32 @@ mod tests {
         assert_eq!(io::ErrorKind::InvalidData, err.kind());
 
         // The file grows after the manifest is built.
-        let dir = tempfile::tempdir().unwrap();
-        fs::write(dir.path().join("f"), b"12").unwrap();
-        let mut producer = DirFrameProducer::new(dir.path(), 4).unwrap();
-        fs::write(dir.path().join("f"), b"12345678").unwrap();
+        for initial in [b"12".as_slice(), b""] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("f");
+            fs::write(&path, initial).unwrap();
+            let mut producer = DirFrameProducer::new(dir.path(), 4).unwrap();
+            fs::write(&path, b"12345678").unwrap();
 
-        let err = collect_frames(&mut producer).await.unwrap_err();
-        assert_eq!(io::ErrorKind::InvalidData, err.kind());
+            let err = collect_frames(&mut producer).await.unwrap_err();
+            let kind = err.kind();
+            assert_eq!(io::ErrorKind::InvalidData, kind);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_short_chunk_capacity() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("f"), b"x").unwrap();
+        let mut producer = DirFrameProducer::new(dir.path(), MAX_CHUNK_SIZE).unwrap();
+        let frames = collect_frames(&mut producer).await.unwrap();
+
+        let DirFrame::Chunk { data } = &frames[2] else {
+            panic!("expected the file's data frame");
+        };
+        let payload = data.as_slice();
+        assert_eq!(b"x", payload);
+        let capacity = data.capacity();
+        assert!(capacity <= 2, "one-byte chunk retained {capacity} bytes");
     }
 }
