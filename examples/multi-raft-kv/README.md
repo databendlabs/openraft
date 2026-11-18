@@ -55,6 +55,21 @@ Each group runs its own Raft consensus independently:
 - Separate leader election
 - Separate membership
 
+### Heartbeat Batching
+Every group sends its own heartbeats, so with many groups most messages between two nodes are
+AppendEntries requests without entries. This example sends them to each node in batches:
+
+- Each node runs one timer, `send_heartbeats()` in `lib.rs`, that triggers the heartbeats of all
+  its groups at once, with `enable_heartbeat` turned off in their `Config`. A group's own timer
+  starts when it becomes leader, so heartbeats from separate timers share a batch only if the
+  groups became leader within about 1 ms of each other.
+- `NodeNetwork` sends every AppendEntries request without entries through the node's
+  `AppendBatcher`. Its task collects the requests that arrive within 1 ms, and sends those for
+  each target node as one `/raft/append-batch` message.
+- The target node runs the requests against their groups concurrently, and replies with one
+  result per request, in request order. A slow group delays the results of the others in its
+  batch.
+
 ## Running the Test
 
 ```bash
@@ -75,6 +90,7 @@ multi-raft-kv/
 │   ├── lib.rs          # Type definitions and group constants
 │   ├── app.rs          # Application handler for each group
 │   ├── api.rs          # API handlers (read, write, raft operations)
+│   ├── append_batcher.rs  # Batches empty AppendEntries requests by target node
 │   ├── network.rs      # Network implementation with group routing
 │   ├── router.rs       # Message router for (node_id, group_id)
 │   └── store.rs        # State machine storage
