@@ -31,6 +31,15 @@ def outcomes(completed=7, timed_out=2, pending=1):
             "timed_out": timed_out, "pending": pending, "rejected": 0, "missed": 0}
 
 
+def pipeline_observations():
+    return {"conservation": {name: True for name in runner.PIPELINE_CHECKS},
+            "all_observed_phase_counters": {"read_failed": 0, "read_cancelled": 0, "apply_ended_without_success": 0},
+            "inflight": {"read_started_ns": None}, "reads_per_apply": {"samples": 5}, "applies_with_extensions": 3,
+            "initial_reads": {"time_in_window_ns": 20, "unoverlapped_time_in_window_ns": 5},
+            "extension_reads": {"duration_ns": {"p50_ns": 3, "p99_ns": 7},
+                                "time_in_window_ns": 10, "unoverlapped_time_in_window_ns": 10}}
+
+
 class StatisticsTest(unittest.TestCase):
     def test_each_scenario_rotates_modes_independently_of_row_order(self):
         actual = list(common.schedule(["A", "B"], ["base", "target"], 3))
@@ -49,6 +58,15 @@ class StatisticsTest(unittest.TestCase):
     def test_absent_or_zero_baselines_have_no_fabricated_percent_change(self):
         actual = common.paired_change([0, 10], [2, 20])
         self.assertEqual({"paired_percent": [None, 100.0], "median_percent": None, "ci95_percent": None}, actual)
+
+    def test_pipeline_observers_keep_run_statistics_diagnostic(self):
+        run = {"status": "success", "environment": {"external_build_observed": False, "sampling_errors": []},
+               "report": {"apply_pipeline": {"0": {"schema_version": 1}}}}
+        clean = runner.clean_run(run)
+        self.assertFalse(clean)
+        run["report"]["apply_pipeline"] = None
+        clean = runner.clean_run(run)
+        self.assertTrue(clean)
 
 
 class WorkloadTest(unittest.TestCase):
@@ -174,6 +192,47 @@ class WorkloadTest(unittest.TestCase):
         diagnostic["metadata"]["inputs"]["source_tree_sha256"] = "different"
         with self.assertRaisesRegex(ValueError, "source/toolchain"):
             runner.check_matching_builds(performance, diagnostic)
+
+    def test_pipeline_frequency_uses_the_completed_apply_cohort(self):
+        report = {"window": {"measurement_end_ns": 20}, "apply_pipeline": {"0": pipeline_observations()}}
+        actual = runner.pipeline_measurements(report)
+        expected = {"node 0 extended apply fraction": 0.6, "node 0 extension read p50 ns": 3,
+                    "node 0 extension read p99 ns": 7, "node 0 read time in window ns": 30,
+                    "node 0 unoverlapped read time in window ns": 15}
+        self.assertEqual(expected, actual)
+
+    def test_pipeline_invalid_accounting_suppresses_derived_metrics(self):
+        probe = pipeline_observations()
+        probe["conservation"]["range_and_count_validation"] = False
+        with self.assertRaisesRegex(ValueError, "pipeline accounting.*range_and_count_validation"):
+            runner.pipeline_measurements({"apply_pipeline": {"0": probe}})
+
+    def test_pipeline_unfinished_measurement_read_keeps_window_time_unknown(self):
+        probe = pipeline_observations()
+        probe["inflight"]["read_started_ns"] = 15
+        report = {"window": {"measurement_end_ns": 20}, "apply_pipeline": {"0": probe}}
+        actual = runner.pipeline_measurements(report)
+        self.assertIsNone(actual["node 0 read time in window ns"])
+        self.assertIsNone(actual["node 0 unoverlapped read time in window ns"])
+        self.assertEqual(0.6, actual["node 0 extended apply fraction"])
+        probe["inflight"]["read_started_ns"] = 20
+        actual = runner.pipeline_measurements(report)
+        self.assertEqual(30, actual["node 0 read time in window ns"])
+
+    def test_pipeline_truncated_traces_preserve_full_aggregate_frequency(self):
+        probe = pipeline_observations()
+        probe.update(traces=[{"kind": "apply"}], traces_dropped=99, trace_spans_seen=100)
+        report = {"window": {"measurement_end_ns": 20}, "apply_pipeline": {"0": probe}}
+        actual = runner.pipeline_measurements(report)
+        self.assertEqual(0.6, actual["node 0 extended apply fraction"])
+
+    def test_pipeline_empty_populations_have_no_fabricated_fraction(self):
+        probe = pipeline_observations()
+        probe["reads_per_apply"] = None
+        probe["applies_with_extensions"] = 0
+        report = {"window": {"measurement_end_ns": 20}, "apply_pipeline": {"0": probe}}
+        actual = runner.pipeline_measurements(report)
+        self.assertIsNone(actual["node 0 extended apply fraction"])
 
 
 class ArtifactTest(unittest.TestCase):

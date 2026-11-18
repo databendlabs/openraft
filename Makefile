@@ -184,6 +184,8 @@ test-bench-minimal:
 	cargo test --manifest-path benchmarks/minimal/Cargo.toml --all-targets --no-default-features
 	cargo test --manifest-path benchmarks/minimal/Cargo.toml --all-targets --features realistic-profiles
 	cargo test --manifest-path benchmarks/minimal/Cargo.toml --all-targets --no-default-features --features realistic-profiles
+	cargo test --manifest-path benchmarks/minimal/Cargo.toml --all-targets --no-default-features --features apply-pipeline
+	cargo test --manifest-path benchmarks/minimal/Cargo.toml --all-targets --features apply-pipeline,realistic-profiles
 
 .PHONY: test-bench-scripts
 test-bench-scripts:
@@ -441,6 +443,8 @@ clippy-bench-minimal:
 	cargo clippy --no-deps --manifest-path benchmarks/minimal/Cargo.toml --no-default-features --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path benchmarks/minimal/Cargo.toml --features realistic-profiles --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path benchmarks/minimal/Cargo.toml --no-default-features --features realistic-profiles --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path benchmarks/minimal/Cargo.toml --no-default-features --features apply-pipeline --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path benchmarks/minimal/Cargo.toml --features apply-pipeline,realistic-profiles --all-targets -- -D warnings
 
 # Separate-process durable benchmark; RocksDB is opt-in for node builds.
 verify-bench-durable:
