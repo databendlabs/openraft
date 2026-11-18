@@ -1,12 +1,9 @@
-use std::str::FromStr;
-
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::quote;
+use syn::parse::ParseStream;
 use syn::parse::Parser;
 use syn::spanned::Spanned;
-
-use crate::utils;
 
 pub struct Since {
     pub(crate) version: Option<String>,
@@ -81,56 +78,19 @@ impl Since {
         Ok(since)
     }
     /// Append a `since` doc such as `Since: 1.0.0` to the bottom of the doc section.
+    ///
+    /// Only the outer attributes of `item` are parsed; the tokens after them are kept unchanged.
     pub(crate) fn append_since_doc(self, item: TokenStream) -> Result<TokenStream, syn::Error> {
-        let item = proc_macro2::TokenStream::from(item);
-
-        // Present docs to skip, in order to append `since` at bottom of doc section.
-        let mut present_docs = vec![];
-
-        // Tokens left after present docs.
-        let mut last_non_doc = vec![];
-
-        let mut it = item.clone().into_iter();
-        loop {
-            let Some(curr) = it.next() else {
-                break;
-            };
-            let Some(next) = it.next() else {
-                last_non_doc.push(curr);
-                break;
-            };
-
-            if utils::is_doc(&curr, &next) {
-                present_docs.push(curr);
-                present_docs.push(next);
-            } else {
-                last_non_doc.push(curr);
-                last_non_doc.push(next);
-                break;
-            }
-        }
-
-        let since_docs_str = if present_docs.is_empty() {
-            format!(r#"#[doc = " {}"]"#, self.to_doc_string())
-        } else {
-            // If there are already docs, insert a blank line.
-            format!(r#"#[doc = ""] #[doc = " {}"]"#, self.to_doc_string())
+        let split_outer_attrs = |input: ParseStream| {
+            let attrs = input.call(syn::Attribute::parse_outer)?;
+            let rest: proc_macro2::TokenStream = input.parse()?;
+            Ok((attrs, rest))
         };
-        let since_docs = proc_macro2::TokenStream::from_str(&since_docs_str).unwrap();
+        let (mut attrs, rest) = split_outer_attrs.parse(item)?;
 
-        let present_docs: proc_macro2::TokenStream = present_docs.into_iter().collect();
-        let last_non_docs: proc_macro2::TokenStream = last_non_doc.into_iter().collect();
+        self.append_since_doc_attrs(&mut attrs);
 
-        // Other non doc tokens.
-        let other: proc_macro2::TokenStream = it.collect();
-
-        let tokens = quote! {
-            #present_docs
-            #since_docs
-            #last_non_docs
-            #other
-        };
-        Ok(tokens.into())
+        Ok(quote!(#(#attrs)* #rest).into())
     }
 
     /// Build a `Since` from a `#[since(...)]` attribute marker.
@@ -140,8 +100,8 @@ impl Since {
 
     /// Insert the `Since:` doc line(s) into an attribute list, after any leading doc attrs.
     ///
-    /// The attribute-list counterpart of [`Self::append_since_doc`], used by the syn-based
-    /// struct / enum field path.
+    /// Used for an item-level `#[since(...)]` and for `#[since(...)]` markers on struct fields and
+    /// enum variants.
     fn append_since_doc_attrs(&self, attrs: &mut Vec<syn::Attribute>) {
         let lead_docs = attrs.iter().take_while(|a| a.path().is_ident("doc")).count();
 
