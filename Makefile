@@ -172,6 +172,15 @@ test-relaxed-read:
 	cargo test -p tests --test client_api t11_relaxed_read
 	cargo test -p tests --features single-term-leader --test client_api t11_relaxed_read
 
+# Election deadline coverage: the election checks, the deadline notifier, and
+# elections of every role without the heartbeat timer or behind a blocked
+# state-machine command send.
+.PHONY: test-follower-election-timeout
+test-follower-election-timeout:
+	cargo test -p openraft --lib -- engine::tests::elect_if_due_test engine::tests::election_deadline_test core::deadline_notifier
+	cargo test -p tests --test elect -- t19_follower_election_timeout t20_elections_without_internal_ticker t21_election_due_during_blocked_sm_send
+	cargo test -p tests --test life_cycle t13_external_tick
+
 # Compare core, cached local, and relaxed lease reads, including a coherent SM query.
 bench_relaxed_reads:
 	python3 benchmarks/minimal/scripts/relaxed_reads.py
