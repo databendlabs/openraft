@@ -548,6 +548,7 @@ async fn transfer_keeps_cached_reads_disabled_after_a_late_ack() -> Result<()> {
         let expected_data = ClientResponse(None);
         assert_eq!(expected_data, response.data);
         router.wait(&0).state(ServerState::Follower, "old leader stepped down").await?;
+        router.wait(&0).current_leader(1, "old leader learned the committed vote").await?;
         let result = n0.get_local_read_linearizer(ReadPolicy::LeaseRead).await;
         let error = result.expect_err("a new invocation cannot use the old snapshot");
         let api_error = error.into_api_error().expect("old leader forwards the read");
