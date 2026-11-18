@@ -43,6 +43,7 @@ single-term-leader = []
 tokio-console = ["console-subscriber"]
 flamegraph = ["tracing-flame", "tracing-subscriber"]
 realistic-profiles = []
+apply-pipeline = []
 
 [profile.release]
 debug = 2
