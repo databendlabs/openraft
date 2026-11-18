@@ -8,10 +8,16 @@ use serde::Serialize;
 /// A request to the KV store.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Request {
-    Set {
-        key: String,
-        value: String,
-    },
+    /// Store `value` under `key`.
+    ///
+    /// Always applies; the reply carries the written value and its new version.
+    Set { key: String, value: String },
+
+    /// Store `value` under `key` only if the key exists and its current version equals
+    /// `expected_version`.
+    ///
+    /// A missing key never matches, so use [`Request::Set`] to create a key. The reply carries the
+    /// written value and its new version, or no value when the version does not match.
     CompareAndSet {
         key: String,
         expected_version: u64,
@@ -55,8 +61,10 @@ impl fmt::Display for Request {
 
 /// A response from the KV store.
 ///
-/// A compare-and-set operation returns the updated value on success and `None` when the expected
-/// version does not match.
+/// After a write that applies, `value` holds the written value and its new version. It is `None`
+/// after a [`Request::CompareAndSet`] whose version does not match, and after a blank or
+/// membership log entry, which carries no command. The examples' read endpoints reuse this type:
+/// `value` is the stored value, or `None` when the key is absent.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct Response {
     pub value: Option<VersionedValue>,
@@ -77,10 +85,15 @@ impl Response {
     }
 }
 
-/// The current value of a key and its version.
+/// A value stored under a key, and the version of the write that stored it.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct VersionedValue {
     pub value: String,
+
+    /// The log index of the entry that last wrote the key.
+    ///
+    /// Every write applied to the key raises it, so [`Request::CompareAndSet`] detects any write
+    /// made since the version was read.
     pub version: u64,
 }
 
