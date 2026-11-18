@@ -183,4 +183,35 @@ mod tests {
             }
         });
     }
+
+    #[test]
+    fn deadline_notifier_cancels_a_pending_wait() {
+        C::run(async {
+            const TIMEOUT: Duration = Duration::from_secs(1);
+
+            for deadline in [None, Some(C::now() + Duration::from_secs(60))] {
+                tracing::info!(?deadline, "wait on a deadline that is not reached");
+                let (tx, mut rx) = C::mpsc(1);
+                let (deadline_tx, deadline_rx) = C::watch_channel(deadline);
+                let (cancel, future) = DeadlineNotifier::<C>::run(deadline_rx, tx, |i| Notification::Tick { i });
+                let mut future = std::pin::pin!(future);
+                let pending = future.as_mut().now_or_never();
+                assert_eq!(None, pending);
+
+                tracing::info!(?deadline, "cancel the wait while the deadline watch stays open");
+                {
+                    drop(cancel);
+                    C::timeout(TIMEOUT, future).await.unwrap();
+
+                    let next = rx.try_recv();
+                    let closed = matches!(next, Err(TryRecvError::Disconnected));
+                    assert!(
+                        closed,
+                        "cancellation sends nothing and releases the notification sender"
+                    );
+                    drop(deadline_tx);
+                }
+            }
+        });
+    }
 }
