@@ -98,22 +98,26 @@ impl Since {
         Self::from_tokens(attr.meta.require_list()?.tokens.clone())
     }
 
-    /// Insert the `Since:` doc line(s) into an attribute list, after any leading doc attrs.
+    /// Insert the `Since:` doc line(s) into an attribute list, after the last doc attr, or first
+    /// when there is none.
+    ///
+    /// Inserting after the last doc attr keeps the line at the bottom of the docs even when a
+    /// non-doc attribute, such as `#[allow(...)]`, comes before or between the doc comments.
     ///
     /// Used for an item-level `#[since(...)]` and for `#[since(...)]` markers on struct fields and
     /// enum variants.
     fn append_since_doc_attrs(&self, attrs: &mut Vec<syn::Attribute>) {
-        let lead_docs = attrs.iter().take_while(|a| a.path().is_ident("doc")).count();
+        let end_of_docs = attrs.iter().rposition(|a| a.path().is_ident("doc")).map_or(0, |i| i + 1);
 
         // If there are already docs, insert a blank line before the `Since:` line.
-        let blank = if lead_docs > 0 { quote!(#[doc = ""]) } else { quote!() };
+        let blank = if end_of_docs > 0 { quote!(#[doc = ""]) } else { quote!() };
         let line = format!(" {}", self.to_doc_string());
         let new_docs = syn::Attribute::parse_outer
             .parse2(quote!(#blank #[doc = #line]))
             .expect("since doc attributes are well-formed");
 
         for (offset, attr) in new_docs.into_iter().enumerate() {
-            attrs.insert(lead_docs + offset, attr);
+            attrs.insert(end_of_docs + offset, attr);
         }
     }
 
