@@ -1,5 +1,7 @@
 use std::future::Future;
 
+use futures_util::FutureExt;
+
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::async_runtime::MpscSender;
@@ -65,9 +67,8 @@ where C: RaftTypeConfig
     ) -> (CancelHandleOf<C>, impl Future<Output = ()> + OptionalSend) {
         let future = Self::do_run(deadline_rx, notification_tx, notification);
         let (cancel, future) = C::cancellable(future);
-        let future = async move {
-            let _ = future.await;
-        };
+        // `map()` holds the future once; an `async` block awaiting it would keep a second copy.
+        let future = future.map(|_finished| ());
         (cancel, future)
     }
 
