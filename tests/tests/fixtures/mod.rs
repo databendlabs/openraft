@@ -167,8 +167,8 @@ pub struct RaftRouter {
 
     /// Whether AppendEntries replies carry conflict hints.
     ///
-    /// Without them, replies take the `AppendEntriesResponse` format, as a transport that keeps
-    /// the old wire format does.
+    /// Without them, replies take the `StreamAppendError` format, which has no hint, to emulate
+    /// a transport whose wire format carries none.
     conflict_hints: bool,
 }
 

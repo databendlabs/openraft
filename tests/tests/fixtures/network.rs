@@ -22,9 +22,10 @@ use openraft::network::RaftNetworkFactory;
 use openraft::network::stream_append_sequential;
 use openraft::network::v2::RaftNetworkV2;
 use openraft::raft::AppendEntriesRequest;
-use openraft::raft::AppendEntriesResponse;
+use openraft::raft::AppendError;
 use openraft::raft::AppendResult;
 use openraft::raft::SnapshotResponse;
+use openraft::raft::StreamAppendError;
 use openraft::raft::TransferLeaderRequest;
 use openraft::raft::TransferLeaderResponse;
 use openraft::raft::VoteRequest;
@@ -123,13 +124,11 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
             )))
         })?;
 
-        // Without hints, the reply takes the `AppendEntriesResponse` format, which carries no log
-        // id. Rebuild it from the request that was sent, after the quota truncated it.
+        // Without hints, the reply takes the `StreamAppendError` format, which drops the hint.
         let result = if self.owner.conflict_hints {
             result
         } else {
-            let response = AppendEntriesResponse::from(result);
-            response.into_append_result(rpc.prev_log_id, rpc.last_log_id())
+            result.map_err(StreamAppendError::from).map_err(AppendError::from)
         };
 
         // Response hooks may block while later requests are delivered in order.
