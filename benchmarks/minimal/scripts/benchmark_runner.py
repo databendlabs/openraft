@@ -72,7 +72,10 @@ def validate_reads(report, command, timed):
     if "read" not in report:
         return
     reads = report["read"]
-    validate_timing(reads.get("timing"))
+    timing = reads.get("timing")
+    validate_timing(timing)
+    if timing and (reads["successful"]["operations"] != timing["completed"] or reads["failed"]["operations"] != timing["failed"]):
+        raise ValueError("read counters disagree with outcome accounting")
     if reads["failed"]["operations"]:
         raise ValueError(f"read failures: {reads.get('errors')}")
     requested = option(command, ("--read-operations",))
@@ -198,22 +201,29 @@ class Suite:
                 raise ValueError("prebuilt source differs from the requested reference")
         return build
 
-    def flags(self, row, mode, supported):
+    def flags(self, row, mode, diagnostic):
+        supported = self.supported[(diagnostic, mode.build)]
         flags = self.plan.custom_args
         if flags is None:
             flags = workload_flags(self.args, row, mode)
-            if "--arrival-seed" in supported:
-                flags += ["--arrival-seed", str(self.args.seed)]
-            elif self.args.seed != 1:
-                raise ValueError("binary cannot apply the requested arrival seed")
-            if "--measure-apply" in supported:
-                flags += ["--measure-apply"]
+            flags += self.optional_flags(diagnostic, supported)
         return checked_flags(flags, supported)
+
+    def optional_flags(self, diagnostic, supported):
+        flags = []
+        if "--arrival-seed" in supported:
+            flags += ["--arrival-seed", str(self.args.seed)]
+        elif self.args.seed != 1:
+            raise ValueError("binary cannot apply the requested arrival seed")
+        group = [value for (instrumented, _), value in self.supported.items() if instrumented == diagnostic]
+        if diagnostic and all("--measure-apply" in value for value in group):
+            flags += ["--measure-apply"]
+        return flags
 
     def measure(self, round_index, row, mode, diagnostic):
         key = (diagnostic, mode.build)
         build = self.builds[key]
-        flags = self.flags(row, mode, self.supported[key])
+        flags = self.flags(row, mode, diagnostic)
         if file_hash(build["binary"]) != build["metadata"]["binary_sha256"]:
             raise ValueError("immutable benchmark binary changed")
         command = ["/usr/bin/time", "-l" if platform.system() == "Darwin" else "-v", build["binary"], *flags]
@@ -231,19 +241,24 @@ class Suite:
                 result = Command(record["command"], timeout=self.args.timeout).run(directory)
             record.update(execution=result, environment=monitor.report())
             require_success(result, directory)
-            report = final_report(directory)
-            record["report"] = report
-            record["workload_seed"] = workload_seed(report, record["command"])
-            validate_report(report, record["command"], diagnostic)
-            record["runtime_identity"] = runtime_identity(record)
-            record.update(status="success", measurements=measurements(report),
-                          resources=resource_metrics((directory / "stderr").read_text()))
+            self.parse_report(record, directory, diagnostic)
         except BaseException as error:
             record.update(status="failed", error={"type": type(error).__name__, "message": str(error)})
             raise
         finally:
             self.artifacts.record(record)
         return record
+
+    @staticmethod
+    def parse_report(record, directory, diagnostic):
+        report = final_report(directory)
+        record["report"] = report
+        record["workload_seed"] = workload_seed(report, record["command"])
+        validate_report(report, record["command"], diagnostic)
+        record["runtime_identity"] = runtime_identity(record)
+        record["coverage"] = completion_coverage(report, record["command"])
+        record.update(status="success", measurements=measurements(report),
+                      resources=resource_metrics((directory / "stderr").read_text()))
 
     def run(self):
         try:
@@ -277,10 +292,8 @@ def check_prebuilt_inputs(request, manifest):
 
 
 def check_matching_builds(performance, diagnostic):
-    left = dict(performance["metadata"]["inputs"])
-    right = dict(diagnostic["metadata"]["inputs"])
-    left.pop("features")
-    right.pop("features")
+    left = companion_inputs(performance)
+    right = companion_inputs(diagnostic)
     if left != right:
         raise ValueError("diagnostic source/toolchain/flags/lock differs from its performance companion")
 
@@ -293,7 +306,8 @@ def summarize(args, plan, records):
     rows = []
     for (group, scenario), modes in groups.items():
         summary = summarize_modes(args, plan, modes)
-        summary["decision_eligible"] = summary["decision_eligible"] and group == "performance"
+        for key in ("decision_eligible", "capacity_comparison_eligible", "latency_comparison_eligible"):
+            summary[key] = summary[key] and group == "performance"
         rows.append({"group": group, "scenario": scenario, **summary})
     return {"schema_version": 1, "rounds": args.runs, "rows": rows,
             "percentile_scope": "medians and paired changes of run-level percentiles; request samples are not pooled",
@@ -301,16 +315,9 @@ def summarize(args, plan, records):
 
 
 def summarize_modes(args, plan, records):
-    modes = {}
-    eligible = args.runs >= 5
     reference = plan.modes[0].name
-    for name, runs in records.items():
-        ordered = sorted(runs, key=lambda item: item["round"])
-        eligible = eligible and len(ordered) == args.runs and all(clean_run(run) for run in ordered)
-        identities = {run["runtime_identity"] for run in ordered}
-        eligible = eligible and len(identities) == 1
-        metrics = {key: metric_summary([run["measurements"][key] for run in ordered]) for key in ordered[0]["measurements"]}
-        modes[name] = {"metrics": metrics, "paired_to": reference, "changes": {}, "runtime_identities": sorted(identities)}
+    modes = {name: summarize_mode(args, runs, reference) for name, runs in records.items()}
+    eligible = args.runs >= 5 and all(mode["inputs_valid"] for mode in modes.values())
     for name, mode in modes.items():
         if name == reference:
             continue
@@ -319,7 +326,60 @@ def summarize_modes(args, plan, records):
                 continue
             base = modes[reference]["metrics"][key]["runs"]
             mode["changes"][key] = paired_change(base, metric["runs"], args.seed)
-    return {"decision_eligible": eligible, "modes": modes}
+    complete = all(value["complete"] for mode in modes.values() for value in mode["coverage"].values())
+    return {"decision_eligible": eligible and complete, "capacity_comparison_eligible": eligible,
+            "latency_comparison_eligible": eligible and complete, "modes": modes}
+
+
+def summarize_mode(args, runs, reference):
+    ordered = sorted(runs, key=lambda item: item["round"])
+    valid = len(ordered) == args.runs and all(clean_run(run) for run in ordered)
+    identities = {run["runtime_identity"] for run in ordered}
+    metrics = {key: metric_summary([run["measurements"][key] for run in ordered]) for key in ordered[0]["measurements"]}
+    return {"metrics": metrics, "paired_to": reference, "changes": {}, "runtime_identities": sorted(identities),
+            "coverage": coverage_totals(ordered), "inputs_valid": valid and len(identities) == 1}
+
+
+def outcome_coverage(timing, completed, requested):
+    if timing:
+        counts = {name: timing[name] for name in OUTCOMES}
+        offered = timing["offered"]
+        requests = timing.get("request_outcomes", counts)
+        requests_complete = sum(requests.values()) == requests["completed"]
+    else:
+        counts = {name: 0 for name in OUTCOMES}
+        counts["completed"] = completed
+        offered = parse_operations(requested) if requested is not None else None
+        requests_complete = True
+    return {"offered": offered, **counts, "complete": offered == completed and requests_complete,
+            "accounting": "structured_outcomes" if timing else "legacy_exact_count"}
+
+
+def completion_coverage(report, command):
+    writes = report.get("write", report)
+    timing = report.get("write_timing", report.get("timing"))
+    write = outcome_coverage(timing, writes["operations"], option(command, ("-n", "--operations")))
+    write["latency_samples"] = (writes.get("latency") or {}).get("samples", report.get("samples"))
+    result = {"write": write}
+    if "read" in report:
+        reads = report["read"]
+        read = outcome_coverage(reads.get("timing"), reads["successful"]["operations"], option(command, ("--read-operations",)))
+        read["latency_samples"] = (reads["successful"].get("latency") or {}).get("samples")
+        result["read"] = read
+    return result
+
+
+def coverage_totals(runs):
+    result = {}
+    for kind in runs[0]["coverage"]:
+        coverage = [run["coverage"][kind] for run in runs]
+        totals = {}
+        for name in (*OUTCOMES, "offered", "latency_samples"):
+            values = [value[name] for value in coverage]
+            totals[name] = None if any(value is None for value in values) else sum(values)
+        totals["complete"] = all(value["complete"] for value in coverage)
+        result[kind] = totals
+    return result
 
 
 def runtime_identity(record):
@@ -347,18 +407,39 @@ def clean_run(run):
 
 
 def print_summary(summary):
+    print_outcomes(summary)
     print("| Group / scenario | Mode | Metric | Median | Paired change (95% CI) |")
     print("| --- | --- | --- | ---: | ---: |")
     for row in summary["rows"]:
-        label = row["group"] + " / " + row["scenario"]
-        if not row["decision_eligible"]:
-            label += " (diagnostic only)"
-        for name, mode in row["modes"].items():
-            for metric, measured in mode["metrics"].items():
-                change = format_change(mode["changes"].get(metric))
-                median = "n/a" if measured["median"] is None else f"{measured['median']:,.3f}"
-                print(f"| {label} | {name} | {metric} | {median} | {change} |")
+        print_metrics(row)
     print("\nEach percentile is a run-level observation. Ranges describe variation; overlap is not a noise test.")
+
+
+def print_metrics(row):
+    label = row["group"] + " / " + row["scenario"]
+    if not row["capacity_comparison_eligible"]:
+        label += " (diagnostic only)"
+    for name, mode in row["modes"].items():
+        for metric, measured in mode["metrics"].items():
+            change = format_change(mode["changes"].get(metric))
+            if " p50 " in metric or " p99 " in metric:
+                metric += " (completed requests only)"
+                if not row["latency_comparison_eligible"]:
+                    change += " (conditional)"
+            median = "n/a" if measured["median"] is None else f"{measured['median']:,.3f}"
+            print(f"| {label} | {name} | {metric} | {median} | {change} |")
+
+
+def print_outcomes(summary):
+    print("| Group / scenario | Mode / class | Offered | Completed | Failed | Timed out | Rejected | Pending | Missed | Latency samples |")
+    print("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
+    for row in summary["rows"]:
+        for name, mode in row["modes"].items():
+            for kind, coverage in mode["coverage"].items():
+                fields = ("offered", *OUTCOMES, "latency_samples")
+                values = ["n/a" if coverage[field] is None else str(coverage[field]) for field in fields]
+                print(f"| {row['group']} / {row['scenario']} | {name} / {kind} | " + " | ".join(values) + " |")
+    print("\nOutcome counts sum the scheduled-arrival cohorts across rounds; write outcomes are entries and latency samples are requests/batches.\n")
 
 
 def format_change(change):
@@ -366,3 +447,12 @@ def format_change(change):
         return "n/a"
     lower, upper = change["ci95_percent"]
     return f"{change['median_percent']:+.2f}% [{lower:+.2f}%, {upper:+.2f}%]"
+
+
+def companion_inputs(build):
+    inputs = dict(build["metadata"]["inputs"])
+    inputs.pop("features")
+    source = inputs.get("source")
+    if source is not None and not source["dirty"]:
+        inputs["source"] = {**source, "dirty_sha256": None}
+    return inputs
