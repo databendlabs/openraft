@@ -75,7 +75,8 @@ impl OwnMethods {
 }
 
 /// `index()` addresses a fixed-size array, so the indices must be exactly `0..COUNT` in `ALL`
-/// order. Nothing in the generated code ties `COUNT`, `ALL` and `index()` together; this checks it.
+/// order. The derive gives `ALL` exactly `COUNT` slots, but a wrong offset for a nested variant
+/// can still compile and leave `ALL` and `index()` disagreeing; this checks every position.
 macro_rules! assert_dense_index {
     ($($ty:ty),* $(,)?) => {$({
         assert_eq!(
