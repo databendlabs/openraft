@@ -17,13 +17,25 @@ tasks, memory and CPU. It follows the setup of
 cargo run --release --manifest-path benchmarks/idle-groups/Cargo.toml -- --groups 1000 --mode no-tick
 ```
 
-| Option           | Default   | Meaning                                                                                                                   |
-|------------------|-----------|---------------------------------------------------------------------------------------------------------------------------|
-| `--groups`       | 1000      | The number of groups.                                                                                                     |
-| `--mode`         | `default` | `default` keeps every timer on, `no-heartbeat-elect` turns heartbeats and elections off, and `no-tick` turns ticks off. |
-| `--settle-secs`  | 10        | Seconds to wait after switching the timers.                                                                               |
-| `--measure-secs` | 30        | Seconds to measure for.                                                                                                   |
-| `--workers`      | 4         | The worker threads of the tokio runtime.                                                                                  |
+| Option           | Default   | Meaning                                         |
+|------------------|-----------|-------------------------------------------------|
+| `--groups`       | 1000      | The number of groups.                           |
+| `--mode`         | `default` | Which timers stay on: see the modes below.      |
+| `--settle-secs`  | 10        | Seconds to wait after switching the timers.     |
+| `--measure-secs` | 30        | Seconds to measure for.                         |
+| `--workers`      | 4         | The worker threads of the tokio runtime.        |
+
+| Mode                 | Switches off, through `Raft::runtime_config()` |
+|----------------------|------------------------------------------------|
+| `default`            | nothing                                        |
+| `no-elect`           | elections: `elect(false)`                      |
+| `no-heartbeat`       | heartbeats: `heartbeat(false)`                 |
+| `no-heartbeat-elect` | heartbeats and elections                       |
+| `no-tick`            | ticks: `tick(false)`                           |
+
+What `tick(false)` stops depends on the version. Up to 0.10.0 it stops the ticker, which drives
+both heartbeats and elections. Since #2378 it pauses only a leader's heartbeat timer, so on
+`main` the `no-tick` mode behaves like `no-heartbeat`.
 
 It prints one line of tab-separated fields:
 
