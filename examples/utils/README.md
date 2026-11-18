@@ -8,6 +8,9 @@ Shared utilities for Openraft examples, reducing boilerplate across example impl
   - Provides type aliases for common Raft types (Node, Entry, Response, etc.)
   - Reduces repetitive type definitions across examples
   - Usage: Import and use the generated type aliases
+- **`append_reply.rs`** - `AppendReply`, a serializable wire format for OpenRaft's `AppendResult`
+  - Keeps the log id the follower accepted and its conflict hint
+  - Usage: Include it with `#[path = "../../utils/append_reply.rs"]` and encode it with the example's codec
 
 ## Purpose
 
