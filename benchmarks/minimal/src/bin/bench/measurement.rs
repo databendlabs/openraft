@@ -24,6 +24,10 @@ pub(super) struct MeasurementConfig {
     /// Record structured apply batches, backlogs, and source-to-metrics observation delays.
     #[arg(long)]
     pub(super) measure_apply: bool,
+    /// Record benchmark-store read/apply spans; requires the apply-pipeline Cargo feature.
+    #[cfg(feature = "apply-pipeline")]
+    #[arg(long)]
+    pub(super) measure_apply_pipeline: bool,
 }
 
 impl MeasurementConfig {
@@ -80,6 +84,17 @@ impl MeasurementConfig {
 
     pub(super) fn trace_budget(&self, clients: usize) -> usize {
         self.trace_limit / clients.max(1)
+    }
+
+    pub(super) fn pipeline_enabled(&self) -> bool {
+        #[cfg(feature = "apply-pipeline")]
+        {
+            self.measure_apply_pipeline
+        }
+        #[cfg(not(feature = "apply-pipeline"))]
+        {
+            false
+        }
     }
 }
 
