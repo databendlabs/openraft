@@ -13,5 +13,15 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/databendlabs/openraft"
 
 [dependencies]
-openraft  = { path = "../openraft", version = "0.10.1", default-features = false }
-anyerror  = { version = "0.1" }
+openraft     = { path = "../openraft", version = "0.10.1", default-features = false }
+anyerror     = { version = "0.1" }
+futures-util = { version = "0.3" }
+serde        = { version = "1.0.114", features = ["derive"], optional = true }
+tracing      = { version = "0.1.40" }
+
+[dev-dependencies]
+openraft     = { path = "../openraft", version = "0.10.1", default-features = false, features = ["tokio-rt"] }
+
+[features]
+# Derive serde for the batch types, so that an application can put them on the wire.
+serde = ["dep:serde", "openraft/serde"]

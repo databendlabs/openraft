@@ -7,6 +7,9 @@ Multi-Raft adapters for connection sharing across Raft groups.
 - **`GroupRouter`** - Trait for sending RPCs with (target, group) routing
 - **`GroupNetworkAdapter`** - Wraps `GroupRouter`, implements `RaftNetworkV2`
 - **`GroupNetworkFactory`** - Simple factory + group_id wrapper
+- **`BatchingRouter`** - Wraps a `GroupRouter` and sends the empty AppendEntries requests (heartbeats)
+  of many groups to one node in shared batches, through a `BatchTransport`
+- **`dispatch_batch()`** - Runs every item of a received batch against its local group
 
 ## Usage
 
@@ -34,6 +37,20 @@ impl RaftNetworkFactory<TypeConfig> for NetworkFactory {
     }
 }
 ```
+
+## Batching heartbeats
+
+With many groups on one node, every leader sends its own heartbeat to every follower. To carry
+the heartbeats bound for one node in fewer exchanges:
+
+1. Implement `BatchTransport`, which sends a `Vec<BatchItem>` to one node and returns the replies
+   as a stream. On the receiving node, pass each batch to `dispatch_batch()`, which calls
+   `Raft::append_entries()` of each item's group.
+2. Wrap your router: `BatchingRouter::new(router, transport, BatchConfig::default())`, and use it
+   wherever you used the router.
+
+Requests with entries, votes and snapshots still go through your router. Enable the `serde`
+feature to serialize `BatchItem` and `BatchReply`.
 
 ## Examples
 
