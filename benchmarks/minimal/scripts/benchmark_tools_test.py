@@ -122,6 +122,46 @@ class WorkloadTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "lock differs"):
             runner.check_matching_builds(performance, diagnostic)
 
+    def test_read_success_and_failure_counters_must_match_cohort_outcomes(self):
+        report = {"write": {"operations": 0}, "runtime_stats": False,
+                  "read": {"successful": {"operations": 11}, "failed": {"operations": 0},
+                           "timing": outcomes(completed=10, timed_out=0, pending=0)}}
+        with self.assertRaisesRegex(ValueError, "read counters"):
+            runner.validate_report(report, ["-n", "0", "--read-operations", "10"], False)
+        report["read"]["successful"]["operations"] = 10
+        report["read"]["failed"]["operations"] = 1
+        with self.assertRaisesRegex(ValueError, "read counters"):
+            runner.validate_report(report, ["-n", "0", "--read-operations", "10"], False)
+
+    def test_optional_apply_observers_are_symmetric_diagnostics(self):
+        suite = object.__new__(runner.Suite)
+        suite.args, suite.plan = types.SimpleNamespace(seed=1), types.SimpleNamespace(custom_args=None)
+        suite.supported = {(False, "base"): {"--latency"}, (False, "target"): {"--latency", "--measure-apply"},
+                           (True, "base"): {"--latency"}, (True, "target"): {"--latency", "--measure-apply"}}
+        mode = scenarios.Mode("target")
+        with mock.patch.object(runner, "workload_flags", return_value=["--latency"]):
+            self.assertEqual(["--latency"], suite.flags(None, mode, False))
+            self.assertEqual(["--latency"], suite.flags(None, mode, True))
+            suite.supported[(True, "base")].add("--measure-apply")
+            self.assertEqual(["--latency", "--measure-apply"], suite.flags(None, mode, True))
+
+    def test_overload_keeps_capacity_statistics_and_conditional_latency(self):
+        coverage = runner.completion_coverage({"operations": 7, "timing": outcomes(), "samples": 7}, ["-n", "10"])
+        runs = [{"round": index, "status": "success", "environment": {"external_build_observed": False, "sampling_errors": []},
+                 "runtime_identity": "unchanged", "coverage": coverage,
+                 "measurements": {"writes/s": 7, "write p99 ns": 100}} for index in range(1, 6)]
+        plan = runner.Plan([], [scenarios.Mode("base"), scenarios.Mode("target")], {})
+        actual = runner.summarize_modes(types.SimpleNamespace(runs=5, seed=1), plan, {"base": runs, "target": runs})
+        self.assertTrue(actual["capacity_comparison_eligible"])
+        self.assertFalse(actual["latency_comparison_eligible"])
+        expected = {"offered": 50, "completed": 35, "failed": 0, "timed_out": 10, "rejected": 0,
+                    "pending": 5, "missed": 0, "latency_samples": 35, "complete": False}
+        self.assertEqual(expected, actual["modes"]["target"]["coverage"]["write"])
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            runner.print_summary({"rows": [{"group": "performance", "scenario": "overload", **actual}]})
+        self.assertIn("(conditional)", output.getvalue())
+
 
 class ArtifactTest(unittest.TestCase):
     def test_nonzero_exit_retains_complete_streams_and_command(self):

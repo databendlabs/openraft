@@ -695,13 +695,18 @@ with 256 clients so old binaries execute the requested count exactly. Counts, ra
 client overrides affect only operation classes active in a scenario. Structured outcomes
 must conserve all offered work; intentional overload retains rejected, timed-out, and pending
 operations. Legacy reports without outcome accounting must complete the exact requested count.
+Outcome tables show completion coverage and retained latency sample counts. Overload capacity
+comparisons remain available; percentiles describe completed requests only and incomplete
+coverage makes latency comparisons conditional.
 Read grids enable ticking, heartbeats, and elections, including lease renewal for long
 read-only runs. Explicit disabled-heartbeat controls require `--lease-expiry-control`.
 Existing tables above describe their original revisions and settings.
 
 Use `--profile` with `--payload-bytes`, `--profile-keys`, `--hot-key-percent`, and storage/link
 controls to select the realistic workload. The scripts compile `realistic-profiles` when
-needed. `--diagnostics` runs matching `runtime-stats` companions in a separate group.
+needed. `--diagnostics` runs matching `runtime-stats` companions in a separate group with
+the same lockfile. Optional apply observers run only in diagnostics and only when every
+compared binary supports them.
 For a custom `compare.py` command, put workload controls after `--`; outer controls apply
 to generated grids. For example, `-- --latency -c 256 -n 30000 --arrival-seed 7`.
 
