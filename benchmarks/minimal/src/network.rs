@@ -250,6 +250,34 @@ impl Router {
 
         Ok(())
     }
+
+    /// Install store observers at a state-machine command boundary, after previous reads and
+    /// applies.
+    #[cfg(feature = "apply-pipeline")]
+    #[openraft::macros::since(version = "0.10.1")]
+    pub async fn observe_apply_pipeline(
+        &self,
+        node: u64,
+        observer: Arc<crate::apply_pipeline::Observer>,
+    ) -> anyhow::Result<()> {
+        let store = self.stores.lock().unwrap().get(&node).cloned();
+        let store = store.ok_or_else(|| anyhow::anyhow!("unknown pipeline node {node}"))?;
+        let raft = self.get_raft(node);
+        let installed = raft
+            .with_state_machine(move |machine| {
+                Box::pin(async move {
+                    if store.pipeline_observer.get().is_some() || machine.pipeline_observer.get().is_some() {
+                        return Err("pipeline observer already installed");
+                    }
+                    let installed = store.pipeline_observer.set(observer.clone());
+                    installed.map_err(|_| "read observer already installed")?;
+                    let installed = machine.pipeline_observer.set(observer);
+                    installed.map_err(|_| "apply observer already installed")
+                })
+            })
+            .await?;
+        installed.map_err(anyhow::Error::msg)
+    }
 }
 
 impl Default for Router {

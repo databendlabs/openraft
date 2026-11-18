@@ -538,6 +538,24 @@ so a batch that begins during warmup and finishes during measurement is included
 metrics watch; it includes observer scheduling delay. Both exclude warmup source completions.
 Follower lag retains bounded recent watch observations and reports omitted nonoverlapping samples.
 
+For read/apply diagnosis, build with `--no-default-features --features apply-pipeline` and pass
+`--measure-apply-pipeline`. This separate opt-in feature compiles out all read/apply span hooks
+and fields from ordinary performance builds. Per-node `apply_pipeline` reports distinguish
+the first read of a batch from additional contiguous reads consumed by that same apply.
+They validate ranges and entry counts, measure read/apply overlap, and retain bounded recent
+traces with explicit drop counts. Nodes share a separate `--trace-limit` budget for these spans.
+Histograms select spans by their finish time; window-time
+totals clip completed reads at both boundaries. Unfinished spans remain explicit.
+
+Buffer observations count materialized entries not yet assigned to an apply. Entry structs
+and referenced application payload lengths have separate peaks; they exclude active reads,
+allocator overhead, responder storage, and shared payload ownership. All phases contribute to
+these peaks. The observers can alter scheduling, so their runs remain diagnostic.
+Use the same frozen diagnostic harness and feature set across historical core revisions.
+The shared comparison scripts extract leader extension frequency, run-level extension latency,
+and unoverlapped read time after checking every node's accounting. Full observations remain in
+each saved report. An unfinished read keeps its window-time total unavailable.
+
 Resource samples cover the process at measurement boundaries before JSON reporting. CPU per
 operation uses successful window completions. RSS remains a process high-water mark since startup.
 Retained-log and unapplied-entry byte estimates count inline entry metadata; actual worker

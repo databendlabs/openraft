@@ -96,6 +96,7 @@ def measurements(report):
         result.update({"reads/s": reads["operations_per_second"], "read p50 ns": read_latency.get("p50_ns"),
                        "read p99 ns": read_latency.get("p99_ns")})
     result.update(apply_measurements(report))
+    result.update(pipeline_measurements(report))
     return result
 
 
@@ -403,7 +404,9 @@ def workload_seed(report, command):
 
 def clean_run(run):
     environment = run["environment"]
-    return run["status"] == "success" and not environment["external_build_observed"] and not environment["sampling_errors"]
+    observers = bool(run.get("report", {}).get("apply_pipeline"))
+    return (run["status"] == "success" and not environment["external_build_observed"]
+            and not environment["sampling_errors"] and not observers)
 
 
 def print_summary(summary):
@@ -456,3 +459,47 @@ def companion_inputs(build):
     if source is not None and not source["dirty"]:
         inputs["source"] = {**source, "dirty_sha256": None}
     return inputs
+
+
+PIPELINE_CHECKS = ("read_calls", "apply_calls", "read_entry_assignments", "range_and_count_validation",
+                   "paired_events", "single_read_and_apply", "known_read_entry_counts", "known_read_ranges")
+
+
+def validate_pipeline(node, probe):
+    issues = [name for name in PIPELINE_CHECKS if probe["conservation"].get(name) is not True]
+    counters = probe["all_observed_phase_counters"]
+    issues += [name for name in ("read_failed", "read_cancelled", "apply_ended_without_success") if counters[name]]
+    if issues:
+        raise ValueError(f"node {node} pipeline accounting: {issues}")
+
+
+def pipeline_measurements(report):
+    probes = report.get("apply_pipeline") or {}
+    for node, probe in probes.items():
+        validate_pipeline(node, probe)
+    probe = probes.get("0")
+    if probe is None:
+        return {}
+    calls = (probe["reads_per_apply"] or {}).get("samples", 0)
+    extended = probe["applies_with_extensions"]
+    if not 0 <= extended <= calls:
+        raise ValueError("invalid pipeline extension cohort")
+    latency = probe["extension_reads"]["duration_ns"] or {}
+    result = {"node 0 extended apply fraction": extended / calls if calls else None,
+              "node 0 extension read p50 ns": latency.get("p50_ns"),
+              "node 0 extension read p99 ns": latency.get("p99_ns")}
+    result.update(pipeline_read_time(report, probe))
+    return result
+
+
+def pipeline_read_time(report, probe):
+    started = probe["inflight"]["read_started_ns"]
+    end = report["window"]["measurement_end_ns"]
+    if end is None:
+        end = int(report["seconds"] * 1_000_000_000)
+    unfinished = started is not None and started < end
+    reads = [probe["initial_reads"], probe["extension_reads"]]
+    total = sum(read["time_in_window_ns"] for read in reads)
+    unoverlapped = sum(read["unoverlapped_time_in_window_ns"] for read in reads)
+    return {"node 0 read time in window ns": None if unfinished else total,
+            "node 0 unoverlapped read time in window ns": None if unfinished else unoverlapped}
