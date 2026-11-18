@@ -11,6 +11,7 @@ use openraft::raft::TransferLeaderResponse;
 use crate::GroupId;
 use crate::NodeId;
 use crate::app::GroupApp;
+use crate::append_reply::AppendReply;
 use crate::decode;
 use crate::encode;
 use crate::typ::*;
@@ -59,7 +60,7 @@ pub async fn pre_vote(app: &mut GroupApp, req: String) -> String {
 /// Handle append entries request
 pub async fn append(app: &mut GroupApp, req: String) -> String {
     let res = app.raft.append_entries(decode(&req)).await;
-    encode(res.map(AppendEntriesResponse::from))
+    encode(res.map(AppendReply::from))
 }
 
 /// Handle a batch of AppendEntries requests for several groups of this node.
@@ -73,12 +74,12 @@ pub async fn append_batch(groups: &BTreeMap<GroupId, GroupApp>, req: String) -> 
         let raft = groups.get(&group_id).map(|group| group.raft.clone());
         async move {
             match raft {
-                Some(raft) => raft.append_entries(rpc).await.map(AppendEntriesResponse::from),
+                Some(raft) => raft.append_entries(rpc).await.map(AppendReply::from),
                 None => Err(RaftError::Fatal(Fatal::Stopped)),
             }
         }
     });
-    let results: Vec<Result<AppendEntriesResponse, RaftError>> = futures::future::join_all(appends).await;
+    let results: Vec<Result<AppendReply<TypeConfig>, RaftError>> = futures::future::join_all(appends).await;
 
     encode(Ok::<_, RaftError>(results))
 }

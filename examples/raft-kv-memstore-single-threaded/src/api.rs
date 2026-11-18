@@ -10,6 +10,7 @@ use openraft::error::Infallible;
 
 use crate::NodeId;
 use crate::app::App;
+use crate::append_reply::AppendReply;
 use crate::decode;
 use crate::encode;
 use crate::typ::*;
@@ -53,7 +54,7 @@ pub async fn pre_vote(app: &mut App, req: String) -> String {
 
 pub async fn append(app: &mut App, req: String) -> String {
     let res = app.raft.append_entries(decode(&req)).await;
-    encode(res.map(AppendEntriesResponse::from))
+    encode(res.map(AppendReply::from))
 }
 
 pub async fn snapshot(app: &mut App, req: String) -> String {

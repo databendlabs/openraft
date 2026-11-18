@@ -55,6 +55,9 @@ pub type LogStore = store::LogStore;
 pub type StateMachineStore = store::StateMachineStore;
 pub type Raft = openraft::Raft<TypeConfig, Rc<StateMachineStore>>;
 
+#[path = "../../utils/append_reply.rs"]
+pub mod append_reply;
+
 #[path = "../../utils/declare_types.rs"]
 pub mod typ;
 

@@ -9,6 +9,7 @@ use openraft::network::v2::RaftNetworkV2;
 
 use crate::NodeId;
 use crate::TypeConfig;
+use crate::append_reply::AppendReply;
 use crate::router::Router;
 use crate::typ::*;
 
@@ -36,12 +37,8 @@ impl RaftNetworkV2<TypeConfig> for Connection {
         req: AppendEntriesRequest,
         _option: RPCOption,
     ) -> Result<AppendResult, RPCError> {
-        // The reply is an `AppendEntriesResponse`, which carries no log id: take them from the
-        // request.
-        let last_log_id = req.last_log_id();
-        let prev_log_id = req.prev_log_id;
-        let resp: AppendEntriesResponse = self.router.send(self.target, "/raft/append", req).await?;
-        Ok(resp.into_append_result(prev_log_id, last_log_id))
+        let reply: AppendReply<TypeConfig> = self.router.send(self.target, "/raft/append", req).await?;
+        Ok(AppendResult::from(reply))
     }
 
     /// A real application should replace this method with customized implementation.

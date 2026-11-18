@@ -16,10 +16,10 @@ use openraft::type_config::TypeConfigExt;
 use crate::GroupId;
 use crate::NodeId;
 use crate::TypeConfig;
+use crate::append_reply::AppendReply;
 use crate::router::Router;
 use crate::router::RouterError;
 use crate::typ::AppendEntriesRequest;
-use crate::typ::AppendEntriesResponse;
 use crate::typ::RaftError;
 
 /// How long a batch waits for more requests after its first one.
@@ -29,7 +29,7 @@ const MAX_DELAY: Duration = Duration::from_millis(1);
 const MAX_REQUESTS: usize = 1024;
 
 /// What a caller of [`AppendBatcher::append()`] gets back.
-type AppendResponse = Result<AppendEntriesResponse, Unreachable<TypeConfig>>;
+type AppendResponse = Result<AppendReply<TypeConfig>, Unreachable<TypeConfig>>;
 
 /// A request waiting for its batch, with the channel its caller waits on.
 struct Pending {
@@ -126,7 +126,7 @@ async fn send_batch(router: Router, target: NodeId, batch: Vec<Pending>) {
     let (requests, response_txs): (Vec<_>, Vec<_>) =
         batch.into_iter().map(|p| ((p.group_id, p.rpc), p.response_tx)).unzip();
 
-    let sent: Result<Vec<Result<AppendEntriesResponse, RaftError>>, _> =
+    let sent: Result<Vec<Result<AppendReply<TypeConfig>, RaftError>>, _> =
         router.send_to_node(target, "/raft/append-batch", requests).await;
 
     let results: Vec<AppendResponse> = match sent {
@@ -166,11 +166,11 @@ mod tests {
     use crate::GroupId;
     use crate::NodeId;
     use crate::TypeConfig;
+    use crate::append_reply::AppendReply;
     use crate::decode;
     use crate::encode;
     use crate::router::Router;
     use crate::typ::AppendEntriesRequest;
-    use crate::typ::AppendEntriesResponse;
     use crate::typ::RaftError;
     use crate::typ::Vote;
 
@@ -179,7 +179,7 @@ mod tests {
 
     /// Register on `router` a fake node `node_id`, which answers each request of a batch with
     /// `answer(group_id)`.
-    fn fake_node(router: &Router, node_id: NodeId, answer: fn(&str) -> AppendEntriesResponse) -> Received {
+    fn fake_node(router: &Router, node_id: NodeId, answer: fn(&str) -> AppendReply<TypeConfig>) -> Received {
         let (tx, mut rx) = mpsc::channel(16);
         router.register_node(node_id, tx);
 
@@ -212,8 +212,8 @@ mod tests {
         TypeConfig::run(async {
             let router = Router::new();
             let received = fake_node(&router, 2, |group_id| match group_id {
-                "orders" => AppendEntriesResponse::Conflict,
-                _ => AppendEntriesResponse::Success,
+                "orders" => AppendReply::HigherVote(Vote::new(2, 2)),
+                _ => AppendReply::Accepted(None),
             });
             let batcher = AppendBatcher::spawn(router);
 
@@ -222,9 +222,9 @@ mod tests {
             let results: Vec<_> = join_all(calls).await.into_iter().map(Result::unwrap).collect();
 
             let expected = [
-                AppendEntriesResponse::Success,
-                AppendEntriesResponse::Conflict,
-                AppendEntriesResponse::Success,
+                AppendReply::Accepted(None),
+                AppendReply::HigherVote(Vote::new(2, 2)),
+                AppendReply::Accepted(None),
             ];
             assert_eq!(expected.to_vec(), results);
             assert_eq!(vec![groups.to_vec()], *received.lock().unwrap());
@@ -235,16 +235,16 @@ mod tests {
     fn test_each_target_node_gets_its_own_batch() {
         TypeConfig::run(async {
             let router = Router::new();
-            let received_by_2 = fake_node(&router, 2, |_| AppendEntriesResponse::Success);
-            let received_by_3 = fake_node(&router, 3, |_| AppendEntriesResponse::Success);
+            let received_by_2 = fake_node(&router, 2, |_| AppendReply::Accepted(None));
+            let received_by_3 = fake_node(&router, 3, |_| AppendReply::Accepted(None));
             let batcher = AppendBatcher::spawn(router);
 
             let to_2 = batcher.append(2, "users".to_string(), heartbeat());
             let to_3 = batcher.append(3, "orders".to_string(), heartbeat());
             let (from_2, from_3) = futures::join!(to_2, to_3);
 
-            assert_eq!(AppendEntriesResponse::Success, from_2.unwrap());
-            assert_eq!(AppendEntriesResponse::Success, from_3.unwrap());
+            assert_eq!(AppendReply::Accepted(None), from_2.unwrap());
+            assert_eq!(AppendReply::Accepted(None), from_3.unwrap());
             assert_eq!(vec![vec!["users".to_string()]], *received_by_2.lock().unwrap());
             assert_eq!(vec![vec!["orders".to_string()]], *received_by_3.lock().unwrap());
             assert_eq!(2, batcher.stats().batches.load(Ordering::Relaxed));

@@ -9,7 +9,6 @@ use openraft::network::Backoff;
 use openraft::network::RPCOption;
 use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
-use openraft::raft::AppendEntriesResponse;
 use openraft::raft::AppendResult;
 use openraft::raft::SnapshotResponse;
 use openraft::raft::TransferLeaderRequest;
@@ -24,6 +23,7 @@ use crate::GroupId;
 use crate::NodeId;
 use crate::TypeConfig;
 use crate::append_batcher::AppendBatcher;
+use crate::append_reply::AppendReply;
 use crate::router::Router;
 use crate::typ;
 
@@ -53,18 +53,13 @@ impl GroupRouter<TypeConfig, GroupId> for NodeNetwork {
         rpc: AppendEntriesRequest<TypeConfig>,
         _option: RPCOption,
     ) -> Result<AppendResult<TypeConfig>, RPCError<TypeConfig>> {
-        // The reply is an `AppendEntriesResponse`, which carries no log id: take them from the
-        // request.
-        let last_log_id = rpc.last_log_id();
-        let prev_log_id = rpc.prev_log_id;
-
-        let response: AppendEntriesResponse<TypeConfig> = if rpc.entries.is_empty() {
+        let reply: AppendReply<TypeConfig> = if rpc.entries.is_empty() {
             self.batcher.append(target, group_id, rpc).await
         } else {
             self.router.send(target, &group_id, "/raft/append", rpc).await
         }
         .map_err(RPCError::Unreachable)?;
-        Ok(response.into_append_result(prev_log_id, last_log_id))
+        Ok(AppendResult::from(reply))
     }
 
     async fn vote(

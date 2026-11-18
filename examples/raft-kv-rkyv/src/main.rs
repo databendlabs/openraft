@@ -1,3 +1,5 @@
+#[path = "../../utils/append_reply.rs"]
+mod append_reply;
 mod archive_buffer;
 mod atomic_file;
 mod cluster;

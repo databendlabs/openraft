@@ -34,6 +34,10 @@ pub type LogStore = store::LogStore;
 pub type StateMachineStore = sm_mem::StateMachineStore<TypeConfig>;
 pub type Raft = openraft::Raft<TypeConfig, StateMachineStore>;
 
+/// The wire format of AppendEntries replies, shared by the examples.
+#[path = "../../utils/append_reply.rs"]
+pub mod append_reply;
+
 /// Define all Raft-related type aliases
 #[path = "../../utils/declare_types.rs"]
 pub mod typ;

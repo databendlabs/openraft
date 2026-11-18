@@ -10,7 +10,6 @@ use openraft::errors::Unreachable;
 use openraft::network::RPCOption;
 use openraft::network::v2::RaftNetworkV2;
 use openraft::raft::AppendEntriesRequest;
-use openraft::raft::AppendEntriesResponse;
 use openraft::raft::AppendResult;
 use openraft::raft::SnapshotResponse;
 use openraft::raft::VoteRequest;
@@ -19,6 +18,7 @@ use openraft::raft::VoteResponse;
 use crate::Raft;
 use crate::Snapshot;
 use crate::TypeConfig;
+use crate::append_reply::AppendReply;
 use crate::codec::Codec;
 use crate::network::Network;
 
@@ -62,17 +62,14 @@ impl RaftNetworkV2<TypeConfig> for Connection {
         request: AppendEntriesRequest<TypeConfig>,
         option: RPCOption,
     ) -> Result<AppendResult<TypeConfig>, RPCError<TypeConfig>> {
-        let prev = request.prev_log_id;
-        let last = request.last_log_id();
         self.send(option, async {
             let target = self.target().await?;
             // ArchiveBuffer's serde implementation copies its archived bytes, not its fields.
             // Decode constructs fresh, validated aligned buffers before calling the follower.
             let request = Codec::round_trip(&request)?;
             let result = target.append_entries(request).await.map_err(io::Error::other)?;
-            let response = AppendEntriesResponse::from(result);
-            let response: AppendEntriesResponse<TypeConfig> = Codec::round_trip(&response)?;
-            Ok(response.into_append_result(prev, last))
+            let reply: AppendReply<TypeConfig> = Codec::round_trip(&AppendReply::from(result))?;
+            Ok(AppendResult::from(reply))
         })
         .await
     }
