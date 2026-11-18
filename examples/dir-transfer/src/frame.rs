@@ -59,8 +59,12 @@ pub enum DirFrame {
     },
 
     /// A run of file bytes, at most [`MAX_CHUNK_SIZE`] long.
+    ///
+    /// The bytes serialize as a serde byte string, so binary formats such as MessagePack carry
+    /// them without per-byte overhead.
     Chunk {
         /// The bytes.
+        #[serde(with = "serde_bytes")]
         data: Vec<u8>,
     },
 
@@ -112,6 +116,9 @@ pub(crate) fn invalid_data(msg: impl Into<Box<dyn std::error::Error + Send + Syn
 mod tests {
     use std::io;
 
+    use serde::Serialize;
+
+    use super::DirFrame;
     use super::checksum_digest;
     use super::validate_file_name;
 
@@ -149,5 +156,31 @@ mod tests {
             let err = validate_file_name(name).unwrap_err();
             assert_eq!(io::ErrorKind::InvalidData, err.kind(), "name: {name:?}");
         }
+    }
+
+    #[test]
+    fn test_chunk_serializes_as_byte_string() {
+        // Bytes of 0x80 and above take 2 bytes each when encoded as MessagePack integers.
+        let frame = DirFrame::Chunk { data: vec![0xff; 4096] };
+
+        let encoded = rmp_serde::to_vec(&frame).unwrap();
+        assert!(encoded.len() <= 4096 + 16, "encoded {} bytes", encoded.len());
+
+        let decoded: DirFrame = rmp_serde::from_slice(&encoded).unwrap();
+        assert_eq!(frame, decoded);
+    }
+
+    #[test]
+    fn test_chunk_decodes_from_integer_sequence() {
+        /// `DirFrame::Chunk` as a node built before the byte-string encoding sends it.
+        #[derive(Serialize)]
+        enum SequenceEncoded {
+            Chunk { data: Vec<u8> },
+        }
+
+        let encoded = rmp_serde::to_vec(&SequenceEncoded::Chunk { data: vec![1, 0xff] }).unwrap();
+
+        let decoded: DirFrame = rmp_serde::from_slice(&encoded).unwrap();
+        assert_eq!(DirFrame::Chunk { data: vec![1, 0xff] }, decoded);
     }
 }
