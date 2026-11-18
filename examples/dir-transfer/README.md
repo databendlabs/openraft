@@ -25,7 +25,8 @@ Manifest, { FileStart, Chunk*, FileEnd }, End
 with one `FileStart`/`Chunk`/`FileEnd` group per manifest entry, in manifest order.
 
 - `Manifest` carries `PROTOCOL_VERSION` and every file's name and size as a `ManifestEntry`.
-- File names are flat: at most `MAX_FILE_NAME_BYTES` bytes, no path separators, no `.` or `..`.
+- File names are flat: at most `MAX_FILE_NAME_BYTES` bytes, no path separators or `:`, no `.` or
+  `..`.
 - `FileEnd` carries a CRC-64/XZ checksum of the complete file contents.
 - Every violation fails with `io::ErrorKind::InvalidData`; a failed session is discarded and
   restarted from scratch.

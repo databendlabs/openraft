@@ -108,7 +108,7 @@ async fn test_unsupported_version() {
 
 #[tokio::test]
 async fn test_manifest_name_validation_precedes_writes() {
-    for name in ["../evil", "a/b", "", ".."] {
+    for name in ["../evil", "a/b", "C:x", "", ".."] {
         let target = tempfile::tempdir().unwrap();
         let mut writer = DirWriter::new(target.path().to_path_buf());
 

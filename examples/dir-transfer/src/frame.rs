@@ -27,7 +27,7 @@ static CRC64: Crc<u64, Table<16>> = Crc::<u64, Table<16>>::new(&CRC_64_XZ);
 #[derive(Serialize, Deserialize)]
 pub struct ManifestEntry {
     /// Flat file name: non-empty, at most [`MAX_FILE_NAME_BYTES`] bytes, not `.` or `..`, and free
-    /// of `/`, `\` and NUL.
+    /// of `/`, `\`, `:` and NUL.
     pub name: String,
 
     /// File size in bytes; the file's [`DirFrame::Chunk`] frames carry exactly this many bytes.
@@ -93,7 +93,9 @@ pub(crate) fn checksum_digest() -> ChecksumDigest {
 /// Validate a manifest file name before any filesystem access.
 ///
 /// Enforces the rule stated on [`ManifestEntry::name`]: non-empty, at most [`MAX_FILE_NAME_BYTES`]
-/// bytes, not `.` or `..`, and free of `/`, `\` and NUL.
+/// bytes, not `.` or `..`, and free of `/`, `\`, `:` and NUL. `:` is rejected on every platform
+/// because Windows reads `C:x` as a drive-relative path, which `Path::join` does not keep inside
+/// the target directory, and `a:b` as an NTFS stream.
 pub(crate) fn validate_file_name(name: &str) -> io::Result<()> {
     if name.is_empty() {
         return Err(invalid_data("empty file name"));
@@ -106,9 +108,9 @@ pub(crate) fn validate_file_name(name: &str) -> io::Result<()> {
     if name == "." || name == ".." {
         return Err(invalid_data(format!("file name {name:?} is not allowed")));
     }
-    if name.contains(['/', '\\', '\0']) {
+    if name.contains(['/', '\\', ':', '\0']) {
         return Err(invalid_data(format!(
-            "file name {name:?} contains a path separator or NUL"
+            "file name {name:?} contains a path separator, `:` or NUL"
         )));
     }
     Ok(())
@@ -156,6 +158,8 @@ mod tests {
             "a/b",
             "/abs",
             "a\\b",
+            "C:x",
+            "a:b",
             "a\0b",
             &"x".repeat(super::MAX_FILE_NAME_BYTES + 1),
         ];
