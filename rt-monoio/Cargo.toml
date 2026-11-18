@@ -9,7 +9,6 @@ authors = [
     "Databend Authors <opensource@datafuselabs.com>",
 ]
 categories = ["algorithms", "asynchronous", "data-structures"]
-homepage = "https://github.com/databendlabs/openraft"
 keywords = ["raft", "consensus"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/databendlabs/openraft"

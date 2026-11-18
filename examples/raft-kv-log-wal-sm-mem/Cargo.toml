@@ -8,7 +8,6 @@ authors = [
 ]
 categories = ["algorithms", "asynchronous", "data-structures"]
 description = "An OpenRaft key-value example with a WAL log and in-memory state machine."
-homepage = "https://github.com/databendlabs/openraft"
 keywords = ["raft", "consensus"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/databendlabs/openraft"

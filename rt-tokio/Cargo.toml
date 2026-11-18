@@ -8,7 +8,6 @@ authors = [
 ]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/drmingdrmer/openraft"
-homepage = "https://github.com/drmingdrmer/openraft"
 readme = "README.md"
 description = "Tokio runtime implementation for Openraft"
 

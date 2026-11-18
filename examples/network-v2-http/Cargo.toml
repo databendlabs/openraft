@@ -9,7 +9,6 @@ authors = [
 ]
 categories = ["algorithms", "asynchronous", "data-structures"]
 description = "An example network implementation v2 built upon `openraft`."
-homepage = "https://github.com/databendlabs/openraft"
 keywords = ["raft", "consensus", "network"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/databendlabs/openraft"

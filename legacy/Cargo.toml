@@ -8,7 +8,6 @@ authors.workspace = true
 categories.workspace = true
 description = "Legacy compatibility layer for deprecated Openraft APIs"
 documentation.workspace = true
-homepage.workspace = true
 keywords.workspace = true
 license.workspace = true
 repository.workspace = true

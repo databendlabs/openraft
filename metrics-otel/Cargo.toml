@@ -7,7 +7,6 @@ authors = [
 ]
 description = "OpenTelemetry metrics integration for Openraft"
 documentation = "https://docs.rs/openraft-metrics-otel"
-homepage = "https://github.com/databendlabs/openraft"
 keywords = ["raft", "consensus", "opentelemetry", "metrics"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/databendlabs/openraft"
