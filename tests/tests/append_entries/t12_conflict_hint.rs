@@ -101,8 +101,8 @@ async fn append_entries_reports_conflict_hints() -> Result<()> {
     Ok(())
 }
 
-/// Quota truncation preserves the acknowledged prefix with and without hints: the legacy reply
-/// format is rebuilt from the request that was sent.
+/// Quota truncation preserves the acknowledged prefix with and without hints: the follower
+/// acknowledges the last log id of the truncated request it received.
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn quota_preserves_hinted_and_legacy_reply_boundaries() -> Result<()> {
