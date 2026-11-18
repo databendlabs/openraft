@@ -124,7 +124,9 @@ impl RaftStateMachine<UTConfig> for RecordingStateMachine {
     }
 
     async fn get_current_snapshot(&mut self) -> Result<Option<SnapshotOf<UTConfig, ()>>, io::Error> {
-        self.events.lock().unwrap().push("snapshot".to_string());
+        let event = "snapshot".to_string();
+        let mut events = self.events.lock().unwrap();
+        events.push(event);
         Ok(None)
     }
 }
@@ -667,7 +669,8 @@ async fn late_commands_continue_prefetch_before_apply_finishes_async() -> anyhow
     let (cmd, client_1) = apply_cmd(1, 1);
     {
         let sent = cmd_tx.send(cmd).await;
-        assert!(sent.is_ok(), "the worker is running");
+        let accepted = sent.is_ok();
+        assert!(accepted, "the worker is running");
         wait_event(&events, "apply [1,1]").await;
     }
 
@@ -675,21 +678,23 @@ async fn late_commands_continue_prefetch_before_apply_finishes_async() -> anyhow
     let (cmd, client_2) = apply_cmd(2, 2);
     {
         let sent = cmd_tx.send(cmd).await;
-        assert!(sent.is_ok(), "the worker is running");
+        let accepted = sent.is_ok();
+        assert!(accepted, "the worker is running");
         wait_event(&events, "read [2,2]").await;
     }
     let (cmd_3, client_3) = apply_cmd(3, 3);
     let (cmd_4, client_4) = apply_cmd(4, 4);
     for cmd in [cmd_3, record_func("func"), cmd_4] {
         let sent = cmd_tx.send(cmd).await;
-        assert!(sent.is_ok(), "the worker is running");
+        let accepted = sent.is_ok();
+        assert!(accepted, "the worker is running");
     }
 
     tracing::info!("--- finish the first prefetch and start its extension while the original apply remains held");
     {
         drop(read_2);
         wait_event(&events, "read [3,3]").await;
-        let actual = events.lock().unwrap().clone();
+        let actual = event_snapshot(&events);
         let expected = vec!["read [1,1]", "apply [1,1]", "read [2,2]", "read [3,3]"];
         assert_eq!(expected, actual);
         drop(apply_1);
@@ -699,7 +704,8 @@ async fn late_commands_continue_prefetch_before_apply_finishes_async() -> anyhow
     {
         let mut applied = Vec::new();
         for _ in 0..3 {
-            applied.push(recv_applied(&mut resp_rx).await?);
+            let result = recv_applied(&mut resp_rx).await?;
+            applied.push(result);
         }
         let expected = vec![
             (1, 2, log_id(1, 0, 1)),
@@ -707,7 +713,7 @@ async fn late_commands_continue_prefetch_before_apply_finishes_async() -> anyhow
             (4, 5, log_id(1, 0, 4)),
         ];
         assert_eq!(expected, applied);
-        let actual = events.lock().unwrap().clone();
+        let actual = event_snapshot(&events);
         let expected = vec![
             "read [1,1]",
             "apply [1,1]",
@@ -751,20 +757,23 @@ async fn prefetch_cap_keeps_the_final_queued_tail_async() -> anyhow::Result<()> 
     {
         let (cmd, _client) = apply_cmd(1, 1);
         let sent = cmd_tx.send(cmd).await;
-        assert!(sent.is_ok(), "the worker is running");
+        let accepted = sent.is_ok();
+        assert!(accepted, "the worker is running");
         wait_event(&events, "apply [1,1]").await;
         let (prefetch, _client) = apply_cmd(2, 513);
         let sent = cmd_tx.send(prefetch).await;
-        assert!(sent.is_ok(), "the worker is running");
+        let accepted = sent.is_ok();
+        assert!(accepted, "the worker is running");
         wait_event(&events, "read [2,513]").await;
         let (extension, _client) = apply_cmd(514, 1025);
         let (tail, _client) = apply_cmd(1026, 1026);
         for cmd in [extension, tail] {
             let sent = cmd_tx.send(cmd).await;
-            assert!(sent.is_ok(), "the worker is running");
+            let accepted = sent.is_ok();
+            assert!(accepted, "the worker is running");
         }
         wait_event(&events, "read [514,1025]").await;
-        let actual = events.lock().unwrap().clone();
+        let actual = event_snapshot(&events);
         let expected = vec!["read [1,1]", "apply [1,1]", "read [2,513]", "read [514,1025]"];
         assert_eq!(expected, actual);
     }
@@ -775,10 +784,12 @@ async fn prefetch_cap_keeps_the_final_queued_tail_async() -> anyhow::Result<()> 
     {
         drop(apply_1);
         let first = recv_applied(&mut resp_rx).await?;
-        assert_eq!((1, 2, log_id(1, 0, 1)), first);
+        let expected = (1, 2, log_id(1, 0, 1));
+        assert_eq!(expected, first);
         let next = recv_applied(&mut resp_rx).await?;
-        assert_eq!((2, 1027, log_id(1, 0, 1026)), next);
-        let actual = events.lock().unwrap().clone();
+        let expected = (2, 1027, log_id(1, 0, 1026));
+        assert_eq!(expected, next);
+        let actual = event_snapshot(&events);
         let expected = vec![
             "read [1,1]",
             "apply [1,1]",
@@ -812,27 +823,34 @@ async fn oversized_prefetch_command_waits_without_splitting_log_ids_async() -> a
     {
         let (cmd, _client) = apply_cmd(1, 1);
         let sent = cmd_tx.send(cmd).await;
-        assert!(sent.is_ok(), "the worker is running");
+        let accepted = sent.is_ok();
+        assert!(accepted, "the worker is running");
         wait_event(&events, "apply [1,1]").await;
         let (cmd, _client) = apply_cmd(2, 1026);
         let sent = cmd_tx.send(cmd).await;
-        assert!(sent.is_ok(), "the worker is running");
+        let accepted = sent.is_ok();
+        assert!(accepted, "the worker is running");
     }
 
     tracing::info!("--- peeking frees command capacity while the oversized range stays unread");
     {
-        let sent = UTConfig::<()>::timeout(WAIT_TIMEOUT, cmd_tx.send(record_func("func"))).await?;
-        assert!(sent.is_ok(), "peeking frees one channel slot");
-        let actual = events.lock().unwrap().clone();
+        let command = record_func("func");
+        let sending = cmd_tx.send(command);
+        let sent = UTConfig::<()>::timeout(WAIT_TIMEOUT, sending).await?;
+        let accepted = sent.is_ok();
+        assert!(accepted, "peeking frees one channel slot");
+        let actual = event_snapshot(&events);
         let expected = vec!["read [1,1]", "apply [1,1]"];
         assert_eq!(expected, actual);
         drop(apply_1);
         let first = recv_applied(&mut resp_rx).await?;
-        assert_eq!((1, 2, log_id(1, 0, 1)), first);
+        let expected = (1, 2, log_id(1, 0, 1));
+        assert_eq!(expected, first);
         let next = recv_applied(&mut resp_rx).await?;
-        assert_eq!((2, 1027, log_id(1, 0, 1026)), next);
+        let expected = (2, 1027, log_id(1, 0, 1026));
+        assert_eq!(expected, next);
         wait_event(&events, "func").await;
-        let actual = events.lock().unwrap().clone();
+        let actual = event_snapshot(&events);
         let expected = vec![
             "read [1,1]",
             "apply [1,1]",
@@ -866,13 +884,15 @@ async fn snapshot_command_stops_late_prefetch_async() -> anyhow::Result<()> {
     {
         let (cmd, _client) = apply_cmd(1, 1);
         let sent = cmd_tx.send(cmd).await;
-        assert!(sent.is_ok(), "the worker is running");
+        let accepted = sent.is_ok();
+        assert!(accepted, "the worker is running");
         wait_event(&events, "apply [1,1]").await;
         let (next, _client) = apply_cmd(2, 2);
         let (last, _client) = apply_cmd(3, 3);
         for cmd in [next, Command::get_snapshot(snapshot_tx), last] {
             let sent = cmd_tx.send(cmd).await;
-            assert!(sent.is_ok(), "the worker is running");
+            let accepted = sent.is_ok();
+            assert!(accepted, "the worker is running");
         }
         wait_event(&events, "read [2,2]").await;
         drop(apply_1);
@@ -882,7 +902,8 @@ async fn snapshot_command_stops_late_prefetch_async() -> anyhow::Result<()> {
     {
         let mut applied = Vec::new();
         for _ in 0..3 {
-            applied.push(recv_applied(&mut resp_rx).await?);
+            let result = recv_applied(&mut resp_rx).await?;
+            applied.push(result);
         }
         let expected = vec![
             (1, 2, log_id(1, 0, 1)),
@@ -891,8 +912,9 @@ async fn snapshot_command_stops_late_prefetch_async() -> anyhow::Result<()> {
         ];
         assert_eq!(expected, applied);
         let snapshot = snapshot_rx.await?;
-        assert!(snapshot.is_none());
-        let actual = events.lock().unwrap().clone();
+        let absent = snapshot.is_none();
+        assert!(absent);
+        let actual = event_snapshot(&events);
         let expected = vec![
             "read [1,1]",
             "apply [1,1]",
@@ -928,7 +950,8 @@ async fn closed_command_channel_finishes_the_current_apply_async() -> anyhow::Re
     {
         let (cmd, _client) = apply_cmd(1, 1);
         let sent = cmd_tx.send(cmd).await;
-        assert!(sent.is_ok(), "the worker is running");
+        let accepted = sent.is_ok();
+        assert!(accepted, "the worker is running");
         wait_event(&events, "apply [1,1]").await;
         drop(cmd_tx);
         drop(handle);
@@ -937,13 +960,107 @@ async fn closed_command_channel_finishes_the_current_apply_async() -> anyhow::Re
 
     tracing::info!("--- publish the final apply before the worker closes its notification channel");
     {
-        let applied = UTConfig::<()>::timeout(WAIT_TIMEOUT, recv_applied(&mut resp_rx)).await??;
-        assert_eq!((1, 2, log_id(1, 0, 1)), applied);
-        let next = UTConfig::<()>::timeout(WAIT_TIMEOUT, resp_rx.recv()).await?;
-        assert!(next.is_none());
-        let actual = events.lock().unwrap().clone();
+        let receiving = recv_applied(&mut resp_rx);
+        let applied = UTConfig::<()>::timeout(WAIT_TIMEOUT, receiving).await??;
+        let expected = (1, 2, log_id(1, 0, 1));
+        assert_eq!(expected, applied);
+        let receiving = resp_rx.recv();
+        let next = UTConfig::<()>::timeout(WAIT_TIMEOUT, receiving).await?;
+        let closed = next.is_none();
+        assert!(closed);
+        let actual = event_snapshot(&events);
         let expected = vec!["read [1,1]", "apply [1,1]", "done [1,1]"];
         assert_eq!(expected, actual);
     }
     Ok(())
+}
+
+#[test]
+fn overrunning_prefetch_skips_serial_tail() -> anyhow::Result<()> {
+    let test = overrunning_prefetch_skips_serial_tail_async();
+    UTConfig::<()>::run(test)
+}
+
+async fn overrunning_prefetch_skips_serial_tail_async() -> anyhow::Result<()> {
+    let sm = RecordingStateMachine::default();
+    let events = sm.events.clone();
+    let gates = sm.gates.clone();
+    let (cmd_tx, cmd_rx) = UTConfig::<()>::mpsc(16);
+    let (resp_tx, mut resp_rx) = UTConfig::<()>::mpsc(16);
+    let apply_1 = gates.gate("apply", 1);
+    let apply_2 = gates.gate("apply", 2);
+    let read_2 = gates.gate("read", 2);
+    let _handle = spawn_worker(sm, cmd_tx.clone(), cmd_rx, resp_tx);
+
+    tracing::info!("--- start a late prefetch that remains held after the current apply finishes");
+    {
+        let (cmd, _client) = apply_cmd(1, 1);
+        let sent = cmd_tx.send(cmd).await;
+        let accepted = sent.is_ok();
+        assert!(accepted, "the worker is running");
+        wait_event(&events, "apply [1,1]").await;
+        let (cmd, _client) = apply_cmd(2, 2);
+        let sent = cmd_tx.send(cmd).await;
+        let accepted = sent.is_ok();
+        assert!(accepted, "the worker is running");
+        wait_event(&events, "read [2,2]").await;
+        drop(apply_1);
+        let receiving = recv_applied(&mut resp_rx);
+        let applied = UTConfig::<()>::timeout(WAIT_TIMEOUT, receiving).await??;
+        let expected = (1, 2, log_id(1, 0, 1));
+        assert_eq!(expected, applied);
+        let actual = event_snapshot(&events);
+        let expected = vec!["read [1,1]", "apply [1,1]", "read [2,2]", "done [1,1]"];
+        assert_eq!(expected, actual);
+    }
+
+    tracing::info!("--- queue a tail, finish the held read, and start its apply before reading the tail");
+    {
+        let (cmd, _client) = apply_cmd(3, 3);
+        let sent = cmd_tx.send(cmd).await;
+        let accepted = sent.is_ok();
+        assert!(accepted, "the worker is running");
+        drop(read_2);
+        wait_event(&events, "read [3,3]").await;
+        let actual = event_snapshot(&events);
+        let expected = vec![
+            "read [1,1]",
+            "apply [1,1]",
+            "read [2,2]",
+            "done [1,1]",
+            "apply [2,2]",
+            "read [3,3]",
+        ];
+        assert_eq!(expected, actual);
+    }
+
+    tracing::info!("--- finish the separate applies with the original log IDs and notification order");
+    {
+        drop(apply_2);
+        let applied = recv_applied(&mut resp_rx).await?;
+        let expected = (2, 3, log_id(1, 0, 2));
+        assert_eq!(expected, applied);
+        let applied = recv_applied(&mut resp_rx).await?;
+        let expected = (3, 4, log_id(1, 0, 3));
+        assert_eq!(expected, applied);
+        let actual = event_snapshot(&events);
+        let expected = vec![
+            "read [1,1]",
+            "apply [1,1]",
+            "read [2,2]",
+            "done [1,1]",
+            "apply [2,2]",
+            "read [3,3]",
+            "done [2,2]",
+            "apply [3,3]",
+            "done [3,3]",
+        ];
+        assert_eq!(expected, actual);
+    }
+    Ok(())
+}
+
+fn event_snapshot(events: &Events) -> Vec<String> {
+    let events = events.lock().unwrap();
+    events.clone()
 }
