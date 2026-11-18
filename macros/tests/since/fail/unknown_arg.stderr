@@ -1,0 +1,5 @@
+error: Unknown attribute `chnage`; expected one of: `version`, `date`, `change`
+ --> tests/since/fail/unknown_arg.rs:1:45
+  |
+1 | #[openraft_macros::since(version = "1.0.0", chnage = "typo")]
+  |                                             ^^^^^^^^^^^^^^^

@@ -56,10 +56,10 @@ impl Since {
                             since.set_change(namevalue.value.clone(), Spanned::span(&namevalue.value))?;
                         }
 
-                        name => {
+                        _ => {
                             let msg = format!(
-                                "Unknown attribute {} is specified; expected one of: `version`, `date`",
-                                name,
+                                "Unknown attribute `{}`; expected one of: `version`, `date`, `change`",
+                                q,
                             );
                             return Err(syn::Error::new_spanned(namevalue, msg));
                         }
