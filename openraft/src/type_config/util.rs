@@ -370,6 +370,32 @@ mod tests {
         let stream = UTConfig::mpsc_to_stream(rx);
         _assert_static(stream);
     }
+
+    /// Hold 1 KiB while waiting forever, so that the future takes a little over 1 KiB.
+    async fn kib_future() {
+        let buf = [7u8; 1024];
+        std::future::pending::<()>().await;
+        std::hint::black_box(&buf);
+    }
+
+    #[test]
+    fn test_select_holds_each_future_once() {
+        let one = size_of_val(&kib_future());
+
+        let selected = UTConfig::select3(kib_future(), kib_future(), kib_future());
+        let size = size_of_val(&selected);
+        assert!(
+            size < 3 * one + 64,
+            "select3() of three {one}-byte futures takes {size} bytes"
+        );
+
+        let selected = UTConfig::select4(kib_future(), kib_future(), kib_future(), kib_future());
+        let size = size_of_val(&selected);
+        assert!(
+            size < 4 * one + 64,
+            "select4() of four {one}-byte futures takes {size} bytes"
+        );
+    }
 }
 
 #[cfg(test)]

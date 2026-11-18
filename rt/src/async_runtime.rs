@@ -6,12 +6,10 @@
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::future::Future;
-use std::future::poll_fn;
 use std::io;
-use std::pin::pin;
-use std::task::Poll;
 use std::time::Duration;
 
+use futures_util::FutureExt;
 use openraft_macros::since;
 
 use crate::CancelHandle;
@@ -26,6 +24,7 @@ use crate::Select3;
 use crate::Select4;
 use crate::TryRecvError;
 use crate::Watch;
+use crate::select2_future::Select2Future;
 
 /// A trait defining interfaces with an asynchronous runtime.
 ///
@@ -120,24 +119,7 @@ pub trait AsyncRuntime: Debug + 'static {
         A: Future + OptionalSend,
         B: Future + OptionalSend,
     {
-        async move {
-            let mut a = pin!(a);
-            let mut b = pin!(b);
-            let select = poll_fn(move |cx| {
-                let first = a.as_mut().poll(cx);
-                if let Poll::Ready(value) = first {
-                    let selected = Select2::First(value);
-                    return Poll::Ready(selected);
-                }
-                let second = b.as_mut().poll(cx);
-                if let Poll::Ready(value) = second {
-                    let selected = Select2::Second(value);
-                    return Poll::Ready(selected);
-                }
-                Poll::Pending
-            });
-            select.await
-        }
+        Select2Future::new(a, b)
     }
 
     /// Wait for one of three futures to complete, returning its output.
@@ -155,15 +137,15 @@ pub trait AsyncRuntime: Debug + 'static {
         B: Future + OptionalSend,
         C: Future + OptionalSend,
     {
-        async move {
-            let tail = Self::select2(b, c);
-            let selected = Self::select2(a, tail).await;
-            match selected {
-                Select2::First(value) => Select3::First(value),
-                Select2::Second(Select2::First(value)) => Select3::Second(value),
-                Select2::Second(Select2::Second(value)) => Select3::Third(value),
-            }
-        }
+        // An `async` block would reserve the bytes of `a`, `b` and `c` twice: once for the captured
+        // variables and once in the select future it polls (rust-lang/rust#62958). `map()` stores
+        // them once.
+        let tail = Self::select2(b, c);
+        Self::select2(a, tail).map(|selected| match selected {
+            Select2::First(value) => Select3::First(value),
+            Select2::Second(Select2::First(value)) => Select3::Second(value),
+            Select2::Second(Select2::Second(value)) => Select3::Third(value),
+        })
     }
 
     /// Wait for one of four futures to complete, returning its output.
@@ -183,17 +165,14 @@ pub trait AsyncRuntime: Debug + 'static {
         C: Future + OptionalSend,
         D: Future + OptionalSend,
     {
-        async move {
-            let head = Self::select2(a, b);
-            let tail = Self::select2(c, d);
-            let selected = Self::select2(head, tail).await;
-            match selected {
-                Select2::First(Select2::First(value)) => Select4::First(value),
-                Select2::First(Select2::Second(value)) => Select4::Second(value),
-                Select2::Second(Select2::First(value)) => Select4::Third(value),
-                Select2::Second(Select2::Second(value)) => Select4::Fourth(value),
-            }
-        }
+        let head = Self::select2(a, b);
+        let tail = Self::select2(c, d);
+        Self::select2(head, tail).map(|selected| match selected {
+            Select2::First(Select2::First(value)) => Select4::First(value),
+            Select2::First(Select2::Second(value)) => Select4::Second(value),
+            Select2::Second(Select2::First(value)) => Select4::Third(value),
+            Select2::Second(Select2::Second(value)) => Select4::Fourth(value),
+        })
     }
 
     /// Check if the [`Self::JoinError`] is `panic`.
@@ -331,12 +310,9 @@ pub trait AsyncRuntime: Debug + 'static {
         F: Future + OptionalSend,
         Cancel: Future + OptionalSend,
     {
-        async move {
-            let selected = Self::select2(cancel, future).await;
-            match selected {
-                Select2::First(_) => None,
-                Select2::Second(output) => Some(output),
-            }
-        }
+        Self::select2(cancel, future).map(|selected| match selected {
+            Select2::First(_) => None,
+            Select2::Second(output) => Some(output),
+        })
     }
 }

@@ -188,3 +188,29 @@ fn by_signal_wakes_the_waiter() {
         assert_eq!(None, actual);
     });
 }
+
+/// Hold 1 KiB while waiting forever, so that the future takes a little over 1 KiB.
+async fn kib_future() {
+    let buf = [7u8; 1024];
+    std::future::pending::<()>().await;
+    std::hint::black_box(&buf);
+}
+
+#[test]
+fn holds_the_work_once() {
+    let work = size_of_val(&kib_future());
+
+    let (_cancel, future) = C::cancellable(kib_future());
+    let size = size_of_val(&future);
+    assert!(
+        size < work + 64,
+        "cancellable() of {work} bytes of work takes {size} bytes"
+    );
+
+    let future = C::cancellable_by(kib_future(), std::future::pending::<()>());
+    let size = size_of_val(&future);
+    assert!(
+        size < work + 64,
+        "cancellable_by() of {work} bytes of work takes {size} bytes"
+    );
+}

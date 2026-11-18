@@ -26,6 +26,7 @@ pub mod mpsc;
 pub mod mutex;
 pub mod oneshot;
 mod select2;
+mod select2_future;
 mod select3;
 mod select4;
 pub mod testing;

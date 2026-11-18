@@ -3,6 +3,7 @@ use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
+use futures_util::FutureExt;
 use futures_util::StreamExt;
 
 use crate::Config;
@@ -76,10 +77,12 @@ where
 {
     pub(crate) fn run(self) -> (CancelHandleOf<C>, impl Future<Output = ()> + OptionalSend) {
         let (cancel, future) = C::cancellable(self.do_run());
-        let task = async move {
-            let res = future.await;
+        // An `async` block awaiting `future` would reserve its bytes twice: once for the captured
+        // variable and once for the moved value it polls (rust-lang/rust#62958). `map()` stores
+        // it once.
+        let task = future.map(|res| {
             tracing::info!("HeartbeatWorker finished with result: {:?}", res);
-        };
+        });
         (cancel, task)
     }
 

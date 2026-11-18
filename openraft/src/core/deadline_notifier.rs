@@ -1,5 +1,7 @@
 use std::future::Future;
 
+use futures_util::FutureExt;
+
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::async_runtime::MpscSender;
@@ -65,9 +67,10 @@ where C: RaftTypeConfig
     ) -> (CancelHandleOf<C>, impl Future<Output = ()> + OptionalSend) {
         let future = Self::do_run(deadline_rx, notification_tx, notification);
         let (cancel, future) = C::cancellable(future);
-        let future = async move {
-            let _ = future.await;
-        };
+        // An `async` block awaiting `future` would reserve its bytes twice: once for the captured
+        // variable and once for the moved value it polls (rust-lang/rust#62958). `map()` stores
+        // it once.
+        let future = future.map(|_finished| ());
         (cancel, future)
     }
 
