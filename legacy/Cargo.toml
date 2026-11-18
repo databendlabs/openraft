@@ -4,6 +4,7 @@ readme = "README.md"
 
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 categories.workspace = true
 description = "Legacy compatibility layer for deprecated Openraft APIs"

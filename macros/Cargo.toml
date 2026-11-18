@@ -3,6 +3,7 @@ name = "openraft-macros"
 
 version       = { workspace = true }
 edition       = { workspace = true }
+rust-version  = { workspace = true }
 authors       = { workspace = true }
 categories    = { workspace = true }
 description   = { workspace = true }
