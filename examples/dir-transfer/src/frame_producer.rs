@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 
+use crate::frame::ChecksumDigest;
 use crate::frame::DirFrame;
 use crate::frame::DirManifest;
 use crate::frame::MAX_CHUNK_SIZE;
@@ -40,7 +41,7 @@ enum State {
 struct FileReadState {
     index: usize,
     file: File,
-    digest: crc::Digest<'static, u64>,
+    digest: ChecksumDigest,
     bytes_read: u64,
 }
 

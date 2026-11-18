@@ -4,6 +4,7 @@ use std::io;
 
 use crc::CRC_64_XZ;
 use crc::Crc;
+use crc::Table;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -18,7 +19,8 @@ pub const MAX_FILE_NAME_BYTES: usize = 255;
 /// Largest accepted [`DirFrame::Chunk`] payload, in bytes.
 pub const MAX_CHUNK_SIZE: usize = 8 * 1024 * 1024;
 
-static CRC64: Crc<u64> = Crc::<u64>::new(&CRC_64_XZ);
+/// CRC-64/XZ with the slice-by-16 table: 32 KiB instead of 2 KiB, about 10x the bytewise speed.
+static CRC64: Crc<u64, Table<16>> = Crc::<u64, Table<16>>::new(&CRC_64_XZ);
 
 /// Name and size of one file in a [`DirManifest`].
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,8 +80,11 @@ pub enum DirFrame {
     End,
 }
 
+/// A streaming hasher for the per-file checksum of [`PROTOCOL_VERSION`] 1.
+pub(crate) type ChecksumDigest = crc::Digest<'static, u64, Table<16>>;
+
 /// Return a streaming hasher for the per-file checksum of [`PROTOCOL_VERSION`] 1.
-pub(crate) fn checksum_digest() -> crc::Digest<'static, u64> {
+pub(crate) fn checksum_digest() -> ChecksumDigest {
     CRC64.digest()
 }
 
