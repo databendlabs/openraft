@@ -84,6 +84,7 @@ members = [
 exclude = [
     "benchmarks/minimal",
     "benchmarks/durable",
+    "benchmarks/idle-groups",
     "metrics-otel",
     "tests-turmoil",
 

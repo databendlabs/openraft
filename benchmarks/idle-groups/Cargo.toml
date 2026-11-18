@@ -1,0 +1,21 @@
+[package]
+name = "bench-idle-groups"
+description = "Measure the tasks, memory and CPU of many idle Raft groups in one process"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[[bin]]
+name = "idle-groups"
+path = "src/main.rs"
+
+[dependencies]
+openraft          = { path = "../../openraft" }
+openraft-memstore = { path = "../../stores/memstore" }
+openraft-multi    = { path = "../../multiraft" }
+
+clap    = { version = "4.2", features = ["derive"] }
+futures = { version = "0.3" }
+libc    = { version = "0.2" }
+tokio   = { version = "1.39", default-features = false, features = ["rt-multi-thread", "time"] }
