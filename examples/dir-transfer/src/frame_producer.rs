@@ -49,7 +49,8 @@ impl DirFrameProducer {
     /// Enumerate `dir` and build the manifest.
     ///
     /// The directory must be flat: every entry a regular file with a valid name. Files are
-    /// transferred in name order. `chunk_size` must be in `1..=MAX_CHUNK_SIZE`.
+    /// transferred in name order. A relative `dir` is resolved against the current working
+    /// directory at construction. `chunk_size` must be in `1..=MAX_CHUNK_SIZE`.
     pub fn new(dir: &Path, chunk_size: usize) -> io::Result<Self> {
         if chunk_size == 0 || chunk_size > MAX_CHUNK_SIZE {
             return Err(invalid_data(format!(
@@ -57,8 +58,9 @@ impl DirFrameProducer {
             )));
         }
 
+        let dir = std::path::absolute(dir)?;
         let mut files = Vec::new();
-        for entry in std::fs::read_dir(dir)? {
+        for entry in std::fs::read_dir(&dir)? {
             let entry = entry?;
             if !entry.file_type()?.is_file() {
                 return Err(invalid_data(format!("{:?} is not a regular file", entry.path())));
@@ -78,7 +80,7 @@ impl DirFrameProducer {
         files.sort_by(|a, b| a.name.cmp(&b.name));
 
         Ok(Self {
-            dir: dir.to_path_buf(),
+            dir,
             chunk_size,
             manifest: DirManifest {
                 format_version: PROTOCOL_VERSION,
