@@ -1,5 +1,6 @@
 use display_more::DisplayOptionExt;
 use futures_util::TryStreamExt;
+use futures_util::future::try_join3;
 use tracing::Instrument;
 
 use crate::RaftLogReader;
@@ -9,7 +10,6 @@ use crate::StorageError;
 use crate::async_runtime::MpscReceiver;
 use crate::async_runtime::OneshotSender;
 use crate::async_runtime::watch::WatchSender;
-use crate::base::task_group::TaskGroup;
 use crate::core::ApplyResult;
 use crate::core::notification::Notification;
 use crate::core::sm::Command;
@@ -100,7 +100,7 @@ where
         C::spawn(future.instrument(span))
     }
 
-    /// Supervise three owned stages; the runtime schedules their channel-connected futures.
+    /// Drive three owned, channel-connected stages in the existing worker task.
     #[tracing::instrument(level = "debug", skip_all, fields(id = %self.id))]
     async fn worker_loop<LR>(self, reader: LR, commands: CommandReceiver<C, SM>) -> Result<(), StorageError<C>>
     where LR: RaftLogReader<C> {
@@ -111,25 +111,12 @@ where
         let intake_stage = Intake::new(commands, read_tx, progress_rx);
         let read_stage = Reader::new(reader, read_rx, loaded_tx);
 
-        let span = tracing::Span::current();
-        let mut tasks = TaskGroup::<C::AsyncRuntime, StorageError<C>>::new();
-
         let intake_future = intake_stage.run();
-        let intake_future = intake_future.instrument(span.clone());
-        tasks.spawn(intake_future);
-
         let read_future = read_stage.run();
-        let read_future = read_future.instrument(span.clone());
-        tasks.spawn(read_future);
-
         let apply_future = self.apply_loop(loaded_rx, progress_tx);
-        let apply_future = apply_future.instrument(span);
-        tasks.spawn(apply_future);
 
-        match tasks.join().await {
-            Ok(result) => result,
-            Err(error) => panic!("state machine stage failed to join: {error}"),
-        }
+        try_join3(intake_future, read_future, apply_future).await?;
+        Ok(())
     }
 
     /// Run a command other than `Apply`.
