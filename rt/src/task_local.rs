@@ -119,7 +119,9 @@ pub struct LocalKey<T: 'static> {
 impl<T: 'static> LocalKey<T> {
     /// Sets a value `T` as the task-local value for the future `F`.
     ///
-    /// On completion of `scope`, the task-local will be dropped.
+    /// Each poll restores the previous value before returning. The returned future
+    /// keeps the scoped value until it is dropped or the caller takes the value
+    /// with [`TaskLocalFuture::take_value`].
     ///
     /// ### Panics
     ///
@@ -271,8 +273,9 @@ pin_project! {
     /// A future that sets a value `T` of a task local for the future `F` during
     /// its execution.
     ///
-    /// The value of the task-local must be `'static` and will be dropped on the
-    /// completion of the future.
+    /// This future owns the `'static` task-local value even after the inner future
+    /// completes. Dropping this future drops the value unless the caller has
+    /// taken it with [`Self::take_value`].
     ///
     /// Created by the function [`LocalKey::scope`](self::LocalKey::scope).
     pub struct TaskLocalFuture<T, F>
@@ -305,10 +308,33 @@ pin_project! {
 impl<T, F> TaskLocalFuture<T, F>
 where T: 'static
 {
-    /// Returns the value stored in the task local by this `TaskLocalFuture`.
+    /// Takes the task-local value, even after this future has completed.
     ///
-    /// Returns `Some(T)` if the task local value exists, `None` if it has
-    /// already been taken.
+    /// Later calls return `None`. Taking the value before completion leaves
+    /// the key unset during subsequent polls of the inner future.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::pin::pin;
+    /// use openraft_rt::task_local;
+    ///
+    /// task_local! { static MESSAGE: String; }
+    ///
+    /// # futures_util::FutureExt::now_or_never(async {
+    /// let message = String::from("hello");
+    /// let mut scoped = pin!(MESSAGE.scope(message, async {}));
+    /// scoped.as_mut().await;
+    ///
+    /// let outside = MESSAGE.try_get();
+    /// assert!(outside.is_err());
+    /// let value = scoped.as_mut().take_value();
+    /// let text = value.as_deref();
+    /// assert_eq!(text, Some("hello"));
+    /// let taken_again = scoped.as_mut().take_value();
+    /// assert_eq!(taken_again, None);
+    /// # }).unwrap();
+    /// ```
     pub fn take_value(self: Pin<&mut Self>) -> Option<T> {
         let this = self.project();
         this.slot.take()
