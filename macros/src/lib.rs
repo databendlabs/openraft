@@ -24,10 +24,12 @@ use syn::parse_str;
 use syn::parse2;
 use syn::token::RArrow;
 
-/// This proc macro attribute optionally adds `Send` bounds to a trait.
+/// This proc macro attribute optionally adds `Send` bounds to the async methods of a trait.
 ///
-/// By default, `Send` bounds will be added to the trait and to the return bounds of any async
-/// functions defined within the trait.
+/// By default, each `async fn` in the trait becomes a `fn` returning
+/// `impl Future<Output = T> + Send`, and a default method body runs in an `async move` block.
+/// Other items stay unchanged, and the trait itself gets no `Send` bound: implementors and callers
+/// state their own bounds, for example with Openraft's `OptionalSend`.
 ///
 /// If the `single-threaded` feature is enabled, the trait definition remains the same without any
 /// added `Send` bounds.
