@@ -4,14 +4,22 @@
 # bindings match the installed lib. Both stages use Ubuntu 24.04 because its
 # librocksdb is the version already proven against this crate by the
 # `examples` job in .github/workflows/ci.yaml.
-FROM ubuntu:24.04 AS builder
+FROM ubuntu:24.04 AS ubuntu-base
 
-# Retry the install so a temporary DNS or mirror failure does not cost a
-# 30-minute Jepsen job. `apt-get update` only warns when it cannot fetch an
-# index, and the error surfaces in `apt-get install`, so each attempt runs
-# both.
+# CI can use a cloud-local mirror that serves all Noble pockets, including
+# security. Keep Ubuntu's default sources for local builds and retain Signed-By.
+ARG UBUNTU_APT_MIRROR
+RUN if [ -n "$UBUNTU_APT_MIRROR" ]; then \
+      sed -i "s|^URIs: .*|URIs: $UBUNTU_APT_MIRROR|" /etc/apt/sources.list.d/ubuntu.sources; \
+    fi \
+ && printf 'Acquire::http::Timeout "15";\nAcquire::https::Timeout "15";\n' \
+      > /etc/apt/apt.conf.d/80-jepsen-timeout
+
+FROM ubuntu-base AS builder
+
+# Retry both commands, but don't install from a partially updated index.
 RUN attempt=1; \
-    until apt-get update \
+    until apt-get update --error-on=any \
        && apt-get install -y --no-install-recommends \
             build-essential \
             ca-certificates \
@@ -45,7 +53,7 @@ COPY . .
 RUN cargo build --release \
       --manifest-path jepsen/openraft-test-app/Cargo.toml
 
-FROM ubuntu:24.04
+FROM ubuntu-base
 
 # The binary links librocksdb dynamically, so the runtime image needs it too.
 # Use the -dev package: its name is stable across RocksDB version bumps, while
@@ -70,7 +78,7 @@ FROM ubuntu:24.04
 #
 # Retry the install as the builder stage does.
 RUN attempt=1; \
-    until apt-get update \
+    until apt-get update --error-on=any \
        && apt-get install -y --no-install-recommends \
             ca-certificates \
             iproute2 \

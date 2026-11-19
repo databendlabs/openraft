@@ -21,6 +21,8 @@ services:
     build:
       context: ../..
       dockerfile: jepsen/docker/node.Dockerfile
+      args:
+        UBUNTU_APT_MIRROR: ${UBUNTU_APT_MIRROR:-}
     cap_add:
       - NET_ADMIN
     hostname: n1
