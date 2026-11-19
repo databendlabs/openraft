@@ -653,6 +653,25 @@ floors and, after drain, exact values across nodes. Unfinished or locked nodes r
 coverage. Arrival no-op calibration records no application history. Normal Raft ticks, heartbeats,
 elections, and snapshots remain configurable with `--raft-config`.
 
+The `profile` binary measures payload-bearing snapshot allocations after setup writes drain
+and the Raft node stops. This command uses 16,384 unique writes, 4,096 keys, and five repetitions:
+
+```sh
+CARGO_TARGET_DIR=target cargo build --release --locked --no-default-features \
+  --manifest-path benchmarks/minimal/Cargo.toml --features realistic-profiles --bin profile
+for payload in 0 4096; do
+  target/release/profile --snapshot-allocations --profile --payload-bytes "$payload" \
+    --profile-keys 4096 --operations 16384 --members 1 --clients 1 --snapshots 5
+done
+```
+
+Each repetition measures the whole snapshot build, outgoing snapshot retrieval, and a separate
+encoded-Vec clone. Outputs remain alive at each measurement boundary; validation, drops, and
+JSON reports follow it. Reports distinguish requested allocation bytes, phase live-byte peaks,
+encoded length/capacity, and retained live bytes after dropping outputs. The first build creates
+the cached snapshot; later builds replace it. Timings are wall time, and memory counters cover
+requested Rust allocations rather than RSS or allocator internals.
+
 ### Durable processes and HTTP clients
 
 Build the dedicated durable node and start three owned processes with a paced HTTP workload:
