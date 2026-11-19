@@ -135,6 +135,7 @@ where
             tracing::info!("vote is changing from {} to {}", self.state.vote_ref(), vote);
 
             self.state.vote.update(C::now(), leader_lease, vote.clone());
+            self.state.last_leader_contact = None;
             self.state.accept_log_io(IOId::new(vote));
             self.output.push_command(Command::SaveVote { vote: vote.clone() });
         } else {

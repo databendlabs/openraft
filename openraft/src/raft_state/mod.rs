@@ -75,6 +75,8 @@ where C: RaftTypeConfig
     // --
     // -- volatile fields: they are not persisted.
     // --
+    pub(crate) last_leader_contact: Option<InstantOf<C>>,
+
     pub(crate) last_inflight_id: u64,
 
     /// The state of a Raft node, such as Leader or Follower.
@@ -181,6 +183,7 @@ where C: RaftTypeConfig
             log_ids: LogIdList::default(),
             membership_state: MembershipState::default(),
             snapshot_meta: SnapshotMetaOf::<C>::default(),
+            last_leader_contact: None,
             last_inflight_id: 0,
             server_state: ServerState::default(),
             io_state: Valid::new(IOState::default()),
@@ -197,6 +200,14 @@ where C: RaftTypeConfig
     /// Return the last updated time of the vote.
     pub fn vote_last_modified(&self) -> Option<InstantOf<C>> {
         self.vote.last_update()
+    }
+
+    /// Return the last contact with the remote leader identified by the current committed vote.
+    ///
+    /// See [`RaftMetrics::last_leader_contact`](crate::RaftMetrics::last_leader_contact).
+    #[since(version = "0.10.1")]
+    pub fn last_leader_contact(&self) -> Option<InstantOf<C>> {
+        self.last_leader_contact
     }
 
     /// Get the local committed log ID: the log id up to which entries are safe to apply to the
