@@ -21,8 +21,12 @@ jobs:
   check:
     name: Jepsen lint and unit tests
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    # Match ci-full.yaml: the app needs the RocksDB 8.x C API from Ubuntu 24.04.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      ROCKSDB_LIB_DIR: /usr/lib/x86_64-linux-gnu
+      ROCKSDB_INCLUDE_DIR: /usr/include
 
     steps:
       - name: Setup | Checkout
@@ -50,6 +54,9 @@ jobs:
 
       - name: Check | Clojure
         run: make -C jepsen clojure-lint
+
+      - name: Setup | System RocksDB
+        run: sudo apt-get update --error-on=any && sudo apt-get install -y librocksdb-dev
 
       - name: Check | Test app
         run: make -C jepsen app-lint
