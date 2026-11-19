@@ -21,15 +21,15 @@ use crate::C;
 
 /// Stands in for the followers of every group: it grants every vote, acknowledges every
 /// AppendEntries request, and counts the AppendEntries requests.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub(crate) struct StubFollowers {
     appends: Arc<AtomicU64>,
 }
 
 impl StubFollowers {
-    /// The number of AppendEntries requests received so far.
-    pub(crate) fn appends(&self) -> u64 {
-        self.appends.load(Ordering::Relaxed)
+    /// Count the AppendEntries requests in `appends`.
+    pub(crate) fn new(appends: Arc<AtomicU64>) -> Self {
+        Self { appends }
     }
 }
 

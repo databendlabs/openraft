@@ -1,11 +1,13 @@
 use std::fmt;
 
+use crate::followers::Followers;
 use crate::mode::Mode;
 
 /// What one measurement found.
 #[derive(Debug, Clone)]
 pub(crate) struct Report {
     pub(crate) groups: u64,
+    pub(crate) followers: Followers,
     pub(crate) mode: Mode,
 
     /// The tasks alive in the tokio runtime at the end of the measurement.
@@ -18,8 +20,12 @@ pub(crate) struct Report {
     /// The CPU time of the process during the measurement, as a percentage of one core.
     pub(crate) cpu_percent: Option<f64>,
 
-    /// The AppendEntries requests the stub followers received per second.
+    /// The AppendEntries requests the followers received per second.
     pub(crate) appends_per_sec: f64,
+
+    /// The elections during the measurement: how far the highest term of each group grew, summed
+    /// over the groups.
+    pub(crate) elections: u64,
 }
 
 impl fmt::Display for Report {
@@ -27,7 +33,11 @@ impl fmt::Display for Report {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let per_group = |value: f64| value / self.groups as f64;
 
-        write!(f, "groups={}\tmode={}", self.groups, self.mode)?;
+        write!(
+            f,
+            "groups={}\tfollowers={}\tmode={}",
+            self.groups, self.followers, self.mode
+        )?;
         write!(
             f,
             "\ttasks={}\ttasks/group={:.1}",
@@ -47,6 +57,7 @@ impl fmt::Display for Report {
             Some(cpu) => write!(f, "\tcpu%={cpu:.1}")?,
             None => write!(f, "\tcpu%=n/a")?,
         }
-        write!(f, "\tappends/s={:.0}", self.appends_per_sec)
+        write!(f, "\tappends/s={:.0}", self.appends_per_sec)?;
+        write!(f, "\telections={}", self.elections)
     }
 }
