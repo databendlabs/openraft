@@ -52,11 +52,16 @@ async fn receive_all(target: &Path, frames: Vec<DirFrame>) -> io::Result<()> {
     writer.finish().await
 }
 
-/// Assert that receiving `frames` fails with `InvalidData`.
-async fn assert_rejected(frames: Vec<DirFrame>) {
+/// Accept the valid prefix and require the next frame to fail with `InvalidData`.
+async fn assert_frame_rejected(prefix: &[DirFrame], frame: DirFrame) {
     let target = tempfile::tempdir().unwrap();
-    let err = receive_all(target.path(), frames).await.unwrap_err();
-    assert_eq!(io::ErrorKind::InvalidData, err.kind());
+    let mut writer = DirWriter::new(target.path().to_path_buf());
+    for valid in prefix {
+        writer.write_frame(valid.clone()).await.unwrap();
+    }
+    let err = writer.write_frame(frame).await.unwrap_err();
+    let kind = err.kind();
+    assert_eq!(io::ErrorKind::InvalidData, kind);
 }
 
 fn manifest_frame(files: Vec<ManifestEntry>) -> DirFrame {
@@ -99,20 +104,20 @@ async fn test_round_trip_empty_dir() {
 
 #[tokio::test]
 async fn test_wrong_first_frame() {
-    assert_rejected(vec![DirFrame::FileStart {
+    let start = DirFrame::FileStart {
         name: "a.txt".to_string(),
-    }])
-    .await;
-    assert_rejected(vec![DirFrame::End]).await;
+    };
+    assert_frame_rejected(&[], start).await;
+    assert_frame_rejected(&[], DirFrame::End).await;
 }
 
 #[tokio::test]
 async fn test_unsupported_version() {
-    assert_rejected(vec![DirFrame::Manifest(DirManifest {
+    let manifest = DirFrame::Manifest(DirManifest {
         format_version: PROTOCOL_VERSION + 1,
         files: vec![],
-    })])
-    .await;
+    });
+    assert_frame_rejected(&[], manifest).await;
 }
 
 #[tokio::test]
@@ -138,7 +143,8 @@ async fn test_duplicate_manifest_name() {
         name: "dup".to_string(),
         size: 0,
     };
-    assert_rejected(vec![manifest_frame(vec![meta.clone(), meta])]).await;
+    let manifest = manifest_frame(vec![meta.clone(), meta]);
+    assert_frame_rejected(&[], manifest).await;
 }
 
 #[tokio::test]
@@ -235,53 +241,55 @@ async fn test_names_equal_on_the_file_system() {
 
 #[tokio::test]
 async fn test_file_start_must_follow_manifest_order() {
-    let (_source, mut frames) = source_frames().await;
+    let (_source, frames) = source_frames().await;
     // Start with the second manifest file instead of the first.
-    frames[1] = DirFrame::FileStart {
+    let start = DirFrame::FileStart {
         name: "b.txt".to_string(),
     };
-    assert_rejected(frames).await;
+    assert_frame_rejected(&frames[..1], start).await;
 }
 
 #[tokio::test]
 async fn test_duplicate_file_start() {
-    let (_source, mut frames) = source_frames().await;
+    let (_source, frames) = source_frames().await;
     // Frames: [Manifest, Start a, End a, Start b, ...]. Repeat "a.txt" where "b.txt" must start.
-    frames[3] = DirFrame::FileStart {
-        name: "a.txt".to_string(),
-    };
-    assert_rejected(frames).await;
+    let start = frames[1].clone();
+    assert_frame_rejected(&frames[..3], start).await;
 }
 
 #[tokio::test]
 async fn test_missing_file_end() {
-    let (_source, mut frames) = source_frames().await;
-    // Remove "a.txt"'s FileEnd so its FileStart is followed by another FileStart.
-    frames.remove(2);
-    assert_rejected(frames).await;
+    let (_source, frames) = source_frames().await;
+    // Skip "a.txt"'s FileEnd so its FileStart is followed by another FileStart.
+    let start = frames[3].clone();
+    assert_frame_rejected(&frames[..2], start).await;
 }
 
 #[tokio::test]
 async fn test_end_before_all_manifest_files() {
     let (_source, frames) = source_frames().await;
     // Keep [Manifest, FileStart a, FileEnd a], then End: two manifest files were never sent.
-    let mut frames = frames[..3].to_vec();
-    frames.push(DirFrame::End);
-    assert_rejected(frames).await;
+    assert_frame_rejected(&frames[..3], DirFrame::End).await;
 }
 
 #[tokio::test]
 async fn test_frames_after_end() {
-    let (_source, mut frames) = source_frames().await;
-    frames.push(DirFrame::End);
-    assert_rejected(frames).await;
+    let (_source, frames) = source_frames().await;
+    assert_frame_rejected(&frames, DirFrame::End).await;
 }
 
 #[tokio::test]
 async fn test_truncated_stream_fails_finish() {
     let (_source, mut frames) = source_frames().await;
     frames.pop();
-    assert_rejected(frames).await;
+    let target = tempfile::tempdir().unwrap();
+    let mut writer = DirWriter::new(target.path().to_path_buf());
+    for frame in frames {
+        writer.write_frame(frame).await.unwrap();
+    }
+    let err = writer.finish().await.unwrap_err();
+    let kind = err.kind();
+    assert_eq!(io::ErrorKind::InvalidData, kind);
 }
 
 #[tokio::test]
@@ -312,7 +320,8 @@ async fn test_tampered_chunk() {
         panic!("frame 4 must be the first Chunk of b.txt");
     };
     data[0] ^= 0xff;
-    assert_rejected(frames).await;
+    let file_end = frames[6].clone();
+    assert_frame_rejected(&frames[..6], file_end).await;
 }
 
 #[tokio::test]
@@ -322,7 +331,8 @@ async fn test_wrong_checksum() {
         panic!("frame 2 must be a.txt's FileEnd");
     };
     *checksum ^= 1;
-    assert_rejected(frames).await;
+    let file_end = frames[2].clone();
+    assert_frame_rejected(&frames[..2], file_end).await;
 }
 
 #[tokio::test]
@@ -363,31 +373,30 @@ async fn test_failed_write_fails_the_session() {
 
 #[tokio::test]
 async fn test_chunk_beyond_manifest_size() {
-    let (_source, mut frames) = source_frames().await;
-    frames.insert(6, DirFrame::Chunk {
+    let (_source, frames) = source_frames().await;
+    let extra = DirFrame::Chunk {
         data: b"extra".to_vec(),
-    });
-    assert_rejected(frames).await;
+    };
+    assert_frame_rejected(&frames[..6], extra).await;
 }
 
 #[tokio::test]
 async fn test_file_shorter_than_manifest_size() {
-    let (_source, mut frames) = source_frames().await;
-    // Drop one Chunk of b.txt; its FileEnd then arrives before enough data.
-    frames.remove(4);
-    assert_rejected(frames).await;
+    let (_source, frames) = source_frames().await;
+    // End b.txt after its first chunk, with the correct checksum for those four bytes.
+    let checksum = crc64(b"1234");
+    assert_frame_rejected(&frames[..5], DirFrame::FileEnd { checksum }).await;
 }
 
 #[tokio::test]
 async fn test_empty_chunk() {
-    let (_source, mut frames) = source_frames().await;
-    frames.insert(4, DirFrame::Chunk { data: vec![] });
-    assert_rejected(frames).await;
+    let (_source, frames) = source_frames().await;
+    assert_frame_rejected(&frames[..4], DirFrame::Chunk { data: vec![] }).await;
 }
 
 #[tokio::test]
 async fn test_oversized_chunk() {
-    let frames = vec![
+    let prefix = [
         manifest_frame(vec![ManifestEntry {
             name: "big".to_string(),
             size: (MAX_CHUNK_SIZE + 1) as u64,
@@ -395,9 +404,9 @@ async fn test_oversized_chunk() {
         DirFrame::FileStart {
             name: "big".to_string(),
         },
-        DirFrame::Chunk {
-            data: vec![0u8; MAX_CHUNK_SIZE + 1],
-        },
     ];
-    assert_rejected(frames).await;
+    let oversized = DirFrame::Chunk {
+        data: vec![0u8; MAX_CHUNK_SIZE + 1],
+    };
+    assert_frame_rejected(&prefix, oversized).await;
 }
