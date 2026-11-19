@@ -37,7 +37,8 @@ async fn install_full_snapshot() -> anyhow::Result<()> {
         let n0 = router.get_raft_handle(&0)?;
         n0.trigger().snapshot().await?;
 
-        router.wait(&0).snapshot(log_id(1, 0, log_index), "node-1 snapshot").await?;
+        let metrics = router.wait(&0).snapshot(log_id(1, 0, log_index), "node-0 snapshot").await?;
+        assert_eq!(metrics.last_leader_contact, None, "the leader has no remote leader");
 
         snap = n0.get_snapshot().await?.unwrap();
     }
@@ -82,9 +83,17 @@ async fn install_full_snapshot() -> anyhow::Result<()> {
     tracing::info!(log_index, "--- succeed to install snapshot on node-2 with higher vote");
     {
         let n2 = router.get_raft_handle(&2)?;
+        let previous_contact = n2.with_raft_state(|s| s.last_leader_contact()).await?;
 
         let resp = n2.install_full_snapshot(Vote::new_committed(1, 0), snap.clone()).await?;
         assert_eq!(Vote::new_committed(1, 0), resp.vote,);
+        router
+            .wait(&2)
+            .metrics(
+                |m| m.last_leader_contact.map(|t| t.into_inner()) > previous_contact,
+                "snapshot refreshed leader contact",
+            )
+            .await?;
         n2.with_raft_state(move |state| {
             assert_eq!(
                 Some(log_id(1, 0, log_index)),

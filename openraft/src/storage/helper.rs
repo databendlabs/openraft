@@ -242,6 +242,7 @@ where
             snapshot_meta,
 
             // -- volatile fields: they are not persisted.
+            last_leader_contact: None,
             last_inflight_id: 0,
             server_state: Default::default(),
             io_state: Valid::new(io_state),

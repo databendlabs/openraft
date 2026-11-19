@@ -34,6 +34,7 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// - **Log State**: `last_log_index`, `last_applied`, `snapshot`, `purged`
 /// - **Voting State**: `current_term`, `vote`
 /// - **Leader Metrics** (only when leader): `heartbeat`, `replication`, `last_quorum_acked`
+/// - **Follower Metrics**: `last_leader_contact`
 /// - **Cluster Config**: `membership_config`
 ///
 /// # Usage
@@ -194,6 +195,15 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     #[since(version = "0.10.0")]
     pub last_quorum_acked: Option<SerdeInstantOf<C>>,
 
+    /// When this node last accepted an `AppendEntries` or full snapshot vote from the remote
+    /// leader identified by its current committed vote. An append with a log conflict still counts.
+    ///
+    /// This timestamp is not persisted. It is `None` after restart or a vote change until this
+    /// node accepts replication from the new leader, and is always `None` on the leader itself.
+    /// Contact does not imply a valid quorum lease or that the local log is caught up.
+    #[since(version = "0.10.1")]
+    pub last_leader_contact: Option<SerdeInstantOf<C>>,
+
     /// The current membership config of the cluster.
     pub membership_config: Arc<StoredMembershipOf<C>>,
 
@@ -299,6 +309,7 @@ where C: RaftTypeConfig
             current_leader: None,
             millis_since_quorum_ack: None,
             last_quorum_acked: None,
+            last_leader_contact: None,
             membership_config: Arc::new(StoredMembershipOf::<C>::default()),
             committed_membership_config: Arc::new(StoredMembershipOf::<C>::default()),
             replication: None,
@@ -394,6 +405,11 @@ pub struct RaftDataMetrics<C: RaftTypeConfig> {
     /// cluster.
     #[since(version = "0.10.0")]
     pub last_quorum_acked: Option<SerdeInstant<InstantOf<C>>>,
+
+    /// The timestamp of the last contact with the remote leader.
+    /// See [`RaftMetrics::last_leader_contact`].
+    #[since(version = "0.10.1")]
+    pub last_leader_contact: Option<SerdeInstantOf<C>>,
 
     /// Replication metrics for each node, available only on the leader.
     pub replication: Option<ReplicationMetrics<C>>,

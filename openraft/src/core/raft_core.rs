@@ -868,6 +868,7 @@ where
 
             millis_since_quorum_ack,
             last_quorum_acked: last_quorum_acked.map(SerdeInstant::new),
+            last_leader_contact: st.last_leader_contact().map(SerdeInstant::new),
             replication,
             heartbeat,
         };
@@ -908,6 +909,7 @@ where
             current_leader: server_metrics.current_leader.clone(),
             millis_since_quorum_ack: data_metrics.millis_since_quorum_ack,
             last_quorum_acked: data_metrics.last_quorum_acked,
+            last_leader_contact: data_metrics.last_leader_contact,
             membership_config: server_metrics.membership_config.clone(),
             committed_membership_config: server_metrics.committed_membership_config.clone(),
             heartbeat: data_metrics.heartbeat.clone(),
