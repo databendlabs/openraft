@@ -70,3 +70,35 @@ let a: u64 = 1;
 let c: Vec<u8> = vec![1, 2];
 # }
 ```
+
+
+# `VariantName`
+
+[`#[derive(VariantName)]`](`derive@crate::VariantName`) generates `COUNT`, `ALL`, `index()`,
+`as_str()` and `Display` for an enum that names events, so a counter array of `COUNT` slots can be
+indexed with `index()`. A variant may wrap another such enum, which then takes its variants' slots.
+
+## Example
+
+```rust
+use openraft_macros::VariantName;
+
+#[derive(Clone, Copy, VariantName)]
+#[variant_name(prefix = "SM::")]
+enum SmName {
+    Build,
+    Apply,
+}
+
+#[derive(Clone, Copy, VariantName)]
+enum Name {
+    Vote,
+    StateMachine(SmName),
+    Respond,
+}
+
+assert_eq!(Name::COUNT, 4);
+assert_eq!(Name::StateMachine(SmName::Apply).index(), 2);
+assert_eq!(Name::StateMachine(SmName::Apply).as_str(), "SM::Apply");
+assert_eq!(Name::Respond.to_string(), "Respond");
+```
