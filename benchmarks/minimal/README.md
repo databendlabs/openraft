@@ -672,6 +672,11 @@ encoded length/capacity, and retained live bytes after dropping outputs. The fir
 the cached snapshot; later builds replace it. Timings are wall time, and memory counters cover
 requested Rust allocations rather than RSS or allocator internals.
 
+With `realistic-profiles`, snapshots compact the encoded Vec before sharing immutable bytes
+between the cache and outgoing cursors. Each cursor keeps its own position and copies bytes on
+mutation. Direct transfers share these bytes; serialized transfers decode independent buffers
+with the same wire format. Builds include compaction cost; outgoing retrieval copies metadata.
+
 ### Durable processes and HTTP clients
 
 Build the dedicated durable node and start three owned processes with a paced HTTP workload:

@@ -6,6 +6,7 @@ use std::collections::VecDeque;
 use std::fmt;
 use std::fmt::Debug;
 use std::io;
+#[cfg(not(feature = "realistic-profiles"))]
 use std::io::Cursor;
 use std::ops::RangeBounds;
 use std::sync::Arc;
@@ -97,7 +98,19 @@ impl fmt::Display for ClientRequest {
 pub struct ClientResponse {}
 
 pub type NodeId = u64;
+#[cfg(not(feature = "realistic-profiles"))]
 pub type SnapshotData = Cursor<Vec<u8>>;
+#[cfg(feature = "realistic-profiles")]
+#[openraft::macros::since(
+    version = "0.10.2",
+    change = "share snapshot bytes with independent copy-on-write cursors"
+)]
+pub type SnapshotData = crate::snapshot_data::SnapshotData;
+
+#[cfg(not(feature = "realistic-profiles"))]
+type SnapshotBytes = Vec<u8>;
+#[cfg(feature = "realistic-profiles")]
+type SnapshotBytes = Arc<Vec<u8>>;
 
 /// Choose a LeaderId implementation by feature flag.
 mod leader_id_mode {
@@ -135,9 +148,10 @@ impl RaftTypeConfig for TypeConfig {
 }
 
 #[derive(Debug)]
+#[openraft::macros::since(version = "0.10.2", change = "share compact encoded data with realistic-profiles")]
 pub struct StoredSnapshot {
     pub meta: SnapshotMetaOf<TypeConfig>,
-    pub data: Vec<u8>,
+    pub data: SnapshotBytes,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
@@ -236,6 +250,7 @@ impl Default for LogStore {
 
 type ApplyObserver = dyn Fn(u64, u64, Instant) + Send + Sync;
 
+#[openraft::macros::since(version = "0.10.2", change = "share compact profile snapshots")]
 #[openraft::macros::since(version = "0.10.1", change = "optional transactional KV publication")]
 pub struct StateMachineStore {
     sm: RwLock<StateMachine>,
@@ -426,6 +441,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
             last_membership = sm.last_membership.clone();
         }
 
+        let data = compact_snapshot_bytes(data);
         let snapshot_size = data.len();
 
         let meta = SnapshotMetaOf::<TypeConfig> {
@@ -447,7 +463,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
 
         Ok(SnapshotOf::<TypeConfig, SnapshotData> {
             meta,
-            snapshot: Cursor::new(data),
+            snapshot: snapshot_data(data),
         })
     }
 }
@@ -530,7 +546,7 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
 }
 
 impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
-    type SnapshotData = Cursor<Vec<u8>>;
+    type SnapshotData = SnapshotData;
 
     async fn applied_state(
         &mut self,
@@ -601,7 +617,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
     ) -> Result<(), io::Error> {
         let new_snapshot = StoredSnapshot {
             meta: meta.clone(),
-            data: snapshot.into_inner(),
+            data: snapshot_bytes(snapshot),
         };
 
         // Update the state machine.
@@ -627,7 +643,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
                 let data = snapshot.data.clone();
                 Ok(Some(SnapshotOf::<TypeConfig, Self::SnapshotData> {
                     meta: snapshot.meta.clone(),
-                    snapshot: Cursor::new(data),
+                    snapshot: snapshot_data(data),
                 }))
             }
             None => Ok(None),
@@ -651,6 +667,41 @@ async fn blocking_delay(delay: Duration) -> Result<(), io::Error> {
     }
     let sleep = tokio::task::spawn_blocking(move || std::thread::sleep(delay));
     sleep.await.map_err(io::Error::other)
+}
+
+fn compact_snapshot_bytes(data: Vec<u8>) -> SnapshotBytes {
+    #[cfg(feature = "realistic-profiles")]
+    {
+        let compact = data.into_boxed_slice();
+        let data = compact.into_vec();
+        Arc::new(data)
+    }
+    #[cfg(not(feature = "realistic-profiles"))]
+    {
+        data
+    }
+}
+
+pub(crate) fn snapshot_data(data: SnapshotBytes) -> SnapshotData {
+    #[cfg(feature = "realistic-profiles")]
+    {
+        SnapshotData::from_shared(data)
+    }
+    #[cfg(not(feature = "realistic-profiles"))]
+    {
+        Cursor::new(data)
+    }
+}
+
+pub(crate) fn snapshot_bytes(data: SnapshotData) -> SnapshotBytes {
+    #[cfg(feature = "realistic-profiles")]
+    {
+        data.into_shared()
+    }
+    #[cfg(not(feature = "realistic-profiles"))]
+    {
+        data.into_inner()
+    }
 }
 
 #[cfg(test)]

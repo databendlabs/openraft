@@ -40,6 +40,8 @@ use crate::store::NodeId;
 use crate::store::SnapshotData;
 use crate::store::StateMachineStore;
 use crate::store::TypeConfig;
+use crate::store::snapshot_bytes;
+use crate::store::snapshot_data;
 use crate::wire_append::WireAppend;
 use crate::wire_link::WireLink;
 
@@ -433,11 +435,12 @@ impl RaftNetworkV2<TypeConfig> for Network {
         _option: RPCOption,
     ) -> Result<SnapshotResponse<TypeConfig>, StreamingError<TypeConfig>> {
         let transfer = async {
-            let request = (vote, snapshot.meta, snapshot.snapshot.into_inner());
+            let data = snapshot_bytes(snapshot.snapshot);
+            let request = (vote, snapshot.meta, data);
             let (vote, meta, data) = self.send(request).await?;
             let snapshot = SnapshotOf::<TypeConfig, SnapshotData> {
                 meta,
-                snapshot: std::io::Cursor::new(data),
+                snapshot: snapshot_data(data),
             };
             let resp = self.target_raft.install_full_snapshot(vote, snapshot).await.map_err(|e| self.unreachable(e))?;
             Ok(self.receive(resp).await?)
