@@ -21,12 +21,16 @@ use crate::type_config::alias::WatchSenderOf;
 /// `RaftCore` uses one instance for the earliest pending linearizable read, one for the instant at
 /// which a follower's election may be due, and one for a leader's next heartbeat.
 ///
+/// A deadline moved later does not wake the worker: the worker reads the deadline again when its
+/// timer fires, and re-arms. A follower's heartbeats therefore move its election deadline without
+/// waking the worker, which wakes once per election timeout instead of once per heartbeat.
+///
 /// After firing, the worker waits on `changed()` instead of re-arming on the deadline it just
-/// reported. For pending reads this cannot lose a wake-up: the `drain_expired` that the
+/// reported. That deadline has passed, so the next `set_deadline()` that changes the deadline
+/// wakes the worker. For pending reads this cannot lose a wake-up: the `drain_expired` that the
 /// notification triggers always moves `earliest_deadline()` to a different value, because every
-/// deadline left in the queue exceeds `now` and an emptied queue reports `None`. `set_deadline`
-/// therefore always observes a change and re-arms the worker. Watch versioning covers the
-/// interleaving where the new deadline is set before the worker starts awaiting.
+/// deadline left in the queue exceeds `now` and an emptied queue reports `None`. Watch versioning
+/// covers the interleaving where the new deadline is set before the worker starts awaiting.
 pub(crate) struct DeadlineNotifier<C>
 where C: RaftTypeConfig
 {
@@ -56,8 +60,35 @@ where C: RaftTypeConfig
     }
 
     /// Set the deadline to fire at; `None` sends nothing. Return whether the deadline changed.
+    ///
+    /// It wakes the worker only if the worker could otherwise sleep past the new deadline: when the
+    /// new deadline is earlier than the stored one, or the stored one is `None` or has passed. It
+    /// stores a later deadline, or `None`, without a wake, because the worker reads the deadline
+    /// again when its timer fires at the stored one.
+    ///
+    /// The time is read here, inside the update, and the worker reads the time before it reads the
+    /// deadline. So if the worker found the stored deadline due, any update that runs after that
+    /// read also finds it passed, and wakes the worker. In the other order, a later deadline stored
+    /// just after the worker found the old one due could be stored without a wake while the worker
+    /// waits on `changed()`, and the worker would never arm it.
     pub(crate) fn set_deadline(&self, deadline: Option<InstantOf<C>>) -> bool {
-        self.deadline_tx.send_if_different(deadline)
+        let mut changed = false;
+        self.deadline_tx.send_if_modified(|stored| {
+            if *stored == deadline {
+                return false;
+            }
+            changed = true;
+
+            let wake = match (*stored, deadline) {
+                (None, _) => true,
+                (Some(stored), _) if stored <= C::now() => true,
+                (Some(stored), Some(new)) => new < stored,
+                (Some(_), None) => false,
+            };
+            *stored = deadline;
+            wake
+        });
+        changed
     }
 
     fn run(
@@ -81,6 +112,8 @@ where C: RaftTypeConfig
     ) {
         let mut reached = 0;
         loop {
+            // Read the time before the deadline, as `set_deadline()` requires.
+            let now = C::now();
             let deadline = *deadline_rx.borrow_and_update();
             let Some(deadline) = deadline else {
                 if deadline_rx.changed().await.is_err() {
@@ -89,11 +122,14 @@ where C: RaftTypeConfig
                 continue;
             };
 
-            let wait_result = C::timeout_at(deadline, deadline_rx.changed()).await;
-            match wait_result {
-                Ok(Ok(())) => continue,
-                Ok(Err(_)) => return,
-                Err(_) => {}
+            if deadline > now {
+                // When the timer fires, read the deadline again: a later one may have been stored
+                // without a wake.
+                let wait_result = C::timeout_at(deadline, deadline_rx.changed()).await;
+                match wait_result {
+                    Ok(Ok(())) | Err(_) => continue,
+                    Ok(Err(_)) => return,
+                }
             }
 
             reached += 1;

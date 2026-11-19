@@ -41,6 +41,109 @@ fn deadline_notifier_uses_latest_deadline_and_rearms() {
 }
 
 #[test]
+fn deadline_notifier_wakes_the_worker_only_when_it_could_sleep_past_the_deadline() {
+    C::run(async {
+        let (tx, _rx) = C::mpsc(4);
+        let notifier = DeadlineNotifier::<C>::spawn(tx, |i| Notification::Tick { i });
+        let mut watcher = notifier.deadline_tx.subscribe();
+        let mut woken = move || watcher.changed().now_or_never().is_some();
+
+        let now = C::now();
+        let in_secs = |secs| Some(now + Duration::from_secs(secs));
+
+        tracing::info!("a first deadline, and an earlier one, wake the worker");
+        {
+            assert!(notifier.set_deadline(in_secs(60)));
+            assert!(woken());
+            assert!(notifier.set_deadline(in_secs(30)));
+            assert!(woken());
+        }
+
+        tracing::info!("a later deadline, or none, is stored without a wake");
+        {
+            assert!(notifier.set_deadline(in_secs(120)));
+            assert!(!woken());
+            assert_eq!(in_secs(120), *notifier.deadline_tx.borrow_watched());
+            assert!(notifier.set_deadline(None));
+            assert!(!woken());
+        }
+
+        tracing::info!("once the stored deadline has passed, even a later deadline wakes the worker");
+        {
+            let passed = Some(now - Duration::from_secs(1));
+            assert!(notifier.set_deadline(passed));
+            assert!(woken());
+            assert!(notifier.set_deadline(in_secs(120)));
+            assert!(woken());
+        }
+
+        tracing::info!("an unchanged deadline changes nothing");
+        {
+            assert!(!notifier.set_deadline(in_secs(120)));
+            assert!(!woken());
+        }
+    });
+}
+
+#[test]
+fn deadline_notifier_reads_a_later_deadline_when_its_timer_fires() {
+    C::run(async {
+        let (tx, mut rx) = C::mpsc(4);
+        let notifier = DeadlineNotifier::<C>::spawn(tx, |i| Notification::Tick { i });
+
+        tracing::info!("move the deadline later while the worker sleeps until the first one");
+        let first = C::now() + Duration::from_millis(300);
+        let later = first + Duration::from_millis(300);
+        {
+            notifier.set_deadline(Some(first));
+            C::sleep(Duration::from_millis(100)).await;
+            notifier.set_deadline(Some(later));
+        }
+
+        tracing::info!("the worker reports only the later deadline, once");
+        {
+            let received = C::timeout(Duration::from_secs(2), rx.recv()).await;
+            let notification = received.unwrap().unwrap();
+            assert!(C::now() >= later, "reported before the later deadline");
+            assert!(
+                matches!(notification, Notification::Tick { i: 1 }),
+                "got: {notification}"
+            );
+
+            C::sleep(Duration::from_millis(100)).await;
+            let next = rx.try_recv();
+            assert!(matches!(next, Err(TryRecvError::Empty)), "reported more than once");
+        }
+    });
+}
+
+#[test]
+fn deadline_notifier_reports_nothing_once_the_deadline_is_cleared() {
+    C::run(async {
+        let (tx, mut rx) = C::mpsc(4);
+        let notifier = DeadlineNotifier::<C>::spawn(tx, |i| Notification::Tick { i });
+
+        tracing::info!("clear the deadline while the worker sleeps until it");
+        let deadline = C::now() + Duration::from_millis(300);
+        {
+            notifier.set_deadline(Some(deadline));
+            C::sleep(Duration::from_millis(100)).await;
+            notifier.set_deadline(None);
+        }
+
+        tracing::info!("the worker wakes at the cleared deadline and reports nothing");
+        {
+            C::sleep_until(deadline + Duration::from_millis(200)).await;
+            let next = rx.try_recv();
+            assert!(
+                matches!(next, Err(TryRecvError::Empty)),
+                "a cleared deadline was reported"
+            );
+        }
+    });
+}
+
+#[test]
 fn deadline_notifier_cancels_a_blocked_send() {
     C::run(async {
         const TIMEOUT: Duration = Duration::from_secs(1);
