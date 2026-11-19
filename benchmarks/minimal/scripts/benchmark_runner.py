@@ -466,7 +466,14 @@ PIPELINE_CHECKS = ("read_calls", "apply_calls", "read_entry_assignments", "range
 
 
 def validate_pipeline(node, probe):
+    schema = probe.get("schema_version", 1)
+    if schema not in (1, 2):
+        raise ValueError(f"unsupported pipeline schema version: {schema}")
     issues = [name for name in PIPELINE_CHECKS if probe["conservation"].get(name) is not True]
+    if schema == 2 and not probe["attribution_complete"]:
+        issues = [name for name in issues if name != "read_entry_assignments"]
+    if schema == 2 and probe["conservation"].get("source_clocks_monotonic") is not True:
+        issues.append("source_clocks_monotonic")
     counters = probe["all_observed_phase_counters"]
     issues += [name for name in ("read_failed", "read_cancelled", "apply_ended_without_success") if counters[name]]
     if issues:
@@ -480,6 +487,8 @@ def pipeline_measurements(report):
     probe = probes.get("0")
     if probe is None:
         return {}
+    if probe.get("schema_version", 1) >= 2:
+        return pipeline_source_measurements(report, probe)
     calls = (probe["reads_per_apply"] or {}).get("samples", 0)
     extended = probe["applies_with_extensions"]
     if not 0 <= extended <= calls:
@@ -498,8 +507,27 @@ def pipeline_read_time(report, probe):
     if end is None:
         end = int(report["seconds"] * 1_000_000_000)
     unfinished = started is not None and started < end
-    reads = [probe["initial_reads"], probe["extension_reads"]]
+    if probe.get("schema_version", 1) >= 2:
+        reads = [probe["all_reads"]]
+        unfinished = unfinished or not probe["overlap_coverage"]["complete"]
+    else:
+        reads = [probe["initial_reads"], probe["extension_reads"]]
+    if unfinished:
+        return {"node 0 read time in window ns": None, "node 0 unoverlapped read time in window ns": None}
     total = sum(read["time_in_window_ns"] for read in reads)
     unoverlapped = sum(read["unoverlapped_time_in_window_ns"] for read in reads)
-    return {"node 0 read time in window ns": None if unfinished else total,
-            "node 0 unoverlapped read time in window ns": None if unfinished else unoverlapped}
+    return {"node 0 read time in window ns": total, "node 0 unoverlapped read time in window ns": unoverlapped}
+
+
+def pipeline_source_measurements(report, probe):
+    calls = (probe["reads_per_apply"] or {}).get("samples", 0)
+    multiple = probe["applies_with_multiple_reads"]
+    if not 0 <= multiple <= calls:
+        raise ValueError("invalid multiple-source-read apply cohort")
+    attributable = probe["attribution_complete"]
+    latency = probe["all_reads"]["duration_ns"] or {}
+    result = {"node 0 multiple source read apply fraction": multiple / calls if calls and attributable else None,
+              "node 0 source read p50 ns": latency.get("p50_ns"),
+              "node 0 source read p99 ns": latency.get("p99_ns")}
+    result.update(pipeline_read_time(report, probe))
+    return result

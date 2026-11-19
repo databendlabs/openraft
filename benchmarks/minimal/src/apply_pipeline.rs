@@ -14,6 +14,7 @@ use crate::store::TypeConfig;
 
 /// Store boundaries, independent of the production worker's scheduling policy.
 #[derive(Debug)]
+#[openraft::macros::since(version = "0.10.1", change = "record actual apply stream consumption")]
 #[openraft::macros::since(version = "0.10.1")]
 pub enum PipelineEvent {
     ReadStarted {
@@ -32,7 +33,14 @@ pub enum PipelineEvent {
         index: u64,
         entries: u64,
     },
-    ApplyFinished(Instant),
+    /// Input consumed by the call, including a prefix consumed before an error or cancellation.
+    ApplyFinished {
+        at: Instant,
+        range: Option<Range<u64>>,
+        entries: u64,
+        payload_bytes: u64,
+        contiguous: bool,
+    },
 }
 
 /// A synchronous, benchmark-owned event sink; installed only for explicit diagnostics.
@@ -43,6 +51,11 @@ pub type Observer = dyn Fn(PipelineEvent) + Send + Sync;
 pub(crate) struct Span {
     observer: Option<Arc<Observer>>,
     read: bool,
+    first: Option<u64>,
+    last: Option<u64>,
+    entries: u64,
+    payload_bytes: u64,
+    contiguous: bool,
 }
 
 impl Span {
@@ -54,7 +67,7 @@ impl Span {
             let range = bounded_range(range);
             observer(PipelineEvent::ReadStarted { at, range });
         }
-        Self { observer, read: true }
+        Self::new(observer, true)
     }
 
     pub(crate) fn apply(observer: Option<&Arc<Observer>>) -> Self {
@@ -62,7 +75,7 @@ impl Span {
         if let Some(observer) = &observer {
             observer(PipelineEvent::ApplyStarted(Instant::now()));
         }
-        Self { observer, read: false }
+        Self::new(observer, false)
     }
 
     pub(crate) fn finish_read(&mut self, result: &io::Result<Vec<EntryOf<TypeConfig>>>) {
@@ -79,6 +92,41 @@ impl Span {
         };
         observer(PipelineEvent::ReadFinished { at, entries, status });
     }
+
+    fn new(observer: Option<Arc<Observer>>, read: bool) -> Self {
+        Self {
+            observer,
+            read,
+            first: None,
+            last: None,
+            entries: 0,
+            payload_bytes: 0,
+            contiguous: true,
+        }
+    }
+
+    pub(crate) fn consume(&mut self, entry: &EntryOf<TypeConfig>) {
+        if self.observer.is_none() {
+            return;
+        }
+        let index = entry.log_id.index();
+        if let Some(last) = self.last {
+            self.contiguous &= last.checked_add(1) == Some(index);
+        }
+        if self.first.is_none() {
+            self.first = Some(index);
+        }
+        self.last = Some(index);
+        self.entries += 1;
+        self.payload_bytes += payload_bytes(entry);
+    }
+
+    fn consumed_range(&self) -> Option<Range<u64>> {
+        let first = self.first?;
+        let last = self.last?;
+        let end = last.checked_add(1)?;
+        Some(first..end)
+    }
 }
 
 impl Drop for Span {
@@ -94,7 +142,15 @@ impl Drop for Span {
                 status: "cancelled_or_panicked",
             }
         } else {
-            PipelineEvent::ApplyFinished(at)
+            let range = self.consumed_range();
+            let representable = self.entries == 0 || range.is_some();
+            PipelineEvent::ApplyFinished {
+                at,
+                range,
+                entries: self.entries,
+                payload_bytes: self.payload_bytes,
+                contiguous: self.contiguous && representable,
+            }
         };
         observer(event);
     }
@@ -129,13 +185,13 @@ fn payload_bytes(entry: &EntryOf<TypeConfig>) -> u64 {
 mod tests {
     use std::sync::Mutex;
 
-    #[cfg(feature = "realistic-profiles")]
     use openraft::entry::RaftEntry;
 
     use super::*;
 
     type Events = Arc<Mutex<Vec<PipelineEvent>>>;
     type ReadEvent = (&'static str, Option<Range<u64>>, Option<(u64, u64)>);
+    type ApplyConsumption = (Option<Range<u64>>, u64, u64, bool);
 
     fn observing() -> (Arc<Observer>, Events) {
         let events = Arc::new(Mutex::new(Vec::new()));
@@ -197,5 +253,66 @@ mod tests {
         let actual = read_events(&events);
         assert_eq!(expected, actual);
         Ok(())
+    }
+
+    fn consumed(events: &Events) -> Vec<ApplyConsumption> {
+        let events = events.lock().unwrap();
+        let consumed = events.iter().filter_map(|event| {
+            let PipelineEvent::ApplyFinished {
+                range,
+                entries,
+                payload_bytes,
+                contiguous,
+                ..
+            } = event
+            else {
+                return None;
+            };
+            Some((range.clone(), *entries, *payload_bytes, *contiguous))
+        });
+        consumed.collect()
+    }
+
+    fn blank(index: u64) -> EntryOf<TypeConfig> {
+        let log = openraft::testing::log_id::<TypeConfig>(1, 0, index);
+        EntryOf::<TypeConfig>::new(log, EntryPayload::Blank)
+    }
+
+    #[test]
+    fn reordering_is_visible_with_matching_endpoints_and_count() {
+        let (observer, events) = observing();
+        let mut span = Span::apply(Some(&observer));
+        for index in [10, 12, 11, 13] {
+            let entry = blank(index);
+            span.consume(&entry);
+        }
+        drop(span);
+        let actual = consumed(&events);
+        let expected = vec![(Some(10..14), 4, 0, false)];
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn dropping_an_apply_keeps_its_consumed_prefix() {
+        let (observer, events) = observing();
+        let mut span = Span::apply(Some(&observer));
+        for index in [5, 6] {
+            let entry = blank(index);
+            span.consume(&entry);
+        }
+        drop(span);
+        let actual = consumed(&events);
+        let expected = vec![(Some(5..7), 2, 0, true)];
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn an_empty_apply_has_no_invented_range() {
+        let (observer, events) = observing();
+        let span = Span::apply(Some(&observer));
+        drop(span);
+        let actual = consumed(&events);
+        let expected = vec![(None, 0, 0, true)];
+        assert_eq!(expected, actual);
     }
 }

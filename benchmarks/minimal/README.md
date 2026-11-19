@@ -540,19 +540,23 @@ Follower lag retains bounded recent watch observations and reports omitted nonov
 
 For read/apply diagnosis, build with `--no-default-features --features apply-pipeline` and pass
 `--measure-apply-pipeline`. This separate opt-in feature compiles out all read/apply span hooks
-and fields from ordinary performance builds. Per-node `apply_pipeline` reports distinguish
-the first read of a batch from additional contiguous reads consumed by that same apply.
-They validate ranges and entry counts, measure read/apply overlap, and retain bounded recent
+and fields from ordinary performance builds. Per-node `apply_pipeline` reports match actual
+consumed entry ranges to source reads, retaining later and unread suffixes. They validate
+entry order and counts, measure all-read/store-apply overlap, and retain bounded recent
 traces with explicit drop counts. Nodes share a separate `--trace-limit` budget for these spans.
 Histograms select spans by their finish time; window-time
-totals clip completed reads at both boundaries. Unfinished spans remain explicit.
+totals clip completed reads at both boundaries. Original source timestamps are reconciled
+with independent reader/applier watermarks. Unresolved spans and metadata overflow keep
+derived overlap unavailable; retained apply history alone does not make coverage incomplete.
 
-Buffer observations count materialized entries not yet assigned to an apply. Entry structs
-and referenced application payload lengths have separate peaks; they exclude active reads,
-allocator overhead, responder storage, and shared payload ownership. All phases contribute to
-these peaks. The observers can alter scheduling, so their runs remain diagnostic.
+Buffer observations count source-materialized entries awaiting range attribution, including
+an active apply until its exit. Their entry and referenced-payload peaks cover all phases;
+they do not measure channel queue occupancy, speculative credit, or actual allocation.
+Range-derived buffer observations become unavailable if their metadata retention overflows.
+Store boundaries exclude channel delivery and unpolled physical I/O completion.
+The observers can alter scheduling, so their runs remain diagnostic.
 Use the same frozen diagnostic harness and feature set across historical core revisions.
-The shared comparison scripts extract leader extension frequency, run-level extension latency,
+The shared comparison scripts extract multi-read apply frequency, run-level source-read latency,
 and unoverlapped read time after checking every node's accounting. Full observations remain in
 each saved report. An unfinished read keeps its window-time total unavailable.
 
