@@ -179,7 +179,7 @@ pub fn since(args: TokenStream, item: TokenStream) -> TokenStream {
     let tokens = do_since(args, item.clone());
     match tokens {
         Ok(x) => x,
-        Err(e) => utils::token_stream_with_error(item, e),
+        Err(e) => utils::token_stream_with_error(since::strip_field_markers(item), e),
     }
 }
 

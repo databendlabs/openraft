@@ -239,27 +239,49 @@ pub(crate) fn try_expand_container(args: TokenStream, item: TokenStream) -> Resu
 /// Returns whether any marker was found.
 fn rewrite_field_since(input: &mut syn::DeriveInput) -> Result<bool, syn::Error> {
     let mut found = false;
-    match &mut input.data {
-        syn::Data::Struct(data) => {
-            for field in &mut data.fields {
-                found |= rewrite_attrs_since(&mut field.attrs)?;
-            }
-        }
-        syn::Data::Enum(data) => {
-            for variant in &mut data.variants {
-                found |= rewrite_attrs_since(&mut variant.attrs)?;
-                for field in &mut variant.fields {
-                    found |= rewrite_attrs_since(&mut field.attrs)?;
-                }
-            }
-        }
-        syn::Data::Union(data) => {
-            for field in &mut data.fields.named {
-                found |= rewrite_attrs_since(&mut field.attrs)?;
-            }
-        }
+    for attrs in marker_sites(input) {
+        found |= rewrite_attrs_since(attrs)?;
     }
     Ok(found)
+}
+
+/// Remove every `#[since(...)]` marker from the fields / variants of `item`.
+///
+/// When a container fails to expand, the caller re-emits the item with the error; without this,
+/// rustc would also reject each marker left on a field. An item without markers, including one
+/// that is not a struct, enum or union, is returned unchanged.
+pub(crate) fn strip_field_markers(item: TokenStream) -> TokenStream {
+    let Ok(mut input) = syn::parse2::<syn::DeriveInput>(item.clone().into()) else {
+        return item;
+    };
+
+    let mut removed = false;
+    for attrs in marker_sites(&mut input) {
+        let before = attrs.len();
+        attrs.retain(|a| !is_since(a));
+        removed |= attrs.len() != before;
+    }
+
+    if !removed {
+        return item;
+    }
+    quote!(#input).into()
+}
+
+/// The attribute lists of every field and variant of `input`, where `#[since(...)]` markers sit,
+/// in source order.
+fn marker_sites(input: &mut syn::DeriveInput) -> Vec<&mut Vec<syn::Attribute>> {
+    match &mut input.data {
+        syn::Data::Struct(data) => data.fields.iter_mut().map(|field| &mut field.attrs).collect(),
+        syn::Data::Enum(data) => data
+            .variants
+            .iter_mut()
+            .flat_map(|variant| {
+                std::iter::once(&mut variant.attrs).chain(variant.fields.iter_mut().map(|field| &mut field.attrs))
+            })
+            .collect(),
+        syn::Data::Union(data) => data.fields.named.iter_mut().map(|field| &mut field.attrs).collect(),
+    }
 }
 
 /// Replace each `#[since(...)]` attribute in `attrs` with its `Since:` doc, preserving order.

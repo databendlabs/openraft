@@ -1,0 +1,5 @@
+error: `version`(`1.x`) is not valid semver.
+ --> tests/since/fail/invalid_field_version.rs:8:40
+  |
+8 |     #[openraft_macros::since(version = "1.x")]
+  |                                        ^^^^^
