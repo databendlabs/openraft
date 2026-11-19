@@ -1082,10 +1082,11 @@ where
         let id = &self.config.id;
         let effective = self.state.membership_state.effective();
 
-        let is_sole_voter = effective.voter_ids().eq([id.clone()]);
-        let votes_for_self = self.state.vote_ref().leader_node_id() == id;
-
-        effective.is_campaigner(id) && is_sole_voter && votes_for_self
+        // `voter_ids()` allocates, and `RaftCore` asks this on every loop round, so check the
+        // vote first: a follower votes for its leader and stops there.
+        self.state.vote_ref().leader_node_id() == id
+            && effective.is_campaigner(id)
+            && effective.voter_ids().eq([id.clone()])
     }
 
     /// Return when the election timing permits this node to start its next election, or `None`
