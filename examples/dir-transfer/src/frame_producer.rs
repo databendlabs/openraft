@@ -168,6 +168,10 @@ impl DirFrameProducer {
         self.state = State::ReadFile(progress);
         Ok(DirFrame::Chunk { data })
     }
+
+    pub(crate) fn is_fresh(&self) -> bool {
+        matches!(self.state, State::EmitManifest)
+    }
 }
 
 /// Read up to `chunk_size` bytes; a short result means end of file.
