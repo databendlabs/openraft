@@ -186,7 +186,7 @@ impl DirWriter {
     }
 
     /// Verify size and checksum, then make the completed file durable.
-    async fn finish_file(&mut self, write: FileWriteState, checksum: u64) -> io::Result<State> {
+    async fn finish_file(&mut self, mut write: FileWriteState, checksum: u64) -> io::Result<State> {
         let meta = &self.manifest.files[write.index];
         if write.bytes_written != meta.size {
             return Err(invalid_data(format!(
@@ -203,6 +203,9 @@ impl DirWriter {
             )));
         }
 
+        // `tokio::fs::File` completes the last write in the background. `flush` returns that
+        // write's error; `sync_all` would drop it and report the file as written.
+        write.file.flush().await?;
         write.file.sync_all().await?;
         Ok(self.next_file_state(write.index + 1))
     }
