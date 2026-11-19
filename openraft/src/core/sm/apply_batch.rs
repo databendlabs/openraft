@@ -54,4 +54,10 @@ where C: RaftTypeConfig
         self.client_resp_channels.extend(next.client_resp_channels);
         self.entries.extend(next.entries);
     }
+
+    pub(crate) fn entry_count(&self) -> u64 {
+        let since = self.since();
+        let end = self.end();
+        end - since
+    }
 }
