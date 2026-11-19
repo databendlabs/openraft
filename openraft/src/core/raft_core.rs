@@ -84,19 +84,20 @@ use crate::errors::UncommittedLeaderLog;
 use crate::impls::ProgressResponder;
 use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
 use crate::membership::RaftMembershipExt;
-use crate::metrics::HeartbeatMetrics;
 use crate::metrics::MetricsRecorder;
 use crate::metrics::RaftDataMetrics;
 use crate::metrics::RaftMetrics;
 use crate::metrics::RaftServerMetrics;
-use crate::metrics::ReplicationMetrics;
 use crate::metrics::SerdeInstant;
+use crate::metrics::update::set_if_ne;
+use crate::metrics::update::set_map_if_ne;
 use crate::network::NetSnapshot;
 use crate::network::NetTransferLeader;
 use crate::network::NetVote;
 use crate::network::RPCOption;
 use crate::network::RPCTypes;
 use crate::network::RaftNetworkFactory;
+use crate::progress::IdVal;
 use crate::progress::VecProgressEntry;
 use crate::progress::inflight_id::InflightId;
 use crate::progress::stream_id::StreamId;
@@ -810,146 +811,201 @@ where
         self.metrics.progress.send_apply_progress(io_state.apply_progress.flushed().cloned());
         self.metrics.progress.send_snapshot_progress(io_state.snapshot.flushed().cloned());
 
-        let (replication, heartbeat) = if let Some(leader) = self.engine.leader.as_ref() {
-            let replication_prog = &leader.progress;
-            let replication = Some(replication_prog.collect_mapped(|item| item.id_progress_owned()));
-
-            let clock_prog = &leader.clock_progress;
-            let heartbeat = Some(clock_prog.collect_mapped(|item| {
-                let sending_time = item.val.map(|stamp| stamp.time);
-                (item.id.clone(), sending_time.map(SerdeInstant::new))
-            }));
-
-            (replication, heartbeat)
-        } else {
-            (None, None)
-        };
-
-        self.report_metrics(replication, heartbeat);
+        self.report_metrics();
     }
 
-    /// Report a metrics payload on the current state of the Raft node.
+    /// Update the published metrics to the current state of the Raft node.
+    ///
+    /// `RaftCore` calls this on every loop round, so it updates each published value in place
+    /// instead of building new metrics and cloning them into the channels. A leader's replication
+    /// and heartbeat maps are updated entry by entry while the set of nodes stays the same, and a
+    /// channel notifies its receivers only if one of its fields changed. Each closure destructures
+    /// every field, so a new field fails to compile here until it is updated.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn report_metrics(
-        &mut self,
-        replication: Option<ReplicationMetrics<C>>,
-        heartbeat: Option<HeartbeatMetrics<C>>,
-    ) {
-        let last_quorum_acked = self.last_quorum_acked_time();
-        let is_self_quorum = self.engine.leader.as_ref().is_some_and(|leader| leader.is_self_quorum());
-        let millis_since_quorum_ack = if is_self_quorum {
+    #[allow(deprecated)]
+    pub(crate) fn report_metrics(&mut self) {
+        let leader = self.engine.leader.as_ref();
+        let quorum_acked = self.last_quorum_acked_time();
+        let is_self_quorum = leader.is_some_and(|leader| leader.is_self_quorum());
+        let millis_since_ack = if is_self_quorum {
             Some(0)
         } else {
-            last_quorum_acked.map(|t| t.elapsed().as_millis() as u64)
+            quorum_acked.map(|t| t.elapsed().as_millis() as u64)
         };
+        let quorum_acked = quorum_acked.map(SerdeInstant::new);
 
         let st = &self.engine.state;
 
         // Get the last flushed vote, or use initial vote (term=0, node_id=self.id)
         // if no IO has been flushed yet (e.g., during startup).
-        let vote = st
+        let flushed_vote = st
             .log_progress()
             .flushed()
             .map(|io_id| io_id.to_app_vote())
             .unwrap_or_else(|| VoteOf::<C>::new_with_default_term(self.id.clone()));
 
-        #[allow(deprecated)]
-        let data_metrics = RaftDataMetrics {
-            last_log: st.last_log_id().cloned(),
-            local_committed: st.local_committed().cloned(),
-            committed: st.local_committed().cloned(),
-            cluster_committed: st.cluster_committed().cloned(),
-            last_applied: st.io_applied().cloned(),
-            snapshot: st.io_snapshot_last_log_id().cloned(),
-            purged: st.io_purged().cloned(),
+        // Values that take more than one read of the state are derived once here, so the three
+        // channels store the same values. `RaftMetrics` is the union of `RaftDataMetrics` and
+        // `RaftServerMetrics`, plus the running state and the term.
+        let node_id = &self.id;
+        let leader_id = self.current_leader();
+        let leader_contact = st.last_leader_contact().map(SerdeInstant::new);
+        let effective = st.membership_state.effective();
+        let committed_membership = st.membership_state.committed();
 
-            #[cfg(feature = "metrics-logids")]
-            log_id_list: st.log_ids.clone(),
+        // The entries of the replication and heartbeat maps, read from the leader's progress.
+        let replication_entries =
+            leader.map(|leader| move || leader.progress.iter().map(|item| (&item.id, item.progress().clone())));
+        let heartbeat_entries = leader.map(|leader| {
+            move || {
+                let sending_time = |item: &IdVal<C::NodeId, Option<SendStamp<InstantOf<C>>>>| {
+                    item.val.map(|stamp| SerdeInstant::new(stamp.time))
+                };
+                leader.clock_progress.iter().map(move |item| (&item.id, sending_time(item)))
+            }
+        });
 
-            millis_since_quorum_ack,
-            last_quorum_acked: last_quorum_acked.map(SerdeInstant::new),
-            replication,
-            heartbeat,
-        };
+        let update_all = |m: &mut RaftMetrics<C>| {
+            let RaftMetrics {
+                running_state,
+                id,
+                current_term,
+                vote,
+                last_log_index,
+                local_committed,
+                cluster_committed,
+                committed,
+                last_applied,
+                snapshot,
+                purged,
+                #[cfg(feature = "metrics-logids")]
+                log_id_list,
+                state,
+                current_leader,
+                millis_since_quorum_ack,
+                last_quorum_acked,
+                last_leader_contact,
+                membership_config,
+                committed_membership_config,
+                heartbeat,
+                replication,
+            } = m;
 
-        let server_metrics = RaftServerMetrics::<C> {
-            id: self.id.clone(),
-            vote,
-            state: st.server_state,
-            current_leader: self.current_leader(),
-            last_leader_contact: st.last_leader_contact().map(SerdeInstant::new),
-            membership_config: st.membership_state.effective().clone(),
-            committed_membership_config: st.membership_state.committed().clone(),
-        };
-
-        // `RaftMetrics` is the union of the two above, plus the running state and the term.
-        // It is assembled from them rather than re-read from the state, so that every field has
-        // exactly one place where it is derived.
-        #[allow(deprecated)]
-        let m = RaftMetrics {
-            running_state: Ok(()),
-            id: server_metrics.id.clone(),
+            let mut changed = false;
+            changed |= set_if_ne(running_state, Ok(()));
+            changed |= set_if_ne(id, node_id.clone());
 
             // --- data ---
-            current_term: st.vote_ref().term(),
-            vote: server_metrics.vote.clone(),
-            last_log_index: data_metrics.last_log.index(),
-            local_committed: data_metrics.local_committed.clone(),
-            committed: data_metrics.committed.clone(),
-            cluster_committed: data_metrics.cluster_committed.clone(),
-            last_applied: data_metrics.last_applied.clone(),
-            snapshot: data_metrics.snapshot.clone(),
-            purged: data_metrics.purged.clone(),
-
+            changed |= set_if_ne(current_term, st.vote_ref().term());
+            changed |= set_if_ne(vote, flushed_vote.clone());
+            changed |= set_if_ne(last_log_index, st.last_log_id().index());
+            changed |= set_if_ne(local_committed, st.local_committed().cloned());
+            changed |= set_if_ne(committed, st.local_committed().cloned());
+            changed |= set_if_ne(cluster_committed, st.cluster_committed().cloned());
+            changed |= set_if_ne(last_applied, st.io_applied().cloned());
+            changed |= set_if_ne(snapshot, st.io_snapshot_last_log_id().cloned());
+            changed |= set_if_ne(purged, st.io_purged().cloned());
             #[cfg(feature = "metrics-logids")]
-            log_id_list: data_metrics.log_id_list.clone(),
+            {
+                changed |= set_if_ne(log_id_list, st.log_ids.clone());
+            }
 
             // --- cluster ---
-            state: server_metrics.state,
-            current_leader: server_metrics.current_leader.clone(),
-            millis_since_quorum_ack: data_metrics.millis_since_quorum_ack,
-            last_quorum_acked: data_metrics.last_quorum_acked,
-            last_leader_contact: server_metrics.last_leader_contact,
-            membership_config: server_metrics.membership_config.clone(),
-            committed_membership_config: server_metrics.committed_membership_config.clone(),
-            heartbeat: data_metrics.heartbeat.clone(),
+            changed |= set_if_ne(state, st.server_state);
+            changed |= set_if_ne(current_leader, leader_id.clone());
+            changed |= set_if_ne(millis_since_quorum_ack, millis_since_ack);
+            changed |= set_if_ne(last_quorum_acked, quorum_acked);
+            changed |= set_if_ne(last_leader_contact, leader_contact);
+            changed |= set_if_ne(membership_config, effective.clone());
+            changed |= set_if_ne(committed_membership_config, committed_membership.clone());
+            changed |= set_map_if_ne(heartbeat, heartbeat_entries);
 
             // --- replication ---
-            replication: data_metrics.replication.clone(),
+            changed |= set_map_if_ne(replication, replication_entries);
+            changed
         };
 
-        // Record to external metrics recorder
-        if let Some(r) = &self.metrics_recorder {
+        // A metrics recorder gets the new `RaftMetrics` before any channel publishes a change, so
+        // whoever sees a change on a channel finds it in the recorder too. With a recorder set,
+        // the update is made on a copy, which is published below.
+        let recorded = self.metrics_recorder.as_ref().map(|r| {
+            let mut m = self.metrics.all.borrow_watched().clone();
+            let changed = update_all(&mut m);
             crate::metrics::forward_metrics(&m, r.as_ref());
-        }
+            (m, changed)
+        });
 
-        // Start to send metrics
         // `RaftMetrics` is sent last, because `Wait` only examines `RaftMetrics`
         // but not `RaftDataMetrics` and `RaftServerMetrics`.
         // Thus if `RaftMetrics` change is perceived, the other two should have been updated.
 
-        self.metrics.data.send_if_modified(|metrics| {
-            if data_metrics.ne(metrics) {
-                *metrics = data_metrics.clone();
-                return true;
+        self.metrics.data.send_if_modified(|m| {
+            let RaftDataMetrics {
+                last_log,
+                local_committed,
+                cluster_committed,
+                committed,
+                last_applied,
+                snapshot,
+                purged,
+                #[cfg(feature = "metrics-logids")]
+                log_id_list,
+                millis_since_quorum_ack,
+                last_quorum_acked,
+                replication,
+                heartbeat,
+            } = m;
+
+            let mut changed = false;
+            changed |= set_if_ne(last_log, st.last_log_id().cloned());
+            changed |= set_if_ne(local_committed, st.local_committed().cloned());
+            changed |= set_if_ne(committed, st.local_committed().cloned());
+            changed |= set_if_ne(cluster_committed, st.cluster_committed().cloned());
+            changed |= set_if_ne(last_applied, st.io_applied().cloned());
+            changed |= set_if_ne(snapshot, st.io_snapshot_last_log_id().cloned());
+            changed |= set_if_ne(purged, st.io_purged().cloned());
+            #[cfg(feature = "metrics-logids")]
+            {
+                changed |= set_if_ne(log_id_list, st.log_ids.clone());
             }
-            false
+            changed |= set_if_ne(millis_since_quorum_ack, millis_since_ack);
+            changed |= set_if_ne(last_quorum_acked, quorum_acked);
+            changed |= set_map_if_ne(replication, replication_entries);
+            changed |= set_map_if_ne(heartbeat, heartbeat_entries);
+            changed
         });
 
-        self.metrics.server.send_if_modified(|metrics| {
-            if server_metrics.ne(metrics) {
-                *metrics = server_metrics.clone();
-                return true;
-            }
-            false
+        self.metrics.server.send_if_modified(|m| {
+            let RaftServerMetrics {
+                id,
+                vote,
+                state,
+                current_leader,
+                last_leader_contact,
+                membership_config,
+                committed_membership_config,
+            } = m;
+
+            let mut changed = false;
+            changed |= set_if_ne(id, node_id.clone());
+            changed |= set_if_ne(vote, flushed_vote.clone());
+            changed |= set_if_ne(state, st.server_state);
+            changed |= set_if_ne(current_leader, leader_id.clone());
+            changed |= set_if_ne(last_leader_contact, leader_contact);
+            changed |= set_if_ne(membership_config, effective.clone());
+            changed |= set_if_ne(committed_membership_config, committed_membership.clone());
+            changed
         });
 
-        tracing::debug!("report metrics: {}", m);
-        let res = self.metrics.all.send(m);
+        match recorded {
+            None => self.metrics.all.send_if_modified(update_all),
+            Some((m, changed)) => self.metrics.all.send_if_modified(|current| {
+                *current = m;
+                changed
+            }),
+        };
 
-        if let Err(err) = res {
-            tracing::error!("failed to report metrics, error: {}, id: {}", err, &self.id);
-        }
+        tracing::debug!("report metrics: {}", &*self.metrics.all.borrow_watched());
     }
 
     /// Handle the admin command `initialize`.
