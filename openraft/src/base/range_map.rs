@@ -15,8 +15,9 @@ impl<T> RangeMapValue for T where T: Copy + fmt::Debug {}
 /// Each entry `(k, v)` represents the range `[prev_entry.k, k)` with value `v`;
 /// the first entry uses an externally tracked `begin` as its left boundary.
 ///
-/// Pre-allocates `capacity` slots. When full, the oldest entry is evicted on
-/// append and its boundary is returned. A non-monotonic right boundary
+/// Holds at most `capacity` entries, and allocates their slots on the first
+/// record, so a map that records nothing takes no heap memory. When full, the
+/// oldest entry is evicted on append and its boundary is returned. A non-monotonic right boundary
 /// rewrites the tail in place — see [`RangeMap::record`].
 ///
 /// Lookup is O(log n) via binary search.
@@ -27,6 +28,9 @@ where
     V: RangeMapValue,
 {
     entries: VecDeque<(Bound, V)>,
+
+    /// The most entries kept: recording one more evicts the oldest.
+    capacity: usize,
 }
 
 impl<Bound, V> fmt::Display for RangeMap<Bound, V>
@@ -51,11 +55,13 @@ where
     Bound: RangeMapBound,
     V: RangeMapValue,
 {
-    /// Create a new ring buffer with the given capacity.
+    /// Create a new ring buffer with the given capacity. Its slots are allocated on the first
+    /// record.
     pub(crate) fn new(capacity: usize) -> Self {
         debug_assert!(capacity > 0, "capacity must be > 0");
         Self {
-            entries: VecDeque::with_capacity(capacity),
+            entries: VecDeque::new(),
+            capacity,
         }
     }
 
@@ -84,7 +90,11 @@ where
             self.entries.pop_back();
         }
 
-        let evicted = if self.entries.len() == self.entries.capacity() {
+        if self.entries.capacity() == 0 {
+            self.entries.reserve_exact(self.capacity);
+        }
+
+        let evicted = if self.entries.len() == self.capacity {
             self.entries.pop_front().map(|(k, _)| k)
         } else {
             None
@@ -133,6 +143,15 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_slots_are_allocated_on_the_first_record() {
+        let mut rm: RangeMap<u64, u64> = RangeMap::new(1024);
+        assert_eq!(0, rm.entries.capacity());
+
+        rm.record(10, 100);
+        assert!(rm.entries.capacity() >= 1024, "got: {}", rm.entries.capacity());
+    }
 
     // entries: [(10, 100), (20, 200), (30, 300)], begin tracked externally as 0
     // [0, 10) → 100, [10, 20) → 200, [20, 30) → 300
