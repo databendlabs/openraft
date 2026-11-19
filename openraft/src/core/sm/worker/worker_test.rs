@@ -54,6 +54,7 @@ const WAIT_TIMEOUT: Duration = Duration::from_secs(5);
 struct Gates {
     gates: Arc<Mutex<BTreeMap<String, OneshotReceiverOf<UTConfig, ()>>>>,
     failures: Arc<Mutex<BTreeSet<String>>>,
+    releases: Arc<Mutex<BTreeMap<String, OneshotSenderOf<UTConfig, ()>>>>,
 }
 
 impl Gates {
@@ -70,11 +71,26 @@ impl Gates {
         if let Some(gate) = gate {
             let _released = gate.await;
         }
+        let key = format!("{stage} {index}");
+        let release = {
+            let mut releases = self.releases.lock().unwrap();
+            releases.remove(&key)
+        };
+        drop(release);
         let fail = self.failures.lock().unwrap().remove(&format!("{stage} {index}"));
         if fail {
             return Err(io::Error::other(format!("injected {stage} {index} failure")));
         }
         Ok(())
+    }
+
+    fn release_after(&self, stage: &str, index: u64, release: OneshotSenderOf<UTConfig, ()>) {
+        let key = format!("{stage} {index}");
+        let previous = {
+            let mut releases = self.releases.lock().unwrap();
+            releases.insert(key, release)
+        };
+        drop(previous);
     }
 
     fn fail(&self, stage: &str, index: u64) {
@@ -741,17 +757,20 @@ async fn late_commands_continue_prefetch_before_apply_finishes_async() -> anyhow
 }
 
 #[test]
-fn prefetch_cap_keeps_the_final_queued_tail() -> anyhow::Result<()> {
-    UTConfig::<()>::run(prefetch_cap_keeps_the_final_queued_tail_async())
+fn prefetch_cap_bounds_loaded_and_reading_entries() -> anyhow::Result<()> {
+    let test = prefetch_cap_bounds_loaded_and_reading_entries_async();
+    UTConfig::<()>::run(test)
 }
 
-async fn prefetch_cap_keeps_the_final_queued_tail_async() -> anyhow::Result<()> {
+async fn prefetch_cap_bounds_loaded_and_reading_entries_async() -> anyhow::Result<()> {
     let sm = RecordingStateMachine::default();
     let events = sm.events.clone();
     let gates = sm.gates.clone();
     let (cmd_tx, cmd_rx) = UTConfig::<()>::mpsc(16);
     let (resp_tx, mut resp_rx) = UTConfig::<()>::mpsc(16);
     let apply_1 = gates.gate("apply", 1);
+    let apply_2 = gates.gate("apply", 2);
+    let read_tail = gates.gate("read", 1026);
     let _handle = spawn_worker(sm, cmd_tx.clone(), cmd_rx, resp_tx);
 
     tracing::info!("--- hold the current apply before queueing a full prefetch budget and its tail");
@@ -779,17 +798,14 @@ async fn prefetch_cap_keeps_the_final_queued_tail_async() -> anyhow::Result<()> 
         assert_eq!(expected, actual);
     }
 
-    tracing::info!(
-        "--- the tail exceeds speculative capacity, but joins the next apply after the current one finishes"
-    );
+    tracing::info!("--- apply the full loaded prefix while the tail reads within the newly freed budget");
     {
         drop(apply_1);
         let first = recv_applied(&mut resp_rx).await?;
-        let expected = (1, 2, log_id(1, 0, 1));
+        let expected_last = log_id(1, 0, 1);
+        let expected = (1, 2, expected_last);
         assert_eq!(expected, first);
-        let next = recv_applied(&mut resp_rx).await?;
-        let expected = (2, 1027, log_id(1, 0, 1026));
-        assert_eq!(expected, next);
+        wait_event(&events, "read [1026,1026]").await;
         let actual = event_snapshot(&events);
         let expected = vec![
             "read [1,1]",
@@ -797,11 +813,20 @@ async fn prefetch_cap_keeps_the_final_queued_tail_async() -> anyhow::Result<()> 
             "read [2,513]",
             "read [514,1025]",
             "done [1,1]",
+            "apply [2,1025]",
             "read [1026,1026]",
-            "apply [2,1026]",
-            "done [2,1026]",
         ];
         assert_eq!(expected, actual);
+        drop(read_tail);
+        drop(apply_2);
+        let next = recv_applied(&mut resp_rx).await?;
+        let expected_last = log_id(1, 0, 1025);
+        let expected = (2, 1026, expected_last);
+        assert_eq!(expected, next);
+        let last = recv_applied(&mut resp_rx).await?;
+        let expected_last = log_id(1, 0, 1026);
+        let expected = (1026, 1027, expected_last);
+        assert_eq!(expected, last);
     }
     Ok(())
 }
@@ -977,84 +1002,203 @@ async fn closed_command_channel_finishes_the_current_apply_async() -> anyhow::Re
 }
 
 #[test]
-fn overrunning_prefetch_skips_serial_tail() -> anyhow::Result<()> {
-    let test = overrunning_prefetch_skips_serial_tail_async();
+fn ready_prefix_applies_while_next_read_is_pending() -> anyhow::Result<()> {
+    let test = ready_prefix_applies_while_next_read_is_pending_async();
     UTConfig::<()>::run(test)
 }
 
-async fn overrunning_prefetch_skips_serial_tail_async() -> anyhow::Result<()> {
+async fn ready_prefix_applies_while_next_read_is_pending_async() -> anyhow::Result<()> {
+    let sm = RecordingStateMachine::default();
+    let events = sm.events.clone();
+    let gates = sm.gates.clone();
+    let (cmd_tx, cmd_rx) = UTConfig::<()>::mpsc(16);
+    let (resp_tx, mut resp_rx) = UTConfig::<()>::mpsc(1);
+    let apply_1 = gates.gate("apply", 1);
+    let apply_2 = gates.gate("apply", 2);
+    let read_3 = gates.gate("read", 3);
+
+    tracing::info!("--- fill notification capacity, then hold A applying with B loaded and C reading");
+    {
+        let last_applied = log_id(1, 0, 0);
+        let applied = ApplyResult {
+            since: 0,
+            end: 1,
+            last_applied,
+        };
+        let result = CommandResult::new(Ok(Response::Apply(applied)));
+        let notification = Notification::sm(result);
+        let sent = resp_tx.send(notification).await;
+        let accepted = sent.is_ok();
+        assert!(accepted, "notification capacity is available");
+    }
+    let _handle = spawn_worker(sm, cmd_tx.clone(), cmd_rx, resp_tx);
+    let clients = {
+        let mut clients = Vec::new();
+        let (command, client) = apply_cmd(1, 1);
+        clients.push(client);
+        let sent = cmd_tx.send(command).await;
+        let accepted = sent.is_ok();
+        assert!(accepted, "the worker is running");
+        wait_event(&events, "apply [1,1]").await;
+        let (command, client) = apply_cmd(2, 2);
+        clients.push(client);
+        let sent = cmd_tx.send(command).await;
+        let accepted = sent.is_ok();
+        assert!(accepted, "the worker is running");
+        wait_event(&events, "read [2,2]").await;
+        let (command, client) = apply_cmd(3, 3);
+        clients.push(client);
+        let sent = cmd_tx.send(command).await;
+        let accepted = sent.is_ok();
+        assert!(accepted, "the worker is running");
+        wait_event(&events, "read [3,3]").await;
+        let command = record_func("func");
+        let sent = cmd_tx.send(command).await;
+        let accepted = sent.is_ok();
+        assert!(accepted, "the worker is running");
+        let (command, client) = apply_cmd(4, 4);
+        clients.push(client);
+        let sent = cmd_tx.send(command).await;
+        let accepted = sent.is_ok();
+        assert!(accepted, "the worker is running");
+        clients
+    };
+
+    tracing::info!("--- publishing A releases the SM for B while the generic read of C stays held");
+    {
+        drop(apply_1);
+        wait_event(&events, "done [1,1]").await;
+        let actual = event_snapshot(&events);
+        let expected = vec!["read [1,1]", "apply [1,1]", "read [2,2]", "read [3,3]", "done [1,1]"];
+        assert_eq!(expected, actual);
+        let dummy = recv_applied(&mut resp_rx).await?;
+        let expected_last = log_id(1, 0, 0);
+        let expected = (0, 1, expected_last);
+        assert_eq!(expected, dummy);
+        let first = recv_applied(&mut resp_rx).await?;
+        let expected_last = log_id(1, 0, 1);
+        let expected = (1, 2, expected_last);
+        assert_eq!(expected, first);
+        wait_event(&events, "apply [2,2]").await;
+        drop(apply_2);
+        let second = recv_applied(&mut resp_rx).await?;
+        let expected_last = log_id(1, 0, 2);
+        let expected = (2, 3, expected_last);
+        assert_eq!(expected, second);
+        let actual = event_snapshot(&events);
+        let expected = vec![
+            "read [1,1]",
+            "apply [1,1]",
+            "read [2,2]",
+            "read [3,3]",
+            "done [1,1]",
+            "apply [2,2]",
+            "done [2,2]",
+        ];
+        assert_eq!(expected, actual);
+    }
+
+    tracing::info!("--- C completes before the FIFO function barrier permits the final read");
+    {
+        drop(read_3);
+        let third = recv_applied(&mut resp_rx).await?;
+        let expected_last = log_id(1, 0, 3);
+        let expected = (3, 4, expected_last);
+        assert_eq!(expected, third);
+        let last = recv_applied(&mut resp_rx).await?;
+        let expected_last = log_id(1, 0, 4);
+        let expected = (4, 5, expected_last);
+        assert_eq!(expected, last);
+        let actual = event_snapshot(&events);
+        let expected = vec![
+            "read [1,1]",
+            "apply [1,1]",
+            "read [2,2]",
+            "read [3,3]",
+            "done [1,1]",
+            "apply [2,2]",
+            "done [2,2]",
+            "apply [3,3]",
+            "done [3,3]",
+            "func",
+            "read [4,4]",
+            "apply [4,4]",
+            "done [4,4]",
+        ];
+        assert_eq!(expected, actual);
+        let mut responses = Vec::new();
+        for client in clients {
+            let response = client.await??;
+            responses.push(response.log_id);
+        }
+        let expected = vec![log_id(1, 0, 1), log_id(1, 0, 2), log_id(1, 0, 3), log_id(1, 0, 4)];
+        assert_eq!(expected, responses);
+    }
+    Ok(())
+}
+
+#[test]
+fn completed_read_coalesces_before_next_apply() -> anyhow::Result<()> {
+    let test = completed_read_coalesces_before_next_apply_async();
+    UTConfig::<()>::run(test)
+}
+
+async fn completed_read_coalesces_before_next_apply_async() -> anyhow::Result<()> {
     let sm = RecordingStateMachine::default();
     let events = sm.events.clone();
     let gates = sm.gates.clone();
     let (cmd_tx, cmd_rx) = UTConfig::<()>::mpsc(16);
     let (resp_tx, mut resp_rx) = UTConfig::<()>::mpsc(16);
     let apply_1 = gates.gate("apply", 1);
-    let apply_2 = gates.gate("apply", 2);
-    let read_2 = gates.gate("read", 2);
+    let read_3 = gates.gate("read", 3);
+    gates.release_after("apply", 1, read_3);
     let _handle = spawn_worker(sm, cmd_tx.clone(), cmd_rx, resp_tx);
 
-    tracing::info!("--- start a late prefetch that remains held after the current apply finishes");
+    tracing::info!("--- load B and hold C until A completes in the same coordinator poll");
     {
-        let (cmd, _client) = apply_cmd(1, 1);
-        let sent = cmd_tx.send(cmd).await;
+        let (command, _client) = apply_cmd(1, 1);
+        let sent = cmd_tx.send(command).await;
         let accepted = sent.is_ok();
         assert!(accepted, "the worker is running");
         wait_event(&events, "apply [1,1]").await;
-        let (cmd, _client) = apply_cmd(2, 2);
-        let sent = cmd_tx.send(cmd).await;
+        let (command, _client) = apply_cmd(2, 2);
+        let sent = cmd_tx.send(command).await;
         let accepted = sent.is_ok();
         assert!(accepted, "the worker is running");
         wait_event(&events, "read [2,2]").await;
-        drop(apply_1);
-        let receiving = recv_applied(&mut resp_rx);
-        let applied = UTConfig::<()>::timeout(WAIT_TIMEOUT, receiving).await??;
-        let expected = (1, 2, log_id(1, 0, 1));
-        assert_eq!(expected, applied);
-        let actual = event_snapshot(&events);
-        let expected = vec!["read [1,1]", "apply [1,1]", "read [2,2]", "done [1,1]"];
-        assert_eq!(expected, actual);
-    }
-
-    tracing::info!("--- queue a tail, finish the held read, and start its apply before reading the tail");
-    {
-        let (cmd, _client) = apply_cmd(3, 3);
-        let sent = cmd_tx.send(cmd).await;
+        let (command, _client) = apply_cmd(3, 3);
+        let sent = cmd_tx.send(command).await;
         let accepted = sent.is_ok();
         assert!(accepted, "the worker is running");
-        drop(read_2);
         wait_event(&events, "read [3,3]").await;
-        let actual = event_snapshot(&events);
-        let expected = vec![
-            "read [1,1]",
-            "apply [1,1]",
-            "read [2,2]",
-            "done [1,1]",
-            "apply [2,2]",
-            "read [3,3]",
-        ];
-        assert_eq!(expected, actual);
+        let command = record_func("func");
+        let sent = cmd_tx.send(command).await;
+        let accepted = sent.is_ok();
+        assert!(accepted, "the worker is running");
     }
 
-    tracing::info!("--- finish the separate applies with the original log IDs and notification order");
+    tracing::info!("--- observe C's completion before choosing the complete loaded B+C prefix");
     {
-        drop(apply_2);
-        let applied = recv_applied(&mut resp_rx).await?;
-        let expected = (2, 3, log_id(1, 0, 2));
-        assert_eq!(expected, applied);
-        let applied = recv_applied(&mut resp_rx).await?;
-        let expected = (3, 4, log_id(1, 0, 3));
-        assert_eq!(expected, applied);
+        drop(apply_1);
+        let first = recv_applied(&mut resp_rx).await?;
+        let expected_last = log_id(1, 0, 1);
+        let expected = (1, 2, expected_last);
+        assert_eq!(expected, first);
+        let next = recv_applied(&mut resp_rx).await?;
+        let expected_last = log_id(1, 0, 3);
+        let expected = (2, 4, expected_last);
+        assert_eq!(expected, next);
+        wait_event(&events, "func").await;
         let actual = event_snapshot(&events);
         let expected = vec![
             "read [1,1]",
             "apply [1,1]",
             "read [2,2]",
-            "done [1,1]",
-            "apply [2,2]",
             "read [3,3]",
-            "done [2,2]",
-            "apply [3,3]",
-            "done [3,3]",
+            "done [1,1]",
+            "apply [2,3]",
+            "done [2,3]",
+            "func",
         ];
         assert_eq!(expected, actual);
     }
