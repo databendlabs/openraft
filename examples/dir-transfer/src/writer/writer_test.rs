@@ -66,6 +66,12 @@ fn manifest_frame(files: Vec<ManifestEntry>) -> DirFrame {
     })
 }
 
+fn crc64(data: &[u8]) -> u64 {
+    let mut digest = checksum_digest();
+    digest.update(data);
+    digest.finalize()
+}
+
 #[tokio::test]
 async fn test_round_trip() {
     let (source, frames) = source_frames().await;
@@ -133,6 +139,98 @@ async fn test_duplicate_manifest_name() {
         size: 0,
     };
     assert_rejected(vec![manifest_frame(vec![meta.clone(), meta])]).await;
+}
+
+#[tokio::test]
+async fn test_existing_file_fails_the_session() {
+    let target = tempfile::tempdir().unwrap();
+    fs::write(target.path().join("f"), b"old").unwrap();
+    let mut writer = DirWriter::new(target.path().to_path_buf());
+    let manifest = manifest_frame(vec![ManifestEntry {
+        name: "f".to_string(),
+        size: 3,
+    }]);
+    writer.write_frame(manifest).await.unwrap();
+
+    let err = writer.write_frame(DirFrame::FileStart { name: "f".to_string() }).await.unwrap_err();
+
+    assert_eq!(io::ErrorKind::AlreadyExists, err.kind());
+    assert_eq!(b"old".as_slice(), fs::read(target.path().join("f")).unwrap());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn test_symlink_in_target_fails_the_session() {
+    let outside = tempfile::tempdir().unwrap();
+    let target = tempfile::tempdir().unwrap();
+    std::os::unix::fs::symlink(outside.path().join("f"), target.path().join("f")).unwrap();
+    let mut writer = DirWriter::new(target.path().to_path_buf());
+    let manifest = manifest_frame(vec![ManifestEntry {
+        name: "f".to_string(),
+        size: 3,
+    }]);
+    writer.write_frame(manifest).await.unwrap();
+
+    let err = writer.write_frame(DirFrame::FileStart { name: "f".to_string() }).await.unwrap_err();
+
+    assert_eq!(io::ErrorKind::AlreadyExists, err.kind());
+    assert!(
+        !outside.path().join("f").exists(),
+        "no file may be created through the symlink"
+    );
+}
+
+#[tokio::test]
+async fn test_names_equal_on_the_file_system() {
+    let frames = vec![
+        manifest_frame(vec![
+            ManifestEntry {
+                name: "CURRENT".to_string(),
+                size: 5,
+            },
+            ManifestEntry {
+                name: "current".to_string(),
+                size: 7,
+            },
+        ]),
+        DirFrame::FileStart {
+            name: "CURRENT".to_string(),
+        },
+        DirFrame::Chunk {
+            data: b"first".to_vec(),
+        },
+        DirFrame::FileEnd {
+            checksum: crc64(b"first"),
+        },
+        DirFrame::FileStart {
+            name: "current".to_string(),
+        },
+        DirFrame::Chunk {
+            data: b"second!".to_vec(),
+        },
+        DirFrame::FileEnd {
+            checksum: crc64(b"second!"),
+        },
+        DirFrame::End,
+    ];
+
+    // Find out whether the file system of the temporary directories folds case.
+    let probe = tempfile::tempdir().unwrap();
+    fs::write(probe.path().join("CURRENT"), b"").unwrap();
+    let folds_case = probe.path().join("current").exists();
+
+    let target = tempfile::tempdir().unwrap();
+    let res = receive_all(target.path(), frames).await;
+
+    let mut expected = BTreeMap::from([("CURRENT".to_string(), b"first".to_vec())]);
+    if folds_case {
+        // `current` fails at its FileStart and leaves the completed `CURRENT` intact.
+        assert_eq!(io::ErrorKind::AlreadyExists, res.unwrap_err().kind());
+    } else {
+        res.unwrap();
+        expected.insert("current".to_string(), b"second!".to_vec());
+    }
+    assert_eq!(expected, dir_contents(target.path()));
 }
 
 #[tokio::test]
@@ -244,9 +342,7 @@ async fn test_failed_write_fails_the_session() {
     };
     write.file = File::open(target.path().join("f")).await.unwrap();
 
-    let mut digest = checksum_digest();
-    digest.update(b"data");
-    let checksum = digest.finalize();
+    let checksum = crc64(b"data");
 
     // Tokio decides whether the failure surfaces at the Chunk or at the FileEnd.
     let res = async {
