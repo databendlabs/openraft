@@ -6,6 +6,7 @@ use tests::fixtures;
 // The later tests may depend on the earlier ones.
 
 mod t10_current_leader;
+mod t10_last_leader_contact;
 mod t10_leader_last_ack;
 mod t10_metrics_recorder;
 mod t10_purged;

@@ -247,6 +247,7 @@ where
         let leader_id = LeaderIdOf::<C>::new(TermOf::<C>::default(), self.config.id.clone());
         let vote = <VoteOf<C> as RaftVote>::from_leader_id(leader_id.clone(), true);
         self.state.vote.update(C::now(), Duration::default(), vote);
+        self.state.last_leader_contact = None;
 
         // The very first log id
         let log_id = LogIdOf::<C>::new(leader_id.to_committed(), 0);
@@ -698,7 +699,7 @@ where
     ) -> Result<Option<LogIdOf<C>>, RejectAppendEntries<C>> {
         self.vote_handler().update_vote(vote)?;
 
-        // Vote is legal.
+        self.record_leader_contact(vote);
 
         let last = segment.last();
 
@@ -707,6 +708,13 @@ where
         fh.append_entries(segment.prev_log_id, segment.entries);
 
         Ok(last)
+    }
+
+    /// Record an accepted replication vote, even if the append later finds a log conflict.
+    fn record_leader_contact(&mut self, vote: &VoteOf<C>) {
+        if vote.is_committed() && vote.leader_node_id() != &self.config.id {
+            self.state.last_leader_contact = self.state.vote_last_modified();
+        }
     }
 
     /// Install a completely received snapshot on a follower.
@@ -726,6 +734,7 @@ where
         let Some(tx) = vote_res else {
             return;
         };
+        self.record_leader_contact(&vote);
 
         let mut fh = self.following_handler();
 
