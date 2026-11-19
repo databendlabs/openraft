@@ -104,9 +104,13 @@ jobs:
       - name: Setup | Checkout
         uses: actions/checkout@v4
 
+      - name: Build | Jepsen images
+        env:
+          UBUNTU_APT_MIRROR: http://azure.archive.ubuntu.com/ubuntu/
+        run: make -C jepsen build
+
       - name: Test | Jepsen
         run: |
-          make -C jepsen build
           make -C jepsen up
           docker compose -f jepsen/docker/docker-compose.yml exec control lein test
           make -C jepsen ${{ matrix.target }} NEMESIS=${{ matrix.nemesis }} PACKET_MODE=${{ matrix.packet_mode }} TIME_LIMIT=${{ matrix.time_limit }}
