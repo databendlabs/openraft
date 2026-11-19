@@ -1,0 +1,7 @@
+error: add_async_trait can only be used with traits
+ --> tests/add_async_trait/fail/on_struct.rs:1:1
+  |
+1 | #[openraft_macros::add_async_trait]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the attribute macro `openraft_macros::add_async_trait` (in Nightly builds, run with -Z macro-backtrace for more info)
