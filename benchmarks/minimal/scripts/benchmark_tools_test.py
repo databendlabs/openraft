@@ -40,6 +40,19 @@ def pipeline_observations():
                                 "time_in_window_ns": 10, "unoverlapped_time_in_window_ns": 10}}
 
 
+def pipeline_source_observations():
+    probe = pipeline_observations()
+    probe.pop("initial_reads")
+    probe.pop("extension_reads")
+    probe.pop("applies_with_extensions")
+    probe["conservation"].update(metadata_complete=True, source_clocks_monotonic=True)
+    probe.update(schema_version=2, attribution_complete=True, applies_with_multiple_reads=3,
+                 overlap_coverage={"complete": True, "unresolved_in_window": 0},
+                 all_reads={"duration_ns": {"p50_ns": 2, "p99_ns": 9}, "time_in_window_ns": 30,
+                            "unoverlapped_time_in_window_ns": 15})
+    return probe
+
+
 class StatisticsTest(unittest.TestCase):
     def test_each_scenario_rotates_modes_independently_of_row_order(self):
         actual = list(common.schedule(["A", "B"], ["base", "target"], 3))
@@ -233,6 +246,52 @@ class WorkloadTest(unittest.TestCase):
         report = {"window": {"measurement_end_ns": 20}, "apply_pipeline": {"0": probe}}
         actual = runner.pipeline_measurements(report)
         self.assertIsNone(actual["node 0 extended apply fraction"])
+
+    def test_pipeline_source_schema_uses_all_reads_and_actual_groups(self):
+        probe = pipeline_source_observations()
+        report = {"window": {"measurement_end_ns": 20}, "apply_pipeline": {"0": probe}}
+        actual = runner.pipeline_measurements(report)
+        expected = {"node 0 multiple source read apply fraction": 0.6, "node 0 source read p50 ns": 2,
+                    "node 0 source read p99 ns": 9, "node 0 read time in window ns": 30,
+                    "node 0 unoverlapped read time in window ns": 15}
+        self.assertEqual(expected, actual)
+
+    def test_pipeline_unresolved_source_overlap_is_unavailable(self):
+        probe = pipeline_source_observations()
+        probe["overlap_coverage"] = {"complete": False, "unresolved_in_window": 1}
+        probe["all_reads"]["unoverlapped_time_in_window_ns"] = None
+        report = {"window": {"measurement_end_ns": 20}, "apply_pipeline": {"0": probe}}
+        actual = runner.pipeline_measurements(report)
+        expected = {"node 0 multiple source read apply fraction": 0.6, "node 0 source read p50 ns": 2,
+                    "node 0 source read p99 ns": 9, "node 0 read time in window ns": None,
+                    "node 0 unoverlapped read time in window ns": None}
+        self.assertEqual(expected, actual)
+
+    def test_pipeline_retention_overflow_does_not_fabricate_attribution(self):
+        probe = pipeline_source_observations()
+        probe["attribution_complete"] = False
+        probe["conservation"]["metadata_complete"] = False
+        probe["conservation"]["read_entry_assignments"] = False
+        probe["overlap_coverage"]["complete"] = False
+        report = {"window": {"measurement_end_ns": 20}, "apply_pipeline": {"0": probe}}
+        actual = runner.pipeline_measurements(report)
+        expected = {"node 0 multiple source read apply fraction": None, "node 0 source read p50 ns": 2,
+                    "node 0 source read p99 ns": 9, "node 0 read time in window ns": None,
+                    "node 0 unoverlapped read time in window ns": None}
+        self.assertEqual(expected, actual)
+
+    def test_pipeline_source_clock_regression_rejects_precise_geometry(self):
+        probe = pipeline_source_observations()
+        probe["conservation"]["source_clocks_monotonic"] = False
+        report = {"window": {"measurement_end_ns": 20}, "apply_pipeline": {"0": probe}}
+        with self.assertRaisesRegex(ValueError, "source_clocks_monotonic"):
+            runner.pipeline_measurements(report)
+
+    def test_pipeline_unknown_schema_is_rejected_before_assuming_its_fields(self):
+        probe = pipeline_observations()
+        probe["schema_version"] = 3
+        with self.assertRaisesRegex(ValueError, "unsupported pipeline schema version: 3"):
+            runner.pipeline_measurements({"apply_pipeline": {"0": probe}})
 
 
 class ArtifactTest(unittest.TestCase):
