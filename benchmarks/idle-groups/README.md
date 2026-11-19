@@ -24,6 +24,7 @@ cargo run --release --manifest-path benchmarks/idle-groups/Cargo.toml -- --group
 | `--groups`       | 1000      | The number of groups.                                     |
 | `--followers`    | `stub`    | What stands in for the followers: `stub` or `local`.      |
 | `--mode`         | `default` | Which timers stay on: see the modes below.                |
+| `--count-allocs` | off       | Count heap allocations, for `heap_mib` and `allocs/s`.    |
 | `--settle-secs`  | 10        | Seconds to wait after switching the timers.               |
 | `--measure-secs` | 30        | Seconds to measure for.                                   |
 | `--workers`      | 4         | The worker threads of the tokio runtime.                  |
@@ -49,10 +50,21 @@ It prints one line of tab-separated fields:
 - `memory_mib`: the memory the process holds at the end. On macOS this is the physical
   footprint, which counts compressed pages. RSS leaves those out, and macOS compresses the pages
   that idle groups leave untouched. On Linux it is `VmRSS` plus `VmSwap`.
+- `heap_mib`: with `--count-allocs`, the heap memory that the process requested and has not
+  freed at the end, as a wrapper around the system allocator counts it. It counts the full size
+  of each allocation, but the OS backs only the pages that are written to, so it can exceed
+  `memory_mib`.
 - `cpu%`: the CPU time during the measurement, as a share of one core.
+- `allocs/s`: with `--count-allocs`, the heap allocations per second during the measurement,
+  including reallocations.
 - `appends/s`: the AppendEntries requests that the followers received per second.
 - `elections`: how far the highest term of each group grew during the measurement, summed over
   the groups. It stays 0 while every group keeps its leader.
+
+Counting allocations costs CPU: at 5,000 groups with `--followers local`, which make 6.1 million
+allocations a second, it adds 7% to 11% to `cpu%`. Compare `cpu%` only between runs that both
+count or both do not. Without `--count-allocs` the wrapper reads one flag per allocation, and
+`cpu%` stays within the 3% that runs differ by.
 
 To measure a release, point the three openraft dependencies in `Cargo.toml` at it, for example
 `openraft = "=0.10.0"`, `openraft-memstore = "=0.10.0"` and `openraft-multi = "=0.10.0"`.

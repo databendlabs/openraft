@@ -1,6 +1,7 @@
 //! Measure the idle cost of many Raft groups in one process, in the setup of
 //! [#2304](https://github.com/databendlabs/openraft/issues/2304).
 
+mod counting_alloc;
 mod followers;
 mod group_network;
 mod local_members;
@@ -26,6 +27,7 @@ use openraft_memstore::MemStateMachine;
 use openraft_memstore::new_mem_store;
 use openraft_multi::GroupRouter;
 
+use crate::counting_alloc::CountingAlloc;
 use crate::followers::Followers;
 use crate::group_network::GroupNetwork;
 use crate::local_members::LocalMembers;
@@ -35,6 +37,9 @@ use crate::stub_followers::StubFollowers;
 
 pub(crate) type C = openraft_memstore::TypeConfig;
 pub(crate) type Raft = openraft::Raft<C, Arc<MemStateMachine>>;
+
+#[global_allocator]
+static ALLOC: CountingAlloc = CountingAlloc::new();
 
 /// Measure the tasks, memory and CPU of many Raft groups whose members share this process.
 ///
@@ -53,6 +58,10 @@ struct Args {
     /// Which timers stay on once every group has elected its leader.
     #[arg(long, value_enum, default_value_t = Mode::Default)]
     mode: Mode,
+
+    /// Count heap allocations, for the `heap_mib` and `allocs/s` fields. Counting adds CPU.
+    #[arg(long)]
+    count_allocs: bool,
 
     /// Seconds to wait after switching the timers, before measuring.
     #[arg(long, default_value_t = 10)]
@@ -86,6 +95,10 @@ fn main() {
 /// Start `args.groups` groups, elect a leader in each, switch the timers of every member as
 /// `args.mode` says, and measure the process.
 async fn measure(args: &Args) -> Report {
+    if args.count_allocs {
+        ALLOC.start();
+    }
+
     let appends = Arc::new(AtomicU64::new(0));
     let groups = match args.followers {
         Followers::Stub => new_groups(args.groups, 1, StubFollowers::new(appends.clone())).await,
@@ -117,6 +130,7 @@ async fn measure(args: &Args) -> Report {
 
     let appends_before = appends.load(Ordering::Relaxed);
     let terms_before = highest_terms(&groups);
+    let allocs_before = ALLOC.allocs();
     let cpu_before = process_usage::cpu_secs();
     let started = Instant::now();
 
@@ -124,6 +138,7 @@ async fn measure(args: &Args) -> Report {
 
     let elapsed = started.elapsed().as_secs_f64();
     let cpu_after = process_usage::cpu_secs();
+    let allocs_after = ALLOC.allocs();
 
     Report {
         groups: args.groups,
@@ -131,7 +146,9 @@ async fn measure(args: &Args) -> Report {
         mode: args.mode,
         tasks: tokio::runtime::Handle::current().metrics().num_alive_tasks(),
         memory_kib: process_usage::memory_kib(),
+        heap_kib: ALLOC.live_bytes().map(|bytes| bytes / 1024),
         cpu_percent: cpu_before.zip(cpu_after).map(|(before, after)| 100.0 * (after - before) / elapsed),
+        allocs_per_sec: allocs_before.zip(allocs_after).map(|(before, after)| (after - before) as f64 / elapsed),
         appends_per_sec: (appends.load(Ordering::Relaxed) - appends_before) as f64 / elapsed,
         elections: highest_terms(&groups) - terms_before,
     }
@@ -176,6 +193,7 @@ mod tests {
             groups: 3,
             followers,
             mode,
+            count_allocs: true,
             settle_secs: 0,
             measure_secs: 1,
             workers: 2,
@@ -195,6 +213,8 @@ mod tests {
 
         assert!(report.appends_per_sec > 0.0, "got: {report}");
         assert!(report.tasks >= 3, "got: {report}");
+        assert!(report.heap_kib > Some(0), "got: {report}");
+        assert!(report.allocs_per_sec > Some(0.0), "got: {report}");
     }
 
     #[test]
