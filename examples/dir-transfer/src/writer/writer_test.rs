@@ -4,14 +4,17 @@ use std::io;
 use std::path::Path;
 
 use tempfile::TempDir;
+use tokio::fs::File;
 
 use crate::frame::DirFrame;
 use crate::frame::DirManifest;
 use crate::frame::MAX_CHUNK_SIZE;
 use crate::frame::ManifestEntry;
 use crate::frame::PROTOCOL_VERSION;
+use crate::frame::checksum_digest;
 use crate::frame_producer::DirFrameProducer;
 use crate::writer::DirWriter;
+use crate::writer::State;
 
 /// Read a directory into `name -> contents`, asserting it is flat.
 fn dir_contents(dir: &Path) -> BTreeMap<String, Vec<u8>> {
@@ -222,6 +225,44 @@ async fn test_wrong_checksum() {
     };
     *checksum ^= 1;
     assert_rejected(frames).await;
+}
+
+#[tokio::test]
+async fn test_failed_write_fails_the_session() {
+    let target = tempfile::tempdir().unwrap();
+    let mut writer = DirWriter::new(target.path().to_path_buf());
+    let manifest = manifest_frame(vec![ManifestEntry {
+        name: "f".to_string(),
+        size: 4,
+    }]);
+    writer.write_frame(manifest).await.unwrap();
+    writer.write_frame(DirFrame::FileStart { name: "f".to_string() }).await.unwrap();
+
+    // Write through a read-only handle, so the chunk's write fails in the background.
+    let State::InFile(write) = &mut writer.state else {
+        panic!("the writer must be receiving file data");
+    };
+    write.file = File::open(target.path().join("f")).await.unwrap();
+
+    let mut digest = checksum_digest();
+    digest.update(b"data");
+    let checksum = digest.finalize();
+
+    // Tokio decides whether the failure surfaces at the Chunk or at the FileEnd.
+    let res = async {
+        writer.write_frame(DirFrame::Chunk { data: b"data".to_vec() }).await?;
+        writer.write_frame(DirFrame::FileEnd { checksum }).await
+    }
+    .await;
+    let err = res.unwrap_err();
+    assert_ne!(
+        io::ErrorKind::InvalidData,
+        err.kind(),
+        "an I/O error keeps its kind: {err}"
+    );
+
+    let err = writer.finish().await.unwrap_err();
+    assert_eq!(io::ErrorKind::InvalidData, err.kind());
 }
 
 #[tokio::test]
