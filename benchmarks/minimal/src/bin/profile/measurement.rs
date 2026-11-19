@@ -1,5 +1,7 @@
 use std::time::Instant;
 
+#[cfg(feature = "realistic-profiles")]
+use serde::Serialize;
 use serde_json::Value;
 
 use super::Args;
@@ -10,6 +12,7 @@ pub(super) struct Measurement {
     allocations: usize,
     allocated_bytes: usize,
     live_bytes: usize,
+    peak: bool,
 }
 
 impl Measurement {
@@ -19,6 +22,37 @@ impl Measurement {
             allocations: allocator::allocations(),
             allocated_bytes: allocator::allocated_bytes(),
             live_bytes: allocator::live_bytes(),
+            peak: false,
+        }
+    }
+
+    #[cfg(feature = "realistic-profiles")]
+    pub(super) fn start_peak() -> Self {
+        let mut measurement = Self::start();
+        allocator::begin_peak(measurement.live_bytes);
+        measurement.peak = true;
+        measurement
+    }
+
+    #[cfg(feature = "realistic-profiles")]
+    pub(super) fn finish(mut self) -> Observation {
+        assert!(self.peak, "finish requires an allocation-peak phase");
+        let wall_seconds = self.started.elapsed().as_secs_f64();
+        let allocations = allocator::allocations();
+        let allocated_bytes = allocator::allocated_bytes();
+        let live_bytes_at_end = allocator::live_bytes();
+        let observed_peak = allocator::end_peak();
+        let peak_live_bytes = observed_peak.max(live_bytes_at_end);
+        self.peak = false;
+        let peak_extra_live_bytes = peak_live_bytes.saturating_sub(self.live_bytes);
+        Observation {
+            wall_seconds,
+            allocation_events: allocations - self.allocations,
+            requested_bytes: allocated_bytes - self.allocated_bytes,
+            live_bytes_before: self.live_bytes,
+            live_bytes_at_end,
+            peak_live_bytes,
+            peak_extra_live_bytes,
         }
     }
 
@@ -54,6 +88,27 @@ impl Measurement {
             "live_bytes_delta": live_delta,
         })
     }
+}
+
+impl Drop for Measurement {
+    fn drop(&mut self) {
+        if self.peak {
+            allocator::end_peak();
+        }
+    }
+}
+
+/// Raw phase values captured before creating report JSON or releasing the output.
+#[cfg(feature = "realistic-profiles")]
+#[derive(Debug, Serialize)]
+pub(super) struct Observation {
+    pub(super) wall_seconds: f64,
+    pub(super) allocation_events: usize,
+    pub(super) requested_bytes: usize,
+    pub(super) live_bytes_before: usize,
+    pub(super) live_bytes_at_end: usize,
+    pub(super) peak_live_bytes: usize,
+    pub(super) peak_extra_live_bytes: usize,
 }
 
 fn percentile_99(samples: Option<&mut [u64]>) -> Option<u64> {

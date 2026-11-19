@@ -6,6 +6,9 @@
 mod allocator;
 #[path = "profile/measurement.rs"]
 mod measurement;
+#[cfg(feature = "realistic-profiles")]
+#[path = "profile/snapshot.rs"]
+mod snapshot;
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -15,6 +18,7 @@ use std::time::Instant;
 use anyhow::ensure;
 use bench_minimal::network::BenchRaft;
 use bench_minimal::network::Router;
+use bench_minimal::profile::Profile;
 use bench_minimal::store::ClientRequest;
 use clap::Parser;
 use futures::TryStreamExt;
@@ -26,7 +30,7 @@ use openraft::raft::WriteOption;
 const WARMUP_WRITES: usize = 1024;
 const WAIT_TIMEOUT: Duration = Duration::from_secs(30);
 
-#[derive(Clone, Parser)]
+#[derive(Clone, Parser, serde::Serialize)]
 struct Args {
     /// Number of concurrent write clients.
     #[arg(long, default_value_t = 64)]
@@ -43,6 +47,12 @@ struct Args {
     /// Number of snapshots to build after the write workload.
     #[arg(long, default_value_t = 0)]
     snapshots: usize,
+    /// Measure quiescent payload-bearing snapshot builds, outgoing handles, and encoded-buffer
+    /// clones.
+    #[arg(long)]
+    snapshot_allocations: bool,
+    #[command(flatten)]
+    profile: Profile,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -52,10 +62,26 @@ fn main() -> anyhow::Result<()> {
     builder.worker_threads(4);
     builder.enable_all();
     let runtime = builder.build()?;
+    #[cfg(feature = "realistic-profiles")]
+    if args.snapshot_allocations {
+        return runtime.block_on(snapshot::profile(&args));
+    }
     runtime.block_on(profile(&args))
 }
 
 fn validate(args: &Args) -> anyhow::Result<()> {
+    args.profile.validate()?;
+    ensure!(
+        !args.profile.profile || args.snapshot_allocations,
+        "--profile requires --snapshot-allocations in this binary"
+    );
+    if args.snapshot_allocations {
+        ensure!(args.profile.profile, "snapshot-allocations requires --profile");
+        ensure!(args.members == 1, "snapshot-allocations requires one member");
+        ensure!(args.clients == 1, "snapshot-allocations requires one setup client");
+        ensure!(args.batch == 1, "snapshot-allocations requires batch 1");
+        ensure!(args.snapshots > 0, "snapshot-allocations requires positive snapshots");
+    }
     ensure!(args.clients > 0, "clients must be positive");
     ensure!(args.batch > 0, "batch must be positive");
     let valid_members = [1, 3, 5].contains(&args.members);
@@ -100,7 +126,8 @@ async fn create_cluster(args: &Args) -> anyhow::Result<(Router, BenchRaft)> {
     let config = config.validate()?;
     let config = Arc::new(config);
     let members: BTreeSet<_> = (0..args.members).collect();
-    let mut router = Router::new();
+    let profile = args.profile.clone();
+    let mut router = Router::new().with_profile(profile);
     router.new_cluster(config, members).await?;
     let leader = router.get_raft(0);
     Ok((router, leader))
