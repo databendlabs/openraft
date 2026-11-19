@@ -11,6 +11,7 @@ use openraft::network::RaftNetworkFactory;
 use openraft::network::v2::RaftNetworkV2;
 use openraft::raft::TransferLeaderRequest;
 use openraft::raft::TransferLeaderResponse;
+use openraft::type_config::TypeConfigExt;
 use reqwest::Client as HttpClient;
 
 use super::snapshot_stream;
@@ -80,13 +81,23 @@ impl RaftNetworkV2<TypeConfig> for Network {
     ) -> Result<SnapshotResponse, StreamingError> {
         let configured_chunk_size = option.snapshot_chunk_size().unwrap_or(DEFAULT_CHUNK_SIZE);
         let chunk_size = configured_chunk_size.min(dir_transfer::MAX_CHUNK_SIZE);
-        let producer =
-            DirFrameProducer::new(snapshot.snapshot.db_path(), chunk_size).map_err(|e| NetworkError::new(&e))?;
+
+        // Scanning the checkpoint lists the directory and reads every file's metadata, so it runs
+        // on the blocking pool instead of this runtime worker. The clone keeps the directory alive
+        // until the scan ends, even if `cancel` resolves first.
+        let checkpoint = snapshot.snapshot.clone();
+        let scan = TypeConfig::spawn_blocking(move || DirFrameProducer::new(checkpoint.db_path(), chunk_size));
+
+        tokio::pin!(cancel);
+        let producer = tokio::select! {
+            closed = &mut cancel => return Err(StreamingError::Closed(closed)),
+            scanned = scan => scanned.and_then(|producer| producer).map_err(|e| NetworkError::new(&e))?,
+        };
+
         let body =
             snapshot_stream::request_body(&(vote, snapshot.meta), producer).map_err(|e| NetworkError::new(&e))?;
         let request = self.client.post(&self.snapshot_url).body(body).timeout(option.soft_ttl()).send();
 
-        tokio::pin!(cancel);
         let response = tokio::select! {
             closed = &mut cancel => return Err(StreamingError::Closed(closed)),
             response = request => response,
