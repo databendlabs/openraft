@@ -35,6 +35,7 @@ mod wait;
 mod metric_display;
 pub mod recorder;
 mod serde_instant;
+pub(crate) mod update;
 mod wait_condition;
 #[cfg(test)]
 mod wait_test;
