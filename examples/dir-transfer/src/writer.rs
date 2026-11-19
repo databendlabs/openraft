@@ -5,6 +5,7 @@ use std::io;
 use std::path::PathBuf;
 
 use tokio::fs::File;
+use tokio::fs::OpenOptions;
 use tokio::io::AsyncWriteExt;
 
 use crate::frame::ChecksumDigest;
@@ -68,6 +69,11 @@ fn frame_name(frame: &DirFrame) -> &'static str {
 
 impl DirWriter {
     /// Create a writer for the existing, empty directory `target_dir`.
+    ///
+    /// Every manifest file is created as a new file. A name that already exists in `target_dir`
+    /// fails the session with [`io::ErrorKind::AlreadyExists`]: a leftover file, a symlink, or a
+    /// name that the file system treats as equal to an earlier one, such as `current` after
+    /// `CURRENT` on a case-insensitive file system.
     pub fn new(target_dir: PathBuf) -> Self {
         Self {
             target_dir,
@@ -141,7 +147,7 @@ impl DirWriter {
         }
     }
 
-    /// Open the target file after checking the name against the manifest order.
+    /// Create the target file after checking the name against the manifest order.
     async fn start_file(&mut self, index: usize, name: &str) -> io::Result<State> {
         let expected = &self.manifest.files[index].name;
         if name != expected {
@@ -150,7 +156,18 @@ impl DirWriter {
             )));
         }
 
-        let file = File::create(self.target_dir.join(name)).await?;
+        // `create_new` neither truncates an existing file nor follows a symlink.
+        let path = self.target_dir.join(name);
+        let file = match OpenOptions::new().write(true).create_new(true).open(path).await {
+            Ok(file) => file,
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+                return Err(io::Error::new(
+                    io::ErrorKind::AlreadyExists,
+                    format!("file {name:?} already exists in the target directory"),
+                ));
+            }
+            Err(e) => return Err(e),
+        };
         Ok(State::InFile(FileWriteState {
             index,
             file,

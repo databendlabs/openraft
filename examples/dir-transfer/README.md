@@ -30,6 +30,10 @@ with one `FileStart`/`Chunk`/`FileEnd` group per manifest entry, in manifest ord
 - `FileEnd` carries a CRC-64/XZ checksum of the complete file contents.
 - Every violation fails with `io::ErrorKind::InvalidData`; a failed session is discarded and
   restarted from scratch.
+- A file name that already exists in the target directory fails with
+  `io::ErrorKind::AlreadyExists`: a leftover file, a symlink, or a name that the target file system
+  treats as equal to an earlier one, such as `current` after `CURRENT` on a case-insensitive file
+  system.
 
 ## Transport contract
 
