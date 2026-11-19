@@ -22,3 +22,6 @@ mod byte_rate;
 #[cfg(feature = "apply-pipeline")]
 #[openraft::macros::since(version = "0.10.1")]
 pub mod apply_pipeline;
+
+#[cfg(feature = "realistic-profiles")]
+mod snapshot_data;

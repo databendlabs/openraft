@@ -473,4 +473,61 @@ mod budget_tests {
         assert_eq!(0, report["delay"]["requested_and_elapsed_ns"][1][0]);
         Ok(())
     }
+
+    #[tokio::test]
+    async fn shared_snapshots_keep_old_generations_and_cached_state_immutable() -> anyhow::Result<()> {
+        let profile = Arc::new(Profile {
+            profile: true,
+            payload_bytes: 256,
+            hot_key_percent: 100,
+            duplicate_capacity: 2,
+            ..Profile::default()
+        });
+        let mut source = Arc::new(StateMachineStore::new().with_profile(profile.clone(), 0));
+        let first = openraft::testing::log_id::<TypeConfig>(1, 0, 1);
+        let request = profile.request(1)?;
+        let entry = EntryOf::<TypeConfig>::new(first, EntryPayload::Normal(request));
+        source.apply(futures::stream::iter([Ok((entry, None))])).await?;
+        let old = source.build_snapshot().await?;
+        let old_bytes = old.snapshot.get_ref();
+        let old_state: serde_json::Value = serde_json::from_slice(old_bytes)?;
+        let cached = source.get_current_snapshot().await?.unwrap();
+        let old_pointer = old.snapshot.get_ref().as_ptr();
+        let cached_pointer = cached.snapshot.get_ref().as_ptr();
+        let shared = std::ptr::eq(old_pointer, cached_pointer);
+        assert!(shared);
+        let length = old.snapshot.get_ref().len();
+        let capacity = old.snapshot.get_ref().capacity();
+        assert_eq!(length, capacity);
+
+        let second = openraft::testing::log_id::<TypeConfig>(1, 0, 2);
+        let request = profile.request(2)?;
+        let entry = EntryOf::<TypeConfig>::new(second, EntryPayload::Normal(request));
+        source.apply(futures::stream::iter([Ok((entry, None))])).await?;
+        let next = source.build_snapshot().await?;
+        let retained: serde_json::Value = serde_json::from_slice(old.snapshot.get_ref())?;
+        assert_eq!(old_state, retained);
+        assert_eq!(Some(first), old.meta.last_log_id);
+        assert_eq!(Some(second), next.meta.last_log_id);
+        let expected = source.profile_state().await;
+        let expected = serde_json::to_value(expected)?;
+        let mut outgoing = source.get_current_snapshot().await?.unwrap();
+        outgoing.snapshot.get_mut()[0] = b'X';
+        let intact = source.get_current_snapshot().await?.unwrap();
+        let intact_state: serde_json::Value = serde_json::from_slice(intact.snapshot.get_ref())?;
+        assert_eq!(expected, intact_state);
+
+        let mut target = Arc::new(StateMachineStore::new().with_profile(profile, 1));
+        target.install_snapshot(&next.meta, next.snapshot).await?;
+        let actual = target.profile_state().await;
+        let actual = serde_json::to_value(actual)?;
+        assert_eq!(expected, actual);
+        let installed = target.get_current_snapshot().await?.unwrap();
+        let installed_pointer = installed.snapshot.get_ref().as_ptr();
+        let intact_pointer = intact.snapshot.get_ref().as_ptr();
+        let shared = std::ptr::eq(installed_pointer, intact_pointer);
+        assert!(shared);
+        assert_eq!(Some(second), installed.meta.last_log_id);
+        Ok(())
+    }
 }
