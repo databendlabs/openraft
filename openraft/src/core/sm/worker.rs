@@ -1,9 +1,13 @@
 use std::future::Future;
+use std::future::pending;
 use std::pin::Pin;
 
 use display_more::DisplayOptionExt;
+use futures_util::FutureExt;
 use futures_util::StreamExt;
 use futures_util::TryStreamExt;
+use futures_util::future::MaybeDone;
+use futures_util::future::maybe_done;
 use tracing::Instrument;
 
 use crate::OptionalSend;
@@ -13,8 +17,7 @@ use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::async_runtime::MpscReceiver;
 use crate::async_runtime::OneshotSender;
-use crate::async_runtime::Select2;
-use crate::async_runtime::mpsc::PeekableReceiver;
+use crate::async_runtime::Select3;
 use crate::core::ApplyResult;
 use crate::core::notification::Notification;
 use crate::core::sm::Command;
@@ -25,8 +28,6 @@ use crate::core::sm::command_receiver::CommandReceiver;
 use crate::core::sm::handle::Handle;
 use crate::entry::RaftEntry;
 use crate::errors::StorageIOResult;
-#[cfg(doc)]
-use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::storage::v2::entry_responder::EntryResponderBuilder;
 use crate::type_config::TypeConfigExt;
@@ -36,11 +37,16 @@ use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::SnapshotOf;
 use crate::type_config::async_runtime::mpsc::MpscSender;
 
-pub(crate) struct Worker<C, SM, LR>
+mod job;
+mod pipeline;
+
+use self::job::Job;
+use self::pipeline::Pipeline;
+
+pub(crate) struct Worker<C, SM>
 where
     C: RaftTypeConfig,
     SM: RaftStateMachine<C>,
-    LR: RaftLogReader<C>,
 {
     /// The ID of this Raft node, used to tag worker logs for correlation with core logs.
     id: C::NodeId,
@@ -48,159 +54,118 @@ where
     /// The application state machine implementation.
     state_machine: SM,
 
-    /// Read logs from the [`RaftLogStorage`] implementation to apply them to the state machine.
-    log_reader: LR,
-
-    /// Read command from RaftCore to execute.
-    ///
-    /// Peekable so that collecting `Apply` commands into a batch can leave any other command
-    /// queued.
-    cmd_rx: PeekableReceiver<CommandReceiver<C, SM>, Command<C, SM>>,
-
     /// Send back the result of the command to RaftCore.
     resp_tx: MpscSenderOf<C, Notification<C>>,
 }
 
-impl<C, SM, LR> Worker<C, SM, LR>
+impl<C, SM> Worker<C, SM>
 where
     C: RaftTypeConfig,
     SM: RaftStateMachine<C>,
-    LR: RaftLogReader<C>,
 {
     /// Spawn a new state machine worker, return a controlling handle.
-    pub(crate) fn spawn(
+    pub(crate) fn spawn<LR>(
         id: C::NodeId,
         state_machine: SM,
         log_reader: LR,
         resp_tx: MpscSenderOf<C, Notification<C>>,
         cmd_channel: (MpscSenderOf<C, Command<C, SM>>, CommandReceiver<C, SM>),
         span: tracing::Span,
-    ) -> Handle<C, SM> {
+    ) -> Handle<C, SM>
+    where
+        LR: RaftLogReader<C>,
+    {
         let (cmd_tx, cmd_rx) = cmd_channel;
 
         let worker = Worker {
             id,
             state_machine,
-            log_reader,
-            cmd_rx: cmd_rx.peekable(),
             resp_tx,
         };
 
-        let join_handle = worker.do_spawn(span);
+        let join_handle = worker.do_spawn(log_reader, cmd_rx, span);
 
         Handle { cmd_tx, join_handle }
     }
 
-    fn do_spawn(mut self, span: tracing::Span) -> JoinHandleOf<C, ()> {
-        let fu = async move {
-            let res = self.worker_loop().await;
-
-            if let Err(err) = res {
-                tracing::error!("{} while execute state machine command", err,);
-
-                self.resp_tx
-                    .send(Notification::StateMachine {
-                        command_result: CommandResult { result: Err(err) },
-                    })
-                    .await
-                    .ok();
+    fn do_spawn<LR>(self, reader: LR, commands: CommandReceiver<C, SM>, span: tracing::Span) -> JoinHandleOf<C, ()>
+    where LR: RaftLogReader<C> {
+        let errors = self.resp_tx.clone();
+        let future = async move {
+            if let Err(error) = self.worker_loop(reader, commands).await {
+                tracing::error!(%error, "state machine worker failed");
+                let result = CommandResult { result: Err(error) };
+                let notification = Notification::StateMachine { command_result: result };
+                errors.send(notification).await.ok();
             }
         };
-        C::spawn(fu.instrument(span))
+        C::spawn(future.instrument(span))
     }
 
-    /// Run commands in the order RaftCore sent them, reading each apply batch while the previous
-    /// one is applying.
-    ///
-    /// At most two things are in flight: the batch being applied and the batch being read. Each
-    /// round applies the batch read in the previous round and keeps reading contiguous `Apply`
-    /// commands that arrive while it applies, up to `MAX_PREFETCH_ENTRIES`. A prefetch completed
-    /// during apply keeps its final queued tail; one that outlasted apply starts promptly without
-    /// another serial read.
-    /// Every batch is read into memory before it is applied, so `apply()` never borrows
-    /// `log_reader` and one reader serves every read.
-    #[tracing::instrument(level = "debug", skip_all)]
-    async fn worker_loop(&mut self) -> Result<(), StorageError<C>> {
-        // The flag permits a final tail when prefetch finished while apply/notification was pending.
-        let mut read_ahead: Option<(ApplyBatch<C>, bool)> = None;
+    /// Coordinate retained input, owned reads, and owned state-machine jobs.
+    #[tracing::instrument(level = "debug", skip_all, fields(id = %self.id))]
+    async fn worker_loop<LR>(self, reader: LR, commands: CommandReceiver<C, SM>) -> Result<(), StorageError<C>>
+    where LR: RaftLogReader<C> {
+        let input = futures_util::stream::unfold(commands, Self::receive);
+        let reading = None;
+        let applying = None;
+        futures_util::pin_mut!(input, reading, applying);
+        let mut machine = Some(self);
+        let mut reader = Some(reader);
+        let mut pipeline = Pipeline::default();
 
         loop {
-            let batch = match read_ahead.take() {
-                Some((mut batch, extend_tail)) => {
-                    // The commands queued while the previous batch applied continue this batch.
-                    // Applying them now costs one read, which is not overlapped; leaving them
-                    // queued would make them wait for this whole `apply()`.
-                    if extend_tail
-                        && let Some(mut extension) = Self::take_queued_applies(&mut self.cmd_rx, batch.end(), u64::MAX)
-                    {
-                        tracing::debug!("extend read-ahead Apply with: [{},{}]", extension.first, extension.last);
-                        Self::read(&mut self.log_reader, &mut extension).await;
-                        batch.extend(extension);
-                    }
-                    batch
-                }
-                None => {
-                    // Nothing was read ahead, so wait for a command. An `Apply` is read here,
-                    // without an apply to overlap.
-                    // The peeked reference must end before the awaits below: `Command` is not
-                    // `Sync`, so holding it across an await would make the worker future `!Send`.
-                    let apply_since = {
-                        let Some(cmd) = self.cmd_rx.peek().await else {
-                            tracing::info!("{}: rx closed, state machine worker quit", func_name!());
-                            return Ok(());
-                        };
-                        tracing::debug!("RAFT_event id={:<2}  input: {:?}", self.id, cmd);
-                        match cmd {
-                            Command::Apply { first, .. } => Some(first.index()),
-                            _ => None,
-                        }
-                    };
-                    let Some(since) = apply_since else {
-                        let cmd = self.cmd_rx.try_recv().expect("the peeked command is queued");
-                        self.run_command(cmd).await?;
-                        continue;
-                    };
-                    let mut batch = Self::take_queued_applies(&mut self.cmd_rx, since, u64::MAX)
-                        .expect("the peeked command is an Apply");
-                    Self::read(&mut self.log_reader, &mut batch).await;
-                    batch
-                }
-            };
+            if let Some((worker, result)) = Self::completed(applying.as_mut()) {
+                result?;
+                machine = Some(worker);
+                pipeline.machine_finished();
+            }
+            pipeline.collect_ready(&mut input);
+            if let Some((returned, batch)) = Self::completed(reading.as_mut()) {
+                reader = Some(returned);
+                pipeline.read_finished(batch);
+            }
 
-            let since = batch.end();
-            let applying = Self::apply_and_notify(&mut self.state_machine, &self.resp_tx, batch);
-            futures_util::pin_mut!(applying);
-            loop {
-                let ready = Self::command_ready(&mut self.cmd_rx);
-                match C::select2(applying.as_mut(), ready).await {
-                    Select2::First(result) => {
-                        result?;
-                        break;
+            // Completed reads were coalesced above. Loaded work never waits for new I/O.
+            let machine_idle = machine.is_some();
+            let reader_idle = reader.is_some();
+            let next = pipeline.schedule(machine_idle, reader_idle);
+            if let Some(job) = next {
+                match job {
+                    Job::Read(batch) => {
+                        let owned = reader.take().expect("the reader is idle");
+                        let future = Self::read_owned(owned, batch);
+                        let future = maybe_done(future);
+                        let scheduled = Some(future);
+                        reading.set(scheduled);
                     }
-                    Select2::Second(_) => {}
-                }
-                let next_index = match &read_ahead {
-                    Some((batch, _)) => batch.end(),
-                    None => since,
-                };
-                let remaining = MAX_PREFETCH_ENTRIES - (next_index - since);
-                let next = Self::take_queued_applies(&mut self.cmd_rx, next_index, remaining);
-                let Some(mut next) = next else {
-                    applying.await?;
-                    break;
-                };
-                let apply_finished =
-                    Self::read_during_apply(applying.as_mut(), &mut self.log_reader, &mut next).await?;
-                match &mut read_ahead {
-                    Some((batch, extend_tail)) => {
-                        batch.extend(next);
-                        *extend_tail = !apply_finished;
+                    job => {
+                        let owned = machine.take().expect("the state machine is idle");
+                        let future = owned.run_job(job);
+                        let future = maybe_done(future);
+                        let scheduled = Some(future);
+                        applying.set(scheduled);
                     }
-                    None => read_ahead = Some((next, !apply_finished)),
                 }
-                if apply_finished {
-                    break;
+                continue;
+            }
+            if pipeline.finished(machine_idle, reader_idle) {
+                return Ok(());
+            }
+            let receive = pipeline.can_receive();
+            let incoming = async {
+                if !receive {
+                    return pending().await;
                 }
+                input.next().await
+            };
+            let apply_slot = applying.as_mut();
+            let apply_done = Self::wait_job(apply_slot);
+            let read_slot = reading.as_mut();
+            let read_done = Self::wait_job(read_slot);
+            let selected = C::select3(apply_done, read_done, incoming).await;
+            if let Select3::Third(command) = selected {
+                pipeline.receive(command);
             }
         }
     }
@@ -248,55 +213,15 @@ where
         Ok(())
     }
 
-    /// Take the `Apply` commands queued right now, starting at `since`, as one batch.
-    ///
-    /// RaftCore sends one `Apply` each time the committed index advances, so while the state
-    /// machine is busy, many small `Apply` commands queue up. Applying them as one batch pays the
-    /// per-call cost of `entries_stream()` and `apply()` once instead of once per command.
-    ///
-    /// Only whole commands fitting `max_entries` are taken. The first command that cannot join
-    /// the range stays in `cmd_rx` and runs next, so commands retain their order. Returns `None`
-    /// when the next command cannot start this batch.
-    fn take_queued_applies(
-        cmd_rx: &mut PeekableReceiver<CommandReceiver<C, SM>, Command<C, SM>>,
-        since: u64,
-        max_entries: u64,
-    ) -> Option<ApplyBatch<C>> {
-        let mut batch: Option<ApplyBatch<C>> = None;
-        let end = since.saturating_add(max_entries);
-
-        while let Ok(Command::Apply { first, last, .. }) = cmd_rx.try_peek()
-            && first.index() == batch.as_ref().map_or(since, ApplyBatch::end)
-            && last.index() < end
-        {
-            let Ok(Command::Apply {
-                first,
-                last,
-                client_resp_channels,
-            }) = cmd_rx.try_recv()
-            else {
-                unreachable!("the peeked command is an Apply");
-            };
-
-            match &mut batch {
-                None => batch = Some(ApplyBatch::new(first, last, client_resp_channels)),
-                Some(batch) => {
-                    tracing::debug!("merge queued Apply: [{},{}]", first, last);
-                    batch.last = last;
-                    batch.client_resp_channels.extend(client_resp_channels);
-                }
-            }
-        }
-        batch
-    }
-
-    /// Read the entries of `batch` into `batch.entries`.
-    ///
-    /// The buffer holds the entries of one batch, which is at most the committed but unapplied
-    /// range that a single `Apply` command can already cover.
-    async fn read(reader: &mut LR, batch: &mut ApplyBatch<C>) {
-        let stream = reader.entries_stream(batch.since()..batch.end()).await;
-        batch.entries = stream.collect().await;
+    async fn read_owned<LR>(mut reader: LR, mut batch: ApplyBatch<C>) -> (LR, ApplyBatch<C>)
+    where LR: RaftLogReader<C> {
+        let since = batch.since();
+        let end = batch.end();
+        let range = since..end;
+        let stream = reader.entries_stream(range).await;
+        let entries = stream.collect().await;
+        batch.entries = entries;
+        (reader, batch)
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
@@ -416,31 +341,34 @@ where
         Ok(())
     }
 
-    async fn command_ready(cmd_rx: &mut PeekableReceiver<CommandReceiver<C, SM>, Command<C, SM>>) -> bool {
-        let command = cmd_rx.peek().await;
-        command.is_some()
+    async fn run_job(mut self, job: Job<C, SM>) -> (Self, Result<(), StorageError<C>>) {
+        let result = match job {
+            Job::Apply(batch) => Self::apply_and_notify(&mut self.state_machine, &self.resp_tx, batch).await,
+            Job::Command(command) => self.run_command(command).await,
+            Job::Read(_) => unreachable!("reads own the reader instead of the state machine"),
+        };
+        (self, result)
     }
 
-    /// Complete a successful worker's read before reusing its generic, possibly cancellation-unsafe
-    /// reader. Return whether the apply/notification future finished before the read. An apply
-    /// error can cancel the read because the worker exits.
-    async fn read_during_apply<F>(
-        applying: Pin<&mut F>,
-        reader: &mut LR,
-        batch: &mut ApplyBatch<C>,
-    ) -> Result<bool, StorageError<C>>
-    where
-        F: Future<Output = Result<(), StorageError<C>>> + OptionalSend,
-    {
-        let reading = Self::read(reader, batch);
-        futures_util::pin_mut!(reading);
-        match C::select2(applying, reading.as_mut()).await {
-            Select2::First(result) => {
-                result?;
-                reading.await;
-                Ok(true)
-            }
-            Select2::Second(()) => Ok(false),
+    async fn receive(mut receiver: CommandReceiver<C, SM>) -> Option<(Command<C, SM>, CommandReceiver<C, SM>)> {
+        let command = receiver.recv().await?;
+        Some((command, receiver))
+    }
+
+    fn completed<F>(mut slot: Pin<&mut Option<MaybeDone<F>>>) -> Option<F::Output>
+    where F: Future {
+        let mut future = slot.as_mut().as_pin_mut()?;
+        future.as_mut().now_or_never()?;
+        let output = future.take_output();
+        slot.set(None);
+        output
+    }
+
+    async fn wait_job<F>(slot: Pin<&mut Option<MaybeDone<F>>>)
+    where F: Future + OptionalSend {
+        match slot.as_pin_mut() {
+            Some(future) => future.await,
+            None => pending().await,
         }
     }
 }
