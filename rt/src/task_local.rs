@@ -28,13 +28,26 @@ use pin_project_lite::pin_project;
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
+/// # mod std {}
+/// # type Option = ();
+/// # #[allow(non_upper_case_globals)]
+/// # const None: ::std::option::Option<u32> = Some(42);
+/// use openraft_rt::task_local;
+///
 /// task_local! {
 ///     pub static ONE: u32;
 ///
 ///     #[allow(unused)]
 ///     static TWO: f32;
 /// }
+///
+/// let before = ONE.try_get();
+/// assert!(before.is_err());
+/// let value = ONE.sync_scope(1, || ONE.get());
+/// assert_eq!(value, 1);
+/// let after = ONE.try_get();
+/// assert!(after.is_err());
 /// ```
 ///
 /// See [`LocalKey`] documentation for more information.
@@ -59,8 +72,10 @@ macro_rules! __task_local_inner {
     ($(#[$attr:meta])* $vis:vis $name:ident, $t:ty) => {
         $(#[$attr])*
         $vis static $name: $crate::task_local::LocalKey<$t> = {
-            std::thread_local! {
-                static __KEY: std::cell::RefCell<Option<$t>> = const { std::cell::RefCell::new(None) };
+            ::std::thread_local! {
+                static __KEY: ::std::cell::RefCell<::std::option::Option<$t>> = const {
+                    ::std::cell::RefCell::new(::std::option::Option::None)
+                };
             }
 
             $crate::task_local::LocalKey { inner: __KEY }
