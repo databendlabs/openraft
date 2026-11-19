@@ -13,9 +13,11 @@ pub(crate) mod utils;
 mod variant_name;
 
 use proc_macro::TokenStream;
+use proc_macro2::Span;
 use quote::quote;
 use since::Since;
 use syn::Item;
+use syn::ItemTrait;
 use syn::ReturnType;
 use syn::TraitItem;
 use syn::Type;
@@ -53,66 +55,65 @@ use syn::token::RArrow;
 /// }
 /// ```
 ///
-/// Note: This proc macro can only be used with traits.
-///
-/// # Panics
-///
-/// This proc macro will panic if used on anything other than trait definitions.
+/// Note: This proc macro can only be used with traits. Applying it to any other item is a compile
+/// error, with or without `single-threaded`.
 #[proc_macro_attribute]
 pub fn add_async_trait(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let input = match syn::parse::<Item>(item.clone()) {
+        Ok(Item::Trait(input)) => input,
+        Ok(_) => {
+            let e = syn::Error::new(Span::call_site(), "add_async_trait can only be used with traits");
+            return utils::token_stream_with_error(item, e);
+        }
+        Err(e) => return utils::token_stream_with_error(item, e),
+    };
+
     if cfg!(feature = "single-threaded") {
-        allow_non_send_bounds(item)
+        allow_non_send_bounds(input)
     } else {
-        add_send_bounds(item)
+        add_send_bounds(input)
     }
 }
 
-fn allow_non_send_bounds(item: TokenStream) -> TokenStream {
+fn allow_non_send_bounds(input: ItemTrait) -> TokenStream {
     // `async_fn_in_trait` requires the user to explicitly specify the `Send` bound for public
     // trait methods, however the `single-threaded` feature renders the requirement irrelevant.
-    let item: proc_macro2::TokenStream = item.into();
     quote! {
         #[allow(async_fn_in_trait)]
-        #item
+        #input
     }
     .into()
 }
 
-fn add_send_bounds(item: TokenStream) -> TokenStream {
+fn add_send_bounds(mut input: ItemTrait) -> TokenStream {
     let default_return_type: Box<Type> = parse_str("impl std::future::Future<Output = ()> + Send").unwrap();
 
-    match parse_macro_input!(item) {
-        Item::Trait(mut input) => {
-            for item in input.items.iter_mut() {
-                // for each async function definition
-                let TraitItem::Fn(function) = item else { continue };
-                if function.sig.asyncness.is_none() {
-                    continue;
-                };
+    for item in input.items.iter_mut() {
+        // for each async function definition
+        let TraitItem::Fn(function) = item else { continue };
+        if function.sig.asyncness.is_none() {
+            continue;
+        };
 
-                // remove async from signature
-                function.sig.asyncness = None;
+        // remove async from signature
+        function.sig.asyncness = None;
 
-                // wrap the return type in a `Future`
-                function.sig.output = match &function.sig.output {
-                    ReturnType::Default => ReturnType::Type(RArrow::default(), default_return_type.clone()),
-                    ReturnType::Type(arrow, t) => {
-                        let tokens = quote!(impl std::future::Future<Output = #t> + Send);
-                        ReturnType::Type(*arrow, parse2(tokens).unwrap())
-                    }
-                };
-
-                // if a body is defined, wrap it in an async block
-                let Some(body) = &function.default else { continue };
-                let body = parse2(quote!({ async move #body })).unwrap();
-                function.default = Some(body);
+        // wrap the return type in a `Future`
+        function.sig.output = match &function.sig.output {
+            ReturnType::Default => ReturnType::Type(RArrow::default(), default_return_type.clone()),
+            ReturnType::Type(arrow, t) => {
+                let tokens = quote!(impl std::future::Future<Output = #t> + Send);
+                ReturnType::Type(*arrow, parse2(tokens).unwrap())
             }
+        };
 
-            quote!(#input).into()
-        }
-
-        _ => panic!("add_async_trait can only be used with traits"),
+        // if a body is defined, wrap it in an async block
+        let Some(body) = &function.default else { continue };
+        let body = parse2(quote!({ async move #body })).unwrap();
+        function.default = Some(body);
     }
+
+    quote!(#input).into()
 }
 
 /// Add a `Since` line of doc, such as `/// Since: 1.0.0`.
