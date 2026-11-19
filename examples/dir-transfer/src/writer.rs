@@ -70,6 +70,9 @@ fn frame_name(frame: &DirFrame) -> &'static str {
 impl DirWriter {
     /// Create a writer for the existing, empty directory `target_dir`.
     ///
+    /// A relative `target_dir` is resolved against the current working directory when the
+    /// `Manifest` frame is accepted, so every file of the session lands in one directory.
+    ///
     /// Every manifest file is created as a new file. A name that already exists in `target_dir`
     /// fails the session with [`io::ErrorKind::AlreadyExists`]: a leftover file, a symlink, or a
     /// name that the file system treats as equal to an earlier one, such as `current` after
@@ -117,7 +120,8 @@ impl DirWriter {
         dir.sync_all().await
     }
 
-    /// Validate the manifest: version, and every file name before any filesystem write.
+    /// Validate the manifest: version, and every file name before any filesystem write. Then fix a
+    /// relative target directory to the current working directory for the rest of the session.
     fn accept_manifest(&mut self, manifest: DirManifest) -> io::Result<State> {
         if manifest.format_version != PROTOCOL_VERSION {
             return Err(invalid_data(format!(
@@ -134,6 +138,7 @@ impl DirWriter {
             }
         }
 
+        self.target_dir = std::path::absolute(&self.target_dir)?;
         self.manifest = manifest;
         Ok(self.next_file_state(0))
     }
