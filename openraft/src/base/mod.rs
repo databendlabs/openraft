@@ -32,6 +32,7 @@ pub(crate) mod multi_range_map;
 pub(crate) mod range_map;
 pub(crate) mod range_values;
 pub(crate) mod shared_id_generator;
+pub(crate) mod task_group;
 
 pub use openraft_rt::BoxAny;
 pub use openraft_rt::BoxAsyncOnceMut;
