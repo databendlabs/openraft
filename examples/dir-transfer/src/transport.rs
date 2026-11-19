@@ -4,6 +4,7 @@ use std::future::Future;
 use std::io;
 
 use crate::frame::DirFrame;
+use crate::frame::invalid_data;
 use crate::frame_producer::DirFrameProducer;
 use crate::writer::DirWriter;
 
@@ -27,8 +28,14 @@ pub trait FrameSource {
 }
 
 /// Send one complete session: every frame of `producer` into `sink`.
+///
+/// If `producer` has already emitted a frame, this returns [`io::ErrorKind::InvalidData`]
+/// before sending anything to `sink`.
 pub async fn send_dir<S>(mut producer: DirFrameProducer, sink: &mut S) -> io::Result<()>
 where S: FrameSink {
+    if !producer.is_fresh() {
+        return Err(invalid_data("send_dir requires a fresh producer"));
+    }
     while let Some(frame) = producer.next_frame().await? {
         sink.send_frame(frame).await?;
     }
@@ -172,5 +179,23 @@ mod tests {
         let err = send_dir(producer, &mut FailingSink { remaining: 2 }).await.unwrap_err();
 
         assert_eq!(io::ErrorKind::ConnectionReset, err.kind());
+    }
+
+    #[tokio::test]
+    async fn test_send_rejects_used_producer() {
+        let dir = tempfile::tempdir().unwrap();
+        for consumed in [1, 2] {
+            let mut producer = DirFrameProducer::new(dir.path(), 4).unwrap();
+            for _ in 0..consumed {
+                producer.next_frame().await.unwrap().unwrap();
+            }
+            let mut sink = QueueTransport::default();
+
+            let err = send_dir(producer, &mut sink).await.unwrap_err();
+
+            let kind = err.kind();
+            assert_eq!(io::ErrorKind::InvalidData, kind);
+            assert_eq!(VecDeque::<DirFrame>::new(), sink.frames);
+        }
     }
 }
