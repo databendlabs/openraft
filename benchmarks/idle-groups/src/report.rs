@@ -17,8 +17,17 @@ pub(crate) struct Report {
     /// [`memory_kib()`](crate::process_usage::memory_kib) reads it.
     pub(crate) memory_kib: Option<u64>,
 
+    /// The heap memory requested and not yet freed at the end of the measurement, in KiB, as
+    /// [`CountingAlloc`](crate::counting_alloc::CountingAlloc) counts it, or `None` without
+    /// `--count-allocs`.
+    pub(crate) heap_kib: Option<u64>,
+
     /// The CPU time of the process during the measurement, as a percentage of one core.
     pub(crate) cpu_percent: Option<f64>,
+
+    /// The heap allocations per second during the measurement, including reallocations, or `None`
+    /// without `--count-allocs`.
+    pub(crate) allocs_per_sec: Option<f64>,
 
     /// The AppendEntries requests the followers received per second.
     pub(crate) appends_per_sec: f64,
@@ -53,9 +62,22 @@ impl fmt::Display for Report {
             )?,
             None => write!(f, "\tmemory_mib=n/a\tmemory_kib/group=n/a")?,
         }
+        match self.heap_kib {
+            Some(kib) => write!(
+                f,
+                "\theap_mib={:.0}\theap_kib/group={:.0}",
+                kib as f64 / 1024.0,
+                per_group(kib as f64)
+            )?,
+            None => write!(f, "\theap_mib=n/a\theap_kib/group=n/a")?,
+        }
         match self.cpu_percent {
             Some(cpu) => write!(f, "\tcpu%={cpu:.1}")?,
             None => write!(f, "\tcpu%=n/a")?,
+        }
+        match self.allocs_per_sec {
+            Some(allocs) => write!(f, "\tallocs/s={allocs:.0}")?,
+            None => write!(f, "\tallocs/s=n/a")?,
         }
         write!(f, "\tappends/s={:.0}", self.appends_per_sec)?;
         write!(f, "\telections={}", self.elections)
