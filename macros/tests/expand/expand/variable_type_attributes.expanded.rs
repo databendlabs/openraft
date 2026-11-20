@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 fn main() {
     let c: u8;
     #[allow(dead_code)]

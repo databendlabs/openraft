@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 fn g() -> u8 {
     1
 }

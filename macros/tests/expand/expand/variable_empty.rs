@@ -1,7 +1,9 @@
+#![allow(unused_variables)]
+
 fn main() {
     openraft_macros::expand!(
         !KEYED,
-        (K, T, V) => {let K T V;},
+        (K, M, V) => {M let K: u8 V;},
         (c, , ,),
         (c, , = 1 ),
     );

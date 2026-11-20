@@ -1,4 +1,5 @@
+#![allow(unused_variables)]
 fn main() {
-    let c;
-    let c = 1;
+    let c: u8;
+    let c: u8 = 1;
 }
