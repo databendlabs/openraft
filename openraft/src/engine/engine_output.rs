@@ -9,8 +9,6 @@ use crate::engine::pending_responds::PendingResponds;
 use crate::engine::respond_command::PendingRespond;
 use crate::storage::RaftStateMachine;
 
-pub(crate) const INITIAL_QUEUE_CAPACITY: usize = 64;
-
 /// The entry of output from Engine to the runtime.
 #[derive(Debug)]
 pub(crate) struct EngineOutput<C, SM = ()>
@@ -30,6 +28,8 @@ where
     C: RaftTypeConfig,
     SM: RaftStateMachine<C>,
 {
+    /// Many Raft groups in one process each hold these queues, so every queue starts without a
+    /// buffer. A queue keeps the capacity it grows to.
     fn default() -> Self {
         Self {
             commands: VecDeque::new(),
@@ -43,14 +43,6 @@ where
     C: RaftTypeConfig,
     SM: RaftStateMachine<C>,
 {
-    pub(crate) fn new(command_buffer_size: usize) -> Self {
-        let pending_capacity = INITIAL_QUEUE_CAPACITY;
-        Self {
-            commands: VecDeque::with_capacity(command_buffer_size),
-            pending_responds: PendingResponds::new(pending_capacity),
-        }
-    }
-
     pub(crate) fn len(&self) -> usize {
         self.commands.len()
     }
@@ -111,7 +103,7 @@ where
     pub(crate) fn pop_command(&mut self) -> Option<Command<C, SM>> {
         let cmd = self.commands.pop_front();
         // A drained VecDeque keeps its head where the last pop left it, so each
-        // command would write the next slot until the whole preallocated buffer is
+        // command would write the next slot until the whole allocated buffer is
         // resident. `clear()` on an empty queue moves the head back to slot 0.
         if self.commands.is_empty() {
             self.commands.clear();
@@ -154,6 +146,7 @@ mod tests {
     use super::EngineOutput;
     use crate::batch::Batch;
     use crate::engine::Command;
+    use crate::engine::Engine;
     use crate::engine::testing::UTConfig;
     use crate::engine::testing::UTLeaderId;
     use crate::impls::Vote;
@@ -168,8 +161,24 @@ mod tests {
     }
 
     #[test]
+    fn test_new_engine_holds_no_queue_buffers() {
+        let engine = Engine::<UTConfig>::testing_default(0);
+        let output = &engine.output;
+        let pending = &output.pending_responds;
+
+        let capacities = [
+            output.commands.capacity(),
+            pending.on_log_io.capacity(),
+            pending.on_log_flush.capacity(),
+            pending.on_apply.capacity(),
+            pending.on_snapshot.capacity(),
+        ];
+        assert_eq!([0; 5], capacities);
+    }
+
+    #[test]
     fn test_pop_command_reuses_slot_zero_once_empty() {
-        let mut output: EngineOutput<UTConfig> = EngineOutput::new(8);
+        let mut output: EngineOutput<UTConfig> = EngineOutput::default();
         output.push_command(append(1));
         let first_slot = output.commands.as_slices().0.as_ptr();
 
@@ -180,7 +189,9 @@ mod tests {
 
     #[test]
     fn test_commands_grow_and_retain_capacity() {
-        let mut output: EngineOutput<UTConfig> = EngineOutput::new(1);
+        let mut output: EngineOutput<UTConfig> = EngineOutput::default();
+        assert_eq!(0, output.commands.capacity());
+
         output.push_command(append(1));
         output.push_command(append(2));
         let capacity = output.commands.capacity();

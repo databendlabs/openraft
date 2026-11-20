@@ -29,15 +29,6 @@ where C: RaftTypeConfig
 impl<C> PendingResponds<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(capacity: usize) -> Self {
-        Self {
-            on_log_io: VecDeque::with_capacity(capacity),
-            on_log_flush: VecDeque::with_capacity(capacity),
-            on_apply: VecDeque::with_capacity(capacity),
-            on_snapshot: VecDeque::with_capacity(capacity),
-        }
-    }
-
     /// Drain all satisfied responds based on the current IO state.
     ///
     /// Returns an iterator that yields all responds whose conditions are met by the provided
@@ -61,7 +52,7 @@ where
 
     if actual >= front_item.wait_for() {
         let respond = queue.pop_front().map(|p| p.into_respond());
-        // Reset the head so a preallocated queue does not walk its whole buffer.
+        // Reset the head so a queue that has grown does not walk its whole buffer.
         if queue.is_empty() {
             queue.clear();
         }
@@ -226,7 +217,7 @@ mod tests {
 
     #[test]
     fn test_drain_satisfied_empty_queues() {
-        let mut pending = PendingResponds::<UTConfig>::new(10);
+        let mut pending = PendingResponds::<UTConfig>::default();
         let io_state = new_io_state(None, None, None);
 
         let collected: Vec<_> = pending.drain_satisfied(&io_state).collect();
@@ -235,7 +226,7 @@ mod tests {
 
     #[test]
     fn test_drain_satisfied_all_unsatisfied() {
-        let mut pending = PendingResponds::<UTConfig>::new(10);
+        let mut pending = PendingResponds::<UTConfig>::default();
         pending.on_log_flush.push_back(PendingRespond::new(log_id(1, 1, 5), new_respond()));
         pending.on_apply.push_back(PendingRespond::new(log_id(1, 1, 5), new_respond()));
 
@@ -249,7 +240,7 @@ mod tests {
 
     #[test]
     fn test_drain_satisfied_log_io() {
-        let mut pending = PendingResponds::<UTConfig>::new(10);
+        let mut pending = PendingResponds::<UTConfig>::default();
         let io_id = TestIOId::new_log_io(Default::default(), Some(log_id(1, 1, 3)));
         pending.on_log_io.push_back(PendingRespond::new(io_id, new_respond()));
 
@@ -264,7 +255,7 @@ mod tests {
 
     #[test]
     fn test_drain_satisfied_log_flush() {
-        let mut pending = PendingResponds::<UTConfig>::new(10);
+        let mut pending = PendingResponds::<UTConfig>::default();
         pending.on_log_flush.push_back(PendingRespond::new(log_id(1, 1, 3), new_respond()));
 
         let flushed_io_id = TestIOId::new_log_io(Default::default(), Some(log_id(1, 1, 5)));
@@ -278,7 +269,7 @@ mod tests {
 
     #[test]
     fn test_drain_satisfied_apply() {
-        let mut pending = PendingResponds::<UTConfig>::new(10);
+        let mut pending = PendingResponds::<UTConfig>::default();
         pending.on_apply.push_back(PendingRespond::new(log_id(1, 1, 3), new_respond()));
 
         let io_state = new_io_state(None, Some(log_id(1, 1, 5)), None);
@@ -291,7 +282,7 @@ mod tests {
 
     #[test]
     fn test_drain_satisfied_snapshot() {
-        let mut pending = PendingResponds::<UTConfig>::new(10);
+        let mut pending = PendingResponds::<UTConfig>::default();
         pending.on_snapshot.push_back(PendingRespond::new(log_id(1, 1, 3), new_respond()));
 
         let io_state = new_io_state(None, None, Some(log_id(1, 1, 5)));
@@ -304,7 +295,7 @@ mod tests {
 
     #[test]
     fn test_drain_satisfied_multiple_phases() {
-        let mut pending = PendingResponds::<UTConfig>::new(10);
+        let mut pending = PendingResponds::<UTConfig>::default();
         let io_id = TestIOId::new_log_io(Default::default(), Some(log_id(1, 1, 3)));
         pending.on_log_io.push_back(PendingRespond::new(io_id, new_respond()));
         pending.on_log_flush.push_back(PendingRespond::new(log_id(1, 1, 3), new_respond()));
@@ -324,7 +315,7 @@ mod tests {
 
     #[test]
     fn test_drain_satisfied_partial_satisfaction() {
-        let mut pending = PendingResponds::<UTConfig>::new(10);
+        let mut pending = PendingResponds::<UTConfig>::default();
         pending.on_log_flush.push_back(PendingRespond::new(log_id(1, 1, 3), new_respond()));
         pending.on_log_flush.push_back(PendingRespond::new(log_id(1, 1, 5), new_respond()));
         pending.on_log_flush.push_back(PendingRespond::new(log_id(1, 1, 7), new_respond()));
@@ -339,7 +330,7 @@ mod tests {
 
     #[test]
     fn test_drain_satisfied_multiple_items_per_phase() {
-        let mut pending = PendingResponds::<UTConfig>::new(10);
+        let mut pending = PendingResponds::<UTConfig>::default();
 
         let io_id1 = TestIOId::new_log_io(Default::default(), Some(log_id(1, 1, 2)));
         let io_id2 = TestIOId::new_log_io(Default::default(), Some(log_id(1, 1, 3)));

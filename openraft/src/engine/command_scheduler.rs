@@ -115,7 +115,7 @@ mod tests {
     #[test]
     fn test_merge_empty_queue() {
         let config = Config::default();
-        let mut output: EngineOutput<C> = EngineOutput::new(8);
+        let mut output: EngineOutput<C> = EngineOutput::default();
         let mut scheduler = CommandScheduler::new(&config, &mut output);
         scheduler.merge_front_append_entries();
         assert!(output.commands.is_empty());
@@ -124,7 +124,7 @@ mod tests {
     #[test]
     fn test_merge_single_command() {
         let config = Config::default();
-        let mut output: EngineOutput<C> = EngineOutput::new(8);
+        let mut output: EngineOutput<C> = EngineOutput::default();
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(1, 0),
             entries: Batch::of([blank_ent::<UTConfig>(1, 0, 1)]),
@@ -137,7 +137,7 @@ mod tests {
     #[test]
     fn test_merge_front_not_append_entries() {
         let config = Config::default();
-        let mut output: EngineOutput<C> = EngineOutput::new(8);
+        let mut output: EngineOutput<C> = EngineOutput::default();
         output.push_command(Command::SaveVote { vote: Vote::new(1, 0) });
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(1, 0),
@@ -151,7 +151,7 @@ mod tests {
     #[test]
     fn test_merge_consecutive_same_vote() {
         let config = Config::default();
-        let mut output: EngineOutput<C> = EngineOutput::new(8);
+        let mut output: EngineOutput<C> = EngineOutput::default();
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(1, 0),
             entries: Batch::of([blank_ent::<UTConfig>(1, 0, 1)]),
@@ -179,7 +179,7 @@ mod tests {
     #[test]
     fn test_merge_stops_at_different_vote() {
         let config = Config::default();
-        let mut output: EngineOutput<C> = EngineOutput::new(8);
+        let mut output: EngineOutput<C> = EngineOutput::default();
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(1, 0),
             entries: Batch::of([blank_ent::<UTConfig>(1, 0, 1)]),
@@ -198,7 +198,7 @@ mod tests {
     #[test]
     fn test_merge_stops_at_non_append_entries() {
         let config = Config::default();
-        let mut output: EngineOutput<C> = EngineOutput::new(8);
+        let mut output: EngineOutput<C> = EngineOutput::default();
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(1, 0),
             entries: Batch::of([blank_ent::<UTConfig>(1, 0, 1)]),
@@ -229,7 +229,7 @@ mod tests {
     fn test_merge_stops_at_max_entries() {
         // Limit to 3 entries: first command has 2, second has 1, third would exceed
         let config = config_with_max_append(3);
-        let mut output: EngineOutput<C> = EngineOutput::new(8);
+        let mut output: EngineOutput<C> = EngineOutput::default();
         output.push_command(Command::AppendEntries {
             committed_vote: committed_vote(1, 0),
             entries: Batch::of([blank_ent::<UTConfig>(1, 0, 1), blank_ent::<UTConfig>(1, 0, 2)]),

@@ -28,13 +28,6 @@ impl<T> ClientResponderQueue<T> {
         }
     }
 
-    /// Creates a new empty responder queue with the specified capacity.
-    pub(crate) fn with_capacity(capacity: usize) -> Self {
-        Self {
-            responders: VecDeque::with_capacity(capacity),
-        }
-    }
-
     /// Pushes a responder to the end of the queue.
     ///
     /// # Panics
@@ -204,7 +197,9 @@ mod tests {
 
     #[test]
     fn test_grow_and_retain_capacity() {
-        let mut queue = TestQueue::with_capacity(1);
+        let mut queue = TestQueue::new();
+        assert_eq!(0, queue.responders.capacity());
+
         queue.push(10, 100);
         queue.push(20, 200);
         let capacity = queue.responders.capacity();
