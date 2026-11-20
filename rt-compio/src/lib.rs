@@ -36,12 +36,14 @@ impl Debug for CompioRuntime {
     }
 }
 
+/// The error of awaiting a [`CompioJoinHandle`]: the task panicked, or it was cancelled, for
+/// example because its runtime was dropped before the task finished.
 #[derive(Debug)]
-pub struct CompioJoinError(#[allow(dead_code)] JoinError);
+pub struct CompioJoinError(JoinError);
 
 impl Display for CompioJoinError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(f, "Spawned task panicked")
+        Display::fmt(&self.0, f)
     }
 }
 
@@ -153,9 +155,8 @@ impl AsyncRuntime for CompioRuntime {
         CompioTimeout { future, delay }
     }
 
-    fn is_panic(_: &Self::JoinError) -> bool {
-        // Task only returns `JoinError` if the spawned future panics.
-        true
+    fn is_panic(join_error: &Self::JoinError) -> bool {
+        matches!(join_error.0, JoinError::Panicked(_))
     }
 
     fn thread_rng() -> Self::ThreadLocalRng {
@@ -183,5 +184,29 @@ mod tests {
     #[test]
     fn test_compio_rt() {
         Suite::<CompioRuntime>::test_all();
+    }
+
+    #[test]
+    fn test_join_error_of_panicked_task() {
+        let mut rt = CompioRuntime::new(1);
+        let res = rt.block_on(async { CompioRuntime::spawn(async { panic!("the spawned task panics") }).await });
+        let err = res.unwrap_err();
+
+        assert!(CompioRuntime::is_panic(&err));
+        assert_eq!("Task has panicked", err.to_string());
+    }
+
+    #[test]
+    fn test_join_error_of_cancelled_task() {
+        // Dropping a runtime cancels the tasks it has not finished.
+        let owner = CompioRuntime::new(1);
+        let handle = owner.rt.enter(|| CompioRuntime::spawn(std::future::pending::<()>()));
+        drop(owner);
+
+        let mut rt = CompioRuntime::new(1);
+        let err = rt.block_on(handle).unwrap_err();
+
+        assert!(!CompioRuntime::is_panic(&err));
+        assert_eq!("Task was cancelled", err.to_string());
     }
 }
