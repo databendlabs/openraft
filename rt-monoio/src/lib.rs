@@ -16,11 +16,17 @@
 //! 1. For the Openraft dependency used with this crate
 //!    1. You can disable the `default` feature as you don't need the built-in Tokio runtime.
 //!    2. The `single-threaded` feature needs to be enabled or this crate won't work.
-//! 2. With the `single-threaded` feature enabled, the handle type [`Raft`](openraft::Raft) will be
-//!    no longer [`Send`] and [`Sync`].
+//! 2. With the `single-threaded` feature enabled, the handle type [`Raft`] will no longer be
+//!    [`Send`] and [`Sync`].
 //! 3. Even though this crate allows you to use Monoio, it still uses some primitives from Tokio
 //!    1. `Watch`: Monoio (or `local_sync`) does not have a watch channel.
 //!    2. `Mutex`: Monoio does not provide a Mutex implementation.
+//!    3. `Mpsc`: Monoio has no channel, and the bounded channel of `local_sync` has no weak sender,
+//!       which [`MpscSender::downgrade`](openraft_rt::MpscSender::downgrade) needs.
+//!
+//!    `Oneshot` uses the oneshot channel of `local_sync`.
+//!
+//! [`Raft`]: https://docs.rs/openraft/latest/openraft/raft/struct.Raft.html
 
 use std::future::Future;
 use std::time::Duration;
