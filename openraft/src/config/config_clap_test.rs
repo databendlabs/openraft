@@ -412,5 +412,9 @@ fn test_config_lifecycle_latency_capacity() -> anyhow::Result<()> {
     config.log_stage_capacity = Some(2048);
     assert_eq!(2048, config.log_stage_capacity());
 
+    // Zero is rejected
+    let result = Config::build(&["foo", "--log-stage-capacity=0"]);
+    assert_eq!(ConfigError::LogStageCapacityIs0, result.unwrap_err());
+
     Ok(())
 }

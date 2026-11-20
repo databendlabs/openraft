@@ -128,6 +128,23 @@ fn test_broadcast_submitted_on_append() {
 }
 
 #[test]
+fn test_log_stage_capacity_configuration() {
+    let config = Config {
+        log_stage_capacity: Some(0),
+        ..Default::default()
+    };
+    let result = config.validate();
+    assert_eq!(ConfigError::LogStageCapacityIs0, result.unwrap_err());
+
+    let config = Config {
+        log_stage_capacity: Some(1),
+        ..Default::default()
+    };
+    let config = config.validate().unwrap();
+    assert_eq!(1, config.log_stage_capacity());
+}
+
+#[test]
 fn test_quorum_loss_configuration() {
     let config = Config {
         quorum_loss_probe_interval: Some(599),

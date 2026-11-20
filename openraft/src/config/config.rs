@@ -373,7 +373,7 @@ pub struct Config {
     /// committed, applied) maintains a fixed-capacity ring buffer of this size.
     /// Only used when the `runtime-stats` feature is enabled.
     ///
-    /// Defaults to 1024 if not specified.
+    /// Must be greater than 0. Defaults to 1024 if not specified.
     #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long))]
     pub log_stage_capacity: Option<u64>,
@@ -932,6 +932,10 @@ impl Config {
 
         if self.max_payload_entries == 0 {
             return Err(ConfigError::MaxPayloadIs0);
+        }
+
+        if self.log_stage_capacity == Some(0) {
+            return Err(ConfigError::LogStageCapacityIs0);
         }
 
         if let Some(probe_interval) = self.quorum_loss_probe_interval {

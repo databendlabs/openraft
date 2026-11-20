@@ -57,8 +57,12 @@ where
 {
     /// Create a new ring buffer with the given capacity. Its slots are allocated on the first
     /// record.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `capacity` is 0: such a map would never evict and so grow without bound.
     pub(crate) fn new(capacity: usize) -> Self {
-        debug_assert!(capacity > 0, "capacity must be > 0");
+        assert!(capacity > 0, "capacity must be > 0");
         Self {
             entries: VecDeque::new(),
             capacity,
@@ -151,6 +155,25 @@ mod tests {
 
         rm.record(10, 100);
         assert!(rm.entries.capacity() >= 1024, "got: {}", rm.entries.capacity());
+    }
+
+    /// A zero capacity is rejected in every build profile: such a map would never evict.
+    #[test]
+    #[should_panic(expected = "capacity must be > 0")]
+    fn test_zero_capacity_panics() {
+        RangeMap::<u64, ()>::new(0);
+    }
+
+    #[test]
+    fn test_capacity_one_evicts_previous_boundary() {
+        let mut rm = RangeMap::new(1);
+
+        assert_eq!(None, rm.record(10, 100));
+        assert_eq!(Some(10), rm.record(20, 200));
+        assert_eq!(Some(20), rm.record(30, 300));
+
+        let e: Vec<(u64, u64)> = rm.entries().copied().collect();
+        assert_eq!(vec![(30, 300)], e);
     }
 
     // entries: [(10, 100), (20, 200), (30, 300)], begin tracked externally as 0
