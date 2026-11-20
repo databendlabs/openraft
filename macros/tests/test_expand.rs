@@ -6,7 +6,13 @@ fn fail() {
 
 #[test]
 fn pass() {
-    macrotest::expand("tests/expand/expand/*.rs");
+    // Each input needs a checked-in `*.expanded.rs`. To write missing snapshots and replace
+    // changed ones, run this test with `MACROTEST=overwrite`.
+    if std::env::var_os("MACROTEST").is_some_and(|v| v == "overwrite") {
+        macrotest::expand("tests/expand/expand/*.rs");
+    } else {
+        macrotest::expand_without_refresh("tests/expand/expand/*.rs");
+    }
 }
 
 /// Compile and run each input of `pass`: a matching snapshot does not prove that the expansion
