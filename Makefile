@@ -457,5 +457,6 @@ verify-bench-durable-rocks:
 
 # Tasks, memory and CPU of many idle Raft groups in one process (#2304).
 verify-bench-idle-groups:
+	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s benchmarks/idle-groups/scripts -p '*_test.py'
 	cargo test --manifest-path benchmarks/idle-groups/Cargo.toml --all-targets
 	cargo clippy --no-deps --manifest-path benchmarks/idle-groups/Cargo.toml --all-targets -- -D warnings

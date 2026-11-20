@@ -69,6 +69,29 @@ count or both do not. Without `--count-allocs` the wrapper reads one flag per al
 To measure a release, point the three openraft dependencies in `Cargo.toml` at it, for example
 `openraft = "=0.10.0"`, `openraft-memstore = "=0.10.0"` and `openraft-multi = "=0.10.0"`.
 
+## Measuring a change
+
+[`scripts/measure_change.py`](scripts/measure_change.py) compares a change in a checkout with the
+code before it. It builds the benchmark twice in that checkout: first with the files of the
+change set to their versions at `--base`, `HEAD` by default, and then with the change. It then
+runs each `--case` with the two builds in turns, so that both see the same machine load.
+
+```sh
+benchmarks/idle-groups/scripts/measure_change.py my-change $(git diff --name-only) \
+    --case '3 1000 stub default' \
+    --case '1 1000 local default --count-allocs'
+```
+
+A case is `RUNS GROUPS FOLLOWERS MODE [EXTRA ARGS]` and runs `RUNS` times with each build. The
+script writes one line per run to `results/LABEL-<time>.tsv` and keeps both binaries in `bin/`,
+under `benchmarks/idle-groups/target/measure-change/`, or under `--out-dir` if it is given. To
+measure a commit instead of uncommitted changes, compare it with its parent: pass
+`--base HEAD~1` and the files of `git diff --name-only HEAD~1`.
+
+The second build recompiles only what the files of the change affect. Do not edit those files
+while the script runs. Other load on the machine moves `cpu%`, so check the load average before
+and after a comparison of CPU.
+
 ## Results
 
 These compare 0.10.0 with `main` at 1329ad82. They ran on an Apple M3 Max with macOS 14.5 and
