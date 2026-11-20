@@ -67,6 +67,12 @@ See: [`monitoring_maintenance`]
 
 Monitor cluster health using metrics and perform automated maintenance operations safely.
 
+### Elections and Leadership Handover
+
+See: [`leadership`]
+
+Keep a voter from campaigning, hand over leadership and check that it moved, and change the membership of a leader.
+
 ## Key APIs
 
 **Initialize cluster**: `Raft::initialize()` - Bootstrap first node
@@ -78,6 +84,7 @@ Monitor cluster health using metrics and perform automated maintenance operation
 **Monitor state**: `Raft::metrics()` - Track node roles and cluster health
 
 [`cluster_formation`]: `crate::docs::cluster_control::cluster_formation`
+[`leadership`]: `crate::docs::cluster_control::leadership`
 [`dynamic_membership`]: `crate::docs::cluster_control::dynamic_membership`
 [`joint_consensus`]: `crate::docs::cluster_control::joint_consensus`
 [`threshold_membership`]: https://docs.rs/openraft-membership/latest/openraft_membership/docs/threshold/index.html

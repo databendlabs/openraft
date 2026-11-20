@@ -19,3 +19,7 @@ pub mod node_lifecycle {
 pub mod monitoring_maintenance {
     #![doc = include_str!("monitoring-maintenance.md")]
 }
+
+pub mod leadership {
+    #![doc = include_str!("leadership.md")]
+}
