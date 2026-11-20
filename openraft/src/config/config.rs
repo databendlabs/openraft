@@ -536,11 +536,14 @@ pub struct Config {
 
     /// The policy for stepping down a Leader that is removed from a committed membership config.
     ///
-    /// - [`After(ms)`](StepDownPolicy::After): when the membership config that removes this Leader
-    ///   is committed and `ms` milliseconds have elapsed, the Leader transfers leadership to the
-    ///   most up-to-date voter, then reverts itself to a learner. During the delay it keeps serving
-    ///   as a Leader, so that in-flight requests and the commit notification of the membership log
-    ///   entry can still reach the followers.
+    /// - [`After(ms)`](StepDownPolicy::After): wait `ms` milliseconds after the membership config
+    ///   that removes this Leader is committed. During that delay, the Leader keeps serving so that
+    ///   in-flight requests and the membership commit notification can still reach the followers.
+    ///   If the node is still a removed Leader after the delay, it attempts to transfer leadership
+    ///   to the most up-to-date voter, if one is available. With or without a target, it waits one
+    ///   more [`heartbeat_interval`](Self::heartbeat_interval) before requesting a fallback role
+    ///   refresh to become a learner. The refresh does nothing if the vote or effective membership
+    ///   has changed since the removal was rechecked. `After(0)` skips only the initial delay.
     /// - [`Never`](StepDownPolicy::Never): the removed Leader keeps leading, until the application
     ///   reverts it manually with [`Trigger::refresh_server_state()`].
     ///
