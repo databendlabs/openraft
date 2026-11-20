@@ -74,7 +74,11 @@ pub trait AsyncRuntime: Debug + 'static {
         T: Future + OptionalSend + 'static,
         T::Output: OptionalSend + 'static;
 
-    /// Wait until `duration` has elapsed.
+    /// Wait until `duration` has elapsed since this call.
+    ///
+    /// The deadline is taken when `sleep` is called, as `tokio::time::sleep` does, not when the
+    /// returned future is first polled: a sleep first polled after `duration` has passed is ready
+    /// at once.
     #[track_caller]
     fn sleep(duration: Duration) -> Self::Sleep;
 
@@ -82,11 +86,17 @@ pub trait AsyncRuntime: Debug + 'static {
     #[track_caller]
     fn sleep_until(deadline: Self::Instant) -> Self::Sleep;
 
-    /// Require a [`Future`] to complete before the specified duration has elapsed.
+    /// Require a [`Future`] to complete before `duration` has elapsed since this call.
+    ///
+    /// The deadline is taken when `timeout` is called, as for [`Self::sleep`]. Each poll polls
+    /// `future` before it checks the deadline, as `tokio::time::timeout` does, so a `future` that
+    /// is ready when the deadline has passed still completes with its output.
     #[track_caller]
     fn timeout<R, F: Future<Output = R> + OptionalSend>(duration: Duration, future: F) -> Self::Timeout<R, F>;
 
     /// Require a [`Future`] to complete before the specified instant in time.
+    ///
+    /// As with [`Self::timeout`], each poll polls `future` before it checks `deadline`.
     #[track_caller]
     fn timeout_at<R, F: Future<Output = R> + OptionalSend>(deadline: Self::Instant, future: F) -> Self::Timeout<R, F>;
 

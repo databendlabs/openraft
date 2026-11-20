@@ -97,18 +97,16 @@ impl<F: Future> Future for CompioTimeout<F> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
+
+        // Poll the future first, as tokio does: a future that is ready when the deadline passes
+        // completes with its output.
+        if let Poll::Ready(v) = this.future.poll(cx) {
+            return Poll::Ready(Ok(v));
+        }
+
         match this.delay.poll_unpin(cx) {
-            Poll::Ready(()) => {
-                // The delay has elapsed, so we return an error.
-                Poll::Ready(Err(Elapsed(())))
-            }
-            Poll::Pending => {
-                // The delay has not yet elapsed, so we poll the future.
-                match this.future.poll(cx) {
-                    Poll::Ready(v) => Poll::Ready(Ok(v)),
-                    Poll::Pending => Poll::Pending,
-                }
-            }
+            Poll::Ready(()) => Poll::Ready(Err(Elapsed(()))),
+            Poll::Pending => Poll::Pending,
         }
     }
 }
@@ -135,7 +133,12 @@ impl AsyncRuntime for CompioRuntime {
     }
 
     fn sleep(duration: std::time::Duration) -> Self::Sleep {
-        Box::pin(compio::time::sleep(duration))
+        // `compio::time::sleep` reads the clock when it is first polled. Take the deadline now, as
+        // tokio and monoio do. A deadline too far to represent never fires.
+        match std::time::Instant::now().checked_add(duration) {
+            Some(deadline) => Self::sleep_until(deadline),
+            None => Box::pin(std::future::pending::<()>()),
+        }
     }
 
     fn sleep_until(deadline: Self::Instant) -> Self::Sleep {
@@ -146,7 +149,7 @@ impl AsyncRuntime for CompioRuntime {
         duration: std::time::Duration,
         future: F,
     ) -> Self::Timeout<R, F> {
-        let delay = Box::pin(compio::time::sleep(duration));
+        let delay = Self::sleep(duration);
         CompioTimeout { future, delay }
     }
 
@@ -177,6 +180,9 @@ impl AsyncRuntime for CompioRuntime {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+    use std::time::Instant;
+
     use openraft_rt::testing::Suite;
 
     use super::*;
@@ -208,5 +214,37 @@ mod tests {
 
         assert!(!CompioRuntime::is_panic(&err));
         assert_eq!("Task was cancelled", err.to_string());
+    }
+
+    #[test]
+    fn test_relative_timers_start_at_creation() {
+        let mut rt = CompioRuntime::new(1);
+        rt.block_on(async {
+            let duration = Duration::from_millis(10);
+            let sleep = CompioRuntime::sleep(duration);
+            let timeout = CompioRuntime::timeout(duration, std::future::pending::<()>());
+
+            // Let the duration pass before either timer is first polled.
+            std::thread::sleep(duration * 2);
+
+            assert_eq!(Some(()), sleep.now_or_never());
+            assert_eq!(Some(Err(Elapsed(()))), timeout.now_or_never());
+
+            // A deadline too far to represent never fires.
+            assert_eq!(None, CompioRuntime::sleep(Duration::MAX).now_or_never());
+        });
+    }
+
+    #[test]
+    fn test_timeout_polls_future_first() {
+        let mut rt = CompioRuntime::new(1);
+        rt.block_on(async {
+            // The deadline has passed by the first poll, but the future is ready, so it wins.
+            let res = CompioRuntime::timeout(Duration::ZERO, std::future::ready(1)).now_or_never();
+            assert_eq!(Some(Ok(1)), res);
+
+            let res = CompioRuntime::timeout_at(Instant::now(), std::future::ready(2)).now_or_never();
+            assert_eq!(Some(Ok(2)), res);
+        });
     }
 }
