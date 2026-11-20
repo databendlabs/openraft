@@ -5,6 +5,43 @@ changes for each one. The
 [change log](https://github.com/databendlabs/openraft/blob/release-0.10/change-log/v0.10.0.md)
 describes the new features and links each change to its commits.
 
+## Choose a rollout
+
+Decide how the cluster moves to 0.10 before porting the code. Porting the
+source, reopening the data that 0.9 wrote, and running 0.9 and 0.10 nodes
+side by side are separate questions. The application owns the storage
+format, the RPC codec and the message envelope, so Openraft answers only
+part of each one:
+
+| Question | What Openraft provides | What the application checks |
+|---|---|---|
+| Port the source | This guide lists every breaking change. | Its own code that names Openraft types. |
+| Reopen 0.9 data | With the default types, the serialized form of log entries, `Vote`, `StoredMembership`, `SnapshotMeta` and `SnapshotSignature` is unchanged; see [Data and wire compatibility](#data-and-wire-compatibility). | Its storage layout, codec and state-machine format: start the new binary on a copy of real 0.9 data. |
+| Run 0.9 and 0.10 nodes together | No end-to-end test. Some RPC types keep their 0.9 encoding and some do not; see [Data and wire compatibility](#data-and-wire-compatibility). | Every message, response and error body its transport carries, in both directions. |
+| Roll back after 0.10 wrote data | Only `SnapshotMeta` and `SnapshotSignature` are tested in both directions. | Plan the upgrade as forward-only, unless it has tested 0.9 on data that 0.10 wrote. |
+
+A rolling upgrade, one node at a time, needs at least these checks:
+
+1. Encode every RPC, response and error body with one build and decode it
+   with the other, both ways, inside the application's real envelope.
+2. Run a cluster with nodes of both versions in a test: replicate, fail
+   over to a leader of each version, and catch up a lagging node by
+   snapshot.
+3. Leave the features that need new RPCs off until every node runs 0.10:
+   [`Config::enable_pre_vote`][] and [`Trigger::transfer_leader()`][].
+4. Take a backup and verify that it restores.
+
+Without these checks, use a cold restart: stop every node, take and verify
+a backup, upgrade every node, then start them again.
+
+A startup check that refuses to start next to old nodes helps but proves
+little: it sees only the nodes it reaches, and an unreachable node may
+still be running. Carry an explicit protocol version in the transport's
+handshake and reject a peer whose version differs, instead of comparing
+release numbers.
+
+## Port the code
+
 An application that uses [`declare_raft_types!`][], the default types and the
 Tokio runtime typically needs only these steps:
 
@@ -771,18 +808,25 @@ under named and positional formats such as `bincode` and `postcard` alike.
 The standard `LeaderId` still encodes `voted_for` as an `Option`, and rejects
 a stored `None`.
 
-Between 0.9 and 0.10 peers, snapshot metadata and the v1
-`InstallSnapshotRequest` keep their 0.9 layout in named and positional
-formats alike. With a named-field format such as JSON, a missing
-`VoteRequest::leadership_transfer_from` decodes as `None`, and a missing
-`ForwardToLeader::reason` as `NotLeader`; a positional format such as
-`bincode` cannot decode a `ForwardToLeader` written by 0.9. Error bodies do
-not interoperate, because `StorageError` was an enum in 0.9 and is a struct in
-0.10: treat a serialized error from a peer of another version as diagnostic
-text.
+Between 0.9 and 0.10 peers, `AppendEntriesRequest`, `AppendEntriesResponse`,
+`VoteResponse`, snapshot metadata and the v1 `InstallSnapshotRequest` keep
+their 0.9 layout in named and positional formats alike. `VoteRequest` gained
+`leadership_transfer_from` and `ForwardToLeader` gained `reason`. With a
+named-field format such as JSON, a missing field decodes as `None` and
+`NotLeader`, and a 0.9 node ignores the extra one. A positional format such
+as `bincode` cannot carry either type across versions: a 0.10 node fails to
+decode one written by 0.9, and a 0.9 node decodes one written by 0.10 only
+if it ignores trailing bytes, so it misreads whatever follows the value in
+the application's envelope. 0.9 has no Pre-Vote or TransferLeader RPC.
+`openraft-legacy` keeps the v1 `RaftNetwork` and its chunked snapshot
+messages; it does not change how the application encodes the other RPCs.
+Error bodies do not interoperate, because `StorageError` was an enum in 0.9
+and is a struct in 0.10: treat a serialized error from a peer of another
+version as diagnostic text.
 
 [`Config`]: crate::Config
 [`Config::allow_log_reversion`]: crate::Config::allow_log_reversion
+[`Config::enable_pre_vote`]: crate::Config::enable_pre_vote
 [`Raft`]: crate::Raft
 [`Raft::add_learner()`]: crate::Raft::add_learner
 [`Raft::change_membership()`]: crate::Raft::change_membership
@@ -799,6 +843,7 @@ text.
 [`SnapshotSignature`]: crate::storage::SnapshotSignature
 [`RaftNetworkV2`]: crate::network::RaftNetworkV2
 [`RaftNetworkFactory`]: crate::network::RaftNetworkFactory
+[`Trigger::transfer_leader()`]: crate::raft::trigger::Trigger::transfer_leader
 [`Wait`]: crate::metrics::Wait
 [`Membership`]: crate::impls::Membership
 [`ChangeMembers`]: crate::impls::ChangeMembers
