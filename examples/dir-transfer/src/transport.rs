@@ -29,6 +29,11 @@ pub trait FrameSource {
 
 /// Send one complete session: every frame of `producer` into `sink`.
 ///
+/// `Ok(())` means `sink` accepted every frame, not that the receiver wrote and verified the
+/// directory. A transport that buffers frames, such as a queue or a streamed request body, must
+/// still deliver the receiver's result, the return value of [`recv_dir`], before the caller treats
+/// the transfer as complete.
+///
 /// If `producer` has already emitted a frame, this returns [`io::ErrorKind::InvalidData`]
 /// before sending anything to `sink`.
 pub async fn send_dir<S>(mut producer: DirFrameProducer, sink: &mut S) -> io::Result<()>
@@ -44,6 +49,10 @@ where S: FrameSink {
 
 /// Receive one complete session: write every frame from `source` with [`DirWriter::write_frame`],
 /// then call [`DirWriter::finish`] after [`DirFrame::End`].
+///
+/// Returns the first error from `source`, from applying a frame, or from `finish`, so `Ok(())`
+/// means the directory is complete and synced. This is the result the transport reports back to
+/// the sender.
 ///
 /// No frame is read past `End`, so the transport can carry unrelated traffic afterwards.
 pub async fn recv_dir<S>(source: &mut S, mut writer: DirWriter) -> io::Result<()>
@@ -168,6 +177,23 @@ mod tests {
         let err = recv_dir(&mut transport, DirWriter::new(target.path().to_path_buf())).await.unwrap_err();
 
         assert_eq!(io::ErrorKind::UnexpectedEof, err.kind());
+    }
+
+    #[tokio::test]
+    async fn test_recv_reports_finish_error_after_send_succeeds() {
+        // An empty directory sends only `Manifest` and `End`, so the writer first touches its
+        // target directory in `finish`.
+        let source = tempfile::tempdir().unwrap();
+        let producer = DirFrameProducer::new(source.path(), 4).unwrap();
+        let mut transport = QueueTransport::default();
+        send_dir(producer, &mut transport).await.unwrap();
+
+        let parent = tempfile::tempdir().unwrap();
+        let missing = parent.path().join("missing");
+        let err = recv_dir(&mut transport, DirWriter::new(missing)).await.unwrap_err();
+
+        assert_eq!(io::ErrorKind::NotFound, err.kind());
+        assert!(transport.frames.is_empty());
     }
 
     #[tokio::test]
