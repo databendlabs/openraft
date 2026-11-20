@@ -80,6 +80,17 @@ mod threaded {
     pub trait OptionalSync: Sync {}
     impl<T: Sync + ?Sized> OptionalSync for T {}
 
+    /// `__if_single_threaded!({ A } else { B })` expands to `A` if the `single-threaded` feature
+    /// flag is enabled, otherwise to `B`.
+    ///
+    /// A runtime crate uses it to pick the code that matches [`OptionalSend`]: a `cfg` on a feature
+    /// of its own misses another crate enabling `openraft-rt/single-threaded`.
+    #[doc(hidden)]
+    #[macro_export]
+    macro_rules! __if_single_threaded {
+        ({ $($single_threaded:tt)* } else { $($multi_threaded:tt)* }) => { $($multi_threaded)* };
+    }
+
     /// Type alias for a boxed iterator that is `Send`.
     pub type BoxIterator<'a, T> = Box<dyn Iterator<Item = T> + Send + 'a>;
     /// Type alias for a boxed pinned future that is `Send`.
@@ -113,6 +124,17 @@ mod threaded {
     /// otherwise it extends `Sync`.
     pub trait OptionalSync {}
     impl<T: ?Sized> OptionalSync for T {}
+
+    /// `__if_single_threaded!({ A } else { B })` expands to `A` if the `single-threaded` feature
+    /// flag is enabled, otherwise to `B`.
+    ///
+    /// A runtime crate uses it to pick the code that matches [`OptionalSend`]: a `cfg` on a feature
+    /// of its own misses another crate enabling `openraft-rt/single-threaded`.
+    #[doc(hidden)]
+    #[macro_export]
+    macro_rules! __if_single_threaded {
+        ({ $($single_threaded:tt)* } else { $($multi_threaded:tt)* }) => { $($single_threaded)* };
+    }
 
     /// Type alias for a boxed iterator.
     pub type BoxIterator<'a, T> = Box<dyn Iterator<Item = T> + 'a>;
