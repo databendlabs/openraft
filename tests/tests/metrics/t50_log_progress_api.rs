@@ -167,10 +167,10 @@ async fn log_progress_with_leader_change() -> Result<()> {
 /// What does this test do?
 ///
 /// - Initializes a 3-node cluster with node 0 as leader
-/// - Gets watch_vote() handle on node 1
-/// - Spawns task to wait for future vote (term 2)
-/// - Triggers election on node 1 to seize leadership
-/// - Verifies wait_until_ge() returns when new leader is elected
+/// - Gets a watch_vote_progress() handle on node 1
+/// - Waits for at least node 1's candidate vote in term 2
+/// - Triggers an election on node 1
+/// - Verifies the watch may return the candidate vote or the committed vote
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn vote_progress_api() -> Result<()> {
@@ -203,26 +203,32 @@ async fn vote_progress_api() -> Result<()> {
         TypeConfig::sleep(Duration::from_millis(500)).await;
     }
 
-    tracing::info!("--- spawn task to wait for term 2");
-    let n1 = router.get_raft_handle(&1)?;
-    let handle = TypeConfig::spawn(async move {
-        let mut progress = n1.watch_vote_progress();
+    let candidate_vote = Some(Vote::new(2, 1));
+    tracing::info!(node = 1, term = 2, "--- wait for at least the candidate vote");
+    let handle = {
+        let mut progress = vote_progress.clone();
+        TypeConfig::spawn(async move { progress.wait_until_ge(&candidate_vote).await })
+    };
 
-        let target = Some(Vote::new(2, 1));
-        progress.wait_until_ge(&target).await
-    });
+    tracing::info!(node = 1, term = 2, "--- trigger election");
+    {
+        n1.trigger().elect(false).await?;
+    }
 
-    tracing::info!("--- trigger election on node 1 to seize leadership");
-    let n1 = router.get_raft_handle(&1)?;
-    n1.trigger().elect(false).await?;
-
-    tracing::info!("--- verify wait_until_ge returns with term 2 vote");
-    let got_wait = handle.await??;
-    let got_get = vote_progress.get();
-
-    let want = Some(Vote::new(2, 1));
-    assert_eq!(got_wait, want);
-    assert!(got_get == want || got_get == Some(Vote::new_committed(2, 1)));
+    tracing::info!(node = 1, term = 2, "--- verify vote progress across both phases");
+    {
+        let got_wait = handle.await??;
+        let got_get = vote_progress.get();
+        let committed_vote = Some(Vote::new_committed(2, 1));
+        assert!(
+            got_wait == candidate_vote || got_wait == committed_vote,
+            "expected the candidate or committed vote, got {got_wait:?}"
+        );
+        assert!(
+            got_get == got_wait || got_get == committed_vote,
+            "vote progress moved from {got_wait:?} to {got_get:?}"
+        );
+    }
 
     Ok(())
 }
