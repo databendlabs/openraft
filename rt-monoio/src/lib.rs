@@ -53,6 +53,17 @@ type InnerRuntime = monoio::FusionRuntime<
 type InnerRuntime = monoio::FusionRuntime<monoio::time::TimeDriver<monoio::LegacyDriver>>;
 
 /// [`AsyncRuntime`] implementation for Monoio.
+///
+/// # Panics in spawned tasks
+///
+/// Monoio does not catch a panic in a task spawned with [`AsyncRuntime::spawn`]. The panic unwinds
+/// out of the `block_on` call that drives the runtime, before any task that awaits the spawned
+/// task's [`JoinHandle`](AsyncRuntime::JoinHandle) gets a result. Joining therefore never fails,
+/// and [`JoinError`](AsyncRuntime::JoinError) is [`Infallible`](std::convert::Infallible).
+///
+/// As a result, Openraft cannot report a panic in its core task as
+/// `openraft::errors::Fatal::Panicked`. The panic ends the `block_on` call instead, and no Openraft
+/// caller on this runtime gets an error.
 pub struct MonoioRuntime {
     rt: InnerRuntime,
 }
@@ -64,7 +75,9 @@ impl std::fmt::Debug for MonoioRuntime {
 }
 
 impl AsyncRuntime for MonoioRuntime {
-    // Joining an async task on Monoio always succeeds
+    /// Joining a task never fails: Monoio does not catch a panic in a spawned task, and the panic
+    /// unwinds out of `block_on` instead of reaching the [`JoinHandle`](AsyncRuntime::JoinHandle).
+    /// See [`MonoioRuntime`].
     type JoinError = std::convert::Infallible;
     type JoinHandle<T: OptionalSend + 'static> = monoio::task::JoinHandle<Result<T, Self::JoinError>>;
     type Sleep = monoio::time::Sleep;
@@ -141,5 +154,26 @@ mod tests {
     #[test]
     fn test_monoio_rt() {
         Suite::<MonoioRuntime>::test_all();
+    }
+
+    #[test]
+    fn test_spawned_task_panic_unwinds_out_of_block_on() {
+        struct ChildPanic;
+
+        // The panic ends the thread that drives the runtime, so the runtime gets a thread of its
+        // own, and the test reads the panic from that thread's join.
+        let joined = std::thread::spawn(|| {
+            let mut rt = MonoioRuntime::new(1);
+            rt.block_on(async {
+                let child = MonoioRuntime::spawn(async { std::panic::panic_any(ChildPanic) });
+                // Bound the wait, so that a join that never returns fails the test instead of
+                // hanging it.
+                let _ = MonoioRuntime::timeout(Duration::from_secs(10), child).await;
+            })
+        })
+        .join();
+
+        let payload = joined.expect_err("block_on returned after the spawned task panicked");
+        assert!(payload.is::<ChildPanic>());
     }
 }
