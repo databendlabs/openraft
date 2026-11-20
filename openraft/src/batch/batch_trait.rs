@@ -6,6 +6,16 @@ use crate::OptionalSend;
 /// extended with new elements, iterated over, and viewed as a slice.
 /// The default implementation is [`InlineBatch`](`super::InlineBatch`),
 /// backed by `SmallVec<[T; 1]>`.
+///
+/// # Sequence contract
+///
+/// A custom batch must preserve every item, including duplicates, in encounter order:
+///
+/// - `FromIterator::from_iter` (used by [`Batch::of`]) collects the input sequence as-is.
+/// - `Extend::extend` appends the input sequence after all existing items.
+/// - `AsRef::as_ref` and the consuming `IntoIterator::into_iter` expose the same sequence.
+///
+/// Openraft relies on this contract to keep write payloads and their responders paired by position.
 pub trait Batch<T>:
     AsRef<[T]> + Extend<T> + IntoIterator<Item = T, IntoIter: OptionalSend> + FromIterator<T> + OptionalSend
 {

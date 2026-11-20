@@ -10,6 +10,20 @@ use crate::log_id::LogId;
 use crate::vote::RaftCommittedLeaderId;
 
 /// Defines operations on an entry.
+///
+/// # Methods to inherit
+///
+/// An implementation defines [`new`](Self::new), [`log_id_parts`](Self::log_id_parts),
+/// [`set_log_id`](Self::set_log_id) and [`get_membership`](Self::get_membership). It should
+/// inherit the defaults of [`new_blank`](Self::new_blank), [`new_normal`](Self::new_normal),
+/// [`new_membership`](Self::new_membership), [`log_id`](Self::log_id) and [`index`](Self::index),
+/// which are built on those four.
+///
+/// The five defaults are bounded by `where Self: Final`, a marker private to Openraft, but the
+/// bound does not prevent an override: Rust lets an implementation leave out a `where` clause of
+/// the trait method. An override must return what the default returns, as each of these methods
+/// states. Openraft reads the log id of an entry through `log_id_parts()`, `log_id()` and
+/// `index()`, so an entry whose accessors disagree gives Openraft inconsistent log ids.
 #[since(
     version = "0.10.0",
     change = "replaced `D`, `NodeId`, and `Node` associated types with `Payload`"
@@ -61,6 +75,9 @@ where Self: OptionalFeatures + Debug + Display
     fn get_membership(&self) -> Option<<Self::Payload as RaftPayload>::Membership>;
 
     /// Create a new blank log entry.
+    ///
+    /// Keep this default: an override must build the entry that
+    /// `Self::new(log_id, Self::Payload::blank())` builds.
     #[since(version = "0.10.0", change = "construct configured payload type")]
     #[since(version = "0.10.0", change = "become a default method")]
     fn new_blank(log_id: LogId<Self::CommittedLeaderId>) -> Self
@@ -69,6 +86,9 @@ where Self: OptionalFeatures + Debug + Display
     }
 
     /// Create a new normal log entry that contains application data.
+    ///
+    /// Keep this default: an override must build the entry that
+    /// `Self::new(log_id, Self::Payload::normal(data))` builds.
     #[since(version = "0.10.0", change = "construct configured payload type")]
     #[since(version = "0.10.0", change = "become a default method")]
     fn new_normal(log_id: LogId<Self::CommittedLeaderId>, data: <Self::Payload as RaftPayload>::D) -> Self
@@ -79,6 +99,9 @@ where Self: OptionalFeatures + Debug + Display
     /// Create a new membership log entry.
     ///
     /// The returned instance must return `Some()` for `Self::get_membership()`.
+    ///
+    /// Keep this default: an override must build the entry that
+    /// `Self::new(log_id, Self::Payload::membership(m))` builds.
     #[since(version = "0.10.0", change = "construct configured payload type")]
     #[since(version = "0.10.0", change = "become a default method")]
     fn new_membership(log_id: LogId<Self::CommittedLeaderId>, m: <Self::Payload as RaftPayload>::Membership) -> Self
@@ -87,6 +110,9 @@ where Self: OptionalFeatures + Debug + Display
     }
 
     /// Returns the `LogId` of this entry.
+    ///
+    /// Keep this default: an override must return the log id made of the committed leader id and
+    /// the index that [`log_id_parts`](Self::log_id_parts) returns.
     #[since(version = "0.10.0")]
     fn log_id(&self) -> LogId<Self::CommittedLeaderId>
     where Self: Final {
@@ -95,6 +121,8 @@ where Self: OptionalFeatures + Debug + Display
     }
 
     /// Returns the index of this log entry.
+    ///
+    /// Keep this default: an override must return `self.log_id_parts().1`.
     #[since(version = "0.10.0")]
     fn index(&self) -> u64
     where Self: Final {

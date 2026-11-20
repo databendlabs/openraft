@@ -4,23 +4,37 @@ use base2histogram::AsciiChart;
 use base2histogram::Histogram;
 use base2histogram::PercentileStats;
 
-/// Stage-to-stage duration histograms in microseconds.
+/// Log lifecycle latency histograms in microseconds.
 ///
-/// Each histogram tracks the distribution of durations between consecutive
-/// lifecycle stages across all observed segments.
+/// Each segment contributes one sample per log entry it covers. A segment
+/// covering many entries contributes many identical samples, so percentiles
+/// are weighted by entry count, not by segment or batch count.
+///
+/// Unobserved earlier stages are backfilled with the first observed timestamp
+/// for those entries. For example, a follower that first observes entries at
+/// log storage submission uses the submission time for both proposal and
+/// receipt. Its proposal-to-receipt and receipt-to-submission samples are zero
+/// because those intervals were not observed, not because they were measured
+/// to take zero time.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LogStageHistograms {
-    /// From `client_write()` to `RaftCore` dequeuing the request: API channel queueing.
+    /// From the proposal timestamp until `RaftCore` admits the write, assigns log IDs,
+    /// builds entries, and queues the storage append. For client writes this includes
+    /// API channel queueing and batching as well as admission and append preparation.
     pub proposed_to_received: Histogram,
-    /// From `RaftCore` dequeuing the request to submitting the entry to log storage.
+    /// From the end of write admission and append preparation to the log store append call.
     pub received_to_submitted: Histogram,
-    /// From submitting the entry to log storage until storage persists it: storage I/O latency.
+    /// From log storage submission until `RaftCore` handles the I/O completion notification.
+    /// This includes storage I/O and completion delivery and processing, not just I/O latency.
     pub submitted_to_persisted: Histogram,
-    /// From persistence to the local commit of the entry.
+    /// From `RaftCore` handling I/O completion to starting `SaveCommittedAndApply` locally.
     pub persisted_to_committed: Histogram,
-    /// From the local commit to apply completion.
+    /// From the start of `SaveCommittedAndApply` until `RaftCore` handles the apply result.
     pub committed_to_applied: Histogram,
-    /// End-to-end latency from proposal to apply completion.
+    /// Per-entry latency from proposal until `RaftCore` handles the apply result.
+    ///
+    /// When a follower first observes an entry at log storage submission,
+    /// this measures from local submission, not from the client's proposal.
     pub proposed_to_applied: Histogram,
 }
 

@@ -12,8 +12,7 @@ use std::collections::VecDeque;
 ///
 /// - `push()`: O(1) amortized
 /// - `extend()`: O(k) where k = items added
-/// - `drain_upto()`: O(k) where k = drained count
-/// - `drain_from()`: O(log n + k) where n = total responders, k = drained count
+/// - `drain_upto()`, `drain_from()`: O(log n + k) where n = total responders, k = drained count
 /// - `first_index()`, `len()`, `is_empty()`: O(1)
 pub(crate) struct ClientResponderQueue<T> {
     /// Responders stored as (log_index, responder) pairs in sorted order

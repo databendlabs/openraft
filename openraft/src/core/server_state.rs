@@ -8,7 +8,13 @@ pub enum ServerState {
     /// Uninitialized and removed nodes also use this passive state.
     #[default]
     Learner,
-    /// The node receives logs and has a campaign, read voter, or write voter role.
+    /// The node is in the effective membership, is not classified as a learner, and is neither a
+    /// candidate nor a leader.
+    ///
+    /// This state does not imply that the node has [`NodeRole::ReceiveLogs`]. For example, a read
+    /// voter that is not a write voter can be a follower without receiving logs.
+    ///
+    /// [`NodeRole::ReceiveLogs`]: crate::membership::NodeRole::ReceiveLogs
     Follower,
     /// The node is campaigning to become the cluster leader.
     Candidate,

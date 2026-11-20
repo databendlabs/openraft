@@ -16,9 +16,51 @@ pub trait Upgrade<To> {
     }
 }
 
-/// `Compat` is a serialization-compatible type that can be deserialized from both an older type
-/// and a newer type. It serves as an intermediate type container for newer programs to read old
-/// data.
+/// A Serde wrapper that lets newer programs read both old and new data.
+///
+/// `Compat` is untagged: it tries [`Old`](Self::Old) first and only tries [`New`](Self::New) if
+/// decoding as `Old` fails. An old struct that ignores unknown fields can accept a new record and
+/// silently discard its new fields. If both decoders accept the same input, use an explicit
+/// discriminator (such as a version tag) or a custom decoder that can tell the formats apart.
+///
+/// Deserialization requires a self-describing format that supports `deserialize_any`, such as JSON.
+/// Bincode 1.3 can serialize `Compat` but cannot deserialize it, even from bytes it just wrote.
+///
+/// # Example
+///
+/// The new format adds a required `extra` field. Rejecting unknown fields on `Old` keeps it from
+/// accepting new records, so their `extra` values survive the upgrade.
+///
+/// ```
+/// use openraft::compat::Compat;
+/// use openraft::compat::Upgrade;
+/// use serde::Deserialize;
+///
+/// #[derive(Deserialize)]
+/// #[serde(deny_unknown_fields)]
+/// struct Old {
+///     id: u8,
+/// }
+///
+/// #[derive(Debug, Deserialize, PartialEq)]
+/// struct Current {
+///     id: u8,
+///     extra: u8,
+/// }
+///
+/// impl Upgrade<Current> for Old {
+///     fn upgrade(self) -> Current {
+///         Current { id: self.id, extra: 0 }
+///     }
+/// }
+///
+/// let old: Compat<Old, Current> = serde_json::from_str(r#"{"id":1}"#)?;
+/// assert_eq!(old.upgrade(), Current { id: 1, extra: 0 });
+///
+/// let current: Compat<Old, Current> = serde_json::from_str(r#"{"id":1,"extra":9}"#)?;
+/// assert_eq!(current.upgrade(), Current { id: 1, extra: 9 });
+/// # Ok::<(), serde_json::Error>(())
+/// ```
 #[derive(Debug)]
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(untagged)]

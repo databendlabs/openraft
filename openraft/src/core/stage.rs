@@ -7,45 +7,41 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(usize)]
 pub enum Stage {
-    /// When the application called `client_write()`.
+    /// For client writes, just before sending the write message to `RaftCore`.
+    /// If the core merges write messages, it keeps the first message's timestamp.
+    /// For membership writes handled in the core, this is sampled just before `write_entries`.
     Proposed = 0,
 
-    /// When `RaftCore` dequeued the write request from the API channel.
-    /// The gap from `Proposed` reveals channel queueing delay.
+    /// After `RaftCore` admits the write and `leader_append_entries` assigns log IDs,
+    /// builds entries, and queues the storage append.
+    ///
+    /// For client writes, the gap from `Proposed` includes API channel queueing, batching,
+    /// admission, and append preparation. It does not end at dequeue.
     Received = 1,
 
-    /// When the entry was submitted to the Raft-Log storage for persistence.
+    /// Just before `RaftCore` calls `append` on the log store.
     ///
-    /// The gap from `Received` represents the engine command queue delay:
-    /// after processing the client-write message, `Engine` generates commands
-    /// (including the storage append command) into `Engine.output`.
-    /// This delay is the time between when the command is generated and when
-    /// it is actually submitted to the log storage implementation.
+    /// The gap from `Received` includes the wait for the core to run the queued append command.
     Submitted = 2,
 
-    /// When the Raft-Log storage confirmed the entry is persisted
-    /// (i.e., the append-entries callback returned).
-    /// The gap from `Submitted` reveals storage I/O latency.
+    /// When `RaftCore` handles the notification that local log I/O has completed,
+    /// not when the storage callback runs.
+    ///
+    /// For a storage append, the gap from `Submitted` includes both storage I/O and the
+    /// time it takes for the completion notification to reach and be processed by the core.
     Persisted = 3,
 
-    /// When this node locally marked the entry as committed
-    /// (i.e., `RaftCore` received the commit index update from the Engine).
+    /// When `RaftCore` starts `SaveCommittedAndApply` for the entry, before saving the
+    /// committed log ID and dispatching the apply command.
     ///
-    /// This is the local commit timestamp, not the cluster-wide quorum time.
-    /// The local committed index is always equal to or smaller than the
-    /// cluster-wide committed index, because:
-    /// - It takes time for the leader's commit decision to propagate to this node.
-    /// - A log entry may already be committed by the cluster quorum but not yet present in this
-    ///   node's local log storage.
-    ///
-    /// The gap from `Persisted` reveals replication + quorum wait latency.
+    /// This observes local commit processing, not when a quorum committed the entry.
     Committed = 4,
 
-    /// When the state machine finished applying the entry and reported the result
-    /// back to `RaftCore`.
+    /// When `RaftCore` handles the state machine worker's apply result, not when the worker
+    /// finishes applying the entry.
     ///
-    /// The gap from `Committed` includes both apply queueing delay and the actual
-    /// state machine apply execution time.
+    /// The gap from `Committed` includes saving the committed log ID, apply queueing and
+    /// execution, and delivery and handling of the apply result.
     Applied = 5,
 }
 

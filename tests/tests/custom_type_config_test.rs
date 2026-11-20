@@ -116,3 +116,13 @@ fn test_custom_type_config_compiles() {
     let b3 = <CustomConfig as RaftTypeConfig>::Batch::<u64>::of(0..5);
     assert_eq!(b3.as_ref(), &[0, 1, 2, 3, 4]);
 }
+
+#[test]
+fn test_custom_batch_preserves_sequence() {
+    let mut batch = <CustomConfig as RaftTypeConfig>::Batch::<u64>::of([3, 1, 3]);
+    batch.extend([2, 1]);
+
+    let expected = [3, 1, 3, 2, 1];
+    assert_eq!(batch.as_ref(), &expected);
+    assert_eq!(batch.into_iter().collect::<Vec<_>>(), expected);
+}
