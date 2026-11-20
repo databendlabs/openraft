@@ -8,9 +8,18 @@ FROM ubuntu:24.04 AS ubuntu-base
 
 # CI can use a cloud-local mirror that serves all Noble pockets, including
 # security. Keep Ubuntu's default sources for local builds and retain Signed-By.
+# APT's mirror method tries the CI mirror first and fetches any file it cannot
+# serve from Ubuntu's main archive, which also serves every Noble pocket.
+# apt 2.8.3 hung when it delayed a retry of a Packages index after falling back
+# for InRelease, so the mirror setup retries without delay.
 ARG UBUNTU_APT_MIRROR
 RUN if [ -n "$UBUNTU_APT_MIRROR" ]; then \
-      sed -i "s|^URIs: .*|URIs: $UBUNTU_APT_MIRROR|" /etc/apt/sources.list.d/ubuntu.sources; \
+      printf '%s\tpriority:1\nhttp://archive.ubuntu.com/ubuntu/\tpriority:2\n' \
+        "$UBUNTU_APT_MIRROR" > /etc/apt/jepsen-mirrors.list \
+      && sed -i "s|^URIs: .*|URIs: mirror+file:/etc/apt/jepsen-mirrors.list|" \
+        /etc/apt/sources.list.d/ubuntu.sources \
+      && printf 'Acquire::Retries::Delay "false";\n' \
+        > /etc/apt/apt.conf.d/80-jepsen-mirrors; \
     fi \
  && printf 'Acquire::http::Timeout "15";\nAcquire::https::Timeout "15";\n' \
       > /etc/apt/apt.conf.d/80-jepsen-timeout
