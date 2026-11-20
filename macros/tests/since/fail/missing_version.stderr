@@ -1,0 +1,13 @@
+error: Missing `version` attribute
+ --> tests/since/fail/missing_version.rs:1:26
+  |
+1 | #[openraft_macros::since(date = "2021-01-01")]
+  |                          ^^^^^^^^^^^^^^^^^^^
+
+error: Missing `version` attribute
+ --> tests/since/fail/missing_version.rs:5:1
+  |
+5 | #[openraft_macros::since]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the attribute macro `openraft_macros::since` (in Nightly builds, run with -Z macro-backtrace for more info)
