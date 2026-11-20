@@ -65,6 +65,10 @@ build: key
 	@echo "[jepsen] building Docker images"
 	@$(COMPOSE) build
 
+# All five node services share the same image.
+build-node: key
+	@$(COMPOSE) build n1
+
 up: key
 	@echo "[jepsen] starting containers"
 	@$(COMPOSE) up -d --force-recreate
@@ -91,4 +95,4 @@ down:
 	@echo "[jepsen] stopping containers"
 	@$(COMPOSE) down
 
-.PHONY: safety liveness app-lint app-test clojure-lint lint unit-test jepsen key build up test down
+.PHONY: safety liveness app-lint app-test clojure-lint lint unit-test jepsen key build build-node up test down
