@@ -174,6 +174,11 @@ fn add_send_bounds(mut input: ItemTrait) -> TokenStream {
 ///     capacity: u64,
 /// }
 /// ```
+///
+/// A marker is written as `#[since(...)]`, `#[openraft_macros::since(...)]`,
+/// `#[openraft::macros::since(...)]` or `#[openraft::openraft_macros::since(...)]`. Every other
+/// attribute is left on the field or variant for rustc, so another tool's attribute such as
+/// `#[clippy::since]` is kept, and a misspelled path fails to resolve.
 #[proc_macro_attribute]
 pub fn since(args: TokenStream, item: TokenStream) -> TokenStream {
     let tokens = do_since(args, item.clone());
